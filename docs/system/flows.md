@@ -374,6 +374,16 @@ Files: `src/lib/site-stats.ts`, `src/lib/connectors/via-composio.ts` (`gaPropert
 5. Reports: the site card (`SiteStats.tsx`) shows the same totals; a direct (non-Composio) `google` record does not count as an analytics source.
 6. Nothing writes to Google: the catalog lists no write tool for either toolkit.
 
+## 21b. Instagram and LinkedIn page results (read only, 2026-10-08, rules 661-671)
+
+Files: `src/lib/social-stats.ts`, `src/lib/publish-once.ts`, `api/cron/daily`, `src/lib/stats.ts`. Spec: `docs/superpowers/specs/2026-10-08-social-results-via-composio-design.md`.
+
+1. Parts: Instagram is read when the `meta` record is a Composio one holding an Instagram account and `meta.igId`; the LinkedIn page when the `linkedin` record is a Composio one with `meta.liOrg`. A part not held is skipped, not failed.
+2. Read (`syncSocial`): Instagram username and followers, account reach and views over 28 days, then the posts of the last 28 days (25 per page, following Instagram's cursor until 30 posts or a repeated cursor; `paging.next` is never stored), then each post's views, reach, likes, comments, saves and shares four at a time, with one retry without views and shares. A number not read is `null`, never zero. Captions are cleaned and cut to 80 characters; a post link is kept only on `instagram.com`. A post is marked as Thakeen's from `socialpub:{scope}`, the Instagram ids `publishOnce` recorded. Both parts run together and the snapshot at `socialstats:{scope}` keeps what succeeded, with a short error code per failed part. A refused token is thrown with its provider after the rest is written; a personal Instagram account is recorded as `ig_not_professional` and not thrown; anything else is thrown only when nothing was read.
+3. Daily: after `syncSiteIfDue`, `dailyFor` calls `syncSocialIfDue`, which reads the held parts whose records are not waiting for a reconnect, once the last read is more than 20 hours old. A failure is reported as `social_failed:…` and the workspace's day goes on; a refused token marks that record for reconnect.
+4. Dana: `statsFor` adds `socialDataBlock` after the site block: the account totals and posts inside `<social_data>` serialised with `asData`, labelled as data, with rules (no previous period, so no invented change; followers are a count on the read date; `null` is unknown, never zero; a read older than 7 days carries its date).
+5. Nothing posts, replies or edits: the catalog lists the read tools only (rule 661).
+
 ## 22. Ad codes: measuring Nashr's own ads
 
 Files: `src/lib/ad-codes.ts`, `saveTask` in `src/lib/brand.ts`, `analyze` in `src/lib/perf-import.ts`, `Inbox.tsx`, `PerformanceImport.tsx`.

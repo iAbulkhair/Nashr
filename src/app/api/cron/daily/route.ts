@@ -14,6 +14,7 @@ import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
 import { syncSiteIfDue } from "@/lib/site-stats";
+import { syncSocialIfDue } from "@/lib/social-stats";
 import { sweepOnboardHolds } from "@/lib/onboard-confirm";
 import { purgeExpired, secretaryDaily } from "@/lib/secretary";
 import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type SweepReport } from "@/lib/secretary-remind";
@@ -106,6 +107,8 @@ async function dailyFor(u: User): Promise<string> {
   try { const ads = await syncAdsIfDue(u.scope ?? u.email); if (ads) out.push(`ads:${ads}`); } catch (e) { out.push(`ads_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   // The site's GA4 and Search Console totals for Dana, read the same way (src/lib/site-stats.ts).
   try { if (await syncSiteIfDue(u.scope ?? u.email)) out.push("site"); } catch (e) { out.push(`site_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
+  // Instagram and LinkedIn page results for Dana, read the same way (src/lib/social-stats.ts).
+  try { if (await syncSocialIfDue(u.scope ?? u.email)) out.push("social"); } catch (e) { out.push(`social_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   const lc = await runLifecycle(u);
   if (lc.length) out.push(`lifecycle:${lc.length}`);
   const brief = await runDaily(u);
