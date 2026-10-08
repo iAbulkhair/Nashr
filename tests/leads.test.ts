@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { json, newUser, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newUser, signIn, signOut } from "./helpers/session";
 import { createUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import * as support from "@/app/api/support/route";
@@ -16,7 +16,7 @@ import type { Lead } from "@/lib/leads";
 
 const FOUNDER = "leads-founder@test.example";
 let ip = 0;
-const from = () => ({ "x-real-ip": `10.9.${Math.floor(ip / 250)}.${(ip++ % 250) + 1}` });
+const from = () => ({ "x-forwarded-for": `10.9.${Math.floor(ip / 250)}.${(ip++ % 250) + 1}` });
 const contact = (name: string, company: string, message: string) => [`Name: ${name}`, `Company: ${company}`, "", message].join("\n");
 type Body = { ok: boolean; leads: Lead[]; total: number; unread: number; seenAt: string | null; mail: { ready: boolean; forwardTo: boolean } };
 const list = async (query = "") => {
@@ -27,6 +27,7 @@ const list = async (query = "") => {
 beforeAll(async () => {
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
   await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+  await markVerified(FOUNDER);
 });
 afterEach(() => signOut());
 

@@ -14,7 +14,7 @@ import * as reset from "@/app/api/auth/reset/route";
 
 // Each test gets its own client IP so one test's throttle window never leaks into the next.
 let ipN = 0;
-const ip = () => ({ "x-real-ip": `203.0.113.${++ipN}` });
+const ip = () => ({ "x-forwarded-for": `203.0.113.${++ipN}` });
 const tokenFrom = (text: string) => text.match(/\/app\/reset#t=([a-f0-9]{64})/)![1];
 
 beforeEach(() => { sent.length = 0; signOut(); vi.stubEnv("RESEND_API_KEY", "test-key"); vi.stubEnv("MAIL_FROM", "Noor <noor@mail.nashr.test>"); });

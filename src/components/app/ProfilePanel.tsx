@@ -13,6 +13,7 @@ import type { Role } from "@/lib/auth";
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { paceStart, runway, runwayLine } from "@/lib/usage-view";
 import ReadOnlyNote from "./ReadOnlyNote";
+import PasswordField from "./PasswordField";
 import LogoutButton from "./LogoutButton";
 import Scribble from "@/components/Scribble";
 
@@ -305,8 +306,8 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
       {canPassword ? (
         <form onSubmit={password}><Card title={ar ? "كلمة المرور" : "Password"}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>{L(ar ? "كلمة المرور الحالية" : "Current password", fid("currentPassword"))}<input id={fid("currentPassword")} name="currentPassword" type="password" autoComplete="current-password" required className={input} /></div>
-            <div>{L(ar ? "كلمة المرور الجديدة (8 أحرف على الأقل)" : "New password (at least 8 characters)", fid("newPassword"))}<input id={fid("newPassword")} name="newPassword" type="password" autoComplete="new-password" required minLength={8} className={input} /></div>
+            <div>{L(ar ? "كلمة المرور الحالية" : "Current password", fid("currentPassword"))}<PasswordField lang={lang} id={fid("currentPassword")} name="currentPassword" autoComplete="current-password" required className={input} /></div>
+            <div>{L(ar ? "كلمة المرور الجديدة (8 أحرف على الأقل)" : "New password (at least 8 characters)", fid("newPassword"))}<PasswordField lang={lang} id={fid("newPassword")} name="newPassword" autoComplete="new-password" required minLength={8} className={input} /></div>
           </div>
           <button className="mt-4 btn btn-secondary btn-sm">{ar ? "غيّر" : "Change"}</button>
         </Card></form>

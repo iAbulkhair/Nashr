@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { jar, json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { codeFor } from "@/lib/referral";
@@ -81,7 +81,7 @@ async function signupVia(fields: Record<string, unknown>, cookie?: string) {
   jar().clear();
   if (cookie) jar().set(PARTNER_COOKIE, cookie);
   const email = `cust-${randomBytes(4).toString("hex")}@test.example`;
-  const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Customer", lang: "en", ...fields }, { "x-real-ip": ip() }));
+  const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Customer", lang: "en", ...fields }, { "x-forwarded-for": ip() }));
   return { res, email };
 }
 async function record(email: string, b: Record<string, unknown>) {
@@ -101,12 +101,12 @@ async function bankReady(email: string, details: Record<string, unknown> = {}) {
   const savedAt = (await getPartner(email))!.bank!.savedAt;
   expect(await status(adminPartners.POST(json("/api/admin/partners", "POST", { action: "confirm_bank", email, savedAt })))).toBe(200);
 }
-const visit = (c: string, headers: Record<string, string> = {}, query = "") => plink.GET(new Request(`https://nashr.test/p/${c}${query}`, { headers: { "x-real-ip": ip(), ...headers } }), params({ code: c }));
+const visit = (c: string, headers: Record<string, string> = {}, query = "") => plink.GET(new Request(`https://nashr.test/p/${c}${query}`, { headers: { "x-forwarded-for": ip(), ...headers } }), params({ code: c }));
 
 beforeAll(async () => {
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
   vi.stubEnv("WAITLIST_ADMIN_KEY", "");
-  if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "en" });
+  if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "en" })).email);
 });
 afterEach(() => signOut());
 
@@ -170,7 +170,7 @@ describe("rule 390: partner codes are the founder's to approve, unique, uppercas
     const c = code();
     expect(await status(approve(email, c))).toBe(200);
     jar().clear();
-    expect(await status(signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Late", lang: "en" }, { "x-real-ip": ip() })))).toBe(200);
+    expect(await status(signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Late", lang: "en" }, { "x-forwarded-for": ip() })))).toBe(200);
     expect((await getUser(email))!.partnerCode).toBe(c);
   });
 });
@@ -211,9 +211,9 @@ describe("rule 391: a partner link sets a 30-day first-party cookie and sends th
   it("is throttled per IP: past 60 an hour nothing is set", async () => {
     const { code: c } = await partner();
     const addr = ip();
-    for (let i = 0; i < 60; i++) await visit(c, { "x-real-ip": addr });
+    for (let i = 0; i < 60; i++) await visit(c, { "x-forwarded-for": addr });
     jar().clear();
-    await visit(c, { "x-real-ip": addr });
+    await visit(c, { "x-forwarded-for": addr });
     expect(jar().has(PARTNER_COOKIE)).toBe(false);
   });
 });
@@ -259,7 +259,7 @@ describe("rule 392: signup attributes the account (a typed code wins over the co
     const c = code();
     expect(await status(approve(email, c))).toBe(200);
     jar().clear();
-    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Self", lang: "en", partnerCode: c }, { "x-real-ip": ip() }));
+    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Self", lang: "en", partnerCode: c }, { "x-forwarded-for": ip() }));
     expect(await body(res)).toMatchObject({ ok: true, partner: false });
     expect((await getUser(email))!.referredBy).toBeUndefined();
   });
@@ -376,6 +376,7 @@ describe("rule 395: the billing page quotes the discounted first month and route
     try {
       const a = await partner("bp");
       const { email } = await signupVia({ partnerCode: a.code });
+      await markVerified(email);
       await signIn(email);
       const h = await html(BillingPage);
       const starter = h.split('data-tier="starter"')[1].split('data-tier="pro"')[0];
@@ -638,7 +639,7 @@ describe("rule 399: the partner page shows no customer PII; bank details are the
 describe("rule 400: the founder console lists applications with ids, decisions and suggested codes", () => {
   it("a public application gets an id the founder can approve or reject by", async () => {
     const email = `apply-${randomBytes(4).toString("hex")}@test.example`;
-    expect(await status(affiliates.POST(json("/api/affiliates", "POST", { name: "Reem Saleh", email, phone: "+966500000000", channel: "YouTube", consent: true }, { "x-real-ip": ip() })))).toBe(200);
+    expect(await status(affiliates.POST(json("/api/affiliates", "POST", { name: "Reem Saleh", email, phone: "+966500000000", channel: "YouTube", consent: true }, { "x-forwarded-for": ip() })))).toBe(200);
     await asFounder();
     const { applications } = await body<{ applications: { id: string; email: string; suggested: string; decision: unknown }[] }>(adminPartners.GET(json("/api/admin/partners", "GET")));
     const app = applications.find((x) => x.email === email)!;
@@ -848,7 +849,7 @@ describe("rule 405: payouts record once, can be voided, and go only to bank deta
     const before = (await listPartners()).find((p) => p.email === email)!;
     expect(before).toMatchObject({ hasAccount: false, accountAfterApproval: false });
     jar().clear();
-    await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Late", lang: "en" }, { "x-real-ip": ip() }));
+    await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Late", lang: "en" }, { "x-forwarded-for": ip() }));
     expect((await listPartners()).find((p) => p.email === email)).toMatchObject({ hasAccount: true, accountAfterApproval: true, bankConfirmed: false });
     const early = await partner("early-acct");
     expect((await listPartners()).find((p) => p.email === early.user.email)).toMatchObject({ accountAfterApproval: false });
@@ -928,6 +929,7 @@ describe("rule 409: the commission base and the first-month discount are taken b
   it("the billing card says so in both languages, and so do the public pages", async () => {
     const a = await partner("vat");
     const { email } = await signupVia({ partnerCode: a.code });
+    await markVerified(email);
     await signIn(email);
     expect(await html(BillingPage)).toContain("The discount comes off the price before VAT; VAT is then computed on the discounted price.");
     expect(await html(BillingPage, "ar")).toContain("الخصم على السعر قبل الضريبة، ثم تُحسب ضريبة القيمة المضافة على السعر بعد الخصم.");
@@ -1251,7 +1253,7 @@ describe("rule 413: the public programme terms, in Arabic and English, linked fr
 });
 
 describe("rule 414: an application needs consent to the terms, and records when and which version", () => {
-  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+971500000000", channel: "Newsletter", ...b }, { "x-real-ip": ip() }));
+  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+971500000000", channel: "Newsletter", ...b }, { "x-forwarded-for": ip() }));
   const apps = async () => {
     await asFounder();
     return (await body<{ applications: { email: string; consentAt: string | null; termsVersion: string | null }[] }>(adminPartners.GET(json("/api/admin/partners", "GET")))).applications;
@@ -1295,7 +1297,7 @@ describe("rule 414: an application needs consent to the terms, and records when 
 });
 
 describe("rule 415: no partner without a recorded agreement to the terms, carried onto the partner record", () => {
-  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+971500000000", channel: "Newsletter", ...b }, { "x-real-ip": ip() }));
+  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+971500000000", channel: "Newsletter", ...b }, { "x-forwarded-for": ip() }));
   const appOf = async (email: string) => {
     await asFounder();
     return (await body<{ applications: { id: string; email: string; consentAt: string | null }[] }>(adminPartners.GET(json("/api/admin/partners", "GET")))).applications.find((a) => a.email === email)!;

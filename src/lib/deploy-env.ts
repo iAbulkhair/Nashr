@@ -31,3 +31,12 @@ export function isProductionDeploy(): boolean {
 export function isStaging(): boolean {
   return process.env.APP_ENV === "staging";
 }
+
+/**
+ * Is this process running on Vercel? Exactly `VERCEL=1`, which Vercel sets on every deployment and no other host does.
+ * Not `VERCEL_ENV`: live Hostinger sets that one by hand (the 2026-10-07 stopgap for rules 430-431). Read at call time.
+ * `clientIp` asks it before trusting Vercel's own address headers (rule 773).
+ */
+export function onVercel(): boolean {
+  return process.env.VERCEL === "1";
+}

@@ -399,7 +399,7 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     await db.del(SEC_KEYS.tick);
     const u = await owner("p2tick");
     const it = await seedDue(u.email, "Tick me");
-    const ip = { "x-real-ip": "203.0.113.21" };
+    const ip = { "x-forwarded-for": "203.0.113.21" };
     expect((await tick(ip)).status).toBe(401);
     expect((await tick({ ...ip, "upstash-signature": qsign("", "sig_wrong") })).status).toBe(401);
     expect((await tick({ ...ip, "upstash-signature": qsign("other", KEY) })).status).toBe(401);
@@ -414,14 +414,14 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect(await timedReminders()).toBe(true);
     // Only failed calls count against the per-IP limit: a bucket strangers filled never refuses the real tick.
     await db.set("rate:cronsec:203.0.113.22", 60, 60);
-    const full = { "x-real-ip": "203.0.113.22" };
+    const full = { "x-forwarded-for": "203.0.113.22" };
     expect((await tick({ ...full, authorization: "Bearer cron-p2-tick" })).status).toBe(200);
     expect((await tick({ ...full, "upstash-signature": qsign("", KEY) })).status).toBe(200);
     expect((await tick(full)).status).toBe(429);
-    expect((await tick({ "x-real-ip": "203.0.113.23" })).status).toBe(401);
+    expect((await tick({ "x-forwarded-for": "203.0.113.23" })).status).toBe(401);
     expect(await db.get("rate:cronsec:203.0.113.23")).toBe(1);
     expect(await db.get("rate:cronsec:203.0.113.24")).toBeNull();
-    await tick({ "x-real-ip": "203.0.113.24", authorization: "Bearer cron-p2-tick" });
+    await tick({ "x-forwarded-for": "203.0.113.24", authorization: "Bearer cron-p2-tick" });
     expect(await db.get("rate:cronsec:203.0.113.24")).toBeNull();
     // Oversized input is refused unread, before any check or store call: nothing fires.
     const big = await seedDue(u.email, "Not for a big body");
@@ -991,7 +991,7 @@ describe("the evening wrap: from stored facts, silent when nothing happened, onc
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => { urls.push(String(url)); auths.push(new Headers(init?.headers).get("authorization") ?? ""); return new Response("{}"); });
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.parse("2026-10-05T15:05:00Z"));
-    const res = await tickRoute.POST(new Request("https://nashr.test/api/cron/secretary", { method: "POST", headers: { "x-real-ip": "203.0.113.31", authorization: "Bearer cron-p2-kick" }, body: "" }));
+    const res = await tickRoute.POST(new Request("https://nashr.test/api/cron/secretary", { method: "POST", headers: { "x-forwarded-for": "203.0.113.31", authorization: "Bearer cron-p2-kick" }, body: "" }));
     expect((await res.json()).evening).toBe(4);
     await settle();
     const kick = urls.find((u) => u.includes("/api/cron/evening"));

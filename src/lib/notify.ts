@@ -15,8 +15,17 @@ export const mailReady = () => !!process.env.RESEND_API_KEY && !!process.env.MAI
  */
 export const EMAIL_TIMEOUT_MS = 10_000;
 
-/** Notification channels. Email via Resend when RESEND_API_KEY is set; WhatsApp when the Business API is approved. */
-export async function sendEmail(to: string, subject: string, text: string): Promise<boolean> {
+/**
+ * Notification channels. Email via Resend when RESEND_API_KEY is set; WhatsApp when the Business API is approved.
+ *
+ * `html` is the HTML part from a template in src/emails/ (rule 689). It is sent only when given, and the plain-text part
+ * is always sent with it, so a templated message is multipart: a client that shows no HTML, a screen reader in text mode
+ * and every test that reads a token out of the text still get the same words. Without `html` the message is text only,
+ * as before; Resend then receives no `html` key at all. Click tracking must stay off for the sending domain in Resend:
+ * it rewrites the HTML part's links through Resend's redirect, and the reset and join links carry their token in the
+ * fragment (rule 546, src/emails/reset-password.ts).
+ */
+export async function sendEmail(to: string, subject: string, text: string, html?: string): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return false;
   const from = process.env.MAIL_FROM ?? "Noor at Thakeen <onboarding@resend.dev>";
@@ -32,7 +41,7 @@ export async function sendEmail(to: string, subject: string, text: string): Prom
       timer = setTimeout(() => resolve("timeout"), EMAIL_TIMEOUT_MS);
       (timer as { unref?: () => void }).unref?.();
     });
-    const res = await Promise.race([resend.emails.send({ from, to, subject, text }), timeout]);
+    const res = await Promise.race([resend.emails.send({ from, to, subject, text, ...(html ? { html } : {}) }), timeout]);
     if (res === "timeout") {
       await mailFailed(from, `no answer within ${EMAIL_TIMEOUT_MS / 1000} s`);
       return false;
@@ -96,8 +105,10 @@ async function mailFailed(from: string, reason: string) {
  * expiry, so its remaining TTL gives the moment it was written (`writtenBeforeRepairCutoff`); a marker with no expiry
  * predates that guard. A marker burned after the cutoff and before this code is live is left alone: missing that one
  * repair is the lesser failure.
+ *
+ * `html`, when given, is the message's HTML part and goes to `sendEmail` with the text (rule 689).
  */
-export async function sendOnce(email: string, key: string, subject: string, text: string): Promise<OnceResult> {
+export async function sendOnce(email: string, key: string, subject: string, text: string, html?: string): Promise<OnceResult> {
   const marker = onceKey(email, key);
   const first = await db.get(marker);
   if (!repairable(first) || (isOldMarker(first) && !(await writtenBeforeRepairCutoff(marker)))) return "already";
@@ -116,7 +127,7 @@ export async function sendOnce(email: string, key: string, subject: string, text
       if (!(await db.lock(onceRepairKey(email, key), ONCE_TTL_SECONDS))) return "already";
       await db.del(marker);
     }
-    if (!(await sendEmail(email, subject, text))) return "failed";
+    if (!(await sendEmail(email, subject, text, html))) return "failed";
     await markSent(email, key);
     return "sent";
   } finally {

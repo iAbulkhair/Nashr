@@ -1,5 +1,5 @@
 import { appDict } from "./app-i18n";
-import { getLogin, normalizeEmail } from "./auth";
+import { emailVerified, getLogin, normalizeEmail } from "./auth";
 import { listBrands, scopeFor } from "./brands";
 import type { FeedRecord } from "./feed-token";
 import { fill } from "./fill";
@@ -78,7 +78,8 @@ const olderThan = (recAt: unknown, lifeAt: unknown): boolean => {
 
 /**
  * Whether a feed record still holds, read fresh on every fetch (the session-free half of `resolveSession` in auth.ts):
- * the login exists and is active, and `rec.scope` is one of its account's active brands. An owner must not be suspended.
+ * the login exists and is active, and `rec.scope` is one of its account's active brands. An owner must not be suspended
+ * and must have verified the address (rule 756), and the same holds for the owner behind a member.
  * A member must be on the owner's roster (`getLogin` checks it), not disabled, an admin or member, joined after the owner
  * record was made, and the owner must exist and not be suspended. The scope is compared with the owner's stored email
  * exactly, as `sc(u)` builds it: a member's own address, another account or an archived brand is never a scope here.
@@ -97,13 +98,13 @@ export async function loginHolds(rec: Pick<FeedRecord, "login" | "scope" | "crea
   if (!login) return false;
   let owner: string;
   if (login.kind === "owner") {
-    if (login.user.suspended) return false;
+    if (login.user.suspended || !emailVerified(login.user)) return false;
     if (olderThan(rec.createdAt, login.user.createdAt)) return false;
     if (olderThan(rec.createdAt, login.user.sessionsAfter)) return false;
     owner = login.user.email;
   } else {
     const { member: m, owner: u } = login;
-    if (!u || u.suspended || m.disabled) return false;
+    if (!u || u.suspended || !emailVerified(u) || m.disabled) return false;
     if (m.role !== "admin" && m.role !== "member") return false;
     if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === normalizeEmail(rec.login)) return false;
     // NaN on either side (a malformed date) refuses too.
