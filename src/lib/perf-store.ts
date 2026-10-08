@@ -2,6 +2,7 @@ import { db } from "./db";
 import { adCodeIndex } from "./brand";
 import { deleteFile, writeFile } from "./files";
 import { analyze, learningsMarkdown, type PerfSnapshot } from "./perf-import";
+import { ADSTATS_KEY, adStatsFrom } from "./ad-stats";
 import { AD_PROVIDERS, adRows, type AdProvider } from "./connectors/ads";
 import { adRowsVia } from "./connectors/ads-via-composio";
 import { isComposio } from "./connectors/composio-shape";
@@ -27,13 +28,15 @@ export async function clearPerf(scope: string) {
 
 /**
  * Read the last 30 days of ad results from a connected ad account and run them through the same analysis as an
- * upload. The newest results, from a file or an account, are the ones Noor reads.
+ * upload. The newest results, from a file or an account, are the ones Noor reads. The account's own totals also go to
+ * `adstats:{scope}:{provider}` (src/lib/ad-stats.ts, rule 731), built from the raw rows, so reading one platform never
+ * erases another's figures from Dana's reports.
  */
 export async function syncAds(scope: string, provider: AdProvider, c: Connection, now = new Date()): Promise<PerfSnapshot> {
   const [pull, codes] = await Promise.all([isComposio(c) ? adRowsVia(scope, c, now) : adRows(c, now), adCodeIndex(scope)]);
   if (!pull.rows.length) throw new Error("no_ad_results");
   const snap: PerfSnapshot = { ...analyze(pull.rows, `${pull.account}${pull.currency ? ` (${pull.currency})` : ""}`, pull.platform, pull.range, undefined, now.toISOString(), codes), source: provider };
-  await Promise.all([savePerf(scope, snap), db.set(`adsync:${scope}:${provider}`, now.toISOString())]);
+  await Promise.all([savePerf(scope, snap), db.set(`adsync:${scope}:${provider}`, now.toISOString()), db.set(ADSTATS_KEY(scope, provider), adStatsFrom(provider, pull, null, now))]);
   return snap;
 }
 

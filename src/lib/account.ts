@@ -23,6 +23,7 @@ import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
 import { getConnection } from "./connectors/store";
 import { isComposio, revokeAll } from "./connectors/via-composio";
 import { AD_PROVIDERS } from "./connectors/ads";
+import { AD_STATS_SOURCES, ADSTATS_KEY } from "./ad-stats";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -120,6 +121,8 @@ export async function wipeAccount(email: string) {
       `perfimport:${s}`,
       // Each ad account's last read time, one per ad platform.
       ...AD_PROVIDERS.map((p) => `adsync:${s}:${p}`),
+      // Each ad account's totals and its top ads by name, and the last upload's (src/lib/ad-stats.ts, rule 747).
+      ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });

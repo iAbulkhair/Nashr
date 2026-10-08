@@ -5,6 +5,7 @@ import { cartDataBlock } from "./cart-recovery";
 import { salesDataBlock } from "./store-sales";
 import { siteDataBlock } from "./site-stats";
 import { socialDataBlock } from "./social-stats";
+import { adDataBlock } from "./ad-stats";
 
 /** Workspace KPIs for the Reports page and for Dana's prompts. Computed from stored tasks only; no model call. */
 export type Kpis = {
@@ -165,12 +166,13 @@ export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
 
 /** Returns the data block a task is built on: workspace stats for Dana's reports and Majed's strategy review, plus
  * STORE DATA when a store was synced, SITE DATA when Google Analytics or Search Console was read (src/lib/site-stats.ts),
- * SOCIAL DATA when Instagram or a LinkedIn page was read (src/lib/social-stats.ts); STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
+ * SOCIAL DATA when Instagram or a LinkedIn page was read (src/lib/social-stats.ts), AD DATA when an ad account was read
+ * or a CSV uploaded (src/lib/ad-stats.ts); STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
  * store's abandoned carts for cart-recovery drafts; and nothing for everything else. Each block is labelled as data. */
 export async function statsFor(type: TaskType, scope: string): Promise<string> {
   if (type === "cart_recovery") return cartDataBlock(scope);
   if (type === "cash_forecast") return salesDataBlock(scope);
   if (agentForTask(type).id !== "dana" && type !== "strategy_review") return "";
-  const [k, store, site, social] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope), socialDataBlock(scope)]);
-  return [store ? statsText(k, { store: true }) : statsText(k), store, site, social].filter(Boolean).join("\n\n");
+  const [k, store, site, social, ads] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope), socialDataBlock(scope), adDataBlock(scope)]);
+  return [store ? statsText(k, { store: true }) : statsText(k), store, site, social, ads].filter(Boolean).join("\n\n");
 }
