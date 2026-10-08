@@ -46,10 +46,11 @@ export const SEEDED_BRAND = {
 export async function signUpOrLogIn(request: APIRequestContext, account: Account, clientIp = account.email) {
   const signup = await request.post("/api/auth/signup", {
     data: { email: account.email, name: account.name, password: account.password, lang: "en" },
-    // Sign-up is capped at five per IP per hour, and every spec in the suite shares one address. `clientIp()` in
-    // src/lib/rate.ts reads x-real-ip first — the header the platform sets — so giving each account its own value
-    // makes the suite look like the separate clients it is simulating, instead of one client tripping a real limit.
-    headers: { "x-real-ip": simulatedIp(clientIp) },
+    // Sign-up is capped at five per IP per hour, and every spec in the suite shares one address. Off Vercel `clientIp()`
+    // in src/lib/rate.ts reads only the last x-forwarded-for hop (rule 773), and `next start` keeps a header the request
+    // already carries, so giving each account its own value makes the suite look like the separate clients it is
+    // simulating, instead of one client tripping a real limit.
+    headers: { "x-forwarded-for": simulatedIp(clientIp) },
   });
   if (signup.ok()) return;
 

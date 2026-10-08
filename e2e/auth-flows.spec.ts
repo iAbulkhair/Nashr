@@ -42,7 +42,7 @@ async function playToLaunch(page: Page) {
 }
 
 test.describe("signup", () => {
-  test.use({ extraHTTPHeaders: { "x-real-ip": simulatedIp("browser-signup") } });
+  test.use({ extraHTTPHeaders: { "x-forwarded-for": simulatedIp("browser-signup") } });
 
   /**
    * The public start form (`UrlStart` here, `StartForm` on the new homepage: both a plain GET into signup with `?url=`)
