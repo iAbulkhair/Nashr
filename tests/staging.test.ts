@@ -193,3 +193,15 @@ describe("the staging access route (rule 675)", () => {
     expect(readFileSync("src/app/api/staging-access/route.ts", "utf8")).not.toMatch(/console\.\w+\([^)]*code/);
   });
 });
+
+describe("staging is never indexed (rule 677)", () => {
+  it("robots disallows everything with no sitemap line; the sitemap is empty", async () => {
+    vi.stubEnv("APP_ENV", "staging");
+    expect((await import("@/app/robots")).default()).toEqual({ rules: [{ userAgent: "*", disallow: "/" }] });
+    expect((await import("@/app/sitemap")).default()).toEqual([]);
+  });
+  it("off staging robots is unchanged", async () => {
+    vi.stubEnv("APP_ENV", "");
+    expect((await import("@/app/robots")).default().rules).toEqual([{ userAgent: "*", allow: "/", disallow: ["/api/", "/ar/app/", "/en/app/"] }]);
+  });
+});
