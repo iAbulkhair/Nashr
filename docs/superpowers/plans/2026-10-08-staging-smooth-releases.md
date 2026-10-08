@@ -410,20 +410,33 @@ describe("the health route (rule 676)", () => {
 - Create: `scripts/probe.mjs`, `scripts/smoke.mjs`, and `scripts/staging-cookie.mjs` (shared helper that gets the cookie)
 - Test: `tests/scripts.test.ts`
 - Modify: `.gitignore` (add `.smoke.local`)
+- Docs, same commit:
+  - `docs/system/permissions.md` row 150: one sentence on how the probe paces itself and how smoke retries a 429.
+  - `docs/system/tests.md` row 676: add the scripts' behaviour below and `scripts.test.ts` to its test column.
+
+**Why the health route's limit shapes both scripts:** `GET /api/health` allows 60 a minute per client address (`src/app/api/health/route.ts:16`, a fixed window that starts at its first hit). One probe request a second is 60 a minute, exactly the cap with no room, and if the host forwards no client address every caller shares the `unknown` bucket (`docs/system/permissions.md` row 150). A 429 from this route is the app answering, so it proves the process is up. Neither script may count it as an outage, and neither may be run before the client-address check of Task 13, step 4 has passed.
 
 **Interfaces:**
 - `staging-cookie.mjs`: `export async function stagingCookie(origin: string, code: string | undefined): Promise<string | null>`. It POSTs the form with `redirect: "manual"` and returns the `thakeen_staging=...` pair, or `null`. It never prints the code.
 - `probe.mjs`:
-  - `export function summarize(samples: { t: number; status: number; ms: number; commit: string | null }[]): { longestFailRun: number; slowestMs: number; commitChangedAt: number | null }`. A failure is any status other than 200, including 0 for a network error.
+  - `export const PROBE_INTERVAL_MS = 1200` and `export function paceDelay(elapsedMs: number): number` = `Math.max(0, PROBE_INTERVAL_MS - elapsedMs)`. The loop sleeps `paceDelay(elapsed)` after each request, so two requests start at least 1.2 s apart: at most 51 in any 60 seconds, under the route's 60, leaving room for a smoke run or a manual check. This replaces spec 5.8's "one a second".
+  - `export function summarize(samples: { t: number; status: number; ms: number; commit: string | null }[]): { longestFailRun: number; slowestMs: number; commitChangedAt: number | null; throttled: number }`.
+    - A failure is any status other than 200 and 429, including 0 for a network error.
+    - A 429 is not a failure: it ends a failure run and is counted in `throttled`.
+    - A sample with `commit: null` (a failure or a 429) is skipped when looking for the commit change.
   - The main block runs only when the file is invoked directly. Usage: `node scripts/probe.mjs <origin> <seconds>`.
-  - Reads `STAGING_ACCESS_CODE`; prints one line per status or commit change, then the summary.
+  - Reads `STAGING_ACCESS_CODE`; prints one line per status or commit change, then the summary with `throttled`. On a 429 it does not wait or stop: it keeps its pace, because the measurement needs every request. A `throttled` above 0 means something else shares the bucket or the host forwards no client address; say so in the Task 14 report.
 - `smoke.mjs`: usage `node scripts/smoke.mjs <origin>`; exit 0 or 1; one `PASS <name>` or `FAIL <name>` line per check.
+  - `export async function fetchRetryOnce(url: string, init: RequestInit, opts?: { fetchImpl?: typeof fetch; sleep?: (ms: number) => Promise<void> }): Promise<Response>`:
+    - One fetch. On a 429 only, it waits for the `Retry-After` header in whole seconds (60 000 ms when the header is missing or not a number, never more than 65 000 ms) and fetches once more.
+    - It returns that second response, whatever it is. No third try, and no wait or retry for any other status.
+  - The main block runs only when the file is invoked directly, so the test can import it.
   - Anonymous checks, always:
     - `/` 307 to `/ar`.
     - `/ar` and `/en` 200.
     - `/api/tasks` 401.
     - `/api/cron/weekly` without bearer 401.
-    - `/api/health` 200.
+    - `/api/health` 200, fetched with `fetchRetryOnce`. A 429 that survives the one retry is a `FAIL` whose line says the health bucket is shared or full (permissions.md row 150), not an outage.
   - Staging only (any origin other than `https://thakeen.com`). Values come from `.smoke.local` (gitignored, `KEY=value` lines):
     - `/robots.txt` contains `Disallow: /`.
     - Sign in with `POST /api/auth/login` using `SMOKE_EMAIL` and `SMOKE_PASSWORD`.
@@ -435,7 +448,7 @@ describe("the health route (rule 676)", () => {
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 describe("probe summary", () => {
   it("counts the longest failure run, the slowest answer and the commit switch", async () => {
@@ -445,15 +458,56 @@ describe("probe summary", () => {
       { t: 2, status: 0, ms: 3000, commit: null }, { t: 3, status: 200, ms: 1200, commit: "b" },
       { t: 4, status: 503, ms: 50, commit: null }, { t: 5, status: 200, ms: 30, commit: "b" },
     ];
-    expect(summarize(s)).toEqual({ longestFailRun: 2, slowestMs: 3000, commitChangedAt: 3 });
+    expect(summarize(s)).toEqual({ longestFailRun: 2, slowestMs: 3000, commitChangedAt: 3, throttled: 0 });
     expect(summarize([{ t: 0, status: 200, ms: 5, commit: "a" }]).commitChangedAt).toBeNull();
+  });
+  it("counts a 429 apart from failures: the limiter answering proves the process is up", async () => {
+    const { summarize } = await import("../scripts/probe.mjs");
+    const s = [
+      { t: 0, status: 200, ms: 10, commit: "a" }, { t: 1, status: 502, ms: 20, commit: null },
+      { t: 2, status: 429, ms: 10, commit: null }, { t: 3, status: 502, ms: 20, commit: null },
+      { t: 4, status: 429, ms: 10, commit: null }, { t: 5, status: 200, ms: 10, commit: "a" },
+    ];
+    expect(summarize(s)).toEqual({ longestFailRun: 1, slowestMs: 20, commitChangedAt: null, throttled: 2 });
+    expect(summarize([{ t: 0, status: 429, ms: 5, commit: null }]).longestFailRun).toBe(0);
+  });
+  it("paces under the health route's 60 a minute and leaves room for a smoke run", async () => {
+    const { PROBE_INTERVAL_MS, paceDelay } = await import("../scripts/probe.mjs");
+    expect(Math.floor(60_000 / PROBE_INTERVAL_MS) + 1).toBeLessThanOrEqual(51);
+    expect(paceDelay(0)).toBe(PROBE_INTERVAL_MS);
+    expect(paceDelay(PROBE_INTERVAL_MS + 1)).toBe(0);
+  });
+});
+
+describe("the smoke health check against the route's limiter", () => {
+  const res = (status: number, retryAfter?: string) => new Response("{}", { status, headers: retryAfter ? { "Retry-After": retryAfter } : {} });
+  const run = async (answers: Response[]) => {
+    const { fetchRetryOnce } = await import("../scripts/smoke.mjs");
+    const fetchImpl = vi.fn(async () => answers.shift()!);
+    const sleep = vi.fn(async () => {});
+    const r = await fetchRetryOnce("https://x.example/api/health", {}, { fetchImpl, sleep });
+    return { status: r.status, fetches: fetchImpl.mock.calls.length, sleeps: sleep.mock.calls.map((c) => c[0]) };
+  };
+  it("waits for Retry-After and asks once more", async () => {
+    expect(await run([res(429, "2"), res(200)])).toEqual({ status: 200, fetches: 2, sleeps: [2000] });
+  });
+  it("gives up after one retry", async () => {
+    expect(await run([res(429, "60"), res(429, "60"), res(200)])).toEqual({ status: 429, fetches: 2, sleeps: [60_000] });
+  });
+  it("neither waits nor retries for any other status", async () => {
+    expect(await run([res(200)])).toEqual({ status: 200, fetches: 1, sleeps: [] });
+    expect(await run([res(502), res(200)])).toEqual({ status: 502, fetches: 1, sleeps: [] });
+  });
+  it("waits a minute when the header is missing and never more than 65 seconds", async () => {
+    expect((await run([res(429), res(200)])).sleeps).toEqual([60_000]);
+    expect((await run([res(429, "900"), res(200)])).sleeps).toEqual([65_000]);
   });
 });
 ```
 
 - [ ] **Step 2:** Run `npx vitest run tests/scripts.test.ts`. Expected: FAIL, module missing.
 - [ ] **Step 3:** Write the three scripts (Node 22 global `fetch`, no dependencies).
-- [ ] **Step 4:** Run the test. Expected: PASS. Then run `node scripts/smoke.mjs https://thakeen.com` (anonymous, read-only checks against live). Expected: only `/api/health` fails, because it is not deployed yet. Keep the output.
+- [ ] **Step 4:** Run the test. Expected: PASS. Then run `node scripts/smoke.mjs https://thakeen.com` (anonymous, read-only checks against live). Expected: only `/api/health` fails, because it is not deployed yet (a 404, so no wait and no retry). Keep the output.
 - [ ] **Step 5:** `npm run check`, commit `feat(scripts): probe and smoke checks for releases`.
 
 ### Task 8: Release flow documentation
@@ -524,15 +578,20 @@ describe("probe summary", () => {
   - The two host facts of `docs/system/flows.md` section 49, item 7, last, because they use up a network's access tries for 15 minutes:
     - The right code's `Set-Cookie` lists `HttpOnly`, `Secure`, `SameSite=lax` and `Max-Age` (the `curl` there prints flag names only).
     - The tries are per client: six tries from one network end in 429, and one try from a second network is still 303. If it is 429, stop: Hostinger forwards no client address and `clientIp` needs fixing before staging is relied on.
+    - This one check also settles the health route, which keys its bucket `health:{ip}` with the same `clientIp`. If the tries are per client, so is the 60-a-minute health bucket the probe and smoke script use. If they are not, every caller shares it and the probe alone fills most of it (`docs/system/permissions.md` row 150). Do not run Task 14 until this passes.
 
 ### Task 14: Step 0 measurement on staging
 
-- [ ] **Step 1:** Run `node scripts/probe.mjs https://staging.thakeen.com 300` in the background, then trigger a staging rebuild (`hosting_nodejs_start-build`, branch `main`). Record the summary.
+Before step 1: Task 13, step 4's client-address check passed (it also settles the health bucket), and 15 minutes have passed since it, because it used up one network's access tries.
+
+- [ ] **Step 1:** Run `node scripts/probe.mjs https://staging.thakeen.com 300` in the background, then trigger a staging rebuild (`hosting_nodejs_start-build`, branch `main`). Record the summary: the longest failure run, the slowest answer, when the commit changed, and `throttled`. A 429 is the app answering, so it is not in the failure run; a `throttled` above 0 means another caller shared the health bucket or the host forwards no client address. Find out which and say so in the report.
 - [ ] **Step 2:** Test a failed build, then delete the branch:
   - Push a throwaway branch `claude/staging-build-fail-probe` with one commit that breaks the build (a type error).
   - Start a staging build of that branch through the API.
-  - Confirm it fails and `/api/health` still shows the previous commit.
-- [ ] **Step 3:** Confirm `/api/health`'s `commit` is a real sha. If it is `unknown`, add `BUILD_COMMIT` handling to the follow-ups.
+  - Confirm it fails and `/api/health` still shows the previous commit (the previous `built` time when `commit` is `unknown`).
+- [ ] **Step 3:** Compare `/api/health`'s `commit` with the build record's commit (`hosting_nodejs_build` for the build just made, field `options.source_options.commit.hash`):
+  - Equal 40-character shas: `.git` is in the Hostinger build area and `buildCommit` (`next.config.ts`) works. Nothing to add.
+  - `commit` is `unknown`: `.git` is not there, and `BUILD_COMMIT` handling already exists (`next.config.ts`, `buildCommit`), so there is nothing to add to it. A fixed `BUILD_COMMIT` in hPanel is not a fallback either: one value would be reported for every build. The fallback is the build record. From then on a release is proven live by a completed build whose `options.source_options.commit.hash` is the release merge (`hosting_nodejs_list-builds`), together with a `/api/health` `built` time later than the previous build's. Put that in the report and in the release flow documentation (spec 6.2 already says it).
 - [ ] **Step 4:** `node scripts/smoke.mjs https://staging.thakeen.com`; every check PASS.
 - [ ] **Step 5:** Report to the founder: the gap, the failed-build behaviour, the smoke output. If the gap is more than a couple of seconds, the founder decides between the night window and approach C.
 
@@ -544,7 +603,7 @@ describe("probe summary", () => {
   - Delete the tag.
 - [ ] **Step 2:** The founder merges in the window, with "Create a merge commit".
 - [ ] **Step 3:** Verify live:
-  - Poll `https://thakeen.com/api/health` until `commit` is the release merge.
+  - Poll `https://thakeen.com/api/health` until `commit` is the release merge (if Task 14 found `commit` is `unknown`: until `built` is later than before, and the completed build's `options.source_options.commit.hash` is the release merge).
   - Warm `/ar`, `/en`, `/ar/app`.
   - `node scripts/smoke.mjs https://thakeen.com`; every check PASS.
 - [ ] **Step 4:** Tag `live-YYYY-MM-DD-1` on the `production` commit and push the tag. Update the memory file `thakeen-staging-release-flow.md` with the outcome.

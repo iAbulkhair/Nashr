@@ -110,7 +110,7 @@ Each unit has one job and can be tested alone.
 
 ### 5.6 Build identity in `next.config.ts`
 
-`env.BUILD_COMMIT` = `process.env.BUILD_COMMIT`, else `git rev-parse HEAD` at build time, else `unknown`; `env.BUILD_TIME` = the build's start time. Wrapped so a missing `git` never fails the build. Hostinger clones the repository, so `git` is expected to work; section 8 checks it. `BUILD_TIME` alone still tells two builds apart.
+`env.BUILD_COMMIT` = `process.env.BUILD_COMMIT`, else `git rev-parse HEAD` at build time, else `unknown`; `env.BUILD_TIME` = the build's start time. Wrapped so a missing `git` never fails the build. Hostinger clones the repository, so `git` is expected to work; section 8 checks it. `BUILD_TIME` alone still tells two builds apart. If the build area has no `.git`, `commit` is `unknown`; a fixed `BUILD_COMMIT` in hPanel is no fallback, because it would be reported for every build. Then the build record is the source of the sha: `hosting_nodejs_list-builds` and `hosting_nodejs_build` carry the built commit at `options.source_options.commit.hash`, and 6.2 and 7 verify against it.
 
 ### 5.7 Robots and sitemap
 
@@ -118,8 +118,8 @@ Each unit has one job and can be tested alone.
 
 ### 5.8 Scripts
 
-- `scripts/probe.mjs <origin> <seconds>`: one `GET /api/health` per second; prints each status change and commit change with a timestamp; ends with the longest run of failed requests, the slowest answer and the moment the commit changed. Reads the access code from `STAGING_ACCESS_CODE` in the environment and never prints it.
-- `scripts/smoke.mjs <origin>`: the checks of section 7, exit code 0 or 1, one line per check. On the live site it runs only the anonymous checks; sign-in and chat run on staging only, with the test account from section 4.3.
+- `scripts/probe.mjs <origin> <seconds>`: one `GET /api/health` every 1.2 seconds (50 a minute; one a second is 60, exactly the route's cap of 5.5, so any other caller on the same client address would push it to 429); prints each status change and commit change with a timestamp; ends with the longest run of failed requests, the slowest answer, the moment the commit changed and how many answers were throttled. A 429 is the route's limiter answering, so the process is up: it is counted apart (`throttled`) and is not a failure. Reads the access code from `STAGING_ACCESS_CODE` in the environment and never prints it.
+- `scripts/smoke.mjs <origin>`: the checks of section 7, exit code 0 or 1, one line per check. On the live site it runs only the anonymous checks; sign-in and chat run on staging only, with the test account from section 4.3. Its `/api/health` check waits for `Retry-After` on a 429 and retries once. Neither script is relied on before the client-address check of `docs/system/flows.md` section 49, item 7 passes: if the host forwards no client address, every caller shares one health bucket of 60 a minute.
 
 ### 5.9 A chat answer cut by the switch
 
@@ -135,7 +135,7 @@ Each unit has one job and can be tested alone.
 
 ### 6.2 Verifying a release
 
-`/api/health` on thakeen.com shows the release commit. Then `scripts/smoke.mjs https://thakeen.com` passes. Then Claude tags the `production` commit `live-YYYY-MM-DD-N` and pushes the tag (section 12: a tag push must not start a build). A wrong commit in `/api/health` after 10 minutes means the build failed or is stuck: read `hosting_nodejs_list-builds`, then the build log.
+`/api/health` on thakeen.com shows the release commit (while `commit` is `unknown`: `built` is later than before and the completed build whose `options.source_options.commit.hash` is the release commit, read with `hosting_nodejs_list-builds`). Then `scripts/smoke.mjs https://thakeen.com` passes. Then Claude tags the `production` commit `live-YYYY-MM-DD-N` and pushes the tag (section 12: a tag push must not start a build). A wrong commit in `/api/health` after 10 minutes means the build failed or is stuck: read `hosting_nodejs_list-builds`, then the build log.
 
 ### 6.3 Data that changes shape (new rule)
 
@@ -161,7 +161,7 @@ Git trap: once a merge is reverted, merging the same commits again adds nothing 
 All of these, written into the release pull request:
 
 1. `npm run check` and `npx next build` pass locally on the release commit.
-2. The staging build of that commit completed (`hosting_nodejs_list-builds`), and staging's `/api/health` shows the commit.
+2. The staging build of that commit completed (`hosting_nodejs_list-builds`), and staging's `/api/health` shows the commit (or, while `commit` is `unknown`, the build record's `options.source_options.commit.hash` is that commit).
 3. `scripts/smoke.mjs https://staging.thakeen.com` passes:
    - `/` 307 to `/ar`; `/ar` and `/en` 200; `/robots.txt` disallows everything (staging) or matches today's file (live).
    - `/api/tasks` without a session 401.
@@ -176,9 +176,9 @@ When GitHub Actions runs again (the founder fixes billing), `ci.yml` also runs o
 
 Before the first release, on staging:
 
-- Run `scripts/probe.mjs https://staging.thakeen.com 300` while staging rebuilds. Record: failed requests in a row, the slowest answer, when the commit changed.
+- Run `scripts/probe.mjs https://staging.thakeen.com 300` while staging rebuilds. Record: failed requests in a row, the slowest answer, when the commit changed, and how many answers were throttled.
 - Start a build of a throwaway branch whose build fails, through `hosting_nodejs_start-build` on the staging app (a build started through the API does not change stored settings once they exist). Confirm staging keeps serving the old commit.
-- Confirm `BUILD_COMMIT` is a real sha, not `unknown`.
+- Confirm `BUILD_COMMIT` is a real sha, not `unknown`, by comparing it with the build record's `options.source_options.commit.hash`. If it is `unknown`, `.git` is not in the build area and the build record stands in for it in 6.2 and 7.
 
 If the gap is zero or a second or two, sections 5 and 6 are enough. If it is longer, the founder decides between living with it in the night window and moving to approach C.
 
@@ -219,7 +219,8 @@ Each step that changes something outside the repository is done only after the f
 ## 12. To verify (facts, not decisions)
 
 - A subdomain of `thakeen.com` as a separate Node.js web app on order 1009870060, with its own environment variables and Git settings.
-- `git` is available during the Hostinger build (for `BUILD_COMMIT`).
+- `git` is available during the Hostinger build (for `BUILD_COMMIT`); if not, the build record's commit hash stands in (5.6).
+- Hostinger forwards a client address header (`x-real-ip` or `x-forwarded-for`). Without one, `clientIp` is the shared `unknown` for every public rate limit, the 60-a-minute health bucket included (`docs/system/flows.md` section 49, item 7).
 - A pushed tag does not start a Hostinger build.
 - A failed build leaves the previous build serving.
 - The restart gap after a successful switch (section 8).
