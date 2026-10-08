@@ -120,6 +120,16 @@ export type User = {
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
   teamSessionsAfter?: string;
+  /**
+   * ISO time the owner proved the address with an emailed code (rules 751-766). Written only by the verify routes. An owner
+   * without a stamp reads as signed out everywhere (`currentUser`): older accounts are not grandfathered, they verify on
+   * their next visit.
+   */
+  emailVerifiedAt?: string;
+  /** Set once by `createUser`: this account was created under the gate, so its address was never trusted. Only these accounts may change the address on the verify page. Never cleared. */
+  gatedSignup?: true;
+  /** Change-email budget carried across address moves (3 per account per UTC day): the day (YYYY-MM-DD) and moves made on it. */
+  emailMoves?: { day: string; n: number };
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;
@@ -201,6 +211,7 @@ export async function createUser(input: { email: string; name: string; phone: st
     // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
     // session issued before this account existed: a re-registered address never inherits an old login.
     sessionsAfter: now.toISOString(),
+    gatedSignup: true,
   };
   await saveUser(u);
   return u;
@@ -279,14 +290,33 @@ export async function destroySession() {
   jar.delete(COOKIE);
 }
 
-export async function currentUser(): Promise<User | null> {
+/** An owner is verified when the address was proved with an emailed code (`User.emailVerifiedAt`). */
+export const emailVerified = (u: Pick<User, "emailVerifiedAt">): boolean => !!u.emailVerifiedAt;
+
+/** The session behind the cookie, or null (no cookie, expired, a key impersonation whose key changed). */
+async function readSession(): Promise<Session | null> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
   const s = sessionOf(await db.get<SessionRec>(`session:${token}`));
   if (!s) return null;
   if (s.imp === "key" && !(await keyImpLive(s))) return null;
-  return resolveSession(s);
+  return s;
+}
+
+export async function currentUser(): Promise<User | null> {
+  const s = await readSession();
+  return s ? resolveSession(s) : null;
+}
+
+/**
+ * Like `currentUser`, but an owner who has not verified the address yet resolves too. Only the verify page, the verify
+ * routes and the app layout may call it (rule 752, pinned by tests/email-verify-gate.test.ts): every other caller keeps
+ * `currentUser`, where such an owner reads as signed out.
+ */
+export async function currentUserUnverified(): Promise<User | null> {
+  const s = await readSession();
+  return s ? resolveSession(s, { unverified: true }) : null;
 }
 
 /**
@@ -298,7 +328,7 @@ export async function currentUser(): Promise<User | null> {
  * member is not on the owner's roster (`members:{owner}`), or when the member record predates the owner record (a
  * re-registered owner address never inherits an old team).
  */
-async function resolveSession(s: Session): Promise<User | null> {
+async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): Promise<User | null> {
   const email = normalizeEmail(s.email);
   const [{ getMember, onRoster }, { activeBrandId, listBrands, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
   // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records.
@@ -306,6 +336,10 @@ async function resolveSession(s: Session): Promise<User | null> {
   if (u) {
     if (u.suspended) return null;
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
+    // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
+    // `currentUserUnverified`. A founder impersonation passes (support must reach the account); a member login (below) is
+    // not gated by its owner's state.
+    if (!emailVerified(u) && !s.imp && !opts.unverified) return null;
     u.brandId = brandId;
     u.scope = scopeFor(u.email, brandId);
     const base = { email: u.email, name: u.name, lang: u.lang, role: "owner" as const };

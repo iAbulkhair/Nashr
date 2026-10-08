@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
-import { jar, json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { adminActor, createUser, currentUser, getLogin, getUser, isAdmin, isAdminCookie, isFounderActor, PLAN_SEATS, saveUser, sc, seatLimit, type Actor, type Plan, type User } from "@/lib/auth";
 import { can, forbid, IMPERSONATION_BLOCKED, roleOf, type Action } from "@/lib/roles";
 import { acceptInvite, cancelInvite, createInvite, enforceSeats, getMember, INVITE_TTL_SECONDS, leaveTeam, listInvites, listMembers, peekInvite, removeMember, saveMember, seatsUsed, setRole, teamView, withMemberLock } from "@/lib/team";
@@ -158,7 +158,7 @@ describe("resolving a member session", () => {
 describe("founder console follows the actor", () => {
   let founder: User;
   beforeAll(async () => {
-    founder = (await getUser(FOUNDER)) ?? (await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" }));
+    founder = (await getUser(FOUNDER)) ?? (await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" })).email));
   });
   const req = () => json("/api/admin/overview", "GET");
   it("passes the founder signed in as themselves", async () => {
@@ -647,7 +647,7 @@ describe("account deletion cascades to the team", () => {
     for (const k of [`member:${m.email}`, `activebrand:${m.email}`, `invite:${inv.id}`]) expect(await db.get(k), k).toBeNull();
     expect(await db.smembers(`members:${owner.email}`)).toEqual([]);
     expect(await db.smembers(`invites:${owner.email}`)).toEqual([]);
-    const again = await createUser({ email: owner.email, name: "New owner", phone: "", password: "abc12345", lang: "ar" });
+    const again = await markVerified((await createUser({ email: owner.email, name: "New owner", phone: "", password: "abc12345", lang: "ar" })).email);
     jar().set("nashr_session", tok);
     expect(await currentUser()).toBeNull();
     expect(await listMembers(again.email)).toEqual([]);

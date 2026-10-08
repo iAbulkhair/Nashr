@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { json, newMember, newUser, signIn } from "./helpers/session";
+import { json, markVerified, newMember, newUser, signIn } from "./helpers/session";
 import { getUser, saveUser } from "@/lib/auth";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { db } from "@/lib/db";
@@ -140,6 +140,7 @@ describe("full name, business name, mobile phone and email are required on the P
     const email = `signup-nophone-${Date.now()}@test.example`;
     expect((await signup.POST(json("/api/auth/signup", "POST", { email, name: "No Phone", password: "coffee123", lang: "ar" }))).status).toBe(200);
     expect((await getUser(email))!.phone).toBe("");
+    await markVerified(email);
     await signIn(email);
     const res = await profile.GET();
     expect(res.status).toBe(200);
