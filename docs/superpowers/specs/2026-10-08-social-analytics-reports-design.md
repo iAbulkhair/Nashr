@@ -107,9 +107,15 @@ A2. **Previous period**, read by the same reader in the same run, only from rang
 - Instagram: a second `INSTAGRAM_GET_USER_INSIGHTS` for the 28 days before the window (`since`/`until` already
   allowlisted; both windows stay inside Instagram's 90 days).
 - LinkedIn page: 56 days of DAY share statistics in the one allowlisted `time_intervals` call, split in code.
+- Every social reader (Instagram, Facebook, LinkedIn, YouTube): an earlier period in which no figure was read, or every
+  figure read is 0, gives no `prev`, so no "up from 0" is written (amended 2026-10-08, phase B review).
 - GA4: both reports send `dateRanges: [{ startDate, endDate, name: "cur" }, { startDate: prevFrom, endDate: prevTo,
-  name: "prev" }]`; GA appends a `dateRange` dimension carrying these names and code splits rows by it. Limits double to
-  40 and 20 so the rows read per range stay the same.
+  name: "prev" }]`; GA appends a `dateRange` dimension carrying these names and code splits rows by it. The channel
+  report asks for up to 40 rows across both ranges. The landing-page report sends `orderBys: [{ desc: false, dimension:
+  { dimensionName: "dateRange" } }, { desc: true, metric: { metricName: "sessions" } }]` with limit 20, so the window's
+  rows come first and a busy previous range cannot crowd them out, and the window's top 10 are kept. The landing-page
+  report has its own catch: its failure gives `pages: []`, keeps the totals and `prev`, and logs `ga_pages_failed` once
+  with the code alone (amended 2026-10-08, phase B review).
 - Search Console: one more `SEARCH_ANALYTICS_QUERY` by date for the previous range.
 - Ads (Meta native and Composio, Snapchat native, Google Ads, TikTok Ads): the same reader called a second time for the
   30 days before the window, with the same constant queries and date checks. A failed second read leaves no `prev`; it
@@ -122,13 +128,27 @@ A3. **Property and site choice.** `select_property` runs only on `/api/connect/g
 `connectors`. GA4: `id` must equal an `id` in `JSON.parse(meta.gaProperties)`; it writes `meta.gaProperty` and
 `meta.gaName`. GSC: `id` must be in `JSON.parse(meta.gscSites)`; it writes `meta.gscSite`. `meta.account` is rebuilt as
 at `via-composio.ts:305`. Then a new `readSiteSoon(scope)` (an `after()` running `syncSiteIfDue(scope, new Date(), true)`,
-with a `force` parameter added to `syncSiteIfDue`).
+with a `force` parameter added to `syncSiteIfDue`). The forced read runs only when `allow(\`sitesync:${scope}\`, 6, 3600)`
+grants it, so a choice draws on the six site reads an hour; the answer is `{ ok, account, read }`, and with `read: false`
+the next daily run or refresh reads the new choice (amended 2026-10-08, phase B review).
 
 A4. **Owner refresh.** `sync_site` on `/api/connect/google`. `sync_social` is accepted on any held social provider path
 (meta, linkedin, youtube, tiktok) and calls `syncSocialIfDue(sc(u), new Date(), true)`, which reads every held part.
 Limits: `allow(\`socialsync:${sc(u)}\`, 6, 3600)` and `allow(\`sitesync:${sc(u)}\`, 6, 3600)`, keyed by scope so team
 members share them; on false, `retryLater({ ok: false, error: "slow_down" }, 3600)`. Both are `"read"` in `ACTION_ROLE`,
 free, and both set `ownersync:{scope}` (A7). The daily cron keeps refreshing every 20 h.
+
+Social answers and first reads (amended 2026-10-08, phase B review):
+
+- A social read that saved the snapshot while a part's token was refused (`PartlyRead`) answers 200 `{ ok: true, read:
+  true, reconnect: "<provider>" }` only when at least one part was actually read; when no part was read (the other parts
+  failed or held only known states), it answers 502 `reconnect_required` and the snapshot keeps the errors.
+- The record of every part whose token was refused is marked for reconnect (`SocialReadError.refusedBy`), and only
+  those. Only the adapter's 401 is a refused token: a 403 such as `quotaExceeded`, or any other failure, is answered 502
+  with its message and marks nothing.
+- Every Composio social connect (the callback) starts a first read (`readSocialSoon`). `select_page` on a Composio Meta
+  record reads the new Page only when `allow(\`socialsync:${scope}\`, 6, 3600)` grants it and answers `{ ok, account,
+  read }`.
 
 A5. **Prompts.** `statsText(k, { store?, site?, social?, ads? })`: traffic is said absent only without `<site_data>`, ad
 spend only without `<ad_data>`. `statsFor` sets each flag from a non-empty block and appends `adDataBlock(scope)` and the
@@ -173,7 +193,8 @@ B1. **Facebook Page** on the existing `facebook` toolkit, page id from `meta.pag
   `period: "day"`, 56 days in one call (Meta allows 90), split in code for `prev`. Mapping: views = page_media_view,
   reach = page_total_media_view_unique, engagements = page_post_engagements, clicks = page_total_actions,
   followsGained/followsLost = sums of the daily follows and unfollows, followers = the last page_follows value. An empty
-  `{}` is null.
+  `{}` is null. Followers come only from rows dated with their day (YYYY-MM-DD); an undated row counts for no day
+  (amended 2026-10-08, phase B review).
 - `FACEBOOK_GET_PAGE_POSTS: ["page_id","fields","limit"]`, constant `fields:
   "id,message,created_time,permalink_url,status_type,from,shares,reactions.summary(true),comments.summary(true)"`,
   `limit` 30. The feed also returns visitor and tagged posts and its `since`/`until` filter the updated time, so code
@@ -183,7 +204,8 @@ B1. **Facebook Page** on the existing `facebook` toolkit, page id from `meta.pag
   from the post fields.
 - `fields` never includes `access_token`. Post links only on `facebook.com`/`www.facebook.com`.
 - Fallback if the managed app has no `read_insights`: the existing Meta app (`META_APP_ID`) after its App Review
-  (section 9); until then `errors.facebook` holds a known code and the Not-read line names it.
+  (section 9); until then `errors.facebook` holds a known code and the Not-read line names it. Graph's permission codes
+  `(#10)` and `(#200)` on the insights call are the same known `fb_no_insights` (amended 2026-10-08, phase B review).
 
 B2. **YouTube channel.** Counts from the already-allowlisted `YOUTUBE_LIST_CHANNELS { part: "statistics", mine: true,
 maxResults: 1 }` (followers = subscriberCount). Allowlist `YOUTUBE_QUERY_ANALYTICS:
@@ -192,16 +214,21 @@ maxResults: 1 }` (followers = subscriberCount). Allowlist `YOUTUBE_QUERY_ANALYTI
 checked against `^\d{4}-\d{2}-\d{2}$`, split in code for `prev`. Posts: `YOUTUBE_LIST_CHANNEL_VIDEOS
 ["mine","part","maxResults"]` then `YOUTUBE_GET_VIDEO_DETAILS_BATCH ["id","parts"]` (≤ 30 ids). A refused analytics
 call keeps the public counts and sets the known `yt_no_analytics`. Links only on `youtube.com`/`www.youtube.com`.
+A channel id is `^UC[\w-]{10,40}$` everywhere it is checked (the reader, the connect and the read sources); the account
+name falls back to `clean(\`Channel ${channelId}\`, 80)`. A `LIST_CHANNELS` answer with rows none of which is the stored
+channel is a failed read (`yt_other_channel`), not a known state (amended 2026-10-08, phase B review).
 
 B3. **LinkedIn page views.** Allowlist `LINKEDIN_GET_ORG_PAGE_STATS:
 ["organization","timeRangeStart","timeRangeEnd","timeGranularityType"]` with `organization: meta.liOrg` (the URN, checked
 against `^urn:li:organization:\d+$`) and `timeGranularityType: "DAY"` over 56 days, split like the share statistics.
 It needs `rw_organization_admin` with the ADMINISTRATOR role; a 403 keeps the rest of the LinkedIn part and leaves
-`pageViews` null.
+`pageViews` null. A page-stats call stopped by the deadline does the same and sets no `errors.linkedin` (amended
+2026-10-08, phase B review).
 
 B4. **One deadline.** All social readers run in `Promise.allSettled` under one deadline, 30 s from the start of
 `syncSocial`, replacing Instagram's `POSTS_BUDGET_MS` (25 s, `social-stats.ts:31, 119`); LinkedIn has none today. Each
-reader checks `Date.now() < deadline` before every `composioRead`; a call in flight can still take `CALL_TIMEOUT_MS`
+reader checks `Date.now() < deadline` before every `composioRead` (a reader started past the deadline rejects with
+`deadline` and makes no call; amended 2026-10-08, phase B review); a call in flight can still take `CALL_TIMEOUT_MS`
 (20 s), so one user's worst case is 30 + 20 s. The daily cron's `START_BUDGET_MS` is 240 000 ms minus the first-hop
 sweep (`daily/route.ts:143, 183`), and social runs last, after the brief.
 
@@ -212,7 +239,10 @@ C1. **TikTok organic.** Pin tiktok to 20260917_00. Allowlist `TIKTOK_GET_USER_ST
 2 pages for 30 posts). Composio with our own TikTok app (no managed auth); needs `user.info.stats` and `video.list`
 approved on our app and added to the Composio auth config (section 9), and owners connect again. Only public videos are
 listed, so an account with no public posts shows none; that is not a failure. Counters are lifetime; changes come from
-history (section 7). Links only on `tiktok.com`/`www.tiktok.com`.
+history (section 7). Links only on `tiktok.com`/`www.tiktok.com`. A scope refusal (`scope_not_authorized` or
+`scope_permission_missed`) keeps that code through the adapter's catch, so it is never a reconnect. When both calls
+fail, the read is the known `tt_no_scope` only when both were scope refusals, else it fails with the other call's error
+(amended 2026-10-08, phase B review).
 
 C2. **LinkedIn Ads.** New provider `linkedin_ads`, Composio only, our own LinkedIn app with the Advertising API product.
 Touch points: the `Toolkit` union; `TOOLKITS.linkedin_ads = { provider: "linkedin_ads", authEnv:
@@ -278,6 +308,7 @@ type PlatformPart = {
   totals: Totals;
   prev?: { range: { from: string; to: string }; totals: Totals };
   posts: SocialPost[];                              // <= 30
+  accountId?: string;                               // stored connection's id only, never shown or sent to the model
 };
 type HistoryRow = { month: string; platform: Platform | "x"; followers: N; totals: Totals };
 type SocialSnapshot = {
@@ -293,7 +324,12 @@ History: each sync upserts one row per read platform for the read's UTC month (t
 the newest 13 per platform. It covers the platforms' short windows (Instagram 90 days, TikTok lifetime counters, X 30
 days for private metrics). It lives in the same object, is written in the same set, and is deleted with the account.
 A part read from another account than the stored part's (both names read and different) starts that platform's rows
-again, so a change is never worked out across two accounts (review of Task 8, 2026-10-08).
+again, so a change is never worked out across two accounts (review of Task 8, 2026-10-08). A part carries the optional
+`accountId` taken only from the stored connection (Instagram `meta.igId`, Facebook `meta.pageId`, LinkedIn `meta.liOrg`,
+YouTube `meta.channelId`; TikTok has none). When both parts carry one, the ids decide: history is dropped only when they
+differ, so a renamed account keeps its rows; otherwise the name rule stands. This is the expand step (rule 679): old
+parts without the id still follow names. `accountId` never reaches the model or the page (`socialForPage` strips it)
+(amended 2026-10-08, phase B review).
 
 `fromThakeen` is true only for ids in `socialpub:{scope}`. `publish-once.ts:126` is widened to add the post id for
 facebook, linkedin, youtube, tiktok and x; until a platform's ids land, its posts carry `fromThakeen: false`.
