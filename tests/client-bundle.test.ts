@@ -63,6 +63,16 @@ describe("the browser bundle stays free of server-only code", () => {
     expect(imports, "src/lib/models/tiers.ts must stay import-free: client components read the multipliers from it").toEqual([]);
   });
 
+  it("the model picker's helpers read only types from the tier file, and the picker component no server-only module (rates stay on the server)", () => {
+    const src = readFileSync("src/lib/model-picker.ts", "utf8");
+    const imports = src.split("\n").filter((l) => /^\s*(import|export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from)\s/.test(l) || /\brequire\(|\bimport\(/.test(l));
+    expect(imports, "src/lib/model-picker.ts is shared with the browser: types from ./models/tiers only").toEqual([`import type { Surface, Tier } from "./models/tiers";`]);
+    expect(clientFiles()).toContain("src/components/app/ModelPicker.tsx");
+    const picker = readFileSync("src/components/app/ModelPicker.tsx", "utf8");
+    const from = [...picker.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
+    expect(from.filter((s) => s.startsWith("@/lib/models/")), "the picker reads the catalog through GET /api/models, never by import").toEqual([]);
+  });
+
   it("the media catalogue the inbox reads imports nothing at all", () => {
     const src = readFileSync("src/lib/media-catalog.ts", "utf8");
     const imports = src.split("\n").filter((l) => /^\s*import\s/.test(l));

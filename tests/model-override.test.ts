@@ -181,13 +181,14 @@ describe("GET /api/models", () => {
     const { u } = await owner("mo-get");
     const r = await getModels();
     expect(r.status).toBe(200);
-    const j = (await r.json()) as { models: { id: string }[]; multipliers: { chat: Record<string, number>; generate: Record<string, number> }; chatUnits: Record<string, number>; chinaConfirmed: boolean };
+    const j = (await r.json()) as { models: { id: string; tools: boolean }[]; multipliers: { chat: Record<string, number>; generate: Record<string, number> }; chatUnits: Record<string, number>; chinaConfirmed: boolean };
     expect(Object.keys(j).sort()).toEqual(["chatUnits", "chinaConfirmed", "models", "multipliers"]);
     expect(j.models).toEqual(pickerView());
     expect(j.models.length).toBeGreaterThan(0);
     for (const row of j.models) {
       expect(modelById(row.id)!.pick, row.id).toBe(true);
-      expect(Object.keys(row).sort(), row.id).toEqual(["hosting", "id", "label", "tier"]);
+      expect(Object.keys(row).sort(), row.id).toEqual(["hosting", "id", "label", "tier", "tools"]);
+      expect(row.tools, row.id).toBe(modelById(row.id)!.caps.tools);
     }
     const ids = j.models.map((m) => m.id);
     expect(j.multipliers.chat).toEqual(Object.fromEntries(ids.map((id) => [id, tierMultiplier(id, "chat")])));
@@ -199,7 +200,8 @@ describe("GET /api/models", () => {
     expect(j.chinaConfirmed).toBe(false);
     // No rate leaves the server, and nothing else of the catalog entry beyond the picker row.
     const text = JSON.stringify(j);
-    for (const k of ["\"rate\"", "cacheRead", "cacheWrite", "\"in\"", "\"out\"", "\"vendor\"", "\"dialect\"", "\"caps\"", "\"tasks\"", "\"auto\""]) expect(text, k).not.toContain(k);
+    // `tools` is the one capability the picker reads, as a plain boolean; the other capabilities stay on the server.
+    for (const k of ["\"rate\"", "cacheRead", "cacheWrite", "\"in\"", "\"out\"", "\"vendor\"", "\"dialect\"", "\"caps\"", "\"strict\"", "\"thinking\"", "\"cache\"", "\"vision\"", "\"tasks\"", "\"auto\"", "\"pick\""]) expect(text, k).not.toContain(k);
     expect(MODELS.filter((m) => m.pick).map((m) => m.id)).toEqual(ids);
     // The owner's confirmation shows once it is stored.
     await saveUser({ ...(await getUser(u.email))!, chinaHostingOk: true });
@@ -403,6 +405,28 @@ describe("PUT /api/models: setting and clearing", () => {
     const { u } = await owner("mo-brandfile");
     await put({ target: "brand", model: SONNET });
     expect(await brandOf(u.email)).toEqual({ ...brand, model: SONNET });
+  });
+
+  it("the picker reads the stored pick back through the existing scoped routes: GET /api/conversations and GET /api/brand carry `model` while it is set", async () => {
+    const { u, conv } = await owner("mo-readback");
+    const listed = async () => ((await (await conversationsRoute.GET(json("/api/conversations", "GET"))).json()) as { conversations: Conversation[] }).conversations.find((c) => c.id === conv)!;
+    const brandNow = async () => ((await (await brandRoute.GET()).json()) as { brand: Brand }).brand;
+    expect(await listed()).not.toHaveProperty("model");
+    expect(await brandNow()).not.toHaveProperty("model");
+    await put({ target: "conversation", id: conv, model: OPUS });
+    await put({ target: "brand", model: SONNET });
+    expect((await listed()).model).toBe(OPUS);
+    expect((await brandNow()).model).toBe(SONNET);
+    await put({ target: "conversation", id: conv, model: null });
+    await put({ target: "brand", model: null });
+    expect(await listed()).not.toHaveProperty("model");
+    expect(await brandNow()).not.toHaveProperty("model");
+    // Another account sees neither pick: each route reads under its caller's own scope.
+    await put({ target: "conversation", id: conv, model: OPUS });
+    const other = await owner("mo-readback-other");
+    expect(((await (await conversationsRoute.GET(json("/api/conversations", "GET"))).json()) as { conversations: Conversation[] }).conversations.map((c) => c.id)).toEqual([other.conv]);
+    expect(await brandNow()).not.toHaveProperty("model");
+    expect(sc(other.u)).not.toBe(sc(u));
   });
 
   it("PUT /api/brand keeps the stored pick, and its body can never set one", async () => {

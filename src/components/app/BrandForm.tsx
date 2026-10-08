@@ -8,6 +8,7 @@ import { bannedTerms } from "@/lib/brand-rules";
 import { ZONES, ZONE_IDS, zoneOf, zoneUtcLabel } from "@/lib/zones";
 import { Icon } from "./Icons";
 import ReadOnlyNote from "./ReadOnlyNote";
+import { BrandModelField } from "./ModelPicker";
 import Scribble from "@/components/Scribble";
 
 const GUARD = {
@@ -18,8 +19,12 @@ const GUARD = {
 const input = "input";
 const CHANNELS = ["instagram", "snapchat", "tiktok", "x", "linkedin", "whatsapp", "google"];
 
-/** `readOnly` (plain members): every field disabled by the wrapping fieldset, no Save, and a note. PUT /api/brand refuses them in code. */
-export default function BrandForm({ t, lang, initial, readOnly = false }: { t: AppDict; lang: Lang; initial: Brand | null; readOnly?: boolean }) {
+/**
+ * `readOnly` (plain members): every field disabled by the wrapping fieldset, no Save, and a note. PUT /api/brand refuses them in code.
+ * Under the form, once the brand file exists, its "Default model for content" (`BrandModelField`), with its own Save:
+ * PUT /api/brand never changes the pick. `canConfirmChina`: the owner, not a founder impersonating.
+ */
+export default function BrandForm({ t, lang, initial, readOnly = false, canConfirmChina = false }: { t: AppDict; lang: Lang; initial: Brand | null; readOnly?: boolean; canConfirmChina?: boolean }) {
   const r = useRouter();
   const o = t.onboarding;
   const [busy, setBusy] = useState(false);
@@ -107,6 +112,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false }: { t: A
           {msg && <p role="status" className="text-sm text-ink">{msg}</p>}
         </fieldset>
       </form>
+      {initial && <BrandModelField t={t} lang={lang} stored={initial.model} readOnly={readOnly} canConfirmChina={canConfirmChina} />}
     </div>
   );
 }

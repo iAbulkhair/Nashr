@@ -139,12 +139,17 @@ export function pickModels(): readonly ModelEntry[] {
   return PICK;
 }
 
-/** One row of the model picker: no rate, no capability, no vendor. A copy, so a caller cannot change the catalog through it. */
-export type PickerRow = { id: string; label: ModelEntry["label"]; tier: Tier; hosting: ModelEntry["hosting"] };
+/**
+ * One row of the model picker: no rate, no vendor, and of the capabilities only `tools` (`caps.tools`), which the chat
+ * picker needs to leave out a model that cannot run chat's tools (PUT /api/models refuses it there as `not_pickable`).
+ * A copy, so a caller cannot change the catalog through it. The browser's copy of this shape is `PickerRowView` in
+ * src/lib/model-picker.ts (tests/model-picker-copy.test.ts checks that this one fits it).
+ */
+export type PickerRow = { id: string; label: ModelEntry["label"]; tier: Tier; hosting: ModelEntry["hosting"]; tools: boolean };
 
 /** The picker projection of a list: the entries a customer may pick, as `PickerRow`s. Pure, so a test can feed it any list. */
 export function toPickerView(entries: readonly ModelEntry[]): PickerRow[] {
-  return entries.filter((m) => m.pick).map((m) => ({ id: m.id, label: { ar: m.label.ar, en: m.label.en }, tier: m.tier, hosting: m.hosting }));
+  return entries.filter((m) => m.pick).map((m) => ({ id: m.id, label: { ar: m.label.ar, en: m.label.en }, tier: m.tier, hosting: m.hosting, tools: m.caps.tools }));
 }
 
 /** What the browser may know about the models a customer can pick. Never rates (the client bundle must not carry our margins). */

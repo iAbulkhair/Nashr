@@ -100,9 +100,12 @@ describe("the real catalog", () => {
   it("pickerView has no rate field", () => {
     const view = pickerView();
     expect(view.map((v) => v.id).sort()).toEqual(pickModels().map((m) => m.id).sort());
-    for (const v of view) expect(Object.keys(v).sort(), v.id).toEqual(["hosting", "id", "label", "tier"]);
+    for (const v of view) expect(Object.keys(v).sort(), v.id).toEqual(["hosting", "id", "label", "tier", "tools"]);
+    // `tools` is the one capability the picker needs (the chat list shows only entries that can run chat's tools), as a
+    // plain boolean; the rest of `caps` stays on the server.
+    for (const v of view) expect(v.tools, v.id).toBe(modelById(v.id)!.caps.tools);
     // Keys, not words: a future label may contain "rate" ("Accurate") without leaking one.
-    expect(JSON.stringify(view)).not.toMatch(/"(rate|in|out|cacheRead|cacheWrite|caps|dialect|vendor|auto|pick|tasks)"\s*:/);
+    expect(JSON.stringify(view)).not.toMatch(/"(rate|in|out|cacheRead|cacheWrite|caps|strict|thinking|cache|vision|dialect|vendor|auto|pick|tasks)"\s*:/);
     // A copy: a caller that changes the view does not change the catalog.
     view[0].label.en = "changed";
     view[0].tier = "economy";
@@ -161,11 +164,13 @@ describe("validateCatalog and toPickerView on lists built here", () => {
     for (const re of [/"t".*tier/, /"h".*hosting/, /"d".*dialect/, /"l".*label/, /"v".*vendor/, /"constructor".*tier/]) expect(out).toMatch(re);
   });
 
-  it("toPickerView lists only entries a customer may pick, with hosting so the picker can say where it runs", () => {
-    const list = [entry({ id: "a", pick: true }), entry({ id: "hidden", pick: false, auto: true }), entry({ id: "cn", hosting: "china", tier: "economy" })];
+  it("toPickerView lists only entries a customer may pick, with hosting so the picker can say where it runs and tools so chat can leave out what cannot run its tools", () => {
+    const noTools = entry({ id: "nt" });
+    const list = [entry({ id: "a", pick: true }), entry({ id: "hidden", pick: false, auto: true }), entry({ id: "cn", hosting: "china", tier: "economy" }), { ...noTools, caps: { ...noTools.caps, tools: false } }];
     expect(toPickerView(list)).toEqual([
-      { id: "a", label: { ar: "نموذج تجريبي", en: "Test model" }, tier: "standard", hosting: "west" },
-      { id: "cn", label: { ar: "نموذج تجريبي", en: "Test model" }, tier: "economy", hosting: "china" },
+      { id: "a", label: { ar: "نموذج تجريبي", en: "Test model" }, tier: "standard", hosting: "west", tools: true },
+      { id: "cn", label: { ar: "نموذج تجريبي", en: "Test model" }, tier: "economy", hosting: "china", tools: true },
+      { id: "nt", label: { ar: "نموذج تجريبي", en: "Test model" }, tier: "standard", hosting: "west", tools: false },
     ]);
     expect(JSON.stringify(toPickerView(list))).not.toContain("rate");
   });

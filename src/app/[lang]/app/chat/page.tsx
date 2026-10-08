@@ -35,6 +35,9 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!u) redirect(`/${lang}/app/login`);
   // The WhatsApp prompt saves the ACCOUNT's phone (owner only: "profile.account"), so no other role is asked for it.
   const needPhone = !u.phone && can(u, "profile.account");
+  // The model picker's one-time consent to China-hosted models is the owner's own, never given while a founder
+  // impersonates (PUT /api/models checks the same in code); anyone else is told only the owner can allow them.
+  const canConfirmChina = can(u, "profile.account") && u.actor?.kind !== "founder";
   if (!(await getBrand(sc(u)))) {
     // Building the workspace is admin and owner only ("onboard"): anyone else waits on the start page, which says so.
     if (!can(u, "onboard")) redirect(`/${lang}/app/start`);
@@ -47,7 +50,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
     }
     return (
       <div className="grid min-h-0 flex-1">
-        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} chat={chat} />
+        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} chat={chat} canConfirmChina={canConfirmChina} />
       </div>
     );
   }
@@ -76,7 +79,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const firstStep = !hasProducts ? "catalog" : !brand?.offers ? "offer" : connections.length === 0 ? "connect" : "batch";
   return (
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
-      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} chat={chat} />
+      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} chat={chat} canConfirmChina={canConfirmChina} />
       <div className="hidden overflow-y-auto xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
     </div>
   );

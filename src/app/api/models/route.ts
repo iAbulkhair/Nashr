@@ -15,7 +15,8 @@ import { forbid } from "@/lib/roles";
  * does at call time is src/lib/models/overrides.ts.
  *
  * GET: what the picker shows, all worked out here so no rate and no multiplier is hard-coded in the client: the entries
- * customers may pick (`pickerView`: id, label, tier, hosting, never a rate), each one's credit multiplier per surface
+ * customers may pick (`pickerView`: id, label, tier, hosting and `tools`, so the chat picker leaves out an entry that
+ * cannot run chat's tools; never a rate), each one's credit multiplier per surface
  * (relative to that surface's default model, `tierMultiplier`), the messages of the chat allowance one message on it
  * counts (`chatUnitsFor`), and whether the owner confirmed China-hosted models. Any signed-in login; it reads only what
  * `currentUser()` reads (the session and the account's user record) and writes nothing.
