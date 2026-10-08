@@ -112,6 +112,9 @@ export async function wipeAccount(email: string) {
       `onboardok:${s}`, `onboardlock:${s}`, `onboardgame:${s}`,
       // The site's GA4 and Search Console totals (src/lib/site-stats.ts): the public's search queries and the site's pages.
       `sitestats:${s}`,
+      // Instagram and LinkedIn page results (src/lib/social-stats.ts): captions are the owner's or the public's text,
+      // and the Instagram ids Thakeen published.
+      `socialstats:${s}`, `socialpub:${s}`,
       // The store's sales snapshot (orders, revenue, best sellers, abandoned carts) and its failure note (14 days).
       `storesales:${s}`, `storesyncfail:${s}`,
       // The latest campaign results, from an upload or an ad account (src/lib/perf-store.ts).

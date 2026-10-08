@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { deleteConnection, getConnection } from "@/lib/connectors/store";
-import { isComposio, revokeAll, selectPageVia } from "@/lib/connectors/via-composio";
+import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVia } from "@/lib/connectors/via-composio";
+import { recordActivity } from "@/lib/activity";
+import { readSocialSoon } from "@/lib/social-stats";
+import { byOf } from "@/lib/actor";
 import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
 import { importWoo } from "@/lib/connectors/woocommerce";
@@ -43,14 +46,14 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
  * admin and owner only, and so is overwriting products.md from the store. The syncs only pull the platform's own
  * numbers into the reports, which any member may refresh. An action not listed here is refused.
  */
-const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_ad_account: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read" };
+const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read" };
 
-/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId} */
+/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId}, for LinkedIn {action:"select_org", org} and {action:"post_as", value:"me"|"org"} */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const { provider } = await ctx.params;
-  const b = (await req.json().catch(() => ({}))) as { action?: string; pageId?: string; accountId?: string };
+  const b = (await req.json().catch(() => ({}))) as { action?: string; pageId?: string; accountId?: string; org?: string; value?: string };
   const need = Object.prototype.hasOwnProperty.call(ACTION_ROLE, String(b.action)) ? ACTION_ROLE[String(b.action)] : null;
   if (!need) return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   const no = forbid(u, need);
@@ -67,6 +70,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       if (!next) return NextResponse.json({ ok: false, error: "unknown_page" }, { status: 400 });
       await saveConnection(sc(u), next);
       return NextResponse.json({ ok: true, account: next.meta?.account });
+    }
+    // The LinkedIn company page whose results are read (rule 671); only a page listed at connect time.
+    if (b.action === "select_org" && provider === "linkedin" && isComposio(c)) {
+      const next = selectOrgVia(c, String(b.org ?? ""));
+      if (!next) return NextResponse.json({ ok: false, error: "unknown_org" }, { status: 400 });
+      // A new page posts as the member until the owner says otherwise; leaving the page's posting is logged like post_as.
+      await Promise.all([
+        saveConnection(sc(u), next),
+        c.meta?.liPostAs === "org" ? recordActivity(sc(u), [{ at: new Date().toISOString(), kind: "connector_changed", by: byOf(u), via: "app", outcome: "linkedin:post_as:me", note: "" }]) : null,
+      ]);
+      readSocialSoon(sc(u));
+      return NextResponse.json({ ok: true, account: next.meta?.account });
+    }
+    // Publish to LinkedIn as the member or as the chosen page (rule 672): checked here, never left to a prompt.
+    if (b.action === "post_as" && provider === "linkedin" && isComposio(c)) {
+      const value = String(b.value ?? "");
+      if (value !== "me" && value !== "org") return NextResponse.json({ ok: false, error: "bad_value" }, { status: 400 });
+      const next = postAsVia(c, value);
+      if (!next) return NextResponse.json({ ok: false, error: "no_page" }, { status: 400 });
+      if ((c.meta?.liPostAs ?? "me") !== value) {
+        await Promise.all([
+          saveConnection(sc(u), next),
+          recordActivity(sc(u), [{ at: new Date().toISOString(), kind: "connector_changed", by: byOf(u), via: "app", outcome: `linkedin:post_as:${value}`, note: liOrgName(next) }]),
+        ]);
+      }
+      return NextResponse.json({ ok: true, postAs: value });
     }
     if (b.action === "select_ad_account" && isAdProvider(provider)) {
       const next = selectAdAccount(c, String(b.accountId ?? ""));

@@ -75,6 +75,24 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     await load();
     r.refresh();
   }
+  async function selectOrg(org: string) {
+    setBusy(true);
+    const res = await fetch("/api/connect/linkedin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_org", org }) });
+    const j = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!j.ok) alert(j.error ?? res.status);
+    await load();
+    r.refresh();
+  }
+  async function postAs(value: "me" | "org") {
+    setBusy(true);
+    const res = await fetch("/api/connect/linkedin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "post_as", value }) });
+    const j = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!j.ok) alert(j.error ?? res.status);
+    await load();
+    r.refresh();
+  }
   async function selectAdAccount(provider: string, accountId: string) {
     setBusy(true);
     const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_ad_account", accountId }) });
@@ -130,6 +148,24 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
                       <span>{g.metaPage}</span>
                       <select value={c.meta.pageId} disabled={busy || !manage} onChange={(e) => selectPage(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
                         {(JSON.parse(c.meta.pages) as { id: string; name: string; ig: string }[]).map((pg) => <option key={pg.id} value={pg.id}>{pg.ig ? `${pg.name} · @${pg.ig}` : pg.name}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {c.provider === "linkedin" && c.meta?.liOrgs && (
+                    <label className="mt-2 grid gap-1 text-xs text-muted">
+                      <span>{g.linkedinPage}</span>
+                      <select value={c.meta.liOrg ?? ""} disabled={busy || !manage} onChange={(e) => selectOrg(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                        {!c.meta.liOrg && <option value="" disabled>—</option>}
+                        {(JSON.parse(c.meta.liOrgs) as { urn: string; name: string }[]).map((o) => <option key={o.urn} value={o.urn}>{o.name}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {c.provider === "linkedin" && c.meta?.via === "composio" && c.meta?.liOrg && (
+                    <label className="mt-2 grid gap-1 text-xs text-muted">
+                      <span>{g.postAs}</span>
+                      <select value={c.meta.liPostAs === "org" ? "org" : "me"} disabled={busy || !manage} onChange={(e) => postAs(e.target.value === "org" ? "org" : "me")} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                        <option value="me">{g.postAsMe}</option>
+                        <option value="org">{(c.meta.liOrgs ? (JSON.parse(c.meta.liOrgs) as { urn: string; name: string }[]).find((o) => o.urn === c.meta?.liOrg)?.name : undefined) ?? c.meta.liOrg}</option>
                       </select>
                     </label>
                   )}
