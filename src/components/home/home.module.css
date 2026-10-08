@@ -73,6 +73,7 @@
 .doodle .inkFill { fill: var(--color-ink); }
 .doodle .dot { fill: var(--color-ink); stroke: none; }
 .doodle .fine { stroke-width: 1px; }
+.doodle .smileOnInk { stroke: var(--color-paper); stroke-width: 1.25px; }
 .doodle .gold { stroke: var(--color-gold); stroke-width: 1.75px; }
 
 /* ---------- Start form (plain GET, works without JavaScript) ---------- */
@@ -967,3 +968,36 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 @media (prefers-reduced-motion: reduce) {
   .plane { inset-inline-start: 14%; }
 }
+
+/* Stories: illustrative personas, four a slide (Stories.tsx). Scroll-snap slides the track; the buttons only scroll it. */
+.stBadge { position: relative; isolation: isolate; width: fit-content; padding: 4px 14px; font-weight: 700; }
+.stCarousel { display: grid; gap: 20px; min-width: 0; }
+.stTrack {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.stTrack::-webkit-scrollbar { display: none; }
+.stTrack:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 4px; }
+.stSlide { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; padding-block: 4px; }
+.stFour { display: grid; gap: 36px var(--gut); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .stFour { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1040px) { .stFour { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stStory { justify-content: flex-start; gap: 10px; }
+.stSay { display: block; margin-block-end: 18px; padding: 14px 18px; }
+.stWho { display: flex; align-items: center; gap: 12px; margin-block-start: auto; }
+.dfaceLg { width: 64px; height: 64px; padding: 3px; }
+.stMeta { display: grid; gap: 2px; min-width: 0; }
+.stMeta b { font: 800 var(--t-s)/1.3 var(--home-display); }
+.stMeta small { font-size: var(--t-xs); color: var(--color-muted); }
+.stCtl { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.stArrow { position: relative; isolation: isolate; min-width: 56px; min-height: 44px; padding: 6px 16px; font: 800 var(--t-m)/1 var(--home-display); color: var(--color-ink); cursor: pointer; }
+.stArrow:disabled { opacity: 0.4; cursor: default; }
+.stDots { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; }
+.stDot { width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
+.stDot::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; border: 2px solid var(--color-ink); background: var(--color-paper); }
+.stDotOn::after { background: var(--color-ink); }
+.stDot:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 1px; border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) { .stTrack { scroll-behavior: auto; } }

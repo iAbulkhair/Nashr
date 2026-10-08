@@ -92,7 +92,7 @@ const ARM_L_DOWN: readonly P[] = [[76, 106], [67, 170], [64, 232]];
 const ARM_R_DOWN: readonly P[] = [[124, 106], [133, 170], [136, 232]];
 
 /** Long abaya, A-line, open seam down the front. */
-const DRESS = (
+export const DRESS = (
   <>
     <path className={styles.fill} d="M82 94 C92 91 108 91 118 94 C127 97 131 102 132 112 C134 150 131 190 128 226 C136 296 146 366 152 428 C120 436 80 436 48 428 C54 366 64 296 72 226 C69 190 66 150 68 112 C69 102 73 97 82 94 Z" />
     <path d="M100 108 C101 200 100 330 100 432" />
@@ -102,7 +102,7 @@ const DRESS = (
 );
 
 /** Shayla: close around the face, one end wrapped across the chest to the far shoulder. */
-const SHAYLA = (
+export const SHAYLA = (
   <>
     <path className={styles.paper} d="M100 32 C85 32 77 44 77 60 C77 74 79 86 75 99 C86 106 98 112 113 115 C121 116 127 115 132 111 C129 104 125 99 123 93 C124 83 124 72 123 60 C123 44 115 32 100 32 Z" />
     <path className={styles.fine} d="M84 86 C94 97 110 103 125 103" />
@@ -110,7 +110,7 @@ const SHAYLA = (
 );
 
 /** White thobe for the men: a straight column to the ankle, buttoned placket at the neck. */
-const THOBE_WHITE = (
+export const THOBE_WHITE = (
   <>
     <path className={styles.paper} d="M80 94 C92 90 108 90 120 94 C130 97 135 102 136 112 C139 200 139 330 137 442 C114 448 86 448 63 442 C61 330 61 200 64 112 C65 102 70 97 80 94 Z" />
     <path d="M100 98 L100 160" />
@@ -124,7 +124,7 @@ const THOBE_WHITE = (
  * Ghutra or shemagh: symmetric, standing off the face with a pinched peak at the front of the crown, both ends falling
  * straight down over the shoulders (the shayla, by contrast, hugs the face and wraps across the chest).
  */
-function Ghutra({ tone = "paper" }: { tone?: "paper" | "fill" }) {
+export function Ghutra({ tone = "paper" }: { tone?: "paper" | "fill" }) {
   return (
     <>
       <path className={styles[tone]} d="M100 19 C82 20 69 31 66 50 C63 74 61 104 52 150 C62 156 73 154 81 146 C83 124 85 104 87 90 C90 84 110 84 113 90 C115 104 117 124 119 146 C127 154 138 156 148 150 C139 104 137 74 134 50 C131 31 118 20 100 19 Z" />
@@ -135,7 +135,7 @@ function Ghutra({ tone = "paper" }: { tone?: "paper" | "fill" }) {
 }
 
 /** Agal: two thick black cords ringing the crown of the ghutra. */
-const AGAL = (
+export const AGAL = (
   <>
     <path className={styles.inkFill} d="M72 38 C82 28 118 28 128 38 L127 44 C117 35 83 35 73 44 Z" />
     <path className={styles.inkFill} d="M73 46 C83 37 117 37 127 46 L126 51 C116 43 84 43 74 51 Z" />
@@ -143,7 +143,7 @@ const AGAL = (
 );
 
 /** A trimmed full beard with a moustache: the clearest "this is a man" cue at lineup size. */
-const BEARD = (
+export const BEARD = (
   <>
     <path className={styles.inkFill} d="M84.5 58 C84.5 71 90.5 80 100 80 C109.5 80 115.5 71 115.5 58 C113.5 66 110.5 71 106.5 72.5 C103.5 70.5 96.5 70.5 93.5 72.5 C89.5 71 86.5 66 84.5 58 Z" />
     <path className={styles.inkFill} d="M93 69.5 C96 67 104 67 107 69.5 C104 71 96 71 93 69.5 Z" />
@@ -151,7 +151,7 @@ const BEARD = (
 );
 
 /** Short beard and moustache for the owner: stubble-length, so he reads younger than the elders. */
-const BEARD_SHORT = (
+export const BEARD_SHORT = (
   <>
     <path className={styles.inkFill} d="M86 64 C87 73 92.5 78.5 100 78.5 C107.5 78.5 113 73 114 64 C111 70 107 73 104 73.5 C102 72.5 98 72.5 96 73.5 C93 73 89 70 86 64 Z" />
     <path className={styles.inkFill} d="M94.5 69.5 C97 68 103 68 105.5 69.5 C103 70.5 97 70.5 94.5 69.5 Z" />
