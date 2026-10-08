@@ -8,6 +8,7 @@ import { WINDOW, chatCaps, chatRefusal, retryLater } from "@/lib/rate";
 import { deadlineFor } from "@/lib/media/keys";
 import { chatStatus, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { chatRouteFor } from "@/lib/models/overrides";
+import { noteRejectedPick } from "@/lib/usage";
 
 export const maxDuration = 300;
 
@@ -56,6 +57,8 @@ export async function POST(req: Request) {
   const gate = await reserveChatTurn(u, routed.model);
   if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error, chat: gate.status, credits: gate.credits }, { status: 402 });
   const modelRejected = routed.rejected;
+  // A refused pick is counted for the founder console (global, best effort: it never changes the turn).
+  if (modelRejected) await noteRejectedPick("chat", modelRejected);
 
   if (!b.stream) {
     try {

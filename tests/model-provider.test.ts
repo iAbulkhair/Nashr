@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inspect } from "node:util";
 import { anthropic, llmProvider, modelState } from "@/lib/model";
+import { db } from "@/lib/db";
 
 /**
  * Provider switch (src/lib/model.ts). `LLM_PROVIDER=straitly` sends the same SDK calls to the Straitly gateway; a Claude
@@ -197,6 +198,63 @@ describe("the direct Anthropic fallback", () => {
     const net = stubFetch(() => { throw new TypeError("fetch failed"); });
     expect(await reason(ask("claude-opus-5"))).toBeInstanceOf(Error);
     expect(net).toHaveLength(2);
+  });
+
+  it("counts each request it re-sends to Anthropic in one global counter, and nothing else (plan Task 8)", async () => {
+    const key = `usage:_all:${new Date().toISOString().slice(0, 7)}:provider:fallback`;
+    const count = async () => Number((await db.get<number>(key)) ?? 0);
+    const base = await count();
+    // A gateway success, a 4xx, a non-claude model and a missing Anthropic key re-send nothing: no count.
+    straitly();
+    stubFetch(ok);
+    await ask("claude-opus-5");
+    vi.unstubAllGlobals();
+    for (const [model, status] of [["claude-opus-5", 400], ["claude-opus-5", 429], ["deepseek-v3.2", 503]] as const) {
+      straitly();
+      stubFetch(() => fail(status));
+      await reason(ask(model));
+      vi.unstubAllGlobals();
+    }
+    straitly({ straitly: STRAITLY_KEY });
+    stubFetch(() => fail(503));
+    await reason(ask("claude-opus-5"));
+    vi.unstubAllGlobals();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await count()).toBe(base);
+    // A 5xx and a connection error that end in a request to Anthropic: one each.
+    for (const first of ["503", "network"] as const) {
+      straitly();
+      stubFetch((_c, n) => {
+        if (n > 0) return ok();
+        if (first === "network") throw new TypeError("fetch failed");
+        return fail(503);
+      });
+      expect(((await ask("claude-sonnet-5-5")).content[0] as { text: string }).text).toBe("ok");
+      vi.unstubAllGlobals();
+    }
+    await vi.waitFor(async () => expect(await count()).toBe(base + 2));
+    // The counter has no account, model or key in its name.
+    expect(key).toMatch(/^usage:_all:\d{4}-\d{2}:provider:fallback$/);
+  });
+
+  it("a store that fails never changes the retry or what is logged", async () => {
+    straitly();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const incr = vi.spyOn(db, "incrby").mockImplementation(() => { throw new Error(`store down ${STRAITLY_KEY} ${ANTHROPIC_KEY}`); });
+    const calls = stubFetch((_c, n) => (n === 0 ? fail(503) : ok()));
+    expect(((await ask("claude-opus-5")).content[0] as { text: string }).text).toBe("ok");
+    expect(calls.map((c) => new URL(c.url).host)).toEqual(["api.straitly.ai", "api.anthropic.com"]);
+    expect(incr).toHaveBeenCalled();
+    incr.mockRejectedValue(new Error(`store down ${STRAITLY_KEY}`));
+    const net = stubFetch((_c, n) => { if (n === 0) throw new TypeError("fetch failed"); return ok(); });
+    expect(((await ask("claude-opus-5")).content[0] as { text: string }).text).toBe("ok");
+    expect(net).toHaveLength(2);
+    await new Promise((r) => setTimeout(r, 5));
+    const logged = JSON.stringify([...warn.mock.calls, ...error.mock.calls]);
+    expect(logged).not.toContain(STRAITLY_KEY);
+    expect(logged).not.toContain(ANTHROPIC_KEY);
+    expect(logged).not.toContain("store down");
   });
 
   it("keeps the path after the gateway's own base path and the query string", async () => {

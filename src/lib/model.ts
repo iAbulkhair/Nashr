@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { isProductionDeploy } from "./deploy-env";
+import { db } from "./db";
 
 /**
  * One switch for every Claude call in the product: chat, generation and its reviewer, the judge, onboarding, image
@@ -162,6 +163,7 @@ function withDirectFallback(gatewayBase: string): Fetch {
       const retry = directRequest(input, init, basePath);
       if (!retry) throw e;
       console.warn("model_fallback: straitly connection error, retried on anthropic");
+      noteFallback();
       return globalThis.fetch(retry.url, retry.init);
     }
     const retry = directRequest(input, init, basePath);
@@ -169,8 +171,24 @@ function withDirectFallback(gatewayBase: string): Fetch {
     console.warn(`model_fallback: straitly status ${first.status}, retried on anthropic`);
     // Unread, so the connection is released instead of held until the body is collected.
     void first.body?.cancel().catch(() => {});
+    noteFallback();
     return globalThis.fetch(retry.url, retry.init);
   };
+}
+
+/**
+ * Counts one request re-sent to Anthropic, in the founder's global counter `usage:_all:{YYYY-MM}:provider:fallback` (read by
+ * `getUsage("_all")`, shown in the founder console). No account, model, key or error text goes in the name or the log.
+ * Fire and forget and wrapped twice (a synchronous throw, a rejected promise): a store that fails or is slow never delays,
+ * changes or fails the retry. It does not import usage.ts (that file imports this one); the key is spelled out here and pinned
+ * by tests/model-provider.test.ts.
+ */
+function noteFallback(): void {
+  try {
+    void db.incrby(`usage:_all:${new Date().toISOString().slice(0, 7)}:provider:fallback`, 1).catch(() => {});
+  } catch {
+    /* best effort */
+  }
 }
 
 /** The same request aimed at Anthropic, or null when this request is not one to send there (see `withDirectFallback`). */

@@ -27,6 +27,7 @@ import { modelAllowsTask, modelById } from "./models/catalog";
 import { creditsFor } from "./models/credits";
 import { type Rejected } from "./models/route";
 import { generateRouteFor } from "./models/overrides";
+import { noteRejectedPick } from "./usage";
 import { memoryBlock } from "./files";
 import { statsFor } from "./stats";
 import { feedbackFor } from "./feedback";
@@ -239,6 +240,8 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   const routed = opts.model === undefined ? generateRouteFor(user, brand, type) : null;
   const model = usable(routed ? routed.model : opts.model!);
   const modelRejected = routed?.rejected;
+  // A refused pick is counted for the founder console (global, best effort: it never changes the batch).
+  if (modelRejected) await noteRejectedPick("generate", modelRejected);
   if (trialOver(user)) return refuse({ ok: false, reason: "trial_over" });
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });

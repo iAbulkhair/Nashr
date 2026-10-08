@@ -455,6 +455,17 @@ per account:
   Generation, the reviewer and the judge count for the agent that owns the task type, a chat turn for the agent in
   the chat, an image prompt for the owner of the item, onboarding for Noor.
 
+- **Billing tab, per model and per provider** (since 2026-10-09, Task 8): `meter()` also increments, for the month and
+  GLOBALLY only (never per account), `usage:_all:{YYYY-MM}:model:{modelKey}:calls|usd_micro` and
+  `usage:_all:{YYYY-MM}:provider:{anthropic|straitly}:calls|usd_micro`. `modelKey` is the catalog id, or `other` for an id
+  outside it (a dated alias or a gateway form; priced as Opus, as before), so `other` is the tell that the catalog needs
+  an id. The provider is the one the call was configured for (`llmProvider()`), unless the caller states it; requests the
+  gateway failed and were re-sent to Anthropic are counted separately (`provider:fallback`), because the provider counter
+  still says `straitly` for them. `getUsage("_all")` returns them and the console shows calls, USD and USD per call per
+  model, calls and USD per provider, the fallback count and the picks the router refused (`pickreject`, by purpose and
+  reason). Nothing is backfilled: months before this release read as zero, and the per-model rows add up to the month's
+  total only from the day the counters began. The rates and `costUsd` did not change.
+
 That makes section 3 checkable: compare the estimate against `byKind.generate.usd / byKind.generate.calls` for a real
 account and correct the assumptions here.
 
