@@ -76,7 +76,8 @@ test.describe("signup", () => {
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Check your email");
     const verifyUrl = new URL(page.url());
     await open(page, "/en/app/chat");
-    await page.waitForURL("**/en/app/verify");
+    // The gate keeps where the owner was going, so the code returns them there (rule 754).
+    await page.waitForURL((u) => u.pathname === "/en/app/verify" && u.searchParams.get("next") === "/en/app/chat");
     await open(page, verifyUrl.pathname + verifyUrl.search);
     await fillWhenReady(page.getByRole("textbox", { name: "The 6-digit code" }), devCode!);
     await page.getByRole("button", { name: "Confirm" }).click();
