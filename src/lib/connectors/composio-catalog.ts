@@ -66,6 +66,8 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
       LINKEDIN_GET_COMPANY_INFO: ["start", "count", "state"],
       LINKEDIN_GET_SHARE_STATS: ["organizational_entity", "time_intervals"],
       LINKEDIN_GET_NETWORK_SIZE: ["organization_id", "edgeType"],
+      // The page's own views, by day (rule 748): needs the ADMINISTRATOR role and rw_organization_admin, else a 403.
+      LINKEDIN_GET_ORG_PAGE_STATS: ["organization", "timeRangeStart", "timeRangeEnd", "timeGranularityType"],
     },
     write: { LINKEDIN_CREATE_LINKED_IN_POST: ["author", "commentary", "visibility", "lifecycleState"] },
   },

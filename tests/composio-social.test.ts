@@ -45,7 +45,8 @@ const post = (over: Partial<Task> = {}): Task => ({ id: `t${Math.random().toStri
 
 const NEW_READS = {
   instagram: ["INSTAGRAM_GET_USER_INSIGHTS", "INSTAGRAM_GET_IG_USER_MEDIA", "INSTAGRAM_GET_IG_MEDIA_INSIGHTS"],
-  linkedin: ["LINKEDIN_GET_COMPANY_INFO", "LINKEDIN_GET_SHARE_STATS", "LINKEDIN_GET_NETWORK_SIZE"],
+  // The page's own views (rule 748) join the page's totals and followers.
+  linkedin: ["LINKEDIN_GET_COMPANY_INFO", "LINKEDIN_GET_SHARE_STATS", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_ORG_PAGE_STATS"],
   // The ad account's previous spend (rule 733): Snap serves only spend at the account level.
   snapchat: ["SNAPCHAT_GET_AD_ACCOUNTS_STATS"],
 } as const;
@@ -59,10 +60,13 @@ describe("social results are reads only (rule 663)", () => {
     // Snapchat's account read sends exactly the spec's arguments (A2) and no others.
     expect(TOOLKITS.snapchat.read.SNAPCHAT_GET_AD_ACCOUNTS_STATS).toEqual(["ad_account_id", "fields", "start_time", "end_time", "granularity"]);
     expect(TOOLKITS.snapchat.write).toEqual({});
+    // LinkedIn's page statistics take exactly the spec's arguments (B3): the page, the range and the granularity.
+    expect(TOOLKITS.linkedin.read.LINKEDIN_GET_ORG_PAGE_STATS).toEqual(["organization", "timeRangeStart", "timeRangeEnd", "timeGranularityType"]);
   });
   it("refuses a new read slug through composioWrite", async () => {
     await expect(composioWrite("s1", "instagram", "INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: "1" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     await expect(composioWrite("s1", "snapchat", "SNAPCHAT_GET_AD_ACCOUNTS_STATS", { ad_account_id: "x" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
+    await expect(composioWrite("s1", "linkedin", "LINKEDIN_GET_ORG_PAGE_STATS", { organization: "urn:li:organization:42" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     expect(calls).toEqual([]);
   });
 });
@@ -108,6 +112,8 @@ function liAnswers(rows = [dayRow(100, 5, 3, 1, 0, 1), dayRow(50, 0, 1, 0, 1, 2)
     return ok({ elements: rows.map((r) => r(end)), paging: { count: 10, start: 0 } });
   };
   answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
+  // No day of the page's own statistics: page views stay null (rule 748 is pinned in social-analytics-social.test.ts).
+  answers.LINKEDIN_GET_ORG_PAGE_STATS = ok({ elements: [] });
 }
 const media = (n: number, over: Record<string, unknown> = {}) => ({ id: `m${n}`, caption: `post ${n}`, media_type: "IMAGE", permalink: `https://www.instagram.com/p/${n}/`, timestamp: "2026-10-01T10:00:00+0000", ...over });
 function igAnswers(posts: Record<string, unknown>[] = [media(1), media(2, { media_type: "VIDEO", media_product_type: "REELS" })]) {

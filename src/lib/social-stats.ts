@@ -293,11 +293,14 @@ function liDay(row: unknown): string {
   const d = ms == null ? null : new Date(ms);
   return d && !Number.isNaN(d.getTime()) ? day(d) : "";
 }
+/** One period's page views (rule 748): the sum of the DAY rows' views of every page of the company page, null when no day carried one. */
+const liPageViews = (rows: { row: unknown }[]) => sumRead(rows.map((r) => num(at(r.row, "totalPageStatistics.views.allPageViews.pageViews"))));
 
 /**
  * The company page's last 28 whole days and the 28 before them (rule 733, spec A2): 56 days of DAY share statistics in
  * the one allowlisted call, asked from midnight to midnight UTC so each day falls whole in one period however LinkedIn
- * cuts them, split here by day; and its followers on the read date. `deadline` is the shared one (rule 741).
+ * cuts them, split here by day; its followers on the read date; and its page views over the same 56 days, split the same
+ * way (rule 748, spec B3). `deadline` is the shared one (rule 741).
  */
 async function readLi(scope: string, c: Connection, now: Date, deadline: number): Promise<PlatformPart> {
   const acc = accountOf(c, "linkedin");
@@ -306,19 +309,26 @@ async function readLi(scope: string, c: Connection, now: Date, deadline: number)
   const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const start = end - 2 * DAYS * DAY_MS;
   const window: Range = { from: day(new Date(end - DAYS * DAY_MS)), to: day(new Date(end - DAY_MS)) };
-  const [stats, size] = await Promise.all([
+  const [stats, size, pageStats] = await Promise.all([
     ask(deadline, scope, "linkedin", "LINKEDIN_GET_SHARE_STATS", { organizational_entity: org, time_intervals: `(timeRange:(start:${start},end:${end}),timeGranularityType:DAY)` }, acc).catch((e) => {
       throw refused(e) || !denied(e) ? e : new Error("li_no_page_access");
     }),
     ask(deadline, scope, "linkedin", "LINKEDIN_GET_NETWORK_SIZE", { organization_id: org.slice(org.lastIndexOf(":") + 1), edgeType: "COMPANY_FOLLOWED_BY_MEMBER" }, acc)
       .catch((e) => { if (refused(e)) throw e; return null; }),
+    // Page views need the page's ADMINISTRATOR role and rw_organization_admin: a 403, any other failure or the deadline
+    // leaves them null and the rest of the part stands; a refused token still ends the read.
+    ask(deadline, scope, "linkedin", "LINKEDIN_GET_ORG_PAGE_STATS", { organization: org, timeRangeStart: start, timeRangeEnd: end, timeGranularityType: "DAY" }, acc)
+      .catch((e) => { if (refused(e)) throw e; return null; }),
   ]);
   const rows = listOf(stats, "totalShareStatistics").map((row) => ({ day: liDay(row), row }));
+  const pages = listOf(pageStats, "totalPageStatistics").map((row) => ({ day: liDay(row), row }));
   const { cur, prev } = splitDays(rows, window);
+  const views = splitDays(pages, window);
   // Rows LinkedIn answered that fall in neither period (no date, another range) are not summed: said once, never guessed.
-  if (rows.length && !cur.length && !prev.length) console.warn("li_no_day_rows");
-  const totals = liTotals(cur.map((r) => r.row));
-  const before = liTotals(prev.map((r) => r.row));
+  const undated = (all: unknown[], split: { cur: unknown[]; prev: unknown[] }) => all.length > 0 && !split.cur.length && !split.prev.length;
+  if (undated(rows, { cur, prev }) || undated(pages, views)) console.warn("li_no_day_rows");
+  const totals = { ...liTotals(cur.map((r) => r.row)), pageViews: liPageViews(views.cur) };
+  const before = { ...liTotals(prev.map((r) => r.row)), pageViews: liPageViews(views.prev) };
   let name = "";
   try { name = (JSON.parse(c.meta?.liOrgs ?? "[]") as { urn: string; name: string }[]).find((o) => o?.urn === org)?.name ?? ""; } catch { /* the page list is optional */ }
   return {
@@ -493,7 +503,7 @@ export async function socialDataBlock(scope: string, now = new Date()): Promise<
     "- Each part covers the days in its own from/to. Compare only with prev, never invent a change: where a part has no prev, write [رقم] for the change and say it needs a second read.",
     "- Followers are a count on the read date, not growth.",
     `- Each post's figures (views, reach, likes, comments, shares, saved) are its lifetime totals on the read date, not only within the part's from/to. top_posts lists at most ${BLOCK_POSTS}, best by views then reach; posts_read is how many posts were read.`,
-    "- engagement_rate is a fraction of views, not a percent: 0.0733 means 7.33%. On the LinkedIn page, views are impressions and likes are reactions.",
+    "- engagement_rate is a fraction of views, not a percent: 0.0733 means 7.33%. On the LinkedIn page, views are impressions, likes are reactions and pageViews are visits to the page itself.",
     "- null is a figure that was not read: unknown, never zero. from_thakeen marks a post Thakeen published.",
     ...(age > SOCIAL_STALE_DAYS ? [`- The read is ${age} days old: label these figures with the read date.`] : []),
   ].join("\n");

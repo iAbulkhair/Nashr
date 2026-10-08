@@ -26,8 +26,8 @@ import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fak
  * as activity for Dana's weekly-report routine (`ownersync:{scope}`). Rules 737 and 746 (A8, section 7): the social
  * snapshot v2, one part per platform with `null` for a figure not read, a v1 snapshot read as "not read yet" and due, and
  * the monthly history. Rules 733 and 741 (A2, B4): the previous period each social reader reads in the same run, and the
- * one 30-second deadline every reader shares. Composio is the shared fake; its answers follow the Instagram, LinkedIn, GA4
- * and Search Console shapes the reader tests use.
+ * one 30-second deadline every reader shares. Rule 748 (B3): the LinkedIn page's own views. Composio is the shared fake; its
+ * answers follow the Instagram, LinkedIn, GA4 and Search Console shapes the reader tests use.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 const HOUR = 3600e3;
@@ -61,10 +61,14 @@ const liEnd = (a: Record<string, unknown>) => Number(/end:(\d+)/.exec(String(a.t
 /** One day of the page's share statistics, dated `back` whole days before the end LinkedIn was asked for. */
 const liDay = (end: number, back: number, impressionCount: number | string, clickCount = 0, likeCount = 0, commentCount = 0, shareCount = 0) =>
   ({ timeRange: { start: end - back * 864e5, end: end - (back - 1) * 864e5 }, totalShareStatistics: { impressionCount, clickCount, likeCount, commentCount, shareCount } });
-/** The page's last day only: inside the window whatever the read's date, so there is no previous period. */
+/**
+ * The page's last day only: inside the window whatever the read's date, so there is no previous period. The page's own
+ * statistics answer no day, so its page views stay null (rule 748 sets them where a test reads them).
+ */
 function liAnswers() {
   answers.LINKEDIN_GET_SHARE_STATS = (a) => ok({ elements: [liDay(liEnd(a), 1, 900, 9, 4, 1, 0)] });
   answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
+  answers.LINKEDIN_GET_ORG_PAGE_STATS = ok({ elements: [] });
 }
 const media = (n: number) => ({ id: `m${n}`, caption: `post ${n}`, media_type: "IMAGE", permalink: `https://www.instagram.com/p/${n}/`, timestamp: "2026-10-01T10:00:00+0000" });
 function siteAnswers() {
@@ -131,7 +135,7 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     await signIn(owner.email);
     const r = await post("linkedin", { action: "sync_social" });
     expect(await r.json()).toEqual({ ok: true, read: true });
-    expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_IG_USER_MEDIA", "INSTAGRAM_GET_USER_INFO", "INSTAGRAM_GET_USER_INSIGHTS", "INSTAGRAM_GET_USER_INSIGHTS", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_SHARE_STATS"]);
+    expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_IG_USER_MEDIA", "INSTAGRAM_GET_USER_INFO", "INSTAGRAM_GET_USER_INSIGHTS", "INSTAGRAM_GET_USER_INSIGHTS", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_ORG_PAGE_STATS", "LINKEDIN_GET_SHARE_STATS"]);
     expect((await getSocialSnapshot(owner.email))?.at).toBe(NOW.toISOString());
   });
 
@@ -514,9 +518,74 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
       return ok({ data: { id: "1784", username: "oud", followers_count: 1200 } });
     };
     const late = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
-    expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_USER_INFO", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_SHARE_STATS"]);
+    expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_USER_INFO", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_ORG_PAGE_STATS", "LINKEDIN_GET_SHARE_STATS"]);
     expect(late.parts.instagram).toMatchObject({ account: "oud", followers: 1200, totals: EMPTY_TOTALS, posts: [] });
     expect(late.parts.instagram).not.toHaveProperty("prev");
     expect(late.parts.linkedin).toMatchObject({ followers: 812, totals: { views: 900 } });
+  });
+});
+
+describe("LinkedIn page views (rule 748)", () => {
+  /** One day of the page's own statistics, dated `back` whole days before the end LinkedIn was asked for. */
+  const pageDay = (end: number, back: number, pageViews: unknown) =>
+    ({ organization: "urn:li:organization:42", timeRange: { start: end - back * 864e5, end: end - (back - 1) * 864e5 }, totalPageStatistics: { views: { allPageViews: { pageViews, uniquePageViews: 1 } } } });
+  const pageEnd = (a: Record<string, unknown>) => Number(a.timeRangeEnd);
+
+  it("reads page views for the chosen page with fixed arguments over the same 56 days, split by day (748)", async () => {
+    const owner = await newUser("socliviews");
+    liAnswers();
+    // In the window 300 and "10" (a number sent as a string); "N/A" and {} are not read. 120 in the 28 days before. A day
+    // after the window and an undated row count in neither period.
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = (a) => ok({ elements: [
+      pageDay(pageEnd(a), 1, 300), pageDay(pageEnd(a), 2, "10"), pageDay(pageEnd(a), 3, "N/A"), pageDay(pageEnd(a), 4, {}),
+      pageDay(pageEnd(a), 29, 120), pageDay(pageEnd(a), 0, 5000), { totalPageStatistics: { views: { allPageViews: { pageViews: 5000 } } } },
+    ] });
+    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const asked = calls.filter((c) => c.slug === "LINKEDIN_GET_ORG_PAGE_STATS");
+    expect(asked).toHaveLength(1);
+    // The page from the connection, DAY granularity, and the share statistics' 56 whole UTC days ending at today's midnight.
+    const end = Date.UTC(2026, 9, 8);
+    expect(asked[0].args).toEqual({ organization: "urn:li:organization:42", timeRangeStart: end - 56 * 864e5, timeRangeEnd: end, timeGranularityType: "DAY" });
+    expect(s.parts.linkedin?.totals).toMatchObject({ pageViews: 310, views: 900, engagements: 14 });
+    // The share statistics answered no earlier day: the earlier page views alone make the prev.
+    expect(s.parts.linkedin?.prev).toEqual({ range: { from: "2026-08-13", to: "2026-09-09" }, totals: { ...EMPTY_TOTALS, pageViews: 120 } });
+    expect(s.history.find((r) => r.platform === "linkedin")?.totals.pageViews).toBe(310);
+    // Dana reads them in the part's totals, told they are visits to the page itself, not its posts' impressions.
+    const block = await socialDataBlock(owner.email, NOW);
+    expect(block).toContain('"pageViews":310');
+    expect(block).toContain("pageViews are visits to the page itself");
+  });
+
+  it("no day with a page-view figure leaves pageViews null, never 0; rows dated in neither period are said once a read (748)", async () => {
+    const owner = await newUser("socliviewsnone");
+    liAnswers();
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = (a) => ok({ elements: [pageDay(pageEnd(a), 1, "N/A"), pageDay(pageEnd(a), 2, {})] });
+    expect((await syncSocial(owner.email, { linkedin: liConn() }, NOW)).parts.linkedin?.totals.pageViews).toBeNull();
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = ok({ elements: [] });
+    expect((await syncSocial(owner.email, { linkedin: liConn() }, NOW)).parts.linkedin?.totals.pageViews).toBeNull();
+    // Page-view rows dated in neither period are not summed and are said once, even when the share rows are odd too.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const odd = { totalPageStatistics: { views: { allPageViews: { pageViews: 5000 } } } };
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = ok({ elements: [odd, { ...odd, timeRange: { start: 0, end: 864e5 } }] });
+    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    expect(s.parts.linkedin).toMatchObject({ totals: { views: 900, pageViews: null } });
+    expect(s.parts.linkedin).not.toHaveProperty("prev");
+    answers.LINKEDIN_GET_SHARE_STATS = ok({ elements: [{ totalShareStatistics: { impressionCount: 900 } }] });
+    await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    expect(warn.mock.calls).toEqual([["li_no_day_rows"], ["li_no_day_rows"]]);
+  });
+
+  it("a 403 on page views keeps the rest of the LinkedIn part; a refused token still ends the read (748)", async () => {
+    const owner = await newUser("socliviews403");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    liAnswers();
+    // The page-statistics read needs the ADMINISTRATOR role and rw_organization_admin; without them LinkedIn answers 403.
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = { successful: false, error: "403 Forbidden: Not enough permissions to access: organizationalPageStatistics" };
+    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    expect(s.parts.linkedin).toMatchObject({ followers: 812, totals: { views: 900, clicks: 9, engagements: 14, pageViews: null } });
+    expect(s.errors, "the share statistics were read: the page is not li_no_page_access").toEqual({});
+    // A token LinkedIn refused is not a missing scope: thrown with its provider, after nothing else was hidden.
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = { successful: false, error: "The token used in the request has expired" };
+    await expect(syncSocial(owner.email, { linkedin: liConn() }, NOW)).rejects.toMatchObject({ provider: "linkedin", message: expect.stringMatching(/ 401:/) });
   });
 });
