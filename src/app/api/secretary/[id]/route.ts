@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { can, forbid } from "@/lib/roles";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { getTask } from "@/lib/brand";
 import { OWNER_ONLY, SEC_ID, SEC_WRITES_PER_HOUR, calFor, changeItem, parseOwnerChange } from "@/lib/secretary";
 
@@ -23,7 +23,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (no) return no;
   const { id } = await ctx.params;
   if (!SEC_ID.test(id)) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   const b = body as Record<string, unknown>;

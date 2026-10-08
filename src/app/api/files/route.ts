@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { CORE_FILES, FileLimitError, MAX_FILES, deleteFile, listFiles, readFile, safeName, writeFile } from "@/lib/files";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 
 export async function GET(req: Request) {
@@ -19,7 +19,7 @@ export async function PUT(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   // Every other write in the codebase is throttled; this one was not, so one account could sit in a loop creating
   // files until its index was unusable for everyone reading it.
-  if (!(await allow(`files:${sc(u)}`, 60, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`files:${sc(u)}`, 60, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return NextResponse.json({ ok: false, error: "too_large" }, { status: 413 });
   const b = (await req.json().catch(() => ({}))) as { name?: string; content?: string };
   if (!b.name || typeof b.content !== "string") return NextResponse.json({ ok: false, error: "missing" }, { status: 400 });

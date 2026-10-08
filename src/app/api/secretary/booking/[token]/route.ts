@@ -1,5 +1,5 @@
 import { BOOK_PROVIDERS, BOOK_TOKEN, bookingKey, hashBookToken, resolveBook, type BookRecord } from "@/lib/booking-token";
-import { allow, clientIp } from "@/lib/rate";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 import { loginHolds } from "@/lib/secretary-feed";
 import { applyBooking, parseCalcom, parseCalendly, verifyCalcomSignature, verifyCalendlySignature } from "@/lib/secretary-booking";
 
@@ -75,7 +75,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     }
     rec = found;
     hash = hashBookToken(token);
-    if (!(await allow(`book:t:${hash}`, PER_LINK_HOUR, 3600))) return answer(429, { "retry-after": "3600" });
+    if (!(await allow(`book:t:${hash}`, PER_LINK_HOUR, 3600))) return retryLater(null, 3600, HEADERS);
     if (!wellFormed(rec)) return answer(500);
     if (!(await loginHolds(rec))) return notFound();
   } catch (e) {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { forbid } from "@/lib/roles";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { SEC_KEYS, SEC_READS_PER_HOUR, audit, usableCalendar, withLock, zoneFor, type Who } from "@/lib/secretary";
 import { calendarView, parseCalendar, type SecCalendar } from "@/lib/secretary-calendar";
 import type { Zone } from "@/lib/zones";
@@ -47,7 +47,7 @@ export async function GET() {
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const no = forbid(u, "read");
   if (no) return no;
-  if (!(await allow(`sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const scope = sc(u);
   const now = Date.now();
   const [zone, stored] = await Promise.all([zoneFor(scope), db.get<unknown>(SEC_KEYS.cal(scope))]);
@@ -59,7 +59,7 @@ export async function PUT(req: Request) {
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const no = forbid(u, "brand.write");
   if (no) return no;
-  if (!(await allow(`sec:cal:${u.email}`, 30, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:cal:${u.email}`, 30, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const b = await bodyOf(req);
   if (!b) return badRequest();
   const scope = sc(u);

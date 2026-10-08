@@ -347,7 +347,10 @@ describe("limits (rule 195)", () => {
     const u = await owner("secrate");
     await db.set(`rate:sec:create:${u.email}`, SEC_CREATE_PER_DAY - 1, 86400);
     expect((await create({ title: "The 200th" })).status).toBe(200);
-    expect((await create({ title: "The 201st" })).status).toBe(429);
+    const over = await create({ title: "The 201st" });
+    expect(over.status).toBe(429);
+    expect(over.headers.get("retry-after"), "the day's window (rule 680)").toBe("86400");
+    expect(await over.json()).toEqual({ ok: false, error: "too_many" });
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await setActiveBrand(u.email, "b2");
     expect((await create({ title: "Other brand" })).status).toBe(429);
@@ -374,6 +377,7 @@ describe("limits (rule 195)", () => {
     await db.set(`rate:sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600);
     const r = await listRoute.GET(json("/api/secretary", "GET"));
     expect(r.status).toBe(429);
+    expect(r.headers.get("retry-after")).toBe("3600");
     expect((await r.json()).error).toBe("too_many");
   });
 

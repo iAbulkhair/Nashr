@@ -2,7 +2,7 @@ import { track } from "@/lib/track";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { createSession, getLogin, normalizeEmail } from "@/lib/auth";
-import { allow, clientIp } from "@/lib/rate";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 
 /**
  * POST {email, password}. An email signs in as whatever login it is (src/lib/auth.ts `getLogin`): an owner account or a
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const email = normalizeEmail(typeof b.email === "string" ? b.email : "");
   const password = typeof b.password === "string" ? b.password : "";
   // Credential stuffing and password guessing: throttle per IP and per targeted login.
-  if (!(await allow(`login:ip:${clientIp(req)}`, 20, 900)) || !(await allow(`login:em:${email}`, 8, 900))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`login:ip:${clientIp(req)}`, 20, 900)) || !(await allow(`login:em:${email}`, 8, 900))) return retryLater({ ok: false, error: "slow_down" }, 900);
   const login = email ? await getLogin(email) : null;
   const hash = !login ? null : login.kind === "owner" ? login.user.passHash : login.member.passHash;
   if (!hash || !(await bcrypt.compare(password, hash))) return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });

@@ -1,7 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { currentUser, getUser, sc } from "@/lib/auth";
 import { getTask } from "@/lib/brand";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { advance, getJob, maybeSweep, publicJob } from "@/lib/media/jobs";
 import { mediaDeps } from "@/lib/media/registry";
 import { deadlineFor } from "@/lib/media/keys";
@@ -21,7 +21,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ jobId: string 
   // getJob refuses anything but 32 hex characters before a key is built from it.
   const found = await getJob(sc(u), jobId);
   if (!found) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  if (!(await allow(`mpoll:u:${u.email}`, 120, 60))) return NextResponse.json({ ok: false, error: "slow_down", job: publicJob(found) }, { status: 429 });
+  if (!(await allow(`mpoll:u:${u.email}`, 120, 60))) return retryLater({ ok: false, error: "slow_down", job: publicJob(found) }, 60);
   let job = found;
   try {
     job = await advance(found, mediaDeps(), { deadline, via: "poll" });

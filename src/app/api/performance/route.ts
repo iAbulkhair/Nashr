@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { analyze, ImportError, MAX_CSV_CHARS, METRICS, readRows, type MetricId } from "@/lib/perf-import";
 import { clearPerf, getPerf, savePerf } from "@/lib/perf-store";
 import { adCodeIndex } from "@/lib/brand";
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const no = forbid(u, "performance.import");
   if (no) return no;
-  if (!(await allow(`perf:${u.email}`, 20, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`perf:${u.email}`, 20, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const b = (await req.json().catch(() => ({}))) as { csv?: unknown; file?: unknown; metric?: unknown };
   if (typeof b.csv !== "string" || !b.csv.trim()) return NextResponse.json({ ok: false, error: "no_file" }, { status: 400 });
   if (b.csv.length > MAX_CSV_CHARS) return NextResponse.json({ ok: false, error: "too_large" }, { status: 413 });

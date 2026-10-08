@@ -22,8 +22,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // The engine owns the charge and the one refund. A throw after the charge leaves a durable job that a poll or sweep
   // settles, so the answer points the inbox at it (startThrew) rather than reporting a refund that has not happened.
   try {
-    const { status, body } = mediaResponse(await renderVideo(u, t, brand, model, { deadline }));
-    return NextResponse.json(body, { status });
+    const { status, body, headers } = mediaResponse(await renderVideo(u, t, brand, model, { deadline }));
+    return NextResponse.json(body, { status, headers });
   } catch (e) {
     console.error("video route", errCode(e));
     const { status, body } = await startThrew(u, t.id, "video");
