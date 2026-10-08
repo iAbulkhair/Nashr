@@ -79,4 +79,14 @@ describe("the heading face is Thmanyah, loaded within its license (rule 317)", (
     expect("ذ\uFEDB\uFEF4\uFEE6".normalize("NFKC")).toBe(dict.ar.brand);
     expect(dict.ar.brand).not.toContain("\u0640");
   });
+
+  it("the share card is drawn with the same long-kaf wordmark, and the font never leaves src/app/fonts", () => {
+    const s = read("scripts/make-share-image.mjs");
+    expect(s).toContain('ذ<span class="kaf">\uFEDB</span>\uFEF4\uFEE6');
+    expect(s).toMatch(/\.kaf \{ font-feature-settings: "salt" 1; \}/);
+    expect(s).toContain("src/app/fonts/thmanyah-serif-display/");
+    expect(s).not.toMatch(/public\/|writeFileSync|copyFile/);
+    expect(s).toContain('path: "src/app/[lang]/opengraph-image.png"');
+    expect(s).not.toMatch(/\\u0640|ـ/);
+  });
 });
