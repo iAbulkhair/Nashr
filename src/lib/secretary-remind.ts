@@ -31,6 +31,7 @@ import { pushNotifs, type Push } from "./notifications";
 import { sendEmail } from "./notify";
 import { DEFAULT_ZONE, type Zone } from "./zones";
 import { appOrigin } from "./origin";
+import { COPY, notice, paragraphs } from "../emails";
 
 /** Scopes read per sweep, due ids read per scope, scopes handled at once. */
 export const SWEEP_SCOPES = 200;
@@ -109,7 +110,10 @@ async function deliver(ctx: AccountCtx, scope: string, zone: Zone, cur: SecItem)
   ctx.tally.notified++;
   if (!process.env.RESEND_API_KEY || (await ctx.prefs()).get(scope) === "none") return;
   const ar = ctx.user.lang === "ar";
-  const sent = await sendEmail(ctx.email, ar ? `تذكير من ريم: ${cur.title.slice(0, 80)}` : `Reminder from Reem: ${cur.title.slice(0, 80)}`, `${push.n.title}\n${push.n.body}\n\n${appOrigin()}${push.n.href}`);
+  // The HTML part says what the bell says, with a button to the list. The title holds the task's title, which the
+  // owner or an agent wrote: `notice` escapes it as text (rule 686).
+  const html = notice({ lang: ctx.user.lang, title: push.n.title, paragraphs: paragraphs(push.n.body), cta: { href: `${appOrigin()}${push.n.href}`, label: COPY[ctx.user.lang].notice.todo } });
+  const sent = await sendEmail(ctx.email, ar ? `تذكير من ريم: ${cur.title.slice(0, 80)}` : `Reminder from Reem: ${cur.title.slice(0, 80)}`, `${push.n.title}\n${push.n.body}\n\n${appOrigin()}${push.n.href}`, html);
   if (sent) ctx.tally.emailed++;
 }
 
