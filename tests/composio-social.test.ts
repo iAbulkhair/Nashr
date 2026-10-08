@@ -2,22 +2,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jar, json, newMember, newUser, settle, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState } from "@/lib/connectors/store";
-import { saveTask, type Brand, type Task } from "@/lib/brand";
+import { saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { publishOnce } from "@/lib/publish-once";
 import { wipeAccount } from "@/lib/account";
-import { EMPTY_TOTALS, getSocialSnapshot, socialDataBlock, SOCIAL_KEY, SOCIAL_PUB_KEY, syncSocial, syncSocialIfDue, type SocialPost, type SocialSnapshot, type StoredSocial } from "@/lib/social-stats";
+import { EMPTY_TOTALS, getSocialSnapshot, socialDataBlock, SOCIAL_KEY, SOCIAL_PROVIDERS, SOCIAL_PUB_KEY, syncSocial, syncSocialIfDue, type SocialPost, type SocialSnapshot, type StoredSocial, type Totals, type XStats } from "@/lib/social-stats";
 import { composioWrite, setComposioClientForTests } from "@/lib/connectors/composio";
 import { fakeComposio, ok, type Answer, type Call, type Result } from "./helpers/composio-fake";
 import { TOOLKITS, type Toolkit } from "@/lib/connectors/composio-catalog";
 import type { Connection } from "@/lib/connectors/store";
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import SocialStats from "@/components/app/SocialStats";
-import { connectedSources, liNeedsPage, reportSources, socialRead } from "@/lib/report-sources";
+import SocialStats, { changeText, postLink } from "@/components/app/SocialStats";
+import SiteStats from "@/components/app/SiteStats";
+import { refreshNote, selectNote } from "@/components/app/RefreshButton";
+import { connectedSources, liNeedsPage, reportSources, siteChoices, SOCIAL_PATHS, socialRead, socialRefreshPath, xDirect } from "@/lib/report-sources";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
 import { listActivity } from "@/lib/activity";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
+import ReportsPage from "@/app/[lang]/app/reports/page";
+import { NOT_READ_PLATFORMS, NOT_READ_REASONS, type NotReadItem } from "@/lib/not-read";
+import { XSTATS_KEY } from "@/lib/x-stats";
+import type { SiteSnapshot } from "@/lib/site-stats";
+import { appDict } from "@/lib/app-i18n";
+import { readFileSync } from "node:fs";
+
+// The Reports card's buttons read the router; outside Next there is none. Server-only helpers (redirect, notFound) stay real.
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<typeof import("next/navigation")>()),
+  useRouter: () => ({ push: () => {}, refresh: () => {}, replace: () => {}, back: () => {}, prefetch: () => {} }),
+  usePathname: () => "/en/app/reports",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 /**
  * Rules 663-673: Instagram and LinkedIn page results read through Composio (social-stats.ts), and the owner's choice to
@@ -462,6 +478,220 @@ describe("the social card on Reports (rule 670)", () => {
     expect(html(ig([{ caption: "<img src=x onerror=alert(1)>", views: 1 }]))).not.toContain("<img");
     const np = html({ v: 2, at: NOW.toISOString(), parts: {}, errors: { instagram: "ig_not_professional" }, history: [] });
     expect(np).toContain("not a professional account");
+  });
+});
+
+describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () => {
+  const R = { from: "2026-09-10", to: "2026-10-08" };
+  const P = { from: "2026-08-13", to: "2026-09-09" };
+  const tot = (o: Partial<Totals>): Totals => ({ ...EMPTY_TOTALS, ...o });
+  const snap: SocialSnapshot = {
+    v: 2, at: NOW.toISOString(), errors: {}, history: [],
+    parts: {
+      instagram: { platform: "instagram", account: "oud", followers: 1200, range: R, totals: tot({ views: 1200, reach: 500 }), prev: { range: P, totals: tot({ views: 1000, reach: 0 }) }, posts: [] },
+      facebook: { platform: "facebook", account: "Oud Page", followers: 90, range: R, totals: tot({ views: 300, reach: 200, clicks: 10 }), prev: { range: P, totals: tot({ views: 200, clicks: 0 }) }, posts: [] },
+      linkedin: { platform: "linkedin", account: "", followers: 812, range: R, totals: tot({ views: 150, clicks: 5 }), posts: [] },
+    },
+  };
+  const post = (over: Partial<SocialPost>): SocialPost => ({ id: "p", date: "2026-10-01", type: "IMAGE", caption: "c", url: null, views: 1, reach: null, likes: null, comments: null, shares: null, saved: null, fromThakeen: false, ...over });
+  const x: XStats = { platform: "x", account: "@oud", at: NOW.toISOString(), followers: 40, range: R, totals: tot({}), history: [], posts: [post({ id: "x1", caption: "tweet", url: "https://x.com/i/status/1" }), post({ id: "x2", caption: "fake", url: "https://x.com.evil.example/i/status/2" })] };
+  type CardProps = Parameters<typeof SocialStats>[0];
+  const card = (p: Partial<CardProps> = {}) => renderToStaticMarkup(createElement(SocialStats, { lang: "en", social: snap, ...p }));
+  /** One platform's row: from its block to the next block (or the card's end). */
+  const row = (html: string, p: string) => {
+    const i = html.indexOf(`data-platform="${p}"`);
+    if (i < 0) return "";
+    const j = html.indexOf("data-platform=", i + 1);
+    return html.slice(i, j < 0 ? undefined : j);
+  };
+  const site: SiteSnapshot = {
+    at: NOW.toISOString(),
+    ga: { property: "properties/1", name: "Shop A", range: R, sessions: 10, keyEvents: null, revenue: null, engagementRate: null, channels: [], pages: [] },
+    gsc: { site: "https://oud.example/", range: R, clicks: 1, impressions: 2, ctr: null, position: null, queries: [] },
+  };
+  const BRAND: Brand = { name: "عود", website: "", industry: "عطور", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "عود", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: NOW.toISOString() };
+  /** An owner with Instagram through Composio, X direct and Google with two GA4 properties and one site, each read once, and an admin and a member. */
+  async function workspace(prefix: string) {
+    const owner = await newUser(prefix);
+    await Promise.all([
+      saveBrand(owner.email, BRAND),
+      saveConnection(owner.email, igConn()),
+      saveConnection(owner.email, { provider: "x", data: { access_token: "t" }, meta: { account: "@oud" }, connectedAt: NOW.toISOString() }),
+      saveConnection(owner.email, via("google", { google_analytics: "ca_ga", google_search_console: "ca_gsc" }, { gaProperty: "properties/1", gaProperties: JSON.stringify([{ id: "properties/1", name: "Shop A" }, { id: "properties/2", name: "Shop B" }]), gscSite: "https://oud.example/", gscSites: JSON.stringify(["https://oud.example/"]) })),
+      db.set(SOCIAL_KEY(owner.email), snap),
+      db.set(XSTATS_KEY(owner.email), { ...x, accountId: "x-id-999" }),
+      db.set(`sitestats:${owner.email}`, site),
+    ]);
+    const admin = await newMember(owner, "admin", `${prefix}a`);
+    const member = await newMember(owner, "member", `${prefix}m`);
+    return { owner, admin, member };
+  }
+  const withSearch = { params: Promise.resolve({ lang: "en" }), searchParams: Promise.resolve({}) };
+  async function page() {
+    const el = (await ReportsPage(withSearch as never)) as ReactElement<Record<string, unknown>>;
+    return { props: el.props, html: renderToStaticMarkup(el) };
+  }
+
+  it("one row per part with its change where prev exists, a dash where not (670, 668)", () => {
+    expect(changeText(1200, 1000)).toBe("+20%");
+    expect(changeText(800, 1000)).toBe("-20%");
+    expect(changeText(1, 3)).toBe("-67%");
+    expect(changeText(5, 5)).toBe("0%");
+    for (const [cur, prev] of [[5, 0], [null, 5], [5, null], [5, undefined]] as const) expect(changeText(cur, prev), `${cur} ${prev}`).toBeNull();
+
+    const html = card();
+    expect(html).toContain('dir="ltr"');
+    const ig = row(html, "instagram");
+    const fb = row(html, "facebook");
+    const li = row(html, "linkedin");
+    expect(ig).toContain("+20%");
+    expect(ig.match(/%/g), "reach's previous figure is 0: no change").toHaveLength(1);
+    expect(ig).toContain("vs the previous period");
+    expect(ig).toContain("@oud");
+    expect(fb).toContain("+50%");
+    expect(fb.match(/%/g), "reach was not read before and clicks were 0: a change for views only").toHaveLength(1);
+    expect(fb).toContain("Oud Page");
+    expect(li, "no prev: no change; no engagements: the rate is a dash").not.toContain("%");
+    expect(li).toContain("—");
+    expect(li, "an empty account shows the platform name alone").toMatch(/>LinkedIn<\/p>/);
+    expect(card({ social: { ...snap, parts: { instagram: { ...snap.parts.instagram!, account: "" } } } })).not.toContain("@");
+
+    const ar = card({ lang: "ar" });
+    expect(ar).toContain('dir="rtl"');
+    expect(ar).toContain("إنستقرام");
+    expect(ar).toContain("مقارنة بالفترة السابقة");
+    expect(row(ar, "instagram")).toContain("+20%");
+    expect(row(ar, "linkedin")).not.toContain("%");
+  });
+
+  it("captions and not-read items render as text; foreign links are dropped", () => {
+    const social: SocialSnapshot = { ...snap, parts: { instagram: { ...snap.parts.instagram!, posts: [
+      post({ id: "a", caption: "<b>x</b>", url: "https://evil.example/p/1/" }), post({ id: "b", caption: "js", url: "javascript:alert(1)" }), post({ id: "c", caption: "ok", url: "https://www.instagram.com/p/9/" }),
+    ] } } };
+    const notRead: NotReadItem[] = [{ platform: "linkedin", reason: "choose_page" }, { platform: "tiktok_ads", reason: "not_connected" }, { platform: "snapchat_organic", reason: "closed_to_apps" }, { platform: "google_ads", reason: "not_connected" }];
+    const html = card({ social, x, notRead });
+    expect(html).not.toContain("<b>");
+    expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
+    expect(html.match(/<a /g)).toHaveLength(2);
+    expect(html).toContain('href="https://www.instagram.com/p/9/"');
+    expect(html).toContain('href="https://x.com/i/status/1"');
+    for (const a of html.match(/<a [^>]*>/g) ?? []) expect(a).toContain('rel="noopener noreferrer"');
+    expect(html).not.toContain("evil.example");
+    expect(html).not.toContain("javascript:");
+    expect(row(html, "x")).toContain("@oud");
+    expect(row(html, "x")).toContain("tweet");
+    expect(html).toContain("Not read");
+    expect(html).toContain("LinkedIn page: choose the company page on the Integrations page");
+    expect(html).toContain("Snapchat account: Snapchat does not open these results to outside apps");
+    expect(html).toContain("Not connected: TikTok Ads, Google Ads");
+    expect(html, "the not-read item replaces the old LinkedIn line").not.toContain("Connect a company page");
+
+    expect(postLink("instagram", "https://www.instagram.com/p/1/")).toBe("https://www.instagram.com/p/1/");
+    expect(postLink("x", "https://x.com/i/status/1")).toBe("https://x.com/i/status/1");
+    for (const [p, u] of [["instagram", "http://www.instagram.com/p/1/"], ["instagram", "https://instagram.com.evil.example/p/1/"], ["facebook", "https://user:pw@www.facebook.com/1"], ["youtube", "https://www.youtube.com:8443/watch?v=abc"], ["x", "https://www.instagram.com/p/1/"], ["tiktok", "not a url"], ["linkedin", null]] as const) {
+      expect(postLink(p, u), String(u)).toBeNull();
+    }
+
+    // Every platform and every reason has its words in both languages; the Arabic holds no figure.
+    const all = NOT_READ_PLATFORMS.flatMap((platform) => NOT_READ_REASONS.map((reason) => ({ platform, reason })));
+    for (const lang of ["ar", "en"] as const) {
+      const h = renderToStaticMarkup(createElement(SocialStats, { lang, social: null, notRead: all }));
+      const text = h.slice(h.lastIndexOf("<", h.indexOf("data-not-read"))).replace(/<[^>]*>/g, " ");
+      expect(text, lang).not.toContain("undefined");
+      expect(text.trim().length, lang).toBeGreaterThan(0);
+      if (lang === "ar") expect(text).not.toMatch(/[0-9٠-٩]/);
+    }
+  });
+
+  it("shows Refresh to members and Refresh X (1 credit) only with a direct X connection", async () => {
+    expect(SOCIAL_PATHS).toEqual(SOCIAL_PROVIDERS);
+    const ig = { provider: "meta", meta: { via: "composio", igId: "1784" } };
+    const li = { provider: "linkedin", meta: { via: "composio", liOrg: "urn:li:organization:42" } };
+    expect(socialRefreshPath([])).toBeNull();
+    expect(socialRefreshPath([{ provider: "meta", meta: { igId: "1784" } }]), "a direct Meta record has no reader").toBeNull();
+    expect(socialRefreshPath([li, ig])).toBe("meta");
+    expect(socialRefreshPath([{ ...ig, needsReconnect: "2026-10-08" }, li])).toBe("linkedin");
+    expect(socialRefreshPath([{ provider: "x", meta: {} }])).toBeNull();
+    expect(xDirect([{ provider: "x", meta: { account: "@oud" } }])).toBe(true);
+    expect(xDirect([{ provider: "x", meta: { via: "composio" } }])).toBe(false);
+    expect(xDirect([{ provider: "x", meta: {}, needsReconnect: "2026-10-08" }])).toBe(false);
+
+    expect(card()).not.toContain("<button");
+    const both = card({ canRefresh: true, socialVia: "meta", canRefreshX: true, xConnected: true });
+    expect(both).toContain(">Refresh<");
+    expect(both).toContain("Refresh X (1 credit)");
+    expect(card({ canRefresh: true, socialVia: "meta", canRefreshX: true, xConnected: false })).not.toContain("Refresh X");
+    expect(card({ canRefresh: true, socialVia: null, canRefreshX: false, xConnected: true }), "nothing to refresh, and no right to pay").not.toContain("<button");
+    expect(card({ lang: "ar", canRefreshX: true, xConnected: true })).toContain("حدّث إكس (رصيد واحد)");
+
+    expect(refreshNote("en", "social", 200, { ok: true, read: true, reconnect: "meta" })).toMatch(/Connect Instagram and Facebook again/);
+    expect(refreshNote("ar", "social", 200, { ok: true, read: true, reconnect: "linkedin" })).toContain("لينكدإن");
+    expect(refreshNote("en", "social", 200, { ok: true, read: false })).toMatch(/Nothing was read/);
+    expect(refreshNote("en", "social", 200, { ok: true, read: true })).toMatch(/Read just now/);
+    expect(refreshNote("en", "site", 429, { ok: false, error: "slow_down" })).toMatch(/Too many refreshes/);
+    expect(refreshNote("ar", "social", 429, { ok: false, error: "slow_down" })).toContain("ساعة");
+    expect(refreshNote("en", "x", 402, { ok: false, error: "no_credits" }, "Ask the account owner to top up.")).toBe("Ask the account owner to top up.");
+    expect(refreshNote("en", "x", 402, { ok: false, error: "trial_over" })).toMatch(/trial/);
+    expect(refreshNote("en", "x", 429, { ok: false, error: "x_unavailable" })).toMatch(/X is not available/);
+    expect(refreshNote("en", "x", 200, { ok: true, charged: false })).toMatch(/no credit was used/);
+    expect(refreshNote("en", "x", 200, { ok: true, charged: true })).toMatch(/One credit was used/);
+    expect(refreshNote("en", "social", 502, { ok: false, error: "reconnect_required" })).toMatch(/connect it again/);
+    expect(refreshNote("en", "social", 0, {})).toMatch(/failed/);
+
+    const w = await workspace("rpbtn");
+    await signIn(w.member.email);
+    const m = await page();
+    expect(m.props).toMatchObject({ canRead: true, canGenerate: true, canConnectors: false, socialVia: "meta", xConnected: true });
+    expect(JSON.stringify(m.props.x), "the X account's id never reaches the page").not.toContain("x-id-999");
+    expect(m.html).toContain("Refresh X (1 credit)");
+    expect(m.html).toContain(">Refresh<");
+    expect(row(m.html, "x")).toContain("@oud");
+  });
+
+  it("shows the property selector only to owner and admin when two or more are stored", async () => {
+    expect(siteChoices([])).toBeNull();
+    expect(siteChoices([{ provider: "google", meta: { gaProperties: "[]" } }]), "a direct Google record has no reader").toBeNull();
+    const g = (meta: Record<string, string>) => [{ provider: "google", meta: { via: "composio", ...meta } }];
+    expect(siteChoices(g({ gaProperties: "not json", gscSites: '{"a":1}' }))).toEqual({ ga: [], gsc: [] });
+    expect(siteChoices(g({ gaProperties: JSON.stringify([{ id: "properties/1", name: "A".repeat(200) }, { id: 5, name: "bad" }, null, { id: "properties/2" }]), gscSites: JSON.stringify(["https://a.example/", 7]), gaProperty: "properties/1" })))
+      .toEqual({ ga: [{ id: "properties/1", name: "A".repeat(80) }, { id: "properties/2", name: "properties/2" }], gsc: ["https://a.example/"], gaCurrent: "properties/1" });
+
+    const properties = { ga: [{ id: "properties/1", name: "Shop A" }, { id: "properties/2", name: "<b>Shop B</b>" }], gsc: ["https://oud.example/"], gaCurrent: "properties/1", gscCurrent: "https://oud.example/" };
+    const s = (p: object, lang: "ar" | "en" = "en") => renderToStaticMarkup(createElement(SiteStats, { lang, site, ...p }));
+    const chosen = s({ properties, canChoose: true });
+    expect(chosen).toContain('data-choose="ga4"');
+    expect(chosen, "one site: nothing to choose").not.toContain('data-choose="gsc"');
+    expect(chosen).toContain("&lt;b&gt;Shop B&lt;/b&gt;");
+    expect(chosen).not.toContain("<b>");
+    expect(s({ properties, canChoose: false })).not.toContain("<select");
+    expect(s({ properties: { ...properties, ga: properties.ga.slice(0, 1) }, canChoose: true })).not.toContain("<select");
+    expect(s({ properties: { ...properties, gsc: ["https://oud.example/", "sc-domain:oud.example"] }, canChoose: true })).toContain('data-choose="gsc"');
+    expect(s({})).not.toContain("<button");
+    expect(s({ canRefresh: true })).toContain(">Refresh<");
+    const ar = s({ properties, canChoose: true, canRefresh: true }, "ar");
+    expect(ar).toContain('dir="rtl"');
+    expect(ar).toContain('data-choose="ga4"');
+    expect(ar).toContain(">حدّث<");
+
+    expect(selectNote("en", 200, { ok: true, read: false })).toMatch(/next read/);
+    expect(selectNote("ar", 200, { ok: true, read: false })).toContain("القراءة القادمة");
+    expect(selectNote("en", 200, { ok: true, read: true })).toMatch(/being read now/);
+    expect(selectNote("en", 400, { ok: false, error: "unknown_property" })).toMatch(/not on the list/);
+    expect(selectNote("en", 403, { error: "forbidden" })).toMatch(/owner or an admin/);
+    // Meta's Page selector on Integrations says so too when the read waits.
+    expect(readFileSync("src/components/app/IntegrationsPanel.tsx", "utf8")).toContain("j.read === false ? g.readLater");
+    expect(appDict.ar.integrations.readLater).toContain("القراءة القادمة");
+    expect(appDict.en.integrations.readLater).toMatch(/next read/);
+
+    const w = await workspace("rpprop");
+    for (const [who, may] of [[w.member.email, false], [w.admin.email, true], [w.owner.email, true]] as const) {
+      await signIn(who);
+      const { props, html } = await page();
+      expect(props.canConnectors, who).toBe(may);
+      expect(props.siteChoices, who).toMatchObject({ ga: [{ id: "properties/1" }, { id: "properties/2" }], gsc: ["https://oud.example/"] });
+      expect(html.includes('data-choose="ga4"'), who).toBe(may);
+      expect(html.includes('data-choose="gsc"'), who).toBe(false);
+    }
   });
 });
 

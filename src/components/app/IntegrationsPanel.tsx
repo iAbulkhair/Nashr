@@ -29,6 +29,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
   const [shop, setShop] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
   const flash = sp.get("connected") ? `${g.connected}: ${sp.get("connected")}` : sp.get("error") ? `${g.verifyFailed} (${sp.get("error")})` : "";
 
   async function load() {
@@ -71,7 +72,9 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     const res = await fetch("/api/connect/meta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_page", pageId }) });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
+    // A new Page is read at once only while the workspace's hourly reads last (rule 739); otherwise the owner is told it waits.
     if (!j.ok) alert(j.error ?? res.status);
+    else setNote(j.read === false ? g.readLater : "");
     await load();
     r.refresh();
   }
@@ -129,6 +132,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="integrationspanel-t1" />{g.title}</span></h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
       {flash && <p role="status" className="mt-3 rounded-lg bg-lilac p-3 text-sm text-ink">{flash}</p>}
+      {note && <p role="status" className="mt-3 rounded-lg bg-lilac p-3 text-sm text-ink">{note}</p>}
       <p className="mt-2 rounded-lg border border-ink/15 bg-lilac p-3 text-sm">{g.note}</p>
       {!manage && <ReadOnlyNote className="mt-2" text={t.readOnly.admin} />}
 

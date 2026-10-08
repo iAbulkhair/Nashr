@@ -10,8 +10,10 @@ import { listConnections } from "@/lib/connectors/store";
 import { getSalesSnapshot, getSyncFailure } from "@/lib/store-sales";
 import { getPerf } from "@/lib/perf-store";
 import { getSiteSnapshot } from "@/lib/site-stats";
-import { getSocialSnapshot, socialForPage } from "@/lib/social-stats";
-import { connectedSources, liNeedsPage } from "@/lib/report-sources";
+import { getSocialSnapshot, socialForPage, xReadOf } from "@/lib/social-stats";
+import { getXStats } from "@/lib/x-stats";
+import { notRead } from "@/lib/not-read";
+import { connectedSources, liNeedsPage, siteChoices, socialRefreshPath, xDirect } from "@/lib/report-sources";
 import ReportsPanel from "@/components/app/ReportsPanel";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
@@ -30,10 +32,13 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!u) redirect(`/${lang}/app/login`);
   if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
   const tasks = await listLite(sc(u), kpiSince(win));
-  const [k, quality, connections, store, syncFailure, perf, site, social] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), win), listConnections(sc(u)), getSalesSnapshot(sc(u)), getSyncFailure(sc(u)), getPerf(sc(u)), getSiteSnapshot(sc(u)), getSocialSnapshot(sc(u))]);
+  const [k, quality, connections, store, syncFailure, perf, site, social, xStats, missing] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), win), listConnections(sc(u)), getSalesSnapshot(sc(u)), getSyncFailure(sc(u)), getPerf(sc(u)), getSiteSnapshot(sc(u)), getSocialSnapshot(sc(u)), getXStats(sc(u)), notRead(sc(u))]);
   // A direct Google or Meta record (from before Composio) has no reader behind it: it must not count as a read source.
   const connected = connectedSources(connections);
   const dana = agentById("dana").tasks;
+  // X's last read without the account's id, which only the reader uses (rule 746).
+  const xRead = xReadOf(xStats);
+  const x = xRead ? { ...xRead, accountId: undefined } : null;
   const items = tasks.filter((t) => dana.includes(t.type)).slice(0, 20).map((t) => ({ id: t.id, type: t.type, title: t.title, status: t.status, createdAt: t.createdAt }));
-  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} social={socialForPage(social)} liNoPage={liNeedsPage(connections)} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
+  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} social={socialForPage(social)} liNoPage={liNeedsPage(connections)} x={x} notRead={missing} socialVia={socialRefreshPath(connections)} xConnected={xDirect(connections)} siteChoices={siteChoices(connections)} canRead={can(u, "read")} canGenerate={can(u, "generate")} canConnectors={can(u, "connectors")} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
 }
