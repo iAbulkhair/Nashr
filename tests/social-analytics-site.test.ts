@@ -198,6 +198,21 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     expect(snap.ga?.pages.map((p) => p.path)).toEqual(Array.from({ length: 10 }, (_, i) => `/new-${11 - i}`));
   });
 
+  it("a failed landing-page report leaves no pages and keeps the totals and prev, logged once by its code (733)", async () => {
+    const u = await newUser("sitepagesfail");
+    answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => (dims({ slug: "", args })[0] === "landingPage" ? { successful: false, error: "Internal error (500) for properties/987" } : gaReport(args));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const snap = await syncSite(u.email, google(), NOW);
+    expect(snap.ga).toMatchObject({ range: GA_CUR, sessions: 100, keyEvents: 15, pages: [] });
+    expect(snap.ga?.channels).toHaveLength(2);
+    expect(snap.ga?.prev).toMatchObject({ range: GA_PREV, sessions: 80, keyEvents: 12 });
+    expect(snap.gaError).toBeUndefined();
+    // The code alone, once a read: never the platform's text.
+    expect(warn.mock.calls).toEqual([["ga_pages_failed"]]);
+  });
+
   it("Search Console reads the previous range by date (733)", async () => {
     const u = await newUser("sitegsc");
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;

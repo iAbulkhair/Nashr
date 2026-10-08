@@ -114,7 +114,8 @@ async function readGa(scope: string, c: Connection, now: Date): Promise<Ga> {
   const prevRange = rangeBefore(range);
   // Both ranges in each report: GA4 labels every row with the range's name. The channel report asks for up to 40 rows
   // across both ranges; the landing-page report orders the window's rows first, so its 20 cannot all be the previous
-  // range's, and keeps the window's top 10.
+  // range's, and keeps the window's top 10. The landing pages are read on their own: a failed or refused page report
+  // leaves no pages, logged once a read by its code alone, and the totals and prev stand (rule 733).
   const dateRanges = [{ startDate: range.from, endDate: range.to, name: CUR }, { startDate: prevRange.from, endDate: prevRange.to, name: PREV }];
   const [byChannel, byPage] = await Promise.all([
     composioRead(scope, "google_analytics", "GOOGLE_ANALYTICS_RUN_REPORT", {
@@ -124,12 +125,15 @@ async function readGa(scope: string, c: Connection, now: Date): Promise<Ga> {
     composioRead(scope, "google_analytics", "GOOGLE_ANALYTICS_RUN_REPORT", {
       property, dateRanges, dimensions: [{ name: "landingPage" }], metrics: [{ name: "sessions" }, { name: "keyEvents" }],
       orderBys: [{ desc: false, dimension: { dimensionName: "dateRange" } }, { desc: true, metric: { metricName: "sessions" } }], limit: 20,
-    }, acc),
+    }, acc).catch(() => {
+      console.warn("ga_pages_failed");
+      return null;
+    }),
   ]);
   // A row is counted only in the range GA4 labelled it with; an unlabelled row counts in neither. A report whose rows
   // carry no label we know is logged once per read, the code alone, and leaves null figures, never 0.
   const rows = gaRows(byChannel);
-  const pageRows = gaRows(byPage);
+  const pageRows = byPage == null ? [] : gaRows(byPage);
   if ([rows, pageRows].some((rs) => rs.length > 0 && rs.every((x) => x.range == null))) console.warn("ga_no_range_column");
   const cur = rows.filter((x) => x.range === CUR);
   const prev = gaTotals(rows.filter((x) => x.range === PREV));
