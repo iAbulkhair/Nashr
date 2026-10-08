@@ -34,8 +34,11 @@ type Conn = { provider: string; meta?: Record<string, string> };
 /** Providers whose figures are read only through Composio (site-stats.ts, social-stats.ts). */
 export const READ_VIA_COMPOSIO = ["google", "meta", "linkedin", "youtube", "tiktok"];
 
-/** A YouTube channel id as the connect stores it (social-read/youtube.ts `holdsYt`), kept here so this file stays client-safe. */
-const YT_CHANNEL = /^UC[\w-]{10,}$/;
+/**
+ * A YouTube channel id as the connect stores it (social-read/youtube.ts `CHANNEL_ID`, UC and 10 to 40 more characters),
+ * kept here so this file stays client-safe.
+ */
+const YT_CHANNEL = /^UC[\w-]{10,40}$/;
 
 /**
  * The connected providers that can be read, for reportSources. A Google, Meta, LinkedIn, YouTube or TikTok record counts

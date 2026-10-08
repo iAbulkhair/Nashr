@@ -11,7 +11,7 @@ import * as publish from "@/lib/connectors/publish";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import * as fresh from "@/lib/connectors/fresh";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
-import { EMPTY_TOTALS, PLATFORMS, READERS, SOCIAL_DEADLINE_MS, SOCIAL_KEY, SOCIAL_PUB_KEY, beforeDeadline, getSocialSnapshot, holdsSocial, rangeBefore, socialDataBlock, splitDays, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart, type SocialSnapshot } from "@/lib/social-stats";
+import { EMPTY_TOTALS, PLATFORMS, READERS, SOCIAL_DEADLINE_MS, SOCIAL_KEY, SOCIAL_PUB_KEY, beforeDeadline, getSocialSnapshot, holdsSocial, rangeBefore, socialDataBlock, socialForPage, splitDays, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart, type SocialSnapshot } from "@/lib/social-stats";
 import { connectedSources, reportSources, socialRead } from "@/lib/report-sources";
 import SocialStats from "@/components/app/SocialStats";
 import { syncSiteIfDue } from "@/lib/site-stats";
@@ -46,7 +46,7 @@ beforeEach(() => {
 afterEach(() => { setComposioClientForTests(null); vi.unstubAllEnvs(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 const via = (provider: string, data: Record<string, string>, meta: Record<string, string> = {}): Connection => ({ provider, data, meta: { via: "composio", ...meta }, connectedAt: NOW.toISOString() });
-const igConn = () => via("meta", { instagram: "ca_ig" }, { igId: "1784" });
+const igConn = (igId = "1784") => via("meta", { instagram: "ca_ig" }, { igId });
 const liConn = () => via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:42" });
 const google = () => via("google", { google_analytics: "ca_ga", google_search_console: "ca_gsc" }, { gaProperty: "properties/987", gscSite: "sc-domain:roastery.example" });
 
@@ -222,6 +222,32 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     await expect(syncSocialIfDue(owner.email, NOW, true)).rejects.toThrow("reconnect_required");
     expect(await getSocialSnapshot(owner.email)).toMatchObject({ parts: { instagram: { followers: 1200 } } });
   });
+
+  it("a read whose other parts were only known states is no read: a refused token stays 502 reconnect_required (735)", async () => {
+    const owner = await newUser("socknownonly");
+    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, liConn())]);
+    await signIn(owner.email);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // Instagram answers that the account is not professional (a known state, no figure read); LinkedIn's token is refused.
+    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "(#100) Unsupported get request." };
+    answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "token expired" };
+    answers.LINKEDIN_GET_NETWORK_SIZE = { successful: false, error: "token expired" };
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = { successful: false, error: "token expired" };
+    const r = await post("meta", { action: "sync_social" });
+    expect(r.status).toBe(502);
+    expect(await r.json()).toEqual({ ok: false, error: "reconnect_required" });
+    expect((await getConnection(owner.email, "linkedin"))?.needsReconnect).toBe(NOW.toISOString());
+    // The known state is still written, beside no part: the card says it, and nothing claims a read.
+    expect(await getSocialSnapshot(owner.email)).toMatchObject({ v: 2, parts: {}, errors: { instagram: "ig_not_professional", linkedin: "read_failed" } });
+    await expect(syncSocialIfDue(owner.email, NOW, true)).resolves.toBe(true);
+
+    // One part actually read beside the refused one is a read: 200 with the part to reconnect.
+    await saveConnection(owner.email, liConn());
+    igAnswers();
+    const read = await post("meta", { action: "sync_social" });
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({ ok: true, read: true, reconnect: "linkedin" });
+  });
 });
 
 describe("Dana's routine counts the owner's click, never the cron's read (rule 736)", () => {
@@ -343,16 +369,79 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
       return s?.v === 2 ? s.history.map((r) => `${r.month} ${r.platform}`).sort() : [];
     };
     await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
-    // November: another Instagram account was connected; the company page is the same.
+    // November: another Instagram account was connected (another igId); the company page is the same.
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1785", username: "rose", followers_count: 40 } });
-    await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    await syncSocial(owner.email, { meta: igConn("1785"), linkedin: liConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
     expect(await months(), "October's Instagram row was another account's").toEqual(["2026-10 linkedin", "2026-11 instagram", "2026-11 linkedin"]);
     // December: the owner chose another company page, and Instagram answered without its username.
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1785", followers_count: 41 } });
     const page43 = via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:43" });
-    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: page43 }, new Date(Date.UTC(2026, 11, 1, 0, 30)));
+    const s = await syncSocial(owner.email, { meta: igConn("1785"), linkedin: page43 }, new Date(Date.UTC(2026, 11, 1, 0, 30)));
     expect(s.parts.linkedin?.account).toBe("Page 43");
     expect(await months()).toEqual(["2026-11 instagram", "2026-12 instagram", "2026-12 linkedin"]);
+  });
+
+  it("the stored account id decides a change of account; a part stored without one follows the name (746, 679)", async () => {
+    const owner = await newUser("sochistid");
+    igAnswers();
+    liAnswers();
+    const months = async () => {
+      const s = await getSocialSnapshot(owner.email);
+      return s?.v === 2 ? s.history.filter((r) => r.platform === "instagram").map((r) => r.month) : [];
+    };
+    const first = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    // Taken only from the stored connection, never from the platform's answer.
+    expect(first.parts.instagram?.accountId).toBe("1784");
+    expect(first.parts.linkedin?.accountId).toBe("urn:li:organization:42");
+    // November: the same account (igId 1784) under a new username keeps its rows.
+    answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud_ksa", followers_count: 1300 } });
+    await syncSocial(owner.email, { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    expect(await months(), "renamed, not another account").toEqual(["2026-10", "2026-11"]);
+    // December: another account (igId 1785) under the same username drops them.
+    await syncSocial(owner.email, { meta: igConn("1785") }, new Date(Date.UTC(2026, 11, 1, 0, 30)));
+    expect(await months(), "another account, the same name").toEqual(["2026-12"]);
+
+    // A part stored before the id (the expand step, rule 679): the names decide, as before. The same name keeps the rows...
+    const october = upsertHistory([], [part("instagram", { account: "oud" })], NOW);
+    await db.set(SOCIAL_KEY(owner.email), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram", { account: "oud" }) }, errors: {}, history: october });
+    igAnswers();
+    await syncSocial(owner.email, { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    expect(await months()).toEqual(["2026-10", "2026-11"]);
+    // ...and another name drops them.
+    await db.set(SOCIAL_KEY(owner.email), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram", { account: "oud" }) }, errors: {}, history: october });
+    answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "rose", followers_count: 40 } });
+    await syncSocial(owner.email, { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    expect(await months()).toEqual(["2026-11"]);
+  });
+
+  it("the account id is never sent to the model or the page (746)", async () => {
+    const owner = await newUser("sochistidout");
+    igAnswers();
+    liAnswers();
+    await syncSocial(owner.email, { meta: igConn("17841400000000001"), linkedin: liConn() }, NOW);
+    const stored = await getSocialSnapshot(owner.email);
+    expect(JSON.stringify(stored)).toContain("17841400000000001");
+    const block = await socialDataBlock(owner.email, NOW);
+    expect(block).not.toMatch(/accountId|17841400000000001|urn:li:organization/);
+    const page = socialForPage(stored);
+    expect(JSON.stringify(page)).not.toMatch(/accountId|17841400000000001|urn:li:organization/);
+    // Everything else the page shows stays as stored.
+    expect(page).toMatchObject({ v: 2, parts: { instagram: { account: "oud", followers: 1200 }, linkedin: { followers: 812 } } });
+    expect(socialForPage(null)).toBeNull();
+    expect(socialForPage({ at: NOW.toISOString() })).toEqual({ at: NOW.toISOString() });
+  });
+
+  it("an Instagram username is stored as one clean line of at most 80 characters (737)", async () => {
+    const owner = await newUser("socigname");
+    igAnswers();
+    // 100 characters with markup.
+    answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "<b>oud</b>" + "x".repeat(90), followers_count: 1200 } });
+    await syncSocial(owner.email, { meta: igConn() }, NOW);
+    const s = await getSocialSnapshot(owner.email);
+    const account = s?.v === 2 ? s.parts.instagram!.account : "";
+    expect(account.length).toBeGreaterThan(0);
+    expect(account.length).toBeLessThanOrEqual(80);
+    expect(account).not.toContain("<");
   });
 
   it("the card lists one block per part in the order of PLATFORMS (670)", () => {
@@ -458,6 +547,25 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
     await expect(syncSocial(owner.email, { meta: igConn() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
   });
 
+  it("an earlier period in which every figure read is 0 gives no prev (733)", async () => {
+    const owner = await newUser("socprevzero");
+    igAnswers();
+    // Instagram: the window's figures, and 0 views and 0 reach for the 28 days before (no account activity yet).
+    answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights(igTotals(0, 0));
+    // LinkedIn: the window's last day, and 28 earlier days answered with every statistic at 0.
+    answers.LINKEDIN_GET_SHARE_STATS = (a) => ok({ elements: [liDay(liEnd(a), 1, 900, 9), ...Array.from({ length: 28 }, (_, i) => liDay(liEnd(a), 29 + i, 0))] });
+    answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = ok({ elements: [] });
+    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    expect(s.parts.instagram).toMatchObject({ totals: { reach: 5400, views: 9100 } });
+    expect(s.parts.linkedin).toMatchObject({ totals: { views: 900, clicks: 9 } });
+    expect(s.parts.instagram, "Instagram").not.toHaveProperty("prev");
+    expect(s.parts.linkedin, "LinkedIn").not.toHaveProperty("prev");
+    // One figure above 0 in the earlier period is a prev, its zeros kept as read.
+    answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights(igTotals(0, 3));
+    expect((await syncSocial(owner.email, { meta: igConn() }, NOW)).parts.instagram?.prev?.totals).toMatchObject({ reach: 0, views: 3 });
+  });
+
   it("LinkedIn asks 56 whole days once and splits them by day (733)", async () => {
     const owner = await newUser("socprevli");
     const end = Date.UTC(2026, 9, 8);
@@ -505,6 +613,17 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
     expect(SOCIAL_DEADLINE_MS).toBe(30_000);
     expect(() => beforeDeadline(Date.now() + 1)).not.toThrow();
     expect(() => beforeDeadline(Date.now())).toThrow("deadline");
+  });
+
+  it("a reader started past the deadline rejects with deadline and asks Composio nothing (741)", async () => {
+    const owner = await newUser("socpastdeadline");
+    // Answers that would make known states if they were asked: the deadline is not one of them.
+    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "(#100) Unsupported get request." };
+    answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "403 Forbidden" };
+    const started = Date.now() - SOCIAL_DEADLINE_MS - 1;
+    await expect(READERS.instagram.read(owner.email, igConn(), NOW, started + SOCIAL_DEADLINE_MS)).rejects.toThrow(/^deadline$/);
+    await expect(READERS.linkedin.read(owner.email, liConn(), NOW, started + SOCIAL_DEADLINE_MS)).rejects.toThrow(/^deadline$/);
+    expect(calls).toEqual([]);
   });
 
   it("every reader stops asking at 30 s; one slow platform never loses another (741)", async () => {
@@ -604,6 +723,20 @@ describe("LinkedIn page views (rule 748)", () => {
     // A token LinkedIn refused is not a missing scope: thrown with its provider, after nothing else was hidden.
     answers.LINKEDIN_GET_ORG_PAGE_STATS = { successful: false, error: "The token used in the request has expired" };
     await expect(syncSocial(owner.email, { linkedin: liConn() }, NOW)).rejects.toMatchObject({ provider: "linkedin", message: expect.stringMatching(/ 401:/) });
+  });
+
+  it("page views asked past the deadline are null; the rest of the part stands with no error (741, 748)", async () => {
+    const owner = await newUser("socliviewslate");
+    liAnswers();
+    // The deadline passes at the read's third check, the page statistics': the share statistics and followers were asked.
+    const clock = Date.now.bind(Date);
+    let checks = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => ((new Error().stack ?? "").includes("beforeDeadline") && ++checks === 3 ? Number.MAX_SAFE_INTEGER : clock()));
+    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    expect(checks).toBeGreaterThanOrEqual(3);
+    expect(calls.map((c) => c.slug).sort()).toEqual(["LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_SHARE_STATS"]);
+    expect(s.parts.linkedin).toMatchObject({ followers: 812, totals: { views: 900, clicks: 9, engagements: 14, pageViews: null } });
+    expect(s.errors).toEqual({});
   });
 
   it("Instagram and LinkedIn figures are strict counts: a negative, an exponent, N/A or {} is not read, never a number (737)", async () => {

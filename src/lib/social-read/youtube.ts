@@ -5,7 +5,7 @@ import { composioRead } from "../connectors/composio";
 import { accountOf, at, findKey, isComposio, listOf } from "../connectors/composio-shape";
 import type { Connection } from "../connectors/store";
 import type { Range, ReadPart, SocialPost, Totals } from "../social-stats";
-import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, beforeDeadline, count, dateOf, day, late, message, rangeBefore, refused, settle, splitDays } from "./common";
+import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, anyAboveZero, beforeDeadline, count, dateOf, day, late, message, rangeBefore, refused, settle, splitDays } from "./common";
 
 /**
  * The YouTube channel's results (rule 740, spec 2026-10-08-social-analytics-reports B2): the channel the owner connected
@@ -19,8 +19,11 @@ const DAYS = 28;
 const MAX_POSTS = 30;
 const YT_METRICS = "views,estimatedMinutesWatched,likes,comments,shares,subscribersGained,subscribersLost";
 const METRIC_NAMES = YT_METRICS.split(",");
-/** The connect-time check (via-composio.ts): a channel id is UC and at least ten more letters, digits, - or _. */
-const CHANNEL_ID = /^UC[\w-]{10,}$/;
+/**
+ * The channel id check, the same at connect (via-composio.ts) and in the report sources (report-sources.ts): UC and 10 to
+ * 40 more letters, digits, - or _ (YouTube's are 22 today; the bound keeps a stored id short).
+ */
+export const CHANNEL_ID = /^UC[\w-]{10,40}$/;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 /**
  * Google's refusal of the analytics for want of `yt-analytics.readonly` (insufficient scopes, 403, forbidden) or with the
@@ -111,8 +114,12 @@ export async function readYoutube(scope: string, c: Connection, now: Date, deadl
   if (!stats.ok && !report.ok && !list.ok) throw stats.error;
   const noAnalytics = !report.ok && !late(report.error) && NO_ANALYTICS.test(message(report.error));
 
-  // Subscribers only from the stored channel's row; a count the owner hides is not read.
-  const channel = stats.ok ? listOf(stats.value, "statistics").find((row) => row.id === channelId) : undefined;
+  // Subscribers only from the stored channel's row; a count the owner hides is not read. The login answers for its own
+  // channel (mine, channel==MINE): rows none of which is the stored channel mean the analytics and uploads are another
+  // channel's, so the read fails with a code (not a known state) and the last good part stands.
+  const channels = stats.ok ? listOf(stats.value, "statistics") : [];
+  const channel = channels.find((row) => row.id === channelId);
+  if (channels.length && !channel) throw new Error("yt_other_channel");
   const followers = channel && at(channel, "statistics.hiddenSubscriberCount") !== true ? count(at(channel, "statistics.subscriberCount")) : null;
 
   const rows = report.ok ? dayRows(report.value) : [];
@@ -157,12 +164,13 @@ export async function readYoutube(scope: string, c: Connection, now: Date, deadl
     });
   return {
     platform: "youtube",
-    account: clean(c.meta?.account ?? "", 80) || `Channel ${channelId}`,
+    account: clean(c.meta?.account ?? "", 80) || clean(`Channel ${channelId}`, 80),
     range: window,
     followers,
     totals: totalsOf(cur),
-    // Only days YouTube answered for the earlier 28: a channel with none (new, or quiet then) has no prev.
-    ...(Object.values(before).some((v) => v != null) ? { prev: { range: rangeBefore(window), totals: before } } : {}),
+    // Only days YouTube answered for the earlier 28 with a figure above 0: a channel with none, or only zeros (new, or
+    // quiet then), has no prev.
+    ...(anyAboveZero(before) ? { prev: { range: rangeBefore(window), totals: before } } : {}),
     posts,
     ...(noAnalytics ? { known: "yt_no_analytics" } : {}),
   };

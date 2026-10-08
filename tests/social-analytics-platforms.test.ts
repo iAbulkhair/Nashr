@@ -3,6 +3,8 @@ import { jar, json, newUser, settle, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { OAUTH_COOKIE, getConnection, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
+import { connectViaComposio } from "@/lib/connectors/via-composio";
+import { connectedSources } from "@/lib/report-sources";
 import { EMPTY_TOTALS, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, type Totals } from "@/lib/social-stats";
 import { fbUrl, holdsFb } from "@/lib/social-read/facebook";
 import { holdsYt, ytUrl } from "@/lib/social-read/youtube";
@@ -263,6 +265,44 @@ describe("Facebook Page results (rule 739)", () => {
     expect(warn.mock.calls.filter((c) => c[0] === "fb_no_day_rows")).toHaveLength(1);
   });
 
+  it("followers come only from a dated daily row (739)", async () => {
+    const u = await newUser("fbfollowday");
+    fbAnswers();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // A row with no stamp, and one whose stamp is not a date: no day, so neither is the Page's count on a day.
+    answers.FACEBOOK_GET_PAGE_INSIGHTS = insights(metric("page_media_view", [at("2026-10-07", 100)]), metric("page_follows", [{ value: 999 }, { value: 998, end_time: "yesterday" }]));
+    expect((await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!.followers).toBeNull();
+    // Beside a dated row, the dated one stands.
+    answers.FACEBOOK_GET_PAGE_INSIGHTS = insights(metric("page_follows", [at("2026-10-06", 510), { value: 999 }]));
+    expect((await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!.followers).toBe(510);
+  });
+
+  it("an earlier period in which every figure read is 0 gives no prev (733)", async () => {
+    const u = await newUser("fbprevzero");
+    fbAnswers();
+    answers.FACEBOOK_GET_PAGE_INSIGHTS = insights(
+      metric("page_media_view", [at("2026-10-07", 100), at("2026-09-01", 0), at("2026-08-20", 0)]),
+      metric("page_daily_follows_unique", [at("2026-10-07", 4), at("2026-09-02", 0)]),
+    );
+    const fb = (await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!;
+    expect(fb.totals).toMatchObject({ views: 100, followsGained: 4 });
+    expect(fb).not.toHaveProperty("prev");
+  });
+
+  it("Graph's permission codes (#10) and (#200) on the insights read are fb_no_insights too (739)", async () => {
+    const u = await newUser("fbnoinscode");
+    fbAnswers();
+    for (const error of ["(#10) Application does not have permission for this action", "(#200) Requires pages_read_engagement permission to manage the object"]) {
+      answers.FACEBOOK_GET_PAGE_INSIGHTS = { successful: false, error };
+      const snap = await syncSocial(u.email, { meta: fbConn() }, NOW);
+      expect(snap.errors, error).toEqual({ facebook: "fb_no_insights" });
+      expect(snap.parts.facebook, error).toBeUndefined();
+    }
+    // Another code is not a permission: the posts stand and the figures are unread.
+    answers.FACEBOOK_GET_PAGE_INSIGHTS = { successful: false, error: "(#100) Invalid metric" };
+    expect((await syncSocial(u.email, { meta: fbConn() }, NOW)).errors).toEqual({});
+  });
+
   it("holds a Composio Meta record with the Facebook part and a chosen Page, and the account falls back to the Page id", async () => {
     expect(holdsFb(fbConn())).toBe(true);
     expect(holdsFb(via("meta", { facebook: "ca_fb" }))).toBe(false);
@@ -470,12 +510,64 @@ describe("YouTube channel results (rule 740)", () => {
   it("subscribers come only from the connected channel, and a hidden count is not read", async () => {
     const u = await newUser("ytsubs");
     ytAnswers();
-    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: "UCanotherchannel000000", statistics: { subscriberCount: "777" } }] } });
+    // A channel list with no row: no subscriber count, and the rest of the read stands.
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [] } });
     expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBeNull();
     answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: CH, statistics: { subscriberCount: "0", hiddenSubscriberCount: true } }] } });
     expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBeNull();
     answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: CH, statistics: { subscriberCount: "0", hiddenSubscriberCount: false } }] } });
     expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBe(0);
+  });
+
+  it("a login whose channel is not the stored one is a failed read, yt_other_channel, and the last read stands (740)", async () => {
+    const u = await newUser("ytother");
+    await saveConnection(u.email, ytConn());
+    ytAnswers();
+    await syncSocial(u.email, { youtube: ytConn() }, NOW);
+    const kept = await getSocialSnapshot(u.email);
+    // The login now answers for another channel (channel==MINE): its analytics and uploads are that channel's, not the stored one's.
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: "UCanotherchannel000000", statistics: { subscriberCount: "777" } }] } });
+    await expect(syncSocial(u.email, { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: "yt_other_channel" });
+    expect(await getSocialSnapshot(u.email), "the last good part stands").toEqual(kept);
+    // The daily run's line names the code; it is no known state and asks no reconnect.
+    await expect(syncSocialIfDue(u.email, NOW, true)).rejects.toThrow(/^yt_other_channel$/);
+    expect((await getConnection(u.email, "youtube"))?.needsReconnect).toBeFalsy();
+    // Beside another part, the channel is not read and its code is written.
+    ttAnswers();
+    const both = await syncSocial(u.email, { youtube: ytConn(), tiktok: ttConn() }, NOW);
+    expect(both.errors).toEqual({ youtube: "yt_other_channel" });
+    expect(both.parts.youtube).toBeUndefined();
+    expect(both.parts.tiktok).toBeDefined();
+  });
+
+  it("an earlier period in which every figure read is 0 gives no prev (733)", async () => {
+    const u = await newUser("ytprevzero");
+    ytAnswers(undefined, [["2026-10-07", 100, 250, 10, 2, 1, 5, 1], ["2026-09-09", 0, 0, 0, 0, 0, 0, 0], ["2026-08-20", 0, 0, 0, 0, 0, 0, 0]]);
+    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    expect(yt.totals).toMatchObject({ views: 100, watchMinutes: 250 });
+    expect(yt).not.toHaveProperty("prev");
+  });
+
+  it("a channel id is UC and 10 to 40 more characters, at connect, in the reader and in the report sources (740)", async () => {
+    const long = "UC" + "a".repeat(41);
+    const longest = "UC" + "a".repeat(40);
+    expect(holdsYt(ytConn({ channelId: long }))).toBe(false);
+    expect(holdsYt(ytConn({ channelId: longest }))).toBe(true);
+    expect(connectedSources([{ provider: "youtube", meta: { via: "composio", channelId: long } }])).toEqual([]);
+    expect(connectedSources([{ provider: "youtube", meta: { via: "composio", channelId: longest } }])).toEqual(["youtube"]);
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ kind: "youtube#channel", id: long, snippet: { title: "Ward TV" } }] } });
+    await expect(connectViaComposio("s740", "youtube", "youtube", "ca_yt", null)).rejects.toThrow("no_youtube_channel");
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ kind: "youtube#channel", id: longest, snippet: { title: "Ward TV" } }] } });
+    expect((await connectViaComposio("s740", "youtube", "youtube", "ca_yt", null)).meta?.channelId).toBe(longest);
+    // The fallback name is one clean line of at most 80 characters.
+    const u = await newUser("ytlongname");
+    ytAnswers();
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: longest, statistics: { subscriberCount: "5" } }] } });
+    const conn = ytConn({ channelId: longest });
+    delete conn.meta!.account;
+    const account = (await syncSocial(u.email, { youtube: conn }, NOW)).parts.youtube!.account;
+    expect(account).toBe(`Channel ${longest}`);
+    expect(account.length).toBeLessThanOrEqual(80);
   });
 
   it("no video details are asked past the shared deadline (741)", async () => {
@@ -717,6 +809,47 @@ describe("TikTok account results (rule 742)", () => {
     expect((await getConnection(u.email, "tiktok"))?.needsReconnect).toBeFalsy();
   });
 
+  it("a scope refusal the client throws keeps its words through the adapter: tt_no_scope, no reconnect (742)", async () => {
+    const u = await newUser("ttscopethrown");
+    await saveConnection(u.email, ttConn());
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    ttAnswers();
+    answers.TIKTOK_GET_USER_STATS = () => { throw new Error("Unauthorized: scope_not_authorized: The user did not authorize the scope required for completing this request."); };
+    expect(await syncSocialIfDue(u.email, NOW, true)).toBe(true);
+    const s = await getSocialSnapshot(u.email);
+    expect(s?.v === 2 && s.errors).toEqual({ tiktok: "tt_no_scope" });
+    expect(s?.v === 2 && s.parts.tiktok).toMatchObject({ followers: null, posts: [{ id: ttId(1) }] });
+    expect((await getConnection(u.email, "tiktok"))?.needsReconnect).toBeFalsy();
+    // Any other thrown text keeps only the adapter's own word: a refused token still asks for a reconnect.
+    answers.TIKTOK_GET_USER_STATS = () => { throw new Error("Unauthorized: token revoked for open_id 123"); };
+    answers.TIKTOK_LIST_VIDEOS = () => { throw new Error("Unauthorized: token revoked for open_id 123"); };
+    await expect(syncSocialIfDue(u.email, NOW, true)).rejects.toThrow("reconnect_required");
+    expect((await getConnection(u.email, "tiktok"))?.needsReconnect).toBeTruthy();
+  });
+
+  it("tt_no_scope only when every failed call was a scope refusal; another failure beside one is a failed read (742)", async () => {
+    const u = await newUser("ttscopemixed");
+    ttAnswers();
+    await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    const kept = await getSocialSnapshot(u.email);
+    const scope = { successful: false, error: "scope_not_authorized" };
+    const broken = { successful: false, error: "internal_error" };
+    // Stats refused for a scope, videos failing otherwise: not a scope state, so the last read stands.
+    answers.TIKTOK_GET_USER_STATS = scope;
+    answers.TIKTOK_LIST_VIDEOS = broken;
+    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502: list_videos internal_error/) });
+    expect(await getSocialSnapshot(u.email)).toEqual(kept);
+    // The other way round.
+    answers.TIKTOK_GET_USER_STATS = broken;
+    answers.TIKTOK_LIST_VIDEOS = scope;
+    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502: get_user_stats internal_error/) });
+    expect(await getSocialSnapshot(u.email)).toEqual(kept);
+    // Both refused for a scope: the known state, written.
+    answers.TIKTOK_GET_USER_STATS = scope;
+    answers.TIKTOK_LIST_VIDEOS = scope;
+    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).errors).toEqual({ tiktok: "tt_no_scope" });
+  });
+
   it("no second page is asked past the shared deadline (741)", async () => {
     const u = await newUser("ttdeadline");
     const full = Array.from({ length: 20 }, (_, i) => ttVideo(i + 1, back(1)));
@@ -796,7 +929,8 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     // The Facebook Page: a 403 that is not about read_insights, on both sides, is a failed read and no reconnect either.
     const fb = await newUser("fbforbid");
     await saveConnection(fb.email, fbConn());
-    const forbidden = { successful: false, error: "(#200) Forbidden 403: permission error" };
+    // Not one of Graph's permission codes (#10, #200), which are fb_no_insights.
+    const forbidden = { successful: false, error: "(#368) Forbidden 403: the action attempted is not allowed" };
     answers.FACEBOOK_GET_PAGE_INSIGHTS = forbidden;
     answers.FACEBOOK_GET_PAGE_POSTS = forbidden;
     await signIn(fb.email);
@@ -860,6 +994,22 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     s = await getSocialSnapshot(u.email);
     expect(s?.v === 2 && s.parts.tiktok?.followers).toBe(1000);
     expect(s?.v === 2 && Object.keys(s.parts).sort()).toEqual(["facebook", "tiktok", "youtube"]);
+  });
+
+  it("each part keeps its account id from the stored connection only; TikTok, which stores none, has none (746)", async () => {
+    const u = await newUser("accountids");
+    fbAnswers();
+    ytAnswers();
+    ttAnswers();
+    const s = await syncSocial(u.email, { meta: fbConn(), youtube: ytConn(), tiktok: ttConn() }, NOW);
+    expect(s.parts.facebook?.accountId).toBe("123");
+    expect(s.parts.youtube?.accountId).toBe(CH);
+    expect(s.parts.tiktok).not.toHaveProperty("accountId");
+    // Another Page id drops the Page's history even under the same name; the channel renamed keeps its rows.
+    const dec = new Date(Date.UTC(2026, 11, 1, 0, 30));
+    const next = await syncSocial(u.email, { meta: fbConn({ pageId: "456" }), youtube: ytConn({ account: "Ward TV 2" }), tiktok: ttConn() }, dec);
+    expect(next.history.filter((r) => r.platform === "facebook").map((r) => r.month)).toEqual(["2026-12"]);
+    expect(next.history.filter((r) => r.platform === "youtube").map((r) => r.month)).toEqual(["2026-10", "2026-12"]);
   });
 
   it("choosing another Facebook Page reads it at once while the workspace's six social reads an hour last (739)", async () => {

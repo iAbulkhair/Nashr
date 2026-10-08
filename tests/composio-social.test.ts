@@ -512,9 +512,10 @@ describe("LinkedIn page results (rule 664)", () => {
     const u = await newUser("sli662");
     liAnswers();
     const snap = await syncSocial(u.email, { linkedin: liConn() }, NOW);
-    // The 28 whole days before today (amended by rule 733): no day of the 28 before them was answered, so no prev.
+    // The 28 whole days before today (amended by rule 733): no day of the 28 before them was answered, so no prev. The
+    // page's id comes from the stored connection (rule 746).
     expect(snap.parts.linkedin).toEqual({
-      platform: "linkedin", account: "عود الشرق", followers: 812, range: { from: "2026-09-10", to: "2026-10-07" },
+      platform: "linkedin", account: "عود الشرق", accountId: "urn:li:organization:42", followers: 812, range: { from: "2026-09-10", to: "2026-10-07" },
       totals: { ...EMPTY_TOTALS, views: 150, clicks: 5, likes: 4, comments: 1, shares: 1, engagements: 11 }, posts: [],
     });
     // One call for 56 whole UTC days ending at today's midnight: the window and the 28 days before it (rule 733).

@@ -6,6 +6,7 @@ import { accountOf as account, isComposio, listOf, pick } from "./composio-shape
 import { accountMeta } from "./ads";
 import { adAccountsVia } from "./ads-via-composio";
 import { clean } from "../perf-import";
+import { CHANNEL_ID } from "../social-read/youtube";
 
 export { isComposio, pick };
 
@@ -278,7 +279,7 @@ export async function connectViaComposio(scope: string, provider: string, toolki
   }
   if (toolkit === "youtube") {
     const ch = listOf(await composioRead(scope, "youtube", "YOUTUBE_LIST_CHANNELS", { part: "snippet", mine: true, maxResults: 5 }, accountId), "snippet")
-      .find((x) => typeof x.id === "string" && /^UC[\w-]{10,}$/.test(x.id));
+      .find((x) => typeof x.id === "string" && CHANNEL_ID.test(x.id));
     if (!ch) throw new Error("no_youtube_channel");
     meta.channelId = String(ch.id);
     const snip = ch.snippet as Record<string, unknown> | undefined;

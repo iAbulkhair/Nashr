@@ -109,6 +109,9 @@ function shaped(toolkit: Toolkit, slug: string, status: number, text: string): E
   return new Error(provider === "meta" ? `meta ${short} ${status}: ${detail}` : `${provider} ${status}: ${short} ${detail}`);
 }
 
+/** A platform's refusal for want of a scope, as TikTok words it, in a text the client threw. */
+const SCOPE_REFUSED = /scope_not_authorized|scope_permission_missed/i;
+
 /** The adapter's own reading of a failure; a number inside the platform's text never becomes the status. */
 export function statusOf(text: string): number {
   if (/expired|revoked|invalid_grant|unauthori[sz]ed|reconnect|inactive account/i.test(text)) return 401;
@@ -141,9 +144,12 @@ async function run(kind: "read" | "write", scope: string, toolkit: Toolkit, slug
   } catch (e) {
     // A timeout keeps its name so publish-once reads it as "may have posted"; anything else is a failure of this tool.
     if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) throw e;
-    const status = statusOf(e instanceof Error ? e.message : "");
+    const text = e instanceof Error ? e.message : "";
+    const status = statusOf(text);
     console.error("composio call failed", slug, status);
-    throw shaped(toolkit, slug, status, "call_failed");
+    // Only the adapter's own word, never the thrown text, which can carry ids; a scope refusal keeps its name, so a
+    // reader can tell it from a refused token (TikTok's tt_no_scope, rule 742).
+    throw shaped(toolkit, slug, status, SCOPE_REFUSED.test(text) ? "scope_not_authorized" : "call_failed");
   }
   if (r.successful) return r.data;
   const status = statusOf(r.error ?? "");

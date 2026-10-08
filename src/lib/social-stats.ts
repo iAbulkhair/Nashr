@@ -8,7 +8,7 @@ import { composioRead } from "./connectors/composio";
 import { accountOf, at, isComposio, listOf, num, pick } from "./connectors/composio-shape";
 import { ReconnectRequired, getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
-import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, busy, count, dateOf, day, late, rangeBefore, refused, splitDays } from "./social-read/common";
+import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, anyAboveZero, beforeDeadline, busy, count, dateOf, day, late, rangeBefore, refused, splitDays } from "./social-read/common";
 import { holdsFb, readFacebook } from "./social-read/facebook";
 import { holdsTt, readTiktok } from "./social-read/tiktok";
 import { holdsYt, readYoutube } from "./social-read/youtube";
@@ -53,6 +53,13 @@ export type PlatformPart = {
   platform: Platform | "x";
   /** clean(), 80 */
   account: string;
+  /**
+   * The account's id, taken only from the stored connection (Instagram's igId, the Facebook Page's pageId, LinkedIn's
+   * liOrg, YouTube's channelId; TikTok stores none), so a renamed account keeps its history (rule 746). Never displayed:
+   * never in Dana's block, and `socialForPage` drops it before the page. Absent on a part written before it (the expand
+   * step, rule 679), where the account names decide.
+   */
+  accountId?: string;
   range: Range;
   followers: N;
   totals: Totals;
@@ -81,7 +88,8 @@ export type StoredSocial = SocialSnapshot | LegacySocial;
 
 /**
  * A failed part keeps its provider, so the daily sync asks the right record to reconnect (refusedToken). `saved` is set
- * when the snapshot was written before the error was thrown: the other part was read. `refusedBy` lists, on the refused
+ * when the snapshot was written before the error was thrown with at least one part actually read: a snapshot that holds
+ * only known states (no figure read) is not a read, and the refused token stays a reconnect. `refusedBy` lists, on the refused
  * token `syncSocial` throws, the provider of every part whose token was refused in that read (Instagram and YouTube
  * refused together), so each of those records is asked to reconnect, not only the first.
  */
@@ -116,8 +124,8 @@ const errCode = (e: unknown) => (e instanceof Error && /^[a-z_]+$/.test(e.messag
 /**
  * States the owner fixes on the platform, not by reconnecting: written to the snapshot and never thrown. `fb_no_insights`:
  * the Facebook Page's insights need the `read_insights` permission the connected app does not hold (rule 739).
- * `yt_no_analytics`: the channel's analytics were refused (no `yt-analytics.readonly`); it stands beside the YouTube part,
- * which keeps the public counts (rule 740). `tt_no_scope`: TikTok refused a read for want of a scope on Thakeen's TikTok
+ * `yt_no_analytics`: the channel's analytics were refused (no `yt-analytics.readonly`); it always stands beside the
+ * YouTube part, which keeps the public counts, so the no-part branch of `syncSocial` is never reached for YouTube (rule 740). `tt_no_scope`: TikTok refused a read for want of a scope on Thakeen's TikTok
  * app or on the login; beside the TikTok part when the other read answered, alone when neither did, and never a refused
  * token, so the TikTok record, which also publishes, is not asked to reconnect (rule 742).
  */
@@ -236,15 +244,17 @@ async function readIg(scope: string, c: Connection, now: Date, stop: number): Pr
   });
   const prevViews = before.views ?? null;
   const prevReach = before.reach ?? null;
+  const earlier = { views: prevViews, reach: prevReach };
   return {
     platform: "instagram",
     account: clean(pick(info, ["username"]) ?? "", 80),
     range: { from: day(new Date(since * 1000)), to: day(now) },
     followers: count(pick(info, ["followers_count"])),
     totals: { ...EMPTY_TOTALS, views: totals.views ?? null, reach: totals.reach ?? null },
-    // Only a range Instagram answered with a figure: none read (a failed read, an account with no earlier days) is no prev.
-    ...(prevViews != null || prevReach != null
-      ? { prev: { range: { from: day(new Date(prevSince * 1000)), to: day(new Date(since * 1000)) }, totals: { ...EMPTY_TOTALS, views: prevViews, reach: prevReach } } }
+    // Only a range Instagram answered with a figure above 0: none read (a failed read, an account with no earlier days) or
+    // only zeros is no prev.
+    ...(anyAboveZero(earlier)
+      ? { prev: { range: { from: day(new Date(prevSince * 1000)), to: day(new Date(since * 1000)) }, totals: { ...EMPTY_TOTALS, ...earlier } } }
       : {}),
     posts,
   };
@@ -315,8 +325,9 @@ async function readLi(scope: string, c: Connection, now: Date, deadline: number)
     range: window,
     followers: size == null ? null : count(pick(size, ["firstDegreeSize"])),
     totals,
-    // Only days LinkedIn answered for the earlier 28: a page with none (new, or quiet then) has no prev.
-    ...(Object.values(before).some((v) => v != null) ? { prev: { range: rangeBefore(window), totals: before } } : {}),
+    // Only days LinkedIn answered for the earlier 28 with a figure above 0: a page with none, or with every figure at 0
+    // (new, or quiet then), has no prev.
+    ...(anyAboveZero(before) ? { prev: { range: rangeBefore(window), totals: before } } : {}),
     posts: [],
   };
 }
@@ -326,11 +337,15 @@ async function readLi(scope: string, c: Connection, now: Date, deadline: number)
  * analytics, rule 740). `syncSocial` writes `known` to the snapshot's `errors`, never into the stored part.
  */
 export type ReadPart = PlatformPart & { known?: string };
-/** One platform's reader: the provider whose record holds it, whether a record does, and the read. */
+/**
+ * One platform's reader: the provider whose record holds it, whether a record does, the read, and the account's id in
+ * the stored connection (rule 746), or undefined where the record stores none.
+ */
 export type SocialReader = {
   provider: SocialProvider;
   holds(c: Connection | null | undefined): boolean;
   read(scope: string, c: Connection, now: Date, deadline: number): Promise<ReadPart>;
+  accountId(c: Connection): string | undefined;
 };
 /**
  * Every platform's reader. Instagram: a Composio Meta record with the Instagram part and its id. The Facebook Page (rule
@@ -340,12 +355,15 @@ export type SocialReader = {
  * with its account.
  */
 export const READERS: Record<Platform, SocialReader> = {
-  instagram: { provider: "meta", holds: (c) => !!(c && isComposio(c) && c.data.instagram && c.meta?.igId), read: readIg },
-  facebook: { provider: "meta", holds: holdsFb, read: readFacebook },
-  linkedin: { provider: "linkedin", holds: (c) => !!(c && isComposio(c) && c.meta?.liOrg), read: readLi },
-  youtube: { provider: "youtube", holds: holdsYt, read: readYoutube },
-  tiktok: { provider: "tiktok", holds: holdsTt, read: readTiktok },
+  instagram: { provider: "meta", holds: (c) => !!(c && isComposio(c) && c.data.instagram && c.meta?.igId), read: readIg, accountId: (c) => c.meta?.igId },
+  facebook: { provider: "meta", holds: holdsFb, read: readFacebook, accountId: (c) => c.meta?.pageId },
+  linkedin: { provider: "linkedin", holds: (c) => !!(c && isComposio(c) && c.meta?.liOrg), read: readLi, accountId: (c) => c.meta?.liOrg },
+  youtube: { provider: "youtube", holds: holdsYt, read: readYoutube, accountId: (c) => c.meta?.channelId },
+  // The TikTok connect stores no id of the login's own account (via-composio.ts sets only its label).
+  tiktok: { provider: "tiktok", holds: holdsTt, read: readTiktok, accountId: () => undefined },
 };
+/** A stored id kept as a part's accountId: short, and only letters, digits and `_:.-` (a LinkedIn URN has colons). */
+const ACCOUNT_ID = /^[\w:.-]{1,100}$/;
 
 /**
  * Whether this provider's record holds a part `syncSocial` reads: some platform reader of this provider holds it. So a
@@ -379,6 +397,23 @@ export async function getSocialSnapshot(scope: string) {
 }
 
 /**
+ * The snapshot as the Reports page hands it to the browser: every part without its `accountId`, which only `syncSocial`
+ * reads (rule 746). Anything else, a snapshot from before v2 included, is passed as it is.
+ */
+export function socialForPage(s: StoredSocial | null): StoredSocial | null {
+  if (!s || s.v !== 2) return s;
+  const parts: SocialSnapshot["parts"] = {};
+  for (const p of PLATFORMS) {
+    const part = s.parts?.[p];
+    if (!part) continue;
+    const copy = { ...part };
+    delete copy.accountId;
+    parts[p] = copy;
+  }
+  return { ...s, parts };
+}
+
+/**
  * Read every part the workspace holds, all at once, and keep what succeeded: one part per platform, with an error code
  * for each part that failed, and the history built on the stored snapshot's (read once, beside the reads). A refused
  * token is thrown after the rest is written, carrying every refused part's provider (`refusedBy`), so refusedToken asks
@@ -401,11 +436,13 @@ export async function syncSocial(scope: string, conns: Partial<Record<SocialProv
   const parts: SocialSnapshot["parts"] = {};
   const errors: SocialSnapshot["errors"] = {};
   const failed: SocialReadError[] = [];
-  held.forEach(({ p }, i) => {
+  held.forEach(({ p, c }, i) => {
     const r = results[i];
     if (r.status === "fulfilled") {
       const { known: state, ...part } = r.value;
-      parts[p] = part;
+      // The account's id only from the stored connection, never from the platform's answer (rule 746).
+      const id = READERS[p].accountId(c);
+      parts[p] = { ...part, ...(id && ACCOUNT_ID.test(id) ? { accountId: id } : {}) };
       if (state) errors[p] = state;
     } else { errors[p] = errCode(r.reason); failed.push(new SocialReadError(READERS[p].provider, r.reason)); }
   });
@@ -417,14 +454,23 @@ export async function syncSocial(scope: string, conns: Partial<Record<SocialProv
   if (!Object.keys(parts).length && !known) throw token ?? failed[0];
   const stored = last?.v === 2 ? last : null;
   // A part read from another account than the stored part's (another company page, another Instagram account) starts its
-  // platform's history again, so no change is ever worked out across two accounts (rule 746). Only when both names were
-  // read: a name not read keeps the rows. A platform whose stored part is missing (its last read failed) cannot be compared.
-  const moved = new Set<string>(PLATFORMS.filter((p) => parts[p]?.account && stored?.parts?.[p]?.account && parts[p]!.account !== stored.parts[p]!.account));
+  // platform's history again, so no change is ever worked out across two accounts (rule 746). When both parts carry the
+  // account's id, the ids decide, so a renamed account keeps its rows; when either has none (a part written before the id,
+  // the expand step of rule 679, or TikTok), the names decide, and only when both were read: a name not read keeps the
+  // rows. A platform whose stored part is missing (its last read failed) cannot be compared.
+  const moved = new Set<string>(PLATFORMS.filter((p) => {
+    const got = parts[p];
+    const was = stored?.parts?.[p];
+    if (!got || !was) return false;
+    if (got.accountId && was.accountId) return got.accountId !== was.accountId;
+    return !!got.account && !!was.account && got.account !== was.account;
+  }));
   const before = stored && Array.isArray(stored.history) ? stored.history.filter((r) => !moved.has(r.platform)) : [];
   const snap: SocialSnapshot = { v: 2, at: now.toISOString(), parts, errors, history: upsertHistory(before, Object.values(parts), now) };
   await db.set(SOCIAL_KEY(scope), snap);
   if (token) {
-    token.saved = true;
+    // A read only when some part was read: a token refused beside known states alone (no figure) stays a reconnect.
+    token.saved = Object.keys(parts).length > 0;
     throw token;
   }
   return snap;

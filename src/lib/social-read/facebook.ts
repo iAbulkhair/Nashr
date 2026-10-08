@@ -6,7 +6,7 @@ import { composioRead } from "../connectors/composio";
 import { accountOf, at, isComposio, listOf } from "../connectors/composio-shape";
 import type { Connection } from "../connectors/store";
 import type { PlatformPart, Range, SocialPost, Totals } from "../social-stats";
-import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, count, dateOf, day, message, rangeBefore, refused, settle, splitDays } from "./common";
+import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, anyAboveZero, beforeDeadline, count, dateOf, day, message, rangeBefore, refused, settle, splitDays } from "./common";
 
 /**
  * The Facebook Page's results (rule 739, spec 2026-10-08-social-analytics-reports B1): the Page chosen for publishing
@@ -26,8 +26,12 @@ const NAMES = new Set(FB_METRICS.split(","));
 /** A page post's id: the page's and the post's numbers (`123_456`), as Graph and publishing return it. */
 const POST_ID = /^\d{1,30}(?:_\d{1,30})?$/;
 const TYPES: Record<string, string> = { added_photos: "IMAGE", added_video: "VIDEO", shared_story: "LINK" };
-/** Graph's refusal when the app does not hold the `read_insights` permission the Page's insights need. */
-const NO_INSIGHTS = /read_insights/i;
+/**
+ * Graph's refusal when the app does not hold the permission the Page's insights need: `read_insights` by name, or
+ * Graph's permission codes (#10) and (#200), which it sends for the same cause without naming the permission. Checked on
+ * the insights read only. (#100) and the rest are other failures.
+ */
+const NO_INSIGHTS = /read_insights|\(#10\)|\(#200\)/i;
 
 /** A Composio Meta record with the Facebook part and the Page chosen for publishing (digits only). */
 export function holdsFb(c: Connection | null | undefined): boolean {
@@ -111,8 +115,8 @@ export async function readFacebook(scope: string, c: Connection, now: Date, dead
   const { cur, prev } = splitDays(rows, window);
   // Rows Meta answered that fall in neither period (no stamp, another range) are not summed: said once, never guessed.
   if (rows.length && !cur.length && !prev.length) console.warn("fb_no_day_rows");
-  // Stable sort: of two values for one day, the later one stands.
-  const follows = rows.filter((r) => r.name === "page_follows" && r.value != null).sort((a, b) => a.day.localeCompare(b.day));
+  // Only a row dated with its day: an undated one is no count on any day. Stable sort: of two values for one day, the later one stands.
+  const follows = rows.filter((r) => r.name === "page_follows" && r.value != null && ISO_DAY.test(r.day)).sort((a, b) => a.day.localeCompare(b.day));
   const before = totalsOf(prev);
 
   // The feed also holds visitors' and tagged posts, and its own date filter reads the updated time: only the Page's own
@@ -140,8 +144,9 @@ export async function readFacebook(scope: string, c: Connection, now: Date, dead
     range: window,
     followers: follows.length ? follows[follows.length - 1].value : null,
     totals: totalsOf(cur),
-    // Only days Meta answered for the earlier 28: a Page with none (new, or insights not yet kept) has no prev.
-    ...(Object.values(before).some((v) => v != null) ? { prev: { range: rangeBefore(window), totals: before } } : {}),
+    // Only days Meta answered for the earlier 28 with a figure above 0: a Page with none (new, or insights not yet kept),
+    // or with only zeros, has no prev.
+    ...(anyAboveZero(before) ? { prev: { range: rangeBefore(window), totals: before } } : {}),
     posts: posts.map((row, i): SocialPost => ({
       id: String(row.id),
       date: dateOf(row.created_time),

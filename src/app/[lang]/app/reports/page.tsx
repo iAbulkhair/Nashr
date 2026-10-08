@@ -10,7 +10,7 @@ import { listConnections } from "@/lib/connectors/store";
 import { getSalesSnapshot, getSyncFailure } from "@/lib/store-sales";
 import { getPerf } from "@/lib/perf-store";
 import { getSiteSnapshot } from "@/lib/site-stats";
-import { getSocialSnapshot } from "@/lib/social-stats";
+import { getSocialSnapshot, socialForPage } from "@/lib/social-stats";
 import { connectedSources, liNeedsPage } from "@/lib/report-sources";
 import ReportsPanel from "@/components/app/ReportsPanel";
 import { can } from "@/lib/roles";
@@ -35,5 +35,5 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const connected = connectedSources(connections);
   const dana = agentById("dana").tasks;
   const items = tasks.filter((t) => dana.includes(t.type)).slice(0, 20).map((t) => ({ id: t.id, type: t.type, title: t.title, status: t.status, createdAt: t.createdAt }));
-  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} social={social} liNoPage={liNeedsPage(connections)} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
+  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} social={socialForPage(social)} liNoPage={liNeedsPage(connections)} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
 }

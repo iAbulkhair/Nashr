@@ -50,6 +50,12 @@ export function count(v: unknown): N {
   const x = typeof v === "number" ? v : typeof v === "string" && /^\s*\d+(?:\.\d+)?\s*$/.test(v) ? Number(v) : NaN;
   return Number.isFinite(x) && x >= 0 ? x : null;
 }
+/**
+ * Whether an earlier period's totals make a prev (rule 733): at least one figure read above 0. A period with no figure
+ * read, or one in which every figure read is 0 (days before the page or channel had any activity, which some platforms
+ * answer with zeros), gives no prev, so no "up from 0" is ever written.
+ */
+export const anyAboveZero = (t: Record<string, N>) => Object.values(t).some((v) => v != null && v > 0);
 /** A call's answer or its error, so one failed side of a read never rejects the others. */
 export const settle = <T>(p: Promise<T>) => p.then((value) => ({ ok: true as const, value }), (error: unknown) => ({ ok: false as const, error }));
 /** A platform's timestamp as its date (YYYY-MM-DD), or "" when it does not start with one. */
