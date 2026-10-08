@@ -523,7 +523,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         // 429: the account's daily setup allowance, checked before any charge.
         if (res.status === 429) return fail("daily");
         if (!res.ok || !res.body) return fail();
-        const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+        const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ""; let got = false;
         for (;;) {
           const { value, done: end } = await reader.read();
           if (end) break;
@@ -537,12 +537,14 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             else if (ev.type === "message") { setMsgs((p) => [...p, ev.message]); if (ev.message.plan?.length) setGoal((g) => ({ goal: g?.goal ?? "", first: ev.message.plan[0].title })); }
             // The balance after an added brand's setup charge: the page keeps this component (and its state) across the
             // refresh below, so the header's pill would otherwise show the balance from before the charge.
-            else if (ev.type === "done") { if (typeof ev.credits === "number") setCredits(ev.credits); setGoal((g) => ({ goal: ev.goal ?? "", first: g?.first })); setOnboarded(true); router.replace(`/${lang}/app/chat`); router.refresh(); }
+            else if (ev.type === "done") { got = true; if (typeof ev.credits === "number") setCredits(ev.credits); setGoal((g) => ({ goal: ev.goal ?? "", first: g?.first })); setOnboarded(true); router.replace(`/${lang}/app/chat`); router.refresh(); }
             // A paid setup that failed before the brand file was saved was refunded: say so, with the balance, and that a
             // retry pays again. One that failed after it was saved kept the brand: say that instead of "could not set up".
-            else if (ev.type === "error") { if (typeof ev.credits === "number") setCredits(ev.credits); fail(ev.refunded ? "refunded" : ev.saved ? "saved" : undefined, ev); }
+            else if (ev.type === "error") { got = true; if (typeof ev.credits === "number") setCredits(ev.credits); fail(ev.refunded ? "refunded" : ev.saved ? "saved" : undefined, ev); }
           }
         }
+        // Ended without `done` or `error` (the server process died mid-run): say so instead of showing nothing.
+        if (!got) throw new Error("ended");
       } catch { fail(); }
       finally { setBusy(false); setSteps([]); }
     })();
@@ -593,7 +595,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         if (why) unsend(why, j); else done(j);
         return;
       }
-      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ""; let got = false;
       for (;;) {
         const { value, done: end } = await reader.read();
         if (end) break;
@@ -604,10 +606,12 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           if (!line.startsWith("data:")) continue;
           const ev = JSON.parse(line.slice(5));
           if (ev.type === "status") setSteps((p) => [...p, ev.text]);
-          else if (ev.type === "message") done({ ok: true, ...ev });
-          else if (ev.type === "error") done({ ok: false, error: ev.error });
+          else if (ev.type === "message") { got = true; done({ ok: true, ...ev }); }
+          else if (ev.type === "error") { got = true; done({ ok: false, error: ev.error }); }
         }
       }
+      // A stream that ends cleanly without a message or an error (the server process died mid-turn) is a dropped stream.
+      if (!got) throw new Error("ended");
     } catch {
       // The server keeps working and saves the reply even when the connection drops: look for it before giving up.
       setSteps((p) => [...p, lang === "ar" ? "انقطع الاتصال، أسترجع الرد…" : "Connection dropped, recovering the reply…"]);
@@ -622,7 +626,8 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           if (last && last.role === "assistant" && new Date(last.at).getTime() >= sentAt) found = last;
         } catch { /* still offline, keep trying */ }
       }
-      if (found) done({ ok: true, message: found }); else done({ ok: false, error: "network" });
+      // No saved reply: the typed text goes back into the box, unless something new was typed.
+      if (found) done({ ok: true, message: found }); else { done({ ok: false, error: "network" }); setText((cur) => cur || m); }
     }
     finally { setBusy(false); setSteps([]); }
   }
