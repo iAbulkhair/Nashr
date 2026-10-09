@@ -128,7 +128,7 @@ strategy_md: 90-day plan in 3 phases with concrete weekly cadence per channel, t
     try {
       const msg = await client.messages
         .stream({
-          model: "claude-opus-5",
+          model: "claude-opus-5-5",
           max_tokens: PARTS[name].maxTokens,
           system: `${shared}${asks[name]}`,
           messages: [{ role: "user", content: user }],

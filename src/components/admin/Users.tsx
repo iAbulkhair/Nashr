@@ -51,6 +51,7 @@ export default function Users({ lang, keySession }: SectionProps) {
     if (action === "resetPassword") { window.prompt(`${email}: ${S.promptTemp}`, j.tempPassword); setMsg(`${email}: password reset`); }
     else if (action === "impersonate") { window.location.assign(j.redirect); return j; }
     else if (action === "delete") { setMsg(`${email} deleted`); setSel(null); }
+    else if (action === "resendVerification") setMsg(`${email}: ${S.codeSent}`);
     else if (action === "removeMember") { setMsg(`${email}: member login removed`); setMemberSel(null); return j; }
     else setMsg(`${email}: ${action} ✓`);
     await load();
@@ -330,7 +331,7 @@ export default function Users({ lang, keySession }: SectionProps) {
           <tbody>
             {shown.map((u) => (
               <tr key={u.email} className={`border-t border-ink/5 ${u.suspended ? "bg-agent-sami/20" : ""}`}>
-                <td className="p-3"><button onClick={() => open(u.email)} className="text-ink underline">{u.email}</button>{u.suspended && <span className="ms-2 rounded bg-danger px-1.5 text-xs font-semibold text-white">SUSPENDED</span>}</td>
+                <td className="p-3"><button onClick={() => open(u.email)} className="text-ink underline">{u.email}</button>{u.suspended && <span className="ms-2 rounded bg-danger px-1.5 text-xs font-semibold text-white">SUSPENDED</span>}{!u.emailVerifiedAt && <span className="ms-2 rounded border border-ink/30 px-1.5 text-xs text-muted" data-testid="unverified">{S.unverified}</span>}</td>
                 <td>{u.name}</td>
                 <td className="font-mono text-xs"><a href={`https://wa.me/${u.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="underline">{u.phone}</a></td>
                 <td>
@@ -368,7 +369,7 @@ export default function Users({ lang, keySession }: SectionProps) {
       {sel && (
         <div className="rounded-xl border border-ink/30 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold text-ink">{sel.user.email} <span className="text-sm font-normal text-muted">· {sel.user.name} · {sel.user.phone} · {sel.user.plan}{sel.user.plan === "agency" ? ` (${dealText(sel.user.deal)})` : ""} · {sel.user.credits} credits{sel.user.suspended ? " · SUSPENDED" : ""}</span></h2>
+            <h2 className="font-display text-lg font-bold text-ink">{sel.user.email} <span className="text-sm font-normal text-muted">· {sel.user.name} · {sel.user.phone} · {sel.user.plan}{sel.user.plan === "agency" ? ` (${dealText(sel.user.deal)})` : ""} · {sel.user.credits} credits{sel.user.suspended ? " · SUSPENDED" : ""} · {sel.user.emailVerifiedAt ? `${S.verifiedOn} ${sel.user.emailVerifiedAt.slice(0, 10)}` : S.unverified}</span></h2>
             <button onClick={() => setSel(null)} className="text-sm text-muted">{S.close}</button>
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -376,6 +377,8 @@ export default function Users({ lang, keySession }: SectionProps) {
             <button disabled={busy} onClick={() => act(sel.user.email, "extendTrial", { days: Number(prompt(S.promptDays, "7")) || 7 })} className="btn btn-secondary btn-xs">{S.extend}</button>
             <button disabled={busy} onClick={() => setVideoGrant(sel.user)} className="btn btn-secondary btn-xs" data-testid="video-grant-button">{S.grantVideo}</button>
             <button disabled={busy} onClick={() => act(sel.user.email, "resetPassword")} className="btn btn-secondary btn-xs">{S.reset}</button>
+            {/* Rule 777: only while the address is unproved; the route refuses a verified owner and rate-limits per address. */}
+            {!sel.user.emailVerifiedAt && <button disabled={busy} onClick={() => act(sel.user.email, "resendVerification")} className="btn btn-secondary btn-xs">{S.resendCode}</button>}
             <button disabled={busy} onClick={() => act(sel.user.email, "setLang", { lang: sel.user.lang === "ar" ? "en" : "ar" })} className="btn btn-secondary btn-xs">{S.emailsIn} {sel.user.lang === "ar" ? S.english : S.arabic}</button>
             <button disabled={busy} onClick={() => act(sel.user.email, sel.user.suspended ? "unsuspend" : "suspend")} className={`rounded-full px-3 py-1 font-semibold ${sel.user.suspended ? "bg-ink text-lilac" : "border border-danger text-danger"}`}>{sel.user.suspended ? S.unsuspend : S.suspend}</button>
             <button disabled={busy} onClick={() => { if (prompt(S.promptDelete) === sel.user.email) act(sel.user.email, "delete"); }} className="btn btn-danger-solid btn-xs">{S.del}</button>

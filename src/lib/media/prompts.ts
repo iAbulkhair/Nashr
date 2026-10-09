@@ -1,5 +1,5 @@
 /**
- * The prompt a render is made from. With Claude on, Sonnet writes it from the post; while paused, out of time or on any
+ * The prompt a render is made from. With Claude on, Haiku 5.5 writes it from the post; while paused, out of time or on any
  * failure, a fixed template built from the brand alone (spec 4.5, A12). The pause stops Claude, never the renderer, and
  * the credit buys the render, not the prompt.
  */
@@ -68,13 +68,13 @@ const videoSystem = (seconds: number, fromImage: boolean) =>
 const postOf = (b: Brand, t: Task) =>
   `Brand: ${b.name} (${b.industry}). Tone: ${b.tone}. Products: ${b.products.slice(0, 300)}.\nChannel: ${t.channel}\nPost:\n${(t.editedBody ?? t.body).slice(0, 1200)}`;
 
-/** One Sonnet attempt inside the time left; anything short of a prompt gives the template (spec A12). */
+/** One Haiku 5.5 attempt inside the time left; anything short of a prompt gives the template (spec A12). */
 async function write(system: string, brand: Brand, task: Task, fallback: string, email: string | undefined, timeoutMs: number): Promise<string> {
   // `!(>=)` also sends a NaN budget to the template.
   if (modelState() !== "on" || !(timeoutMs >= PROMPT_MIN_MS)) return fallback;
   try {
     const res = await anthropic({ timeoutMs: PROMPT_MAX_MS, maxRetries: 0 }).messages.create(
-      { model: "claude-sonnet-5", max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: postOf(brand, task) }] },
+      { model: "claude-haiku-5-5", max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: postOf(brand, task) }] },
       { timeout: Math.min(PROMPT_MAX_MS, timeoutMs), maxRetries: 0 },
     );
     // Spec A18: video prompts are metered as image_prompt too. The render is for the agent who owns the item, the same

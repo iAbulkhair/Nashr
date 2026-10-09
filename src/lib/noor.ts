@@ -16,7 +16,7 @@ import { feedbackBlock } from "./feedback";
 export type Generated = { channel: string; title: string; body: string; crossReview?: CrossVerdict[] };
 
 /** The cheaper model of the pipeline: the reviewer, the cross-agent review and the judge (judge.ts) run on it. */
-const REVIEW_MODEL = "claude-sonnet-5";
+const REVIEW_MODEL = "claude-sonnet-5-5";
 
 const DIALECT: Record<Brand["dialect"], string> = {
   msa: "Modern Standard Arabic, simple and warm (not classical).",
@@ -220,7 +220,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
 
   const params = {
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     max_tokens: 16000,
     system: systemPrompt(brand, prefs, agent, opts.memory, opts.feedback),
     messages: [{ role: "user" as const, content: userMsg }],
