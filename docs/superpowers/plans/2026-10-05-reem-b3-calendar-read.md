@@ -46,7 +46,7 @@
   - No `await db.*` in a loop; use `Promise.all` or `pmap`.
   - Titles render as text, never through `dangerouslySetInnerHTML`.
   - Event titles are untrusted data.
-- Test rules are numbered 910-923 (table at the end). Every task adds its rows to `docs/system/tests.md`.
+- Test rules are numbered 910-923 (table at the end). Every task adds its rows to `docs/system/tests/0910-reem-b3-calendars.md` (rule 788: new rules no longer go in `tests.md`).
 - Before each commit, run `npm run check`. Before the last commit, also run `npx next build`.
 - Do not touch B2 files: the bookings code, rules 586-608, or branch `claude/reem-b2-bookings`.
 
@@ -547,7 +547,7 @@ Writes use the existing `useOneWrite` the way `FeedCard` does.
 - Modify: `content/skills/secretary.md` (a new `## Marketing calendar` section before `## Gulf adaptations`, and one `## Never do` bullet)
 - Modify: `src/lib/help.ts` (entry «كيف تعرف ريم اجتماعاتي؟» / "How does Reem know my meetings?")
 - Modify: `src/lib/changelog.ts` (an entry dated the day of the last commit; the founder may move it to the merge day)
-- Modify: `docs/system/architecture.md`, `docs/system/flows.md` (connect, sync, quiet), `docs/system/permissions.md`, `docs/system/tests.md` (rows 910-923 and the status line)
+- Modify: `docs/system/architecture.md`, `docs/system/flows.md` (connect, sync, quiet), `docs/system/permissions.md`, `docs/system/tests/0910-reem-b3-calendars.md` (rows 910-923)
 - Test: `tests/reem-b3-copy.test.ts` (rule 923). Rule 96 (`tests/playbooks.test.ts`) must stay green.
 
 - [ ] **Step 1: Write the failing tests.** Rule 923:
@@ -563,16 +563,16 @@ Writes use the existing `useOneWrite` the way `FeedCard` does.
     - the declaration.
     - unlinking («افصل» / "Disconnect").
   - `AGENT_PAGES.ar.reem` and `AGENT_PAGES.en.reem` do not mention Google Calendar or Outlook yet (spec §9: the site waits for verification).
-  - `tests.md` has rows 910-923 and no duplicate numbers.
+  - `docs/system/tests/0910-reem-b3-calendars.md` has rows 910-923 and no number is used twice across the coverage map.
 - [ ] **Step 2: Run them.** `npx vitest run tests/reem-b3-copy.test.ts tests/playbooks.test.ts`. Expected: rule 923 FAILS and rule 96 PASSES.
 - [ ] **Step 3: Write the copy and the docs.**
 - [ ] **Step 4: Run all checks.**
   - `npx vitest run tests/reem-b3-*.test.ts tests/playbooks.test.ts tests/reem-role.test.ts`: PASS.
   - `npm run check`: green.
   - `npx next build`: succeeds.
-- [ ] **Step 5: Commit, push and update the PR.** Commit `docs(reem): marketing calendar copy, help, flows and rules 910-923 (B3 task 11)`. Push to `claude/reem-b3-calendars` and update PR #258's description. Do not merge: the founder merges.
+- [ ] **Step 5: Commit, push and update the PR.** Commit `docs(reem): marketing calendar copy, help, flows and rules 910-923 (B3 task 11)`. Pushed with B2b to `claude/reem-b2b-b3-prd` and opened as one draft pull request (the old B3 draft is replaced). Do not merge: the founder merges.
 
-## Rules table (for `docs/system/tests.md`)
+## Rules table (for `docs/system/tests/0910-reem-b3-calendars.md`)
 
 | Rule | Pins | Task |
 |---|---|---|
