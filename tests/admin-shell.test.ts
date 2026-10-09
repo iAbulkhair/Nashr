@@ -1,5 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
+import { readFileSync } from "node:fs";
 
 /**
  * The founder console lives in its own route tree, /{lang}/admin, with its own layout and sidebar (spec
@@ -19,6 +21,8 @@ import { adminSignIn, newUser, signIn, signOut } from "./helpers/session";
 import AdminLayout from "@/app/[lang]/admin/layout";
 import AdminHome from "@/app/[lang]/admin/page";
 import OldAdmin from "@/app/[lang]/app/admin/page";
+import Sidebar from "@/components/app/Sidebar";
+import { appDict } from "@/lib/app-i18n";
 
 const KEY = "test-admin-key-admin-shell";
 beforeAll(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); });
@@ -93,5 +97,17 @@ describe("the founder console has its own shell (rules 870-872)", () => {
   it("adminHref", () => {
     expect(adminHref("ar", "overview")).toBe("/ar/admin");
     expect(adminHref("en", "log")).toBe("/en/admin/log");
+  });
+});
+
+describe("the customer app links to the console only from the account menu (rule 873)", () => {
+  it("no founder row in the customer main nav; the account menu links to /{lang}/admin as «لوحة الأدمن»", () => {
+    const html = (admin: boolean) => renderToStaticMarkup(createElement(Sidebar, { t: appDict.ar, lang: "ar", user: { name: "F", email: "f@test.example", role: "owner", credits: 10, plan: "pro" }, show: { owner: true, refer: true, mcp: true }, admin }));
+    expect(html(true)).not.toContain('href="/ar/app/admin"');
+    expect(html(true)).not.toContain("/ar/admin");
+    expect(html(false)).not.toContain("/ar/admin");
+    // The account menu renders only when opened, so its link is pinned in the source.
+    expect(readFileSync("src/components/app/Sidebar.tsx", "utf8")).toMatch(/admin \? \[\[adminHref\(lang, "overview"\), N\.adminPanel\]\]/);
+    expect([appDict.ar.nav.adminPanel, appDict.en.nav.adminPanel]).toEqual(["لوحة الأدمن", "Admin console"]);
   });
 });

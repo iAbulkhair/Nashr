@@ -11,6 +11,7 @@ import LangToggle from "../LangToggle";
 import Wordmark from "../Wordmark";
 import { Icon, type IconName } from "./Icons";
 import { PARTNER_COPY } from "@/lib/partner-copy";
+import { adminHref } from "@/lib/admin-gate";
 
 type Conv = { id: string; title: string; agent?: AgentId; updatedAt: string };
 
@@ -144,8 +145,6 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
           <li>{row(`${base}/integrations`, N.integrations, "grid")}</li>
           {/* Public page: what shipped, and the wishlist signed-in owners vote on. */}
           <li>{row(`/${lang}/updates`, N.updates, "sapling")}</li>
-          {/* Founder accounts only: platform console (users, usage, billing, quality, audit log). */}
-          {admin && <li>{row(`${base}/admin`, N.founder, "dashboard")}</li>}
           <li><a href={supportWa ? `https://wa.me/${supportWa}` : `${base}/help#support`} target={supportWa ? "_blank" : undefined} rel="noreferrer" className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted hover:bg-lilac/60 hover:text-ink"><Icon name="whatsapp" className="h-4 w-4" />{N.contact}</a></li>
         </ul>
       </div>
@@ -166,7 +165,8 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
               {[
                 [`${base}/profile`, N.profile], [`${base}/notifications`, unread ? `${N.notifications} (${unread})` : N.notifications], [`${base}/tasks`, N.tasks], [`${base}/generate`, N.generate], [`${base}/billing`, N.billing], [`${base}/onboarding`, N.brand], [`${base}/brands`, N.brands], [`${base}/team`, N.members],
                 ...(show.mcp ? [[`${base}/mcp`, "MCP"]] : []), [`${base}/help`, N.help],
-                ...(admin ? [[`${base}/admin`, N.founder]] : []),
+                // Founder accounts only: the console has its own shell at /{lang}/admin (rules 871, 873), never a main-nav row.
+                ...(admin ? [[adminHref(lang, "overview"), N.adminPanel]] : []),
               ].map(([h, l]) => <li key={h}><Link role="menuitem" href={h} onClick={() => { setMenu(false); setOpen(false); }} className="block rounded-lg px-3 py-1.5 text-muted hover:bg-lilac hover:text-ink">{l}</Link></li>)}
             </ul>
             <div className="mt-2 flex items-center justify-between border-t border-ink/15 px-2 pt-2">
