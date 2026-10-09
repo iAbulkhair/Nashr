@@ -7,6 +7,7 @@ import { AWAY_AHEAD_DAYS, awayListOf } from "@/lib/secretary-away";
 import { namesSharjah } from "@/lib/secretary-calendar";
 import { isAgentId } from "@/lib/agents";
 import { can } from "@/lib/roles";
+import { getProvider, isAvailable } from "@/lib/connectors/registry";
 import {
   AGENDA_BUCKETS, AUTO_CLOSE_RESULT, addDays, approvalsLine, briefClock, formatWhen, linkFactText, nextStepParts, noteText, partyKey, partyName, resultText, zoneDay, zoneLocalInput, zoneTimeLabel,
   type AgendaEntry, type SecItem,
@@ -17,6 +18,12 @@ import WorkingDaysPanel from "@/components/app/WorkingDaysPanel";
 import SeriesPanel, { type SeriesRow } from "@/components/app/SeriesPanel";
 
 export const dynamic = "force-dynamic";
+
+/** Whether a calendar provider's app keys are set (Reem B3): false shows «قريباً» in place of its button. */
+const calReady = (id: "gcal" | "mscal") => {
+  const p = getProvider(id);
+  return !!p && isAvailable(p);
+};
 
 /**
  * My to-dos (Reem's list) for the active brand, rendered on the server: every date of the list is formatted here in the
@@ -148,6 +155,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       lang={lang}
       inboxHref={`/${lang}/app`}
       away={{ entries: awayList, labels, canEdit: can(u, "todo.write"), today, last: addDays(today, AWAY_AHEAD_DAYS) }}
+      canLinkCalendar={can(u, "calendar.link")}
+      calProviders={{ gcal: calReady("gcal"), mscal: calReady("mscal") }}
     >
       <WorkingDaysPanel
         t={t}

@@ -7,6 +7,7 @@ import type { AgendaBucket, SecRepeat } from "@/lib/secretary-agenda";
 import AwayPanel, { type AwayRow } from "./AwayPanel";
 import BookingCard from "./BookingCard";
 import FeedCard from "./FeedCard";
+import CalendarLinkCard, { type CalProviders } from "./CalendarLinkCard";
 import MeetingPanel from "./MeetingPanel";
 import Scribble from "@/components/Scribble";
 
@@ -143,7 +144,7 @@ function RepeatFields({ T, value, onChange, none, id }: { T: AppDict["todo"]; va
  * see Done, Delete, Restore, Skip or Confirm / Not yet. `canWrite` (`todo.write`) gates Repeat and Stop repeat. Display
  * only: the route refuses the same actions (403).
  */
-export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, canWrite, todoHref, timed, briefAt, lang, inboxHref, away, children }: {
+export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, canWrite, todoHref, timed, briefAt, lang, inboxHref, away, canLinkCalendar = false, calProviders = { gcal: false, mscal: false }, children }: {
   t: AppDict; zoneLabel: string; sections: TodoSection[]; approvals: { line: string; href: string } | null; snoozed: number; allClear: boolean; empty: boolean;
   done: TodoRow[]; deleted: TodoRow[]; tonight: boolean; canClose: boolean; canWrite: boolean; todoHref: string; timed: boolean; lang: "ar" | "en"; inboxHref: string;
   /** The morning brief's local time in the brand's zone ("08:00", "09:00"): when a reminder comes without timed reminders. */
@@ -153,6 +154,11 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
    * it (`todo.write`), and the brand's local days a last away day may fall between.
    */
   away: { entries: AwayRow[]; labels: string[]; canEdit: boolean; today: string; last: string };
+  /**
+   * The «تقويم التسويق» card (`CalendarLinkCard`, Reem B3): only for the account owner (`calendar.link`), and which of the two
+   * providers has its app keys set (a provider without them shows «قريباً»). Display only: every route refuses a non-owner.
+   */
+  canLinkCalendar?: boolean; calProviders?: CalProviders;
   /** The Working days panel, rendered by the page after the done and deleted lists. */
   children?: React.ReactNode;
 }) {
@@ -498,6 +504,8 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       <AwayPanel key={awayFor?.n ?? 0} t={t} lang={lang} entries={away.entries} labels={away.labels} canEdit={away.canEdit} today={away.today} last={away.last} prefill={awayFor?.label} />
 
       <FeedCard t={t} lang={lang} />
+
+      {canLinkCalendar && <CalendarLinkCard t={t} lang={lang} providers={calProviders} />}
 
       <BookingCard t={t} lang={lang} />
 
