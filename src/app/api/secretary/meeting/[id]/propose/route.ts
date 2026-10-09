@@ -4,10 +4,11 @@ import { forbid } from "@/lib/roles";
 import { modelState } from "@/lib/model";
 import { allow, retryLater } from "@/lib/rate";
 import { SEC_WRITES_PER_HOUR } from "@/lib/secretary";
-import { MEET_PROPOSE_MAX_DURATION_S, liveBooking, proposeFromText } from "@/lib/secretary-meeting";
+import { liveBooking, proposeFromText } from "@/lib/secretary-meeting";
 import { deadlineFor } from "@/lib/media/keys";
 
-export const maxDuration = MEET_PROPOSE_MAX_DURATION_S;
+// Next reads segment config statically: a literal, kept equal to MEET_PROPOSE_MAX_DURATION_S (tests/route-exports.test.ts).
+export const maxDuration = 60;
 
 /**
  * Tasks proposed for a meeting from the owner's typed notes or a pasted transcript (Reem phase 3 B2b,
