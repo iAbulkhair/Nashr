@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";
 import { STAGING_COOKIE, STAGING_OPEN_PATHS, hasAccess } from "@/lib/staging-access";
 
@@ -29,9 +30,14 @@ export function proxy(req: NextRequest) {
   }
 
   let res: NextResponse;
-  // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
-  // (src/app/manifest.ts, rule 681): the same choice, into the app.
-  if (pathname === "/" || pathname === "/app") {
+  if (pathname.startsWith("/api/")) {
+    // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), else pass it
+    // on untouched. The exempt paths (webhooks, crons, MCP, OAuth token) pass inside crossSiteRefusal. The language and
+    // x-pathname logic below is for pages only.
+    res = crossSiteRefusal(req) ?? NextResponse.next();
+  } else if (pathname === "/" || pathname === "/app") {
+    // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
+    // (src/app/manifest.ts, rule 681): the same choice, into the app.
     const url = req.nextUrl.clone();
     url.pathname = pathname === "/" ? `/${pickLang(req)}` : `/${pickLang(req)}/app`;
     url.search = search;
@@ -51,5 +57,8 @@ export function proxy(req: NextRequest) {
 
 // Every path except Next's static assets and the favicon: the staging lock must see them all (`/` and `/app` included).
 // The exclusions are anchored (`_next/static/`, `_next/image` and `favicon.ico` end the path), so a look-alike such as
-// `/favicon.icox` or `/_next/staticx/a` still meets the lock. Off staging the other paths pass through untouched.
+// `/favicon.icox` or `/_next/staticx/a` still meets the lock. Off staging the other paths pass through untouched, but
+// for the cross-site check on /api. Next buffers the body of every request the proxy sees, up to
+// `experimental.proxyClientMaxBodySize` (6 MB, next.config.ts, rule 774), the webhook and cron routes included: their
+// 64 KB caps still refuse a larger body, after Next has read it (src/lib/csrf.ts, the CROSS_SITE_EXEMPT comment).
 export const config = { matcher: ["/((?!_next/static/|_next/image$|favicon\\.ico$).*)"] };

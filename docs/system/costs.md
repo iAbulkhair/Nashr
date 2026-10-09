@@ -9,13 +9,13 @@ the founder console — see "Where the real numbers live" at the end.
 
 | Call | Model | Where | Charged to the customer |
 |---|---|---|---|
-| `generate` | `claude-opus-5`, `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
-| `review` | `claude-sonnet-5`, 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
-| `judge` | `claude-sonnet-5`, 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
-| `xreview` | `claude-sonnet-5`, 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off, in golden runs, and with less than 60 s of the caller's deadline left; one attempt of at most 45 s per call, no SDK retries. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
+| `generate` | `claude-opus-5-5` (`claude-opus-5` until 2026-10-09), `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
+| `review` | `claude-sonnet-5-5` (`claude-sonnet-5` until 2026-10-09), 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
+| `judge` | `claude-sonnet-5-5` (`claude-sonnet-5` until 2026-10-09), 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
+| `xreview` | `claude-sonnet-5-5` (`claude-sonnet-5` until 2026-10-09), 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off, in golden runs, and with less than 60 s of the caller's deadline left; one attempt of at most 45 s per call, no SDK retries. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
 | `chat` | `claude-sonnet-5-5` (`CHAT_MODEL`; `claude-opus-5` until 2026-10-02), effort medium, adaptive thinking, **up to 5 calls per turn** (tool loop); since 2026-10-01 each call's `max_tokens` is what is left of the **$0.14 per-message ceiling** (`CHAT_TURN_MAX_USD`; $0.35 on Opus until 2026-10-02) after the turn's cost so far and an upper estimate of the call's input, at most 8,000, and no call is made with less than 2,048 left (`CHAT_MIN_OUT`, `nextMaxTokens`, `src/lib/chat-budget.ts`); the input estimate counts 3 characters a token (`CHARS_PER_TOKEN_EST`, below the measured 3.3 so it stays high) and prices the cached prefix (the tools and system blocks 1-2) as a cache write on the first call and as a cache read on later ones; the thread is trimmed to the newest 16 messages within 24,000 characters (`trimHistory`), then shortened from its oldest end until the first call has at least 4,000 output tokens (`CHAT_FIRST_MIN_OUT`, `fitFirstCall`); a workspace too large even for the newest message alone gets no model call, a reply that says so, and is not counted | `src/lib/chat.ts` | **included** up to the plan's monthly chat messages (`CHAT_ALLOWANCE`: trial 30 for the whole trial, starter 250, pro 650, business 1,300; section 4.1). Past them chat pauses until the 1st (UTC), unless the owner of a paid plan turned "continue on credits" on: then a message goes ahead only when the balance is at least `chatOverflowHold()` = ceil($0.14 / $0.07104) = **2 credits**, nothing is taken before the turn, and after the reply it is billed its metered cost at the floor rate ($0.07104 a credit, section 4), at most 2 credits and at most what the balance still holds, the remainder under one credit carried to the next message (`settleChatOverflow`, `src/lib/credits.ts`); a failed message is not billed |
-| `onboard` | `claude-opus-5` × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing** for the first brand (the default scope); **9 credits** for each added brand since 2026-09-30 (`ONBOARD_EXTRA_BRAND_COST`, `src/lib/pricing.ts`), charged to Noor in that brand's scope before the stream and refunded when the brand is not saved; once per workspace |
-| `image_prompt` | `claude-sonnet-5`, 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
+| `onboard` | `claude-opus-5-5` (`claude-opus-5` until 2026-10-09) × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing** for the first brand (the default scope); **9 credits** for each added brand since 2026-09-30 (`ONBOARD_EXTRA_BRAND_COST`, `src/lib/pricing.ts`), charged to Noor in that brand's scope before the stream and refunded when the brand is not saved; once per workspace |
+| `image_prompt` | `claude-haiku-5-5` (`claude-sonnet-5` until 2026-10-09), 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
 
 Reem phase 3 B2a (2026-10-05, bookings in from Cal.com and Calendly) makes no model call and charges no credits: it is webhook handling, the owner's setup (Calendly's two API calls) and revocation only, so it adds no row above. A booking creates an open task through `createItem` as the rule, which spends no credits (it counts against the owner's `sec:create` allowance of 200 a day, and a link's own cap of 60 new items a day).
 
@@ -38,6 +38,15 @@ At roughly 3.3 characters per token for this Arabic/English mix, a full batch pr
 
 ## 3. Cost of one batch
 
+**2026-10-09: the product now calls only Opus 5.5, Sonnet 5.5 and Haiku 5.5** (rule 809, founder decision). Opus 5.5
+is $4/$20 per million tokens (cache read $0.20, write $5), 20% under Opus 5; Sonnet 5.5 costs what Sonnet 5 did; Haiku
+5.5 is $0.10/$0.50 for prompts up to 100K tokens. The dollar figures in the table below are still the Opus 5 ones; the
+token assumptions did not change, and `estimateBatch` prints the Opus 5.5 figures. The ones `tests/pricing-floor.test.ts`
+pins today: `article` $0.0593 per credit on a hit and $0.0773 cold, `followup_seq` $0.0563 (hit) and $0.0653 (cold),
+`weekly_plan` $0.0377 and $0.0557, `weekly_report` cold $0.0515, `cart_recovery` $0.0337, an added-brand onboarding
+$0.454, a one-item chat draft $0.0605 per credit (so its exemption was removed), `vid-cinematic` $0.0584 per credit.
+No type is above 95% of the ceiling any more, and every type keeps the floor even at VAT-inclusive prices.
+
 Recomputed on 2026-09-27 for Sonnet 5 at $2/$10 per million tokens (it was $3/$15 in `RATES`, which overstated the
 review and judge columns by half). Since 2026-09-30 the table is what `estimateBatch` in `src/lib/task-costs.ts`
 prints: that file holds the token assumptions below and prices them through `costUsd` (`src/lib/usage.ts`), so a rate
@@ -54,9 +63,10 @@ once a week or a month per brand. The floor test checks the cron-driven types (m
 task type of every routine in `src/lib/routines.ts`) on the cold figure, and every other type on the hit figure
 (founder decision, 2026-09-29). The checked figure is in bold. Majed's auto-run (section 5, since step 3b) starts
 handoff items from the same 06:00 cron, so every type it may start is also checked on its cold figure (not bold in the
-table, which bolds the hit a login's Run is checked on); `article` ($0.0918 cold) and
-`followup_seq` ($0.0773) are over the ceiling cold, so the code never lets it start them (`autoBlock` answers `floor`,
-`autoUnderFloor` in `src/lib/handoffs.ts`, rule 296) and they run only when a login presses Run, checked on the hit.
+table, which bolds the hit a login's Run is checked on); `article` ($0.0773 cold on Opus 5.5) is over the ceiling
+cold, so the code never lets it start it (`autoBlock` answers `floor`, `autoUnderFloor` in `src/lib/handoffs.ts`, rule
+296) and it runs only when a login presses Run, checked on the hit. `followup_seq` was left out too on Opus 5 ($0.0773
+cold); on Opus 5.5 ($0.0653 cold) it is under the ceiling, so since 2026-10-09 the auto-run may start it.
 
 | Request | Items | Credits | Output tok | generate $ | review $ | judge $ | Total $ (hit) | $ per credit, hit | $ per credit, cold |
 |---|---|---|---|---|---|---|---|---|---|
@@ -161,6 +171,24 @@ and transfer are extra, billed by Vercel and not metered per render or per tenan
 - A failure the provider billed us for is `store_failed` (the result existed but could not be copied three times): its
   cost is recorded. A `timeout` is not counted, because we cannot know whether it was billed.
 
+## 3.2 X reads
+
+Written 2026-10-08 (rules 744, 745). X bills its API per read: $0.010 for a user and $0.005 for a post, X's list prices
+on 2026-10-08 (`X_READ_USD` in `src/lib/connectors/x.ts`). A refresh is never scheduled: it runs only when someone in the
+workspace clicks "Refresh X" (`sync_x`), and the account pays one credit for it, charged before X is asked.
+
+| Read | Requests | Our cost at most | Credits | $ per credit |
+|---|---|---|---|---|
+| One X refresh (`refreshX`) | 2: the user, then one page of at most 10 posts (`X_MAX_POSTS`) | $0.010 + 10 × $0.005 = $0.060 | 1 (`X_READ_CREDITS`) | 0.060 |
+
+- $0.060 is under the ceiling of section 4, $0.07104 a credit, and under the VAT-inclusive $0.0618; the floor test
+  (`tests/pricing-floor.test.ts`, rule 745) checks both and keeps `X_MAX_POSTS` between 5 and 10.
+- At most one paid read per workspace per UTC day: a click on a day already read returns the stored read free, and two
+  clicks at once debit one credit. X deduplicates the same reads within a UTC day and bills only responses that return
+  data, so a refused or failed read, which refunds the credit, costs at most the user read X already answered.
+- The prices are X's list prices, not measured: the founder confirms the field names and the bill with one real call on
+  Preview before the pull request leaves draft (spec C3).
+
 ## 4. Where the margin actually is
 
 Rewritten on 2026-09-30 for pricing phase 1. Revenue per credit comes from `PLAN_PRICE_SAR` and `PLAN_CREDITS` in
@@ -226,6 +254,9 @@ Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllo
   are charged in `startMedia` with the item's owning agent and its cap); chat messages are not any agent's work and never
   count against a cap (a message past the allowance is billed by `settleChatOverflow`, not through `charge`, so no cap
   reads it), so chat is bounded by its own allowance and ceiling below.
+- **X reads** (since 2026-10-08, rule 744) are bounded in code: no schedule reads X, a click costs one credit of the
+  account charged before X is asked, under Dana's monthly cap, at most once per workspace per UTC day, refunded once on
+  a failure, and never for a Composio-routed X record; one refresh is two requests (section 3.2).
 - **Chat** (since 2026-10-01, pricing phase 2) is bounded in code in four ways, on the web route and on MCP `ask_noor`
   alike; the allowance and the burst limit are checked before the owner's message is saved, the other two before each
   model call. An ended trial (`trialOver`) gets no turn at all, before any of them (402 `trial_over`, rule 330), so it

@@ -12,6 +12,7 @@ import { MEDIA_MODELS } from "@/lib/media-catalog";
 import { COST_USD } from "@/lib/media/config";
 import { HANDOFF_TYPES, autoBlock, type Handoff } from "@/lib/handoffs";
 import { agentForTask } from "@/lib/agents";
+import { X_MAX_POSTS, X_READ_CREDITS, X_READ_USD } from "@/lib/connectors/x";
 
 /**
  * Rule 241: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
@@ -32,20 +33,10 @@ const gate = (type: TaskType) => estimateBatch(type, { cache: CRON_TYPES.include
 const usd = (n: number) => `$${n.toFixed(4)}`;
 
 /**
- * NAMED EXEMPTION (founder decision, 2026-09-29): a one-item chat draft (`draft_items`, count 1) of social, whatsapp,
- * ads or gbp costs 1 credit and about $0.0717 in model calls, under 1% over the $0.0710 ceiling: the reviewer and the
- * judge run on one short item much as on a whole batch. It stays at 1 credit because "1 credit per item" is what the
- * owner is told for a small ask, and a one-item ask is how most owners try the product; the shortfall is under a tenth
- * of a cent per draft. `maxUsdPerCredit` is today's estimate: if these drafts get dearer (a rate, a longer item, a
- * bigger prompt), this test fails and the price or the exemption must be decided again. Two- and three-item drafts
- * are not exempt.
+ * The one-item chat draft exemption (founder decision, 2026-09-29: a one-item draft of social, whatsapp, ads or gbp at
+ * 1 credit cost about $0.0717 on Opus 5, just over the ceiling) was removed on 2026-10-09: on Opus 5.5 the same draft
+ * costs $0.0605, under the ceiling, so every draft now keeps the floor with no exemption.
  */
-const ONE_ITEM_DRAFT_EXEMPTION = {
-  types: DRAFT_TYPES,
-  count: 1,
-  maxUsdPerCredit: 0.07165,
-  reason: "1 credit per item is the promise for small chat asks; a one-item draft runs the full reviewer and judge",
-} as const;
 
 describe("the ceiling (rule 241)", () => {
   it("60% floor: at most 40% of the cheapest self-serve credit, which is Business's $0.1776", () => {
@@ -86,36 +77,39 @@ describe("every task type is under the ceiling (rule 241)", () => {
       estimateBatch("followup_seq", { credits: 3, cache: "hit" }),
       estimateBatch("weekly_report", { credits: 2, cache: "cold" }),
     ];
-    expect(old.map((e) => e.usdPerCredit)).toEqual([expect.closeTo(0.08925, 6), expect.closeTo(0.08875, 6), expect.closeTo(0.0917875, 6)]);
+    // On Opus 5.5 (2026-10-09); they were $0.0893, $0.0888 and $0.0918 on Opus 5. Still over, so still not vacuous.
+    expect(old.map((e) => e.usdPerCredit)).toEqual([expect.closeTo(0.0753, 6), expect.closeTo(0.0751, 6), expect.closeTo(0.07725, 6)]);
     for (const e of old) expect(e.usdPerCredit, `${e.type} at ${e.credits}`).toBeGreaterThan(ceiling);
   });
 
-  it("today's figures: weekly_plan $0.0446 on a hit and $0.0662 cold, followup_seq $0.0666, article $0.0702", () => {
-    expect(estimateBatch("weekly_plan").usdPerCredit).toBeCloseTo(0.044625, 6);
-    expect(estimateBatch("weekly_plan", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.0661875, 6);
-    expect(estimateBatch("followup_seq").usdPerCredit).toBeCloseTo(0.0665625, 6);
-    expect(estimateBatch("article").usdPerCredit).toBeCloseTo(0.070225, 6);
-    expect(estimateBatch("weekly_report", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.0611917, 6);
-    expect(estimateBatch("cart_recovery").usdPerCredit).toBeCloseTo(0.03975, 6);
+  it("today's figures (Opus 5.5 since 2026-10-09): weekly_plan $0.0377 on a hit and $0.0557 cold, followup_seq $0.0563, article $0.0593", () => {
+    expect(estimateBatch("weekly_plan").usdPerCredit).toBeCloseTo(0.03765, 6);
+    expect(estimateBatch("weekly_plan", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.05565, 6);
+    expect(estimateBatch("followup_seq").usdPerCredit).toBeCloseTo(0.056325, 6);
+    expect(estimateBatch("article").usdPerCredit).toBeCloseTo(0.05925, 6);
+    expect(estimateBatch("weekly_report", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.0515, 6);
+    expect(estimateBatch("cart_recovery").usdPerCredit).toBeCloseTo(0.0336833, 6);
   });
 
-  it("the watch list: only article is above 95% of the ceiling", () => {
-    const near = TASK_TYPES.map(gate).filter((e) => e.usdPerCredit > 0.95 * ceiling);
-    expect(near.map((e) => e.type)).toEqual(["article"]);
+  it("the watch list: no type is above 95% of the ceiling; article is the closest", () => {
+    const rows = TASK_TYPES.map(gate);
+    expect(rows.filter((e) => e.usdPerCredit > 0.95 * ceiling).map((e) => e.type)).toEqual([]);
+    expect(rows.reduce((a, b) => (b.usdPerCredit > a.usdPerCredit ? b : a)).type).toBe("article");
   });
 
-  it("a price cut fails the floor: Business at 899 SAR puts article over", () => {
-    const cut = maxCostPerCreditUsd({ ...PLAN_PRICE_SAR, business: 899 });
+  it("a price cut fails the floor: Business at 799 SAR puts article over", () => {
+    const cut = maxCostPerCreditUsd({ ...PLAN_PRICE_SAR, business: 799 });
     expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(cut);
   });
 
-  it("more credits for the money fail it too: Business at 1,700 credits puts article over", () => {
-    expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 1700 }));
+  it("more credits for the money fail it too: Business at 1,900 credits puts article over", () => {
+    expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 1900 }));
   });
 
-  it("VAT-inclusive prices (ceiling $0.0618) would fail article, followup_seq and the cold weekly plan: they must be repriced first", () => {
+  it("VAT-inclusive prices (ceiling $0.0618) keep the floor for every type since Opus 5.5; article is the closest", () => {
     const vat = maxCostPerCreditUsd(undefined, undefined, true);
-    expect(TASK_TYPES.map(gate).filter((e) => e.usdPerCredit > vat).map((e) => e.type).sort()).toEqual(["article", "followup_seq", "weekly_plan"]);
+    expect(TASK_TYPES.map(gate).filter((e) => e.usdPerCredit > vat).map((e) => e.type)).toEqual([]);
+    expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(0.95 * vat);
   });
 });
 
@@ -133,10 +127,11 @@ describe("Majed's auto-run is a cron path: every type it may start keeps the flo
     expect(over.map((e) => `${e.type}: ${usd(e.usdPerCredit)} per credit cold at ${e.credits} credits (ceiling ${usd(ceiling)})`)).toEqual([]);
   });
 
-  it("it leaves exactly article and followup_seq to a login's Run, the handoff types over the ceiling cold", () => {
+  it("it leaves exactly article to a login's Run, the one handoff type over the ceiling cold", () => {
     const left = HANDOFF_TYPES.filter((t) => !AUTO_TYPES.includes(t));
-    expect(left).toEqual(["article", "followup_seq"]);
-    expect(left.map((t) => estimateBatch(t, { cache: "cold" }).usdPerCredit)).toEqual([expect.closeTo(0.0917875, 6), expect.closeTo(0.0773438, 6)]);
+    // followup_seq ($0.0773 cold on Opus 5) left the list on 2026-10-09: $0.0653 cold on Opus 5.5.
+    expect(left).toEqual(["article"]);
+    expect(left.map((t) => estimateBatch(t, { cache: "cold" }).usdPerCredit)).toEqual([expect.closeTo(0.07725, 6)]);
     // On a hit (the owner pressing Run in the app) both keep the floor, as the table above checks them.
     for (const t of left) expect(estimateBatch(t).usdPerCredit, t).toBeLessThanOrEqual(ceiling);
   });
@@ -163,9 +158,9 @@ describe("the estimates price the models the code calls (rule 241)", () => {
 });
 
 describe("added-brand onboarding covers its cost (rules 241, 246)", () => {
-  it("9 credits at the ceiling cover one onboarding run (≈ $0.57)", () => {
+  it("9 credits at the ceiling cover one onboarding run (≈ $0.45 on Opus 5.5; $0.57 on Opus 5)", () => {
     expect(ONBOARD_EXTRA_BRAND_COST).toBe(9);
-    expect(onboardEstimateUsd()).toBeCloseTo(0.5675, 6);
+    expect(onboardEstimateUsd()).toBeCloseTo(0.454, 6);
     expect(ONBOARD_EXTRA_BRAND_COST * ceiling).toBeGreaterThanOrEqual(onboardEstimateUsd());
     expect(ASSUME.onboard).toEqual({ in: 13500, out: 20000 });
   });
@@ -185,14 +180,9 @@ describe("chat drafts (rules 241, 250)", () => {
     expect(src("src/lib/chat.ts").replace(/\s+/g, "")).toContain('generateBatch(user,email,{type,notes:String(input.brief??""),count,');
   });
 
-  it("only the named exemption is over the ceiling: one-item drafts, at no more than today's estimate", () => {
-    const over = rows.filter((e) => e.usdPerCredit > ceiling);
-    const exempt = (e: (typeof rows)[number]) => (ONE_ITEM_DRAFT_EXEMPTION.types as readonly TaskType[]).includes(e.type) && e.items === ONE_ITEM_DRAFT_EXEMPTION.count;
-    expect(over.filter((e) => !exempt(e)).map((e) => `${e.type} x${e.items}: ${usd(e.usdPerCredit)} per credit`), "not exempt").toEqual([]);
-    for (const e of over) {
-      expect(e.usdPerCredit, `${e.type} x${e.items}: ${ONE_ITEM_DRAFT_EXEMPTION.reason}`).toBeLessThanOrEqual(ONE_ITEM_DRAFT_EXEMPTION.maxUsdPerCredit + 1e-9);
-    }
-    expect(over.map((e) => e.type), "the exemption is real today: remove it once it is no longer needed").toEqual([...DRAFT_TYPES]);
+  it("every draft keeps the floor, one-item drafts included (no exemption since 2026-10-09)", () => {
+    expect(rows.filter((e) => e.usdPerCredit > ceiling).map((e) => `${e.type} x${e.items}: ${usd(e.usdPerCredit)} per credit`)).toEqual([]);
+    for (const t of DRAFT_TYPES) expect(estimateDraft(t, 1).usdPerCredit, t).toBeCloseTo(0.06045, 6);
   });
 
   function src(path: string) {
@@ -206,6 +196,19 @@ describe("media renders are under the ceiling too (rule 241)", () => {
     expect(per.filter((r) => r.usdPerCredit > ceiling).map((r) => `${r.id}: ${usd(r.usdPerCredit)}`)).toEqual([]);
     const top = per.reduce((a, b) => (b.usdPerCredit > a.usdPerCredit ? b : a));
     expect(top.id).toBe("vid-cinematic");
-    expect(top.usdPerCredit).toBeCloseTo(0.05875, 5);
+    expect(top.usdPerCredit).toBeCloseTo(0.0583542, 6);
+  });
+});
+
+describe("X reads are under the ceiling too (rule 745)", () => {
+  it("an X refresh costs less than one credit, with and without VAT (745)", () => {
+    // One user read and at most X_MAX_POSTS posts, at X's list prices on 2026-10-08 (docs/system/costs.md 3.2).
+    const usd = (X_READ_USD.user + X_MAX_POSTS * X_READ_USD.post) / X_READ_CREDITS;
+    expect(usd).toBeCloseTo(0.06, 6);
+    expect(usd).toBeLessThanOrEqual(maxCostPerCreditUsd());
+    expect(usd).toBeLessThanOrEqual(maxCostPerCreditUsd(undefined, undefined, true));
+    expect(X_READ_CREDITS).toBe(1);
+    expect(X_MAX_POSTS).toBeGreaterThanOrEqual(5);
+    expect(X_MAX_POSTS).toBeLessThanOrEqual(10);
   });
 });

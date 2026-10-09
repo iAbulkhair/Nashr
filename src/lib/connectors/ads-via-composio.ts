@@ -3,25 +3,30 @@ import { clean, type Row } from "../perf-import";
 import { pmap } from "../parallel";
 import { composioRead } from "./composio";
 import { accountOf, at, listOf, num, pick } from "./composio-shape";
-import { adWindow, MAX_ROWS, micro, PAGES, purchases, type AdAccount, type AdPull, type MetaAction } from "./ads";
+import { adWindow, MAX_ROWS, micro, PAGES, prevNow, purchases, type AdAccount, type AdPull, type MetaAction, type ReadOpts } from "./ads";
+import type { AdPrev } from "../ad-stats";
 
 /**
  * Ad results read through Composio, as the same rows the CSV import and the direct readers produce (ads.ts), so every
  * source goes through one analysis and one learnings file for Noor.
  *
- * Read only, by construction: the catalog lists no write tool for metaads, snapchat, googleads or tiktok_ads, so nothing
- * here can create, edit, pause or fund an ad (the founder's rule of 2026-10-05). The ad account id is always one the
- * platform listed for this connection at connect time, never a value from a request; Google's query text is a constant
- * below with dates the code computed.
+ * Read only, by construction: the catalog lists no write tool for metaads, snapchat, googleads, tiktok_ads or
+ * linkedin_ads, so nothing here can create, edit, pause or fund an ad (the founder's rule of 2026-10-05). The ad account
+ * id is always one the platform listed for this connection at connect time, never a value from a request; Google's
+ * query text and LinkedIn's analytics call are constants below with dates the code computed.
  *
- * Shapes follow Composio's output schemas read on 2026-10-05; tests mock them, and the measured run on real accounts
- * (plan Task 8) is the real check. TikTok's revenue is spend × payment ROAS.
+ * Shapes follow Composio's output schemas read on 2026-10-05 (Snapchat's account stats on 2026-10-08; LinkedIn Ads
+ * follows LinkedIn's adAnalytics and adCampaigns responses, its arguments checked on 2026-10-08); tests mock them, and
+ * the measured run on real accounts (plan Task 8) is the real check. TikTok's revenue is spend × payment ROAS; LinkedIn
+ * reports no conversion value, so its revenue is null (not read), never 0.
  */
 
 const ACT = /^act_\d+$/;
 const SNAP_ID = /^[0-9a-f-]{36}$/i;
 const GADS_ID = /^\d{6,12}$/;
 const TT_ID = /^\d{6,25}$/;
+/** A LinkedIn ad account or campaign id: digits only, checked before any URN is built from it (rule 743). */
+const LI_ID = /^\d{1,15}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** Snap has no account-wide breakdown tool on Composio: stats are read per ad, for at most this many ads. */
 const SNAP_ADS_READ = 50;
@@ -34,7 +39,7 @@ const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.fil
  * Run `fn` over `items` and keep what succeeded. One failed item is skipped; when every item failed, the first error is
  * thrown so a refused token still reaches refusedToken (fresh.ts) and asks the owner to reconnect.
  */
-async function settle<T, R>(items: readonly T[], fn: (x: T) => Promise<R>, limit: number): Promise<R[]> {
+async function settleAll<T, R>(items: readonly T[], fn: (x: T) => Promise<R>, limit: number): Promise<R[]> {
   const out = await pmap(items, (x) => fn(x).then((v) => ({ ok: true as const, v }), (e: unknown) => ({ ok: false as const, e })), limit);
   const ok = out.flatMap((r) => (r.ok ? [r.v] : []));
   const failed = out.find((r) => !r.ok);
@@ -63,7 +68,7 @@ export async function adAccountsVia(scope: string, provider: string, accountId: 
   if (provider === "google_ads") {
     const r = await composioRead(scope, "googleads", "GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS", {}, accountId);
     const ids = [...new Set([...JSON.stringify(r ?? {}).matchAll(/customers\/(\d{6,12})/g)].map((m) => m[1]))].slice(0, GOOGLE_CUSTOMERS);
-    const found = await settle(ids, async (id): Promise<AdAccount | null> => {
+    const found = await settleAll(ids, async (id): Promise<AdAccount | null> => {
       const row = listOf(await composioRead(scope, "googleads", "GOOGLEADS_SEARCH_STREAM_GAQL", { query: GOOGLE_CUSTOMER_Q, customer_id: id }, accountId), "customer")[0];
       // A manager account holds no ads of its own; its client accounts are listed separately.
       if (!row || at(row, "customer.manager") === true) return null;
@@ -76,6 +81,12 @@ export async function adAccountsVia(scope: string, provider: string, accountId: 
     const r = await composioRead(scope, "tiktok_ads", "TIKTOK_ADS_GET_ADVERTISER_ACCOUNTS", {}, accountId);
     return listOf(r, "advertiser_id").filter((a) => TT_ID.test(str(a.advertiser_id)) && (!a.status || /ENABLE/.test(str(a.status))))
       .map((a) => ({ id: str(a.advertiser_id), name: clean(str(a.name) || str(a.advertiser_id), 80), currency: str(a.currency) || undefined }));
+  }
+  if (provider === "linkedin_ads") {
+    // One page of 100 accounts; canceled, draft and removed accounts have nothing to learn from.
+    const r = await composioRead(scope, "linkedin_ads", "LINKEDIN_ADS_SEARCH_AD_ACCOUNTS", { page_size: 100 }, accountId);
+    return listOf(r).map((a) => ({ a, id: liId(a.id, "sponsoredAccount") })).filter((x) => x.id && (!x.a.status || x.a.status === "ACTIVE"))
+      .map(({ a, id }) => ({ id, name: clean(str(a.name) || id, 80), currency: str(a.currency) || undefined }));
   }
   throw new Error("not_an_ad_provider");
 }
@@ -117,20 +128,26 @@ async function snapVia(scope: string, c: Connection, now: Date): Promise<AdPull>
   const w = adWindow(now);
   const ads: { id: string; name: string; active: boolean }[] = [];
   let cursor: string | undefined;
+  // `dropped`: a listed ad not kept (deleted, or without a Snap id), whose spend the account's figure still holds.
+  // `more`: Snap said there was another page and the listing stopped anyway (no cursor in its link, or the page cap).
+  let dropped = false;
+  let more = false;
   for (let i = 0; i < PAGES; i++) {
     const r = await composioRead(scope, "snapchat", "SNAPCHAT_LIST_ADS_BY_ACCOUNT", { ad_account_id: account, limit: 1000, ...(cursor ? { cursor } : {}) }, acc);
     for (const x of listOf(r, "ad")) {
       const ad = x.ad as Record<string, unknown> | undefined;
       if (ad && SNAP_ID.test(str(ad.id)) && ad.deleted !== true) ads.push({ id: str(ad.id), name: str(ad.name) || str(ad.id), active: ad.status === "ACTIVE" });
+      else dropped = true;
     }
     const link = str(at(r, "paging.next_link"));
+    more = !!link;
     if (!link) break;
     try { cursor = new URL(link).searchParams.get("cursor") ?? undefined; } catch { cursor = undefined; }
     if (!cursor) break;
   }
   // Running ads first: when there are more than the cap, the ones spending now matter most.
   const chosen = [...ads.filter((a) => a.active), ...ads.filter((a) => !a.active)].slice(0, SNAP_ADS_READ);
-  const stats = await settle(chosen, async (a) => {
+  const stats = await settleAll(chosen, async (a) => {
     const r = await composioRead(scope, "snapchat", "SNAPCHAT_GET_AD_STATS", { ad_id: a.id, fields: SNAP_FIELDS, granularity: "TOTAL", start_time: w.start.toISOString(), end_time: w.end.toISOString() }, acc);
     // Snap nests the figures as total_stats[].total_stat.stats, under Composio's own wrapper: deeper than pick's default.
     const v = (k: string) => num(pick(r, [k], 7));
@@ -140,7 +157,27 @@ async function snapVia(scope: string, c: Connection, now: Date): Promise<AdPull>
     name: clean(s.a.name), text: "", group: "",
     impressions: s.impressions, clicks: s.swipes, spend: micro(s.spend), conversions: s.purchases, revenue: micro(s.value), sends: null, opens: null,
   }));
-  return { rows, range: w.range, platform: "Snapchat Ads", account: c.meta?.account ?? account, currency: c.meta?.currency };
+  // Every ad of the account read: the whole list read (no page left), no listed ad dropped, no more than the cap listed,
+  // and no per-ad read skipped (settleAll keeps the ones that answered). Only then is the account-wide prev comparable.
+  const allAds = !more && !dropped && ads.length <= SNAP_ADS_READ && stats.length === chosen.length;
+  return { rows, range: w.range, platform: "Snapchat Ads", account: c.meta?.account ?? account, currency: c.meta?.currency, allAds };
+}
+
+/**
+ * The ad account's spend over the 30 days before the window (rule 733), in one account-level call: Snap serves only
+ * spend at this level, so the other previous figures stay null, and a second per-ad pass (up to 50 more calls) is not
+ * run. The same id check and time format as snapVia. No spend figure, junk or zero spend gives no previous period: a new
+ * account has nothing to compare with, so no change is ever written from it.
+ */
+export async function snapPrevSpendVia(scope: string, c: Connection, now: Date): Promise<AdPrev | null> {
+  const account = c.meta?.adAccount;
+  if (!account || !SNAP_ID.test(account)) throw new Error("no_ad_account");
+  const w = adWindow(prevNow(now));
+  const r = await composioRead(scope, "snapchat", "SNAPCHAT_GET_AD_ACCOUNTS_STATS", { ad_account_id: account, fields: "spend", granularity: "TOTAL", start_time: w.start.toISOString(), end_time: w.end.toISOString() }, accountOf(c, "snapchat"));
+  // Micro-currency, under Composio's wrapper as total_stats[].total_stat.stats: deeper than pick's default.
+  const spend = micro(num(pick(r, ["spend"], 7)));
+  if (spend == null || spend <= 0) return null;
+  return { range: w.range, spend: Math.round(spend * 100) / 100, impressions: null, clicks: null, conversions: null, revenue: null };
 }
 
 /** Google Ads results per ad over the window. The text is fixed; only the two dates (computed, checked) vary. */
@@ -201,11 +238,64 @@ async function tiktokVia(scope: string, c: Connection, now: Date): Promise<AdPul
   return { rows, range: w.range, platform: "TikTok Ads", account: c.meta?.account ?? advertiser, currency: c.meta?.currency };
 }
 
-/** The last 30 whole days of a Composio ad record, one reader per platform. */
-export function adRowsVia(scope: string, c: Connection, now = new Date()): Promise<AdPull> {
+/** LinkedIn's id from a plain id or its URN (`urn:li:<kind>:<digits>`), or "" when it is neither. */
+function liId(v: unknown, kind: "sponsoredAccount" | "sponsoredCampaign"): string {
+  const s = str(v);
+  const id = s.startsWith(`urn:li:${kind}:`) ? s.slice(`urn:li:${kind}:`.length) : s;
+  return LI_ID.test(id) ? id : "";
+}
+
+/** The analytics fields asked for, a constant (spec C2). */
+export const LI_ADS_FIELDS = "impressions,clicks,costInLocalCurrency,landingPageClicks,externalWebsiteConversions,pivotValues,dateRange";
+
+/** A computed `YYYY-MM-DD` as LinkedIn's date object. */
+function liDate(d: string) {
+  if (!DATE.test(d)) throw new Error("bad_range");
+  const [year, month, day] = d.split("-").map(Number);
+  return { year, month, day };
+}
+
+/**
+ * LinkedIn Ads results per campaign over the window (rule 743, spec C2). The account is the one chosen from the
+ * connect-time listing, checked as digits before its URN is built; the analytics call is a constant whose only
+ * variables are that URN and the window's dates (LinkedIn's end date is inclusive, so the window's last day). Campaign
+ * names come from one `SEARCH_CAMPAIGNS` call beside it, mapped by the id in `pivotValues`; a failed names call keeps
+ * the results under the campaign ids. `totalsOnly` (the previous period, rule 733) skips the names call.
+ */
+export async function linkedinAdsVia(scope: string, c: Connection, now: Date, opts: ReadOpts = {}): Promise<AdPull> {
+  const account = c.meta?.adAccount;
+  if (!account || !LI_ID.test(account)) throw new Error("no_ad_account");
+  const acc = accountOf(c, "linkedin_ads");
+  const w = adWindow(now);
+  const dateRange = { start: liDate(w.range.from), end: liDate(w.range.to) };
+  const [r, names] = await Promise.all([
+    composioRead(scope, "linkedin_ads", "LINKEDIN_ADS_GET_AD_ANALYTICS", {
+      q: "analytics", pivot: "CAMPAIGN", timeGranularity: "ALL", accounts: [`urn:li:sponsoredAccount:${account}`], dateRange, fields: LI_ADS_FIELDS,
+    }, acc),
+    opts.totalsOnly ? new Map<string, string>() : composioRead(scope, "linkedin_ads", "LINKEDIN_ADS_SEARCH_CAMPAIGNS", { adAccountId: Number(account), pageSize: 100 }, acc)
+      .then((x) => new Map(listOf(x).map((k) => [liId(k.id, "sponsoredCampaign"), str(k.name)] as const).filter(([id, name]) => id && name)))
+      .catch(() => new Map<string, string>()),
+  ]);
+  const rows: Row[] = listOf(r, "pivotValues").slice(0, MAX_ROWS).map((x) => {
+    const id = (Array.isArray(x.pivotValues) ? x.pivotValues : []).map((v) => liId(v, "sponsoredCampaign")).find(Boolean) ?? "";
+    return {
+      name: clean(names.get(id) || (id ? `Campaign ${id}` : "campaign")), text: "", group: "",
+      impressions: num(x.impressions), clicks: num(x.clicks), spend: num(x.costInLocalCurrency),
+      conversions: num(x.externalWebsiteConversions), revenue: null, sends: null, opens: null,
+    };
+  }).filter((x) => x.impressions || x.spend);
+  return { rows, range: w.range, platform: "LinkedIn Ads", account: c.meta?.account ?? account, currency: c.meta?.currency };
+}
+
+/**
+ * The last 30 whole days of a Composio ad record, one reader per platform. `opts.totalsOnly` (the previous period) is
+ * used by LinkedIn Ads, whose names call it skips; the other readers make no call that only names or copy need.
+ */
+export function adRowsVia(scope: string, c: Connection, now = new Date(), opts: ReadOpts = {}): Promise<AdPull> {
   if (c.provider === "meta_ads") return metaVia(scope, c, now);
   if (c.provider === "snapchat") return snapVia(scope, c, now);
   if (c.provider === "google_ads") return googleVia(scope, c, now);
   if (c.provider === "tiktok_ads") return tiktokVia(scope, c, now);
+  if (c.provider === "linkedin_ads") return linkedinAdsVia(scope, c, now, opts);
   return Promise.reject(new Error("not_an_ad_provider"));
 }

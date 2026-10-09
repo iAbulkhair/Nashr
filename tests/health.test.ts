@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("the health route (rule 676)", () => {
-  const get = async (ip: string) => (await import("@/app/api/health/route")).GET(new Request("https://x.example/api/health", { headers: { "x-real-ip": ip } }));
+  const get = async (ip: string) => (await import("@/app/api/health/route")).GET(new Request("https://x.example/api/health", { headers: { "x-forwarded-for": ip } }));
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
   it("answers without a session with exactly ok, commit, built and no-store", async () => {
@@ -22,6 +22,26 @@ describe("the health route (rule 676)", () => {
     const { db } = await import("@/lib/db");
     vi.spyOn(db, "incrby").mockRejectedValue(new Error("down"));
     expect((await get("10.1.0.3")).status).toBe(200);
+  });
+  it("waits for a slow limiter at most a second, then answers 200 (the Upstash client retries for about 4.3 s)", async () => {
+    const { GET } = await import("@/app/api/health/route");
+    const { db } = await import("@/lib/db");
+    vi.spyOn(db, "incrby").mockReturnValue(new Promise<number>(() => {}));
+    vi.useFakeTimers();
+    try {
+      let answered = false;
+      const res = GET(new Request("https://x.example/api/health", { headers: { "x-real-ip": "10.1.0.4" } }));
+      void res.then(() => { answered = true; });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(answered).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(answered).toBe(true);
+      const r = await res;
+      expect(r.status).toBe(200);
+      expect((await r.json()).ok).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("next.config sets a commit sha or unknown, and a build time", async () => {
     const env = (await import("../next.config")).default.env!;

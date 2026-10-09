@@ -4,11 +4,13 @@
  * section 3). Slugs and argument names were read from Composio's tool schemas on 2026-10-05; the measured run on the
  * founder's own accounts confirms them (plan Task 8). No imports: the registry and tests read it freely.
  *
- * Ad accounts and Google's analytics are read only: their toolkits list no write tool at all, so nothing here can
- * create, edit, pause or fund an ad, or change a property (the founder's rule of 2026-10-05: ads are read and analysed,
- * never published or edited).
+ * Ad accounts and Google's analytics are read only here. Composio's own toolkits do list write tools (for example
+ * `METAADS_COPY_AD_OBJECT`, `GOOGLE_SEARCH_CONSOLE_ADD_SITE`); only this allowlist keeps them read-only: their entries
+ * below list no write tool at all, so nothing here can create, edit, pause or fund an ad, or change a property (the
+ * founder's rule of 2026-10-05: ads are read and analysed, never published or edited; rule 653).
  *
- * Instagram and LinkedIn page results are reads (rule 663, spec 2026-10-08-social-results): no tool here posts, replies,
+ * Instagram, Facebook Page, LinkedIn page, YouTube channel and TikTok account results are reads (rules 663, 739, 740 and
+ * 742, specs 2026-10-08-social-results and 2026-10-08-social-analytics-reports B1, B2, C1): no tool here posts, replies,
  * likes or edits on the strength of them.
  *
  * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
@@ -20,7 +22,7 @@
  */
 export type Toolkit =
   | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
-  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "google_analytics" | "google_search_console";
+  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
 /**
@@ -34,7 +36,14 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     provider: "meta",
     authEnv: "COMPOSIO_AUTH_FACEBOOK",
     // `fields` is always sent: the tool's default includes each Page's access_token, which Thakeen must never receive.
-    read: { FACEBOOK_LIST_MANAGED_PAGES: ["fields", "limit"] },
+    // The Page's results (rule 739): its daily insights, its own posts and each post's two insights, with constant
+    // metrics and fields (social-read/facebook.ts); no field list here or there names access_token.
+    read: {
+      FACEBOOK_LIST_MANAGED_PAGES: ["fields", "limit"],
+      FACEBOOK_GET_PAGE_INSIGHTS: ["page_id", "metrics", "period", "since", "until"],
+      FACEBOOK_GET_PAGE_POSTS: ["page_id", "fields", "limit"],
+      FACEBOOK_GET_POST_INSIGHTS: ["post_id", "metrics", "period"],
+    },
     write: { FACEBOOK_CREATE_POST: ["page_id", "message", "published"], FACEBOOK_CREATE_PHOTO_POST: ["page_id", "url", "message", "published"] },
   },
   instagram: {
@@ -65,6 +74,8 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
       LINKEDIN_GET_COMPANY_INFO: ["start", "count", "state"],
       LINKEDIN_GET_SHARE_STATS: ["organizational_entity", "time_intervals"],
       LINKEDIN_GET_NETWORK_SIZE: ["organization_id", "edgeType"],
+      // The page's own views, by day (rule 748): needs the ADMINISTRATOR role and rw_organization_admin, else a 403.
+      LINKEDIN_GET_ORG_PAGE_STATS: ["organization", "timeRangeStart", "timeRangeEnd", "timeGranularityType"],
     },
     write: { LINKEDIN_CREATE_LINKED_IN_POST: ["author", "commentary", "visibility", "lifecycleState"] },
   },
@@ -72,7 +83,9 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     provider: "tiktok",
     // TikTok has no managed app on Composio: this auth config carries Thakeen's own TikTok app (plan Task 8).
     authEnv: "COMPOSIO_AUTH_TIKTOK",
-    read: {},
+    // The account's results (rule 742, social-read/tiktok.ts): its lifetime counts with constant fields and its public
+    // videos, at most two pages of 20. Both act on the login's own account: no user or video id is ever sent.
+    read: { TIKTOK_GET_USER_STATS: ["fields"], TIKTOK_LIST_VIDEOS: ["max_count", "cursor"] },
     write: { TIKTOK_POST_PHOTO: ["photo_images", "photo_cover_index", "post_mode", "title", "description"] },
     fixed: { TIKTOK_POST_PHOTO: { post_mode: "MEDIA_UPLOAD" } },
   },
@@ -88,7 +101,14 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
   youtube: {
     provider: "youtube",
     authEnv: "COMPOSIO_AUTH_YOUTUBE",
-    read: { YOUTUBE_LIST_CHANNELS: ["part", "mine", "maxResults"] },
+    read: {
+      YOUTUBE_LIST_CHANNELS: ["part", "mine", "maxResults"],
+      // The channel's results (rule 740): its own analytics (`ids` is always channel==MINE), its latest uploads and those
+      // videos' public counts, with constant metrics and parts (social-read/youtube.ts). Read only, like the list above.
+      YOUTUBE_QUERY_ANALYTICS: ["ids", "startDate", "endDate", "metrics", "dimensions"],
+      YOUTUBE_LIST_CHANNEL_VIDEOS: ["mine", "part", "maxResults"],
+      YOUTUBE_GET_VIDEO_DETAILS_BATCH: ["id", "parts"],
+    },
     write: { YOUTUBE_UPLOAD_VIDEO: ["title", "description", "tags", "categoryId", "privacyStatus", "videoFilePath"] },
     fixed: { YOUTUBE_UPLOAD_VIDEO: { privacyStatus: "private" } },
   },
@@ -102,7 +122,11 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
   snapchat: {
     provider: "snapchat",
     authEnv: "COMPOSIO_AUTH_SNAPCHAT",
-    read: { SNAPCHAT_LIST_ORGANIZATIONS: ["with_ad_accounts"], SNAPCHAT_LIST_ADS_BY_ACCOUNT: ["ad_account_id", "limit", "cursor"], SNAPCHAT_GET_AD_STATS: ["ad_id", "fields", "start_time", "end_time", "granularity"] },
+    read: {
+      SNAPCHAT_LIST_ORGANIZATIONS: ["with_ad_accounts"], SNAPCHAT_LIST_ADS_BY_ACCOUNT: ["ad_account_id", "limit", "cursor"], SNAPCHAT_GET_AD_STATS: ["ad_id", "fields", "start_time", "end_time", "granularity"],
+      // The ad account's spend over the previous 30 days, one call (rule 733): Snap serves only spend at this level.
+      SNAPCHAT_GET_AD_ACCOUNTS_STATS: ["ad_account_id", "fields", "start_time", "end_time", "granularity"],
+    },
     write: {},
   },
   googleads: {
@@ -116,6 +140,19 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     provider: "tiktok_ads",
     authEnv: "COMPOSIO_AUTH_TIKTOK_ADS",
     read: { TIKTOK_ADS_GET_ADVERTISER_ACCOUNTS: ["fields"], TIKTOK_ADS_GET_REPORT_INTEGRATED: ["report_type", "advertiser_id", "data_level", "dimensions", "metrics", "start_date", "end_date", "page", "page_size"] },
+    write: {},
+  },
+  // LinkedIn Ads (rule 743, spec C2): the ad accounts at connect time, then one constant analytics call per period and
+  // one campaign-name call. Its own LinkedIn app (Advertising API), separate from the page toolkit above.
+  linkedin_ads: {
+    provider: "linkedin_ads",
+    authEnv: "COMPOSIO_AUTH_LINKEDIN_ADS",
+    read: {
+      LINKEDIN_ADS_SEARCH_AD_ACCOUNTS: ["status", "test", "page_size", "page_token"],
+      LINKEDIN_ADS_GET_AD_ACCOUNT: ["ad_account_id"],
+      LINKEDIN_ADS_GET_AD_ANALYTICS: ["q", "pivot", "fields", "accounts", "dateRange", "timeGranularity"],
+      LINKEDIN_ADS_SEARCH_CAMPAIGNS: ["adAccountId", "pageSize", "pageToken"],
+    },
     write: {},
   },
   // ---------- read only: the site's traffic and search (src/lib/site-stats.ts) ----------
@@ -145,6 +182,7 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   snapchat: ["snapchat"],
   google_ads: ["googleads"],
   tiktok_ads: ["tiktok_ads"],
+  linkedin_ads: ["linkedin_ads"],
   google: ["google_analytics", "google_search_console"],
 };
 

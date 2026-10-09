@@ -28,6 +28,13 @@ const nextConfig: NextConfig = {
   // Inlined into the server bundle at build time (process.env.BUILD_COMMIT and BUILD_TIME, read as written, never
   // destructured). Neither is a secret. BUILD_TIME alone tells two builds apart when the commit is unknown.
   env: { BUILD_COMMIT: buildCommit(), BUILD_TIME: new Date().toISOString() },
+  // The most request body the proxy buffers (rule 774). The proxy runs on every path, `/api/*` included (rule 674), and
+  // Next clones and holds each non-GET body up to this size before the route's own size check, auth or rate limit
+  // runs; past it the route gets the body cut short, never an error. The largest legitimate body is POST
+  // /api/performance: a CSV of at most 2,000,000 characters (MAX_CSV_CHARS in src/lib/perf-import.ts; the page refuses
+  // files over 2,000,000 bytes) sent as JSON, at most 3 bytes a character (a byte that is not UTF-8, as in a
+  // Windows-1256 export, becomes U+FFFD), so 6,000,000 bytes and the file name. Every other route takes far less.
+  experimental: { proxyClientMaxBodySize: 6 * 1024 * 1024 },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

@@ -362,7 +362,7 @@ let ipN = 0;
 /** A fresh client address per use, so the per-IP bucket of one test never touches another's. */
 const nextIp = () => { const n = ++ipN; return `10.9.${n >> 8}.${n & 255}`; };
 const callFeed = (token: string, ip = nextIp()) =>
-  feedRoute.GET(new Request(`http://x/api/secretary/feed/${token}`, { headers: { "x-real-ip": ip } }), params({ token }));
+  feedRoute.GET(new Request(`http://x/api/secretary/feed/${token}`, { headers: { "x-forwarded-for": ip } }), params({ token }));
 const brandRows = (status: "active" | "archived") => [
   { id: "default", name: "", createdAt: iso(NOW), status: "active" as const },
   { id: "b2", name: "Two", createdAt: iso(NOW), status },
@@ -765,7 +765,7 @@ describe("feed revocation (rules 582-583)", () => {
     expect((await getFeedStatus(login)).exists).toBe(true);
   };
   let ipN2 = 0;
-  const ipH = () => ({ "x-real-ip": `198.18.7.${++ipN2}` });
+  const ipH = () => ({ "x-forwarded-for": `198.18.7.${++ipN2}` });
   /** A real reset link for this login (what /api/auth/forgot stores), redeemed through the real route. */
   const resetAs = async (email: string, kind: "owner" | "member", password: string) => {
     const token = randomBytes(32).toString("hex");

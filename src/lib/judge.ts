@@ -93,7 +93,7 @@ export async function scoreItems(email: string | undefined, brand: Brand, type: 
   // not leave the batch unscored.
   const client = anthropic({ timeoutMs: MODEL_BUDGET.JUDGE_MS, maxRetries: 1 });
   const res = await client.messages.create({
-    model: "claude-sonnet-5",
+    model: "claude-sonnet-5-5",
     max_tokens: 8000,
     thinking: { type: "adaptive" },
     output_config: { effort: "low" },

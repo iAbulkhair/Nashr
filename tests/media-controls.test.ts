@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import MediaControls, { RECHECK_GAPS, pollJob, recheckTask, type PollEvent } from "@/components/app/MediaControls";
 import { appDict } from "@/lib/app-i18n";
 import type { Task } from "@/lib/brand";
-import type { MediaModelId } from "@/lib/media-catalog";
+import { MEDIA_MODELS, TRIAL_VIDEO_MODELS, type MediaModelId, type VideoModelId } from "@/lib/media-catalog";
 import type { PublicJob } from "@/lib/media/types";
 
 /**
@@ -17,8 +17,9 @@ const OURS = "https://s1.public.blob.vercel-storage.com/media/0123456789abcdef01
 const FAL = "https://v3.fal.media/files/old.jpg";
 const post = (over: Partial<Task> = {}): Task => ({ id: "mc1", type: "social", channel: "instagram", title: "Weekend offer", body: "Two for one.", status: "pending", createdAt: new Date().toISOString(), lang: "en", ...over });
 /** The markup with its text entities decoded, so the dictionary strings can be looked up as written. */
-function html(task: Task, available: MediaModelId[], over: { paused?: boolean; credits?: number; plan?: string } = {}) {
-  const out = renderToStaticMarkup(createElement(MediaControls, { task, lang: "en", t: appDict.en, available, credits: over.credits ?? 100, plan: over.plan ?? "pro", paused: over.paused ?? false, onChanged: () => {} }));
+const ALL_VIDEO = MEDIA_MODELS.filter((m) => m.kind === "video").map((m) => m.id as VideoModelId);
+function html(task: Task, available: MediaModelId[], over: { paused?: boolean; credits?: number; plan?: string; included?: readonly VideoModelId[] } = {}) {
+  const out = renderToStaticMarkup(createElement(MediaControls, { task, lang: "en", t: appDict.en, available, included: over.included ?? ALL_VIDEO, credits: over.credits ?? 100, plan: over.plan ?? "pro", paused: over.paused ?? false, onChanged: () => {} }));
   return out.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 }
 const imageButton = (h: string) => h.match(/<button[^>]*>(?:↻ )?Generate image<\/button>/)?.[0] ?? "";
@@ -71,6 +72,24 @@ describe("why Photo to motion is closed", () => {
     const h = card(html(post({ imageUrl: OURS, imageProvider: "kie" }), ["img-fast", "vid-quick", "vid-motion"]));
     expect(h).not.toContain(en.needsImageNote);
     expect(h).not.toContain(en.redoImageNote);
+  });
+});
+
+describe("which video cards the plan opens (rule 781)", () => {
+  const card = (h: string) => h.match(/Premium · 10s[\s\S]*?<\/label>/)?.[0] ?? "";
+  const withImage = post({ imageUrl: OURS, imageProvider: "kie" });
+  const all = ["img-fast", "vid-quick", "vid-premium"] as MediaModelId[];
+
+  it("a model outside the plan's list is closed with the subscribe note, whatever the plan name says", () => {
+    const h = card(html(withImage, all, { plan: "trial", included: TRIAL_VIDEO_MODELS }));
+    expect(h).toContain(en.afterSubscribe);
+    expect(card(html(withImage, all, { plan: "pro", included: TRIAL_VIDEO_MODELS }))).toContain(en.afterSubscribe);
+  });
+
+  it("a trial whose plan list holds every model (a founder grant) sees the same cards a paid plan does", () => {
+    const granted = html(withImage, all, { plan: "trial", included: ALL_VIDEO });
+    expect(granted).not.toContain(en.afterSubscribe);
+    expect(granted).toBe(html(withImage, all, { plan: "pro", included: ALL_VIDEO }));
   });
 });
 

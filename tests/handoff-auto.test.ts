@@ -286,7 +286,9 @@ describe("the Governance page shows the switch truly (rule 284)", () => {
     expect(entry.desc.en).toContain("a monthly cap on at least one agent Majed hands work to");
     expect(entry.desc.ar).toContain("حداً شهرياً لوكيل واحد على الأقل ممن يسلّمهم ماجد العمل");
     const panel = readFileSync("src/components/app/GovernancePanel.tsx", "utf8");
-    expect(panel).toMatch(/if \(on && !window\.confirm\(g\.autoHandoffConfirm\)\) return;/);
+    // Turning it on asks first, in the app's confirmation dialog (rule 697), with the words above.
+    expect(panel).toMatch(/if \(on && !\(await askAutoHandoff\(\)\)\) return;/);
+    expect(panel).toContain("const askAutoHandoff = () => ask({ title: g.autoHandoff, message: g.autoHandoffConfirm,");
     expect(panel).toContain("confirmAutoHandoff: true");
     expect(panel).toContain('code === "auto_handoff_needs_cap" ? g.autoHandoffNeedsCap');
   });
@@ -874,13 +876,13 @@ describe("the auto-run starts only types that keep the margin floor on a cold ca
   const capped = (type: TaskType) => ({ majedAutoHandoff: true, agentCaps: { [agentForTask(type).id]: 50 } });
   const ceiling = maxCostPerCreditUsd();
 
-  it("autoBlock refuses (`floor`) exactly the handoff types over the ceiling on a cold cache: today article and followup_seq", () => {
+  it("autoBlock refuses (`floor`) exactly the handoff types over the ceiling on a cold cache: today article only (followup_seq left the list when generation moved to Opus 5.5)", () => {
     const refused = HANDOFF_TYPES.filter((t) => autoBlock(one(t), 0, capped(t)) !== null);
-    expect(refused).toEqual(["article", "followup_seq"]);
+    expect(refused).toEqual(["article"]);
     for (const t of refused) expect(autoBlock(one(t), 0, capped(t)), t).toBe("floor");
     // The same estimate and ceiling as the floor test (rule 241), read by the code, not copied into it.
     for (const t of HANDOFF_TYPES) expect(autoUnderFloor(t), t).toBe(estimateBatch(t, { cache: "cold" }).usdPerCredit <= ceiling);
-    // Not vacuous: both are over the ceiling cold ($0.0918 and $0.0773 per credit) and under it on a hit (a login's Run).
+    // Not vacuous: article is over the ceiling cold ($0.0773 per credit) and under it on a hit (a login's Run).
     for (const t of refused) {
       expect(estimateBatch(t, { cache: "cold" }).usdPerCredit, t).toBeGreaterThan(ceiling);
       expect(estimateBatch(t).usdPerCredit, t).toBeLessThanOrEqual(ceiling);
@@ -900,12 +902,12 @@ describe("the auto-run starts only types that keep the margin floor on a cold ca
   });
 
   it("the words name the types it leaves to Run, in both languages", () => {
-    expect(HANDOFF_TYPES.filter((t) => !autoUnderFloor(t)), "a new type here needs the words below").toEqual(["article", "followup_seq"]);
-    expect(en.governance.autoHandoffSub).toContain("SEO articles and follow-up cadences never start on their own: they wait for you to press Run.");
-    expect(ar.governance.autoHandoffSub).toContain("مقالات SEO وسلاسل المتابعة لا تبدأ تلقائياً أبداً: تنتظر أن تضغط «نفّذ».");
+    expect(HANDOFF_TYPES.filter((t) => !autoUnderFloor(t)), "a new type here needs the words below").toEqual(["article"]);
+    expect(en.governance.autoHandoffSub).toContain("SEO articles never start on their own: they wait for you to press Run.");
+    expect(ar.governance.autoHandoffSub).toContain("مقالات SEO لا تبدأ تلقائياً أبداً: تنتظر أن تضغط «نفّذ».");
     const faq = HELP.flatMap((t) => t.items).find((i) => i.q.en === "Majed's auto-run?")!;
-    expect(faq.a.en).toContain("SEO articles and follow-up cadences never start on their own; they wait for Run.");
-    expect(faq.a.ar).toContain("مقالات SEO وسلاسل المتابعة لا تبدأ تلقائياً أبداً، بل تنتظر «نفّذ».");
+    expect(faq.a.en).toContain("SEO articles never start on their own; they wait for Run.");
+    expect(faq.a.ar).toContain("مقالات SEO لا تبدأ تلقائياً أبداً، بل تنتظر «نفّذ».");
   });
 });
 

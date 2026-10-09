@@ -9,7 +9,8 @@
  * types whose cold-cache estimate keeps that floor (`autoUnderFloor`, src/lib/handoffs.ts, rule 296).
  *
  * Calibrated to docs/system/costs.md §3 (2026-09-27): the generation call is Opus with a cached workspace block, a
- * fresh brief and adaptive thinking; the reviewer and the judge are Sonnet. The review and judge constants are fitted
+ * fresh brief and adaptive thinking; the reviewer and the judge are Sonnet. Since 2026-10-09 the calls are Opus 5.5,
+ * Sonnet 5.5 and Haiku 5.5 (ESTIMATE_MODELS); the token counts were kept. The review and judge constants are fitted
  * to reproduce that table within $0.001; they were not measured. Replace them with the founder console's `byKind`
  * averages (generate / review / judge, src/lib/usage.ts `getUsage`) after a month of real traffic.
  */
@@ -19,15 +20,15 @@ import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
 /** The model each call is priced at. tests/pricing-floor.test.ts checks these literals are the ones the code calls. */
 export const ESTIMATE_MODELS = {
   /** src/lib/noor.ts `generate` */
-  generate: "claude-opus-5",
+  generate: "claude-opus-5-5",
   /** src/lib/noor.ts `critique` */
-  review: "claude-sonnet-5",
+  review: "claude-sonnet-5-5",
   /** src/lib/judge.ts */
-  judge: "claude-sonnet-5",
+  judge: "claude-sonnet-5-5",
   /** src/lib/onboard.ts */
-  onboard: "claude-opus-5",
+  onboard: "claude-opus-5-5",
   /** src/lib/media/prompts.ts: the prompt a render is made from */
-  mediaPrompt: "claude-sonnet-5",
+  mediaPrompt: "claude-haiku-5-5",
 } as const;
 
 export type ItemSize = "short" | "medium" | "long";

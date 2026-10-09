@@ -76,10 +76,12 @@ describe("the staging lock (rules 674, 677)", () => {
     // require(). Comments are not stripped on purpose: a comment that looks like an import fails, the safe direction.
     const specs = (src: string) =>
       [...new Set([...src.matchAll(/\b(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]))].sort();
-    // A closed list: proxy -> {deploy-env, staging-access}; staging-access -> {secret, deploy-env}; secret -> crypto;
-    // deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
+    // A closed list: proxy -> {csrf, deploy-env, staging-access}; csrf -> origin; staging-access -> {secret, deploy-env};
+    // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
-      "src/proxy.ts": ["@/lib/deploy-env", "@/lib/staging-access", "next/server"],
+      "src/proxy.ts": ["@/lib/csrf", "@/lib/deploy-env", "@/lib/staging-access", "next/server"],
+      "src/lib/csrf.ts": ["@/lib/origin", "next/server"],
+      "src/lib/origin.ts": [],
       "src/lib/staging-access.ts": ["@/lib/deploy-env", "@/lib/secret", "node:crypto"],
       "src/lib/deploy-env.ts": [],
       "src/lib/secret.ts": ["crypto"],
@@ -106,12 +108,25 @@ describe("the staging lock (rules 674, 677)", () => {
   });
 });
 
+describe("the proxy buffers at most 6 MB of a request body (rule 774)", () => {
+  it("next.config caps it under Next's 10 MB default and above the largest body a route takes", async () => {
+    const cap = (await import("../next.config")).default.experimental?.proxyClientMaxBodySize;
+    expect(cap).toBe(6 * 1024 * 1024);
+    // The largest: POST /api/performance with the longest CSV it accepts, every character three bytes in UTF-8 (U+FFFD,
+    // what a byte that is not UTF-8 becomes when the page reads the file), and a long file name.
+    const { MAX_CSV_CHARS, METRICS } = await import("@/lib/perf-import");
+    const worst = JSON.stringify({ csv: "�".repeat(MAX_CSV_CHARS), file: "ت".repeat(255) + ".csv", metric: Object.keys(METRICS)[0] });
+    expect(Buffer.byteLength(worst)).toBeLessThan(cap as number);
+    expect(cap as number).toBeLessThan(10 * 1024 * 1024);
+  });
+});
+
 describe("the staging access route (rule 675)", () => {
   const key = "staging-key-" + "z".repeat(30);
   const post = async (code: string | null, ip: string, url = "http://localhost:3000/api/staging-access") => {
     const { POST } = await import("@/app/api/staging-access/route");
     const body = new URLSearchParams(code === null ? { lang: "ar" } : { code, lang: "ar" });
-    return POST(new Request(url, { method: "POST", body, headers: { "x-real-ip": ip, "content-type": "application/x-www-form-urlencoded" } }));
+    return POST(new Request(url, { method: "POST", body, headers: { "x-forwarded-for": ip, "content-type": "application/x-www-form-urlencoded" } }));
   };
   beforeEach(async () => {
     // The store is chosen when `db` first loads, and staging counts as production (rule 430): load it before the stub
@@ -171,13 +186,14 @@ describe("the staging access route (rule 675)", () => {
     expect(r.headers.get("set-cookie")).toBeNull();
     expect(await r.json()).toEqual({ ok: false, error: "slow_down" });
   });
-  it("the bucket is per client address: x-real-ip or the last x-forwarded-for hop each get their own five tries", async () => {
+  it("the bucket is per client address: the last x-forwarded-for hop gets its own five tries, a spoofed header none (rule 773)", async () => {
+    vi.stubEnv("VERCEL", ""); // Hostinger: no VERCEL
     const { POST } = await import("@/app/api/staging-access/route");
     const from = (h: Record<string, string>) => POST(new Request("http://localhost:3000/api/staging-access", {
       method: "POST", body: new URLSearchParams({ code: "nope", lang: "ar" }), headers: { ...h, "content-type": "application/x-www-form-urlencoded" },
     }));
     const clients: Record<string, string>[][] = [
-      [{ "x-real-ip": "10.0.2.1" }, { "x-real-ip": "10.0.2.2" }],
+      [{ "x-forwarded-for": "10.0.2.1" }, { "x-forwarded-for": "10.0.2.2" }],
       // A proxy that only appends to x-forwarded-for: the caller's own earlier hops do not matter, the last one does.
       [{ "x-forwarded-for": "9.9.9.9, 10.0.2.3" }, { "x-forwarded-for": "9.9.9.9, 10.0.2.4" }],
     ];
@@ -185,6 +201,10 @@ describe("the staging access route (rule 675)", () => {
       for (let i = 0; i < 5; i++) expect((await from(a)).status).toBe(303);
       expect((await from(a)).status, "the sixth try of the first client").toBe(429);
       expect((await from(b)).status, "a second client is not locked out by the first").toBe(303);
+    }
+    // Off Vercel, x-vercel-forwarded-for and x-real-ip come from the caller: a new value of either is not a new client.
+    for (const spoof of [{ "x-vercel-forwarded-for": "198.51.100.1" }, { "x-real-ip": "198.51.100.2" }] as Record<string, string>[]) {
+      expect((await from({ ...spoof, "x-forwarded-for": "9.9.9.9, 10.0.2.3" })).status, JSON.stringify(spoof)).toBe(429);
     }
   });
   it("with no address header at all every caller shares one bucket: the case the staging check rules out", async () => {
@@ -202,6 +222,24 @@ describe("the staging access route (rule 675)", () => {
     expect((await post(key, "10.0.0.5")).status).toBe(404);
     const Page = (await import("@/app/[lang]/staging-access/page")).default;
     await expect(Page({ params: Promise.resolve({ lang: "ar" }), searchParams: Promise.resolve({}) })).rejects.toThrow();
+  });
+  it("every method but POST is a bare 404, off staging and on it: no 405, no OPTIONS that lists the route's methods", async () => {
+    const route: Record<string, unknown> = await import("@/app/api/staging-access/route");
+    const { HTTP_METHODS } = await import("next/dist/server/web/http");
+    // Each method Next routes must be exported here, or Next fills it in (405, or 204 with `Allow`) and shows the route.
+    const others = HTTP_METHODS.filter((m) => m !== "POST");
+    expect(others.length).toBe(6);
+    for (const env of ["", "staging"]) {
+      vi.stubEnv("APP_ENV", env);
+      for (const m of others) {
+        const handler = route[m] as (req: Request) => Response | Promise<Response>;
+        expect(typeof handler, m).toBe("function");
+        const r = await handler(new Request("http://localhost:3000/api/staging-access", { method: m }));
+        expect(r.status, `${env || "live"} ${m}`).toBe(404);
+        expect(r.headers.get("allow"), m).toBeNull();
+        expect(await r.text(), m).toBe("");
+      }
+    }
   });
   it("never logs the code", () => {
     expect(readFileSync("src/app/api/staging-access/route.ts", "utf8")).not.toMatch(/console\.\w+\([^)]*code/);

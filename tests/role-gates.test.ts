@@ -94,6 +94,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/secretary/booking/[token]": "public",
   // The staging site's door (rule 675): 404 off staging, rate limited per IP, the access code in the form body is the credential (sameSecret).
   "POST /api/staging-access": "public",
+  // Every other method of the door is a bare 404 that reads and writes nothing (rule 675), so no limit.
+  "PUT /api/staging-access": "public",
+  "PATCH /api/staging-access": "public",
+  "DELETE /api/staging-access": "public",
 
   "POST /api/mcp": "bearer",
   // Reem's tick: a signed QStash call (src/lib/qstash.ts) or the CRON_SECRET bearer, rate limited per IP first.
@@ -135,7 +139,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
-  "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read"),
+  "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
   "DELETE /api/connect/[provider]": g("admin", "connectors"),
   "POST /api/connect/[provider]/key": g("admin", "connectors"),
   "POST /api/onboard": g("admin", "onboard"),
@@ -270,7 +274,11 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
   "GET /api/oauth/meta": "public-read",
   "GET /api/oauth/resource": "public-read",
+  "GET /llms.txt": "public-read", // site copy for language models, static at build time (rule 698)
   "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
+  "GET /api/staging-access": "public-read", // a bare 404, so the door shows nothing off staging (rule 675)
+  "HEAD /api/staging-access": "public-read",
+  "OPTIONS /api/staging-access": "public-read",
   "OPTIONS /api/mcp": "public-read",
   "OPTIONS /api/oauth/meta": "public-read",
   "OPTIONS /api/oauth/register": "public-read",
@@ -284,6 +292,9 @@ const READS: Record<string, Gate> = {
  */
 const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
   "POST /api/auth/logout": "ends only the caller's own session",
+  "PUT /api/staging-access": "a bare 404 that reads and writes nothing",
+  "PATCH /api/staging-access": "a bare 404 that reads and writes nothing",
+  "DELETE /api/staging-access": "a bare 404 that reads and writes nothing",
 };
 /**
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each

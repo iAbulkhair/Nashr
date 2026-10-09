@@ -42,14 +42,32 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const newer =(iso: string | null | undefined, from: number) => !!iso && Date.parse(iso) >= from;
 
 /**
+ * When someone in the workspace last pressed Refresh on the site or social results (`sync_site`, `sync_social`), as an
+ * ISO time. The daily cron's reads of those results never write it, so they never wake Dana's routine for an owner who
+ * is away (rule 736). Eight days: the gate looks back seven. `wipeAccount` deletes it.
+ */
+export const OWNER_SYNC_KEY = (scope: string) => `ownersync:${scope}`;
+const OWNER_SYNC_TTL_S = 8 * 86400;
+export async function markOwnerSync(scope: string, now: Date = new Date()): Promise<void> {
+  await db.set(OWNER_SYNC_KEY(scope), now.toISOString(), OWNER_SYNC_TTL_S);
+}
+
+/**
  * Dana: something happened in the last 7 days. Items the weekly plan, a routine or Majed's auto-run created on their
  * own (`isAutonomous`) do not count, or the team would keep itself busy for an owner who is away; a decision on one does.
+ * A store sync and an ad-account read count as they always have; of the site and social results only a person's
+ * Refresh click counts (`ownersync`), never the daily read (rule 736).
  */
 async function activity(c: GateCtx) {
   const from = c.now - 7 * DAY;
   if (c.lite.some((l) => (!isAutonomous(l) && newer(l.createdAt, from)) || newer(l.decidedAt, from))) return null;
-  const [decided, snap, ads] = await Promise.all([listDecisions(c.scope, 1), getSalesSnapshot(c.scope), Promise.all(AD_PROVIDERS.map((p) => db.get<string>(`adsync:${c.scope}:${p}`)))]);
-  return newer(decided[0]?.at, from) || newer(snap?.at, from) || ads.some((a) => newer(a, from)) ? null : "idle";
+  const [decided, snap, ads, owner] = await Promise.all([
+    listDecisions(c.scope, 1),
+    getSalesSnapshot(c.scope),
+    Promise.all(AD_PROVIDERS.map((p) => db.get<string>(`adsync:${c.scope}:${p}`))),
+    db.get<string>(OWNER_SYNC_KEY(c.scope)),
+  ]);
+  return newer(decided[0]?.at, from) || newer(snap?.at, from) || ads.some((a) => newer(a, from)) || newer(owner, from) ? null : "idle";
 }
 
 /** Noor: the store has abandoned-cart data (`missingData`), synced after this routine last ran. */
