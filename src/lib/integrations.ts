@@ -13,6 +13,7 @@ export const INTEGRATIONS: Integration[] = [
   { id: "tiktok_ads", name: "TikTok Ads", group: "ads", status: "soon", note: "Ad results, read only: Noor learns what worked" },
   { id: "meta_ads", name: "Meta Ads", group: "ads", status: "soon", note: "Ad results, read only: Noor learns what worked" },
   { id: "google_ads", name: "Google Ads", group: "ads", status: "soon", note: "Ad results, read only: Noor learns what worked" },
+  { id: "linkedin_ads", name: "LinkedIn Ads", group: "ads", status: "soon", note: "Ad results, read only: Noor learns what worked" },
   { id: "x_ads", name: "X Ads", group: "ads", status: "planned" },
   { id: "whatsapp", name: "WhatsApp Business API", group: "messaging", status: "soon", note: "Approved messages go to Meta's template review; nothing is sent to customers" },
   { id: "unifonic", name: "Unifonic SMS", group: "messaging", status: "planned" },
