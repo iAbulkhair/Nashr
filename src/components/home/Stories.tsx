@@ -30,7 +30,7 @@ export default function Stories({ lang }: { lang: Lang }) {
         </h2>
         <p className={styles.sub}>{c.sub[lang]}</p>
       </div>
-      <SceneTrack lang={lang} label={c.h[lang]} prev={c.prev[lang]} next={c.next[lang]} slide={c.slide[lang]}>
+      <SceneTrack lang={lang} label={c.h[lang]} prev={c.prev[lang]} next={c.next[lang]} slide={c.slide[lang]} pause={c.pause[lang]} play={c.play[lang]}>
         {sets.map((set, i) => (
           <ul key={i} className={styles.grid4} role="list">
             {set.map((s, j) => {

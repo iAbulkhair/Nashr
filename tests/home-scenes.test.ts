@@ -5,7 +5,7 @@ import { AGENT_CAST, SCENES, SCENES_COPY, type Feature } from "@/lib/home";
 import { agentById } from "@/lib/agents";
 import { isTaskType } from "@/lib/tasks";
 import { PER_SLIDE } from "@/components/home/Stories";
-import { wrapIndex } from "@/components/home/SceneTrack";
+import { AUTO_MS, autoplays, wrapIndex } from "@/components/home/SceneTrack";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
@@ -72,6 +72,27 @@ describe("the scenes under the cover are illustrative and true to the product (r
     expect(wrapIndex(n - 1, n)).toBe(n - 1);
     expect(wrapIndex(3, 0)).toBe(0);
     expect(read("src/components/home/SceneTrack.tsx")).not.toMatch(/disabled=/);
+  });
+  it("slides by itself only while nothing asks it to stay put (WCAG 2.2.2)", () => {
+    const on = { reduced: false, paused: false, held: false, over: false, focused: false, showing: true, n: 6 };
+    expect(autoplays(on)).toBe(true);
+    for (const k of ["reduced", "paused", "held", "over", "focused"] as const) expect(autoplays({ ...on, [k]: true }), k).toBe(false);
+    expect(autoplays({ ...on, showing: false })).toBe(false);
+    expect(autoplays({ ...on, n: 1 })).toBe(false);
+    expect(AUTO_MS).toBeGreaterThanOrEqual(5000);
+    expect(AUTO_MS).toBeLessThanOrEqual(10000);
+  });
+  it("gives the slider its own pause and play button, named in both languages, hidden for reduced motion", () => {
+    for (const l of ["ar", "en"] as const) {
+      expect(SCENES_COPY.pause[l].length, `pause ${l}`).toBeGreaterThan(0);
+      expect(SCENES_COPY.play[l].length, `play ${l}`).toBeGreaterThan(0);
+      expect(SCENES_COPY.pause[l]).not.toBe(SCENES_COPY.play[l]);
+    }
+    const track = read("src/components/home/SceneTrack.tsx");
+    expect(track).toMatch(/useMotionPaused/);
+    expect(track).toMatch(/aria-live=\{auto \? "off" : "polite"\}/);
+    expect(read("src/components/home/Stories.tsx")).toMatch(/pause=\{c\.pause\[lang\]\} play=\{c\.play\[lang\]\}/);
+    expect(read("src/components/home/home.module.css")).toMatch(/prefers-reduced-motion: reduce\) \{ \.autoBtn \{ display: none; \}/);
   });
   it("draws every face smiling, in an empty ring", () => {
     const person = read("src/components/home/Person.tsx");
