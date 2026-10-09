@@ -9,8 +9,8 @@ the founder console — see "Where the real numbers live" at the end.
 
 | Call | Model | Where | Charged to the customer |
 |---|---|---|---|
-| `generate` | `claude-opus-5-5` (`claude-opus-5` until 2026-10-09), `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
-| `review` | `claude-sonnet-5-5` (`claude-sonnet-5` until 2026-10-09), 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
+| `generate` | per type since rule 901 (`TASK_MODELS` in `src/lib/task-models.ts`): `claude-opus-5-5` for social, ads, pricing_review, unit_economics, cash_forecast, gtm_plan, board_deck, strategy_review, okrs and decision_memo, `claude-sonnet-5-5` for the other 16 (`claude-opus-5` for all until 2026-10-09), `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
+| `review` | `claude-sonnet-5-5` for every type (`TASK_MODELS[type].review`; `claude-sonnet-5` until 2026-10-09), 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
 | `judge` | `claude-sonnet-5-5` (`claude-sonnet-5` until 2026-10-09), 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
 | `xreview` | `claude-sonnet-5-5` (`claude-sonnet-5` until 2026-10-09), 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off, in golden runs, and with less than 60 s of the caller's deadline left; one attempt of at most 45 s per call, no SDK retries. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
 | `chat` | `claude-sonnet-5-5` (`CHAT_MODEL`; `claude-opus-5` until 2026-10-02), effort medium, adaptive thinking, **up to 5 calls per turn** (tool loop); since 2026-10-01 each call's `max_tokens` is what is left of the **$0.14 per-message ceiling** (`CHAT_TURN_MAX_USD`; $0.35 on Opus until 2026-10-02) after the turn's cost so far and an upper estimate of the call's input, at most 8,000, and no call is made with less than 2,048 left (`CHAT_MIN_OUT`, `nextMaxTokens`, `src/lib/chat-budget.ts`); the input estimate counts 3 characters a token (`CHARS_PER_TOKEN_EST`, below the measured 3.3 so it stays high) and prices the cached prefix (the tools and system blocks 1-2) as a cache write on the first call and as a cache read on later ones; the thread is trimmed to the newest 16 messages within 24,000 characters (`trimHistory`), then shortened from its oldest end until the first call has at least 4,000 output tokens (`CHAT_FIRST_MIN_OUT`, `fitFirstCall`); a workspace too large even for the newest message alone gets no model call, a reply that says so, and is not counted | `src/lib/chat.ts` | **included** up to the plan's monthly chat messages (`CHAT_ALLOWANCE`: trial 30 for the whole trial, starter 250, pro 650, business 1,300; section 4.1). Past them chat pauses until the 1st (UTC), unless the owner of a paid plan turned "continue on credits" on: then a message goes ahead only when the balance is at least `chatOverflowHold()` = ceil($0.14 / $0.07104) = **2 credits**, nothing is taken before the turn, and after the reply it is billed its metered cost at the floor rate ($0.07104 a credit, section 4), at most 2 credits and at most what the balance still holds, the remainder under one credit carried to the next message (`settleChatOverflow`, `src/lib/credits.ts`); a failed message is not billed |
@@ -47,6 +47,17 @@ pins today: `article` $0.0593 per credit on a hit and $0.0773 cold, `followup_se
 $0.454, a one-item chat draft $0.0605 per credit (so its exemption was removed), `vid-cinematic` $0.0584 per credit.
 No type is above 95% of the ceiling any more, and every type keeps the floor even at VAT-inclusive prices.
 
+**2026-10-09, later: each type has its own writer** (rule 901, `TASK_MODELS` in `src/lib/task-models.ts`). Opus 5.5
+writes the ten types the owner decides from, that touch money, or that the product is sold on (social, ads,
+pricing_review, unit_economics, cash_forecast, gtm_plan, board_deck, strategy_review, okrs, decision_memo); Sonnet 5.5
+writes the other 16 and reviews all 26. `estimateBatch` prices each type at its own writer and reviewer. Pinned today:
+`article` $0.0396 per credit on a hit and $0.0482 cold, `weekly_plan` $0.0260 and $0.0346, `followup_seq` $0.0370,
+`weekly_report` cold $0.0321, `cart_recovery` $0.0231, `unit_economics` $0.0395 (hit), `decision_memo` and
+`unit_economics` $0.0515 cold (the dearest cold types, 72% of the ceiling), a one-item draft $0.0605 (social, ads) or
+$0.0426 (whatsapp, gbp). Article is still the closest type to the ceiling on its checked figure, at 56% of it (64% of
+the VAT-inclusive one). Not yet measured on output quality: the golden set decides whether a Sonnet-written type moves
+back to Opus or gets an Opus reviewer (one cell in `TASK_MODELS`).
+
 Recomputed on 2026-09-27 for Sonnet 5 at $2/$10 per million tokens (it was $3/$15 in `RATES`, which overstated the
 review and judge columns by half). Since 2026-09-30 the table is what `estimateBatch` in `src/lib/task-costs.ts`
 prints: that file holds the token assumptions below and prices them through `costUsd` (`src/lib/usage.ts`), so a rate
@@ -63,10 +74,10 @@ once a week or a month per brand. The floor test checks the cron-driven types (m
 task type of every routine in `src/lib/routines.ts`) on the cold figure, and every other type on the hit figure
 (founder decision, 2026-09-29). The checked figure is in bold. Majed's auto-run (section 5, since step 3b) starts
 handoff items from the same 06:00 cron, so every type it may start is also checked on its cold figure (not bold in the
-table, which bolds the hit a login's Run is checked on); `article` ($0.0773 cold on Opus 5.5) is over the ceiling
-cold, so the code never lets it start it (`autoBlock` answers `floor`, `autoUnderFloor` in `src/lib/handoffs.ts`, rule
-296) and it runs only when a login presses Run, checked on the hit. `followup_seq` was left out too on Opus 5 ($0.0773
-cold); on Opus 5.5 ($0.0653 cold) it is under the ceiling, so since 2026-10-09 the auto-run may start it.
+table, which bolds the hit a login's Run is checked on). A type over the ceiling cold is never started by it
+(`autoBlock` answers `floor`, `autoUnderFloor` in `src/lib/handoffs.ts`, rule 296) and runs only when a login presses
+Run. None is today: `followup_seq` was left out on Opus 5 ($0.0773 cold) and `article` on Opus 5.5 ($0.0773 cold); since
+rule 901 Sonnet 5.5 writes both ($0.0413 and $0.0482 cold), so the auto-run may start every handoff type.
 
 | Request | Items | Credits | Output tok | generate $ | review $ | judge $ | Total $ (hit) | $ per credit, hit | $ per credit, cold |
 |---|---|---|---|---|---|---|---|---|---|
@@ -327,10 +338,9 @@ Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllo
   escaped), its label (`LEAD_BRIEF_LABEL`, 259 characters) and the tags around it (about 30). At a full brief that is
   889 characters, about 270 input tokens on each call: about $0.0024 per batch (Opus for the generation, Sonnet for the
   reviewer and the judge) and $0.0030 with one cross-review call. `estimateBatch` does not count it, so the floor test
-  (rule 241) does not either. It matters for one type: a handed-off `article` that a login runs on a cache hit costs
-  about $0.0714 per credit with a full brief, 0.6% over the $0.07104 ceiling (a shorter brief costs less). That is not
-  checked by the build and needs a founder decision, a price or a named exemption like the one-item drafts'; Majed's
-  auto-run never starts an article (rule 296).
+  (rule 241) does not either. It mattered for one type: a handed-off `article` run on a cache hit cost about $0.0714 per
+  credit with a full brief on Opus 5.5, 0.6% over the $0.07104 ceiling. Since rule 901 Sonnet 5.5 writes articles and
+  the brief costs about half as much on it, so the same article is about $0.041 per credit and the question is closed.
 - **Media renders** (spec 4.8, `src/lib/media/jobs.ts`) are bounded in several layers, all but the last in code:
   - credits are charged before the submit and refunded exactly once when the render fails (`refundOnce`: a 60 s claim on
     `mrefund:{jobId}`, then `"done"` once the refund was made), so an owner never pays for a failure, and the chat tool
@@ -383,8 +393,10 @@ Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllo
   brand, of a proposal the owner made in chat in the last 7 days whose card reached the owner (the reply carrying it
   was saved, and its conversation was not deleted; the Governance page lists what may start next, with Decline), of at most 3 items and 12 credits in all, only for
   an agent with an owner-set cap, and only for a type that keeps the 60% margin floor on the cold cache this cron usually
-  finds (`autoUnderFloor`, rule 296: never `article` or `followup_seq` today; the dearest it may start, with the
-  cross-agent review and a full brief, is `growth_experiments` at about $0.0696 per credit): each item is one batch charged `TASK_COST[type]` to that agent under that cap (so the
+  finds (`autoUnderFloor`, rule 296: every handoff type since rule 901; the dearest it may start on the estimate are
+  `unit_economics` and `decision_memo` at $0.0515 per credit cold, about $0.053 with a full brief, and the figure
+  worked by hand before rule 901, `growth_experiments` at about $0.0696 with the cross-agent review, is now lower, since
+  Sonnet 5.5 writes it): each item is one batch charged `TASK_COST[type]` to that agent under that cap (so the
   owner's cap is the bound on what the auto-run can spend on an agent in a month), inside the weekly cap on items made
   on their own (`isAutonomous`, shared with the Sunday plan and the routines). Today's dearest item a 12-credit proposal
   can hold is `social` at 10 credits, so one brand's auto-run spends at most 10 credits a day, within those caps. It

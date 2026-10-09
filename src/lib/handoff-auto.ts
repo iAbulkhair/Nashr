@@ -11,7 +11,7 @@
  *   a connected app); the owner has its card (the reply carrying it was saved, `shownAt`, and its conversation was not
  *   deleted, `liveConversations`); the item is still `proposed`; the proposal is at most 7 days old; the item's agent
  *   has an owner-set cap; the item's type keeps the 60% margin floor on the cold cache this cron usually finds
- *   (`autoUnderFloor`: never `article` today); the whole proposal is within the ceiling (3 items,
+ *   (`autoUnderFloor`: every type today, rule 901); the whole proposal is within the ceiling (3 items,
  *   12 credits): `autoBlock`;
  * - Claude paused: "retry:paused" (nothing charged; the cron asks again). No key (development mock): "skip:mock";
  * - at least HANDOFF_RUN_MIN_MS of the invocation left, else "retry:late";

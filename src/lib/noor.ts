@@ -11,12 +11,13 @@ import { activeSeasons } from "./seasons";
 import { zoneOf } from "./zones";
 import { capDiscounts } from "./cart-recovery";
 import { feedbackBlock } from "./feedback";
+import { SONNET, TASK_MODELS } from "./task-models";
 
 /** One generated item. `crossReview` is added by the cross-agent review and never changes the other three fields. */
 export type Generated = { channel: string; title: string; body: string; crossReview?: CrossVerdict[] };
 
-/** The cheaper model of the pipeline: the reviewer, the cross-agent review and the judge (judge.ts) run on it. */
-const REVIEW_MODEL = "claude-sonnet-5-5";
+/** The cross-agent review's model. The writer and the reviewer of each type are in TASK_MODELS (task-models.ts, rule 901). */
+const REVIEW_MODEL = SONNET;
 
 const DIALECT: Record<Brand["dialect"], string> = {
   msa: "Modern Standard Arabic, simple and warm (not classical).",
@@ -220,7 +221,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
 
   const params = {
-    model: "claude-opus-5-5",
+    model: TASK_MODELS[type].write,
     max_tokens: 16000,
     system: systemPrompt(brand, prefs, agent, opts.memory, opts.feedback),
     messages: [{ role: "user" as const, content: userMsg }],
@@ -325,7 +326,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
   }
   try {
     const review = await client.messages.create({
-      model: REVIEW_MODEL,
+      model: TASK_MODELS[type].review,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       output_config: { effort: "low" },
