@@ -486,8 +486,8 @@ export type Scene = { role: L; line: L; kind: SceneKind; agent: HomeAgentId; loo
 
 export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; prev: L; next: L; slide: L; pause: L; play: L } = {
   h: { ar: "عملاء جربوا ذكين.", en: "How owners work with Thakeen." },
-  sub: { ar: "وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", en: "Illustrative examples: what they like, what they learned, and what they recommend." },
-  // Rule 775: the scenes are role-only illustrations, not reviews. The English line says so; the Arabic line no longer opens with «أمثلة توضيحية» (founder's wording, 2026-10-10).
+  sub: { ar: "وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", en: "What they like, what they learned, and what they recommend." },
+  // Rule 775: the scenes stay role-only illustrations, not reviews: no names, no digits. Neither language opens with «أمثلة توضيحية» / "Illustrative examples" any more (founder's wording, 2026-10-10).
   kinds: {
     like: { ar: "يعجبني", en: "What I like" },
     tip: { ar: "نصيحة", en: "Tip" },

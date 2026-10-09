@@ -56,10 +56,11 @@ describe("the scenes under the cover are illustrative and true to the product (r
   it("keeps Reem's lines free of what she does not do yet", () => {
     for (const s of SCENES.filter((x) => x.agent === "reem")) for (const p of NOT_YET) expect(`${s.line.ar} ${s.line.en}`).not.toMatch(p);
   });
-  it("puts the line under the heading before the first scene; English still opens with «Illustrative examples»", () => {
+  it("puts the line under the heading before the first scene, without «أمثلة توضيحية» / «Illustrative examples» in either language", () => {
     expect(SCENES_COPY.h.ar).toBe("عملاء جربوا ذكين.");
     expect(SCENES_COPY.sub.ar).toBe("وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.");
-    expect(SCENES_COPY.sub.en).toMatch(/^Illustrative examples/);
+    expect(SCENES_COPY.sub.en).toBe("What they like, what they learned, and what they recommend.");
+    for (const t of [SCENES_COPY.h.ar, SCENES_COPY.h.en, SCENES_COPY.sub.ar, SCENES_COPY.sub.en]) expect(t).not.toMatch(/أمثلة توضيحية|illustrative examples/i);
     const src = read("src/components/home/Stories.tsx");
     expect(src.indexOf("c.sub[lang]")).toBeGreaterThan(-1);
     expect(src.indexOf("c.sub[lang]")).toBeLessThan(src.indexOf("<SceneTrack"));
