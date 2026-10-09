@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser, saveUser, sc } from "@/lib/auth";
+import { currentUser, saveUser, sc, type User } from "@/lib/auth";
 import { allowanceOf } from "@/lib/pricing";
 import { getBrand, IMAGE_COST, listLite, saveBrand, TASK_COST, TASK_COUNT, type Brand, type TaskType } from "@/lib/brand";
 import { withBrandLock } from "@/lib/brand-proposals";
@@ -22,6 +22,21 @@ const BRAND_FIELDS = ["business", "products", "audience", "tone", "valueProp", "
 const brandView = (brand: Brand | null) =>
   brand ? { name: brand.name, website: brand.website, sitemap: brand.sitemap ?? "", products: brand.products, audience: brand.audience, tone: brand.tone, valueProp: brand.valueProp ?? "", social: brand.social ?? {} } : null;
 
+/**
+ * The account fields GET sends (rule 787), named one by one: the stored record is never spread, so a field added to `User`
+ * later (a founder's note, a billing internal) stays on the server until someone adds it here on purpose, and a rollback
+ * to this build cannot send a field it has never heard of. `SUMMARY` is what every seat reads (plan, balance, trial end,
+ * signup day, last renewal); the owner's record adds the contact fields the form edits.
+ */
+const SUMMARY = ["plan", "credits", "trialEnds", "createdAt", "renewedAt"] as const satisfies readonly (keyof User)[];
+const OWNER = [...SUMMARY, "name", "email", "lang", "phone"] as const satisfies readonly (keyof User)[];
+/** The named fields of `u` that are set, and nothing else. */
+const pick = <K extends keyof User>(u: User, keys: readonly K[]) => {
+  const out: Partial<Pick<User, K>> = {};
+  for (const k of keys) if (u[k] !== undefined) out[k] = u[k];
+  return out;
+};
+
 /** A short name or a person's name: no control characters, trimmed, capped. */
 const line = (v: string, n: number) => v.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, n);
 /** The phone check the profile has always made: at least 9 digits (signup applies the same one, where the phone is optional). */
@@ -29,8 +44,9 @@ const phoneOk = (v: string | undefined) => (v ?? "").replace(/\D/g, "").length >
 
 /**
  * GET: the acting person ({name, email, lang, role}) and the account summary everyone in it shares (plan, credits,
- * usage, chat messages, brand). The account-level fields (the owner's phone, revocation stamps, per-agent spend, email preferences)
- * go to the owner only: a member sees their own name and address, never the owner's contact details.
+ * usage, chat messages, brand). The account-level fields (the owner's phone, the deal's terms, email preferences) go to
+ * the owner only: a member sees their own name and address, never the owner's contact details. Neither gets a field of
+ * the stored record that `SUMMARY` or `OWNER` does not name (rule 787).
  */
 export async function GET() {
   const u = await currentUser();
@@ -69,20 +85,18 @@ export async function GET() {
   const now = new Date();
   const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
   const me = { name: a.name, email: a.email, lang: a.lang, role: a.role };
-  const summary = { plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, ...(u.renewedAt ? { renewedAt: u.renewedAt } : {}) };
-  // The owner (or a founder acting as the owner) gets the account record as before, minus the hash and runtime fields.
-  // An Agency deal is shown as its terms only: who set it in the founder console is not the customer's to see.
-  // Top-up packs likewise (rule 453): each pack's size, what is left and when it expires, nothing else (`topupBalance`);
-  // what was paid, the payment reference, the payment id and who activated the pack stay with the founder, and
-  // `topupsDirty` is a runtime flag, never sent. `referredBy` names the partner's email: never the customer's to see.
-  // `grants` likewise (rule 783): a founder grant carries the founder's email and a private note.
-  const { passHash: _p, actor: _a, deal: _d, referredBy: _r, topups: _t, topupsDirty: _td, grants: _g, ...safe } = u; void _p; void _a; void _d; void _r; void _t; void _td; void _g;
+  const summary = pick(u, SUMMARY);
+  // The owner (or a founder acting as the owner) gets the fields in `OWNER` and nothing else of the record (rule 787):
+  // never the hash, the revocation stamps, per-agent spend, billing internals, a founder grant (rule 783) or the partner
+  // who referred the account. An Agency deal is shown as its terms only: who set it in the founder console is not the
+  // customer's to see. Top-up packs likewise (rule 453): each pack's size, what is left and when it expires, nothing
+  // else (`topupBalance`); what was paid, the payment reference, the payment id and who activated the pack stay with the founder.
   const deal = u.deal ? { deal: { credits: u.deal.credits, priceSar: u.deal.priceSar } } : {};
   // A refunded pack holds nothing and is not sent (`openLots`, rule 460).
   const packs = u.topups?.length ? { topups: openLots(u).map(topupBalance) } : {};
   // A member sees the same packs (the billing page shows them to every seat): the profile's credit card splits the
   // balance into plan credits and top-up credits for everyone.
-  const user = a.kind === "member" ? { ...me, ...summary, ...packs } : { ...safe, ...deal, ...packs, role: a.role };
+  const user = a.kind === "member" ? { ...me, ...summary, ...packs } : { ...pick(u, OWNER), ...deal, ...packs, role: a.role };
   // What this person may do with the password and account forms: a founder viewing the account has the owner role but
   // is refused both (IMPERSONATION_BLOCKED), so the role alone cannot tell the page which forms to offer.
   const may = { passwordChange: can(u, "password.change"), accountDelete: can(u, "account.delete") };
