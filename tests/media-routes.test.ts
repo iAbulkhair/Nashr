@@ -319,6 +319,20 @@ describe("starting a render", () => {
     expect(await balance(u)).toBe(200 - 36);
   });
 
+  it("7b. a paid plan starts the premium video (M1)", async () => {
+    mediaEnv({ kie: true, blob: true, models: "all" });
+    const kie = kieFake();
+    useDeps({ kie });
+    const u = await paid();
+    expect(u.plan).toBe("pro");
+    u.credits = 200;
+    await saveUser(u);
+    const r = await start("video", u, await taskFor(u), { model: "vid-premium" });
+    expect([r.status, r.body.error]).toEqual([202, undefined]);
+    expect(kie.submits).toHaveLength(1);
+    expect(await balance(u)).toBe(200 - 24);   // the premium clip costs 24 credits (media-catalog)
+  });
+
   it("a start that throws after the charge answers with its durable job, which a poll later settles and refunds", async () => {
     mediaEnv({ kie: true, blob: true, models: "all" });
     const kie = kieFake();
@@ -408,6 +422,40 @@ describe("starting a render", () => {
     expect([second.status, second.body.error]).toEqual([402, "trial_video_used"]);
     expect(await balance(u)).toBe(38);
     expect(kie.submits).toHaveLength(1);
+  });
+
+  /** A founder video grant (rule 781): `until` is a YYYY-MM-DD UTC day, `days` from today (negative: already past). */
+  async function grantedTrial(days: number): Promise<User> {
+    const u = await owner();
+    const until = new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
+    await saveUser({ ...(await getUser(u.email))!, grants: { video: { value: "all", until, by: "founder@x", at: new Date().toISOString() } } });
+    return (await getUser(u.email))!;
+  }
+
+  it("13b. a founder video grant opens every model to a trial, still one clip", async () => {
+    mediaEnv({ kie: true, blob: true, models: "all" });
+    const kie = kieFake();
+    useDeps({ kie });
+    const g = await grantedTrial(3);
+    expect(g.plan).toBe("trial");
+    expect((await start("video", g, await taskFor(g), { model: "vid-premium" })).status).toBe(202);
+    expect(await balance(g)).toBe(26);
+    const second = await start("video", g, await taskFor(g), { model: "vid-quick" });
+    expect([second.status, second.body.error]).toEqual([402, "trial_video_used"]);
+    expect(await balance(g)).toBe(26);
+    expect(kie.submits).toHaveLength(1);
+  });
+
+  it("13c. an expired grant changes nothing", async () => {
+    mediaEnv({ kie: true, blob: true, models: "all" });
+    const kie = kieFake();
+    useDeps({ kie });
+    const g = await grantedTrial(-1);
+    const premium = await start("video", g, await taskFor(g), { model: "vid-premium" });
+    expect([premium.status, premium.body.error]).toEqual([402, "plan_required"]);
+    expect(await balance(g)).toBe(50);
+    expect(kie.submits).toHaveLength(0);
+    expect((await start("video", g, await taskFor(g), { model: "vid-quick" })).status).toBe(202);
   });
 });
 

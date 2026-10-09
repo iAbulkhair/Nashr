@@ -4,7 +4,7 @@ import { useEffect, useEffectEvent, useId, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Task } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
-import { CONFIRM_FROM_CREDITS, DEFAULT_IMAGE_MODEL, MEDIA_MAX_AGE_MS, MEDIA_MODELS, TRIAL_VIDEO_MODELS, aspectFor, hasArtwork, mediaImageFor, mediaModel, plural, type MediaKind, type MediaModel, type MediaModelId } from "@/lib/media-catalog";
+import { CONFIRM_FROM_CREDITS, DEFAULT_IMAGE_MODEL, MEDIA_MAX_AGE_MS, MEDIA_MODELS, aspectFor, hasArtwork, mediaImageFor, mediaModel, plural, type MediaKind, type MediaModel, type MediaModelId, type VideoModelId } from "@/lib/media-catalog";
 import type { PublicJob } from "@/lib/media/types";
 import { IMAGE_TYPES, VIDEO_TYPES } from "@/lib/tasks";
 import { limitFromError } from "./LimitModal";
@@ -98,8 +98,10 @@ export function recheckTask(refresh: () => void): () => void {
   return () => clearTimeout(timer);
 }
 
-export default function MediaControls({ task, lang, t, available, credits, plan, paused, owner = true, onChanged }: {
+export default function MediaControls({ task, lang, t, available, included, credits, plan, paused, owner = true, onChanged }: {
   task: Task; lang: Lang; t: AppDict; available: MediaModelId[];
+  /** `entitlements(u).media.video` from the page (rule 781): the video models the plan includes. `plan` stays for `shortOfCredits`. */
+  included: readonly VideoModelId[];
   credits: number; plan: string; paused: boolean;
   /** `can(u, "billing")`: the acting person may buy packs and plans; anyone else is told to ask the owner (rule 457). */
   owner?: boolean;
@@ -168,7 +170,7 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
    * is never sent to a provider (spec A9), so the owner is told to make it again rather than that there is none.
    */
   const why = (m: MediaModel): string | undefined =>
-    plan === "trial" && m.kind === "video" && !(TRIAL_VIDEO_MODELS as readonly string[]).includes(m.id) ? i.afterSubscribe
+    m.kind === "video" && !included.includes(m.id as VideoModelId) ? i.afterSubscribe
     : m.needsImage && !mediaImageFor(m, task) ? (hasArtwork(task) ? i.redoImageNote : i.needsImageNote)
     : m.credits > credits ? i.notEnough
     : undefined;
