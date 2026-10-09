@@ -8,18 +8,18 @@ import { wipeAccount } from "@/lib/account";
 import { saveTask, type Task } from "@/lib/brand";
 import { publishOnce } from "@/lib/publish-once";
 import * as publish from "@/lib/connectors/publish";
-import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
+import { deleteConnection, getConnection, listConnections, saveConnection, type Connection } from "@/lib/connectors/store";
 import * as fresh from "@/lib/connectors/fresh";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { EMPTY_TOTALS, PLATFORMS, READERS, SOCIAL_DEADLINE_MS, SOCIAL_KEY, SOCIAL_PUB_KEY, beforeDeadline, getSocialSnapshot, holdsSocial, rangeBefore, socialDataBlock, socialForPage, splitDays, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart, type SocialSnapshot } from "@/lib/social-stats";
 import { connectedSources, reportSources, socialRead } from "@/lib/report-sources";
 import SocialStats from "@/components/app/SocialStats";
-import { syncSiteIfDue, type SiteSnapshot } from "@/lib/site-stats";
+import { getSiteSnapshot, syncSiteIfDue, type SiteSnapshot } from "@/lib/site-stats";
 import { OWNER_SYNC_KEY, ROUTINES } from "@/lib/routines";
-import { NOT_READ_PLATFORMS, notRead, notReadBlock, type NotReadItem, type NotReadPlatform } from "@/lib/not-read";
+import { NOT_READ_PLATFORMS, notRead, notReadBlock, notReadOf, type NotReadItem, type NotReadPlatform } from "@/lib/not-read";
 import { statsFor } from "@/lib/stats";
-import { XSTATS_KEY, type XStats } from "@/lib/x-stats";
-import { ADSTATS_KEY, adStatsFrom } from "@/lib/ad-stats";
+import { XSTATS_KEY, getXStats, type XStats } from "@/lib/x-stats";
+import { ADSTATS_KEY, adStatsFrom, getAdStats } from "@/lib/ad-stats";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fake";
 
@@ -480,6 +480,32 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(socialForPage({ at: NOW.toISOString() })).toEqual({ at: NOW.toISOString() });
   });
 
+  it("Dana reads the followers at the last read of an earlier month as last_month, never one of 0 or not read (746)", async () => {
+    const owner = await newUser("soclastmonth");
+    const row = (month: string, platform: Platform | "x", followers: number | null): HistoryRow => ({ month, platform, followers, totals: { ...EMPTY_TOTALS, views: 7 } });
+    // Instagram was read in August and September; LinkedIn's September read had 0 followers; YouTube's September
+    // followers were not read; TikTok has only this month; the Facebook Page's followers were not read this time.
+    const history = [
+      row("2026-08", "instagram", 900), row("2026-09", "instagram", 1000), row("2026-10", "instagram", 1200),
+      row("2026-09", "linkedin", 0), row("2026-09", "youtube", null), row("2026-10", "tiktok", 40), row("2026-09", "facebook", 300),
+    ];
+    const parts = { instagram: part("instagram", { followers: 1200 }), linkedin: part("linkedin"), youtube: part("youtube"), tiktok: part("tiktok"), facebook: part("facebook", { followers: null }) };
+    await db.set(SOCIAL_KEY(owner.email), { v: 2, at: NOW.toISOString(), errors: {}, history, parts });
+    const read = (block: string) => JSON.parse(block.slice(block.indexOf("<social_data>") + 13, block.indexOf("</social_data>")));
+    const block = await socialDataBlock(owner.email, NOW);
+    const data = read(block);
+    // The newest earlier month only, never this month's own row.
+    expect(data.instagram.last_month).toEqual({ month: "2026-09", followers: 1000 });
+    for (const p of ["linkedin", "youtube", "tiktok", "facebook"]) expect(data[p], p).not.toHaveProperty("last_month");
+    // Only the followers may be compared with it, and a prev figure of 0 or null gives no percentage.
+    expect(block).toContain("a change in followers may be given against it, never a change in totals");
+    expect(block).toContain("where a prev figure is 0 or null, give no percentage change for it");
+    // X's own history gives X's last_month.
+    const x: XStats = { platform: "x", account: "@oud", range: { from: "2026-09-08", to: "2026-10-08" }, followers: 50, totals: { ...EMPTY_TOTALS }, posts: [], at: NOW.toISOString(), history: [row("2026-09", "x", 45), row("2026-10", "x", 50)] };
+    await db.set(XSTATS_KEY(owner.email), x);
+    expect(read(await socialDataBlock(owner.email, NOW)).x.last_month).toEqual({ month: "2026-09", followers: 45 });
+  });
+
   it("an Instagram username is stored as one clean line of at most 80 characters (737)", async () => {
     const owner = await newUser("socigname");
     igAnswers();
@@ -899,7 +925,7 @@ describe("the not-read list, built in code (rule 738)", () => {
       db.set(SOCIAL_KEY(scope), snapOf({ tiktok: part("tiktok", { totals: { ...EMPTY_TOTALS } }) }, { instagram: "ig_not_professional", facebook: "fb_no_insights", linkedin: "li_no_page_access", youtube: "yt_other_channel", tiktok: "tt_no_scope" })),
     ]);
     let r = reasons(await notRead(scope));
-    // The card keeps its own line for a non-professional account and a page the member does not administer; the nine
+    // The card keeps its own line for a non-professional account and a page the member does not administer; the ten
     // reasons are not widened. Rows for another channel are a failed read (yt_other_channel).
     expect(r).toMatchObject({ instagram: "read_failed", facebook: "analytics_scope", linkedin: "read_failed", youtube: "read_failed" });
     expect(r.tiktok, "a TikTok part read beside a scope state is a read").toBeUndefined();
@@ -917,15 +943,24 @@ describe("the not-read list, built in code (rule 738)", () => {
     expect(r.youtube).toBe("read_failed");
   });
 
-  it("only a record the platform's reader reads counts as connected; a v1 snapshot holds no read (738, Review Focus 2)", async () => {
+  it("only a record the platform's reader reads counts as read; a v1 snapshot holds no read (738, Review Focus 2)", async () => {
     const scope = (await newUser("nrrec")).email;
-    // A direct Meta record (from before Composio) has no reader; an error stored for a platform no record holds is old.
+    // A direct Meta record (production connects Meta directly) has no reader but publishes: connected for publishing
+    // only, never "not connected". An error stored for a platform no record holds is old.
     await Promise.all([
       saveConnection(scope, { provider: "meta", data: { token: "t" }, meta: { igId: "1784", pageId: "55" }, connectedAt: NOW.toISOString() }),
       db.set(SOCIAL_KEY(scope), snapOf({}, { instagram: "ig_not_professional", youtube: "yt_other_channel" })),
     ]);
     let r = reasons(await notRead(scope));
-    expect(r).toMatchObject({ instagram: "not_connected", facebook: "not_connected", youtube: "not_connected" });
+    expect(r).toMatchObject({ instagram: "publish_only", facebook: "publish_only", youtube: "not_connected" });
+    // A direct Meta record with no Page publishes to Instagram only; a direct LinkedIn record neither publishes nor is read.
+    await Promise.all([
+      saveConnection(scope, { provider: "meta", data: { token: "t" }, meta: { igId: "1784" }, connectedAt: NOW.toISOString() }),
+      saveConnection(scope, { provider: "linkedin", data: { token: "t" }, meta: { author: "urn:li:person:abc" }, connectedAt: NOW.toISOString() }),
+    ]);
+    r = reasons(await notRead(scope));
+    expect(r).toMatchObject({ instagram: "publish_only", facebook: "not_connected", linkedin: "not_connected" });
+    await deleteConnection(scope, "linkedin");
     // Right after the deploy a workspace holds a v1 snapshot: nothing in it is a read, and the held Instagram account says
     // its read has not succeeded yet.
     await Promise.all([saveConnection(scope, igConn()), db.set(SOCIAL_KEY(scope), { at: NOW.toISOString(), ig: { user: "oud", followers: 1200 } })]);
@@ -984,5 +1019,32 @@ describe("the not-read list, built in code (rule 738)", () => {
     // Every other agent's work gets no block; Razan's cash forecast keeps the store block alone.
     expect(await statsFor("social", scope)).toBe("");
     expect(await statsFor("cash_forecast", scope)).toBe("");
+  });
+
+  it("the Reports page's list from its own reads is notRead's list; publish_only is explained when listed (738)", async () => {
+    const scope = (await newUser("nrof")).email;
+    await Promise.all([
+      saveConnection(scope, { provider: "meta", data: { token: "t" }, meta: { igId: "1784", pageId: "55" }, connectedAt: NOW.toISOString() }),
+      saveConnection(scope, xConn()),
+      saveConnection(scope, google()),
+      saveConnection(scope, { provider: "meta_ads", data: { token: "t" }, meta: { adAccount: "act_1", account: "Roastery Ads" }, connectedAt: NOW.toISOString() }),
+      db.set(SOCIAL_KEY(scope), snapOf({ youtube: part("youtube") })),
+      db.set(XSTATS_KEY(scope), xRead(NOW)),
+      db.set(`sitestats:${scope}`, { at: NOW.toISOString(), gscError: "no_gsc_site" }),
+      db.set(ADSTATS_KEY(scope, "meta_ads"), adStatsFrom("meta_ads", { rows: [adRow], range: R, account: "Roastery Ads", currency: "SAR" }, null, NOW)),
+    ]);
+    // The page reads these four for its cards in the same round as the connections, then builds the list from them.
+    const [conns, social, x, ads, site] = await Promise.all([listConnections(scope), getSocialSnapshot(scope), getXStats(scope), getAdStats(scope), getSiteSnapshot(scope)]);
+    const listed = await notRead(scope);
+    expect(notReadOf(conns, { social, x, ads, site })).toEqual(listed);
+    expect(reasons(listed)).toMatchObject({ instagram: "publish_only", facebook: "publish_only", google_analytics: "read_failed", search_console: "read_failed" });
+    expect(reasons(listed).x).toBeUndefined();
+    expect(reasons(listed).meta_ads).toBeUndefined();
+    const block = notReadBlock(listed);
+    expect(block).toContain("publish_only:");
+    const data = JSON.parse(block.match(/<not_read>(.*)<\/not_read>/)![1]) as { platform: string; reason: string }[];
+    expect(data).toContainEqual({ platform: "Instagram account", reason: "publish_only" });
+    // A v1 snapshot is no read for notReadOf either.
+    expect(reasons(notReadOf(conns, { social: { at: NOW.toISOString() }, x: null, ads: [], site: null })).meta_ads).toBe("read_failed");
   });
 });

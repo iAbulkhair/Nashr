@@ -5,7 +5,7 @@ import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVi
 import { recordActivity } from "@/lib/activity";
 import { PartlyRead, holdsSocial, isSocialProvider, readSocialSoon, syncSocialIfDue } from "@/lib/social-stats";
 import { holdsSite, readSiteSoon, syncSiteIfDue } from "@/lib/site-stats";
-import { X_RETRY_DEFAULT_S, refreshX, xForPage } from "@/lib/x-stats";
+import { X_RETRY_DEFAULT_S, dropXStats, refreshX, xForPage } from "@/lib/x-stats";
 import { markOwnerSync } from "@/lib/routines";
 import { WINDOW, allow, retryLater } from "@/lib/rate";
 import { byOf } from "@/lib/actor";
@@ -41,7 +41,9 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
       return NextResponse.json({ ok: false, error: "revoke_failed" }, { status: 502 });
     }
   }
-  await deleteConnection(sc(u), provider);
+  // X's stored read goes with its connection (rule 747): another account connected later must never show this one's
+  // results or history, and its first read is its own.
+  await Promise.all([deleteConnection(sc(u), provider), provider === "x" ? dropXStats(sc(u)) : null]);
   return NextResponse.json({ ok: true });
 }
 
@@ -54,7 +56,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
  */
 const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", select_property: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read", sync_site: "read", sync_social: "read", sync_x: "generate" };
 
-/** Refreshes of the site or the social results one workspace may ask for in an hour, the team together (rule 735). */
+/** Refreshes of the site, the social results, the ad results or X one workspace may ask for in an hour, the team together (rule 735). */
 const OWNER_SYNCS_PER_HOUR = 6;
 
 /**
@@ -149,8 +151,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       await saveConnection(sc(u), next);
       return NextResponse.json({ ok: true, account: next.meta?.account });
     }
-    // Read only, no model call, no credits: the ads' own numbers into the same analysis as a CSV upload.
-    if (b.action === "sync_ads" && isAdProvider(provider)) return NextResponse.json({ ok: true, snapshot: await syncAds(sc(u), provider, c) });
+    // Read only, no model call, no credits: the ads' own numbers into the same analysis as a CSV upload. Six an hour per
+    // workspace, every ad platform together, so a member's clicks cannot spend the platforms' own rate limits (rule 735).
+    if (b.action === "sync_ads" && isAdProvider(provider)) {
+      if (!(await allow(`adrefresh:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
+      return NextResponse.json({ ok: true, snapshot: await syncAds(sc(u), provider, c) });
+    }
     if (b.action === "sync_sales" && (SALES_PROVIDERS as readonly string[]).includes(provider)) return NextResponse.json({ ok: true, sales: await syncSales(sc(u), provider as SalesProvider, c) });
     // Read only, no model call, no credits: the site's figures or every social part the workspace holds, read at once.
     // Six an hour per workspace, the bucket keyed by scope so the team and every social path share it (rule 735).
@@ -166,7 +172,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     }
     // X's results, paid by the account (rules 744, 745): the charge, its cap, the day's free re-read and the refund are
     // checked in refreshX, before X is asked. X's 401 is thrown to the catch below, which asks the owner to reconnect.
+    // Six clicks an hour per workspace (rule 735), so failing reads that each refund cannot ask X without end.
     if (b.action === "sync_x" && provider === "x") {
+      if (!(await allow(`xsync:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
       const r = await refreshX(u, c);
       // The read without the account's id, which only the next read uses (rule 746).
       if (r.ok) return NextResponse.json({ ok: true, x: xForPage(r.x), charged: r.charged });

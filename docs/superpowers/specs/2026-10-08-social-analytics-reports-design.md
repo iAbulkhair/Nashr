@@ -137,7 +137,9 @@ A4. **Owner refresh.** `sync_site` on `/api/connect/google`. `sync_social` is ac
 (meta, linkedin, youtube, tiktok) and calls `syncSocialIfDue(sc(u), new Date(), true)`, which reads every held part.
 Limits: `allow(\`socialsync:${sc(u)}\`, 6, 3600)` and `allow(\`sitesync:${sc(u)}\`, 6, 3600)`, keyed by scope so team
 members share them; on false, `retryLater({ ok: false, error: "slow_down" }, 3600)`. Both are `"read"` in `ACTION_ROLE`,
-free, and both set `ownersync:{scope}` (A7). The daily cron keeps refreshing every 20 h.
+free, and both set `ownersync:{scope}` (A7). The daily cron keeps refreshing every 20 h. `sync_ads` and `sync_x` have
+the same six an hour per workspace (`adrefresh:{scope}`, every ad platform together, and `xsync:{scope}`, before X's
+charge), so no member's clicks can spend a platform's own limits (amended 2026-10-09, whole-phase review).
 
 Social answers and first reads (amended 2026-10-08, phase B review):
 
@@ -171,7 +173,10 @@ read result for this workspace, from the connection records, the snapshots and t
 renders it for the model: "list exactly these platforms as not read, in the report's language, with their reason; never
 add or drop one". The Reports card renders the same items from its own strings. Reasons: `not_connected`, `reconnect`,
 `choose_page`, `refresh_x` (X, 1 credit), `x_direct_only`, `read_failed`, `analytics_scope` (YouTube public counts only),
-`closed_to_apps` (Snapchat organic), `waiting_approval` (Google Business Profile).
+`closed_to_apps` (Snapchat organic), `waiting_approval` (Google Business Profile), and `publish_only` (amended
+2026-10-09, whole-phase review: a record that publishes to the platform but that no reader reads, such as a direct Meta
+record's Instagram account or Page, is "connected for publishing only", never "not connected"). The Reports page builds
+the list with `notReadOf` over the reads it already holds for its cards, so each key is read once.
 
 A7. **Dana's routine gate is not widened.** The gate `activity` (`routines.ts:48-53`, used only by
 `dana_weekly_report`) reads neither `sitestats` nor `socialstats`, so cron site and social syncs already do not count.
@@ -247,7 +252,9 @@ C1. **TikTok organic.** Pin tiktok to 20260917_00. Allowlist `TIKTOK_GET_USER_ST
 2 pages for 30 posts). Composio with our own TikTok app (no managed auth); needs `user.info.stats` and `video.list`
 approved on our app and added to the Composio auth config (section 9), and owners connect again. Only public videos are
 listed, so an account with no public posts shows none; that is not a failure. Counters are lifetime; changes come from
-history (section 7). Links only on `tiktok.com`/`www.tiktok.com`. A scope refusal (`scope_not_authorized`,
+history (section 7): Dana's block gives a part `last_month`, the followers at the last read of an earlier month, and a
+change in followers may be given against it, never a change in totals (amended 2026-10-09). Links only on
+`tiktok.com`/`www.tiktok.com`. A scope refusal (`scope_not_authorized`,
 `scope_permission_missed`, or an insufficient or missing scope: one pattern, `SCOPE_REFUSED`, for the adapter and the
 reader) keeps that code through the adapter's catch, so it is never a reconnect. When both calls
 fail, the read is the known `tt_no_scope` only when both were scope refusals, else it fails with the other call's error
@@ -300,7 +307,10 @@ C3. **X, owner pays.** No scheduled read. On the Reports page, "Refresh X (1 cre
   VAT-inclusive ≈ $0.0618. X deduplicates within a UTC day and bills only responses that return data.
 - Stored in its own key `xstats:{scope}` = `PlatformPart & { at; history? }`, one get and one set. `syncSocial` never
   reads or writes it, so a cron social sync never erases it and X's date never postpones Instagram's. `socialDataBlock`
-  and the card merge it at read time with its own date. `wipeAccount` deletes it.
+  and the card merge it at read time with its own date. `wipeAccount` deletes it, and so does disconnecting X
+  (`DELETE /api/connect/x`, amended 2026-10-09), so another account never shows this one's read or history. A refresh
+  is six clicks an hour per workspace at most (`xsync:{scope}`, before any charge), and a refund that fails is logged
+  and never hides X's own answer.
 - When the X record is Composio-routed, X is never read and never charged; the Not-read line says X needs the direct
   connection.
 
@@ -348,7 +358,10 @@ token (checked against `^[0-9]{1,19}$`, the id the posts are read under), not an
 connected before this change are covered too; `refreshX` applies the same rule to `xstats:{scope}` (ids decide when
 both reads carry one, else the handles), and `xForPage` strips the id from the `sync_x` answer and the Reports page.
 X's handle keeps its own characters (`handle`: letters, digits, `_` and `.`, at most 80), and so does an Instagram
-username (amended 2026-10-09, whole-phase review).
+username (amended 2026-10-09, whole-phase review). The history is read back: SOCIAL DATA gives each part whose followers
+were read `last_month` (`{ month, followers }`), its platform's newest row of an earlier UTC month (X's from its own
+history), only when that row's followers is above 0; a change in followers may be given against it, never a change in
+totals (amended 2026-10-09).
 
 `fromThakeen` is true only for ids in `socialpub:{scope}`. `publish-once.ts:126` is widened to add the post id for
 facebook, linkedin, youtube, tiktok and x; until a platform's ids land, its posts carry `fromThakeen: false`.
@@ -422,7 +435,7 @@ Meta Tech Provider status), Threads, Pinterest and X Ads. Each would be a reader
 | 732 | Ad names and accounts in `adstats` are `clean(…, 80)`: a 100-character name is stored at 80 |
 | 733 | A previous period comes only from a platform-returned range; a failed second read leaves no `prev` and never fails the sync; no change is written without `prev` |
 | 734 | `select_property` accepts only an id from the stored lists, only on a Composio Google record; role `connectors` |
-| 735 | `sync_social` and `sync_site` are role `read`, free, 6 an hour per workspace, 429 with `Retry-After` |
+| 735 | `sync_social` and `sync_site` are role `read`, free, 6 an hour per workspace, 429 with `Retry-After`; `sync_ads` and `sync_x` the same 6 an hour |
 | 736 | Cron site and social syncs do not open Dana's gate; an owner sync click does (`ownersync:{scope}`) |
 | 737 | Social snapshot v2 and site figures: `null` is not read; a v1 snapshot is due |
 | 738 | The Not-read list is built in code from connections, snapshots and the registry; the model never adds or drops one |

@@ -29,6 +29,11 @@ export async function getXStats(scope: string): Promise<XStats | null> {
   return db.get<XStats>(XSTATS_KEY(scope));
 }
 
+/** Drops the workspace's X read and its history, when X is disconnected (rule 747). */
+export async function dropXStats(scope: string): Promise<void> {
+  await db.del(XSTATS_KEY(scope));
+}
+
 /**
  * Whether a new X read is the stored read's account (rule 746): the X user ids decide when both reads carry one, so a
  * renamed handle keeps its history; when either has none (a read stored before the id, the expand step of rule 679), the
@@ -66,8 +71,8 @@ const readOn = (x: XStats | null, today: string) => typeof x?.at === "string" &&
  * reused the hold never refunds; once its read is saved it takes the charge again when the hold is gone by then (the
  * charging click failed first), so one credit stands for the day's read; a hold still standing makes that a no-op, and a
  * refused charge (no credits, Dana's cap) leaves that read free. A click stopped after its charge with no catch run (the
- * platform's limit) leaves its hold: a later click that day reads on it, and if none succeeds the credit stands, as no
- * sweep covers `xread:`. A read with no posts is a success (X billed the account read). X's 402, 403 and 429 are the
+ * platform's limit), or whose refund fails (logged `x_refund_failed`, the click still answered as X's failure), leaves its
+ * hold: a later click that day reads on it, and if none succeeds the credit stands, as no sweep covers `xread:`. A read with no posts is a success (X billed the account read). X's 402, 403 and 429 are the
  * app's state, answered here (429 with X's own wait, rule 680); every other error is thrown to the route, whose
  * `refusedToken` asks the owner to reconnect only on X's 401.
  */
@@ -102,7 +107,9 @@ export async function refreshX(u: User, c: Connection, now = new Date()): Promis
   } catch (e) {
     if (!paid.reused) {
       const landed = await getXStats(scope).catch(() => null);
-      if (!readOn(landed, today)) await refundOnce(u.email, claim);
+      // A refund that fails (the user lock timed out) must not hide X's own answer: the route still answers this
+      // failure, and the hold it leaves is the credit standing for the day, as for a click stopped after its charge.
+      if (!readOn(landed, today)) await refundOnce(u.email, claim).catch(() => console.error("x_refund_failed"));
     }
     if (e instanceof XUnavailable && e.status === 429) return { ok: false, status: 429, error: "x_unavailable", retryAfter: e.retryAfter ?? X_RETRY_DEFAULT_S };
     if (e instanceof XUnavailable) return { ok: false, status: 502, error: "x_unavailable" };

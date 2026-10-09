@@ -21,7 +21,8 @@ import { listActivity } from "@/lib/activity";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
 import ReportsPage from "@/app/[lang]/app/reports/page";
-import { NOT_READ_PLATFORMS, NOT_READ_REASONS, type NotReadItem } from "@/lib/not-read";
+import { NOT_READ_PLATFORMS, NOT_READ_REASONS, notRead as notReadList, type NotReadItem } from "@/lib/not-read";
+import { QUIET } from "@/components/app/ReportsPanel";
 import { XSTATS_KEY } from "@/lib/x-stats";
 import type { SiteSnapshot } from "@/lib/site-stats";
 import { appDict } from "@/lib/app-i18n";
@@ -568,7 +569,7 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     const social: SocialSnapshot = { ...snap, parts: { instagram: { ...snap.parts.instagram!, posts: [
       post({ id: "a", caption: "<b>x</b>", url: "https://evil.example/p/1/" }), post({ id: "b", caption: "js", url: "javascript:alert(1)" }), post({ id: "c", caption: "ok", url: "https://www.instagram.com/p/9/" }),
     ] } } };
-    const notRead: NotReadItem[] = [{ platform: "linkedin", reason: "choose_page" }, { platform: "tiktok_ads", reason: "not_connected" }, { platform: "snapchat_organic", reason: "closed_to_apps" }, { platform: "google_ads", reason: "not_connected" }];
+    const notRead: NotReadItem[] = [{ platform: "linkedin", reason: "choose_page" }, { platform: "tiktok_ads", reason: "not_connected" }, { platform: "snapchat_organic", reason: "closed_to_apps" }, { platform: "google_ads", reason: "not_connected" }, { platform: "facebook", reason: "publish_only" }];
     const html = card({ social, x, notRead });
     expect(html).not.toContain("<b>");
     expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
@@ -585,6 +586,12 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     expect(html).toContain("Snapchat account: Snapchat does not open these results to outside apps");
     expect(html).toContain("Not connected: TikTok Ads, Google Ads");
     expect(html, "the not-read item replaces the old LinkedIn line").not.toContain("Connect a company page");
+    // A direct Meta record publishes: said as connected for publishing only, never as not connected (738). Like
+    // not_connected, it asks nothing of this page, so alone it does not open the card.
+    expect(html).toContain("Facebook Page: connected for publishing only; its results are not read");
+    expect(html.match(/Not connected:[^<]*/)?.[0]).not.toContain("Facebook");
+    expect(QUIET).toEqual(expect.arrayContaining(["not_connected", "publish_only", "closed_to_apps", "waiting_approval"]));
+    expect(QUIET).not.toContain("read_failed");
 
     expect(postLink("instagram", "https://www.instagram.com/p/1/")).toBe("https://www.instagram.com/p/1/");
     expect(postLink("x", "https://x.com/i/status/1")).toBe("https://x.com/i/status/1");
@@ -646,6 +653,8 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     expect(m.html).toContain("Refresh X (1 credit)");
     expect(m.html).toContain(">Refresh<");
     expect(row(m.html, "x")).toContain("@oud");
+    // The page builds the not-read list from the reads it holds for its cards: the same list notRead reads (738).
+    expect(m.props.notRead).toEqual(await notReadList(w.owner.email));
   });
 
   it("shows the property selector only to owner and admin when two or more are stored", async () => {

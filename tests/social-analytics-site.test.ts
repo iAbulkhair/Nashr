@@ -254,6 +254,27 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     expect(snap.gsc?.prev).toBeUndefined();
     expect(await siteDataBlock(u.email, NOW)).not.toMatch(/"prev":/);
   });
+
+  it("a previous period of zeros leaves no prev, as on the social parts; a 0 in a kept prev gives no percentage (733)", async () => {
+    const u = await newUser("siteprevzero");
+    // Google answered both ranges, the earlier one with nothing but zeros: a site with no traffic then is no base to compare.
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => {
+      const r = gaReport(args);
+      const rows = (r.data as { rows: GaFixtureRow[] }).rows.map((x) => (x.dimensionValues[1]?.value === "prev" ? gaRow(x.dimensionValues[0].value, "prev", ...x.metricValues.map(() => "0")) : x));
+      return ok({ ...(r.data as object), rows });
+    };
+    answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = (args) =>
+      args.start_date === GSC_PREV.from ? ok({ rows: [{ keys: ["2026-09-01"], clicks: 0, impressions: 0, position: 0 }] }) : gscQuery(args);
+    const snap = await syncSite(u.email, google(), NOW);
+    expect(snap.ga?.sessions).toBe(100);
+    expect(snap.ga?.prev).toBeUndefined();
+    expect(snap.gsc?.clicks).toBe(40);
+    expect(snap.gsc?.prev).toBeUndefined();
+    const block = await siteDataBlock(u.email, NOW);
+    expect(block).not.toMatch(/"prev":/);
+    // A prev with one figure above 0 is kept; its zeros are not a base for a percentage.
+    expect(block).toContain("where a prev figure is 0 or null, give no percentage change for it");
+  });
 });
 
 describe("a site figure not read is null, never 0 (rule 737)", () => {

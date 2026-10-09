@@ -3,9 +3,9 @@ import { isComposio } from "./connectors/composio-shape";
 import { listConnections, type Connection } from "./connectors/store";
 import { CHANNEL_ID } from "./social-read/youtube";
 import { PAGE_ID } from "./social-read/facebook";
-import { getSocialSnapshot, nothingRead, xReadOf, type Platform, type SocialSnapshot } from "./social-stats";
+import { getSocialSnapshot, nothingRead, xReadOf, type Platform, type SocialSnapshot, type StoredSocial, type XStats } from "./social-stats";
 import { getXStats } from "./x-stats";
-import { getAdStats } from "./ad-stats";
+import { getAdStats, type AdStats } from "./ad-stats";
 import { getSiteSnapshot, type SiteSnapshot } from "./site-stats";
 import { liNeedsPage } from "./report-sources";
 
@@ -21,8 +21,8 @@ export const NOT_READ_PLATFORMS = [
   "snapchat_organic", "google_analytics", "search_console", "google_ads", "google_business_profile",
 ] as const;
 export type NotReadPlatform = (typeof NOT_READ_PLATFORMS)[number];
-/** The nine reasons of spec A6, in the order the block explains them. */
-export const NOT_READ_REASONS = ["not_connected", "reconnect", "choose_page", "refresh_x", "x_direct_only", "read_failed", "analytics_scope", "closed_to_apps", "waiting_approval"] as const;
+/** The ten reasons of spec A6, in the order the block explains them. */
+export const NOT_READ_REASONS = ["not_connected", "publish_only", "reconnect", "choose_page", "refresh_x", "x_direct_only", "read_failed", "analytics_scope", "closed_to_apps", "waiting_approval"] as const;
 export type NotReadReason = (typeof NOT_READ_REASONS)[number];
 export type NotReadItem = { platform: NotReadPlatform; reason: NotReadReason };
 
@@ -94,11 +94,23 @@ function held(p: NotReadPlatform, c: Conn): boolean {
 }
 
 /**
+ * Whether the record publishes to the platform although no reader reads it (`publish_only`): it carries the platform and
+ * is a direct Meta record (the Instagram account or the Page it posts to; production connects Meta directly while
+ * Composio is off), or a Composio social record whose stored id no reader accepts. A direct Google, LinkedIn, YouTube or
+ * TikTok record neither publishes nor is read (publish.ts has no direct code for them), so it stays `not_connected`.
+ */
+function publishesOnly(p: NotReadPlatform, c: Conn): boolean {
+  return isSocial(p) && carries(p, c) && !held(p, c) && (isComposio(c) || c.provider === "meta");
+}
+
+/**
  * One platform's reason, or null when it was read. By precedence: a record waiting for the owner to connect again; a
  * LinkedIn record with no company page chosen; X, whose direct record is read only on a paid click and whose Composio
- * record is never read; no record a reader reads (an error stored for a platform no record holds any more is old, so it
- * names nothing); a permission to grant; and anything else a held platform did not read (an error code, a Facebook part
- * with no figure, or a first read that has not landed: the platform is connected, so it is never `not_connected`).
+ * record is never read; a record that publishes to the platform but that no reader reads (`publish_only`: a direct Meta
+ * record is connected, so it is never called `not_connected`); no record a reader reads (an error stored for a platform
+ * no record holds any more is old, so it names nothing); a permission to grant; and anything else a held platform did not
+ * read (an error code, a Facebook part with no figure, or a first read that has not landed: the platform is connected,
+ * so it is never `not_connected`).
  */
 function reasonFor(p: NotReadPlatform, conns: readonly Conn[], r: Reads): NotReadReason | null {
   const fixed = FIXED[p];
@@ -108,22 +120,32 @@ function reasonFor(p: NotReadPlatform, conns: readonly Conn[], r: Reads): NotRea
   if (c?.needsReconnect && carries(p, c)) return "reconnect";
   if (p === "linkedin" && liNeedsPage(conns)) return "choose_page";
   if (p === "x" && c) return isComposio(c) ? "x_direct_only" : "refresh_x";
+  if (c && publishesOnly(p, c)) return "publish_only";
   if (!c || !held(p, c)) return "not_connected";
   if (isSocial(p) && SCOPE_STATE[p] && r.social?.errors?.[p] === SCOPE_STATE[p]) return "analytics_scope";
   return "read_failed";
 }
 
+/** What `notReadOf` is built from: the four stored reads as their getters return them. */
+export type StoredReads = { social: StoredSocial | null; x: XStats | null; ads: readonly AdStats[]; site: SiteSnapshot | null };
+
 /**
- * Every founder-named platform with no read for the workspace, in the order of `NOT_READ_PLATFORMS`, with its reason.
- * One round: the connection records and the four stored reads at once.
+ * Every founder-named platform with no read for the workspace, in the order of `NOT_READ_PLATFORMS`, with its reason,
+ * from the connection records and the stored reads a caller already holds (the Reports page reads them for its cards in
+ * its own round, so the card and the list come from the same reads). Pure: no read of its own.
  */
-export async function notRead(scope: string): Promise<NotReadItem[]> {
-  const [conns, social, x, ads, site] = await Promise.all([listConnections(scope), getSocialSnapshot(scope), getXStats(scope), getAdStats(scope), getSiteSnapshot(scope)]);
-  const reads: Reads = { social: social?.v === 2 ? social : null, x: !!xReadOf(x), ads: new Set(ads.map((a) => a.provider)), site };
+export function notReadOf(conns: readonly Conn[], stored: StoredReads): NotReadItem[] {
+  const reads: Reads = { social: stored.social?.v === 2 ? stored.social : null, x: !!xReadOf(stored.x), ads: new Set(stored.ads.map((a) => a.provider)), site: stored.site };
   return NOT_READ_PLATFORMS.flatMap((platform) => {
     const reason = reasonFor(platform, conns, reads);
     return reason ? [{ platform, reason }] : [];
   });
+}
+
+/** `notReadOf` for a scope: the connection records and the four stored reads in one round. */
+export async function notRead(scope: string): Promise<NotReadItem[]> {
+  const [conns, social, x, ads, site] = await Promise.all([listConnections(scope), getSocialSnapshot(scope), getXStats(scope), getAdStats(scope), getSiteSnapshot(scope)]);
+  return notReadOf(conns, { social, x, ads, site });
 }
 
 const NAME: Record<NotReadPlatform, string> = {
@@ -133,6 +155,7 @@ const NAME: Record<NotReadPlatform, string> = {
 };
 const WHY: Record<NotReadReason, string> = {
   not_connected: "not connected to Thakeen",
+  publish_only: "connected for publishing only; Thakeen does not read this platform's results through that connection",
   reconnect: "the platform stopped accepting Thakeen's access: the owner connects it again",
   choose_page: "connected, but no company page is chosen: the owner chooses one",
   refresh_x: "connected; X is read only when someone presses Refresh X on the Reports page (1 credit)",

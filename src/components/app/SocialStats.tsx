@@ -33,7 +33,7 @@ const STR = {
       google_analytics: "Google Analytics", search_console: "Search Console", google_ads: "إعلانات Google", google_business_profile: "الملف التجاري على Google",
     } satisfies Record<NotReadPlatform, string>,
     reasons: {
-      not_connected: "غير مربوط", reconnect: "أعد ربطه من صفحة التكاملات", choose_page: "اختر صفحة الشركة من صفحة التكاملات",
+      not_connected: "غير مربوط", publish_only: "مربوط للنشر فقط، لا نقرأ نتائجه", reconnect: "أعد ربطه من صفحة التكاملات", choose_page: "اختر صفحة الشركة من صفحة التكاملات",
       refresh_x: "يُقرأ عند الضغط على «حدّث إكس» فقط", x_direct_only: "مربوط بطريقة لا نقرأ منها، فاربط إكس مباشرة",
       read_failed: "آخر قراءة لم تُرجع أرقاماً، ونحاول في القراءة القادمة", analytics_scope: "صلاحية الإحصاءات غير ممنوحة",
       closed_to_apps: "سناب شات لا يتيح هذه النتائج للتطبيقات الخارجية", waiting_approval: "بانتظار موافقة Google",
@@ -56,7 +56,7 @@ const STR = {
       google_analytics: "Google Analytics", search_console: "Search Console", google_ads: "Google Ads", google_business_profile: "Google Business Profile",
     } satisfies Record<NotReadPlatform, string>,
     reasons: {
-      not_connected: "Not connected", reconnect: "connect it again on the Integrations page", choose_page: "choose the company page on the Integrations page",
+      not_connected: "Not connected", publish_only: "connected for publishing only; its results are not read", reconnect: "connect it again on the Integrations page", choose_page: "choose the company page on the Integrations page",
       refresh_x: "read only when someone presses Refresh X", x_direct_only: "connected through a route we do not read, so connect X directly",
       read_failed: "the last read gave no figures; the next read tries again", analytics_scope: "the analytics permission is not granted",
       closed_to_apps: "Snapchat does not open these results to outside apps", waiting_approval: "waiting for Google's approval",
@@ -115,7 +115,7 @@ type Props = {
   social: StoredSocial | null;
   /** `getXStats` through `xReadOf`, without the account's id: X's last read, paid on a click (rule 744). */
   x?: XStats | null;
-  /** `notRead(scope)` (rule 738): every named platform with no read, each with its reason. */
+  /** `notReadOf` over the page's own reads (rule 738): every named platform with no read, each with its reason. */
   notRead?: readonly NotReadItem[];
   /** LinkedIn is connected through Composio with no company page chosen (report-sources.ts `liNeedsPage`). */
   liNoPage?: boolean;

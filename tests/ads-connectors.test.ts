@@ -201,6 +201,23 @@ describe("reading results (rule 88)", () => {
     expect((await getConnection(u.email, "meta_ads"))!.needsReconnect).toBeTruthy();
   });
 
+  it("six ad refreshes an hour per workspace, every ad platform together; the seventh asks no platform (735)", async () => {
+    fake();
+    const u = await newUser("adsyncrate");
+    await Promise.all([saveConnection(u.email, metaAdsConn()), saveConnection(u.email, snapConn())]);
+    await signIn(u.email);
+    for (let i = 1; i <= 5; i++) expect((await act("meta_ads", { action: "sync_ads" })).status, `click ${i}`).toBe(200);
+    expect((await act("snapchat", { action: "sync_ads" })).status, "click 6, another platform").toBe(200);
+    calls = [];
+    for (const provider of ["meta_ads", "snapchat"]) {
+      const res = await act(provider, { action: "sync_ads" });
+      expect(res.status, provider).toBe(429);
+      expect(res.headers.get("Retry-After"), provider).toBe("3600");
+      expect(await res.json(), provider).toMatchObject({ ok: false, error: "slow_down" });
+    }
+    expect(calls).toEqual([]);
+  });
+
   it("the daily job reads a connected account once a day and never more", async () => {
     fake();
     const u = await newUser("addaily");

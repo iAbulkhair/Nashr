@@ -12,7 +12,8 @@ import { getPerf } from "@/lib/perf-store";
 import { getSiteSnapshot } from "@/lib/site-stats";
 import { getSocialSnapshot, socialForPage, xReadOf } from "@/lib/social-stats";
 import { getXStats, xForPage } from "@/lib/x-stats";
-import { notRead } from "@/lib/not-read";
+import { getAdStats } from "@/lib/ad-stats";
+import { notReadOf } from "@/lib/not-read";
 import { connectedSources, liNeedsPage, siteChoices, socialRefreshPath, xDirect } from "@/lib/report-sources";
 import ReportsPanel from "@/components/app/ReportsPanel";
 import { can } from "@/lib/roles";
@@ -32,7 +33,9 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!u) redirect(`/${lang}/app/login`);
   if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
   const tasks = await listLite(sc(u), kpiSince(win));
-  const [k, quality, connections, store, syncFailure, perf, site, social, xStats, missing] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), win), listConnections(sc(u)), getSalesSnapshot(sc(u)), getSyncFailure(sc(u)), getPerf(sc(u)), getSiteSnapshot(sc(u)), getSocialSnapshot(sc(u)), getXStats(sc(u)), notRead(sc(u))]);
+  const [k, quality, connections, store, syncFailure, perf, site, social, xStats, ads] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), win), listConnections(sc(u)), getSalesSnapshot(sc(u)), getSyncFailure(sc(u)), getPerf(sc(u)), getSiteSnapshot(sc(u)), getSocialSnapshot(sc(u)), getXStats(sc(u)), getAdStats(sc(u))]);
+  // The not-read list from the reads this page already holds, so one round reads each key once (rule 738).
+  const missing = notReadOf(connections, { social, x: xStats, ads, site });
   // A direct Google or Meta record (from before Composio) has no reader behind it: it must not count as a read source.
   const connected = connectedSources(connections);
   const dana = agentById("dana").tasks;

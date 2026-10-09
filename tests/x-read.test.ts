@@ -26,8 +26,8 @@ vi.mock("next/navigation", async (orig) => ({
  * click, paid by the account. One credit is charged in code before the read, under Dana's monthly cap, at most once per
  * workspace per UTC day (the claim `xread:{scope}:{day}` held on the account record); it is refunded once on every failure
  * unless a read landed that day, and never taken for a Composio-routed X record. One refresh is two requests to X, one page
- * of at most ten posts. X's 402, 403 and 429 are the app's, never the owner's token. Rule 747: wipeAccount deletes
- * `xstats:{scope}`. X is a stub of `fetch`: only calls to api.x.com are recorded.
+ * of at most ten posts. X's 402, 403 and 429 are the app's, never the owner's token. Six refreshes an hour per workspace
+ * (rule 735). Rule 747: wipeAccount and disconnecting X delete `xstats:{scope}`. X is a stub of `fetch`: only calls to api.x.com are recorded.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 const START = 10;
@@ -494,5 +494,64 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     expect(await db.get(XSTATS_KEY(scope))).not.toBeNull();
     await wipeAccount(email);
     expect(await db.get(XSTATS_KEY(scope))).toBeNull();
+  });
+
+  it("disconnecting X drops its read and history: another account connected the same day reads as its own (747)", async () => {
+    const { scope, email } = await workspace();
+    expect((await sync()).status).toBe(200);
+    expect(await balance(email)).toBe(START - 1);
+    const del = await connRoute.DELETE(json("/api/connect/x", "DELETE"), ctx("x"));
+    expect(del.status).toBe(200);
+    expect(await getConnection(scope, "x")).toBeNull();
+    expect(await getXStats(scope)).toBeNull();
+    expect(await socialDataBlock(scope, NOW)).toBe("");
+    // Another account, connected the same UTC day: read at once on the day's hold, so no second credit, with nothing of
+    // the first account's read or history.
+    await saveConnection(scope, xConn({ account: "@other" }));
+    answer = (url) =>
+      isMe(url) ? res(200, me(70, "2001")) : url.startsWith("https://api.x.com/2/users/2001/tweets") ? res(200, { meta: { result_count: 0 } }) : res(404, {});
+    const r = await sync();
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, charged: false, x: { followers: 70 } });
+    expect(await balance(email)).toBe(START - 1);
+    const x = (await getXStats(scope))!;
+    expect(x).toMatchObject({ accountId: "2001", followers: 70, posts: [] });
+    expect(x.history).toEqual([{ month: "2026-10", platform: "x", followers: 70, totals: x.totals }]);
+    expect(await socialDataBlock(scope, NOW)).not.toContain("1844000000000000001");
+  });
+
+  it("six X refreshes an hour per workspace: failing reads that each refund cannot ask X without end (735, 744)", async () => {
+    const { email } = await workspace();
+    const back = vi.spyOn(credits, "refundOnce");
+    answer = (url) => (isTweets(url) ? res(503, { title: "Service Unavailable" }) : xAnswers()(url));
+    for (let i = 1; i <= 6; i++) expect((await sync()).status, `click ${i}`).toBe(502);
+    expect(back).toHaveBeenCalledTimes(6);
+    expect(await balance(email)).toBe(START);
+    const charge = vi.spyOn(credits, "chargeOnce");
+    fetched.length = 0;
+    const r = await sync();
+    expect(r.status).toBe(429);
+    expect(r.headers.get("Retry-After")).toBe("3600");
+    expect(await r.json()).toMatchObject({ ok: false, error: "slow_down" });
+    expect(charge).not.toHaveBeenCalled();
+    expect(fetched).toEqual([]);
+    expect(await balance(email)).toBe(START);
+  });
+
+  it("a refund that fails never hides X's answer: a 401 still asks the owner to reconnect (744)", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(credits, "refundOnce").mockRejectedValue(new Error("user_lock_timeout"));
+    const { scope } = await workspace();
+    answer = (url) => (isMe(url) ? res(401, { title: "Unauthorized" }) : xAnswers()(url));
+    const r = await sync();
+    expect(r.status).toBe(502);
+    expect((await getConnection(scope, "x"))?.needsReconnect).toBeTruthy();
+    expect(err).toHaveBeenCalledWith("x_refund_failed");
+    // X's own 429 keeps its wait.
+    await workspace();
+    answer = (url) => (isMe(url) ? res(429, {}, { "retry-after": "60" }) : xAnswers()(url));
+    const r2 = await sync();
+    expect(r2.status).toBe(429);
+    expect(r2.headers.get("Retry-After")).toBe("60");
   });
 });
