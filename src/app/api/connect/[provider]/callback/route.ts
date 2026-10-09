@@ -19,6 +19,8 @@ import { connectAds, isAdProvider } from "@/lib/connectors/ads";
 import { SHOP_HOST, validShopifyHmac } from "@/lib/connectors/shopify";
 import { can } from "@/lib/roles";
 import { appOrigin } from "@/lib/origin";
+import { connectCalendar } from "@/lib/secretary-gcal";
+import type { CalProvider } from "@/lib/connectors/registry";
 
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const { provider } = await ctx.params;
@@ -33,22 +35,48 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   jar.delete(OAUTH_COOKIE);
   const st = await takeState(state);
   const lang = st?.lang === "en" ? "en" : "ar";
-  const back = (q: string) => NextResponse.redirect(`${origin}/${lang}/app/integrations?${q}`);
-  // A Composio flow comes back with no code: the account was created at start and is verified below.
-  if (!st || (!code && st.via !== "composio")) return back(`error=${encodeURIComponent(url.searchParams.get("error") ?? "invalid_state")}`);
-  // A state names the provider it was issued for; it cannot complete another provider's flow (#38).
-  if (st.provider !== provider) return back("error=invalid_state");
   const p = getProvider(provider);
+  // A calendar for Reem (`secretary`) goes back to the Todo page with a fixed `cal_error` code, never to Integrations and
+  // never with the provider's text. Decided by the provider in the URL, which is how a bad state is still answered there.
+  const cal = !!p?.secretary;
+  const back = (q: string) => NextResponse.redirect(`${origin}/${lang}/app/${cal ? "todo" : "integrations"}?${q}`);
+  // A Composio flow comes back with no code: the account was created at start and is verified below.
+  if (!st || (!code && (cal || st.via !== "composio"))) {
+    const err = url.searchParams.get("error");
+    if (cal) return back(`cal_error=${err === "access_denied" ? "denied" : "invalid_state"}`);
+    return back(`error=${encodeURIComponent(err ?? "invalid_state")}`);
+  }
+  // A state names the provider it was issued for; it cannot complete another provider's flow (#38).
+  if (st.provider !== provider) return back(cal ? "cal_error=invalid_state" : "error=invalid_state");
   if (!p) return back("error=unknown_provider");
   // Only the browser and the account that started the flow can finish it (#37). The connection still goes to the
   // workspace chosen at start (st.email), so switching brand mid-flow does not move it.
   const u = await currentUser();
-  if (!sameSecret(bound, state) || !u || u.email !== st.email.split("#")[0]) return back("error=session_mismatch");
+  const mismatch = cal ? "cal_error=session_mismatch" : "error=session_mismatch";
+  if (!sameSecret(bound, state) || !u || u.email !== st.email.split("#")[0]) return back(mismatch);
   // And by the same login within the account. A state from before the actor was recorded names only the account, which
   // is the owner's own login, so it still completes for the owner and for nobody else.
-  if ((st.actor || u.email) !== (u.actor?.email ?? "")) return back("error=session_mismatch");
+  if ((st.actor || u.email) !== (u.actor?.email ?? "")) return back(mismatch);
   // Re-checked here, not only at start: a role removed while the provider's page was open does not finish the connection.
-  if (!can(u, "connectors")) return back("error=forbidden");
+  if (!can(u, cal ? "calendar.link" : "connectors")) return back(cal ? "cal_error=forbidden" : "error=forbidden");
+  if (cal) {
+    // The calendar link is written by `connectCalendar`; this branch always returns, so a calendar provider never reaches
+    // `saveConnection` below (ruling R4). Only the exception's name is logged: its message can carry the provider's text.
+    let data: Record<string, string>;
+    try {
+      data = await exchangeCode(p, code!, { verifier: st.verifier || undefined });
+    } catch (e) {
+      console.error("calendar callback token exchange failed", e instanceof Error ? e.name : "error");
+      return back("cal_error=token_failed");
+    }
+    try {
+      const r = await connectCalendar(st.email, u.actor!.email, p.id as CalProvider, data, Date.now());
+      return back(r.ok ? "cal=choose" : `cal_error=${r.code}`);
+    } catch (e) {
+      console.error("calendar callback failed", e instanceof Error ? e.name : "error");
+      return back("cal_error=provider_error");
+    }
+  }
   if (st.via === "composio") {
     // Everything comes from the saved state: the toolkit must be one this provider lists, and the account is checked to
     // be ACTIVE and to belong to this workspace's Composio user before anything is stored.

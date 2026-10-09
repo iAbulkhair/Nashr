@@ -83,8 +83,10 @@ Read indirectly as `process.env[o.clientIdEnv]` and `process.env[o.clientSecretE
 | `X_CLIENT_SECRET` | X | Yes |
 | `SHOPIFY_CLIENT_ID` | Shopify | No, keep internal |
 | `SHOPIFY_CLIENT_SECRET` | Shopify | Yes |
-| `GOOGLE_CLIENT_ID` | Google (Business Profile, GA4, Search Console, YouTube) | No, keep internal |
-| `GOOGLE_CLIENT_SECRET` | Google | Yes |
+| `GOOGLE_CLIENT_ID` | Google (Business Profile, GA4, Search Console, YouTube), and since Reem B3 also the `gcal` calendar provider (same OAuth client, its own redirect `/api/connect/gcal/callback`) | No, keep internal |
+| `GOOGLE_CLIENT_SECRET` | Google, and `gcal` | Yes |
+| `MICROSOFT_CLIENT_ID` | Microsoft Entra app for the `mscal` Outlook calendar provider (Reem B3; multi-tenant plus personal accounts, redirect `/api/connect/mscal/callback`) | No, keep internal |
+| `MICROSOFT_CLIENT_SECRET` | Microsoft, `mscal` | Yes |
 | `META_APP_ID` | Meta (Facebook Page and Instagram publishing, and the separate Meta Ads results connection) | No, keep internal |
 | `META_APP_SECRET` | Meta | Yes |
 | `META_CONFIG_ID` | Meta, optional: the Facebook Login for Business configuration id. When set, the authorize URL sends `config_id` instead of `scope` | No, keep internal |

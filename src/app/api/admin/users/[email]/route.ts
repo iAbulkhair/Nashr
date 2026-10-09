@@ -5,6 +5,7 @@ import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, 
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
 import { revokeFeeds } from "@/lib/feed-token";
+import { revokeCalendarLinks } from "@/lib/secretary-gcal";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
 import { chatStatus } from "@/lib/chat-allowance";
@@ -116,7 +117,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       await withUserLock(email, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
       // The owner's calendar feed and booking links and every member's, as every member's session just ended.
       const roster = await db.smembers(membersKey(email));
-      await Promise.all([revokeAllMcp(email), revokeFeeds([email, ...roster]), revokeBooks([email, ...roster])]);
+      await Promise.all([revokeAllMcp(email), revokeFeeds([email, ...roster]), revokeBooks([email, ...roster]), revokeCalendarLinks(email)]);
       await log("resetPassword");
       // Shown once to the admin; never stored in clear.
       return NextResponse.json({ ok: true, tempPassword: temp });

@@ -71,6 +71,10 @@ export const SEC_KEYS = {
   firing: (scope: string, id: string) => `sec:firing:${scope}:${id}`,
   /** Global sorted set: member = a scope with reminders, score = its earliest `remindAt`. What the sweep reads first. */
   dueScopes: "sec:duescopes",
+  /** Reem B3 (src/lib/secretary-cal-link.ts): the brand's linked calendar record, its synced events (TTL 24 h) and the global sync queue (member scope, score next sync ms). */
+  calLink: (scope: string) => `sec:cal:link:${scope}`,
+  calEvents: (scope: string) => `sec:cal:events:${scope}`,
+  calDue: "sec:cal:due",
   /** When the QStash tick last ran (ms, TTL 2 h): `timedReminders()` reads it. */
   tick: "sec:tick:last",
   /** "Walk me through": the cards skipped for 3 hours, one JSON `{key: untilMs}` (TTL 1 day). */
@@ -1290,6 +1294,8 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
   return [
     ...ids.map((id) => SEC_KEYS.item(scope, id)), SEC_KEYS.open(scope), SEC_KEYS.done(scope), SEC_KEYS.deleted(scope), SEC_KEYS.all(scope), SEC_KEYS.audit(scope),
     SEC_KEYS.due(scope), SEC_KEYS.walk(scope), SEC_KEYS.notes(scope), SEC_KEYS.cal(scope), SEC_KEYS.away(scope),
+    // The linked calendar (Reem B3): the link record and its synced events.
+    SEC_KEYS.calLink(scope), SEC_KEYS.calEvents(scope),
     ...days.flatMap((d) => [SEC_KEYS.alerts(scope, d), SEC_KEYS.wrap(scope, d)]),
     // Reem's away proposals (rule 485): each record and its outcome, by the ids in the index, and the index.
     ...props.flatMap((id) => [SEC_KEYS.awayProp(scope, id), SEC_KEYS.awayPropDone(scope, id)]), SEC_KEYS.awayProps(scope),
@@ -1313,8 +1319,10 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
     ...ids.map((id) => SEC_KEYS.mrun(scope, id)),
   ];
 }
-/** Account deletion: the scope leaves the sweep's global index. */
-export const forgetDueScope = (scope: string) => db.zrem(SEC_KEYS.dueScopes, scope);
+/** Account deletion: the scope leaves the sweep's global index and the calendar sync queue. */
+export const forgetDueScope = async (scope: string): Promise<void> => {
+  await Promise.all([db.zrem(SEC_KEYS.dueScopes, scope), db.zrem(SEC_KEYS.calDue, scope)]);
+};
 
 /**
  * The marker of one alert step (0, 1, 3 or 7) of one item, keyed by its anchor in ms: the due time for the owner's own

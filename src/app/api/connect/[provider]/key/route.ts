@@ -16,7 +16,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
   if (no) return no;
   const { provider } = await ctx.params;
   const p = getProvider(provider);
-  if (!p || p.kind !== "key") return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });
+  // A calendar provider of Reem (`secretary`) is never a stored connection, whatever its kind (ruling R4).
+  if (!p || p.secretary || p.kind !== "key") return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
   const data: Record<string, string> = {};
   for (const f of p.keyFields ?? []) {
