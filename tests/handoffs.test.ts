@@ -32,6 +32,7 @@ import { saveTask, type CrossVerdict } from "@/lib/brand";
 import InboxPage from "@/app/[lang]/app/page";
 import ActivityPage from "@/app/[lang]/app/activity/page";
 import ChatPage from "@/app/[lang]/app/chat/page";
+import { coverageRow } from "./helpers/coverage";
 
 /**
  * Rules 271-282: Majed's handoffs (step 3b, part O). Only Majed proposes, in the app's chat, for free (271); the model
@@ -383,7 +384,7 @@ describe("the lead brief is a labelled data block, and prompts without one are b
   }
 
   it("the docs say what changed: tests.md names the baseline of these hashes, flows.md the one prompt the brief's tag changed", () => {
-    const row = readFileSync("docs/system/tests.md", "utf8").split("\n").find((l) => l.startsWith("| 274 |")) ?? "";
+    const row = coverageRow(274);
     expect(row).toContain("hash as they did at `adb555e`");
     // Every cross-reviewed batch's cached system block names <lead_brief>, brief or not (its hash is pinned in rule 270).
     const item9 = readFileSync("docs/system/flows.md", "utf8").split("\n").find((l) => l.startsWith("9. The lead brief:")) ?? "";

@@ -25,6 +25,7 @@ import * as exportRoute from "@/app/api/activity/export/route";
 import GovPage from "@/app/[lang]/app/governance/page";
 import InboxPage from "@/app/[lang]/app/page";
 import ActivityPage from "@/app/[lang]/app/activity/page";
+import { coverageRow } from "./helpers/coverage";
 
 /**
  * Rules 261-270: the cross-agent review (step 3b, part R). Razan checks the numbers of other agents' growth, deck and
@@ -675,7 +676,7 @@ describe("the generation, reviewer and judge prompts are byte-identical with the
   }
 
   it("tests.md names the commits the pinned hashes come from: the generation's adb555e, the reviewer's and judge's 052dc6e", () => {
-    const row = readFileSync("docs/system/tests.md", "utf8").split("\n").find((l) => l.startsWith("| 270 |")) ?? "";
+    const row = coverageRow(270);
     expect(row).toContain("the same as that batch gave at `adb555e`");
     expect(row).toContain("the reviewer and judge hashes are still those of `052dc6e`");
   });
