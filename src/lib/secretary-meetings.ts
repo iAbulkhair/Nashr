@@ -4,7 +4,7 @@
  * tasks, the agenda, the quiet hold and `free_slots`. No I/O here, but it imports `cleanLine` from secretary.ts, so it is server-only (pinned in
  * tests/client-bundle.test.ts). Titles are untrusted text and are never rendered as HTML.
  */
-import { addDays, zoneDay, zoneTime } from "./secretary-agenda";
+import { DEFAULT_WORK_HOURS, addDays, isQuietDay, zoneDay, zoneLocalInput, zoneTime, type CalData, type QuietWhy } from "./secretary-agenda";
 import { cleanLine } from "./secretary";
 import type { Zone } from "./zones";
 
@@ -28,6 +28,69 @@ export function todayMeetings(meetings: Meeting[], zone: Zone, now: number): Mee
     .filter(({ s, e }) => Number.isFinite(s) && Number.isFinite(e) && s < dayEnd && e > dayStart)
     .sort((a, b) => a.s - b.s || a.e - b.e)
     .map(({ m }) => m);
+}
+
+/** A reminder is held for a meeting at most this long after its own time (spec §6, ruling P2). */
+export const QUIET_CAP_MS = 4 * 3_600_000;
+
+/**
+ * Until when a reminder due at `remindAtMs` waits because the owner is in a meeting (Reem B3, rule 917): the chain of
+ * meetings that contains that instant (start <= t < end), extended while the next one starts before the chain ends,
+ * capped at `QUIET_CAP_MS` after the reminder's time. Null when no meeting contains it, so a reminder set before a
+ * meeting starts still fires during it.
+ */
+export function quietUntil(meetings: Meeting[], remindAtMs: number): number | null {
+  const spans = meetings
+    .map((m) => ({ s: Date.parse(m.start), e: Date.parse(m.end) }))
+    .filter(({ s, e }) => Number.isFinite(s) && Number.isFinite(e) && e > s)
+    .sort((a, b) => a.s - b.s || a.e - b.e);
+  let end: number | null = null;
+  for (const { s, e } of spans) {
+    if (end === null) { if (s <= remindAtMs && remindAtMs < e) end = e; continue; }
+    if (s <= end) end = Math.max(end, e); else break;
+  }
+  return end === null ? null : Math.min(end, remindAtMs + QUIET_CAP_MS);
+}
+
+/** `free_slots` looks at today and this many days after it (spec §6). */
+export const SLOT_DAYS_AHEAD = 6;
+/** At most this many slots are offered. */
+export const SLOT_MAX = 3;
+const STEP_MS = 15 * 60_000;
+export type FreeSlots = { ok: true; slots: { start: string; end: string }[] } | { ok: false; error: "not_working_day"; why: QuietWhy } | { ok: false; error: "out_of_range" };
+
+/**
+ * Up to three open times of `minutes` on a local `day` (Reem B3, rule 919), local "HH:mm", each on a 15-minute
+ * boundary and none before `now` (rounded up to 15 minutes). The windows are the Ramadan hours on a Ramadan day when
+ * the brand set any, otherwise the working hours (`DEFAULT_WORK_HOURS` when none are saved; ruling P5); the meetings
+ * are left out, and an all-day busy event over several days blocks each of them. Only today and the next six days; a
+ * weekend or quiet day answers why. Pure: it books nothing, the owner does.
+ */
+export function freeSlots(a: { day: string; minutes: number; now: number; zone: Zone; cal: CalData; workHours: { from: string; to: string } | null; meetings: Meeting[] }): FreeSlots {
+  const { day, minutes, now, zone, cal } = a;
+  const today = zoneDay(now, zone);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < today || day > addDays(today, SLOT_DAYS_AHEAD)) return { ok: false, error: "out_of_range" };
+  if (isQuietDay(day, cal)) return { ok: false, error: "not_working_day", why: Object.prototype.hasOwnProperty.call(cal.quiet, day) ? cal.quiet[day] : { kind: "weekend" } };
+  const windows = cal.ramadan.includes(day) && cal.ramadanHours.length ? cal.ramadanHours : [a.workHours ?? DEFAULT_WORK_HOURS];
+  const dayStart = zoneTime(day, 0, 0, zone);
+  const up = (t: number) => dayStart + Math.ceil((t - dayStart) / STEP_MS) * STEP_MS;
+  const at = (hm: string) => zoneTime(day, +hm.slice(0, 2), +hm.slice(3, 5), zone);
+  const hm = (t: number) => zoneLocalInput(t, zone).slice(11, 16);
+  const len = minutes * 60_000;
+  const busy = a.meetings.map((m) => ({ s: Date.parse(m.start), e: Date.parse(m.end) })).filter(({ s, e }) => Number.isFinite(s) && Number.isFinite(e) && e > s);
+  const slots: { start: string; end: string }[] = [];
+  for (const w of [...windows].sort((x, y) => x.from.localeCompare(y.from))) {
+    const end = at(w.to);
+    let t = up(Math.max(at(w.from), now));
+    // Each pass moves `t` forward by at least 15 minutes, so the loop ends; NaN from a malformed window never enters it.
+    while (slots.length < SLOT_MAX && t + len <= end) {
+      const clash = busy.filter(({ s, e }) => s < t + len && e > t);
+      if (clash.length) { t = up(Math.max(...clash.map(({ e }) => e))); continue; }
+      slots.push({ start: hm(t), end: hm(t + len) });
+      t += len;
+    }
+  }
+  return { ok: true, slots };
 }
 
 /** A stored title is at most this many characters (spec §6). */

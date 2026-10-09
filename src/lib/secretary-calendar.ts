@@ -13,8 +13,10 @@
  */
 import { createHash } from "node:crypto";
 import { hijriDate } from "./seasons";
-import { DEFAULT_RAMADAN_HOURS, addDays, daysBetween, defaultCal, endOfZoneDay, gregorianNext, ruleClock, zoneDay, zoneTime, type CalData, type QuietWhy, type SecRepeat } from "./secretary-agenda";
+import { DEFAULT_RAMADAN_HOURS, DEFAULT_WORK_HOURS, addDays, daysBetween, defaultCal, endOfZoneDay, gregorianNext, ruleClock, zoneDay, zoneTime, type CalData, type QuietWhy, type SecRepeat } from "./secretary-agenda";
 import { ZONES, weekStartDay, type Zone } from "./zones";
+
+export { DEFAULT_WORK_HOURS };
 import type { SecFail } from "./secretary";
 
 /** The brand's calendar settings, stored as one JSON value at `sec:cal:{scope}` (absent: every default). Spec §1.1. */
@@ -24,6 +26,11 @@ export type SecCalendar = {
   weekend: number[] | null;
   /** Ramadan chasing hours, local "HH:mm" on a 15-minute step, at most 2 windows. null: 10:00-15:00. []: no restriction. */
   ramadanHours: { from: string; to: string }[] | null;
+  /**
+   * The owner's working hours outside Ramadan, local "HH:mm" on a 15-minute step (Reem B3, rule 922): where `free_slots`
+   * looks for open time. Absent or null: `DEFAULT_WORK_HOURS`. Added 2026-10-10; a record saved before has no such field.
+   */
+  workHours?: { from: string; to: string } | null;
   /**
    * Per Hijri year ("1448"), the owner's moon-sighting corrections: the local day Shawwal (Eid al-Fitr) and Dhu al-Hijjah
    * start, ±1 day of Umm al-Qura. The two the Working days panel writes; `ramadan1` is no longer taken (ruling R30).
@@ -548,7 +555,7 @@ export function calendarView(calendar: SecCalendar | null, zone: Zone, now: numb
   const defaultWeekend: number[] = [...ZONES[zone].weekend];
   return {
     calendar,
-    effective: { country: countryOf(zone), zone, weekend: data.weekend, defaultWeekend, weekStart: data.weekStart, ramadanHours: data.ramadanHours },
+    effective: { country: countryOf(zone), zone, weekend: data.weekend, defaultWeekend, weekStart: data.weekStart, ramadanHours: data.ramadanHours, workHours: workHoursOf(calendar) ?? { ...DEFAULT_WORK_HOURS } },
     upcoming: upcomingQuiet(calendar, zone, now),
     eids: eidDays(calendar, zone, now),
   };
@@ -561,7 +568,7 @@ export type CalendarView = ReturnType<typeof calendarView>;
  */
 export const namesSharjah = (city: unknown): boolean => typeof city === "string" && /\bsharjah\b|الشارقة|شارقة/i.test(city);
 
-export type CalError = "weekend_invalid" | "ramadan_hours_invalid" | "bad_year" | "hijri_fix_range" | "holidays_invalid" | "bad_request";
+export type CalError = "weekend_invalid" | "ramadan_hours_invalid" | "work_hours_invalid" | "bad_year" | "hijri_fix_range" | "holidays_invalid" | "bad_request";
 /** A refusal in the shape of `SecFail` (secretary.ts), with the calendar's own error codes. */
 export type CalFail = Omit<SecFail, "error" | "item"> & { error: CalError };
 const calFail = (error: CalError, field?: string): CalFail => ({ ok: false, error, status: 400, ...(field ? { field } : {}) });
@@ -584,6 +591,18 @@ const clock = (v: unknown) => {
   const m = typeof v === "string" ? /^(\d{2}):(\d{2})$/.exec(v) : null;
   return m && +m[1] <= 23 && ["00", "15", "30", "45"].includes(m[2]) ? +m[1] * 60 + +m[2] : null;
 };
+/** One working-hours window, `from` before `to`, both on the quarter hour; null when absent; false when malformed. */
+function parseWorkHours(v: unknown): { from: string; to: string } | null | false {
+  if (v === undefined || v === null) return null;
+  if (!isObject(v) || Object.keys(v).some((k) => k !== "from" && k !== "to")) return false;
+  const a = clock(v.from), b = clock(v.to);
+  return a === null || b === null || a >= b ? false : { from: v.from as string, to: v.to as string };
+}
+/** The stored working hours when they are usable, else null (a hand-edited or older record reads as the default). */
+export function workHoursOf(cal: Pick<SecCalendar, "workHours"> | null): { from: string; to: string } | null {
+  const w = parseWorkHours(cal?.workHours);
+  return w || null;
+}
 function parseHours(v: unknown): { from: string; to: string }[] | null | false {
   if (v === undefined || v === null) return null;
   if (!Array.isArray(v) || v.length > 2) return false;
@@ -708,7 +727,7 @@ const HOLIDAY_FORMATS: [RegExp, (m: RegExpExecArray) => boolean][] = [
 const HOLIDAY_MAX = 30;
 const holidayValue = (v: unknown) => typeof v === "string" && HOLIDAY_FORMATS.some(([re, ok]) => { const m = re.exec(v); return !!m && ok(m); });
 
-const TOP_FIELDS = new Set(["v", "weekend", "ramadanHours", "hijriFix", "holidays", "updatedAt", "updatedBy"]);
+const TOP_FIELDS = new Set(["v", "weekend", "ramadanHours", "workHours", "hijriFix", "holidays", "updatedAt", "updatedBy"]);
 /** The `hijriFix` fields and the Hijri month each one starts (ruling R30: the two the Working days panel writes). */
 const FIX_FIELDS = { shawwal1: 10, dhulhijja1: 12 } as const;
 
@@ -716,7 +735,7 @@ const FIX_FIELDS = { shawwal1: 10, dhulhijja1: 12 } as const;
  * Check the Working days settings an admin saves, field by field (spec §1.1), and return them normalised and stamped
  * with `now` and the admin's `login`. Refused: an unknown field (`bad_request`); a weekend that is not 0-3 contiguous
  * days (`weekend_invalid`); Ramadan hours that are not at most two "HH:mm" windows on the quarter hour, each from
- * before to, not overlapping (`ramadan_hours_invalid`); a `hijriFix` year after the zone's next Hijri year (`bad_year`)
+ * before to, not overlapping (`ramadan_hours_invalid`); working hours that are not one such window (`work_hours_invalid`); a `hijriFix` year after the zone's next Hijri year (`bad_year`)
  * or a date more than a day from Umm al-Qura's (`hijri_fix_range`); a `hijriFix` field other than `shawwal1` and
  * `dhulhijja1` (`bad_request`: a new `ramadan1` too, ruling R30); more than 30 values in `add` or `remove`, a malformed
  * value, or a new removal that no default day of the coming year matches (`holidays_invalid`).
@@ -737,6 +756,8 @@ export function parseCalendar(body: Record<string, unknown>, now: number, zone: 
   if (weekend === false) return calFail("weekend_invalid", "weekend");
   const ramadanHours = parseHours(body.ramadanHours);
   if (ramadanHours === false) return calFail("ramadan_hours_invalid", "ramadanHours");
+  const workHours = parseWorkHours(body.workHours);
+  if (workHours === false) return calFail("work_hours_invalid", "workHours");
 
   const hijriFix: SecCalendar["hijriFix"] = {};
   if (body.hijriFix !== undefined && body.hijriFix !== null) {
@@ -770,7 +791,7 @@ export function parseCalendar(body: Record<string, unknown>, now: number, zone: 
       holidays[list] = [...new Set(v as string[])].filter((x) => !isStale(x, first));
     }
   }
-  const cal: SecCalendar = { v: 1, weekend, ramadanHours, hijriFix, holidays, updatedAt: new Date(now).toISOString(), updatedBy: login };
+  const cal: SecCalendar = { v: 1, weekend, ramadanHours, ...(workHours ? { workHours } : {}), hijriFix, holidays, updatedAt: new Date(now).toISOString(), updatedBy: login };
 
   // A new removal takes only days the defaults produce: a default holiday or day in lieu of the coming calendar window.
   // One already stored is kept as it is (ruling R28).
