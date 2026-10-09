@@ -70,8 +70,9 @@ export type RouteContext = {
   /** The model that generated the batch being judged (`judge` only): the judge will not be that model when it can avoid it. */
   generatedBy?: string;
   /**
-   * The task type of the batch (`generate` and `review`): it picks the default from `TASK_MODELS` (rule 901), and for
-   * `generate` a pick whose `tasks` allow-list leaves it out is `task_not_allowed`.
+   * The task type of the batch (`generate`, `review` and `judge`): it picks the default from `TASK_MODELS` (rule 901), for
+   * `generate` a pick whose `tasks` allow-list leaves it out is `task_not_allowed`, and for `judge` a batch written by
+   * the type's own automatic writer keeps the default judge (rule 903).
    */
   task?: TaskType;
 };
@@ -80,13 +81,16 @@ export type Routed = { model: string; overridden: boolean; rejected?: Rejected }
 /** What automatic routing may use: offered to routing (`auto`) and hosted in the west. Both checked here, never only in the data. */
 const automatic = (m: ModelEntry | undefined): m is ModelEntry => m !== undefined && m.auto === true && m.hosting === "west";
 
+/** Exactly one of `TASK_MODELS`' own keys: prototype names and anything that is not a string are not. */
+const isTask = (task: unknown): task is TaskType => typeof task === "string" && Object.hasOwn(TASK_MODELS, task);
+
 /**
  * The automatic model for `purpose` on task type `task` (rule 901): the type's writer for `generate`, its reviewer for
  * `review`, from `TASK_MODELS`; `DEFAULTS[purpose]` for every other purpose, and for a task that is not exactly one of
  * the table's own keys. Unchecked: `route()` checks it is still an automatic entry before anything runs on it.
  */
 export function automaticFor(purpose: Purpose, task?: TaskType): string {
-  if ((purpose === "generate" || purpose === "review") && typeof task === "string" && Object.hasOwn(TASK_MODELS, task)) return TASK_MODELS[task][purpose === "generate" ? "write" : "review"];
+  if ((purpose === "generate" || purpose === "review") && isTask(task)) return TASK_MODELS[task][purpose === "generate" ? "write" : "review"];
   return DEFAULTS[purpose];
 }
 
@@ -128,6 +132,9 @@ function judgeAlternative(def: string): string {
  *   returns the default with `overridden: false` and says why in `rejected`; the caller tells the owner.
  *   `undefined` and `null` are nothing stored: the default, nothing rejected.
  * - `judge`: the default, or when that is `ctx.generatedBy`, an automatic alternative that costs no more (`judgeAlternative`).
+ *   Except (rule 903, founder decision 2026-10-10): when `ctx.generatedBy` is the type's own automatic writer
+ *   (`automaticFor("generate", ctx.task)`), the default judge stays, so an Automatic batch Sonnet 5.5 writes is judged by
+ *   Sonnet 5.5 as before routing existed. Only a customer's pick off the type's writer gets the alternative.
  * - `generate` and `review` with `ctx.task`: the default is that type's row of `TASK_MODELS` (`automaticFor`).
  * - every other purpose: the default. `ctx` is ignored.
  *
@@ -137,7 +144,10 @@ function judgeAlternative(def: string): string {
 export function route(purpose: Purpose, ctx: RouteContext = {}): Routed {
   if (typeof purpose !== "string" || !Object.hasOwn(DEFAULTS, purpose)) throw new Error(`unknown_purpose:${String(purpose)}`);
   const model = defaultFor(purpose, ctx.task);
-  if (purpose === "judge") return { model: ctx.generatedBy === model ? judgeAlternative(model) : model, overridden: false };
+  if (purpose === "judge") {
+    const alternative = ctx.generatedBy === model && !(isTask(ctx.task) && automaticFor("generate", ctx.task) === ctx.generatedBy);
+    return { model: alternative ? judgeAlternative(model) : model, overridden: false };
+  }
   if (ctx.stored === undefined || ctx.stored === null || !OVERRIDABLE.includes(purpose)) return { model, overridden: false };
   const reject = (rejected: Rejected): Routed => ({ model, overridden: false, rejected });
   const pick = modelById(ctx.stored);

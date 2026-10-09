@@ -14,6 +14,6 @@ Status on 2026-10-10 on PR #298 (model routing, rules 810-866), merged with main
 
 ## Not pinned / decide
 
-- The judge on Automatic batches: `route("judge", { generatedBy })` moves to the cheapest automatic alternative (Haiku 5.5) when the batch's model equals the default judge (Sonnet 5.5). That rule came from #298 for a Sonnet pick; since rule 901 Sonnet 5.5 is the automatic writer of 16 types, so their Automatic batches are now judged by Haiku 5.5, not Sonnet 5.5 as on main. Kept as built; the founder decides whether those types keep a Sonnet judge (the estimate still prices Sonnet, so the floor is unaffected).
+- The judge on Automatic batches: decided 2026-10-10, rule 903 (`0903-judge-automatic-writer.md`): an Automatic Sonnet-written batch keeps the Sonnet 5.5 judge.
 - `multipliers.generate` in GET /api/models is now the multiplier on an Opus-written type only; drop it in a contract release once every page reads `generateByTask` (rule 679).
 - Output quality per type on a pick: the golden set, as in 0901.

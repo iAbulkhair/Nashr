@@ -272,6 +272,20 @@ describe("judge: a different model from the one that generated the batch, when t
     for (const generatedBy of [OPUS, SONNET, HAIKU]) expect(route("judge", { generatedBy }).model, generatedBy).not.toBe(generatedBy);
   });
 
+  it("rule 903: a batch written by the type's own automatic writer keeps the default judge; a pick off the writer gets the alternative", () => {
+    const sonnetTypes = TASK_TYPES.filter((t) => TASK_MODELS[t].write === SONNET);
+    const opusTypes = TASK_TYPES.filter((t) => TASK_MODELS[t].write === OPUS);
+    expect([sonnetTypes.length, opusTypes.length]).toEqual([16, 10]);
+    // Automatic Sonnet batches (and a Sonnet pick on a Sonnet type, the same model) are judged by Sonnet 5.5, as on main.
+    for (const task of sonnetTypes) expect(route("judge", { generatedBy: SONNET, task }), task).toEqual({ model: SONNET, overridden: false });
+    // A Sonnet pick on a type Opus writes: Haiku 5.5, as before.
+    for (const task of opusTypes) expect(route("judge", { generatedBy: SONNET, task }), task).toEqual({ model: HAIKU, overridden: false });
+    // Opus wrote it: the default judge, whatever the type.
+    for (const task of TASK_TYPES) expect(route("judge", { generatedBy: OPUS, task }).model, task).toBe(SONNET);
+    // A task that is not exactly a task type is no task: the alternative applies.
+    for (const task of ["constructor", "__proto__", "Article", "", 5]) expect(route("judge", { generatedBy: SONNET, task: task as TaskType }).model, String(task)).toBe(HAIKU);
+  });
+
   it("the judge's own choice is never an override: overridden stays false and a stored pick is ignored", () => {
     expect(route("judge", { generatedBy: SONNET, stored: OPUS })).toEqual({ model: HAIKU, overridden: false });
   });

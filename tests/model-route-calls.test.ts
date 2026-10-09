@@ -219,7 +219,7 @@ describe("chat: the model the turn runs on is the model its messages were counte
 describe("generation: the model the batch is charged for is the model generate() runs on", () => {
   const base = TASK_COST.social;
 
-  async function run(o: { type?: "social" | "gtm_plan"; model?: string } = {}) {
+  async function run(o: { type?: "social" | "gtm_plan" | "article"; model?: string } = {}) {
     const u = await owner("mrg");
     const before = (await getUser(u.email))!.credits;
     const r = await generateBatch(u, u.email, { type: o.type ?? "social", source: "manual", via: "app", ...(o.model ? { model: o.model } : {}) });
@@ -294,8 +294,15 @@ describe("generation: the model the batch is charged for is the model generate()
     rt.pick.generate = SONNET55;
     await run();
     expect(calls("generate").map((c) => c.model)).toEqual([SONNET55]);
-    expect(askedFor("judge")[0].ctx).toMatchObject({ generatedBy: SONNET55 });
+    expect(askedFor("judge")[0].ctx).toMatchObject({ generatedBy: SONNET55, task: "social" });
     expect(judged().map((c) => c.model)).toEqual([HAIKU]);
+  });
+
+  it("an Automatic batch of a type Sonnet 5.5 writes keeps the Sonnet 5.5 judge (rule 903)", async () => {
+    await run({ type: "article" });
+    expect(calls("generate").map((c) => c.model)).toEqual([SONNET55]);
+    expect(askedFor("judge")[0].ctx).toMatchObject({ generatedBy: SONNET55, task: "article" });
+    expect(judged().map((c) => c.model)).toEqual([SONNET55]);
   });
 
   it("a batch Opus 5.5 wrote is judged by Sonnet 5.5, the default judge", async () => {

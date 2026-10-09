@@ -50,7 +50,10 @@ const isAutofail = (v: unknown): v is Autofail => typeof v === "string" && Objec
  */
 export type JudgeContext = Grounding & {
   via?: ActivityVia;
-  /** The model that generated the items: the judge is another model when the routing has one that costs no more (`route("judge")`). */
+  /**
+   * The model that generated the items: the judge is another model when the routing has one that costs no more
+   * (`route("judge")`), unless it is the type's own automatic writer (rule 903: an Automatic Sonnet batch keeps the Sonnet judge).
+   */
   generatedBy?: string;
 };
 
@@ -98,7 +101,7 @@ export async function scoreItems(email: string | undefined, brand: Brand, type: 
   // not leave the batch unscored.
   const client = anthropic({ timeoutMs: MODEL_BUDGET.JUDGE_MS, maxRetries: 1 });
   const res = await client.messages.create({
-    model: route("judge", { generatedBy: ctx.generatedBy }).model,
+    model: route("judge", { generatedBy: ctx.generatedBy, task: type }).model,
     max_tokens: 8000,
     thinking: { type: "adaptive" },
     output_config: { effort: "low" },

@@ -173,7 +173,7 @@ describe("the estimates price the models the code calls (rule 241)", () => {
     // The reviewer asks for "review" with its type; the cross-agent review asks once for "xreview" and both reviewers use it.
     expect(noor.match(/model: route\("review", \{ task: type \}\)\.model,/g)?.length).toBe(1);
     expect(noor.match(/const model = route\("xreview"\)\.model;/g)?.length).toBe(1);
-    expect(src("src/lib/judge.ts")).toContain('model: route("judge", { generatedBy: ctx.generatedBy }).model,');
+    expect(src("src/lib/judge.ts")).toContain('model: route("judge", { generatedBy: ctx.generatedBy, task: type }).model,');
     // Onboarding asks once; its three parts and a retry run on the same model.
     expect(src("src/lib/onboard.ts")).toContain('const model = route("onboard").model;');
     expect(src("src/lib/media/prompts.ts")).toContain('model: route("imagePrompt").model,');
