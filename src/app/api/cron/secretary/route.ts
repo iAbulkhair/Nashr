@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { appOrigin } from "@/lib/origin";
 import { allow, clientIp, sameSecret, retryLater } from "@/lib/rate";
 import { verifyQstash } from "@/lib/qstash";
 import { SWEEP_BUDGET_TICK_MS, sweepReminders } from "@/lib/secretary-remind";
@@ -65,11 +66,12 @@ export async function POST(req: Request) {
   const now = Date.now();
   const sweep = await sweepReminders(now, { fromQstash: byQstash, deadline: now + SWEEP_BUDGET_TICK_MS });
   // The evening pass: the zones whose wrap time (18:00, or 21:30 in Ramadan) fell within the last tick. The batch runs
-  // in its own invocation with the cron bearer, so it has the daily job's time budget and its resumable markers.
+  // in its own invocation with the cron bearer, so it has the daily job's time budget and its resumable markers. On
+  // `appOrigin()`, never `req.url`: behind the Hostinger proxy that is the internal address (rule 902).
   const zones = zonesDue(now);
   const secret = process.env.CRON_SECRET;
   if (zones.length && secret) {
-    const url = new URL(`/api/cron/evening?zones=${encodeURIComponent(zones.join(","))}`, req.url).toString();
+    const url = `${appOrigin()}/api/cron/evening?zones=${encodeURIComponent(zones.join(","))}`;
     const kick = () => fetch(url, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
     try { after(kick); } catch { void kick(); }
   }

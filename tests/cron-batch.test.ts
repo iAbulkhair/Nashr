@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lastSundayUtc, runCronBatch } from "@/lib/cron-batch";
+import { appOrigin } from "@/lib/origin";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const req = (chain = 0) => new Request(`https://nashr.example/api/cron/weekly${chain ? `?chain=${chain}` : ""}`, { headers: { authorization: "Bearer test" } });
@@ -30,7 +31,7 @@ describe("runCronBatch", () => {
     expect(first.processed).toBeLessThan(10);
     expect(first.chained).toBe(true);
     await sleep(10);
-    expect(calls[0].url).toBe("https://nashr.example/api/cron/weekly?chain=1");
+    expect(calls[0].url, "the hop goes to the app origin, not the request host (rule 902)").toBe(`${appOrigin()}/api/cron/weekly?chain=1`);
     expect(calls[0].auth, "a hop without the cron bearer is refused 401 and serves nobody (rule 379)").toBe("Bearer test");
     const second = await runCronBatch({ job: "t", period: `p${period}`, items, id: (x) => x, run, concurrency: 5, startBudgetMs: 5000, markerTtlSeconds: 60, req: req(1) });
     expect(second.alreadyDone).toBe(first.processed);
@@ -63,7 +64,7 @@ describe("runCronBatch", () => {
     const first = await runCronBatch({ ...o, period: `late${period}`, items: ["a", "b"], run: async (x) => { ran.push(x); return x === "a" ? "ok" : "retry:late"; }, req: req() });
     expect(first).toMatchObject({ processed: 1, remaining: 1, chained: true });
     await sleep(10);
-    expect(calls[0].url).toBe("https://nashr.example/api/cron/weekly?chain=1");
+    expect(calls[0].url, "the hop goes to the app origin, not the request host (rule 902)").toBe(`${appOrigin()}/api/cron/weekly?chain=1`);
     // The late item kept its attempt: the next hop starts it.
     const second = await runCronBatch({ ...o, period: `late${period}`, items: ["a", "b"], run: async (x) => { ran.push(x); return "ok"; }, req: req(1) });
     expect(second).toMatchObject({ alreadyDone: 1, processed: 1, remaining: 0, chained: false });
