@@ -2,7 +2,8 @@ import { asData } from "./json";
 import { isComposio } from "./connectors/composio-shape";
 import { listConnections, type Connection } from "./connectors/store";
 import { CHANNEL_ID } from "./social-read/youtube";
-import { getSocialSnapshot, xReadOf, type Platform, type PlatformPart, type SocialSnapshot } from "./social-stats";
+import { PAGE_ID } from "./social-read/facebook";
+import { getSocialSnapshot, nothingRead, xReadOf, type Platform, type SocialSnapshot } from "./social-stats";
 import { getXStats } from "./x-stats";
 import { getAdStats } from "./ad-stats";
 import { getSiteSnapshot, type SiteSnapshot } from "./site-stats";
@@ -46,9 +47,6 @@ const isSocial = (p: NotReadPlatform): p is Social => SOCIAL.includes(p);
  */
 const SCOPE_STATE: Partial<Record<Social, string>> = { facebook: "fb_no_insights", youtube: "yt_no_analytics", tiktok: "tt_no_scope" };
 
-/** A part with no figure read at all: its followers and every total null. */
-const nothingRead = (part: PlatformPart) => part.followers == null && Object.values(part.totals).every((v) => v == null);
-
 /**
  * Whether the workspace holds a read of the platform: a part in the v2 social snapshot (a snapshot from before v2 holds
  * none, rule 737), an X read as Dana's block prints it (`xReadOf`, whatever its day: the block gives its date), an ad row
@@ -87,7 +85,7 @@ function carries(p: NotReadPlatform, c: Conn): boolean {
  */
 function held(p: NotReadPlatform, c: Conn): boolean {
   if (p === "instagram") return isComposio(c) && !!c.meta?.igId;
-  if (p === "facebook") return isComposio(c) && /^\d+$/.test(c.meta?.pageId ?? "");
+  if (p === "facebook") return isComposio(c) && PAGE_ID.test(c.meta?.pageId ?? "");
   if (p === "linkedin") return isComposio(c) && /^urn:li:organization:\d+$/.test(c.meta?.liOrg ?? "");
   if (p === "youtube") return isComposio(c) && CHANNEL_ID.test(c.meta?.channelId ?? "");
   if (p === "tiktok" || p === "google_analytics" || p === "search_console") return isComposio(c) && carries(p, c);

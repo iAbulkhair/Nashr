@@ -117,9 +117,10 @@ A2. **Previous period**, read by the same reader in the same run, only from rang
   report has its own catch: its failure gives `pages: []`, keeps the totals and `prev`, and logs `ga_pages_failed` once
   with the code alone (amended 2026-10-08, phase B review).
 - Search Console: one more `SEARCH_ANALYTICS_QUERY` by date for the previous range.
-- Ads (Meta native and Composio, Snapchat native, Google Ads, TikTok Ads): the same reader called a second time for the
-  30 days before the window, with the same constant queries and date checks. A failed second read leaves no `prev`; it
-  never fails the sync.
+- Ads (Meta native and Composio, Snapchat native, Google Ads, TikTok Ads, LinkedIn Ads): the same reader called a second
+  time for the 30 days before the window, with the same constant queries and date checks; for LinkedIn Ads that is the
+  same constant analytics call over the previous 30 days, `totalsOnly` skipping the campaign-names call (amended 2026-10-09, whole-phase review). A failed
+  second read leaves no `prev`; it never fails the sync.
 - Snapchat Ads through Composio: `SNAPCHAT_GET_AD_ACCOUNTS_STATS` with `{ ad_account_id, fields: "spend", granularity:
   "TOTAL", start_time, end_time }` gives `prev.spend` only (Snap serves only spend at the account level); the other
   `prev` figures stay null. A second per-ad pass is not run (up to 50 more calls).
@@ -143,13 +144,17 @@ Social answers and first reads (amended 2026-10-08, phase B review):
 - A social read that saved the snapshot while a part's token was refused (`PartlyRead`) answers 200 `{ ok: true, read:
   true, reconnect: "<provider>" }` only when at least one part was actually read; when no part was read, it answers 502
   `reconnect_required`: with only known states beside the refused part, the snapshot is written with those states and
-  the refused part's error; when the other parts failed, nothing is written and the last snapshot stands.
+  the refused part's error; when the other parts failed, nothing is written and the last snapshot stands. "Actually
+  read" is the Not-read list's own test (`nothingRead`, exported from social-stats.ts): a part with a follower count or
+  a total. A part with neither, such as a Facebook Page whose posts were read but not its insights, is written but is no
+  read, so beside a refused token the answer is still 502 (amended 2026-10-09, whole-phase review).
 - The record of every part whose token was refused is marked for reconnect (`SocialReadError.refusedBy`), and only
   those. Only the adapter's 401 is a refused token: a 403 such as `quotaExceeded`, or any other failure, is answered 502
   with its message and marks nothing.
 - Every Composio social connect (the callback) starts a first read (`readSocialSoon`). `select_page` on a Composio Meta
   record reads the new Page only when `allow(\`socialsync:${scope}\`, 6, 3600)` grants it and answers `{ ok, account,
-  read }`.
+  read }`. `select_org` on a Composio LinkedIn record does the same under the same bucket and answers `{ ok, account,
+  read }`; the Integrations page says "Page saved. Its results come with the next read." when `read` is false (amended 2026-10-09, whole-phase review).
 
 A5. **Prompts.** `statsText(k, { store?, site?, social?, ads? })`: traffic is said absent only without `<site_data>`, ad
 spend only without `<ad_data>`. `statsFor` sets each flag from a non-empty block and appends `adDataBlock(scope)` and the
@@ -187,7 +192,9 @@ real output shape (schemas are envelope-only), which metrics return data, and wh
 `read_insights`, `yt-analytics.readonly` and `rw_organization_admin`. Preview `APP_ORIGIN` is scoped to the Composio
 branch today, so the founder scopes it to this branch first. Readers parse tolerantly so a shape surprise leaves nulls.
 
-B1. **Facebook Page** on the existing `facebook` toolkit, page id from `meta.pageId` (the publishing choice):
+B1. **Facebook Page** on the existing `facebook` toolkit, page id from `meta.pageId` (the publishing choice). The id is
+1 to 30 digits (`PAGE_ID`, facebook.ts), checked where the reader holds the record, where it reads, in the Not-read
+list and in the Page list at connect; the account falls back to `Page {id}` through `clean`, cut to 80 (amended 2026-10-09, whole-phase review):
 
 - `FACEBOOK_GET_PAGE_INSIGHTS: ["page_id","metrics","period","since","until"]`, constant `metrics:
   "page_media_view,page_total_media_view_unique,page_post_engagements,page_total_actions,page_follows,page_daily_follows_unique,page_daily_unfollows_unique"`,
@@ -272,8 +279,13 @@ C3. **X, owner pays.** No scheduled read. On the Reports page, "Refresh X (1 cre
   \`xread:${sc(u)}:${utcDay}\`)`: `agent_cap` answers 402 with spent and cap, `no_credits` 402 with need and credits,
   `reused: true` reads with no new debit; (7) `readX`; (8) save.
 - On any failure (401, 402, 403, 429, 5xx, timeout, malformed body) `refundOnce` runs only if no X part dated today
-  exists after the failure. A read with zero posts is a success: it saves followers with `posts: []` and keeps the
-  charge (X billed the user read). The hold lives on `User.paidOnce` for 8 days; no sweep covers `xread:`.
+  exists after the failure, and only in the click that took the charge (`reused: false`); a click that read on the
+  hold never refunds. A click on the hold whose read is saved calls `chargeOnce` again on the same claim: a no-op while
+  the hold stands, one debit when the charging click failed first and gave the credit back, so one credit stands for
+  the day's read in either order; a refused re-charge (no credits, Dana's cap) leaves that read free, and so does a
+  read that lands in the moment between the charging click's check and its refund. A click stopped with no catch run
+  leaves its hold, and the credit stands (amended 2026-10-09, whole-phase review). A read with zero posts is a success: it saves followers with `posts: []`
+  and keeps the charge (X billed the user read). The hold lives on `User.paidOnce` for 8 days; no sweep covers `xread:`.
 - `readX(c, now)` is new in x.ts (`xMe` has no fields and no timeout and is not reused). Two GETs, each with
   `AbortSignal.timeout(15_000)`: `/2/users/me?user.fields=public_metrics`, then
   `/2/users/{id}/tweets?max_results=10&start_time=<now − 30 d, RFC3339 without ms>&exclude=retweets&tweet.fields=created_at,public_metrics,non_public_metrics,organic_metrics`.
@@ -331,7 +343,12 @@ again, so a change is never worked out across two accounts (review of Task 8, 20
 YouTube `meta.channelId`; TikTok has none). When both parts carry one, the ids decide: history is dropped only when they
 differ, so a renamed account keeps its rows; otherwise the name rule stands. This is the expand step (rule 679): old
 parts without the id still follow names. `accountId` never reaches the model or the page (`socialForPage` strips it)
-(amended 2026-10-08, phase B review).
+(amended 2026-10-08, phase B review). X's read carries the user id X answered on `/2/users/me` for the owner's own
+token (checked against `^[0-9]{1,19}$`, the id the posts are read under), not an id stored at connect, so records
+connected before this change are covered too; `refreshX` applies the same rule to `xstats:{scope}` (ids decide when
+both reads carry one, else the handles), and `xForPage` strips the id from the `sync_x` answer and the Reports page.
+X's handle keeps its own characters (`handle`: letters, digits, `_` and `.`, at most 80), and so does an Instagram
+username (amended 2026-10-09, whole-phase review).
 
 `fromThakeen` is true only for ids in `socialpub:{scope}`. `publish-once.ts:126` is widened to add the post id for
 facebook, linkedin, youtube, tiktok and x; until a platform's ids land, its posts carry `fromThakeen: false`.
@@ -342,7 +359,9 @@ Composio readers live in `src/lib/social-read/{facebook,youtube,tiktok}.ts`; X r
 ## 8. Reports page
 
 The SocialStats card shows one row per part (X merged from `xstats`) with its previous-period change where `prev`
-exists, the Not-read list, a "Refresh" button (`sync_social`, free, any member), and for X "Refresh X (1 credit)". GA4 and
+exists, the Not-read list, a "Refresh" button (`sync_social`, free, any member), and for X "Refresh X (1 credit)". The
+footer says "Refreshed daily" without X, and "Refreshed daily; X only when someone presses Refresh X" when X's row or
+button is shown (amended 2026-10-09, whole-phase review). GA4 and
 Search Console get a property selector when more than one is stored (owner and admin). The page shows no model text.
 Captions, names, account labels and the Not-read items render as React text nodes (never `render`, never
 `dangerouslySetInnerHTML`), as SocialStats.tsx does today. Post links are kept only on each platform's fixed host and

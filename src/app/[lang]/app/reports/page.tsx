@@ -11,7 +11,7 @@ import { getSalesSnapshot, getSyncFailure } from "@/lib/store-sales";
 import { getPerf } from "@/lib/perf-store";
 import { getSiteSnapshot } from "@/lib/site-stats";
 import { getSocialSnapshot, socialForPage, xReadOf } from "@/lib/social-stats";
-import { getXStats } from "@/lib/x-stats";
+import { getXStats, xForPage } from "@/lib/x-stats";
 import { notRead } from "@/lib/not-read";
 import { connectedSources, liNeedsPage, siteChoices, socialRefreshPath, xDirect } from "@/lib/report-sources";
 import ReportsPanel from "@/components/app/ReportsPanel";
@@ -38,7 +38,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const dana = agentById("dana").tasks;
   // X's last read without the account's id, which only the reader uses (rule 746).
   const xRead = xReadOf(xStats);
-  const x = xRead ? { ...xRead, accountId: undefined } : null;
+  const x = xRead ? xForPage(xRead) : null;
   const items = tasks.filter((t) => dana.includes(t.type)).slice(0, 20).map((t) => ({ id: t.id, type: t.type, title: t.title, status: t.status, createdAt: t.createdAt }));
   return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} social={socialForPage(social)} liNoPage={liNeedsPage(connections)} x={x} notRead={missing} socialVia={socialRefreshPath(connections)} xConnected={xDirect(connections)} siteChoices={siteChoices(connections)} canRead={can(u, "read")} canGenerate={can(u, "generate")} canConnectors={can(u, "connectors")} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
 }

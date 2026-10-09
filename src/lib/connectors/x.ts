@@ -1,6 +1,6 @@
 import type { Connection } from "./store";
 import { clean } from "../perf-import";
-import { DAY_MS, EMPTY_TOTALS, count, dateOf, day } from "../social-read/common";
+import { DAY_MS, EMPTY_TOTALS, count, dateOf, day, handle } from "../social-read/common";
 import type { PlatformPart, SocialPost } from "../social-stats";
 
 export async function postToX(c: Connection, text: string): Promise<{ url: string; id: string }> {
@@ -64,6 +64,11 @@ function waitOf(r: Response): number | null {
 }
 
 const rec = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+/** An X handle as `@name`, through `handle` (its `@` taken off first), or "" when nothing of it is left. */
+const xHandle = (v: unknown) => {
+  const h = handle(typeof v === "string" ? v.replace(/^@/, "") : "");
+  return h ? `@${h}`.slice(0, 80) : "";
+};
 
 /**
  * One GET with the owner's token and a 15-second timeout. Only HTTP 401 reads as a refused token (`x 401: …`); X's text
@@ -93,7 +98,8 @@ const first = (sets: (Record<string, unknown> | null)[], ...keys: string[]) => {
  * lifetime counts: views are impressions, shares reposts (`retweet_count` before X renamed it), saved bookmarks; X gives
  * no reach. Parsed tolerantly: a missing number is null, a post without a digit id or a date in the window is dropped.
  * Totals stay null and there is no previous period (post figures are lifetime totals, like TikTok's); a change comes
- * only from the monthly history (rule 746). `fromThakeen` is set by `refreshX` from `socialpub:{scope}`.
+ * only from the monthly history (rule 746). `fromThakeen` is set by `refreshX` from `socialpub:{scope}`. The account is
+ * the `@handle` with X's own characters (`handle`), and `accountId` the user id X answered for the owner's token.
  */
 export async function readX(c: Connection, now: Date): Promise<PlatformPart> {
   const me = rec((await xGet(c, "https://api.x.com/2/users/me?user.fields=public_metrics")).data);
@@ -137,10 +143,14 @@ export async function readX(c: Connection, now: Date): Promise<PlatformPart> {
         fromThakeen: false,
       };
     });
-  const name = typeof me.username === "string" ? clean(`@${me.username}`, 80) : "";
+  // The handle keeps X's own characters (`_` included); a stored label that is not a handle goes through `clean`.
+  const stored = c.meta?.account ?? "";
   return {
     platform: "x",
-    account: (name.length > 1 ? name : "") || clean(c.meta?.account ?? "", 80) || "X",
+    account: xHandle(me.username) || (stored.startsWith("@") ? xHandle(stored) : clean(stored, 80)) || "X",
+    // The id X answered for the owner's own token, checked above and the one the posts were read under (rule 746): a
+    // renamed handle keeps its history. Never displayed: the route and the Reports page drop it, Dana's block never prints it.
+    accountId: id,
     range,
     followers: first([rec(me.public_metrics)], "followers_count"),
     totals: { ...EMPTY_TOTALS },

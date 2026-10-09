@@ -100,7 +100,8 @@ export async function readTiktok(scope: string, c: Connection, now: Date, deadli
   const scopeLess = noScope(stats) || noScope(first);
   for (const r of [stats, first]) if (!r.ok && !noScope(r) && refused(r.error)) throw r.error;
   // Neither read: the known state only when both were scope refusals; another failure beside one is a failed read, its
-  // own error thrown, so the last read stands (rule 742).
+  // own error thrown (rule 742). Alone, nothing is written and the last snapshot stands; beside another part, this part
+  // is dropped and its error code is written (history kept).
   if (!stats.ok && !first.ok) throw noScope(stats) && noScope(first) ? new Error("tt_no_scope") : noScope(stats) ? first.error : stats.error;
 
   const listed = (r: unknown) => listOf(r, "create_time");

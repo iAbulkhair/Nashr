@@ -21,7 +21,7 @@ const STR = {
     topPosts: "أفضل المنشورات", fromThakeen: "من ذكين", open: "افتح", views: "مشاهدات", reach: "وصول", likes: "إعجابات", comments: "تعليقات",
     notProfessional: "حساب إنستقرام ليس احترافياً، فلا نتائج له", liNoPage: "اربط صفحة شركة لترى نتائج لينكدإن",
     notReadYet: "نتائج السوشال لم تُقرأ بعد.", partNotRead: "لم يُقرأ بعد.",
-    impressions28: "مرات الظهور (28 يوماً)", clicks: "النقرات", reactions: "الإعجابات", shares: "إعادة النشر", engagement: "معدل التفاعل", note: "تُحدَّث يومياً. دانة تستخدم هذه الأرقام في تقاريرها.",
+    impressions28: "مرات الظهور (28 يوماً)", clicks: "النقرات", reactions: "الإعجابات", shares: "إعادة النشر", engagement: "معدل التفاعل", note: "تُحدَّث يومياً. دانة تستخدم هذه الأرقام في تقاريرها.", noteX: "تُحدَّث يومياً، وإكس فقط عند الضغط على «حدّث إكس». دانة تستخدم هذه الأرقام في تقاريرها.",
     vsPrev: "مقارنة بالفترة السابقة", prevWindow: "الفترة السابقة",
     pageViews: "مشاهدات الصفحة", watchMinutes: "دقائق المشاهدة", followsGained: "متابعون جدد", followsLost: "ألغوا المتابعة",
     notRead: "لم يُقرأ", notReadNote: "دانة تذكر هذه في تقاريرها على أنها لم تُقرأ.", sep: "، ",
@@ -44,7 +44,7 @@ const STR = {
     topPosts: "Top posts", fromThakeen: "from Thakeen", open: "Open", views: "views", reach: "reach", likes: "likes", comments: "comments",
     notProfessional: "This Instagram account is not a professional account, so it has no results", liNoPage: "Connect a company page to see LinkedIn results",
     notReadYet: "Social results have not been read yet.", partNotRead: "has not been read yet.",
-    impressions28: "Impressions (28 days)", clicks: "Clicks", reactions: "Reactions", shares: "Reposts", engagement: "Engagement rate", note: "Refreshed daily. Dana uses these figures in her reports.",
+    impressions28: "Impressions (28 days)", clicks: "Clicks", reactions: "Reactions", shares: "Reposts", engagement: "Engagement rate", note: "Refreshed daily. Dana uses these figures in her reports.", noteX: "Refreshed daily; X only when someone presses Refresh X. Dana uses these figures in her reports.",
     vsPrev: "vs the previous period", prevWindow: "Previous period",
     pageViews: "page views", watchMinutes: "minutes watched", followsGained: "new followers", followsLost: "unfollows",
     notRead: "Not read", notReadNote: "Dana lists these in her reports as not read.", sep: ", ",
@@ -275,7 +275,8 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
           <p className="mt-1 text-xs text-muted">{S.notReadNote}</p>
         </div>
       )}
-      <p className="mt-3 text-xs text-muted">{S.note}</p>
+      {/* X is never in the daily read (rule 744): with its row or its button shown, the note says it is read only on a click. */}
+      <p className="mt-3 text-xs text-muted">{x || refreshX ? S.noteX : S.note}</p>
     </div>
   );
 }

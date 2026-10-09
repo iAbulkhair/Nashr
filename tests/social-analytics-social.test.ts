@@ -253,6 +253,50 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     expect(read.status).toBe(200);
     expect(await read.json()).toEqual({ ok: true, read: true, reconnect: "linkedin" });
   });
+
+  it("a Facebook Page with only its posts read is no read either: the refused token stays 502 (735, 738)", async () => {
+    const owner = await newUser("socfbposts");
+    const fb = via("meta", { facebook: "ca_fb" }, { pageId: "123", pageName: "Oud" });
+    await Promise.all([saveConnection(owner.email, fb), saveConnection(owner.email, liConn())]);
+    await signIn(owner.email);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // The Page's insights fail (not a permission), its posts are read: a part with no follower count and no total.
+    answers.FACEBOOK_GET_PAGE_INSIGHTS = { successful: false, error: "Service temporarily unavailable" };
+    answers.FACEBOOK_GET_PAGE_POSTS = ok({ data: { data: [{ id: "123_1", message: "post", created_time: "2026-10-05T10:00:00+0000", from: { id: "123" } }] } });
+    answers.FACEBOOK_GET_POST_INSIGHTS = ok({ data: { data: [] } });
+    answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "token expired" };
+    answers.LINKEDIN_GET_NETWORK_SIZE = { successful: false, error: "token expired" };
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = { successful: false, error: "token expired" };
+    const r = await post("meta", { action: "sync_social" });
+    expect(r.status).toBe(502);
+    expect(await r.json()).toEqual({ ok: false, error: "reconnect_required" });
+    // The posts are still written; the Not-read list says the Page was not read, the same test.
+    const snap = await getSocialSnapshot(owner.email);
+    expect(snap?.v === 2 && snap.parts.facebook?.posts).toHaveLength(1);
+    expect((await notRead(owner.email)).find((i) => i.platform === "facebook")?.reason).toBe("read_failed");
+  });
+
+  it("choosing another LinkedIn page reads it at once while the six social reads an hour last, and says when it waits (735)", async () => {
+    const owner = await newUser("socorg");
+    const orgs = JSON.stringify([{ urn: "urn:li:organization:42", name: "Oud" }, { urn: "urn:li:organization:43", name: "Ward" }]);
+    await saveConnection(owner.email, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: orgs, liOrg: "urn:li:organization:42" }));
+    liAnswers();
+    await signIn(owner.email);
+    const r = await post("linkedin", { action: "select_org", org: "urn:li:organization:43" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, read: true });
+    await settle();
+    expect(calls.some((c) => c.slug === "LINKEDIN_GET_SHARE_STATS"), "the new page is read at once").toBe(true);
+    // The bucket is the sync_social one: once the six are spent, the choice is still saved and nothing is read.
+    for (let i = 0; i < 5; i++) expect((await post("linkedin", { action: "sync_social" })).status, `refresh ${i + 1}`).toBe(200);
+    calls.length = 0;
+    const late = await post("linkedin", { action: "select_org", org: "urn:li:organization:42" });
+    expect(late.status).toBe(200);
+    expect(await late.json()).toMatchObject({ ok: true, read: false });
+    await settle();
+    expect(calls).toEqual([]);
+    expect((await getConnection(owner.email, "linkedin"))?.meta?.liOrg).toBe("urn:li:organization:42");
+  });
 });
 
 describe("Dana's routine counts the owner's click, never the cron's read (rule 736)", () => {
@@ -447,6 +491,11 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(account.length).toBeGreaterThan(0);
     expect(account.length).toBeLessThanOrEqual(80);
     expect(account).not.toContain("<");
+    // Instagram's own characters stay: `_` and `.` are part of the username.
+    answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud_roastery.sa", followers_count: 1200 } });
+    await syncSocial(owner.email, { meta: igConn() }, NOW);
+    const next = await getSocialSnapshot(owner.email);
+    expect(next?.v === 2 && next.parts.instagram!.account).toBe("oud_roastery.sa");
   });
 
   it("the card lists one block per part in the order of PLATFORMS (670)", () => {

@@ -7,6 +7,7 @@ import { accountMeta } from "./ads";
 import { adAccountsVia } from "./ads-via-composio";
 import { clean } from "../perf-import";
 import { CHANNEL_ID } from "../social-read/youtube";
+import { PAGE_ID } from "../social-read/facebook";
 
 export { isComposio, pick };
 
@@ -172,7 +173,7 @@ type Page = { id: string; name: string };
 /** Facebook: the Pages the account manages, names only. `fields` is fixed so no Page token is ever returned. */
 async function managedPages(scope: string, acc: string): Promise<Page[]> {
   const r = await composioRead(scope, "facebook", "FACEBOOK_LIST_MANAGED_PAGES", { fields: "id,name", limit: 50 }, acc);
-  return listOf(r).map((p) => ({ id: String(p.id), name: typeof p.name === "string" ? p.name : String(p.id) })).filter((p) => /^\d+$/.test(p.id));
+  return listOf(r).map((p) => ({ id: String(p.id), name: typeof p.name === "string" ? p.name : String(p.id) })).filter((p) => PAGE_ID.test(p.id));
 }
 
 /** GA4: the properties the login can read, `properties/{digits}` only; a name is one clean line of 80 (rule 734). */

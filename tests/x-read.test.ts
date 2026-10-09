@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { json, newMember, newUser, signIn } from "./helpers/session";
 import { fakeComposio, ok, type Answer } from "./helpers/composio-fake";
 import { db } from "@/lib/db";
@@ -8,9 +10,16 @@ import * as credits from "@/lib/credits";
 import { agentSpendFor } from "@/lib/credits";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
-import { SOCIAL_KEY, SOCIAL_PUB_KEY, socialDataBlock, syncSocialIfDue } from "@/lib/social-stats";
-import { XSTATS_KEY, getXStats, refreshX, type XStats } from "@/lib/x-stats";
+import { EMPTY_TOTALS, SOCIAL_KEY, SOCIAL_PUB_KEY, socialDataBlock, syncSocialIfDue } from "@/lib/social-stats";
+import { XSTATS_KEY, getXStats, refreshX, xForPage, type XRefresh, type XStats } from "@/lib/x-stats";
 import * as connRoute from "@/app/api/connect/[provider]/route";
+import SocialStats from "@/components/app/SocialStats";
+
+// The card's Refresh X button reads the router; outside Next there is none. Server-only helpers stay real.
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<typeof import("next/navigation")>()),
+  useRouter: () => ({ push: () => {}, refresh: () => {}, replace: () => {}, back: () => {}, prefetch: () => {} }),
+}));
 
 /**
  * Rules 744 and 745 (spec docs/superpowers/specs/2026-10-08-social-analytics-reports-design.md C3): X is read only on a
@@ -115,7 +124,11 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     };
     const r = await sync();
     expect(r.status).toBe(200);
-    expect(await r.json()).toMatchObject({ ok: true, charged: true, x: { platform: "x", followers: 1500 } });
+    const body = await r.json();
+    expect(body).toMatchObject({ ok: true, charged: true, x: { platform: "x", followers: 1500 } });
+    // The X user id is stored for the history (rule 746) and never sent to the browser.
+    expect(body.x).not.toHaveProperty("accountId");
+    expect((await getXStats(scope))!.accountId).toBe(USER_ID);
     // The debit was saved before X was asked, and counts against Dana's month.
     expect(atRead).toBe(START - 1);
     expect(await balance(email)).toBe(START - 1);
@@ -125,7 +138,9 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     await signIn(email);
     const again = await sync();
     expect(again.status).toBe(200);
-    expect(await again.json()).toMatchObject({ ok: true, charged: false, x: { at: NOW.toISOString() } });
+    const stored = await again.json();
+    expect(stored).toMatchObject({ ok: true, charged: false, x: { at: NOW.toISOString() } });
+    expect(stored.x).not.toHaveProperty("accountId");
     expect(fetched).toHaveLength(2);
     expect(await balance(email)).toBe(START - 1);
   });
@@ -288,6 +303,115 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     expect(out.map((r) => r.status).sort()).toEqual([200, 502]);
     expect(await balance(email)).toBe(START - 1);
     expect((await getXStats(scope))?.followers).toBe(1500);
+  });
+
+  it("the charging click failing first refunds; the click on its hold takes the charge again when its read lands (744)", async () => {
+    const { scope, email } = await workspace();
+    const u = (await getUser(email))!;
+    const claim = `xread:${scope}:2026-10-08`;
+    const back = vi.spyOn(credits, "refundOnce");
+    const as = (token: string): Connection => ({ ...xConn(), data: { access_token: token } });
+    const who = (init: Init) => new Headers(init?.headers).get("authorization");
+    const started: { b?: Promise<XRefresh> } = {};
+    let bAsked = () => {};
+    const bAtX = new Promise<void>((r) => (bAsked = r));
+    answer = async (url, init) => {
+      // Click A took the charge before asking X: it starts click B, which reads on A's hold, and waits until B asks X.
+      if (who(init) === "Bearer a" && isMe(url)) {
+        started.b = refreshX(u, as("b"), NOW);
+        await bAtX;
+        return xAnswers()(url);
+      }
+      if (isMe(url)) { bAsked(); return xAnswers()(url); }
+      // A fails; B's list answers only once A has given its charge back.
+      if (who(init) === "Bearer a") return res(503, {});
+      for (let i = 0; i < 400 && (await getUser(email))!.paidOnce?.[claim]; i++) await new Promise((r) => setTimeout(r, 5));
+      return xAnswers()(url);
+    };
+    await expect(refreshX(u, as("a"), NOW)).rejects.toThrow("x_status_503");
+    const b = await started.b!;
+    expect(b).toMatchObject({ ok: true, charged: true });
+    expect(back).toHaveBeenCalledTimes(1);
+    // One credit stands for the day's one read, under Dana's month, held again for the day.
+    expect(await balance(email)).toBe(START - 1);
+    expect(agentSpendFor((await getUser(email))!, scope).dana).toBe(1);
+    expect((await getUser(email))!.paidOnce?.[claim]).toBeDefined();
+    expect((await getXStats(scope))?.followers).toBe(1500);
+  });
+
+  it("the click on the hold failing first never refunds; the charging click's read keeps the one credit (744)", async () => {
+    const { scope, email } = await workspace();
+    const u = (await getUser(email))!;
+    const back = vi.spyOn(credits, "refundOnce");
+    const as = (token: string): Connection => ({ ...xConn(), data: { access_token: token } });
+    const who = (init: Init) => new Headers(init?.headers).get("authorization");
+    const started: { b?: Promise<unknown> } = {};
+    let bDone = false;
+    let bAsked = () => {};
+    const bAtX = new Promise<void>((r) => (bAsked = r));
+    answer = async (url, init) => {
+      if (who(init) === "Bearer a" && isMe(url)) {
+        started.b = refreshX(u, as("b"), NOW).catch((e: unknown) => e).finally(() => { bDone = true; });
+        await bAtX;
+        return xAnswers()(url);
+      }
+      if (isMe(url)) { bAsked(); return xAnswers()(url); }
+      // B fails; A's list answers only once B has finished failing.
+      if (who(init) === "Bearer b") return res(503, {});
+      for (let i = 0; i < 400 && !bDone; i++) await new Promise((r) => setTimeout(r, 5));
+      return xAnswers()(url);
+    };
+    expect(await refreshX(u, as("a"), NOW)).toMatchObject({ ok: true, charged: true });
+    expect(await started.b).toBeInstanceOf(Error);
+    expect(back).not.toHaveBeenCalled();
+    expect(await balance(email)).toBe(START - 1);
+    expect(agentSpendFor((await getUser(email))!, scope).dana).toBe(1);
+  });
+
+  it("keeps X's own characters in the handle: an underscore stays, markup goes (744)", async () => {
+    const { scope, email } = await workspace();
+    answer = (url) => (isMe(url) ? res(200, { data: { ...me().data, username: "reef_roastery<b>\n" } }) : xAnswers()(url));
+    expect((await sync()).status).toBe(200);
+    expect((await getXStats(scope))!.account).toBe("@reef_roasteryb");
+
+    // No handle left from X: the stored `@handle` stands, through the same rule; a stored label that is not one is cleaned.
+    vi.setSystemTime(new Date("2026-10-09T09:00:00Z"));
+    await signIn(email);
+    await saveConnection(scope, xConn({ account: "@oud_cafe" }));
+    answer = (url) => (isMe(url) ? res(200, { data: { ...me().data, username: "@@" } }) : xAnswers()(url));
+    expect((await sync()).status).toBe(200);
+    expect((await getXStats(scope))!.account).toBe("@oud_cafe");
+  });
+
+  it("the X user id decides the history: a renamed handle keeps it, another id drops it, a read stored without one follows the handle (746, 679)", async () => {
+    const row = { month: "2026-09", platform: "x" as const, followers: 1000, totals: { ...EMPTY_TOTALS } };
+    const stored = (over: Partial<XStats>): XStats => ({ platform: "x", account: "@oldname", range: { from: "2026-08-08", to: "2026-09-08" }, followers: 1000, totals: { ...EMPTY_TOTALS }, posts: [], at: "2026-09-08T09:00:00.000Z", history: [row], ...over });
+    const months = async (held: XStats) => {
+      const { scope } = await workspace();
+      await db.set(XSTATS_KEY(scope), held);
+      expect((await sync()).status).toBe(200);
+      return (await getXStats(scope))!.history.map((r) => r.month);
+    };
+    // The same id under a new handle: the same account, its September stays.
+    expect(await months(stored({ accountId: USER_ID }))).toEqual(["2026-09", "2026-10"]);
+    // Another id under the same handle: another account (the handle was given up and taken).
+    expect(await months(stored({ account: "@oudroastery", accountId: "777" }))).toEqual(["2026-10"]);
+    // Stored before the id (the expand step): the handles decide.
+    expect(await months(stored({ account: "@oudroastery" }))).toEqual(["2026-09", "2026-10"]);
+    expect(await months(stored({}))).toEqual(["2026-10"]);
+    // The page's copy carries no id.
+    expect(xForPage(stored({ accountId: USER_ID }))).not.toHaveProperty("accountId");
+  });
+
+  it("the card's footer says X is read only on a click whenever X's row or its button is shown (744)", () => {
+    const x: XStats = { platform: "x", account: "@oud", range: { from: "2026-09-08", to: "2026-10-08" }, followers: 40, totals: { ...EMPTY_TOTALS }, posts: [], at: NOW.toISOString(), history: [] };
+    const card = (p: Partial<Parameters<typeof SocialStats>[0]> = {}) => renderToStaticMarkup(createElement(SocialStats, { lang: "en", social: null, ...p }));
+    expect(card()).toContain("Refreshed daily. Dana uses these figures");
+    expect(card()).not.toContain("presses Refresh X");
+    expect(card({ x })).toContain("Refreshed daily; X only when someone presses Refresh X.");
+    expect(card({ canRefreshX: true, xConnected: true })).toContain("X only when someone presses Refresh X");
+    expect(card({ x, lang: "ar" })).toContain("وإكس فقط عند الضغط على «حدّث إكس»");
+    expect(card({ lang: "ar" })).not.toContain("وإكس فقط");
   });
 
   it("a Composio-routed X record is never read or charged (744)", async () => {

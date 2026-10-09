@@ -6,7 +6,7 @@ import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
 import { connectedSources } from "@/lib/report-sources";
 import { EMPTY_TOTALS, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, type Totals } from "@/lib/social-stats";
-import { fbUrl, holdsFb } from "@/lib/social-read/facebook";
+import { PAGE_ID, fbUrl, holdsFb, readFacebook } from "@/lib/social-read/facebook";
 import { holdsYt, ytUrl } from "@/lib/social-read/youtube";
 import { holdsTt, ttUrl } from "@/lib/social-read/tiktok";
 import * as connRoute from "@/app/api/connect/[provider]/route";
@@ -311,11 +311,26 @@ describe("Facebook Page results (rule 739)", () => {
     expect(holdsFb(via("meta", { instagram: "ca_ig" }, { pageId: "123", igId: "1784" }))).toBe(false);
     expect(holdsFb({ provider: "meta", data: { access_token: "t" }, meta: { pageId: "123" }, connectedAt: NOW.toISOString() })).toBe(false);
     expect(holdsFb(null)).toBe(false);
+    // A Page id is 1 to 30 digits: a longer one is never held, read or offered at connect.
+    const long = "1".repeat(31);
+    expect(PAGE_ID.test("1".repeat(30)) && !PAGE_ID.test(long) && !PAGE_ID.test("")).toBe(true);
+    expect(holdsFb(fbConn({ pageId: long }))).toBe(false);
+    await expect(readFacebook("fblong", fbConn({ pageId: long }), NOW, Date.now() + 30e3)).rejects.toThrow("not_connected");
+    expect(calls).toEqual([]);
+    answers.FACEBOOK_LIST_MANAGED_PAGES = ok({ data: [{ id: long, name: "Long" }, { id: "123", name: "عود الشرق" }] });
+    const picked = await connectViaComposio("fblong", "meta", "facebook", "ca_fb", null);
+    expect(picked.meta).toMatchObject({ pageId: "123", pageName: "عود الشرق" });
+    expect(picked.meta).not.toHaveProperty("pages");
+    calls.length = 0;
     const u = await newUser("fbname");
     fbAnswers();
     const conn = fbConn();
     delete conn.meta!.pageName;
     expect((await syncSocial(u.email, { meta: conn }, NOW)).parts.facebook?.account).toBe("Page 123");
+    // The id fallback goes through `clean` too: the longest id makes one line of 35 characters.
+    const longest = "9".repeat(30);
+    fbAnswers([fbPost("1", "2026-10-05", { id: `${longest}_1`, from: { id: longest } })]);
+    expect((await syncSocial(u.email, { meta: fbConn({ pageId: longest, pageName: "<>" }) }, NOW)).parts.facebook?.account).toBe(`Page ${longest}`);
     const marked = await syncSocial(u.email, { meta: fbConn({ pageName: "<b>Oud</b>\n" + "y".repeat(120) }) }, NOW);
     expect(marked.parts.facebook!.account).not.toMatch(/[<>\n]/);
     expect(marked.parts.facebook!.account.length).toBeLessThanOrEqual(80);

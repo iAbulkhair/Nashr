@@ -8,7 +8,7 @@ import { composioRead } from "./connectors/composio";
 import { accountOf, at, isComposio, listOf, num, pick } from "./connectors/composio-shape";
 import { ReconnectRequired, getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
-import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, XSTATS_KEY, anyAboveZero, beforeDeadline, busy, count, dateOf, day, late, rangeBefore, refused, splitDays } from "./social-read/common";
+import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, XSTATS_KEY, anyAboveZero, beforeDeadline, busy, count, dateOf, day, handle, late, rangeBefore, refused, splitDays } from "./social-read/common";
 import { holdsFb, readFacebook } from "./social-read/facebook";
 import { holdsTt, readTiktok } from "./social-read/tiktok";
 import { holdsYt, readYoutube } from "./social-read/youtube";
@@ -56,9 +56,10 @@ export type PlatformPart = {
   account: string;
   /**
    * The account's id, taken only from the stored connection (Instagram's igId, the Facebook Page's pageId, LinkedIn's
-   * liOrg, YouTube's channelId; TikTok stores none), so a renamed account keeps its history (rule 746). Never displayed:
-   * never in Dana's block, and `socialForPage` drops it before the page. Absent on a part written before it (the expand
-   * step, rule 679), where the account names decide.
+   * liOrg, YouTube's channelId; TikTok stores none), so a renamed account keeps its history (rule 746); on X's read, the
+   * user id X answered for the owner's own token (x.ts `readX`). Never displayed: never in Dana's block, `socialForPage`
+   * drops it before the page and `xForPage` from X's read. Absent on a part written before it (the expand step, rule
+   * 679), where the account names decide.
    */
   accountId?: string;
   range: Range;
@@ -93,9 +94,16 @@ export type LegacySocial = { v?: undefined; at: string };
 export type StoredSocial = SocialSnapshot | LegacySocial;
 
 /**
+ * A part with no figure read at all: its followers and every total null (its posts alone are not a read). The Not-read
+ * list (not-read.ts) and the refresh answer (`SocialReadError.saved`) use this one test.
+ */
+export const nothingRead = (part: PlatformPart) => part.followers == null && Object.values(part.totals).every((v) => v == null);
+
+/**
  * A failed part keeps its provider, so the daily sync asks the right record to reconnect (refusedToken). `saved` is set
- * when the snapshot was written before the error was thrown with at least one part actually read: a snapshot that holds
- * only known states (no figure read) is not a read, and the refused token stays a reconnect. `refusedBy` lists, on the refused
+ * when the snapshot was written before the error was thrown with at least one part actually read (a follower count or a
+ * total, `nothingRead`): a snapshot that holds only known states, or only parts with no figure (a Facebook Page whose
+ * posts were read but not its insights), is not a read, and the refused token stays a reconnect. `refusedBy` lists, on the refused
  * token `syncSocial` throws, the provider of every part whose token was refused in that read (Instagram and YouTube
  * refused together), so each of those records is asked to reconnect, not only the first.
  */
@@ -253,7 +261,8 @@ async function readIg(scope: string, c: Connection, now: Date, stop: number): Pr
   const earlier = { views: prevViews, reach: prevReach };
   return {
     platform: "instagram",
-    account: clean(pick(info, ["username"]) ?? "", 80),
+    // The username with Instagram's own characters (`_` and `.` kept), never markup, at most 80.
+    account: handle(pick(info, ["username"])),
     range: { from: day(new Date(since * 1000)), to: day(now) },
     followers: count(pick(info, ["followers_count"])),
     totals: { ...EMPTY_TOTALS, views: totals.views ?? null, reach: totals.reach ?? null },
@@ -475,8 +484,9 @@ export async function syncSocial(scope: string, conns: Partial<Record<SocialProv
   const snap: SocialSnapshot = { v: 2, at: now.toISOString(), parts, errors, history: upsertHistory(before, Object.values(parts), now) };
   await db.set(SOCIAL_KEY(scope), snap);
   if (token) {
-    // A read only when some part was read: a token refused beside known states alone (no figure) stays a reconnect.
-    token.saved = Object.keys(parts).length > 0;
+    // A read only when some part holds a figure: a token refused beside known states alone, or beside parts with no
+    // follower count and no total, stays a reconnect.
+    token.saved = Object.values(parts).some((p) => !!p && !nothingRead(p));
     throw token;
   }
   return snap;

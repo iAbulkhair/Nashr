@@ -32,10 +32,15 @@ const TYPES: Record<string, string> = { added_photos: "IMAGE", added_video: "VID
  * the insights read only. (#100) and the rest are other failures.
  */
 const NO_INSIGHTS = /read_insights|\(#10\)|\(#200\)/i;
+/**
+ * A Facebook Page id as Graph gives one: 1 to 30 digits. Checked wherever a stored page id is used (here, not-read.ts
+ * and the Page list in via-composio.ts), so an id that is not one is never asked about or shown.
+ */
+export const PAGE_ID = /^\d{1,30}$/;
 
-/** A Composio Meta record with the Facebook part and the Page chosen for publishing (digits only). */
+/** A Composio Meta record with the Facebook part and the Page chosen for publishing (`PAGE_ID`). */
 export function holdsFb(c: Connection | null | undefined): boolean {
-  return !!(c && isComposio(c) && c.data.facebook && /^\d+$/.test(c.meta?.pageId ?? ""));
+  return !!(c && isComposio(c) && c.data.facebook && PAGE_ID.test(c.meta?.pageId ?? ""));
 }
 
 /** Only a post page on facebook.com or www.facebook.com over https. A link with a query string is dropped, not cut: a cut photo.php link opens nothing. */
@@ -93,7 +98,7 @@ function postMetrics(r: unknown): Record<string, N> {
 export async function readFacebook(scope: string, c: Connection, now: Date, deadline: number): Promise<PlatformPart> {
   const acc = accountOf(c, "facebook");
   const pageId = c.meta?.pageId ?? "";
-  if (!/^\d+$/.test(pageId)) throw new Error("not_connected");
+  if (!PAGE_ID.test(pageId)) throw new Error("not_connected");
   const ask = async (slug: string, args: Record<string, unknown>) => {
     beforeDeadline(deadline);
     return composioRead(scope, "facebook", slug, args, acc);
@@ -140,7 +145,8 @@ export async function readFacebook(scope: string, c: Connection, now: Date, dead
   }, 4);
   return {
     platform: "facebook",
-    account: clean(c.meta?.pageName ?? "", 80) || `Page ${pageId}`,
+    // The Page's stored name, else its id, both through `clean` and cut to 80.
+    account: clean(c.meta?.pageName ?? "", 80) || clean(`Page ${pageId}`, 80),
     range: window,
     followers: follows.length ? follows[follows.length - 1].value : null,
     totals: totalsOf(cur),

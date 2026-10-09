@@ -5,7 +5,7 @@ import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVi
 import { recordActivity } from "@/lib/activity";
 import { PartlyRead, holdsSocial, isSocialProvider, readSocialSoon, syncSocialIfDue } from "@/lib/social-stats";
 import { holdsSite, readSiteSoon, syncSiteIfDue } from "@/lib/site-stats";
-import { X_RETRY_DEFAULT_S, refreshX } from "@/lib/x-stats";
+import { X_RETRY_DEFAULT_S, refreshX, xForPage } from "@/lib/x-stats";
 import { markOwnerSync } from "@/lib/routines";
 import { WINDOW, allow, retryLater } from "@/lib/rate";
 import { byOf } from "@/lib/actor";
@@ -101,7 +101,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       if (read) readSocialSoon(sc(u));
       return NextResponse.json({ ok: true, account: next.meta?.account, read });
     }
-    // The LinkedIn company page whose results are read (rule 671); only a page listed at connect time.
+    // The LinkedIn company page whose results are read (rule 671); only a page listed at connect time. The new page is
+    // read at once only while the workspace's six social reads an hour last (the sync_social bucket, like select_page),
+    // else the daily run or a later refresh reads it.
     if (b.action === "select_org" && provider === "linkedin" && isComposio(c)) {
       const next = selectOrgVia(c, String(b.org ?? ""));
       if (!next) return NextResponse.json({ ok: false, error: "unknown_org" }, { status: 400 });
@@ -110,8 +112,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
         saveConnection(sc(u), next),
         c.meta?.liPostAs === "org" ? recordActivity(sc(u), [{ at: new Date().toISOString(), kind: "connector_changed", by: byOf(u), via: "app", outcome: "linkedin:post_as:me", note: "" }]) : null,
       ]);
-      readSocialSoon(sc(u));
-      return NextResponse.json({ ok: true, account: next.meta?.account });
+      const read = await allow(`socialsync:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour);
+      if (read) readSocialSoon(sc(u));
+      return NextResponse.json({ ok: true, account: next.meta?.account, read });
     }
     // Publish to LinkedIn as the member or as the chosen page (rule 672): checked here, never left to a prompt.
     if (b.action === "post_as" && provider === "linkedin" && isComposio(c)) {
@@ -165,7 +168,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     // checked in refreshX, before X is asked. X's 401 is thrown to the catch below, which asks the owner to reconnect.
     if (b.action === "sync_x" && provider === "x") {
       const r = await refreshX(u, c);
-      if (r.ok) return NextResponse.json({ ok: true, x: r.x, charged: r.charged });
+      // The read without the account's id, which only the next read uses (rule 746).
+      if (r.ok) return NextResponse.json({ ok: true, x: xForPage(r.x), charged: r.charged });
       if (r.status === 429) return retryLater({ ok: false, error: r.error }, r.retryAfter ?? X_RETRY_DEFAULT_S);
       return NextResponse.json({ ok: false, error: r.error, ...r.extra }, { status: r.status });
     }

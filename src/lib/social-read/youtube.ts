@@ -116,7 +116,8 @@ export async function readYoutube(scope: string, c: Connection, now: Date, deadl
 
   // Subscribers only from the stored channel's row; a count the owner hides is not read. The login answers for its own
   // channel (mine, channel==MINE): rows none of which is the stored channel mean the analytics and uploads are another
-  // channel's, so the read fails with a code (not a known state) and the last good part stands.
+  // channel's, so the read fails with a code (not a known state). Alone, nothing is written and the last snapshot stands;
+  // beside another part, this part is dropped and its error code is written (history kept).
   const channels = stats.ok ? listOf(stats.value, "statistics") : [];
   const channel = channels.find((row) => row.id === channelId);
   if (channels.length && !channel) throw new Error("yt_other_channel");
