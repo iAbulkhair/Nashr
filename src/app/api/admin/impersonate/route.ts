@@ -31,5 +31,5 @@ export async function POST(req: Request) {
   jar.delete("nashr_return");
   jar.delete("nashr_impersonate");
   if (imp) await pushCapped("admin:log", JSON.stringify({ actor: imp.imp, email: imp.email, what: "impersonate:stop", at: new Date().toISOString() }), CAPS.adminLog);
-  return NextResponse.redirect(new URL(`/${lang}/app/admin`, req.url), 303);
+  return NextResponse.redirect(new URL(`/${lang}/admin/users`, req.url), 303);
 }

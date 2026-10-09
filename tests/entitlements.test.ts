@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -15,6 +14,7 @@ import { chatCaps } from "@/lib/rate";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS } from "@/lib/media-catalog";
 import EntitlementsTable, { videoGrantRequest } from "@/components/app/EntitlementsTable";
 import type { Billing } from "@/lib/billing-state";
+import { adminConsoleSrc } from "./helpers/admin-console";
 
 /**
  * Rule 780: `entitlements(u)` is the one place that says what an account's plan includes. It reads only the record and
@@ -361,7 +361,7 @@ describe("EntitlementsTable (rule 784)", () => {
     expect(out).toMatch(/<div class="overflow-x-auto"><table/);
     // The console's wrapper lets that box shrink: without min-w-0 the one-column grid below sm
     // takes the table's width and the whole page scrolls sideways on a phone.
-    const consoleSrc = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const consoleSrc = adminConsoleSrc();
     expect(consoleSrc).toMatch(/<div className="col-span-full min-w-0"><EntitlementsTable /);
   });
 
