@@ -9,7 +9,8 @@
  * types whose cold-cache estimate keeps that floor (`autoUnderFloor`, src/lib/handoffs.ts, rule 296).
  *
  * Calibrated to docs/system/costs.md §3 (2026-09-27): the generation call is Opus with a cached workspace block, a
- * fresh brief and adaptive thinking; the reviewer and the judge are Sonnet. The review and judge constants are fitted
+ * fresh brief and adaptive thinking; the reviewer and the judge are Sonnet. Since 2026-10-09 the calls are Opus 5.5,
+ * Sonnet 5.5 and Haiku 5.5 (ESTIMATE_MODELS); the token counts were kept. The review and judge constants are fitted
  * to reproduce that table within $0.001; they were not measured. Replace them with the founder console's `byKind`
  * averages (generate / review / judge, src/lib/usage.ts `getUsage`) after a month of real traffic.
  */

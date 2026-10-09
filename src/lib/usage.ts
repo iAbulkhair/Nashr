@@ -19,17 +19,26 @@ export type TokenUsage = {
 };
 
 /**
- * USD per million tokens: Anthropic list prices, checked 2026-09-27 (Sonnet 5.5 added 2026-10-02). Since 2026-10-08 the
- * model catalog (`models/catalog.ts`) is the source of rates and this table is only the fallback behind it: `knownRate`
- * asks the catalog first. The three models here are in the catalog with the same numbers, so nothing is priced differently;
- * the table goes in a later release, once nothing reads it (expand, then contract: rule 679). Until then a change of an
- * Anthropic price is made in both places.
+ * USD per million tokens: Anthropic list prices, checked 2026-09-27 (Sonnet 5.5 added 2026-10-02, Opus 5.5 and Haiku 5.5
+ * 2026-10-09). 5-minute cache writes are 1.25x input; cache reads differ by model. Since 2026-10-08 the model catalog
+ * (`models/catalog.ts`) is the source of rates and this table is only the fallback behind it: `knownRate` asks the catalog
+ * first. Every model here is in the catalog with the same numbers, so nothing is priced differently; the table goes in a
+ * later release, once nothing reads it (expand, then contract: rule 679). Until then a change of an Anthropic price is made
+ * in both places. Opus 5 and Sonnet 5 stay so stored usage and any old id still price right; since 2026-10-09 the product
+ * calls only the three 5.5 models (`DEFAULTS` in src/lib/models/route.ts).
  */
 const RATES: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
   "claude-opus-5": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   "claude-sonnet-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
   /** The chat model since 2026-10-02 (`CHAT_MODEL`, src/lib/chat.ts). */
   "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  /** Generation and onboarding since 2026-10-09. */
+  "claude-opus-5-5": { in: 4, out: 20, cacheRead: 0.2, cacheWrite: 5 },
+  /**
+   * The image/video prompt writer and the free tools since 2026-10-09. The rate for prompts of 100K tokens or fewer;
+   * longer prompts cost 5x ($0.50 / $2.50). Both callers send a few hundred tokens, so this is the rate they pay.
+   */
+  "claude-haiku-5-5": { in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
 };
 const DEFAULT_RATE = RATES["claude-opus-5"];
 const hasOldRate = (model: string): boolean => Object.prototype.hasOwnProperty.call(RATES, model);

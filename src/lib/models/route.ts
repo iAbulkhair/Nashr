@@ -27,20 +27,24 @@ import type { TaskType } from "../tasks";
 export type Purpose = "chat" | "generate" | "review" | "xreview" | "judge" | "onboard" | "imagePrompt" | "tool";
 
 /**
- * What each purpose runs on when nobody picked: exactly the models the code called before routing existed.
+ * What each purpose runs on when nobody picked. Since 2026-10-09 (rules 809 and 900, founder: only the three current
+ * models) these are Opus 5.5 for writing (generation, onboarding), Sonnet 5.5 for checking and talking (reviewer,
+ * cross-agent review, judge, chat) and Haiku 5.5 for the short jobs (image/video prompts, free tools). A later step gives
+ * `generate` a default per task type (`TASK_MODELS`, rule 901, after the golden set): `route("generate", { task })`
+ * will then take its default from that table instead of this one value.
  * `DEFAULTS.chat` and `DEFAULTS.generate` are also the models the credit multipliers are relative to (`PRICED_AT` in
  * tiers.ts; tests/model-route.test.ts pins that they are equal), and `ESTIMATE_MODELS` (src/lib/task-costs.ts) prices
  * these same ids, so the margin floor test covers what is called.
  */
 export const DEFAULTS: Readonly<Record<Purpose, string>> = Object.freeze({
   chat: "claude-sonnet-5-5",
-  generate: "claude-opus-5",
-  review: "claude-sonnet-5",
-  xreview: "claude-sonnet-5",
-  judge: "claude-sonnet-5",
-  onboard: "claude-opus-5",
-  imagePrompt: "claude-sonnet-5",
-  tool: "claude-sonnet-5",
+  generate: "claude-opus-5-5",
+  review: "claude-sonnet-5-5",
+  xreview: "claude-sonnet-5-5",
+  judge: "claude-sonnet-5-5",
+  onboard: "claude-opus-5-5",
+  imagePrompt: "claude-haiku-5-5",
+  tool: "claude-haiku-5-5",
 });
 
 /** The purposes a customer's pick may change. Everything else ignores `ctx.stored` completely. */

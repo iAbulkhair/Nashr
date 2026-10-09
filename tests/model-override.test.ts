@@ -87,8 +87,9 @@ import * as brandRoute from "@/app/api/brand/route";
 import * as generateRoute from "@/app/api/generate/route";
 import * as conversationsRoute from "@/app/api/conversations/route";
 
-const OPUS = "claude-opus-5";
-const SONNET = "claude-sonnet-5";
+// Since 2026-10-09 (rule 809) only the 5.5 models can be picked or routed to; Opus 5 and Sonnet 5 stay for their rates.
+const OPUS = "claude-opus-5-5";
+const SONNET = "claude-sonnet-5-5";
 const SONNET55 = "claude-sonnet-5-5";
 const FOUNDER = "override-founder@test.example";
 

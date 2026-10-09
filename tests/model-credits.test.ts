@@ -25,8 +25,9 @@ import { chatCredKey, chatMsgKey, chatOverKey } from "@/lib/usage";
  * a catalog id never makes a task cheaper, and a refund gives back exactly what was charged.
  */
 
-const OPUS = "claude-opus-5";
-const SONNET = "claude-sonnet-5";
+// Since 2026-10-09 (rule 809) only the 5.5 models can be picked or routed to; Opus 5 and Sonnet 5 stay for their rates.
+const OPUS = "claude-opus-5-5";
+const SONNET = "claude-sonnet-5-5";
 const SONNET55 = "claude-sonnet-5-5";
 /** Not in the catalog: added by the mocked catalog below, so the economy tier is tested without editing `MODELS`. */
 const ECONOMY: ModelEntry = {
@@ -196,7 +197,9 @@ describe("estimateFor: one batch, cold cache, at the model's catalog rate", () =
       const opus = estimateBatch(t, { cache: "cold" });
       const son = estimateBatch(t, { cache: "cold", model: SONNET });
       expect(son.totalUsd, t).toBe(estimateFor(t, SONNET));
-      expect(son.generateUsd, t).toBeCloseTo(opus.generateUsd / 2.5, 12);
+      // Opus 5.5 is Sonnet 5.5 x 2 on every bucket but the cache read, which costs the same on both.
+      expect(son.generateUsd, t).toBeLessThan(opus.generateUsd);
+      expect(son.generateUsd, t).toBeGreaterThanOrEqual(opus.generateUsd / 2);
       expect([son.reviewUsd, son.judgeUsd], t).toEqual([opus.reviewUsd, opus.judgeUsd]);
     }
   });
@@ -211,7 +214,7 @@ describe("estimateFor: one batch, cold cache, at the model's catalog rate", () =
 });
 
 describe("chatTurnMaxUsd and the overflow hold scale with the chat tier (rules 311-313)", () => {
-  it("the ceiling: Sonnet 5.5 $0.14 (CHAT_TURN_MAX_USD, unchanged), Opus 5 $0.28, an economy model $0.084", async () => {
+  it("the ceiling: Sonnet 5.5 $0.14 (CHAT_TURN_MAX_USD, unchanged), Opus 5.5 $0.28, an economy model $0.084", async () => {
     expect(CHAT_TURN_MAX_USD).toBe(0.14);
     expect(chatTurnMaxUsd(SONNET55)).toBe(CHAT_TURN_MAX_USD);
     expect(chatTurnMaxUsd(SONNET)).toBe(CHAT_TURN_MAX_USD);
@@ -221,7 +224,7 @@ describe("chatTurnMaxUsd and the overflow hold scale with the chat tier (rules 3
     expect(eco.chatTurnMaxUsd(ECONOMY.id)).toBeCloseTo(0.084, 12);
   });
 
-  it("the hold: 2 credits at x1 (today's chatOverflowHold), 4 on Opus 5, 2 on an economy model", async () => {
+  it("the hold: 2 credits at x1 (today's chatOverflowHold), 4 on Opus 5.5, 2 on an economy model", async () => {
     expect(chatOverflowHold()).toBe(2);
     expect([SONNET55, SONNET, OPUS].map(chatHoldFor)).toEqual([2, 2, 4]);
     expect(chatOverflowHold(maxCostPerCreditUsd(), 0.28)).toBe(4);
@@ -230,11 +233,11 @@ describe("chatTurnMaxUsd and the overflow hold scale with the chat tier (rules 3
     expect(eco.chatHoldFor(ECONOMY.id)).toBe(2);
   });
 
-  it("each call's output cap follows the model's own ceiling: Opus 5 has room where $0.14 would leave none", () => {
-    // $0.14 already spent: at x1 nothing is left, at Opus 5's $0.28 the other $0.14 buys 5,600 output tokens.
+  it("each call's output cap follows the model's own ceiling: Opus 5.5 has room where $0.14 would leave none", () => {
+    // $0.14 already spent: at x1 nothing is left, at Opus 5.5's $0.28 the other $0.14 buys 7,000 output tokens ($20 a million).
     expect(nextMaxTokens(CHAT_MODEL, CHAT_TURN_MAX_USD, 0)).toBe(0);
-    expect(nextMaxTokens(OPUS, CHAT_TURN_MAX_USD, 0)).toBe(5600);
-    expect(nextMaxTokens(OPUS, 0.28 - (CHAT_MIN_OUT - 1) * 25e-6, 0)).toBe(0);
+    expect(nextMaxTokens(OPUS, CHAT_TURN_MAX_USD, 0)).toBe(7000);
+    expect(nextMaxTokens(OPUS, 0.28 - (CHAT_MIN_OUT - 1) * 20e-6, 0)).toBe(0);
     // An explicit ceiling still wins (the tests of rule 311 pass one).
     expect(nextMaxTokens(OPUS, CHAT_TURN_MAX_USD, 0, CHAT_TURN_MAX_USD)).toBe(0);
   });

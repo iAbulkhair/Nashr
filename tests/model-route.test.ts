@@ -6,18 +6,23 @@ import { ESTIMATE_MODELS } from "@/lib/task-costs";
 
 /**
  * `route(purpose, ctx)` is the one place that decides which model a call runs on (spec 2026-10-08-straitly-model-routing,
- * section 4; plan Task 5). The first release keeps today's models, so every purpose resolves to the model its call
- * site used to hard-code; a customer's stored pick (Task 6 supplies it) changes only `chat` and `generate`, and only
+ * section 4; plan Task 5). Since 2026-10-09 (rules 809 and 900) the defaults are the three current models: Opus 5.5
+ * writes, Sonnet 5.5 checks and talks, Haiku 5.5 does the short jobs; Opus 5 and Sonnet 5 stay in the catalog for their
+ * rates only, and a stored pick of either is refused. A customer's stored pick (Task 6 supplies it) changes only `chat` and `generate`, and only
  * when it passes every check here. Automatic choices (the defaults, a judge alternative) are west-hosted and `auto`,
  * checked in this file and not only in the catalog's data.
  */
-const OPUS = "claude-opus-5";
-const SONNET = "claude-sonnet-5";
-const SONNET55 = "claude-sonnet-5-5";
+const OPUS = "claude-opus-5-5";
+const SONNET = "claude-sonnet-5-5";
+const HAIKU = "claude-haiku-5-5";
+/** In the catalog for their rates (stored usage, old ids), never called: not auto, not pickable (rule 809). */
+const RETIRED = ["claude-opus-5", "claude-sonnet-5"] as const;
+/** Haiku 5.5 off automatic routing, so a test-only entry can be the judge's alternative. */
+const noHaiku = (m: ModelEntry): ModelEntry => (m.id === HAIKU ? { ...m, auto: false } : m);
 const PURPOSES = ["chat", "generate", "review", "xreview", "judge", "onboard", "imagePrompt", "tool"] as const satisfies readonly Purpose[];
 const FIXED = ["review", "xreview", "judge", "onboard", "imagePrompt", "tool"] as const satisfies readonly Purpose[];
 
-/** A test-only catalog entry. The real catalog holds the three Claude models; the mocked ones below add to or change them. */
+/** A test-only catalog entry. The real catalog holds the Claude models; the mocked ones below add to or change them. */
 const entry = (o: Partial<ModelEntry> & { id: string }): ModelEntry => ({
   label: { ar: "نموذج تجريبي", en: "Test model" },
   vendor: "acme",
@@ -47,17 +52,17 @@ afterEach(() => {
   vi.doUnmock("@/lib/models/catalog");
 });
 
-describe("the defaults are today's models, one per purpose", () => {
-  it("defaults equal today's models for every purpose", () => {
+describe("the defaults are the three current models, one per purpose (rules 809 and 900)", () => {
+  it("Opus 5.5 writes, Sonnet 5.5 checks and talks, Haiku 5.5 does the short jobs", () => {
     expect({ ...DEFAULTS }).toEqual({
-      chat: SONNET55,
+      chat: SONNET,
       generate: OPUS,
       review: SONNET,
       xreview: SONNET,
       judge: SONNET,
       onboard: OPUS,
-      imagePrompt: SONNET,
-      tool: SONNET,
+      imagePrompt: HAIKU,
+      tool: HAIKU,
     });
     expect(Object.isFrozen(DEFAULTS)).toBe(true);
     expect(Object.keys(DEFAULTS).sort()).toEqual([...PURPOSES].sort());
@@ -110,7 +115,7 @@ describe("the defaults are today's models, one per purpose", () => {
 describe("a purpose outside OVERRIDABLE ignores ctx.stored", () => {
   it("review, xreview, judge, onboard, imagePrompt and tool return the default even for a valid stored pick", () => {
     for (const p of FIXED) {
-      for (const stored of [OPUS, SONNET, SONNET55, "claude-unknown-9", "constructor", 5, null]) {
+      for (const stored of [OPUS, SONNET, HAIKU, ...RETIRED, "claude-unknown-9", "constructor", 5, null]) {
         expect(route(p, { stored, confirmedChina: true }), `${p} ${String(stored)}`).toEqual({ model: DEFAULTS[p], overridden: false });
       }
     }
@@ -121,9 +126,15 @@ describe("a stored pick for chat or generate", () => {
   it("a valid stored pick returns it with overridden true", () => {
     expect(route("chat", { stored: OPUS })).toEqual({ model: OPUS, overridden: true });
     expect(route("generate", { stored: SONNET })).toEqual({ model: SONNET, overridden: true });
-    expect(route("generate", { stored: SONNET55 })).toEqual({ model: SONNET55, overridden: true });
     // A pick equal to the default is still the owner's pick.
-    expect(route("chat", { stored: SONNET55 })).toEqual({ model: SONNET55, overridden: true });
+    expect(route("chat", { stored: SONNET })).toEqual({ model: SONNET, overridden: true });
+    expect(route("generate", { stored: OPUS })).toEqual({ model: OPUS, overridden: true });
+  });
+
+  it("a retired model (Opus 5, Sonnet 5) or Haiku 5.5 is not a customer's pick: not_pickable, the default runs (rule 809)", () => {
+    for (const p of OVERRIDABLE) {
+      for (const stored of [...RETIRED, HAIKU]) expect(route(p, { stored }), `${p} ${stored}`).toEqual({ model: DEFAULTS[p], overridden: false, rejected: "not_pickable" });
+    }
   });
 
   it("nothing stored (undefined or null, an unset or cleared override) is the default with nothing rejected", () => {
@@ -169,7 +180,7 @@ describe("a stored pick for chat or generate", () => {
 
   it("a generate pick the model may not run for ctx.task is rejected task_not_allowed and the default runs (Sonnet off article and followup_seq)", () => {
     for (const task of ["article", "followup_seq"] as const) {
-      for (const stored of [SONNET, SONNET55]) {
+      for (const stored of [SONNET]) {
         expect(modelById(stored)!.tasks?.includes(task), `${stored} ${task}`).toBe(false);
         expect(route("generate", { stored, task }), `${stored} ${task}`).toEqual({ model: DEFAULTS.generate, overridden: false, rejected: "task_not_allowed" });
       }
@@ -205,7 +216,7 @@ describe("automatic routing never returns a china entry", () => {
   const CHINA = entry({ id: "test-china-auto", hosting: "china", auto: true, pick: true, tier: "economy", rate: rate({ in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.12 }) });
 
   it("the real routing, for every purpose and every context, returns an auto, west-hosted entry unless the owner's confirmed pick says otherwise", () => {
-    const ctxs = [undefined, {}, { stored: OPUS }, { stored: "constructor" }, { generatedBy: SONNET }, { generatedBy: OPUS }, { generatedBy: SONNET55 }, { stored: 7, confirmedChina: true }];
+    const ctxs = [undefined, {}, { stored: OPUS }, { stored: "constructor" }, { stored: RETIRED[0] }, { generatedBy: SONNET }, { generatedBy: OPUS }, { generatedBy: HAIKU }, { stored: 7, confirmedChina: true }];
     for (const p of PURPOSES) {
       for (const ctx of ctxs) {
         const m = modelById(route(p, ctx).model);
@@ -224,7 +235,7 @@ describe("automatic routing never returns a china entry", () => {
   });
 
   it("a default whose catalog entry is china-hosted or not auto is refused, for every purpose, and never called", async () => {
-    // Every default is one of the three Claude models; make them all china-hosted while still flagged auto.
+    // Every default is one of the three current Claude models; make them all china-hosted while still flagged auto.
     const china = await withCatalog([], (m) => ({ ...m, hosting: "china", auto: true }));
     for (const p of PURPOSES) expect(() => china.route(p), p).toThrow(new RegExp(`^default_model_not_auto:${p}:`));
     const off = await withCatalog([], (m) => ({ ...m, auto: false }));
@@ -233,7 +244,7 @@ describe("automatic routing never returns a china entry", () => {
 
   it("a default that is not in the catalog at all is refused too", async () => {
     const gone = await withCatalog([], (m) => (m.id === SONNET ? { ...m, id: "claude-sonnet-renamed" } : m));
-    expect(() => gone.route("review")).toThrow(/^default_model_not_auto:review:claude-sonnet-5$/);
+    expect(() => gone.route("review")).toThrow(/^default_model_not_auto:review:claude-sonnet-5-5$/);
     // A purpose whose default is still there is unaffected.
     expect(gone.route("generate").model).toBe(OPUS);
   });
@@ -241,30 +252,31 @@ describe("automatic routing never returns a china entry", () => {
 
 describe("judge: a different model from the one that generated the batch, when there is a cheaper-or-equal alternative", () => {
   it("judge returns a different model from ctx.generatedBy when the catalog has an auto alternative", () => {
-    // Sonnet 5 generated: Sonnet 5.5 has the same rates on every bucket and is the alternative.
-    expect(route("judge", { generatedBy: SONNET })).toEqual({ model: SONNET55, overridden: false });
+    // Sonnet 5.5 generated (a brand's pick): Haiku 5.5 costs less on every bucket and is the only automatic alternative.
+    expect(route("judge", { generatedBy: SONNET })).toEqual({ model: HAIKU, overridden: false });
     // Otherwise the default already differs from the generating model.
-    for (const generatedBy of [OPUS, SONNET55, undefined, "claude-unknown-9", ""]) expect(route("judge", { generatedBy }), String(generatedBy)).toEqual({ model: SONNET, overridden: false });
+    for (const generatedBy of [OPUS, HAIKU, ...RETIRED, undefined, "claude-unknown-9", ""]) expect(route("judge", { generatedBy }), String(generatedBy)).toEqual({ model: SONNET, overridden: false });
     // A judge never judges its own work, whichever Claude generated (the default or the alternative).
-    for (const generatedBy of [OPUS, SONNET, SONNET55]) expect(route("judge", { generatedBy }).model, generatedBy).not.toBe(generatedBy);
+    for (const generatedBy of [OPUS, SONNET, HAIKU]) expect(route("judge", { generatedBy }).model, generatedBy).not.toBe(generatedBy);
   });
 
   it("the judge's own choice is never an override: overridden stays false and a stored pick is ignored", () => {
-    expect(route("judge", { generatedBy: SONNET, stored: OPUS })).toEqual({ model: SONNET55, overridden: false });
+    expect(route("judge", { generatedBy: SONNET, stored: OPUS })).toEqual({ model: HAIKU, overridden: false });
   });
 
   it("the alternative must cost no more than the default judge on EVERY bucket, so the estimate stays an upper bound", async () => {
     // Cheaper on in and out, dearer on the cache write: not an alternative.
     const pricey = entry({ id: "test-dear-cache", rate: rate({ in: 1, out: 5, cacheRead: 0.1, cacheWrite: 3 }) });
-    const a = await withCatalog([pricey], (m) => (m.id === SONNET55 ? { ...m, auto: false } : m));
+    const a = await withCatalog([pricey], noHaiku);
     expect(a.route("judge", { generatedBy: SONNET }).model).toBe(SONNET);
     // Each bucket on its own, one cent over the default's rate.
     for (const over of [{ in: 2.01 }, { out: 10.01 }, { cacheRead: 0.21 }, { cacheWrite: 2.51 }]) {
-      const b = await withCatalog([entry({ id: "test-over", rate: rate(over) })], (m) => (m.id === SONNET55 ? { ...m, auto: false } : m));
+      const b = await withCatalog([entry({ id: "test-over", rate: rate(over) })], noHaiku);
       expect(b.route("judge", { generatedBy: SONNET }).model, JSON.stringify(over)).toBe(SONNET);
     }
-    // Equal on every bucket is allowed (Sonnet 5.5 is exactly that today).
-    expect(route("judge", { generatedBy: SONNET }).model).toBe(SONNET55);
+    // Equal on every bucket is allowed. Opus 5.5 is not an alternative: equal on the cache read, dearer on the rest.
+    expect((await withCatalog([entry({ id: "test-equal" })], noHaiku)).route("judge", { generatedBy: SONNET }).model).toBe("test-equal");
+    expect((await withCatalog([], noHaiku)).route("judge", { generatedBy: SONNET }).model).toBe(SONNET);
   });
 
   it("among alternatives it takes the lowest rate, then catalog order", async () => {
@@ -272,11 +284,13 @@ describe("judge: a different model from the one that generated the batch, when t
     const cheaper = entry({ id: "test-cheaper", rate: rate({ in: 0.5, out: 2, cacheRead: 0.05, cacheWrite: 0.6 }) });
     const tieA = entry({ id: "test-tie-a", rate: rate({ in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25 }) });
     const tieB = entry({ id: "test-tie-b", rate: rate({ in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25 }) });
-    expect((await withCatalog([cheap, cheaper])).route("judge", { generatedBy: SONNET }).model).toBe("test-cheaper");
-    expect((await withCatalog([cheaper, cheap])).route("judge", { generatedBy: SONNET }).model).toBe("test-cheaper");
+    expect((await withCatalog([cheap, cheaper], noHaiku)).route("judge", { generatedBy: SONNET }).model).toBe("test-cheaper");
+    expect((await withCatalog([cheaper, cheap], noHaiku)).route("judge", { generatedBy: SONNET }).model).toBe("test-cheaper");
+    // Haiku 5.5 is cheaper than both, so with it automatic it wins.
+    expect((await withCatalog([cheap, cheaper])).route("judge", { generatedBy: SONNET }).model).toBe(HAIKU);
     // Equal rates: the one that comes first in the catalog.
-    expect((await withCatalog([tieA, tieB])).route("judge", { generatedBy: SONNET }).model).toBe("test-tie-a");
-    expect((await withCatalog([tieB, tieA])).route("judge", { generatedBy: SONNET }).model).toBe("test-tie-b");
+    expect((await withCatalog([tieA, tieB], noHaiku)).route("judge", { generatedBy: SONNET }).model).toBe("test-tie-a");
+    expect((await withCatalog([tieB, tieA], noHaiku)).route("judge", { generatedBy: SONNET }).model).toBe("test-tie-b");
   });
 
   it("only an auto, west-hosted entry can be the alternative: not an internal one, not a china one, not the generating model", async () => {
@@ -284,10 +298,10 @@ describe("judge: a different model from the one that generated the batch, when t
     const r = await withCatalog([
       entry({ id: "test-internal", auto: false, pick: true, ...cheap }),
       entry({ id: "test-china", hosting: "china", auto: true, ...cheap }),
-    ], (m) => (m.id === SONNET55 ? { ...m, auto: false } : m));
+    ], noHaiku);
     expect(r.route("judge", { generatedBy: SONNET }).model).toBe(SONNET);
     // When the cheap west entry is the one that generated, it is skipped too.
-    const s = await withCatalog([entry({ id: "test-west", ...cheap })]);
+    const s = await withCatalog([entry({ id: "test-west", ...cheap })], noHaiku);
     expect(s.route("judge", { generatedBy: "test-west" }).model).toBe(SONNET);
     expect(s.route("judge", { generatedBy: SONNET }).model).toBe("test-west");
   });

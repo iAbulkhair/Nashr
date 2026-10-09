@@ -30,8 +30,9 @@ import { agentSpendFor, chargeOnce, resolveOnceHolds } from "@/lib/credits";
 import { generateBatch, type BatchOpts } from "@/lib/generate-batch";
 import { newUser, settle } from "./helpers/session";
 
-const OPUS = "claude-opus-5";
-const SONNET = "claude-sonnet-5";
+// Since 2026-10-09 (rule 809) only the 5.5 models can be picked or routed to; Opus 5 and Sonnet 5 stay for their rates.
+const OPUS = "claude-opus-5-5";
+const SONNET = "claude-sonnet-5-5";
 const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة مختصة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

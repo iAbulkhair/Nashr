@@ -27,7 +27,8 @@ const entry = (o: Partial<ModelEntry> & { id: string }): ModelEntry => ({
   ...o,
 });
 
-const CLAUDE = ["claude-opus-5", "claude-sonnet-5", "claude-sonnet-5-5"] as const;
+const CLAUDE = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
+const RETIRED = ["claude-opus-5", "claude-sonnet-5"] as const;
 const imports = (file: string) => readFileSync(file, "utf8").split("\n").filter((l) => /^\s*(import|export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from)\s/.test(l) || /\brequire\(|\bimport\(/.test(l));
 
 describe("tiers", () => {
@@ -74,18 +75,24 @@ describe("the real catalog", () => {
     for (const m of MODELS) expect(modelById(m.id)).toBe(m);
   });
 
-  it("the three Claude models used today are in the catalog with auto true", () => {
+  it("the three current Claude models are the automatic ones; Opus 5 and Sonnet 5 stay only for their rates (rule 809)", () => {
     for (const id of CLAUDE) {
       const m = modelById(id);
       expect(m, id).toBeDefined();
-      expect(m).toMatchObject({ vendor: "anthropic", hosting: "west", dialect: "messages", auto: true, pick: true });
+      expect(m).toMatchObject({ vendor: "anthropic", hosting: "west", dialect: "messages", auto: true });
       expect(m!.caps, id).toEqual({ tools: true, strict: true, thinking: true, cache: true, vision: true });
       expect(autoModels().map((x) => x.id)).toContain(id);
-      expect(pickModels().map((x) => x.id)).toContain(id);
     }
+    expect(autoModels().map((x) => x.id).sort()).toEqual([...CLAUDE].sort());
+    // A customer may pick Opus 5.5 or Sonnet 5.5; Haiku 5.5 does the short jobs only and writes no task type.
+    expect(pickModels().map((x) => x.id).sort()).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"]);
+    expect(modelById("claude-haiku-5-5")!.tasks).toEqual([]);
+    for (const id of RETIRED) expect(modelById(id), id).toMatchObject({ auto: false, pick: false });
+    expect(modelById("claude-opus-5-5")!.tier).toBe("premium");
+    expect(modelById("claude-sonnet-5-5")!.tier).toBe("standard");
+    expect(modelById("claude-haiku-5-5")!.tier).toBe("economy");
     expect(modelById("claude-opus-5")!.tier).toBe("premium");
     expect(modelById("claude-sonnet-5")!.tier).toBe("standard");
-    expect(modelById("claude-sonnet-5-5")!.tier).toBe("standard");
   });
 
   it("every entry, whoever adds it, holds what routing and pricing read: a known tier, hosting and dialect, a vendor, the five caps", () => {
@@ -216,6 +223,8 @@ describe("costUsd and hasRate read the catalog first", () => {
     expect(costUsd("claude-opus-5", usage)).toBeCloseTo(5 + 25 + 0.5 + 6.25, 9);
     expect(costUsd("claude-sonnet-5", usage)).toBeCloseTo(2 + 10 + 0.2 + 2.5, 9);
     expect(costUsd("claude-sonnet-5-5", usage)).toBeCloseTo(2 + 10 + 0.2 + 2.5, 9);
+    expect(costUsd("claude-opus-5-5", usage)).toBeCloseTo(4 + 20 + 0.2 + 5, 9);
+    expect(costUsd("claude-haiku-5-5", usage)).toBeCloseTo(0.1 + 0.5 + 0.01 + 0.125, 9);
   });
 
   it("an id in neither table is priced as Opus, as before, and `constructor` is not a rate", () => {

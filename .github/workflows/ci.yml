@@ -1,9 +1,12 @@
 name: CI
 
-# Build, type-check, lint and unit tests on every pull request and every push to main; the end-to-end suite on
-# pull requests that are ready for review (the Scope step below says what each run checks).
-# Vercel deploys from Git on its own. To make a red run block production, add the "Nashr CI" check under
-# Vercel project Settings > Build and Deployment > Deployment Checks (provider: GitHub).
+# Build, type-check, lint and unit tests on every pull request; the end-to-end suite on pull requests that are ready
+# for review; unit tests alone on a push to main (the Scope step below says what each run checks).
+# Vercel still makes a production deployment of every commit on main, and its Deployment Check (Vercel project
+# Settings > Build and Deployment > Deployment Checks, provider GitHub, "Nashr CI", on since 2026-09-18) waits for this
+# job on that commit. The live site is Hostinger, from the `production` branch, through a release pull request that
+# runs the full pull request check; the push to main runs only what that Vercel check needs.
+# Once the Deployment Check is removed in Vercel, the `push` trigger can go too.
 on:
   push:
     branches: [main]
@@ -27,53 +30,88 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history, so the Scope step can diff a push against `before`.
+          # Full history, so the Scope step can diff the pull request against its base.
           fetch-depth: 0
       # What this run checks, to keep inside the plan's Actions minutes (a full run is about 20 minutes, 12 of them the
-      # end-to-end suite). Draft PRs and pushes to main skip the end-to-end suite: a PR runs it once it is marked ready
-      # for review and on every push after that, and GitHub cannot merge a draft, so every PR gets that run first.
-      # A change that touches only docs/, .archify/ or a top-level .md file runs the unit tests alone (they read the
-      # docs). The job itself always runs and always reports "Nashr CI": Vercel's Deployment Check waits for that
-      # check before a production deploy, and a workflow skipped by `paths`/`paths-ignore` would never report it.
+      # end-to-end suite). A push to main runs the unit tests alone: the same commit was checked in full as its pull
+      # request, and the run exists so the "Nashr CI" check Vercel waits for reports on main. A draft PR skips the
+      # end-to-end suite: it runs once the PR is marked ready for review and on every push after that, and GitHub
+      # cannot merge a draft, so every PR gets that run first. A PR that touches only docs/, .archify/ or a top-level
+      # .md file runs the unit tests alone (they read the docs). The job itself always runs and always reports
+      # "Nashr CI": a workflow skipped by `paths`/`paths-ignore` would never report it.
       - name: Scope
         id: scope
         env:
           EVENT: ${{ github.event_name }}
           DRAFT: ${{ github.event.pull_request.draft }}
-          BEFORE: ${{ github.event.before }}
         run: |
-          # A pull_request run checks out GitHub's merge commit: its first parent is the base, so HEAD^1..HEAD is the PR.
-          if [ "$EVENT" = pull_request ]; then base="HEAD^1"; else base="$BEFORE"; fi
-          changed=$(git diff --name-only "$base" HEAD 2>/dev/null) || changed=""
-          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^(docs/|\.archify/)|^[^/]+\.md$'; then docs_only=true; else docs_only=false; fi
-          if [ "$docs_only" = false ] && [ "$EVENT" = pull_request ] && [ "$DRAFT" != true ]; then e2e=true; else e2e=false; fi
-          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          build=false; e2e=false
+          if [ "$EVENT" = pull_request ]; then
+            # A pull_request run checks out GitHub's merge commit: its first parent is the base, so HEAD^1..HEAD is the PR.
+            changed=$(git diff --name-only HEAD^1 HEAD 2>/dev/null) || changed=""
+            if [ -z "$changed" ] || printf '%s\n' "$changed" | grep -qvE '^(docs/|\.archify/)|^[^/]+\.md$'; then build=true; fi
+            if [ "$build" = true ] && [ "$DRAFT" != true ]; then e2e=true; fi
+            printf '%s\n' "$changed" | head -40
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
-          echo "docs_only=$docs_only e2e=$e2e"
-          printf '%s\n' "$changed" | head -40
+          echo "build=$build e2e=$e2e"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Next's build cache (Turbopack's persistent cache is on for `next build` since 16.3). A cache saved by a pull
+      # request is readable only by later runs of that pull request, so the first run of a PR builds cold and every
+      # push after it starts warm. The key moves with the lockfile and the sources; restore-keys falls back to the
+      # newest cache for the same lockfile.
+      - name: Cache Next build
+        if: steps.scope.outputs.build == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'content/**', 'public/**', 'next.config.ts', 'tsconfig.json', 'postcss.config.mjs') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       # Must run BEFORE the type-check. tsconfig includes `.next/types/**` and `next-env.d.ts`, and .gitignore ignores
       # both, so in a fresh checkout they do not exist and `tsc --noEmit` checks a strictly smaller program than a
       # developer's local run — every one of Next's generated route-signature validators is skipped. A renamed route
       # segment merged green and left main undeployable until someone opened the Vercel dashboard.
       - name: Build
-        if: steps.scope.outputs.docs_only != 'true'
+        if: steps.scope.outputs.build == 'true'
         run: npx next build
       - name: Type-check
-        if: steps.scope.outputs.docs_only != 'true'
+        if: steps.scope.outputs.build == 'true'
         run: npx tsc --noEmit -p .
       - name: Lint
-        if: steps.scope.outputs.docs_only != 'true'
+        if: steps.scope.outputs.build == 'true'
         run: npx eslint
       - name: Unit tests
         run: npx vitest run
+      # Playwright's browsers, keyed on the installed Playwright version. A push to main restores them too, and on a
+      # miss downloads them without the system packages (about 30 seconds, once per Playwright version), so the cache
+      # is saved under main, where every pull request can read it; a cache saved by a pull request serves only that PR.
+      - name: Playwright version
+        id: playwright
+        if: steps.scope.outputs.e2e == 'true' || github.event_name == 'push'
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        if: steps.playwright.outputs.version != ''
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium-webkit
       - name: Install Playwright browsers
-        if: steps.scope.outputs.e2e == 'true'
+        if: steps.scope.outputs.e2e == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium webkit
+      # A cache hit has the browsers but not the runner's system packages, which live outside the cached directory.
+      - name: Install Playwright system dependencies
+        if: steps.scope.outputs.e2e == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium webkit
+      - name: Seed Playwright cache
+        if: github.event_name == 'push' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium webkit
       - name: End-to-end tests
         if: steps.scope.outputs.e2e == 'true'
         run: npx playwright test

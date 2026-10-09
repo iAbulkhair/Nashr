@@ -378,7 +378,7 @@ describe("the chat route counts a rejected pick", () => {
     expect((await send({ conv })).status).toBe(200);
     expect(await picks()).toEqual(base);
     // An accepted pick: nothing counted.
-    await db.set(`conv:${sc(u)}:${conv}`, { ...(await convOf(u, conv))!, model: SONNET });
+    await db.set(`conv:${sc(u)}:${conv}`, { ...(await convOf(u, conv))!, model: SONNET55 });
     expect((await send({ conv })).status).toBe(200);
     expect(await picks()).toEqual(base);
     // A pick the catalog no longer holds: counted once per turn, plain and streamed.
@@ -428,7 +428,7 @@ describe("generateBatch counts a rejected pick", () => {
     };
     expect((await run("social")).ok).toBe(true);
     expect(await picks()).toEqual(base);
-    await db.set(`brand:${sc(u)}`, { ...brand, model: SONNET });
+    await db.set(`brand:${sc(u)}`, { ...brand, model: SONNET55 });
     expect((await run("social")).ok).toBe(true);
     expect(await picks()).toEqual(base);
     // An accepted model that may not run the type: task_not_allowed.
@@ -441,7 +441,7 @@ describe("generateBatch counts a rejected pick", () => {
     expect(gone.ok && gone.modelRejected).toBe("unknown");
     expect((await picks())["generate:unknown"] ?? 0).toBe((base["generate:unknown"] ?? 0) + 1);
     // A caller that names its own model asks route() nothing, so nothing is counted.
-    const named = await generateBatch((await getUser(u.email))!, sc(u), { type: "social", source: "manual", via: "app", model: OPUS });
+    const named = await generateBatch((await getUser(u.email))!, sc(u), { type: "social", source: "manual", via: "app", model: DEFAULTS.generate });
     await settle();
     expect(named.ok).toBe(true);
     expect((await picks())["generate:unknown"] ?? 0).toBe((base["generate:unknown"] ?? 0) + 1);

@@ -43,7 +43,7 @@ function deepFreeze<T>(x: T): T {
 
 /**
  * The task types a standard-tier Claude model may run: every type but `article` and `followup_seq`. Generation is priced
- * at Opus 5 (`PRICED_AT.generate`), so a standard model charges x0.5 (src/lib/models/credits.ts); the reviewer and the
+ * at Opus 5.5 (`PRICED_AT.generate`; Opus 5 until 2026-10-09), so a standard model charges x0.5 (src/lib/models/credits.ts); the reviewer and the
  * judge cost the same whatever model generated, and on these two types the cost per charged credit stays over the margin
  * floor even on a warm cache (article $0.0791, followup_seq $0.0739 against $0.0710; tests/pricing-floor.test.ts, rule 241
  * by tier). Written out rather than derived from the task list on purpose: a new task type runs on these models only once
@@ -57,9 +57,10 @@ const STANDARD_CLAUDE_TASKS: readonly string[] = [
 ];
 
 /**
- * Rates. `rate` is what we actually pay per million tokens by the route the model normally takes. The three Claude rates
- * were copied on 2026-10-08 from the `RATES` table in `usage.ts`, whose list prices were checked on 2026-09-27 (Sonnet 5.5
- * added 2026-10-02); they were not checked again against Anthropic's or Straitly's price list when copied:
+ * Rates. `rate` is what we actually pay per million tokens by the route the model normally takes. The Claude rates were
+ * copied from the `RATES` table in `usage.ts` (2026-10-08; Opus 5.5 and Haiku 5.5 on 2026-10-09), whose list prices were
+ * checked on 2026-09-27 (Sonnet 5.5 added 2026-10-02, Opus 5.5 and Haiku 5.5 2026-10-09); they were not checked again
+ * against Anthropic's or Straitly's price list when copied:
  *
  * - A Claude model can also be called directly at Anthropic (the gateway's fallback, `src/lib/model.ts`), and there it
  *   costs the full list price. Its `rate` is therefore the CURRENT ANTHROPIC LIST PRICE, the same numbers the old `RATES`
@@ -72,7 +73,9 @@ const STANDARD_CLAUDE_TASKS: readonly string[] = [
  * date the list prices were "checked" (2026-09-27 above, and the same date in `usage.ts`) to the day the new price was read.
  * `tests/pricing-floor.test.ts` prices every task on these.
  *
- * Only the three Claude models used today are listed. The other vendors' entries (with their `dialect` and `caps`) come
+ * Only Claude models are listed. Since 2026-10-09 (rule 809) the product calls only Opus 5.5, Sonnet 5.5 and Haiku 5.5,
+ * so those three are the only `auto` entries; Opus 5 and Sonnet 5 stay with `auto` and `pick` false so stored usage and
+ * any old id still price at their own rate, and a stored pick of either is refused (`not_pickable`). The other vendors' entries (with their `dialect` and `caps`) come
  * from the Straitly spike (plan Task 1: `GET /v1/models`, then one call per model) and are added after it has run; so is
  * the target of 5 to 8 entries with `pick: true`. A model is added here with `auto: false` until the golden set has run on
  * it, and a China-hosted one always with `auto: false`.
@@ -87,8 +90,8 @@ export const MODELS: readonly ModelEntry[] = deepFreeze<ModelEntry[]>([
     dialect: "messages",
     caps: { tools: true, strict: true, thinking: true, cache: true, vision: true },
     rate: { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-    auto: true,
-    pick: true,
+    auto: false,
+    pick: false,
   },
   {
     id: "claude-sonnet-5",
@@ -99,8 +102,8 @@ export const MODELS: readonly ModelEntry[] = deepFreeze<ModelEntry[]>([
     dialect: "messages",
     caps: { tools: true, strict: true, thinking: true, cache: true, vision: true },
     rate: { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
-    auto: true,
-    pick: true,
+    auto: false,
+    pick: false,
     tasks: STANDARD_CLAUDE_TASKS,
   },
   {
@@ -115,6 +118,33 @@ export const MODELS: readonly ModelEntry[] = deepFreeze<ModelEntry[]>([
     auto: true,
     pick: true,
     tasks: STANDARD_CLAUDE_TASKS,
+  },
+  {
+    id: "claude-opus-5-5",
+    label: { ar: "كلود أوبس 5.5", en: "Claude Opus 5.5" },
+    vendor: "anthropic",
+    hosting: "west",
+    tier: "premium",
+    dialect: "messages",
+    caps: { tools: true, strict: true, thinking: true, cache: true, vision: true },
+    rate: { in: 4, out: 20, cacheRead: 0.2, cacheWrite: 5 },
+    auto: true,
+    pick: true,
+  },
+  {
+    id: "claude-haiku-5-5",
+    label: { ar: "كلود هايكو 5.5", en: "Claude Haiku 5.5" },
+    vendor: "anthropic",
+    hosting: "west",
+    tier: "economy",
+    dialect: "messages",
+    caps: { tools: true, strict: true, thinking: true, cache: true, vision: true },
+    // The rate for prompts of 100K tokens or fewer (longer ones cost 5x); its two callers send a few hundred tokens.
+    rate: { in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+    auto: true,
+    pick: false,
+    // The short jobs only (the image/video prompt writer, the free tools): it writes no task type.
+    tasks: [],
   },
 ]);
 

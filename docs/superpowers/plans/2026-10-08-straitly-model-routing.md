@@ -224,3 +224,17 @@ Failure modes the spec implies that no task's happy path would catch, most likel
 ## Pull requests
 
 PR 1: Tasks 2 and 2b (if needed). PR 2: Tasks 3 and 4. PR 3: Task 5. PR 4: Tasks 6 to 9. Each PR is opened as a draft against `main`, and none switches production to Straitly. That is the owner's separate yes (Task 9).
+
+## After main moved to the 5.5 models (2026-10-09)
+
+PR #308 (rules 809 and 900) moved every call to Opus 5.5, Sonnet 5.5 and Haiku 5.5 while this branch was open. The
+merge of main set `DEFAULTS` to chat, review, xreview and judge `claude-sonnet-5-5`, generate and onboard
+`claude-opus-5-5`, imagePrompt and tool `claude-haiku-5-5`; `PRICED_AT` follows chat and generate. Opus 5 and Sonnet 5
+stay in the catalog with `auto` and `pick` false, so stored usage still prices and a stored pick of either falls back.
+
+- [ ] **Later, separate step (rule 901, after the golden set):** give `generate` a default per task type. Today
+  `route("generate", { task })` uses `task` only to check a pick's `tasks` allow-list and always falls back to the one
+  `DEFAULTS.generate`. With `TASK_MODELS` (local commit 055e1898 on `claude/ai-api-task-assignment-834d4f`, not pushed)
+  the automatic default comes from that table when `ctx.task` is set, and `creditsFor` must price the batch at the
+  model the table picks (rule 241 over every pair in the table, not only the catalog defaults). This needs its own
+  branch from main and its own draft PR.

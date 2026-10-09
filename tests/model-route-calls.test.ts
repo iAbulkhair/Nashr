@@ -96,9 +96,9 @@ import * as chatRoute from "@/app/api/chat/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 import * as toolRoute from "@/app/api/tools/[tool]/route";
 
-const OPUS = "claude-opus-5";
-const SONNET = "claude-sonnet-5";
+const OPUS = "claude-opus-5-5";
 const SONNET55 = "claude-sonnet-5-5";
+const HAIKU = "claude-haiku-5-5";
 
 const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة مختصة", audience: "الرياض", offers: "", competitors: "", banned: "رخيص", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 
@@ -144,7 +144,7 @@ describe("chat: the model the turn runs on is the model its messages were counte
     expect(CHAT_MODEL).toBe(DEFAULTS.chat);
   });
 
-  it("a turn routed to Opus 5 sends Opus 5 to the model AND counts Opus 5's messages (2), from one decision", async () => {
+  it("a turn routed to Opus 5.5 sends Opus 5.5 to the model AND counts Opus 5.5's messages (2), from one decision", async () => {
     rt.pick.chat = OPUS;
     const u = await owner("mrc-opus");
     const r = await send();
@@ -168,7 +168,7 @@ describe("chat: the model the turn runs on is the model its messages were counte
     expect(askedFor("chat")).toHaveLength(1);
   });
 
-  it("over MCP (ask_noor) too: the model sent and the messages counted are Opus 5's", async () => {
+  it("over MCP (ask_noor) too: the model sent and the messages counted are Opus 5.5's", async () => {
     rt.pick.chat = OPUS;
     const u = await owner("mrc-mcp");
     const out = await ask(await createMcpToken(u.email), "مرحبا");
@@ -187,7 +187,7 @@ describe("chat: the model the turn runs on is the model its messages were counte
     expect(await count(u)).toBe(10);
   });
 
-  it("an allowance with one message left refuses an Opus 5 turn (2 messages) before the model is called, and a Sonnet 5.5 turn (1) is answered", async () => {
+  it("an allowance with one message left refuses an Opus 5.5 turn (2 messages) before the model is called, and a Sonnet 5.5 turn (1) is answered", async () => {
     rt.pick.chat = OPUS;
     const u = await owner("mrc-edge", 249);
     const refused = await send();
@@ -228,7 +228,7 @@ describe("generation: the model the batch is charged for is the model generate()
     return { r, u, spent: before - after.credits, agentSpend: agentSpendFor(after, u.email) };
   }
 
-  it("by default the batch runs on Opus 5 and costs its base credits; route(\"generate\") was asked once", async () => {
+  it("by default the batch runs on Opus 5.5 and costs its base credits; route(\"generate\") was asked once", async () => {
     const { r, spent } = await run();
     expect(r.ok).toBe(true);
     expect(calls("generate").map((c) => c.model)).toEqual([OPUS]);
@@ -237,12 +237,12 @@ describe("generation: the model the batch is charged for is the model generate()
     expect(askedFor("generate")).toHaveLength(1);
   });
 
-  it("a batch routed to Sonnet 5 runs on Sonnet 5 and is charged Sonnet 5's price, from one decision", async () => {
-    rt.pick.generate = SONNET;
+  it("a batch routed to Sonnet 5.5 runs on Sonnet 5.5 and is charged Sonnet 5.5's price, from one decision", async () => {
+    rt.pick.generate = SONNET55;
     const { r, spent } = await run();
     expect(r.ok).toBe(true);
-    expect(calls("generate").map((c) => c.model)).toEqual([SONNET]);
-    expect(spent).toBe(creditsFor(base, SONNET, "generate"));
+    expect(calls("generate").map((c) => c.model)).toEqual([SONNET55]);
+    expect(spent).toBe(creditsFor(base, SONNET55, "generate"));
     expect(spent).toBeLessThan(base);
     expect(r.ok && r.cost).toBe(spent);
     expect(askedFor("generate")).toHaveLength(1);
@@ -290,17 +290,17 @@ describe("generation: the model the batch is charged for is the model generate()
     expect(judged().map((c) => c.model)).toEqual(["routed-judge"]);
   });
 
-  it("the judge is told which model generated the batch: a batch Sonnet 5 wrote is judged by Sonnet 5.5, never by Sonnet 5", async () => {
-    rt.pick.generate = SONNET;
+  it("the judge is told which model generated the batch: a batch Sonnet 5.5 wrote is judged by Haiku 5.5, never by Sonnet 5.5", async () => {
+    rt.pick.generate = SONNET55;
     await run();
-    expect(calls("generate").map((c) => c.model)).toEqual([SONNET]);
-    expect(askedFor("judge")[0].ctx).toMatchObject({ generatedBy: SONNET });
-    expect(judged().map((c) => c.model)).toEqual([SONNET55]);
+    expect(calls("generate").map((c) => c.model)).toEqual([SONNET55]);
+    expect(askedFor("judge")[0].ctx).toMatchObject({ generatedBy: SONNET55 });
+    expect(judged().map((c) => c.model)).toEqual([HAIKU]);
   });
 
-  it("a batch Opus 5 wrote is judged by Sonnet 5, as today", async () => {
+  it("a batch Opus 5.5 wrote is judged by Sonnet 5.5, the default judge", async () => {
     await run();
-    expect(judged().map((c) => c.model)).toEqual([SONNET]);
+    expect(judged().map((c) => c.model)).toEqual([SONNET55]);
   });
 });
 
@@ -310,12 +310,12 @@ describe("the other call sites ask route() for their purpose and send what it re
   const task = { id: "t1", type: "social", channel: "instagram", title: "t", body: "نص تجريبي", status: "pending" } as unknown as Task;
   const site = { url: "https://example.test", ok: true, platform: "unknown", title: "t", description: "d", links: [], text: "x" } as unknown as Parameters<typeof buildFromSite>[0];
 
-  it("today's models, call site by call site: tool Sonnet 5, image prompt Sonnet 5, onboarding Opus 5", async () => {
+  it("today's models, call site by call site: tool Haiku 5.5, image prompt Haiku 5.5, onboarding Opus 5.5 (rules 809 and 900)", async () => {
     expect((await toolCall()).status).toBe(200);
-    expect(calls("create").map((c) => c.model)).toEqual([SONNET]);
+    expect(calls("create").map((c) => c.model)).toEqual([HAIKU]);
     sdk.calls = [];
     await imagePrompt(brand, task, "img-fast", "square", "mrc@test.example", 20_000);
-    expect(calls("create").map((c) => c.model)).toEqual([SONNET]);
+    expect(calls("create").map((c) => c.model)).toEqual([HAIKU]);
     sdk.calls = [];
     await buildFromSite(site, "ar", undefined, undefined, undefined, Date.now() + 285_000).catch(() => null);
     expect(calls("stream").length).toBeGreaterThan(0);

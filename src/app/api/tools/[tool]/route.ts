@@ -43,6 +43,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
     const output = res.content.filter((x) => x.type === "text").map((x) => (x as { text: string }).text).join("\n").trim();
     // Without this the free tools were invisible to the margin figures in the founder console.
     await meter(u?.email, res.model, "tool", res.usage);
+    // Haiku 5.5 has no server-side refusal fallback: a declined request comes back with no text. Say it failed
+    // instead of showing the visitor an empty result.
+    if (!output) return NextResponse.json({ ok: false, error: "failed" }, { status: 502 });
     await db.incrby(`toolusage:${t.slug}`, 1);
     return NextResponse.json({ ok: true, output });
   } catch (e) {
