@@ -116,6 +116,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     phone: it.owedBy !== "owner" ? (it.phone ?? null) : null,
     whatsapp: whatsapp(it),
     contact: e ? contactOf(it) : null,
+    // An open booking item whose start has passed (a booking's start is its due time): the follow-up panel opens from it.
+    meeting: it.source === "booking" && !it.completedAt && !it.deletedAt && !!it.dueAt && Date.parse(it.dueAt) <= now,
   });
   const sections: TodoSection[] = AGENDA_BUCKETS.filter((b) => agenda.buckets[b].length).map((b) => ({ bucket: b, title: T.buckets[b], rows: agenda.buckets[b].map((e) => row(e.item, e)) }));
   // The names the away form suggests: each contact on the open items once, however its name was typed (`partyKey`).

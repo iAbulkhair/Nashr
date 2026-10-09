@@ -4,6 +4,8 @@ import { json, newMember, newUser, params, signIn, signOut } from "./helpers/ses
 import { getUser, saveUser, sc, type User } from "@/lib/auth";
 import { adjust, chargeOnce } from "@/lib/credits";
 import { asData } from "@/lib/json";
+import { appDict } from "@/lib/app-i18n";
+import { fill } from "@/lib/fill";
 import { MEETING_NOTES_MAX, MEETING_TEXT_MAX, MEETING_TRANSCRIPT_COST, maxCostPerCreditUsd } from "@/lib/pricing";
 import { ESTIMATE_MODELS, meetingExtractUsd } from "@/lib/task-costs";
 import { db } from "@/lib/db";
@@ -1160,4 +1162,71 @@ describe("propose_meeting_tasks (rule 607)", () => {
     expect(JSON.stringify(err.mock.calls)).not.toContain("Send the deck");
     await db.del(`rate:sec:write:${u.email}`);
   }, 30000);
+});
+
+describe("meeting panel text (rule 608)", () => {
+  const flat = (o: unknown, prefix = ""): Record<string, string> =>
+    Object.entries(o as Record<string, unknown>).reduce<Record<string, string>>((acc, [k, v]) => (typeof v === "string" ? { ...acc, [`${prefix}${k}`]: v } : { ...acc, ...flat(v, `${prefix}${k}.`) }), {});
+  const panel = () => readFileSync("src/components/app/MeetingPanel.tsx", "utf8");
+
+  it("rule 608: both languages carry every todo.meeting key; the cost line renders from the constant; no key holds a number, price or customer of ours; the panel text says nothing is created until Approve and that the agent does not run the task", () => {
+    const ar = flat(appDict.ar.todo.meeting);
+    const en = flat(appDict.en.todo.meeting);
+    // The same keys in both languages, none empty.
+    expect(Object.keys(ar).sort()).toEqual(Object.keys(en).sort());
+    expect(Object.keys(en).length).toBeGreaterThan(30);
+    for (const [k, v] of [...Object.entries(ar), ...Object.entries(en)]) expect(v.trim(), k).not.toBe("");
+    // Every code the three routes answer has words of its own in both languages.
+    for (const code of ["busy", "lock_timeout", "partial", "no_credits", "trial_over", "agent_cap", "no_tasks", "model_failed", "model_paused", "too_long", "not_found", "bad_text", "bad_party", "title_required", "forbidden"]) {
+      expect(en[`errors.${code}`], `en ${code}`).toBeTruthy();
+      expect(ar[`errors.${code}`], `ar ${code}`).toBeTruthy();
+    }
+    // The cost is a slot filled from the shared constant: the text itself holds no number.
+    for (const d of [ar, en]) {
+      expect(d.cost).toContain("{n}");
+      expect(fill(d.cost, { n: String(MEETING_TRANSCRIPT_COST) })).toContain(String(MEETING_TRANSCRIPT_COST));
+    }
+    expect(panel()).toMatch(/fill\(T\.cost, \{ n: String\(MEETING_TRANSCRIPT_COST\) \}\)/);
+    expect(panel()).toMatch(/import \{[^}]*MEETING_TRANSCRIPT_COST[^}]*\} from "@\/lib\/pricing"/);
+    // No digit (Latin or Arabic-Indic), no price, no currency, no customer or result of ours in any key.
+    for (const [k, v] of [...Object.entries(ar), ...Object.entries(en)]) {
+      expect(v, k).not.toMatch(/[0-9\u0660-\u0669\u06f0-\u06f9]/);
+      expect(v, k).not.toMatch(/\$|SAR|USD|ريال|دولار|\bprice|\bpay\b|سعر|%/i);
+      expect(v, k).not.toMatch(/customer[s]? like|testimonial|guarantee|ضمان|عملاؤنا/i);
+    }
+    // Nothing is created until Approve, and the intro names the very button; an agent does not run the task.
+    expect(en.intro).toMatch(/Nothing is created/);
+    expect(en.intro).toContain(en.approve);
+    expect(ar.intro).toContain("لا يُنشأ شيء");
+    expect(ar.intro).toContain(ar.approve);
+    expect(en.agentNote).toMatch(/does not run it/);
+    expect(en.agentNote).toMatch(/waiting on that agent/);
+    expect(ar.agentNote).toContain("لا ينفّذها الوكيل");
+    expect(ar.agentNote).toContain("ننتظر");
+    // The panel renders those texts, and the row action is behind todo.write.
+    expect(panel()).toContain("T.intro");
+    expect(panel()).toContain("T.agentNote");
+    expect(readFileSync("src/components/app/TodoPanel.tsx", "utf8")).toMatch(/canWrite && row\.meeting/);
+    // The browser reads a file only by these three extensions into the same box; no upload route; the title limit is the server's.
+    expect(panel()).toMatch(/\\\.\(txt\|vtt\|srt\)\$/);
+    expect(panel()).toContain("FileReader");
+    expect(panel()).not.toMatch(/\/api\/[a-z/]*upload/i);
+    expect(panel()).not.toContain("dangerouslySetInnerHTML");
+    expect(Number(/const TITLE_MAX = (\d+);/.exec(panel())?.[1])).toBe(MEET_TITLE_MAX);
+  });
+
+  it("rule 608: the panel renders no HTML from a model or a file, and lists every agent by the name the app shows", () => {
+    const src = panel();
+    expect(src).not.toContain("dangerouslySetInnerHTML");
+    expect(src).not.toMatch(/innerHTML/);
+    // The agent select is built from AGENT_IDS with the dictionary's names, plus the owner.
+    expect(src).toMatch(/AGENT_IDS\.map\(\(id\) => <option key=\{id\} value=\{id\}>\{t\.agents\[id\]\.name\}<\/option>\)/);
+    expect(src).toContain('<option value="owner">{T.owner}</option>');
+    // User and model text is shown with dir="auto".
+    expect(src.match(/dir="auto"/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    for (const id of AGENT_IDS) {
+      expect(appDict.ar.agents[id].name).toBeTruthy();
+      expect(appDict.en.agents[id].name).toBeTruthy();
+    }
+  });
 });
