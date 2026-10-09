@@ -17,6 +17,7 @@ import { shortOfCredits } from "@/components/app/MediaControls";
 import { firstMonthPriceSar } from "@/lib/pricing";
 import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as adminPayments from "@/app/api/admin/payments/[email]/route";
+import { adminConsoleSrc } from "./helpers/admin-console";
 
 /**
  * Credit top-ups after main's partner programme (#236) came in, and the review findings on PR #239: rules 454-459 in
@@ -251,7 +252,7 @@ describe("voiding a pack voids its payment and the commission; a live pack's pay
   });
 
   it("the console sends one payment id per pack through adminFetch and keeps it until a definite answer; Payments points to the pack", () => {
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const src = adminConsoleSrc();
     expect(src).toContain('adminFetch("/api/admin/topups"');
     expect(src).not.toMatch(/[^n]fetch\("\/api\/admin\/topups"/);
     expect(src).toContain("if (pendingTopup.current?.key !== key) pendingTopup.current = { key, id: newPaymentId() };");
@@ -365,7 +366,7 @@ describe("out of credits, the line fits the plan and the role (rule 457)", () =>
   });
 
   it("the console's deal copy says a deal sets the month's plan credits and live packs are kept", async () => {
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const src = adminConsoleSrc();
     expect(src).toContain("OK sets the month's plan credits to the deal's credits today (live top-up packs keep what is left in them)");
     expect(src).toContain("«موافق» يجعل كريدت الخطة الشهري كريدت العقد اليوم (وتحتفظ باقات الشحن السارية بما بقي فيها)");
     expect(src).not.toContain("OK sets the balance to the deal's credits");
@@ -413,7 +414,7 @@ describe("a pack's payment date is the Riyadh day, as for every recorded payment
     expect(parseTopup(body("2026-10-01"), noon).ok).toBe(true);
     expect(parseTopup(body("2026-10-02"), noon)).toEqual({ ok: false, error: "bad_date" });
     expect(parseTopup(body("2025-09-30"), noon)).toEqual({ ok: false, error: "bad_date" });
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const src = adminConsoleSrc();
     expect(src, "the console's default date is today in Riyadh").toContain("prompt(S.promptTopupDate, ksaDay())");
   });
 

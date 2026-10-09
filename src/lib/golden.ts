@@ -342,7 +342,7 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
 
     if (run.regressions.length) {
       const title = `المجموعة الذهبية: ${run.regressions.length} تنبيه، المتوسط ${run.overall ?? "—"}`;
-      for (const e of adminEmails()) await notifyItem(e, "ar", { kind: "quality", agent: "dana", title, body: run.regressions.slice(0, 3).join(" · "), href: "/ar/app/admin" }, `golden:${run.id}:${run.regressions.length}`, 7);
+      for (const e of adminEmails()) await notifyItem(e, "ar", { kind: "quality", agent: "dana", title, body: run.regressions.slice(0, 3).join(" · "), href: "/ar/admin/quality" }, `golden:${run.id}:${run.regressions.length}`, 7);
     }
     return run;
   } finally {

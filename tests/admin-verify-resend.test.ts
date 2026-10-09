@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newUser, params, signIn, signOut } from "./helpers/session";
+import { adminConsoleSrc } from "./helpers/admin-console";
 import { db } from "@/lib/db";
 import { hasPendingCode } from "@/lib/verify-email";
 
@@ -86,5 +87,16 @@ describe("founder console: resend verification code", () => {
     await signIn(customer.email);
     expect((await resend(target.email, {})).status).toBe(401);
     expect(mails).toHaveLength(0);
+  });
+});
+
+describe("rules 776-777 in the console UI (src/components/admin since rule 874)", () => {
+  it("the console shows the badge and the resend button only while unverified", () => {
+    const src = adminConsoleSrc();
+    expect(src).toContain("emailVerifiedAt?: string | null");
+    expect(src).toMatch(/!u\.emailVerifiedAt && <span[^>]*data-testid="unverified">\{S\.unverified\}/);
+    expect(src).toMatch(/!sel\.user\.emailVerifiedAt && <button disabled=\{busy\} onClick=\{\(\) => act\(sel\.user\.email, "resendVerification"\)\}/);
+    expect(src).toContain('action === "resendVerification") setMsg(`${email}: ${S.codeSent}`)');
+    for (const k of ["unverified", "verifiedOn", "resendCode", "codeSent"]) expect(src.match(new RegExp(`\\b${k}: "`, "g"))?.length, k).toBe(2);
   });
 });
