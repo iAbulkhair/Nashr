@@ -246,9 +246,9 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });
   const base = opts.count ? countCost(type, opts.count) : TASK_COST[type];
-  // The batch's price at its model's tier, computed once. It is what is charged: `charge`, or `chargeOnce`, which reuses a
+  // The batch's price at its model's tier relative to the type's own writer (rule 902), computed once. It is what is charged: `charge`, or `chargeOnce`, which reuses a
   // claim's hold only when it holds exactly this price and otherwise swaps it for this price in one save.
-  const cost = creditsFor(base, model, "generate");
+  const cost = creditsFor(base, model, "generate", type);
   // The agent that owns the type, computed in code: never taken from the request or the model.
   const agent = agentForTask(type).id;
   // A paid account's monthly credits arrive before its first charge of the month, whichever job runs first (rule 332).

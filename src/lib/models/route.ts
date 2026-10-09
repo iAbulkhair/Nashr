@@ -1,5 +1,6 @@
 import { MODELS, modelAllowsTask, modelById, type ModelEntry } from "./catalog";
 import type { TaskType } from "../tasks";
+import { TASK_MODELS } from "../task-models";
 
 /**
  * The one place that decides which model a call runs on (spec 2026-10-08-straitly-model-routing, section 4). Every call
@@ -29,12 +30,14 @@ export type Purpose = "chat" | "generate" | "review" | "xreview" | "judge" | "on
 /**
  * What each purpose runs on when nobody picked. Since 2026-10-09 (rules 809 and 900, founder: only the three current
  * models) these are Opus 5.5 for writing (generation, onboarding), Sonnet 5.5 for checking and talking (reviewer,
- * cross-agent review, judge, chat) and Haiku 5.5 for the short jobs (image/video prompts, free tools). A later step gives
- * `generate` a default per task type (`TASK_MODELS`, rule 901, after the golden set): `route("generate", { task })`
- * will then take its default from that table instead of this one value.
- * `DEFAULTS.chat` and `DEFAULTS.generate` are also the models the credit multipliers are relative to (`PRICED_AT` in
- * tiers.ts; tests/model-route.test.ts pins that they are equal), and `ESTIMATE_MODELS` (src/lib/task-costs.ts) prices
- * these same ids, so the margin floor test covers what is called.
+ * cross-agent review, judge, chat) and Haiku 5.5 for the short jobs (image/video prompts, free tools). Since rule 901
+ * (2026-10-09) `generate` and `review` have a default PER TASK TYPE: with `ctx.task`, `route("generate", { task })` and
+ * `route("review", { task })` take theirs from `TASK_MODELS` (src/lib/task-models.ts: Opus 5.5 writes 10 types, Sonnet
+ * 5.5 the other 16 and reviews all 26), and the two values below are only what a call without a task runs on.
+ * `DEFAULTS.chat` and `DEFAULTS.generate` are also the models the credit multipliers are relative to when there is no
+ * task (`PRICED_AT` in tiers.ts; tests/model-route.test.ts pins that they are equal); a batch is priced relative to its
+ * type's own writer (rule 902, src/lib/models/credits.ts), so Automatic is always x1. `estimateBatch`
+ * (src/lib/task-costs.ts) prices the same per-type ids, so the margin floor test covers what is called.
  */
 export const DEFAULTS: Readonly<Record<Purpose, string>> = Object.freeze({
   chat: "claude-sonnet-5-5",
@@ -66,7 +69,10 @@ export type RouteContext = {
   confirmedChina?: boolean;
   /** The model that generated the batch being judged (`judge` only): the judge will not be that model when it can avoid it. */
   generatedBy?: string;
-  /** The task type of the batch (`generate` only): a pick whose `tasks` allow-list leaves it out is `task_not_allowed`. */
+  /**
+   * The task type of the batch (`generate` and `review`): it picks the default from `TASK_MODELS` (rule 901), and for
+   * `generate` a pick whose `tasks` allow-list leaves it out is `task_not_allowed`.
+   */
   task?: TaskType;
 };
 export type Routed = { model: string; overridden: boolean; rejected?: Rejected };
@@ -74,9 +80,19 @@ export type Routed = { model: string; overridden: boolean; rejected?: Rejected }
 /** What automatic routing may use: offered to routing (`auto`) and hosted in the west. Both checked here, never only in the data. */
 const automatic = (m: ModelEntry | undefined): m is ModelEntry => m !== undefined && m.auto === true && m.hosting === "west";
 
+/**
+ * The automatic model for `purpose` on task type `task` (rule 901): the type's writer for `generate`, its reviewer for
+ * `review`, from `TASK_MODELS`; `DEFAULTS[purpose]` for every other purpose, and for a task that is not exactly one of
+ * the table's own keys. Unchecked: `route()` checks it is still an automatic entry before anything runs on it.
+ */
+export function automaticFor(purpose: Purpose, task?: TaskType): string {
+  if ((purpose === "generate" || purpose === "review") && typeof task === "string" && Object.hasOwn(TASK_MODELS, task)) return TASK_MODELS[task][purpose === "generate" ? "write" : "review"];
+  return DEFAULTS[purpose];
+}
+
 /** The purpose's default, which must still be an automatic catalog entry: a default that is not is a bug, and throws before any call is made with it. */
-function defaultFor(purpose: Purpose): string {
-  const id = DEFAULTS[purpose];
+function defaultFor(purpose: Purpose, task?: TaskType): string {
+  const id = automaticFor(purpose, task);
   if (!automatic(modelById(id))) throw new Error(`default_model_not_auto:${purpose}:${id}`);
   return id;
 }
@@ -112,6 +128,7 @@ function judgeAlternative(def: string): string {
  *   returns the default with `overridden: false` and says why in `rejected`; the caller tells the owner.
  *   `undefined` and `null` are nothing stored: the default, nothing rejected.
  * - `judge`: the default, or when that is `ctx.generatedBy`, an automatic alternative that costs no more (`judgeAlternative`).
+ * - `generate` and `review` with `ctx.task`: the default is that type's row of `TASK_MODELS` (`automaticFor`).
  * - every other purpose: the default. `ctx` is ignored.
  *
  * Throws only for something that is not a normal call: a purpose that is not one of the eight, or a default that is no
@@ -119,7 +136,7 @@ function judgeAlternative(def: string): string {
  */
 export function route(purpose: Purpose, ctx: RouteContext = {}): Routed {
   if (typeof purpose !== "string" || !Object.hasOwn(DEFAULTS, purpose)) throw new Error(`unknown_purpose:${String(purpose)}`);
-  const model = defaultFor(purpose);
+  const model = defaultFor(purpose, ctx.task);
   if (purpose === "judge") return { model: ctx.generatedBy === model ? judgeAlternative(model) : model, overridden: false };
   if (ctx.stored === undefined || ctx.stored === null || !OVERRIDABLE.includes(purpose)) return { model, overridden: false };
   const reject = (rejected: Rejected): Routed => ({ model, overridden: false, rejected });

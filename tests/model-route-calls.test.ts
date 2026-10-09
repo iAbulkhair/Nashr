@@ -354,6 +354,7 @@ describe("no call site names a model", () => {
     "src/lib/models/route.ts": "DEFAULTS: the model each purpose runs on when nobody picked",
     "src/lib/models/catalog.ts": "MODELS: the catalog entries themselves (id, label, tier, rates)",
     "src/lib/models/tiers.ts": "PRICED_AT: the models the credit multipliers are relative to (import-free, so the browser may read it)",
+    "src/lib/task-models.ts": "TASK_MODELS: each task type's writer and reviewer (rule 901), the per-type defaults route() reads for generate and review",
     "src/lib/usage.ts": "RATES: the rate table from before the catalog, the fallback for an id the catalog lacks until a contract release removes it (rule 679)",
   };
   const LITERAL = /["'`]claude-[a-z0-9.-]+["'`]/;
@@ -363,7 +364,7 @@ describe("no call site names a model", () => {
    */
   const code = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-  it("no file under src holds a Claude model id outside the four that define the defaults, the catalog, the priced-at models and the old rates", () => {
+  it("no file under src holds a Claude model id outside the five that define the defaults, the per-type writers, the catalog, the priced-at models and the old rates", () => {
     const files = (readdirSync("src", { recursive: true }) as string[]).map((f) => join("src", f).split(sep).join("/")).filter((f) => /\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(f));
     expect(files.length).toBeGreaterThan(200);
     expect(files.filter((f) => LITERAL.test(code(f))).sort()).toEqual(Object.keys(ALLOWED).sort());

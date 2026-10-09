@@ -17,6 +17,7 @@ import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as planRoute from "@/app/api/admin/plan/route";
 import BillingPage from "@/app/[lang]/app/billing/page";
 import * as profileRoute from "@/app/api/profile/route";
+import { adminConsoleSrc } from "./helpers/admin-console";
 
 /**
  * Credit top-ups (pricing spec section 6 rule 5; founder decisions of 2026-10-01), rules 440-452 in docs/system/tests.md:
@@ -555,7 +556,7 @@ describe("the module boundaries (rules 451-452)", () => {
     expect(imports).toEqual(['import type { User } from "./auth";', 'import { TOPUP_PACKS, TOPUP_VALID_DAYS, isTopupPack } from "./pricing";', 'import { ksaDay } from "./partner-rules";']);
     // Both are import-free, so nothing server-side reaches the console, the billing page or the profile through it.
     for (const f of ["src/lib/pricing.ts", "src/lib/partner-rules.ts"]) expect(readFileSync(f, "utf8").split("\n").filter((l) => /^\s*import\s/.test(l)), f).toEqual([]);
-    const console = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const console = adminConsoleSrc();
     expect(console).toContain('import type { TopupLot } from "@/lib/topups";');
   });
 

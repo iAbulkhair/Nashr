@@ -13,6 +13,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  */
 const sdk = vi.hoisted(() => ({ calls: [] as { api: "generate" | "stream" | "create"; model: string }[], usage: { input_tokens: 1000, output_tokens: 200 } }));
 
+/** A patched allow-list for Sonnet 5.5 (no pickable model has one since rule 902), so the task_not_allowed fallback stays tested. */
+const cat = vi.hoisted(() => ({ sonnetTasks: undefined as readonly string[] | undefined }));
+vi.mock("@/lib/models/catalog", async (orig) => {
+  const m = await orig<typeof import("@/lib/models/catalog")>();
+  const byId = (id: unknown) => {
+    const e = m.modelById(id);
+    return e && cat.sonnetTasks && e.id === "claude-sonnet-5-5" ? { ...e, tasks: cat.sonnetTasks } : e;
+  };
+  return { ...m, modelById: byId };
+});
 vi.mock("@anthropic-ai/sdk", () => {
   const items = JSON.stringify([{ channel: "instagram", title: "قهوة اليوم", body: "نص تجريبي للعنصر يكفي للمراجعة" }]);
   const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
@@ -61,6 +71,7 @@ import { generateBatch } from "@/lib/generate-batch";
 import { overview } from "@/lib/admin-stats";
 import { costUsd, getUsage, meter, noteRejectedPick, usageMonthKeys } from "@/lib/usage";
 import { json, newUser, settle, signIn, signOut } from "./helpers/session";
+import { adminConsoleSrc } from "./helpers/admin-console";
 import * as chatRoute from "@/app/api/chat/route";
 import * as overviewRoute from "@/app/api/admin/overview/route";
 
@@ -421,7 +432,7 @@ describe("generateBatch counts a rejected pick", () => {
   it("one count under purpose 'generate' and the reason when the brand's pick is refused; none without a pick or with an accepted one", async () => {
     const { u } = await owner("um-gen");
     const base = await picks();
-    const run = async (type: "social" | "article") => {
+    const run = async (type: "social" | "ads") => {
       const r = await generateBatch((await getUser(u.email))!, sc(u), { type, source: "manual", via: "app" });
       await settle();
       return r;
@@ -431,8 +442,9 @@ describe("generateBatch counts a rejected pick", () => {
     await db.set(`brand:${sc(u)}`, { ...brand, model: SONNET55 });
     expect((await run("social")).ok).toBe(true);
     expect(await picks()).toEqual(base);
-    // An accepted model that may not run the type: task_not_allowed.
-    const art = await run("article");
+    // An accepted model that may not run the type: task_not_allowed (an allow-list patched in; no pick has one since rule 902).
+    cat.sonnetTasks = ["social"];
+    const art = await run("ads").finally(() => { cat.sonnetTasks = undefined; });
     expect(art.ok && art.modelRejected).toBe("task_not_allowed");
     expect((await picks())["generate:task_not_allowed"] ?? 0).toBe((base["generate:task_not_allowed"] ?? 0) + 1);
     // A model the catalog does not hold: unknown.
@@ -511,14 +523,14 @@ describe("the founder console", () => {
     // The founder's routes, the golden set (its own account's cost), the founder overview, and usage.ts itself.
     expect(readers).toEqual(["src/app/api/admin/plan/route.ts", "src/app/api/admin/users/[email]/route.ts", "src/lib/admin-stats.ts", "src/lib/golden.ts", "src/lib/usage.ts"]);
     const namers = files.filter((f) => /\b(rejectedPicks|modelUsage|noteRejectedPick)\b/.test(strip(readFileSync(f, "utf8")))).sort();
-    expect(namers).toEqual(["src/app/api/chat/route.ts", "src/components/app/AdminConsole.tsx", "src/lib/admin-stats.ts", "src/lib/generate-batch.ts", "src/lib/usage.ts"]);
+    expect(namers).toEqual(["src/app/api/chat/route.ts", "src/components/admin/Billing.tsx", "src/components/admin/shared.tsx", "src/lib/admin-stats.ts", "src/lib/generate-batch.ts", "src/lib/usage.ts"]);
     // And the console is behind the founder's own page and routes: it names no customer route.
-    const consoleSrc = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const consoleSrc = adminConsoleSrc();
     expect(consoleSrc).toContain("ov.modelUsage");
   });
 
   it("the console shows the three tables in both languages with logical CSS only and no faded ink", () => {
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const src = adminConsoleSrc();
     const block = src.slice(src.indexOf("modelUsage-section"), src.indexOf("modelUsage-section-end"));
     expect(block.length).toBeGreaterThan(400);
     for (const key of ["llmModels", "llmModel", "llmCalls", "llmPerCall", "llmProviders", "llmProvider", "llmCaveat", "llmFallbacks", "llmRejected", "llmNone"]) {
@@ -534,7 +546,7 @@ describe("the founder console", () => {
   });
 
   it("the console block has its own column headers (Provider, and the Arabic word for model) and one muted line saying what the figures are", () => {
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const src = adminConsoleSrc();
     const block = src.slice(src.indexOf("modelUsage-section"), src.indexOf("modelUsage-section-end"));
     // The providers table's first header is "Provider", not the section's own "Per provider"; the model column does not reuse the
     // render table's `O.model`, whose Arabic is the word for "type".
@@ -558,7 +570,7 @@ describe("the founder console", () => {
   });
 
   it("an overview answer without modelUsage (an older server, a rollback while the page is open) renders nothing for it and does not throw", () => {
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const src = adminConsoleSrc();
     const block = src.slice(src.indexOf("modelUsage-section"), src.indexOf("modelUsage-section-end"));
     // The client type says it may be absent, so the compiler enforces the guard, and the whole block sits behind it.
     expect(src).toMatch(/\bmodelUsage\?: \{/);

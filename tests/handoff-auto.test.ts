@@ -56,6 +56,17 @@ vi.mock("next/navigation", async (orig) => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+// Since rule 901 every handoff type keeps the floor cold, so the floor guard is tested against a lower ceiling: while
+// `floor.tight` is set, `maxCostPerCreditUsd()` (called with no arguments, as `autoUnderFloor` calls it) returns it.
+const floor = vi.hoisted(() => ({ tight: null as number | null }));
+vi.mock("@/lib/pricing", async (orig) => {
+  const real = await orig<typeof import("@/lib/pricing")>();
+  return { ...real, maxCostPerCreditUsd: (...a: Parameters<typeof real.maxCostPerCreditUsd>) => (a.length === 0 && floor.tight !== null ? floor.tight : real.maxCostPerCreditUsd(...a)) };
+});
+/** Just under article's cold cost: article (and any type as dear) fails the floor, everything cheaper keeps it. */
+const tighten = () => { floor.tight = estimateBatch("article", { cache: "cold" }).usdPerCredit - 1e-6; };
+afterEach(() => { floor.tight = null; });
+
 const brand: Brand = { name: "متجر العود", website: "", industry: "متجر إلكتروني", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "عود وبخور", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 const en = appDict.en, ar = appDict.ar;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/'/g, "&#x27;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -429,9 +440,11 @@ describe("every guard is checked in code under the lock, and leaves the item and
     const nocap = await eligible("ha-g-nocap", { caps: { razan: 20 } });
     expect(await autoRunHandoff(nocap.u, nocap.h.id, 0, LATE())).toBe("skip:no_cap");
     await untouched(nocap.u, nocap.h, seen, 50);
-    // An article, with a cap on its agent: over the margin ceiling on a cold cache (rule 296).
+    // An article, with a cap on its agent, against a ceiling it is over on a cold cache (rule 296).
     const art = await eligible("ha-g-floor", { items: [{ type: "article", brief: "مقال عن العود" }], caps: { [agentForTask("article").id]: 50 } });
+    tighten();
     expect(await autoRunHandoff(art.u, art.h.id, 0, LATE())).toBe("skip:floor");
+    floor.tight = null;
     await untouched(art.u, art.h, seen, 50);
     // social (10) + prd (4) = 14 credits, over the 12-credit ceiling; four items are over it whatever they cost.
     const big = await eligible("ha-g-ceiling", { items: [...ONE, { type: "social", brief: "منشورات" }], caps: { [PRD_AGENT]: 20, noor: 50 } });
@@ -876,15 +889,19 @@ describe("the auto-run starts only types that keep the margin floor on a cold ca
   const capped = (type: TaskType) => ({ majedAutoHandoff: true, agentCaps: { [agentForTask(type).id]: 50 } });
   const ceiling = maxCostPerCreditUsd();
 
-  it("autoBlock refuses (`floor`) exactly the handoff types over the ceiling on a cold cache: today article only (followup_seq left the list when generation moved to Opus 5.5)", () => {
-    const refused = HANDOFF_TYPES.filter((t) => autoBlock(one(t), 0, capped(t)) !== null);
-    expect(refused).toEqual(["article"]);
-    for (const t of refused) expect(autoBlock(one(t), 0, capped(t)), t).toBe("floor");
+  it("autoBlock refuses (`floor`) exactly the handoff types over the ceiling on a cold cache: none today (rule 901)", () => {
+    expect(HANDOFF_TYPES.filter((t) => autoBlock(one(t), 0, capped(t)) !== null)).toEqual([]);
     // The same estimate and ceiling as the floor test (rule 241), read by the code, not copied into it.
     for (const t of HANDOFF_TYPES) expect(autoUnderFloor(t), t).toBe(estimateBatch(t, { cache: "cold" }).usdPerCredit <= ceiling);
-    // Not vacuous: article is over the ceiling cold ($0.0773 per credit) and under it on a hit (a login's Run).
+    // Not vacuous: against a ceiling just under article's cold cost, article and only the types as dear are refused,
+    // each as `floor`, and all of them still keep the real ceiling on a hit (a login's Run).
+    tighten();
+    const refused = HANDOFF_TYPES.filter((t) => autoBlock(one(t), 0, capped(t)) !== null);
+    expect(refused).toContain("article");
+    expect(refused.length).toBeLessThan(HANDOFF_TYPES.length);
+    for (const t of HANDOFF_TYPES) expect(refused.includes(t), t).toBe(estimateBatch(t, { cache: "cold" }).usdPerCredit > floor.tight!);
     for (const t of refused) {
-      expect(estimateBatch(t, { cache: "cold" }).usdPerCredit, t).toBeGreaterThan(ceiling);
+      expect(autoBlock(one(t), 0, capped(t)), t).toBe("floor");
       expect(estimateBatch(t).usdPerCredit, t).toBeLessThanOrEqual(ceiling);
     }
     // A type the estimate cannot price is never started.
@@ -894,6 +911,7 @@ describe("the auto-run starts only types that keep the margin floor on a cold ca
   it("the cron, the Governance queue, the card and Majed's reply skip such an item and take the next one", async () => {
     const x = await eligible("ha-floor", { items: [{ type: "article", brief: "مقال عن العود" }, ...ONE], caps: { [agentForTask("article").id]: 50, [PRD_AGENT]: 20 } });
     const gov = await getGov(x.u.email);
+    tighten();
     expect((await dueHandoffs([x.u])).map((c) => [c.id, c.item])).toEqual([[x.h.id, 1]]);
     expect((await autoQueue(x.u.email, gov)).map((q) => [q.type, q.item])).toEqual([["prd", 1]]);
     expect((await handoffView(x.u.email, x.h)).auto).toEqual([1]);
@@ -901,13 +919,11 @@ describe("the auto-run starts only types that keep the margin floor on a cold ca
     expect(proposalText(x.h, 50, autoItems(x.h, gov))).toContain("may start item 2 by itself");
   });
 
-  it("the words name the types it leaves to Run, in both languages", () => {
-    expect(HANDOFF_TYPES.filter((t) => !autoUnderFloor(t)), "a new type here needs the words below").toEqual(["article"]);
-    expect(en.governance.autoHandoffSub).toContain("SEO articles never start on their own: they wait for you to press Run.");
-    expect(ar.governance.autoHandoffSub).toContain("مقالات SEO لا تبدأ تلقائياً أبداً: تنتظر أن تضغط «نفّذ».");
+  it("no type is left to Run, so the words name none, in both languages", () => {
+    expect(HANDOFF_TYPES.filter((t) => !autoUnderFloor(t)), "a type here needs words in the toggle and the FAQ").toEqual([]);
     const faq = HELP.flatMap((t) => t.items).find((i) => i.q.en === "Majed's auto-run?")!;
-    expect(faq.a.en).toContain("SEO articles never start on their own; they wait for Run.");
-    expect(faq.a.ar).toContain("مقالات SEO لا تبدأ تلقائياً أبداً، بل تنتظر «نفّذ».");
+    for (const text of [en.governance.autoHandoffSub, faq.a.en]) expect(text).not.toContain("SEO articles");
+    for (const text of [ar.governance.autoHandoffSub, faq.a.ar]) expect(text).not.toContain("مقالات SEO");
   });
 });
 

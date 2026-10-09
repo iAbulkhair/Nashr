@@ -5,11 +5,12 @@ import { withBrandLock } from "@/lib/brand-proposals";
 import { chatStatus } from "@/lib/chat-allowance";
 import { setConversationModel } from "@/lib/conversations";
 import { withUserLock } from "@/lib/credits";
-import { modelById, pickerView } from "@/lib/models/catalog";
+import { modelAllowsTask, modelById, pickerView } from "@/lib/models/catalog";
 import { chatUnitsFor, tierMultiplier } from "@/lib/models/credits";
 import { chatRouteFor, chinaConfirmed } from "@/lib/models/overrides";
 import { MODEL_PICKS_PER_HOUR, allow, retryAfter, retryLater } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
+import { TASK_COST, type TaskType } from "@/lib/tasks";
 
 /**
  * The customer's model picks (spec 2026-10-08-straitly-model-routing, sections 4, 7 and 8; plan Task 6). What a pick
@@ -18,7 +19,10 @@ import { forbid } from "@/lib/roles";
  * GET: what the picker shows, all worked out here so no rate and no multiplier is hard-coded in the client: the entries
  * customers may pick (`pickerView`: id, label, tier, hosting and `tools`, so the chat picker leaves out an entry that
  * cannot run chat's tools; never a rate), each one's credit multiplier per surface
- * (relative to that surface's default model, `tierMultiplier`), the messages of the chat allowance one message on it
+ * (relative to that surface's default model, `tierMultiplier`), its generation multiplier per task type
+ * (`generateByTask`, rule 902: relative to that type's own writer in `TASK_MODELS`, only the types the entry may run,
+ * `modelAllowsTask`; `multipliers.generate` stays the multiplier on a type Opus 5.5 writes, for a page loaded before
+ * this key existed), the messages of the chat allowance one message on it
  * counts (`chatUnitsFor`), and whether the owner confirmed China-hosted models. Any signed-in login; it reads only what
  * `currentUser()` reads to resolve the session (the `session:{token}` record behind the cookie; for a founder
  * impersonation opened with the console key, `keyImpLive`'s liveness check of that key's console session,
@@ -61,9 +65,12 @@ export async function GET() {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const models = pickerView();
   const byId = (f: (id: string) => number) => Object.fromEntries(models.map((m) => [m.id, f(m.id)]));
+  const types = Object.keys(TASK_COST) as TaskType[];
+  const generateByTask = Object.fromEntries(types.map((t) => [t, Object.fromEntries(models.filter((m) => modelAllowsTask(modelById(m.id)!, t)).map((m) => [m.id, tierMultiplier(m.id, "generate", t)]))]));
   return NextResponse.json({
     models,
     multipliers: { chat: byId((id) => tierMultiplier(id, "chat")), generate: byId((id) => tierMultiplier(id, "generate")) },
+    generateByTask,
     chatUnits: byId(chatUnitsFor),
     chinaConfirmed: chinaConfirmed(u),
   });

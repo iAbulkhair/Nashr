@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULTS, OVERRIDABLE, route, type Purpose } from "@/lib/models/route";
+import { DEFAULTS, OVERRIDABLE, automaticFor, route, type Purpose } from "@/lib/models/route";
+import { TASK_MODELS } from "@/lib/task-models";
+import { TASK_TYPES, type TaskType } from "@/lib/tasks";
 import { MODELS, modelById, type ModelEntry } from "@/lib/models/catalog";
 import { PRICED_AT } from "@/lib/models/tiers";
 import { ESTIMATE_MODELS } from "@/lib/task-costs";
@@ -93,7 +95,15 @@ describe("the defaults are the three current models, one per purpose (rules 809 
   });
 
   it("ESTIMATE_MODELS prices the defaults: one source for the estimates and for the calls", () => {
-    expect({ ...ESTIMATE_MODELS }).toEqual({ generate: DEFAULTS.generate, review: DEFAULTS.review, judge: DEFAULTS.judge, onboard: DEFAULTS.onboard, mediaPrompt: DEFAULTS.imagePrompt });
+    // The writer and the reviewer of a batch are per type (TASK_MODELS, rule 901): estimateBatch and route() read the same table.
+    expect({ ...ESTIMATE_MODELS }).toEqual({ judge: DEFAULTS.judge, onboard: DEFAULTS.onboard, mediaPrompt: DEFAULTS.imagePrompt });
+    for (const t of TASK_TYPES) {
+      expect(route("generate", { task: t }).model, t).toBe(TASK_MODELS[t].write);
+      expect(route("review", { task: t }).model, t).toBe(TASK_MODELS[t].review);
+      expect(automaticFor("generate", t), t).toBe(TASK_MODELS[t].write);
+    }
+    // Without a task, or with one that is not exactly a task type, the purpose's default.
+    for (const task of [undefined, "constructor", "__proto__", "Article", ""]) expect(route("generate", { task: task as TaskType }).model, String(task)).toBe(DEFAULTS.generate);
   });
 
   it("route() is synchronous and never throws for a normal call, whatever the context holds", () => {
@@ -141,7 +151,8 @@ describe("a stored pick for chat or generate", () => {
     for (const p of OVERRIDABLE) {
       expect(route(p, { stored: undefined })).toEqual({ model: DEFAULTS[p], overridden: false });
       expect(route(p, { stored: null })).toEqual({ model: DEFAULTS[p], overridden: false });
-      expect(route(p, { stored: null, confirmedChina: true, task: "article" })).toEqual({ model: DEFAULTS[p], overridden: false });
+      // With a task, generate's default is that type's writer (rule 901); chat ignores the task.
+      expect(route(p, { stored: null, confirmedChina: true, task: "article" })).toEqual({ model: automaticFor(p, "article"), overridden: false });
     }
   });
 
@@ -178,20 +189,21 @@ describe("a stored pick for chat or generate", () => {
     expect(r.route("generate", { stored: "test-notools-1" })).toEqual({ model: "test-notools-1", overridden: true });
   });
 
-  it("a generate pick the model may not run for ctx.task is rejected task_not_allowed and the default runs (Sonnet off article and followup_seq)", () => {
-    for (const task of ["article", "followup_seq"] as const) {
-      for (const stored of [SONNET]) {
-        expect(modelById(stored)!.tasks?.includes(task), `${stored} ${task}`).toBe(false);
-        expect(route("generate", { stored, task }), `${stored} ${task}`).toEqual({ model: DEFAULTS.generate, overridden: false, rejected: "task_not_allowed" });
-      }
+  it("a generate pick the model may not run for ctx.task is rejected task_not_allowed and the type's writer runs", async () => {
+    // No pickable model has an allow-list since rule 902 (every type keeps the floor on both), so one is patched in.
+    const r = await withCatalog([], (m) => (m.id === SONNET ? { ...m, tasks: ["social", "article"] } : m));
+    for (const task of ["ads", "unit_economics"] as const) {
+      expect(r.route("generate", { stored: SONNET, task }), task).toEqual({ model: TASK_MODELS[task].write, overridden: false, rejected: "task_not_allowed" });
     }
     // A type on the allow-list, or a model with no allow-list, is accepted.
-    expect(route("generate", { stored: SONNET, task: "social" })).toEqual({ model: SONNET, overridden: true });
-    expect(route("generate", { stored: OPUS, task: "article" })).toEqual({ model: OPUS, overridden: true });
+    expect(r.route("generate", { stored: SONNET, task: "social" })).toEqual({ model: SONNET, overridden: true });
+    expect(r.route("generate", { stored: OPUS, task: "article" })).toEqual({ model: OPUS, overridden: true });
     // No task given: the allow-list is the caller's backstop (generateBatch), as before.
-    expect(route("generate", { stored: SONNET })).toEqual({ model: SONNET, overridden: true });
+    expect(r.route("generate", { stored: SONNET })).toEqual({ model: SONNET, overridden: true });
     // Chat has no task: ctx.task is ignored there.
-    expect(route("chat", { stored: SONNET, task: "article" })).toEqual({ model: SONNET, overridden: true });
+    expect(r.route("chat", { stored: SONNET, task: "ads" })).toEqual({ model: SONNET, overridden: true });
+    // The real catalog: Sonnet 5.5 and Opus 5.5 run every type.
+    for (const t of TASK_TYPES) for (const stored of [SONNET, OPUS]) expect(route("generate", { stored, task: t }), `${stored} ${t}`).toEqual({ model: stored, overridden: true });
   });
 
   it("task_not_allowed is checked last, after the china confirmation", async () => {

@@ -10,25 +10,25 @@
  *
  * Calibrated to docs/system/costs.md §3 (2026-09-27): the generation call is Opus with a cached workspace block, a
  * fresh brief and adaptive thinking; the reviewer and the judge are Sonnet. Since 2026-10-09 the calls are Opus 5.5,
- * Sonnet 5.5 and Haiku 5.5 (ESTIMATE_MODELS); the token counts were kept. The review and judge constants are fitted
- * to reproduce that table within $0.001; they were not measured. Replace them with the founder console's `byKind`
- * averages (generate / review / judge, src/lib/usage.ts `getUsage`) after a month of real traffic.
+ * Sonnet 5.5 and Haiku 5.5; since rule 901 the writer and the reviewer of each type come from TASK_MODELS
+ * (task-models.ts, through `automaticFor` in src/lib/models/route.ts), the rest from ESTIMATE_MODELS. The token counts
+ * were kept. The review and judge constants are fitted to reproduce that table within $0.001; they were not measured.
+ * Replace them with the founder console's `byKind` averages (generate / review / judge, src/lib/usage.ts `getUsage`)
+ * after a month of real traffic.
  */
 import { costUsd } from "./usage";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
 import { modelById } from "./models/catalog";
-import { DEFAULTS } from "./models/route";
+import { DEFAULTS, automaticFor } from "./models/route";
 
 /**
- * The model each call is priced at: what `route()` runs each purpose on by default (src/lib/models/route.ts `DEFAULTS`), so
- * the estimates and the calls read one table. tests/pricing-floor.test.ts checks each call site asks `route()` for its
- * purpose, and that no model the routing can pick for the judge costs more than the one priced here.
+ * The model each call outside the batch's writer and reviewer is priced at: what `route()` runs each purpose on by
+ * default (src/lib/models/route.ts `DEFAULTS`). The writer and the reviewer are per task type (`TASK_MODELS`, rule 901,
+ * read through `automaticFor`), so the estimates and the calls read one table. tests/pricing-floor.test.ts checks each
+ * call site asks `route()` for its purpose, and that no model the routing can pick for the judge costs more than the one
+ * priced here.
  */
 export const ESTIMATE_MODELS = {
-  /** src/lib/noor.ts `generate` */
-  generate: DEFAULTS.generate,
-  /** src/lib/noor.ts `critique` */
-  review: DEFAULTS.review,
   /** src/lib/judge.ts */
   judge: DEFAULTS.judge,
   /** src/lib/onboard.ts */
@@ -86,9 +86,9 @@ export type BatchEstimate = {
  * One batch: the generation call (fresh input, the cached block read on a hit or written when cold, thinking plus the
  * items as output), the reviewer and the judge. `items` and `credits` default to TASK_COUNT and TASK_COST; `cache`
  * defaults to "hit" (an owner working in the app). Cron-driven types are checked "cold". `model` is the generation
- * call's model, priced at its catalog rate: left out or undefined, `ESTIMATE_MODELS.generate` (the same rule as
- * `generateBatch`'s `model`); anything else must be exactly a catalog id (`bad_estimate_model`), or `costUsd` would price
- * it as Opus without saying so. The reviewer and the judge keep their own models.
+ * call's model, priced at its catalog rate: left out or undefined, the type's automatic writer (`TASK_MODELS`, the same
+ * rule as `generateBatch`'s `model`); anything else must be exactly a catalog id (`bad_estimate_model`), or `costUsd`
+ * would price it as Opus without saying so. The reviewer (the type's, `TASK_MODELS`) and the judge keep their own models.
  */
 export function estimateBatch(type: TaskType, opts: { items?: number; credits?: number; cache?: "hit" | "cold"; model?: string } = {}): BatchEstimate {
   const size = Object.prototype.hasOwnProperty.call(ITEM_SIZE, type) ? ITEM_SIZE[type] : undefined;
@@ -98,13 +98,13 @@ export function estimateBatch(type: TaskType, opts: { items?: number; credits?: 
     throw new Error(`bad_estimate:${String(type)}:${String(items)}:${String(credits)}`);
   }
   // Left out or undefined: the default, as `generateBatch`'s `model`; anything else must be exactly a catalog id.
-  const model = opts.model === undefined ? ESTIMATE_MODELS.generate : opts.model;
+  const model = opts.model === undefined ? automaticFor("generate", type) : opts.model;
   if (!modelById(model)) throw new Error(`bad_estimate_model:${String(model)}`);
   const itemsOut = items * ITEM_OUT_TOKENS[size];
   const outTokens = ASSUME.thinking + itemsOut;
   const cached = opts.cache === "cold" ? { cache_creation_input_tokens: ASSUME.cachedIn } : { cache_read_input_tokens: ASSUME.cachedIn };
   const generateUsd = costUsd(model, { input_tokens: ASSUME.freshIn, output_tokens: outTokens, ...cached });
-  const reviewUsd = costUsd(ESTIMATE_MODELS.review, { input_tokens: ASSUME.review.in + itemsOut, output_tokens: ASSUME.review.out + ASSUME.review.outShare * itemsOut });
+  const reviewUsd = costUsd(automaticFor("review", type), { input_tokens: ASSUME.review.in + itemsOut, output_tokens: ASSUME.review.out + ASSUME.review.outShare * itemsOut });
   const judgeUsd = costUsd(ESTIMATE_MODELS.judge, { input_tokens: ASSUME.judge.in + itemsOut, output_tokens: ASSUME.judge.out + ASSUME.judge.outPerItem * items });
   const totalUsd = generateUsd + reviewUsd + judgeUsd;
   return { type, items, credits, outTokens, generateUsd, reviewUsd, judgeUsd, totalUsd, usdPerCredit: totalUsd / credits };

@@ -325,7 +325,7 @@ describe("the console says when its session ended and links back in (rule 436)",
       expect(ADMIN_ENDED[lang].key).toMatch(/15/);
       expect(ADMIN_ENDED[lang].key).toMatch(/12/);
       expect(ADMIN_ENDED[lang].founder.length).toBeGreaterThan(10);
-      expect(adminEndedHref(lang, true)).toBe(`/${lang}/app/admin?login=1`);
+      expect(adminEndedHref(lang, true)).toBe(`/${lang}/admin?login=1`);
       expect(adminEndedHref(lang, false)).toBe(`/${lang}/app/login`);
     }
     expect(ADMIN_ENDED.ar.key).toMatch(/[\u0600-\u06FF]/);
@@ -334,15 +334,23 @@ describe("the console says when its session ended and links back in (rule 436)",
 
   it("every admin call in the console and its panels goes through adminFetch; a 401 shows the message, never an empty table", () => {
     // PartnersPanel and PaymentsPanel came with the partner programme (PR #236, rule 418).
-    for (const f of ["AdminConsole", "GoldenPanel", "WishlistPanel", "LeadsPanel", "PartnersPanel", "PaymentsPanel"]) {
-      const src = readFileSync(`src/components/app/${f}.tsx`, "utf8");
+    // The console is one component per section since rule 874 (src/components/admin), with the shared hooks in shared.tsx.
+    const files = [
+      ...["shared", "Overview", "Users", "Usage", "Billing", "Quality", "Log", "AdminNav"].map((f) => `src/components/admin/${f}.tsx`),
+      ...["GoldenPanel", "WishlistPanel", "LeadsPanel", "PartnersPanel", "PaymentsPanel"].map((f) => `src/components/app/${f}.tsx`),
+    ];
+    for (const f of files) {
+      const src = readFileSync(f, "utf8");
       expect(src, f).not.toMatch(/(?<![A-Za-z])fetch\(["`]\/api\/admin/);
-      expect(src, f).toMatch(/adminFetch\(["`]\/api\/admin/);
+      if (!f.endsWith("/Usage.tsx") && !f.endsWith("/Overview.tsx")) expect(src, f).toMatch(/adminFetch\(["`]\/api\/admin/);
     }
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
-    expect(src).not.toMatch(/status === 401\) return setUsers\(\[\]\)/);
-    expect(src).toContain("window.addEventListener(ADMIN_ENDED_EVENT, onEnded)");
-    expect(src).toMatch(/if \(ended\) \{[\s\S]*?role="alert"[\s\S]*?adminEndedHref\(lang, keySession\)/);
+    const shared = readFileSync("src/components/admin/shared.tsx", "utf8");
+    expect(shared).not.toMatch(/status === 401\) return setUsers\(\[\]\)/);
+    expect(shared).toContain("window.addEventListener(ADMIN_ENDED_EVENT, onEnded)");
+    expect(shared).toMatch(/function EndedNotice[\s\S]*?role="alert"[\s\S]*?adminEndedHref\(lang, keySession\)/);
+    // Every section shows the notice after a 401; the panels that are a section of their own sit inside EndedGate.
+    for (const f of ["Overview", "Users", "Usage", "Billing", "Quality", "Log"]) expect(readFileSync(`src/components/admin/${f}.tsx`, "utf8"), f).toContain("if (ended) return <EndedNotice lang={lang} keySession={keySession} />;");
+    for (const s of ["leads", "partners", "wishlist"]) expect(readFileSync(`src/app/[lang]/admin/${s}/page.tsx`, "utf8"), s).toMatch(/<EndedGate lang=\{lang\} keySession=\{keySession\}><\w+Panel lang=\{lang\} \/><\/EndedGate>/);
   });
 });
 

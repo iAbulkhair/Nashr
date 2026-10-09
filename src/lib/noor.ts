@@ -11,7 +11,7 @@ import { activeSeasons } from "./seasons";
 import { zoneOf } from "./zones";
 import { capDiscounts } from "./cart-recovery";
 import { feedbackBlock } from "./feedback";
-import { DEFAULTS, route } from "./models/route";
+import { automaticFor, route } from "./models/route";
 
 /** One generated item. `crossReview` is added by the cross-agent review and never changes the other three fields. */
 export type Generated = { channel: string; title: string; body: string; crossReview?: CrossVerdict[] };
@@ -217,8 +217,9 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const lead = leadBriefBlock(opts.leadBrief);
   const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
 
+  // The caller's resolved model (`generateBatch` always passes one); left out, routing for the type (TASK_MODELS, rule 901).
   const params = {
-    model: opts.model ?? route("generate").model,
+    model: opts.model ?? route("generate", { task: type }).model,
     max_tokens: 16000,
     system: systemPrompt(brand, prefs, agent, opts.memory, opts.feedback),
     messages: [{ role: "user" as const, content: userMsg }],
@@ -229,7 +230,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   // The server-side fallback (another model answers when this one is overloaded) only for the automatic default: a
   // customer's pick (`Brand.model`, src/lib/models/overrides.ts) was priced at its own tier, so it runs on the model
   // requested or fails, and the caller refunds. The batch is charged for the requested model either way.
-  const serverFallback = params.model === DEFAULTS.generate;
+  const serverFallback = params.model === automaticFor("generate", type);
   let text = "";
   try {
     const msg = await client.beta.messages
@@ -328,7 +329,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
   }
   try {
     const review = await client.messages.create({
-      model: route("review").model,
+      model: route("review", { task: type }).model,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       output_config: { effort: "low" },

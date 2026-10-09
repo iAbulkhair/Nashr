@@ -51,6 +51,16 @@ vi.mock("@anthropic-ai/sdk", () => {
   };
 });
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => ms.state }));
+/** A patched allow-list for Sonnet 5.5 (no pickable model has one since rule 902), so the task_not_allowed fallback stays tested. */
+const cat = vi.hoisted(() => ({ sonnetTasks: undefined as readonly string[] | undefined }));
+vi.mock("@/lib/models/catalog", async (orig) => {
+  const m = await orig<typeof import("@/lib/models/catalog")>();
+  const byId = (id: unknown) => {
+    const e = m.modelById(id);
+    return e && cat.sonnetTasks && e.id === "claude-sonnet-5-5" ? { ...e, tasks: cat.sonnetTasks } : e;
+  };
+  return { ...m, modelById: byId };
+});
 vi.mock("@/lib/models/route", async (orig) => {
   const m = await orig<typeof import("@/lib/models/route")>();
   return {
@@ -68,11 +78,12 @@ import type { Brand, Task } from "@/lib/brand";
 import { createConversation, deleteConversation, liveConversations, renameConversation, touchConversation, type Conversation } from "@/lib/conversations";
 import { PAUSED_REPLY } from "@/lib/model";
 import { DEFAULTS } from "@/lib/models/route";
-import { MODELS, modelById, pickerView, type ModelEntry } from "@/lib/models/catalog";
+import { TASK_MODELS } from "@/lib/task-models";
+import { MODELS, modelAllowsTask, modelById, pickerView, type ModelEntry } from "@/lib/models/catalog";
 import { chatHoldFor, chatUnitsFor, creditsFor, tierMultiplier } from "@/lib/models/credits";
 import { MODEL_UNAVAILABLE } from "@/lib/models/overrides";
 import { MODEL_PICKS_PER_HOUR } from "@/lib/rate";
-import { TASK_COST } from "@/lib/tasks";
+import { TASK_COST, TASK_TYPES } from "@/lib/tasks";
 import { chatMsgKey } from "@/lib/usage";
 import { generate } from "@/lib/noor";
 import { scoreItems } from "@/lib/judge";
@@ -182,8 +193,8 @@ describe("GET /api/models", () => {
     const { u } = await owner("mo-get");
     const r = await getModels();
     expect(r.status).toBe(200);
-    const j = (await r.json()) as { models: { id: string; tools: boolean }[]; multipliers: { chat: Record<string, number>; generate: Record<string, number> }; chatUnits: Record<string, number>; chinaConfirmed: boolean };
-    expect(Object.keys(j).sort()).toEqual(["chatUnits", "chinaConfirmed", "models", "multipliers"]);
+    const j = (await r.json()) as { models: { id: string; tools: boolean }[]; multipliers: { chat: Record<string, number>; generate: Record<string, number> }; generateByTask: Record<string, Record<string, number>>; chatUnits: Record<string, number>; chinaConfirmed: boolean };
+    expect(Object.keys(j).sort()).toEqual(["chatUnits", "chinaConfirmed", "generateByTask", "models", "multipliers"]);
     expect(j.models).toEqual(pickerView());
     expect(j.models.length).toBeGreaterThan(0);
     for (const row of j.models) {
@@ -198,6 +209,13 @@ describe("GET /api/models", () => {
     expect(j.multipliers.chat[OPUS]).toBe(2);
     expect(j.multipliers.generate[SONNET]).toBe(0.5);
     expect(j.chatUnits[OPUS]).toBe(2);
+    // Rule 902: the generation multiplier per task type, relative to that type's writer, worked out on the server.
+    expect(Object.keys(j.generateByTask).sort()).toEqual([...TASK_TYPES].sort());
+    for (const t of TASK_TYPES) {
+      expect(j.generateByTask[t], t).toEqual(Object.fromEntries(ids.filter((id) => modelAllowsTask(modelById(id)!, t)).map((id) => [id, tierMultiplier(id, "generate", t)])));
+      expect(j.generateByTask[t][TASK_MODELS[t].write], t).toBe(1);
+    }
+    expect([j.generateByTask.article[OPUS], j.generateByTask.article[SONNET], j.generateByTask.social[SONNET]]).toEqual([2, 1, 0.5]);
     expect(j.chinaConfirmed).toBe(false);
     // No rate leaves the server, and nothing else of the catalog entry beyond the picker row.
     const text = JSON.stringify(j);
@@ -780,16 +798,32 @@ describe("call time: generation", () => {
     expect(askedFor("generate")[0].ctx).toMatchObject({ stored: SONNET, confirmedChina: false, task: "social" });
   });
 
-  it("a brand pick not allowed for the type falls back to the default (task_not_allowed), charges the default's price and says so", async () => {
+  it("a brand pick not allowed for the type falls back to the type's writer (task_not_allowed), charges the writer's price and says so", async () => {
     const { u } = await owner("mo-gen-task");
     await put({ target: "brand", model: SONNET });
-    expect(modelById(SONNET)!.tasks?.includes("article")).toBe(false);
+    cat.sonnetTasks = ["social", "article"];
+    try {
+      expect(modelById(SONNET)!.tasks?.includes("ads")).toBe(false);
+      const before = (await getUser(u.email))!.credits;
+      const r = await generateBatch(u, sc(u), { type: "ads", source: "manual", via: "app" });
+      await settle();
+      expect(r.ok).toBe(true);
+      expect(r.ok && r.modelRejected).toBe("task_not_allowed");
+      expect(sdk.calls.filter((c) => c.api === "generate").map((c) => c.model)).toEqual([TASK_MODELS.ads.write]);
+      expect(before - (await getUser(u.email))!.credits).toBe(TASK_COST.ads);
+    } finally {
+      cat.sonnetTasks = undefined;
+    }
+  });
+
+  it("a brand pick of Sonnet 5.5 runs article, a Sonnet-written type, at x1 (rule 902)", async () => {
+    const { u } = await owner("mo-gen-own");
+    await put({ target: "brand", model: SONNET });
     const before = (await getUser(u.email))!.credits;
     const r = await generateBatch(u, sc(u), { type: "article", source: "manual", via: "app" });
     await settle();
-    expect(r.ok).toBe(true);
-    expect(r.ok && r.modelRejected).toBe("task_not_allowed");
-    expect(sdk.calls.filter((c) => c.api === "generate").map((c) => c.model)).toEqual([DEFAULTS.generate]);
+    expect(r.ok && r.modelRejected).toBeUndefined();
+    expect(sdk.calls.filter((c) => c.api === "generate").map((c) => c.model)).toEqual([SONNET]);
     expect(before - (await getUser(u.email))!.credits).toBe(TASK_COST.article);
   });
 

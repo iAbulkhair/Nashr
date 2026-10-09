@@ -7,7 +7,8 @@ import { db } from "@/lib/db";
 import type { Brand } from "@/lib/brand";
 import { PRICED_AT, TIER_MULTIPLIER, type Surface } from "@/lib/models/tiers";
 import { MODELS, modelById, type ModelEntry } from "@/lib/models/catalog";
-import { chatHoldFor, chatTurnMaxUsd, chatUnitsFor, creditsFor, tierMultiplier } from "@/lib/models/credits";
+import { chatHoldFor, chatTurnMaxUsd, chatUnitsFor, creditsFor, pricedAt, tierMultiplier } from "@/lib/models/credits";
+import { TASK_MODELS } from "@/lib/task-models";
 import { CHAT_TURN_MAX_USD, chatOverflowHold, maxCostPerCreditUsd } from "@/lib/pricing";
 import { TASK_COST, TASK_TYPES } from "@/lib/tasks";
 import { ESTIMATE_MODELS, estimateBatch, estimateFor } from "@/lib/task-costs";
@@ -19,9 +20,10 @@ import { chatCredKey, chatMsgKey, chatOverKey } from "@/lib/usage";
 /**
  * Credits by tier (spec 2026-10-08-straitly-model-routing, section 6; plan Task 4). A task's credits and a chat message's
  * ceiling scale with the tier of the model that runs them, RELATIVE TO THE SURFACE'S DEFAULT MODEL (`PRICED_AT` in
- * src/lib/models/tiers.ts): the default model of each surface is x1, so today's prices do not move. Generation is priced
- * at Opus 5 (premium), so a standard model is x0.5 and an economy one x0.3; chat is priced at Sonnet 5.5 (standard), so
- * Opus 5 is x2 and an economy model x0.6. Money code: every amount is an integer of at least 1, an id that is not exactly
+ * src/lib/models/tiers.ts): the default model of each surface is x1, so today's prices do not move. Generation without a
+ * task is priced at Opus 5.5 (premium), so a standard model is x0.5 and an economy one x0.3; since rule 902 generation
+ * with a task is priced at that type's writer (`TASK_MODELS`), so Automatic is x1 on every type. Chat is priced at
+ * Sonnet 5.5 (standard), so Opus 5.5 is x2 and an economy model x0.6. Money code: every amount is an integer of at least 1, an id that is not exactly
  * a catalog id never makes a task cheaper, and a refund gives back exactly what was charged.
  */
 
@@ -68,12 +70,15 @@ afterEach(async () => {
 });
 
 describe("PRICED_AT: the model whose tier is x1 on each surface", () => {
-  it("chat is priced at Sonnet 5.5 and generation at Opus 5, the models each surface calls today", () => {
+  it("chat is priced at Sonnet 5.5 and generation without a task at Opus 5.5; with a task, at the type's writer (rule 902)", () => {
     expect({ ...PRICED_AT }).toEqual({ chat: SONNET55, generate: OPUS });
     expect(Object.isFrozen(PRICED_AT)).toBe(true);
     for (const s of Object.keys(PRICED_AT) as Surface[]) expect(modelById(PRICED_AT[s]), s).toBeDefined();
     // The defaults the code calls today are the models the prices are set at (Task 5 asserts the same of route()).
-    expect(ESTIMATE_MODELS.generate).toBe(PRICED_AT.generate);
+    for (const t of TASK_TYPES) expect(pricedAt("generate", t), t).toBe(TASK_MODELS[t].write);
+    expect(pricedAt("generate")).toBe(PRICED_AT.generate);
+    expect(pricedAt("chat", "social")).toBe(PRICED_AT.chat);
+    expect(Object.keys(ESTIMATE_MODELS)).not.toContain("generate");
     expect(CHAT_MODEL).toBe(PRICED_AT.chat);
   });
 });
@@ -188,13 +193,13 @@ describe("creditsFor: base credits times the multiplier, rounded up, at least 1"
 });
 
 describe("estimateFor: one batch, cold cache, at the model's catalog rate", () => {
-  it("at the default model it is today's cold estimate, for every type", () => {
-    for (const t of TASK_TYPES) expect(estimateFor(t, PRICED_AT.generate), t).toBe(estimateBatch(t, { cache: "cold" }).totalUsd);
+  it("at the type's own writer it is today's cold estimate, for every type", () => {
+    for (const t of TASK_TYPES) expect(estimateFor(t, TASK_MODELS[t].write), t).toBe(estimateBatch(t, { cache: "cold" }).totalUsd);
   });
 
   it("a Sonnet batch costs less than an Opus one (the generation call is cheaper; the reviewer and judge are the same)", () => {
     for (const t of TASK_TYPES) {
-      const opus = estimateBatch(t, { cache: "cold" });
+      const opus = estimateBatch(t, { cache: "cold", model: OPUS });
       const son = estimateBatch(t, { cache: "cold", model: SONNET });
       expect(son.totalUsd, t).toBe(estimateFor(t, SONNET));
       // Opus 5.5 is Sonnet 5.5 x 2 on every bucket but the cache read, which costs the same on both.
@@ -207,7 +212,7 @@ describe("estimateFor: one batch, cold cache, at the model's catalog rate", () =
   it("refuses a model that is not exactly a catalog id rather than pricing it as Opus; an explicit undefined is the default", () => {
     for (const id of NOT_IDS.filter((x) => x !== undefined)) expect(() => estimateFor("social", id as string), String(id)).toThrow(/bad_estimate_model/);
     // The same rule as generateBatch's `model`: left out or undefined, the default; anything else must be a catalog id.
-    expect(estimateFor("social", undefined as unknown as string)).toBe(estimateFor("social", PRICED_AT.generate));
+    expect(estimateFor("social", undefined as unknown as string)).toBe(estimateFor("social", TASK_MODELS.social.write));
     expect(estimateBatch("social", { cache: "cold", model: undefined })).toEqual(estimateBatch("social", { cache: "cold" }));
     expect(() => estimateBatch("social", { cache: "cold", model: null as unknown as string })).toThrow(/bad_estimate_model/);
   });
@@ -517,18 +522,28 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(u.email)]).toEqual([5, 5, before]);
   });
 
-  it("a type outside the model's allow-list is refused before the charge (article on a Sonnet misses the floor)", async () => {
+  it("a type outside the model's allow-list is refused before the charge (Haiku 5.5 writes no task)", async () => {
     const { generateBatch, seen } = await load();
     const u = await brandOwner("mc-allow");
-    for (const t of ["article", "followup_seq"] as const) {
-      await expect(generateBatch(u, u.email, { type: t, source: "chat", via: "chat", model: SONNET }), t).rejects.toThrow(/model_task_not_allowed/);
+    for (const t of ["article", "social"] as const) {
+      await expect(generateBatch(u, u.email, { type: t, source: "chat", via: "chat", model: "claude-haiku-5-5" }), t).rejects.toThrow(/model_task_not_allowed/);
     }
     expect(seen.charges).toEqual([]);
   });
 
+  it("a pick is charged against the type's writer (rule 902): Sonnet on article (its own writer) 2, Opus on article 4, Sonnet on social 5", async () => {
+    const { generateBatch, seen } = await load();
+    for (const [type, model, want] of [["article", SONNET, 2], ["article", OPUS, 4], ["social", SONNET, 5], ["article", undefined, 2]] as const) {
+      const u = await brandOwner("mc-per-type");
+      const before = await credits(u.email);
+      await generateBatch(u, u.email, { type, source: "chat", via: "chat", ...(model ? { model } : {}) });
+      expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(u.email)], `${type} ${model ?? "automatic"}`).toEqual([want, want, before]);
+    }
+  });
+
   it("charge and refund read one value in the source: creditsFor once, used by charge, chargeOnce and refund", () => {
     const src = readFileSync("src/lib/generate-batch.ts", "utf8").replace(/\s+/g, "");
-    expect(src).toContain('constcost=creditsFor(base,model,"generate");');
+    expect(src).toContain('constcost=creditsFor(base,model,"generate",type);');
     expect(src.match(/creditsFor\(/g)?.length).toBe(1);
     expect(src).toContain("chargeOnce(user.email,cost,meta,opts.once)");
     expect(src).toContain("charge(user.email,cost,meta)");

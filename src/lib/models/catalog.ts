@@ -42,12 +42,11 @@ function deepFreeze<T>(x: T): T {
 }
 
 /**
- * The task types a standard-tier Claude model may run: every type but `article` and `followup_seq`. Generation is priced
- * at Opus 5.5 (`PRICED_AT.generate`; Opus 5 until 2026-10-09), so a standard model charges x0.5 (src/lib/models/credits.ts); the reviewer and the
- * judge cost the same whatever model generated, and on these two types the cost per charged credit stays over the margin
- * floor even on a warm cache (article $0.0791, followup_seq $0.0739 against $0.0710; tests/pricing-floor.test.ts, rule 241
- * by tier). Written out rather than derived from the task list on purpose: a new task type runs on these models only once
- * it is added here, after the floor test has priced it. `generateBatch` refuses a type outside the list before charging.
+ * The task types the retired Sonnet 5 entry was allowed: every type but `article` and `followup_seq`, which missed the
+ * margin floor at x0.5 when every type was priced at Opus. Kept on that entry only (it is neither `auto` nor `pick`, so
+ * nothing runs on it). Since rule 902 (2026-10-10) a type is priced relative to its own writer (`TASK_MODELS`), every
+ * type keeps the floor cold on Sonnet 5.5 and Opus 5.5 (tests/pricing-floor.test.ts, rule 241 by tier), so neither has
+ * an allow-list; a model that misses the floor on a type gets one again, never a lower floor.
  */
 const STANDARD_CLAUDE_TASKS: readonly string[] = [
   "weekly_plan", "social", "whatsapp", "ads", "gbp", "cart_recovery", "sales_script", "lead_qualifier",
@@ -117,7 +116,6 @@ export const MODELS: readonly ModelEntry[] = deepFreeze<ModelEntry[]>([
     rate: { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
     auto: true,
     pick: true,
-    tasks: STANDARD_CLAUDE_TASKS,
   },
   {
     id: "claude-opus-5-5",

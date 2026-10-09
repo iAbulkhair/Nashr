@@ -4,6 +4,7 @@ import {
   CHAT_ALLOWANCE, CHAT_TURN_MAX_USD, MARGIN_FLOOR, ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS, PLAN_PRICE_SAR, PRICES_INCLUDE_VAT, SELF_SERVE_PLANS as SELF_SERVE,
   cheapestCreditUsd, creditRevenueUsd, maxCostPerCreditUsd,
 } from "@/lib/pricing";
+import { TASK_MODELS } from "@/lib/task-models";
 import { ASSUME, ESTIMATE_MODELS, ITEM_SIZE, draftCredits, estimateBatch, estimateDraft, estimateFor, mediaPromptUsd, onboardEstimateUsd } from "@/lib/task-costs";
 import { DRAFT_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "@/lib/tasks";
 import { costUsd, hasRate } from "@/lib/usage";
@@ -46,7 +47,8 @@ const usd = (n: number) => `$${n.toFixed(4)}`;
 /**
  * The one-item chat draft exemption (founder decision, 2026-09-29: a one-item draft of social, whatsapp, ads or gbp at
  * 1 credit cost about $0.0717 on Opus 5, just over the ceiling) was removed on 2026-10-09: on Opus 5.5 the same draft
- * costs $0.0605, under the ceiling, so every draft now keeps the floor with no exemption.
+ * costs $0.0605, under the ceiling, so every draft now keeps the floor with no exemption. Since rule 901 (the same day)
+ * whatsapp and gbp are written by Sonnet 5.5: their one-item draft is $0.0426; social and ads stay on Opus 5.5.
  */
 
 describe("the ceiling (rule 241)", () => {
@@ -81,25 +83,31 @@ describe("every task type is under the ceiling (rule 241)", () => {
     }
   });
 
-  it("the phase-1 repricing: weekly_plan 2, weekly_report 3, followup_seq 4; the old prices fail, so the test is not vacuous", () => {
+  it("the phase-1 repricing stands: weekly_plan 2, weekly_report 3, followup_seq 4 (the old prices would keep the floor since rule 901)", () => {
     expect([TASK_COST.weekly_plan, TASK_COST.weekly_report, TASK_COST.followup_seq]).toEqual([2, 3, 4]);
     const old = [
       estimateBatch("weekly_plan", { credits: 1, cache: "hit" }),
       estimateBatch("followup_seq", { credits: 3, cache: "hit" }),
       estimateBatch("weekly_report", { credits: 2, cache: "cold" }),
     ];
-    // On Opus 5.5 (2026-10-09); they were $0.0893, $0.0888 and $0.0918 on Opus 5. Still over, so still not vacuous.
-    expect(old.map((e) => e.usdPerCredit)).toEqual([expect.closeTo(0.0753, 6), expect.closeTo(0.0751, 6), expect.closeTo(0.07725, 6)]);
-    for (const e of old) expect(e.usdPerCredit, `${e.type} at ${e.credits}`).toBeGreaterThan(ceiling);
+    // They were $0.0893, $0.0888 and $0.0918 on Opus 5 and $0.0753, $0.0751 and $0.0773 on Opus 5.5, all over the ceiling.
+    // Since rule 901 Sonnet 5.5 writes all three, and the old prices would keep the floor: lowering them is a pricing
+    // decision, not a margin one, so the prices stay and this pins where they would land.
+    expect(old.map((e) => e.usdPerCredit)).toEqual([expect.closeTo(0.0519, 6), expect.closeTo(0.0493, 6), expect.closeTo(0.048175, 6)]);
+    for (const e of old) expect(e.usdPerCredit, `${e.type} at ${e.credits}`).toBeLessThanOrEqual(ceiling);
   });
 
-  it("today's figures (Opus 5.5 since 2026-10-09): weekly_plan $0.0377 on a hit and $0.0557 cold, followup_seq $0.0563, article $0.0593", () => {
-    expect(estimateBatch("weekly_plan").usdPerCredit).toBeCloseTo(0.03765, 6);
-    expect(estimateBatch("weekly_plan", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.05565, 6);
-    expect(estimateBatch("followup_seq").usdPerCredit).toBeCloseTo(0.056325, 6);
-    expect(estimateBatch("article").usdPerCredit).toBeCloseTo(0.05925, 6);
-    expect(estimateBatch("weekly_report", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.0515, 6);
-    expect(estimateBatch("cart_recovery").usdPerCredit).toBeCloseTo(0.0336833, 6);
+  it("today's figures (each type's own writer, rule 901): weekly_plan $0.0260 on a hit and $0.0346 cold, article $0.0396, unit_economics $0.0395", () => {
+    // Sonnet 5.5 writes these.
+    expect(estimateBatch("weekly_plan").usdPerCredit).toBeCloseTo(0.02595, 6);
+    expect(estimateBatch("weekly_plan", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.034575, 6);
+    expect(estimateBatch("followup_seq").usdPerCredit).toBeCloseTo(0.036975, 6);
+    expect(estimateBatch("article").usdPerCredit).toBeCloseTo(0.03955, 6);
+    expect(estimateBatch("weekly_report", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.0321167, 6);
+    expect(estimateBatch("cart_recovery").usdPerCredit).toBeCloseTo(0.02305, 6);
+    // Opus 5.5 writes these.
+    expect(estimateBatch("unit_economics").usdPerCredit).toBeCloseTo(0.0395, 6);
+    expect(estimateBatch("decision_memo", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.0515, 6);
   });
 
   it("the watch list: no type is above 95% of the ceiling; article is the closest", () => {
@@ -108,19 +116,21 @@ describe("every task type is under the ceiling (rule 241)", () => {
     expect(rows.reduce((a, b) => (b.usdPerCredit > a.usdPerCredit ? b : a)).type).toBe("article");
   });
 
-  it("a price cut fails the floor: Business at 799 SAR puts article over", () => {
-    const cut = maxCostPerCreditUsd({ ...PLAN_PRICE_SAR, business: 799 });
+  it("a price cut fails the floor: Business at 549 SAR puts article over (599 does not)", () => {
+    expect(estimateBatch("article").usdPerCredit).toBeLessThan(maxCostPerCreditUsd({ ...PLAN_PRICE_SAR, business: 599 }));
+    const cut = maxCostPerCreditUsd({ ...PLAN_PRICE_SAR, business: 549 });
     expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(cut);
   });
 
-  it("more credits for the money fail it too: Business at 1,900 credits puts article over", () => {
-    expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 1900 }));
+  it("more credits for the money fail it too: Business at 2,700 credits puts article over (2,500 does not)", () => {
+    expect(estimateBatch("article").usdPerCredit).toBeLessThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 2500 }));
+    expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 2700 }));
   });
 
-  it("VAT-inclusive prices (ceiling $0.0618) keep the floor for every type since Opus 5.5; article is the closest", () => {
+  it("VAT-inclusive prices (ceiling $0.0618) keep the floor for every type; article is the closest, at about 64% of it", () => {
     const vat = maxCostPerCreditUsd(undefined, undefined, true);
     expect(TASK_TYPES.map(gate).filter((e) => e.usdPerCredit > vat).map((e) => e.type)).toEqual([]);
-    expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(0.95 * vat);
+    expect(estimateBatch("article").usdPerCredit / vat).toBeCloseTo(0.64, 2);
   });
 });
 
@@ -138,13 +148,14 @@ describe("Majed's auto-run is a cron path: every type it may start keeps the flo
     expect(over.map((e) => `${e.type}: ${usd(e.usdPerCredit)} per credit cold at ${e.credits} credits (ceiling ${usd(ceiling)})`)).toEqual([]);
   });
 
-  it("it leaves exactly article to a login's Run, the one handoff type over the ceiling cold", () => {
-    const left = HANDOFF_TYPES.filter((t) => !AUTO_TYPES.includes(t));
-    // followup_seq ($0.0773 cold on Opus 5) left the list on 2026-10-09: $0.0653 cold on Opus 5.5.
-    expect(left).toEqual(["article"]);
-    expect(left.map((t) => estimateBatch(t, { cache: "cold" }).usdPerCredit)).toEqual([expect.closeTo(0.07725, 6)]);
-    // On a hit (the owner pressing Run in the app) both keep the floor, as the table above checks them.
-    for (const t of left) expect(estimateBatch(t).usdPerCredit, t).toBeLessThanOrEqual(ceiling);
+  it("it leaves no type to a login's Run since rule 901; the dearest cold types are at about 72% of the ceiling", () => {
+    // followup_seq left the list on 2026-10-09 on Opus 5.5 ($0.0653 cold), article the same day when Sonnet 5.5 took it
+    // over ($0.0773 cold on Opus 5.5, $0.0482 now).
+    expect(HANDOFF_TYPES.filter((t) => !AUTO_TYPES.includes(t))).toEqual([]);
+    expect(estimateBatch("article", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.048175, 6);
+    const dearest = Math.max(...HANDOFF_TYPES.map((t) => estimateBatch(t, { cache: "cold" }).usdPerCredit));
+    expect(dearest).toBeCloseTo(0.0515, 6);
+    expect(dearest / ceiling).toBeCloseTo(0.725, 2);
   });
 });
 
@@ -156,9 +167,11 @@ describe("the estimates price the models the code calls (rule 241)", () => {
     // The calls: no literal (tests/model-route-calls.test.ts scans all of src), each site asks for its own purpose; that
     // test also runs every site and checks the model each request really carries, so the source pins below stay few.
     const noor = src("src/lib/noor.ts");
-    expect(noor).toContain('model: opts.model ?? route("generate").model,');
-    // The reviewer (`critique`) asks for "review"; the cross-agent review asks once for "xreview" and both reviewers use it.
-    expect(noor.match(/model: route\("review"\)\.model,/g)?.length).toBe(1);
+    // Since rule 901 the writer and the reviewer (`critique`) are per task type: routing reads TASK_MODELS with the type.
+    expect(noor).toContain('model: opts.model ?? route("generate", { task: type }).model,');
+    expect(noor).toContain('const serverFallback = params.model === automaticFor("generate", type);');
+    // The reviewer asks for "review" with its type; the cross-agent review asks once for "xreview" and both reviewers use it.
+    expect(noor.match(/model: route\("review", \{ task: type \}\)\.model,/g)?.length).toBe(1);
     expect(noor.match(/const model = route\("xreview"\)\.model;/g)?.length).toBe(1);
     expect(src("src/lib/judge.ts")).toContain('model: route("judge", { generatedBy: ctx.generatedBy }).model,');
     // Onboarding asks once; its three parts and a retry run on the same model.
@@ -167,12 +180,23 @@ describe("the estimates price the models the code calls (rule 241)", () => {
     expect(src("src/app/api/tools/[tool]/route.ts")).toContain('model: route("tool").model,');
   });
 
-  it("the cross-agent review runs on a model no dearer than the estimate's reviewer on every bucket", () => {
+  it("estimateBatch prices each type's own writer and reviewer, the models routing runs with no pick (rule 901)", () => {
+    for (const t of TASK_TYPES) {
+      expect(route("generate", { task: t }).model, t).toBe(TASK_MODELS[t].write);
+      expect(route("review", { task: t }).model, t).toBe(TASK_MODELS[t].review);
+      const e = estimateBatch(t, { cache: "cold" });
+      expect(e.generateUsd, t).toBe(estimateBatch(t, { cache: "cold", model: TASK_MODELS[t].write }).generateUsd);
+    }
+  });
+
+  it("the cross-agent review runs on a model no dearer than any type's reviewer on every bucket", () => {
     // `estimateBatch` does not add the cross-review; its cost is worked out by hand at the reviewer's rates (docs/system/costs.md,
     // the `xreview` table, every row under the ceiling). A dearer `DEFAULTS.xreview` would make that table wrong without a test failing.
-    const est = modelById(ESTIMATE_MODELS.review)!.rate;
     const xreview = modelById(route("xreview").model)!;
-    for (const b of ["in", "out", "cacheRead", "cacheWrite"] as const) expect(xreview.rate[b], `${xreview.id} ${b}`).toBeLessThanOrEqual(est[b]);
+    for (const t of TASK_TYPES) {
+      const est = modelById(TASK_MODELS[t].review)!.rate;
+      for (const b of ["in", "out", "cacheRead", "cacheWrite"] as const) expect(xreview.rate[b], `${t}: ${xreview.id} ${b}`).toBeLessThanOrEqual(est[b]);
+    }
   });
 
   it("whichever model generated the batch, the judge the routing picks costs no more than the estimate's judge on every bucket", () => {
@@ -186,6 +210,7 @@ describe("the estimates price the models the code calls (rule 241)", () => {
 
   it("every assumed model has its own rate: costUsd would otherwise price it as Opus without saying so", () => {
     for (const [role, model] of Object.entries(ESTIMATE_MODELS)) expect(hasRate(model), `${role}: ${model}`).toBe(true);
+    for (const [type, m] of Object.entries(TASK_MODELS)) for (const model of [m.write, m.review]) expect(hasRate(model), `${type}: ${model}`).toBe(true);
     expect(hasRate("claude-unknown-9")).toBe(false);
     expect(hasRate("constructor")).toBe(false);
   });
@@ -212,13 +237,14 @@ describe("chat drafts (rules 241, 250)", () => {
     expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("Math.max(1,Math.ceil((TASK_COST[type]/(TASK_COUNT[type]||1))*count))");
     // The base is the batch's or the draft's share; the charge is that base at the batch model's tier (rule 241 by tier, below).
     expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("constbase=opts.count?countCost(type,opts.count):TASK_COST[type];");
-    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain('constcost=creditsFor(base,model,"generate");');
+    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain('constcost=creditsFor(base,model,"generate",type);');
     expect(src("src/lib/chat.ts").replace(/\s+/g, "")).toContain('generateBatch(user,email,{type,notes:String(input.brief??""),count,');
   });
 
   it("every draft keeps the floor, one-item drafts included (no exemption since 2026-10-09)", () => {
     expect(rows.filter((e) => e.usdPerCredit > ceiling).map((e) => `${e.type} x${e.items}: ${usd(e.usdPerCredit)} per credit`)).toEqual([]);
-    for (const t of DRAFT_TYPES) expect(estimateDraft(t, 1).usdPerCredit, t).toBeCloseTo(0.06045, 6);
+    // Opus 5.5 writes social and ads, Sonnet 5.5 whatsapp and gbp (rule 901).
+    expect(DRAFT_TYPES.map((t) => [t, estimateDraft(t, 1).usdPerCredit])).toEqual([["social", expect.closeTo(0.06045, 6)], ["whatsapp", expect.closeTo(0.04255, 6)], ["ads", expect.closeTo(0.06045, 6)], ["gbp", expect.closeTo(0.04255, 6)]]);
   });
 
   function src(path: string) {
@@ -238,34 +264,21 @@ describe("media renders are under the ceiling too (rule 241)", () => {
 
 /**
  * Rule 241 over the model catalog (spec 2026-10-08-straitly-model-routing, section 6; plan Task 4). A task run on another
- * model is charged its base credits times that model's tier multiplier, relative to the generation default
- * (`PRICED_AT.generate`, Opus 5.5 since 2026-10-09: x1; a standard model x0.5; an economy one x0.3; src/lib/models/credits.ts). The cost per
- * CHARGED credit (after rounding up, at least 1) must keep the floor for every catalog model that routing or a customer may
- * use (`auto` or `pick`), on every task type the model allows (`tasks`; unset means all). Every model is checked on a COLD
- * cache, the dearest case (`estimateFor`), with no exemption but the one below.
+ * model is charged its base credits times that model's tier multiplier, relative to the TYPE's own writer (rule 902,
+ * 2026-10-10: `TASK_MODELS[type].write`, so Automatic is always x1; Opus 5.5 on a Sonnet-written type x2, Sonnet 5.5 on
+ * an Opus-written type x0.5; src/lib/models/credits.ts). The cost per CHARGED credit (after rounding up, at least 1) must
+ * keep the floor for every catalog model that routing or a customer may use (`auto` or `pick`), on every task type the
+ * model allows (`tasks`; unset means all). Every model is checked on a COLD cache, the dearest case (`estimateFor`), with
+ * no exemption: the article exemption on the old single default (Opus) ended with rule 901, which moved article to Sonnet.
  *
  * When a model misses the floor on a type, the fix is its `tasks` allow-list in src/lib/models/catalog.ts, never a lower
- * floor (the Sonnets below).
+ * floor.
  */
 const pickable = MODELS.filter((m) => m.auto || m.pick);
-const perCredit = (type: TaskType, model: string) => estimateFor(type, model) / creditsFor(TASK_COST[type], model, "generate");
+const charged = (type: TaskType, model: string) => creditsFor(TASK_COST[type], model, "generate", type);
+const perCredit = (type: TaskType, model: string) => estimateFor(type, model) / charged(type, model);
 
-/**
- * NAMED EXEMPTION (founder decision 2026-09-29, rules 241 and 296): on the generation default (Opus 5.5 since 2026-10-09),
- * article is over the ceiling on a cold cache. That is today's price, not a new one: an owner pressing Run finds the
- * cache warm (it keeps the floor on a hit, checked above and here), and Majed's auto-run, the only cron path that could
- * start it, leaves it to a login (`autoBlock`, rule 296). `maxColdUsdPerCredit` is today's cold figure: if it gets dearer
- * this test fails and the price must be decided again. No other model and no other type is exempt. followup_seq left the
- * exemption on 2026-10-09: $0.0773 cold on Opus 5, $0.0653 on Opus 5.5.
- */
-const DEFAULT_MODEL_COLD_EXEMPTION = {
-  model: PRICED_AT.generate,
-  maxColdUsdPerCredit: { article: 0.0773 } as Partial<Record<TaskType, number>>,
-  reason: "on-demand on a warm cache (hit) and kept off the auto-run, founder decision 2026-09-29",
-} as const;
-const exempt = (model: string, type: TaskType) => model === DEFAULT_MODEL_COLD_EXEMPTION.model && DEFAULT_MODEL_COLD_EXEMPTION.maxColdUsdPerCredit[type] !== undefined;
-
-describe("every catalog model keeps the floor on every task type it allows, per charged credit, cold (rule 241 by tier)", () => {
+describe("every catalog model keeps the floor on every task type it allows, per charged credit, cold (rule 241 by tier, rule 902)", () => {
   it("the catalog models routing or a customer may use are the three current Claude models (rule 809; the spike adds the rest)", () => {
     expect(pickable.map((m) => m.id).sort()).toEqual(["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5"]);
   });
@@ -275,10 +288,34 @@ describe("every catalog model keeps the floor on every task type it allows, per 
     for (const m of pickable) {
       for (const t of TASK_TYPES.filter((t) => modelAllowsTask(m, t))) {
         const pc = perCredit(t, m.id);
-        if (pc > ceiling && !exempt(m.id, t)) over.push(`${m.id} on ${t}: ${usd(pc)} per credit cold at ${creditsFor(TASK_COST[t], m.id, "generate")} credits (ceiling ${usd(ceiling)})`);
+        if (pc > ceiling) over.push(`${m.id} on ${t}: ${usd(pc)} per credit cold at ${charged(t, m.id)} credits (ceiling ${usd(ceiling)})`);
       }
     }
     expect(over).toEqual([]);
+  });
+
+  it("Automatic is x1 on every type: the type's own writer is charged today's TASK_COST, so no customer price moves", () => {
+    for (const t of TASK_TYPES) {
+      expect(route("generate", { task: t }).model, t).toBe(TASK_MODELS[t].write);
+      expect(tierMultiplier(TASK_MODELS[t].write, "generate", t), t).toBe(1);
+      expect(charged(t, TASK_MODELS[t].write), t).toBe(TASK_COST[t]);
+      // The writer may run its own type: an allow-list that left it out would make the task_not_allowed fallback refuse too.
+      expect(modelAllowsTask(modelById(TASK_MODELS[t].write)!, t), t).toBe(true);
+    }
+  });
+
+  it("a pick is priced against the type's writer: Opus on a Sonnet type x2, Sonnet on an Opus type x0.5, the same model x1", () => {
+    const OPUS = "claude-opus-5-5", SONNET = "claude-sonnet-5-5";
+    for (const t of TASK_TYPES) {
+      const w = TASK_MODELS[t].write;
+      expect(tierMultiplier(OPUS, "generate", t), t).toBe(w === OPUS ? 1 : 2);
+      expect(tierMultiplier(SONNET, "generate", t), t).toBe(w === SONNET ? 1 : 0.5);
+    }
+    // Rounded up as before: article (2, Sonnet-written) on Opus is 4; unit_economics (4, Opus-written) on Sonnet is 2.
+    expect([charged("article", OPUS), charged("unit_economics", SONNET), charged("social", SONNET)]).toEqual([4, 2, 5]);
+    // Without a task (chat, and any caller that names none) the old reference stands: PRICED_AT.generate.
+    expect(tierMultiplier(SONNET, "generate")).toBe(0.5);
+    expect(PRICED_AT.generate).toBe(OPUS);
   });
 
   it("every catalog id customers may pick is in the set checked here (the auto-run's floor check relies on it)", () => {
@@ -288,12 +325,12 @@ describe("every catalog model keeps the floor on every task type it allows, per 
   });
 
   /**
-   * Majed's auto-run checks the floor on the generation default (`autoUnderFloor`, src/lib/handoffs.ts), while the batch
-   * it starts runs on the brand's pick when route() accepts it, and on the default otherwise (a pick not allowed for the
-   * type falls back, `task_not_allowed`). That is safe only while the default's check is never looser than a pick's:
-   * every type it lets through keeps the floor cold on every pickable model that allows the type.
+   * Majed's auto-run checks the floor on the type's automatic writer (`autoUnderFloor`, src/lib/handoffs.ts), while the
+   * batch it starts runs on the brand's pick when route() accepts it, and on the automatic writer otherwise (a pick not
+   * allowed for the type falls back, `task_not_allowed`). That is safe only while the automatic check is never looser than
+   * a pick's: every type it lets through keeps the floor cold on every pickable model that allows the type.
    */
-  it("the auto-run's check on the default model is never looser than a brand pick: what it lets through keeps the floor cold on every pick", () => {
+  it("the auto-run's check on the automatic writer is never looser than a brand pick: what it lets through keeps the floor cold on every pick", () => {
     const passed = TASK_TYPES.filter(autoUnderFloor);
     expect(passed.length).toBeGreaterThan(0);
     const over: string[] = [];
@@ -305,35 +342,11 @@ describe("every catalog model keeps the floor on every task type it allows, per 
     expect(over).toEqual([]);
   });
 
-  it("the default model's exemption: exactly article, at no more than today's cold figure, under on a hit", () => {
-    const m = PRICED_AT.generate;
-    const overCold = TASK_TYPES.filter((t) => perCredit(t, m) > ceiling);
-    expect(overCold, "remove a type from the exemption once it keeps the floor cold").toEqual(Object.keys(DEFAULT_MODEL_COLD_EXEMPTION.maxColdUsdPerCredit));
-    expect(overCold.map((t) => perCredit(t, m))).toEqual([expect.closeTo(0.07725, 6)]);
-    for (const t of overCold) {
-      expect(perCredit(t, m), `${t}: ${DEFAULT_MODEL_COLD_EXEMPTION.reason}`).toBeLessThanOrEqual(DEFAULT_MODEL_COLD_EXEMPTION.maxColdUsdPerCredit[t]!);
-      expect(estimateBatch(t, { cache: "hit", model: m }).usdPerCredit, `${t} on a hit`).toBeLessThanOrEqual(ceiling);
-    }
-    // At x1 the charge is today's TASK_COST, so the default model's figures are today's (the tables above).
-    for (const t of TASK_TYPES) expect(creditsFor(TASK_COST[t], m, "generate"), t).toBe(TASK_COST[t]);
+  it("no pickable model has an allow-list today but Haiku 5.5, which writes no task and no customer can pick", () => {
+    expect(pickable.filter((m) => m.tasks).map((m) => [m.id, [...m.tasks!]])).toEqual([["claude-haiku-5-5", []]]);
   });
 
-  it("the Sonnets run every type but article and followup_seq, which miss the floor at x0.5 even on a warm cache", () => {
-    const rest = TASK_TYPES.filter((t) => t !== "article" && t !== "followup_seq");
-    for (const id of ["claude-sonnet-5", "claude-sonnet-5-5"]) {
-      const m = MODELS.find((x) => x.id === id)!;
-      expect([...(m.tasks ?? [])].sort(), id).toEqual([...rest].sort());
-      expect(TASK_TYPES.filter((t) => !modelAllowsTask(m, t)), id).toEqual(["article", "followup_seq"]);
-      // Not vacuous: the two left out are over the ceiling cold and on a hit. Article is 1 credit at x0.5 and the reviewer
-      // and the judge cost the same on any generation model.
-      expect(["article", "followup_seq"].map((t) => perCredit(t as TaskType, id)), id).toEqual([expect.closeTo(0.09635, 6), expect.closeTo(0.082575, 6)]);
-      const hit = (t: TaskType) => estimateBatch(t, { cache: "hit", model: id, credits: creditsFor(TASK_COST[t], id, "generate") }).usdPerCredit;
-      expect([hit("article"), hit("followup_seq")], id).toEqual([expect.closeTo(0.0791, 6), expect.closeTo(0.07395, 6)]);
-      for (const t of ["article", "followup_seq"] as const) expect(hit(t), `${id} ${t} on a hit`).toBeGreaterThan(ceiling);
-    }
-  });
-
-  it("an allow-list names only real task types, and is empty only on a model no customer can pick (Haiku 5.5 writes no task)", () => {
+  it("an allow-list names only real task types, and is empty only on a model no customer can pick", () => {
     for (const m of MODELS) {
       if (!m.tasks) continue;
       if (m.pick) expect(m.tasks.length, m.id).toBeGreaterThan(0);
@@ -342,28 +355,33 @@ describe("every catalog model keeps the floor on every task type it allows, per 
     }
   });
 
-  it("the floor divides by the CHARGED credits: a 2-credit type at x0.5 is charged 1, and its figure is per that 1", () => {
-    for (const t of ["weekly_plan", "lead_qualifier", "dashboard_spec"] as const) {
-      expect(TASK_COST[t], t).toBe(2);
-      expect(creditsFor(TASK_COST[t], "claude-sonnet-5-5", "generate"), t).toBe(1);
-      expect(perCredit(t, "claude-sonnet-5-5"), t).toBe(estimateFor(t, "claude-sonnet-5-5"));
-    }
+  it("the floor divides by the CHARGED credits: a 2-credit Opus-written type at x0.5 would be charged 1 (none exists; the 2-credit types are Sonnet-written)", () => {
+    const twos = TASK_TYPES.filter((t) => TASK_COST[t] === 2);
+    expect(twos.length).toBeGreaterThan(0);
+    for (const t of twos) expect(TASK_MODELS[t].write, t).toBe("claude-sonnet-5-5");
+    expect(creditsFor(2, "claude-sonnet-5-5", "generate", "unit_economics")).toBe(1);
+    expect(creditsFor(1, "claude-sonnet-5-5", "generate", "unit_economics")).toBe(1);
   });
 
-  it("the watch list on the other models: only the three 2-credit medium types are above 95% of the ceiling cold (97%)", () => {
-    const near = pickable.filter((m) => m.id !== PRICED_AT.generate).flatMap((m) => TASK_TYPES.filter((t) => modelAllowsTask(m, t) && perCredit(t, m.id) > 0.95 * ceiling).map((t) => `${m.id}:${t}`));
-    expect(near.sort()).toEqual(["claude-sonnet-5-5:dashboard_spec", "claude-sonnet-5-5:lead_qualifier", "claude-sonnet-5-5:weekly_plan"]);
-    expect(perCredit("weekly_plan", "claude-sonnet-5-5")).toBeCloseTo(0.06915, 6);
+  it("today's dearest figures cold: Sonnet 5.5 $0.0482, Opus 5.5 $0.0515 per charged credit (about 68% and 72% of the ceiling)", () => {
+    const max = (id: string) => Math.max(...TASK_TYPES.filter((t) => modelAllowsTask(MODELS.find((m) => m.id === id)!, t)).map((t) => perCredit(t, id)));
+    expect(max("claude-sonnet-5-5")).toBeCloseTo(0.04817, 4);
+    expect(max("claude-opus-5-5")).toBeCloseTo(0.0515, 4);
   });
 
-  it("chat drafts on another model keep the floor cold at every size, with no exemption", () => {
+  it("the watch list on picks: no model is above 95% of the ceiling cold on any type", () => {
+    const near = pickable.flatMap((m) => TASK_TYPES.filter((t) => modelAllowsTask(m, t) && perCredit(t, m.id) > 0.95 * ceiling).map((t) => `${m.id}:${t}`));
+    expect(near).toEqual([]);
+  });
+
+  it("chat drafts on a model other than the type's writer keep the floor cold at every size, with no exemption", () => {
     const over: string[] = [];
-    for (const m of pickable.filter((x) => x.id !== PRICED_AT.generate)) {
-      for (const t of DRAFT_TYPES.filter((t) => modelAllowsTask(m, t))) {
+    for (const m of pickable) {
+      for (const t of DRAFT_TYPES.filter((t) => modelAllowsTask(m, t) && TASK_MODELS[t].write !== m.id)) {
         for (const n of [1, 2, 3]) {
-          const charged = creditsFor(draftCredits(t, n), m.id, "generate");
-          const e = estimateBatch(t, { items: n, credits: charged, cache: "cold", model: m.id });
-          if (e.usdPerCredit > ceiling) over.push(`${m.id} ${t} x${n}: ${usd(e.usdPerCredit)} per credit at ${charged}`);
+          const c = creditsFor(draftCredits(t, n), m.id, "generate", t);
+          const e = estimateBatch(t, { items: n, credits: c, cache: "cold", model: m.id });
+          if (e.usdPerCredit > ceiling) over.push(`${m.id} ${t} x${n}: ${usd(e.usdPerCredit)} per credit at ${c}`);
         }
       }
     }

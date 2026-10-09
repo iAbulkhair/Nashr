@@ -17,6 +17,7 @@ import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as profileRoute from "@/app/api/profile/route";
 import * as adminUser from "@/app/api/admin/users/[email]/route";
 import BillingPage from "@/app/[lang]/app/billing/page";
+import { adminConsoleSrc } from "./helpers/admin-console";
 
 /**
  * The founder's answers of 2026-10-02 to PR #239's open questions, rules 460-464 in docs/system/tests.md:
@@ -359,7 +360,7 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
   });
 
   it("the console shows the amount, sends the credits it showed and one request id through adminFetch; Payments shows the refund", () => {
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const src = adminConsoleSrc();
     expect(src).toContain('import { unusedRefundSar } from "@/lib/topups";');
     expect(src).toContain("if (!confirm(S.confirmRefund(l.left, l.credits, sarText(unusedRefundSar(l))))) return;");
     expect(src).toContain('const ask = { email: u.email, action: "refund", id: l.id, credits: l.left, on: on.trim(), ref };');
@@ -440,7 +441,7 @@ describe("a refund that stopped halfway can be finished, and a pack's missing pa
     const { customer, partner, lot } = await stopped();
     expect((await payments(customer))[lot.paymentId!].commission, "the full commission before it is finished").toEqual({ partner, sar: 45 });
     expect((await detail(customer)).unfinishedRefunds, "the console is told which pack to finish").toEqual([lot.id]);
-    // Exactly what AdminConsole's `finishRefund` posts.
+    // Exactly what the Users section's `finishRefund` posts (src/components/admin/Users.tsx).
     const body = { email: customer, action: "refund", id: lot.id, finish: true };
     const res = await post(body);
     expect(res.status).toBe(200);
@@ -463,7 +464,7 @@ describe("a refund that stopped halfway can be finished, and a pack's missing pa
     expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([409, "not_refunded"]);
     expect((await lotOf(email, l.id))!).toMatchObject({ left: 100 });
     expect((await lotOf(email, l.id))!.refund).toBeUndefined();
-    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const src = adminConsoleSrc();
     expect(src).toContain('body: JSON.stringify({ email: u.email, action: "refund", id: l.id, finish: true })');
     expect(src).toContain("sel.unfinishedRefunds?.includes(l.id) && ");
     expect(src).toContain('finishRefund: "Finish refund"');

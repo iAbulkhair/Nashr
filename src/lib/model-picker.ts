@@ -17,6 +17,11 @@ export type PickerRowView = { id: string; label: { ar: string; en: string }; tie
 export type ModelsView = {
   models: PickerRowView[];
   multipliers: Record<Surface, Record<string, number>>;
+  /**
+   * The generation multiplier per task type and model id (rule 902): relative to that type's own writer, so it differs by
+   * type. Only the types a model may run. Absent from an older server's answer: the picker then shows `multipliers.generate`.
+   */
+  generateByTask?: Record<string, Record<string, number>>;
   chatUnits: Record<string, number>;
   chinaConfirmed: boolean;
 };
@@ -49,10 +54,29 @@ export function readModelsView(x: unknown): ModelsView | null {
   if (!isObj(x) || !Array.isArray(x.models) || !x.models.every(isRow)) return null;
   const m = x.multipliers;
   if (!isObj(m) || !isNumMap(m.chat) || !isNumMap(m.generate) || !isNumMap(x.chatUnits) || typeof x.chinaConfirmed !== "boolean") return null;
+  const g = x.generateByTask;
+  if (g !== undefined && (!isObj(g) || !Object.values(g).every(isNumMap))) return null;
   return x as ModelsView;
 }
 
 const own = (o: Record<string, number>, k: string): number | undefined => (Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
+const usable = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x) && x > 0;
+
+/**
+ * A generation pick's multiplier as the brand picker shows it. A brand's pick covers every task type and each type is
+ * priced relative to its own writer (rule 902), so it is the range over the types the model may run: "x1" when they all
+ * agree, "x0.5–1" when they do not. Without `generateByTask` (an older server), the single `multipliers.generate`.
+ */
+function generateMultiplier(view: ModelsView, id: string): string | null {
+  if (view.generateByTask === undefined) {
+    const x = own(view.multipliers.generate, id);
+    return usable(x) ? formatMultiplier(x) : null;
+  }
+  const xs = Object.values(view.generateByTask).map((row) => own(row, id)).filter(usable);
+  if (xs.length === 0) return null;
+  const lo = Math.min(...xs), hi = Math.max(...xs);
+  return lo === hi ? formatMultiplier(lo) : `${formatMultiplier(lo)}–${formatMultiplier(hi).slice(1)}`;
+}
 
 /**
  * The list for one surface: Automatic first, then each row the server sent with a multiplier for this surface. Chat
@@ -63,10 +87,10 @@ export function pickerOptions(view: ModelsView, surface: Surface, lang: "ar" | "
   const auto: PickerOption = { id: null, label: autoLabel, tier: null, china: false, multiplier: null, units: null };
   const rows = view.models.flatMap((r): PickerOption[] => {
     if (surface === "chat" && !r.tools) return [];
-    const x = own(view.multipliers[surface], r.id);
-    if (typeof x !== "number" || !Number.isFinite(x) || x <= 0) return [];
+    const x = surface === "generate" ? generateMultiplier(view, r.id) : usable(own(view.multipliers.chat, r.id)) ? formatMultiplier(own(view.multipliers.chat, r.id)!) : null;
+    if (x === null) return [];
     const u = surface === "chat" ? own(view.chatUnits, r.id) : undefined;
-    return [{ id: r.id, label: r.label[lang], tier: r.tier, china: r.hosting === "china", multiplier: formatMultiplier(x), units: typeof u === "number" && Number.isFinite(u) ? u : null }];
+    return [{ id: r.id, label: r.label[lang], tier: r.tier, china: r.hosting === "china", multiplier: x, units: typeof u === "number" && Number.isFinite(u) ? u : null }];
   });
   return [auto, ...rows];
 }

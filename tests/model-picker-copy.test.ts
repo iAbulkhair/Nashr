@@ -252,6 +252,21 @@ describe("ruling 1: multipliers come from the server, per surface and per model 
     expect(pickerOptions(v, "generate", "en", M.en.auto).map((o) => o.id)).toEqual([null, "w-std"]);
   });
 
+  it("with generateByTask (rule 902) the brand list shows the range over the types the model may run; chat is unchanged", () => {
+    const v = view({ generateByTask: { article: { "w-std": 1, "cn-eco": 0.35 }, social: { "w-std": 0.45, "cn-eco": 0.35 }, ads: { "w-std": 0.45, "cn-eco": Number.NaN } } });
+    const gen = pickerOptions(v, "generate", "en", M.en.auto);
+    expect(gen.find((o) => o.id === "w-std")!.multiplier).toBe("x0.45–1");
+    expect(gen.find((o) => o.id === "cn-eco")!.multiplier).toBe("x0.35");
+    // A model with no type it may run is left out, as one with no multiplier is.
+    expect(gen.map((o) => o.id)).toEqual([null, "w-std", "cn-eco"]);
+    expect(pickerOptions(v, "chat", "en", M.en.auto).find((o) => o.id === "w-std")!.multiplier).toBe("x1.25");
+    // An older server's answer has no generateByTask: the single multipliers.generate, as before.
+    expect(pickerOptions(view(), "generate", "en", M.en.auto).find((o) => o.id === "w-std")!.multiplier).toBe("x0.45");
+    // A generateByTask that is not a map of number maps is a bad answer.
+    for (const bad of [[], "x", { article: "x" }, { article: { "w-std": "1" } }]) expect(readModelsView({ ...view(), generateByTask: bad }), JSON.stringify(bad)).toBeNull();
+    expect(readModelsView(v)).toEqual(v);
+  });
+
   it("chat units read 'counts as N messages' only above 1, in both languages, with the Arabic dual and plural forms", () => {
     expect(unitsText(1, "en", M.en.units)).toBeNull();
     expect(unitsText(null, "en", M.en.units)).toBeNull();
