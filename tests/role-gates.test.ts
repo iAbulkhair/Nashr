@@ -142,7 +142,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
-  "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read"),
+  "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
   "DELETE /api/connect/[provider]": g("admin", "connectors"),
   "POST /api/connect/[provider]/key": g("admin", "connectors"),
   "POST /api/onboard": g("admin", "onboard"),

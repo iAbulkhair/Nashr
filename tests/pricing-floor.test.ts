@@ -23,6 +23,7 @@ import { CORE_FILES, memoryBlock, writeFile } from "@/lib/files";
 import { db } from "@/lib/db";
 import type { Brand } from "@/lib/brand";
 import { newUser } from "./helpers/session";
+import { X_MAX_POSTS, X_READ_CREDITS, X_READ_USD } from "@/lib/connectors/x";
 
 /**
  * Rule 241: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
@@ -555,5 +556,18 @@ describe("what each chat model's ceiling leaves for the answer, from the real ch
     const c = cliff(OPUS);
     expect(fit(OPUS, c, V, newest).maxTokens).toBe(CHAT_MIN_OUT);
     expect(fit(OPUS, c + 1, V, newest).maxTokens).toBe(0);
+  });
+});
+
+describe("X reads are under the ceiling too (rule 745)", () => {
+  it("an X refresh costs less than one credit, with and without VAT (745)", () => {
+    // One user read and at most X_MAX_POSTS posts, at X's list prices on 2026-10-08 (docs/system/costs.md 3.2).
+    const usd = (X_READ_USD.user + X_MAX_POSTS * X_READ_USD.post) / X_READ_CREDITS;
+    expect(usd).toBeCloseTo(0.06, 6);
+    expect(usd).toBeLessThanOrEqual(maxCostPerCreditUsd());
+    expect(usd).toBeLessThanOrEqual(maxCostPerCreditUsd(undefined, undefined, true));
+    expect(X_READ_CREDITS).toBe(1);
+    expect(X_MAX_POSTS).toBeGreaterThanOrEqual(5);
+    expect(X_MAX_POSTS).toBeLessThanOrEqual(10);
   });
 });

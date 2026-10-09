@@ -6,6 +6,8 @@ import { accountOf as account, isComposio, listOf, pick } from "./composio-shape
 import { accountMeta } from "./ads";
 import { adAccountsVia } from "./ads-via-composio";
 import { clean } from "../perf-import";
+import { CHANNEL_ID } from "../social-read/youtube";
+import { PAGE_ID } from "../social-read/facebook";
 
 export { isComposio, pick };
 
@@ -171,14 +173,17 @@ type Page = { id: string; name: string };
 /** Facebook: the Pages the account manages, names only. `fields` is fixed so no Page token is ever returned. */
 async function managedPages(scope: string, acc: string): Promise<Page[]> {
   const r = await composioRead(scope, "facebook", "FACEBOOK_LIST_MANAGED_PAGES", { fields: "id,name", limit: 50 }, acc);
-  return listOf(r).map((p) => ({ id: String(p.id), name: typeof p.name === "string" ? p.name : String(p.id) })).filter((p) => /^\d+$/.test(p.id));
+  return listOf(r).map((p) => ({ id: String(p.id), name: typeof p.name === "string" ? p.name : String(p.id) })).filter((p) => PAGE_ID.test(p.id));
 }
 
-/** GA4: the properties the login can read, `properties/{digits}` only. */
+/** GA4: the properties the login can read, `properties/{digits}` only; a name is one clean line of 80 (rule 734). */
 async function gaProperties(scope: string, acc: string): Promise<Page[]> {
   const r = await composioRead(scope, "google_analytics", "GOOGLE_ANALYTICS_LIST_ACCOUNT_SUMMARIES", { pageSize: 50 }, acc);
   return listOf(r, "propertySummaries").flatMap((a) => (Array.isArray(a.propertySummaries) ? a.propertySummaries : []) as Record<string, unknown>[])
-    .map((p) => ({ id: String(p.property ?? ""), name: typeof p.displayName === "string" ? p.displayName.slice(0, 80) : String(p.property ?? "") }))
+    .map((p) => {
+      const id = String(p.property ?? "");
+      return { id, name: (typeof p.displayName === "string" ? clean(p.displayName, 80) : "") || id };
+    })
     .filter((p) => /^properties\/\d+$/.test(p.id));
 }
 
@@ -210,6 +215,8 @@ async function adminPages(scope: string, acc: string): Promise<Org[]> {
 }
 
 const metaLabel = (pageName?: string, ig?: string) => [pageName, ig ? `@${ig}` : ""].filter(Boolean).join(" · ") || "Meta";
+/** The Google record's label: the GA4 property's name and the Search Console site without its scheme. */
+const googleLabel = (meta: Record<string, string>) => [meta.gaName, meta.gscSite?.replace(/^sc-domain:|^https?:\/\/|\/$/g, "")].filter(Boolean).join(" · ") || "Google";
 
 /**
  * The record after one toolkit was connected and verified (composioVerify). Starts a new Composio record, or adds the
@@ -273,13 +280,13 @@ export async function connectViaComposio(scope: string, provider: string, toolki
   }
   if (toolkit === "youtube") {
     const ch = listOf(await composioRead(scope, "youtube", "YOUTUBE_LIST_CHANNELS", { part: "snippet", mine: true, maxResults: 5 }, accountId), "snippet")
-      .find((x) => typeof x.id === "string" && /^UC[\w-]{10,}$/.test(x.id));
+      .find((x) => typeof x.id === "string" && CHANNEL_ID.test(x.id));
     if (!ch) throw new Error("no_youtube_channel");
     meta.channelId = String(ch.id);
     const snip = ch.snippet as Record<string, unknown> | undefined;
     meta.account = (typeof snip?.title === "string" ? snip.title : "YouTube").slice(0, 80);
   }
-  if (toolkit === "metaads" || toolkit === "snapchat" || toolkit === "googleads" || toolkit === "tiktok_ads") {
+  if (toolkit === "metaads" || toolkit === "snapchat" || toolkit === "googleads" || toolkit === "tiktok_ads" || toolkit === "linkedin_ads") {
     // Read only: the ad accounts this login can read, the first chosen until the owner picks another (select_ad_account).
     const accounts = await adAccountsVia(scope, provider, accountId);
     if (!accounts.length) throw new Error("no_ad_account");
@@ -302,7 +309,7 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     if (sites.length > 1) meta.gscSites = JSON.stringify(sites.slice(0, 50));
     else delete meta.gscSites;
   }
-  if (provider === "google") meta.account = [meta.gaName, meta.gscSite?.replace(/^sc-domain:|^https?:\/\/|\/$/g, "")].filter(Boolean).join(" · ") || "Google";
+  if (provider === "google") meta.account = googleLabel(meta);
   // A reconnected toolkit leaves its old Composio account behind; it is revoked, quietly, after the new one is in hand.
   if (before && before !== accountId) await composioRevoke(scope, before).catch(() => console.error("composio revoke of replaced account failed"));
   return { ...base, meta, expiresAt: undefined };
@@ -328,6 +335,33 @@ export function selectOrgVia(c: Connection, org: string): Connection | null {
   try { orgs = JSON.parse(c.meta?.liOrgs ?? "[]") as Org[]; } catch { return null; }
   if (!Array.isArray(orgs) || !orgs.some((o) => o?.urn === org)) return null;
   return { ...c, meta: { ...c.meta, liOrg: org, liPostAs: "me" } };
+}
+
+/**
+ * Choose the GA4 property or the Search Console site whose figures are read (rule 734). The id must be one listed at
+ * connect time (`meta.gaProperties`, `meta.gscSites`, stored only when there were two or more); a list that does not
+ * parse lists nothing. The label is rebuilt as at connect.
+ */
+export function selectPropertyVia(c: Connection, kind: "ga4" | "gsc", id: string): Connection | null {
+  const meta: Record<string, string> = { ...c.meta };
+  try {
+    if (kind === "ga4") {
+      const props = JSON.parse(c.meta?.gaProperties ?? "[]") as Page[];
+      const p = Array.isArray(props) ? props.find((x) => x?.id === id) : undefined;
+      if (!p) return null;
+      meta.gaProperty = p.id;
+      // A list stored before names were cleaned is cleaned here too (rule 734).
+      meta.gaName = (typeof p.name === "string" ? clean(p.name, 80) : "") || p.id;
+    } else {
+      const sites = JSON.parse(c.meta?.gscSites ?? "[]") as string[];
+      if (!Array.isArray(sites) || !sites.includes(id)) return null;
+      meta.gscSite = id;
+    }
+  } catch {
+    return null;
+  }
+  meta.account = googleLabel(meta);
+  return { ...c, meta };
 }
 
 /** The chosen company page's name, as listed at connect time; "" when it is not listed. */

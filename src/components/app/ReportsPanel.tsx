@@ -10,7 +10,7 @@ import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
 import { kpiDelta } from "@/lib/kpi-delta";
-import { PLATFORM_METRICS, reportSources, socialRead } from "@/lib/report-sources";
+import { PLATFORM_METRICS, reportSources, socialRead, type SiteChoices } from "@/lib/report-sources";
 import { PROVIDER_NAME, SALES_PROVIDERS, moneyText, type SalesProvider, type SalesSnapshot } from "@/lib/connectors/sales";
 import { dateFormat } from "@/lib/dates";
 import type { PerfSnapshot } from "@/lib/perf-import";
@@ -18,15 +18,22 @@ import PerformanceImport from "./PerformanceImport";
 import SiteStats from "./SiteStats";
 import type { SiteSnapshot } from "@/lib/site-stats";
 import SocialStats from "./SocialStats";
-import type { SocialSnapshot } from "@/lib/social-stats";
+import type { StoredSocial, XStats } from "@/lib/social-stats";
+import type { NotReadItem, NotReadReason } from "@/lib/not-read";
 import { READS_ADS } from "@/lib/connectors/working";
 import Scribble from "@/components/Scribble";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
+/**
+ * Not-read reasons that ask nothing of the owner on this page: the ones every workspace that has not connected anything
+ * holds, and `publish_only` (a direct Meta record that publishes, which no button here can make readable). Alone they do
+ * not open the social card.
+ */
+export const QUIET: readonly NotReadReason[] = ["not_connected", "publish_only", "closed_to_apps", "waiting_approval"];
 
 const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "videos", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
-export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, liNoPage = false, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: Instagram and LinkedIn page results (src/lib/social-stats.ts). */ social?: SocialSnapshot | null; /** `liNeedsPage`: LinkedIn is connected through Composio with no company page chosen. */ liNoPage?: boolean; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, liNoPage = false, x = null, notRead = [], socialVia = null, xConnected = false, siteChoices = null, canRead = false, canGenerate = false, canConnectors = false, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: every platform part from the last read, or a snapshot from before v2 (src/lib/social-stats.ts). */ social?: StoredSocial | null; /** `liNeedsPage`: LinkedIn is connected through Composio with no company page chosen. */ liNoPage?: boolean; /** `xReadOf(getXStats)`, without the account's id: X's last paid read (rule 744). */ x?: XStats | null; /** `notReadOf` over the page's own reads (rule 738). */ notRead?: NotReadItem[]; /** `socialRefreshPath`: the provider path the social Refresh posts to. */ socialVia?: string | null; /** `xDirect`: X is connected directly. */ xConnected?: boolean; /** `siteChoices`: the GA4 properties and Search Console sites listed at connect. */ siteChoices?: SiteChoices | null; /** `can(u, "read")`: the free refreshes (rule 735). */ canRead?: boolean; /** `can(u, "generate")`: X's paid refresh (rule 744). */ canGenerate?: boolean; /** `can(u, "connectors")`: the property choice (rule 734). */ canConnectors?: boolean; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -101,8 +108,12 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       </div>
       <p className="mt-2 font-mono text-xs text-muted" dir="ltr">{k.window.from} → {k.window.to}</p>
       <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} canImport={perfImport} canDelete={perfDelete} />
-      {site && (site.ga || site.gsc) && <SiteStats lang={lang} site={site} />}
-      {(social || liNoPage) && <SocialStats lang={lang} social={social} liNoPage={liNoPage} />}
+      {/* A Composio Google record opens the card before its first read, or after a read that failed for both parts, so
+          the property choice and the refresh stay reachable (rules 734, 735). */}
+      {((site && (site.ga || site.gsc)) || siteChoices) && <SiteStats lang={lang} site={site} properties={siteChoices ?? undefined} canChoose={canConnectors} canRefresh={canRead} />}
+      {(social || x || liNoPage || socialVia || xConnected || notRead.some((i) => !QUIET.includes(i.reason))) && (
+        <SocialStats lang={lang} social={social} x={x} notRead={notRead} liNoPage={liNoPage} canRefresh={canRead} socialVia={socialVia} canRefreshX={canGenerate} xConnected={xConnected} noCredits={noCreditsText(t.generate, owner, topups)} />
+      )}
       {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} failedAt={syncFailure?.provider === salesProvider ? syncFailure.at : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>

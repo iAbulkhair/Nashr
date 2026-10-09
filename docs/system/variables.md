@@ -109,7 +109,7 @@ Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `g
 | Name | Purpose | Secret |
 |---|---|---|
 | `COMPOSIO_API_KEY` | Server-side key for Composio's API | Yes |
-| `COMPOSIO_PROVIDERS` | Comma list of providers routed through Composio (`meta`, `x`, `linkedin`, `tiktok`; drafts only: `whatsapp`, `youtube`; read only: `meta_ads`, `snapchat`, `google_ads`, `tiktok_ads`, `google`). Unset: none, and Meta and X keep their direct apps | No |
+| `COMPOSIO_PROVIDERS` | Comma list of providers routed through Composio (`meta`, `x`, `linkedin`, `tiktok`; drafts only: `whatsapp`, `youtube`; read only: `meta_ads`, `snapchat`, `google_ads`, `tiktok_ads`, `linkedin_ads`, `google`). Unset: none, and Meta and X keep their direct apps | No |
 | `COMPOSIO_AUTH_FACEBOOK` | Composio auth config id for the Facebook toolkit | No, keep internal |
 | `COMPOSIO_AUTH_INSTAGRAM` | Composio auth config id for the Instagram toolkit | No, keep internal |
 | `COMPOSIO_AUTH_TWITTER` | Composio auth config id for the X toolkit | No, keep internal |
@@ -121,6 +121,7 @@ Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `g
 | `COMPOSIO_AUTH_SNAPCHAT` | Composio auth config id for the Snapchat Ads toolkit (read only) | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLEADS` | Composio auth config id for the Google Ads toolkit (read only) | No, keep internal |
 | `COMPOSIO_AUTH_TIKTOK_ADS` | Composio auth config id for the TikTok Ads toolkit (read only) | No, keep internal |
+| `COMPOSIO_AUTH_LINKEDIN_ADS` | Composio auth config id for the LinkedIn Ads toolkit (read only, rule 743), set up with Thakeen's own LinkedIn app that has the Advertising API product, separate from the page toolkit's app | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLE_ANALYTICS` | Composio auth config id for the Google Analytics 4 toolkit (read only) | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLE_SEARCH_CONSOLE` | Composio auth config id for the Search Console toolkit (read only) | No, keep internal |
 

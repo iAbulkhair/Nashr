@@ -161,6 +161,24 @@ and transfer are extra, billed by Vercel and not metered per render or per tenan
 - A failure the provider billed us for is `store_failed` (the result existed but could not be copied three times): its
   cost is recorded. A `timeout` is not counted, because we cannot know whether it was billed.
 
+## 3.2 X reads
+
+Written 2026-10-08 (rules 744, 745). X bills its API per read: $0.010 for a user and $0.005 for a post, X's list prices
+on 2026-10-08 (`X_READ_USD` in `src/lib/connectors/x.ts`). A refresh is never scheduled: it runs only when someone in the
+workspace clicks "Refresh X" (`sync_x`), and the account pays one credit for it, charged before X is asked.
+
+| Read | Requests | Our cost at most | Credits | $ per credit |
+|---|---|---|---|---|
+| One X refresh (`refreshX`) | 2: the user, then one page of at most 10 posts (`X_MAX_POSTS`) | $0.010 + 10 × $0.005 = $0.060 | 1 (`X_READ_CREDITS`) | 0.060 |
+
+- $0.060 is under the ceiling of section 4, $0.07104 a credit, and under the VAT-inclusive $0.0618; the floor test
+  (`tests/pricing-floor.test.ts`, rule 745) checks both and keeps `X_MAX_POSTS` between 5 and 10.
+- At most one paid read per workspace per UTC day: a click on a day already read returns the stored read free, and two
+  clicks at once debit one credit. X deduplicates the same reads within a UTC day and bills only responses that return
+  data, so a refused or failed read, which refunds the credit, costs at most the user read X already answered.
+- The prices are X's list prices, not measured: the founder confirms the field names and the bill with one real call on
+  Preview before the pull request leaves draft (spec C3).
+
 ## 4. Where the margin actually is
 
 Rewritten on 2026-09-30 for pricing phase 1. Revenue per credit comes from `PLAN_PRICE_SAR` and `PLAN_CREDITS` in
@@ -297,6 +315,9 @@ left, the console's cost per message) are these units from then on; the copy tha
   are charged in `startMedia` with the item's owning agent and its cap); chat messages are not any agent's work and never
   count against a cap (a message past the allowance is billed by `settleChatOverflow`, not through `charge`, so no cap
   reads it), so chat is bounded by its own allowance and ceiling below.
+- **X reads** (since 2026-10-08, rule 744) are bounded in code: no schedule reads X, a click costs one credit of the
+  account charged before X is asked, under Dana's monthly cap, at most once per workspace per UTC day, refunded once on
+  a failure, and never for a Composio-routed X record; one refresh is two requests (section 3.2).
 - **Chat** (since 2026-10-01, pricing phase 2) is bounded in code in four ways, on the web route and on MCP `ask_noor`
   alike; the allowance and the burst limit are checked before the owner's message is saved, the other two before each
   model call. An ended trial (`trialOver`) gets no turn at all, before any of them (402 `trial_over`, rule 330), so it
