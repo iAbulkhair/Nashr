@@ -6,6 +6,7 @@ import { ALL_VIDEO_MODELS, entitlementView, entitlements, grantActive, isUtcDay,
 import { getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { chatStatus } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 import { getMember, saveMember, seatsUsed } from "@/lib/team";
 import { chatTrialKey } from "@/lib/usage";
 import { newMember, newUser } from "./helpers/session";
@@ -150,7 +151,7 @@ describe("entitlementView (rule 784)", () => {
     expect(v.used.credits).toBe(37);
     expect(v.used.credits).toBe(u.credits);
     expect(v.used.seats).toBe(await seatsUsed(u.email));
-    expect(v.used.chat).toEqual(await chatStatus(u));
+    expect(v.used.chat).toEqual(await chatStatus(u, route("chat").model));
     expect(v.used.chat.counted).toBe(4);
     expect(v.resetsAt).toBeNull();
     expect(v.grants.video).toEqual({ ...grant(day(-2)).video, expired: true });
