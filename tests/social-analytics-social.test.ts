@@ -10,6 +10,7 @@ import { publishOnce } from "@/lib/publish-once";
 import * as publish from "@/lib/connectors/publish";
 import { deleteConnection, getConnection, listConnections, saveConnection, type Connection } from "@/lib/connectors/store";
 import * as fresh from "@/lib/connectors/fresh";
+import { connectedTargets } from "@/lib/connectors/targets";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { EMPTY_TOTALS, PLATFORMS, READERS, SOCIAL_DEADLINE_MS, SOCIAL_KEY, SOCIAL_PUB_KEY, beforeDeadline, getSocialSnapshot, holdsSocial, rangeBefore, socialDataBlock, socialForPage, splitDays, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart, type SocialSnapshot } from "@/lib/social-stats";
 import { connectedSources, reportSources, socialRead } from "@/lib/report-sources";
@@ -953,13 +954,15 @@ describe("the not-read list, built in code (rule 738)", () => {
     ]);
     let r = reasons(await notRead(scope));
     expect(r).toMatchObject({ instagram: "publish_only", facebook: "publish_only", youtube: "not_connected" });
-    // A direct Meta record with no Page publishes to Instagram only; a direct LinkedIn record neither publishes nor is read.
+    // A direct Meta record with no Page publishes nothing (connectedTargets lists Instagram only beside the Page), and a
+    // direct LinkedIn record neither publishes nor is read.
     await Promise.all([
       saveConnection(scope, { provider: "meta", data: { token: "t" }, meta: { igId: "1784" }, connectedAt: NOW.toISOString() }),
       saveConnection(scope, { provider: "linkedin", data: { token: "t" }, meta: { author: "urn:li:person:abc" }, connectedAt: NOW.toISOString() }),
     ]);
     r = reasons(await notRead(scope));
-    expect(r).toMatchObject({ instagram: "publish_only", facebook: "not_connected", linkedin: "not_connected" });
+    expect(r).toMatchObject({ instagram: "not_connected", facebook: "not_connected", linkedin: "not_connected" });
+    expect(connectedTargets([{ provider: "meta", meta: { igId: "1784" } }]), "the same rule as the publish targets").not.toContain("instagram");
     await deleteConnection(scope, "linkedin");
     // Right after the deploy a workspace holds a v1 snapshot: nothing in it is a read, and the held Instagram account says
     // its read has not succeeded yet.

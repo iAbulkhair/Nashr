@@ -175,7 +175,7 @@ add or drop one". The Reports card renders the same items from its own strings. 
 `choose_page`, `refresh_x` (X, 1 credit), `x_direct_only`, `read_failed`, `analytics_scope` (YouTube public counts only),
 `closed_to_apps` (Snapchat organic), `waiting_approval` (Google Business Profile), and `publish_only` (amended
 2026-10-09, whole-phase review: a record that publishes to the platform but that no reader reads, such as a direct Meta
-record's Instagram account or Page, is "connected for publishing only", never "not connected"). The Reports page builds
+record's chosen Page and the Instagram account linked to it, is "connected for publishing only", never "not connected"). The Reports page builds
 the list with `notReadOf` over the reads it already holds for its cards, so each key is read once.
 
 A7. **Dana's routine gate is not widened.** The gate `activity` (`routines.ts:48-53`, used only by

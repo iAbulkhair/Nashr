@@ -95,12 +95,14 @@ function held(p: NotReadPlatform, c: Conn): boolean {
 
 /**
  * Whether the record publishes to the platform although no reader reads it (`publish_only`): it carries the platform and
- * is a direct Meta record (the Instagram account or the Page it posts to; production connects Meta directly while
- * Composio is off), or a Composio social record whose stored id no reader accepts. A direct Google, LinkedIn, YouTube or
- * TikTok record neither publishes nor is read (publish.ts has no direct code for them), so it stays `not_connected`.
+ * is a Composio social record whose stored id no reader accepts, or a direct Meta record with a Page chosen (the Page,
+ * and the Instagram account linked to it, as `connectedTargets` lists them; production connects Meta directly while
+ * Composio is off). A direct Meta record with no Page publishes nothing, and a direct Google, LinkedIn, YouTube or TikTok
+ * record neither publishes nor is read (publish.ts has no direct code for them), so both stay `not_connected`.
  */
 function publishesOnly(p: NotReadPlatform, c: Conn): boolean {
-  return isSocial(p) && carries(p, c) && !held(p, c) && (isComposio(c) || c.provider === "meta");
+  if (!isSocial(p) || !carries(p, c) || held(p, c)) return false;
+  return isComposio(c) || (c.provider === "meta" && !!c.meta?.pageId);
 }
 
 /**
