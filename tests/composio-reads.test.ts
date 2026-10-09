@@ -185,11 +185,12 @@ describe("ad results (rule 655)", () => {
 
 describe("site figures for Dana (rule 656)", () => {
   const google = (meta: Record<string, string> = {}) => via("google", { google_analytics: "ca_ga", google_search_console: "ca_gsc" }, { gaProperty: "properties/987", gaName: "ward.sa", gscSite: "sc-domain:ward.sa", ...meta });
+  // GA4 appends the date range's name after the requested dimension ("cur": the window; rule 733).
   const gaReport = (args: Record<string, unknown>) => (args.dimensions as { name: string }[])[0].name === "landingPage"
-    ? ok({ rows: [{ dimensionValues: [{ value: "/oud" }], metricValues: [{ value: "300" }, { value: "6" }] }] })
+    ? ok({ rows: [{ dimensionValues: [{ value: "/oud" }, { value: "cur" }], metricValues: [{ value: "300" }, { value: "6" }] }] })
     : ok({ rows: [
-      { dimensionValues: [{ value: "Organic Search" }], metricValues: [{ value: "600" }, { value: "500" }, { value: "0.5" }, { value: "12" }, { value: "1500.5" }] },
-      { dimensionValues: [{ value: "Paid Social" }], metricValues: [{ value: "400" }, { value: "380" }, { value: "0.25" }, { value: "3" }, { value: "0" }] },
+      { dimensionValues: [{ value: "Organic Search" }, { value: "cur" }], metricValues: [{ value: "600" }, { value: "500" }, { value: "0.5" }, { value: "12" }, { value: "1500.5" }] },
+      { dimensionValues: [{ value: "Paid Social" }, { value: "cur" }], metricValues: [{ value: "400" }, { value: "380" }, { value: "0.25" }, { value: "3" }, { value: "0" }] },
     ] });
 
   it("totals GA4 and Search Console for this workspace only, and keeps one part when the other fails", async () => {
@@ -247,6 +248,8 @@ describe("site figures for Dana (rule 656)", () => {
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = ok({ rows: [] });
     expect(await syncSiteIfDue(u.email, NOW)).toBe(true);
+    // Search Console returned no day: its figures are not read, never 0 (rule 737).
+    expect((await getSiteSnapshot(u.email))?.gsc).toMatchObject({ clicks: null, impressions: null, ctr: null, position: null });
     expect(await syncSiteIfDue(u.email, new Date(NOW.getTime() + 3600e3))).toBe(false);
 
     answers.GOOGLE_ANALYTICS_RUN_REPORT = { successful: false, error: "Unauthorized: token revoked" };

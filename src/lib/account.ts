@@ -9,7 +9,7 @@ import { forgetPartnerData } from "./partners";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
 import { chatTrialKey, usageMonthKeys } from "./usage";
-import { autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
+import { OWNER_SYNC_KEY, autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
 import { membersKey, wipeTeam } from "./team";
@@ -24,6 +24,8 @@ import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
 import { getConnection } from "./connectors/store";
 import { isComposio, revokeAll } from "./connectors/via-composio";
 import { AD_PROVIDERS } from "./connectors/ads";
+import { AD_STATS_SOURCES, ADSTATS_KEY } from "./ad-stats";
+import { XSTATS_KEY } from "./social-read/common";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -101,6 +103,8 @@ export async function wipeAccount(email: string) {
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
+      // When someone last pressed Refresh on the site or social results, which Dana's routine counts (8 days, rule 747).
+      OWNER_SYNC_KEY(s),
       // Follow-up markers that name this brand and live for weeks: the 80% cap warning (35 days) and a routine's run
       // (8 or 35 days), for this and the previous month or period. Left behind, a new account at the same address
       // would never get those follow-ups, and the deleted scope would stay in key names for a month.
@@ -115,12 +119,16 @@ export async function wipeAccount(email: string) {
       // Instagram and LinkedIn page results (src/lib/social-stats.ts): captions are the owner's or the public's text,
       // and the Instagram ids Thakeen published.
       `socialstats:${s}`, `socialpub:${s}`,
+      // The X account's last read, paid on a click (src/lib/x-stats.ts, rule 747): its posts' text is the owner's.
+      XSTATS_KEY(s),
       // The store's sales snapshot (orders, revenue, best sellers, abandoned carts) and its failure note (14 days).
       `storesales:${s}`, `storesyncfail:${s}`,
       // The latest campaign results, from an upload or an ad account (src/lib/perf-store.ts).
       `perfimport:${s}`,
       // Each ad account's last read time, one per ad platform.
       ...AD_PROVIDERS.map((p) => `adsync:${s}:${p}`),
+      // Each ad account's totals and its top ads by name, and the last upload's (src/lib/ad-stats.ts, rule 747).
+      ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });

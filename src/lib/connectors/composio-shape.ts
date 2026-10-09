@@ -30,6 +30,28 @@ export function pick(o: unknown, keys: string[], maxDepth = 4): string | undefin
   return undefined;
 }
 
+/**
+ * The first value under one of `keys` that `ok` accepts (any value by default), breadth-first, at most `maxDepth` levels
+ * down (five by default); undefined when there is none. The one search the readers share for a value Composio nests in
+ * its own keys: YouTube's `rows` and `columnHeaders`, TikTok's `cursor`, GA4's `dimensionHeaders`.
+ */
+export function findKey(o: unknown, keys: string[], ok: (v: unknown) => boolean = () => true, maxDepth = 5): unknown {
+  let level: unknown[] = [o];
+  for (let depth = 0; depth < maxDepth && level.length; depth++) {
+    const next: unknown[] = [];
+    for (const v of level) {
+      if (!v || typeof v !== "object") continue;
+      if (!Array.isArray(v)) {
+        const r = v as Record<string, unknown>;
+        for (const k of keys) if (k in r && ok(r[k])) return r[k];
+      }
+      next.push(...(Array.isArray(v) ? v : Object.values(v as Record<string, unknown>)));
+    }
+    level = next;
+  }
+  return undefined;
+}
+
 /** The first array of objects that carry `key` (an `id` by default), at most five levels down. */
 export function listOf(o: unknown, key = "id"): Record<string, unknown>[] {
   let level: unknown[] = [o];

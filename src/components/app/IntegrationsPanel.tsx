@@ -13,6 +13,15 @@ type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string
 type C = { provider: string; meta?: Record<string, string>; connectedAt: string; needsReconnect?: string };
 
 /**
+ * The note after a Meta Page choice (`select_page`) or a LinkedIn company page choice (`select_org`): a new page is read
+ * at once only while the workspace's hourly reads last (rules 735, 739), so a saved choice whose read waits says so; any
+ * other answer leaves no note.
+ */
+export function pageNote(g: Pick<AppDict["integrations"], "readLater">, j: { ok?: boolean; read?: boolean }): string {
+  return j.ok && j.read === false ? g.readLater : "";
+}
+
+/**
  * `manage` (owner, admin): connect, reconnect, disconnect, keys, page and ad-account choice, product import. Everyone
  * else sees the connections read-only and can still ask for an integration. Display only: the routes enforce it.
  */
@@ -29,6 +38,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
   const [shop, setShop] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
   const flash = sp.get("connected") ? `${g.connected}: ${sp.get("connected")}` : sp.get("error") ? `${g.verifyFailed} (${sp.get("error")})` : "";
 
   async function load() {
@@ -72,6 +82,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     const j = await res.json().catch(() => ({}));
     setBusy(false);
     if (!j.ok) alert(j.error ?? res.status);
+    else setNote(pageNote(g, j));
     await load();
     r.refresh();
   }
@@ -81,6 +92,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     const j = await res.json().catch(() => ({}));
     setBusy(false);
     if (!j.ok) alert(j.error ?? res.status);
+    else setNote(pageNote(g, j));
     await load();
     r.refresh();
   }
@@ -129,6 +141,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="integrationspanel-t1" />{g.title}</span></h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
       {flash && <p role="status" className="mt-3 rounded-lg bg-lilac p-3 text-sm text-ink">{flash}</p>}
+      {note && <p role="status" className="mt-3 rounded-lg bg-lilac p-3 text-sm text-ink">{note}</p>}
       <p className="mt-2 rounded-lg border border-ink/15 bg-lilac p-3 text-sm">{g.note}</p>
       {!manage && <ReadOnlyNote className="mt-2" text={t.readOnly.admin} />}
 

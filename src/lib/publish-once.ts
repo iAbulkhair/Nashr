@@ -63,6 +63,8 @@ export function mayHavePosted(e: unknown): boolean {
  * LinkedIn ids join a post to its results (social-stats.ts).
  */
 const KEEPS_ID: readonly string[] = ["wordpress", "instagram", "linkedin"];
+/** Platforms whose post ids join the workspace's own list, so a result read later can say the post came from Thakeen (rule 667). */
+const OWN_POSTS: readonly string[] = ["instagram", "facebook", "linkedin", "youtube", "tiktok", "x"];
 const quietly = (p: Promise<unknown>, what: string) => p.catch((e) => console.error(`publish ${what} failed`, e instanceof Error ? e.name : "error"));
 
 export async function publishOnce(scope: string, id: string, provider: string, opts: { again?: boolean; live?: boolean; check?: (t: Task) => Refusal | null; lockS?: number } = {}): Promise<PublishOnce> {
@@ -121,9 +123,9 @@ export async function publishOnce(scope: string, id: string, provider: string, o
     });
     // The post is recorded on the item, so the marker has done its job. A failed clear is only logged: the post went out
     // and is recorded, and a marker left behind makes the next attempt ask the owner, which errs on the safe side.
-    // Instagram's media id joins the workspace's own list, so a result read later can say the post came from Thakeen
+    // A social post's id joins the workspace's own list, so a result read later can say the post came from Thakeen
     // (social-stats.ts). Only logged on failure: the post went out and is recorded on the item.
-    await Promise.all([quietly(db.del(mk), "marker clear"), r.provider === "instagram" && r.id ? quietly(db.sadd(SOCIAL_PUB_KEY(scope), r.id), "post id") : null]);
+    await Promise.all([quietly(db.del(mk), "marker clear"), OWN_POSTS.includes(r.provider) && r.id ? quietly(db.sadd(SOCIAL_PUB_KEY(scope), r.id), "post id") : null]);
     return { ok: true, result: r, task: saved ?? t, approving };
   } finally {
     await quietly(db.unlock(lk), "lock release");

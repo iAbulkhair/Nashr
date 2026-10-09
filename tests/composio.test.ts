@@ -21,7 +21,8 @@ import * as connectRoute from "@/app/api/connect/[provider]/route";
 /**
  * Rules 645-652: publishing through Composio (src/lib/connectors/composio.ts, via-composio.ts). Composio's client is
  * replaced by a fake that records every call; the platforms' answers are given in the shapes Composio's tool schemas
- * describe, and `pick` reads them however deep they sit.
+ * describe, and `pick` reads them however deep they sit. Rule 749: the toolkit pins are the versions whose schemas
+ * were read, and the rule-652 importer check sees relative imports too.
  */
 type Exec = { slug: string; userId: string; accountId: string; args: Record<string, unknown> };
 type Answer = { data?: unknown; error?: string | null; successful: boolean } | (() => never);
@@ -349,10 +350,16 @@ describe("disconnecting (rule 651)", () => {
   });
 });
 
+/**
+ * Any import path that ends in `/composio` or `/via-composio`: `@/lib/connectors/…`, `./…` and `../connectors/…` alike,
+ * in double or single quotes, static (`from`) or dynamic (`import(…)`).
+ */
+const IMPORTS_COMPOSIO = /(?:from|import\()\s*["'][^"']*\/(?:composio|via-composio)["']/;
+
 describe("who can reach Composio (rule 652)", () => {
   const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) ? [p] : []; });
   it("only the connector layer, the connect routes and account deletion import it; no chat, MCP or agent code does", () => {
-    const importers = files("src").filter((f) => /from "(?:\.\/|@\/lib\/connectors\/|\.\/connectors\/)(?:composio|via-composio)"/.test(readFileSync(f, "utf8"))).sort();
+    const importers = files("src").filter((f) => IMPORTS_COMPOSIO.test(readFileSync(f, "utf8"))).sort();
     expect(importers).toEqual([
       "src/app/api/connect/[provider]/callback/route.ts",
       "src/app/api/connect/[provider]/route.ts",
@@ -363,6 +370,9 @@ describe("who can reach Composio (rule 652)", () => {
       "src/lib/connectors/registry.ts",
       "src/lib/connectors/via-composio.ts",
       "src/lib/site-stats.ts",
+      "src/lib/social-read/facebook.ts",
+      "src/lib/social-read/tiktok.ts",
+      "src/lib/social-read/youtube.ts",
       "src/lib/social-stats.ts",
     ]);
     expect(readFileSync("src/lib/connectors/composio-catalog.ts", "utf8")).not.toMatch(/^import /m);
@@ -384,5 +394,25 @@ describe("who can reach Composio (rule 652)", () => {
     expect(errorShape(new Error("ac_123 u-secret"))).toBe("Error");
     expect(errorShape("plain string")).toBe("error");
     expect(errorShape({ constructor: { name: "has space" }, status: "403", code: "not a code!" })).toBe("error");
+  });
+});
+
+describe("pins and the importer check (rule 749)", () => {
+  it("pins the toolkits whose schemas were read on 2026-10-08 (rule 749)", () => {
+    expect(TOOLKIT_VERSION).toMatchObject({ facebook: "20261008_00", youtube: "20261008_00", linkedin: "20260924_00", tiktok: "20260917_00", snapchat: "20260918_00", linkedin_ads: "20260826_00" });
+  });
+
+  it("the importer check also catches a relative import of the adapter (rule 749)", () => {
+    expect(IMPORTS_COMPOSIO.test('import { composioRead } from "../connectors/composio";')).toBe(true);
+    expect(IMPORTS_COMPOSIO.test('import { composioRead } from "./composio";')).toBe(true);
+    expect(IMPORTS_COMPOSIO.test('import { connectViaComposio } from "@/lib/connectors/via-composio";')).toBe(true);
+    expect(IMPORTS_COMPOSIO.test('import x from "./composio-shape";')).toBe(false);
+    expect(IMPORTS_COMPOSIO.test('import { TOOLKITS } from "./composio-catalog";')).toBe(false);
+    // A dynamic import and single quotes are imports too.
+    expect(IMPORTS_COMPOSIO.test('const { composioRead } = await import("./composio");')).toBe(true);
+    expect(IMPORTS_COMPOSIO.test("import { composioRead } from '../connectors/composio';")).toBe(true);
+    expect(IMPORTS_COMPOSIO.test("const v = await import('@/lib/connectors/via-composio');")).toBe(true);
+    expect(IMPORTS_COMPOSIO.test("import { TOOLKITS } from './composio-catalog';")).toBe(false);
+    expect(IMPORTS_COMPOSIO.test('const c = await import("./composio-catalog");')).toBe(false);
   });
 });

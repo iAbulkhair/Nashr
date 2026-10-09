@@ -14,12 +14,20 @@ import { clean, type Row } from "../perf-import";
  */
 export const META_ADS = "https://graph.facebook.com/v23.0";
 export const SNAP_ADS = "https://adsapi.snapchat.com/v1";
-/** google_ads and tiktok_ads connect only through Composio (src/lib/connectors/ads-via-composio.ts). */
-export const AD_PROVIDERS = ["meta_ads", "snapchat", "google_ads", "tiktok_ads"] as const;
+/** google_ads, tiktok_ads and linkedin_ads connect only through Composio (src/lib/connectors/ads-via-composio.ts). */
+export const AD_PROVIDERS = ["meta_ads", "snapchat", "google_ads", "tiktok_ads", "linkedin_ads"] as const;
 export type AdProvider = (typeof AD_PROVIDERS)[number];
 export const isAdProvider = (p: string): p is AdProvider => (AD_PROVIDERS as readonly string[]).includes(p);
 export type AdAccount = { id: string; name: string; currency?: string };
-export type AdPull = { rows: Row[]; range: { from: string; to: string }; platform: string; account: string; currency?: string };
+export type AdPull = {
+  rows: Row[]; range: { from: string; to: string }; platform: string; account: string; currency?: string;
+  /**
+   * Snapchat through Composio only: true when the per-ad read covered every ad of the account (the whole list read with
+   * no page left, no listed ad dropped as deleted or without an id, no more than SNAP_ADS_READ listed and no per-ad read
+   * skipped), so the window's figures are the account's (rule 733).
+   */
+  allAds?: boolean;
+};
 
 const DAYS = 30;
 export const MAX_ROWS = 2000;
@@ -45,6 +53,17 @@ export function adWindow(now = new Date()) {
   const start = new Date(end.getTime() - DAYS * 864e5);
   return { start, end, range: { from: day(start), to: day(new Date(end.getTime() - 864e5)) } };
 }
+/**
+ * The moment whose window is the 30 days before `now`'s: `adWindow(prevNow(now))` ends the day before
+ * `adWindow(now)` starts, back to back and the same length, so a previous period is read with the same reader, the same
+ * constant query and the same date checks (rule 733).
+ */
+export const prevNow = (now: Date) => new Date(now.getTime() - DAYS * 864e5);
+/**
+ * `totalsOnly` (the previous period, rule 733): the same results query, without the calls whose output only Noor's
+ * analysis uses, Meta's creative copy and Snapchat's ad names, since only that read's totals are kept.
+ */
+export type ReadOpts = { totalsOnly?: boolean };
 
 // ---------- Meta ----------
 
@@ -75,7 +94,7 @@ export function purchases(list: MetaAction[] | undefined): number | null {
   return null;
 }
 
-export async function metaRows(c: Connection, now = new Date()): Promise<AdPull> {
+export async function metaRows(c: Connection, now = new Date(), opts: ReadOpts = {}): Promise<AdPull> {
   const account = c.meta?.adAccount;
   if (!account || !/^act_\d+$/.test(account)) throw new Error("no_ad_account");
   const token = c.data.access_token;
@@ -93,7 +112,7 @@ export async function metaRows(c: Connection, now = new Date()): Promise<AdPull>
   // The ad's own words make the wording patterns work; one read for the ads on this page of results.
   const ids = [...new Set(out.map((x) => x.ad_id).filter((x): x is string => !!x && /^\d+$/.test(x)))].slice(0, 50);
   const copy = new Map<string, string>();
-  if (ids.length) {
+  if (ids.length && !opts.totalsOnly) {
     try {
       const j = await get<Record<string, { creative?: { body?: string; title?: string } }>>(`${META_ADS}/?ids=${ids.join(",")}&fields=creative%7Bbody,title%7D`, token, "meta_ads", "ads");
       for (const [id, v] of Object.entries(j)) copy.set(id, [v.creative?.title, v.creative?.body].filter(Boolean).join(" "));
@@ -117,14 +136,14 @@ type SnapStats = { impressions?: number; swipes?: number; spend?: number; conver
 /** Snap reports money in micro-currency: 1,000,000 is one unit of the account's currency. */
 export const micro = (v: unknown) => { const x = n(v); return x == null ? null : x / 1e6; };
 
-export async function snapRows(c: Connection, now = new Date()): Promise<AdPull> {
+export async function snapRows(c: Connection, now = new Date(), opts: ReadOpts = {}): Promise<AdPull> {
   const account = c.meta?.adAccount;
   if (!account || !/^[0-9a-f-]{36}$/i.test(account)) throw new Error("no_ad_account");
   const token = c.data.access_token;
   const w = adWindow(now);
-  // Names first: stats carry only ids.
+  // Names first: stats carry only ids. A totals-only read keeps the ids, which nothing shows.
   const names = new Map<string, string>();
-  let url: string | undefined = `${SNAP_ADS}/adaccounts/${account}/ads?limit=1000`;
+  let url: string | undefined = opts.totalsOnly ? undefined : `${SNAP_ADS}/adaccounts/${account}/ads?limit=1000`;
   for (let i = 0; url && i < PAGES; i++) {
     const j: { ads?: { ad?: { id: string; name?: string } }[]; paging?: { next_link?: string } } = await get(url, token, "snapchat", "ads");
     for (const a of j.ads ?? []) if (a.ad?.id) names.set(a.ad.id, a.ad.name ?? a.ad.id);
@@ -176,4 +195,4 @@ export function selectAdAccount(conn: Connection, id: string): Connection | null
 }
 
 /** Direct-OAuth records only; a Composio record is read by adRowsVia (perf-store.ts picks). */
-export const adRows = (c: Connection, now?: Date) => (c.provider === "meta_ads" ? metaRows(c, now) : snapRows(c, now));
+export const adRows = (c: Connection, now?: Date, opts?: ReadOpts) => (c.provider === "meta_ads" ? metaRows(c, now, opts) : snapRows(c, now, opts));
