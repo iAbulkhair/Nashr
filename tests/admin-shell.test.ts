@@ -124,11 +124,40 @@ describe("one component per console section (rule 874)", () => {
 
   it("with a key session every section page renders its own component (rule 874)", async () => {
     await adminSignIn();
-    const marks: Record<AdminSection, RegExp> = { overview: /…/, users: /type="text"|placeholder=/, leads: /data-testid="leads-panel"/, usage: /Loading…|جارٍ التحميل…/, billing: /Loading…|جارٍ التحميل…/, partners: /./, quality: /Agent quality/, wishlist: /./, log: /Every founder action/ };
+    const marks: Record<AdminSection, RegExp> = { overview: /…/, users: /type="text"|placeholder=/, leads: /data-testid="leads-panel"/, usage: /Loading…|جارٍ التحميل…/, billing: /Loading…|جارٍ التحميل…/, partners: /^<p class="text-sm text-muted">Loading…<\/p>$/, quality: /Agent quality/, wishlist: /^<p class="text-sm text-muted">Loading…<\/p>$/, log: /Every founder action/ };
     for (const s of ADMIN_SECTIONS) {
       const html = renderToStaticMarkup((await (await pageFor(s))({ params: P("en"), searchParams: Q({}) })) as React.ReactElement);
       expect(html, s).toMatch(marks[s]);
       expect(html, s).not.toContain('role="alert"');
     }
+  });
+
+  it("a signed-in customer who is not a founder gets a 404 on every section (rule 870)", async () => {
+    const u = await newUser("not-founder");
+    await signIn(u.email);
+    for (const s of ADMIN_SECTIONS) await expect((await pageFor(s))({ params: P("en"), searchParams: Q({}) }), s).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  });
+
+  it("a key session that ended mid-use shows the ended notice on the next section, not a 404 (rule 870, final review)", async () => {
+    await adminSignIn();
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "another-key-the-old-session-does-not-match");
+    for (const s of ADMIN_SECTIONS) {
+      const html = renderToStaticMarkup((await (await pageFor(s))({ params: P("en"), searchParams: Q({}) })) as React.ReactElement);
+      expect(html, s).toContain('role="alert"');
+      expect(html, s).toContain('href="/en/admin?login=1"');
+    }
+  });
+
+  it("the console's wide tables scroll inside themselves at 375 px, and the console is never indexed (final review)", async () => {
+    for (const f of ["Overview", "Usage", "Quality", "Log"]) {
+      const src = readFileSync(`src/components/admin/${f}.tsx`, "utf8");
+      expect(src.match(/<table/g)?.length, f).toBe(src.match(/<div className="overflow-x-auto">\s*<table/g)?.length);
+    }
+    const { metadata } = await import("@/app/[lang]/admin/layout");
+    expect(metadata).toMatchObject({ robots: { index: false, follow: false } });
+  });
+
+  it("Usage and Billing read only the overview, never the user list, the evals or the log (rule 874)", () => {
+    for (const f of ["Usage", "Billing"]) expect(readFileSync(`src/components/admin/${f}.tsx`, "utf8"), f).not.toMatch(/\/api\/admin\/(plan|evals|log)/);
   });
 });

@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { adminKeySession, currentUser, isAdminCookie, isFounderActor } from "@/lib/auth";
 import AdminNav from "@/components/admin/AdminNav";
 
 export const dynamic = "force-dynamic";
+// Never indexed: robots.txt disallows only /{lang}/app/, and naming /{lang}/admin there would advertise it.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 /**
  * The founder console's own layout (rule 871): a sibling of /{lang}/app, so the customer sidebar, trial banner, install

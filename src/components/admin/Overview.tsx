@@ -55,8 +55,8 @@ export default function Overview({ lang, keySession }: SectionProps) {
           </div>
           <section className="card card-sm">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{O.recent}</h2>
-            <table className="mt-2 w-full text-xs"><thead className="text-start text-muted"><tr><th className="p-1 text-start">{S.email}</th><th>{S.plan}</th><th>{S.credits}</th><th>{O.activated}</th><th>{O.lastActive}</th><th>chat/generate/approve</th></tr></thead>
-              <tbody>{ov.recent.map((u) => <tr key={u.email} className="border-t border-ink/5"><td className="p-1"><Link href={`${adminHref(lang, "users")}?q=${encodeURIComponent(u.email)}`} className="text-ink underline" dir="ltr">{u.email}</Link></td><td>{u.plan}</td><td className="tnum">{u.credits}</td><td>{u.activated ? "✓" : "—"}</td><td className="tnum" dir="ltr">{u.lastActive ? u.lastActive.slice(0, 16).replace("T", " ") : "—"}</td><td className="tnum">{u.events.chat ?? 0}/{u.events.generate ?? 0}/{u.events.approve ?? 0}</td></tr>)}</tbody></table>
+            <div className="overflow-x-auto"><table className="mt-2 w-full text-xs"><thead className="text-start text-muted"><tr><th className="p-1 text-start">{S.email}</th><th>{S.plan}</th><th>{S.credits}</th><th>{O.activated}</th><th>{O.lastActive}</th><th>chat/generate/approve</th></tr></thead>
+              <tbody>{ov.recent.map((u) => <tr key={u.email} className="border-t border-ink/5"><td className="p-1"><Link href={`${adminHref(lang, "users")}?q=${encodeURIComponent(u.email)}`} className="text-ink underline" dir="ltr">{u.email}</Link></td><td>{u.plan}</td><td className="tnum">{u.credits}</td><td>{u.activated ? "✓" : "—"}</td><td className="tnum" dir="ltr">{u.lastActive ? u.lastActive.slice(0, 16).replace("T", " ") : "—"}</td><td className="tnum">{u.events.chat ?? 0}/{u.events.generate ?? 0}/{u.events.approve ?? 0}</td></tr>)}</tbody></table></div>
           </section>
         </div>
       )}

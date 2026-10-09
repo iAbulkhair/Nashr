@@ -22,7 +22,7 @@ export default function Quality({ lang, keySession }: SectionProps) {
         <h2 className="font-display text-lg font-semibold text-ink">{S.quality}</h2>
         <p className="text-xs text-muted">{S.qualityNote}</p>
         {!evals ? <p className="mt-2 text-sm text-muted">{S.loading}</p> : (
-          <table className="mt-3 w-full text-sm">
+          <div className="overflow-x-auto"><table className="mt-3 w-full text-sm">
             <thead className="bg-lilac text-left text-xs uppercase tracking-wide text-muted"><tr><th className="p-2">{S.agentType}</th><th>{S.items}</th><th>{S.approval}</th><th>{S.edited}</th><th>{S.magnitude}</th><th>{S.published}</th><th>{S.judge}</th><th>{S.low}</th><th>{S.hours}</th><th>👍/👎</th></tr></thead>
             <tbody>
               {evals.agents.map((a) => (
@@ -40,7 +40,7 @@ export default function Quality({ lang, keySession }: SectionProps) {
                 </Fragment>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
         {evals && evals.users.length > 0 && (
           <p className="mt-3 text-xs text-muted">{S.perWorkspace}: {evals.users.slice(0, 12).map((u) => `${u.label}${u.suspended ? " [suspended]" : ""}${u.archived ? " [archived]" : ""} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? `% of ${u.decided}` : ""}, judge ${u.avgScore ?? "—"}${u.avgScore !== null ? ` of ${u.judged}` : ""})`).join(" · ")}</p>

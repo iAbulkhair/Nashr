@@ -4,6 +4,7 @@ import { isAdminCookie } from "@/lib/auth";
 import { requireAdmin } from "@/lib/admin-gate-server";
 import Overview from "@/components/admin/Overview";
 import AdminLogin from "@/components/app/AdminLogin";
+import { EndedNotice } from "@/components/admin/shared";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,9 @@ export const dynamic = "force-dynamic";
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ login?: string }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
-  if (!(await isAdminCookie())) {
-    if ((await searchParams).login !== "1") notFound();
-    return <AdminLogin lang={lang} />;
-  }
-  const { keySession } = await requireAdmin();
+  if ((await searchParams).login === "1" && !(await isAdminCookie())) return <AdminLogin lang={lang} />;
+  const gate = await requireAdmin();
+  if (gate.ended) return <EndedNotice lang={lang} keySession />;
+  const { keySession } = gate;
   return <Overview lang={lang} keySession={keySession} />;
 }
