@@ -44,7 +44,7 @@ const STR = {
     topPosts: "Top posts", fromThakeen: "from Thakeen", open: "Open", views: "views", reach: "reach", likes: "likes", comments: "comments",
     notProfessional: "This Instagram account is not a professional account, so it has no results", liNoPage: "Connect a company page to see LinkedIn results",
     notReadYet: "Social results have not been read yet.", partNotRead: "has not been read yet.",
-    impressions28: "Impressions (28 days)", clicks: "Clicks", reactions: "Reactions", shares: "Reposts", engagement: "Engagement rate", note: "Refreshed daily. Dana uses these figures in her reports.", noteX: "Refreshed daily; X only when someone presses Refresh X. Dana uses these figures in her reports.",
+    impressions28: "Impressions (28 days)", clicks: "clicks", reactions: "reactions", shares: "reposts", engagement: "Engagement rate", note: "Refreshed daily. Dana uses these figures in her reports.", noteX: "Refreshed daily; X only when someone presses Refresh X. Dana uses these figures in her reports.",
     vsPrev: "vs the previous period", prevWindow: "Previous period",
     pageViews: "page views", watchMinutes: "minutes watched", followsGained: "new followers", followsLost: "unfollows",
     notRead: "Not read", notReadNote: "Dana lists these in her reports as not read.", sep: ", ",
@@ -148,10 +148,12 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
       {delta && <p className="mt-0.5 text-xs text-muted"><span dir="ltr">{delta}</span> {S.vsPrev}</p>}
     </div>
   );
+  /** A number isolated left to right, so in an Arabic line it stays beside its own label. */
+  const num = (text: string) => <bdi dir="ltr">{text}</bdi>;
   /** A figure in a line, with its change in brackets where there is one. */
   const figure = (cur: N, prev: N | undefined, label: string) => {
     const c = changeText(cur, prev);
-    return <>{fmt(cur)}{c && ` (${c})`} {label}</>;
+    return <>{num(`${fmt(cur)}${c ? ` (${c})` : ""}`)} {label}</>;
   };
   const range = (r: { from: string; to: string }) => `${r.from} → ${r.to}`;
   // X's reader falls back to the account "X" when neither the username nor the stored account is known: that only repeats the name.
@@ -178,8 +180,8 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
                   {p.fromThakeen && <span className="rounded-full bg-ink/5 px-2 py-0.5">{S.fromThakeen}</span>}
                 </div>
                 <p className="mt-1" dir="auto">{p.caption}</p>
-                <p className="mt-1 text-xs text-muted" dir="ltr">
-                  {fmt(p.views)} {S.views} · {fmt(p.reach)} {S.reach} · {fmt(p.likes)} {S.likes} · {fmt(p.comments)} {S.comments}
+                <p className="mt-1 text-xs text-muted">
+                  {num(fmt(p.views))} {S.views} · {num(fmt(p.reach))} {S.reach} · {num(fmt(p.likes))} {S.likes} · {num(fmt(p.comments))} {S.comments}
                   {href && <> · <a href={href} rel="noopener noreferrer" target="_blank" className="underline">{S.open}</a></>}
                 </p>
               </li>
@@ -207,12 +209,12 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
           )}
         </div>
         {name !== "instagram" && (
-          <p className="mt-2 text-xs text-muted" dir="ltr">
+          <p className="mt-2 text-xs text-muted">
             {figure(t.clicks, pv?.clicks, S.clicks)} · {figure(t.likes, pv?.likes, li ? S.reactions : S.likes)} · {figure(t.comments, pv?.comments, S.comments)} · {figure(t.shares, pv?.shares, S.shares)}
           </p>
         )}
         {extra.length > 0 && (
-          <p className="mt-1 text-xs text-muted" dir="ltr">
+          <p className="mt-1 text-xs text-muted">
             {extra.map((k, i) => <span key={k}>{i > 0 && " · "}{figure(t[k], pv?.[k], S[k])}</span>)}
           </p>
         )}

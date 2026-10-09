@@ -475,6 +475,20 @@ describe("the social card on Reports (rule 670)", () => {
     expect(html(ig([{ fromThakeen: true }]), "ar")).toContain("من ذكين");
   });
 
+  it("keeps each number beside its own label in Arabic: the figure lines follow the page, each number isolated (670, 744)", () => {
+    const fb: SocialSnapshot = {
+      v: 2, at: NOW.toISOString(), errors: {}, history: [],
+      parts: { facebook: { platform: "facebook", account: "Oud Page", followers: 90, range: { from: "2026-09-10", to: "2026-10-08" }, totals: { ...EMPTY_TOTALS, views: 300, clicks: 9, watchMinutes: 420 }, prev: { range: { from: "2026-08-13", to: "2026-09-09" }, totals: { ...EMPTY_TOTALS, views: 200, clicks: 12 } }, posts: [{ id: "f1", date: "2026-10-01", type: "IMAGE", caption: "c", url: null, views: 900, reach: 700, likes: 40, comments: 6, shares: null, saved: null, fromThakeen: false }] } },
+    };
+    const out = html(fb, "ar");
+    // A line that mixes Arabic labels and numbers is never forced left to right: the bidi algorithm would then pull a
+    // number away from its label (the post line's first figure at the far end, the clicks figure after the last label).
+    expect(out).not.toMatch(/<p[^>]*dir="ltr"[^>]*>(?:[^<]|<bdi[^>]*>[^<]*<\/bdi>)*(?:مشاهدات|النقرات|دقائق)/);
+    expect(out).toContain('<bdi dir="ltr">900</bdi> مشاهدات');
+    expect(out).toContain('<bdi dir="ltr">9 (-25%)</bdi> النقرات');
+    expect(out).toContain('<bdi dir="ltr">420</bdi>');
+  });
+
   it("renders a caption as text and says when the account is not professional", () => {
     expect(html(ig([{ caption: "<img src=x onerror=alert(1)>", views: 1 }]))).not.toContain("<img");
     const np = html({ v: 2, at: NOW.toISOString(), parts: {}, errors: { instagram: "ig_not_professional" }, history: [] });
