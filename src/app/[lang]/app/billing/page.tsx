@@ -6,14 +6,14 @@ import { currentUser, seatLimit } from "@/lib/auth";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthPriceSar, formatCount, type SelfServePlan } from "@/lib/pricing";
 import { openLots, topupCredits, topupView } from "@/lib/topups";
 import { can } from "@/lib/roles";
-import { seatsUsed } from "@/lib/team";
-import { chatStatus } from "@/lib/chat-allowance";
+import { entitlementView } from "@/lib/entitlements";
 import { paceStart, runway } from "@/lib/usage-view";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import { OFFER_COPY, OfferBanner } from "@/components/app/BillingOffer";
 import PartnerCodeForm from "@/components/app/PartnerCodeForm";
 import { grantEarlyOffer, lastDayOfferOwed, offerLastDay, openOffer } from "@/lib/partners";
 import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
+import PlanIncludesCard from "@/components/app/PlanIncludesCard";
 import TopupCard from "@/components/app/TopupCard";
 import Scribble from "@/components/Scribble";
 import { PaymobPayButton, PaymobPlanCard } from "@/components/app/PaymobBilling";
@@ -51,7 +51,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // The chat card (rule 315): the account's messages, read here and handed to the client card with the runway already
   // worked out, so the server and the browser render the same dates. Everyone sees it; only the owner gets the switch.
   // The balance goes with it: below `overflow.hold` credits, chat past the allowance is paused even with the switch on.
-  const [used, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u)]);
+  // The seats in use and the chat status come from the account's entitlement view (src/lib/entitlements.ts, rules 784-785),
+  // read once: the "what your plan includes" card below shows the same view, so the page never reads the same data twice.
+  // The card is handed `ent` and `used` only: `view.grants` holds the founder's email and note, which an owner never sees.
+  const view = await entitlementView(u);
+  const { seats: used, chat } = view.used;
   const now = new Date();
   const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
   const trial = chat.period === "trial";
@@ -85,6 +89,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <p role="status" className="mt-4 card text-sm" data-paymob-return="">{lang === "ar" ? "إذا تمّ الدفع، يتفعّل اشتراكك خلال دقيقة. حدّث الصفحة لترى حالته." : "If your payment went through, your plan is activated within a minute. Refresh this page to see it."}</p>
       )}
       {sub && <PaymobPlanCard lang={lang} billing={sub} />}
+      <PlanIncludesCard view={{ ent: view.ent, used: view.used }} lang={lang} />
       <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} />
       <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} payOnline={online} />
       {owner && u.plan === "trial" && (

@@ -32,6 +32,13 @@ export type Actor = {
 };
 
 /**
+ * A founder override of what a plan includes, with an end date (`User.grants`, src/lib/entitlements.ts, rule 780).
+ * `until` is a YYYY-MM-DD UTC day and the grant holds through the end of that day; `by` is the founder who set it and
+ * `at` when (ISO); a grant without both is not honoured (`grantActive`). `note` is the founder's own reason.
+ */
+export type Grant<T> = { value: T; until: string; by: string; at: string; note?: string };
+
+/**
  * A held onboarding charge (`User.onboardPaid`): the charge's scope, agent and month (what a refund needs to lower the
  * agent's counter), the credits it took, and when a run last charged or reused it (the daily sweep refunds a hold nobody
  * used for a day, src/lib/credits.ts `resolveOnboardHolds`).
@@ -70,6 +77,13 @@ export type User = {
    * the account leaves Agency. A deal below the Business rate is ignored. Its seats are in `seats`.
    */
   deal?: AgencyDeal;
+  /**
+   * Founder overrides of what the plan includes, each with an end date (`Grant`): today only `video: "all"`, which opens
+   * every video model to a trial. Written only by the founder console (POST /api/admin/plan, under `withUserLock`) and
+   * read only by `entitlements()` (src/lib/entitlements.ts, rule 780). An expired grant is ignored there, never deleted:
+   * the console shows it as expired. Optional, so older code ignores it (expand only, rule 679).
+   */
+  grants?: { video?: Grant<"all"> };
   /**
    * Partner programme (src/lib/partners.ts, rules 390-402), all written under `withUserLock`. `referredBy`: the partner
    * this account was attributed to, first touch (a link's cookie or a typed code), never rewritten; `at` is the link's click

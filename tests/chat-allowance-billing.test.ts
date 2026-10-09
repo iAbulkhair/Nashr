@@ -231,7 +231,11 @@ describe("rule 315: the client card and the profile panel, by source", () => {
     // The page decides who the owner is with the same check the route makes.
     expect(page).toContain('const owner = can(u, "billing");');
     expect(page).toMatch(/<ChatAllowanceCard [^>]*owner=\{owner\}/);
-    expect(page).toMatch(/Promise\.all\(\[seatsUsed\(u\.email\), chatStatus\(u\)\]\)/);
+    // The seats and the chat status are read together in one place, `entitlementView` (one Promise.all, rule 784), once
+    // for the whole page (rule 785); the chat card takes the status from that view.
+    expect(page).toMatch(/const view = await entitlementView\(u\);/);
+    expect(page).toMatch(/const \{ seats: used, chat \} = view\.used;/);
+    expect(page).toMatch(/<ChatAllowanceCard [^>]*status=\{chat\}/);
   });
 
   it("the profile's chat row is the account's count, not a typed 0 credits each", () => {

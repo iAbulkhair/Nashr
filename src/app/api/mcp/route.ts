@@ -4,6 +4,7 @@ import { DRAFTS_PER_HOUR, chatCaps, chatRefusal } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
 import { chat, chatRefusedText } from "@/lib/chat";
 import { trialOver } from "@/lib/auth";
+import { entitlements } from "@/lib/entitlements";
 import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
@@ -82,6 +83,9 @@ export async function POST(req: Request) {
         // The web chat's limits on the message itself: trimmed, at most 4,000 characters, never empty.
         const message = String(args.message ?? "").trim().slice(0, 4000);
         if (!message) return ok(id, { ...text("Empty message. Nothing was sent."), isError: true });
+        // An agent the plan does not include (rule 782): the web chat's 403 `agent_not_included`, here a tool error, before any
+        // count. Every plan includes Noor today.
+        if (!entitlements(user).agents.includes("noor")) return ok(id, { ...text("This agent is not included in this account's plan. Nothing was sent."), isError: true });
         // The web chat's gates, in its order (rules 330-331): a bearer token must not be a way around an ended trial or a
         // cheaper way to spend the same models. Answered as a tool error, like MCP generate_content's trial_over: a
         // JSON-RPC client reads the result, not an HTTP status. The link is absolute: it is read outside the app.
