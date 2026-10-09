@@ -10,19 +10,20 @@
  *
  * Calibrated to docs/system/costs.md §3 (2026-09-27): the generation call is Opus with a cached workspace block, a
  * fresh brief and adaptive thinking; the reviewer and the judge are Sonnet. Since 2026-10-09 the calls are Opus 5.5,
- * Sonnet 5.5 and Haiku 5.5 (ESTIMATE_MODELS); the token counts were kept. The review and judge constants are fitted
+ * Sonnet 5.5 and Haiku 5.5; since rule 901 the writer and the reviewer of each type come from TASK_MODELS
+ * (task-models.ts), the rest from ESTIMATE_MODELS. The token counts were kept. The review and judge constants are fitted
  * to reproduce that table within $0.001; they were not measured. Replace them with the founder console's `byKind`
  * averages (generate / review / judge, src/lib/usage.ts `getUsage`) after a month of real traffic.
  */
 import { costUsd } from "./usage";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
+import { TASK_MODELS } from "./task-models";
 
-/** The model each call is priced at. tests/pricing-floor.test.ts checks these literals are the ones the code calls. */
+/**
+ * The model each call outside the batch's writer and reviewer is priced at (those two are TASK_MODELS, per type).
+ * tests/pricing-floor.test.ts checks these literals are the ones the code calls.
+ */
 export const ESTIMATE_MODELS = {
-  /** src/lib/noor.ts `generate` */
-  generate: "claude-opus-5-5",
-  /** src/lib/noor.ts `critique` */
-  review: "claude-sonnet-5-5",
   /** src/lib/judge.ts */
   judge: "claude-sonnet-5-5",
   /** src/lib/onboard.ts */
@@ -91,8 +92,8 @@ export function estimateBatch(type: TaskType, opts: { items?: number; credits?: 
   const itemsOut = items * ITEM_OUT_TOKENS[size];
   const outTokens = ASSUME.thinking + itemsOut;
   const cached = opts.cache === "cold" ? { cache_creation_input_tokens: ASSUME.cachedIn } : { cache_read_input_tokens: ASSUME.cachedIn };
-  const generateUsd = costUsd(ESTIMATE_MODELS.generate, { input_tokens: ASSUME.freshIn, output_tokens: outTokens, ...cached });
-  const reviewUsd = costUsd(ESTIMATE_MODELS.review, { input_tokens: ASSUME.review.in + itemsOut, output_tokens: ASSUME.review.out + ASSUME.review.outShare * itemsOut });
+  const generateUsd = costUsd(TASK_MODELS[type].write, { input_tokens: ASSUME.freshIn, output_tokens: outTokens, ...cached });
+  const reviewUsd = costUsd(TASK_MODELS[type].review, { input_tokens: ASSUME.review.in + itemsOut, output_tokens: ASSUME.review.out + ASSUME.review.outShare * itemsOut });
   const judgeUsd = costUsd(ESTIMATE_MODELS.judge, { input_tokens: ASSUME.judge.in + itemsOut, output_tokens: ASSUME.judge.out + ASSUME.judge.outPerItem * items });
   const totalUsd = generateUsd + reviewUsd + judgeUsd;
   return { type, items, credits, outTokens, generateUsd, reviewUsd, judgeUsd, totalUsd, usdPerCredit: totalUsd / credits };
