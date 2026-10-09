@@ -33,9 +33,9 @@ describe("which connectors do something", () => {
 
   it("reads platform numbers only from the stores the sales sync reads and the ad accounts syncAds reads, and stats.ts reads no connection", () => {
     expect([...READS_ADS].sort()).toEqual([...AD_PROVIDERS].sort());
-    // Google is read only for the site block (src/lib/site-stats.ts), Meta and LinkedIn only for Instagram and company
-    // page results (src/lib/social-stats.ts), and all three only through Composio.
-    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS, ...AD_PROVIDERS, "google", "meta", "linkedin"].sort());
+    // Google is read only for the site block (src/lib/site-stats.ts); Meta, LinkedIn, YouTube and TikTok only for the
+    // social parts (src/lib/social-stats.ts), and these five only through Composio. X is read on its direct record.
+    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS, ...AD_PROVIDERS, "google", "meta", "linkedin", "youtube", "tiktok", "x"].sort());
     expect(reportSources(["meta_ads"]).read).toEqual(["ads"]);
     // The Page connection reads no ad numbers; through Composio it reads Instagram results.
     expect(reportSources(["meta"]).read).toEqual(["social"]);
@@ -45,7 +45,7 @@ describe("which connectors do something", () => {
   it("tells Reports which sources are read: a store with a sales reader silences the store warning, a stored connection without one does not", () => {
     expect(reportSources([])).toEqual({ read: [], missing: ["analytics", "ads", "store", "social"], banner: "none" });
     expect(reportSources(["salla"])).toEqual({ read: ["store"], missing: ["analytics", "ads", "social"], banner: "some" });
-    expect(reportSources(["shopify", "x"]).read).toEqual(["store"]);
+    expect(reportSources(["shopify", "x"]).read).toEqual(["store", "social"]);
     expect(reportSources(["zid"]).read).toEqual(["store"]);
     expect(reportSources(["woocommerce"]).read).toEqual(["store"]);
     // The Meta Page connection publishes; it reads no numbers.
@@ -59,7 +59,7 @@ describe("which connectors do something", () => {
     expect(reportSources(["google_ads"]).read).toEqual(["ads"]);
     // The page passes only readable records (report-sources.ts connectedSources, pinned in composio-social.test.ts).
     expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/const connected = connectedSources\(connections\)/);
-    expect(READ_VIA_COMPOSIO).toEqual(["google", "meta", "linkedin"]);
+    expect(READ_VIA_COMPOSIO).toEqual(["google", "meta", "linkedin", "youtube", "tiktok"]);
   });
 });
 

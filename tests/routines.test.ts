@@ -14,7 +14,7 @@ import { getSchedule, saveSchedule } from "@/lib/schedule";
 import { statsFor } from "@/lib/stats";
 import { listNotifs } from "@/lib/notifications";
 import { TASK_COST } from "@/lib/tasks";
-import { ROUTINES, ROUTINE_IDS, dueRoutines, isRoutineId, periodOf, ranThisPeriod, routineKeys, runRoutine, type RoutineId } from "@/lib/routines";
+import { OWNER_SYNC_KEY, ROUTINES, ROUTINE_IDS, dueRoutines, isRoutineId, markOwnerSync, periodOf, ranThisPeriod, routineKeys, runRoutine, type RoutineId } from "@/lib/routines";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 import * as scheduleRoute from "@/app/api/schedule/route";
 import * as cronRoutines from "@/app/api/cron/routines/route";
@@ -152,7 +152,7 @@ describe("the runner refuses before any charge (rule 112)", () => {
 });
 
 describe("a routine runs only on real input (rule 113)", () => {
-  it("Dana's weekly report: idle without the owner's activity in 7 days; any of five signals is activity", async () => {
+  it("Dana's weekly report: idle without the owner's activity in 7 days; any of six signals is activity", async () => {
     const seen = sdk();
     const { runRoutine: run } = await load();
     // Nothing at all; then only items created on their own; then only an owner's item older than 7 days.
@@ -171,6 +171,8 @@ describe("a routine runs only on real input (rule 113)", () => {
       "a decision record on an older item": (u) => recordDecisions(u.email, [decisionOf(item("d2", { createdAt: ago(20) }), "reject", new Date().toISOString())]),
       "a store sync": (u) => db.set(`storesales:${u.email}`, snap(ago(2))),
       "an ad-account sync": (u) => db.set(`adsync:${u.email}:snapchat`, ago(1)),
+      // Rule 736: a click on Refresh for the site or social results; the daily cron's reads of them never count.
+      "an owner's site or social refresh": (u) => markOwnerSync(u.email, new Date(Date.now() - 2 * DAY)),
     };
     for (const [what, add] of Object.entries(signals)) {
       const u = await owner("rt-dana", { dana_weekly_report: true });
@@ -487,5 +489,18 @@ describe("data blocks and deletion (rules 113, 115)", () => {
     await Promise.all([...keys, ...seen].map((k) => db.set(k, new Date().toISOString())));
     await wipeAccount(u.email);
     for (const k of [...keys, ...seen]) expect(await db.get(k), k).toBeNull();
+  });
+
+  it("wipeAccount deletes the owner's refresh mark in every brand (rules 736, 747)", async () => {
+    const u = await owner("rt-ownersync");
+    await saveUser({ ...u, plan: "agency" });
+    const second = await addBrand((await getUser(u.email))!, "Second");
+    if ("error" in second) throw new Error(second.error);
+    const scopes = [u.email, scopeFor(u.email, second.id)];
+    expect(scopes.map(OWNER_SYNC_KEY)).toEqual(scopes.map((s) => `ownersync:${s}`));
+    await Promise.all(scopes.map((s) => markOwnerSync(s)));
+    for (const s of scopes) expect(await db.get(OWNER_SYNC_KEY(s)), s).not.toBeNull();
+    await wipeAccount(u.email);
+    for (const s of scopes) expect(await db.get(OWNER_SYNC_KEY(s)), s).toBeNull();
   });
 });

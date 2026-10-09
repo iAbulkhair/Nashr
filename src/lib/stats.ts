@@ -5,6 +5,8 @@ import { cartDataBlock } from "./cart-recovery";
 import { salesDataBlock } from "./store-sales";
 import { siteDataBlock } from "./site-stats";
 import { socialDataBlock } from "./social-stats";
+import { adDataBlock } from "./ad-stats";
+import { notRead, notReadBlock } from "./not-read";
 
 /** Workspace KPIs for the Reports page and for Dana's prompts. Computed from stored tasks only; no model call. */
 export type Kpis = {
@@ -145,9 +147,20 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
   };
 }
 
-/** Plain-text block for prompts. */
-export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
+/**
+ * Plain-text block for prompts. Each flag means its data block is attached below (STORE, SITE, SOCIAL, AD DATA), and
+ * a figure is said to be absent only when the block that carries it is (rule 730): sales and revenue without STORE DATA,
+ * traffic without SITE DATA, ad spend without AD DATA. Social reach and followers are none of these, so `social` names
+ * nothing as present.
+ */
+export function statsText(k: Kpis, opts: { store?: boolean; site?: boolean; social?: boolean; ads?: boolean } = {}): string {
   const fmt = (o: Record<string, number>) => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([a, b]) => `${a}=${b}`).join(", ") || "none";
+  const missing = [...(opts.store ? [] : ["sales", "revenue"]), ...(opts.site ? [] : ["traffic"]), ...(opts.ads ? [] : ["ad-spend"])];
+  const list = missing.length > 1 ? `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}` : missing.join("");
+  const sources = [
+    opts.store ? "Store orders and revenue are in STORE DATA below." : "",
+    list ? `${list[0].toUpperCase()}${list.slice(1)} figures are NOT in this data. If the owner did not provide them in notes or files, use [رقم] placeholders and list what to track.` : "",
+  ].filter(Boolean).join(" ");
   return [
     `WORKSPACE DATA (month ${k.month}; counts are content items in Thakeen, not sales figures)`,
     `- Items created this month: ${k.created} (previous month: ${k.createdPrev})`,
@@ -157,20 +170,22 @@ export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
     `- By type: ${fmt(k.byType)}`,
     `- By channel: ${fmt(k.byChannel)}`,
     `- Weekly created/approved (oldest first): ${k.weeks.map((w) => `${w.label}: ${w.created}/${w.approved}`).join("; ")}`,
-    opts.store
-      ? `- Store orders and revenue are in STORE DATA below. Traffic and ad-spend figures are NOT in this data. If the owner did not provide them in notes or files, use [رقم] placeholders and list what to track.`
-      : `- Sales, revenue, traffic and ad-spend figures are NOT in this data. If the owner did not provide them in notes or files, use [رقم] placeholders and list what to track.`,
+    ...(sources ? [`- ${sources}`] : []),
   ].join("\n");
 }
 
 /** Returns the data block a task is built on: workspace stats for Dana's reports and Majed's strategy review, plus
  * STORE DATA when a store was synced, SITE DATA when Google Analytics or Search Console was read (src/lib/site-stats.ts),
- * SOCIAL DATA when Instagram or a LinkedIn page was read (src/lib/social-stats.ts); STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
- * store's abandoned carts for cart-recovery drafts; and nothing for everything else. Each block is labelled as data. */
+ * SOCIAL DATA when Instagram or a LinkedIn page was read (src/lib/social-stats.ts), AD DATA when an ad account was read
+ * or a CSV uploaded (src/lib/ad-stats.ts); STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
+ * store's abandoned carts for cart-recovery drafts; and nothing for everything else. Each block is labelled as data, and
+ * the workspace block says a figure is missing only when the block that would carry it came back empty (rule 730). Dana's
+ * reports and Majed's review end with NOT READ: the platforms the owner named that hold no read, each with its reason,
+ * built in code from the connections and the stored reads (src/lib/not-read.ts, rule 738), "" when every one was read. */
 export async function statsFor(type: TaskType, scope: string): Promise<string> {
   if (type === "cart_recovery") return cartDataBlock(scope);
   if (type === "cash_forecast") return salesDataBlock(scope);
   if (agentForTask(type).id !== "dana" && type !== "strategy_review") return "";
-  const [k, store, site, social] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope), socialDataBlock(scope)]);
-  return [store ? statsText(k, { store: true }) : statsText(k), store, site, social].filter(Boolean).join("\n\n");
+  const [k, store, site, social, ads, missed] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope), socialDataBlock(scope), adDataBlock(scope), notRead(scope)]);
+  return [statsText(k, { store: !!store, site: !!site, social: !!social, ads: !!ads }), store, site, social, ads, notReadBlock(missed)].filter(Boolean).join("\n\n");
 }

@@ -10,7 +10,7 @@ import { composioDiscard, composioVerify } from "@/lib/connectors/composio";
 import { isToolkit, PROVIDER_TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
 import { syncSite } from "@/lib/site-stats";
-import { readSocialSoon } from "@/lib/social-stats";
+import { isSocialProvider, readSocialSoon } from "@/lib/social-stats";
 import { xMe } from "@/lib/connectors/x";
 import { sallaStore } from "@/lib/connectors/salla";
 import { zidStore } from "@/lib/connectors/zid";
@@ -62,8 +62,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
       saved = true;
       // A first read so Dana's next report has the site's figures; the daily run retries whatever fails here.
       if (p.id === "google") await syncSite(st.email, conn).catch(() => console.error("site first read failed"));
-      // And the social card's first figures: Instagram on the Meta record, or the LinkedIn page once one is chosen.
-      if ((p.id === "meta" && toolkit === "instagram") || p.id === "linkedin") readSocialSoon(st.email);
+      // And the social card's first figures, after the redirect: any social record (Instagram or the Facebook Page on Meta,
+      // the LinkedIn page once one is chosen, the YouTube channel, the TikTok account). It reads only the parts held.
+      if (isSocialProvider(p.id)) readSocialSoon(st.email);
       await track(st.email.split("#")[0], "connect");
       return back(`connected=${p.id}`);
     } catch (e) {
