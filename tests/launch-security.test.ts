@@ -325,7 +325,7 @@ describe("the console says when its session ended and links back in (rule 436)",
       expect(ADMIN_ENDED[lang].key).toMatch(/15/);
       expect(ADMIN_ENDED[lang].key).toMatch(/12/);
       expect(ADMIN_ENDED[lang].founder.length).toBeGreaterThan(10);
-      expect(adminEndedHref(lang, true)).toBe(`/${lang}/app/admin?login=1`);
+      expect(adminEndedHref(lang, true)).toBe(`/${lang}/admin?login=1`);
       expect(adminEndedHref(lang, false)).toBe(`/${lang}/app/login`);
     }
     expect(ADMIN_ENDED.ar.key).toMatch(/[\u0600-\u06FF]/);

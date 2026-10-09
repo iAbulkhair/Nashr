@@ -1433,11 +1433,12 @@ describe("rule 418: the Partners tab and the Payments panel make their admin cal
     expect(payments).toContain("adminFetch(`/api/admin/payments/${who}`).then(");
     expect(payments).toContain("adminFetch(`/api/admin/payments/${who}`, { method: \"POST\"");
     const consoleSrc = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
-    expect(consoleSrc).toMatch(/const TABS = \[[^\]]*"leads"[^\]]*"partners"[^\]]*\] as const/);
+    // The sections moved to their own pages under /{lang}/admin on 2026-10-09 (rule 871): src/lib/admin-gate.ts lists them.
+    expect(readFileSync("src/lib/admin-gate.ts", "utf8")).toMatch(/ADMIN_SECTIONS = \[[^\]]*"leads"[^\]]*"partners"[^\]]*\] as const/);
     expect(consoleSrc).toContain('{tab === "partners" && <PartnersPanel lang={lang} />}');
     expect(consoleSrc).toContain('{tab === "leads" && <LeadsPanel lang={lang} onSeen={leadsSeen} />}');
-    expect(consoleSrc).toMatch(/partners: "Partners"/);
-    expect(consoleSrc).toMatch(/partners: "الشركاء"/);
+    expect(readFileSync("src/components/admin/AdminNav.tsx", "utf8")).toMatch(/partners: "Partners"/);
+    expect(readFileSync("src/components/admin/AdminNav.tsx", "utf8")).toMatch(/partners: "الشركاء"/);
   });
 });
 

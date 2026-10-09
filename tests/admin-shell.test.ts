@@ -1,0 +1,97 @@
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+
+/**
+ * The founder console lives in its own route tree, /{lang}/admin, with its own layout and sidebar (spec
+ * docs/superpowers/specs/2026-10-09-admin-shell-and-brand-workspaces-design.md part A). Rules 870-874.
+ */
+
+// AdminNav reads the router; outside Next there is none. Server-only helpers (redirect, notFound) stay real.
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<typeof import("next/navigation")>()),
+  useRouter: () => ({ push: () => {}, refresh: () => {}, replace: () => {}, back: () => {}, prefetch: () => {} }),
+  usePathname: () => "/ar/admin/users",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+import { ADMIN_SECTIONS, adminHref, type AdminSection } from "@/lib/admin-gate";
+import { adminSignIn, newUser, signIn, signOut } from "./helpers/session";
+import AdminLayout from "@/app/[lang]/admin/layout";
+import AdminHome from "@/app/[lang]/admin/page";
+import OldAdmin from "@/app/[lang]/app/admin/page";
+
+const KEY = "test-admin-key-admin-shell";
+beforeAll(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); });
+afterEach(() => { signOut(); vi.unstubAllEnvs(); vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); });
+
+const P = (l: string) => Promise.resolve({ lang: l });
+const Q = (o: Record<string, string>) => Promise.resolve(o);
+type Page = (p: { params: Promise<{ lang: string }>; searchParams: Promise<Record<string, string>> }) => Promise<unknown>;
+const PAGES: Record<AdminSection, () => Promise<{ default: unknown }>> = {
+  overview: async () => ({ default: AdminHome }),
+  users: () => import("@/app/[lang]/admin/users/page"),
+  leads: () => import("@/app/[lang]/admin/leads/page"),
+  usage: () => import("@/app/[lang]/admin/usage/page"),
+  billing: () => import("@/app/[lang]/admin/billing/page"),
+  partners: () => import("@/app/[lang]/admin/partners/page"),
+  quality: () => import("@/app/[lang]/admin/quality/page"),
+  wishlist: () => import("@/app/[lang]/admin/wishlist/page"),
+  log: () => import("@/app/[lang]/admin/log/page"),
+};
+const pageFor = async (s: AdminSection): Promise<Page> => (await PAGES[s]()).default as Page;
+
+describe("the founder console has its own shell (rules 870-872)", () => {
+  it("every /{lang}/admin page is a 404 without the gate (rule 870)", async () => {
+    for (const s of ADMIN_SECTIONS) await expect((await pageFor(s))({ params: P("en"), searchParams: Q({}) }), s).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  });
+
+  it("with a key session the layout renders the founder shell and never the customer Sidebar (rule 871)", async () => {
+    await adminSignIn();
+    const html = renderToStaticMarkup((await AdminLayout({ children: null, params: P("ar") })) as React.ReactElement);
+    expect(html).toContain("لوحة المؤسس");
+    expect(html).toContain('href="/ar/admin/log"');
+    expect(html).not.toContain('data-testid="app-sidebar"');
+    expect(html).toContain("إنهاء جلسة المفتاح");
+    expect(html).not.toContain("العودة للتطبيق"); // key session only: no founder sign-in to go back to
+  });
+
+  it("a founder signed in as themselves gets «العودة للتطبيق» and no end-key button without a key session", async () => {
+    const u = await newUser("founder-shell");
+    vi.stubEnv("ADMIN_EMAILS", u.email);
+    await signIn(u.email);
+    const html = renderToStaticMarkup((await AdminLayout({ children: null, params: P("ar") })) as React.ReactElement);
+    expect(html).toContain("العودة للتطبيق");
+    expect(html).toContain('href="/ar/app"');
+    expect(html).not.toContain("إنهاء جلسة المفتاح");
+    await adminSignIn();
+    const both = renderToStaticMarkup((await AdminLayout({ children: null, params: P("ar") })) as React.ReactElement);
+    expect(both).toContain("العودة للتطبيق");
+    expect(both).toContain("إنهاء جلسة المفتاح");
+  });
+
+  it("without the gate the layout is bare and ?login=1 renders only the key form (rule 870)", async () => {
+    const shell = renderToStaticMarkup((await AdminLayout({ children: null, params: P("en") })) as React.ReactElement);
+    expect(shell).not.toContain('href="/en/admin/log"');
+    const html = renderToStaticMarkup((await AdminHome({ params: P("en"), searchParams: Q({ login: "1" }) })) as React.ReactElement);
+    expect(html).toMatch(/type="password"/);
+    expect(html).not.toContain('href="/en/admin/log"'); // the key form has its own title; no console sidebar
+  });
+
+  it("/{lang}/app/admin redirects to /{lang}/admin with the query kept (rule 872)", async () => {
+    await expect(OldAdmin({ params: P("en"), searchParams: Q({ login: "1" }) })).rejects.toMatchObject({ digest: expect.stringMatching(/^NEXT_REDIRECT;[a-z]+;\/en\/admin\?login=1;/) });
+    await expect(OldAdmin({ params: P("ar"), searchParams: Q({}) })).rejects.toMatchObject({ digest: expect.stringMatching(/^NEXT_REDIRECT;[a-z]+;\/ar\/admin;/) });
+  });
+
+  it("the ended link and the impersonation return point into /{lang}/admin (rule 872)", async () => {
+    const { adminEndedHref } = await import("@/lib/admin-fetch");
+    expect(adminEndedHref("ar", true)).toBe("/ar/admin?login=1");
+    expect(adminEndedHref("ar", false)).toBe("/ar/app/login");
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/app/api/admin/impersonate/route.ts", "utf8")).toContain("`/${lang}/admin/users`");
+  });
+
+  it("adminHref", () => {
+    expect(adminHref("ar", "overview")).toBe("/ar/admin");
+    expect(adminHref("en", "log")).toBe("/en/admin/log");
+  });
+});

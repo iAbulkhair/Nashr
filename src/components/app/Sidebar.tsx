@@ -180,7 +180,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   );
   return (
     <>
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-e-[1.5px] border-ink bg-paper text-ink lg:block">{body}</aside>
+      <aside data-testid="app-sidebar" className="sticky top-0 hidden h-dvh w-64 shrink-0 border-e-[1.5px] border-ink bg-paper text-ink lg:block">{body}</aside>
       <header className="sticky top-0 z-40 flex items-center justify-between border-b-[1.5px] border-ink bg-paper px-4 py-3 text-ink lg:hidden">
         <Link href={`${base}/chat`} className="font-display text-xl font-bold"><Wordmark lang={lang} name={t.appName} /></Link>
         <div className="flex items-center gap-3">

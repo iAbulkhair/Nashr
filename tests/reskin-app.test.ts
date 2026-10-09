@@ -57,6 +57,8 @@ export const APP: string[] = [
   "src/app/[lang]/app/activity/page.tsx",
   "src/app/[lang]/app/help/page.tsx",
   "src/app/[lang]/app/admin/page.tsx",
+  "src/app/[lang]/admin/layout.tsx",
+  "src/components/admin/AdminNav.tsx",
   "src/components/app/ActivityPanel.tsx",
   "src/components/app/AdminConsole.tsx",
   "src/components/app/AdminLogin.tsx",
