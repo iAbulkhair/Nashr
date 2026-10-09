@@ -74,7 +74,7 @@ async function write(system: string, brand: Brand, task: Task, fallback: string,
   if (modelState() !== "on" || !(timeoutMs >= PROMPT_MIN_MS)) return fallback;
   try {
     const res = await anthropic({ timeoutMs: PROMPT_MAX_MS, maxRetries: 0 }).messages.create(
-      { model: "claude-sonnet-5", max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: postOf(brand, task) }] },
+      { model: "claude-haiku-5-5", max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: postOf(brand, task) }] },
       { timeout: Math.min(PROMPT_MAX_MS, timeoutMs), maxRetries: 0 },
     );
     // Spec A18: video prompts are metered as image_prompt too. The render is for the agent who owns the item, the same

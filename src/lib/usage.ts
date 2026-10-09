@@ -15,12 +15,24 @@ export type TokenUsage = {
   cache_creation_input_tokens?: number | null;
 };
 
-/** USD per million tokens: Anthropic list prices, checked 2026-09-27 (Sonnet 5.5 added 2026-10-02). Update when Anthropic changes them. */
+/**
+ * USD per million tokens: Anthropic list prices, checked 2026-09-27 (Sonnet 5.5 added 2026-10-02, Opus 5.5 and Haiku 5.5
+ * 2026-10-09). Cache reads are 0.1x input, 5-minute cache writes 1.25x. Update when Anthropic changes them. Opus 5 and
+ * Sonnet 5 stay so stored usage and any old id still price right; since 2026-10-09 the product calls only the three 5.5
+ * models (src/lib/task-costs.ts ESTIMATE_MODELS).
+ */
 const RATES: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
   "claude-opus-5": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   "claude-sonnet-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
   /** The chat model since 2026-10-02 (`CHAT_MODEL`, src/lib/chat.ts). */
   "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  /** Generation and onboarding since 2026-10-09. */
+  "claude-opus-5-5": { in: 4, out: 20, cacheRead: 0.2, cacheWrite: 5 },
+  /**
+   * The image/video prompt writer and the free tools since 2026-10-09. The rate for prompts of 100K tokens or fewer;
+   * longer prompts cost 5x ($0.50 / $2.50). Both callers send a few hundred tokens, so this is the rate they pay.
+   */
+  "claude-haiku-5-5": { in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
 };
 const DEFAULT_RATE = RATES["claude-opus-5"];
 /**

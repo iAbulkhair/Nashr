@@ -149,8 +149,9 @@ export type AutoBlock = "off" | "not_majed" | "origin" | "requester" | "not_show
  * every cron-driven type. The auto-run starts from the routines cron at 06:00 UTC, once a day per brand, so it usually
  * finds the prompt cache cold, and the floor checks cron types on a cold cache (founder decision, 2026-09-29): the
  * batch's estimated cost per credit on a COLD cache (`estimateBatch`, src/lib/task-costs.ts) must be at most the
- * ceiling (`maxCostPerCreditUsd`, src/lib/pricing.ts). Today that leaves out `article` ($0.0918 per credit cold) and
- * `followup_seq` ($0.0773): they run only when a login presses Run. A change to a price, a credit count or a rate moves
+ * ceiling (`maxCostPerCreditUsd`, src/lib/pricing.ts). Today that leaves out `article` ($0.0773 per credit cold): it runs
+ * only when a login presses Run. `followup_seq` ($0.0653 cold) has been under the ceiling since generation moved to
+ * Opus 5.5 on 2026-10-09 (it was $0.0773 on Opus 5). A change to a price, a credit count or a rate moves
  * the list with it. The estimate counts neither the lead brief nor the cross-agent review (docs/system/costs.md §3 and
  * §5 work those out by hand). Fails closed: a type the estimate cannot price is never started.
  */
@@ -179,7 +180,7 @@ export type AutoContext = { threadGone?: boolean; beforeCard?: boolean };
  * - the item is `proposed`: never one that ran, failed, is running or was declined (a failed item waits for the owner);
  * - the proposal is at most AUTO_HANDOFF_MAX_AGE_DAYS old;
  * - the agent that owns the item's type has an owner-set monthly cap, so every auto-run charge is capped by the owner;
- * - the item's type keeps the margin floor on a cold cache (`autoUnderFloor`): never `article` or `followup_seq` today;
+ * - the item's type keeps the margin floor on a cold cache (`autoUnderFloor`): never `article` today;
  * - the whole proposal is within the ceiling: at most AUTO_HANDOFF_MAX_ITEMS items and AUTO_HANDOFF_MAX_CREDITS credits.
  */
 export function autoBlock(h: Pick<Handoff, "agent" | "origin" | "requestedBy" | "items" | "createdAt" | "shownAt">, n: number, gov: Pick<Governance, "majedAutoHandoff" | "agentCaps">, now: number = Date.now(), ctx: AutoContext = {}): AutoBlock | null {
