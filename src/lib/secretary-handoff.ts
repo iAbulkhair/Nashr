@@ -80,6 +80,17 @@ export function sameBlock(a: string, b: string): boolean {
 const cut = (s: string, n: number) => { const t = s.slice(0, n); return /[\ud800-\udbff]$/.test(t) ? t.slice(0, -1) : t; };
 
 /**
+ * The fields of an item an agent owes the owner (or another agent): `waiting_on`, `they_owe`, `owedBy` that agent. Shared
+ * by a blocked note to another agent (below, `owedTo` left to `createItem`'s normalising, which sets "owner") and by the
+ * tasks the owner approves after a meeting (src/lib/secretary-meeting.ts, which names the owner as `owedTo` and a due
+ * day). The caller creates it with `source: "agent"` and `handoffFrom`, so it shows in Reem's list and in that agent's
+ * block like any other handoff. `dueAt`: a local day, when there is one.
+ */
+export function agentTaskItem(agent: AgentId, title: string, description: string, opts: { owedTo?: "owner"; dueAt?: string } = {}): Record<string, unknown> {
+  return { title, description, kind: "waiting_on", direction: "they_owe", owedBy: agent, ...(opts.owedTo ? { owedTo: opts.owedTo } : {}), ...(opts.dueAt ? { dueAt: opts.dueAt } : {}) };
+}
+
+/**
  * The item a blocked note opens: its title in the chat's language and the fields for `createItem`. To the owner it is
  * due all day today in the brand's zone (`zone`), so it reaches today's agenda, the brief, the wrap and the walk.
  */
@@ -89,7 +100,7 @@ function blockedItem(from: AgentId, to: AgentId | "owner", body: string, lang: "
   const title = cut(`${lang === "ar" ? `توقّف عمل ${name}: ` : `${name} is blocked: `}${cleanLine(body)}`, SEC_LIMITS.title);
   return to === "owner"
     ? { title, description: body, kind: "follow_up", direction: "i_owe", owedTo: from, dueAt: zoneDay(now, zone) }
-    : { title, description: body, kind: "waiting_on", direction: "they_owe", owedBy: to };
+    : agentTaskItem(to, title, body);
 }
 /** An open item this agent opened for the same party. */
 const sameParty = (it: SecItem, from: AgentId, to: AgentId | "owner") =>

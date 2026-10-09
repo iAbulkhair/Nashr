@@ -123,6 +123,18 @@ export const SEC_KEYS = {
   bookClaim: (scope: string, provider: string, externalId: string) => `sec:book:ext:${scope}:${provider}:${externalId}`,
   /** Every `{provider}:{externalId}` the brand ever claimed, added before the claim, so account deletion finds each claim. */
   bookIds: (scope: string) => `sec:bookext:${scope}`,
+  /**
+   * The follow-up tasks proposed for one booking item (Reem B2b, src/lib/secretary-meeting.ts): one JSON `Proposal[]`, at
+   * most 10, 14 days. Only `approveMeeting` turns any of them into items.
+   */
+  mprop: (scope: string, id: string) => `sec:mprop:${scope}:${id}`,
+  /** Every item id that ever had a pending set, added before the set is written, so `secretaryKeys` finds each `sec:mprop` key. */
+  mprops: (scope: string) => `sec:mprops:${scope}`,
+  /**
+   * How many transcript runs an item's proposals have had (`proposeFromText`): the `n` of its charge claim, so a retry of one
+   * run reuses the hold and a new run is charged. No TTL (`chargeOnce` reuses a hold whatever its age, so a counter that lapsed would hand a free run); `secretaryKeys` names it for every id still in `sec:all`.
+   */
+  mrun: (scope: string, id: string) => `sec:mrun:${scope}:${id}`,
 };
 const UNDATED_SCORE = 32503680000000; // year 3000: after every dated item
 
@@ -1271,7 +1283,7 @@ export async function secretaryDaily(scope: string, now = Date.now()) {
  * member of the global `sec:duescopes` is not a key: `wipeAccount` removes it with `forgetDueScope`.
  */
 export async function secretaryKeys(scope: string): Promise<string[]> {
-  const [ids, props, series, books] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope)), db.smembers(SEC_KEYS.seriesList(scope)), db.smembers(SEC_KEYS.bookIds(scope))]);
+  const [ids, props, series, books, meets] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope)), db.smembers(SEC_KEYS.seriesList(scope)), db.smembers(SEC_KEYS.bookIds(scope)), db.smembers(SEC_KEYS.mprops(scope))]);
   // The alert counters and wrap markers live two days; every local day they can name, in any zone, from two days back
   // to tomorrow.
   const days = [...new Set([-2, -1, 0, 1].map((d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10)))];
@@ -1293,6 +1305,12 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
       return i > 0 ? [SEC_KEYS.bookClaim(scope, m.slice(0, i), m.slice(i + 1))] : [];
     }),
     SEC_KEYS.bookIds(scope),
+    // Meeting proposals (Reem B2b): each pending set by the item ids its index holds, and the index. The approve lock
+    // (`sec:lock:{scope}:mprop:{id}`, also taken by the pending writes) lives 60 s.
+    ...meets.map((id) => SEC_KEYS.mprop(scope, id)), SEC_KEYS.mprops(scope),
+    // The run counter of every item still in `sec:all` (one lapses by its TTL when its item was purged), and the proposing
+    // lock (`sec:lock:{scope}:mrun:{id}`, 60 s).
+    ...ids.map((id) => SEC_KEYS.mrun(scope, id)),
   ];
 }
 /** Account deletion: the scope leaves the sweep's global index. */

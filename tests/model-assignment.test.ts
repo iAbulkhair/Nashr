@@ -55,7 +55,7 @@ describe("only the three current models are called (rule 809)", () => {
   });
 
   it("each job has its model: Sonnet 5.5 checks and talks, Haiku 5.5 does the short jobs, Opus 5.5 onboards", () => {
-    expect(ESTIMATE_MODELS).toEqual({ judge: "claude-sonnet-5-5", onboard: "claude-opus-5-5", mediaPrompt: "claude-haiku-5-5" });
+    expect(ESTIMATE_MODELS).toEqual({ judge: "claude-sonnet-5-5", onboard: "claude-opus-5-5", mediaPrompt: "claude-haiku-5-5", meetingExtract: "claude-sonnet-5-5" });
     expect(CHAT_MODEL).toBe("claude-sonnet-5-5");
     expect(src("src/app/api/tools/[tool]/route.ts")).toContain('model: "claude-haiku-5-5"');
   });

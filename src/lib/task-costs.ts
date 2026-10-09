@@ -30,6 +30,8 @@ export const ESTIMATE_MODELS = {
   onboard: "claude-opus-5-5",
   /** src/lib/media/prompts.ts: the prompt a render is made from */
   mediaPrompt: "claude-haiku-5-5",
+  /** src/lib/secretary-meeting.ts `proposeFromText`: tasks from a meeting transcript (Reem B2b) */
+  meetingExtract: "claude-sonnet-5-5",
 } as const;
 
 export type ItemSize = "short" | "medium" | "long";
@@ -62,6 +64,12 @@ export const ASSUME = {
   onboard: { in: 13500, out: 20000 },
   /** One media prompt: a Sonnet call capped at 400 output tokens (src/lib/media/prompts.ts). */
   mediaPrompt: { in: 500, out: 400 },
+  /**
+   * One transcript extraction (rule 605): the longest allowed text, MEETING_TEXT_MAX = 40,000 Arabic characters at about 2
+   * characters a token, plus the instruction and the tool schema; the answer is capped at 1,500 tokens. ESTIMATED, not
+   * measured: replace with the founder console's per-kind averages after the first production runs (docs/system/costs.md).
+   */
+  meetingExtract: { in: 20_500, out: 1_500 },
 } as const;
 
 export type BatchEstimate = {
@@ -118,4 +126,9 @@ export function onboardEstimateUsd(): number {
 /** The Sonnet prompt a media render adds (≈ $0.005). Zero while Claude is paused; this is the upper case. */
 export function mediaPromptUsd(): number {
   return costUsd(ESTIMATE_MODELS.mediaPrompt, { input_tokens: ASSUME.mediaPrompt.in, output_tokens: ASSUME.mediaPrompt.out });
+}
+
+/** The most one transcript extraction costs (≈ $0.056): what MEETING_TRANSCRIPT_COST must cover at the floor. */
+export function meetingExtractUsd(): number {
+  return costUsd(ESTIMATE_MODELS.meetingExtract, { input_tokens: ASSUME.meetingExtract.in, output_tokens: ASSUME.meetingExtract.out });
 }
