@@ -6,11 +6,12 @@
 import { sc, trialOver, type User } from "../auth";
 import { getTask, updateTask, type Brand, type Task } from "../brand";
 import { agentForTask, type AgentId } from "../agents";
+import { entitlements } from "../entitlements";
 import { agentSpendFor } from "../credits";
 import { getGov } from "../governance";
 import { IMAGE_TYPES, VIDEO_TYPES } from "../tasks";
 import {
-  DEFAULT_IMAGE_MODEL, TRIAL_VIDEO_MODELS, aspectFor, hasArtwork, isMediaModelId, mediaImageFor, mediaModel,
+  DEFAULT_IMAGE_MODEL, aspectFor, hasArtwork, isMediaModelId, mediaImageFor, mediaModel,
   type ImageModelId, type MediaKind, type MediaModelId, type VideoModelId,
 } from "../media-catalog";
 import { modelAvailable, offModels } from "./config";
@@ -95,7 +96,8 @@ export async function renderVideo(u: User, t: Task, brand: Brand, requested: unk
   if (!ofKind(requested, "video")) return refuse(400, "bad_model");
   const model = requested as VideoModelId;
   if (!VIDEO_TYPES.includes(t.type)) return refuse(400, "wrong_type");
-  if (u.plan === "trial" && !TRIAL_VIDEO_MODELS.includes(model)) return refuse(402, "plan_required");
+  // The models the plan includes (rule 781): a trial's three 12-credit models, or every one for a paid plan or a trial with a video grant.
+  if (!entitlements(u).media.video.includes(model)) return refuse(402, "plan_required");
   const [off, spend, by] = await Promise.all([offModels(), spendFor(u, t), opts.by ?? byOf(u)]);
   if (!modelAvailable(model, off)) return refuse(409, "model_unavailable");
   const m = mediaModel(model);

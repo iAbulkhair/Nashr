@@ -75,7 +75,8 @@ export async function GET() {
   // Top-up packs likewise (rule 453): each pack's size, what is left and when it expires, nothing else (`topupBalance`);
   // what was paid, the payment reference, the payment id and who activated the pack stay with the founder, and
   // `topupsDirty` is a runtime flag, never sent. `referredBy` names the partner's email: never the customer's to see.
-  const { passHash: _p, actor: _a, deal: _d, referredBy: _r, topups: _t, topupsDirty: _td, ...safe } = u; void _p; void _a; void _d; void _r; void _t; void _td;
+  // `grants` likewise (rule 783): a founder grant carries the founder's email and a private note.
+  const { passHash: _p, actor: _a, deal: _d, referredBy: _r, topups: _t, topupsDirty: _td, grants: _g, ...safe } = u; void _p; void _a; void _d; void _r; void _t; void _td; void _g;
   const deal = u.deal ? { deal: { credits: u.deal.credits, priceSar: u.deal.priceSar } } : {};
   // A refunded pack holds nothing and is not sent (`openLots`, rule 460).
   const packs = u.topups?.length ? { topups: openLots(u).map(topupBalance) } : {};
