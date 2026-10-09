@@ -1432,11 +1432,11 @@ describe("rule 418: the Partners tab and the Payments panel make their admin cal
     const payments = readFileSync("src/components/app/PaymentsPanel.tsx", "utf8");
     expect(payments).toContain("adminFetch(`/api/admin/payments/${who}`).then(");
     expect(payments).toContain("adminFetch(`/api/admin/payments/${who}`, { method: \"POST\"");
-    const consoleSrc = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
     // The sections moved to their own pages under /{lang}/admin on 2026-10-09 (rule 871): src/lib/admin-gate.ts lists them.
     expect(readFileSync("src/lib/admin-gate.ts", "utf8")).toMatch(/ADMIN_SECTIONS = \[[^\]]*"leads"[^\]]*"partners"[^\]]*\] as const/);
-    expect(consoleSrc).toContain('{tab === "partners" && <PartnersPanel lang={lang} />}');
-    expect(consoleSrc).toContain('{tab === "leads" && <LeadsPanel lang={lang} onSeen={leadsSeen} />}');
+    expect(readFileSync("src/app/[lang]/admin/partners/page.tsx", "utf8")).toContain("<PartnersPanel lang={lang} />");
+    expect(readFileSync("src/app/[lang]/admin/leads/page.tsx", "utf8")).toContain("<LeadsPanel lang={lang} />");
+    expect(readFileSync("src/components/app/LeadsPanel.tsx", "utf8")).toContain("window.dispatchEvent(new Event(ADMIN_LEADS_SEEN))");
     expect(readFileSync("src/components/admin/AdminNav.tsx", "utf8")).toMatch(/partners: "Partners"/);
     expect(readFileSync("src/components/admin/AdminNav.tsx", "utf8")).toMatch(/partners: "الشركاء"/);
   });

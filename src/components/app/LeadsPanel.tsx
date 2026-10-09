@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
+import { ADMIN_LEADS_SEEN } from "@/lib/admin-gate";
 import type { Lead, LeadKind } from "@/lib/leads";
 
 /** GET /api/admin/leads. */
@@ -29,10 +30,11 @@ const S = {
 } as const;
 
 /**
- * Founder console, Leads tab (#134). Opening it marks every lead up to now as read (`onSeen` clears the tab's count).
+ * Founder console, Leads section (#134). Opening it marks every lead up to now as read, then fires `ADMIN_LEADS_SEEN` on
+ * `window` so the sidebar's unread badge clears (src/components/admin/AdminNav.tsx).
  * Every value is visitor-typed and rendered as text only.
  */
-export default function LeadsPanel({ lang, onSeen }: { lang: "ar" | "en"; onSeen?: () => void }) {
+export default function LeadsPanel({ lang }: { lang: "ar" | "en" }) {
   const L = S[lang];
   const [all, setAll] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -49,16 +51,17 @@ export default function LeadsPanel({ lang, onSeen }: { lang: "ar" | "en"; onSeen
   }, [L.failed]);
 
   useEffect(() => {
+    const seen = () => window.dispatchEvent(new Event(ADMIN_LEADS_SEEN));
     void Promise.resolve().then(() => load(false, 0)).then(async (first) => {
       if (!first) return;
       // Read up to the newest sales lead on screen (the first row: sales leads, newest first), not up to the server's
       // clock: a lead that arrives between this load and the POST was never shown and stays unread.
       const until = first.leads[0]?.at;
-      if (!until) { onSeen?.(); return; }
+      if (!until) { seen(); return; }
       const r = await adminFetch("/api/admin/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "seen", until }) }).catch(() => null);
-      if (r?.ok) onSeen?.();
+      if (r?.ok) seen();
     });
-  }, [load, onSeen]);
+  }, [load]);
 
   const go = (nextAll: boolean, nextOffset: number) => { setAll(nextAll); setOffset(nextOffset); void load(nextAll, nextOffset); };
   const at = (v: string) => (v ? v.slice(0, 16).replace("T", " ") : "—");

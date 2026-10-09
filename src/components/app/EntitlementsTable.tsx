@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { agentById } from "@/lib/agents";
 import { mediaModel, type VideoModelId } from "@/lib/media-catalog";
 // Type only: src/lib/entitlements.ts reaches the store (rate.ts, team.ts, chat-allowance.ts), so it is never imported at
-// runtime here or in AdminConsole (rule 781, tests/entitlements-scan.test.ts); the type is erased from the bundle.
+// runtime here or in src/components/admin/shared.tsx (rule 781, tests/entitlements-scan.test.ts); the type is erased from the bundle.
 import type { EntitlementView } from "@/lib/entitlements";
 import type { AgencyDeal } from "@/lib/pricing";
 

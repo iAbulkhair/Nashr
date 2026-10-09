@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 /**
  * The founder console lives in its own route tree, /{lang}/admin, with its own layout and sidebar (spec
@@ -109,5 +109,26 @@ describe("the customer app links to the console only from the account menu (rule
     // The account menu renders only when opened, so its link is pinned in the source.
     expect(readFileSync("src/components/app/Sidebar.tsx", "utf8")).toMatch(/admin \? \[\[adminHref\(lang, "overview"\), N\.adminPanel\]\]/);
     expect([appDict.ar.nav.adminPanel, appDict.en.nav.adminPanel]).toEqual(["لوحة الأدمن", "Admin console"]);
+  });
+});
+
+describe("one component per console section (rule 874)", () => {
+  it("each section fetches only its own endpoints and AdminConsole is gone (rule 874)", () => {
+    expect(existsSync("src/components/app/AdminConsole.tsx")).toBe(false);
+    const src = (f: string) => readFileSync(`src/components/admin/${f}.tsx`, "utf8");
+    expect(src("Log")).toMatch(/\/api\/admin\/log/);
+    expect(src("Log")).not.toMatch(/\/api\/admin\/(plan|overview|evals)/);
+    expect(src("Quality")).not.toMatch(/\/api\/admin\/plan/);
+    for (const f of ["Overview", "Users", "Usage", "Billing", "Quality", "Log"]) expect(src(f)).toMatch(/useAdminEnded\(\)/);
+  });
+
+  it("with a key session every section page renders its own component (rule 874)", async () => {
+    await adminSignIn();
+    const marks: Record<AdminSection, RegExp> = { overview: /…/, users: /type="text"|placeholder=/, leads: /data-testid="leads-panel"/, usage: /Loading…|جارٍ التحميل…/, billing: /Loading…|جارٍ التحميل…/, partners: /./, quality: /Agent quality/, wishlist: /./, log: /Every founder action/ };
+    for (const s of ADMIN_SECTIONS) {
+      const html = renderToStaticMarkup((await (await pageFor(s))({ params: P("en"), searchParams: Q({}) })) as React.ReactElement);
+      expect(html, s).toMatch(marks[s]);
+      expect(html, s).not.toContain('role="alert"');
+    }
   });
 });

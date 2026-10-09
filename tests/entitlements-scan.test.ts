@@ -49,7 +49,7 @@ describe("callers read what a plan includes from entitlements", () => {
   });
 
   it("rule 784: the console and its entitlements table take the view as a type only, so the store stays out of the browser bundle", () => {
-    for (const f of ["src/components/app/AdminConsole.tsx", "src/components/app/EntitlementsTable.tsx"]) {
+    for (const f of ["src/components/admin/shared.tsx", "src/components/app/EntitlementsTable.tsx"]) {
       const imports = [...read(f).matchAll(/^import\s+(type\s+)?[^;]*?from\s+["']@\/lib\/entitlements["']/gm)];
       expect(imports.length, `${f} imports the view type`).toBeGreaterThan(0);
       expect(imports.every((m) => !!m[1]), `${f} must use import type`).toBe(true);
@@ -91,7 +91,8 @@ const PLAN_VS_TRIAL = /\bplan\s*[!=]==?\s*["']trial["']/g;
 const ALLOWED: Record<string, { n: number; why: string }> = {
   "src/app/[lang]/app/billing/page.tsx": { n: 4, why: "display: a trial sees its end day, and its owner the activation card, the partner-code form and the open offer (partners.ts checks the code and the offer again)" },
   "src/app/api/team/invite/route.ts": { n: 1, why: "ACCESS (how much): a trial may send fewer invitations a day than a paid plan (PER_TRIAL_ACCOUNT_DAY against PER_ACCOUNT_DAY)" },
-  "src/components/app/AdminConsole.tsx": { n: 4, why: "display and stats: the founder's paying and trialing counts, the trial's end day in the list, the chat-overflow tooltip" },
+  "src/components/admin/shared.tsx": { n: 2, why: "stats: the founder's paying and trialing counts in the account tiles (`PlanTiles`)" },
+  "src/components/admin/Users.tsx": { n: 2, why: "display: the trial's end day in the list, the chat-overflow tooltip" },
   "src/components/app/ChatPanel.tsx": { n: 2, why: "display: the activation bar and the first-step hint, shown to a trial only" },
   "src/components/app/ProfilePanel.tsx": { n: 3, why: "display and copy: the runway lines and the plan rules text differ for a trial, and its owner gets the subscribe button" },
   "src/components/app/TrialBanner.tsx": { n: 1, why: "display: the countdown strip renders for a trial only" },

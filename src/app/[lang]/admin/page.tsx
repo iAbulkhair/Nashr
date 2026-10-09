@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { isAdminCookie } from "@/lib/auth";
 import { requireAdmin } from "@/lib/admin-gate-server";
-import AdminConsole from "@/components/app/AdminConsole";
+import Overview from "@/components/admin/Overview";
 import AdminLogin from "@/components/app/AdminLogin";
 
 export const dynamic = "force-dynamic";
@@ -19,5 +19,5 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     return <AdminLogin lang={lang} />;
   }
   const { keySession } = await requireAdmin();
-  return <AdminConsole lang={lang} keySession={keySession} section="overview" />;
+  return <Overview lang={lang} keySession={keySession} />;
 }
