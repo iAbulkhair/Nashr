@@ -113,13 +113,13 @@ describe("while Claude is paused: the fixed templates", () => {
 });
 
 describe("with Claude on", () => {
-  it("one Sonnet call, 20 s and no retries, and the model's text is the prompt", async () => {
+  it("one Haiku 5.5 call, 20 s and no retries, and the model's text is the prompt", async () => {
     const p = await load("on");
     expect(await p.imagePrompt(brand(), task, "img-fast", "square", "o@test.example")).toBe("A model-written prompt");
     expect(sdk.calls).toHaveLength(1);
     const { body, opts } = sdk.calls[0];
     expect(opts).toEqual({ timeout: 20000, maxRetries: 0 });
-    expect([body.model, body.max_tokens]).toEqual(["claude-sonnet-5", 400]);
+    expect([body.model, body.max_tokens]).toEqual(["claude-haiku-5-5", 400]);
     expect(JSON.stringify(body.messages), "the post itself goes to the model").toContain("قهوة مختصة محمصة اليوم");
   });
 
