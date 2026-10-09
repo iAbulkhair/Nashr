@@ -8,8 +8,8 @@ const page = read("src/app/[lang]/page.tsx");
 const home = (f: string) => read(`src/components/home/${f}.tsx`);
 
 describe("the homepage is D, without the game (rule 516)", () => {
-  it("renders the cover, rules, day, steps, plans and questions in that order", () => {
-    const at = ["Cover", "Rules", "Day", "Steps", "Plans", "HomeFaq"].map((c) => page.indexOf(`<${c} `));
+  it("renders the cover, scenes, rules, day, steps, plans and questions in that order", () => {
+    const at = ["Cover", "Stories", "Rules", "Day", "Steps", "Plans", "HomeFaq"].map((c) => page.indexOf(`<${c} `));
     for (const i of at) expect(i).toBeGreaterThan(-1);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });

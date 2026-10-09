@@ -967,3 +967,62 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 @media (prefers-reduced-motion: reduce) {
   .plane { inset-inline-start: 14%; }
 }
+
+/* ---------- Scenes under the cover (Stories.tsx, rule 775) ---------- */
+
+.car { min-width: 0; }
+.track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.track::-webkit-scrollbar { display: none; }
+.track:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ink); outline-offset: 4px; }
+/* Room inside each slide for the scribbled outlines, which draw 4px past their box, and for the kind tag's overhang. */
+.slide { min-width: 0; padding: 18px 10px 10px; scroll-snap-align: start; }
+.scn { justify-content: space-between; }
+.sfig { display: flex; flex-direction: column; gap: 14px; height: 100%; margin: 0; }
+.sfig blockquote { margin: 0; }
+.sfig > :global(.s-bubble) { flex: 1; display: flex; align-items: center; }
+.kind { margin-block-start: -38px; margin-inline-start: var(--brk); width: fit-content; }
+.swho { display: flex; align-items: center; gap: 12px; }
+.swho b { display: block; font-weight: 800; line-height: 1.35; }
+.swho small { display: block; font-size: var(--t-xs); color: var(--color-muted); }
+/* The face sits in an empty hand-drawn ring; the drawing is clipped round so the shoulders stay inside it. */
+.pface { position: relative; isolation: isolate; display: block; flex: none; width: 76px; height: 76px; padding: 5px; }
+.pface > i { display: block; border-radius: 50%; overflow: hidden; }
+.pface .doodle :is(path, circle, ellipse, rect, line) { stroke-width: 1.25px; }
+.pface .doodle .fine { stroke-width: 0.9px; }
+.doodle .blush { fill: color-mix(in oklab, var(--color-agent-sami) 30%, transparent); stroke: none; }
+.carNav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-block-start: 22px; }
+.arrow {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.chev { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.25px; stroke-linecap: round; stroke-linejoin: round; }
+:global([dir="rtl"]) .chev { transform: scaleX(-1); }
+.arrow:disabled { opacity: 0.35; cursor: default; }
+.arrow:focus-visible, .pip:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ink); outline-offset: 2px; border-radius: 50%; }
+.pips { display: flex; gap: 2px; }
+.pip { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; }
+.pip::before { content: ""; width: 10px; height: 10px; border: 1.5px solid var(--color-ink); border-radius: 50%; }
+.pip[aria-current="true"]::before { background: var(--color-ink); }
+@media (scripting: none) { .carNav { display: none; } .track { scrollbar-width: thin; } }
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-motion="off"]) .home .pface > i { transform-origin: 50% 85%; animation: nod var(--nw, 5.4s) ease-in-out var(--nd, 0s) infinite; }
+}
+li:nth-child(2n) .pface > i { --nw: 6.1s; --nd: -2.6s; }
+li:nth-child(3n) .pface > i { --nw: 4.6s; --nd: -1.2s; }
