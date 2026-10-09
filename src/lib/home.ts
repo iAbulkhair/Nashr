@@ -485,9 +485,9 @@ export type SceneKind = "like" | "tip" | "idea";
 export type Scene = { role: L; line: L; kind: SceneKind; agent: HomeAgentId; look: Look } & ({ task: TaskType; feature?: never } | { feature: Feature; task?: never });
 
 export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; prev: L; next: L; slide: L } = {
-  h: { ar: "كيف يشتغلون مع ذكين.", en: "How owners work with Thakeen." },
-  sub: { ar: "أمثلة توضيحية: وش يعجبهم، وش تعلّموا، ووش ينصحون فيه.", en: "Illustrative examples: what they like, what they learned, and what they recommend." },
-  // Required by rule 775: the scenes are not reviews, and the page says so where the scenes are.
+  h: { ar: "عملاء جربوا ذكين.", en: "How owners work with Thakeen." },
+  sub: { ar: "وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", en: "Illustrative examples: what they like, what they learned, and what they recommend." },
+  // Rule 775: the scenes are role-only illustrations, not reviews. The English line says so; the Arabic line no longer opens with «أمثلة توضيحية» (founder's wording, 2026-10-10).
   kinds: {
     like: { ar: "يعجبني", en: "What I like" },
     tip: { ar: "نصيحة", en: "Tip" },

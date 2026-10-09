@@ -9,10 +9,15 @@ import styles from "./home.module.css";
 const smooth = () =>
   typeof window !== "undefined" && document.documentElement.dataset.motion !== "off" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto";
 
+/** The slide a step lands on when the row loops: -1 from the first is the last, `n` from the last is the first. */
+export const wrapIndex = (i: number, n: number) => (n > 0 ? ((i % n) + n) % n : 0);
+
 /**
  * The scenes' slider (rule 775): one slide per child, side by side in a scroll-snapping row, so a swipe, the scrollbar or
  * the arrow keys move it without script. The script adds previous and next buttons and one dot per slide, and follows
- * the scroll to mark the slide in view. In Arabic the row runs right to left, where `scrollLeft` counts down from 0.
+ * the scroll to mark the slide in view. The buttons loop: next on the last slide goes to the first, previous on the
+ * first goes to the last, so neither is ever disabled. In Arabic the row runs right to left, where `scrollLeft` counts
+ * down from 0.
  */
 export default function SceneTrack({ lang, label, prev, next, slide, children }: { lang: Lang; label: string; prev: string; next: string; slide: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -33,7 +38,7 @@ export default function SceneTrack({ lang, label, prev, next, slide, children }:
   const go = (i: number) => {
     const el = ref.current;
     if (!el) return;
-    const k = Math.max(0, Math.min(n - 1, i));
+    const k = wrapIndex(i, n);
     el.scrollTo({ left: (getComputedStyle(el).direction === "rtl" ? -1 : 1) * k * el.clientWidth, behavior: smooth() });
     setAt(k);
   };
@@ -48,7 +53,7 @@ export default function SceneTrack({ lang, label, prev, next, slide, children }:
         ))}
       </div>
       <div className={styles.carNav}>
-        <button type="button" className={styles.arrow} onClick={() => go(at - 1)} disabled={at === 0} aria-label={prev}>
+        <button type="button" className={styles.arrow} onClick={() => go(at - 1)} aria-label={prev}>
           <Scribble kind="circleLoop" seed="car-prev" fill="paper" />
           <svg className={styles.chev} viewBox="0 0 24 24" aria-hidden="true">
             <path d="M15 5 L8 12 L15 19" />
@@ -61,7 +66,7 @@ export default function SceneTrack({ lang, label, prev, next, slide, children }:
             </li>
           ))}
         </ol>
-        <button type="button" className={styles.arrow} onClick={() => go(at + 1)} disabled={at === n - 1} aria-label={next}>
+        <button type="button" className={styles.arrow} onClick={() => go(at + 1)} aria-label={next}>
           <Scribble kind="circleLoop" seed="car-next" fill="paper" />
           <svg className={styles.chev} viewBox="0 0 24 24" aria-hidden="true">
             <path d="M9 5 L16 12 L9 19" />
