@@ -157,9 +157,20 @@ export type BatchRefusal =
  * `modelRejected`: the brand's pick was not used and why (the batch ran on the automatic choice); the caller tells the
  * owner (`MODEL_UNAVAILABLE`, src/lib/models/overrides.ts). Absent when the pick ran, or there was none.
  * `held` (rule 801): how many items the output check refused in `enforce` and did not save, present only when above 0. Their
- * share of the price was refunded after the commit, so `cost` (and `credits`) are net of it.
+ * share of the price is refunded after the commit; `refunded` (present with `held`) is what actually landed, 0 when that
+ * refund could not be written, so no answer claims a refund that did not happen (`withheldNote`). `cost` (and `credits`) are
+ * net of what landed.
  */
-export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected; held?: number };
+export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected; held?: number; refunded?: number };
+
+/**
+ * The sentence the chat tools and MCP add when the output check withheld items (rule 801): it says the credits came back only
+ * when the refund landed (`refunded > 0`). Empty when nothing was withheld.
+ */
+export function withheldNote(r: { held?: number; refunded?: number }): string {
+  if (!r.held) return "";
+  return (r.refunded ?? 0) > 0 ? ` ${r.held} item(s) were withheld as outside the team's work, and their credits refunded.` : ` ${r.held} item(s) were withheld as outside the team's work.`;
+}
 export type BatchResult = BatchDone | BatchRefusal;
 /**
  * What only a batch with a `notesGate` can answer (rule 796): `agent_scope` carries the refusal text the owner reads (the notes are
@@ -416,7 +427,8 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
       user.credits = await refund(user.email, share, receipt);
       back = share;
     } catch (e) {
-      console.error("agent scope partial refund failed", e instanceof Error ? e.name : "error");
+      // The error's name and where the charge was booked (agent, month, the top-up lots' ids), never the owner's email or text.
+      console.error("agent scope partial refund failed", e instanceof Error ? e.name : "error", { agent: receipt.agent, month: receipt.month, lots: receipt.from?.lots.map((l) => l.id) ?? [], share });
     }
   }
   const net = charged - back;
@@ -426,5 +438,5 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
   judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model });
-  return { ok: true, tasks, credits: user.credits, receipt, cost: net, agent, gov, ...(modelRejected ? { modelRejected } : {}), ...(held > 0 ? { held } : {}) };
+  return { ok: true, tasks, credits: user.credits, receipt, cost: net, agent, gov, ...(modelRejected ? { modelRejected } : {}), ...(held > 0 ? { held, refunded: back } : {}) };
 }

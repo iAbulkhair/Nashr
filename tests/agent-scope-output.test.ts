@@ -7,13 +7,14 @@ import { readFileSync } from "node:fs";
  *
  * - 800: the chat reply. `chat()` checks the final model answer (`scopeCheck("output", …)`) before it is saved. Enforce: a
  *   refusal replaces the text, the cards stay and the turn keeps its `usd` (the main model was called). Shadow: started beside
- *   the save and awaited before the turn returns. The fixed fallthrough replies and the paused reply are never checked. Every
+ *   the save and awaited before the turn returns. A reply cut at its cap is model text and is checked the same way (enforce:
+ *   the refusal without the cut note). Thakeen's fixed replies and the paused reply are never checked. Every
  *   exit after the input gate awaits the shadow checks (try/finally), and the shadow input check never delays the first call.
  * - 801: the items of a generation batch, checked between generation and saving through `pmap` (5 at a time). Enforce: an item
  *   refused is not saved; after the commit `Math.ceil(cost * held / items)` is refunded with the charge's receipt and
- *   `BatchDone.held` says how many. All refused, or any refused in a `once` batch: `AgentScopeRefused` inside the refunding try,
+ *   `BatchDone.held` says how many, `refunded` what landed (0 when the refund failed, and then no answer says "refunded"). All refused, or any refused in a `once` batch: `AgentScopeRefused` inside the refunding try,
  *   so the whole batch is refunded. Shadow saves every item and logs the refusals with their `itemId`.
- * - 802: MCP `save_draft`. After the hourly draft rate, before the save: enforce refuses with an `isError` text and saves nothing.
+ * - 802: MCP `save_draft`. After the hourly and daily draft rate (both counted), before the save: enforce refuses with an `isError` text and saves nothing.
  *
  * The classifier is mocked (`@/lib/agent-scope-classify`) per call: `cls.decide` reads the text and answers the verdict.
  */
@@ -24,7 +25,7 @@ const sdk = vi.hoisted(() => {
     { channel: "instagram", title: "بند 2", body: "نص تجريبي للعنصر الثاني يكفي للمراجعة" },
     { channel: "instagram", title: "بند 3", body: "نص تجريبي للعنصر الثالث يكفي للمراجعة" },
   ];
-  return { msg, items: items as typeof items, all: items, gens: 0, streams: 0, chat: [] as unknown[][], onStream: null as null | (() => void), noUsage: false };
+  return { msg, items: items as typeof items, all: items, gens: 0, streams: 0, chat: [] as unknown[][], stops: [] as string[], onStream: null as null | (() => void), noUsage: false };
 });
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
@@ -37,7 +38,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
           sdk.onStream?.();
           const next = sdk.chat.shift() ?? [{ type: "text", text: "أهلاً" }];
           const tool = next.some((b) => (b as { type: string }).type === "tool_use");
-          const m = sdk.msg(p.model, next, tool ? "tool_use" : "end_turn");
+          const m = sdk.msg(p.model, next, sdk.stops.shift() ?? (tool ? "tool_use" : "end_turn"));
           return sdk.noUsage ? { ...m, usage: undefined } : m;
         },
       }),
@@ -49,6 +50,12 @@ vi.mock("@anthropic-ai/sdk", () => ({
     };
   },
 }));
+// A partial refund that cannot be written (rule 801, fix round 1): only `refund` is wrapped, and only while `fail.refund` is set.
+const fail = vi.hoisted(() => ({ refund: false }));
+vi.mock("@/lib/credits", async (orig) => {
+  const m = await orig<typeof import("@/lib/credits")>();
+  return { ...m, refund: (...a: Parameters<typeof m.refund>) => (fail.refund ? Promise.reject(Object.assign(new Error("store down"), { name: "RefundStoreError" })) : m.refund(...a)) };
+});
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "on" as const }));
 type Seen = { kind: string; text: string; agent: string; brand: { name: string; industry: string }; otherBrands: string[]; lang: string };
 const cls = vi.hoisted(() => ({
@@ -119,6 +126,8 @@ beforeEach(() => {
   sdk.gens = 0;
   sdk.streams = 0;
   sdk.chat = [];
+  sdk.stops = [];
+  fail.refund = false;
   sdk.items = sdk.all;
   sdk.onStream = null;
   sdk.noUsage = false;
@@ -174,6 +183,50 @@ describe("rule 800: the chat reply", () => {
     const m = await chat(u, "مرحبا", undefined, "noor", { deadline: Date.now() + 1000 });
     expect(m.content).toBe(OUT_OF_TIME_REPLY.ar);
     expect(sdk.streams).toBe(0);
+    expect(cls.calls).toHaveLength(0);
+  });
+
+  it("chat reply: a fixed reply after a model call (the model refused) is not checked", async () => {
+    const u = await owner("aso-fixed-refused");
+    await setModes(modes("enforce"));
+    sdk.chat = [[{ type: "text", text: "لا" }]];
+    sdk.stops = ["refusal"];
+    cls.decide = () => "off_topic";
+    const m = await chat(u, "مرحبا", undefined, "noor");
+    expect(sdk.streams).toBe(1);
+    expect(m.content).not.toBe(OFF);
+    expect(cls.calls).toHaveLength(0);
+  });
+
+  it("chat reply: a reply cut at its cap is model text, so it is checked; enforce shows the refusal without the cut note", async () => {
+    const u = await owner("aso-cut");
+    await setModes(modes("enforce"));
+    sdk.chat = [[{ type: "text", text: "CUT-OFF مقال طويل عن كرة القدم" }]];
+    sdk.stops = ["max_tokens"];
+    cls.decide = (i) => (i.text.includes("CUT-OFF") ? "off_topic" : "in");
+    const m = await chat(u, "اكتب مقالاً", undefined, "noor");
+    expect(m.content).toBe(OFF);
+    expect((await history(sc(u))).at(-1)!.content).toBe(OFF);
+    expect(cls.calls.map((c) => [c.kind, c.text])).toEqual([["output", "CUT-OFF مقال طويل عن كرة القدم"]]);
+    expect((await logOf(u.email)).map((e) => [e.layer, e.where, e.mode, e.verdict])).toEqual([["output", "chat", "enforce", "off_topic"]]);
+  });
+
+  it("chat reply: a cut reply in shadow keeps the text and the cut note and logs once; an empty cut asks nothing", async () => {
+    const u = await owner("aso-cut-shadow");
+    await setModes(modes("shadow"));
+    sdk.chat = [[{ type: "text", text: "CUT-OFF نص" }]];
+    sdk.stops = ["max_tokens"];
+    cls.decide = () => "off_topic";
+    const m = await chat(u, "اكتب", undefined, "noor");
+    expect(m.content.startsWith("CUT-OFF نص\n\n")).toBe(true);
+    expect(m.content).toContain("انقطع الرد");
+    expect((await logOf(u.email)).map((e) => [e.layer, e.mode])).toEqual([["output", "shadow"]]);
+    cls.calls = [];
+    await setModes(modes("enforce"));
+    sdk.chat = [[]];
+    sdk.stops = ["max_tokens"];
+    const e = await chat(u, "اكتب", undefined, "noor");
+    expect(e.content).not.toBe(OFF);
     expect(cls.calls).toHaveLength(0);
   });
 
@@ -261,6 +314,7 @@ describe("rule 801: the items of a batch", () => {
     const cost = TASK_COST.social;
     const back = Math.ceil(cost / 3);
     expect(r.held).toBe(1);
+    expect(r.refunded, "the refund that landed").toBe(back);
     expect(r.tasks.map((t) => t.title)).toEqual(["بند 1", "بند 3"]);
     expect((await listTasks(sc(u))).map((t) => t.title).sort()).toEqual(["بند 1", "بند 3"]);
     expect(await credits(u.email)).toBe(start - cost + back);
@@ -277,6 +331,35 @@ describe("rule 801: the items of a batch", () => {
     expect(log[0].itemId).toMatch(/^[0-9a-f]{16}$/);
     expect(cls.calls).toHaveLength(3);
     expect(cls.calls[0]).toMatchObject({ kind: "output", agent: "noor", lang: "ar", brand: { name: BRAND.name, industry: BRAND.industry } });
+  });
+
+  it("items: a partial refund that fails is never claimed: held reported, refunded 0, no 'refunded' sentence", async () => {
+    const u = await owner("aso-refund-fail");
+    const start = await credits(u.email);
+    const cost = TASK_COST.social;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    fail.refund = true;
+    cls.decide = refuseTitle("بند 2");
+    const r = await batch(u, modes("enforce"));
+    if (!r.ok) throw new Error(`refused: ${r.reason}`);
+    expect(r.held).toBe(1);
+    expect(r.refunded).toBe(0);
+    expect(r.cost, "the balance lost the whole price").toBe(cost);
+    expect(await credits(u.email)).toBe(start - cost);
+    const line = err.mock.calls.find((c) => c[0] === "agent scope partial refund failed")!;
+    expect(line).toBeDefined();
+    expect(line).toContain("RefundStoreError");
+    expect(JSON.stringify(line), "no owner email in the log").not.toContain(u.email);
+    // The owner-facing sentences: the chat tool, MCP and the web route.
+    const out = await runTool(u, "generate_content", { type: "social", notes: "" }, [], [], undefined, { agent: "noor", modes: modes("enforce") });
+    expect(out).toContain(" 1 item(s) were withheld as outside the team's work.");
+    expect(out).not.toContain("refunded");
+    await setModes(modes("enforce"));
+    const mcp = await tool(u.email, "generate_content", { type: "social" });
+    expect(mcp.content[0].text).toContain("1 item(s) were withheld as outside the team's work.");
+    expect(mcp.content[0].text).not.toContain("refunded");
+    const res = await generateRoute.POST(json("/api/generate", "POST", { type: "social" }));
+    expect(await res.json()).toMatchObject({ ok: true, held: 1, refunded: 0 });
   });
 
   it("items: all refused: nothing saved, whole cost refunded, AgentScopeRefused", async () => {
@@ -382,8 +465,9 @@ describe("rule 802: MCP save_draft", () => {
     expect((await listActivity(sc(u))).rows.filter((a) => a.kind === "external_draft")).toEqual([]);
     expect(await credits(u.email), "no credits either way").toBe(50);
     // The order (ruling): the hourly draft rate is counted before the classifier, which it bounds, so a refused draft is
-    // counted there. There is no other draft allowance to spend.
+    // counted there, in both the hourly and the daily draft bucket (accepted: it bounds the classifier's spend).
     expect(Number(await db.get(`rate:draft:h:${u.email}`))).toBe(1);
+    expect(Number(await db.get(`rate:draft:d:${u.email}`))).toBe(1);
     expect(cls.calls[0]).toMatchObject({ kind: "output", agent: "noor", text: "إعلان لمطعم آخر في جدة\n\nإعلان لمطعم آخر في جدة" });
     expect((await logOf(u.email))[0]).toMatchObject({ layer: "output", where: "save_draft", mode: "enforce", verdict: "other_business" });
   });

@@ -10,7 +10,7 @@ import { trialOver, type User } from "./auth";
 import { getBrand, listPreferencesFor, listLite, type Brand, type Task } from "./brand";
 import { feedbackBlock, feedbackFor } from "./feedback";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType, type TaskType } from "./tasks";
-import { generateBatch, type BatchRefusal } from "./generate-batch";
+import { generateBatch, withheldNote, type BatchRefusal } from "./generate-batch";
 import { CORE_FILES, FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, safeName, writeFile } from "./files";
 import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
@@ -486,8 +486,8 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       messages.push({ role: "assistant", content: res.content });
       const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
       if (!uses.length) {
-        // The final answer, and only it, gets the output check (rule 800): the fixed replies below and the paused reply are
-        // Thakeen's own words. `enforce` is awaited before the save and a refusal replaces the text; the cards stay and `usd`
+        // The final answer gets the output check (rule 800), and so does a reply cut at its cap (below): the fixed replies
+        // below and the paused reply are Thakeen's own words. `enforce` is awaited before the save and a refusal replaces the text; the cards stay and `usd`
         // stays, because the main model was called. `shadow` starts beside the save and is awaited in the `finally`. An error,
         // and an empty answer (nothing to read), let the text through.
         const said = textOf(res.content);
@@ -522,7 +522,18 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     // The loop ended without a closing answer: the request ran out of time, the calls ran out, the model refused, a call was
     // cut off at its cap, or the ceiling left no room for another call. What the tools made is on the reply's cards and in
     // the inbox either way, and a limit a tool hit still raises its dialog.
-    const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
+    // A reply cut at its cap is the model's own text, so it gets the same output check as a final answer (rule 800, spec 4.4):
+    // `enforce` shows the refusal in its place, without the cut note (there is nothing to continue); `shadow` keeps it and the
+    // check joins `late`. Every other reply here is Thakeen's fixed text and is not checked.
+    let cut = cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang];
+    if (!outOfTime && ended === "cut" && cutText && scopeModes.output !== "off") {
+      const check = scopeCheck("output", scopeModes.output, cutText, scopeCtx);
+      if (scopeModes.output === "enforce") {
+        const out = await check;
+        if (out.block) cut = out.reply;
+      } else late.push(check);
+    }
+    const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? cut : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
     const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
     await deliver(email, m, conv);
     return withLimit(m, actions, spent);
@@ -647,8 +658,6 @@ function batchRefused(r: BatchRefusal, actions: string[], lowCredits: (need: num
       throw r.error;
   }
 }
-/** What a batch that kept some of its items says about the rest (rule 801): appended to the tool result. */
-const withheld = (r: { held?: number }) => (r.held ? ` ${r.held} item(s) were withheld as outside the team's work, and their credits refunded.` : "");
 
 /**
  * Tools that change what the whole account publishes or knows, gated by the acting person's role exactly like the
@@ -715,7 +724,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const inline = created.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
       const held = r.gov.autoApprove[type] ? created.filter((t) => t.status === "pending").length : 0;
       const auto = r.gov.autoApprove[type] ? (held ? ` (auto-approve is on, but ${held} item(s) broke a brand rule and wait for the owner in the inbox)` : " (auto-approved per governance)") : "";
-      return `Created ${created.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}.${withheld(r)} Titles: ${created.map((i) => i.title).join(" | ")}${inline}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
+      return `Created ${created.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}.${withheldNote(r)} Titles: ${created.map((i) => i.title).join(" | ")}${inline}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
     }
     case "draft_items": {
       // The tool schema's enum is not the approval (the model is never the only approval): a type outside DRAFT_TYPES
@@ -731,7 +740,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const cost = r.cost;
       made.push(...created);
       actions.push(`drafted:${type}:${created.length}`);
-      return `Drafted ${created.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.${withheld(r)}\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
+      return `Drafted ${created.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.${withheldNote(r)}\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
     }
     case "update_brand": {
       // Code-level gate, not a prompt rule: no tool call writes the brand file. The model that calls this reads crawled

@@ -59,5 +59,5 @@ export async function POST(req: Request) {
   // The brand's model pick was not used (src/lib/models/overrides.ts): the batch ran on the automatic choice, and the
   // owner reads why in the reply language.
   // `held`: items the output check kept back in enforce (rule 801), whose share was refunded; `credits` is after that refund.
-  return NextResponse.json({ ok: true, created: r.tasks.length, credits: u.credits, ...(r.held ? { held: r.held } : {}), ...(r.modelRejected ? { notice: MODEL_UNAVAILABLE.generate[lang] } : {}) });
+  return NextResponse.json({ ok: true, created: r.tasks.length, credits: u.credits, ...(r.held ? { held: r.held, refunded: r.refunded ?? 0 } : {}), ...(r.modelRejected ? { notice: MODEL_UNAVAILABLE.generate[lang] } : {}) });
 }

@@ -9,7 +9,7 @@ import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance"
 import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
-import { generateBatch } from "@/lib/generate-batch";
+import { generateBatch, withheldNote } from "@/lib/generate-batch";
 import { NO_CREDITS_HINT } from "@/lib/topups";
 import { listFiles, readFile } from "@/lib/files";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, isCustomerFacing } from "@/lib/brand-rules";
@@ -144,8 +144,7 @@ export async function POST(req: Request) {
           }
         }
         // The brand's model pick was not used (src/lib/models/overrides.ts): the connected assistant relays it to the owner.
-        const held = r.held ? ` ${r.held} item(s) were withheld as outside the team's work, and their credits refunded.` : "";
-        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.${held}\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n") + (r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : "")));
+        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.${withheldNote(r)}\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n") + (r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : "")));
       }
       case "list_inbox": {
         const status = String(args.status ?? "pending");
