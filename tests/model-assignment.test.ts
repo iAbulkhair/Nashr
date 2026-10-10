@@ -71,6 +71,8 @@ describe("only the three current models are called (rule 809)", () => {
     expect(CHAT_MODEL).toBe("claude-sonnet-5-5");
     expect(route("tool").model).toBe("claude-haiku-5-5");
     expect(route("imagePrompt").model).toBe("claude-haiku-5-5");
+    // The agent-scope classifier (rule 791) is a short job too: Haiku 5.5, asked through route("agentScope").
+    expect(route("agentScope").model).toBe("claude-haiku-5-5");
     expect(src("src/app/api/tools/[tool]/route.ts")).toContain('model: route("tool").model');
   });
 

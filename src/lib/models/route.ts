@@ -25,15 +25,17 @@ import { TASK_MODELS } from "../task-models";
  * `generate()`; the chat routes to `reserveChatTurn` and to `chat()` (the gate carries it). Do not call `route()` twice
  * for one batch or one turn and use the two answers for the two jobs.
  */
-export type Purpose = "chat" | "generate" | "review" | "xreview" | "judge" | "onboard" | "imagePrompt" | "tool";
+export type Purpose = "chat" | "generate" | "review" | "xreview" | "judge" | "onboard" | "imagePrompt" | "tool" | "agentScope";
 
 /**
  * What each purpose runs on when nobody picked. Since 2026-10-09 (rules 809 and 900, founder: only the three current
  * models) these are Opus 5.5 for writing (generation, onboarding), Sonnet 5.5 for checking and talking (reviewer,
- * cross-agent review, judge, chat) and Haiku 5.5 for the short jobs (image/video prompts, free tools). Since rule 901
- * (2026-10-09) `generate` and `review` have a default PER TASK TYPE: with `ctx.task`, `route("generate", { task })` and
- * `route("review", { task })` take theirs from `TASK_MODELS` (src/lib/task-models.ts: Opus 5.5 writes 10 types, Sonnet
- * 5.5 the other 16 and reviews all 26), and the two values below are only what a call without a task runs on.
+ * cross-agent review, judge, chat) and Haiku 5.5 for the short jobs (image/video prompts, free tools and, since
+ * 2026-10-10, the agent-scope classifier `agentScope`, rule 791: one forced tool call, 3 s, never overridable). Since
+ * rule 901 (2026-10-09) `generate` and `review` have a default PER TASK TYPE: with `ctx.task`,
+ * `route("generate", { task })` and `route("review", { task })` take theirs from `TASK_MODELS` (src/lib/task-models.ts:
+ * Opus 5.5 writes 10 types, Sonnet 5.5 the other 16 and reviews all 26), and the two values below are only what a call
+ * without a task runs on.
  * `DEFAULTS.chat` and `DEFAULTS.generate` are also the models the credit multipliers are relative to when there is no
  * task (`PRICED_AT` in tiers.ts; tests/model-route.test.ts pins that they are equal); a batch is priced relative to its
  * type's own writer (rule 902, src/lib/models/credits.ts), so Automatic is always x1. `estimateBatch`
@@ -48,6 +50,7 @@ export const DEFAULTS: Readonly<Record<Purpose, string>> = Object.freeze({
   onboard: "claude-opus-5-5",
   imagePrompt: "claude-haiku-5-5",
   tool: "claude-haiku-5-5",
+  agentScope: "claude-haiku-5-5",
 });
 
 /** The purposes a customer's pick may change. Everything else ignores `ctx.stored` completely. */
@@ -138,7 +141,7 @@ function judgeAlternative(def: string): string {
  * - `generate` and `review` with `ctx.task`: the default is that type's row of `TASK_MODELS` (`automaticFor`).
  * - every other purpose: the default. `ctx` is ignored.
  *
- * Throws only for something that is not a normal call: a purpose that is not one of the eight, or a default that is no
+ * Throws only for something that is not a normal call: a purpose that is not one of the nine, or a default that is no
  * longer an automatic catalog entry.
  */
 export function route(purpose: Purpose, ctx: RouteContext = {}): Routed {

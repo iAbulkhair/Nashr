@@ -2,14 +2,17 @@ import { createHash } from "node:crypto";
 import { CAPS, db, pushCapped } from "./db";
 import { listBrands } from "./brands";
 import { getBrand } from "./brand";
+import { classify, type Classified } from "./agent-scope-classify";
 import type { AgentId } from "./agents";
 import type { User } from "./auth";
 
 /**
  * Agent scope, Part B (rules 790-808; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md section 6):
  * four layers keep the agents on marketing, sales, growth, finance and analytics work. This is the pure core every gate
- * uses: the founder's modes, the verdict words, the refusal copy, the log and the hash of an item's text. It holds no
- * model call. "Agent scope" is never "scope": `scope` and `sc(u)` already mean the tenant's brand scope.
+ * uses: the founder's modes, the verdict words, the refusal copy, the log and the hash of an item's text, and `scopeCheck`,
+ * the one decision every gate asks for. It holds no model call of its own: `scopeCheck` calls the classifier in
+ * agent-scope-classify.ts (rule 791), which imports the verdict words back from here (see the cycle note there).
+ * "Agent scope" is never "scope": `scope` and `sc(u)` already mean the tenant's brand scope.
  */
 
 /** What a layer does. `off` never checks; `shadow` checks and logs but lets everything through; `enforce` refuses. */
@@ -155,4 +158,53 @@ export class AgentScopeRefused extends Error {
     super(`agent_scope_${verdict}`);
     this.name = "AgentScopeRefused";
   }
+}
+
+/** What a gate knows about the turn it is checking. `deadline` is when the caller's request ends (epoch ms), for the classifier. */
+export type ScopeCtx = {
+  user: User;
+  agent: AgentId;
+  where: AgentScopeWhere;
+  lang: Lang;
+  brand: { name: string; industry: string };
+  otherBrands: string[];
+  itemId?: string;
+  deadline?: number;
+};
+/** `block: true` carries the refusal the owner reads; `verdict: "error"` is a check that failed and was told to fail closed. */
+export type ScopeDecision = { block: false } | { block: true; verdict: Exclude<Verdict, "in"> | "error"; reply: string };
+
+/**
+ * The decision every gate asks for (rule 791; spec section 6). `layer` is the text's kind: the owner's words (`input`) or
+ * an agent's text (`output`: a chat reply, an item, a draft, an item about to be published).
+ *
+ * - `off`: nothing happens, no call and no log.
+ * - The classifier's `paused` error (the model is paused or mocked): the check counts as passed, no log.
+ * - Any other error (`timeout`, `api`, `unknown_verdict`): logged as `verdict: "error"`. It blocks only with
+ *   `o.failClosed` in `enforce` (a publish), with `agentScopeRetryText`; everywhere else the text goes through.
+ * - Verdict `in`: passes, not logged.
+ * - Any other verdict: logged with the mode. `enforce` blocks with `agentScopeRefusalText`, whose names come from the owner's
+ *   own brands and not from the classifier's text; `shadow` lets it through.
+ *
+ * Never throws: a classifier that did throw is an `api` error, and the log never throws. The classifier is called with the
+ * turn's `deadline`. The refusal ceiling for enforced input refusals (rule 792's counter) is wired by the input gate.
+ */
+export async function scopeCheck(layer: "input" | "output", mode: AgentScopeMode, text: string, ctx: ScopeCtx, o: { failClosed?: boolean } = {}): Promise<ScopeDecision> {
+  if (mode === "off") return { block: false };
+  let verdict: Classified;
+  try {
+    verdict = await classify({ kind: layer, text, agent: ctx.agent, brand: ctx.brand, otherBrands: ctx.otherBrands, lang: ctx.lang }, { deadline: ctx.deadline });
+  } catch {
+    verdict = { ok: false, error: "api" };
+  }
+  const line = { email: ctx.user.email, brandId: ctx.user.brandId ?? "default", agent: ctx.agent, layer, where: ctx.where, mode, text, ...(ctx.itemId === undefined ? {} : { itemId: ctx.itemId }) };
+  if (!verdict.ok) {
+    if (verdict.error === "paused") return { block: false };
+    await logAgentScope({ ...line, verdict: "error", error: verdict.error });
+    return o.failClosed && mode === "enforce" ? { block: true, verdict: "error", reply: agentScopeRetryText(ctx.lang) } : { block: false };
+  }
+  if (verdict.verdict === "in") return { block: false };
+  await logAgentScope({ ...line, verdict: verdict.verdict });
+  if (mode !== "enforce") return { block: false };
+  return { block: true, verdict: verdict.verdict, reply: agentScopeRefusalText(verdict.verdict, ctx.lang, { brand: ctx.brand.name, otherBrands: ctx.otherBrands, classified: verdict.brand }) };
 }
