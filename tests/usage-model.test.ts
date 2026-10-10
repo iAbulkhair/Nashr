@@ -523,7 +523,7 @@ describe("the founder console", () => {
     // The founder's routes, the golden set (its own account's cost), the founder overview, and usage.ts itself.
     expect(readers).toEqual(["src/app/api/admin/plan/route.ts", "src/app/api/admin/users/[email]/route.ts", "src/lib/admin-stats.ts", "src/lib/golden.ts", "src/lib/usage.ts"]);
     const namers = files.filter((f) => /\b(rejectedPicks|modelUsage|noteRejectedPick)\b/.test(strip(readFileSync(f, "utf8")))).sort();
-    expect(namers).toEqual(["src/app/api/chat/route.ts", "src/components/admin/Billing.tsx", "src/components/admin/shared.tsx", "src/lib/admin-stats.ts", "src/lib/generate-batch.ts", "src/lib/usage.ts"]);
+    expect(namers).toEqual(["src/app/api/chat/route.ts", "src/app/api/instructions/test/route.ts", "src/components/admin/Billing.tsx", "src/components/admin/shared.tsx", "src/lib/admin-stats.ts", "src/lib/generate-batch.ts", "src/lib/usage.ts"]);
     // And the console is behind the founder's own page and routes: it names no customer route.
     const consoleSrc = adminConsoleSrc();
     expect(consoleSrc).toContain("ov.modelUsage");

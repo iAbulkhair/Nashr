@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import { currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
-import { agentSpendFor } from "@/lib/credits";
+import { agentSpendFor, monthKey } from "@/lib/credits";
+import { listActivity } from "@/lib/activity";
 import { db } from "@/lib/db";
 import { listTasks, type Brand } from "@/lib/brand";
 import { saveGov } from "@/lib/governance";
@@ -35,6 +36,16 @@ vi.mock("@/lib/noor", async (orig) => ({
     return [{ channel: "instagram", title: "t", body: ws?.items.map((i) => i.text).join("|") ?? "" }];
   },
 }));
+// charge and refund are wrapped, never replaced: `onCharge` sees the world at the moment of the charge, `refundFails` makes the give-back throw.
+const probe = vi.hoisted(() => ({ onCharge: null as null | (() => Promise<void>), refundFails: false }));
+vi.mock("@/lib/credits", async (orig) => {
+  const m = await orig<typeof import("@/lib/credits")>();
+  return {
+    ...m,
+    charge: async (...a: Parameters<typeof m.charge>) => { await probe.onCharge?.(); return (m.charge as (...x: unknown[]) => unknown)(...a); },
+    refund: async (...a: Parameters<typeof m.refund>) => { if (probe.refundFails) throw new Error("ledger down for hejazy@gmail.com"); return m.refund(...a); },
+  };
+});
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => gen.state }));
 
 const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "" } as unknown as Brand;
@@ -69,6 +80,8 @@ beforeEach(() => {
   gen.calls.length = 0;
   gen.fail = false;
   gen.state = "on";
+  probe.onCharge = null;
+  probe.refundFails = false;
 });
 
 describe("rule 952: who may test, and the order of the checks", () => {
@@ -411,5 +424,100 @@ describe("rule 952: rate limits", () => {
     for (let i = 0; i < INSTRUCTION_TESTS_PER_HOUR + 2; i++) expect((await run()).status).toBe(403);
     await signIn(u.email);
     expect((await run()).status).toBe(200);
+  });
+});
+
+describe("rule 952: the order claim, charge; the activity log; the model pick", () => {
+  it("rule 952: the claim exists when charge is called (claim before charge), and a lost claim never reaches charge", async () => {
+    const u = await owner();
+    const n = nonce();
+    const key = `skilltest:${sc(u)}:${n}`;
+    const seen: unknown[] = [];
+    probe.onCharge = async () => { seen.push(await db.get(key)); };
+    expect((await run({ nonce: n })).status).toBe(200);
+    expect(seen).toEqual(["1"]);
+    // The duplicate answers 409 without reaching the ledger.
+    expect((await run({ nonce: n })).status).toBe(409);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("rule 952: the spend is one row of the owner's activity log (instructions_tested, credits taken, the agent, who), and a refunded failure leaves none", async () => {
+    const u = await owner();
+    const r = await run();
+    const rows = (await listActivity(sc(u))).rows.filter((x) => x.kind === "instructions_tested");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "instructions_tested", agent: "noor", type: "social", via: "app", count: 2, credits: r.body.spent, note: "instruction test", by: { kind: "owner" } });
+    gen.fail = "all";
+    expect((await run()).status).toBe(502);
+    expect((await listActivity(sc(u))).rows.filter((x) => x.kind === "instructions_tested")).toHaveLength(1);
+  });
+
+  it("rule 952: a refusal at the charge is a no_credits / cap_reached row with what the test would have cost, as generateBatch writes it", async () => {
+    const u = await owner();
+    const want = await priceOf(u);
+    await saveUser({ ...(await getUser(u.email))!, credits: 0 });
+    expect((await run()).status).toBe(402);
+    const noCredits = (await listActivity(sc(u))).rows.filter((x) => x.kind === "no_credits");
+    expect(noCredits).toHaveLength(1);
+    expect(noCredits[0]).toMatchObject({ agent: "noor", type: "social", via: "app", credits: want, note: "instruction test" });
+    await saveUser({ ...(await getUser(u.email))!, credits: 100 });
+    await saveGov(sc(u), { agentCaps: { noor: 1 } });
+    expect((await run()).body.error).toBe("agent_cap");
+    const capped = (await listActivity(sc(u))).rows.filter((x) => x.kind === "cap_reached");
+    expect(capped).toHaveLength(1);
+    expect(capped[0]).toMatchObject({ agent: "noor", credits: want, outcome: "0/1" });
+    expect((await listActivity(sc(u))).rows.some((x) => x.kind === "instructions_tested")).toBe(false);
+  });
+
+  it("rule 952: the type's stats are passed as generateBatch passes them (empty for a draft type: no read is made)", async () => {
+    await owner();
+    await run();
+    for (const c of gen.calls) expect(c.opts).toHaveProperty("stats", "");
+  });
+
+  it("rule 952: a brand's pick of another tier is priced at that tier, and both generations run on it", async () => {
+    const u = await owner();
+    // WhatsApp on Opus costs more than on the automatic writer (the prices are small: the rounding shows it on this type).
+    const auto = await priceOf(u, "whatsapp");
+    await db.set(`brand:${u.email}`, { ...brand, model: "claude-opus-5-5" });
+    expect(generateRouteFor(u, { model: "claude-opus-5-5" } as Brand, "whatsapp")).toMatchObject({ model: "claude-opus-5-5", overridden: true });
+    const want = 2 * creditsFor(countCost("whatsapp", 1), "claude-opus-5-5", "generate", "whatsapp");
+    expect(want).toBeGreaterThan(auto);
+    const r = await run({ type: "whatsapp" });
+    expect(r.body.spent).toBe(want);
+    expect(await credits(u.email)).toBe(100 - want);
+    expect(gen.calls.map((c) => c.opts.model)).toEqual(["claude-opus-5-5", "claude-opus-5-5"]);
+  });
+
+  it("rule 952: a pick the router refuses falls back to Automatic at Automatic's price and is counted for the console", async () => {
+    const u = await owner();
+    const auto = await priceOf(u);
+    await db.set(`brand:${u.email}`, { ...brand, model: "claude-haiku-5-5" }); // not offered as a pick
+    const key = `usage:_all:${monthKey()}:pickreject:generate:not_pickable`;
+    const before = Number((await db.get(key)) ?? 0);
+    const r = await run();
+    expect(r.body.spent).toBe(auto);
+    expect(gen.calls[0].opts.model).toBe(generateRouteFor(u, brand, "social").model);
+    expect(Number((await db.get(key)) ?? 0)).toBe(before + 1);
+  });
+
+  it("rule 952: when the give-back itself fails the answer is 500 refund_failed and the log carries the amount, never the email or the error text", async () => {
+    const u = await owner();
+    gen.fail = "all";
+    probe.refundFails = true;
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let r: Awaited<ReturnType<typeof run>>;
+    try {
+      r = await run();
+    } finally {
+      probe.refundFails = false;
+    }
+    const logged = JSON.stringify(spy.mock.calls);
+    spy.mockRestore();
+    expect([r.status, r.body.error]).toEqual([500, "refund_failed"]);
+    expect(logged).toContain(String(await priceOf(u)));
+    expect(logged).not.toContain(u.email);
+    expect(logged).not.toContain("hejazy@gmail.com");
+    expect(logged).not.toContain("sk-test");
   });
 });

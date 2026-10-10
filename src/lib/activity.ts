@@ -27,6 +27,8 @@ export const ACTIVITY_KINDS = [
   "connector_changed",
   // A brand's agent instructions went live, were restored or applied from chat (src/lib/instructions-store.ts); `note` is "v<n>", never the text.
   "instructions_changed",
+  // A paid "test this instruction" (src/app/api/instructions/test/route.ts): `credits` is what was taken, `count` the two items written.
+  "instructions_tested",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 /** Where it happened. Not a task's `source`: chat and MCP batches are both `source: "chat"`. */

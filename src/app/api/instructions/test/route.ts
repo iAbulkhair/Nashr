@@ -1,8 +1,11 @@
+import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { currentUser, sc, trialOver } from "@/lib/auth";
 import { agentForTask, isAgentId } from "@/lib/agents";
 import { loadLayers } from "@/lib/agent-instructions";
 import { getBrand, listPreferencesFor } from "@/lib/brand";
+import { byOf } from "@/lib/actor";
+import { recordActivity, type Activity } from "@/lib/activity";
 import { charge, refund, renewIfDue, renewalDue } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { entitlements } from "@/lib/entitlements";
@@ -16,6 +19,8 @@ import { modelAllowsTask, modelById } from "@/lib/models/catalog";
 import { creditsFor } from "@/lib/models/credits";
 import { generateRouteFor } from "@/lib/models/overrides";
 import { generate } from "@/lib/noor";
+import { statsFor } from "@/lib/stats";
+import { noteRejectedPick } from "@/lib/usage";
 import { warnAgentCap } from "@/lib/notifications";
 import { allow, INSTRUCTION_TESTS_PER_DAY, INSTRUCTION_TESTS_PER_HOUR, retryLater, WINDOW } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
@@ -25,7 +30,7 @@ import { deadlineFor } from "@/lib/media/keys";
 export const maxDuration = 300;
 
 const NONCE = /^[A-Za-z0-9_-]{8,64}$/;
-/** What the owner may add to the test as a note for the agent. `generate` fences it as data and caps it again. */
+/** What the owner may add to the test as a note for the agent: it is the owner-notes argument of `generate` (in the user message, after the task spec), never system text. */
 const BRIEF_CHARS = 500;
 /** How long a click's nonce stays claimed: a replay inside it is a duplicate (spec 11). */
 const CLAIM_SECONDS = 600;
@@ -54,7 +59,9 @@ const CLAIM_SECONDS = 600;
  *
  * The two generations run together with the same model, `count: 1`, the account's metering, the reviewer as the
  * governance sets it, no cross-review, and no judge, inbox row, learning or feedback is written. The brief is only ever the
- * owner's-notes argument of `generate` (data), never system text. The workspace is `sc(u)`: no scope, email or brand
+ * owner's-notes argument of `generate` (the user message, as an owner's note), never system text. The spend is one row of the
+ * owner's activity log (`instructions_tested`, `credits` = what was taken), and a refusal at the charge is a batch's own
+ * `cap_reached` / `no_credits` row, as `generateBatch` writes them; a refunded failure leaves no row, as there. The workspace is `sc(u)`: no scope, email or brand
  * id in the body is read.
  */
 export async function POST(req: Request) {
@@ -92,20 +99,28 @@ export async function POST(req: Request) {
   if (!brand) return bad("no_brand");
   if (trialOver(u)) return bad("trial_over", 402);
   // The model `generateBatch` would use for this brand and type, resolved once for both generations and the price.
-  const model = generateRouteFor(u, brand, type).model;
+  const routed = generateRouteFor(u, brand, type);
+  const model = routed.model;
+  // A refused pick is counted for the founder console (global, best effort: it never changes the test), as in generateBatch.
+  if (routed.rejected) await noteRejectedPick("generate", routed.rejected);
   const entry = modelById(model);
   if (!entry || (!entry.auto && !entry.pick) || !modelAllowsTask(entry, type)) return bad("model_unavailable", 503);
   const cost = 2 * creditsFor(countCost(type, 1), model, "generate", type);
 
+  const by = await byOf(u);
   // The claim comes before the charge: whoever loses it has taken nothing.
+  const row = (kind: Activity["kind"]): Activity => ({ at: new Date().toISOString(), kind, agent, by, via: "app", type, note: "instruction test" });
   const claim = `skilltest:${scope}:${nonce}`;
   if (!(await db.setNx(claim, "1", CLAIM_SECONDS))) return bad("duplicate", 409);
 
   if (renewalDue(u)) await renewIfDue(u.email);
   const paid = await charge(u.email, cost, { scope, agent, cap: gov.agentCaps[agent] });
   if (!paid.ok) {
-    // Nothing was taken and no model was called: the same click may be sent again.
+    // Nothing was taken and no model was called: the same click may be sent again. Deleting the claim is safe only while
+    // CLAIM_SECONDS (600) exceeds the route's maxDuration (300): no other request of this click can still be running.
     await db.del(claim).catch(() => {});
+    // The refusal row, as generateBatch writes it: what the test would have cost and, at a cap, what the agent spent of it.
+    await recordActivity(scope, [{ ...row(paid.reason === "agent_cap" ? "cap_reached" : "no_credits"), credits: cost, ...(paid.reason === "agent_cap" ? { outcome: `${paid.spent}/${paid.cap}` } : {}) }]);
     if (paid.reason === "agent_cap") return NextResponse.json({ ok: false, error: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap }, { status: 402 });
     return NextResponse.json({ ok: false, error: "no_credits", need: cost, have: paid.credits }, { status: 402 });
   }
@@ -114,17 +129,20 @@ export async function POST(req: Request) {
     // A warning about the cap must never fail a paid test.
     await warnAgentCap(u, paid).catch(() => {});
     // What a real `draft_items` of this type would read, so the two items differ only by the instruction set.
-    const [prefs, memory, feedback, active, draft] = await Promise.all([
+    const [prefs, memory, stats, feedback, active, draft] = await Promise.all([
       listPreferencesFor(scope, agent),
       memoryBlock(scope),
+      statsFor(type, scope),
       feedbackFor(scope, agent, { gov }),
       loadLayers(scope, entitlements(u).instructions, "active", [agent]),
       loadLayers(scope, entitlements(u).instructions, "draft", [agent]),
     ]);
     const one = (layers: typeof active) =>
-      generate(type, brand, prefs, brief.trim() || undefined, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: false, meter: u.email, feedback, model, layers, count: 1, deadline });
+      generate(type, brand, prefs, brief.trim() || undefined, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: false, meter: u.email, stats, feedback, model, layers, count: 1, deadline });
     const [before, after] = await Promise.all([one(active), one(draft)]);
     if (!before[0] || !after[0]) throw new Error("empty_generation");
+    // After the answer exists: a failed log write never undoes the test (recordActivity does not throw).
+    await recordActivity(scope, [{ ...row("instructions_tested"), count: 2, credits: cost }]);
     return NextResponse.json({ ok: true, before: before[0], after: after[0], spent: cost });
   } catch (error) {
     console.error("instruction test failed", error instanceof Error ? error.name : "error");
@@ -132,7 +150,8 @@ export async function POST(req: Request) {
     try {
       await refund(u.email, cost, paid);
     } catch {
-      console.error("instruction test refund failed");
+      // The amount and the spend reference (agent, month, and a short hash of the scope, which for a default brand is the email) so the founder can find the charge; never the email or a secret.
+      console.error("instruction test refund failed", JSON.stringify({ cost, agent: paid.agent, month: paid.month, scope: createHash("sha256").update(paid.scope).digest("hex").slice(0, 12) }));
       return bad("refund_failed", 500);
     }
     return error instanceof ModelPaused ? bad("model_paused", 503) : bad("generation_failed", 502);
