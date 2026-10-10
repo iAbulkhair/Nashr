@@ -23,6 +23,11 @@ export type Provider = {
   };
   keyFields?: KeyField[];
   docs?: string;
+  /**
+   * Reem's calendar providers (Reem B3): the owner links one calendar so she can read meetings. Never listed on
+   * Integrations, never a publishing target, never reachable through the generic connector routes.
+   */
+  secretary?: true;
 };
 
 export const PROVIDERS: Provider[] = [
@@ -85,6 +90,9 @@ export const PROVIDERS: Provider[] = [
   { id: "x", name: "X", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://x.com/i/oauth2/authorize", tokenUrl: "https://api.x.com/2/oauth2/token", scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"], clientIdEnv: "X_CLIENT_ID", clientSecretEnv: "X_CLIENT_SECRET", pkce: true, tokenAuth: "basic" } },
   { id: "shopify", name: "Shopify", kind: "oauth", capabilities: ["products", "orders", "publish_article"], oauth: { authorizeUrl: "https://{shop}/admin/oauth/authorize", tokenUrl: "https://{shop}/admin/oauth/access_token", scopes: ["read_products", "read_orders", "read_checkouts", "write_content", "read_customers"], clientIdEnv: "SHOPIFY_CLIENT_ID", clientSecretEnv: "SHOPIFY_CLIENT_SECRET", scopeSeparator: ",", needsShop: true } },
   { id: "google", name: "Google (Business Profile, GA4, Search Console, YouTube)", kind: "oauth", capabilities: ["publish_post", "analytics"], oauth: { authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth", tokenUrl: "https://oauth2.googleapis.com/token", scopes: ["https://www.googleapis.com/auth/business.manage", "https://www.googleapis.com/auth/analytics.readonly", "https://www.googleapis.com/auth/webmasters.readonly", "openid", "email"], clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET", extraAuthParams: { access_type: "offline", prompt: "consent" } } },
+  // Reem's calendar (B3). Read-only scopes, one calendar per brand held in code (spec 2026-10-05-secretary-reem-b3-calendar-read-design.md §3).
+  { id: "gcal", name: "Google Calendar (Reem)", kind: "oauth", capabilities: [], secretary: true, oauth: { authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth", tokenUrl: "https://oauth2.googleapis.com/token", scopes: ["openid", "email", "https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.owned.readonly"], clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET", extraAuthParams: { access_type: "offline", prompt: "consent", include_granted_scopes: "false" } } },
+  { id: "mscal", name: "Outlook Calendar (Reem)", kind: "oauth", capabilities: [], secretary: true, oauth: { authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token", scopes: ["openid", "email", "offline_access", "User.Read", "Calendars.ReadBasic"], clientIdEnv: "MICROSOFT_CLIENT_ID", clientSecretEnv: "MICROSOFT_CLIENT_SECRET", pkce: true, tokenAuth: "body" } },
   // Only the permissions a built feature uses: Meta's review rejects a submission that asks for more (#198 pack).
   { id: "meta", name: "Meta (Facebook Page, Instagram)", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.facebook.com/v23.0/dialog/oauth", tokenUrl: "https://graph.facebook.com/v23.0/oauth/access_token", scopes: ["pages_show_list", "pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish", "business_management"], clientIdEnv: "META_APP_ID", clientSecretEnv: "META_APP_SECRET", scopeSeparator: "," } },
   // A separate connection from the Page one above: `ads_read` needs its own App Review, and asking for it in the
@@ -103,6 +111,10 @@ export const PROVIDERS: Provider[] = [
   { id: "whatsapp", name: "WhatsApp Business (templates)", kind: "oauth", capabilities: ["messaging"] },
   { id: "youtube", name: "YouTube (private uploads)", kind: "oauth", capabilities: ["publish_post"] },
 ];
+
+/** The two calendar providers Reem can read (flagged `secretary` in PROVIDERS). */
+export const CAL_PROVIDERS = ["gcal", "mscal"] as const;
+export type CalProvider = (typeof CAL_PROVIDERS)[number];
 
 export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;

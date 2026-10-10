@@ -254,3 +254,16 @@ export const FIRST_MONTH_DISCOUNT_PCT = 15;
  * so this is the amount the billing page quotes on WhatsApp (plus VAT) and the founder console expects.
  */
 export const firstMonthPriceSar = (plan: SelfServePlan): number => Math.round((PLAN_PRICE_SAR[plan] * (100 - FIRST_MONTH_DISCOUNT_PCT)) / 100);
+
+// ---- Meeting follow-up (Reem B2b, rules 604-606, src/lib/secretary-meeting.ts `proposeFromText`) ----
+
+/**
+ * Credits one transcript run costs: one extraction call over up to MEETING_TEXT_MAX characters. 1 while its estimate stays
+ * under `maxCostPerCreditUsd()` (tests/pricing-floor.test.ts, `meetingExtractUsd`); 2 if it ever does not. Typed notes
+ * (up to MEETING_NOTES_MAX characters) are free, limited to 20 a day.
+ */
+export const MEETING_TRANSCRIPT_COST = 1;
+/** The longest transcript, in characters (about 7,000 Arabic words). Longer is refused before anything is charged. */
+export const MEETING_TEXT_MAX = 40_000;
+/** The longest typed notes, in characters. */
+export const MEETING_NOTES_MAX = 4_000;

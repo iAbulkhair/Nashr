@@ -21,8 +21,8 @@ const HAIKU = "claude-haiku-5-5";
 const RETIRED = ["claude-opus-5", "claude-sonnet-5"] as const;
 /** Haiku 5.5 off automatic routing, so a test-only entry can be the judge's alternative. */
 const noHaiku = (m: ModelEntry): ModelEntry => (m.id === HAIKU ? { ...m, auto: false } : m);
-const PURPOSES = ["chat", "generate", "review", "xreview", "judge", "onboard", "imagePrompt", "tool"] as const satisfies readonly Purpose[];
-const FIXED = ["review", "xreview", "judge", "onboard", "imagePrompt", "tool"] as const satisfies readonly Purpose[];
+const PURPOSES = ["chat", "generate", "review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting"] as const satisfies readonly Purpose[];
+const FIXED = ["review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting"] as const satisfies readonly Purpose[];
 
 /** A test-only catalog entry. The real catalog holds the Claude models; the mocked ones below add to or change them. */
 const entry = (o: Partial<ModelEntry> & { id: string }): ModelEntry => ({
@@ -65,6 +65,8 @@ describe("the defaults are the three current models, one per purpose (rules 809 
       onboard: OPUS,
       imagePrompt: HAIKU,
       tool: HAIKU,
+      // Reem B2b's meeting tasks: Sonnet 5.5, as the call site used before it asked route() (2026-10-10).
+      meeting: SONNET,
     });
     expect(Object.isFrozen(DEFAULTS)).toBe(true);
     expect(Object.keys(DEFAULTS).sort()).toEqual([...PURPOSES].sort());
@@ -96,7 +98,7 @@ describe("the defaults are the three current models, one per purpose (rules 809 
 
   it("ESTIMATE_MODELS prices the defaults: one source for the estimates and for the calls", () => {
     // The writer and the reviewer of a batch are per type (TASK_MODELS, rule 901): estimateBatch and route() read the same table.
-    expect({ ...ESTIMATE_MODELS }).toEqual({ judge: DEFAULTS.judge, onboard: DEFAULTS.onboard, mediaPrompt: DEFAULTS.imagePrompt });
+    expect({ ...ESTIMATE_MODELS }).toEqual({ judge: DEFAULTS.judge, onboard: DEFAULTS.onboard, mediaPrompt: DEFAULTS.imagePrompt, meetingExtract: DEFAULTS.meeting });
     for (const t of TASK_TYPES) {
       expect(route("generate", { task: t }).model, t).toBe(TASK_MODELS[t].write);
       expect(route("review", { task: t }).model, t).toBe(TASK_MODELS[t].review);

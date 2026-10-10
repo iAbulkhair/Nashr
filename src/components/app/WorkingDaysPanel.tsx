@@ -2,13 +2,13 @@
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { CalendarView, EidDay, SecCalendar } from "@/lib/secretary-calendar";
-import { DEFAULT_RAMADAN_HOURS, addDays, zoneTimeLabel, type QuietWhy } from "@/lib/secretary-agenda";
+import { DEFAULT_RAMADAN_HOURS, DEFAULT_WORK_HOURS, addDays, zoneTimeLabel, type QuietWhy } from "@/lib/secretary-agenda";
 import { fill } from "@/lib/fill";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { localDay, useOneWrite } from "./useOneWrite";
 
 /** The settings a save sends: the whole object (PUT /api/secretary/calendar replaces it); `v` and the stamps are the server's. */
-export type CalBody = Pick<SecCalendar, "weekend" | "ramadanHours" | "hijriFix" | "holidays">;
+export type CalBody = Pick<SecCalendar, "weekend" | "ramadanHours" | "workHours" | "hijriFix" | "holidays">;
 type Window = { from: string; to: string };
 
 /** Saved settings (or none: every default) as a body to change one thing in, every other field kept as it is. */
@@ -16,6 +16,8 @@ export function calBody(cal: CalBody | null): CalBody {
   return {
     weekend: cal?.weekend ? [...cal.weekend] : null,
     ramadanHours: cal?.ramadanHours ? cal.ramadanHours.map((w) => ({ from: w.from, to: w.to })) : null,
+    // Kept on every save (the PUT replaces the record); left out when none are saved, as a record from before has no field.
+    ...(cal?.workHours ? { workHours: { from: cal.workHours.from, to: cal.workHours.to } } : {}),
     hijriFix: Object.fromEntries(Object.entries(cal?.hijriFix ?? {}).map(([y, f]) => [y, { ...f }])),
     holidays: { add: [...(cal?.holidays?.add ?? [])], remove: [...(cal?.holidays?.remove ?? [])] },
   };
@@ -29,6 +31,14 @@ export function withWeekend(cal: CalBody | null, days: readonly number[], defaul
 export function withHours(cal: CalBody | null, hours: readonly Window[] | null): CalBody {
   return { ...calBody(cal), ramadanHours: hours ? hours.map((w) => ({ from: w.from, to: w.to })) : null };
 }
+/** The owner's working hours (rule 922): one window, or null for the default 09:00-17:00. */
+export function withWorkHours(cal: CalBody | null, w: Window | null): CalBody {
+  const { workHours: _drop, ...rest } = calBody(cal);
+  void _drop;
+  return w ? { ...rest, workHours: { from: w.from, to: w.to } } : rest;
+}
+/** Every quarter hour of the day, "00:00" to "23:45" (the server's clock stops there). */
+const QUARTERS = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`);
 /** An Eid's month starting on `to` (`EidDay.earlier` / `later`): Umm al-Qura's own day removes the correction. */
 export function withEid(cal: CalBody | null, e: EidDay, to: string): CalBody {
   const b = calBody(cal);
@@ -96,6 +106,8 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
   const [v, setV] = useState<CalendarView>({ calendar, effective, upcoming, eids });
   const [days, setDays] = useState<number[]>(effective.weekend);
   const [hours, setHours] = useState<Window[]>(effective.ramadanHours);
+  // "" is the Default option: no saved working hours.
+  const [work, setWork] = useState<Window>(calendar?.workHours ?? { from: "", to: "" });
   const [once, setOnce] = useState("");
   const [yearly, setYearly] = useState<{ kind: "greg" | "hijri"; month: number; day: number }>({ kind: "greg", month: 1, day: 1 });
   const { busy, error, send } = useOneWrite(t);
@@ -120,6 +132,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
     setV({ calendar: j.calendar, effective: j.effective, upcoming: j.upcoming, eids: j.eids });
     setDays(j.effective.weekend);
     setHours(j.effective.ramadanHours);
+    setWork(j.calendar?.workHours ?? { from: "", to: "" });
     return true;
   }
   const errorOf = (key: string) => error?.key === key && <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p>;
@@ -127,6 +140,9 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
   const eff = v.effective;
   const weekendChanged = days.length !== eff.weekend.length || days.some((d) => !eff.weekend.includes(d));
   const hoursChanged = JSON.stringify(hours) !== JSON.stringify(eff.ramadanHours);
+  const savedWork = v.calendar?.workHours ?? null;
+  const workChanged = (work.from || work.to) ? work.from !== savedWork?.from || work.to !== savedWork?.to : savedWork !== null;
+  const defaultWork = `${DEFAULT_WORK_HOURS.from}-${DEFAULT_WORK_HOURS.to}`;
   const defaultHours = DEFAULT_RAMADAN_HOURS.map((w) => `${w.from}-${w.to}`).join(", ");
   const years = [...new Set(v.eids.map((e) => e.year))];
   // A stored record may lack a field the calendar does not need (`usableCalendar` keeps it): read every one guarded.
@@ -185,6 +201,27 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
           </div>
         )}
         {errorOf("hours")}
+      </fieldset>
+
+      <fieldset className="mt-6">
+        <legend className="text-sm font-semibold">{C.workHours} {savedWork == null && <span className="text-xs font-normal text-muted">{C.isDefault}</span>}</legend>
+        <p className="mt-1 text-xs text-muted">{fill(C.workHoursSub, { zone: zoneTimeLabel(eff.zone, lang) })}</p>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          {(["from", "to"] as const).map((k) => (
+            <label key={k} className="text-xs text-ink/70">{C[k]}
+              <select value={work[k]} disabled={locked} onChange={(e) => setWork(e.target.value ? { from: work.from || DEFAULT_WORK_HOURS.from, to: work.to || DEFAULT_WORK_HOURS.to, [k]: e.target.value } : { from: "", to: "" })} dir="ltr" className="input mt-1 w-36">
+                <option value="">{fill(C.workHoursDefault, { hours: defaultWork })}</option>
+                {QUARTERS.filter((q) => k === "from" || q !== "00:00").map((q) => <option key={q} value={q}>{q}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+        {canEdit && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button disabled={!!busy || !workChanged} onClick={() => save("work", withWorkHours(v.calendar, work.from && work.to ? work : null))} className="btn btn-primary btn-xs">{C.saveWorkHours}</button>
+          </div>
+        )}
+        {errorOf("work")}
       </fieldset>
 
       <div className="mt-6">

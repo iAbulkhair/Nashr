@@ -18,6 +18,7 @@ import { revokeBook, revokeBooks } from "./booking-token";
 import { revokeFeed, revokeFeeds } from "./feed-token";
 import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
+import { revokeCalendarLinks } from "./secretary-gcal";
 import { handoffKeys } from "./handoffs";
 import { paymobAccountKeys } from "./billing";
 import { proposalKeys } from "./brand-proposals";
@@ -61,7 +62,8 @@ export async function wipeAccount(email: string) {
   // member's (`members:{owner}`). A member added after this read is revoked by `wipeTeam` under `lock:team`. A failure
   // stops the wipe (a retry runs it again) rather than leaving a working link behind a half-wiped account.
   const logins = [e, ...(await db.smembers(membersKey(e)))];
-  await Promise.all([revokeFeeds(logins), revokeBooks(logins)]);
+  // The owner's linked marketing calendars (Reem B3), every brand's: only our side is dropped, the owner removes access at the provider.
+  await Promise.all([revokeFeeds(logins), revokeBooks(logins), revokeCalendarLinks(e)]);
   const scopes = (await listBrands(e)).map((b) => scopeFor(e, b.id));
   // Each conversation goes through the writer lock first (`deleteConversation`: its record, its thread and its id in the
   // index, under `convlock:{scope}:{id}`), before any third-party grant is revoked. A turn's touch, a rename or a pick that

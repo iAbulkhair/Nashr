@@ -7,6 +7,8 @@ import type { AgendaBucket, SecRepeat } from "@/lib/secretary-agenda";
 import AwayPanel, { type AwayRow } from "./AwayPanel";
 import BookingCard from "./BookingCard";
 import FeedCard from "./FeedCard";
+import CalendarLinkCard, { type CalProviders } from "./CalendarLinkCard";
+import MeetingPanel from "./MeetingPanel";
 import Scribble from "@/components/Scribble";
 
 /**
@@ -30,6 +32,8 @@ export type TodoRow = {
   reason?: string;
   /** The contact who owes an open item (not the owner, not an agent): the row offers "Away until…" with this name. */
   contact?: string | null;
+  /** An open booking item whose start has passed: the row offers "Meeting follow-up" (notes or a transcript become proposed tasks). */
+  meeting?: boolean;
   /** A recurring copy: its rule in words ("Repeats every week on Sunday"), the rule's fields for the form, the series id (the history link on a closed copy) and, on a closed copy, who closed it. */
   repeat: string | null; repeatRule: RepeatRule | null; seriesId: string | null; closedBy: string | null;
 };
@@ -140,7 +144,7 @@ function RepeatFields({ T, value, onChange, none, id }: { T: AppDict["todo"]; va
  * see Done, Delete, Restore, Skip or Confirm / Not yet. `canWrite` (`todo.write`) gates Repeat and Stop repeat. Display
  * only: the route refuses the same actions (403).
  */
-export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, canWrite, todoHref, timed, briefAt, lang, inboxHref, away, children }: {
+export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, canWrite, todoHref, timed, briefAt, lang, inboxHref, away, canLinkCalendar = false, calProviders = { gcal: false, mscal: false }, children }: {
   t: AppDict; zoneLabel: string; sections: TodoSection[]; approvals: { line: string; href: string } | null; snoozed: number; allClear: boolean; empty: boolean;
   done: TodoRow[]; deleted: TodoRow[]; tonight: boolean; canClose: boolean; canWrite: boolean; todoHref: string; timed: boolean; lang: "ar" | "en"; inboxHref: string;
   /** The morning brief's local time in the brand's zone ("08:00", "09:00"): when a reminder comes without timed reminders. */
@@ -150,6 +154,11 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
    * it (`todo.write`), and the brand's local days a last away day may fall between.
    */
   away: { entries: AwayRow[]; labels: string[]; canEdit: boolean; today: string; last: string };
+  /**
+   * The «تقويم التسويق» card (`CalendarLinkCard`, Reem B3): only for the account owner (`calendar.link`), and which of the two
+   * providers has its app keys set (a provider without them shows «قريباً»). Display only: every route refuses a non-owner.
+   */
+  canLinkCalendar?: boolean; calProviders?: CalProviders;
   /** The Working days panel, rendered by the page after the done and deleted lists. */
   children?: React.ReactNode;
 }) {
@@ -170,6 +179,8 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
   const [walkResult, setWalkResult] = useState<string | null>(null);
   // A row's "Away until…": the away panel opens again (a new key) with that contact's name in its form.
   const [awayFor, setAwayFor] = useState<{ label: string; n: number } | null>(null);
+  // The row whose "Meeting follow-up" panel is open (one at a time).
+  const [meetingFor, setMeetingFor] = useState<string | null>(null);
 
   // The Undo prompt is a toast pinned to the bottom of the screen, so a delete far down the page still shows it; it goes
   // away on its own after a few seconds.
@@ -313,6 +324,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
             {row.whatsapp && <a href={row.whatsapp} target="_blank" rel="noopener noreferrer" onClick={() => chasedByWhatsApp(row)} title={T.whatsappHint} className="btn btn-secondary btn-xs">{T.whatsapp}</a>}
             {row.theirs && <button disabled={!!busy} onClick={() => open(row.id, "phone", row.phone ?? "")} aria-expanded={panel?.id === row.id && panel.kind === "phone"} className="btn btn-secondary btn-xs">{T.phone}</button>}
             {row.contact && away.canEdit && <button onClick={() => setAwayFor({ label: row.contact!, n: (awayFor?.n ?? 0) + 1 })} className="btn btn-secondary btn-xs">{T.awayUntil}</button>}
+            {canWrite && row.meeting && <button disabled={!!busy} onClick={() => setMeetingFor(meetingFor === row.id ? null : row.id)} aria-expanded={meetingFor === row.id} className="btn btn-secondary btn-xs">{T.meeting.open}</button>}
             {canWrite && <button disabled={!!busy} onClick={() => openRepeat(row)} aria-expanded={panel?.id === row.id && panel.kind === "repeat"} className="btn btn-secondary btn-xs">{R.button}</button>}
             {row.repeat && canClose && <button disabled={!!busy} onClick={() => act(row, { action: "skip" })} className="btn btn-secondary btn-xs">{R.skip}</button>}
             {row.repeat && canWrite && <button disabled={!!busy} onClick={() => act(row, { action: "stop_repeat" })} className="btn btn-secondary btn-xs">{R.stop}</button>}
@@ -377,6 +389,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           </div>
         </form>
       )}
+      {canWrite && row.meeting && meetingFor === row.id && <MeetingPanel t={t} itemId={row.id} onClose={() => setMeetingFor(null)} />}
       {error?.id === row.id && <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p>}
     </li>
   );
@@ -491,6 +504,8 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       <AwayPanel key={awayFor?.n ?? 0} t={t} lang={lang} entries={away.entries} labels={away.labels} canEdit={away.canEdit} today={away.today} last={away.last} prefill={awayFor?.label} />
 
       <FeedCard t={t} lang={lang} />
+
+      {canLinkCalendar && <CalendarLinkCard t={t} lang={lang} providers={calProviders} />}
 
       <BookingCard t={t} lang={lang} />
 

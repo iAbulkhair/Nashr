@@ -19,6 +19,8 @@
  * - A deadline: no account is started and no lease taken after it; what is left stays due for the next sweep.
  * - A suspended account, an unverified owner, and a brand that is not active (archived), get no scheduled work: their scopes are looked at
  *   again `SUSPENDED_HOLD_MS` later and their reminders wait in `sec:due`, delivered late once they are active again.
+ * - Quiet in a meeting (Reem B3, rule 917): a reminder whose time falls inside a meeting of the brand's linked marketing
+ *   calendar (fresh events only) waits until the meeting chain ends, at most `QUIET_CAP_MS` after its time.
  * - Free: no credits, no model call. The text is the item's title, which is the owner's record.
  */
 import { db } from "./db";
@@ -32,6 +34,8 @@ import { sendEmail } from "./notify";
 import { DEFAULT_ZONE, type Zone } from "./zones";
 import { appOrigin } from "./origin";
 import { COPY, notice, paragraphs } from "../emails";
+import { meetingsNow } from "./secretary-cal-link";
+import { quietUntil } from "./secretary-meetings";
 
 /** Scopes read per sweep, due ids read per scope, scopes handled at once. */
 export const SWEEP_SCOPES = 200;
@@ -53,9 +57,10 @@ export const remindFingerprint = (scope: string, id: string, remindAtMs: number)
 /** The account a scope belongs to: the default brand's scope is the email, another brand's is `email#brandId`. */
 const accountOf = (scope: string) => scope.split("#")[0];
 
-export type SweepReport = { scopes: number; claimed: number; fired: number; notified: number; emailed: number; deferred: number; held: number; failed: number };
+/** `quiet`: reminders left due because the owner is in a meeting of the linked marketing calendar (Reem B3, rule 917). */
+export type SweepReport = { scopes: number; claimed: number; fired: number; notified: number; emailed: number; deferred: number; held: number; quiet: number; failed: number };
 type Tally = Omit<SweepReport, "scopes">;
-const zero = (): Tally => ({ claimed: 0, fired: 0, notified: 0, emailed: 0, deferred: 0, held: 0, failed: 0 });
+const zero = (): Tally => ({ claimed: 0, fired: 0, notified: 0, emailed: 0, deferred: 0, held: 0, quiet: 0, failed: 0 });
 const addTo = (a: Tally, b: Tally) => { for (const k of Object.keys(a) as (keyof Tally)[]) a[k] += b[k]; return a; };
 /** Two sweep reports as one (the daily route's bounded repeat). */
 export const mergeReports = (a: SweepReport, b: SweepReport): SweepReport => ({ scopes: a.scopes + b.scopes, ...addTo(addTo(zero(), a), b) });
@@ -119,13 +124,18 @@ async function deliver(ctx: AccountCtx, scope: string, zone: Zone, cur: SecItem)
 
 /** Lease and fire what is due in one scope, each id on its own; the index follows whatever is left. */
 async function sweepScope(ctx: AccountCtx, scope: string): Promise<void> {
-  const [due, zone] = await Promise.all([
+  const [due, zone, meetings] = await Promise.all([
     db.zrangeByScore(SEC_KEYS.due(scope), ctx.now, SWEEP_PER_SCOPE),
     zoneFor(scope).catch(() => DEFAULT_ZONE),
+    // The linked calendar's fresh meetings (none when unlinked, lost or stale): a calendar read failing never blocks a reminder.
+    meetingsNow(scope, ctx.now).catch(() => []),
   ]);
   await pmap(due, async (m) => {
     // Past the deadline nothing new starts: the id stays due for the next sweep.
     if (Date.now() >= ctx.deadline) { ctx.tally.deferred++; return; }
+    // Its time falls in a meeting: it stays due, untouched, and fires on the first tick after the meeting (at most 4 h).
+    const q = quietUntil(meetings, m.score);
+    if (q !== null && ctx.now < q) { ctx.tally.quiet++; return; }
     const lease = SEC_KEYS.firing(scope, m.member);
     if (!(await db.setNx(lease, 1, REMIND_LEASE_S))) return;
     ctx.tally.claimed++;

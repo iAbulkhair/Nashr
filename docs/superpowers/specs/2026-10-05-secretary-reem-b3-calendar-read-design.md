@@ -39,6 +39,8 @@ Two new entries in `src/lib/connectors/registry.ts`, both `kind: "oauth"` and fl
 
 The plan re-checks each scope name, what it allows and whether it needs admin consent against the providers' current docs before coding, as B2 did for Calendly, and records the date checked.
 
+Checked on 2026-10-05: Google's scopes page lists `calendar.calendarlist.readonly` ("See the list of Google calendars you're subscribed to") and `calendar.events.owned.readonly` ("See the events on Google calendars you own"), and Google's verification page names reading Calendar events as a sensitive scope (the scopes page itself carries no classification column, so "sensitive, not restricted" rests on that page); the OpenID Connect page gives `email_verified` and `hd` (`hd` only when the user belongs to a Google Cloud or Workspace organization) and says `name`, `picture` and `profile` may come "when the ID token is returned from a token refresh", but no Google page states outright that a refresh response always carries an `id_token`, so the proof step must not depend on one (§4 re-reads the provider on every save); Microsoft Graph lists `Calendars.ReadBasic` as the least privileged delegated permission, for work and personal accounts, for `GET /me/calendars` and `GET /me/calendars/{id}/calendarView`, with admin consent not required, and the event resource has `subject`, `start`, `end`, `isAllDay`, `isCancelled`, `showAs`, `sensitivity` and `responseStatus` (ReadBasic withholds only body, attachments and extensions); `User.Read` allows `GET /me` (`userPrincipalName`, `mail` by default) and `GET /organization` (`verifiedDomains`, work or school accounts only; personal accounts are not supported there and have no domain proof), and needs no admin consent (the permissions reference page was truncated in the fetch, so this last point rests on Microsoft's published "Sign in and read user profile" description); `openid`, `email` and `offline_access` are the identity platform's OpenID Connect scopes and need no admin consent. No listed fact was false.
+
 Neither scope set can be narrowed to one calendar by the provider: Outlook's covers every calendar of the account, and Google needs the calendar list to offer a choice. **The one-calendar rule is held in code** (section 6, rule list section 11).
 
 ## 4. Proof that the calendar belongs to the brand
@@ -60,13 +62,13 @@ All authenticate first (`currentUser()`), are owner only through a new role key 
 | Route | What | Limit |
 |---|---|---|
 | `GET /api/connect/{gcal,mscal}/start` | the existing start route; for `secretary` providers it checks `forbid(u, "calendar.link")` instead of `"connectors"` | existing |
-| `GET /api/connect/{gcal,mscal}/callback` | the existing callback (state, bound cookie, same login, same account all kept); for `secretary` providers it re-checks the role, exchanges the code, runs section 4 steps 1-2, writes the link in state `choose` (replacing any earlier link of that brand, whose token is revoked), and sends the browser to `/{lang}/app/todo?cal=choose`, never to Integrations; errors go there too as `?cal_error=<code>` with a fixed code, never the provider's text | existing |
-| `GET /api/secretary/calendar-link` | `{ ok, link: { provider, account, calendarName?, proof, state, lastSyncAt?, today: [{ start, end, title }] } \| null }`, never a token, calendar id or declaration login | `cal:read:{login}` 120/h |
+| `GET /api/connect/{gcal,mscal}/callback` | the existing callback (state, bound cookie, same login, same account all kept); for `secretary` providers it re-checks the role, exchanges the code, runs section 4 steps 1-2, writes the link in state `choose` (replacing any earlier link of that brand: our side deletes the sealed tokens; Nashr never calls Google's revoke endpoint because grants are shared per user and client; the owner removes access in their Google or Microsoft account, ruling R7), and sends the browser to `/{lang}/app/todo?cal=choose`, never to Integrations; errors go there too as `?cal_error=<code>` with a fixed code, never the provider's text | existing |
+| `GET /api/secretary/calendar-link` | `{ ok, link: { provider, account, calendarName?, proof, state, lastSyncAt?, rev, today: [{ start, end, title }] } \| null }` (`rev` is what a `PUT` must send back), never a token, calendar id or declaration login | `cal:read:{login}` 120/h |
 | `GET /api/secretary/calendar-link/calendars` | the account's own calendars, live from the provider: `[{ id, name }]`, at most 50; the ids are kept server side for 10 minutes under the link (`choices`) and the answer gives opaque indexes, not provider ids | `cal:list:{login}` 30/h |
 | `PUT /api/secretary/calendar-link` | `{ choice: <index>, declare?: true, rev }`: picks from the stored `choices` only, re-runs section 4 (domain may have changed since the callback), refuses `declaration_required` without `declare`, saves, sets state `ok` and schedules the first sync now | `cal:write:{login}` 30/h |
-| `DELETE /api/secretary/calendar-link` | revokes the token at the provider when the provider has a revoke endpoint (Google `https://oauth2.googleapis.com/revoke`), then deletes the link, the events and the sync schedule entry | `cal:write:{login}` |
+| `DELETE /api/secretary/calendar-link` | deletes the link with its sealed tokens, the events and the sync schedule entry; Nashr never calls Google's revoke endpoint because grants are shared per user and client, so the owner removes access in their Google or Microsoft account (ruling R7) | `cal:write:{login}` |
 
-Writes run under `withLock(scope, "cal")` and leave one audit line each (`cal_link`, `cal_choose`, `cal_unlink`, `cal_lost`) with the login and provider, never the account address or tokens.
+Writes run under `withCalLock(scope)` (owned lock `sec:lock:{scope}:callink`, 45 s, separate from the Working days `cal` lock) and leave one audit line each (`cal_link`, `cal_choose`, `cal_unlink`, `cal_lost`) with the login and provider, never the account address or tokens.
 
 ## 6. Data
 
@@ -120,7 +122,7 @@ Nothing above applies without a linked calendar; Reem then behaves exactly as to
 
 Until the keys are set, the provider shows «قريباً» and no route works for it (`provider_not_configured`, 503).
 
-## 11. Tests (one rule each, numbers from 612, set in the plan)
+## 11. Tests (one rule each, numbers from 910, set in the plan; first planned as 612-625, renumbered 2026-10-10 because main gave 612-628 to the stores)
 
 - Start and callback for `gcal` and `mscal`: owner only (an admin and a member are refused at start and at callback), same state, cookie and login rules as other providers, never listed on Integrations.
 - Proof:
@@ -147,7 +149,7 @@ Until the keys are set, the provider shows «قريباً» and no route works f
 - `agenda_get` meetings are quoted as data. `free_slots` respects working hours, weekend, Eid and Ramadan hours, and past time, and returns at most 3.
 - Routes: no token, calendar id or declaration login in any answer. Each limit holds. Every key comes from `sc(u)`.
 - Deletion:
-  - `DELETE` revokes the token at Google and removes the link, events and due entry.
+  - `DELETE` removes the link with its sealed tokens, the events and the due entry; no revoke call to Google (ruling R7).
   - `wipeAccount` removes them.
   - An owner's password reset revokes the link, by the same callers as `revokeFeeds`.
 - Working hours: the panel validates them and saves them, and null means 09:00-17:00.

@@ -12,7 +12,7 @@ import type { Action } from "./roles";
  * `handoff_note` (a chat tool) is deliberately absent: it is not offered over MCP, and runTool refuses it there.
  * It lives here rather than in the route file because a Next.js route module may export only handlers and route config.
  */
-export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "chat", generate_content: "generate", list_inbox: "read", read_file: "read", list_files: "read", get_brand_rules: "read", check_brand: "read", save_draft: "drafts", agenda_get: "read", agenda_next: "read", todo_create: "todo.write", todo_update: "todo.write", todo_propose_done: "todo.write" };
+export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "chat", generate_content: "generate", list_inbox: "read", read_file: "read", list_files: "read", get_brand_rules: "read", check_brand: "read", save_draft: "drafts", agenda_get: "read", agenda_next: "read", free_slots: "read", todo_create: "todo.write", todo_update: "todo.write", todo_propose_done: "todo.write" };
 
 /**
  * Personal MCP tokens: `Authorization: Bearer nashr_...` → user. Stored only as a hash (src/lib/oauth.ts `tokenHash`):

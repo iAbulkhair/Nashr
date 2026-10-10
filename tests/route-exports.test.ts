@@ -78,4 +78,19 @@ describe("route modules export only handlers and route config", () => {
     ].join("\n"));
     expect(names.sort()).toEqual(["*", "A", "POST", "Z", "default", "helper", "x"].sort());
   });
+  it("segment config is a literal: the webpack build refuses a constant (\"Unknown identifier\" at maxDuration)", () => {
+    const bad: string[] = [];
+    for (const f of files) {
+      for (const m of readFileSync(f, "utf8").matchAll(/^export\s+const\s+(maxDuration|revalidate|dynamic|dynamicParams|fetchCache|preferredRegion|runtime)\s*=\s*([^;\n]+)/gm)) {
+        if (!/^(?:\d+|true|false|"[^"]*"|'[^']*')$/.test(m[2].trim())) bad.push(`${f}: ${m[1]} = ${m[2].trim()}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("the meeting propose route's literal matches the deadline its work runs to", async () => {
+    const { MEET_PROPOSE_MAX_DURATION_S } = await import("@/lib/secretary-meeting");
+    const src = readFileSync(join("src", "app", "api", "secretary", "meeting", "[id]", "propose", "route.ts"), "utf8");
+    expect(src).toContain(`export const maxDuration = ${MEET_PROPOSE_MAX_DURATION_S};`);
+  });
 });

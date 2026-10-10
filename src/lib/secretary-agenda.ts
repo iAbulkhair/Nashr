@@ -211,6 +211,8 @@ export function partyKey(label: string): string | null {
 }
 /** Chasing hours on a Ramadan day when the brand set none: late morning to mid-afternoon. */
 export const DEFAULT_RAMADAN_HOURS: readonly { from: string; to: string }[] = [{ from: "10:00", to: "15:00" }];
+/** Working hours when the owner set none (Reem B3, rule 922): where `free_slots` looks for open time outside Ramadan. */
+export const DEFAULT_WORK_HOURS: Readonly<{ from: string; to: string }> = Object.freeze({ from: "09:00", to: "17:00" });
 /** The calendar a brand has before it changes anything: the zone's weekend, no holidays, no Ramadan days, the default hours. */
 export function defaultCal(zone: Zone): CalData {
   const weekend = [...ZONES[zone].weekend];

@@ -163,6 +163,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PATCH /api/secretary/[id]": g("admin", "todo.write", "todo.close"),
   // Reem's Working days (weekend, Ramadan hours, Eid sightings, holidays): a brand setting, so an admin saves it; every member reads it.
   "PUT /api/secretary/calendar": g("admin", "brand.write"),
+  // The one calendar Reem reads (Reem B3): the owner alone links, chooses and unlinks it, and reads its state.
+  "PUT /api/secretary/calendar-link": g("owner", "calendar.link"),
+  "DELETE /api/secretary/calendar-link": g("owner", "calendar.link"),
   // Keeping a series' history is a to-do write; stopping to keep it lets the daily job delete it, so it also needs todo.close (checked in code, a member gets 403).
   "PUT /api/secretary/series/[seriesId]/keep": g("admin", "todo.write", "todo.close"),
 
@@ -196,6 +199,11 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // One's own booking links (Reem B2a): the same, with their own action (rule 596).
   "POST /api/secretary/booking": g("member", "booking.manage"),
   "DELETE /api/secretary/booking": g("member", "booking.manage"),
+  // The follow-up after a meeting (Reem B2b, rules 600-603): discarding the proposals and approving some of them (the one path that makes items) are the same role as any Reem write.
+  "DELETE /api/secretary/meeting/[id]": g("member", "todo.write"),
+  "POST /api/secretary/meeting/[id]/approve": g("member", "todo.write"),
+  // Proposing from notes or a transcript (Task 10, rules 604-606) only writes the pending set; it spends the account's credits, so it is `todo.write` like the other Reem writes.
+  "POST /api/secretary/meeting/[id]/propose": g("member", "todo.write"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
@@ -270,9 +278,12 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/walk": g("member", "read"),
   "GET /api/secretary/away": g("member", "read"),
   "GET /api/secretary/calendar": g("member", "read"),
+  "GET /api/secretary/calendar-link": g("owner", "calendar.link"),
+  "GET /api/secretary/calendar-link/calendars": g("owner", "calendar.link"),
   "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
   "GET /api/secretary/feed": g("member", "read"),
   "GET /api/secretary/booking": g("member", "read"),
+  "GET /api/secretary/meeting/[id]": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
@@ -466,8 +477,9 @@ describe("request users never stand in for the acting login", () => {
 
 describe("the gates that live outside the route table", () => {
   it("the chat tools that change the brand, publish or import the catalog carry the route's own action", () => {
-    expect(CHAT_TOOL_ACTION).toEqual({ update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import" });
-    for (const a of Object.values(CHAT_TOOL_ACTION)) expect(MIN_ROLE[a]).toBe("admin");
+    expect(CHAT_TOOL_ACTION).toEqual({ update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import", propose_meeting_tasks: "todo.write" });
+    // The brand, publish and import tools are the owner's and an admin's; Reem's meeting follow-up (rule 607) is the to-do list's, open to every login.
+    for (const [t, a] of Object.entries(CHAT_TOOL_ACTION)) expect(MIN_ROLE[a], t).toBe(t === "propose_meeting_tasks" ? "member" : "admin");
   });
   it("every MCP tool is mapped to an action, and nothing else is", async () => {
     const listed = ((await (await mcpRoute.GET()).json()) as { tools: string[] }).tools;
