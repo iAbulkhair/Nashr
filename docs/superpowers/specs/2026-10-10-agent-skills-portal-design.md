@@ -20,7 +20,10 @@ Success: the founder edits a platform instruction in the admin console, presses 
 | Admin review of customer instructions before they work? | **No review.** They go live when the customer activates them. The safety layer is in code. The founder sees a feed of changes in the console. |
 | Which agents can customers instruct? | **All eight** (Noor, Sami, Razan, Faris, Dana, Majed, Layan, Reem), general or per agent. The **reviewer and the judge are platform-only**: they are the quality gate. |
 | Plan limits | **Tiered**: trial 3, Starter 10, Pro 25, Business 60, Agency 100 active instructions; 600 characters each; per-agent instructions from Pro up. |
-| In version 1 | Chat "remember that we never…" proposals, the "Test this instruction" button, **and uploaded reference files**. |
+| In version 1 | Chat "remember that we never…" proposals, the "Test this instruction" button, **and reference files**. |
+| Reference files: which source? (second round) | **Google Workspace**: import Google Docs and Google Sheets through Composio, read only (section 8.3). No PDF parser and no public Blob store for private documents. |
+| Image and video prompts too? (second round) | **Yes, now** (section 5.2, target `media`). |
+| Start the plan and build? | **Yes**, on the branch, one draft PR at the end, no merge, no production. |
 
 ## 3. Goals, non-goals, anti-goals
 
@@ -35,7 +38,7 @@ Goals
 Non-goals (version 1)
 - Editing the playbook files (`content/skills/*.md`) from the browser. They stay code-reviewed content.
 - Customer instructions for the reviewer or the judge.
-- PDF or image reference files (section 8.3 says why and what ships instead).
+- PDF, image or uploaded binary reference files (section 8.3): the app has no PDF parser and its only binary store (Vercel Blob) is public.
 - Sharing instructions between brands or accounts, or a marketplace of instructions.
 
 Anti-goals (a failure even if it works)
@@ -64,7 +67,7 @@ The prompt states this order in our words (section 5.3). A per-agent workspace i
 ### 5.1 Stored shapes (all new keys: expand only, nothing to contract)
 
 ```ts
-type Target = AgentId | "reviewer" | "judge";              // "reviewer" and "judge" only on the platform layer
+type Target = AgentId | "media" | "reviewer" | "judge";    // "media" = image and video prompts; "reviewer" and "judge" only on the platform layer
 type Instruction = {
   id: string;                     // 12 hex
   text: string;                   // normalized, at most 600 chars (platform: 2000)
@@ -111,9 +114,10 @@ Callers (the only places that change):
 | Reviewer `critique` (noor.ts) | appended to its system text, target `"reviewer"` | in its **user message** as `<owner_instructions>` data next to `<owner_preferences>`, so it checks drafts against them and never rewrites them out; the cached system text stays the same for every brand |
 | Cross-review `crossReviewPrompt` / `crossReviewMessage` (noor.ts) | appended to its system text, target `"reviewer"` | in its user message, as data |
 | Judge `scoreItems` (judge.ts) | appended to its system text, target `"judge"` | in its user message, as data: an item that follows an owner instruction is not marked down for it |
+| Image and video prompt writer `write` (media/prompts.ts) | appended to its system text, target `"media"` | in its user message as data: the items for `"media"`, for `"all"` and for the item's agent; the template fallback (`fixedImagePrompt`, model off) gets none |
 | Golden set `golden.ts` (`generate`, `scoreItems`) | the active platform layer | none (golden brands have no workspace) |
 
-Not covered in version 1 (stated on the customer page: "applies to written drafts and chat"): the image and video prompt writer (`media/prompts.ts`), Reem's meeting extraction (`secretary-meeting.ts`), onboarding and the free tools. Builder check Q4; see section 12.
+Not covered in version 1 (stated on the customer page): Reem's meeting extraction (`secretary-meeting.ts`), onboarding and the free tools. Builder check Q4.
 
 `generateBatch` loads the layers in its existing `Promise.all` and passes them through `GenOptions.layers`; `chat()` does the same in its `Promise.all` and passes them to `system()`. `fixedPrompt` itself is untouched, so `codeHash` stays a code hash. Block 1 stays identical across brands (platform text is the same for everyone); block 2 stays identical across calls of one brand until an activation.
 
@@ -191,7 +195,19 @@ The prompt line: "When the owner states a standing rule for how the team works (
 
 ### 8.3 Reference files
 
-Version 1 attaches **existing workspace files** (`file:{scope}:{name}`, the Files page, its limits and roles) to an instruction (`refs`, at most 3). The Files page gains "Upload a text file" (`.txt`, `.md`, `.csv`, read in the browser as MeetingPanel does, then the existing `PUT /api/files`). At render the attached files' text goes in `<reference_files>`, capped per section 6 item 2 (8,000 characters per prompt, each file cut at 4,000), fenced as data, only for the agents the instruction targets. A missing file is skipped.
+An instruction attaches up to 3 **workspace files** (`file:{scope}:{name}`, the Files page, its limits and roles) in `refs`. They come from two places:
+
+1. Any existing workspace file (written by the owner on the Files page or by an agent).
+2. **Import from Google Docs or Google Sheets** (founder's choice, 2026-10-10), through Composio, read only:
+   - New provider `google_workspace` in `composio-catalog.ts` with two toolkits and read tools only, no write tool:
+     - `googledocs` (pinned `20261008_00`): `GOOGLEDOCS_SEARCH_DOCUMENTS` [`query`, `max_results`], `GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT` [`document_id`, `include_tables`].
+     - `googlesheets` (pinned `20261001_00`): `GOOGLESHEETS_SEARCH_SPREADSHEETS` [`query`, `max_results`], `GOOGLESHEETS_VALUES_GET` [`spreadsheet_id`, `range`].
+     Slugs, argument names and versions read from `composio execute <slug> --get-schema` on 2026-10-10.
+   - Env: `COMPOSIO_AUTH_GOOGLEDOCS`, `COMPOSIO_AUTH_GOOGLESHEETS` (auth config ids, not secrets) and `google_workspace` in `COMPOSIO_PROVIDERS`. Off without them: the Import button is not offered and the route answers 409 `not_connected`. The founder creates the two Composio auth configs with **read-only scopes** (`documents.readonly`, `spreadsheets.readonly`, `drive.metadata.readonly`).
+   - The owner connects Google Workspace on the Integrations page (the existing Composio connect flow, role as other connectors), then on the Instructions page searches by name (10 results: title, kind, modified), picks one and presses Import. The text (a Doc as plain text with tables; a Sheet's first 200 rows of `A1:Z200` as CSV through `csvSafe`-style quoting) is saved with `writeFile` as `ref-<slug>.md`, at most 20,000 characters, `by: "user"`, plus a small record `skillref:{scope}:{name}` `{source: "gdocs"|"gsheets", id, title, at}` so the page can offer **Refresh** (an explicit re-import; no background sync). Free, 30 imports an hour per scope, role `instructions.write`.
+   - Connector text is untrusted: it is stored as a file and only ever reaches a prompt inside `<reference_files>`.
+
+At render the attached files' text goes in `<reference_files>`, capped per section 6 item 2 (8,000 characters per prompt, each file cut at 4,000), fenced as data, only for the agents the instruction targets. A missing file is skipped.
 
 PDF and images are **not** in version 1: the app has no PDF parser and the only binary store (Vercel Blob) is public-access, which is wrong for a customer's private documents. See section 12.
 
@@ -234,5 +250,6 @@ The admin test is the same flow against the built-in sample brand, no charge.
 Builder's calls: exact regexes of the filter (with tests in both languages); the per-instruction diff algorithm (by id; text change shown as old/new, no character diff); the sample brand fixture for the admin test; UI layout within the existing GovernancePanel style; whether `loadLayers` caches the platform layer in process (allowed only with a TTL of at most 60 s).
 
 Open for the founder:
-- PDF and image reference files (deferred, section 8.3): they need a private store and a parser, a separate design.
+- Set up the two Composio auth configs (read-only scopes) and the env variables before the Google import works anywhere; until then it is dormant.
+- PDF and other Drive binaries (deferred): they need a parser, a separate design.
 - A test for Reem (chat-only) and a test that simulates a chat turn: later.
