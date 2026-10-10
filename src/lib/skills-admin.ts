@@ -3,6 +3,7 @@ import { CAPS, pushCapped } from "./db";
 import { summarizeRevision, type HistoryRow } from "./instructions-diff";
 import { publicLayer, publicRevision } from "./instructions-http";
 import { PLATFORM_CHARS } from "./instructions-safety";
+import { listBrands } from "./brands";
 import { agentForTask, type AgentId } from "./agents";
 import { DRAFT_TYPES, type TaskType } from "./tasks";
 import { PLATFORM, editBase, getLayer, isPaused, listFeed, listHistory, type FeedRow, type Layer } from "./instructions-store";
@@ -23,9 +24,19 @@ export const ADMIN_TEST_LABEL = "skills-test@nashr.internal";
 /** How many versions the console lists (the customer page's 20). */
 export const CONSOLE_HISTORY = 20;
 
-/** A feed row as the console shows it: the row, and the brand part of its scope (`email#brandId`; empty for the default brand). */
+/** A feed row as the console shows it: the row, and its brand (the brand's name when the account still has it, else the id from `email#brandId`; empty for the default brand). */
 export type FeedView = FeedRow & { brand: string };
-export const feedView = (r: FeedRow): FeedView => ({ ...r, brand: r.scope.includes("#") ? r.scope.slice(r.scope.indexOf("#") + 1) : "" });
+const brandIdOf = (scope: string) => (scope.includes("#") ? scope.slice(scope.indexOf("#") + 1) : "");
+/** One batched read: each account's brand list once (`listBrands`), however many rows it has, all in parallel. */
+export async function feedViews(rows: FeedRow[]): Promise<FeedView[]> {
+  const emails = [...new Set(rows.filter((r) => r.scope.includes("#")).map((r) => r.email))];
+  const lists = await Promise.all(emails.map((e) => listBrands(e).catch(() => [])));
+  const names = new Map(emails.map((e, i) => [e, new Map(lists[i].map((b) => [b.id, b.name]))]));
+  return rows.map((r) => {
+    const id = brandIdOf(r.scope);
+    return { ...r, brand: id ? names.get(r.email)?.get(id) || id : "" };
+  });
+}
 
 export type ConsoleState = { layer: Layer; base: number; chars: number; history: HistoryRow[]; feed: FeedView[]; paused: boolean };
 
@@ -37,7 +48,7 @@ export async function consoleState(): Promise<ConsoleState> {
     base: editBase(layer),
     chars: PLATFORM_CHARS,
     history: history.slice(0, CONSOLE_HISTORY).map((r) => summarizeRevision(publicRevision(r))),
-    feed: feed.map(feedView),
+    feed: await feedViews(feed),
     paused,
   };
 }

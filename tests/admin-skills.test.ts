@@ -10,7 +10,8 @@ import { AGENT_IDS } from "@/lib/agents";
 import { instructionBlocks, loadLayers } from "@/lib/agent-instructions";
 import { INSTRUCTION_PLAN, PLATFORM_CHARS } from "@/lib/instructions-safety";
 import { PLATFORM, activate, editBase, getLayer, isPaused, listHistory, saveDraft, setPaused, type Draft } from "@/lib/instructions-store";
-import { ADMIN_SKILL_TESTS_PER_HOUR } from "@/lib/rate";
+import { ADMIN_SKILL_TESTS_PER_HOUR, clientIp } from "@/lib/rate";
+import { addBrand, scopeFor } from "@/lib/brands";
 import { SAMPLE_BRAND } from "@/lib/sample-brand";
 import { ADMIN_SECTIONS, adminHref } from "@/lib/admin-gate";
 import { ADMIN_SKILL_TEST_BUCKET, ADMIN_TEST_LABEL } from "@/lib/skills-admin";
@@ -81,7 +82,8 @@ type Body = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 const call = async (res: Response) => ({ status: res.status, retry: res.headers.get("retry-after"), body: (await res.json()) as Body });
 const item = (text: string, extra: Partial<Draft> = {}): Draft => ({ text, agents: "all", on: true, ...extra });
 const get = (qs = "") => route.GET(json(`/api/admin/skills${qs}`, "GET")).then(call);
-const put = (items: unknown, extra: Body = {}) => route.PUT(json("/api/admin/skills", "PUT", { items, ...extra })).then(call);
+// The page always sends the edit counter it loaded, and the route refuses a save without one: the helper sends the current one unless a test names another.
+const put = async (items: unknown, extra: Body = {}) => call(await route.PUT(json("/api/admin/skills", "PUT", { items, base: await base(), ...extra })));
 const post = (body: Body) => route.POST(json("/api/admin/skills", "POST", body)).then(call);
 const log = async () => (await db.lrange("admin:log", 0, -1)).map((r) => JSON.parse(r) as { actor: string; email: string; what: string; before: unknown; after: unknown; at: string });
 const base = async () => editBase(await getLayer(PLATFORM));
@@ -181,6 +183,33 @@ describe("rule 958: the platform layer is written like the customer's, with the 
     expect((await put("nope")).body.error).toBe("bad_items");
   });
 
+  it("rule 958: a save with no base is 400 bad_base and writes nothing, so the stale check cannot be skipped", async () => {
+    const raw = async (body: Body) => call(await route.PUT(json("/api/admin/skills", "PUT", body)));
+    for (const body of [{ items: [item("x")] }, { items: [item("x")], base: undefined }]) {
+      const r = await raw(body);
+      expect([r.status, r.body.error]).toEqual([400, "bad_base"]);
+    }
+    expect(await getLayer(PLATFORM)).toMatchObject({ draft: null, active: { v: 0 } });
+    expect(await log()).toEqual([]);
+    // With the page's base it still saves.
+    expect((await raw({ items: [item("x")], base: await base() })).status).toBe(200);
+  });
+
+  it("rule 958: a header-key caller is checked once per request (one guess counted, not two), and the log names the key", async () => {
+    signOut();
+    const ip = clientIp(json("/api/admin/skills", "GET"));
+    const count = async () => Number((await db.get(`rate:adminhdr:${ip}`)) ?? 0);
+    await db.del(`rate:adminhdr:${ip}`);
+    const h = { "x-admin-key": KEY };
+    expect((await call(await route.GET(json("/api/admin/skills", "GET", undefined, h)))).status).toBe(200);
+    expect(await count()).toBe(1);
+    expect((await call(await route.PUT(json("/api/admin/skills", "PUT", { items: [item("k")], base: 0 }, h)))).status).toBe(200);
+    expect(await count()).toBe(2);
+    expect((await call(await route.POST(json("/api/admin/skills", "POST", { action: "pause", on: true }, h)))).status).toBe(200);
+    expect(await count()).toBe(3);
+    expect((await log()).map((e) => e.actor)).toEqual(["key", "key"]);
+  });
+
   it("rule 958: activate makes the draft the next version, logs { actor, what, before, after, at } and answers the new layer and its history row", async () => {
     await put([item("Be kind", { lock: true })]);
     const r = await post({ action: "activate" });
@@ -238,6 +267,26 @@ describe("rule 958: the feed, and a workspace opened read-only", () => {
     expect(r.body.feed).toHaveLength(1);
     expect(r.body.feed[0]).toMatchObject({ scope, email: scope, action: "activate", v: 1, count: 1, brand: "" });
     expect(JSON.stringify(r.body)).not.toContain("secret customer wording");
+  });
+
+  it("rule 958: the feed shows the brand's name where the account has one, the id when it is gone, and reads each account's brands once", async () => {
+    const u = await newUser("skw-brands");
+    const user = (await getUser(u.email))!;
+    const b = await addBrand(user, "Second Roastery");
+    if ("error" in b) throw new Error(b.error);
+    const gone = scopeFor(u.email, "ghost1");
+    for (const scope of [scopeFor(u.email, b.id), gone, u.email]) {
+      await saveDraft(scope, [item(`w ${scope}`)], FOUNDER, { platform: false });
+      const a = await activate(scope, FOUNDER, { platform: false, limits: LIMITS });
+      if (!a.ok) throw new Error(a.error);
+    }
+    const spy = vi.spyOn(db, "get");
+    const r = await get();
+    const mine = (r.body.feed as { scope: string; brand: string }[]).filter((f) => f.scope.startsWith(u.email));
+    expect(Object.fromEntries(mine.map((f) => [f.scope, f.brand]))).toEqual({ [scopeFor(u.email, b.id)]: "Second Roastery", [gone]: "ghost1", [u.email]: "" });
+    // One read of `brands:{email}` for the account, not one per row.
+    expect(spy.mock.calls.filter(([k]) => k === `brands:${u.email}`)).toHaveLength(1);
+    spy.mockRestore();
   });
 
   it("rule 958: ?workspace= with a scope the feed does not name is 404, whatever the key holds", async () => {
@@ -370,6 +419,23 @@ describe("rule 959: the admin test runs on the sample brand, free, metered, and 
     expect(gen.calls).toHaveLength(0);
   });
 
+  it("rule 959: a request that is refused for its body, its draft or its model takes no slot of the hourly allowance", async () => {
+    const used = async () => Number((await db.get(`rate:${ADMIN_SKILL_TEST_BUCKET}`)) ?? 0);
+    // No draft yet.
+    expect((await test()).body.error).toBe("no_draft");
+    await put([item("x")]);
+    expect((await test({ agent: "razan", type: "social" })).body.error).toBe("bad_type");
+    expect((await test({ brief: "a".repeat(501) })).body.error).toBe("brief_too_long");
+    expect((await test({ brief: 5 })).body.error).toBe("bad_body");
+    gen.state = "paused";
+    expect((await test()).body.error).toBe("model_paused");
+    gen.state = "on";
+    expect(await used()).toBe(0);
+    // A real test takes exactly one.
+    expect((await test()).status).toBe(200);
+    expect(await used()).toBe(1);
+  });
+
   it("rule 959: the 31st test in an hour is 429 with Retry-After, whoever asks (the key is a server constant)", async () => {
     await put([item("x")]);
     expect(ADMIN_SKILL_TESTS_PER_HOUR).toBe(30);
@@ -455,6 +521,14 @@ describe("rule 958: the panel follows the customer page's rules", () => {
     expect(panel).toContain("restoreBlocked(dirty)");
     expect(panel).toContain("base");
     expect(panel).toMatch(/stale/);
+  });
+
+  it("rule 958: the feed has a Refresh that reads the console state again without touching the form", () => {
+    expect(panel).toMatch(/refreshFeed/);
+    expect(panel).toMatch(/A\.refresh\b/);
+    expect(panel).toMatch(/setFeed\(/);
+    const body = panel.slice(panel.indexOf("async function refreshFeed"), panel.indexOf("async function openWorkspace"));
+    expect(body).not.toMatch(/adopt\(|setRows\(|setBase\(|setLayer\(/);
   });
 
   it("rule 959: the pause switch and a test ask through the app's own dialog, never the browser's confirm", () => {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminActor, isAdmin } from "@/lib/auth";
+import { adminActor } from "@/lib/auth";
 import { agentForTask, isAgentId } from "@/lib/agents";
 import { NO_LAYERS, type Layers } from "@/lib/agent-instructions";
 import { diffSets, summarizeRevision } from "@/lib/instructions-diff";
@@ -22,7 +22,7 @@ const bad = (error: string, status = 400) => NextResponse.json({ ok: false, erro
 
 /**
  * The founder's agent skills console (agent skills portal, spec 8.2 and 10; rules 958-959). Every method authenticates
- * first with `isAdmin(req)` (the console key session or a founder signed in as themselves; 401 otherwise, so a customer
+ * first with one `adminActor(req)` call (the console key session or a founder signed in as themselves; 401 otherwise, so a customer
  * session never reaches it). The layer written here is always `PLATFORM`, a constant: no scope, email or key comes from the
  * body. Who wrote it comes from the session (`adminActor`), and every write pushes `admin:log`.
  *
@@ -34,8 +34,8 @@ const bad = (error: string, status = 400) => NextResponse.json({ ok: false, erro
  * when the scope string is one the server's own feed holds; anything else is 404. The key is built from the feed row's scope,
  * never from the query.
  *
- * PUT `{ items, base? }` -> `{ ok, layer }`: save the platform draft (targets: the eight agents, `media`, `reviewer`, `judge`; the
- * `lock` flag; 2000 characters). `base` is the layer's edit counter as the page was loaded; a different one is 409 `stale`.
+ * PUT `{ items, base }` -> `{ ok, layer }`: save the platform draft (targets: the eight agents, `media`, `reviewer`, `judge`; the
+ * `lock` flag; 2000 characters). `base` is required: the layer's edit counter as the page was loaded (400 `bad_base` without it); a different one is 409 `stale`.
  *
  * POST `{ action }` -> `activate | discard | restore { revisionId } | pause { on: boolean } | test { agent, type, brief? }`. `test` is
  * "Test this instruction" on the built-in sample brand: the same two `generate` calls as the customer's test (live set and
@@ -43,7 +43,8 @@ const bad = (error: string, status = 400) => NextResponse.json({ ok: false, erro
  * one bucket for the whole console.
  */
 export async function GET(req: Request) {
-  if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
+  // One check per request (`adminActor` throttles header-key guesses, so asking twice would count each guess twice).
+  if ((await adminActor(req)) === null) return NextResponse.json({ ok: false }, { status: 401 });
   const q = new URL(req.url).searchParams;
   const ws = q.get("workspace");
   if (ws !== null) {
@@ -63,21 +64,22 @@ export async function GET(req: Request) {
 }
 
 export async function PUT(req: Request) {
-  if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
-  const who = (await adminActor(req)) ?? "key";
+  const who = await adminActor(req);
+  if (who === null) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => null)) as { items?: unknown; base?: unknown } | null;
   if (!b || typeof b !== "object" || !Array.isArray(b.items)) return bad("bad_items");
-  if (b.base !== undefined && !(typeof b.base === "number" && Number.isInteger(b.base) && b.base >= 0)) return bad("bad_base");
+  // The console page always has the edit counter it loaded, and there is no older page for this route, so a save without one is refused instead of skipping the stale check.
+  if (!(typeof b.base === "number" && Number.isInteger(b.base) && b.base >= 0)) return bad("bad_base");
   const before = snap(await getLayer(PLATFORM));
-  const r = await saveDraft(PLATFORM, b.items as Draft[], founderBy(who), { platform: true, ...(b.base !== undefined ? { base: b.base as number } : {}) });
+  const r = await saveDraft(PLATFORM, b.items as Draft[], founderBy(who), { platform: true, base: b.base });
   if (!r.ok) return refused(r);
   await logSkills(who, "save", before, snap(r.layer));
   return NextResponse.json({ ok: true, layer: publicLayer(r.layer), base: editBase(r.layer) });
 }
 
 export async function POST(req: Request) {
-  if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
-  const who = (await adminActor(req)) ?? "key";
+  const who = await adminActor(req);
+  if (who === null) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b || typeof b !== "object" || Array.isArray(b)) return bad("bad_body");
   const by = founderBy(who);
@@ -118,8 +120,9 @@ export async function POST(req: Request) {
 }
 
 /**
- * The admin test. Order: the console's hourly allowance (one bucket, a server constant), then the body (agent and type as the
- * customer's test checks them, a brief of at most 500 characters), a draft to test, a model that is not paused. Then two
+ * The admin test. Order: the body (agent and type as the
+ * customer's test checks them, a brief of at most 500 characters), a draft to test, a model that is not paused and can write
+ * the type (all cheap, no model call), then the console's hourly allowance (one bucket, a server constant). Then two
  * `generate` calls together on the sample brand, one with the live platform set and one with the draft, the reviewer on,
  * cross-review off, no inbox, no learning, metered under `ADMIN_TEST_LABEL`. No credit is taken from anyone: nothing here
  * imports `charge`. A throw answers 502 with a fixed code; the model's own message is logged by name only.
@@ -127,7 +130,6 @@ export async function POST(req: Request) {
 async function runTest(b: Record<string, unknown>, who: string) {
   // Taken first: the generations end by it.
   const deadline = deadlineFor(maxDuration);
-  if (!(await allow(ADMIN_SKILL_TEST_BUCKET, ADMIN_SKILL_TESTS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
   const { agent, type } = b;
   if (!isAgentId(agent) || agent === "reem" || !isDraftType(type) || agentForTask(type).id !== agent) return bad("bad_type");
   const brief = b.brief === undefined || b.brief === null ? "" : b.brief;
@@ -138,6 +140,8 @@ async function runTest(b: Record<string, unknown>, who: string) {
   if (modelState() === "paused") return bad("model_paused", 503);
   const quote = testQuote({}, SAMPLE_BRAND, type);
   if (!quote.available) return bad("model_unavailable", 503);
+  // A request that would be refused anyway (above) takes no slot; the hourly allowance is spent only when the generations start.
+  if (!(await allow(ADMIN_SKILL_TEST_BUCKET, ADMIN_SKILL_TESTS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
   // The platform alone: the sample brand has no workspace, and the pause switch is irrelevant to it.
   const layersOf = (platform: InstructionSet): Layers => ({ ...NO_LAYERS, platform });
   const one = (platform: InstructionSet) =>

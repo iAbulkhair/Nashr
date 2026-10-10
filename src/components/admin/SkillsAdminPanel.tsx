@@ -17,7 +17,7 @@ import InstructionEditor, { targetLabel, type RowErrors } from "../app/Instructi
 import { useAdminEnded, EndedNotice } from "./shared";
 
 type Lang = "ar" | "en";
-type Busy = null | "save" | "activate" | "discard" | "restore" | "test" | "pause" | "open";
+type Busy = null | "save" | "activate" | "discard" | "restore" | "test" | "pause" | "open" | "refresh";
 type Reply = { ok: boolean; status: number; j: Record<string, unknown> };
 
 const URL = "/api/admin/skills";
@@ -59,6 +59,8 @@ const S = {
     feedEmpty: "لم يغيّر أي عميل تعليماته بعد.",
     feedActions: { activate: "فعّل", restore: "استعاد", apply: "قبل اقتراحًا" },
     feedBrand: "علامة",
+    refresh: "تحديث",
+    refreshing: "جارٍ التحديث…",
     open: "عرض",
     opening: "جارٍ الفتح…",
     close: "إغلاق",
@@ -103,6 +105,8 @@ const S = {
     feedEmpty: "No customer has changed their instructions yet.",
     feedActions: { activate: "activated", restore: "restored", apply: "accepted a suggestion" },
     feedBrand: "brand",
+    refresh: "Refresh",
+    refreshing: "Refreshing…",
     open: "View",
     opening: "Opening…",
     close: "Close",
@@ -151,6 +155,7 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
   const [rows, setRows] = useState<Draft[]>(() => (initial.layer.draft ?? initial.layer.active).items.map(toDraft));
   const [history, setHistory] = useState<HistoryRow[]>(initial.history);
   const [paused, setPaused] = useState(initial.paused);
+  const [feed, setFeed] = useState<FeedView[]>(initial.feed);
   const [busy, setBusy] = useState<Busy>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -287,6 +292,23 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
       const r = await call("POST", { action: "pause", on: next });
       if (!r.ok) { setPauseErr(reason(r)); return; }
       setPaused(r.j.paused === true);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Reads the feed again (and the pause switch, which another founder tab may have changed). The editor, its form and its base are left as they are: only the server's feed is replaced. */
+  async function refreshFeed() {
+    setFeedErr("");
+    setBusy("refresh");
+    try {
+      const r = await call("GET");
+      if (!r.ok || !Array.isArray(r.j.feed)) { setFeedErr(reason(r)); return; }
+      const next = r.j.feed as FeedView[];
+      setFeed(next);
+      if (typeof r.j.paused === "boolean") setPaused(r.j.paused);
+      // A workspace that left the feed cannot stay open.
+      setView((v) => (v && next.some((f) => f.scope === v.scope) ? v : null));
     } finally {
       setBusy(null);
     }
@@ -477,14 +499,17 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
       </section>
 
       <section className="card mt-4" aria-labelledby="sk-feed">
-        <h2 id="sk-feed" className="font-display font-medium">{A.feedTitle}</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="sk-feed" className="font-display font-medium">{A.feedTitle}</h2>
+          <button type="button" onClick={() => void refreshFeed()} disabled={locked} className="btn btn-secondary btn-xs">{busy === "refresh" ? A.refreshing : A.refresh}</button>
+        </div>
         <p className="mt-1 text-sm text-muted">{A.feedSub}</p>
         {feedErr && <p role="alert" className="mt-2 text-sm text-danger">{feedErr}</p>}
-        {initial.feed.length === 0 ? (
+        {feed.length === 0 ? (
           <p className="mt-3 text-sm text-muted">{A.feedEmpty}</p>
         ) : (
           <ul className="mt-3 divide-y divide-ink/10">
-            {initial.feed.map((r) => (
+            {feed.map((r) => (
               <li key={`${r.scope}:${r.at}:${r.action}:${r.v}`} className="py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="min-w-0 text-sm">
