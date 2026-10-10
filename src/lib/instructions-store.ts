@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
 import { isAgentId, type AgentId } from "./agents";
 import { isBy, type By } from "./actor";
-import { recordActivity } from "./activity";
+import { recordActivity, type ActivityVia } from "./activity";
 import { pmap } from "./parallel";
 import {
   INSTRUCTION_CHARS,
@@ -87,17 +87,18 @@ export async function getLayer(scope: string): Promise<Layer> {
 /** `fn` under the scope's write lock (40 tries, 50 ms apart, as `saveGovAs`), or `busy` when it stays taken for about two seconds. */
 async function withLock<T>(scope: string, fn: () => Promise<T>): Promise<T | { ok: false; error: "busy" }> {
   const lock = lockKey(scope);
-  let got = false;
-  for (let i = 0; i < 40 && !got; i++) {
-    got = await db.lock(lock, 10);
-    if (!got) await sleep(50);
+  // An owned lock: a writer whose 10 s TTL ran out releases nothing of the writer that took the lock after it.
+  let token: string | null = null;
+  for (let i = 0; i < 40 && !token; i++) {
+    token = await db.lockOwned(lock, 10);
+    if (!token) await sleep(50);
   }
-  if (!got) return { ok: false, error: "busy" };
+  if (!token) return { ok: false, error: "busy" };
   try {
     return await fn();
   } finally {
     // As in saveGovAs: a failed release must not turn a saved change into an error. The 10 s TTL frees the lock.
-    await db.unlock(lock).catch((e) => console.error("instructions lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlockOwned(lock, token).catch((e) => console.error("instructions lock release failed", e instanceof Error ? e.name : "error"));
   }
 }
 
@@ -234,16 +235,17 @@ const FEED_ACTIONS: readonly string[] = ["activate", "restore", "apply"];
 /** The account behind a scope: `email` or `email#brandId`. */
 const emailOf = (scope: string) => (scope.includes("#") ? scope.slice(0, scope.indexOf("#")) : scope);
 
-type Opts = { platform: boolean; limits?: InstructionLimits; note?: string };
+/** A workspace write must name its plan's limits (a type error without them); the platform layer has none. */
+type Opts = ({ platform: true } | { platform: false; limits: InstructionLimits }) & { note?: string };
 
 /**
  * Make `items` the next active version. Checked again here (limits of today's plan on a workspace), written with its
  * revision, the owner's activity row and the founder's feed row in one go; the draft stays as it is unless `draft` says.
  */
-async function commit(scope: string, layer: Layer, items: Instruction[], by: By, opts: Opts, action: FeedAction, extra: { rollbackOf?: string; draft?: InstructionSet | null }): Promise<Done | Fail> {
+async function commit(scope: string, layer: Layer, items: Instruction[], by: By, opts: Opts, action: FeedAction, extra: { rollbackOf?: string; draft?: InstructionSet | null; via?: ActivityVia }): Promise<Done | Fail> {
   const before = layer.active;
   const after: InstructionSet = { items, v: before.v + 1 };
-  const bad = recheck(after, opts.platform) ?? (!opts.platform && opts.limits ? checkLimits(after, opts.limits) : null);
+  const bad = recheck(after, opts.platform) ?? (!opts.platform ? checkLimits(after, opts.limits) : null);
   if (bad) return { ok: false, error: bad };
   const at = new Date().toISOString();
   const revision: Revision = { id: newId(), v: after.v, at, by, before, after, ...(extra.rollbackOf ? { rollbackOf: extra.rollbackOf } : {}), ...(opts.note ? { note: opts.note } : {}) };
@@ -255,7 +257,7 @@ async function commit(scope: string, layer: Layer, items: Instruction[], by: By,
     ...(opts.platform
       ? []
       : [
-          recordActivity(scope, [{ at, kind: "instructions_changed", by, via: "app", count, note: `v${after.v}` }]),
+          recordActivity(scope, [{ at, kind: "instructions_changed", by, via: extra.via ?? "app", count, note: `v${after.v}` }]),
           // The feed is the founder's overview: a failed write must not undo the change, as `recordActivity` never does.
           pushCapped(FEED, JSON.stringify({ at, scope, email: emailOf(scope), action, v: after.v, count } satisfies FeedRow), CAPS.skillsFeed).catch((e) => console.error("instructions feed failed", e instanceof Error ? e.name : "error")),
         ]),
@@ -292,12 +294,19 @@ export async function restore(scope: string, revisionId: string, by: By, opts: O
 export async function appendActive(scope: string, d: Draft, by: By, opts: { limits: InstructionLimits; src: "chat" }): Promise<Done | Fail> {
   return withLock(scope, async () => {
     const layer = await getLayer(scope);
-    const built = buildItem(d, false, undefined, new Set(layer.active.items.map((i) => i.id)), opts.src);
+    // One id unique across the live set and the draft in progress, which both receive the item.
+    const taken = new Set([...layer.active.items, ...(layer.draft?.items ?? [])].map((i) => i.id));
+    // Neither set may pass the item cap: the draft would otherwise refuse to save as it is the next time it is edited.
+    if (layer.active.items.length >= WORKSPACE_ITEMS || (layer.draft && layer.draft.items.length >= WORKSPACE_ITEMS)) return { ok: false as const, error: "too_many" as const };
+    const made = buildItem(d, false, undefined, taken, opts.src);
     // A proposal with no text is not a proposal; the caller checks this first, so it is only a guard.
-    if (built === null) return { ok: false as const, error: "too_long" as const };
-    if (isFail(built)) return { ok: false as const, error: built.error };
+    if (made === null) return { ok: false as const, error: "too_long" as const };
+    if (isFail(made)) return { ok: false as const, error: made.error };
+    let id = made.id;
+    while (taken.has(id)) id = newId();
+    const built = { ...made, id };
     const draft = layer.draft ? { ...layer.draft, items: [...layer.draft.items, built] } : null;
-    return commit(scope, layer, [...layer.active.items, built], by, { platform: false, limits: opts.limits }, "apply", { draft });
+    return commit(scope, layer, [...layer.active.items, built], by, { platform: false, limits: opts.limits }, "apply", { draft, via: "chat" });
   });
 }
 
@@ -324,7 +333,8 @@ export function diffSets(a: InstructionSet, b: InstructionSet): { added: Instruc
 
 /** The founder's switch: while on, no workspace layer is applied anywhere. */
 export async function isPaused(): Promise<boolean> {
-  return (await db.get<string>(PAUSED)) === "1";
+  // The client parses a stored "1" back as the number 1 (db.ts), so compare as text.
+  return String(await db.get(PAUSED)) === "1";
 }
 export async function setPaused(on: boolean): Promise<void> {
   if (on) await db.set(PAUSED, "1");
