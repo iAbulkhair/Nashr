@@ -326,7 +326,7 @@ describe("rule 952: what the two generations are", () => {
 
   it("rule 952: the reference files of the items load for both sets (the owning agent is named to loadLayers)", async () => {
     const u = await owner("itest-refs", false);
-    await writeFile(u.email, "tone.md", "Warm, never pushy.", "owner");
+    await writeFile(u.email, "tone.md", "Warm, never pushy.", "user");
     expect((await put([item("LIVE", { refs: ["tone.md"] })])).status).toBe(200);
     expect((await activate()).status).toBe(200);
     expect((await put([item("DRAFT", { refs: ["tone.md"] })])).status).toBe(200);
