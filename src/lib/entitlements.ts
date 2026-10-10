@@ -5,6 +5,7 @@ import { chatStatus, type ChatStatus } from "./chat-allowance";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS, type VideoModelId } from "./media-catalog";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "./pricing";
 import { chatCaps } from "./rate";
+import { route } from "./models/route";
 import { seatsUsed } from "./team";
 
 /**
@@ -160,7 +161,7 @@ function resetsAtOf(u: EntUser, now: number): string | null {
  * its own `chat`; reading it twice is accepted, ruling R11). `now` is for tests.
  */
 export async function entitlementView(u: User, now: number = Date.now()): Promise<EntitlementView> {
-  const [seats, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u)]);
+  const [seats, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u, route("chat").model)]);
   const g = u.grants?.video;
   const own: EntUser = { plan: u.plan, trialEnds: u.trialEnds, suspended: u.suspended, billing: u.billing };
   return {

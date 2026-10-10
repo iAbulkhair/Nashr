@@ -302,21 +302,39 @@ export async function settleOnboard(email: string, scope: string): Promise<void>
  * charged again on its retry and an owner paid twice for one plan. Only the run's own failure gives it back
  * (`refundOnce`), and only once. A hold stays after a success, so a retry that gets past the week's marker reuses it
  * rather than paying again; it is dropped once older than PAID_ONCE_MS, by the next `chargeOnce` of the account.
+ *
+ * By model tier (plan Task 4, review round 1): a hold is reused only when its credits are exactly `cost`. A retry priced
+ * differently (the killed run was on another model) gives the old hold back and charges `cost` in the SAME save, so there
+ * is no moment with nothing held and the batch never runs on credits priced for another model (`replaced`: the credits
+ * given back). When `cost` cannot be paid even with the old hold given back, nothing is saved: the refusal reports the
+ * balance as it was, and the old hold stays for the daily sweep (`resolveOnceHolds`, rule 337), never stranded.
  */
 export const PAID_ONCE_MS = 8 * 864e5;
 export type OnceCharge =
-  | (Extract<AgentCharge, { ok: true }> & { reused: false })
+  | (Extract<AgentCharge, { ok: true }> & { reused: false; replaced?: number })
   | { ok: true; reused: true; credits: number; hold: OnboardHold }
   | Exclude<AgentCharge, { ok: true }>;
+/** A hold's credits as a refund reads them: a whole number of at least 0. */
+const heldCredits = (h: OnboardHold) => (Number.isFinite(h.credits) ? Math.max(0, Math.trunc(h.credits)) : 0);
 export async function chargeOnce(email: string, cost: number, meta: SpendMeta, claim: string): Promise<OnceCharge> {
   if (!Number.isFinite(cost) || cost < 0) throw new Error(`invalid_cost:${String(cost)}`);
   return withUserLock(email, async (u): Promise<OnceCharge> => {
+    const balance = Number.isFinite(u.credits) ? u.credits : 0;
     const held = u.paidOnce?.[claim];
-    if (held) return { ok: true, reused: true, credits: Number.isFinite(u.credits) ? u.credits : 0, hold: held };
+    if (held && held.credits === cost) return { ok: true, reused: true, credits: balance, hold: held };
+    // A hold of another price (or a malformed one, given back as `refundOnce` would): given back in memory first, so the
+    // debit below sees its credits and its agent counter lowered; saved together with the new charge, or not at all.
+    const replaced = held ? heldCredits(held) : undefined;
+    const spentBefore = agentSpendFor(u, meta.scope)[meta.agent] ?? 0;
+    if (held) giveBack(u, replaced!, held);
     const { out, dirty } = debit(u, cost, meta);
     if (!out.ok || !("month" in out)) {
+      // Nothing is saved, so the refusal reports the record as it is: the balance and, at the agent's cap, the spend with
+      // the old hold still in it, not the figures the in-memory give-back left.
+      const refused = out as Exclude<AgentCharge, { ok: true }>;
+      if (held) return refused.reason === "agent_cap" ? { ...refused, credits: balance, spent: spentBefore } : { ...refused, credits: balance };
       if (dirty) await saveUser(u);
-      return out as Exclude<AgentCharge, { ok: true }>;
+      return refused;
     }
     const now = Date.now();
     // An old hold's charge is spent for good: dropped here, so the record keeps only the live ones. A malformed time
@@ -325,7 +343,7 @@ export async function chargeOnce(email: string, cost: number, meta: SpendMeta, c
     // `from`: the top-up packs the charge took from, so a refund puts the credits back there (rule 442).
     u.paidOnce = { ...Object.fromEntries(live), [claim]: { scope: meta.scope, agent: meta.agent, month: out.month, credits: cost, at: new Date(now).toISOString(), ...(out.from ? { from: out.from } : {}) } };
     await saveUser(u);
-    return { ...out, reused: false };
+    return { ...out, reused: false, ...(replaced !== undefined ? { replaced } : {}) };
   });
 }
 
@@ -337,7 +355,7 @@ export async function refundOnce(email: string, claim: string): Promise<{ credit
   return withUserLock(email, async (u) => {
     const hold = u.paidOnce?.[claim];
     if (!hold) return { credits: Number.isFinite(u.credits) ? u.credits : 0, refunded: 0 };
-    const n = Number.isFinite(hold.credits) ? Math.max(0, Math.trunc(hold.credits)) : 0;
+    const n = heldCredits(hold);
     giveBack(u, n, hold);
     const { [claim]: _gone, ...rest } = u.paidOnce!;
     void _gone;

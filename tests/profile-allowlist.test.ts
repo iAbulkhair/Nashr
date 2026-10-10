@@ -62,6 +62,7 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     emailVerifiedAt: u.emailVerifiedAt!,
     gatedSignup: true,
     emailMoves: { day: iso(0).slice(0, 10), n: 1 },
+    chinaHostingOk: true,
   };
   await saveUser(full);
   return full;

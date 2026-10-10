@@ -11,6 +11,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  // Owner and admins edit the brand file; members read it (PUT /api/brand checks the same `can()`).
-  return <BrandForm t={appDict[lang]} lang={lang} initial={await getBrand(sc(u))} readOnly={!can(u, "brand.write")} />;
+  // Owner and admins edit the brand file; members read it (PUT /api/brand checks the same `can()`). The default model's
+  // one-time consent to China-hosted models is the owner's own, never a founder's (PUT /api/models checks the same).
+  return <BrandForm t={appDict[lang]} lang={lang} initial={await getBrand(sc(u))} readOnly={!can(u, "brand.write")} canConfirmChina={can(u, "profile.account") && u.actor?.kind !== "founder"} />;
 }

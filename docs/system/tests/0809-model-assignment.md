@@ -19,3 +19,18 @@ Opus 5.5 is 20% cheaper than Opus 5, so `tests/pricing-floor.test.ts` (rule 241)
 
 - Output quality of the new models. The golden set (`src/lib/golden.ts`) needs a model key; run it on staging before release.
 - Sonnet 5.5's broader safety classifiers on the reviewer and judge: a refusal there already falls back (the reviewer returns the items as they were, the judge throws and scores nothing).
+
+## Reconciled with model routing (PR #298, 2026-10-09)
+
+On the routing branch every model comes from `route(purpose)` (`src/lib/models/route.ts`), so rule 809 is pinned there
+instead of by a scan for literals (`tests/model-route-calls.test.ts` forbids model ids outside `route.ts`): every
+`route(purpose)` default, every `autoModels()` and `pickModels()` entry, `PRICED_AT`, and the judge for every
+`generatedBy` in the catalog are one of the three; a stored pick of a retired model falls back to the default; the
+free tools and the prompt writer route to Haiku 5.5, and the tool route sends `route("tool").model`
+(`tests/model-assignment.test.ts`). Opus 5 and Sonnet 5 stay in the catalog with `auto` and `pick` false (their rates
+price stored usage). Haiku 5.5 is `auto` (it is the default of two purposes) but not pickable, and its `tasks` is empty.
+
+Figures that moved on the routing branch with it (`tests/pricing-floor.test.ts`, `docs/system/costs.md` section 4.2,
+rows 813-833 of `tests.md`): the default model's cold exemption is `article` only ($0.0773); Opus 5.5 at x2 in chat has
+100% of Automatic's room (Opus 5 had 80%) and the same cliff, 141,396 characters; a batch Sonnet 5.5 generated on a
+customer's pick is judged by Haiku 5.5 (the cheapest automatic model no dearer than the default judge).

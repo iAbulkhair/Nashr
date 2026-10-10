@@ -1,20 +1,25 @@
 import { costUsd } from "./usage";
-import { CHAT_TURN_MAX_USD } from "./pricing";
+import { chatTurnMaxUsd } from "./models/credits";
 import type { ChatMsg } from "./chat";
 
 /**
  * The hard per-message guards of a chat turn (pricing phase 2, rules 311-312), checked in code before every model call,
  * never left to the prompt. A turn is one owner message: up to `CHAT_MAX_CALLS` model calls with tools in between.
  *
- * - Output: each call's `max_tokens` is what is left of `CHAT_TURN_MAX_USD` after what the turn already cost and an
- *   upper estimate of the call's input, at the model's output rate, and never more than `CHAT_MAX_OUT`.
+ * - Output: each call's `max_tokens` is what is left of the model's per-message ceiling (`chatTurnMaxUsd`: CHAT_TURN_MAX_USD
+ *   on the default chat model, times the chat tier multiplier on another, src/lib/models/credits.ts) after what the turn
+ *   already cost and an upper estimate of the call's input, at the model's output rate, and never more than `CHAT_MAX_OUT`.
  * - The loop: when less than `CHAT_MIN_OUT` tokens would be left, no further call is made and the turn ends with the
  *   work already done (the items its tools made are on the reply's cards). A call the model ended at `max_tokens` is
  *   never acted on (src/lib/chat.ts): its tool calls may be cut off.
  * - History: the last `CHAT_HISTORY_MAX_MSGS` messages, each cut to `CHAT_HISTORY_MSG_MAX_CHARS` and together at most
  *   `CHAT_HISTORY_MAX_CHARS`, newest kept first; and when even then the first call would get less than
- *   `CHAT_FIRST_MIN_OUT`, the oldest are dropped until it fits (`fitFirstCall`), so a full workspace shortens the
- *   memory of the thread rather than the answer.
+ *   `CHAT_FIRST_MIN_OUT`, the oldest are dropped until it fits (`fitFirstCall`). A full workspace first shortens the
+ *   memory of the thread; with the newest message alone left it shortens the answer (down to `CHAT_MIN_OUT`), and past
+ *   that no call is made: the turn ends with LARGE_REPLY, given back and not billed (rule 309). Where that happens is per
+ *   model: Opus 5's ceiling is twice the Sonnets' at 2.5 times their rates, so it has 80% of their room and reaches the
+ *   cliff first (on 2026-10-09 with every core memory file at the budget, for 6 of 8 agents; the Sonnets still get
+ *   `CHAT_FIRST_MIN_OUT`). `tests/pricing-floor.test.ts` pins the figures and the exact cliff per model.
  */
 export const CHAT_MAX_CALLS = 5;
 export const CHAT_MAX_OUT = 8000;
@@ -55,9 +60,10 @@ const outRate = (model: string) => costUsd(model, { output_tokens: 1 });
 /**
  * `max_tokens` for the next call of a turn, or 0 when the call must not be made: what is left of the ceiling after
  * `spentUsd` and `inputUsd`, at the output rate, capped at CHAT_MAX_OUT; 0 below CHAT_MIN_OUT. Non-finite inputs give
- * 0: a guard that cannot read the numbers stops the loop rather than letting it run unbounded.
+ * 0: a guard that cannot read the numbers stops the loop rather than letting it run unbounded. The ceiling is the model's
+ * own (`chatTurnMaxUsd(model)`), the same one its overflow hold covers (`chatHoldFor`), unless a caller passes one.
  */
-export function nextMaxTokens(model: string, spentUsd: number, inputUsd: number, ceilingUsd: number = CHAT_TURN_MAX_USD): number {
+export function nextMaxTokens(model: string, spentUsd: number, inputUsd: number, ceilingUsd: number = chatTurnMaxUsd(model)): number {
   if (![spentUsd, inputUsd, ceilingUsd].every(Number.isFinite)) return 0;
   const room = Math.floor((ceilingUsd - spentUsd - inputUsd) / outRate(model));
   return room >= CHAT_MIN_OUT ? Math.min(CHAT_MAX_OUT, room) : 0;

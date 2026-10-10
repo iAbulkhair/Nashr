@@ -2,7 +2,7 @@ import { db } from "./db";
 import { getUser, type AgencyDeal, type Plan } from "./auth";
 import { SAR_PER_USD, allowanceOf, chatAllowanceOf, priceOf, seatLimit } from "./pricing";
 import { getBrand, listLite, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
-import { getUsage } from "./usage";
+import { getUsage, type ModelUsage } from "./usage";
 import { pmap } from "./parallel";
 import { listBrands, scopeFor } from "./brands";
 import { EVENTS, activeCount, day, dayCount, firstEvent, isoWeek, lastActive, userEvents, type Event } from "./track";
@@ -26,6 +26,12 @@ export type Overview = {
   events: { date: string; counts: Record<string, number> }[];
   features: Record<string, number>;
   health: { errors7d: number; errorsToday: number; modelCalls: number; avgCostPerCallUsd: number | null };
+  /**
+   * This month's cost per model and per provider (`getUsage("_all")`, global counters, founder only): calls and USD per catalog
+   * model ("other" for any id outside the catalog) and per provider, the requests the gateway failed that were re-sent to
+   * Anthropic, and the customer picks the router refused, keyed "{purpose}:{reason}". Only entries with a count.
+   */
+  modelUsage: { month: string; models: Record<string, ModelUsage>; providers: Record<string, ModelUsage>; fallbacks: number; rejectedPicks: Record<string, number> };
   recent: { email: string; name: string; plan: string; credits: number; createdAt: string; lastActive: string | null; activated: boolean; events: Record<string, number> }[];
 };
 
@@ -130,6 +136,7 @@ export async function overview(): Promise<Overview> {
     events,
     features,
     health: { errors7d, errorsToday, modelCalls: total.calls, avgCostPerCallUsd: total.calls ? Math.round((total.usd / total.calls) * 1000) / 1000 : null },
+    modelUsage: { month: total.month, models: total.models, providers: total.providers, fallbacks: total.fallbacks, rejectedPicks: total.rejectedPicks },
     recent,
   };
 }

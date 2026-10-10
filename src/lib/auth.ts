@@ -121,6 +121,13 @@ export type User = {
    */
   chatOverflow?: boolean;
   /**
+   * The owner's one confirmation that a China-hosted model may be picked and run for this account (spec
+   * 2026-10-08-straitly-model-routing, section 7): only `true` confirms (`chinaConfirmed`, src/lib/models/overrides.ts).
+   * Written only by PUT /api/models `{ confirmChina: true }`, owner only, never while a founder impersonates, under the
+   * user lock. Absent on every account before 2026-10-08: not confirmed.
+   */
+  chinaHostingOk?: boolean;
+  /**
    * Metered cost of over-allowance messages not yet billed, in micro-USD: always less than one credit at the floor rate
    * (`settleChatOverflow` in src/lib/credits.ts), carried to the next one so the owner pays the real cost, not a rounded one.
    */

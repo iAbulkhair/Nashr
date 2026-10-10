@@ -32,6 +32,13 @@ export type Brand = {
    * 2026-09-29.
    */
   timeZone?: string;
+  /**
+   * The model every content batch of this brand runs on and is priced for, when it passes `route("generate")` for the
+   * batch's type (src/lib/models/overrides.ts); absent: automatic. Set and cleared only by PUT /api/models (admin or
+   * owner); every other brand writer keeps it as it is, and PUT /api/brand never takes it from the request. A catalog id
+   * as stored: validated again at every batch, never trusted. Absent on brands saved before 2026-10-08.
+   */
+  model?: string;
 };
 
 // The task catalogue lives in ./tasks, which imports nothing: client components read the costs from there instead of

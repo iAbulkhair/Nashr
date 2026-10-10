@@ -236,6 +236,8 @@ describe("rule 315: the client card and the profile panel, by source", () => {
     expect(page).toMatch(/const view = await entitlementView\(u\);/);
     expect(page).toMatch(/const \{ seats: used, chat \} = view\.used;/);
     expect(page).toMatch(/<ChatAllowanceCard [^>]*status=\{chat\}/);
+    // The view reads the status for the default chat model, the hold every account-level card shows (tests.md rule 833, known gap).
+    expect(readFileSync("src/lib/entitlements.ts", "utf8")).toContain('chatStatus(u, route("chat").model)');
   });
 
   it("the profile's chat row is the account's count, not a typed 0 credits each", () => {

@@ -6,6 +6,7 @@ import type { SiteSnapshot } from "./crawl";
 
 import type { PlanItem } from "./chat";
 import { asData } from "./json";
+import { route } from "./models/route";
 
 export type OnboardResult = { brand: Brand; files: { name: string; content: string }[]; /** three starter tasks the owner can add with one tap */ plan: PlanItem[]; /** an output goal Nashr controls (items shipped), never a results promise */ goal: string; /** closing chat message */ summary: string };
 
@@ -50,7 +51,7 @@ function mock(site: SiteSnapshot, lang: "ar" | "en"): OnboardResult {
   return {
     brand: { name, website: site.url, industry: "متجر إلكتروني", city: "الرياض", dialect: "saudi", languages: [lang, lang === "ar" ? "en" : "ar"], tone: "ودود، واضح", products: site.description || "(dev mock)", audience: "عملاء في السعودية", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram", "snapchat", "tiktok", "whatsapp"], updatedAt: new Date().toISOString() },
     files: [
-      { name: "brand.md", content: `# ${name}\n\n(DEV MOCK — set ANTHROPIC_API_KEY)\n\nSite: ${site.url}\nPlatform: ${site.platform}` },
+      { name: "brand.md", content: `# ${name}\n\n(DEV MOCK — no model key for the configured provider)\n\nSite: ${site.url}\nPlatform: ${site.platform}` },
       { name: "brand-guidelines.md", content: `# Brand guidelines\n\n(DEV MOCK)\n\nColours: ${(site.colors ?? []).join(", ") || "not detected"}\nFonts: ${(site.fonts ?? []).join(", ") || "not detected"}` },
       { name: "opportunities.md", content: "# Opportunities\n\n(DEV MOCK)" },
       { name: "market-research.md", content: "# Market research\n\n(DEV MOCK)" },
@@ -123,12 +124,14 @@ strategy_md: 90-day plan in 3 phases with concrete weekly cadence per channel, t
   };
 
   const user = onboardUserMessage(site, hints);
+  // One decision for the run: the three parts, and a part's retry, run on the same model.
+  const model = route("onboard").model;
 
   const run = async (name: PartName, attempt = 0): Promise<Record<string, unknown>> => {
     try {
       const msg = await client.messages
         .stream({
-          model: "claude-opus-5-5",
+          model,
           max_tokens: PARTS[name].maxTokens,
           system: `${shared}${asks[name]}`,
           messages: [{ role: "user", content: user }],

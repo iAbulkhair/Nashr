@@ -38,6 +38,8 @@ import { zoneOf } from "./zones";
 import { can, type Action } from "./roles";
 import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoItems, chatItemOf, createHandoff, markShown, parseProposal, proposalText } from "./handoffs";
 import { getGov } from "./governance";
+import { DEFAULTS, route, type Rejected } from "./models/route";
+import { MODEL_UNAVAILABLE, MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
 
 /**
  * An inbox item as a chat card shows it. `xflag`: the other agents that flagged it in the cross-agent review, each with
@@ -325,8 +327,14 @@ export const CHAT_RENDER_MIN_MS = 60_000;
  * `deadline`: the request's one deadline (spec A23), `deadlineFor(maxDuration)` from the route's start. Without it, counted from chat()'s own start.
  * `by`: who is talking, for the activity log; the MCP route passes `tokenBy(user)`, and without it `byOf(user)` reads the session.
  * `via`: "mcp" when the turn came through ask_noor, so tools that publish or rewrite core memory are refused (runTool).
+ * `model`: the turn's model, which the caller already resolved with `route("chat")` and reserved the allowance for
+ * (`reserveChatTurn`, src/lib/chat-allowance.ts): every call of the turn runs on it, so the model called and the model
+ * counted are one value. Left out, `chat()` asks `route("chat")` itself (a caller that reserves nothing).
+ * `modelRejected`: the conversation's pick was not used (`chatRouteFor`, src/lib/models/overrides.ts): an answered reply
+ * starts with `MODEL_UNAVAILABLE.chat` in the reply language, saved with it. A paused or mock reply made no model call
+ * and carries no notice.
  */
-export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp" };
+export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string; modelRejected?: Rejected };
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap";
 
@@ -361,6 +369,9 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // Taken first: up to five model turns can use most of the ceiling before a tool starts a render.
   const deadline = opts.deadline ?? deadlineFor(CHAT_MAX_DURATION_S);
   const lang = opts.lang ?? user.lang;
+  // The turn's one model: the first-call fit, every later cap and every stream below use this value.
+  const model = opts.model ?? route("chat").model;
+  const notice = opts.modelRejected ? `${MODEL_UNAVAILABLE.chat[lang]}\n\n` : "";
   // The backstop of the routes' own check (rule 330): an ended trial gets no model turn from any caller, and nothing is
   // written, not even the owner's message.
   if (trialOver(user)) return { role: "assistant", content: chatRefusedText("trial", lang), at: new Date().toISOString(), agent: agentId, limit: "trial" };
@@ -377,7 +388,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   const state = modelState();
   if (state !== "on") {
     // Paused: no tool runs, so nothing is charged or written; the owner is told plainly, in their language.
-    const content = state === "paused" ? PAUSED_REPLY[lang] : "[DEV MOCK] ANTHROPIC_API_KEY not set. I would answer here and use tools.";
+    const content = state === "paused" ? PAUSED_REPLY[lang] : "[DEV MOCK] No model key for the configured provider (ANTHROPIC_API_KEY; with LLM_PROVIDER=straitly, STRAITLY_API_KEY or ANTHROPIC_API_KEY). I would answer here and use tools.";
     const m: ChatMsg = { role: "assistant", content, at: new Date().toISOString(), actions, ...(state === "paused" ? { agent: agentId } : {}) };
     await push(email, m, conv);
     return m;
@@ -395,7 +406,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
   // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
   // and output, plus the tool results added since.
-  const fit = fitFirstCall(CHAT_MODEL, trimHistory(thread), JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
+  const fit = fitFirstCall(model, trimHistory(thread), JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
   const messages: Anthropic.MessageParam[] = fit.messages;
   if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
   let spent = 0;
@@ -409,7 +420,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // charged inside the turn (generate_content, draft_items) has its own refund within the same deadline.
   let outOfTime = false;
   for (let turn = 0; turn < CHAT_MAX_CALLS; turn++) {
-    const maxTokens = turn === 0 ? fit.maxTokens : nextMaxTokens(CHAT_MODEL, spent, inputEstimateUsd(CHAT_MODEL, next, false));
+    const maxTokens = turn === 0 ? fit.maxTokens : nextMaxTokens(model, spent, inputEstimateUsd(model, next, false));
     if (!maxTokens) {
       ended = turn === 0 ? "large" : "capped";
       break;
@@ -419,7 +430,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     let res: Anthropic.Message;
     try {
       res = await client.messages
-        .stream({ model: CHAT_MODEL, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
+        .stream({ model, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
         .finalMessage();
     } catch (e) {
       if (call.signal.aborted) { outOfTime = true; break; }
@@ -442,7 +453,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     messages.push({ role: "assistant", content: res.content });
     const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (!uses.length) {
-      const m: ChatTurn = { role: "assistant", content: textOf(res.content) || "…", at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), agent: agentId };
+      const m: ChatTurn = { role: "assistant", content: notice + (textOf(res.content) || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), agent: agentId };
       await deliver(email, m, conv);
       return withLimit(m, actions, spent);
     }
@@ -466,7 +477,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // cut off at its cap, or the ceiling left no room for another call. What the tools made is on the reply's cards and in
   // the inbox either way, and a limit a tool hit still raises its dialog.
   const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
-  const m: ChatTurn = { role: "assistant", content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
+  const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
   await deliver(email, m, conv);
   return withLimit(m, actions, spent);
 }
@@ -488,11 +499,13 @@ function withLimit(m: ChatTurn, actions: string[], spent: number): ChatTurn {
 }
 
 /**
- * The chat model: Sonnet 5.5 since 2026-10-02 (founder decision; it was Opus 5), at the same effort and adaptive
- * thinking. Its rates are Opus 5's divided by 2.5, and so is the per-message ceiling (`CHAT_TURN_MAX_USD`). Generation,
- * onboarding and the reviewer keep their own models (src/lib/task-costs.ts `ESTIMATE_MODELS`).
+ * The default chat model: Sonnet 5.5 since 2026-10-02 (founder decision; it was Opus 5), at the same effort and adaptive
+ * thinking. Its rates are Opus 5's divided by 2.5, and so is the per-message ceiling (`CHAT_TURN_MAX_USD`). It is
+ * `DEFAULTS.chat` (src/lib/models/route.ts), the model the chat credit multipliers are relative to; a turn runs on
+ * `route("chat").model`, which is this unless the owner picked another. Generation, onboarding and the reviewer keep their
+ * own models (src/lib/task-costs.ts `ESTIMATE_MODELS`).
  */
-export const CHAT_MODEL = "claude-sonnet-5-5";
+export const CHAT_MODEL = DEFAULTS.chat;
 /** A turn's reply plus what only the route reads (never saved, never sent to the browser): the limit dialog to raise and what the turn's model calls cost in USD. */
 export type ChatTurn = ChatMsg & { limit?: ChatLimit; usd?: number };
 const DONE_REPLY = { ar: "تم. تحقق من صندوق الموافقة.", en: "Done. Check your approvals inbox." } as const;
@@ -613,7 +626,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const inline = created.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
       const held = r.gov.autoApprove[type] ? created.filter((t) => t.status === "pending").length : 0;
       const auto = r.gov.autoApprove[type] ? (held ? ` (auto-approve is on, but ${held} item(s) broke a brand rule and wait for the owner in the inbox)` : " (auto-approved per governance)") : "";
-      return `Created ${created.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}. Titles: ${created.map((i) => i.title).join(" | ")}${inline}`;
+      return `Created ${created.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}. Titles: ${created.map((i) => i.title).join(" | ")}${inline}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
     }
     case "draft_items": {
       // The tool schema's enum is not the approval (the model is never the only approval): a type outside DRAFT_TYPES
@@ -629,7 +642,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const cost = r.cost;
       made.push(...created);
       actions.push(`drafted:${type}:${created.length}`);
-      return `Drafted ${created.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}`;
+      return `Drafted ${created.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
     }
     case "update_brand": {
       // Code-level gate, not a prompt rule: no tool call writes the brand file. The model that calls this reads crawled

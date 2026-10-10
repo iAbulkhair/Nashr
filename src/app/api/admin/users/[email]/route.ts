@@ -8,6 +8,7 @@ import { revokeFeeds } from "@/lib/feed-token";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
 import { chatStatus } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 import { entitlementView } from "@/lib/entitlements";
 import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { listConnections } from "@/lib/connectors/store";
@@ -47,7 +48,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     getUsage(u.email),
     // The chat allowance (a trial's for the whole trial, which the month's usage does not keep): the raw count
     // (`counted`), the messages continued on credits this month and the credits they were billed. Rule 316.
-    chatStatus(u),
+    chatStatus(u, route("chat").model),
     listConnections(u.email),
     Promise.all(scopes.map((s) => listConversations(s))).then((x) => x.flat().length),
     db.lrange(`referrals:${u.email}`, 0, 99).then((x) => x.length),

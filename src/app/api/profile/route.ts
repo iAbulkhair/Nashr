@@ -10,6 +10,7 @@ import { withUserLock } from "@/lib/credits";
 import { can, forbid, type Action } from "@/lib/roles";
 import { saveMember, withMemberLock } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 import { openLots, topupBalance } from "@/lib/topups";
 
 export type EmailPrefs = "all" | "important" | "none";
@@ -66,7 +67,7 @@ export async function GET() {
     pmap(scopes, (s) => listLite(s, monthStart)),
     a.kind === "member" ? Promise.resolve(null) : db.get<{ emails?: EmailPrefs }>(`profile:${sc(u)}`),
     getBrand(sc(u)),
-    chatStatus(u),
+    chatStatus(u, route("chat").model),
   ]);
   const tasks = lists.flat();
   const usage: Record<string, { count: number; credits: number }> = {};
