@@ -10,7 +10,7 @@ import { pmap } from "./parallel";
  * - one failing user never stops the others; a user is retried at most twice
  * - a start budget: no new user is started once the function is close to its time limit
  * - when users remain, the route calls itself again (same bearer secret) until the list is empty, on `appOrigin()`: behind
- *   the Hostinger proxy `req.url` is the internal address, which the hop cannot reach (rule 902)
+ *   the Hostinger proxy `req.url` is the internal address, which the hop cannot reach (rule 904)
  */
 export type BatchReport = { job: string; period: string; chain: number; total: number; alreadyDone: number; processed: number; failed: number; remaining: number; chained: boolean; results: Record<string, string> };
 

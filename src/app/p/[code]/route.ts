@@ -24,7 +24,7 @@ function langOf(req: Request): "ar" | "en" {
  * then sends the visitor to the localized signup with the code that will count filled in. An unknown code, or a visitor
  * over the limit, is sent to signup with nothing set. Separate from the credits referral (`/app/signup?ref=`), which this
  * never reads or writes. The redirect is built on `appOrigin()`, never `req.url`: behind the Hostinger proxy the request URL
- * is the internal address (`https://0.0.0.0:3000`), and every partner link landed on a dead host (rule 902).
+ * is the internal address (`https://0.0.0.0:3000`), and every partner link landed on a dead host (rule 904).
  */
 export async function GET(req: Request, ctx: { params: Promise<{ code: string }> }) {
   const { code: raw } = await ctx.params;

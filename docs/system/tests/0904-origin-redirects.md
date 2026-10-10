@@ -1,4 +1,4 @@
-# Coverage: redirects and cron self-calls use the app origin (rule 902)
+# Coverage: redirects and cron self-calls use the app origin (rule 904)
 
 Status on 2026-10-10 on branch `claude/fix-proxy-origin-redirects`. Found by the 2026-10-10 leftovers audit with GET requests only: `GET https://thakeen.com/p/TEST` answered 307 to `https://0.0.0.0:3000/ar/app/signup`, so every partner link (rule 391) sent the visitor to a dead host. Behind the Hostinger proxy `req.url` is the internal address; on Vercel it was the public one, so the bug only showed after the move to Hostinger (2026-10-08). `GET /` and `GET /app` were not affected: the proxy redirects with `req.nextUrl`, which carries the public host.
 
@@ -14,7 +14,7 @@ Every place that built an absolute URL on `req.url` now builds it on `appOrigin(
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
-| 902 | A redirect or a server-side call to the app itself is built on `appOrigin()`, never on the request URL; no file in `src/` passes `req.url` as the base of `new URL` | `tests/origin-redirects.test.ts` (4 tests, `req.url` = `https://0.0.0.0:3000`, `APP_ORIGIN` stubbed: the partner redirect, the impersonation return, the cron batch hop, and a source scan for `new URL(…, req.url)` plus the daily and secretary kicks); `tests/cron-batch.test.ts` now expects the hop on `appOrigin()` | — |
+| 904 | A redirect or a server-side call to the app itself is built on `appOrigin()`, never on the request URL; no file in `src/` passes `req.url` as the base of `new URL` | `tests/origin-redirects.test.ts` (4 tests, `req.url` = `https://0.0.0.0:3000`, `APP_ORIGIN` stubbed: the partner redirect, the impersonation return, the cron batch hop, and a source scan for `new URL(…, req.url)` plus the daily and secretary kicks); `tests/cron-batch.test.ts` now expects the hop on `appOrigin()` | — |
 
 ## Not pinned
 

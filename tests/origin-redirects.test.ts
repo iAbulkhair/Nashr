@@ -8,7 +8,7 @@ import * as plink from "@/app/p/[code]/route";
 import * as impersonate from "@/app/api/admin/impersonate/route";
 
 /**
- * Rule 902: redirects and server-side self-calls are built on `appOrigin()`, never on the request URL. Behind the
+ * Rule 904: redirects and server-side self-calls are built on `appOrigin()`, never on the request URL. Behind the
  * Hostinger proxy `req.url` is the internal address (`https://0.0.0.0:3000`): on 2026-10-10 every partner link on
  * thakeen.com answered 307 to `https://0.0.0.0:3000/ar/app/signup`, and the cron hops (the batch chain, daily into
  * weekly, the secretary's evening kick) went to the same dead host without a sound.
@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); jar().clear(); });
 
-describe("rule 902: redirects and cron hops use the app origin, not the request URL", () => {
+describe("rule 904: redirects and cron hops use the app origin, not the request URL", () => {
   it("a partner link behind the proxy sends the visitor to signup on the app origin", async () => {
     const res = await plink.GET(new Request(`${INTERNAL}/p/NOSUCHCODE?lang=en`, { headers: { "x-forwarded-for": ip() } }), params({ code: "NOSUCHCODE" }));
     expect(res.status).toBe(307);
@@ -44,7 +44,7 @@ describe("rule 902: redirects and cron hops use the app origin, not the request 
   it("a cron batch that runs out of time hands the rest to the app origin, path and chain kept", async () => {
     const req = new Request(`${INTERNAL}/api/cron/daily`, { headers: { authorization: "Bearer test" } });
     const items = Array.from({ length: 4 }, (_, i) => `u${i}`);
-    const r = await runCronBatch({ job: "o902", period: `p${randomBytes(4).toString("hex")}`, items, id: (x) => x, run: async () => "ok", concurrency: 1, startBudgetMs: 0, markerTtlSeconds: 60, req });
+    const r = await runCronBatch({ job: "o904", period: `p${randomBytes(4).toString("hex")}`, items, id: (x) => x, run: async () => "ok", concurrency: 1, startBudgetMs: 0, markerTtlSeconds: 60, req });
     expect(r.chained).toBe(true);
     await new Promise((ok) => setTimeout(ok, 10));
     expect(calls).toEqual([`${ORIGIN}/api/cron/daily?chain=1`]);

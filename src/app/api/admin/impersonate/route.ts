@@ -13,7 +13,7 @@ import { allow, clientIp, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW, retr
  * burned is a real impersonation session: its server record carries `imp` (the founder, written by the console), and
  * the entry names that founder and the record's own email. The `nashr_impersonate` cookie is a display hint and is
  * never logged, so a visitor who sets it cannot push rows into the capped log and wipe the real ones. Rules 540-542. The redirect goes to `appOrigin()`, never
- * `req.url`, which is the internal address behind the Hostinger proxy (rule 902).
+ * `req.url`, which is the internal address behind the Hostinger proxy (rule 904).
  */
 export async function POST(req: Request) {
   if (!(await allow(`impstop:ip:${clientIp(req)}`, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW))) {
