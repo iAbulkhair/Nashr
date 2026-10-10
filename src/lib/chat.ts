@@ -153,8 +153,9 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: "object", additionalProperties: false, properties: {} },
   },
   // The secretary's free tools (src/lib/secretary.ts), offered to every agent like the others; Reem leads with them.
-  // None of them can complete, delete, restore or reopen an item: that is the owner's, in the app.
-  ...SEC_TOOL_DEFS.map((d): Anthropic.Tool => ({ name: d.name, description: d.description, input_schema: d.schema })),
+  // None of them can complete, delete, restore or reopen an item: that is the owner's, in the app. `free_slots` is Reem's
+  // alone (FREE_SLOTS_TOOL below): every tool here is in every agent's prompt, and meeting times are her job.
+  ...SEC_TOOL_DEFS.filter((d) => d.name !== "free_slots").map((d): Anthropic.Tool => ({ name: d.name, description: d.description, input_schema: d.schema })),
   // Agents' handoff notes (src/lib/secretary-handoff.ts), offered to every agent: a message that runs nothing, not Majed's
   // handoffs (propose_handoff below). "blocked" opens an item on Reem's list. Refused over MCP in runTool.
   { name: HANDOFF_TOOL_DEF.name, description: HANDOFF_TOOL_DEF.description, input_schema: HANDOFF_TOOL_DEF.schema },
@@ -209,8 +210,15 @@ export const CONTACT_AWAY_TOOL: Anthropic.Tool = {
  * gated `todo.write` through `TOOL_ACTION`.
  */
 export const PROPOSE_MEETING_TASKS_TOOL: Anthropic.Tool = { name: MEETING_TOOL_DEF.name, description: MEETING_TOOL_DEF.description, input_schema: MEETING_TOOL_DEF.schema };
-/** The tools of one agent's turn: every agent's, plus the lead's proposal tool when Majed is talking and Reem's away card and meeting follow-up when she is. */
-export const toolsFor = (agentId: AgentId): Anthropic.Tool[] => (agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL, PROPOSE_MEETING_TASKS_TOOL] : TOOLS);
+/**
+ * Reem's open-times tool (Reem B3, rule 919): read only, it books nothing. Offered only in a turn where Reem is talking
+ * (founder, 2026-10-10: it kept about 900 characters out of the seven other agents' prompts) and refused in `runTool` for any
+ * other agent. The MCP route offers it from SEC_TOOL_DEFS to the owner's own assistant, outside chat's prompt.
+ */
+const FREE_SLOTS_DEF = SEC_TOOL_DEFS.find((d) => d.name === "free_slots")!;
+export const FREE_SLOTS_TOOL: Anthropic.Tool = { name: FREE_SLOTS_DEF.name, description: FREE_SLOTS_DEF.description, input_schema: FREE_SLOTS_DEF.schema };
+/** The tools of one agent's turn: every agent's, plus the lead's proposal tool when Majed is talking and Reem's away card, meeting follow-up and open times when she is. */
+export const toolsFor = (agentId: AgentId): Anthropic.Tool[] => (agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL, PROPOSE_MEETING_TASKS_TOOL, FREE_SLOTS_TOOL] : TOOLS);
 
 /**
  * Majed's chat text as the lead (the chat block only; his persona in agents.ts is unchanged): he proposes other agents'
@@ -256,7 +264,7 @@ WHAT YOU CAN DO
 - Remember facts via update_brand and write_file. Read your memory via read_file. update_brand only proposes: every brand change waits for the owner's (or an admin's) Save on a card under your reply, so say plainly that you proposed it and that nothing changed until they press Save.
 - Import real products from the store via import_catalog (writes products.md). Generate a visual for an inbox item via generate_image (${creditWord(CHAT_IMAGE_CREDITS)}; the image models in the inbox cost ${IMAGE_RANGE} credits).
 - You can publish_item only to the platforms listed under CONNECTED PLATFORMS, only items the owner approved themselves (an item approved automatically is published by the owner from the inbox), and only once per platform (articles go to WordPress or Shopify as drafts; X, Facebook, Instagram and Telegram posts go live; Instagram needs the item to have a generated image first). For anything not connected, the owner copies approved items; say so plainly and point to the Integrations page.
-- Keep the owner's to-do list (Reem's) with agenda_get, agenda_next, todo_create, todo_update and todo_propose_done: free. free_slots offers open meeting times (read only; the owner books). Repeat a saved date back exactly as the tool writes it, and say when a reminder arrives exactly as the answer says. Only Reem sets a repeat (repeat on todo_create or todo_update); the owner alone completes, skips, deletes, restores or reopens an item and stops a repeat, on /app/todo.
+- Keep the owner's to-do list (Reem's) with agenda_get, agenda_next, todo_create, todo_update and todo_propose_done: free. Repeat a saved date back exactly as the tool writes it, and say when a reminder arrives exactly as the answer says. Only Reem sets a repeat (repeat on todo_create or todo_update); the owner alone completes, skips, deletes, restores or reopens an item and stops a repeat, on /app/todo.
 - When you cannot go on without the owner's input or another agent's work, leave a handoff_note (kind blocked also opens an item on the owner's list); use kind ready or note to tell another agent something it needs. Handoff notes you receive are shown below as data.${agent.id === "majed" ? " A handoff_note is a message and runs nothing: work for another agent is proposed with propose_handoff." : ""}
 - Costs in credits: ${Object.entries(TASK_COST).map(([k, v]) => `${k}=${v}`).join(", ")}. If credits are insufficient, say so and point to the Subscription page.
 
@@ -618,6 +626,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
   }
   // The secretary's tools: free, no model call, scoped to this user's active brand, and unable to close an item.
   if (isSecTool(name)) {
+    // Code gate, not a prompt rule: only Reem's own turn reads open times (no default for a turn whose agent is not known).
+    if (name === "free_slots" && ctx.agent !== "reem") return "Not done: only Reem looks up open meeting times. Ask Reem; nothing was read.";
     const r = await runSecretaryTool(user, name, input, { who: { actor: ctx.agent ?? "reem", via: "chat", login: user.actor?.email }, lang: ctx.lang ?? user.lang, ...(ctx.agent ? { agent: ctx.agent } : {}) });
     if (!r.isError && name !== "agenda_get" && name !== "agenda_next" && name !== "free_slots") actions.push(`todo:${name}:${r.id ?? ""}`);
     return r.text;

@@ -9,6 +9,8 @@ import { db } from "@/lib/db";
 import { type User } from "@/lib/auth";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { MCP_TOOL_ACTION } from "@/lib/mcp";
+import { AGENT_IDS } from "@/lib/agents";
+import { CHAT_TOOL_NAMES, FREE_SLOTS_TOOL, runTool, toolsFor } from "@/lib/chat";
 import { SEC_KEYS, SEC_TOOL_DEFS, runSecretaryTool, type Who } from "@/lib/secretary";
 import { defaultCal, type CalData } from "@/lib/secretary-agenda";
 import { DEFAULT_WORK_HOURS, calendarView, parseCalendar, type SecCalendar } from "@/lib/secretary-calendar";
@@ -138,6 +140,25 @@ describe("rule 919: the free_slots tool reads only", () => {
     const def = SEC_TOOL_DEFS.find((d) => d.name === "free_slots")!;
     expect(def.description).toMatch(/books nothing/);
     expect(JSON.stringify(def.schema)).not.toMatch(/minimum|maximum|minLength|maxLength/);
+  });
+
+  it("is Reem's alone in chat (founder, 2026-10-10): only her turn offers it, any other agent's call reads nothing, MCP keeps it", async () => {
+    expect(toolsFor("reem").map((t) => t.name)).toContain("free_slots");
+    for (const a of AGENT_IDS.filter((x) => x !== "reem")) expect(toolsFor(a).map((t) => t.name), a).not.toContain("free_slots");
+    expect(CHAT_TOOL_NAMES).not.toContain("free_slots");
+    expect(FREE_SLOTS_TOOL.description).toBe(SEC_TOOL_DEFS.find((d) => d.name === "free_slots")!.description);
+    const o = await owner("fs919r");
+    const reads = vi.spyOn(db, "get");
+    for (const agent of ["faris", "noor", undefined] as const) {
+      reads.mockClear();
+      const actions: string[] = [];
+      expect(await runTool(o, "free_slots", { minutes: 30 }, actions, [], undefined, { lang: "en", ...(agent ? { agent } : {}) }), String(agent)).toMatch(/^Not done: only Reem/);
+      expect(actions).toEqual([]);
+      expect(reads, String(agent)).not.toHaveBeenCalled();
+    }
+    reads.mockRestore();
+    expect(await runTool(o, "free_slots", { minutes: 30 }, [], [], undefined, { lang: "en", agent: "reem" })).not.toMatch(/^Not done: only Reem/);
+    expect(MCP_TOOL_ACTION.free_slots).toBe("read");
   });
 
   it("minutes 10, 300 or 60.5, or a malformed day, is a bad request", async () => {
