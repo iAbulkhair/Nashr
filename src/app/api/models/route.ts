@@ -55,10 +55,10 @@ import { TASK_COST, type TaskType } from "@/lib/tasks";
  * write, the pick still answers `{ ok: true }`, without `chat` (the line keeps its value until the next answer). A brand
  * pick and the confirmation answer `{ ok: true }`: they change no chat ceiling.
  *
- * A refusal answers `{ error }` with 400 `bad_request` | `unknown_model` | `not_pickable`, 409
- * `china_unconfirmed` | `busy` (the brand lock), 503 `busy` with Retry-After (the conversation's lock, not taken within
- * about 3 s; nothing written), 404 `not_found`, 403 `forbidden`, 429 `slow_down` past MODEL_PICKS_PER_HOUR for the
- * account (with Retry-After), 401 without a session.
+ * A refusal answers `{ error }` with 400 `bad_request` | `unknown_model` | `not_pickable`, 409 `china_unconfirmed`,
+ * 503 `busy` with `Retry-After: 1` (the conversation's lock or the brand's, not taken within about 3 s; nothing
+ * written; rule 906 made the brand's the same as the conversation's, it answered 409 before), 404 `not_found`, 403
+ * `forbidden`, 429 `slow_down` past MODEL_PICKS_PER_HOUR for the account (with Retry-After), 401 without a session.
  */
 export async function GET() {
   const u = await currentUser();
@@ -78,6 +78,8 @@ export async function GET() {
 
 type Body = { target?: unknown; id?: unknown; model?: unknown; confirmChina?: unknown };
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
+/** A lock not taken in time, for the conversation's and the brand's alike: the owner presses again, nothing was written. */
+const busy = () => NextResponse.json({ error: "busy" }, { status: 503, headers: retryAfter(1) });
 
 export async function PUT(req: Request) {
   const u = await currentUser();
@@ -119,7 +121,7 @@ export async function PUT(req: Request) {
   if (target === "conversation") {
     // Under the conversation's lock, which every writer of its record holds (src/lib/conversations.ts).
     const done = await setConversationModel(sc(u), b.id, model);
-    if (done === "busy") return NextResponse.json({ error: "busy" }, { status: 503, headers: retryAfter(1) });
+    if (done === "busy") return busy();
     if (done !== "ok") return fail("not_found", 404);
     // The chat ceiling for the model the conversation runs on from now: the record holds `model` (or nothing) as written.
     // The pick has landed, so a failed read of the counters (a Redis HTTP error) must not answer a failure: the client
@@ -150,7 +152,7 @@ export async function PUT(req: Request) {
       return true;
     });
   } catch (e) {
-    if (e instanceof Error && e.message === "brand_lock_timeout") return fail("busy", 409);
+    if (e instanceof Error && e.message === "brand_lock_timeout") return busy();
     throw e;
   }
   return found ? NextResponse.json({ ok: true }) : fail("not_found", 404);

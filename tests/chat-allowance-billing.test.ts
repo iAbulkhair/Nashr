@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { db } from "@/lib/db";
 import { saveUser, type User } from "@/lib/auth";
 import { CHAT_ALLOWANCE, chatOverflowHold, formatCount } from "@/lib/pricing";
 import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey } from "@/lib/usage";
 import type { ChatStatus } from "@/lib/chat-allowance";
+import { chatHoldFor, chatPremiumHold } from "@/lib/models/credits";
+import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import * as profileRoute from "@/app/api/profile/route";
 import * as overflowRoute from "@/app/api/billing/chat-overflow/route";
@@ -209,6 +211,57 @@ describe("rule 315: the billing page's chat card", () => {
   });
 });
 
+describe("rule 907: the billing card names the hold of a conversation on a Premium model", () => {
+  // The account-level status carries the default model's hold (2). A conversation the owner set to Opus 5.5 needs 4 past
+  // the allowance (`chatHoldFor`), so the card says so too, with a number the server fills from the catalog.
+  const status = (hold: number, period: ChatStatus["period"] = "month"): ChatStatus => ({
+    used: 10, allowance: 250, left: 240, counted: 10, period, overflow: { on: true, available: period === "month", used: 0, credits: 0, hold },
+  });
+  const card = (props: Partial<Parameters<typeof ChatAllowanceCard>[0]>) =>
+    renderToStaticMarkup(createElement(ChatAllowanceCard, { lang: "en", status: status(HOLD), owner: true, nextReset: "2026-11-01", trialEnds: "2026-10-20", runway: null, ...props }));
+
+  it("chatPremiumHold is the largest hold of a Premium model a customer may pick for chat: Opus 5.5's, above the default's", () => {
+    expect(chatPremiumHold()).toBe(chatHoldFor("claude-opus-5-5"));
+    expect(chatPremiumHold()).toBe(4);
+    expect(chatPremiumHold()).toBeGreaterThan(HOLD);
+  });
+
+  it("the page gives a paid plan's card one more terms line, the Premium hold, in both languages", async () => {
+    const o = await account("starter", 12);
+    await signIn(o.email);
+    const h = await billing();
+    expect(h).toContain("data-chat-overflow-premium");
+    expect(h).toContain(`In a conversation you set to a Premium model, each extra message needs at least ${chatPremiumHold()} credits in your balance and is billed what it actually cost, at most ${chatPremiumHold()} credits.`);
+    // The default's terms are untouched.
+    expect(h).toContain(`each extra message needs at least ${HOLD} credits in your balance and is billed what it actually cost, at most ${HOLD} credits.`);
+    const ar = await billing("ar");
+    expect(ar).toContain("data-chat-overflow-premium");
+    expect(ar).toContain(`في المحادثة التي تختار لها نموذجاً متقدّماً: تحتاج كل رسالة إضافية ${chatPremiumHold()} كريدت على الأقل في رصيدك، وتُحسب بما كلّفته فعلاً، ${chatPremiumHold()} كريدت على الأكثر.`);
+  });
+
+  it("an admin and a member are told too (the terms are not a setting)", async () => {
+    const o = await account("business", 0);
+    const m = await newMember(o, "member");
+    await signIn(m.email);
+    expect(await billing()).toContain("data-chat-overflow-premium");
+  });
+
+  it("no line when the Premium hold is not above the default's, when the server gave none, or on a trial", () => {
+    expect(card({ premiumHold: 4 })).toContain("data-chat-overflow-premium");
+    expect(card({ premiumHold: HOLD })).not.toContain("data-chat-overflow-premium");
+    expect(card({ premiumHold: undefined })).not.toContain("data-chat-overflow-premium");
+    expect(card({ premiumHold: Number.NaN })).not.toContain("data-chat-overflow-premium");
+    expect(card({ premiumHold: 4, status: status(HOLD, "trial") })).not.toContain("data-chat-overflow-premium");
+  });
+
+  it("the number is the server's: the card carries no hold of its own", () => {
+    const html = card({ premiumHold: 9 });
+    expect(html).toContain("needs at least 9 credits in your balance and is billed what it actually cost, at most 9 credits.");
+    expect(readFileSync("src/components/app/ChatAllowanceCard.tsx", "utf8")).not.toMatch(/models\/credits|models\/catalog/);
+    expect(readFileSync("src/app/[lang]/app/billing/page.tsx", "utf8")).toMatch(/<ChatAllowanceCard [^>]*premiumHold=\{chatPremiumHold\(\)\}/);
+  });
+});
+
 describe("rule 315: the client card and the profile panel, by source", () => {
   const card = readFileSync("src/components/app/ChatAllowanceCard.tsx", "utf8");
   const panel = readFileSync("src/components/app/ProfilePanel.tsx", "utf8");
@@ -236,7 +289,8 @@ describe("rule 315: the client card and the profile panel, by source", () => {
     expect(page).toMatch(/const view = await entitlementView\(u\);/);
     expect(page).toMatch(/const \{ seats: used, chat \} = view\.used;/);
     expect(page).toMatch(/<ChatAllowanceCard [^>]*status=\{chat\}/);
-    // The view reads the status for the default chat model, the hold every account-level card shows (tests.md rule 833, known gap).
+    // The view reads the status for the default chat model, the hold the account-level cards show; the billing card adds the
+    // Premium hold as its own line (rule 907), the founder console and the profile row keep the default's (tests.md rule 833).
     expect(readFileSync("src/lib/entitlements.ts", "utf8")).toContain('chatStatus(u, route("chat").model)');
   });
 

@@ -26,7 +26,7 @@ export async function getConversation(scope: string, id: unknown): Promise<Conve
 /**
  * One lock per conversation (`convlock:{scope}:{id}`, built from the caller's scope and an id that passed
  * `isConversationId`, never from anything else in a request), held by every writer of its record: the pick
- * (`setConversationModel`), a turn's `touchConversation`, `renameConversation` and `deleteConversation`. Each of them reads
+ * (`setConversationModel`), a turn's `touchConversation`, `renameConversation` and `deleteConversation`, which the account wipe calls for every conversation (src/lib/account.ts). Each of them reads
  * the whole record and writes it back, so without the lock a writer that read before another one wrote would put back
  * what it read: a pick the owner cleared would come back, or a record deleted meanwhile would be recreated outside the
  * `convs:` index, where the account wipe never finds it and `liveConversations` reports a deleted thread as live.
