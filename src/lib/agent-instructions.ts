@@ -22,8 +22,6 @@ export const RENDER_CHARS = 15000;
 /** Characters of reference text one prompt carries, and the most one file adds. */
 export const REF_TOTAL_CHARS = 8000;
 export const REF_FILE_CHARS = 4000;
-/** The most reference files `loadLayers` reads: 8,000 characters hold two full files, the rest cover empty or missing ones. */
-const MAX_REF_FILES = 30;
 
 export type Layers = {
   platform: InstructionSet | null;
@@ -82,6 +80,12 @@ function withinPlan(items: Applied[], limits: InstructionLimits): Applied[] {
   return items.filter((a) => limits.perAgent || a.item.agents === "all").slice(0, Math.max(0, limits.max));
 }
 
+const AGENT_SET: readonly string[] = [...AGENT_IDS, "media"];
+
+/** Whether an item reaches an agent called by any of `names`: `all` through the eight agents and `media`, a named item by name. */
+const reaches = (item: Instruction, names: readonly string[]): boolean =>
+  item.agents === "all" ? names.some((n) => AGENT_SET.includes(n)) : names.some((n) => (item.agents as string[]).includes(n));
+
 const workspaceApplied = (set: InstructionSet | null, limits: InstructionLimits | null): Applied[] => (limits ? withinPlan(clean(set, false), limits) : []);
 
 /** How many items that are switched on the plan leaves out (or the screen refuses), for the page: "N are not applied". */
@@ -95,8 +99,11 @@ export function skippedCount(set: InstructionSet, limits: InstructionLimits): nu
  * `skills:paused`), then the reference files the applied items attach in a second. `scope` is the caller's own, from
  * `sc(u)`; `null` loads the platform alone. `which: "draft"` reads the set being edited (the "test this instruction"
  * path), falling back to the active set when there is no draft.
+ *
+ * `names` are the targets the caller will render for (`instructionBlocks`' `target` and `also`): only the files of items
+ * that apply (plan limits, screen) and reach one of them are read. Without `names` no file is read.
  */
-export async function loadLayers(scope: string | null, limits: InstructionLimits | null, which: "active" | "draft" = "active"): Promise<Layers> {
+export async function loadLayers(scope: string | null, limits: InstructionLimits | null, which: "active" | "draft" = "active", names?: Target[]): Promise<Layers> {
   const own = scope !== null && scope !== PLATFORM ? scope : null;
   const keys = [layerKey(PLATFORM), PAUSED, ...(own ? [layerKey(own)] : [])];
   const [plat, pause, mine] = await db.mget<unknown>(keys);
@@ -105,25 +112,24 @@ export async function loadLayers(scope: string | null, limits: InstructionLimits
   const platform = plat == null ? null : parseLayer(plat).active;
   const layer = own && mine != null ? parseLayer(mine) : null;
   const workspace = layer ? (which === "draft" ? layer.draft ?? layer.active : layer.active) : null;
-  const refs = own && workspace && !paused && limits?.refs ? await readRefs(own, workspaceApplied(workspace, limits)) : {};
+  const refs = own && workspace && !paused && limits?.refs && names?.length ? await readRefs(own, workspaceApplied(workspace, limits).filter((a) => reaches(a.item, names))) : {};
   return { platform, workspace, refs, paused, limits };
 }
 
 /** The attached files of the applied items, one `mget`. A name goes through `safeName`, so it cannot reach another key. */
 async function readRefs(scope: string, applied: Applied[]): Promise<Record<string, string>> {
-  const names = [...new Set(applied.flatMap((a) => (Array.isArray(a.item.refs) ? a.item.refs : [])).filter((n): n is string => typeof n === "string" && n.length > 0))].slice(0, MAX_REF_FILES);
-  if (!names.length) return {};
-  const rows = await db.mget<unknown>(names.map((n) => fileKey(scope, safeName(n))));
+  // At most max (100) items of 3 files each, so the read is bounded by the plan.
+  const files = [...new Set(applied.flatMap((a) => (Array.isArray(a.item.refs) ? a.item.refs : [])).filter((n): n is string => typeof n === "string" && n.length > 0))];
+  if (!files.length) return {};
+  const rows = await db.mget<unknown>(files.map((n) => fileKey(scope, safeName(n))));
   const entries: [string, string][] = [];
-  names.forEach((name, i) => {
+  files.forEach((name, i) => {
     const row = rows[i];
     const content = typeof row === "string" ? row : isObj(row) && typeof row.content === "string" ? row.content : "";
     if (content.trim()) entries.push([name, cut(content, REF_FILE_CHARS)]);
   });
   return Object.fromEntries(entries);
 }
-
-const AGENT_SET: readonly string[] = [...AGENT_IDS, "media"];
 
 const PLATFORM_HEADER = "THAKEEN STANDARDS (from Thakeen; follow them)";
 const WORKSPACE_HEADER = "OWNER INSTRUCTIONS (the owner's standing instructions for how you work for this brand, as JSON in the owner_instructions block below)";
@@ -150,10 +156,11 @@ const REFS_HEADER = "REFERENCE FILES (attached by the owner to these instruction
  * `stamp` is the content hash of each block (`none` when empty) for the prompt stamp.
  */
 export function instructionBlocks(layers: Layers, target: Target, also?: AgentId): { platform: string; workspace: string; stamp: { plat: string; ins: string } } {
+  // `also` widens the workspace block only: the platform block is the one for `target`.
   const names: string[] = also && also !== target ? [target, also] : [target];
 
   // Platform.
-  const plat = clean(layers.platform, true).filter(({ item }) => (item.agents === "all" ? AGENT_SET.includes(target) : names.some((n) => (item.agents as string[]).includes(n))));
+  const plat = clean(layers.platform, true).filter(({ item }) => reaches(item, [target]));
   const ordered = [...plat.filter((a) => a.item.lock === true), ...plat.filter((a) => a.item.lock !== true)];
   let used = 0;
   const lines: string[] = [];
@@ -165,15 +172,13 @@ export function instructionBlocks(layers: Layers, target: Target, also?: AgentId
   const platform = lines.length ? `${PLATFORM_HEADER}\n${lines.join("\n")}` : "";
 
   // Workspace.
-  const allReaches = names.some((n) => AGENT_SET.includes(n));
   const applied = layers.paused ? [] : workspaceApplied(layers.workspace, layers.limits);
   const forAll: string[] = [];
   const forYou: string[] = [];
   const shown: Applied[] = [];
   let left = RENDER_CHARS - used;
   for (const a of applied) {
-    const mine = a.item.agents === "all" ? allReaches : names.some((n) => (a.item.agents as string[]).includes(n));
-    if (!mine) continue;
+    if (!reaches(a.item, names)) continue;
     if (a.text.length > left) break;
     left -= a.text.length;
     (a.item.agents === "all" ? forAll : forYou).push(a.text);
@@ -200,8 +205,9 @@ function referenceFiles(shown: Applied[], refs: Record<string, string>): { name:
       if (typeof name !== "string" || seen.has(name) || left <= 0) continue;
       seen.add(name);
       const raw = Object.hasOwn(refs, name) ? refs[name] : "";
-      const text = typeof raw === "string" ? cut(raw, Math.min(REF_FILE_CHARS, left)) : "";
-      if (!text.trim()) continue;
+      // Each file is cut at REF_FILE_CHARS first; one that does not fit what is left is skipped, never a fragment.
+      const text = typeof raw === "string" ? cut(raw, REF_FILE_CHARS) : "";
+      if (!text.trim() || text.length > left) continue;
       left -= text.length;
       out.push({ name, text });
     }

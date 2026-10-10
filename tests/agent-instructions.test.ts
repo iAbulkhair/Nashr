@@ -94,6 +94,18 @@ describe("selection, precedence and targets (rule 942)", () => {
     expect(b.workspace).not.toContain("Noor own");
   });
 
+  it("rule 942: also never widens the platform block, only the workspace block", () => {
+    const l = layers([item("Plat noor", { agents: ["noor"] }), item("Plat faris", { agents: ["faris"] }), item("Plat all"), item("Plat media", { agents: ["media"] }), item("Plat reviewer", { agents: ["reviewer"] })], [item("Owner noor", { agents: ["noor"] })]);
+    const r = instructionBlocks(l, "reviewer", "noor");
+    expect(r.platform).toBe("THAKEEN STANDARDS (from Thakeen; follow them)\n- Plat reviewer");
+    expect(r.workspace).toContain("Owner noor");
+    const m = instructionBlocks(l, "media", "faris").platform;
+    expect(m).toContain("Plat media");
+    expect(m).toContain("Plat all");
+    expect(m).not.toContain("Plat faris");
+    expect(instructionBlocks(l, "judge", "noor").platform).toBe("");
+  });
+
   it("rule 942: a workspace item that names the reviewer or the judge is never rendered (only the platform may)", () => {
     const l = layers([], [item("Mixed", { agents: ["noor", "reviewer"] }), item("To judge", { agents: ["judge"] })]);
     expect(instructionBlocks(l, "noor").workspace).toBe("");
@@ -211,6 +223,22 @@ describe("render caps (rule 943)", () => {
     expect(files.reduce((s, f) => s + f.text.length, 0)).toBeLessThanOrEqual(8000);
   });
 
+  it("rule 943: a file that does not fit what is left of the 8,000 is skipped, not cut to a fragment", () => {
+    const items = [item("Files", { refs: ["a.md", "b.md", "c.md"] })];
+    const refs = { "a.md": "A".repeat(4000), "b.md": "B".repeat(3000), "c.md": "C".repeat(2000) };
+    const w = instructionBlocks(layers([], items, { refs }), "noor").workspace;
+    const files = JSON.parse(w.slice(w.indexOf("<reference_files>") + 17, w.indexOf("</reference_files>")).trim()) as { name: string; text: string }[];
+    expect(files.map((f) => [f.name, f.text.length])).toEqual([
+      ["a.md", 4000],
+      ["b.md", 3000],
+    ]);
+    // A smaller file after the one that did not fit still goes in.
+    const more = [item("Files", { refs: ["a.md", "b.md", "c.md", "d.md"] })];
+    const w2 = instructionBlocks(layers([], more, { refs: { ...refs, "d.md": "D".repeat(900) } }), "noor").workspace;
+    expect(w2).toContain("D".repeat(900));
+    expect(w2).not.toContain("CCCC");
+  });
+
   it("rule 943: a missing reference name is skipped, the others stay", () => {
     const items = [item("Facts", { refs: ["gone.md", "here.md"] })];
     const w = instructionBlocks(layers([], items, { refs: { "here.md": "present" } }), "noor").workspace;
@@ -290,7 +318,7 @@ describe("loadLayers (rules 942, 944)", () => {
     await writeFile(scope, "notes.md", "the facts", "user");
     const mget = vi.spyOn(db, "mget");
     const get = vi.spyOn(db, "get");
-    const l = await loadLayers(scope, AGENCY);
+    const l = await loadLayers(scope, AGENCY, "active", ["noor"]);
     expect(mget.mock.calls.length).toBeLessThanOrEqual(2);
     expect(get).not.toHaveBeenCalled();
     expect(l.refs).toEqual({ "notes.md": "the facts" });
@@ -334,24 +362,54 @@ describe("loadLayers (rules 942, 944)", () => {
     await put(a, [item("Secret of A", { refs: ["a.md"] })]);
     await put(b, [item("Plain B", { refs: ["a.md"] })]);
     await writeFile(a, "a.md", "A FILE", "user");
-    const lb = await loadLayers(b, AGENCY);
+    const lb = await loadLayers(b, AGENCY, "active", ["noor"]);
     const text = JSON.stringify(lb) + instructionBlocks(lb, "noor").workspace;
     expect(text).toContain("Plain B");
     expect(text).not.toContain("Secret of A");
     expect(text).not.toContain("A FILE");
     // A reference name cannot walk to another key: it goes through the file name cleaner.
     await put(b, [item("Walk", { refs: [`../${a}:a.md`, `x:${a}:a.md`] })]);
-    expect(JSON.stringify(await loadLayers(b, AGENCY))).not.toContain("A FILE");
+    expect(JSON.stringify(await loadLayers(b, AGENCY, "active", ["noor"]))).not.toContain("A FILE");
   });
 
   it("rule 942: with a pause or without plan limits, no reference file is read", async () => {
     const scope = await ws();
     await put(scope, [item("Mine", { refs: ["notes.md"] })]);
     await writeFile(scope, "notes.md", "the facts", "user");
-    expect((await loadLayers(scope, null)).refs).toEqual({});
-    expect((await loadLayers(scope, LIMITS("trial"))).refs).toEqual({});
-    await setPaused(true);
+    expect((await loadLayers(scope, null, "active", ["noor"])).refs).toEqual({});
+    expect((await loadLayers(scope, LIMITS("trial"), "active", ["noor"])).refs).toEqual({});
+    // Without names no file is read.
     expect((await loadLayers(scope, AGENCY)).refs).toEqual({});
+    await setPaused(true);
+    expect((await loadLayers(scope, AGENCY, "active", ["noor"])).refs).toEqual({});
+  });
+
+  it("rule 942: only the files of items that apply and reach the named targets are read, however many other items attach files", async () => {
+    const scope = await ws();
+    // Pro: 10 Sami items with 3 files each come first; the Noor item with prices.md comes after them.
+    const sami = Array.from({ length: 10 }, (_, i) => item(`Sami rule ${i}`, { agents: ["sami"], refs: [`s${i}a.md`, `s${i}b.md`, `s${i}c.md`] }));
+    await put(scope, [...sami, item("Quote the prices", { agents: ["noor"], refs: ["prices.md"] }), item("Beyond the plan", { agents: ["noor"], refs: ["late.md"] })]);
+    await writeFile(scope, "prices.md", "Tea 10", "user");
+    await writeFile(scope, "late.md", "LATE", "user");
+    await writeFile(scope, "s0a.md", "SAMI", "user");
+    const mget = vi.spyOn(db, "mget");
+    const pro = { ...LIMITS("pro"), max: 11 };
+    const l = await loadLayers(scope, pro, "active", ["noor"]);
+    expect(mget.mock.calls.length).toBeLessThanOrEqual(2);
+    mget.mockRestore();
+    expect(l.refs).toEqual({ "prices.md": "Tea 10" });
+    expect(instructionBlocks(l, "noor").workspace).toContain("Tea 10");
+    // The agent that follows the Sami items gets theirs.
+    expect(Object.keys((await loadLayers(scope, pro, "active", ["sami"])).refs)).toEqual(["s0a.md"]);
+  });
+
+  it('rule 942: the scope "platform" is treated as no workspace', async () => {
+    await db.set("skills:platform", { active: set([item("Plat only")]), draft: null, at: "x", by: null });
+    const l = await loadLayers(PLATFORM, AGENCY, "active", ["noor"]);
+    expect(l.workspace).toBeNull();
+    expect(instructionBlocks(l, "noor").workspace).toBe("");
+    expect(instructionBlocks(l, "noor").platform).toContain("Plat only");
+    await db.del("skills:platform");
   });
 
   it("rule 942: the platform layer constant is the key the store writes", () => {
