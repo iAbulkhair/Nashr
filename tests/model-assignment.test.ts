@@ -19,7 +19,7 @@ const sdk = vi.hoisted(() => ({ sent: [] as { model: string }[], streamed: [] as
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
     static BadRequestError = class extends Error {};
-    messages = { create: async (p: { model: string }) => { sdk.sent.push(p); return sdk.reply; } };
+    messages = { create: async (p: { model: string }) => { sdk.sent.push(p); return sdk.reply; }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
     beta = { messages: { stream: (p: { model: string }) => { sdk.streamed.push(p); return { finalMessage: async () => sdk.reply }; } } };
   },
 }));

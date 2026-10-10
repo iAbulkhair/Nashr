@@ -15,7 +15,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
     static BadRequestError = class extends Error {};
     constructor() { sdk.made++; }
     messages = {
-      stream: () => ({ finalMessage: async () => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: "أهلاً" }] }) }),
+      stream: () => ({ finalMessage: async () => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: "أهلاً" }] }) }),
     };
   },
 }));

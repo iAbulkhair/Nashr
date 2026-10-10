@@ -34,7 +34,7 @@ vi.mock("@anthropic-ai/sdk", () => {
         },
       };
       messages = {
-        stream: (p: { model: string; system: unknown }) => ({
+        chat: (p: { model: string; system: unknown }) => ({
           finalMessage: async () => {
             sdk.calls.push({ api: "stream", model: p.model, system: sysText(p.system) });
             return answer(p.model, "أهلاً");
@@ -46,6 +46,7 @@ vi.mock("@anthropic-ai/sdk", () => {
           if (system.startsWith("You are the quality judge")) return answer(p.model, JSON.stringify([verdict, verdict, verdict, verdict, verdict]));
           return answer(p.model, JSON.stringify([{ ok: true, id: 1, verdict: "ok" }]));
         },
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   };
@@ -232,7 +233,7 @@ describe("GET /api/models", () => {
 describe("PUT /api/models: validation", () => {
   it("unknown, constructor and __proto__ ids are rejected unknown_model, and so is anything that is not a string; nothing is written", async () => {
     const { u, conv } = await owner("mo-unknown");
-    const bad: unknown[] = ["claude-unknown-9", "constructor", "__proto__", "toString", "hasOwnProperty", "", " claude-opus-5", "CLAUDE-OPUS-5", 5, true, false, {}, [], [OPUS], { id: OPUS }, undefined];
+    const bad: unknown[] = ["claude-unknown-9", "constructor", "__proto__", "toString", "hasOwnProperty", "", " claude-opus-5-5", "CLAUDE-OPUS-5", 5, true, false, {}, [], [OPUS], { id: OPUS }, undefined];
     for (const model of bad) {
       for (const target of ["conversation", "brand"]) {
         const r = await put({ target, id: target === "conversation" ? conv : undefined, model });

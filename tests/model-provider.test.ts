@@ -15,7 +15,7 @@ const STRAITLY_KEY = "sk-straitly-UNIT-TEST-ONLY-1111";
 const ANTHROPIC_KEY = "sk-ant-UNIT-TEST-ONLY-2222";
 
 type Call = { url: string; headers: Headers; body: string };
-const MESSAGE = { id: "msg_1", type: "message", role: "assistant", model: "claude-opus-5", content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
+const MESSAGE = { id: "msg_1", type: "message", role: "assistant", model: "claude-opus-5-5", content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
 const ok = () => new Response(JSON.stringify(MESSAGE), { status: 200, headers: { "content-type": "application/json" } });
 const fail = (status: number) => new Response(JSON.stringify({ type: "error", error: { type: "api_error", message: "upstream failed" } }), { status, headers: { "content-type": "application/json" } });
 
@@ -73,7 +73,7 @@ describe("the provider switch", () => {
     vi.stubEnv("STRAITLY_API_KEY", STRAITLY_KEY);
     vi.stubEnv("ANTHROPIC_API_KEY", ANTHROPIC_KEY);
     const calls = stubFetch(ok);
-    await ask("claude-opus-5");
+    await ask("claude-opus-5-5");
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe("https://api.anthropic.com/v1/messages");
     expect(calls[0].headers.get("x-api-key")).toBe(ANTHROPIC_KEY);
@@ -86,7 +86,7 @@ describe("the provider switch", () => {
     vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "ambient-token-must-not-be-sent");
     const calls = stubFetch(ok);
 
-    await ask("claude-opus-5");
+    await ask("claude-opus-5-5");
     expect(calls[0].url, "the SDK appends /v1/messages itself, so the default base has no /v1").toBe("https://api.straitly.ai/v1/messages");
     expect(calls[0].headers.get("x-api-key")).toBe(STRAITLY_KEY);
     expect(calls[0].headers.get("authorization")).toBeNull();
@@ -94,7 +94,7 @@ describe("the provider switch", () => {
     expect(JSON.stringify([...calls[0].headers])).not.toContain(ANTHROPIC_KEY);
 
     vi.stubEnv("STRAITLY_BASE_URL", "https://gateway.example.test");
-    await ask("claude-sonnet-5");
+    await ask("claude-sonnet-5-5");
     expect(calls[1].url).toBe("https://gateway.example.test/v1/messages");
     expect(calls[1].headers.get("x-api-key")).toBe(STRAITLY_KEY);
   });
@@ -162,7 +162,7 @@ describe("the provider switch", () => {
       ["  https://gateway.example.test  ", "https://gateway.example.test/v1/messages"],
     ] as const) {
       vi.stubEnv("STRAITLY_BASE_URL", base);
-      await ask("claude-opus-5");
+      await ask("claude-opus-5-5");
       expect(calls.at(-1)?.url, base).toBe(sent);
       expect(calls.at(-1)?.headers.get("x-api-key"), base).toBe(STRAITLY_KEY);
     }
@@ -171,7 +171,7 @@ describe("the provider switch", () => {
   it("straitly without STRAITLY_API_KEY sends to Anthropic and never hands the Anthropic key to the gateway", async () => {
     straitly({ anthropic: ANTHROPIC_KEY });
     const calls = stubFetch(ok);
-    await ask("claude-opus-5");
+    await ask("claude-opus-5-5");
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe("https://api.anthropic.com/v1/messages");
     expect(calls[0].headers.get("x-api-key")).toBe(ANTHROPIC_KEY);
@@ -245,14 +245,14 @@ describe("the direct Anthropic fallback", () => {
   it("is one retry: when Anthropic fails too, the error comes out and nothing is sent a third time", async () => {
     straitly();
     const calls = stubFetch(() => fail(503));
-    const e = await reason(ask("claude-opus-5"));
+    const e = await reason(ask("claude-opus-5-5"));
     expect(e?.status).toBe(503);
     expect(calls).toHaveLength(2);
     expect(calls.map((c) => new URL(c.url).host)).toEqual(["api.straitly.ai", "api.anthropic.com"]);
 
     straitly();
     const net = stubFetch(() => { throw new TypeError("fetch failed"); });
-    expect(await reason(ask("claude-opus-5"))).toBeInstanceOf(Error);
+    expect(await reason(ask("claude-opus-5-5"))).toBeInstanceOf(Error);
     expect(net).toHaveLength(2);
   });
 
@@ -265,9 +265,9 @@ describe("the direct Anthropic fallback", () => {
     // A gateway success, a 4xx, a non-claude model and a missing Anthropic key re-send nothing: no count.
     straitly();
     stubFetch(ok);
-    await ask("claude-opus-5");
+    await ask("claude-opus-5-5");
     vi.unstubAllGlobals();
-    for (const [model, status] of [["claude-opus-5", 400], ["claude-opus-5", 429], ["deepseek-v3.2", 503]] as const) {
+    for (const [model, status] of [["claude-opus-5-5", 400], ["claude-opus-5-5", 429], ["deepseek-v3.2", 503]] as const) {
       straitly();
       stubFetch(() => fail(status));
       await reason(ask(model));
@@ -275,7 +275,7 @@ describe("the direct Anthropic fallback", () => {
     }
     straitly({ straitly: STRAITLY_KEY });
     stubFetch(() => fail(503));
-    await reason(ask("claude-opus-5"));
+    await reason(ask("claude-opus-5-5"));
     vi.unstubAllGlobals();
     await new Promise((r) => setTimeout(r, 5));
     expect(await count()).toBe(base);
@@ -302,12 +302,12 @@ describe("the direct Anthropic fallback", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const incr = vi.spyOn(db, "incrby").mockImplementation(() => { throw new Error(`store down ${STRAITLY_KEY} ${ANTHROPIC_KEY}`); });
     const calls = stubFetch((_c, n) => (n === 0 ? fail(503) : ok()));
-    expect(((await ask("claude-opus-5")).content[0] as { text: string }).text).toBe("ok");
+    expect(((await ask("claude-opus-5-5")).content[0] as { text: string }).text).toBe("ok");
     expect(calls.map((c) => new URL(c.url).host)).toEqual(["api.straitly.ai", "api.anthropic.com"]);
     expect(incr).toHaveBeenCalled();
     incr.mockRejectedValue(new Error(`store down ${STRAITLY_KEY}`));
     const net = stubFetch((_c, n) => { if (n === 0) throw new TypeError("fetch failed"); return ok(); });
-    expect(((await ask("claude-opus-5")).content[0] as { text: string }).text).toBe("ok");
+    expect(((await ask("claude-opus-5-5")).content[0] as { text: string }).text).toBe("ok");
     expect(net).toHaveLength(2);
     await new Promise((r) => setTimeout(r, 5));
     const logged = JSON.stringify([...warn.mock.calls, ...error.mock.calls]);
@@ -320,7 +320,7 @@ describe("the direct Anthropic fallback", () => {
     straitly();
     vi.stubEnv("STRAITLY_BASE_URL", "https://gateway.example.test");
     const calls = stubFetch((_c, n) => (n === 0 ? fail(502) : ok()));
-    await anthropic({ timeoutMs: 30_000, maxRetries: 0 }).beta.messages.create({ model: "claude-opus-5", max_tokens: 16, messages: [{ role: "user", content: "hi" }] });
+    await anthropic({ timeoutMs: 30_000, maxRetries: 0 }).beta.messages.create({ model: "claude-opus-5-5", max_tokens: 16, messages: [{ role: "user", content: "hi" }] });
     expect(calls[0].url).toBe("https://gateway.example.test/v1/messages?beta=true");
     expect(calls[1].url).toBe("https://api.anthropic.com/v1/messages?beta=true");
   });
@@ -328,26 +328,26 @@ describe("the direct Anthropic fallback", () => {
   it("no fallback without ANTHROPIC_API_KEY, for a 4xx, or when the caller aborted", async () => {
     straitly({ straitly: STRAITLY_KEY });
     let calls = stubFetch(() => fail(503));
-    expect((await reason(ask("claude-opus-5")))?.status).toBe(503);
+    expect((await reason(ask("claude-opus-5-5")))?.status).toBe(503);
     expect(calls, "no Anthropic key, so nothing to fall back with").toHaveLength(1);
 
     for (const status of [400, 401, 404, 408, 429]) {
       straitly();
       calls = stubFetch(() => fail(status));
-      expect((await reason(ask("claude-opus-5")))?.status, String(status)).toBe(status);
+      expect((await reason(ask("claude-opus-5-5")))?.status, String(status)).toBe(status);
       expect(calls, String(status)).toHaveLength(1);
     }
 
     straitly();
     const ac = new AbortController();
     calls = stubFetch(() => { ac.abort(); throw new DOMException("This operation was aborted", "AbortError"); });
-    const aborted = await reason(anthropic({ timeoutMs: 30_000, maxRetries: 0 }).messages.create({ model: "claude-opus-5", max_tokens: 16, messages: [{ role: "user", content: "hi" }] }, { signal: ac.signal }));
+    const aborted = await reason(anthropic({ timeoutMs: 30_000, maxRetries: 0 }).messages.create({ model: "claude-opus-5-5", max_tokens: 16, messages: [{ role: "user", content: "hi" }] }, { signal: ac.signal }));
     expect(aborted).toBeInstanceOf(Error);
     expect(calls, "the attempt's time was the caller's: a second try would run past it").toHaveLength(1);
   });
 
   it("no fallback for a non-claude model", async () => {
-    for (const model of ["deepseek-v3.2", "gpt-5", "gemini-3-pro", "glm-4.6", "Claude-opus-5", "anthropic/claude-opus-5"]) {
+    for (const model of ["deepseek-v3.2", "gpt-5", "gemini-3-pro", "glm-4.6", "Claude-opus-5", "anthropic/claude-opus-5-5"]) {
       straitly();
       const calls = stubFetch(() => fail(503));
       expect((await reason(ask(model)))?.status, model).toBe(503);
@@ -362,14 +362,14 @@ describe("the direct Anthropic fallback", () => {
     // A 200 whose body dies halfway: the headers came, so the reply has started and a second request would repeat it.
     straitly();
     let calls = stubFetch(() => new Response(new ReadableStream({ start(c) { c.enqueue(enc.encode('{"id":"msg_1","type":"mess')); c.error(new TypeError("terminated")); } }), { status: 200, headers: { "content-type": "application/json" } }));
-    expect(await reason(ask("claude-opus-5"))).toBeInstanceOf(Error);
+    expect(await reason(ask("claude-opus-5-5"))).toBeInstanceOf(Error);
     expect(calls).toHaveLength(1);
 
     // The same for a streamed reply cut after its first event.
     straitly();
     const first = `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { ...MESSAGE, content: [] } })}\n\n`;
     calls = stubFetch(() => new Response(new ReadableStream({ start(c) { c.enqueue(enc.encode(first)); c.error(new TypeError("terminated")); } }), { status: 200, headers: { "content-type": "text/event-stream" } }));
-    const stream = await anthropic({ timeoutMs: 30_000, maxRetries: 0 }).messages.create({ model: "claude-opus-5", max_tokens: 16, stream: true, messages: [{ role: "user", content: "hi" }] });
+    const stream = await anthropic({ timeoutMs: 30_000, maxRetries: 0 }).messages.create({ model: "claude-opus-5-5", max_tokens: 16, stream: true, messages: [{ role: "user", content: "hi" }] });
     expect(await reason((async () => { for await (const ev of stream) void ev; })())).toBeInstanceOf(Error);
     expect(calls).toHaveLength(1);
   });
@@ -377,7 +377,7 @@ describe("the direct Anthropic fallback", () => {
   it("the SDK's own retries still apply on top, each starting at Straitly", async () => {
     straitly();
     const calls = stubFetch(() => fail(503));
-    const e = await reason(ask("claude-opus-5", { maxRetries: 1 }));
+    const e = await reason(ask("claude-opus-5-5", { maxRetries: 1 }));
     expect(e?.status).toBe(503);
     expect(calls.map((c) => new URL(c.url).host)).toEqual(["api.straitly.ai", "api.anthropic.com", "api.straitly.ai", "api.anthropic.com"]);
   }, 20_000);
@@ -392,7 +392,7 @@ describe("the keys stay secret", () => {
     for (const mode of ["5xx", "network", "non-claude", "4xx"] as const) {
       straitly();
       stubFetch(() => { if (mode === "network") throw new TypeError("fetch failed"); return fail(mode === "4xx" ? 401 : 503); });
-      seen.push(await reason(ask(mode === "non-claude" ? "deepseek-v3.2" : "claude-opus-5")));
+      seen.push(await reason(ask(mode === "non-claude" ? "deepseek-v3.2" : "claude-opus-5-5")));
       vi.unstubAllGlobals();
     }
     expect(warn, "the 5xx and the network error were re-sent, and logged").toHaveBeenCalledTimes(2);
@@ -442,7 +442,7 @@ describe("the provider a call really goes to (effectiveProvider, plan Task 8)", 
       expect(effectiveProvider(), c.label).toBe(c.expected);
       // The same answer as the request itself: the host the real SDK client sends to.
       const calls = stubFetch(ok);
-      await ask("claude-opus-5");
+      await ask("claude-opus-5-5");
       expect(new URL(calls[0].url).host === "api.straitly.ai" ? "straitly" : "anthropic", `${c.label}: where the call went`).toBe(c.expected);
       vi.unstubAllGlobals();
     }

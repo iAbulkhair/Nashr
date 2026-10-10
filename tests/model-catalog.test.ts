@@ -28,6 +28,7 @@ const entry = (o: Partial<ModelEntry> & { id: string }): ModelEntry => ({
 });
 
 const CLAUDE = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
+/** Removed on 2026-10-10 (rule 970): no entry, so no rate, no route, no pick. */
 const RETIRED = ["claude-opus-5", "claude-sonnet-5"] as const;
 const imports = (file: string) => readFileSync(file, "utf8").split("\n").filter((l) => /^\s*(import|export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from)\s/.test(l) || /\brequire\(|\bimport\(/.test(l));
 
@@ -87,12 +88,12 @@ describe("the real catalog", () => {
     // A customer may pick Opus 5.5 or Sonnet 5.5; Haiku 5.5 does the short jobs only and writes no task type.
     expect(pickModels().map((x) => x.id).sort()).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"]);
     expect(modelById("claude-haiku-5-5")!.tasks).toEqual([]);
-    for (const id of RETIRED) expect(modelById(id), id).toMatchObject({ auto: false, pick: false });
+    // Rule 970: the catalog holds the 5.5 generation only.
+    expect(MODELS.map((x) => x.id).sort()).toEqual([...CLAUDE].sort());
+    for (const id of RETIRED) expect(modelById(id), id).toBeUndefined();
     expect(modelById("claude-opus-5-5")!.tier).toBe("premium");
     expect(modelById("claude-sonnet-5-5")!.tier).toBe("standard");
     expect(modelById("claude-haiku-5-5")!.tier).toBe("economy");
-    expect(modelById("claude-opus-5")!.tier).toBe("premium");
-    expect(modelById("claude-sonnet-5")!.tier).toBe("standard");
   });
 
   it("every entry, whoever adds it, holds what routing and pricing read: a known tier, hosting and dialect, a vendor, the five caps", () => {
@@ -139,7 +140,7 @@ describe("the real catalog", () => {
   });
 
   it("the catalog and its rates cannot be changed at run time", () => {
-    const m = modelById("claude-opus-5")!;
+    const m = modelById("claude-opus-5-5")!;
     expect(Object.isFrozen(MODELS) && Object.isFrozen(m) && Object.isFrozen(m.rate) && Object.isFrozen(m.label) && Object.isFrozen(m.caps)).toBe(true);
     expect(() => { (m.rate as { in: number }).in = 0; }).toThrow();
     expect(() => { (MODELS as ModelEntry[]).push(entry({ id: "x" })); }).toThrow();
@@ -219,51 +220,48 @@ describe("costUsd and hasRate read the catalog first", () => {
     }
   });
 
-  it("the three Claude models cost what the Anthropic list price said before the catalog (no margin change)", () => {
-    expect(costUsd("claude-opus-5", usage)).toBeCloseTo(5 + 25 + 0.5 + 6.25, 9);
-    expect(costUsd("claude-sonnet-5", usage)).toBeCloseTo(2 + 10 + 0.2 + 2.5, 9);
+  it("the three Claude models cost Anthropic's list price (checked 2026-10-10 against the Console export)", () => {
     expect(costUsd("claude-sonnet-5-5", usage)).toBeCloseTo(2 + 10 + 0.2 + 2.5, 9);
     expect(costUsd("claude-opus-5-5", usage)).toBeCloseTo(4 + 20 + 0.2 + 5, 9);
     expect(costUsd("claude-haiku-5-5", usage)).toBeCloseTo(0.1 + 0.5 + 0.01 + 0.125, 9);
   });
 
-  it("an id in neither table is priced as Opus, as before, and `constructor` is not a rate", () => {
-    const opus = costUsd("claude-opus-5", usage);
-    for (const id of ["claude-unknown-9", "constructor", "__proto__", "toString", ""]) {
-      expect(costUsd(id, usage), id).toBeCloseTo(opus, 9);
+  it("an id outside the catalog (a retired model included) is priced at the highest catalog rate of each bucket, and `constructor` is not a rate", () => {
+    const top = Math.max(...MODELS.map((m) => m.rate.in)) + Math.max(...MODELS.map((m) => m.rate.out)) + Math.max(...MODELS.map((m) => m.rate.cacheRead)) + Math.max(...MODELS.map((m) => m.rate.cacheWrite));
+    // Never below the dearest catalog model: an unknown id is not under-reported.
+    for (const m of MODELS) expect(top, m.id).toBeGreaterThanOrEqual(costUsd(m.id, usage) - 1e-9);
+    for (const id of ["claude-unknown-9", "constructor", "__proto__", "toString", "", ...RETIRED]) {
+      expect(costUsd(id, usage), id).toBeCloseTo(top, 9);
       expect(Number.isFinite(costUsd(id, usage)), id).toBe(true);
     }
   });
 
-  it("hasRate is true for a catalog model, false for an id in neither table", () => {
+  it("hasRate is true for a catalog model, false for any other id (a retired model included)", () => {
     for (const m of MODELS) expect(hasRate(m.id), m.id).toBe(true);
-    for (const id of ["claude-unknown-9", "constructor", "__proto__", "toString", ""]) expect(hasRate(id), id).toBe(false);
+    for (const id of ["claude-unknown-9", "constructor", "__proto__", "toString", "", ...RETIRED]) expect(hasRate(id), id).toBe(false);
   });
 
-  describe("with a catalog that differs from the old table", () => {
+  describe("with a different catalog", () => {
     afterEach(() => {
       vi.doUnmock("@/lib/models/catalog");
       vi.resetModules();
     });
 
-    it("the catalog rate wins, the old table answers for an id the catalog lacks, and hasRate is true for either", async () => {
+    it("the catalog is the only rate table: its rate wins, and an id it lacks is priced at its highest rates", async () => {
       vi.resetModules();
-      vi.doMock("@/lib/models/catalog", () => ({
-        modelById: (id: unknown) =>
-          id === "gateway-only" ? { rate: { in: 1, out: 2, cacheRead: 0.1, cacheWrite: 1.5 } }
-          : id === "claude-sonnet-5" ? { rate: { in: 7, out: 7, cacheRead: 1, cacheWrite: 8 } }
-          : undefined,
-      }));
+      const list = [
+        { id: "gateway-only", rate: { in: 1, out: 2, cacheRead: 0.1, cacheWrite: 1.5 } },
+        { id: "claude-sonnet-5-5", rate: { in: 7, out: 7, cacheRead: 1, cacheWrite: 8 } },
+      ];
+      vi.doMock("@/lib/models/catalog", () => ({ MODELS: list, modelById: (id: unknown) => list.find((m) => m.id === id) }));
       const u = await import("@/lib/usage");
-      // catalog first: the old table says 2/10/0.2/2.5 for this id
-      expect(u.costUsd("claude-sonnet-5", usage)).toBeCloseTo(7 + 7 + 1 + 8, 9);
+      expect(u.costUsd("claude-sonnet-5-5", usage)).toBeCloseTo(7 + 7 + 1 + 8, 9);
       expect(u.costUsd("gateway-only", usage)).toBeCloseTo(1 + 2 + 0.1 + 1.5, 9);
-      // not in the (stubbed) catalog: the old table
-      expect(u.costUsd("claude-opus-5", usage)).toBeCloseTo(5 + 25 + 0.5 + 6.25, 9);
-      // in neither: the Opus default
-      expect(u.costUsd("nobody", usage)).toBeCloseTo(5 + 25 + 0.5 + 6.25, 9);
+      // not in the (stubbed) catalog: the highest of each bucket, never a removed table
+      expect(u.costUsd("claude-opus-5", usage)).toBeCloseTo(7 + 7 + 1 + 8, 9);
+      expect(u.costUsd("nobody", usage)).toBeCloseTo(7 + 7 + 1 + 8, 9);
       expect(u.hasRate("gateway-only")).toBe(true);
-      expect(u.hasRate("claude-opus-5")).toBe(true);
+      expect(u.hasRate("claude-opus-5")).toBe(false);
       expect(u.hasRate("nobody")).toBe(false);
     });
   });

@@ -51,7 +51,7 @@ const NOTOOLS: ModelEntry = { ...ECONOMY, id: "test-notools-1", label: { ar: "ن
 const EXTRA: readonly ModelEntry[] = [ECONOMY, INTERNAL, NOTOOLS];
 const extraById = (id: unknown) => EXTRA.find((e) => e.id === id);
 /** Ids that are not exactly a catalog id: they must price like the surface's default, never cheaper, never NaN. */
-const NOT_IDS: unknown[] = ["claude-unknown-9", "constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "", " claude-opus-5", "CLAUDE-OPUS-5", undefined, null, 5, {}, []];
+const NOT_IDS: unknown[] = ["claude-unknown-9", "constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "", " claude-opus-5-5", "CLAUDE-OPUS-5", undefined, null, 5, {}, []];
 
 /** A fresh credits module over a catalog that also holds the economy entry. */
 async function withEconomy() {

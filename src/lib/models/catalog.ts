@@ -42,69 +42,28 @@ function deepFreeze<T>(x: T): T {
 }
 
 /**
- * The task types the retired Sonnet 5 entry was allowed: every type but `article` and `followup_seq`, which missed the
- * margin floor at x0.5 when every type was priced at Opus. Kept on that entry only (it is neither `auto` nor `pick`, so
- * nothing runs on it). Since rule 902 (2026-10-10) a type is priced relative to its own writer (`TASK_MODELS`), every
- * type keeps the floor cold on Sonnet 5.5 and Opus 5.5 (tests/pricing-floor.test.ts, rule 241 by tier), so neither has
- * an allow-list; a model that misses the floor on a type gets one again, never a lower floor.
- */
-const STANDARD_CLAUDE_TASKS: readonly string[] = [
-  "weekly_plan", "social", "whatsapp", "ads", "gbp", "cart_recovery", "sales_script", "lead_qualifier",
-  "pricing_review", "unit_economics", "cash_forecast", "gtm_plan", "growth_experiments", "retention_play", "weekly_report",
-  "board_deck", "dashboard_spec", "strategy_review", "okrs", "decision_memo", "prd", "roadmap", "feedback_synthesis",
-  "onboarding_flow",
-];
-
-/**
- * Rates. `rate` is what we actually pay per million tokens by the route the model normally takes. The Claude rates were
- * copied from the `RATES` table in `usage.ts` (2026-10-08; Opus 5.5 and Haiku 5.5 on 2026-10-09), whose list prices were
- * checked on 2026-09-27 (Sonnet 5.5 added 2026-10-02, Opus 5.5 and Haiku 5.5 2026-10-09); they were not checked again
- * against Anthropic's or Straitly's price list when copied:
+ * Rates. `rate` is what we actually pay per million tokens by the route the model normally takes, and the only rate table:
+ * `costUsd` in `usage.ts` reads it (the old `RATES` table there was removed on 2026-10-10, rule 970). The Claude rates are
+ * Anthropic's list prices, checked on 2026-10-10: priced at these rates, the Anthropic Console token export of 2026-09-11
+ * to 2026-10-10 comes to the credits the account spent within $0.05 (5-minute cache writes are 1.25x input):
  *
  * - A Claude model can also be called directly at Anthropic (the gateway's fallback, `src/lib/model.ts`), and there it
- *   costs the full list price. Its `rate` is therefore the CURRENT ANTHROPIC LIST PRICE, the same numbers the old `RATES`
- *   table in `usage.ts` holds. The gateway sells the same models for less; pricing the fallback case keeps the margin
- *   floor honest on the worst route and changes no figure we meter today.
+ *   costs the full list price. Its `rate` is therefore the CURRENT ANTHROPIC LIST PRICE. The gateway sells the same models
+ *   for less; pricing the fallback case keeps the margin floor honest on the worst route.
  * - A model that is reachable only through the Straitly gateway carries the gateway's price: provider list price x 0.6
  *   (the gateway is 40% below list on each of the four buckets).
  *
- * When a provider changes a price, update both (this table and, for a Claude model, `RATES` in `usage.ts`), and set the
- * date the list prices were "checked" (2026-09-27 above, and the same date in `usage.ts`) to the day the new price was read.
- * `tests/pricing-floor.test.ts` prices every task on these.
+ * When a provider changes a price, update the entry here and the "checked" date above. `tests/pricing-floor.test.ts`
+ * prices every task on these.
  *
- * Only Claude models are listed. Since 2026-10-09 (rule 809) the product calls only Opus 5.5, Sonnet 5.5 and Haiku 5.5,
- * so those three are the only `auto` entries; Opus 5 and Sonnet 5 stay with `auto` and `pick` false so stored usage and
- * any old id still price at their own rate, and a stored pick of either is refused (`not_pickable`). The other vendors' entries (with their `dialect` and `caps`) come
+ * Only Claude models are listed, and only the 5.5 generation (rule 970, 2026-10-10): Opus 5 and Sonnet 5 were removed, so
+ * a stored pick of either is refused (`unknown`) and runs on the automatic model, and an old id in a response is priced
+ * like any id outside the catalog (`costUsd`). The other vendors' entries (with their `dialect` and `caps`) come
  * from the Straitly spike (plan Task 1: `GET /v1/models`, then one call per model) and are added after it has run; so is
  * the target of 5 to 8 entries with `pick: true`. A model is added here with `auto: false` until the golden set has run on
  * it, and a China-hosted one always with `auto: false`.
  */
 export const MODELS: readonly ModelEntry[] = deepFreeze<ModelEntry[]>([
-  {
-    id: "claude-opus-5",
-    label: { ar: "كلود أوبس 5", en: "Claude Opus 5" },
-    vendor: "anthropic",
-    hosting: "west",
-    tier: "premium",
-    dialect: "messages",
-    caps: { tools: true, strict: true, thinking: true, cache: true, vision: true },
-    rate: { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-    auto: false,
-    pick: false,
-  },
-  {
-    id: "claude-sonnet-5",
-    label: { ar: "كلود سونيت 5", en: "Claude Sonnet 5" },
-    vendor: "anthropic",
-    hosting: "west",
-    tier: "standard",
-    dialect: "messages",
-    caps: { tools: true, strict: true, thinking: true, cache: true, vision: true },
-    rate: { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
-    auto: false,
-    pick: false,
-    tasks: STANDARD_CLAUDE_TASKS,
-  },
   {
     id: "claude-sonnet-5-5",
     label: { ar: "كلود سونيت 5.5", en: "Claude Sonnet 5.5" },

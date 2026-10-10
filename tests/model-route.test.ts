@@ -18,6 +18,7 @@ const OPUS = "claude-opus-5-5";
 const SONNET = "claude-sonnet-5-5";
 const HAIKU = "claude-haiku-5-5";
 /** In the catalog for their rates (stored usage, old ids), never called: not auto, not pickable (rule 809). */
+/** Removed from the catalog on 2026-10-10 (rule 970): an old stored pick is an unknown id. */
 const RETIRED = ["claude-opus-5", "claude-sonnet-5"] as const;
 /** Haiku 5.5 off automatic routing, so a test-only entry can be the judge's alternative. */
 const noHaiku = (m: ModelEntry): ModelEntry => (m.id === HAIKU ? { ...m, auto: false } : m);
@@ -143,9 +144,10 @@ describe("a stored pick for chat or generate", () => {
     expect(route("generate", { stored: OPUS })).toEqual({ model: OPUS, overridden: true });
   });
 
-  it("a retired model (Opus 5, Sonnet 5) or Haiku 5.5 is not a customer's pick: not_pickable, the default runs (rule 809)", () => {
+  it("Haiku 5.5 is not a customer's pick (not_pickable), and a removed model (Opus 5, Sonnet 5) is unknown: the default runs either way (rules 809, 970)", () => {
     for (const p of OVERRIDABLE) {
-      for (const stored of [...RETIRED, HAIKU]) expect(route(p, { stored }), `${p} ${stored}`).toEqual({ model: DEFAULTS[p], overridden: false, rejected: "not_pickable" });
+      expect(route(p, { stored: HAIKU }), `${p} haiku`).toEqual({ model: DEFAULTS[p], overridden: false, rejected: "not_pickable" });
+      for (const stored of RETIRED) expect(route(p, { stored }), `${p} ${stored}`).toEqual({ model: DEFAULTS[p], overridden: false, rejected: "unknown" });
     }
   });
 
@@ -159,7 +161,7 @@ describe("a stored pick for chat or generate", () => {
   });
 
   it("unknown, removed and prototype ids fall back to the default with rejected set to unknown", () => {
-    const bad: unknown[] = ["claude-unknown-9", "claude-opus-4", "constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "", " claude-opus-5", "claude-opus-5 ", "CLAUDE-OPUS-5", 5, true, false, 0, {}, [], [OPUS], { id: OPUS }, "null"];
+    const bad: unknown[] = ["claude-unknown-9", "claude-opus-4", "constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "", " claude-opus-5-5", "claude-opus-5 ", "CLAUDE-OPUS-5", 5, true, false, 0, {}, [], [OPUS], { id: OPUS }, "null"];
     for (const p of OVERRIDABLE) {
       for (const stored of bad) expect(route(p, { stored }), `${p} ${JSON.stringify(stored)}`).toEqual({ model: DEFAULTS[p], overridden: false, rejected: "unknown" });
     }

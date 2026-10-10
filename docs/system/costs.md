@@ -1,7 +1,7 @@
 # What a request costs, and where the money goes
 
-Written 2026-09-20; sections 1, 3, 4.1 and 5 updated on 2026-10-02 when chat moved to Sonnet 5.5 under a $0.14 ceiling; sections 1, 3, 3.1, 4 and 5 updated on 2026-09-30 for pricing phase 1 (`src/lib/pricing.ts`, `src/lib/task-costs.ts`); sections 1, 3, 5 and 6 updated and section 4.1 added on 2026-10-01 for pricing phase 2 (the chat allowance, the owner's "continue on credits" switch, the $0.35 per-message ceiling and the history guard: `src/lib/chat-allowance.ts`, `src/lib/chat-budget.ts`), and again the same day after its review (no credits held before a message on credits: the balance is checked and the metered cost billed after the reply; the first call's thread shortened to fit; the founder console's cost per message over every message sent). Every number in the tables is arithmetic over two inputs: the list prices in `src/lib/usage.ts`
-(`RATES`) and the prompt sizes the code actually builds. Nothing here is a guess about Anthropic's billing; the guesses
+Written 2026-09-20; sections 1, 3, 4.1 and 5 updated on 2026-10-02 when chat moved to Sonnet 5.5 under a $0.14 ceiling; sections 1, 3, 3.1, 4 and 5 updated on 2026-09-30 for pricing phase 1 (`src/lib/pricing.ts`, `src/lib/task-costs.ts`); sections 1, 3, 5 and 6 updated and section 4.1 added on 2026-10-01 for pricing phase 2 (the chat allowance, the owner's "continue on credits" switch, the $0.35 per-message ceiling and the history guard: `src/lib/chat-allowance.ts`, `src/lib/chat-budget.ts`), and again the same day after its review (no credits held before a message on credits: the balance is checked and the metered cost billed after the reply; the first call's thread shortened to fit; the founder console's cost per message over every message sent). Every number in the tables is arithmetic over two inputs: the list prices in `src/lib/models/catalog.ts`
+(`MODELS[].rate`, the only rate table since 2026-10-10) and the prompt sizes the code actually builds. Nothing here is a guess about Anthropic's billing; the guesses
 are only in the *output* token counts, and those are marked as such. Real per-account numbers are metered and shown in
 the founder console — see "Where the real numbers live" at the end.
 
@@ -501,7 +501,7 @@ left, the console's cost per message) are these units from then on; the copy tha
 
 ## 6. Where the real numbers live
 
-`meter()` (`src/lib/usage.ts`) records every call under `usage:{email}:{YYYY-MM}` — tokens in and out, call count,
+`meter()` (`src/lib/usage.ts`) records every call under `usage:{email}:{YYYY-MM}` (since 2026-10-10 also a call cut mid-stream and a server-side fallback's declined attempt: every call goes through `metered()` in `src/lib/metered.ts`, flows section 61, rules 980-986) — tokens in and out, call count,
 cost in micro-dollars, and since 2026-09-20 the same three numbers **per kind of call**. So the founder console shows,
 per account:
 

@@ -23,7 +23,7 @@ const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "
 type Item = { channel: string; title: string; body: string };
 const ITEM: Item = { channel: "instagram", title: "قهوة اليوم", body: "نص تجريبي للعنصر يكفي للمراجعة" };
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[] };
-const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
+const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
 const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 
 /** An owner with a brand file, re-read so the object carries the stored balance. */
@@ -73,13 +73,14 @@ async function load(o: { state?: "on" | "paused" | "mock"; items?: Item[]; genFa
       constructor() { seen.made++; }
       beta = { messages: { stream: () => ({ finalMessage: async () => { if (o.genFails) throw new Error("model down"); return reply(JSON.stringify(items)); } }) } };
       messages = {
-        stream: () => ({ finalMessage: async () => reply("تمام") }),
+        chat: () => ({ finalMessage: async () => reply("تمام") }),
         create: async (p: Params) => {
           const sys = typeof p.system === "string" ? p.system : p.system[0].text;
           if (!sys.startsWith("You are the quality judge")) return reply(JSON.stringify([{ ok: true }]));
           seen.judged.push(String(p.messages[0].content));
           return reply(JSON.stringify(items.map(() => verdict)));
         },
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));

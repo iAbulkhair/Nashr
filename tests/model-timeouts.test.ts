@@ -12,7 +12,7 @@ import { join } from "node:path";
 type Opts = { signal?: AbortSignal; timeout?: number } | undefined;
 const sdk = vi.hoisted(() => ({ ctor: [] as unknown[], calls: [] as { kind: string; opts: Opts }[], mode: "hang" as "hang" | "ok" }));
 vi.mock("@anthropic-ai/sdk", () => {
-  const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
+  const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
   /** Never answers in "hang" mode: it only rejects when the call's abort signal fires, as the real SDK does. */
   const answer = (kind: string, opts: Opts, text: string) => {
     sdk.calls.push({ kind, opts });
@@ -26,8 +26,9 @@ vi.mock("@anthropic-ai/sdk", () => {
       constructor(o: unknown) { sdk.ctor.push(o); }
       beta = { messages: { stream: (_p: unknown, opts: Opts) => ({ finalMessage: () => answer("generate", opts, items) }) } };
       messages = {
-        stream: (_p: unknown, opts: Opts) => ({ finalMessage: () => answer("stream", opts, "أهلاً") }),
-        create: (_p: unknown, opts: Opts) => answer("create", opts, JSON.stringify([{ ok: true }])),
+        // Every model call is a stream since rule 980: a chat turn (tools) and onboarding (a JSON schema format) are
+        // "stream", as before; every other call is the one that was `create`, and keeps its name here.
+        stream: (p: { tools?: unknown; output_config?: { format?: unknown } }, opts: Opts) => ({ finalMessage: () => (p.tools || p.output_config?.format ? answer("stream", opts, "أهلاً") : answer("create", opts, JSON.stringify([{ ok: true }]))) }),
       };
     },
   };

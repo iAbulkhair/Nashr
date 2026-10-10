@@ -10,7 +10,7 @@ vi.mock("@/lib/crawl", () => ({ crawl: async (url: string) => ({ url: `https://$
 vi.mock("@/lib/onboard", async (orig) => {
   const real = await orig<typeof import("@/lib/onboard")>();
   // The builder's own result (no model key: its mock path), with a pick added as if the model had written one.
-  return { ...real, buildFromSite: async (...a: Parameters<typeof real.buildFromSite>) => { const r = await real.buildFromSite(...a); return { ...r, brand: { ...r.brand, model: "claude-opus-5" } }; } };
+  return { ...real, buildFromSite: async (...a: Parameters<typeof real.buildFromSite>) => { const r = await real.buildFromSite(...a); return { ...r, brand: { ...r.brand, model: "claude-opus-5-5" } }; } };
 });
 
 import { getBrand } from "@/lib/brand";
@@ -29,6 +29,6 @@ describe("onboarding never saves a model pick from the model's output", () => {
     const saved = await getBrand(u.email);
     expect(saved).not.toBeNull();
     expect(saved!).not.toHaveProperty("model");
-    expect(JSON.stringify(saved)).not.toContain("claude-opus-5");
+    expect(JSON.stringify(saved)).not.toContain("claude-opus-5-5");
   });
 });

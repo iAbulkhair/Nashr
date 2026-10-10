@@ -65,9 +65,9 @@ describe("which connectors do something", () => {
 
 // Rule 66: model costs in the founder console use Anthropic's list prices.
 describe("model list prices", () => {
-  it("prices Sonnet 5 at $2 in and $10 out per million tokens, and Opus 5 at $5 and $25", () => {
-    expect(costUsd("claude-sonnet-5", { input_tokens: 1e6, output_tokens: 1e6 })).toBeCloseTo(12);
-    expect(costUsd("claude-sonnet-5", { cache_read_input_tokens: 1e6, cache_creation_input_tokens: 1e6 })).toBeCloseTo(2.7);
-    expect(costUsd("claude-opus-5", { input_tokens: 1e6, output_tokens: 1e6 })).toBeCloseTo(30);
+  it("prices Sonnet 5.5 at $2 in and $10 out per million tokens, and Opus 5.5 at $4 and $20", () => {
+    expect(costUsd("claude-sonnet-5-5", { input_tokens: 1e6, output_tokens: 1e6 })).toBeCloseTo(12);
+    expect(costUsd("claude-sonnet-5-5", { cache_read_input_tokens: 1e6, cache_creation_input_tokens: 1e6 })).toBeCloseTo(2.7);
+    expect(costUsd("claude-opus-5-5", { input_tokens: 1e6, output_tokens: 1e6 })).toBeCloseTo(24);
   });
 });
