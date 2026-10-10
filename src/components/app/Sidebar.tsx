@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
@@ -28,6 +28,7 @@ const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id}
  */
 export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; admin?: boolean; supportWa?: string }) {
   const path = usePathname();
+  const sp = useSearchParams();
   const r = useRouter();
   const base = `/${lang}/app`;
   const N = t.nav;
@@ -56,9 +57,18 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent }) })).json();
     if (j.ok) { setOpen(false); r.push(`${base}/chat?conv=${j.conversation.id}`); }
   }
-  const active = (h: string) => (h === base ? path === base : !h.includes("?") && path.startsWith(h));
+  // The row for the screen on show (rule 968), marked with `aria-current="page"` as well as the tint. A link with a query
+  // (a conversation) matches its path and every parameter it names; the plain chat row only while no conversation or
+  // specialist is open, so one row at most is current.
+  const active = (h: string) => {
+    const [hp, hq] = h.split("?");
+    if (hq !== undefined) return path === hp && [...new URLSearchParams(hq)].every(([k, v]) => sp.get(k) === v);
+    if (h === base) return path === base;
+    if (h === `${base}/chat`) return path === h && !sp.get("conv") && !sp.get("agent");
+    return path.startsWith(h);
+  };
   const row = (href: string, label: React.ReactNode, icon: IconName, badge?: number) => (
-    <Link href={href} onClick={() => setOpen(false)} className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition ${active(href) ? "bg-lilac font-semibold text-ink" : "text-muted hover:bg-lilac/60 hover:text-ink"}`}>
+    <Link href={href} onClick={() => setOpen(false)} aria-current={active(href) ? "page" : undefined} className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition ${active(href) ? "bg-lilac font-semibold text-ink" : "text-muted hover:bg-lilac/60 hover:text-ink"}`}>
       <span className="flex min-w-0 items-center gap-2.5"><Icon name={icon} className="h-4 w-4 shrink-0" /><span className="clip">{label}</span></span>
       {badge ? <span className="tnum rounded-full bg-lemon px-2 text-xs font-semibold text-ink" dir="ltr">{badge}</span> : null}
     </Link>
@@ -69,7 +79,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const planName = (N.plans as Record<string, string>)[user.plan] ?? user.plan;
 
   const body = (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-4">
+    <nav aria-label={lang === "ar" ? "التنقل الرئيسي" : "Main navigation"} className="flex h-full flex-col gap-5 overflow-y-auto p-4">
       <div>
         <Link href={`${base}/brands`} className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-lilac/60">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[1.5px] border-ink bg-lemon font-display text-lg font-bold text-ink" aria-hidden>{initial}</span>
@@ -176,7 +186,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
           </div>
         )}
       </div>
-    </div>
+    </nav>
   );
   return (
     <>

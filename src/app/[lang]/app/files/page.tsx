@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -7,6 +8,8 @@ import { can } from "@/lib/roles";
 import FilesPanel from "@/components/app/FilesPanel";
 
 export const dynamic = "force-dynamic";
+
+export const generateMetadata = appScreenMeta("files");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;

@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { dict, isLang } from "@/lib/i18n";
@@ -20,6 +21,8 @@ import Scribble from "@/components/Scribble";
 import { PaymobPayButton, PaymobPlanCard } from "@/components/app/PaymobBilling";
 import { paymobConfig } from "@/lib/paymob";
 import { billingView } from "@/lib/billing";
+
+export const generateMetadata = appScreenMeta("billing");
 
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const { lang } = await params;

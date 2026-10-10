@@ -37,7 +37,31 @@
 
 html {
   scroll-behavior: smooth;
+  /* One light palette (rule 966): without this, a browser in dark mode drew form controls, scrollbars and autofill dark
+     on the light pages. */
+  color-scheme: light;
 }
+
+/*
+ * Chart series (rule 967): each line at least 3:1 on paper and on the ground (WCAG 1.4.11), from the palette's own
+ * colours. The agent fills (lemon, lilac, sami, dana) are 1.1-2.9:1 on white, so two are deepened toward ink. Each series
+ * also has its own dash, so the lines differ without colour (WCAG 1.4.1).
+ */
+:root {
+  --chart-1: var(--color-ink);
+  --chart-2: var(--color-agent-faris);
+  --chart-3: color-mix(in oklab, var(--color-agent-dana) 55%, var(--color-ink));
+  --chart-4: color-mix(in oklab, var(--color-agent-sami) 60%, var(--color-ink));
+}
+
+/* "Skip to content" (rule 968): the first focusable thing on every page, shown only when focused. */
+.skip-link { position: absolute; inset-inline-start: 1rem; top: -100px; z-index: 100; padding: 0.5rem 1rem; border-radius: var(--primitive-radius-md); background: var(--color-ink); color: var(--color-paper); font-weight: 700; }
+.skip-link:focus { top: 1rem; }
+#main:focus { outline: none; }
+
+/* Arabic has no capitals and its letters join (rule 969): spacing breaks the joins and uppercase does nothing, so
+   both are off for Arabic text, whatever class or utility set them. */
+:lang(ar) .eyebrow, :lang(ar) .section-title, :lang(ar) [class*="tracking-"], :lang(ar) [class*="uppercase"] { letter-spacing: 0; text-transform: none; }
 
 /* Browser surfaces carry the palette too */
 ::selection { background: var(--color-accent); color: var(--color-accent-foreground); }

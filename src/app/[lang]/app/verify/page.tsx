@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { currentUserUnverified, emailVerified } from "@/lib/auth";
@@ -13,6 +14,8 @@ import VerifyForm from "@/components/app/VerifyForm";
  * has nothing to prove and goes on to the app. A member whose owner has not verified reads as signed out in both resolvers
  * (rule 767), so they go to login, which answers `owner_unverified`.
  */
+export const generateMetadata = appScreenMeta("verify");
+
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ next?: string | string[]; sent?: string | string[] }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();

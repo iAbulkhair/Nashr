@@ -16,6 +16,19 @@ const GUARD = {
   en: { title: "Brand guard", body: "Words you never want in a post. A draft that contains one cannot be approved or published until you edit it. Checked in code, not promised by the model.", examples: "Common examples, tap to add:", count: (n: number) => `${n} protected ${n === 1 ? "word" : "words"}`, none: "No words yet: the guard is off.", ex: ["guaranteed", "#1", "cheapest", "best in Saudi", "risk-free"] },
 } as const;
 
+/** Why a save failed (rule 971), by the code PUT /api/brand answers; anything else is the generic line. */
+export const BRAND_SAVE_ERRORS = {
+  ar: { missing: "املأ الاسم والمجال والمنتجات والجمهور ثم احفظ.", busy: "حفظ آخر للعلامة يجري الآن. انتظر لحظة ثم احفظ مرة أخرى.", forbidden: "تعديل ملف العلامة للمالك والمسؤول فقط.", failed: "لم يُحفظ شيء. حاول مرة أخرى." },
+  en: { missing: "Fill in the name, industry, products and audience, then save.", busy: "Another save of this brand is running. Wait a moment, then save again.", forbidden: "Only the owner and admins can edit the brand file.", failed: "Nothing was saved. Try again." },
+} as const;
+export function brandSaveError(lang: Lang, status: number, code?: string): string {
+  const E = BRAND_SAVE_ERRORS[lang];
+  if (code === "missing") return E.missing;
+  if (code === "busy") return E.busy;
+  if (status === 403) return E.forbidden;
+  return E.failed;
+}
+
 const input = "input";
 const CHANNELS = ["instagram", "snapchat", "tiktok", "x", "linkedin", "whatsapp", "google"];
 
@@ -29,6 +42,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
   const o = t.onboarding;
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
   const [langs, setLangs] = useState<string[]>(initial?.languages ?? [lang === "en" ? "en" : "ar"]);
   const [channels, setChannels] = useState<string[]>(initial?.channels ?? ["instagram", "snapchat", "tiktok", "whatsapp"]);
   const [banned, setBanned] = useState(initial?.banned ?? "");
@@ -40,14 +54,21 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
     e.preventDefault();
     if (readOnly) return;
     setBusy(true);
+    setMsg("");
+    setErr("");
     const fd = Object.fromEntries(new FormData(e.currentTarget));
-    const res = await fetch("/api/brand", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, languages: langs, channels }) });
+    const res = await fetch("/api/brand", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, languages: langs, channels }) }).catch(() => null);
     setBusy(false);
-    if (res.ok) {
-      setMsg(o.saved);
-      r.push(`/${lang}/app/chat`);
-      r.refresh();
+    // A refusal says why and keeps what was typed (rule 971): before, a failed save showed nothing at all. A save of a
+    // brand that exists stays on this page with "Saved"; only the first save (no brand file yet) goes on to the chat.
+    if (!res?.ok) {
+      const j = res ? ((await res.json().catch(() => ({}))) as { error?: string }) : {};
+      setErr(brandSaveError(lang, res?.status ?? 0, j.error));
+      return;
     }
+    setMsg(o.saved);
+    if (initial) r.refresh();
+    else { r.push(`/${lang}/app/chat`); r.refresh(); }
   }
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
@@ -109,7 +130,8 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
             ))}
           </fieldset>
           {!readOnly && <button disabled={busy} className="btn btn-primary">{o.save}</button>}
-          {msg && <p role="status" className="text-sm text-ink">{msg}</p>}
+          <p role="status" className="text-sm text-ink">{msg}</p>
+          {err && <p role="alert" className="text-sm text-danger">{err}</p>}
         </fieldset>
       </form>
       {initial && <BrandModelField t={t} lang={lang} stored={initial.model} readOnly={readOnly} canConfirmChina={canConfirmChina} />}

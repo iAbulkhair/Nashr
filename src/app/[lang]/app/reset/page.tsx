@@ -1,7 +1,10 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { isLang } from "@/lib/i18n";
 import { ResetForm } from "@/components/app/AuthForm";
+
+export const generateMetadata = appScreenMeta("reset");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;

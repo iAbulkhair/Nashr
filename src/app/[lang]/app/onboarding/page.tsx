@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -5,6 +6,8 @@ import { currentUser, sc } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { can } from "@/lib/roles";
 import BrandForm from "@/components/app/BrandForm";
+
+export const generateMetadata = appScreenMeta("onboarding");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;

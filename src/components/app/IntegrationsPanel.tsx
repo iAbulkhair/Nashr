@@ -6,6 +6,7 @@ import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
 import { IMPORTS_PRODUCTS, READS_ADS, isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
+import { connectError } from "@/lib/connect-errors";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Scribble from "@/components/Scribble";
 
@@ -39,7 +40,14 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
-  const flash = sp.get("connected") ? `${g.connected}: ${sp.get("connected")}` : sp.get("error") ? `${g.verifyFailed} (${sp.get("error")})` : "";
+  // A failed action's message (rule 972), shown on the page instead of `alert()`, from the code the route answered.
+  const [actErr, setActErr] = useState("");
+  const fail = (code: unknown) => { setNote(""); setActErr(connectError(lang, code)); };
+  // Back from a provider: `?connected=` names it, `?error=` is a code mapped to a message, never shown raw.
+  const connectedId = sp.get("connected");
+  const errorCode = sp.get("error");
+  const flash = connectedId ? `${g.connected}: ${providers.find((p) => p.id === connectedId)?.name ?? connectedId}` : "";
+  const flashErr = !connectedId && errorCode !== null ? connectError(lang, errorCode) : "";
 
   async function load() {
     const j = await (await fetch("/api/connect")).json();
@@ -72,17 +80,17 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
   async function importProducts(id: string) {
     setBusy(true);
     const res = await fetch(`/api/connect/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "import_products" }) });
-    const j = await res.json();
+    const j = await res.json().catch(() => ({}));
     setBusy(false);
-    alert(j.ok ? `${g.importProducts}: ${j.count}` : j.error === "zid_access_denied" ? g.zidDenied : j.error);
+    if (j.ok) { setActErr(""); setNote(`${g.importProducts}: ${j.count}`); } else fail(j.error);
   }
   async function selectPage(pageId: string) {
     setBusy(true);
     const res = await fetch("/api/connect/meta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_page", pageId }) });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!j.ok) alert(j.error ?? res.status);
-    else setNote(pageNote(g, j));
+    if (!j.ok) fail(j.error);
+    else { setActErr(""); setNote(pageNote(g, j)); }
     await load();
     r.refresh();
   }
@@ -91,8 +99,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     const res = await fetch("/api/connect/linkedin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_org", org }) });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!j.ok) alert(j.error ?? res.status);
-    else setNote(pageNote(g, j));
+    if (!j.ok) fail(j.error);
+    else { setActErr(""); setNote(pageNote(g, j)); }
     await load();
     r.refresh();
   }
@@ -101,7 +109,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     const res = await fetch("/api/connect/linkedin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "post_as", value }) });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!j.ok) alert(j.error ?? res.status);
+    if (!j.ok) fail(j.error);
+    else setActErr("");
     await load();
     r.refresh();
   }
@@ -110,7 +119,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_ad_account", accountId }) });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!j.ok) alert(j.error ?? res.status);
+    if (!j.ok) fail(j.error);
+    else setActErr("");
     await load();
     r.refresh();
   }
@@ -141,6 +151,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="integrationspanel-t1" />{g.title}</span></h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
       {flash && <p role="status" className="mt-3 rounded-lg bg-lilac p-3 text-sm text-ink">{flash}</p>}
+      {(actErr || flashErr) && <p role="alert" className="mt-3 rounded-lg border border-danger/30 bg-white p-3 text-sm text-danger">{actErr || flashErr}</p>}
       {note && <p role="status" className="mt-3 rounded-lg bg-lilac p-3 text-sm text-ink">{note}</p>}
       <p className="mt-2 rounded-lg border border-ink/15 bg-lilac p-3 text-sm">{g.note}</p>
       {!manage && <ReadOnlyNote className="mt-2" text={t.readOnly.admin} />}

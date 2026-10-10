@@ -560,7 +560,11 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
 
   async function newConv(withAgent: AgentId = agent) {
     const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent: withAgent }) })).json();
-    if (j.ok) { setConvs((p) => [j.conversation, ...p]); setConv(j.conversation.id); setAgent(withAgent); setMsgs([]); }
+    if (!j.ok) return;
+    setConvs((p) => [j.conversation, ...p]); setConv(j.conversation.id); setAgent(withAgent); setMsgs([]);
+    // The address names the new thread (rule 962): the page keys this panel by it, so a later sidebar link back to the
+    // thread this one replaced is a new key and opens that thread, and a reload reopens this one.
+    router.replace(`/${lang}/app/chat?conv=${j.conversation.id}${withAgent === "noor" ? "" : `&agent=${withAgent}`}`);
   }
   async function pick(id: AgentId) {
     setPickOpen(false);
@@ -687,7 +691,8 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         </span>
       </div>
 
-      <div ref={list} className="mt-2 min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl border border-ink/10 bg-white p-4">
+      {/* A log (rule 963): a screen reader reads each new message as it arrives, without moving focus from the box. */}
+      <div ref={list} role="log" aria-live="polite" aria-label={A[agent].name} className="mt-2 min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl border border-ink/10 bg-white p-4">
         {journey?.next && <JourneyCard journey={journey} lang={lang} compact />}
         {(left > 0 || briefLines.length > 0) && msgs.length <= 1 && (
           <section className="rounded-xl border border-ink/20 bg-ground p-3" aria-label={t.chat.todayFromTeam}>
@@ -745,7 +750,8 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       </div>
 
       {plan === "trial" && goal?.goal && <ActivationBar lang={lang} goal={goal.goal} first={goal.first} />}
-      <form onSubmit={(e) => { e.preventDefault(); send(text); }} className="mt-3 flex gap-2">
+      <p role="status" className="sr-only">{busy ? (agent === "noor" ? t.chat.thinking : `${A[agent].name}…`) : ""}</p>
+      <form onSubmit={(e) => { e.preventDefault(); send(text); }} aria-busy={busy} className="mt-3 flex gap-2">
         <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} className="input rounded-full" />
         <button disabled={busy || !text.trim()} className="btn btn-accent btn-lg shrink-0" aria-label={t.chat.send}><Icon name="send" className="h-4 w-4" /><span className="hidden sm:inline">{t.chat.send}</span></button>
       </form>

@@ -5,16 +5,18 @@ import { EndedNotice, OV, PlanTiles, STR, useAdminEnded, useOverview, usePlanLis
 
 function Events({ data }: { data: OverviewData["events"] }) {
   const keys = ["signup", "chat", "generate", "approve"] as const;
-  const colors: Record<string, string> = { signup: "var(--color-accent)", chat: "var(--color-inverse-muted)", generate: "var(--color-primary)", approve: "var(--color-danger)" };
+  // Chart series tokens (rule 967): each at least 3:1 on paper, each with its own dash; red stays for errors only.
+  const colors: Record<string, string> = { signup: "var(--chart-1)", chat: "var(--chart-2)", generate: "var(--chart-3)", approve: "var(--chart-4)" };
+  const dashes: Record<string, string | undefined> = { signup: undefined, chat: "6 3", generate: "2 3", approve: "8 3 2 3" };
   const W = 640, H = 160, PAD = 24;
   const max = Math.max(1, ...data.flatMap((d) => keys.map((k) => d.counts[k] ?? 0)));
   const x = (i: number) => PAD + (data.length > 1 ? (i / (data.length - 1)) * (W - 2 * PAD) : 0);
   const y = (v: number) => H - PAD - (v / max) * (H - 2 * PAD);
   return (
     <div>
-      <div className="mt-2 flex flex-wrap gap-3 text-xs">{keys.map((k) => <span key={k} className="flex items-center gap-1"><span className="inline-block h-2 w-4 rounded" style={{ background: colors[k] }} />{k}</span>)}</div>
+      <div className="mt-2 flex flex-wrap gap-3 text-xs">{keys.map((k) => <span key={k} className="flex items-center gap-1"><svg width="16" height="8" aria-hidden="true" className="shrink-0"><line x1="0" y1="4" x2="16" y2="4" stroke={colors[k]} strokeWidth="2" strokeDasharray={dashes[k]} /></svg>{k}</span>)}</div>
       <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full" role="img" aria-label="events">
-        {keys.map((k) => <path key={k} d={data.map((d, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(d.counts[k] ?? 0).toFixed(1)}`).join(" ")} fill="none" stroke={colors[k]} strokeWidth="2" strokeLinejoin="round" />)}
+        {keys.map((k) => <path key={k} d={data.map((d, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(d.counts[k] ?? 0).toFixed(1)}`).join(" ")} fill="none" stroke={colors[k]} strokeWidth="2" strokeDasharray={dashes[k]} strokeLinejoin="round" />)}
         {data.length > 0 && [0, Math.floor(data.length / 2), data.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => <text key={i} x={x(i)} y={H - 6} fontSize="10" textAnchor="middle" fill="currentColor" fillOpacity="0.5">{data[i].date.slice(5)}</text>)}
       </svg>
     </div>

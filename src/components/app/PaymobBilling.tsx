@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import type { BillingView } from "@/lib/billing";
+import { useConfirm } from "./ConfirmDialog";
 
 const T = {
   ar: {
@@ -19,6 +20,9 @@ const T = {
     lockedNote: "توقف حسابك لأن تجديد الاشتراك لم يُدفع. ادفع الشهر لتعود فوراً.",
     pastDueNote: "لم ينجح خصم التجديد. ادفع قبل نهاية المهلة حتى لا يتوقف حسابك.",
     cancelNote: "لن نخصم من بطاقتك. يبقى اشتراكك حتى نهاية الشهر المدفوع.",
+    confirmCancelTitle: "إيقاف التجديد التلقائي؟", confirmCancel: "يبقى اشتراكك حتى نهاية الشهر المدفوع، ثم لن نخصم من بطاقتك: تدفع كل شهر بنفسك.",
+    confirmRemoveTitle: "حذف البطاقة المحفوظة؟", confirmRemove: "يتوقف التجديد التلقائي معها، وتحتاج دفعة جديدة بالبطاقة لحفظ بطاقة أخرى.",
+    keep: "تراجع",
   },
   en: {
     pay: "Pay by card", busy: "…",
@@ -34,6 +38,9 @@ const T = {
     lockedNote: "Your account is paused because the renewal was not paid. Pay the month to continue right away.",
     pastDueNote: "The renewal charge did not go through. Pay before the grace period ends so your account is not paused.",
     cancelNote: "We will not charge your card. Your plan stays until the end of the paid month.",
+    confirmCancelTitle: "Turn off automatic renewal?", confirmCancel: "Your plan stays until the end of the paid month; after that we will not charge your card, and you pay each month yourself.",
+    confirmRemoveTitle: "Remove the saved card?", confirmRemove: "Automatic renewal stops with it, and saving another card takes a new card payment.",
+    keep: "Go back",
   },
 } as const;
 
@@ -80,8 +87,16 @@ export function PaymobPlanCard({ lang, billing }: { lang: Lang; billing: Billing
   const r = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // Turning renewal off and removing the card ask first, in the app's own dialog (rule 970); resuming does not.
+  const [ask, confirmDialog] = useConfirm();
   async function act(action: "cancel" | "resume" | "remove_card") {
     if (busy) return;
+    if (action !== "resume") {
+      const sure = await ask(action === "cancel"
+        ? { title: S.confirmCancelTitle, message: S.confirmCancel, confirmLabel: S.cancel, cancelLabel: S.keep, destructive: true }
+        : { title: S.confirmRemoveTitle, message: S.confirmRemove, confirmLabel: S.remove, cancelLabel: S.keep, destructive: true });
+      if (!sure) return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -117,6 +132,7 @@ export function PaymobPlanCard({ lang, billing }: { lang: Lang; billing: Billing
         {b.card && <button type="button" disabled={busy} onClick={() => act("remove_card")} className="rounded-full border border-ink/20 px-4 py-2" data-paymob-action="remove_card">{S.remove}</button>}
       </div>
       {err && <p role="alert" className="mt-2 text-sm text-danger">{err}</p>}
+      {confirmDialog}
     </section>
   );
 }

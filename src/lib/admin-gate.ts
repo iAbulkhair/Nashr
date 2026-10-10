@@ -6,6 +6,12 @@
 export const ADMIN_SECTIONS = ["overview", "users", "leads", "usage", "billing", "partners", "quality", "wishlist", "log"] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
+/** Each section's name: the admin sidebar's link and the page's `<title>` (src/lib/screen-titles.ts). */
+export const ADMIN_LABEL: Record<"en" | "ar", Record<AdminSection, string>> = {
+  en: { overview: "Overview", users: "Users", leads: "Leads", usage: "Usage", billing: "Billing", partners: "Partners", quality: "Quality", wishlist: "Wishlist", log: "Audit log" },
+  ar: { overview: "نظرة عامة", users: "المستخدمون", leads: "العملاء المحتملون", usage: "الاستخدام", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", wishlist: "الأمنيات", log: "سجل الإجراءات" },
+};
+
 /** `/{lang}/admin` for the overview, `/{lang}/admin/{section}` for the others. */
 export const adminHref = (lang: "ar" | "en", s: AdminSection) => (s === "overview" ? `/${lang}/admin` : `/${lang}/admin/${s}`);
 
