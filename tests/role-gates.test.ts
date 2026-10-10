@@ -218,6 +218,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
   "POST /api/admin/wishlist": "admin-console",
+  "POST /api/admin/skills": "admin-console",
+  "PUT /api/admin/skills": "admin-console",
   "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
   "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
@@ -257,6 +259,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/golden": "admin-console",
   "GET /api/admin/media": "admin-console",
   "GET /api/admin/wishlist": "admin-console",
+  "GET /api/admin/skills": "admin-console",
   "GET /api/admin/leads": "admin-console",
   "GET /api/admin/log": "admin-console",
   "GET /api/admin/overview": "admin-console",

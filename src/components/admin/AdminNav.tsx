@@ -8,10 +8,10 @@ import LangToggle from "../LangToggle";
 import { Icon, type IconName } from "../app/Icons";
 
 export const ADMIN_LABEL: Record<"en" | "ar", Record<AdminSection, string>> = {
-  en: { overview: "Overview", users: "Users", leads: "Leads", usage: "Usage", billing: "Billing", partners: "Partners", quality: "Quality", wishlist: "Wishlist", log: "Audit log" },
-  ar: { overview: "نظرة عامة", users: "المستخدمون", leads: "العملاء المحتملون", usage: "الاستخدام", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", wishlist: "الأمنيات", log: "سجل الإجراءات" },
+  en: { overview: "Overview", users: "Users", leads: "Leads", usage: "Usage", billing: "Billing", partners: "Partners", quality: "Quality", skills: "Agent skills", wishlist: "Wishlist", log: "Audit log" },
+  ar: { overview: "نظرة عامة", users: "المستخدمون", leads: "العملاء المحتملون", usage: "الاستخدام", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", skills: "مهارات الوكلاء", wishlist: "الأمنيات", log: "سجل الإجراءات" },
 };
-const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", wishlist: "spark", log: "clock" };
+const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", skills: "strategy", wishlist: "spark", log: "clock" };
 const T = {
   ar: { title: "لوحة المؤسس", back: "العودة للتطبيق", endKey: "إنهاء جلسة المفتاح", menu: "القائمة" },
   en: { title: "Founder console", back: "Back to the app", endKey: "End key session", menu: "Menu" },

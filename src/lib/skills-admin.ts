@@ -1,0 +1,60 @@
+import type { By } from "./actor";
+import { CAPS, pushCapped } from "./db";
+import { summarizeRevision, type HistoryRow } from "./instructions-diff";
+import { publicLayer, publicRevision } from "./instructions-http";
+import { PLATFORM_CHARS } from "./instructions-safety";
+import { agentForTask, type AgentId } from "./agents";
+import { DRAFT_TYPES, type TaskType } from "./tasks";
+import { PLATFORM, editBase, getLayer, isPaused, listFeed, listHistory, type FeedRow, type Layer } from "./instructions-store";
+
+/**
+ * What the founder's skills console reads and logs (agent skills portal, spec 8.2 and 10; rules 958-959). Server code:
+ * `GET /api/admin/skills` and the page at /{lang}/admin/skills both build their state here, so the two cannot differ.
+ */
+
+/** The rate-limit bucket of the admin test: one for the whole console, a server constant (never the caller's address or email). */
+export const ADMIN_SKILL_TEST_BUCKET = "admin:skills:test";
+/**
+ * The account label the admin test is metered under (`usage:{label}:{month}`), like the golden set's `GOLDEN_EMAIL`: not
+ * an address anyone can sign in with, so the founder console's usage shows the test's tokens apart from every customer.
+ */
+export const ADMIN_TEST_LABEL = "skills-test@nashr.internal";
+
+/** How many versions the console lists (the customer page's 20). */
+export const CONSOLE_HISTORY = 20;
+
+/** A feed row as the console shows it: the row, and the brand part of its scope (`email#brandId`; empty for the default brand). */
+export type FeedView = FeedRow & { brand: string };
+export const feedView = (r: FeedRow): FeedView => ({ ...r, brand: r.scope.includes("#") ? r.scope.slice(r.scope.indexOf("#") + 1) : "" });
+
+export type ConsoleState = { layer: Layer; base: number; chars: number; history: HistoryRow[]; feed: FeedView[]; paused: boolean };
+
+/** The platform layer, its newest versions as counts, the founder feed and the pause switch: four reads in parallel. */
+export async function consoleState(): Promise<ConsoleState> {
+  const [layer, history, feed, paused] = await Promise.all([getLayer(PLATFORM), listHistory(PLATFORM), listFeed(), isPaused()]);
+  return {
+    layer: publicLayer(layer),
+    base: editBase(layer),
+    chars: PLATFORM_CHARS,
+    history: history.slice(0, CONSOLE_HISTORY).map((r) => summarizeRevision(publicRevision(r))),
+    feed: feed.map(feedView),
+    paused,
+  };
+}
+
+/** Who wrote the platform layer: the founder, with their email when they signed in as themselves (a key session has none). */
+export const founderBy = (who: string): By => ({ kind: "founder", ...(who !== "key" && who.includes("@") ? { email: who } : {}) });
+
+/** The small before/after the log keeps: versions and counts, never an instruction's text. */
+export const snap = (l: Layer) => ({ v: l.active.v, on: l.active.items.filter((i) => i.on).length, draft: l.draft ? l.draft.items.length : null });
+
+/**
+ * One founder write in `admin:log`, in the entry shape the other admin routes use (`actor` is the key session or the
+ * founder's email, `email` the object of the row, which the console's log table shows in its user column).
+ */
+export const logSkills = (actor: string, action: string, before: unknown, after: unknown) =>
+  pushCapped("admin:log", JSON.stringify({ actor, email: "platform-skills", what: `skills.${action}`, before, after, at: new Date().toISOString() }), CAPS.adminLog);
+
+/** What the console's test offers: the types a draft can be written for, each with its owning agent (Reem owns none). The same pairs the route accepts. */
+export type AdminTestOption = { agent: AgentId; type: TaskType };
+export const adminTestOptions = (): AdminTestOption[] => DRAFT_TYPES.flatMap((type) => { const agent = agentForTask(type).id; return agent === "reem" ? [] : [{ agent, type }]; });

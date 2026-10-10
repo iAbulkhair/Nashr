@@ -1,9 +1,10 @@
 import type { AppDict } from "./app-i18n";
-import type { Draft, Instruction, Layer } from "./instructions-store";
+import type { Draft, Instruction, Layer, Target } from "./instructions-store";
+import { AGENT_IDS } from "./agents";
 
 /**
  * What the customer instructions page and its editor share with their tests (agent skills portal, spec 8.1, rule 957).
- * Pure: the browser imports it, so it reads no key and imports no server module (types only).
+ * Pure: the browser imports it, so it reads no key and imports no server module (types, and the agents list).
  */
 
 /** A string from the dictionary with its {placeholders} filled; a placeholder with no value stays as written. */
@@ -125,3 +126,6 @@ export function parseTestResult(j: Record<string, unknown>): { before: TestItem;
   const spent = typeof j.spent === "number" && Number.isFinite(j.spent) ? j.spent : null;
   return before && after && spent !== null ? { before, after, spent } : null;
 }
+
+/** What a platform row can be pointed at: the eight agents and the media group a customer sees, plus the reviewer and the judge (the founder console only). */
+export const PLATFORM_TARGETS: readonly Target[] = [...AGENT_IDS, "media", "reviewer", "judge"];
