@@ -16,7 +16,7 @@ vi.mock("@anthropic-ai/sdk", () => {
     default: class {
       static BadRequestError = class extends Error {};
       beta = { messages: { stream: () => ({ finalMessage: () => (h.mode === "hang" ? new Promise(() => {}) : Promise.resolve(reply(items))) }) } };
-      messages = { create: async () => reply(JSON.stringify([{ ok: true }])) };
+      messages = { create: async () => reply(JSON.stringify([{ ok: true }])), stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
     },
   };
 });

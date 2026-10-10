@@ -34,7 +34,7 @@ vi.mock("@anthropic-ai/sdk", () => {
         },
       };
       messages = {
-        stream: (p: { model: string; system: unknown }) => ({
+        chat: (p: { model: string; system: unknown }) => ({
           finalMessage: async () => {
             sdk.calls.push({ api: "stream", model: p.model, system: sysText(p.system) });
             return answer(p.model, "أهلاً");
@@ -46,6 +46,7 @@ vi.mock("@anthropic-ai/sdk", () => {
           if (system.startsWith("You are the quality judge")) return answer(p.model, JSON.stringify([verdict, verdict, verdict, verdict, verdict]));
           return answer(p.model, JSON.stringify([{ ok: true, id: 1, verdict: "ok" }]));
         },
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   };

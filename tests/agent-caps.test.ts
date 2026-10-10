@@ -77,11 +77,12 @@ function sdk(opts: { genFails?: boolean; chat?: (p: Params) => unknown } = {}) {
       constructor() { made.n++; }
       beta = { messages: { stream: () => ({ finalMessage: async () => { if (opts.genFails) throw new Error("model down"); return reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])); } }) } };
       messages = {
-        stream: (p: Params) => ({ finalMessage: async () => (p.output_config?.format ? reply("{}") : opts.chat ? opts.chat(p) : reply("تمام")) }),
+        chat: (p: Params) => ({ finalMessage: async () => (p.output_config?.format ? reply("{}") : opts.chat ? opts.chat(p) : reply("تمام")) }),
         create: async (p: Params) => {
           const sys = typeof p.system === "string" ? p.system : p.system[0].text;
           return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([verdict]) : sys.startsWith("You write one image") ? "a cup of coffee on a wooden table" : JSON.stringify([{ ok: true }]));
         },
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));

@@ -26,8 +26,9 @@ vi.mock("@anthropic-ai/sdk", () => {
       constructor(o: unknown) { sdk.ctor.push(o); }
       beta = { messages: { stream: (_p: unknown, opts: Opts) => ({ finalMessage: () => answer("generate", opts, items) }) } };
       messages = {
-        stream: (_p: unknown, opts: Opts) => ({ finalMessage: () => answer("stream", opts, "أهلاً") }),
-        create: (_p: unknown, opts: Opts) => answer("create", opts, JSON.stringify([{ ok: true }])),
+        // Every model call is a stream since rule 980: a chat turn (tools) and onboarding (a JSON schema format) are
+        // "stream", as before; every other call is the one that was `create`, and keeps its name here.
+        stream: (p: { tools?: unknown; output_config?: { format?: unknown } }, opts: Opts) => ({ finalMessage: () => (p.tools || p.output_config?.format ? answer("stream", opts, "أهلاً") : answer("create", opts, JSON.stringify([{ ok: true }]))) }),
       };
     },
   };

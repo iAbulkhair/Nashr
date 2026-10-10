@@ -319,6 +319,7 @@ async function fixedBatch(type: TaskType, lead?: { leadBrief?: string }) {
           cross.push(p);
           return reply(JSON.stringify(items.map((_, i) => ({ id: i + 1, verdict: "flag", notes: ["a note"] }))));
         },
+        stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));
@@ -576,6 +577,7 @@ describe("a run is one item through generateBatch, with its parent and the norma
             if (sys.startsWith("You are the quality reviewer")) return reply(JSON.stringify([{ ok: true }, { ok: true }, { ok: true }]));
             return reply(JSON.stringify([{ id: 1, verdict: "ok" }, { id: 2, verdict: "flag", notes: ["رقم بلا مصدر"] }, { id: 3, verdict: "ok" }]));
           },
+          stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
         };
       },
     }));
@@ -708,7 +710,7 @@ describe("refusals charge nothing and leave the item; a failed generation is ref
       default: class {
         static BadRequestError = class extends Error {};
         beta = { messages: { stream: () => ({ finalMessage: async () => { if (fail) throw new Error("upstream"); return { ...reply(JSON.stringify([{ channel: "finance", title: "t", body: "b [رقم]" }])), model: "claude-opus-5" }; } }) } };
-        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : sys.startsWith("You are the quality reviewer") ? JSON.stringify([{ ok: true }]) : "[]"); } };
+        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : sys.startsWith("You are the quality reviewer") ? JSON.stringify([{ ok: true }]) : "[]"); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const route = await import("@/app/api/handoffs/[id]/run/route");
@@ -790,7 +792,7 @@ describe("depth 1, and no MCP surface (rule 280)", () => {
       default: class {
         static BadRequestError = class extends Error {};
         beta = { messages: { stream: () => ({ finalMessage: async () => ({ ...reply(JSON.stringify(sneaky)), model: "claude-opus-5" }) }) } };
-        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : sys.startsWith("You are the quality reviewer") ? JSON.stringify([{ ok: true }]) : "[]"); } };
+        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : sys.startsWith("You are the quality reviewer") ? JSON.stringify([{ ok: true }]) : "[]"); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const lib = await import("@/lib/handoffs");
@@ -982,7 +984,7 @@ describe("the handoffs go with the account (rule 282)", () => {
       default: class {
         static BadRequestError = class extends Error {};
         beta = { messages: { stream: () => ({ finalMessage: async () => { started = true; await gate; return { ...reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])), model: "claude-opus-5" }; } }) } };
-        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : JSON.stringify([{ ok: true }])); } };
+        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : JSON.stringify([{ ok: true }])); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const lib = await import("@/lib/handoffs");

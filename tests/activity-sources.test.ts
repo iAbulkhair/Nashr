@@ -64,12 +64,13 @@ async function load(o: { state?: "on" | "mock"; verdicts?: object[]; turns?: Tur
       static BadRequestError = class extends Error {};
       beta = { messages: { stream: () => ({ finalMessage: async () => reply(JSON.stringify(ITEMS)) }) } };
       messages = {
-        stream: () => ({ finalMessage: async () => { const t = turns.shift(); return t ? { model: "claude-opus-5", usage: { input_tokens: 1, output_tokens: 1 }, ...t } : reply("تمام"); } }),
+        chat: () => ({ finalMessage: async () => { const t = turns.shift(); return t ? { model: "claude-opus-5", usage: { input_tokens: 1, output_tokens: 1 }, ...t } : reply("تمام"); } }),
         create: async (p: Params) => {
           const sys = typeof p.system === "string" ? p.system : p.system[0].text;
           if (!sys.startsWith("You are the quality judge")) return reply(JSON.stringify([{ ok: true }]));
           return reply(JSON.stringify(o.verdicts ?? ITEMS.map(() => clean)));
         },
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));

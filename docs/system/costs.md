@@ -501,7 +501,7 @@ left, the console's cost per message) are these units from then on; the copy tha
 
 ## 6. Where the real numbers live
 
-`meter()` (`src/lib/usage.ts`) records every call under `usage:{email}:{YYYY-MM}` — tokens in and out, call count,
+`meter()` (`src/lib/usage.ts`) records every call under `usage:{email}:{YYYY-MM}` (since 2026-10-10 also a call cut mid-stream and a server-side fallback's declined attempt: every call goes through `metered()` in `src/lib/metered.ts`, flows section 61, rules 980-986) — tokens in and out, call count,
 cost in micro-dollars, and since 2026-09-20 the same three numbers **per kind of call**. So the founder console shows,
 per account:
 

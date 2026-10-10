@@ -44,7 +44,12 @@ vi.mock("@anthropic-ai/sdk", () => {
         },
       };
       messages = {
-        stream: (p: { model: string; system: unknown }) => ({
+        // Every model call is a stream since rule 980. "stream" here is the chat turn (tools) and onboarding (a JSON schema
+        // format), as before; every other call is answered by `create`, the call those sites made before.
+        stream(p: { model: string; system: unknown; tools?: unknown; output_config?: { format?: unknown } }) {
+          return p.tools || p.output_config?.format ? this.chat(p) : { finalMessage: () => this.create(p) };
+        },
+        chat: (p: { model: string; system: unknown }) => ({
           finalMessage: async () => {
             sdk.calls.push({ api: "stream", model: p.model, system: sysText(p.system) });
             if (sdk.fail) throw new Error("overloaded");

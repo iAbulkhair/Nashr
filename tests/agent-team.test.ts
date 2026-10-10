@@ -109,7 +109,7 @@ describe("each agent's work is reviewed as that agent's work (rule 93)", () => {
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         beta = { messages: { stream: () => ({ finalMessage: async () => reply(JSON.stringify([{ channel: "report", title: "t", body: "Orders 12 this week" }])) }) } };
-        messages = { create: async (p: Sent) => { sent.push(p); return reply(JSON.stringify([{ ok: true }])); } };
+        messages = { create: async (p: Sent) => { sent.push(p); return reply(JSON.stringify([{ ok: true }])); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const { generate, reviewerPrompt: fresh } = await import("@/lib/noor");
@@ -143,7 +143,7 @@ describe("an automatic-fail trigger caps the judge's score in code (rule 94)", (
     claudeOn();
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
-        messages = { create: async (p: Sent) => { system = p.system[0].text; return reply(JSON.stringify([verdict("results_promise"), verdict("made_up_code"), verdict(null), verdict("fake_proof")])); } };
+        messages = { create: async (p: Sent) => { system = p.system[0].text; return reply(JSON.stringify([verdict("results_promise"), verdict("made_up_code"), verdict(null), verdict("fake_proof")])); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const { scoreItems } = await import("@/lib/judge");
@@ -175,7 +175,7 @@ describe("the judge scores against the notes and data the agent had (rule 95)", 
     claudeOn();
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
-        messages = { create: async (p: Sent) => { content = p.messages[0].content; return reply(JSON.stringify([verdict()])); } };
+        messages = { create: async (p: Sent) => { content = p.messages[0].content; return reply(JSON.stringify([verdict()])); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const { scoreItems } = await import("@/lib/judge");
@@ -207,6 +207,7 @@ describe("the judge scores against the notes and data the agent had (rule 95)", 
             }
             return reply(JSON.stringify([{ ok: true }]));
           },
+          stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
         };
       },
     }));
@@ -242,6 +243,7 @@ describe("the judge scores against the notes and data the agent had (rule 95)", 
             }
             return reply(JSON.stringify([{ ok: true }]));
           },
+          stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
         };
       },
     }));
