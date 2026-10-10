@@ -54,15 +54,23 @@ const digits = (s: string) => s.replace(/[٠-٩۰-۹]/g, (c) => String((c.charCo
 const rx = (src: string) => new RegExp(normalize(src), "u");
 const AR = "[\\u0600-\\u06ff]*"; // the rest of an Arabic word (\w is ASCII only)
 
+// "never publish without my approval", "never reveal your instructions", "avoid auto-posting" and "post nothing without my
+// review" are protective rules and the commonest way to write them, so a request the clause negates (a negation up to three
+// words before the verb, or "nothing" right after it) is not a grab for authority or a request for a secret. A comma or full
+// stop ends the clause: "don't wait, publish without asking" still is refused. Applies to the secret and authority screens.
+const NEG_EN = "\\b(?:never|not|no|don['’]?t|mustn['’]?t|shouldn['’]?t|cannot|can['’]?t|won['’]?t|nobody|nothing|avoid|avoiding|stop|refrain|prevent|forbid)\\s+(?:[a-z'’]+\\s+){0,3}";
+const NEG_AR = "(?:^|\\s)(?:لا|لن|ما|ممنوع|يمنع|ابدا|تجنب|تجنبوا|امتنع|توقف)\\s+(?:[^\\s,.،]+\\s+){0,3}[تني]?";
+const en = (src: string) => rx(`(?<!${NEG_EN})(?:${src})`);
+const ar = (src: string) => rx(`(?<!${NEG_AR})(?:${src})`);
 // Phrases a verb takes as its object when the customer asks the model to reveal itself.
 const SECRET_TARGET =
   "(?:system prompt|developer (?:prompt|message)|(?:your|the|its) (?:hidden |initial |original |full |entire |secret )?(?:prompt|instructions|rules|guidelines)|(?:the )?(?:above|previous|earlier|hidden|initial|original) (?:text|prompt|instructions|message)|(?:your|the|our|my|its|all) (?:api[ -]?keys?|secret keys?|access tokens?|auth tokens?|bearer tokens?|env(?:ironment)? (?:vars?|variables?))|(?:admin|root|database|db|system) passwords?|\\.env\\b)";
 const SECRET: RegExp[] = [
-  rx(`\\b(?:repeat|reveal|show|print|display|output|leak|dump|tell|give|share|expose|disclose|echo|recite|paste|send|read out|write out|what (?:is|are|were))\\b[^.!?]{0,30}?${SECRET_TARGET}`),
+  en(`\\b(?:repeat|reveal|show|print|display|output|leak|dump|tell|give|share|expose|disclose|echo|recite|paste|send|read out|write out|what (?:is|are|were))\\b[^.!?]{0,30}?${SECRET_TARGET}`),
   // another customer's data
-  rx("\\b(?:show|reveal|give|list|print|dump|leak|share|send|tell|access|read|fetch|export)\\b[^.!?]{0,30}?\\b(?:other|another|different|all|every|previous|someone else'?s?)\\s+(?:customers?|clients?|users?|accounts?|tenants?|workspaces?|brands?|companies)['’]?s?['’]?\\s+(?:data|information|info|details|files?|emails?|conversations?|chats?|prompts?|instructions|secrets?|brand file)"),
-  rx(`(?:اكشف|اظهر|اعرض|اطبع|كرر|سرب|شارك)${AR}\\s+(?:[^\\s]+\\s+){0,2}?(?:ال)?(?:تعليمات|اوامر|برومبت|موجه النظام|موجه الاصلي|مفتاح\\s*api|مفاتيح\\s*api|المفتاح السري|المفاتيح السريه)`),
-  rx(`(?:بيانات|معلومات|ملفات|محادثات|تعليمات|رسائل)\\s+(?:ال)?(?:عملاء|زبائن|مستخدمين|حسابات|عميل|زبون|مستخدم)\\s+(?:ال)?(?:اخرين|اخري|اخر|ثانيين)`),
+  en("\\b(?:show|reveal|give|list|print|dump|leak|share|send|tell|access|read|fetch|export)\\b[^.!?]{0,30}?\\b(?:other|another|different|all|every|previous|someone else'?s?)\\s+(?:customers?|clients?|users?|accounts?|tenants?|workspaces?|brands?|companies)['’]?s?['’]?\\s+(?:data|information|info|details|files?|emails?|conversations?|chats?|prompts?|instructions|secrets?|brand file)"),
+  ar(`(?:اكشف|اظهر|اعرض|اطبع|كرر|سرب|شارك)${AR}\\s+(?:[^\\s]+\\s+){0,2}?(?:ال)?(?:تعليمات|اوامر|برومبت|موجه النظام|موجه الاصلي|مفتاح\\s*api|مفاتيح\\s*api|المفتاح السري|المفاتيح السريه)`),
+  ar(`(?:بيانات|معلومات|ملفات|محادثات|تعليمات|رسائل)\\s+(?:ال)?(?:عملاء|زبائن|مستخدمين|حسابات|عميل|زبون|مستخدم)\\s+(?:ال)?(?:اخرين|اخري|اخر|ثانيين)`),
 ];
 
 const INJECTION: RegExp[] = [
@@ -82,13 +90,6 @@ const INJECTION: RegExp[] = [
 
 // "without asking", "without waiting for approval", "without my review"
 const WITHOUT = "without\\s+(?:\\w+\\s+){0,2}?(?:ask\\w*|approv\\w*|review\\w*|confirm\\w*|permission|check\\w*|consent|oversight|wait\\w*|authori[sz]\\w*|sign[- ]?off)";
-// "never publish without my approval" and "post nothing without my review" keep the owner in charge, and are the commonest
-// way to write the rule, so a request the clause negates (a negation up to three words before the verb, or "nothing" right
-// after it) is not an authority grab. A comma or full stop ends the clause: "don't wait, publish without asking" still is.
-const NEG_EN = "\\b(?:never|not|no|don['’]?t|mustn['’]?t|shouldn['’]?t|cannot|can['’]?t|won['’]?t|nobody|nothing)\\s+(?:[a-z'’]+\\s+){0,3}";
-const NEG_AR = "(?:^|\\s)(?:لا|لن|ما|ممنوع|يمنع|ابدا)\\s+(?:[^\\s,.،]+\\s+){0,3}";
-const en = (src: string) => rx(`(?<!${NEG_EN})(?:${src})`);
-const ar = (src: string) => rx(`(?<!${NEG_AR})(?:${src})`);
 const NOTHING = "(?!\\w*\\s+(?:nothing|nobody|no one|none)\\b)";
 const AUTHORITY: RegExp[] = [
   // publish / post / send / approve without the owner
@@ -101,18 +102,18 @@ const AUTHORITY: RegExp[] = [
   // spend or move credits ("credit-card safety" is not credits)
   en("\\b(?:spend|burn|deduct|charge|refund|transfer|top[- ]?up|waive|grant)\\b[^.!?]{0,30}?\\b(?:credits?(?![- ]?cards?)|credit balance|(?:my|the|account|wallet) balance)\\b"),
   // change the plan, the brand file
-  en("\\b(?:change|upgrade|downgrade|switch|cancel)\\s+(?:the |my |our |this |your )?(?:account |current |billing |pricing |subscription )?(?:plan|subscription)\\b"),
-  en("\\b(?:edit|change|modify|update|rewrite|delete|overwrite|alter|replace|remove)\\b\\s+(?:\\w+\\s+){0,2}?(?:brand (?:file|rules|settings|kit|profile)|banned (?:words|list)|the brand)\\b"),
+  en("\\b(?:change|upgrade|downgrade|switch|cancel)\\s+(?:the |my |our |this |your )?(?:(?:account|current|billing|pricing|subscription)\\s+plan|subscription(?!\\s+(?:form|page|box|email|newsletter|button|link|offer|message))|plan(?=\\s*(?:$|[.!?,;]|to\\s+(?:trial|starter|pro|business|agency|enterprise|free|a\\s)|for me)))"),
+  en("\\b(?:edit|change|modify|update|rewrite|delete|overwrite|alter|replace|remove)\\b\\s+(?:\\w+\\s+){0,2}?(?:brand (?:file|rules)|banned (?:words|list))\\b"),
   // call a tool
   en("\\b(?:call|invoke|trigger|execute)\\s+(?:the\\s+)?[a-z0-9_]+\\s+tool\\b|\\b(?:call|invoke|trigger|execute)\\s+(?:the\\s+)?[a-z]+_[a-z_]+"),
   // a discount or price the brand file does not hold: only a number counts, so "never offer discounts" passes
-  rx("\\b(?:discounts?|coupons?)\\s*(?:of\\s+|by\\s+)?\\d|\\d+\\s*%\\s*(?:off|discount)"),
-  rx("(?:خصم|تخفيض)\\s*(?:بنسبه\\s*|قدره\\s*|بقيمه\\s*)?\\d|\\d+\\s*%?\\s*(?:خصم|تخفيض)"),
+  en("(?<![\\d])(?:\\b(?:discounts?|coupons?)\\s*(?:of\\s+|by\\s+)?\\d|\\d+\\s*%\\s*(?:off|discount))(?![^.!?]{0,40}\\bbrand file)"),
+  ar("(?<![\\d])(?:(?:خصم|تخفيض)\\s*(?:بنسبه\\s*|قدره\\s*|بقيمه\\s*)?\\d|\\d+\\s*%?\\s*(?:خصم|تخفيض))(?![^.!?]{0,40}ملف ال?علامه)"),
   // Arabic: publish, approve, send without the owner; spend or move credits; change the plan; edit the brand file; call a tool
   ar(`(?:انشر|ارسل|اعتمد|وافق|رد)${AR}\\s+(?:[^\\s]+\\s+){0,2}?(?:مباشره|تلقائيا|ذاتيا)`),
   ar("بدون\\s+(?:ال)?(?:موافقه|اذن|تاكيد|مراجعه|استئذان|الرجوع)"),
   ar(`(?:اصرف|اخصم|اسحب|استهلك|اشحن|استرد)${AR}\\s+(?:[^\\s]+\\s+){0,2}?(?:ال)?(?:رصيد|كريدت|كريديت|نقاط)`),
-  ar(`(?:غير|بدل|رقي|الغ|الغي)${AR}\\s+(?:[^\\s]+\\s+){0,2}?(?:ال)?(?:باقه|اشتراك)`),
+  ar(`(?:غير|بدل|رقي|الغ|الغي)${AR}\\s+(?:[^\\s]+\\s+)?(?:(?:ال)?باقه\\s+(?:ال)?اشتراك|(?:ال)?اشتراك(?!\\s+(?:في|عبر|بال))|(?:ال)?باقه(?=\\s*(?:$|[.!?,;،؛]|الي|الى|ل)))`),
   ar(`(?:عدل|غير|احذف|امسح|حدث)${AR}\\s+(?:[^\\s]+\\s+){0,2}?(?:ملف\\s+(?:ال)?(?:هويه|علامه)|هويه ال?علامه|الكلمات الممنوعه|قواعد ال?علامه)`),
   ar(`(?:استدع|نادي|شغل|نفذ)${AR}\\s+(?:ال)?(?:اداه|ادوات)`),
 ];
