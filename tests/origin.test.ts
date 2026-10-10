@@ -3,10 +3,11 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Rules 356-358 (#8, #169). One canonical app origin: `appOrigin()` in src/lib/origin.ts reads APP_ORIGIN and holds the
- * only copy of the production fallback. Moving to the owned domain must be one environment change, so the old Vercel
- * host may not appear anywhere else in src/, no other file reads APP_ORIGIN or builds a link from the Host header, and a
- * malformed APP_ORIGIN falls back instead of making every page's metadata throw.
+ * Rules 356-358 (#8, #169) and 987. One canonical app origin: `appOrigin()` in src/lib/origin.ts reads APP_ORIGIN and
+ * holds the only copy of the production fallback, the live site `https://thakeen.com` since 2026-10-10 (rule 987; it was
+ * the old Vercel host until the site moved to Hostinger). That host may not appear anywhere in src/ any more, no other
+ * file reads APP_ORIGIN or builds a link from the Host header, and a malformed APP_ORIGIN falls back instead of making
+ * every page's metadata throw.
  */
 
 const safeFetch = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response("<html><title>x</title><body>" + "word ".repeat(40) + "</body></html>", { status: 200 }));
@@ -27,9 +28,9 @@ const files = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
   return statSync(p).isDirectory() ? files(p) : /\.(ts|tsx|js|mjs|json|md|txt)$/.test(n) ? [p] : [];
 });
 
-describe("rule 356: the Vercel host lives in one place", () => {
-  it("no file under src/ names vercel.app except src/lib/origin.ts", () => {
-    const hits = files("src").filter((p) => p !== join("src", "lib", "origin.ts") && /vercel\.app/.test(readFileSync(p, "utf8")));
+describe("rules 356 and 987: one fallback origin, and the old Vercel host nowhere", () => {
+  it("no file under src/ names vercel.app, origin.ts included", () => {
+    const hits = files("src").filter((p) => /vercel\.app/.test(readFileSync(p, "utf8")));
     expect(hits, `hard-coded host in: ${hits.join(", ")}`).toEqual([]);
   });
 
@@ -65,7 +66,7 @@ describe("rule 357: appOrigin() reads APP_ORIGIN, with the old behaviour while i
     const { appOrigin, appHost, FALLBACK_ORIGIN } = await import("@/lib/origin");
     vi.stubEnv("APP_ORIGIN", undefined);
     expect(appOrigin()).toBe(FALLBACK_ORIGIN);
-    expect(FALLBACK_ORIGIN).toBe("https://nashr-tau.vercel.app");
+    expect(FALLBACK_ORIGIN).toBe("https://thakeen.com");
     vi.stubEnv("APP_ORIGIN", "");
     expect(appOrigin()).toBe(FALLBACK_ORIGIN);
     vi.stubEnv("APP_ORIGIN", "https://thakeen.example/");

@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 
 /**
  * Rule 789: the agents' CI-minutes rules stay in CLAUDE.md, where every session reads them. Each push to a PR branch is
- * a paid Actions run and a Vercel preview deploy, and a cancelled run is still billed, so the instructions that keep
- * pushes few (no PR for work in progress, draft first, local checks before a push, one push per step, ready once, sync
+ * a paid Actions run (and a Vercel preview deploy while the retired project stays connected), and a cancelled run is
+ * still billed, so the instructions that keep pushes few (no PR for work in progress, draft first, local checks before a push, one push per step, ready once, sync
  * with main only before merging, no re-run without a change, one PR per branch) must not be dropped by an edit.
  */
 const md = readFileSync("CLAUDE.md", "utf8");

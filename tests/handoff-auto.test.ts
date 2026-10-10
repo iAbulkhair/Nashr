@@ -288,7 +288,7 @@ describe("the Governance page shows the switch truly (rule 284)", () => {
     expect(ar.governance.autoHandoffSub).toContain(`${AUTO_HANDOFF_MAX_CREDITS} كريدت`);
     expect(ar.governance.autoHandoffSub).toContain("06:00");
     // The routines cron, where the auto-run runs, is daily at 06:00 UTC.
-    expect(JSON.parse(readFileSync("vercel.json", "utf8")).crons).toContainEqual({ path: "/api/cron/routines", schedule: "0 6 * * *" });
+    expect(JSON.parse(readFileSync("crons.json", "utf8")).crons).toContainEqual({ path: "/api/cron/routines", schedule: "0 6 * * *" });
     for (const k of ["autoHandoff", "autoHandoffSub", "autoHandoffConfirm", "autoHandoffNeedsCap", "autoHandoffConfirmNeeded"] as const) {
       expect(en.governance[k], k).toBeTruthy();
       expect(ar.governance[k], k).toBeTruthy();

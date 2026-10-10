@@ -12,6 +12,10 @@
  *   4. Otherwise `NODE_ENV === "production"`. `next dev` is "development", vitest is "test".
  * Rules 430-431, tests/launch-security.test.ts.
  *
+ * Vercel no longer builds the site (2026-10-10, rule 990). Live still sets `VERCEL_ENV=production` by hand, the
+ * 2026-10-07 stopgap; it should carry `APP_ENV=production` instead (`docs/system/variables.md`). Expand, then contract:
+ * the `VERCEL_ENV` readings above go in a later release, after the founder has switched the live variable in hPanel.
+ *
  * `APP_ENV=staging` is production by this function (step 2: any other value is production), so staging keeps rules
  * 430 and 431. `isStaging()` below is the separate question "is this the staging site", read by the staging lock
  * (rule 674).

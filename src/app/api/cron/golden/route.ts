@@ -4,7 +4,7 @@ import { sameSecret } from "@/lib/rate";
 
 export const maxDuration = 300;
 
-// Weekly golden set (vercel.json). Same auth as the other crons — which it claimed to be and was not: this compared
+// Weekly golden set (crons.json). Same auth as the other crons — which it claimed to be and was not: this compared
 // the secret with `!==`, which can stop at the first differing byte and leak the secret's prefix through timing, and
 // it was the one cron in the codebase breaking the sameSecret rule. sameSecret also refuses an unset CRON_SECRET.
 export async function GET(req: Request) {
