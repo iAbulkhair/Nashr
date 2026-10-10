@@ -75,7 +75,8 @@ vi.mock("@/lib/models/route", async (orig) => {
 import { db } from "@/lib/db";
 import { currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
 import type { Brand, Task } from "@/lib/brand";
-import { createConversation, deleteConversation, liveConversations, renameConversation, touchConversation, type Conversation } from "@/lib/conversations";
+import { createConversation, deleteConversation, liveConversations, renameConversation, setConversationModel, touchConversation, type Conversation } from "@/lib/conversations";
+import { wipeAccount } from "@/lib/account";
 import { PAUSED_REPLY } from "@/lib/model";
 import { DEFAULTS } from "@/lib/models/route";
 import { TASK_MODELS } from "@/lib/task-models";
@@ -703,6 +704,69 @@ describe("conversation writers share one lock: no stale copy is written back, no
     expect(JSON.stringify(warn.mock.calls)).not.toContain(u.email);
     expect(JSON.stringify(warn.mock.calls)).not.toContain(conv);
     await db.unlockOwned(`convlock:${sc(u)}:${conv}`, token!);
+  });
+});
+
+/**
+ * Rule 905. `wipeAccount` used to delete a conversation's keys without its lock, so a writer that had read the record
+ * and not yet written it put the record back after the wipe: a conversation of a deleted account, outside every index.
+ * The wipe now deletes each conversation through `deleteConversation`, under the same lock, before anything else of it.
+ */
+describe("account wipe takes each conversation's lock: a writer in flight cannot bring a record back (rule 905)", () => {
+  const writers: [string, (u: User, conv: string) => Promise<unknown>][] = [
+    ["a turn's touch", (u, conv) => touchConversation(sc(u), conv, "مرحبا")],
+    ["a rename", (u, conv) => renameConversation(sc(u), conv, "اسم جديد")],
+    ["a pick", (u, conv) => setConversationModel(sc(u), conv, OPUS)],
+  ];
+  it.each(writers)("%s read the record before the wipe and writes after it: no record, no index entry, no live thread", async (name, write) => {
+    const { u, conv } = await owner(`mo-wipe-${name.split(" ").pop()}`);
+    const h = hold("get", convKey(u, conv));
+    const writer = write(u, conv);
+    await h.reached;
+    const wipe = wipeAccount(u.email);
+    await wait(200);
+    h.release();
+    await Promise.all([writer, wipe]);
+    expect(await db.get(convKey(u, conv)), `the record of a wiped account came back after ${name}`).toBeNull();
+    expect(await indexed(u, conv)).toBe(false);
+    expect([...(await liveConversations(sc(u), [conv]))]).toEqual([]);
+    expect(await db.get(`user:${u.email}`)).toBeNull();
+  });
+
+  it("every conversation goes through its own lock, past the newest 100, and the lock is released", async () => {
+    const { u } = await owner("mo-wipe-all");
+    const ids: string[] = [];
+    for (let i = 0; i < 102; i++) ids.push((await createConversation(sc(u), `c${i}`)).id);
+    const locks = vi.spyOn(db, "lockOwned");
+    await wipeAccount(u.email);
+    const taken = locks.mock.calls.map(([k]) => String(k)).filter((k) => k.startsWith("convlock:"));
+    for (const id of ids) expect(taken, id).toContain(`convlock:${sc(u)}:${id}`);
+    for (const id of ids) {
+      expect(await db.get(convKey(u, id))).toBeNull();
+      expect(await db.get(`convlock:${sc(u)}:${id}`)).toBeNull();
+    }
+    expect(await db.lrange(`convs:${sc(u)}`, 0, -1)).toEqual([]);
+  });
+
+  it("a conversation whose lock is not taken in time stops the wipe: the account is kept whole and a retry finishes it", async () => {
+    const { u, conv } = await owner("mo-wipe-busy");
+    const token = await db.lockOwned(`convlock:${sc(u)}:${conv}`, 60);
+    expect(token).not.toBeNull();
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const wipe = wipeAccount(u.email);
+      const failed = expect(wipe).rejects.toThrow(/conversation/);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await failed;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await db.get(`user:${u.email}`), "the account record was deleted although a conversation could not be locked").not.toBeNull();
+    expect(await db.get(convKey(u, conv))).not.toBeNull();
+    await db.unlockOwned(`convlock:${sc(u)}:${conv}`, token!);
+    await wipeAccount(u.email);
+    expect(await db.get(`user:${u.email}`)).toBeNull();
+    expect(await db.get(convKey(u, conv))).toBeNull();
   });
 });
 

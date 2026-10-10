@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { deleteConversation } from "./conversations";
 import { listFiles } from "./files";
 import { listBrands, scopeFor } from "./brands";
 import { pmap } from "./parallel";
@@ -62,6 +63,16 @@ export async function wipeAccount(email: string) {
   const logins = [e, ...(await db.smembers(membersKey(e)))];
   await Promise.all([revokeFeeds(logins), revokeBooks(logins)]);
   const scopes = (await listBrands(e)).map((b) => scopeFor(e, b.id));
+  // Each conversation goes through the writer lock first (`deleteConversation`: its record, its thread and its id in the
+  // index, under `convlock:{scope}:{id}`), before any third-party grant is revoked. A turn's touch, a rename or a pick that
+  // had read the record and not yet written it would otherwise put it back after the wipe, a record of a deleted account
+  // outside every index; under the lock it either finishes first and is deleted here, or finds no record and writes
+  // nothing. A lock not taken in time stops the wipe, as a failed link revocation does: the account is kept and a retry
+  // runs it again.
+  const earlyConvIds = await pmap(scopes, (s) => db.lrange(`convs:${s}`, 0, -1));
+  await pmap(scopes.flatMap((s, i) => earlyConvIds[i].map((id) => [s, id] as const)), async ([s, id]) => {
+    if ((await deleteConversation(s, id)) === "busy") throw new Error("account wipe: a conversation is being written, try again");
+  });
   // Platform grants held by Composio are revoked while the records that name them still exist. A failure is logged, not
   // fatal: the account must still be deleted, and the founder can revoke what is left from Composio's dashboard.
   await revokeComposio(scopes);
@@ -76,7 +87,8 @@ export async function wipeAccount(email: string) {
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
-      // With the conversation's writer lock (10 s TTL, src/lib/conversations.ts).
+      // Already deleted under their lock above; listed again for an id `deleteConversation` refuses (a malformed one) and
+      // for the lock key itself (10 s TTL, src/lib/conversations.ts).
       ...convIds.flatMap((id) => [`conv:${s}:${id}`, `chat:${s}:${id}`, `convlock:${s}:${id}`]),
       ...conns.map((p) => `conn:${s}:${p}`), // encrypted third-party credentials
       ...months.map((m) => `tidx:${s}:${m}`),
