@@ -3,6 +3,7 @@ import { currentUser, saveUser } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
 import { withUserLock } from "@/lib/credits";
 import { chatStatus, overflowAvailable } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 import { allow, retryLater } from "@/lib/rate";
 
 /**
@@ -28,5 +29,5 @@ export async function POST(req: Request) {
     await saveUser(acc);
     return acc;
   });
-  return NextResponse.json({ ok: true, chat: await chatStatus(saved) });
+  return NextResponse.json({ ok: true, chat: await chatStatus(saved, route("chat").model) });
 }

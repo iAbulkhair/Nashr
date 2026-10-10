@@ -130,6 +130,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
   "PATCH /api/team/member": g("owner", "team.role"),
   "POST /api/billing/chat-overflow": g("owner", "billing"), // how the account's credits are spent once chat runs out
+  // The model picks (plan Task 6): a conversation's by any login, the active brand's by an admin, the China-hosting
+  // confirmation by the owner only. One handler serves all three, like PATCH /api/tasks/[id].
+  "PUT /api/models": g("owner", "conversations", "brand.write", "profile.account"),
   "POST /api/billing/checkout": g("owner", "billing.pay"), // online payment (Paymob), never while impersonating
   "POST /api/billing/renewal": g("owner", "billing.pay"), // the online subscription's renewal and saved card
 
@@ -260,6 +263,7 @@ const READS: Record<string, Gate> = {
   "GET /api/brands": "member",
   "GET /api/brief": "member",
   "GET /api/chat": "member",
+  "GET /api/models": "member", // the picker: catalog ids, labels, tiers, multipliers; never a rate
   "GET /api/connect": "member",
   "GET /api/conversations": "member",
   "GET /api/files": "member",
@@ -311,7 +315,7 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline"];
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",

@@ -62,6 +62,34 @@ export default function Billing({ lang, keySession }: SectionProps) {
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[[O.mrr, ov.revenue.mrrSar], [O.topupRev, ov.revenue.topupSarMonth], [O.arpu, ov.revenue.arpuSar ?? "—"], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.render, ov.revenue.renderCostUsd.toFixed(2)], [O.margin, ov.revenue.grossMarginPct === null ? "—" : `${ov.revenue.grossMarginPct}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-muted">{l}</p><p className="tnum font-display text-2xl font-bold text-ink">{v}</p></div>)}
           </div>
+          {/* modelUsage-section */}
+          {ov.modelUsage && (
+            <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{O.llmModels} <span className="tnum font-mono" dir="ltr">{ov.modelUsage.month}</span></h2>
+              {Object.keys(ov.modelUsage.models).length === 0 ? <p className="mt-2 text-sm text-muted">{O.llmNone}</p> : (
+                <div className="overflow-x-auto">
+                  <table className="mt-2 w-full text-xs"><thead className="text-muted"><tr><th className="p-1 text-start">{O.llmModel}</th><th className="text-end">{O.llmCalls}</th><th className="text-end">{O.usd}</th><th className="text-end">{O.llmPerCall}</th></tr></thead>
+                    <tbody>{Object.entries(ov.modelUsage.models).sort((a, b) => b[1].usd - a[1].usd).map(([id, m]) => <tr key={id} className={`border-t border-ink/5 ${id === "other" ? "text-muted" : ""}`}><td className="p-1 font-mono" dir="ltr">{id}</td><td className="tnum text-end">{m.calls}</td><td className="tnum text-end">{m.usd.toFixed(3)}</td><td className="tnum text-end">{m.calls ? (m.usd / m.calls).toFixed(4) : "—"}</td></tr>)}</tbody></table>
+                </div>
+              )}
+              {"other" in ov.modelUsage.models && <p className="mt-1 text-xs text-muted">{O.llmOtherNote}</p>}
+              <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted">{O.llmProviders}</h3>
+              {Object.keys(ov.modelUsage.providers).length === 0 ? <p className="mt-1 text-sm text-muted">—</p> : (
+                <div className="overflow-x-auto">
+                  <table className="mt-2 w-full text-xs"><thead className="text-muted"><tr><th className="p-1 text-start">{O.llmProvider}</th><th className="text-end">{O.llmCalls}</th><th className="text-end">{O.usd}</th></tr></thead>
+                    <tbody>{Object.entries(ov.modelUsage.providers).sort((a, b) => b[1].usd - a[1].usd).map(([id, m]) => <tr key={id} className="border-t border-ink/5"><td className="p-1 font-mono" dir="ltr">{id}</td><td className="tnum text-end">{m.calls}</td><td className="tnum text-end">{m.usd.toFixed(3)}</td></tr>)}</tbody></table>
+                </div>
+              )}
+              <p className="mt-2 text-xs text-muted">{O.llmCaveat}</p>
+              <p className="mt-3 text-xs text-muted">{O.llmFallbacks}: <b className="tnum text-ink">{ov.modelUsage.fallbacks}</b></p>
+              {Object.keys(ov.modelUsage.rejectedPicks).length > 0 && (
+                <>
+                  <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted">{O.llmRejected}</h3>
+                  <ul className="mt-2 flex flex-wrap gap-2 text-xs">{Object.entries(ov.modelUsage.rejectedPicks).map(([k, n]) => <li key={k} className="rounded-full bg-lilac px-3 py-1"><span className="font-mono" dir="ltr">{k}</span>: <b className="tnum">{n}</b></li>)}</ul>
+                </>
+              )}
+            </section>
+          )}
+          {/* modelUsage-section-end */}
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{O.models}</h2>
             <div className="overflow-x-auto">
               <table className="mt-2 w-full text-xs"><thead className="text-muted"><tr><th className="p-1 text-start">{O.model}</th><th>{O.done}</th><th>{O.failed}</th><th>{O.creditsKept}</th><th>{O.usd}</th><th>{O.perCredit}</th></tr></thead>

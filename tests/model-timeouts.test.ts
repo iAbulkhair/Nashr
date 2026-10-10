@@ -72,6 +72,19 @@ describe("one factory makes every model client, with a timeout and a retry count
     expect(direct).toEqual([join("src", "lib", "model.ts")]);
   });
 
+  it("provider switch: STRAITLY_API_KEY is read in src/lib/model.ts and nowhere else", () => {
+    // A read, not a mention: a message that names the variable is fine, `process.env.STRAITLY_API_KEY` is not.
+    const reads = (code: string) => /\benv\s*(\.\s*STRAITLY_API_KEY\b|\[\s*["'`]STRAITLY_API_KEY["'`]\s*\])/.test(code) || /\{[^}]*\bSTRAITLY_API_KEY\b[^}]*\}\s*=\s*(?:globalThis\.)?process\.env\b/.test(code);
+    // The scan itself must keep seeing what it exists to find.
+    expect(reads("const k = process.env.STRAITLY_API_KEY;")).toBe(true);
+    expect(reads('const k = process.env["STRAITLY_API_KEY"];')).toBe(true);
+    expect(reads("const { STRAITLY_API_KEY: k } = process.env;")).toBe(true);
+    expect(reads('const note = "STRAITLY_API_KEY is not set";')).toBe(false);
+    const code = (f: string) => readFileSync(f, "utf8").replace(/^\s*(\*|\/\/).*$/gm, "");
+    expect(reads(code(join("src", "lib", "model.ts"))), "model.ts is where it is read").toBe(true);
+    expect(walk("src").filter((f) => f !== join("src", "lib", "model.ts") && reads(code(f)))).toEqual([]);
+  });
+
   it("every budget sits inside its route's maxDuration", () => {
     expect(MODEL_BUDGET.GEN_MS).toBeLessThan(300_000);
     expect(MODEL_BUDGET.ONBOARD_MS).toBeLessThan(300_000);

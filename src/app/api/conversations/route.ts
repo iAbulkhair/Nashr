@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { isAgentId } from "@/lib/agents";
 import { createConversation, deleteConversation, listConversations, renameConversation, searchConversations } from "@/lib/conversations";
+import { retryAfter } from "@/lib/rate";
+
+const busy = () => NextResponse.json({ ok: false, error: "busy" }, { status: 503, headers: retryAfter(1) });
 
 export async function GET(req: Request) {
   const u = await currentUser();
@@ -21,7 +24,8 @@ export async function PATCH(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { id?: string; title?: string };
   if (!b.id || !b.title) return NextResponse.json({ ok: false }, { status: 400 });
-  await renameConversation(sc(u), b.id, b.title);
+  // Under the conversation's lock (src/lib/conversations.ts): `busy` when it was not taken in time, nothing renamed.
+  if ((await renameConversation(sc(u), b.id, b.title)) === "busy") return busy();
   return NextResponse.json({ ok: true });
 }
 export async function DELETE(req: Request) {
@@ -29,6 +33,7 @@ export async function DELETE(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ ok: false }, { status: 400 });
-  await deleteConversation(sc(u), id);
+  // Under the conversation's lock: `busy` when it was not taken in time, nothing deleted. Deleting what is not there is ok.
+  if ((await deleteConversation(sc(u), id)) === "busy") return busy();
   return NextResponse.json({ ok: true });
 }

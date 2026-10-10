@@ -48,6 +48,19 @@ describe("the switch itself", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
     expect(real.modelState()).toBe(real.CLAUDE_PAUSED ? "paused" : "on");
   });
+
+  it("pauses the same way whichever provider the key is for (provider switch)", async () => {
+    const real = await vi.importActual<typeof import("@/lib/model")>("@/lib/model");
+    vi.stubEnv("LLM_PROVIDER", "straitly");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("STRAITLY_API_KEY", "");
+    expect(real.modelState(), "straitly without any key keeps the dev mock path").toBe("mock");
+    vi.stubEnv("STRAITLY_API_KEY", "test");
+    expect(real.modelState()).toBe(real.CLAUDE_PAUSED ? "paused" : "on");
+    vi.stubEnv("STRAITLY_API_KEY", "");
+    vi.stubEnv("ANTHROPIC_API_KEY", "test");
+    expect(real.modelState(), "the Anthropic key alone is the fallback").toBe(real.CLAUDE_PAUSED ? "paused" : "on");
+  });
 });
 
 describe("while Claude is paused (rule 76)", () => {

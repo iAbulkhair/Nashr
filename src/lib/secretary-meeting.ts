@@ -56,6 +56,7 @@ import { chargeOnce, refundOnce, renewIfDue, renewalDue } from "./credits";
 import { getGov } from "./governance";
 import { asData } from "./json";
 import { MODEL_BUDGET, anthropic, modelState, until } from "./model";
+import { route } from "./models/route";
 import { MEETING_NOTES_MAX, MEETING_TEXT_MAX, MEETING_TRANSCRIPT_COST } from "./pricing";
 import { allow } from "./rate";
 import { meter } from "./usage";
@@ -404,7 +405,7 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
   try {
     ({ zone } = await calFor(scope, now));
     const res = await anthropic({ timeoutMs: MODEL_BUDGET.TOOL_MS, maxRetries: 1 }).messages.create({
-      model: "claude-sonnet-5-5",
+      model: route("meeting").model,
       max_tokens: EXTRACT_MAX_TOKENS,
       system: extractSystem(lang, zoneDay(now, zone)),
       tools: [EXTRACT_TOOL],

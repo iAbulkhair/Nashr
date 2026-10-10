@@ -399,6 +399,39 @@ const ar = {
    * an invite (ألغِ) is itself the action being confirmed.
    */
   dialog: { back: "رجوع", confirm: "تأكيد" },
+  /**
+   * The model picker (ModelPicker.tsx): the chat header's pick for one conversation and the brand page's default model
+   * for content. No model name here: names come only from the server's labels, inside the signed-in picker. The only
+   * numbers shown are the server's, filled into {x} (a multiplier such as "x2") and {n} (chat units).
+   */
+  models: {
+    label: "النموذج",
+    choose: "اختر النموذج",
+    auto: "تلقائي (موصى به)",
+    autoHint: "يختار ذكين النموذج المناسب لكل مهمة.",
+    tiers: { economy: "اقتصادي", standard: "قياسي", premium: "متقدّم" },
+    china: "مستضاف في الصين",
+    perMessage: "{x} لكل رسالة",
+    perBatch: "{x} لكل دفعة",
+    units: { two: "كل رسالة تُحسب برسالتين", few: "كل رسالة تُحسب بـ{n} رسائل", many: "كل رسالة تُحسب بـ{n} رسالة" },
+    defaultThread: "ابدأ محادثة جديدة لتختار نموذجها.",
+    brandTitle: "النموذج الافتراضي للمحتوى",
+    brandSub: "تعمل عليه كل دفعة محتوى لهذه العلامة. وإن كان نوع الدفعة مما لا يكتبه هذا النموذج، تعمل على الاختيار التلقائي.",
+    save: "احفظ النموذج",
+    saved: "حُفظ النموذج.",
+    unsaved: "لم يُحفظ بعد.",
+    chinaTitle: "استخدام نموذج مستضاف في الصين؟",
+    chinaBody: "يعمل هذا النموذج على خوادم في الصين، فتمرّ عبرها رسائلك ومحتوى علامتك. لا يختاره ذكين تلقائياً أبداً، وموافقتك تُحفظ مرة واحدة للحساب كله.",
+    chinaOk: "أوافق، استخدمه",
+    ownerOnly: "فقط مالك الحساب يستطيع السماح بالنماذج المستضافة في الصين.",
+    busy: "النظام مشغول الآن. حاول مرة أخرى بعد لحظة.",
+    unavailable: "هذا النموذج غير متاح الآن. أعدنا تحميل القائمة، اختر نموذجاً آخر.",
+    notFound: "لم نجد هذه المحادثة. أعدنا تحميل قائمة المحادثات.",
+    noBrand: "احفظ ملف العلامة أولاً، ثم اختر النموذج.",
+    slow: "غيّرت النموذج مرات كثيرة خلال هذه الساعة. حاول لاحقاً.",
+    failed: "تعذّر حفظ الاختيار. حاول مرة أخرى.",
+    loadFailed: "تعذّر تحميل قائمة النماذج. حدّث الصفحة.",
+  },
 };
 
 const en: typeof ar = {
@@ -786,6 +819,34 @@ const en: typeof ar = {
   },
   readOnly: { owner: "Only the account owner can change this.", admin: "Only the account owner or an admin can change this." },
   dialog: { back: "Go back", confirm: "Confirm" },
+  models: {
+    label: "Model",
+    choose: "Choose the model",
+    auto: "Automatic (recommended)",
+    autoHint: "Thakeen picks the right model for each task.",
+    tiers: { economy: "Economy", standard: "Standard", premium: "Premium" },
+    china: "Hosted in China",
+    perMessage: "{x} per message",
+    perBatch: "{x} per batch",
+    units: { two: "Each message counts as {n} messages", few: "Each message counts as {n} messages", many: "Each message counts as {n} messages" },
+    defaultThread: "Start a new conversation to choose its model.",
+    brandTitle: "Default model for content",
+    brandSub: "Every content batch for this brand runs on it. A batch whose type this model cannot write runs on Automatic.",
+    save: "Save model",
+    saved: "Model saved.",
+    unsaved: "Not saved yet.",
+    chinaTitle: "Use a model hosted in China?",
+    chinaBody: "This model runs on servers in China, so your messages and brand content pass through them. Thakeen never picks it automatically, and your consent is saved once for the whole account.",
+    chinaOk: "Allow and use it",
+    ownerOnly: "Only the account owner can allow models hosted in China.",
+    busy: "Busy right now. Try again in a moment.",
+    unavailable: "That model is not available right now. We refreshed the list; pick another one.",
+    notFound: "We could not find this conversation. We refreshed your conversation list.",
+    noBrand: "Save the brand file first, then choose the model.",
+    slow: "You changed the model many times this hour. Try again later.",
+    failed: "Could not save your choice. Try again.",
+    loadFailed: "Could not load the model list. Refresh the page.",
+  },
 };
 
 export const appDict: Record<Lang, typeof ar> = { ar, en };

@@ -9,6 +9,7 @@ import { meter } from "./usage";
 import { notifyItem } from "./notifications";
 import { pmap } from "./parallel";
 import { recordActivity, type Activity, type ActivityVia } from "./activity";
+import { route } from "./models/route";
 
 /**
  * Automated quality judge. A cheaper model scores every generated item against
@@ -47,7 +48,14 @@ const isAutofail = (v: unknown): v is Autofail => typeof v === "string" && Objec
  * The grounding the agent had besides the brand file, so real numbers from the owner's data are not read as invented.
  * `via` is where the batch was asked for, for its activity rows; the judge's prompt never sees it.
  */
-export type JudgeContext = Grounding & { via?: ActivityVia };
+export type JudgeContext = Grounding & {
+  via?: ActivityVia;
+  /**
+   * The model that generated the items: the judge is another model when the routing has one that costs no more
+   * (`route("judge")`), unless it is the type's own automatic writer (rule 903: an Automatic Sonnet batch keeps the Sonnet judge).
+   */
+  generatedBy?: string;
+};
 
 const WEIGHTS = { completeness: 0.3, brand: 0.2, honesty: 0.25, language: 0.15, format: 0.1 } as const;
 /** The judge reads whole items. A 3500-char cut made every long-form item (articles, memos, PRDs) score as "cut off". */
@@ -93,7 +101,7 @@ export async function scoreItems(email: string | undefined, brand: Brand, type: 
   // not leave the batch unscored.
   const client = anthropic({ timeoutMs: MODEL_BUDGET.JUDGE_MS, maxRetries: 1 });
   const res = await client.messages.create({
-    model: "claude-sonnet-5-5",
+    model: route("judge", { generatedBy: ctx.generatedBy, task: type }).model,
     max_tokens: 8000,
     thinking: { type: "adaptive" },
     output_config: { effort: "low" },

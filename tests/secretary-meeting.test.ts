@@ -8,6 +8,7 @@ import { appDict } from "@/lib/app-i18n";
 import { fill } from "@/lib/fill";
 import { MEETING_NOTES_MAX, MEETING_TEXT_MAX, MEETING_TRANSCRIPT_COST, maxCostPerCreditUsd } from "@/lib/pricing";
 import { ESTIMATE_MODELS, meetingExtractUsd } from "@/lib/task-costs";
+import { route } from "@/lib/models/route";
 import { db } from "@/lib/db";
 import { MIN_ROLE } from "@/lib/roles";
 import { SEC_WRITES_PER_HOUR, SEC_KEYS, createItem, getItem, listOpenItems, removeBySystem, secretaryKeys } from "@/lib/secretary";
@@ -670,7 +671,8 @@ describe("proposing from text (rules 604-606)", () => {
     // The price covers the call at the margin floor, and the call is the one the estimate prices.
     expect(MEETING_TRANSCRIPT_COST).toBe(1);
     expect(meetingExtractUsd() / MEETING_TRANSCRIPT_COST).toBeLessThanOrEqual(maxCostPerCreditUsd());
-    expect(readFileSync("src/lib/secretary-meeting.ts", "utf8")).toContain(`model: "${ESTIMATE_MODELS.meetingExtract}"`);
+    expect(readFileSync("src/lib/secretary-meeting.ts", "utf8")).toContain('model: route("meeting").model,');
+    expect(route("meeting").model).toBe(ESTIMATE_MODELS.meetingExtract);
 
     const u = await newUser("mt605a");
     const scope = sc(u);

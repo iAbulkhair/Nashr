@@ -195,11 +195,12 @@ export const CHAT_TURN_MAX_USD = 0.14;
 
 /**
  * The most a message past the allowance can cost the owner, when they turned "continue on credits" on: the ceiling above
- * at the floor rate, rounded up (5 today). The balance must cover it before the turn (nothing is taken then); after the
+ * at the floor rate, rounded up (2 today). The balance must cover it before the turn (nothing is taken then); after the
  * reply the message is billed its metered cost at the floor rate, never more than this (src/lib/credits.ts
- * `settleChatOverflow`).
+ * `settleChatOverflow`). `ceilingUsd` is a chat model's own ceiling when it is not the default's (src/lib/models/credits.ts
+ * `chatHoldFor`: Opus 5's $0.28 gives 4); without it, the default chat model's.
  */
-export const chatOverflowHold = (maxCostUsd: number = maxCostPerCreditUsd()): number => Math.ceil(CHAT_TURN_MAX_USD / maxCostUsd);
+export const chatOverflowHold = (maxCostUsd: number = maxCostPerCreditUsd(), ceilingUsd: number = CHAT_TURN_MAX_USD): number => Math.ceil(ceilingUsd / maxCostUsd);
 
 // ---- Brands (rules 245-247) ----
 

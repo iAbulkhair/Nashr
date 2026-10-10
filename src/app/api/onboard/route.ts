@@ -166,6 +166,10 @@ export async function POST(req: Request) {
         await track(u.email, "onboard");
         // What the owner chose in the game wins over what the model read off the site, in code, not in the prompt.
         if (answers) r.brand = { ...r.brand, ...answersToBrand(answers) };
+        // The generation pick is a setting only PUT /api/models writes: a `model` in the model's output (a crawled page
+        // can steer it) is dropped in code, so a new workspace always starts on Automatic.
+        r.brand = { ...r.brand };
+        delete r.brand.model;
         await saveBrand(scope, r.brand);
         brandSaved = true;
         const [saved, prefs] = await Promise.all([

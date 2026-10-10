@@ -52,6 +52,8 @@ export async function PUT(req: Request) {
         ...(b.social && typeof b.social === "object" ? { social: Object.fromEntries(Object.entries(b.social).slice(0, 8).map(([k, v]) => [s(k, 20), s(v, 80)])) } : b.social === undefined && cur?.social ? { social: cur.social } : {}),
         // Only a zone on the fixed list is stored; anything else is dropped and the list falls back to the city.
         ...(isZone(b.timeZone) ? { timeZone: b.timeZone } : b.timeZone === undefined && cur?.timeZone ? { timeZone: cur.timeZone } : {}),
+        // The brand's model pick is PUT /api/models' alone (src/lib/models/overrides.ts): kept as stored, never read from this body.
+        ...(cur?.model !== undefined ? { model: cur.model } : {}),
       };
       await saveBrand(sc(u), next);
       return next;

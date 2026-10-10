@@ -18,6 +18,8 @@ import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "@/lib/secretary";
 import { can } from "@/lib/roles";
 import { deadlineFor } from "@/lib/media/keys";
 import { appOrigin } from "@/lib/origin";
+import { route } from "@/lib/models/route";
+import { MODEL_UNAVAILABLE_NOTE } from "@/lib/models/overrides";
 
 export const maxDuration = 300;
 
@@ -93,12 +95,13 @@ export async function POST(req: Request) {
         const slow = await chatRefusal(user);
         if (slow) return ok(id, { ...text(chatRefusedText(slow, user.lang, { cap: chatCaps(user)[slow] })), isError: true });
         // The same monthly allowance too, shared with the app (src/lib/chat-allowance.ts), before chat() saves the message.
-        const gate = await reserveChatTurn(user);
+        // The turn's one model: reserved here, and chat() runs on the gate's copy of it.
+        const gate = await reserveChatTurn(user, route("chat").model);
         if (!gate.ok) return ok(id, { ...text(refusalText(gate)), isError: true });
         // A connected app is talking: its activity rows say so (`tokenBy`), not "owner". As "mcp": the words come from
         // another assistant, so publishing and core-memory writes are refused in runTool, and a change to the offers or a
         // banned-word removal waits for the owner's Save in the app.
-        const { message: m, chat: status, charged } = await runChatTurn(user, gate, () => chat(user, message, undefined, "noor", { by: tokenBy(user), via: "mcp", deadline }));
+        const { message: m, chat: status, charged } = await runChatTurn(user, gate, () => chat(user, message, undefined, "noor", { by: tokenBy(user), via: "mcp", deadline, model: gate.model }));
         const low = gate.mode === "overflow"
           ? `\n\n[chat: this month's ${status.allowance} messages are used; this message continued on credits and was billed ${charged} credit${charged === 1 ? "" : "s"}]`
           : status.left <= Math.ceil(status.allowance / 10) ? `\n\n[chat: ${status.left} of ${status.allowance} messages left ${status.period === "trial" ? "in the trial" : "this month"}]` : "";
@@ -122,7 +125,8 @@ export async function POST(req: Request) {
             case "failed": throw r.error;
           }
         }
-        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n")));
+        // The brand's model pick was not used (src/lib/models/overrides.ts): the connected assistant relays it to the owner.
+        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n") + (r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : "")));
       }
       case "list_inbox": {
         const status = String(args.status ?? "pending");
