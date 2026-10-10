@@ -112,7 +112,11 @@ export function pickBodies(target: "conversation" | "brand", id: string | undefi
   return confirmFirst ? [{ confirmChina: true }, pick] : [pick];
 }
 
-/** One answer per refusal. `confirming`: the request was the China confirmation, which only the owner may give. */
+/**
+ * One answer per refusal. `confirming`: the request was the China confirmation, which only the owner may give. A lock
+ * not taken in time is 503 `busy` for the conversation's and the brand's pick alike (rule 906); a 409 `busy` still reads
+ * as busy, which is what a server older than that change answered for a brand pick.
+ */
 export function pickRefusal(status: number, error: unknown, confirming: boolean): Refusal {
   if (status === 401) return "signed_out";
   if (error === "unknown_model" || error === "not_pickable" || error === "china_unconfirmed") return "unavailable";

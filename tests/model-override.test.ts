@@ -705,6 +705,35 @@ describe("conversation writers share one lock: no stale copy is written back, no
     expect(JSON.stringify(warn.mock.calls)).not.toContain(conv);
     await db.unlockOwned(`convlock:${sc(u)}:${conv}`, token!);
   });
+
+  it("a brand pick whose lock is not taken answers the same 503 busy with Retry-After as a conversation pick, and writes nothing (rule 906)", async () => {
+    const { u, conv } = await owner("mo-lock-brandbusy");
+    expect((await put({ target: "brand", model: OPUS })).status).toBe(200);
+    const before = await brandOf(sc(u));
+    expect(await db.lock(`brandlock:${sc(u)}`, 60)).toBe(true);
+    const saves = vi.spyOn(db, "set");
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const settled = async <T>(p: Promise<T>) => {
+        await vi.advanceTimersByTimeAsync(10_000);
+        return p;
+      };
+      const brandPick = await settled(put({ target: "brand", model: null }));
+      expect(brandPick.status, "a held brand lock answers like a held conversation lock").toBe(503);
+      expect(await brandPick.json()).toEqual({ error: "busy" });
+      expect(brandPick.headers.get("Retry-After")).toBe("1");
+      // The conversation's own answer, for comparison, is the same.
+      const token = await db.lockOwned(`convlock:${sc(u)}:${conv}`, 60);
+      const convPick = await settled(put({ target: "conversation", id: conv, model: null }));
+      expect([convPick.status, await convPick.json(), convPick.headers.get("Retry-After")]).toEqual([503, { error: "busy" }, "1"]);
+      await db.unlockOwned(`convlock:${sc(u)}:${conv}`, token!);
+    } finally {
+      vi.useRealTimers();
+      await db.unlock(`brandlock:${sc(u)}`);
+    }
+    expect(await brandOf(sc(u))).toEqual(before);
+    expect(saves.mock.calls.map(([k]) => String(k)).filter((k) => k === `brand:${sc(u)}`)).toEqual([]);
+  });
 });
 
 /**
