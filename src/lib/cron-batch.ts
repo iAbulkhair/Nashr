@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { db } from "./db";
+import { appOrigin } from "./origin";
 import { pmap } from "./parallel";
 
 /**
@@ -8,7 +9,8 @@ import { pmap } from "./parallel";
  * - a "done" marker per (job, period, user): a user is never processed twice in a period
  * - one failing user never stops the others; a user is retried at most twice
  * - a start budget: no new user is started once the function is close to its time limit
- * - when users remain, the route calls itself again (same bearer secret) until the list is empty
+ * - when users remain, the route calls itself again (same bearer secret) until the list is empty, on `appOrigin()`: behind
+ *   the Hostinger proxy `req.url` is the internal address, which the hop cannot reach (rule 904)
  */
 export type BatchReport = { job: string; period: string; chain: number; total: number; alreadyDone: number; processed: number; failed: number; remaining: number; chained: boolean; results: Record<string, string> };
 
@@ -76,9 +78,10 @@ export async function runCronBatch<T>(o: {
   const chained = (notStarted + failed > 0 || (late > 0 && processed + failed > 0)) && chain < (o.maxChain ?? 30);
   if (chained) {
     url.searchParams.set("chain", String(chain + 1));
+    const next = `${appOrigin()}${url.pathname}${url.search}`;
     const headers = { authorization: o.req.headers.get("authorization") ?? "" };
     // Hand the rest to a fresh invocation. Only the request needs to leave; the new run reports for itself.
-    const kick = () => fetch(url.toString(), { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
+    const kick = () => fetch(next, { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
     // `after` needs a request scope; outside one (scripts, tests) fire the request directly, as judge.ts does.
     try { after(kick); } catch { void kick(); }
   }
