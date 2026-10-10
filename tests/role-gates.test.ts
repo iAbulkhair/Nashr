@@ -145,6 +145,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/instructions/activate": g("admin", "instructions.write"),
   "POST /api/instructions/discard": g("admin", "instructions.write"),
   "POST /api/instructions/restore": g("admin", "instructions.write"),
+  "POST /api/instructions/test": g("admin", "instructions.test"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
@@ -322,7 +323,7 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models", "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/discard", "POST /api/instructions/restore"];
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models", "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/test"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",
