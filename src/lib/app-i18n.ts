@@ -36,6 +36,22 @@ const ar = {
     status: { proposed: "مقترح", running: "قيد التنفيذ", done: "تم", failed: "لم يكتمل", declined: "مرفوض" },
     errors: { busy: "يعمل بند آخر من هذا التسليم الآن. انتظر حتى ينتهي ثم حاول.", running: "هذا البند قيد التنفيذ.", done: "نُفّذ هذا البند من قبل.", declined: "رُفض هذا البند من قبل.", too_late: "لم يبقَ وقت كافٍ في هذا الطلب. حاول مرة أخرى.", model_paused: "الوكلاء متوقفون مؤقتاً. لم يُخصم أي كريدت.", no_brand: "لا يوجد ملف علامة بعد. شغّل الإعداد أولاً.", missing_data: "لا توجد بيانات سلات متروكة بعد: اربط متجرك وزامن المبيعات أولاً. لم يُخصم شيء.", generation_failed: "تعذّر التوليد وأُعيد الكريدت. تستطيع المحاولة مرة أخرى.", slow_down: "طلبات كثيرة في وقت قصير. انتظر قليلاً ثم حاول.", forbidden: "لا يسمح دورك في الحساب بهذا.", not_found: "لم يعد هذا التسليم متاحاً.", failed: "تعذّر ذلك. حاول مرة أخرى.", network: "انقطع الاتصال قبل أن يصل رد ذكين. قد يكون البند ما زال قيد التنفيذ وقد خُصم كريدته: هذه البطاقة تتحقق من حالته بنفسها، فلا تضغط «نفّذ» مرة أخرى حتى تتحدّث." },
   },
+  // The card under a chat reply that proposes a standing rule (src/lib/instruction-proposals.ts, rule 953-954). The rule's own
+  // text is shown as plain text and never translated.
+  instructionCard: {
+    title: "أضف إلى تعليمات وكلائك", titleMember: "قاعدة مقترحة تنتظر قرار المالك أو المشرف",
+    forAll: "لكل الوكلاء", forAgents: "للوكلاء: {names}",
+    why: "لا تدخل هذه القاعدة تعليمات الوكلاء إلا إذا ضغط المالك أو المشرف «أضف». بعدها يقرؤها الوكلاء المعنيون في كل عمل جديد.",
+    apply: "أضف", dismiss: "تجاهل", review: "راجعها في تعليمات الوكلاء",
+    applied: "أُضيفت إلى تعليمات الوكلاء.", dismissed: "تُجوهلت. لم يتغير شيء.",
+    gone: "حُسمت هذه القاعدة من قبل أو انتهت مدتها (7 أيام).",
+    busy: "تُحسم هذه القاعدة الآن في نافذة أخرى. انتظر لحظة ثم حدّث الصفحة.",
+    slow: "تغييرات كثيرة في هذه الساعة. حاول لاحقاً.",
+    full: "بلغت الحد الأقصى من التعليمات الفعّالة في خطتك. أوقف تعليمة أو احذفها من صفحة تعليمات الوكلاء ثم اضغط «أضف» مرة أخرى.",
+    plan: "خطتك الحالية لا تسمح بتعليمة لوكلاء محددين. تجاهل هذه البطاقة وأضف القاعدة لكل الوكلاء من صفحة تعليمات الوكلاء.",
+    refused: "لم تُضف: هذا النص لا تقبله قواعد التعليمات. تجاهله أو اكتبه بصيغة أخرى من صفحة تعليمات الوكلاء.",
+    error: "لم تُضف. حاول مرة أخرى.",
+  },
   files: { title: "الملفات", sub: "ذاكرة نور. تقرأ الأساسية منها (العلامة، المنتجات، الاستراتيجية، أبحاث السوق، التفضيلات) في كل عملية توليد. عدّل ما تشاء.", empty: "لا ملفات بعد. شغّل الإعداد من رابط موقعك.", edit: "تعديل", save: "حفظ", cancel: "إلغاء", delete: "حذف", newFile: "ملف جديد", by: { noor: "كتبته نور", user: "كتبته أنت" }, importCatalog: "استورد منتجات المتجر", importing: "أقرأ خريطة الموقع وصفحات المنتجات…", imported: "تم استيراد", importFail: "ما لقيت صفحات منتجات. أرسل لنور 3-5 روابط منتجات في الدردشة." },
   governance: {
     title: "الحوكمة", sub: "تحكّم بما تفعله نور وحدها وما ينتظر موافقتك.",
@@ -467,6 +483,22 @@ const en: typeof ar = {
     autoItem: "may start on its own", ranAuto: "started by auto-run",
     status: { proposed: "Proposed", running: "Running", done: "Done", failed: "Did not complete", declined: "Declined" },
     errors: { busy: "Another item of this handoff is running now. Wait for it to finish, then try again.", running: "This item is running.", done: "This item already ran.", declined: "This item was declined.", too_late: "Not enough time was left in this request. Try again.", model_paused: "The agents are paused for now. No credits were used.", no_brand: "No brand file yet. Run setup first.", missing_data: "No abandoned-cart data yet: connect your store and sync sales first. Nothing was charged.", generation_failed: "The generation failed and the credits were returned. You can try again.", slow_down: "Too many requests in a short time. Wait a little and try again.", forbidden: "Your role in this account does not allow this.", not_found: "This handoff is no longer available.", failed: "That did not work. Try again.", network: "The connection dropped before Thakeen answered. The item may still be running and may already be charged: this card checks its state again by itself, so do not press Run again until it updates." },
+  },
+  // The card under a chat reply that proposes a standing rule (src/lib/instruction-proposals.ts, rule 953-954). The rule's own
+  // text is shown as plain text and never translated.
+  instructionCard: {
+    title: "Add to your agent instructions", titleMember: "A proposed rule waiting for the owner or an admin",
+    forAll: "All agents", forAgents: "Agents: {names}",
+    why: "This rule joins your agent instructions only when the owner or an admin presses Add. After that the agents it covers read it in every new piece of work.",
+    apply: "Add", dismiss: "Dismiss", review: "Review it in Agent instructions",
+    applied: "Added to your agent instructions.", dismissed: "Dismissed. Nothing changed.",
+    gone: "This rule was already decided or has expired (7 days).",
+    busy: "This rule is being decided in another window. Wait a moment, then refresh.",
+    slow: "Too many changes this hour. Try again later.",
+    full: "You have reached the number of active instructions your plan allows. Switch one off or delete it on the Agent instructions page, then press Add again.",
+    plan: "Your plan does not allow an instruction for specific agents. Dismiss this card and add the rule for every agent on the Agent instructions page.",
+    refused: "Not added: the instruction rules do not accept this text. Dismiss it, or word it differently on the Agent instructions page.",
+    error: "Not added. Try again.",
   },
   files: { title: "Files", sub: "Noor's memory. She reads the core ones (brand, products, strategy, market research, preferences) on every generation. Edit anything.", empty: "No files yet. Run setup from your website URL.", edit: "Edit", save: "Save", cancel: "Cancel", delete: "Delete", newFile: "New file", by: { noor: "written by Noor", user: "written by you" }, importCatalog: "Import store products", importing: "Reading sitemap and product pages…", imported: "Imported", importFail: "No product pages found. Send Noor 3-5 product links in chat." },
   governance: {
