@@ -25,5 +25,7 @@ export const READS_SITE: readonly string[] = ["google"];
  * (connectedSources in src/lib/report-sources.ts).
  */
 export const READS_SOCIAL: readonly string[] = ["meta", "linkedin", "youtube", "tiktok", "x"];
+/** Google Docs and Sheets, read as reference files for the agent instructions (src/lib/instruction-refs.ts, rules 955-956). */
+export const READS_REFERENCES: readonly string[] = ["google_workspace"];
 export const READS_METRICS: readonly string[] = ["salla", "shopify", "woocommerce", "zid", ...READS_ADS, ...READS_SITE, ...READS_SOCIAL];
 export const isWorking = (id: string) => WORKING_PROVIDERS.includes(id);

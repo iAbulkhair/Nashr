@@ -62,6 +62,8 @@ type Done = { ok: true; layer: Layer; revision: Revision };
 export const layerKey = (scope: string) => `skills:${scope}`;
 const histKey = (scope: string) => `skillshist:${scope}`;
 const lockKey = (scope: string) => `skillslock:${scope}`;
+/** Where each imported reference file came from (Google Docs and Sheets, rule 956); written by instruction-refs.ts. */
+export const refsKey = (scope: string) => `skillrefs:${scope}`;
 const FEED = "skills:feed";
 export const PAUSED = "skills:paused";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -71,7 +73,7 @@ const isId = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{12
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Every key a scope owns, for the account wipe (`wipeAccount`). */
-export const instructionKeys = (scope: string): string[] => [layerKey(scope), histKey(scope), lockKey(scope)];
+export const instructionKeys = (scope: string): string[] => [layerKey(scope), histKey(scope), lockKey(scope), refsKey(scope)];
 
 const emptySet = (): InstructionSet => ({ items: [], v: 0 });
 const emptyLayer = (): Layer => ({ active: emptySet(), draft: null, at: new Date(0).toISOString(), by: null });
@@ -210,7 +212,10 @@ export async function saveDraft(scope: string, items: Draft[], by: By, opts: { p
       out.push(built);
     }
     const at = new Date().toISOString();
-    const next: Layer = { active: layer.active, draft: { items: out, v: layer.active.v }, at, by };
+    // Every save moves the draft's `v` on, so two tabs that loaded the same `base` cannot both save: the second finds a
+    // newer `v` and gets `stale` (rule 954, carried ruling of the Task 8 review). Nothing else reads the draft's `v`
+    // except this check; activate, history and restore use the live set's own `v`.
+    const next: Layer = { active: layer.active, draft: { items: out, v: (layer.draft?.v ?? layer.active.v) + 1 }, at, by };
     await db.set(layerKey(scope), next);
     return { ok: true as const, layer: next };
   });
@@ -317,8 +322,8 @@ export async function appendActive(scope: string, d: Draft, by: By, opts: { limi
     let id = made.id;
     while (taken.has(id)) id = newId();
     const built = { ...made, id };
-    // The draft moves on with the live set (its `v` is the version it was based on), so an editor opened before this apply is stale (`saveDraft`).
-    const draft = layer.draft ? { items: [...layer.draft.items, built], v: layer.active.v + 1 } : null;
+    // The draft moves on with the live set and its `v` only ever grows, so an editor opened before this apply is stale (`saveDraft`).
+    const draft = layer.draft ? { items: [...layer.draft.items, built], v: Math.max(layer.draft.v, layer.active.v) + 1 } : null;
     return commit(scope, layer, [...layer.active.items, built], by, { platform: false, limits: opts.limits }, "apply", { draft, via: "chat" });
   });
 }

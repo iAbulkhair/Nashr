@@ -310,6 +310,11 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     else delete meta.gscSites;
   }
   if (provider === "google") meta.account = googleLabel(meta);
+  // Reference files (rules 955-956): no call at connect time, reading is the only use. The flags let the card show which
+  // of the two Google logins is in.
+  if (toolkit === "googledocs") meta.docs = "1";
+  if (toolkit === "googlesheets") meta.sheets = "1";
+  if (provider === "google_workspace") meta.account = "Google Docs and Sheets";
   // A reconnected toolkit leaves its old Composio account behind; it is revoked, quietly, after the new one is in hand.
   if (before && before !== accountId) await composioRevoke(scope, before).catch(() => console.error("composio revoke of replaced account failed"));
   return { ...base, meta, expiresAt: undefined };

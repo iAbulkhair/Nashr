@@ -330,16 +330,52 @@ describe("a save of an old copy (rule 954)", () => {
     expect(await saveDraft(scope, [d("two")], BY, { platform: false, base: 0 })).toEqual({ ok: false, error: "stale" });
     expect((await getLayer(scope)).draft).toBeNull();
     const first = await saveDraft(scope, [d("two")], BY, { platform: false, base: 1 });
-    expect(first.ok).toBe(true);
-    // A draft: its own version is the base, and a chat apply moves it on with the live set.
-    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: 2 })).toEqual({ ok: false, error: "stale" });
+    if (!first.ok) throw new Error(first.error);
+    // A draft: its own version is the base, and every save moves it on.
+    expect(first.layer.draft!.v).toBe(2);
+    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: 1 })).toEqual({ ok: false, error: "stale" });
+    // A chat apply moves the draft on with the live set, and an editor opened before it is stale.
     const applied = await appendActive(scope, d("from chat"), BY, { limits: LIMITS("pro"), src: "chat" });
     if (!applied.ok) throw new Error(applied.error);
-    expect(applied.layer.draft!.v).toBe(2);
-    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: 1 })).toEqual({ ok: false, error: "stale" });
+    expect(applied.layer.active.v).toBe(2);
+    expect(applied.layer.draft!.v).toBe(3);
+    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: 2 })).toEqual({ ok: false, error: "stale" });
     expect((await getLayer(scope)).draft!.items.map((i) => i.text)).toEqual(["two", "from chat"]);
     expect((await saveDraft(scope, [d("three")], BY, { platform: false })).ok).toBe(true);
     expect(statusOf("stale")).toBe(409);
+  });
+
+  it("rule 954: two tabs that loaded the same base: the first save wins, the second gets stale and changes nothing", async () => {
+    const scope = await ws();
+    await put(scope, [d("live")]);
+    const tab = { platform: false as const, base: 1 };
+    expect((await saveDraft(scope, [d("tab one")], BY, tab)).ok).toBe(true);
+    expect(await saveDraft(scope, [d("tab two")], BY, tab)).toEqual({ ok: false, error: "stale" });
+    expect((await getLayer(scope)).draft!.items.map((i) => i.text)).toEqual(["tab one"]);
+    // Saving again from the version that save returned works, and again moves it on.
+    const v = (await getLayer(scope)).draft!.v;
+    expect((await saveDraft(scope, [d("tab one, edited")], BY, { platform: false, base: v })).ok).toBe(true);
+    expect((await getLayer(scope)).draft!.v).toBe(v + 1);
+    expect((await saveDraft(scope, [d("again")], BY, { platform: false, base: v })).ok).toBe(false);
+  });
+
+  it("rule 954: activate, history and restore do not read the draft's version: a draft saved three times activates as the next live version", async () => {
+    const scope = await ws();
+    await put(scope, [d("live")]);
+    for (let i = 0; i < 3; i++) {
+      const base = (await getLayer(scope)).draft?.v ?? (await getLayer(scope)).active.v;
+      expect((await saveDraft(scope, [d(`draft ${i}`)], BY, { platform: false, base })).ok).toBe(true);
+    }
+    expect((await getLayer(scope)).draft!.v).toBe(4);
+    const done = await activate(scope, BY, WSL("pro"));
+    if (!done.ok) throw new Error(done.error);
+    expect(done.layer.active.v).toBe(2);
+    expect(done.revision.v).toBe(2);
+    expect(done.layer.draft).toBeNull();
+    expect((await listHistory(scope)).map((r) => r.v)).toEqual([2, 1]);
+    const back = await restore(scope, (await listHistory(scope)).at(-1)!.id, BY, WSL("pro"));
+    if (!back.ok) throw new Error(back.error);
+    expect(back.layer.active.v).toBe(3);
   });
 });
 
@@ -517,8 +553,8 @@ describe("the layer goes with the account (rule 941)", () => {
     expect((await getLayer(other)).active.items.map((i) => i.text)).toEqual(["keep"]);
   });
 
-  it("rule 941: instructionKeys names the layer, its history and its lock", () => {
-    expect(instructionKeys("a@x.test#b1").sort()).toEqual(["skills:a@x.test#b1", "skillshist:a@x.test#b1", "skillslock:a@x.test#b1"]);
+  it("rule 941: instructionKeys names the layer, its history, its lock and its imported-file records (rule 956)", () => {
+    expect(instructionKeys("a@x.test#b1").sort()).toEqual(["skillrefs:a@x.test#b1", "skills:a@x.test#b1", "skillshist:a@x.test#b1", "skillslock:a@x.test#b1"]);
   });
 
   it("rule 941: removeFeedRowsFor removes only that email's rows", async () => {
