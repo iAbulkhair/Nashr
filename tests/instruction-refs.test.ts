@@ -317,7 +317,7 @@ describe("rule 956: import", () => {
     expect(Object.keys(await refRecords(sc(u))).sort()).toEqual(cases.map((c) => c[1]).sort());
   });
 
-  it("rule 956: two sources with one title get -2, -3; a file the owner wrote under that name is never overwritten; a re-import of the same source overwrites its own file", async () => {
+  it("rule 956: two sources with one title get -2, -3; a different source never takes a name already in use (the owner's file keeps its text); a re-import of the same source overwrites its own file", async () => {
     const u = await owner("refs-collide");
     answers.GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT = (args) => doc(`body of ${args.document_id}`);
     const ids = [0, 1, 2].map((i) => `${ID.slice(0, 39)}${i}`);

@@ -432,6 +432,17 @@ describe("rule 957: fix round 1 (stale base, downgrade fixes, compare race, no n
     expect(formAfterWrite({ ...layer, draft: null, seq: undefined }).base).toBe(2);
   });
 
+  it("rule 952: Test is disabled with a hint while the founder's pause is on, and when the draft equals the live set", () => {
+    const panel = readFileSync("src/components/app/InstructionsPanel.tsx", "utf8");
+    expect(panel).toContain("const testHint = paused ? I.testPaused");
+    expect(panel).toContain("sameContent(layer.active, layer.draft!) ? I.testNoChange");
+    expect(panel).toContain("disabled={locked || !option || !!testHint}");
+    for (const lang of ["ar", "en"] as const) {
+      for (const k of ["testPaused", "testNoChange"] as const) expect(appDict[lang].instructions[k].trim()).not.toBe("");
+      for (const k of ["paused", "no_change"] as const) expect(appDict[lang].instructions.errors[k].trim()).not.toBe("");
+    }
+  });
+
   it("restore is blocked while the form has unsaved edits, and the panel says why and disables the button", () => {
     expect(restoreBlocked(true)).toBe(true);
     expect(restoreBlocked(false)).toBe(false);

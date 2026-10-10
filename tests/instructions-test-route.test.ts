@@ -10,6 +10,7 @@ import { writeFile } from "@/lib/files";
 import { countCost } from "@/lib/generate-batch";
 import { creditsFor } from "@/lib/models/credits";
 import { generateRouteFor } from "@/lib/models/overrides";
+import { setPaused } from "@/lib/instructions-store";
 import { INSTRUCTION_TESTS_PER_DAY, INSTRUCTION_TESTS_PER_HOUR } from "@/lib/rate";
 import { TASK_COST, type TaskType } from "@/lib/tasks";
 import type { GenOptions } from "@/lib/noor";
@@ -194,6 +195,46 @@ describe("rule 952: who may test, and the order of the checks", () => {
     expect([r.status, r.body.error]).toEqual([503, "model_paused"]);
     expect(await credits(u.email)).toBe(100);
     gen.state = "on";
+    expect((await run({ nonce: n })).status).toBe(200);
+  });
+});
+
+describe("rule 952: a test that could show nothing is refused before the claim and the charge", () => {
+  it("rule 952: while the founder's pause is on it is 409 paused: no charge, no generation, no claim key, no activity row; after it, the same nonce works", async () => {
+    const u = await owner();
+    const before = (await listActivity(sc(u))).rows.length;
+    await setPaused(true);
+    try {
+      const n = nonce();
+      const r = await run({ nonce: n });
+      expect([r.status, r.body.error]).toEqual([409, "paused"]);
+      expect(await credits(u.email)).toBe(100);
+      expect(gen.calls).toHaveLength(0);
+      expect(await db.get(`skilltest:${sc(u)}:${n}`)).toBeNull();
+      expect((await listActivity(sc(u))).rows).toHaveLength(before);
+      await setPaused(false);
+      expect((await run({ nonce: n })).status).toBe(200);
+    } finally {
+      await setPaused(false);
+    }
+  });
+
+  it("rule 952: a draft equal to the live set (same text, targets, switch, lock, files; fresh ids) is 409 no_change: nothing charged, claimed or logged", async () => {
+    const u = await owner("itest-nc", false);
+    expect((await put([item("same words")])).status).toBe(200);
+    expect((await activate()).status).toBe(200);
+    // The form saves the same words again: the draft holds fresh ids, the content is the live set's.
+    expect((await put([item("same words")])).status).toBe(200);
+    const before = (await listActivity(sc(u))).rows.length;
+    const n = nonce();
+    const r = await run({ nonce: n });
+    expect([r.status, r.body.error]).toEqual([409, "no_change"]);
+    expect(await credits(u.email)).toBe(100);
+    expect(gen.calls).toHaveLength(0);
+    expect(await db.get(`skilltest:${sc(u)}:${n}`)).toBeNull();
+    expect((await listActivity(sc(u))).rows).toHaveLength(before);
+    // A real change (the switch of one item, then a new text) is tested.
+    expect((await put([item("same words", { on: false })])).status).toBe(200);
     expect((await run({ nonce: n })).status).toBe(200);
   });
 });

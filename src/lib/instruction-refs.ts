@@ -146,7 +146,8 @@ const NOT_FOUND = /not.?found|\b404\b|does not exist|no such/i;
  * Import one Doc or Sheet as a workspace file and remember where it came from. The same source id always lands in its
  * own file (a Refresh), whatever the title is now. A Refresh is an explicit overwrite of the imported file: edits the
  * owner made to it are replaced by the source's text, as the owner asked by pressing it; a different source whose title makes the same slug gets `-2`, `-3`;
- * a file the owner wrote under that name is never replaced.
+ * a different source never takes a name already in use. A Refresh overwrites whatever file is at the recorded name,
+ * including one the owner wrote there after deleting the imported file (the record is dropped only when a Refresh finds the name free).
  */
 export async function importRef(scope: string, src: { kind: RefKind; id: string; title?: string }): Promise<{ ok: true; name: string; title: string } | { ok: false; error: RefError }> {
   try {

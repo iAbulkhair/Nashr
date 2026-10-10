@@ -13,6 +13,13 @@ const same = (a: Instruction, b: Instruction) =>
   JSON.stringify(a.agents === "all" ? a.agents : [...a.agents].sort()) === JSON.stringify(b.agents === "all" ? b.agents : [...b.agents].sort()) &&
   JSON.stringify(a.refs ?? []) === JSON.stringify(b.refs ?? []);
 
+/**
+ * Whether two sets say the same thing to an agent: the same items in the same order by text, switch, lock, targets and
+ * files. Ids and edit times are ignored (a draft saved from the form may carry fresh ids for the same words). A test
+ * of two such sets would write the same item twice, so the test route refuses it and the page disables the button.
+ */
+export const sameContent = (a: InstructionSet, b: InstructionSet): boolean => a.items.length === b.items.length && a.items.every((x, i) => same(x, b.items[i]));
+
 export type SetDiff = { added: Instruction[]; removed: Instruction[]; changed: { before: Instruction; after: Instruction }[] };
 
 /** What differs between two sets, matched by item id. A change of the edit time alone is not a change. */

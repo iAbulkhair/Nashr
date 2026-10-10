@@ -10,6 +10,7 @@ import { summarizeRevision, type SetDiff, type HistoryRow } from "@/lib/instruct
 import { INSTRUCTION_CHARS, TEST_BRIEF_CHARS, type InstructionLimits } from "@/lib/instructions-safety";
 import type { Draft, Instruction, Layer, Revision, Target } from "@/lib/instructions-store";
 import type { TestOption } from "@/lib/instructions-test";
+import { sameContent } from "@/lib/instructions-diff";
 import { ROW_CODES, errorText, fill, formAfterWrite, newNonce, parseTestResult, restoreBlocked, sameDrafts, toDraft, type TestItem } from "@/lib/instructions-ui";
 import type { TaskType } from "@/lib/tasks";
 import { render } from "@/lib/md";
@@ -281,7 +282,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       setBusy(null);
     }
   }
-  const testHint = !hasDraft ? I.testNeedsDraft : dirty ? I.testNeedsSaved : "";
+  const testHint = paused ? I.testPaused : !hasDraft ? I.testNeedsDraft : dirty ? I.testNeedsSaved : sameContent(layer.active, layer.draft!) ? I.testNoChange : "";
 
   return (
     <div className="mx-auto w-full max-w-3xl">

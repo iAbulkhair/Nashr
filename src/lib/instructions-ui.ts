@@ -45,6 +45,8 @@ const ERROR_KEY = {
   no_brand: "no_brand",
   trial_over: "trial_over",
   model_paused: "model_unavailable",
+  paused: "paused",
+  no_change: "no_change",
   model_unavailable: "model_unavailable",
   duplicate: "duplicate",
   no_credits: "no_credits",

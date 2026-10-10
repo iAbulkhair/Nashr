@@ -11,7 +11,8 @@ import { db } from "@/lib/db";
 import { entitlements } from "@/lib/entitlements";
 import { memoryBlock } from "@/lib/files";
 import { feedbackFor } from "@/lib/feedback";
-import { getLayer } from "@/lib/instructions-store";
+import { sameContent } from "@/lib/instructions-diff";
+import { getLayer, isPaused } from "@/lib/instructions-store";
 import { getGov } from "@/lib/governance";
 import { ModelPaused, modelState } from "@/lib/model";
 import { testQuote } from "@/lib/instructions-test";
@@ -43,7 +44,8 @@ const CLAIM_SECONDS = 600;
  * daily allowance (429 + Retry-After; the key is `sc(u)`, so a refused role is not counted), then the body: `confirm`
  * must be the literal `true` (400 `confirm_required`: the page sends it only after its dialog), `agent`/`type` (400
  * `bad_type`: a type the agent does not own, Reem, or a type chat's `draft_items` cannot draft), `brief` at most 500
- * characters, `nonce` (400 `bad_nonce`), a draft to test (400 `no_draft`). Then the model and the price are resolved
+ * characters, `nonce` (400 `bad_nonce`), a draft to test (400 `no_draft`), the founder's pause off (409 `paused`: with it
+ * on both generations would run without the workspace layer) and a draft that differs from the live set (409 `no_change`). Then the model and the price are resolved
  * as `generateBatch` resolves them (a paused model is 503 before anything is claimed), the nonce is claimed
  * (`setNx` `skilltest:{sc(u)}:{nonce}`, 600 s; a second request with it is 409 `duplicate`, in sequence or at the same
  * instant) and only then credits are taken: two items' worth, once, with the owner's monthly cap for the agent.
@@ -90,6 +92,11 @@ export async function POST(req: Request) {
 
   const layer = await getLayer(scope);
   if (layer.draft === null) return bad("no_draft");
+  // The founder's pause drops the workspace layer from both generations, so the pair would be the same prompt twice. Refused
+  // before the claim and the charge (409 `paused`); the page disables Test while it is on.
+  if (await isPaused()) return bad("paused", 409);
+  // A draft that equals the live set (same items in the same order by text, targets, switch, lock and files; ids do not count) shows no difference either: 409 `no_change`.
+  if (sameContent(layer.active, layer.draft)) return bad("no_change", 409);
 
   // Before the claim and the charge: a paused model must not take credits and hand them back.
   if (modelState() === "paused") return bad("model_paused", 503);
