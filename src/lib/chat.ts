@@ -40,6 +40,7 @@ import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoItems, chatIte
 import { getGov } from "./governance";
 import { DEFAULTS, route, type Rejected } from "./models/route";
 import { MODEL_UNAVAILABLE, MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
+import { otherBrandNames, readAgentScopeModes, scopeCheck, type AgentScopeModes, type ScopeCtx, type ScopeDecision } from "./agent-scope";
 
 /**
  * An inbox item as a chat card shows it. `xflag`: the other agents that flagged it in the cross-agent review, each with
@@ -333,8 +334,10 @@ export const CHAT_RENDER_MIN_MS = 60_000;
  * `modelRejected`: the conversation's pick was not used (`chatRouteFor`, src/lib/models/overrides.ts): an answered reply
  * starts with `MODEL_UNAVAILABLE.chat` in the reply language, saved with it. A paused or mock reply made no model call
  * and carries no notice.
+ * `agentScope`: the founder's agent-scope modes, which the route already read with the refusal ceiling
+ * (`agentScopePreflight`, src/lib/agent-scope.ts), so they are read once per request. Left out, `chat()` reads them itself.
  */
-export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string; modelRejected?: Rejected };
+export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string; modelRejected?: Rejected; agentScope?: AgentScopeModes };
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap";
 
@@ -395,8 +398,31 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   }
 
   const client = anthropic({ timeoutMs: MODEL_BUDGET.CHAT_MS, maxRetries: 1 });
-  // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
-  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email))]);
+  // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call. The last
+  // two are for the agent-scope input gate below: the modes (the route's copy when it passed one) and the names of the
+  // account's other brands. A store error on the brand names must not cost the owner the turn: the gate reads none.
+  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, scopeModes, otherBrands] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
+    console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+    return [];
+  })]);
+  // The agent-scope input gate (rule 794; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md 4.2),
+  // after the paused return and the brand reads and before the first model call. The owner's message is already saved
+  // above, so an enforced refusal saves only its reply: the thread reads the same as "message, then refusal".
+  // - enforce: checked before the call. A refusal is the whole turn: no main model call, the reply delivered the way the
+  //   paused reply is, and no `usd`, so the route's settle gives the message back (the classifier's cost is Thakeen's, on
+  //   the global meter only). `scopeCheck` counts it toward the brand scope's refusal ceiling. An error fails open.
+  // - shadow: started now, beside the turn, so it adds no wait before the first call, and awaited before every way out
+  //   below, so its log line is written before the request ends.
+  const scopeCtx: ScopeCtx = { user, agent: agentId, where: via === "mcp" ? "mcp_chat" : "chat", lang, brand: { name: brand?.name ?? "", industry: brand?.industry ?? "" }, otherBrands, deadline };
+  if (scopeModes.input === "enforce") {
+    const d = await scopeCheck("input", "enforce", text, scopeCtx);
+    if (d.block) {
+      const m: ChatTurn = { role: "assistant", content: d.reply, at: new Date().toISOString(), agent: agentId };
+      await push(email, m, conv);
+      return m;
+    }
+  }
+  const pendingScope: Promise<ScopeDecision | null> = scopeModes.input === "shadow" ? scopeCheck("input", "shadow", text, scopeCtx) : Promise.resolve(null);
   const connected = connectedTargets(conns);
   // The brand's own weekend (its Working days settings, else its country's): the NOW line names the week start from it.
   const weekend = calendarOf(workDays, zoneOf(brand), Date.now()).weekend;
@@ -434,6 +460,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
         .finalMessage();
     } catch (e) {
       if (call.signal.aborted) { outOfTime = true; break; }
+      await pendingScope;
       throw e;
     }
     spent += costUsd(res.model, res.usage);
@@ -455,6 +482,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     if (!uses.length) {
       const m: ChatTurn = { role: "assistant", content: notice + (textOf(res.content) || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), agent: agentId };
       await deliver(email, m, conv);
+      await pendingScope;
       return withLimit(m, actions, spent);
     }
     const results: Anthropic.ToolResultBlockParam[] = [];
@@ -479,6 +507,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
   const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
   await deliver(email, m, conv);
+  await pendingScope;
   return withLimit(m, actions, spent);
 }
 

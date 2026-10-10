@@ -52,6 +52,8 @@ const askNoor = async (email: string) => {
 
 beforeEach(() => { sdk.made = 0; vi.stubEnv("ANTHROPIC_API_KEY", "test"); });
 afterEach(() => { vi.unstubAllEnvs(); });
+// Agent scope (rule 794): the input gate off, so the default shadow classifier makes no extra model client here (R16).
+beforeEach(async () => { await db.set("agent-scope:modes", { prompt: "on", input: "off", role: "off", output: "off" }); });
 
 describe("an ended trial gets no chat turn and no model call (rule 330)", () => {
   it("the web route answers 402 trial_over with the subscription link, streaming or not, in the reader's language", async () => {

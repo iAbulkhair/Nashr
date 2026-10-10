@@ -20,6 +20,7 @@ import { deadlineFor } from "@/lib/media/keys";
 import { appOrigin } from "@/lib/origin";
 import { route } from "@/lib/models/route";
 import { MODEL_UNAVAILABLE_NOTE } from "@/lib/models/overrides";
+import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 
 export const maxDuration = 300;
 
@@ -92,7 +93,10 @@ export async function POST(req: Request) {
         // cheaper way to spend the same models. Answered as a tool error, like MCP generate_content's trial_over: a
         // JSON-RPC client reads the result, not an HTTP status. The link is absolute: it is read outside the app.
         if (trialOver(user)) return ok(id, { ...text(chatRefusedText("trial", user.lang, { origin: appOrigin() })), isError: true });
-        const slow = await chatRefusal(user);
+        // The agent-scope modes and the brand scope's ceiling of refused messages, in the same round as the burst ceiling
+        // and answered first (rule 795, as the web chat): no classifier call and no message reserved.
+        const [slow, pre] = await Promise.all([chatRefusal(user), agentScopePreflight(user)]);
+        if (pre.slow) return ok(id, { ...text(agentScopeSlowText(user.lang)), isError: true });
         if (slow) return ok(id, { ...text(chatRefusedText(slow, user.lang, { cap: chatCaps(user)[slow] })), isError: true });
         // The same monthly allowance too, shared with the app (src/lib/chat-allowance.ts), before chat() saves the message.
         // The turn's one model: reserved here, and chat() runs on the gate's copy of it.
@@ -101,7 +105,7 @@ export async function POST(req: Request) {
         // A connected app is talking: its activity rows say so (`tokenBy`), not "owner". As "mcp": the words come from
         // another assistant, so publishing and core-memory writes are refused in runTool, and a change to the offers or a
         // banned-word removal waits for the owner's Save in the app.
-        const { message: m, chat: status, charged } = await runChatTurn(user, gate, () => chat(user, message, undefined, "noor", { by: tokenBy(user), via: "mcp", deadline, model: gate.model }));
+        const { message: m, chat: status, charged } = await runChatTurn(user, gate, () => chat(user, message, undefined, "noor", { by: tokenBy(user), via: "mcp", deadline, model: gate.model, agentScope: pre.modes }));
         const low = gate.mode === "overflow"
           ? `\n\n[chat: this month's ${status.allowance} messages are used; this message continued on credits and was billed ${charged} credit${charged === 1 ? "" : "s"}]`
           : status.left <= Math.ceil(status.allowance / 10) ? `\n\n[chat: ${status.left} of ${status.allowance} messages left ${status.period === "trial" ? "in the trial" : "this month"}]` : "";

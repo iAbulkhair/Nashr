@@ -123,6 +123,37 @@ export async function brandAddRefusal(email: string): Promise<"hour" | "day" | n
 }
 
 /**
+ * Enforced agent-scope refusals per brand scope (rule 795; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md
+ * section 4.2). A message the input gate refuses makes no main model call and is given back to the chat allowance, so it
+ * is free for the owner; these buckets are what bounds it, and what bounds the classifier calls a looping client could
+ * cause. The scope is `u.scope ?? u.email` (what `sc(u)` returns; `sc` is not imported here, that would be a cycle), so
+ * each brand has its own ceiling. Only enforced input refusals count (`scopeCheck` in src/lib/agent-scope.ts): shadow never.
+ */
+export const AGENT_SCOPE_REFUSALS_PER_HOUR = 20;
+export const AGENT_SCOPE_REFUSALS_PER_DAY = 60;
+const agentScopeOf = (u: Pick<User, "scope" | "email">) => u.scope ?? u.email;
+const count = (v: unknown) => Number(v ?? 0);
+/**
+ * Null when the brand scope may still be refused, else which window is spent, so the owner is told "in an hour" or
+ * "tomorrow". Reads both counters in one `Promise.all` and never adds to them (`allow` would count every attempt, and only
+ * refusals may count). A count at or above its limit refuses. The hour is checked first; when it refuses and the day is
+ * spent too, the day is named, being the longer wait (as `chatRefusal`, rule 331). A count that does not read as a
+ * number refuses nothing.
+ */
+export async function agentScopeCeiling(u: Pick<User, "scope" | "email">): Promise<"hour" | "day" | null> {
+  const s = agentScopeOf(u);
+  const [hour, day] = await Promise.all([db.get<number | string>(`rate:agent-scope:h:${s}`), db.get<number | string>(`rate:agent-scope:d:${s}`)]);
+  const daySpent = count(day) >= AGENT_SCOPE_REFUSALS_PER_DAY;
+  if (count(hour) >= AGENT_SCOPE_REFUSALS_PER_HOUR) return daySpent ? "day" : "hour";
+  return daySpent ? "day" : null;
+}
+/** Count one enforced refusal in both windows (`allow` prefixes `rate:`, so the keys are the ones `agentScopeCeiling` reads). */
+export async function countAgentScopeRefusal(u: Pick<User, "scope" | "email">): Promise<void> {
+  const s = agentScopeOf(u);
+  await Promise.all([allow(`agent-scope:h:${s}`, AGENT_SCOPE_REFUSALS_PER_HOUR, WINDOW.hour), allow(`agent-scope:d:${s}`, AGENT_SCOPE_REFUSALS_PER_DAY, WINDOW.day)]);
+}
+
+/**
  * The public OAuth endpoints, per IP. Hosted MCP clients (claude.ai, ChatGPT) register and exchange tokens from shared
  * egress addresses on behalf of many accounts, and a token pair lives 30 days, so real traffic stays far below these.
  * Registration is the tighter one: it is open (RFC 7591) and every client is stored with no expiry.

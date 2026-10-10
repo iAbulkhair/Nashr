@@ -57,6 +57,8 @@ const credits = async (email: string) => (await getUser(email))!.credits;
 
 beforeEach(() => { sdk.ctor = []; sdk.calls = []; sdk.mode = "hang"; vi.stubEnv("ANTHROPIC_API_KEY", "test"); });
 afterEach(async () => { vi.useRealTimers(); await settle(); vi.unstubAllEnvs(); });
+// Agent scope (rule 794): the input gate off, so the default shadow classifier makes no extra model client here (R16).
+beforeEach(async () => { await db.set("agent-scope:modes", { prompt: "on", input: "off", role: "off", output: "off" }); });
 
 describe("one factory makes every model client, with a timeout and a retry count (rule 335)", () => {
   it("anthropic() hands the SDK exactly the numbers it was given, and refuses nonsense", () => {

@@ -4,6 +4,7 @@ import { listBrands } from "./brands";
 import { getBrand } from "./brand";
 import { classify, type Classified } from "./agent-scope-classify";
 import { VERDICTS, isVerdict, type Verdict } from "./agent-scope-verdicts";
+import { agentScopeCeiling, countAgentScopeRefusal } from "./rate";
 import type { AgentId } from "./agents";
 import type { User } from "./auth";
 
@@ -54,6 +55,24 @@ export async function readAgentScopeModes(): Promise<AgentScopeModes> {
   } catch {
     return parseAgentScopeModes(null);
   }
+}
+
+/**
+ * What a chat route reads before the turn (rule 795): the modes, once per request, and the refusal ceiling, in one
+ * `Promise.all`. `slow` names the spent window, and only while the input gate is in `enforce`: in `off` or `shadow` nothing
+ * is refused, so nothing is counted and no ceiling applies. The route answers `slow` before `chatRefusal`'s answer and
+ * before the chat allowance is touched, and hands `modes` to `chat()` (`ChatOpts.agentScope`). A counter that cannot be read
+ * lets the turn through (the input gate fails open); only the error's name is printed.
+ */
+export async function agentScopePreflight(u: User): Promise<{ modes: AgentScopeModes; slow: "hour" | "day" | null }> {
+  const [modes, slow] = await Promise.all([
+    readAgentScopeModes(),
+    agentScopeCeiling(u).catch((e) => {
+      console.error("agent scope ceiling read failed", e instanceof Error ? e.name : "error");
+      return null;
+    }),
+  ]);
+  return { modes, slow: modes.input === "enforce" ? slow : null };
 }
 
 type Lang = "ar" | "en";
@@ -186,8 +205,10 @@ export type ScopeDecision = { block: false } | { block: true; verdict: Exclude<V
  * - Any other verdict: logged with the mode. `enforce` blocks with `agentScopeRefusalText`, whose names come from the owner's
  *   own brands and not from the classifier's text; `shadow` lets it through.
  *
- * Never throws: a classifier that did throw is an `api` error, and the log never throws. The classifier is called with the
- * turn's `deadline`. The refusal ceiling for enforced input refusals (rule 792's counter) is wired by the input gate.
+ * Never throws: a classifier that did throw is an `api` error, and the log and the count never throw. The classifier is
+ * called with the turn's `deadline`. An `input` check that blocks in `enforce` on a verdict is counted toward the refusal
+ * ceiling of `ctx.user`'s brand scope (`countAgentScopeRefusal`, rule 795). Nothing else counts: not shadow, not `in`, not
+ * an error that failed closed, and not an `output` check (an agent's text is not a message the owner got for free).
  */
 export async function scopeCheck(layer: "input" | "output", mode: AgentScopeMode, text: string, ctx: ScopeCtx, o: { failClosed?: boolean } = {}): Promise<ScopeDecision> {
   if (mode === "off") return { block: false };
@@ -206,5 +227,6 @@ export async function scopeCheck(layer: "input" | "output", mode: AgentScopeMode
   if (verdict.verdict === "in") return { block: false };
   await logAgentScope({ ...line, verdict: verdict.verdict });
   if (mode !== "enforce") return { block: false };
+  if (layer === "input") await countAgentScopeRefusal(ctx.user).catch((e) => console.error("agent scope refusal count failed", e instanceof Error ? e.name : "error"));
   return { block: true, verdict: verdict.verdict, reply: agentScopeRefusalText(verdict.verdict, ctx.lang, { brand: ctx.brand.name, otherBrands: ctx.otherBrands, classified: verdict.brand }) };
 }
