@@ -16,7 +16,7 @@ const GUARD = {
   en: { title: "Brand guard", body: "Words you never want in a post. A draft that contains one cannot be approved or published until you edit it. Checked in code, not promised by the model.", examples: "Common examples, tap to add:", count: (n: number) => `${n} protected ${n === 1 ? "word" : "words"}`, none: "No words yet: the guard is off.", ex: ["guaranteed", "#1", "cheapest", "best in Saudi", "risk-free"] },
 } as const;
 
-/** Why a save failed (rule 971), by the code PUT /api/brand answers; anything else is the generic line. */
+/** Why a save failed (rule 975), by the code PUT /api/brand answers; anything else is the generic line. */
 export const BRAND_SAVE_ERRORS = {
   ar: { missing: "املأ الاسم والمجال والمنتجات والجمهور ثم احفظ.", busy: "حفظ آخر للعلامة يجري الآن. انتظر لحظة ثم احفظ مرة أخرى.", forbidden: "تعديل ملف العلامة للمالك والمسؤول فقط.", failed: "لم يُحفظ شيء. حاول مرة أخرى." },
   en: { missing: "Fill in the name, industry, products and audience, then save.", busy: "Another save of this brand is running. Wait a moment, then save again.", forbidden: "Only the owner and admins can edit the brand file.", failed: "Nothing was saved. Try again." },
@@ -59,7 +59,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
     const fd = Object.fromEntries(new FormData(e.currentTarget));
     const res = await fetch("/api/brand", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, languages: langs, channels }) }).catch(() => null);
     setBusy(false);
-    // A refusal says why and keeps what was typed (rule 971): before, a failed save showed nothing at all. A save of a
+    // A refusal says why and keeps what was typed (rule 975): before, a failed save showed nothing at all. A save of a
     // brand that exists stays on this page with "Saved"; only the first save (no brand file yet) goes on to the chat.
     if (!res?.ok) {
       const j = res ? ((await res.json().catch(() => ({}))) as { error?: string }) : {};

@@ -87,7 +87,7 @@ export function PaymobPlanCard({ lang, billing }: { lang: Lang; billing: Billing
   const r = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  // Turning renewal off and removing the card ask first, in the app's own dialog (rule 970); resuming does not.
+  // Turning renewal off and removing the card ask first, in the app's own dialog (rule 974); resuming does not.
   const [ask, confirmDialog] = useConfirm();
   async function act(action: "cancel" | "resume" | "remove_card") {
     if (busy) return;

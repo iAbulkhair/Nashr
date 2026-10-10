@@ -9,7 +9,7 @@ const T = {
 } as const;
 
 /**
- * The error screen inside the app and founder console shells (rule 973): `app/error.tsx` and `admin/error.tsx` render it,
+ * The error screen inside the app and founder console shells (rule 977): `app/error.tsx` and `admin/error.tsx` render it,
  * so a screen that throws keeps the sidebar and the language, where `[lang]/error.tsx` replaced the whole page. Quiet and
  * in one language: the page's own, read from the path, since an error boundary gets no route params. `home` is the
  * shell's own start (`/{lang}/app` or `/{lang}/admin`). `retry` (Next 16) fetches the screen again and renders it. The digest is what ties this screen to the server log.

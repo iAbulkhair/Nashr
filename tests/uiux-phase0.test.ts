@@ -185,7 +185,7 @@ describe("rule 967: chart series are readable on paper", () => {
   });
 });
 
-describe("rule 970: Paymob renewal off and card removal ask first", () => {
+describe("rule 974: Paymob renewal off and card removal ask first", () => {
   const src = read("src/components/app/PaymobBilling.tsx");
   it("confirms cancel and remove_card in the app's own dialog, not resume", () => {
     expect(src).toMatch(/const \[ask, confirmDialog\] = useConfirm\(\);/);
@@ -196,7 +196,7 @@ describe("rule 970: Paymob renewal off and card removal ask first", () => {
   });
 });
 
-describe("rule 971: a brand save that fails says why", () => {
+describe("rule 975: a brand save that fails says why", () => {
   const src = read("src/components/app/BrandForm.tsx");
   it("shows an alert on a refusal and stays on the form after a save of a brand that exists", () => {
     expect(src).toMatch(/if \(!res\?\.ok\) \{/);
@@ -211,7 +211,7 @@ describe("rule 971: a brand save that fails says why", () => {
   });
 });
 
-describe("rule 972: Connections never shows a raw error code", () => {
+describe("rule 976: Connections never shows a raw error code", () => {
   const src = read("src/components/app/IntegrationsPanel.tsx");
   it("has no alert() and maps the address's ?error= through the message table", () => {
     expect(src).not.toMatch(NATIVE("alert"));
@@ -232,7 +232,7 @@ describe("rule 972: Connections never shows a raw error code", () => {
   });
 });
 
-describe("rule 973: a screen that throws keeps its shell", () => {
+describe("rule 977: a screen that throws keeps its shell", () => {
   it("has an error boundary in the app and the console that retries", () => {
     for (const area of ["app", "admin"]) {
       const f = `src/app/[lang]/${area}/error.tsx`;

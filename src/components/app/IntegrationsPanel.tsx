@@ -40,7 +40,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
-  // A failed action's message (rule 972), shown on the page instead of `alert()`, from the code the route answered.
+  // A failed action's message (rule 976), shown on the page instead of `alert()`, from the code the route answered.
   const [actErr, setActErr] = useState("");
   const fail = (code: unknown) => { setNote(""); setActErr(connectError(lang, code)); };
   // Back from a provider: `?connected=` names it, `?error=` is a code mapped to a message, never shown raw.

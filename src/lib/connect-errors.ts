@@ -1,7 +1,7 @@
 import type { Lang } from "./i18n";
 
 /**
- * What the Connections page says when a connect action or a provider's redirect fails (rule 972). The routes under
+ * What the Connections page says when a connect action or a provider's redirect fails (rule 976). The routes under
  * /api/connect answer short codes (`{ error: "unknown_page" }`, or `?error=invalid_state` on the way back from a provider);
  * the page showed them raw, in `alert()` and in the flash. A code not listed here (a provider's own string, or an
  * exception message the callback passes on) gets the generic line, so no raw code ever reaches the screen.
