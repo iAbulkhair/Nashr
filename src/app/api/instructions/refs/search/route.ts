@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
+import { entitlements } from "@/lib/entitlements";
 import { forbid } from "@/lib/roles";
 import { allow, INSTRUCTION_IMPORTS_PER_HOUR, retryLater, WINDOW } from "@/lib/rate";
 import { REF_QUERY_MAX, RefFail, searchRefs } from "@/lib/instruction-refs";
@@ -7,7 +8,7 @@ import { REF_QUERY_MAX, RefFail, searchRefs } from "@/lib/instruction-refs";
 /**
  * POST `{ q? }` -> `{ ok, results: [{ id, title, kind: "doc" | "sheet", modified? }] }` (at most 10): the workspace's own
  * Google Docs and Sheets that match, found through the Composio login stored for this workspace (rules 955-956). Admin
- * and owner (`instructions.write`). The query is at most 100 characters and goes to Google only as a search argument;
+ * and owner (`instructions.write`) on a plan that allows reference files (403 `refs_plan` otherwise). The query is at most 100 characters and goes to Google only as a search argument;
  * no key is built from it. Its own hourly bucket, 30 searches per workspace (429 + Retry-After), apart from the imports
  * so that browsing the list never uses up the imports. 409 `not_connected` when Composio or the Google login is off,
  * 502 `upstream` for any failure at Composio or Google, with none of their text.
@@ -17,6 +18,8 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const no = forbid(u, "instructions.write");
   if (no) return no;
+  // Attaching a reference file is a plan feature (`refs`): importing one for a plan that cannot attach it is no use.
+  if (!entitlements(u).instructions.refs) return NextResponse.json({ ok: false, error: "refs_plan" }, { status: 403 });
   if (!(await allow(`instr:srch:${sc(u)}`, INSTRUCTION_IMPORTS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
   const b = (await req.json().catch(() => null)) as { q?: unknown } | null;
   if (!b || typeof b !== "object" || Array.isArray(b)) return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });

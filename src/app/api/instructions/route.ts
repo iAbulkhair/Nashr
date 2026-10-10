@@ -15,7 +15,8 @@ import { allow, INSTRUCTION_WRITES_PER_HOUR, retryLater, WINDOW } from "@/lib/ra
  * plan leaves out (the page says "N are not applied"), the plan's limits and the newest 20 versions. Open to every member.
  *
  * PUT `{ items: Draft[], base?: number }` -> `{ ok, layer }`: replaces the draft; the live set is untouched. `base` is the
- * draft's `v` (the live set's `v` when there is no draft) as GET showed it: if it is not what is stored now, 409 `stale` and
+ * layer's edit counter `seq` as GET showed it (`editBase`: a layer stored before the counter has none, and its draft's `v`,
+ * the live set's `v` when there is no draft, is the base): if it is not what is stored now, 409 `stale` and
  * nothing is saved (a chat apply or another save came first). Without `base` the save is accepted as before (old pages). Admin and owner
  * (`instructions.write`), 60 writes an hour per workspace (429 + Retry-After). A refused item is 400 `{ error, index }`.
  *

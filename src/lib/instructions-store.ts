@@ -49,7 +49,12 @@ export type Instruction = {
   at: string;
 };
 export type InstructionSet = { items: Instruction[]; v: number };
-export type Layer = { active: InstructionSet; draft: InstructionSet | null; at: string; by: By | null };
+/**
+ * `seq` is the edit counter (rule 954): every write of the layer (a draft save, a discard, an activation, a restore, a chat
+ * apply) moves it one past the number an editor could hold, so a number an editor holds is never the number of a later
+ * state. A layer stored before it has none and reads as its old token (`editBase`).
+ */
+export type Layer = { active: InstructionSet; draft: InstructionSet | null; at: string; by: By | null; seq?: number };
 export type Revision = { id: string; v: number; at: string; by: By; before: InstructionSet; after: InstructionSet; rollbackOf?: string; note?: string };
 
 /** One item as a form or the chat sends it. */
@@ -87,8 +92,15 @@ export async function getLayer(scope: string): Promise<Layer> {
 /** A stored value as a layer; an empty one when it is not a layer. Shared by `getLayer` and the render's batch read. */
 export function parseLayer(l: unknown): Layer {
   if (!isObj(l) || !isSet(l.active) || !(l.draft === null || l.draft === undefined || isSet(l.draft))) return emptyLayer();
-  return { active: l.active, draft: l.draft ?? null, at: typeof l.at === "string" ? l.at : emptyLayer().at, by: isBy(l.by) ? l.by : null };
+  return { active: l.active, draft: l.draft ?? null, at: typeof l.at === "string" ? l.at : emptyLayer().at, by: isBy(l.by) ? l.by : null, ...(typeof l.seq === "number" && Number.isSafeInteger(l.seq) && l.seq >= 0 ? { seq: l.seq } : {}) };
 }
+
+/**
+ * The `base` an editor names when it saves the draft: the layer's edit counter, or for a layer stored before the counter
+ * the draft's version (the live set's when there is no draft). Not the live version: that stays the plain numbering of
+ * the history (v1, v2, ...) and may equal a number an old editor holds.
+ */
+export const editBase = (l: Layer): number => l.seq ?? l.draft?.v ?? l.active.v;
 
 /** `fn` under the scope's write lock (40 tries, 50 ms apart, as `saveGovAs`), or `busy` when it stays taken for about two seconds. */
 async function withLock<T>(scope: string, fn: () => Promise<T>): Promise<T | { ok: false; error: "busy" }> {
@@ -197,7 +209,7 @@ export async function saveDraft(scope: string, items: Draft[], by: By, opts: { p
   if (items.length > itemsFor(opts.platform)) return { ok: false, error: "too_many" };
   return withLock(scope, async () => {
     const layer = await getLayer(scope);
-    if (opts.base !== undefined && opts.base !== (layer.draft?.v ?? layer.active.v)) return { ok: false as const, error: "stale" as const };
+    if (opts.base !== undefined && opts.base !== editBase(layer)) return { ok: false as const, error: "stale" as const };
     // An item keeps the source and the edit time it had when its id is the same and nothing in it changed.
     const known = new Map([...layer.active.items, ...(layer.draft?.items ?? [])].map((i) => [i.id, i]));
     const taken = new Set<string>();
@@ -212,10 +224,9 @@ export async function saveDraft(scope: string, items: Draft[], by: By, opts: { p
       out.push(built);
     }
     const at = new Date().toISOString();
-    // Every save moves the draft's `v` on, so two tabs that loaded the same `base` cannot both save: the second finds a
-    // newer `v` and gets `stale` (rule 954, carried ruling of the Task 8 review). Nothing else reads the draft's `v`
-    // except this check; activate, history and restore use the live set's own `v`.
-    const next: Layer = { active: layer.active, draft: { items: out, v: (layer.draft?.v ?? layer.active.v) + 1 }, at, by };
+    // Every save moves the edit counter on, so two tabs that loaded the same `base` cannot both save: the second finds a
+    // newer counter and gets `stale`. The draft keeps the live version it was based on in `v`.
+    const next: Layer = { active: layer.active, draft: { items: out, v: layer.active.v }, at, by, seq: editBase(layer) + 1 };
     await db.set(layerKey(scope), next);
     return { ok: true as const, layer: next };
   });
@@ -226,7 +237,7 @@ export async function discardDraft(scope: string, by: By): Promise<{ ok: true; l
   return withLock(scope, async () => {
     const layer = await getLayer(scope);
     if (!layer.draft) return { ok: true as const, layer };
-    const next: Layer = { active: layer.active, draft: null, at: new Date().toISOString(), by };
+    const next: Layer = { active: layer.active, draft: null, at: new Date().toISOString(), by, seq: editBase(layer) + 1 };
     await db.set(layerKey(scope), next);
     return { ok: true as const, layer: next };
   });
@@ -266,7 +277,7 @@ async function commit(scope: string, layer: Layer, items: Instruction[], by: By,
   if (bad) return { ok: false, error: bad };
   const at = new Date().toISOString();
   const revision: Revision = { id: newId(), v: after.v, at, by, before, after, ...(extra.rollbackOf ? { rollbackOf: extra.rollbackOf } : {}), ...(opts.note ? { note: opts.note } : {}) };
-  const next: Layer = { active: after, draft: "draft" in extra ? (extra.draft ?? null) : layer.draft, at, by };
+  const next: Layer = { active: after, draft: "draft" in extra ? (extra.draft ?? null) : layer.draft, at, by, seq: editBase(layer) + 1 };
   const count = items.filter((i) => i.on).length;
   await Promise.all([
     db.set(layerKey(scope), next),
@@ -322,8 +333,8 @@ export async function appendActive(scope: string, d: Draft, by: By, opts: { limi
     let id = made.id;
     while (taken.has(id)) id = newId();
     const built = { ...made, id };
-    // The draft moves on with the live set and its `v` only ever grows, so an editor opened before this apply is stale (`saveDraft`).
-    const draft = layer.draft ? { items: [...layer.draft.items, built], v: Math.max(layer.draft.v, layer.active.v) + 1 } : null;
+    // The draft moves on with the live set (its `v` is the version it was based on), and the edit counter moves too, so an editor opened before this apply is stale (`saveDraft`).
+    const draft = layer.draft ? { items: [...layer.draft.items, built], v: layer.active.v + 1 } : null;
     return commit(scope, layer, [...layer.active.items, built], by, { platform: false, limits: opts.limits }, "apply", { draft, via: "chat" });
   });
 }

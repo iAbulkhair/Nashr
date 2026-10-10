@@ -10,8 +10,9 @@ import { refsKey } from "./instructions-store";
  * Google Docs and Google Sheets as reference files for the agent instructions (rules 955-956, spec 2026-10-10 agent
  * skills portal 8.3). Read only: the two search tools and the two read tools of the catalog, nothing else
  * (composio-catalog.ts lists no write tool for either toolkit). What a read returns is untrusted text; it becomes an
- * ordinary workspace file `ref-<slug>.md` written as the owner's (`by: "user"`), and reaches a model only inside
- * <reference_files> as escaped data (agent-instructions.ts `asData`).
+ * ordinary workspace file `ref-<slug>.md` written as the owner's (`by: "user"`). Like every workspace file it can be read
+ * back raw by the chat and MCP `read_file` tools as a tool result, and the agent instructions render it inside
+ * <reference_files> as escaped data (agent-instructions.ts `asData`); it is never placed in a system prompt unfenced.
  *
  * The connected account is the one stored for the caller's own scope (`sc(u)`, passed in by the route). The query and
  * the document id are only ever tool arguments: no Redis key is built from either. The only key written here is
@@ -81,6 +82,16 @@ export async function searchRefs(scope: string, query: string): Promise<RefHit[]
   return ok.flatMap((d) => d.value).sort((x, y) => (y.modified ?? "").localeCompare(x.modified ?? "")).slice(0, MAX_RESULTS);
 }
 
+/** Whether a search or an import can run for this workspace now: Composio on, and a Docs or Sheets login stored. */
+export async function refsAvailable(scope: string): Promise<boolean> {
+  try {
+    await accountsOf(scope);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Where each imported file came from, by file name; entries that are not well formed are left out. */
 export async function refRecords(scope: string): Promise<Record<string, RefSource>> {
   const raw = await db.hgetall<unknown>(refsKey(scope));
@@ -94,9 +105,12 @@ export async function refRecords(scope: string): Promise<Record<string, RefSourc
   return out;
 }
 
-/** Lowercase Latin or Arabic letters and digits of `s`, joined by `-`, at most 40 characters. */
+/**
+ * Lowercase Latin or Arabic letters and digits of `s`, joined by `-`, at most 40 characters. Marks (Arabic harakat,
+ * decomposed accents) and the tatweel are dropped first, so they do not split a word: "مُحَمَّد" is `محمد`.
+ */
 export function refSlug(s: string): string {
-  const words = s.toLowerCase().match(/[\p{Script=Latin}\p{Script=Arabic}\p{N}]+/gu) ?? [];
+  const words = s.normalize("NFKC").replace(/[\p{M}\u0640]/gu, "").toLowerCase().match(/[\p{Script=Latin}\p{Script=Arabic}\p{N}]+/gu) ?? [];
   return words.join("-").slice(0, SLUG_MAX).replace(/-+$/, "");
 }
 
@@ -130,7 +144,8 @@ const NOT_FOUND = /not.?found|\b404\b|does not exist|no such/i;
 
 /**
  * Import one Doc or Sheet as a workspace file and remember where it came from. The same source id always lands in its
- * own file (a Refresh), whatever the title is now; a different source whose title makes the same slug gets `-2`, `-3`;
+ * own file (a Refresh), whatever the title is now. A Refresh is an explicit overwrite of the imported file: edits the
+ * owner made to it are replaced by the source's text, as the owner asked by pressing it; a different source whose title makes the same slug gets `-2`, `-3`;
  * a file the owner wrote under that name is never replaced.
  */
 export async function importRef(scope: string, src: { kind: RefKind; id: string; title?: string }): Promise<{ ok: true; name: string; title: string } | { ok: false; error: RefError }> {
@@ -152,7 +167,14 @@ export async function importRef(scope: string, src: { kind: RefKind; id: string;
     const source = src.kind === "doc" ? "gdocs" : "gsheets";
     const [records, names] = await Promise.all([refRecords(scope), listFileNames(scope)]);
     const taken = new Set(names);
-    const own = Object.entries(records).find(([, r]) => r.source === source && r.id === src.id)?.[0];
+    let own = Object.entries(records).find(([, r]) => r.source === source && r.id === src.id)?.[0];
+    // The record of this source points at a file that is gone (the owner deleted it): the record is dropped and the
+    // import is a new one, named again below. It never writes into a name the owner may have taken since.
+    if (own && !taken.has(own)) {
+      await db.hdel(refsKey(scope), own);
+      delete records[own];
+      own = undefined;
+    }
     const title = clean(src.title ?? "", REF_TITLE_MAX);
     let name = own;
     if (!name) {

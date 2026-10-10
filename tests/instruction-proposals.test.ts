@@ -37,6 +37,9 @@ const reply = () => ({ cards: [] as InstructionProposal[], actions: [] as string
 const propose = (u: User, input: Record<string, unknown>, r = reply(), ctx: ToolCtx = {}) => runTool(u, "propose_instruction", input, r.actions, [], undefined, { agent: "noor", instructionProposed: r.cards, ...ctx });
 const ids = async (scope: string) => db.smembers(`skillprops:${scope}`);
 
+/** The `base` a page names when it saves: the layer's edit counter (rule 954). */
+const baseOf = (l: { seq?: number; draft?: { v: number } | null; active: { v: number } }) => l.seq ?? l.draft?.v ?? l.active.v;
+
 describe("rule 953: the tool stores a proposal and nothing else", () => {
   it("rule 953: it is offered to all eight agents, is free, and is no gated action", () => {
     expect(CHAT_TOOL_NAMES).toContain("propose_instruction");
@@ -471,7 +474,7 @@ describe("rule 954: the owner's click applies a proposal", () => {
     const u = await owner("apply-stale");
     // The page loads with no draft: base is the live set's version.
     const loaded = await instructionsRoute.GET().then(call);
-    const base = loaded.body.layer.draft?.v ?? loaded.body.layer.active.v;
+    const base = baseOf(loaded.body.layer);
     const p = await make(u, "Never promise delivery dates.");
     expect((await decide(p.id, { decision: "apply" })).status).toBe(200);
     const stale = await instructionsRoute.PUT(json("/api/instructions", "PUT", { items: [{ text: "From the old page.", agents: "all", on: true }], base })).then(call);
@@ -482,7 +485,7 @@ describe("rule 954: the owner's click applies a proposal", () => {
     expect(layer.draft).toBeNull();
     // Reloaded, the page saves; and an old page that sends no base is still accepted (expand step).
     const again = await instructionsRoute.GET().then(call);
-    const fresh = again.body.layer.draft?.v ?? again.body.layer.active.v;
+    const fresh = baseOf(again.body.layer);
     expect((await instructionsRoute.PUT(json("/api/instructions", "PUT", { items: again.body.layer.active.items, base: fresh })).then(call)).status).toBe(200);
     expect((await instructionsRoute.PUT(json("/api/instructions", "PUT", { items: again.body.layer.active.items })).then(call)).status).toBe(200);
     expect((await instructionsRoute.PUT(json("/api/instructions", "PUT", { items: [], base: "7" })).then(call)).status).toBe(400);
@@ -492,7 +495,7 @@ describe("rule 954: the owner's click applies a proposal", () => {
     const u = await owner("apply-stale-draft");
     expect((await saveDraft(sc(u), [{ text: "Draft rule.", agents: "all", on: true }], byOf(u), { platform: false })).ok).toBe(true);
     const loaded = await instructionsRoute.GET().then(call);
-    const base = loaded.body.layer.draft.v;
+    const base = baseOf(loaded.body.layer);
     const p = await make(u, "Always answer in the customer's dialect.");
     expect((await decide(p.id, { decision: "apply" })).status).toBe(200);
     const stale = await instructionsRoute.PUT(json("/api/instructions", "PUT", { items: [{ text: "Draft rule, edited.", agents: "all", on: true }], base })).then(call);
@@ -500,7 +503,7 @@ describe("rule 954: the owner's click applies a proposal", () => {
     const layer = await getLayer(sc(u));
     expect(layer.draft!.items.map((i) => i.text)).toEqual(["Draft rule.", "Always answer in the customer's dialect."]);
     // The page that reloads gets the moved version and saves.
-    const fresh = (await instructionsRoute.GET().then(call)).body.layer.draft.v;
+    const fresh = baseOf((await instructionsRoute.GET().then(call)).body.layer);
     expect(fresh).not.toBe(base);
     expect((await instructionsRoute.PUT(json("/api/instructions", "PUT", { items: layer.draft!.items, base: fresh })).then(call)).status).toBe(200);
   });

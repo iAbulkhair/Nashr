@@ -279,6 +279,7 @@ const READS: Record<string, Gate> = {
   "GET /api/files": "member",
   "GET /api/governance": "member",
   "GET /api/instructions": "member",
+  "GET /api/instructions/refs": "member",
   "GET /api/instructions/history": "member",
   "GET /api/notifications": "member",
   "GET /api/onboard/plan": "member",

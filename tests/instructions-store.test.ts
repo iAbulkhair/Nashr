@@ -15,9 +15,11 @@ import {
   checkLimits,
   diffSets,
   discardDraft,
+  editBase,
   getLayer,
   instructionKeys,
   isPaused,
+  layerKey,
   listFeed,
   listHistory,
   removeFeedRowsFor,
@@ -323,23 +325,26 @@ describe("restore (rule 937)", () => {
 });
 
 describe("a save of an old copy (rule 954)", () => {
-  it("rule 954: saveDraft with a base that is not the draft's version (the live set's when there is no draft) is stale and saves nothing; no base is accepted", async () => {
+  const baseNow = async (scope: string) => editBase(await getLayer(scope));
+
+  it("rule 954: saveDraft with a base that is not the layer's edit counter is stale and saves nothing; no base is accepted", async () => {
     const scope = await ws();
     await put(scope, [d("one")]);
-    // No draft: the base is the live set's version (1).
-    expect(await saveDraft(scope, [d("two")], BY, { platform: false, base: 0 })).toEqual({ ok: false, error: "stale" });
+    const b0 = await baseNow(scope);
+    expect(await saveDraft(scope, [d("two")], BY, { platform: false, base: b0 - 1 })).toEqual({ ok: false, error: "stale" });
     expect((await getLayer(scope)).draft).toBeNull();
-    const first = await saveDraft(scope, [d("two")], BY, { platform: false, base: 1 });
+    const first = await saveDraft(scope, [d("two")], BY, { platform: false, base: b0 });
     if (!first.ok) throw new Error(first.error);
-    // A draft: its own version is the base, and every save moves it on.
-    expect(first.layer.draft!.v).toBe(2);
-    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: 1 })).toEqual({ ok: false, error: "stale" });
+    // The draft keeps the live version it was based on, and every save moves the counter on.
+    expect(first.layer.draft!.v).toBe(1);
+    expect(editBase(first.layer)).toBe(b0 + 1);
+    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: b0 })).toEqual({ ok: false, error: "stale" });
     // A chat apply moves the draft on with the live set, and an editor opened before it is stale.
     const applied = await appendActive(scope, d("from chat"), BY, { limits: LIMITS("pro"), src: "chat" });
     if (!applied.ok) throw new Error(applied.error);
     expect(applied.layer.active.v).toBe(2);
-    expect(applied.layer.draft!.v).toBe(3);
-    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: 2 })).toEqual({ ok: false, error: "stale" });
+    expect(applied.layer.draft!.v).toBe(2);
+    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: b0 + 1 })).toEqual({ ok: false, error: "stale" });
     expect((await getLayer(scope)).draft!.items.map((i) => i.text)).toEqual(["two", "from chat"]);
     expect((await saveDraft(scope, [d("three")], BY, { platform: false })).ok).toBe(true);
     expect(statusOf("stale")).toBe(409);
@@ -348,34 +353,72 @@ describe("a save of an old copy (rule 954)", () => {
   it("rule 954: two tabs that loaded the same base: the first save wins, the second gets stale and changes nothing", async () => {
     const scope = await ws();
     await put(scope, [d("live")]);
-    const tab = { platform: false as const, base: 1 };
+    const tab = { platform: false as const, base: await baseNow(scope) };
     expect((await saveDraft(scope, [d("tab one")], BY, tab)).ok).toBe(true);
     expect(await saveDraft(scope, [d("tab two")], BY, tab)).toEqual({ ok: false, error: "stale" });
     expect((await getLayer(scope)).draft!.items.map((i) => i.text)).toEqual(["tab one"]);
-    // Saving again from the version that save returned works, and again moves it on.
-    const v = (await getLayer(scope)).draft!.v;
-    expect((await saveDraft(scope, [d("tab one, edited")], BY, { platform: false, base: v })).ok).toBe(true);
-    expect((await getLayer(scope)).draft!.v).toBe(v + 1);
-    expect((await saveDraft(scope, [d("again")], BY, { platform: false, base: v })).ok).toBe(false);
+    // Saving again from the counter that save returned works, and again moves it on.
+    const b = await baseNow(scope);
+    expect((await saveDraft(scope, [d("tab one, edited")], BY, { platform: false, base: b })).ok).toBe(true);
+    expect(await baseNow(scope)).toBe(b + 1);
+    expect((await saveDraft(scope, [d("again")], BY, { platform: false, base: b })).ok).toBe(false);
   });
 
-  it("rule 954: activate, history and restore do not read the draft's version: a draft saved three times activates as the next live version", async () => {
+  it("rule 954: a tab that loaded an earlier draft cannot save after the later draft went live (the reviewer's sequence)", async () => {
     const scope = await ws();
     await put(scope, [d("live")]);
-    for (let i = 0; i < 3; i++) {
-      const base = (await getLayer(scope)).draft?.v ?? (await getLayer(scope)).active.v;
-      expect((await saveDraft(scope, [d(`draft ${i}`)], BY, { platform: false, base })).ok).toBe(true);
-    }
-    expect((await getLayer(scope)).draft!.v).toBe(4);
+    // Tab A saves a draft; tab B loads it.
+    expect((await saveDraft(scope, [d("one")], BY, { platform: false, base: await baseNow(scope) })).ok).toBe(true);
+    const tabB = await baseNow(scope);
+    // Tab A saves again, adding "two", and activates it.
+    expect((await saveDraft(scope, [d("one"), d("two")], BY, { platform: false, base: await baseNow(scope) })).ok).toBe(true);
+    const done = await activate(scope, BY, WSL("pro"));
+    if (!done.ok) throw new Error(done.error);
+    expect(done.layer.active.items.map((i) => i.text)).toEqual(["one", "two"]);
+    expect(done.layer.draft).toBeNull();
+    // Tab B saves with the counter it loaded: refused, and the live set keeps "two".
+    expect(await saveDraft(scope, [d("one"), d("from tab B")], BY, { platform: false, base: tabB })).toEqual({ ok: false, error: "stale" });
+    expect((await getLayer(scope)).draft).toBeNull();
+    expect((await getLayer(scope)).active.items.map((i) => i.text)).toEqual(["one", "two"]);
+  });
+
+  it("rule 954: a discard and a new draft do not hand an old tab a number it holds; a restore moves the counter too", async () => {
+    const scope = await ws();
+    await put(scope, [d("live")]);
+    expect((await saveDraft(scope, [d("first draft")], BY, { platform: false, base: await baseNow(scope) })).ok).toBe(true);
+    const old = await baseNow(scope);
+    expect((await discardDraft(scope, BY)).ok).toBe(true);
+    expect((await saveDraft(scope, [d("second draft")], BY, { platform: false })).ok).toBe(true);
+    expect(await saveDraft(scope, [d("old tab")], BY, { platform: false, base: old })).toEqual({ ok: false, error: "stale" });
+    const held = await baseNow(scope);
+    const back = await restore(scope, (await listHistory(scope)).at(-1)!.id, BY, WSL("pro"));
+    if (!back.ok) throw new Error(back.error);
+    expect(await saveDraft(scope, [d("after restore")], BY, { platform: false, base: held })).toEqual({ ok: false, error: "stale" });
+  });
+
+  it("rule 954: the numbering of live versions stays 1, 2, 3 however often the draft was saved", async () => {
+    const scope = await ws();
+    await put(scope, [d("live")]);
+    for (let i = 0; i < 3; i++) expect((await saveDraft(scope, [d(`draft ${i}`)], BY, { platform: false, base: await baseNow(scope) })).ok).toBe(true);
     const done = await activate(scope, BY, WSL("pro"));
     if (!done.ok) throw new Error(done.error);
     expect(done.layer.active.v).toBe(2);
     expect(done.revision.v).toBe(2);
-    expect(done.layer.draft).toBeNull();
     expect((await listHistory(scope)).map((r) => r.v)).toEqual([2, 1]);
     const back = await restore(scope, (await listHistory(scope)).at(-1)!.id, BY, WSL("pro"));
     if (!back.ok) throw new Error(back.error);
     expect(back.layer.active.v).toBe(3);
+  });
+
+  it("rule 954: a layer stored before the counter reads as its old base and the first write starts the counter", async () => {
+    const scope = await ws();
+    await put(scope, [d("live")]);
+    const stored = await getLayer(scope);
+    const { seq: _seq, ...legacy } = stored; // eslint-disable-line @typescript-eslint/no-unused-vars
+    await db.set(layerKey(scope), legacy);
+    expect(editBase(await getLayer(scope))).toBe(1);
+    expect((await saveDraft(scope, [d("new")], BY, { platform: false, base: 1 })).ok).toBe(true);
+    expect(editBase(await getLayer(scope))).toBe(2);
   });
 });
 

@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, newMember, newUser, signIn } from "./helpers/session";
-import { currentUser, sc, type User } from "@/lib/auth";
+import { currentUser, saveUser, sc, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { MAX_FILES, readFile, writeFile } from "@/lib/files";
-import { saveConnection } from "@/lib/connectors/store";
+import { getConnection, saveConnection } from "@/lib/connectors/store";
+import { connectViaComposio } from "@/lib/connectors/via-composio";
+import { getProvider, isAvailable } from "@/lib/connectors/registry";
+import { READS_REFERENCES, WORKING_PROVIDERS } from "@/lib/connectors/working";
 import { TOOLKITS, PROVIDER_TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { TOOLKIT_VERSION, composioRead, composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
 import { INSTRUCTION_PLAN } from "@/lib/instructions-safety";
@@ -12,7 +15,8 @@ import { instructionKeys } from "@/lib/instructions-store";
 import { INSTRUCTION_IMPORTS_PER_HOUR } from "@/lib/rate";
 import { wipeAccount } from "@/lib/account";
 import { NO_LAYERS, instructionBlocks, loadLayers } from "@/lib/agent-instructions";
-import { refRecords } from "@/lib/instruction-refs";
+import { refRecords, refSlug } from "@/lib/instruction-refs";
+import * as listRoute from "@/app/api/instructions/refs/route";
 import * as searchRoute from "@/app/api/instructions/refs/search/route";
 import * as importRoute from "@/app/api/instructions/refs/import/route";
 
@@ -69,9 +73,10 @@ beforeEach(() => {
 });
 afterEach(() => { setComposioClientForTests(null); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
-/** An owner signed in, with Google Workspace connected through Composio unless `connected` is false. */
-async function owner(prefix: string, { connected = true, sheets = true }: { connected?: boolean; sheets?: boolean } = {}): Promise<User> {
+/** An owner on a plan that allows reference files (Pro), signed in, with Google Workspace connected through Composio unless `connected` is false. */
+async function owner(prefix: string, { connected = true, sheets = true, plan = "pro" }: { connected?: boolean; sheets?: boolean; plan?: User["plan"] } = {}): Promise<User> {
   const u0 = await newUser(prefix);
+  await saveUser({ ...u0, plan });
   await signIn(u0.email);
   const u = (await currentUser())!;
   if (connected) await saveConnection(sc(u), { provider: "google_workspace", data: { googledocs: DOCS, ...(sheets ? { googlesheets: SHEETS } : {}) }, meta: { via: "composio", account: "Google Docs and Sheets" }, connectedAt: new Date().toISOString() });
@@ -451,5 +456,119 @@ describe("rule 956: who, how often, and what is wiped", () => {
     }
     const lib = readFileSync("src/lib/instruction-refs.ts", "utf8");
     for (const args of [...lib.matchAll(/console\.\w+\(([^)]*)\)/g)].map((m) => m[1])) expect(args).toMatch(/^"[^"]*"$/);
+  });
+});
+
+describe("rule 955-956: plan, list, slug and connect wiring (fix round 1)", () => {
+  it("rule 956: a plan without reference files (trial) gets 403 refs_plan on search and import before anything is read or called", async () => {
+    const u = await owner("refs-trial", { plan: "trial" });
+    answers.GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT = doc("text");
+    expect(await imp({ kind: "doc", id: ID, title: "T" })).toMatchObject({ status: 403, body: { ok: false, error: "refs_plan" } });
+    expect(await search({ q: "x" })).toMatchObject({ status: 403, body: { error: "refs_plan" } });
+    expect(calls).toEqual([]);
+    expect(Object.keys(await refRecords(sc(u)))).toEqual([]);
+    expect(await db.get(`rate:instr:imp:${sc(u)}`)).toBeNull();
+    // Starter allows them.
+    await owner("refs-starter", { plan: "starter" });
+    expect((await imp({ kind: "doc", id: ID, title: "T" })).status).toBe(200);
+  });
+
+  it("rule 956: GET lists the imports with whether the file still exists and whether an import can run; a member may read; signed out is 401", async () => {
+    const u = await owner("refs-list");
+    const get = () => listRoute.GET().then(call);
+    expect(await get()).toMatchObject({ status: 200, body: { ok: true, available: true, refs: [] } });
+    answers.GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT = doc("text");
+    answers.GOOGLESHEETS_VALUES_GET = sheet([["a", "b"]]);
+    expect((await imp({ kind: "doc", id: ID, title: "Guide" })).status).toBe(200);
+    expect((await imp({ kind: "sheet", id: ID2, title: "Prices" })).status).toBe(200);
+    const r = await get();
+    expect(r.body.refs.map((x: Body) => x.name).sort()).toEqual(["ref-guide.md", "ref-prices.md"]);
+    for (const x of r.body.refs) {
+      expect(Object.keys(x).sort()).toEqual(["at", "exists", "name", "source", "title"]);
+      expect(x.exists).toBe(true);
+    }
+    expect(r.body.refs.find((x: Body) => x.name === "ref-prices.md")).toMatchObject({ source: "gsheets", title: "Prices" });
+    // The owner deletes one file: its record stays listed with exists false.
+    const { deleteFile } = await import("@/lib/files");
+    await deleteFile(sc(u), "ref-guide.md");
+    expect((await get()).body.refs.find((x: Body) => x.name === "ref-guide.md")).toMatchObject({ exists: false });
+    // A member reads the same list; the records of another workspace never appear.
+    const m = await newMember(u, "member");
+    const other = await owner("refs-list-other");
+    expect((await get()).body.refs).toEqual([]);
+    await signIn(m.email);
+    expect((await get()).body.refs.map((x: Body) => x.name).sort()).toEqual(["ref-guide.md", "ref-prices.md"]);
+    expect(other.email).not.toBe(u.email);
+    // Without Composio the list is still readable and says an import is not available.
+    vi.stubEnv("COMPOSIO_API_KEY", "");
+    expect((await get()).body).toMatchObject({ ok: true, available: false });
+    const { signOut } = await import("./helpers/session");
+    signOut();
+    expect((await get()).status).toBe(401);
+  });
+
+  it("rule 956: GET says available false for a workspace that never connected Google", async () => {
+    await owner("refs-list-off", { connected: false });
+    expect((await listRoute.GET().then(call)).body).toMatchObject({ available: false, refs: [] });
+  });
+
+  it("rule 956: a title with harakat or tatweel slugs as the plain word", () => {
+    expect(refSlug("مُحَمَّد")).toBe("محمد");
+    expect(refSlug("كتـــاب المنتجات")).toBe("كتاب-المنتجات");
+    expect(refSlug("Cafe\u0301 Menu")).toBe("café-menu");
+    expect(refSlug("ｆｕｌｌ　ｗｉｄｔｈ ２０２６")).toBe("full-width-2026");
+  });
+
+  it("rule 956: a Refresh whose file is gone drops the record and imports again under a free name; it never writes into a name the owner has since taken", async () => {
+    const u = await owner("refs-gone-file");
+    answers.GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT = doc("v1");
+    expect((await imp({ kind: "doc", id: ID, title: "Plan" })).body.name).toBe("ref-plan.md");
+    const { deleteFile } = await import("@/lib/files");
+    await deleteFile(sc(u), "ref-plan.md");
+    await writeFile(sc(u), "ref-plan.md", "The owner's own file.", "user");
+    // The owner wrote a file under the same name: it is the record's file, and a Refresh is an explicit overwrite.
+    answers.GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT = doc("v2");
+    expect((await imp({ kind: "doc", id: ID, title: "Plan" })).body.name).toBe("ref-plan.md");
+    expect((await readFile(sc(u), "ref-plan.md"))!.content).toBe("v2");
+    // Gone for good: the record is dropped and a new import is named again.
+    await deleteFile(sc(u), "ref-plan.md");
+    const r = await imp({ kind: "doc", id: ID, title: "Plan" });
+    expect(r).toMatchObject({ status: 200, body: { name: "ref-plan.md" } });
+    expect(Object.keys(await refRecords(sc(u)))).toEqual(["ref-plan.md"]);
+    await deleteFile(sc(u), "ref-plan.md");
+    await writeFile(sc(u), "ref-plan.md", "Taken by the owner.", "user");
+    await db.hdel(`skillrefs:${sc(u)}`, "ref-plan.md");
+    await db.hset(`skillrefs:${sc(u)}`, "ref-old.md", { source: "gdocs", id: ID, title: "Plan", at: new Date().toISOString() });
+    // The record points at ref-old.md, which is gone: a new import, and ref-plan.md (the owner's) is not replaced.
+    expect((await imp({ kind: "doc", id: ID, title: "Plan" })).body.name).toBe("ref-plan-2.md");
+    expect((await readFile(sc(u), "ref-plan.md"))!.content).toBe("Taken by the owner.");
+    expect(Object.keys(await refRecords(sc(u))).sort()).toEqual(["ref-plan-2.md"]);
+  });
+
+  it("rule 955: google_workspace is a Composio-only provider: not available without the key, the provider and both auth configs; connecting Docs keeps an existing Sheets account", async () => {
+    const p = getProvider("google_workspace")!;
+    expect(p).toBeTruthy();
+    expect(READS_REFERENCES).toEqual(["google_workspace"]);
+    expect(WORKING_PROVIDERS).not.toContain("google_workspace");
+    vi.stubEnv("COMPOSIO_API_KEY", "");
+    expect(isAvailable(p)).toBe(false);
+    vi.stubEnv("COMPOSIO_API_KEY", "test-key");
+    vi.stubEnv("COMPOSIO_PROVIDERS", "");
+    expect(isAvailable(p), "not named in COMPOSIO_PROVIDERS").toBe(false);
+    vi.stubEnv("COMPOSIO_PROVIDERS", "google_workspace");
+    expect(isAvailable(p), "no auth config").toBe(false);
+    vi.stubEnv("COMPOSIO_AUTH_GOOGLEDOCS", "ac_docs");
+    expect(isAvailable(p), "one auth config of two").toBe(false);
+    vi.stubEnv("COMPOSIO_AUTH_GOOGLESHEETS", "ac_sheets");
+    expect(isAvailable(p)).toBe(true);
+    const sheetsOnly = { provider: "google_workspace", data: { googlesheets: "ca_sheets_1" }, meta: { via: "composio", sheets: "1" }, connectedAt: new Date().toISOString() };
+    const c = await connectViaComposio("scope-x", "google_workspace", "googledocs", "ca_docs_1", sheetsOnly);
+    expect(c.data).toEqual({ googlesheets: "ca_sheets_1", googledocs: "ca_docs_1" });
+    expect(c.meta).toMatchObject({ via: "composio", docs: "1", sheets: "1", account: "Google Docs and Sheets" });
+    const fresh = await connectViaComposio("scope-x", "google_workspace", "googlesheets", "ca_sheets_2", null);
+    expect(fresh.data).toEqual({ googlesheets: "ca_sheets_2" });
+    expect(fresh.meta).toMatchObject({ sheets: "1" });
+    expect(fresh.meta?.docs).toBeUndefined();
+    expect(await getConnection("scope-x", "google_workspace")).toBeNull();
   });
 });
