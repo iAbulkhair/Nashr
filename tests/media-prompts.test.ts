@@ -114,6 +114,8 @@ describe("while Claude is paused: the fixed templates", () => {
 
 describe("with Claude on", () => {
   it("one Haiku 5.5 call, 20 s and no retries, and the model's text is the prompt", async () => {
+    // A still clock: the deadline is built and then read a moment later, so a slow runner could see 19999.
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const p = await load("on");
     expect(await p.imagePrompt(brand(), task, "img-fast", "square", "o@test.example")).toBe("A model-written prompt");
     expect(sdk.calls).toHaveLength(1);
@@ -125,6 +127,7 @@ describe("with Claude on", () => {
   });
 
   it("the timeout is the time left when that is shorter", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const p = await load("on");
     await p.imagePrompt(brand(), task, "img-design", "square", undefined, 5000);
     await p.videoPrompt(brand(), task, "vid-quick", false, undefined, 60_000);
