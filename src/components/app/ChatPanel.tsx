@@ -382,22 +382,23 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
 /**
  * A standing rule an agent proposed in chat (`propose_instruction`, src/lib/instruction-proposals.ts): nothing is in the
  * agent instructions yet. The rule is the model's text, so it is shown as plain text (a React text node, never markup);
- * Add applies it as the owner's click (POST /api/instructions/proposals/{id}, `instructions.write`), Dismiss drops it.
+ * Apply applies it as the owner's click (POST /api/instructions/proposals/{id}, `instructions.write`), Dismiss drops it.
  */
 export function InstructionProposalCard({ p, t, lang, canWrite = true }: { p: InstructionProposalCardData; t: AppDict; lang: "ar" | "en"; /** `can(u, "instructions.write")`: a plain member sees the rule but cannot decide it */ canWrite?: boolean }) {
   const C = t.instructionCard;
   // A reloaded thread carries where the proposal stands now (history() reads it), so a decided card stays decided.
-  const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "gone" | "forbidden" | "busy" | "slow" | "full" | "plan" | "refused" | "error">(p.state === "applied" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
+  const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "gone" | "forbidden" | "busy" | "lockBusy" | "slow" | "full" | "many" | "plan" | "refused" | "error">(p.state === "applied" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
   async function decide(decision: "apply" | "dismiss") {
     setState("saving");
     const r = await fetch(`/api/instructions/proposals/${p.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) }).catch(() => null);
     if (!r) return setState("error");
     if (r.ok) return setState(decision === "apply" ? "applied" : "dismissed");
     const j = (await r.json().catch(() => ({}))) as { error?: string };
-    setState(r.status === 403 ? "forbidden" : r.status === 404 || r.status === 410 ? "gone" : r.status === 429 ? "slow" : j.error === "busy" ? "busy" : j.error === "instructions_limit" ? "full" : j.error === "per_agent_plan" ? "plan" : r.status === 400 ? "refused" : "error");
+    // 409 carries the reason: another answer running (claim_busy) or the workspace lock taken (busy), a full list or plan (own messages), else a text today's rules refuse.
+    setState(r.status === 403 ? "forbidden" : r.status === 404 || r.status === 410 ? "gone" : r.status === 429 ? "slow" : j.error === "claim_busy" ? "busy" : j.error === "busy" ? "lockBusy" : j.error === "instructions_limit" ? "full" : j.error === "too_many" ? "many" : j.error === "per_agent_plan" ? "plan" : r.status === 409 ? "refused" : "error");
   }
   const who = p.agents === "all" ? C.forAll : C.forAgents.replace("{names}", p.agents.map((a) => t.agents[a].name).join(lang === "ar" ? "، " : ", "));
-  const done: Partial<Record<typeof state, string>> = { applied: C.applied, dismissed: C.dismissed, gone: C.gone, forbidden: t.team.errors.forbidden, busy: C.busy, slow: C.slow, full: C.full, plan: C.plan, refused: C.refused, error: C.error };
+  const done: Partial<Record<typeof state, string>> = { applied: C.applied, dismissed: C.dismissed, gone: C.gone, forbidden: t.team.errors.forbidden, busy: C.busy, lockBusy: C.lockBusy, many: C.many, slow: C.slow, full: C.full, plan: C.plan, refused: C.refused, error: C.error };
   const closed = state === "applied" || state === "dismissed" || state === "gone";
   return (
     <article className="mt-3 overflow-hidden rounded-xl border border-lemon/40 bg-white text-ink">
@@ -511,7 +512,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
     if (kind === "brand") out.add(lang === "ar" ? "حُدّث ملف العلامة" : "Brand file updated");
     else if (kind === "brandprop") out.add(lang === "ar" ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waits for your Save");
     else if (kind === "awayprop") out.add(lang === "ar" ? "غياب ينتظر حفظك" : "An absence waits for your Save");
-    else if (kind === "instrprop") out.add(lang === "ar" ? "قاعدة مقترحة تنتظر إضافتك" : "A proposed rule waits for your Add");
+    else if (kind === "instrprop") out.add(lang === "ar" ? "قاعدة مقترحة تنتظر تطبيقك" : "A proposed rule waits for your Apply");
     else if (kind === "generated" || kind === "drafted") out.add(lang === "ar" ? `أُضيف ${n ?? ""} إلى صندوق الموافقات`.replace("  ", " ") : `${n ?? ""} added to approvals`.trim());
     else if (kind === "todo") out.add(lang === "ar" ? "حُدّثت قائمة مهامك" : "Your to-do list was updated");
   }

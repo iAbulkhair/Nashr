@@ -3,7 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { byOf } from "@/lib/actor";
 import { entitlements } from "@/lib/entitlements";
 import { decideInstructionProposal } from "@/lib/instruction-proposals";
-import { publicLayer, statusOf } from "@/lib/instructions-http";
+import { publicLayer } from "@/lib/instructions-http";
 import { forbid } from "@/lib/roles";
 import { allow, INSTRUCTION_WRITES_PER_HOUR, retryLater, WINDOW } from "@/lib/rate";
 
@@ -15,9 +15,10 @@ import { allow, INSTRUCTION_WRITES_PER_HOUR, retryLater, WINDOW } from "@/lib/ra
  *
  * The proposal is read only from the caller's own scope (`sc(u)`): an id from another account or another brand is 404,
  * and no body field names a scope. Who applied comes from the session (`byOf`). Answers: `{ ok: true, layer }` for apply
- * (the public layer: no `imp`), `{ ok: true }` for dismiss; 410 `gone` once decided; 409 `busy` while another answer for it
- * runs, and 409 for a plan limit (`instructions_limit`, `per_agent_plan`), which leaves it open; 400 for a text today's
- * checks refuse (it stays open, to be dismissed).
+ * (the public layer: no `imp`), `{ ok: true }` for dismiss; 410 `gone` once decided; 404 for an id that is not in this
+ * workspace. Every other refusal is 409 with its reason and leaves the proposal open: `claim_busy` while another answer for
+ * it runs, `busy` while the workspace's lock is taken, `instructions_limit` / `too_many` / `per_agent_plan` for a full set or
+ * a plan that no longer fits, and the screen codes or `too_long` for a text today's checks refuse (to be dismissed).
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
@@ -31,6 +32,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const decision = b && typeof b === "object" ? b.decision : undefined;
   if (decision !== "apply" && decision !== "dismiss") return NextResponse.json({ ok: false, error: "bad_decision" }, { status: 400 });
   const r = await decideInstructionProposal(sc(u), id, decision, byOf(u), entitlements(u).instructions);
-  if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: r.error === "gone" ? 410 : statusOf(r.error) });
+  // Spec 7: a full set or a text that is refused today answers 409 with the reason (the PUT of the page keeps 400 for a refused value); decided is 410, unknown 404.
+  if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: r.error === "gone" ? 410 : r.error === "not_found" ? 404 : 409 });
   return NextResponse.json(r.layer ? { ok: true, layer: publicLayer(r.layer) } : { ok: true });
 }

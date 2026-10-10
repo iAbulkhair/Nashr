@@ -1,3 +1,4 @@
+import { statusOf } from "@/lib/instructions-http";
 import { describe, expect, it, vi } from "vitest";
 import { newUser } from "./helpers/session";
 import { saveUser, getUser } from "@/lib/auth";
@@ -318,6 +319,27 @@ describe("restore (rule 937)", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(r.layer.active.items[1].id).toBe(ids[2]);
     expect(r.layer.active.items[1].id).not.toBe("abcabcabcabc");
+  });
+});
+
+describe("a save of an old copy (rule 954)", () => {
+  it("rule 954: saveDraft with a base that is not the draft's version (the live set's when there is no draft) is stale and saves nothing; no base is accepted", async () => {
+    const scope = await ws();
+    await put(scope, [d("one")]);
+    // No draft: the base is the live set's version (1).
+    expect(await saveDraft(scope, [d("two")], BY, { platform: false, base: 0 })).toEqual({ ok: false, error: "stale" });
+    expect((await getLayer(scope)).draft).toBeNull();
+    const first = await saveDraft(scope, [d("two")], BY, { platform: false, base: 1 });
+    expect(first.ok).toBe(true);
+    // A draft: its own version is the base, and a chat apply moves it on with the live set.
+    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: 2 })).toEqual({ ok: false, error: "stale" });
+    const applied = await appendActive(scope, d("from chat"), BY, { limits: LIMITS("pro"), src: "chat" });
+    if (!applied.ok) throw new Error(applied.error);
+    expect(applied.layer.draft!.v).toBe(2);
+    expect(await saveDraft(scope, [d("three")], BY, { platform: false, base: 1 })).toEqual({ ok: false, error: "stale" });
+    expect((await getLayer(scope)).draft!.items.map((i) => i.text)).toEqual(["two", "from chat"]);
+    expect((await saveDraft(scope, [d("three")], BY, { platform: false })).ok).toBe(true);
+    expect(statusOf("stale")).toBe(409);
   });
 });
 

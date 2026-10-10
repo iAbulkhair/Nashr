@@ -4,7 +4,7 @@ import { isAgentId, type AgentId } from "./agents";
 import type { By } from "./actor";
 import { allow, INSTRUCTION_PROPOSALS_PER_DAY, WINDOW } from "./rate";
 import { INSTRUCTION_CHARS, normalizeInstruction, screenInstruction, type InstructionLimits, type ScreenCode } from "./instructions-safety";
-import { appendActive, type Layer, type StoreError } from "./instructions-store";
+import { appendActive, getLayer, type Layer, type StoreError } from "./instructions-store";
 
 /**
  * Standing rules the owner states in chat ("we never say cheap"), which an agent may propose and never apply (agent
@@ -65,14 +65,30 @@ export async function proposeInstruction(
   if (!(await allow(`instr:p:${scope}`, INSTRUCTION_PROPOSALS_PER_DAY, WINDOW.day))) return { ok: false, error: "daily_limit" };
   const p: InstructionProposal = { id: randomBytes(8).toString("hex"), text, agents, at: new Date().toISOString(), by };
   // The id first: a proposal saved is always one `wipeAccount` can find.
+  // The index outlives its newest proposal by the proposals' own 7 days and goes with them (each add refreshes it).
+  await liveIds(scope);
   await db.sadd(indexKey(scope), p.id);
+  await db.expire(indexKey(scope), TTL_S);
   await db.set(key(scope, p.id), p, TTL_S);
   return { ok: true, p, widened };
 }
 
+/**
+ * The index's ids that still matter, in one read: an id whose proposal and outcome have both expired is dropped from the
+ * index (a best-effort `srem`, off the caller's path), so the set does not keep ids for ever while proposals keep coming.
+ */
+async function liveIds(scope: string): Promise<string[]> {
+  const ids = await db.smembers(indexKey(scope));
+  if (!ids.length) return ids;
+  const rows = await db.mget<unknown>([...ids.map((id) => key(scope, id)), ...ids.map((id) => doneKey(scope, id))]);
+  const dead = ids.filter((_, i) => !rows[i] && !rows[ids.length + i]);
+  if (dead.length) await Promise.all(dead.map((id) => db.srem(indexKey(scope), id))).catch(() => {});
+  return ids.filter((id) => !dead.includes(id));
+}
+
 /** Every key the proposals of one scope can leave behind, for `wipeAccount`: each proposal, its outcome and claim, the index and the day's counter. */
 export async function instructionProposalKeys(scope: string): Promise<string[]> {
-  const ids = await db.smembers(indexKey(scope));
+  const ids = await liveIds(scope);
   return [...ids.flatMap((id) => [key(scope, id), doneKey(scope, id), claimKey(scope, id)]), indexKey(scope), dayKey(scope)];
 }
 
@@ -88,13 +104,13 @@ export async function instructionProposalStates(scope: string, ids: string[]): P
   }));
 }
 
-export type Decided = { ok: true; layer?: Layer } | { ok: false; error: StoreError | "gone" };
+export type Decided = { ok: true; layer?: Layer } | { ok: false; error: StoreError | "gone" | "claim_busy" };
 
 /**
  * Apply or dismiss one proposal, once.
  * - `not_found`: no such proposal in this scope (another workspace's id lands here too: only this scope's keys are read).
  * - `gone`: it was decided already (this scope's outcome record is there), so a second click or a second tab applies nothing.
- * - `busy`: another answer for the same proposal is running; it may be retried at once.
+ * - `claim_busy`: another answer for the same proposal is running; it may be retried at once. (`busy` is the store's own: the workspace lock was not taken.)
  * - Apply adds the text to the live set as a new version (`src: "chat"`) and to the draft in progress, through
  *   `appendActive`, under the store's lock and with today's checks. A refusal (a full set, a plan that no longer allows
  *   the targets, a text today's screen refuses) leaves the proposal open: the owner frees a slot and presses Apply again,
@@ -103,18 +119,29 @@ export type Decided = { ok: true; layer?: Layer } | { ok: false; error: StoreErr
 export async function decideInstructionProposal(scope: string, id: string, decision: "apply" | "dismiss", by: By, limits: InstructionLimits): Promise<Decided> {
   if (!ID.test(id)) return { ok: false, error: "not_found" };
   const claim = claimKey(scope, id);
-  if (!(await db.setNx(claim, 1, 60))) return { ok: false, error: "busy" };
+  if (!(await db.setNx(claim, 1, 60))) return { ok: false, error: "claim_busy" };
+  // The outcome first, then the proposal goes: if the second write fails the proposal is still answered as decided.
   const close = async (state: "applied" | "dismissed") => {
-    await Promise.all([db.del(key(scope, id)), db.set(doneKey(scope, id), state, TTL_S)]);
+    await db.set(doneKey(scope, id), state, TTL_S);
+    await db.del(key(scope, id));
   };
   try {
-    const p = await db.get<InstructionProposal>(key(scope, id));
-    if (!p) return { ok: false, error: (await db.get(doneKey(scope, id))) ? "gone" : "not_found" };
+    const [p, done] = await Promise.all([db.get<InstructionProposal>(key(scope, id)), db.get(doneKey(scope, id))]);
+    if (done) return { ok: false, error: "gone" };
+    if (!p) return { ok: false, error: "not_found" };
     if (decision === "dismiss") {
       await close("dismissed");
       return { ok: true };
     }
-    const r = await appendActive(scope, { text: p.text, agents: p.agents, on: true }, by, { limits, src: "chat" });
+    // The live item carries the proposal's id (12 of its 16 hex characters), so an apply whose outcome write failed and
+    // is pressed again finds its own item and only closes the proposal: it is never added twice.
+    const itemId = p.id.slice(0, 12);
+    const live = await getLayer(scope);
+    if (live.active.items.some((i) => i.id === itemId)) {
+      await close("applied");
+      return { ok: true, layer: live };
+    }
+    const r = await appendActive(scope, { id: itemId, text: p.text, agents: p.agents, on: true }, by, { limits, src: "chat" });
     if (!r.ok) return { ok: false, error: r.error };
     await close("applied");
     return { ok: true, layer: r.layer };

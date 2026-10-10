@@ -55,7 +55,7 @@ export type Revision = { id: string; v: number; at: string; by: By; before: Inst
 /** One item as a form or the chat sends it. */
 export type Draft = { text: string; agents: "all" | Target[]; on: boolean; lock?: boolean; refs?: string[]; id?: string };
 
-export type StoreError = "busy" | "too_long" | "too_many" | "bad_target" | "instructions_limit" | "per_agent_plan" | "refs_plan" | "no_draft" | "not_found" | ScreenCode;
+export type StoreError = "busy" | "too_long" | "too_many" | "bad_target" | "instructions_limit" | "per_agent_plan" | "refs_plan" | "no_draft" | "not_found" | "stale" | ScreenCode;
 type Fail = { ok: false; error: StoreError; index?: number };
 type Done = { ok: true; layer: Layer; revision: Revision };
 
@@ -182,12 +182,20 @@ export function checkLimits(set: InstructionSet, limits: InstructionLimits): Sto
 /**
  * Save the draft: every item is normalized and checked, then the whole draft is replaced. The active set is untouched.
  * `index` is the position in `items` of the first one refused. A row with no text left after normalizing is dropped.
+ *
+ * `opts.base` is the version the editor was loaded at: the draft's `v`, or the live set's `v` when there was no draft, as
+ * `getLayer` showed it. It is compared under the lock with what is stored now and a difference is `stale` (409): another
+ * writer got in between (a chat apply adds an item to the live set and to the draft and moves both versions on; an
+ * activation or a discard changes what the editor was based on), and a save of the old copy would drop that item and the
+ * next activation would remove it from the live set. Expand step: a save with no `base` (a page loaded before this
+ * check) is still accepted and replaces the draft as it always did; the page sends `base` from then on.
  */
-export async function saveDraft(scope: string, items: Draft[], by: By, opts: { platform: boolean }): Promise<{ ok: true; layer: Layer } | Fail> {
+export async function saveDraft(scope: string, items: Draft[], by: By, opts: { platform: boolean; base?: number }): Promise<{ ok: true; layer: Layer } | Fail> {
   if (!Array.isArray(items)) return { ok: false, error: "too_many" };
   if (items.length > itemsFor(opts.platform)) return { ok: false, error: "too_many" };
   return withLock(scope, async () => {
     const layer = await getLayer(scope);
+    if (opts.base !== undefined && opts.base !== (layer.draft?.v ?? layer.active.v)) return { ok: false as const, error: "stale" as const };
     // An item keeps the source and the edit time it had when its id is the same and nothing in it changed.
     const known = new Map([...layer.active.items, ...(layer.draft?.items ?? [])].map((i) => [i.id, i]));
     const taken = new Set<string>();
@@ -309,7 +317,8 @@ export async function appendActive(scope: string, d: Draft, by: By, opts: { limi
     let id = made.id;
     while (taken.has(id)) id = newId();
     const built = { ...made, id };
-    const draft = layer.draft ? { ...layer.draft, items: [...layer.draft.items, built] } : null;
+    // The draft moves on with the live set (its `v` is the version it was based on), so an editor opened before this apply is stale (`saveDraft`).
+    const draft = layer.draft ? { items: [...layer.draft.items, built], v: layer.active.v + 1 } : null;
     return commit(scope, layer, [...layer.active.items, built], by, { platform: false, limits: opts.limits }, "apply", { draft, via: "chat" });
   });
 }

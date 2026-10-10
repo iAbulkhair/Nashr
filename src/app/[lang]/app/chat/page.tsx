@@ -50,7 +50,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
     }
     return (
       <div className="grid min-h-0 flex-1">
-        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} chat={chat} canConfirmChina={canConfirmChina} />
+        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} chat={chat} canConfirmChina={canConfirmChina} canInstructions={can(u, "instructions.write")} />
       </div>
     );
   }
