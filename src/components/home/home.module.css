@@ -998,7 +998,7 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 .pface .doodle :is(path, circle, ellipse, rect, line) { stroke-width: 1.25px; }
 .pface .doodle .fine { stroke-width: 0.9px; }
 .doodle .blush { fill: color-mix(in oklab, var(--color-agent-sami) 30%, transparent); stroke: none; }
-.carNav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-block-start: 22px; }
+.carNav { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; margin-block-start: 22px; }
 .arrow {
   position: relative;
   isolation: isolate;
@@ -1012,9 +1012,10 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
   color: var(--color-ink);
   cursor: pointer;
 }
-.chev { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.25px; stroke-linecap: round; stroke-linejoin: round; }
+.chev, .glyph { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.25px; stroke-linecap: round; stroke-linejoin: round; }
+/* The slider's own pause button has nothing to do for a visitor who asked for less motion: the row never moves by itself. */
+@media (prefers-reduced-motion: reduce) { .autoBtn { display: none; } }
 :global([dir="rtl"]) .chev { transform: scaleX(-1); }
-.arrow:disabled { opacity: 0.35; cursor: default; }
 .arrow:focus-visible, .pip:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ink); outline-offset: 2px; border-radius: 50%; }
 .pips { display: flex; gap: 2px; }
 .pip { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; }

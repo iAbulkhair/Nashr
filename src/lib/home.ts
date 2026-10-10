@@ -484,10 +484,10 @@ export type SceneKind = "like" | "tip" | "idea";
  */
 export type Scene = { role: L; line: L; kind: SceneKind; agent: HomeAgentId; look: Look } & ({ task: TaskType; feature?: never } | { feature: Feature; task?: never });
 
-export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; prev: L; next: L; slide: L } = {
-  h: { ar: "كيف يشتغلون مع ذكين.", en: "How owners work with Thakeen." },
-  sub: { ar: "أمثلة توضيحية: وش يعجبهم، وش تعلّموا، ووش ينصحون فيه.", en: "Illustrative examples: what they like, what they learned, and what they recommend." },
-  // Required by rule 775: the scenes are not reviews, and the page says so where the scenes are.
+export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; prev: L; next: L; slide: L; pause: L; play: L } = {
+  h: { ar: "عملاء جربوا ذكين.", en: "How owners work with Thakeen." },
+  sub: { ar: "وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", en: "What they like, what they learned, and what they recommend." },
+  // Rule 775: the scenes stay role-only illustrations, not reviews: no names, no digits. Neither language opens with «أمثلة توضيحية» / "Illustrative examples" any more (founder's wording, 2026-10-10).
   kinds: {
     like: { ar: "يعجبني", en: "What I like" },
     tip: { ar: "نصيحة", en: "Tip" },
@@ -497,6 +497,9 @@ export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; 
   prev: { ar: "السابق", en: "Previous" },
   next: { ar: "التالي", en: "Next" },
   slide: { ar: "مجموعة", en: "Set" },
+  // The slider moves by itself; this button's label says what pressing it does.
+  pause: { ar: "أوقف التمرير التلقائي", en: "Pause auto-slide" },
+  play: { ar: "شغّل التمرير التلقائي", en: "Play auto-slide" },
 };
 
 export const SCENES: Scene[] = [
