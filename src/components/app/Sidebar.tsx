@@ -141,6 +141,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
           {show.refer && <li>{row(`${base}/refer`, N.refer, "gift")}</li>}
           {show.partner && <li>{row(`${base}/partner`, PARTNER_COPY[lang].nav, "growth")}</li>}
           <li>{row(`${base}/governance`, N.governance, "shield")}</li>
+          <li>{row(`${base}/instructions`, N.instructions, "spark")}</li>
           <li>{row(`${base}/activity`, N.activity, "clock")}</li>
           <li>{row(`${base}/integrations`, N.integrations, "grid")}</li>
           {/* Public page: what shipped, and the wishlist signed-in owners vote on. */}

@@ -17,6 +17,8 @@ export const PLATFORM_CHARS = 2000;
 export const WORKSPACE_ITEMS = 120;
 export const PLATFORM_ITEMS = 100;
 export const MAX_REFS = 3;
+/** Characters of the sample brief a "Test this instruction" run takes (spec 11): the route refuses more, the page counts to it. */
+export const TEST_BRIEF_CHARS = 500;
 
 /** What a plan allows per brand workspace (spec 9). `chars` is the same for every plan, so `entitlements` adds it. */
 export type InstructionLimits = { max: number; chars: 600; perAgent: boolean; refs: boolean };

@@ -11,13 +11,11 @@ import { db } from "@/lib/db";
 import { entitlements } from "@/lib/entitlements";
 import { memoryBlock } from "@/lib/files";
 import { feedbackFor } from "@/lib/feedback";
-import { countCost } from "@/lib/generate-batch";
 import { getLayer } from "@/lib/instructions-store";
 import { getGov } from "@/lib/governance";
 import { ModelPaused, modelState } from "@/lib/model";
-import { modelAllowsTask, modelById } from "@/lib/models/catalog";
-import { creditsFor } from "@/lib/models/credits";
-import { generateRouteFor } from "@/lib/models/overrides";
+import { testQuote } from "@/lib/instructions-test";
+import { TEST_BRIEF_CHARS } from "@/lib/instructions-safety";
 import { generate } from "@/lib/noor";
 import { statsFor } from "@/lib/stats";
 import { noteRejectedPick } from "@/lib/usage";
@@ -30,8 +28,8 @@ import { deadlineFor } from "@/lib/media/keys";
 export const maxDuration = 300;
 
 const NONCE = /^[A-Za-z0-9_-]{8,64}$/;
-/** What the owner may add to the test as a note for the agent: it is the owner-notes argument of `generate` (in the user message, after the task spec), never system text. */
-const BRIEF_CHARS = 500;
+/** What the owner may add to the test as a note for the agent (`TEST_BRIEF_CHARS`): it is the owner-notes argument of `generate` (in the user message, after the task spec), never system text. */
+const BRIEF_CHARS = TEST_BRIEF_CHARS;
 /** How long a click's nonce stays claimed: a replay inside it is a duplicate (spec 11). */
 const CLAIM_SECONDS = 600;
 
@@ -98,14 +96,13 @@ export async function POST(req: Request) {
   const [brand, gov] = await Promise.all([getBrand(scope), getGov(scope)]);
   if (!brand) return bad("no_brand");
   if (trialOver(u)) return bad("trial_over", 402);
-  // The model `generateBatch` would use for this brand and type, resolved once for both generations and the price.
-  const routed = generateRouteFor(u, brand, type);
-  const model = routed.model;
+  // The model `generateBatch` would use for this brand and type, resolved once for both generations and the price. The
+  // customer page asks the same function for the price on its button (`testPrice`), so the two cannot disagree.
+  const quote = testQuote(u, brand, type);
+  const { model, cost } = quote;
   // A refused pick is counted for the founder console (global, best effort: it never changes the test), as in generateBatch.
-  if (routed.rejected) await noteRejectedPick("generate", routed.rejected);
-  const entry = modelById(model);
-  if (!entry || (!entry.auto && !entry.pick) || !modelAllowsTask(entry, type)) return bad("model_unavailable", 503);
-  const cost = 2 * creditsFor(countCost(type, 1), model, "generate", type);
+  if (quote.routed.rejected) await noteRejectedPick("generate", quote.routed.rejected);
+  if (!quote.available) return bad("model_unavailable", 503);
 
   const by = await byOf(u);
   // The claim comes before the charge: whoever loses it has taken nothing.

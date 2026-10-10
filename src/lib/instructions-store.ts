@@ -339,26 +339,8 @@ export async function appendActive(scope: string, d: Draft, by: By, opts: { limi
   });
 }
 
-const same = (a: Instruction, b: Instruction) =>
-  a.text === b.text &&
-  a.on === b.on &&
-  !!a.lock === !!b.lock &&
-  JSON.stringify(a.agents === "all" ? a.agents : [...a.agents].sort()) === JSON.stringify(b.agents === "all" ? b.agents : [...b.agents].sort()) &&
-  JSON.stringify(a.refs ?? []) === JSON.stringify(b.refs ?? []);
-
-/** What differs between two sets, matched by item id. A change of the edit time alone is not a change. */
-export function diffSets(a: InstructionSet, b: InstructionSet): { added: Instruction[]; removed: Instruction[]; changed: { before: Instruction; after: Instruction }[] } {
-  const was = new Map(a.items.map((i) => [i.id, i]));
-  const now = new Map(b.items.map((i) => [i.id, i]));
-  return {
-    added: b.items.filter((i) => !was.has(i.id)),
-    removed: a.items.filter((i) => !now.has(i.id)),
-    changed: b.items.flatMap((after) => {
-      const before = was.get(after.id);
-      return before && !same(before, after) ? [{ before, after }] : [];
-    }),
-  };
-}
+// The comparison is a pure module (instructions-diff.ts) so the page can use it in the browser; the store keeps exporting it.
+export { diffSets } from "./instructions-diff";
 
 /** The founder's switch: while on, no workspace layer is applied anywhere. */
 export async function isPaused(): Promise<boolean> {
