@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { AppDict } from "@/lib/app-i18n";
@@ -10,7 +10,7 @@ import { summarizeRevision, type SetDiff, type HistoryRow } from "@/lib/instruct
 import { INSTRUCTION_CHARS, TEST_BRIEF_CHARS, type InstructionLimits } from "@/lib/instructions-safety";
 import type { Draft, Instruction, Layer, Revision, Target } from "@/lib/instructions-store";
 import type { TestOption } from "@/lib/instructions-test";
-import { ROW_CODES, editBaseOf, errorText, fill, newNonce, sameDrafts, toDraft } from "@/lib/instructions-ui";
+import { ROW_CODES, errorText, fill, formAfterWrite, newNonce, parseTestResult, restoreBlocked, sameDrafts, toDraft, type TestItem } from "@/lib/instructions-ui";
 import type { TaskType } from "@/lib/tasks";
 import { render } from "@/lib/md";
 import { dateFormat } from "@/lib/dates";
@@ -21,7 +21,7 @@ import Scribble from "@/components/Scribble";
 
 /** The eight agents and the group for images and videos: what a customer may point an instruction at. */
 const CUSTOMER_TARGETS: Target[] = [...AGENT_IDS, "media"];
-type Item = { channel: string; title: string; body: string };
+type Item = TestItem;
 type Busy = null | "save" | "activate" | "discard" | "restore" | "test" | "search" | "import";
 type Reply = { ok: boolean; status: number; j: Record<string, unknown> };
 
@@ -101,11 +101,14 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   const [histErr, setHistErr] = useState("");
   const [cmp, setCmp] = useState<{ id: string; loading: boolean; diff?: SetDiff } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
+  // The newest Compare request: a slower, earlier answer is ignored.
+  const cmpToken = useRef(0);
   // Import
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ id: string; title: string; kind: "doc" | "sheet"; modified?: string }[] | null>(null);
   const [impMsg, setImpMsg] = useState("");
   const [impErr, setImpErr] = useState("");
+  const [impCode, setImpCode] = useState("");
   const [importing, setImporting] = useState<string | null>(null);
   // Test
   const [agent, setAgent] = useState<AgentId | "">(testOptions[0]?.agent ?? "");
@@ -138,17 +141,15 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   const reason = (r: Reply) => errorText(t, r.j.error ?? (r.status === 401 ? "unauthorized" : undefined), { max: limits.chars });
   const clear = () => { setMsg(""); setErr(""); setRowErrors({}); setStale(false); setHistMsg(""); setHistErr(""); };
 
-  /** What the server stored is what the page shows. `resetRows`: the form follows the stored draft (or the live set), dropping unsaved edits. */
-  function adopt(next: Layer, resetRows: boolean) {
+  /** What the server stored is what the page shows: the form always follows the layer an answer carries (see `formAfterWrite`), never local rows next to a newer base. */
+  function adopt(next: Layer) {
     setLayer(next);
-    setBase(editBaseOf(next));
-    if (resetRows) setRows((next.draft ?? next.active).items.map(toDraft));
+    const f = formAfterWrite(next);
+    setRows(f.rows);
+    setBase(f.base);
   }
-  /** How many switched-on items the plan leaves out changes with the live set; the server counts them (best effort). */
-  async function refreshSkipped() {
-    const r = await call("/api/instructions", "GET");
-    if (r.ok && typeof r.j.skipped === "number") setSkipped(r.j.skipped);
-  }
+  /** The count of switched-on items the plan leaves out comes with the answer of activate and restore (the live set is what changes it). */
+  const takeSkipped = (r: Reply) => { if (typeof r.j.skipped === "number") setSkipped(r.j.skipped); };
   /** A refused request: a refused text goes under its row, a changed-elsewhere answer offers the reload, the rest is a line. */
   function fail(r: Reply, into: "page" | "history" = "page") {
     const code = r.j.error;
@@ -164,7 +165,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
     try {
       const r = await call("/api/instructions", "PUT", { items: rows, base });
       if (!r.ok) { fail(r); return false; }
-      adopt(r.j.layer as Layer, true);
+      adopt(r.j.layer as Layer);
       setMsg(I.saved);
       return true;
     } finally {
@@ -179,10 +180,10 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
     try {
       const r = await call("/api/instructions/activate", "POST", {});
       if (!r.ok) { fail(r); return; }
-      adopt(r.j.layer as Layer, true);
+      adopt(r.j.layer as Layer);
       setHistory((h) => [summarizeRevision(r.j.revision as Revision), ...h].slice(0, 20));
       setMsg(I.activated);
-      void refreshSkipped();
+      takeSkipped(r);
     } finally {
       setBusy(null);
     }
@@ -194,7 +195,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
     try {
       const r = await call("/api/instructions/discard", "POST", {});
       if (!r.ok) { fail(r); return; }
-      adopt(r.j.layer as Layer, true);
+      adopt(r.j.layer as Layer);
       setMsg(I.discarded);
     } finally {
       setBusy(null);
@@ -203,36 +204,39 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
 
   async function compare(id: string) {
     setHistErr("");
+    const mine = ++cmpToken.current;
     if (cmp?.id === id) { setCmp(null); return; }
     setCmp({ id, loading: true });
     const r = await call(`/api/instructions/history?compare=${encodeURIComponent(id)}`, "GET");
+    if (cmpToken.current !== mine) return;
     if (!r.ok || !r.j.diff) { setCmp(null); fail(r, "history"); return; }
     setCmp({ id, loading: false, diff: r.j.diff as SetDiff });
   }
   async function restore(row: HistoryRow) {
+    if (restoreBlocked(dirty)) return;
     clear();
     if (!(await ask({ title: fill(I.restoreTitle, { v: row.v }), message: fill(I.restoreConfirm, { v: row.v }), confirmLabel: I.restore, cancelLabel: t.dialog.back, destructive: true }))) return;
     setRestoring(row.id);
     try {
       const r = await call("/api/instructions/restore", "POST", { revisionId: row.id });
       if (!r.ok) { fail(r, "history"); return; }
-      // A draft in progress is kept by the server, and so are the owner's unsaved edits; with none, the form follows the live set.
-      adopt(r.j.layer as Layer, !dirty);
+      // Restore is blocked while the form has unsaved edits, so the form can follow the stored draft the server kept.
+      adopt(r.j.layer as Layer);
       setHistory((h) => [summarizeRevision(r.j.revision as Revision), ...h].slice(0, 20));
       setCmp(null);
       setHistMsg(I.restored);
-      void refreshSkipped();
+      takeSkipped(r);
     } finally {
       setRestoring(null);
     }
   }
 
   async function search() {
-    setImpMsg(""); setImpErr("");
+    setImpMsg(""); setImpErr(""); setImpCode("");
     setBusy("search");
     try {
       const r = await call("/api/instructions/refs/search", "POST", { q: q.trim() });
-      if (!r.ok) { setImpErr(reason(r)); return; }
+      if (!r.ok) { setImpErr(reason(r)); setImpCode(String(r.j.error ?? "")); return; }
       setHits(Array.isArray(r.j.results) ? (r.j.results as NonNullable<typeof hits>) : []);
     } finally {
       setBusy(null);
@@ -240,12 +244,12 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   }
   /** Import a search result, or Refresh an earlier import with the source it was stored with. */
   async function importRef(kind: "doc" | "sheet", id: string, title: string, key: string) {
-    setImpMsg(""); setImpErr("");
+    setImpMsg(""); setImpErr(""); setImpCode("");
     setImporting(key);
     setBusy("import");
     try {
       const r = await call("/api/instructions/refs/import", "POST", { kind, id, title });
-      if (!r.ok || typeof r.j.name !== "string") { setImpErr(reason(r)); return; }
+      if (!r.ok || typeof r.j.name !== "string") { setImpErr(reason(r)); setImpCode(String(r.j.error ?? "")); return; }
       const name = r.j.name;
       const shownTitle = typeof r.j.title === "string" ? r.j.title : title;
       setFiles((f) => (f.includes(name) ? f : [...f, name].sort()));
@@ -268,8 +272,9 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
     try {
       // A new nonce for each confirmed click: the server charges once per nonce, so a double click or a replay costs nothing more.
       const r = await call("/api/instructions/test", "POST", { agent: option.agent, type: option.type, brief: brief.trim(), confirm: true, nonce: newNonce() });
-      if (!r.ok || !r.j.before || !r.j.after) { setTestErr(errorText(t, r.j.error ?? (r.status === 401 ? "unauthorized" : undefined), { max: TEST_BRIEF_CHARS })); return; }
-      setResult({ before: r.j.before as Item, after: r.j.after as Item, spent: Number(r.j.spent) });
+      const done = r.ok ? parseTestResult(r.j) : null;
+      if (!done) { setTestErr(errorText(t, r.j.error ?? (r.status === 401 ? "unauthorized" : undefined), { max: TEST_BRIEF_CHARS })); return; }
+      setResult(done);
       // The balance in the sidebar comes from the server render.
       router.refresh();
     } finally {
@@ -329,7 +334,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
           {impErr && (
             <p role="alert" className="mt-2 text-sm text-danger">
               {impErr}
-              {impErr === errorText(t, "not_connected") && <> <Link href={`/${lang}/app/integrations`} className="underline">{t.nav.integrations}</Link></>}
+              {impCode === "not_connected" && <> <Link href={`/${lang}/app/integrations`} className="underline">{t.nav.integrations}</Link></>}
             </p>
           )}
           {hits && (
@@ -402,6 +407,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       <section className="card mt-4" aria-labelledby="ins-history">
         <h2 id="ins-history" className="font-display font-medium">{I.history}</h2>
         <p className="mt-1 text-sm text-muted">{I.historySub}</p>
+        {!readOnly && restoreBlocked(dirty) && <p className="mt-2 text-sm text-muted">{I.restoreNeedsSaved}</p>}
         {histMsg && <p role="status" className="mt-2 text-sm text-ink">{histMsg}</p>}
         {histErr && <p role="alert" className="mt-2 text-sm text-danger">{histErr}</p>}
         {history.length === 0 ? (
@@ -421,7 +427,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
                   </p>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => void compare(r.id)} disabled={locked && !cmp} aria-describedby={`ins-rev-${r.id}`} aria-expanded={cmp?.id === r.id} className="btn btn-secondary btn-xs">{cmp?.id === r.id ? (cmp.loading ? I.comparing : I.hideCompare) : I.compare}</button>
-                    {!readOnly && <button type="button" onClick={() => void restore(r)} disabled={locked} aria-describedby={`ins-rev-${r.id}`} className="btn btn-secondary btn-xs">{restoring === r.id ? I.restoring : I.restore}</button>}
+                    {!readOnly && <button type="button" onClick={() => void restore(r)} disabled={locked || restoreBlocked(dirty)} aria-describedby={`ins-rev-${r.id}`} className="btn btn-secondary btn-xs">{restoring === r.id ? I.restoring : I.restore}</button>}
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-ink/70"><span className="tnum">{fill(I.on, { n: r.count })}</span> · {fill(I.changes, { a: r.added, r: r.removed, c: r.changed })}</p>

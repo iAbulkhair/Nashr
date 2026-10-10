@@ -3,7 +3,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import { isAgentId } from "@/lib/agents";
 import type { Draft, Target } from "@/lib/instructions-store";
 import { MAX_REFS, WORKSPACE_ITEMS } from "@/lib/instructions-safety";
-import { fill } from "@/lib/instructions-ui";
+import { agentsControl, fill, showRefs } from "@/lib/instructions-ui";
 
 /** The row-level reason a save was refused, by the row's position in the list. */
 export type RowErrors = Record<number, string>;
@@ -28,8 +28,8 @@ export const targetLabel = (t: AppDict, target: Target): string => (isAgentId(ta
  * - `items`: the rows as the form sends them (`Draft`); a row without an `id` is new.
  * - `maxChars`: the length of one text (600 for a workspace, 2000 for the platform); the counter and `maxLength`.
  * - `targets`: what a row can be pointed at (the eight agents and `media` for a customer; the founder adds `reviewer` and `judge`).
- * - `perAgent`: whether the plan applies named targets. Below it the picker is off and a row that names agents says so.
- * - `refsOn` / `files`: whether the plan applies reference files, and the workspace file names a row may attach (up to `MAX_REFS`). A name that is no longer a file is flagged.
+ * - `perAgent`: whether the plan applies named targets. Below it only "All agents" can be chosen: a row that already names agents keeps its control so it can be set to All agents (the fix `per_agent_plan` asks for).
+ * - `refsOn` / `files`: whether the plan applies reference files, and the workspace file names a row may attach (up to `MAX_REFS`). A name that is no longer a file is flagged. Without `refsOn` an attached file still shows with its remove button (the fix `refs_plan` asks for), and nothing can be added.
  * - `allowLock`: the platform's "customers cannot override" flag; never offered to a customer.
  * - `errors`: the reason a save refused a row, shown under it. `refTitles`: the imported file's title by its file name.
  *
@@ -57,6 +57,7 @@ export default function InstructionEditor({ t, items, onChange, maxChars, target
           const refs = d.refs ?? [];
           const free = files.filter((f) => !refs.includes(f));
           const err = errors[i];
+          const ctl = agentsControl(perAgent, named, readOnly);
           return (
             <li key={d.id ?? `new-${i}`} className={`rounded-xl border-[1.5px] p-3 ${d.on ? "border-ink/30" : "border-ink/15 bg-ink/5"}`}>
               <div className="flex items-start gap-3">
@@ -71,9 +72,9 @@ export default function InstructionEditor({ t, items, onChange, maxChars, target
 
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-muted">{I.agents}</span>
-                <select aria-label={`${I.agents} · ${fill(I.rowText, { n })}`} value={named ? "some" : "all"} disabled={readOnly || !perAgent} onChange={(e) => chooseAgents(i, e.target.value === "some")} className="rounded border border-ink/15 bg-white px-2 py-1 disabled:opacity-60">
+                <select aria-label={`${I.agents} · ${fill(I.rowText, { n })}`} value={named ? "some" : "all"} disabled={ctl.disabled} onChange={(e) => chooseAgents(i, e.target.value === "some")} className="rounded border border-ink/15 bg-white px-2 py-1 disabled:opacity-60">
                   <option value="all">{I.allAgents}</option>
-                  <option value="some">{I.chosenAgents}</option>
+                  <option value="some" disabled={ctl.someDisabled}>{I.chosenAgents}</option>
                 </select>
                 {!perAgent && !named && <span className="text-xs text-muted">{I.perAgentLocked}</span>}
                 {allowLock && (
@@ -95,7 +96,7 @@ export default function InstructionEditor({ t, items, onChange, maxChars, target
               )}
               {named && !perAgent && <p className="mt-1 text-xs text-muted">{I.perAgentIgnored}</p>}
 
-              {refsOn && (
+              {showRefs(refsOn, refs.length) && (
                 <div className="mt-2 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-muted">{I.refs}</span>
@@ -107,7 +108,7 @@ export default function InstructionEditor({ t, items, onChange, maxChars, target
                         {!readOnly && <button type="button" aria-label={fill(I.refsRemove, { name: refTitles[name] || name })} onClick={() => set(i, { refs: refs.filter((r) => r !== name) })} className="px-0.5 hover:text-danger">×</button>}
                       </span>
                     ))}
-                    {!readOnly && refs.length < MAX_REFS && free.length > 0 && (
+                    {!readOnly && refsOn && refs.length < MAX_REFS && free.length > 0 && (
                       <select aria-label={`${I.refsAdd} · ${fill(I.rowText, { n })}`} value="" onChange={(e) => e.target.value && set(i, { refs: [...refs, e.target.value] })} className="rounded border border-ink/15 bg-white px-2 py-0.5 text-xs">
                         <option value="">{I.refsAdd}</option>
                         {free.map((f) => <option key={f} value={f}>{refTitles[f] || f}</option>)}
@@ -117,7 +118,7 @@ export default function InstructionEditor({ t, items, onChange, maxChars, target
                   {refs.length >= MAX_REFS && <p className="mt-1 text-xs text-muted">{fill(I.refsMax, { n: MAX_REFS })}</p>}
                 </div>
               )}
-              {!refsOn && refs.length > 0 && <p className="mt-2 text-xs text-muted">{I.refsNotApplied}</p>}
+              {!refsOn && refs.length > 0 && <p className="mt-1 text-xs text-muted">{I.refsNotApplied}</p>}
 
               {!readOnly && (
                 <div className="mt-2 flex justify-end">

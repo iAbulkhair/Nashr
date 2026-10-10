@@ -13,7 +13,11 @@ import { skippedCount } from "@/lib/agent-instructions";
 import { activate, diffSets as storeDiffSets, editBase, getLayer, saveDraft, type Draft, type Revision } from "@/lib/instructions-store";
 import { diffSets, summarizeRevision } from "@/lib/instructions-diff";
 import { testOptionsFor, testPrice } from "@/lib/instructions-test";
-import { INSTRUCTION_ERROR_CODES, editBaseOf, errorText, newNonce, sameDrafts, toDraft } from "@/lib/instructions-ui";
+import { INSTRUCTION_ERROR_CODES, agentsControl, editBaseOf, errorText, formAfterWrite, newNonce, parseTestResult, restoreBlocked, sameDrafts, showRefs, toDraft } from "@/lib/instructions-ui";
+import InstructionEditor from "@/components/app/InstructionEditor";
+import * as activateRoute from "@/app/api/instructions/activate/route";
+import * as restoreRoute from "@/app/api/instructions/restore/route";
+import { saveConnection } from "@/lib/connectors/store";
 import { TEST_BRIEF_CHARS } from "@/lib/instructions-safety";
 import { AGENT_IDS } from "@/lib/agents";
 import { DRAFT_TYPES } from "@/lib/tasks";
@@ -409,5 +413,111 @@ describe("rule 957: the browser does not make requests on its own", () => {
     // Model and imported text never go in as HTML except through the safe renderer.
     expect(panel.match(/dangerouslySetInnerHTML/g)?.length ?? 0).toBeLessThanOrEqual(1);
     expect(editor).not.toContain("dangerouslySetInnerHTML");
+  });
+});
+
+
+describe("rule 957: fix round 1 (stale base, downgrade fixes, compare race, no network at render)", () => {
+  const render = async (el: Parameters<typeof renderToReadableStream>[0]) => new Response(await renderToReadableStream(el)).text();
+  const editorProps = (over: Partial<Parameters<typeof InstructionEditor>[0]> = {}) => ({ t: appDict.en, items: [{ id: "aaaaaaaaaaaa", text: "Only for Noor", agents: ["noor" as const], on: true, refs: ["ref-menu.md"] }], onChange: () => {}, maxChars: 600, targets: [...AGENT_IDS, "media" as const], perAgent: true, refsOn: true, files: ["ref-menu.md"], allowLock: false, readOnly: false, ...over });
+
+  it("after any write the form follows the layer the server returned, with that layer's base (never local rows with a newer base)", () => {
+    const at = "2026-10-10T10:00:00.000Z";
+    const mk = (text: string, id: string) => ({ id, text, agents: "all" as const, on: true, src: "owner" as const, at });
+    const layer = { active: { items: [mk("live", "aaaaaaaaaaaa")], v: 2 }, draft: { items: [mk("their draft", "bbbbbbbbbbbb")], v: 3 }, at, by: null, seq: 7 };
+    const f = formAfterWrite(layer);
+    expect(f.base).toBe(7);
+    expect(f.rows.map((r) => r.text)).toEqual(["their draft"]);
+    expect(formAfterWrite({ ...layer, draft: null, seq: undefined }).rows.map((r) => r.text)).toEqual(["live"]);
+    expect(formAfterWrite({ ...layer, draft: null, seq: undefined }).base).toBe(2);
+  });
+
+  it("restore is blocked while the form has unsaved edits, and the panel says why and disables the button", () => {
+    expect(restoreBlocked(true)).toBe(true);
+    expect(restoreBlocked(false)).toBe(false);
+    const panel = readFileSync("src/components/app/InstructionsPanel.tsx", "utf8");
+    expect(panel).toContain("disabled={locked || restoreBlocked(dirty)}");
+    expect(panel).toContain("I.restoreNeedsSaved");
+    expect(panel).not.toContain("adopt(r.j.layer as Layer, ");
+    for (const lang of ["ar", "en"] as const) expect(appDict[lang].instructions.restoreNeedsSaved.trim()).not.toBe("");
+  });
+
+  it("a downgraded row that names agents keeps its Applies-to control (only All agents can be picked); a plan with per-agent keeps both", async () => {
+    expect(agentsControl(false, true, false)).toEqual({ disabled: false, someDisabled: true });
+    expect(agentsControl(false, false, false)).toEqual({ disabled: true, someDisabled: true });
+    expect(agentsControl(true, true, false)).toEqual({ disabled: false, someDisabled: false });
+    expect(agentsControl(false, true, true).disabled).toBe(true);
+    const down = await render(createElement(InstructionEditor, editorProps({ perAgent: false })));
+    const select = down.match(/<select[^>]*>/)![0];
+    expect(select).not.toMatch(/\sdisabled(=|\s|>)/);
+    expect(down).toMatch(/<option value="some" disabled/);
+    // A row set to All agents on a plan without per-agent has the control off.
+    const plain = await render(createElement(InstructionEditor, editorProps({ perAgent: false, items: [{ id: "aaaaaaaaaaaa", text: "x", agents: "all", on: true }] })));
+    expect(plain.match(/<select[^>]*>/)![0]).toMatch(/\sdisabled(=|\s|>)/);
+  });
+
+  it("a plan without reference files still shows an attached file with its remove button, and no way to add one", async () => {
+    expect(showRefs(false, 1)).toBe(true);
+    expect(showRefs(false, 0)).toBe(false);
+    expect(showRefs(true, 0)).toBe(true);
+    const down = await render(createElement(InstructionEditor, editorProps({ refsOn: false, perAgent: true })));
+    expect(down).toContain(appDict.en.instructions.refsRemove.replace("{name}", "ref-menu.md"));
+    expect(down).toContain(esc(appDict.en.instructions.refsNotApplied));
+    expect(down).not.toContain(`aria-label="${appDict.en.instructions.refsAdd}`);
+    const none = await render(createElement(InstructionEditor, editorProps({ refsOn: false, items: [{ id: "aaaaaaaaaaaa", text: "x", agents: "all", on: true }] })));
+    expect(none).not.toContain(appDict.en.instructions.refs);
+  });
+
+  it("the panel ignores a Compare answer that is not the newest request, and keeps the not-connected link on the code", () => {
+    const panel = readFileSync("src/components/app/InstructionsPanel.tsx", "utf8");
+    expect(panel).toContain("++cmpToken.current");
+    expect(panel).toContain("if (cmpToken.current !== mine) return;");
+    expect(panel).toContain('impCode === "not_connected"');
+    expect(panel).not.toContain('impErr === errorText');
+    expect(panel).not.toContain("refreshSkipped");
+  });
+
+  it("a test answer is checked before it is rendered: a missing field or a wrong type is not a result", () => {
+    const item = { channel: "instagram", title: "t", body: "b" };
+    expect(parseTestResult({ ok: true, before: item, after: item, spent: 6 })).toEqual({ before: item, after: item, spent: 6 });
+    expect(parseTestResult({ before: item, after: { ...item, body: 4 }, spent: 6 })).toBeNull();
+    expect(parseTestResult({ before: item, after: null, spent: 6 })).toBeNull();
+    expect(parseTestResult({ before: item, after: item, spent: "6" })).toBeNull();
+    expect(parseTestResult({})).toBeNull();
+  });
+
+  it("activate and restore answer the number of items the plan leaves out, so the page asks for no other history", async () => {
+    const u = await account("p957z1", "pro");
+    const items = Array.from({ length: 12 }, (_, i) => item(`Rule number ${i}`));
+    await live(u, [...items, item("Only for Noor", { agents: ["noor"] })]);
+    const first = (await getLayer(sc(u))).active.items;
+    await saveUser({ ...(await getUser(u.email))!, plan: "starter" });
+    const limits = entitlements((await getUser(u.email))!).instructions;
+    // A restore of the live version is refused by the plan today; a smaller set goes live and restore of it answers its count.
+    await put(u, first.slice(0, 3).map((i) => ({ id: i.id, text: i.text, agents: "all" as const, on: true })));
+    const act = await activateRoute.POST();
+    expect(act.status).toBe(200);
+    const body = (await act.json()) as { skipped: number; revision: { id: string } };
+    expect(body.skipped).toBe(skippedCount((await getLayer(sc(u))).active, limits));
+    const rest = await restoreRoute.POST(json("/api/instructions/restore", "POST", { revisionId: body.revision.id }));
+    expect(rest.status).toBe(200);
+    expect(((await rest.json()) as { skipped: number }).skipped).toBe(skippedCount((await getLayer(sc(u))).active, limits));
+  });
+
+  it("the page never waits on Composio: with it on and a Google login stored, Import is offered from the stored record and nothing is fetched", async () => {
+    vi.stubEnv("COMPOSIO_API_KEY", "test-key");
+    vi.stubEnv("COMPOSIO_PROVIDERS", "google_workspace");
+    try {
+      const u = await account("p957z2", "pro");
+      await saveConnection(sc(u), { provider: "google_workspace", data: { googledocs: "ca_DOCS" }, meta: { via: "composio" }, connectedAt: new Date().toISOString() });
+      const spy = vi.spyOn(globalThis, "fetch");
+      const p = await propsOf();
+      expect(p.googleOn).toBe(true);
+      await html("en");
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

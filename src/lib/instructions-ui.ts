@@ -90,3 +90,38 @@ const sig = (d: Draft) => JSON.stringify([d.id ?? "", d.text, d.on, d.agents ===
 
 /** Whether two lists of rows are the same edit: text, switch, targets, lock and files (a new row has no id and is never the same as a stored one). */
 export const sameDrafts = (a: Draft[], b: Draft[]): boolean => a.length === b.length && a.every((d, i) => sig(d) === sig(b[i]));
+
+/**
+ * What the form holds after any answer that carries a layer (save, activate, discard, restore): the stored draft (or the
+ * live set when there is none) and the edit base that goes with it. The form never keeps local rows next to a newer
+ * base, because that pairing would let a later save overwrite what another tab or an accepted chat suggestion wrote
+ * (rule 954's stale check exists for exactly that).
+ */
+export const formAfterWrite = (l: Layer): { rows: Draft[]; base: number } => ({ rows: (l.draft ?? l.active).items.map(toDraft), base: editBaseOf(l) });
+
+/** Restore puts the live set back and bumps the edit counter; with unsaved edits on the screen it would pair them with the new base, so it waits for a save or a discard. */
+export const restoreBlocked = (dirty: boolean): boolean => dirty;
+
+/**
+ * The "Applies to" control of one row. Below a plan with per-agent instructions only "All agents" can be chosen, but a row
+ * that already names agents (stored before a downgrade) keeps the control usable, so the owner can set it to All agents,
+ * which is what `per_agent_plan` asks for.
+ */
+export const agentsControl = (perAgent: boolean, named: boolean, readOnly: boolean): { disabled: boolean; someDisabled: boolean } => ({ disabled: readOnly || (!perAgent && !named), someDisabled: !perAgent });
+
+/** The files a row shows: on a plan without reference files an attached file still shows (with its remove button) so it can be taken off; nothing can be added. */
+export const showRefs = (refsOn: boolean, attached: number): boolean => refsOn || attached > 0;
+
+export type TestItem = { channel: string; title: string; body: string };
+const asItem = (v: unknown): TestItem | null => {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  return typeof o.channel === "string" && typeof o.title === "string" && typeof o.body === "string" ? { channel: o.channel, title: o.title, body: o.body } : null;
+};
+/** The answer of a test, or null when its shape is not what the page renders (it is never cast). */
+export function parseTestResult(j: Record<string, unknown>): { before: TestItem; after: TestItem; spent: number } | null {
+  const before = asItem(j.before);
+  const after = asItem(j.after);
+  const spent = typeof j.spent === "number" && Number.isFinite(j.spent) ? j.spent : null;
+  return before && after && spent !== null ? { before, after, spent } : null;
+}
