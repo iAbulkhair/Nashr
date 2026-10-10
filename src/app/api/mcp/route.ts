@@ -20,7 +20,7 @@ import { deadlineFor } from "@/lib/media/keys";
 import { appOrigin } from "@/lib/origin";
 import { route } from "@/lib/models/route";
 import { MODEL_UNAVAILABLE_NOTE } from "@/lib/models/overrides";
-import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
+import { agentScopePreflight, agentScopeSlowText, checkGenerationNotes } from "@/lib/agent-scope";
 
 export const maxDuration = 300;
 
@@ -114,8 +114,18 @@ export async function POST(req: Request) {
       case "generate_content": {
         if (!isTaskType(args.type)) return ok(id, { ...text("Unknown type."), isError: true });
         const type = args.type;
+        const lang = user.lang === "en" ? "en" : "ar";
+        const notes = String(args.notes ?? "");
+        // The agent-scope modes and the brand scope's ceiling of refused requests (rule 795), read and answered before any
+        // classifier call and before anything is charged; a tool error, like the other refusals below.
+        const pre = await agentScopePreflight(user);
+        if (pre.slow) return ok(id, { ...text(agentScopeSlowText(lang)), isError: true });
+        // The input gate on the notes (rule 796), before `generateBatch`: an enforced refusal is a tool error that charges and
+        // saves nothing. `notes` is the string the batch is given, so what the gate reads is what the generator reads.
+        const gate = await checkGenerationNotes(user, type, notes, { mode: pre.modes.input, where: "mcp_generate", lang, deadline });
+        if (gate.block) return ok(id, { ...text(gate.reply), isError: true });
         // The request's own deadline bounds the batch's cross-agent review (notes only, skipped when too little is left).
-        const r = await generateBatch(user, user.scope ?? user.email, { type, notes: String(args.notes ?? ""), source: "chat", via: "mcp", by: tokenBy(user), deadline });
+        const r = await generateBatch(user, user.scope ?? user.email, { type, notes, source: "chat", via: "mcp", by: tokenBy(user), deadline, agentScope: pre.modes });
         // A tool error, like insufficient credits: a JSON-RPC client reads the result, not an HTTP status.
         if (!r.ok) {
           switch (r.reason) {

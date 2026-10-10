@@ -28,7 +28,7 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
     // page stayed disabled with the status frozen on "running" until the owner reloaded.
     try {
       const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, notes }) });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
       if (res.ok && j.ok) {
         setMsg(g.done);
         r.push(`/${lang}/app`);
@@ -36,6 +36,12 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
         return;
       }
       limitFromError(j.error);
+      // Outside what the team works on (rule 796), or too many such requests: the server wrote the answer in the owner's language.
+      // Shown as text in the status line, never as HTML.
+      if ((j.error === "agent_scope" || j.error === "slow_down") && typeof j.message === "string" && j.message) {
+        setMsg(j.message);
+        return;
+      }
       const map: Record<string, string> = { no_credits: noCreditsText(g, owner, topups), trial_over: g.trialOver, no_brand: g.noBrand, no_cart_data: g.noCartData, model_paused: g.paused, agent_cap: t.limit.agentCapTitle };
       setMsg((j.error && map[j.error]) || g.failed);
     } catch {

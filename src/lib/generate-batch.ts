@@ -39,6 +39,7 @@ import type { Grounding } from "./json";
 import { promptStamp } from "./prompt-stamp";
 import { byOf, systemBy, type By } from "./actor";
 import { recordActivity, type Activity } from "./activity";
+import type { AgentScopeModes } from "./agent-scope";
 
 /** Where a batch was asked for. Not the same as `source`: MCP and chat items are both `source:"chat"`. */
 export type BatchVia = "app" | "chat" | "mcp" | "weekly" | "routine" | "handoff";
@@ -116,6 +117,12 @@ export type BatchOpts = {
    * a pick is never answered by another model than the one it was priced at, and when it fails the batch is refunded.
    */
   model?: string;
+  /**
+   * The founder's agent-scope modes (src/lib/agent-scope.ts), read once by the route (`agentScopePreflight`) and handed down,
+   * as `ChatOpts.agentScope` is for a chat turn. The owner's routes check the notes before the batch (rule 796) and pass the
+   * modes on for the check of the items the batch makes (a later task of Part B); left out, the batch reads them itself.
+   */
+  agentScope?: AgentScopeModes;
 };
 
 /**
