@@ -16,6 +16,8 @@ Convention: this spec PR adds no `docs/system/tests/NNNN-*.md`. That file comes 
 | 4 | Drive | **Auto-save every generated file** to the client's Drive when Drive is connected. The manual button stays as the retry for a failed save. An archive failure never blocks publishing | 6.1, 6.4 |
 | 5 | Drive auth | **Both, in this order:** Composio Google Drive first (it works now through Composio's verified app), then direct Google OAuth with `drive.file` once Google verifies our consent screen. One archive interface, two connectors behind it; the client uses whichever is connected | 6.2 |
 | 6 | hPanel facts | **Postponed** by the founder. They stay "founder to confirm" and are listed in the pre-build checklist | 1.1, 9 |
+| 7 | kie.ai and Higgsfield | **Keep our own 30-day copy**; they do not move to link plus thumbnail. Their links die in 1-14 days, often before a post scheduled a week ahead is published, and video reference images and YouTube staging need our own file. Only fal is link plus thumbnail | 5.4 |
+| 8 | fal thumbnail retention | **30 days, like every other file** in v1. One rule; no deletion warnings for thumbnails | 4.3 |
 
 ## 0. Why we keep our own copy, and what exists today
 
@@ -194,7 +196,7 @@ Warning times follow from `del`: `w1` is due at `del − 7 d` (day 23 normally) 
 
 Who and what:
 - A file needs a warning only if it is ours in full size (`kind` image or video) and `drive` is not `"ok"`: Drive is not connected, or the auto-save failed. A file already saved to the client's Drive is deleted on day 30 with no warning.
-- Thumbnails of fal images (`kind` thumb) are not warned about. The client was told when the image was made to save the full size from the provider (5.4). Q2 below asks whether thumbnails should live longer.
+- Thumbnails of fal images (`kind` thumb) are not warned about. The client was told when the image was made to save the full size from the provider (5.4). Thumbnails follow the same 30 days as every other file (D8).
 
 How:
 - **In the app:** a banner on the inbox while any file of the scope has a warning issued and is not yet deleted. It opens a list page computed from `mfiles:{scope}` (one `hgetall`) showing each file's thumbnail, the post title, the channel, the deletion date, and a download link `/m/{name}?download=1`. No new notice store is added.
@@ -270,7 +272,7 @@ Once the scan shows 0 on both stores, `isOurMediaUrl` drops the Blob host, and t
 - **Dead link:** refused with `media_link_expired` and one clear message: "The provider's link to this image has expired, so it cannot be published. Generate the image again or upload your own." Nothing is sent to Meta and no credit moves. The check reads only the task's stored `imageUrl` with `imageProvider` `"fal"`, never a URL from the request.
 - If the client's Drive holds the archived copy, the message says so, but Drive is still never a publish source (rule 1012).
 
-Q1 below asks whether kie and Higgsfield should also move to links plus thumbnails.
+kie and Higgsfield keep our own 30-day copy (D7); only fal is link plus thumbnail.
 
 ### 5.5 Privacy text (rule 1014)
 
@@ -430,8 +432,7 @@ Each is a draft PR and goes live only through a founder-merged release PR. Media
 
 ## 8. Open questions for the founder
 
-1. **kie.ai and Higgsfield:** should they also move to "link plus thumbnail" like fal? Recommended: **no, keep our 30-day copy for them.** Their links die in 1-14 days, often before a post scheduled a week ahead is published, and video reference images and YouTube staging need our own file. fal is the exception only because its links last longer and its images are cheap to remake.
-2. **Thumbnail retention:** fal thumbnails follow the 30-day rule like every other file (recommended for v1: one rule, no warnings for thumbnails), or live longer (for example 12 months, ~0.5 GB at 100 clients) so history keeps a picture after the post is gone?
+None. Every question is answered in section D (D1-D8). What is left is the pre-build hPanel checklist in section 9.
 
 ## 9. Pre-build checklist (founder, in hPanel, before PR 1 goes live)
 
