@@ -7,6 +7,7 @@ import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthP
 import { openLots, topupCredits, topupView } from "@/lib/topups";
 import { can } from "@/lib/roles";
 import { entitlementView } from "@/lib/entitlements";
+import { chatPremiumHold } from "@/lib/models/credits";
 import { paceStart, runway } from "@/lib/usage-view";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import { OFFER_COPY, OfferBanner } from "@/components/app/BillingOffer";
@@ -90,7 +91,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       )}
       {sub && <PaymobPlanCard lang={lang} billing={sub} />}
       <PlanIncludesCard view={{ ent: view.ent, used: view.used }} lang={lang} />
-      <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} />
+      <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} premiumHold={chatPremiumHold()} />
       <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} payOnline={online} />
       {owner && u.plan === "trial" && (
         <div className="mt-6 rounded-2xl bg-ink p-6 text-lilac">

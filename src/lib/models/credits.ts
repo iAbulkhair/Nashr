@@ -1,4 +1,4 @@
-import { modelById } from "./catalog";
+import { modelById, pickModels } from "./catalog";
 import { PRICED_AT, TIER_MULTIPLIER, type Surface, type Tier } from "./tiers";
 import { CHAT_TURN_MAX_USD, chatOverflowHold, maxCostPerCreditUsd } from "../pricing";
 import { TASK_MODELS } from "../task-models";
@@ -88,4 +88,14 @@ export function chatUnitsFor(model: string): number {
  */
 export function chatHoldFor(model: string): number {
   return chatOverflowHold(maxCostPerCreditUsd(), chatTurnMaxUsd(model));
+}
+
+/**
+ * The hold of a conversation on a Premium model a customer may pick for chat: the largest `chatHoldFor` among the picks
+ * of the Premium tier that run chat's tools (4 on Opus 5.5 today), or 0 when there is none. The account-level cards show
+ * the default model's hold (`chatStatus(u, route("chat").model)`, 2), so the billing page's card adds this one as its own
+ * line (rule 907) when it is above the default's. It reads the catalog only: no price, unit or hold changes.
+ */
+export function chatPremiumHold(): number {
+  return pickModels().reduce((most, m) => (m.tier === "premium" && m.caps.tools ? Math.max(most, chatHoldFor(m.id)) : most), 0);
 }

@@ -18,8 +18,11 @@ import ReadOnlyNote from "./ReadOnlyNote";
  *
  * Past the allowance with the switch on, nothing is taken before a message: it needs at least `overflow.hold` credits in
  * the balance, and after the reply it is billed what it actually cost, at most `overflow.hold` (src/lib/chat-allowance.ts).
+ * `overflow.hold` is the default model's. A conversation the owner set to a Premium model has its own, larger hold, which
+ * the page fills in as `premiumHold` (`chatPremiumHold()`, rule 907); the card names it in one more line, only when it is
+ * above `overflow.hold`.
  */
-export default function ChatAllowanceCard({ lang, status, owner, nextReset, trialEnds, runway, credits }: {
+export default function ChatAllowanceCard({ lang, status, owner, nextReset, trialEnds, runway, credits, premiumHold }: {
   lang: Lang;
   status: ChatStatus;
   owner: boolean;
@@ -30,6 +33,8 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
   runway: Runway | null;
   /** The account's credit balance now: below `overflow.hold`, chat past the allowance is paused even with the switch on. */
   credits?: number;
+  /** The hold of a conversation on a Premium model, from the server (rule 907); no line when it is not above `overflow.hold`. */
+  premiumHold?: number;
 }) {
   const ar = lang === "ar";
   const [s, setS] = useState(status);
@@ -42,6 +47,7 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
   const overflowOn = s.overflow.on && s.overflow.available;
   // The founder set this account's messages to 0 (`User.chatAllowance`): nothing renews, so no date is promised.
   const chatOff = s.allowance <= 0;
+  const premium = typeof premiumHold === "number" && Number.isFinite(premiumHold) && premiumHold > s.overflow.hold ? formatCount(premiumHold) : null;
   const short = overflowOn && typeof credits === "number" && Number.isFinite(credits) && credits < s.overflow.hold;
 
   async function toggle(on: boolean) {
@@ -110,6 +116,11 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
           <p className="mt-2 text-xs text-muted" data-chat-overflow-terms="">{ar
             ? `على الكريدت: تحتاج كل رسالة إضافية ${hold} كريدت على الأقل في رصيدك، وتُحسب بما كلّفته فعلاً، ${hold} كريدت على الأكثر. أجزاء الكريدت تُرحَّل إلى الرسالة التالية فلا يُقرَّب شيء للأعلى، والرسالة التي تتعثر لا يُخصم عليها شيء. إذا كان رصيدك أقل من ${hold} كريدت تتوقف الدردشة.`
             : `On credits, each extra message needs at least ${hold} credits in your balance and is billed what it actually cost, at most ${hold} credits. Parts of a credit carry over to the next message, so nothing is rounded up, and a message that fails is not billed. With fewer than ${hold} credits in your balance, chat pauses.`}</p>
+          {premium && (
+            <p className="mt-1 text-xs text-muted" data-chat-overflow-premium="">{ar
+              ? `في المحادثة التي تختار لها نموذجاً متقدّماً: تحتاج كل رسالة إضافية ${premium} كريدت على الأقل في رصيدك، وتُحسب بما كلّفته فعلاً، ${premium} كريدت على الأكثر.`
+              : `In a conversation you set to a Premium model, each extra message needs at least ${premium} credits in your balance and is billed what it actually cost, at most ${premium} credits.`}</p>
+          )}
           {!owner && <ReadOnlyNote text={ar ? "مالك الحساب يقرر ذلك." : "The account owner decides this."} />}
           {msg && <p role="status" className="mt-2 text-sm text-ink">{msg}</p>}
         </div>
