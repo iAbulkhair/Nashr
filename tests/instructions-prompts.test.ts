@@ -241,6 +241,27 @@ describe("generateBatch reads the layers (rules 946-947)", () => {
     expect(judge.user).toContain("Keep every caption under twenty words.");
     expect(judge.user).toContain(FOLLOWS);
   });
+
+  it("rule 948: a workspace item that names the reviewer or the judge, written straight to Redis, reaches no prompt of the batch", async () => {
+    const u0 = await newUser("ip-batch-raw");
+    await db.set(`brand:${u0.email}`, brand);
+    await saveUser({ ...(await getUser(u0.email))!, plan: "pro", credits: 500 });
+    const u = (await getUser(u0.email))!;
+    // Under the workspace layer's own key, with no validation on the way: the render must drop what the store would have refused.
+    await db.set(`skills:${u.email}`, { active: set([item("RAW-REVIEWER secret rule", { agents: ["reviewer"] }), item("RAW-JUDGE secret rule", { agents: ["judge"] }), item("RAW-CONTROL keep captions short.", { agents: ["noor"] })]), draft: null, at: "x", by: null });
+    const { generateBatch, systems, creates } = await load();
+    expect((await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" })).ok).toBe(true);
+    const { settle } = await import("./helpers/session");
+    await settle();
+    const prompts = [...systems.flat().map((b) => b.text), ...creates.flatMap((c) => [c.system, c.user])].join("\n");
+    const reviewer = creates.find((c) => c.system.includes("quality reviewer"))!;
+    const judge = creates.find((c) => c.system.includes("quality judge"))!;
+    expect(systems.length && reviewer && judge, "generate, reviewer and judge all ran").toBeTruthy();
+    // The control item, written the same way but naming an agent, does arrive: the test would see a leak.
+    for (const text of [systems.find((s) => s.length === 3)![1].text, reviewer.user, judge.user]) expect(text).toContain("RAW-CONTROL keep captions short.");
+    expect(prompts).not.toContain("RAW-REVIEWER");
+    expect(prompts).not.toContain("RAW-JUDGE");
+  });
 });
 
 /**
@@ -476,7 +497,8 @@ describe("media prompt writer with layers (rule 948)", () => {
 });
 
 describe("the render start loads the layers (rule 948)", () => {
-  afterEach(() => { for (const m of ["@/lib/media/prompts", "@/lib/media/jobs", "@/lib/media/config"]) vi.doUnmock(m); });
+  // Also on a failed assertion: the platform key is shared by every test in the file.
+  afterEach(async () => { for (const m of ["@/lib/media/prompts", "@/lib/media/jobs", "@/lib/media/config"]) vi.doUnmock(m); await db.del("skills:platform"); });
 
   it("rule 948: renderImage and renderVideo pass the caller's own layers for media and the item's agent to the prompt writer", async () => {
     vi.resetModules();
@@ -509,6 +531,5 @@ describe("the render start loads the layers (rule 948)", () => {
       only(b.workspace, "Keep the light warm.", "REFERENCE FACT: warm light.");
       none(b.workspace, "Never touch Razan.");
     }
-    await db.del("skills:platform");
   });
 });

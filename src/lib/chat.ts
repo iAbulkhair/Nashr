@@ -238,7 +238,8 @@ const LEAD_TEXT = (() => {
 /**
  * The system prompt as three blocks, ordered for prompt caching (a cache hit needs an identical prefix):
  * 1. static per agent: persona, team, playbook, capabilities, help, reply shapes, rules. Shared by every workspace.
- * 2. per workspace: brand file, this agent's preferences, memory files. Stable between messages of one owner.
+ * 2. per workspace: brand file, this agent's preferences, the owner's instructions (`layers`), memory files. Stable between
+ *    messages of one owner. `layers` (agent skills portal) also adds the platform text to block 1; with none, nothing changes.
  * 3. volatile: the current local date and time in the brand's zone and its week start (from `weekend`, the brand's
  *    effective weekend), credits, plan, calendar, file list, connected
  *    platforms, the recent feedback on this agent's own work (`feedbackFor`, with chat thumbs), which moves with
