@@ -6,7 +6,7 @@ import { generateBatch } from "@/lib/generate-batch";
 import { ModelPaused, modelState } from "@/lib/model";
 import { deadlineFor } from "@/lib/media/keys";
 import { MODEL_UNAVAILABLE } from "@/lib/models/overrides";
-import { agentScopePreflight, agentScopeSlowText, checkGenerationNotes } from "@/lib/agent-scope";
+import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 import { WINDOW, retryLater } from "@/lib/rate";
 
 export const maxDuration = 300;
@@ -25,15 +25,13 @@ export async function POST(req: Request) {
   // Only a string is notes. The generator would read an array as its text (`["x"].slice()` joins to "x") and the gate reads the
   // string, so anything else is dropped here: no value can reach the batch that the gate did not read.
   const notes = typeof b.notes === "string" ? b.notes : undefined;
-  // The agent-scope modes and the brand scope's ceiling of refused requests (rule 795), read first and answered first, before
-  // any classifier call and before anything is charged. The batch gets the modes (`agentScope`), read once per request.
+  // The agent-scope modes and the brand scope's ceiling of refused requests (rule 795), read once. The batch gets the modes
+  // (`agentScope`) and the notes' gate (`notesGate`, rule 796), which runs inside `generateBatch` after its free refusals (an
+  // owner refused for a real reason reads that reason) and before the charge. A spent ceiling (`slow`) holds only a request that has
+  // notes; one without is never held.
   const pre = await agentScopePreflight(u);
-  if (pre.slow) return retryLater({ ok: false, error: "slow_down", retry: pre.slow, message: agentScopeSlowText(lang) }, WINDOW[pre.slow]);
-  // The input gate on the notes (rule 796), before `generateBatch`: an enforced refusal is 422 and charges and saves nothing.
-  const gate = await checkGenerationNotes(u, b.type, notes ?? "", { mode: pre.modes.input, where: "generate", lang, deadline });
-  if (gate.block) return NextResponse.json({ ok: false, error: "agent_scope", message: gate.reply }, { status: 422 });
-  // Brand, trial, missing data, the owning agent's cap and the charge, in that order (src/lib/generate-batch.ts).
-  const r = await generateBatch(u, sc(u), { type: b.type, notes, source: "manual", via: "app", deadline, agentScope: pre.modes });
+  // Brand, trial, missing data, the notes' gate, the owning agent's cap and the charge, in that order (src/lib/generate-batch.ts).
+  const r = await generateBatch(u, sc(u), { type: b.type, notes, source: "manual", via: "app", deadline, agentScope: pre.modes, notesGate: { notes: notes ?? "", mode: pre.modes.input, where: "generate", lang, slow: pre.slow } });
   if (!r.ok) {
     switch (r.reason) {
       case "paused": return NextResponse.json({ ok: false, error: "model_paused" }, { status: 503 });
@@ -42,6 +40,10 @@ export async function POST(req: Request) {
       case "missing_data": return NextResponse.json({ ok: false, error: r.missing }, { status: 409 });
       case "agent_cap": return NextResponse.json({ ok: false, error: "agent_cap", agent: r.agent, spent: r.spent, cap: r.cap }, { status: 402 });
       case "no_credits": return NextResponse.json({ ok: false, error: "no_credits", need: r.need, have: r.credits }, { status: 402 });
+      // Outside what the team works on (rule 796): nothing was charged or saved. The copy is in the reply language.
+      case "agent_scope": return NextResponse.json({ ok: false, error: "agent_scope", message: r.message }, { status: 422 });
+      // Too many such requests, or too many checks, for this brand scope: 429 with the window's Retry-After.
+      case "agent_scope_slow": return retryLater({ ok: false, error: "slow_down", retry: r.retry, message: agentScopeSlowText(lang) }, WINDOW[r.retry]);
       case "failed":
         // Already refunded, with the charge's receipt.
         console.error("generate failed", r.error);

@@ -12,6 +12,7 @@ import { zoneOf } from "./zones";
 import { capDiscounts } from "./cart-recovery";
 import { feedbackBlock } from "./feedback";
 import { automaticFor, route } from "./models/route";
+import { GENERATE_NOTES_READ } from "./notes-read";
 
 /** One generated item. `crossReview` is added by the cross-agent review and never changes the other three fields. */
 export type Generated = { channel: string; title: string; body: string; crossReview?: CrossVerdict[] };
@@ -215,7 +216,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   // A lead brief (a handoff item) is its own labelled data block after the owner's notes, and only when there is one:
   // a batch without it sends exactly the message it sent before handoffs existed.
   const lead = leadBriefBlock(opts.leadBrief);
-  const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
+  const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, GENERATE_NOTES_READ)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
 
   // The caller's resolved model (`generateBatch` always passes one); left out, routing for the type (TASK_MODELS, rule 901).
   const params = {

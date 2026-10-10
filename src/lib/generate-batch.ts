@@ -39,7 +39,7 @@ import type { Grounding } from "./json";
 import { promptStamp } from "./prompt-stamp";
 import { byOf, systemBy, type By } from "./actor";
 import { recordActivity, type Activity } from "./activity";
-import type { AgentScopeModes } from "./agent-scope";
+import { checkGenerationNotes, type AgentScopeModes, type NotesGate } from "./agent-scope";
 
 /** Where a batch was asked for. Not the same as `source`: MCP and chat items are both `source:"chat"`. */
 export type BatchVia = "app" | "chat" | "mcp" | "weekly" | "routine" | "handoff";
@@ -119,10 +119,18 @@ export type BatchOpts = {
   model?: string;
   /**
    * The founder's agent-scope modes (src/lib/agent-scope.ts), read once by the route (`agentScopePreflight`) and handed down,
-   * as `ChatOpts.agentScope` is for a chat turn. The owner's routes check the notes before the batch (rule 796) and pass the
-   * modes on for the check of the items the batch makes (a later task of Part B); left out, the batch reads them itself.
+   * as `ChatOpts.agentScope` is for a chat turn. The owner's routes also hand the notes' gate (`notesGate`) and pass the modes on
+   * for the check of the items the batch makes (a later task of Part B); left out, the batch reads them itself.
    */
   agentScope?: AgentScopeModes;
+  /**
+   * The input gate on the owner's notes (rule 796), set only by `POST /api/generate` and MCP `generate_content`. It runs here, with
+   * this batch's own brand read, after the free refusals (paused, no brand, ended trial, missing data) and before the renewal and
+   * the charge: a refusal is typed (`agent_scope`, or `agent_scope_slow` for a spent ceiling or bound), charges and saves nothing,
+   * and goes through `refuse()` like the others. In `enforce` it is awaited before the charge; in `shadow` it runs beside the batch
+   * and is awaited before the batch returns, on every path. A batch without it is gated by nothing here, as before.
+   */
+  notesGate?: NotesGate;
 };
 
 /**
@@ -149,6 +157,13 @@ export type BatchRefusal =
  */
 export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected };
 export type BatchResult = BatchDone | BatchRefusal;
+/**
+ * What only a batch with a `notesGate` can answer (rule 796): `agent_scope` carries the refusal text the owner reads (the notes are
+ * outside what the team works on); `agent_scope_slow` says which window is spent (`retry`: the refusal ceiling, or too many checks),
+ * and the route turns it into its `slow_down` answer. Kept apart from `BatchRefusal` so every other caller, which passes no gate,
+ * has nothing new to handle.
+ */
+export type ScopeRefusal = { ok: false; reason: "agent_scope"; message: string } | { ok: false; reason: "agent_scope_slow"; retry: "hour" | "day" };
 
 /**
  * What `count` items of a type cost: their share of the full batch, rounded up, never less than 1 credit. The same
@@ -211,7 +226,23 @@ export function crossReviewRows(tasks: Task[], at: string, via: BatchVia): Activ
   });
 }
 
-export async function generateBatch(user: User, scope: string, opts: BatchOpts): Promise<BatchResult> {
+// A call that sets a gate may be answered with a `ScopeRefusal`; a call that sets none cannot, so no other caller handles one. The
+// last form takes options of the plain `BatchOpts` type (gate unknown) and answers with either.
+export function generateBatch(user: User, scope: string, opts: BatchOpts & { notesGate: NotesGate }): Promise<BatchResult | ScopeRefusal>;
+export function generateBatch(user: User, scope: string, opts: BatchOpts & { notesGate?: undefined }): Promise<BatchResult>;
+export function generateBatch(user: User, scope: string, opts: BatchOpts): Promise<BatchResult | ScopeRefusal>;
+export async function generateBatch(user: User, scope: string, opts: BatchOpts): Promise<BatchResult | ScopeRefusal> {
+  // Shadow checks that run beside the batch (`notesGate`): awaited on every path out, a refusal, a failure or a saved batch, so a
+  // function that ends with the answer never leaves a classifier call and its log line behind.
+  const late: Promise<unknown>[] = [];
+  try {
+    return await runBatch(user, scope, opts, late);
+  } finally {
+    await Promise.allSettled(late);
+  }
+}
+
+async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promise<unknown>[]): Promise<BatchResult | ScopeRefusal> {
   const { type } = opts;
   // A small ask is only for DRAFT_TYPES (rule 250). The chat's `draft_items` refuses any other type in code before it
   // calls this; here it is an invariant, before any read or charge, so no caller can buy one item of a batch type at
@@ -231,7 +262,7 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   if (opts.model !== undefined) usable(opts.model);
   // A scheduled run records its own outcome (`recordRun`), so a refusal at its charge is one row there, not two.
   const scheduled = opts.via === "weekly" || opts.via === "routine";
-  const refuse = async (r: BatchRefusal, row?: Activity): Promise<BatchRefusal> => {
+  const refuse = async <R extends BatchRefusal | ScopeRefusal>(r: R, row?: Activity): Promise<R> => {
     await Promise.all([opts.settle?.(), row && !scheduled ? recordActivity(scope, [row]) : null]);
     return r;
   };
@@ -252,6 +283,21 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   if (trialOver(user)) return refuse({ ok: false, reason: "trial_over" });
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });
+  // The input gate on the notes (rule 796), after every free refusal and before the renewal and the charge, on this batch's own
+  // brand read. Enforce is awaited here: a refusal charges nothing and saves nothing. Shadow runs beside the batch and is awaited
+  // by `generateBatch` on the way out. The check does not throw (a failing counter or store read fails open inside it); the catch
+  // is the backstop, so a late rejection can never reach the process as unhandled.
+  const gate = opts.notesGate;
+  if (gate && gate.mode !== "off") {
+    const check = checkGenerationNotes(user, type, gate, brand, opts.deadline).catch((e): { block: false } => {
+      console.error("agent scope notes gate failed", e instanceof Error ? e.name : "error");
+      return { block: false };
+    });
+    if (gate.mode === "enforce") {
+      const d = await check;
+      if (d.block) return refuse("slow" in d ? { ok: false, reason: "agent_scope_slow", retry: d.slow } : { ok: false, reason: "agent_scope", message: d.reply });
+    } else late.push(check);
+  }
   const base = opts.count ? countCost(type, opts.count) : TASK_COST[type];
   // The batch's price at its model's tier relative to the type's own writer (rule 902), computed once. It is what is charged: `charge`, or `chargeOnce`, which reuses a
   // claim's hold only when it holds exactly this price and otherwise swaps it for this price in one save.

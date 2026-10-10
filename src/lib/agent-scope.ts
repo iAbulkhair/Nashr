@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { CAPS, db, pushCapped } from "./db";
 import { listBrands } from "./brands";
-import { getBrand } from "./brand";
+import { getBrand, type Brand } from "./brand";
+import { GENERATE_NOTES_READ } from "./notes-read";
 import { classify, type Classified } from "./agent-scope-classify";
 import { VERDICTS, isVerdict, type Verdict } from "./agent-scope-verdicts";
-import { agentScopeCeiling, countAgentScopeRefusal } from "./rate";
+import { agentScopeCeiling, agentScopeGenRefusal, countAgentScopeRefusal } from "./rate";
 import { agentForTask, type AgentId } from "./agents";
-import { sc, type User } from "./auth";
+import type { User } from "./auth";
 import type { TaskType } from "./tasks";
 
 /**
@@ -232,40 +233,48 @@ export async function scopeCheck(layer: "input" | "output", mode: AgentScopeMode
   return { block: true, verdict: verdict.verdict, reply: agentScopeRefusalText(verdict.verdict, ctx.lang, { brand: ctx.brand.name, otherBrands: ctx.otherBrands, classified: verdict.brand }) };
 }
 
+export { GENERATE_NOTES_READ };
+
 /**
- * How many characters of the owner's notes a generation batch reads: the generator cuts them at this length (`extra.slice(0, 2000)`
- * in noor.ts), and so does the reviewer's grounding (`g.notes?.slice(0, 2000)` in json.ts). The input gate reads the same first
- * characters and no more. A longer text would only make a classifier call that can fail on its size, and a failure lets the text
- * through, while the generator never reads past the cut. tests/agent-scope-generate.test.ts pins the three to one number.
+ * What the owner's routes hand `generateBatch` as `BatchOpts.notesGate` (rule 796): the notes as the batch is given them, the
+ * input mode from the same preflight (`modes.input`), the route (`where`), the reply language, and the preflight's `slow`, the
+ * window of the refusal ceiling when it is spent (set only in `enforce`).
  */
-export const GENERATE_NOTES_READ = 2000;
+export type NotesGate = { notes: string; mode: AgentScopeMode; where: "generate" | "mcp_generate"; lang: Lang; slow?: "hour" | "day" | null };
+/** `reply`: the refusal the owner reads (the notes are outside the team's work). `slow`: too many such requests or checks, wait this window. */
+export type NotesDecision = { block: false } | { block: true; reply: string } | { block: true; slow: "hour" | "day" };
 
 /**
  * The input gate on the notes of a generation batch (rule 796; spec section 4.2), for `POST /api/generate` (`where: "generate"`)
- * and MCP `generate_content` (`"mcp_generate"`). The routes call it after the type check and the preflight, before
- * `generateBatch`, so an enforced refusal charges nothing and saves nothing. `mode` is `modes.input` from the same preflight.
+ * and MCP `generate_content` (`"mcp_generate"`). `generateBatch` calls it with its own brand read, after its free refusals
+ * (paused, no brand, ended trial, missing data) and before the renewal and the charge, so an owner who is refused for a real reason
+ * reads that reason, no classifier call is spent on the way, and an enforced refusal charges nothing and saves nothing.
  *
- * Nothing is asked when the layer is `off` or the notes are empty (nothing to check). Otherwise the classifier reads the owner's
- * words, trimmed and cut at `GENERATE_NOTES_READ`, with the owning agent of the type, the active brand's name and sector (empty
- * when the brand has no file yet) and the names of the account's other brands, in one `Promise.all`. A store error on the other
- * brands' names reads `[]` and prints only the error's name: the gate reads none, and must not cost the owner the batch. The
- * decision is `scopeCheck`'s: shadow logs and lets the batch run, enforce blocks with the refusal text and counts it toward the
- * ceiling, and an error lets the batch through (input fails open).
+ * Nothing is asked, counted or refused when the layer is `off` or the notes are empty (nothing to check): that is also why a spent
+ * refusal ceiling never holds a request without notes. Otherwise, in order:
+ *
+ * 1. A spent ceiling (`gate.slow`, rule 795) is answered `slow`, with no classifier call.
+ * 2. The classifier ask is counted against the scope's bound (`agentScopeGenRefusal`: 60 an hour, 200 a day). Over it, enforce
+ *    answers `slow` and shadow skips the check (no call, no log). A counter that cannot be read lets the check run (input fails open).
+ * 3. The classifier reads the owner's words, trimmed and cut at `GENERATE_NOTES_READ`, with the owning agent of the type, the brand's
+ *    name and sector (empty when it has no file) and the names of the account's other brands. A store error on those names reads `[]`
+ *    and prints only the error's name: the gate reads none, and must not cost the owner the batch. The decision is `scopeCheck`'s:
+ *    shadow logs and lets the batch run, enforce blocks with the refusal text and counts it toward the ceiling, and an error lets the
+ *    batch through.
  */
-export async function checkGenerationNotes(
-  user: User,
-  type: TaskType,
-  notes: string,
-  o: { mode: AgentScopeMode; where: "generate" | "mcp_generate"; lang: Lang; deadline?: number },
-): Promise<ScopeDecision> {
-  const text = notes.trim().slice(0, GENERATE_NOTES_READ);
-  if (o.mode === "off" || !text) return { block: false };
-  const [brand, otherBrands] = await Promise.all([
-    getBrand(sc(user)),
-    otherBrandNames(user).catch((e): string[] => {
-      console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
-      return [];
-    }),
-  ]);
-  return scopeCheck("input", o.mode, text, { user, agent: agentForTask(type).id, where: o.where, lang: o.lang, brand: { name: brand?.name ?? "", industry: brand?.industry ?? "" }, otherBrands, deadline: o.deadline });
+export async function checkGenerationNotes(user: User, type: TaskType, gate: NotesGate, brand: Pick<Brand, "name" | "industry"> | null, deadline?: number): Promise<NotesDecision> {
+  const text = gate.notes.trim().slice(0, GENERATE_NOTES_READ);
+  if (gate.mode === "off" || !text) return { block: false };
+  if (gate.mode === "enforce" && gate.slow) return { block: true, slow: gate.slow };
+  const over = await agentScopeGenRefusal(user).catch((e): null => {
+    console.error("agent scope check count failed", e instanceof Error ? e.name : "error");
+    return null;
+  });
+  if (over) return gate.mode === "enforce" ? { block: true, slow: over } : { block: false };
+  const otherBrands = await otherBrandNames(user).catch((e): string[] => {
+    console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+    return [];
+  });
+  const d = await scopeCheck("input", gate.mode, text, { user, agent: agentForTask(type).id, where: gate.where, lang: gate.lang, brand: { name: brand?.name ?? "", industry: brand?.industry ?? "" }, otherBrands, deadline });
+  return d.block ? { block: true, reply: d.reply } : { block: false };
 }

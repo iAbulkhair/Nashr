@@ -20,7 +20,7 @@ import { deadlineFor } from "@/lib/media/keys";
 import { appOrigin } from "@/lib/origin";
 import { route } from "@/lib/models/route";
 import { MODEL_UNAVAILABLE_NOTE } from "@/lib/models/overrides";
-import { agentScopePreflight, agentScopeSlowText, checkGenerationNotes } from "@/lib/agent-scope";
+import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 
 export const maxDuration = 300;
 
@@ -116,16 +116,13 @@ export async function POST(req: Request) {
         const type = args.type;
         const lang = user.lang === "en" ? "en" : "ar";
         const notes = String(args.notes ?? "");
-        // The agent-scope modes and the brand scope's ceiling of refused requests (rule 795), read and answered before any
-        // classifier call and before anything is charged; a tool error, like the other refusals below.
+        // The agent-scope modes and the brand scope's ceiling of refused requests (rule 795), read once. The notes' gate (rule 796)
+        // runs inside `generateBatch`, after its free refusals and before the charge, and answers as a tool error like the other
+        // refusals below. `notes` is the string the batch is given, so what the gate reads is what the generator reads. A spent
+        // ceiling holds only a request that has notes.
         const pre = await agentScopePreflight(user);
-        if (pre.slow) return ok(id, { ...text(agentScopeSlowText(lang)), isError: true });
-        // The input gate on the notes (rule 796), before `generateBatch`: an enforced refusal is a tool error that charges and
-        // saves nothing. `notes` is the string the batch is given, so what the gate reads is what the generator reads.
-        const gate = await checkGenerationNotes(user, type, notes, { mode: pre.modes.input, where: "mcp_generate", lang, deadline });
-        if (gate.block) return ok(id, { ...text(gate.reply), isError: true });
         // The request's own deadline bounds the batch's cross-agent review (notes only, skipped when too little is left).
-        const r = await generateBatch(user, user.scope ?? user.email, { type, notes, source: "chat", via: "mcp", by: tokenBy(user), deadline, agentScope: pre.modes });
+        const r = await generateBatch(user, user.scope ?? user.email, { type, notes, source: "chat", via: "mcp", by: tokenBy(user), deadline, agentScope: pre.modes, notesGate: { notes, mode: pre.modes.input, where: "mcp_generate", lang, slow: pre.slow } });
         // A tool error, like insufficient credits: a JSON-RPC client reads the result, not an HTTP status.
         if (!r.ok) {
           switch (r.reason) {
@@ -135,6 +132,8 @@ export async function POST(req: Request) {
             case "missing_data": return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
             case "agent_cap": return ok(id, { ...text(`${agentById(r.agent).name.en} reached the monthly credit cap the owner set in Governance (${r.spent} of ${r.cap} credits this month). No credits were used. The owner can raise the cap on the Governance page or wait for next month.`), isError: true });
             case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}. ${NO_CREDITS_HINT}`), isError: true });
+            case "agent_scope": return ok(id, { ...text(r.message), isError: true });
+            case "agent_scope_slow": return ok(id, { ...text(agentScopeSlowText(lang)), isError: true });
             // Refunded already; answered as a tool error by the catch below.
             case "failed": throw r.error;
           }

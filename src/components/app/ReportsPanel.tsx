@@ -6,6 +6,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, type TaskType } from "@/lib/tasks";
 import { agentById } from "@/lib/agents";
 import { limitFromError, noCreditsText } from "./LimitModal";
+import { scopeRefusalText } from "@/lib/scope-refusal";
 import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
@@ -53,6 +54,10 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     setBusy(null);
     if (j.ok) { setMsg(t.generate.done); r.refresh(); return; }
     limitFromError(j.error);
+    // Outside what the team works on (rule 796), or too many such requests: the server wrote the answer in the owner's language.
+    // Shown as text in the status line, never as HTML.
+    const refused = scopeRefusalText(j);
+    if (refused) { setMsg(refused); return; }
     const map: Record<string, string> = { no_credits: noCreditsText(t.generate, owner, topups), trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle };
     setMsg(map[j.error] ?? t.generate.failed);
   }
@@ -275,8 +280,9 @@ function StoreSales({ R, paused, provider, store, failedAt, lang }: { R: AppDict
     setDrafting(true); setErr(""); setNote("");
     try {
       const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "cart_recovery" }) });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(j.error === "model_paused" ? paused : j.error ?? `HTTP ${res.status}`); }
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+      // The same refusal copy as the report buttons (rule 796), shown as text.
+      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(scopeRefusalText(j) ?? (j.error === "model_paused" ? paused : j.error ?? `HTTP ${res.status}`)); }
     } catch { setErr("failed"); } finally { setDrafting(false); }
   }
   async function sync() {

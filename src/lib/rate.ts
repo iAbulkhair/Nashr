@@ -154,6 +154,26 @@ export async function countAgentScopeRefusal(u: Pick<User, "scope" | "email">): 
 }
 
 /**
+ * The classifier calls the input gate on generation notes may cost a brand scope (rule 796; `checkGenerationNotes` in
+ * src/lib/agent-scope.ts). The gate sits after the free refusals of `generateBatch`, but a request that cannot be charged
+ * (no credits, an agent at its cap) still reaches it, and in shadow nothing else bounds the calls. Each call the classifier would
+ * make is counted in both windows (`allow` adds one per attempt, so the count is of asks, whatever the answer) under the same
+ * scope key as the refusal ceiling. Over a window: shadow skips the classifier (no log, the batch goes on) and enforce answers
+ * `slow_down`, naming the window.
+ */
+export const AGENT_SCOPE_GEN_CHECKS_PER_HOUR = 60;
+export const AGENT_SCOPE_GEN_CHECKS_PER_DAY = 200;
+/**
+ * Count one classifier ask for this brand scope and say whether it is over: null while both windows allow it, else the window
+ * to wait for, the day when both are spent (the longer wait, as `agentScopeCeiling`). Both counters in one `Promise.all`.
+ */
+export async function agentScopeGenRefusal(u: Pick<User, "scope" | "email">): Promise<"hour" | "day" | null> {
+  const s = agentScopeOf(u);
+  const [hour, day] = await Promise.all([allow(`agent-scope-gen:h:${s}`, AGENT_SCOPE_GEN_CHECKS_PER_HOUR, WINDOW.hour), allow(`agent-scope-gen:d:${s}`, AGENT_SCOPE_GEN_CHECKS_PER_DAY, WINDOW.day)]);
+  return !day ? "day" : !hour ? "hour" : null;
+}
+
+/**
  * The public OAuth endpoints, per IP. Hosted MCP clients (claude.ai, ChatGPT) register and exchange tokens from shared
  * egress addresses on behalf of many accounts, and a token pair lives 30 days, so real traffic stays far below these.
  * Registration is the tighter one: it is open (RFC 7591) and every client is stored with no expiry.
