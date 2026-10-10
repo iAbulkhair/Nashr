@@ -140,6 +140,11 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // non-core files, which need no action of their own).
   "PUT /api/brand": g("admin", "brand.write"),
   "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
+  // Agent instructions of the brand workspace (agent skills portal, rule 949).
+  "PUT /api/instructions": g("admin", "instructions.write"),
+  "POST /api/instructions/activate": g("admin", "instructions.write"),
+  "POST /api/instructions/discard": g("admin", "instructions.write"),
+  "POST /api/instructions/restore": g("admin", "instructions.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
@@ -268,6 +273,8 @@ const READS: Record<string, Gate> = {
   "GET /api/conversations": "member",
   "GET /api/files": "member",
   "GET /api/governance": "member",
+  "GET /api/instructions": "member",
+  "GET /api/instructions/history": "member",
   "GET /api/notifications": "member",
   "GET /api/onboard/plan": "member",
   "GET /api/performance": "member",
@@ -315,7 +322,7 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models"];
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models", "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/discard", "POST /api/instructions/restore"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",

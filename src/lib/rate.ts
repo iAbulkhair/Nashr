@@ -174,6 +174,19 @@ export const FEEDBACK_PER_HOUR = 120;
  */
 export const MODEL_PICKS_PER_HOUR = 60;
 
+/**
+ * Agent instructions (agent skills portal, spec 10), per brand workspace (`sc(u)`): one bucket for every write (save the
+ * draft, activate, discard, restore, apply or dismiss a proposal), because each one rewrites a record every agent prompt
+ * reads back. Tests spend the account's credits (hour and day); proposals are the chat's, per day; imports are the
+ * owner's file attachments. The admin test is the founder's, per hour. Every 429 carries `Retry-After`.
+ */
+export const INSTRUCTION_WRITES_PER_HOUR = 60;
+export const INSTRUCTION_TESTS_PER_HOUR = 10;
+export const INSTRUCTION_TESTS_PER_DAY = 30;
+export const INSTRUCTION_PROPOSALS_PER_DAY = 20;
+export const INSTRUCTION_IMPORTS_PER_HOUR = 30;
+export const ADMIN_SKILL_TESTS_PER_HOUR = 30;
+
 /** Constant-time string comparison for secrets. It lives in secret.ts, which has no store behind it, so the proxy can use
  * it; this re-export keeps every existing import working. */
 export { sameSecret } from "./secret";
