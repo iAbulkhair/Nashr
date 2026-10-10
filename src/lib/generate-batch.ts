@@ -295,7 +295,9 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
     const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, model, layers, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
     createdAt = new Date().toISOString();
     const brief = opts.brief ?? briefOf(opts.notes);
-    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent, ins: instructionBlocks(layers, agent).stamp }));
+    // One stamp for the batch: the blocks are the same for every item (they hash the layers, not the item).
+    const ins = instructionBlocks(layers, agent).stamp;
+    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent, ins }));
     // Together, not one round trip after another (Redis is HTTP per command). Every save settles before the guard
     // decides, so a refund below never races a save still landing.
     const saved = await Promise.allSettled(tasks.map((t) => saveTask(scope, t, true)));
@@ -319,6 +321,6 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: charged };
   await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
-  judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model });
+  judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model, layers });
   return { ok: true, tasks, credits: user.credits, receipt, cost: charged, agent, gov, ...(modelRejected ? { modelRejected } : {}) };
 }

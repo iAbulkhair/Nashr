@@ -120,7 +120,7 @@ BRAND RULES
 }
 
 /** The line block 2 gains with the owner's instructions: the learned preferences keep their label and place, an explicit instruction outranks them (spec 4). */
-const OWNER_WINS = "When an explicit owner instruction and a learned preference disagree, the owner instruction wins.";
+export const OWNER_WINS = "When an explicit owner instruction and a learned preference disagree, the owner instruction wins.";
 
 /**
  * The generation prompt as three blocks, ordered for prompt caching (a hit needs an identical prefix):
@@ -203,7 +203,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number; /** the model that writes the batch: the one the caller priced (`generateBatch` resolves it once and passes it here); left out, `route("generate")` */ model?: string; /** the instruction layers for this batch (`loadLayers`): the platform and the workspace text in the prompt; left out, none. The reviewer, the cross-review and the judge read the same object */ layers?: Layers };
+export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number; /** the model that writes the batch: the one the caller priced (`generateBatch` resolves it once and passes it here); left out, `route("generate")` */ model?: string; /** the instruction layers for this batch (`loadLayers`): the platform and the workspace text in the generation prompt, and the reviewer and the cross-review read the same object (`critique`, `crossReview`); left out, none. The judge is not called from here: `generateBatch` hands it the same object in `JudgeContext.layers` */ layers?: Layers };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
@@ -267,7 +267,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   let items = parseItems(text);
   // The grounding the reviewer, the cross-reviewers and (through generateBatch) the judge read; `leadBrief` only when set.
   const ground: Grounding = { notes: extra, memory: opts.memory, stats: opts.stats, ...(opts.leadBrief ? { leadBrief: opts.leadBrief } : {}) };
-  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, deadline, ...ground });
+  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, deadline, ...ground, layers: opts.layers });
   if (opts.noEmDash) items = stripDashes(items);
   // Enforced after the reviewer, so neither pass can reintroduce a discount the owner never offered.
   if (type === "cart_recovery") items = capDiscounts(items, brand.offers);
@@ -276,7 +276,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   // charge kept.
   if (opts.crossReview !== false) {
     if (deadline - Date.now() < CROSS_REVIEW_MIN_MS) console.warn("cross review skipped", "too little time left");
-    else items = await crossReview(client, brand, type, items, { meter: opts.meter, ...ground });
+    else items = await crossReview(client, brand, type, items, { meter: opts.meter, ...ground, layers: opts.layers });
   }
   return items;
 }
@@ -297,6 +297,24 @@ const REVIEW_FOCUS: Record<Agent["id"], string> = {
   // Reem owns no deliverable type (agentForTask never returns her), so this line is never sent today; it is here so the
   // map stays complete and a future Reem deliverable is reviewed as hers.
   reem: "Secretary fit: every date, time, name and amount is one the owner gave, with dates in the brand's local time; nothing is marked done or promised on the owner's behalf; quoted customer or supplier text is kept as quoted data.",
+};
+
+/** Said after the owner's instructions in a reviewer's user message: the draft was written to them, so following one is not a defect. */
+const REVIEW_FOLLOWS = "An item that follows an owner instruction is not corrected or flagged for it.";
+
+/**
+ * What a reviewing call (the reviewer, a cross-reviewer) takes from the layers for the batch of `agent` (spec 5.2). The
+ * system text gains the `reviewer` platform block only, so it is the same for every brand and stays cached. The owner's
+ * instructions for the agent whose drafts are checked go in the user message as fenced data, after the owner's other
+ * data ("" with none). A workspace item never names the reviewer, so none renders as its own.
+ */
+const reviewerSystem = (system: string, layers: Layers | undefined): string => {
+  const platform = instructionBlocks(layers ?? NO_LAYERS, "reviewer").platform;
+  return platform ? `${system}\n\n${platform}` : system;
+};
+const ownerForReview = (layers: Layers | undefined, agent: Agent["id"]): string => {
+  const workspace = instructionBlocks(layers ?? NO_LAYERS, "reviewer", agent).workspace;
+  return workspace ? `\n\n${workspace}\n${REVIEW_FOLLOWS}` : "";
 };
 
 /** The reviewer's system prompt for the agent who owns `type`. Stable per agent, so each agent's copy is cached. */
@@ -328,7 +346,7 @@ Return ONLY a JSON array, same length and order as the items in <items>: {"ok": 
  * notes, the memory files and the WORKSPACE / STORE / CART DATA block — because it rewrites what it cannot trace to a
  * source, and a real figure from the owner's own sales or notes must not be turned into [رقم].
  */
-async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[], ctx: Grounding & { meter?: string; deadline?: number } = {}): Promise<Generated[]> {
+async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[], ctx: Grounding & { meter?: string; deadline?: number; layers?: Layers } = {}): Promise<Generated[]> {
   if (!items.length) return items;
   // Optional, like its failure below: with less than REVIEW_MIN_MS of the batch's deadline left the first pass ships.
   const end = Math.min(ctx.deadline ?? Infinity, Date.now() + MODEL_BUDGET.REVIEW_MS);
@@ -342,12 +360,12 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       output_config: { effort: "low" },
-      // Identical for every user and every batch of one agent: the best cache candidate in the pipeline.
-      system: [{ type: "text", text: reviewerPrompt(type), cache_control: { type: "ephemeral" } }],
+      // Identical for every user and every batch of one agent (the platform block is the same for everyone): the best cache candidate in the pipeline.
+      system: [{ type: "text", text: reviewerSystem(reviewerPrompt(type), ctx.layers), cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",
-          content: `<brand_file>\n${asData({ name: brand.name, industry: brand.industry, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, banned: brand.banned, preferred: brand.preferred, offers: brand.offers })}\n</brand_file>\n\n<owner_preferences>\n${asData(prefs.length ? prefs : ["none"])}\n</owner_preferences>${groundingBlocks(ctx)}\n\nTASK TYPE: ${type}\n\n<items>\n${asData(items.map((i) => ({ channel: i.channel, body: i.body })))}\n</items>`,
+          content: `<brand_file>\n${asData({ name: brand.name, industry: brand.industry, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, banned: brand.banned, preferred: brand.preferred, offers: brand.offers })}\n</brand_file>\n\n<owner_preferences>\n${asData(prefs.length ? prefs : ["none"])}\n</owner_preferences>${ownerForReview(ctx.layers, agentForTask(type).id)}${groundingBlocks(ctx)}\n\nTASK TYPE: ${type}\n\n<items>\n${asData(items.map((i) => ({ channel: i.channel, body: i.body })))}\n</items>`,
         },
       ],
     }, until(end, { cap: MODEL_BUDGET.REVIEW_MS }));
@@ -447,10 +465,10 @@ Return ONLY a JSON array with one element per item in <items>: {"id": <the item'
 }
 
 /** The batch as every reviewer of it reads it: who wrote it, for which spec, the brand file, the sources and the items with ids. */
-function crossReviewMessage(type: TaskType, brand: Brand, items: Generated[], ctx: Grounding): string {
+function crossReviewMessage(type: TaskType, brand: Brand, items: Generated[], ctx: Grounding & { layers?: Layers }): string {
   const author = agentForTask(type);
   const brandFile = { name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, ...(brand.valueProp ? { valueProp: brand.valueProp.slice(0, 400) } : {}) };
-  return `AUTHOR: ${author.name.en}, ${author.role.en}\n\nTASK SPEC\n${SPECS[type]}\n\n<brand_file>\n${asData(brandFile)}\n</brand_file>${groundingBlocks(ctx)}\n\n<items>\n${asData(items.map((it, i) => ({ id: i + 1, channel: it.channel, title: it.title, body: it.body.slice(0, CROSS_BODY_CHARS) })))}\n</items>`;
+  return `AUTHOR: ${author.name.en}, ${author.role.en}\n\nTASK SPEC\n${SPECS[type]}\n\n<brand_file>\n${asData(brandFile)}\n</brand_file>${ownerForReview(ctx.layers, author.id)}${groundingBlocks(ctx)}\n\n<items>\n${asData(items.map((it, i) => ({ id: i + 1, channel: it.channel, title: it.title, body: it.body.slice(0, CROSS_BODY_CHARS) })))}\n</items>`;
 }
 
 // Control and bidi-override characters carry nothing a reader needs and can hide or reorder text on the owner's screen.
@@ -496,7 +514,7 @@ export function parseCrossVerdicts(raw: string, n: number, by: CrossReviewer, mo
  * come back as they were, without that reviewer's verdicts. Bounded in time: one attempt of at most
  * CROSS_REVIEW_TIMEOUT_MS per reviewer, and `generate` does not start it with less than CROSS_REVIEW_MIN_MS left.
  */
-async function crossReview(client: Anthropic, brand: Brand, type: TaskType, items: Generated[], ctx: Grounding & { meter?: string } = {}): Promise<Generated[]> {
+async function crossReview(client: Anthropic, brand: Brand, type: TaskType, items: Generated[], ctx: Grounding & { meter?: string; layers?: Layers } = {}): Promise<Generated[]> {
   const reviewers = crossReviewers(type);
   if (!items.length || !reviewers.length || modelState() !== "on") return items;
   try {
@@ -510,7 +528,7 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
           max_tokens: 4000,
           thinking: { type: "adaptive" },
           output_config: { effort: "low" },
-          system: [{ type: "text", text: crossReviewPrompt(r), cache_control: { type: "ephemeral" } }],
+          system: [{ type: "text", text: reviewerSystem(crossReviewPrompt(r), ctx.layers), cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content }],
         }, { timeout: CROSS_REVIEW_TIMEOUT_MS, maxRetries: 0 });
         await meter(ctx.meter, res.model, "xreview", res.usage, r);

@@ -9,6 +9,7 @@ import { agentForTask } from "../agents";
 import { route } from "../models/route";
 import { mediaModel, type Aspect, type ImageModelId, type VideoModelId } from "../media-catalog";
 import type { Brand, Task } from "../brand";
+import { instructionBlocks, type Layers } from "../agent-instructions";
 
 export type PromptStyle = "photo" | "lifestyle" | "text" | "design";
 export const IMAGE_STYLE: Record<ImageModelId, PromptStyle> = {
@@ -69,13 +70,18 @@ const videoSystem = (seconds: number, fromImage: boolean) =>
 const postOf = (b: Brand, t: Task) =>
   `Brand: ${b.name} (${b.industry}). Tone: ${b.tone}. Products: ${b.products.slice(0, 300)}.\nChannel: ${t.channel}\nPost:\n${(t.editedBody ?? t.body).slice(0, 1200)}`;
 
-/** One Haiku 5.5 attempt inside the time left; anything short of a prompt gives the template (spec A12). */
-async function write(system: string, brand: Brand, task: Task, fallback: string, email: string | undefined, timeoutMs: number): Promise<string> {
+/**
+ * One Haiku 5.5 attempt inside the time left; anything short of a prompt gives the template (spec A12). With `layers` the
+ * system text gains the `media` platform block, and the user message the owner's instructions for `media`, for all
+ * agents and for the agent who owns the item (spec 5.2), as fenced data. The template fallback never reads them.
+ */
+async function write(system: string, brand: Brand, task: Task, fallback: string, email: string | undefined, timeoutMs: number, layers?: Layers): Promise<string> {
   // `!(>=)` also sends a NaN budget to the template.
   if (modelState() !== "on" || !(timeoutMs >= PROMPT_MIN_MS)) return fallback;
   try {
+    const blocks = layers ? instructionBlocks(layers, "media", agentForTask(task.type).id) : null;
     const res = await anthropic({ timeoutMs: PROMPT_MAX_MS, maxRetries: 0 }).messages.create(
-      { model: route("imagePrompt").model, max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: postOf(brand, task) }] },
+      { model: route("imagePrompt").model, max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system: blocks?.platform ? `${system}\n\n${blocks.platform}` : system, messages: [{ role: "user", content: blocks?.workspace ? `${postOf(brand, task)}\n\n${blocks.workspace}` : postOf(brand, task) }] },
       { timeout: Math.min(PROMPT_MAX_MS, timeoutMs), maxRetries: 0 },
     );
     // Spec A18: video prompts are metered as image_prompt too. The render is for the agent who owns the item, the same
@@ -90,10 +96,10 @@ async function write(system: string, brand: Brand, task: Task, fallback: string,
   return fallback;
 }
 
-export async function imagePrompt(brand: Brand, task: Task, model: ImageModelId, aspect: Aspect, email?: string, timeoutMs = PROMPT_MAX_MS): Promise<string> {
-  return write(IMAGE_SYSTEM[IMAGE_STYLE[model]], brand, task, fixedImagePrompt(brand, task, model, aspect), email, timeoutMs);
+export async function imagePrompt(brand: Brand, task: Task, model: ImageModelId, aspect: Aspect, email?: string, timeoutMs = PROMPT_MAX_MS, layers?: Layers): Promise<string> {
+  return write(IMAGE_SYSTEM[IMAGE_STYLE[model]], brand, task, fixedImagePrompt(brand, task, model, aspect), email, timeoutMs, layers);
 }
 
-export async function videoPrompt(brand: Brand, task: Task, model: VideoModelId, fromImage: boolean, email?: string, timeoutMs = PROMPT_MAX_MS): Promise<string> {
-  return write(videoSystem(secondsOf(model), fromImage), brand, task, fixedVideoPrompt(brand, task, model, fromImage), email, timeoutMs);
+export async function videoPrompt(brand: Brand, task: Task, model: VideoModelId, fromImage: boolean, email?: string, timeoutMs = PROMPT_MAX_MS, layers?: Layers): Promise<string> {
+  return write(videoSystem(secondsOf(model), fromImage), brand, task, fixedVideoPrompt(brand, task, model, fromImage), email, timeoutMs, layers);
 }

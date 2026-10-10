@@ -113,10 +113,19 @@ export type Task = {
   brief?: string;
   /**
    * Which prompts made this item (src/lib/prompt-stamp.ts): 12-hex hashes of the owning agent's playbook, review.md, the
-   * industry playbook (`id:hash`) and the prompts written in code; "none" for a playbook that did not load. Set on every
+   * industry playbook (`id:hash`) and the prompts written in code; "none" for a playbook that did not load. `plat` and
+   * `ins` are the hashes of the platform instruction block and of the owner's instruction block the batch carried
+   * (src/lib/agent-instructions.ts, `none` when empty); tasks from before the instruction layers lack them. Set on every
    * generated batch (`taskFromItem`); absent on older tasks and on MCP `save_draft` drafts, which no Nashr prompt wrote.
    */
-  pb?: { skills: string; review: string; industry?: string; code: string; /** hash of the platform instruction block this batch carried, `none` when empty (src/lib/agent-instructions.ts); old tasks lack it */ plat?: string; /** the same for the owner's instruction block */ ins?: string };
+  pb?: {
+    skills: string;
+    review: string;
+    industry?: string;
+    code: string;
+    plat?: string;
+    ins?: string;
+  };
   /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
   /**

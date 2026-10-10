@@ -227,7 +227,7 @@ async function runCase(c: GoldenCase, layers: Layers): Promise<GoldenResult> {
     // agents' own output with the reviewer and the judge. The prompts it measures are the same either way.
     items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count, crossReview: false, layers });
     stage = "judge";
-    const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count, { notes: c.extra, stats: c.stats });
+    const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count, { notes: c.extra, stats: c.stats, layers });
     // An unjudged item is left out of the mean rather than counted as 0, and the gap is written into the notes so a
     // run where the judge answered for half the items does not read as a clean score.
     const q = verdicts.filter((x): x is Quality => !!x);
