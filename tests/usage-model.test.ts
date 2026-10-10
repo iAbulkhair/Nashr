@@ -75,9 +75,11 @@ import { adminConsoleSrc } from "./helpers/admin-console";
 import * as chatRoute from "@/app/api/chat/route";
 import * as overviewRoute from "@/app/api/admin/overview/route";
 
-const OPUS = "claude-opus-5";
-const SONNET = "claude-sonnet-5";
+const OPUS = "claude-opus-5-5";
+const SONNET = "claude-sonnet-5-5";
 const SONNET55 = "claude-sonnet-5-5";
+/** A third model, for a month that saw only it (rule 970: Opus 5 and Sonnet 5 left the catalog). */
+const HAIKU = "claude-haiku-5-5";
 
 type Mem = { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>> };
 const mem = () => (globalThis as unknown as { __nashrMem: Mem }).__nashrMem;
@@ -91,9 +93,9 @@ const pin = (iso: string) => {
   vi.setSystemTime(new Date(iso));
 };
 
-const U_OPUS = { input_tokens: 1000, output_tokens: 1000 }; // 0.03 USD
+const U_OPUS = { input_tokens: 1000, output_tokens: 1000 }; // 0.024 USD
 const U_SONNET = { input_tokens: 2000, output_tokens: 500, cache_read_input_tokens: 3000 }; // 0.0096 USD
-const U_SMALL = { input_tokens: 10, output_tokens: 10 }; // 0.0003 USD on Opus
+const U_SMALL = { input_tokens: 10, output_tokens: 10 }; // 0.00024 USD on Opus 5.5
 
 beforeEach(() => {
   vi.stubEnv("ANTHROPIC_API_KEY", "test");
@@ -115,19 +117,19 @@ describe("meter records calls and money per model", () => {
     await meter(u.email, OPUS, "generate", U_OPUS);
     await meter(u.email, SONNET, "judge", U_SONNET);
     await meter(u.email, OPUS, "chat", U_SMALL, "sami");
-    expect(await db.get("usage:_all:2031-01:model:claude-opus-5:calls")).toBe(2);
-    expect(await db.get("usage:_all:2031-01:model:claude-opus-5:usd_micro")).toBe(micro(OPUS, U_OPUS) + micro(OPUS, U_SMALL));
-    expect(await db.get("usage:_all:2031-01:model:claude-sonnet-5:calls")).toBe(1);
-    expect(await db.get("usage:_all:2031-01:model:claude-sonnet-5:usd_micro")).toBe(micro(SONNET, U_SONNET));
+    expect(await db.get("usage:_all:2031-01:model:claude-opus-5-5:calls")).toBe(2);
+    expect(await db.get("usage:_all:2031-01:model:claude-opus-5-5:usd_micro")).toBe(micro(OPUS, U_OPUS) + micro(OPUS, U_SMALL));
+    expect(await db.get("usage:_all:2031-01:model:claude-sonnet-5-5:calls")).toBe(1);
+    expect(await db.get("usage:_all:2031-01:model:claude-sonnet-5-5:usd_micro")).toBe(micro(SONNET, U_SONNET));
     // The same numbers, hard-coded, so a change of rate or of rounding shows here too.
-    expect(micro(OPUS, U_OPUS)).toBe(30000);
+    expect(micro(OPUS, U_OPUS)).toBe(24000);
     expect(micro(SONNET, U_SONNET)).toBe(9600);
-    expect(micro(OPUS, U_SMALL)).toBe(300);
+    expect(micro(OPUS, U_SMALL)).toBe(240);
 
     const all = await getUsage("_all", "2031-01");
-    expect(all.models).toEqual({ [OPUS]: { calls: 2, usd: usdOf(30300) }, [SONNET]: { calls: 1, usd: usdOf(9600) } });
+    expect(all.models).toEqual({ [OPUS]: { calls: 2, usd: usdOf(24240) }, [SONNET]: { calls: 1, usd: usdOf(9600) } });
     // Only entries with calls: the catalog's third model has none this month.
-    expect(all.models).not.toHaveProperty(SONNET55);
+    expect(all.models).not.toHaveProperty(HAIKU);
     // The per-model numbers add up to the month's totals.
     expect(Object.values(all.models).reduce((s, m) => s + m.calls, 0)).toBe(all.calls);
     expect(Math.round(Object.values(all.models).reduce((s, m) => s + m.usd, 0) * 100) / 100).toBe(all.usd);
@@ -135,11 +137,11 @@ describe("meter records calls and money per model", () => {
 
   it("a call with no usage writes nothing, and an anonymous call (no email) still counts globally", async () => {
     pin("2031-10-20T12:00:00Z");
-    await meter(undefined, SONNET55, "tool", null);
-    await meter(undefined, SONNET55, "tool", undefined);
+    await meter(undefined, HAIKU, "tool", null);
+    await meter(undefined, HAIKU, "tool", undefined);
     expect((await getUsage("_all", "2031-10")).models).toEqual({});
-    await meter(undefined, SONNET55, "tool", U_SMALL);
-    expect((await getUsage("_all", "2031-10")).models).toEqual({ [SONNET55]: { calls: 1, usd: usdOf(micro(SONNET55, U_SMALL)) } });
+    await meter(undefined, HAIKU, "tool", U_SMALL);
+    expect((await getUsage("_all", "2031-10")).models).toEqual({ [HAIKU]: { calls: 1, usd: usdOf(micro(HAIKU, U_SMALL)) } });
   });
 });
 
@@ -152,18 +154,18 @@ describe("meter records the provider", () => {
     vi.stubEnv("LLM_PROVIDER", "openai");
     vi.stubEnv("STRAITLY_API_KEY", "gw-test-key");
     await meter(u.email, OPUS, "generate", U_OPUS);
-    expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 2, usd: usdOf(60000) } });
+    expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 2, usd: usdOf(48000) } });
     // 2. Straitly with its key: the gateway.
     vi.stubEnv("LLM_PROVIDER", "straitly");
     await meter(u.email, SONNET, "judge", U_SONNET);
     expect(await db.get("usage:_all:2031-02:provider:straitly:calls")).toBe(1);
     expect(await db.get("usage:_all:2031-02:provider:straitly:usd_micro")).toBe(9600);
-    expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 2, usd: usdOf(60000) }, straitly: { calls: 1, usd: usdOf(9600) } });
+    expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 2, usd: usdOf(48000) }, straitly: { calls: 1, usd: usdOf(9600) } });
     // 3. Straitly without its key but with ANTHROPIC_API_KEY (a supported setup): anthropic() builds the plain Anthropic
     // client, every call goes direct, so it is counted under anthropic and not under the gateway.
     vi.stubEnv("STRAITLY_API_KEY", "");
     await meter(u.email, SONNET, "judge", U_SONNET);
-    expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 3, usd: usdOf(69600) }, straitly: { calls: 1, usd: usdOf(9600) } });
+    expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 3, usd: usdOf(57600) }, straitly: { calls: 1, usd: usdOf(9600) } });
     expect(allKeys().filter((k) => k.startsWith("usage:_all:2031-02:provider:")).sort()).toEqual([
       "usage:_all:2031-02:provider:anthropic:calls", "usage:_all:2031-02:provider:anthropic:usd_micro",
       "usage:_all:2031-02:provider:straitly:calls", "usage:_all:2031-02:provider:straitly:usd_micro",
@@ -178,7 +180,7 @@ describe("meter records the provider", () => {
     vi.stubEnv("LLM_PROVIDER", "straitly");
     vi.stubEnv("STRAITLY_API_KEY", "gw-test-key");
     await meter(u.email, OPUS, "generate", U_OPUS, "faris", "anthropic");
-    expect((await getUsage("_all", "2031-11")).providers).toEqual({ straitly: { calls: 1, usd: usdOf(9600) }, anthropic: { calls: 1, usd: usdOf(30000) } });
+    expect((await getUsage("_all", "2031-11")).providers).toEqual({ straitly: { calls: 1, usd: usdOf(9600) }, anthropic: { calls: 1, usd: usdOf(24000) } });
   });
 
   it("a provider that is not one of the two is ignored: the effective one is used and no other key is made", async () => {
@@ -188,7 +190,7 @@ describe("meter records the provider", () => {
     vi.stubEnv("STRAITLY_API_KEY", "gw-test-key"); // so the effective default is straitly, not the other value
     const bogus: unknown[] = ["openai", "constructor", "__proto__", "straitly:calls", "evil\nusage:x", "", "ANTHROPIC", 7, null, {}, ["anthropic"]];
     for (const p of bogus) await meter(u.email, OPUS, "generate", U_SMALL, undefined, p as never);
-    expect((await getUsage("_all", "2031-12")).providers).toEqual({ straitly: { calls: bogus.length, usd: usdOf(300 * bogus.length) } });
+    expect((await getUsage("_all", "2031-12")).providers).toEqual({ straitly: { calls: bogus.length, usd: usdOf(240 * bogus.length) } });
     const keys = allKeys().filter((k) => k.startsWith("usage:_all:2031-12:provider:"));
     expect(keys.sort()).toEqual(["usage:_all:2031-12:provider:straitly:calls", "usage:_all:2031-12:provider:straitly:usd_micro"]);
   });
@@ -211,18 +213,18 @@ describe("the model key is never a free string", () => {
   it("an unknown id, a prototype name, or an id with ':' or whitespace lands in 'other' and creates no other key", async () => {
     pin("2031-03-10T12:00:00Z");
     const u = await newUser("um-hostile");
-    const hostile: unknown[] = ["constructor", "__proto__", "toString", "hasOwnProperty", "claude-opus-5:calls", "claude-opus-5 ", " claude-opus-5", "CLAUDE-OPUS-5", "claude opus 5", "x\nusage:evil@test.example:2031-03:calls", "", "claude-unknown-9", "anthropic/claude-opus-5", "claude-opus-5-20261001", 5, null, undefined, {}];
+    const hostile: unknown[] = ["constructor", "__proto__", "toString", "hasOwnProperty", "claude-opus-5:calls", "claude-opus-5 ", " claude-opus-5", "CLAUDE-OPUS-5", "claude opus 5", "x\nusage:evil@test.example:2031-03:calls", "", "claude-unknown-9", "anthropic/claude-opus-5", "claude-opus-5-20261001", "claude-opus-5", "claude-sonnet-5", 5, null, undefined, {}];
     const before = new Set(allKeys());
     for (const model of hostile) await meter(u.email, model as string, "generate", U_SMALL);
     await meter(undefined, "a:b", "tool", U_SMALL);
     const modelKeys = allKeys().filter((k) => k.startsWith("usage:_all:2031-03:model:")).sort();
     expect(modelKeys).toEqual(["usage:_all:2031-03:model:other:calls", "usage:_all:2031-03:model:other:usd_micro"]);
     expect(await db.get("usage:_all:2031-03:model:other:calls")).toBe(hostile.length + 1);
-    // Whatever the id, the money is priced as before (an unknown id as Opus): 300 micro-dollars each.
-    expect(await db.get("usage:_all:2031-03:model:other:usd_micro")).toBe(300 * (hostile.length + 1));
+    // Whatever the id (a retired one included, rule 970), the money is priced at the highest catalog rates: 240 micro-dollars each.
+    expect(await db.get("usage:_all:2031-03:model:other:usd_micro")).toBe(240 * (hostile.length + 1));
     const made = allKeys().filter((k) => !before.has(k));
     expect(made.filter((k) => /evil|hasOwnProperty|constructor|__proto__/.test(k)), "an id leaked into a key").toEqual([]);
-    expect((await getUsage("_all", "2031-03")).models).toEqual({ other: { calls: hostile.length + 1, usd: usdOf(300 * (hostile.length + 1)) } });
+    expect((await getUsage("_all", "2031-03")).models).toEqual({ other: { calls: hostile.length + 1, usd: usdOf(240 * (hostile.length + 1)) } });
   });
 
   it("every catalog id has its own key", async () => {
@@ -255,7 +257,7 @@ describe("months written before this release", () => {
     await meter(undefined, OPUS, "generate", U_OPUS);
     const s = await getUsage("_all", "2031-05");
     expect(s.calls).toBe(4);
-    expect(s.models).toEqual({ [OPUS]: { calls: 1, usd: 0.03 } });
+    expect(s.models).toEqual({ [OPUS]: { calls: 1, usd: 0.024 } });
   });
 });
 
@@ -276,7 +278,7 @@ describe("getUsage for one account", () => {
     expect(mget, "no extra round trip per account in the founder's user list").not.toHaveBeenCalled();
     expect(get.mock.calls.map((c) => String(c[0])).filter((key) => /:model:|:provider:|:pickreject:/.test(key))).toEqual([]);
     // The global view of the same month has them.
-    expect((await getUsage("_all", "2031-06")).models).toEqual({ [OPUS]: { calls: 1, usd: 0.03 } });
+    expect((await getUsage("_all", "2031-06")).models).toEqual({ [OPUS]: { calls: 1, usd: 0.024 } });
   });
 });
 
@@ -350,7 +352,7 @@ describe("no account-linked key gains model, provider or pickreject", () => {
     await wipeAccount(u.email);
     expect(allKeys().filter((k) => k.includes(u.email) && mem().kv.get(k) !== null)).toEqual([]);
     const after = await getUsage("_all", "2031-08");
-    expect(after.models[OPUS]).toEqual({ calls: 1, usd: 0.03 });
+    expect(after.models[OPUS]).toEqual({ calls: 1, usd: 0.024 });
     expect(after.models.other?.calls).toBe(1);
     expect(after.providers.straitly?.calls).toBe(1);
     expect(after.rejectedPicks).toEqual({ "chat:unknown": 1 });
@@ -495,8 +497,8 @@ describe("the founder console", () => {
     const ov = await overview();
     const all = await getUsage("_all", "2031-09");
     expect(ov.modelUsage).toEqual({ month: "2031-09", models: all.models, providers: all.providers, fallbacks: all.fallbacks, rejectedPicks: all.rejectedPicks });
-    expect(ov.modelUsage.models[OPUS]).toEqual({ calls: 1, usd: 0.03 });
-    expect(ov.modelUsage.providers).toEqual({ straitly: { calls: 1, usd: 0.03 }, anthropic: { calls: 1, usd: 0.0096 } });
+    expect(ov.modelUsage.models[OPUS]).toEqual({ calls: 1, usd: 0.024 });
+    expect(ov.modelUsage.providers).toEqual({ straitly: { calls: 1, usd: 0.024 }, anthropic: { calls: 1, usd: 0.0096 } });
     expect(ov.modelUsage.rejectedPicks).toEqual({ "generate:task_not_allowed": 1 });
   });
 

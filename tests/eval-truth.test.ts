@@ -130,7 +130,7 @@ describe("the judge", () => {
         messages = {
           create: async (p: { messages: { content: string }[] }) => {
             seen.push(p.messages[0]);
-            return { model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify(reply) }] };
+            return { model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify(reply) }] };
           },
         };
       },
@@ -171,7 +171,7 @@ describe("the judge", () => {
         messages = {
           create: async () => {
             await during.fn();
-            return { model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([verdict, verdict]) }] };
+            return { model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([verdict, verdict]) }] };
           },
         };
       },

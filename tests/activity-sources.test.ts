@@ -41,7 +41,7 @@ type Item = { channel: string; title: string; body: string };
 const ITEMS: Item[] = [{ channel: "instagram", title: "قهوة اليوم", body: "نص أول" }, { channel: "instagram", title: "عرض الجمعة", body: "نص ثانٍ" }];
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[] };
 type Turn = { stop_reason: string; content: unknown[] };
-const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
+const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
 const clean = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 
 async function owner(prefix: string): Promise<User> {
@@ -64,7 +64,7 @@ async function load(o: { state?: "on" | "mock"; verdicts?: object[]; turns?: Tur
       static BadRequestError = class extends Error {};
       beta = { messages: { stream: () => ({ finalMessage: async () => reply(JSON.stringify(ITEMS)) }) } };
       messages = {
-        stream: () => ({ finalMessage: async () => { const t = turns.shift(); return t ? { model: "claude-opus-5", usage: { input_tokens: 1, output_tokens: 1 }, ...t } : reply("تمام"); } }),
+        stream: () => ({ finalMessage: async () => { const t = turns.shift(); return t ? { model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...t } : reply("تمام"); } }),
         create: async (p: Params) => {
           const sys = typeof p.system === "string" ? p.system : p.system[0].text;
           if (!sys.startsWith("You are the quality judge")) return reply(JSON.stringify([{ ok: true }]));

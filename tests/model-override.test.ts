@@ -232,7 +232,7 @@ describe("GET /api/models", () => {
 describe("PUT /api/models: validation", () => {
   it("unknown, constructor and __proto__ ids are rejected unknown_model, and so is anything that is not a string; nothing is written", async () => {
     const { u, conv } = await owner("mo-unknown");
-    const bad: unknown[] = ["claude-unknown-9", "constructor", "__proto__", "toString", "hasOwnProperty", "", " claude-opus-5", "CLAUDE-OPUS-5", 5, true, false, {}, [], [OPUS], { id: OPUS }, undefined];
+    const bad: unknown[] = ["claude-unknown-9", "constructor", "__proto__", "toString", "hasOwnProperty", "", " claude-opus-5-5", "CLAUDE-OPUS-5", 5, true, false, {}, [], [OPUS], { id: OPUS }, undefined];
     for (const model of bad) {
       for (const target of ["conversation", "brand"]) {
         const r = await put({ target, id: target === "conversation" ? conv : undefined, model });

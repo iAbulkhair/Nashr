@@ -23,7 +23,7 @@ const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "
 type Item = { channel: string; title: string; body: string };
 const ITEM: Item = { channel: "instagram", title: "قهوة اليوم", body: "نص تجريبي للعنصر يكفي للمراجعة" };
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[] };
-const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
+const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
 const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 
 /** An owner with a brand file, re-read so the object carries the stored balance. */

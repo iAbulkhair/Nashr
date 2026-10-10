@@ -470,7 +470,7 @@ describe("the judge takes back an approval only auto-approval gave (rule 217)", 
     claudeOn();
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
-        messages = { create: async () => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify(reply.v) }] }) };
+        messages = { create: async () => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify(reply.v) }] }) };
       },
     }));
     const { judgeTasks } = await import("@/lib/judge");

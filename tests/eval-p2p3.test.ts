@@ -199,7 +199,7 @@ describe("untrusted text reaching the judge and the reviewer", () => {
         messages = {
           create: async (p: { system: { text: string }[]; messages: { content: string }[] }) => {
             sent = p;
-            return { model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([{ completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, notes: "ready" }]) }] };
+            return { model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([{ completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, notes: "ready" }]) }] };
           },
         };
       },
@@ -219,7 +219,7 @@ describe("a refused generation", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
     claudeOn();
     vi.doMock("@anthropic-ai/sdk", () => {
-      const refused = { model: "claude-opus-5", stop_reason: "refusal", usage: { input_tokens: 8000, output_tokens: 40 }, content: [] };
+      const refused = { model: "claude-opus-5-5", stop_reason: "refusal", usage: { input_tokens: 8000, output_tokens: 40 }, content: [] };
       class BadRequestError extends Error {}
       return {
         default: class {

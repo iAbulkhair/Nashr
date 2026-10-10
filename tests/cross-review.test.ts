@@ -50,7 +50,7 @@ const brand: Brand = { name: "متجر العود", website: "", industry: "مت
 type Item = { channel: string; title: string; body: string };
 type Params = { model: string; max_tokens: number; thinking?: unknown; output_config?: unknown; system: { type: string; text: string; cache_control?: unknown }[]; messages: { role: string; content: string }[] };
 type Reviewer = "razan" | "majed";
-const reply = (text: string, extra: Record<string, unknown> = {}) => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 50 }, content: [{ type: "text", text }], ...extra });
+const reply = (text: string, extra: Record<string, unknown> = {}) => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 50 }, content: [{ type: "text", text }], ...extra });
 const JUDGE = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 const MEMO: Item = { channel: "finance", title: "Pricing memo", body: "Three packages: 99 + 199 + 299 = 597 SAR, VAT [رقم]" };
 const says = (...v: object[]) => JSON.stringify(v);
@@ -75,7 +75,7 @@ async function load(o: { items?: Item[]; cross?: (by: Reviewer, p: Params) => st
   vi.doMock("@anthropic-ai/sdk", () => ({
     default: class {
       static BadRequestError = class extends Error {};
-      beta = { messages: { stream: (p: Params) => { seen.gen.push(p); return { finalMessage: async () => reply(JSON.stringify(items), { model: "claude-opus-5" }) }; } } };
+      beta = { messages: { stream: (p: Params) => { seen.gen.push(p); return { finalMessage: async () => reply(JSON.stringify(items), { model: "claude-opus-5-5" }) }; } } };
       messages = {
         create: async (p: Params, opts?: unknown) => {
           const sys = p.system[0].text;
@@ -97,7 +97,7 @@ async function owner(prefix: string): Promise<User> {
   await db.set(`brand:${u.email}`, brand);
   return (await getUser(u.email))!;
 }
-const V = (by: Reviewer, verdict: "ok" | "flag", notes = ""): CrossVerdict => ({ by, verdict, notes, at: "2026-09-30T08:00:00.000Z", model: "claude-sonnet-5" });
+const V = (by: Reviewer, verdict: "ok" | "flag", notes = ""): CrossVerdict => ({ by, verdict, notes, at: "2026-09-30T08:00:00.000Z", model: "claude-sonnet-5-5" });
 
 afterEach(async () => {
   await settle();
@@ -230,7 +230,7 @@ describe("notes only: the reviewers never change an item (rule 263)", () => {
   });
 
   it("reads a reply defensively: real item ids only, the first per id, a flag needs notes, notes cleaned and at most 300 characters", () => {
-    const P = (raw: string, n = 2) => parseCrossVerdicts(raw, n, "razan", "claude-sonnet-5", "t");
+    const P = (raw: string, n = 2) => parseCrossVerdicts(raw, n, "razan", "claude-sonnet-5-5", "t");
     expect(P("sorry, I cannot help")).toEqual([null, null]);
     expect(P('{"id": 1, "verdict": ')).toEqual([null, null]);
     expect(P("[]")).toEqual([null, null]);
@@ -240,7 +240,7 @@ describe("notes only: the reviewers never change an item (rule 263)", () => {
       { id: 1, verdict: "maybe", notes: ["?"] }, { id: 1, verdict: "flag", notes: [] }, { id: 1, verdict: "flag", notes: "   " },
       { id: 1, verdict: "ok", notes: ["never shown"] }, { id: 1, verdict: "flag", notes: ["too late"] },
     ));
-    expect(out).toEqual([{ by: "razan", verdict: "ok", notes: "", at: "t", model: "claude-sonnet-5" }, { by: "razan", verdict: "flag", notes: "first\nsecond\nthird", at: "t", model: "claude-sonnet-5" }]);
+    expect(out).toEqual([{ by: "razan", verdict: "ok", notes: "", at: "t", model: "claude-sonnet-5-5" }, { by: "razan", verdict: "flag", notes: "first\nsecond\nthird", at: "t", model: "claude-sonnet-5-5" }]);
     const long = P(says({ id: 1, verdict: "flag", notes: ["x".repeat(1000)] }), 1)[0]!;
     expect(long.notes).toHaveLength(CROSS_NOTES_MAX);
     expect(P(says({ id: 1, verdict: "flag", notes: "a‮b\u0007c" }), 1)[0]!.notes, "control and bidi-override characters are dropped").toBe("a b c");
@@ -622,7 +622,7 @@ async function fixedBatch(type: TaskType, crossReview: boolean) {
   vi.doMock("@anthropic-ai/sdk", () => ({
     default: class {
       static BadRequestError = class extends Error {};
-      beta = { messages: { stream: (p: Sent) => { gen.push(p); return { finalMessage: async () => ({ ...reply(JSON.stringify(items)), model: "claude-opus-5" }) }; } } };
+      beta = { messages: { stream: (p: Sent) => { gen.push(p); return { finalMessage: async () => ({ ...reply(JSON.stringify(items)), model: "claude-opus-5-5" }) }; } } };
       messages = {
         create: async (p: Sent) => {
           const sys = (p.system as { text: string }[])[0].text;

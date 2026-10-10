@@ -19,33 +19,21 @@ export type TokenUsage = {
 };
 
 /**
- * USD per million tokens: Anthropic list prices, checked 2026-09-27 (Sonnet 5.5 added 2026-10-02, Opus 5.5 and Haiku 5.5
- * 2026-10-09). 5-minute cache writes are 1.25x input; cache reads differ by model. Since 2026-10-08 the model catalog
- * (`models/catalog.ts`) is the source of rates and this table is only the fallback behind it: `knownRate` asks the catalog
- * first. Every model here is in the catalog with the same numbers, so nothing is priced differently; the table goes in a
- * later release, once nothing reads it (expand, then contract: rule 679). Until then a change of an Anthropic price is made
- * in both places. Opus 5 and Sonnet 5 stay so stored usage and any old id still price right; since 2026-10-09 the product
- * calls only the three 5.5 models (`DEFAULTS` in src/lib/models/route.ts).
+ * USD per million tokens come from the model catalog (`models/catalog.ts`), the only rate table since 2026-10-10 (rule
+ * 970: the old `RATES` table here and the pre-5.5 models were removed). An id outside the catalog (an old id in stored
+ * data, a dated alias, a gateway form) is priced at the HIGHEST catalog rate of each bucket, so a cost is never under-
+ * reported; `hasRate` tells the floor test which ids have a rate of their own.
  */
-const RATES: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
-  "claude-opus-5": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-  "claude-sonnet-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
-  /** The chat model since 2026-10-02 (`CHAT_MODEL`, src/lib/chat.ts). */
-  "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
-  /** Generation and onboarding since 2026-10-09. */
-  "claude-opus-5-5": { in: 4, out: 20, cacheRead: 0.2, cacheWrite: 5 },
-  /**
-   * The image/video prompt writer and the free tools since 2026-10-09. The rate for prompts of 100K tokens or fewer;
-   * longer prompts cost 5x ($0.50 / $2.50). Both callers send a few hundred tokens, so this is the rate they pay.
-   */
-  "claude-haiku-5-5": { in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
-};
-const DEFAULT_RATE = RATES["claude-opus-5"];
-const hasOldRate = (model: string): boolean => Object.prototype.hasOwnProperty.call(RATES, model);
-/** The catalog's rate for `model`, else the old table's, else undefined. Own keys only: "constructor" has no rate. */
-const knownRate = (model: string) => modelById(model)?.rate ?? (hasOldRate(model) ? RATES[model] : undefined);
+const UNKNOWN_RATE = Object.freeze({
+  in: Math.max(...MODELS.map((m) => m.rate.in)),
+  out: Math.max(...MODELS.map((m) => m.rate.out)),
+  cacheRead: Math.max(...MODELS.map((m) => m.rate.cacheRead)),
+  cacheWrite: Math.max(...MODELS.map((m) => m.rate.cacheWrite)),
+});
+/** The catalog's rate for `model`, else undefined. An exact lookup: "constructor" has no rate. */
+const knownRate = (model: string) => modelById(model)?.rate;
 /**
- * True when `model` has a rate of its own, in the catalog or in the old table. `costUsd` prices an unknown id as Opus, so
+ * True when `model` has a rate of its own in the catalog. `costUsd` prices an unknown id at the highest rates, so
  * the floor test (tests/pricing-floor.test.ts) asks this for every model the estimates assume. The tables stay private.
  */
 export const hasRate = (model: string): boolean => knownRate(model) !== undefined;
@@ -58,7 +46,7 @@ export const KINDS = ["generate", "review", "chat", "onboard", "image_prompt", "
 export type Kind = (typeof KINDS)[number];
 
 export function costUsd(model: string, u: TokenUsage): number {
-  const r = knownRate(model) ?? DEFAULT_RATE;
+  const r = knownRate(model) ?? UNKNOWN_RATE;
   const inp = u.input_tokens ?? 0, out = u.output_tokens ?? 0, cr = u.cache_read_input_tokens ?? 0, cw = u.cache_creation_input_tokens ?? 0;
   return (inp * r.in + out * r.out + cr * r.cacheRead + cw * r.cacheWrite) / 1e6;
 }

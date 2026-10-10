@@ -302,8 +302,8 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     await Promise.all([db.set(chatMsgKey(p.email), 5), db.set(chatOverKey(p.email), 1), db.set(chatCredKey(p.email), 4)]);
     // Two chat model calls of $0.03 each (claude-sonnet-5: 10,000 input and 1,000 output tokens).
     const usage = { input_tokens: 10_000, output_tokens: 1_000 };
-    await meter(p.email, "claude-sonnet-5", "chat", usage);
-    await meter(p.email, "claude-sonnet-5", "chat", usage);
+    await meter(p.email, "claude-sonnet-5-5", "chat", usage);
+    await meter(p.email, "claude-sonnet-5-5", "chat", usage);
     const t = await account("trial", "chat");
     await call(t.email, { chatAllowance: 20 });
     await db.set(chatTrialKey(t.email), 12);
@@ -344,8 +344,8 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     // 25 sent inside the plan's allowance, then 5 on credits billed 7 credits in all.
     await Promise.all([db.set(chatMsgKey(u.email), 25), db.set(chatOverKey(u.email), 5), db.set(chatCredKey(u.email), 7)]);
     const usage = { input_tokens: 10_000, output_tokens: 1_000 };
-    await meter(u.email, "claude-sonnet-5", "chat", usage);
-    await meter(u.email, "claude-sonnet-5", "chat", usage);
+    await meter(u.email, "claude-sonnet-5-5", "chat", usage);
+    await meter(u.email, "claude-sonnet-5-5", "chat", usage);
     expect((await call(u.email, { chatAllowance: 10 })).status).toBe(200);
 
     const rows = ((await (await plan.GET(json("/api/admin/plan", "GET", undefined, headers))).json()) as { users: Record<string, unknown>[] }).users;

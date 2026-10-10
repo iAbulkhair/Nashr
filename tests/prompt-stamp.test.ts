@@ -190,7 +190,7 @@ describe("the golden set says when an agent's prompts changed (rule 230)", () =>
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     claudeOn();
-    const reply = (text: string) => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
+    const reply = (text: string) => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
     const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
@@ -220,7 +220,7 @@ describe("the golden set says when an agent's prompts changed (rule 230)", () =>
     vi.resetModules();
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
     claudeOn();
-    const reply = (text: string) => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
+    const reply = (text: string) => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
     const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {

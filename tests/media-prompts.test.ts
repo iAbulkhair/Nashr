@@ -14,7 +14,7 @@ import type { ImageModelId, VideoModelId } from "@/lib/media-catalog";
  */
 type Create = (body: Record<string, unknown>, opts: Record<string, unknown>) => Promise<unknown>;
 const sdk = { made: 0, calls: [] as { body: Record<string, unknown>; opts: Record<string, unknown> }[] };
-const reply = (text: string) => async () => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text }] });
+const reply = (text: string) => async () => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text }] });
 
 /** A fresh prompts module with Claude in `state` and a counting SDK whose `create` answers with `create`. */
 async function load(state: "on" | "paused", create: Create = reply("A model-written prompt")) {

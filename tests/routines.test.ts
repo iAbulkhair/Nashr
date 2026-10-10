@@ -46,7 +46,7 @@ const spend = async (email: string, scope = email) => agentSpendFor((await getUs
 const allOn = Object.fromEntries(ROUTINE_IDS.map((id) => [id, true])) as Record<RoutineId, boolean>;
 
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[]; output_config?: { format?: unknown } };
-const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
+const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
 const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 
 /**

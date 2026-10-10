@@ -106,7 +106,7 @@ const rows = async (scope: string) => (await listActivity(scope, { limit: CAPS.a
 const statuses = async (scope: string, id: string) => (await getHandoff(scope, id))!.items.map((i) => i.status);
 
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[] };
-const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
+const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
 const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 /**
  * The SDK, replaced and counted, with Claude "on" (or paused). `made` counts clients, so "no model call" is a number;
@@ -744,7 +744,7 @@ describe("the chat reply, the card and the tool never say 'nothing runs' when th
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: () => ({ finalMessage: async () => { const t = turns.shift(); if (t instanceof Error) throw t; return { model: "claude-opus-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(t ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }; } }) };
+        messages = { stream: () => ({ finalMessage: async () => { const t = turns.shift(); if (t instanceof Error) throw t; return { model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(t ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }; } }) };
       },
     }));
     const { chat, history } = await import("@/lib/chat");
