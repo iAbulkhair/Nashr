@@ -1,0 +1,158 @@
+import { createHash } from "node:crypto";
+import { CAPS, db, pushCapped } from "./db";
+import { listBrands } from "./brands";
+import { getBrand } from "./brand";
+import type { AgentId } from "./agents";
+import type { User } from "./auth";
+
+/**
+ * Agent scope, Part B (rules 790-808; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md section 6):
+ * four layers keep the agents on marketing, sales, growth, finance and analytics work. This is the pure core every gate
+ * uses: the founder's modes, the verdict words, the refusal copy, the log and the hash of an item's text. It holds no
+ * model call. "Agent scope" is never "scope": `scope` and `sc(u)` already mean the tenant's brand scope.
+ */
+
+/** What a layer does. `off` never checks; `shadow` checks and logs but lets everything through; `enforce` refuses. */
+export type AgentScopeMode = "off" | "shadow" | "enforce";
+/** `prompt` is the scope text in the agents' prompts (on or off); the other three are the layers that call the classifier. */
+export type AgentScopeModes = { prompt: "off" | "on"; input: AgentScopeMode; role: AgentScopeMode; output: AgentScopeMode };
+
+/** Every layer starts in shadow: two weeks of logs before anything is refused. Frozen: readers get a copy. */
+export const AGENT_SCOPE_DEFAULT_MODES: AgentScopeModes = Object.freeze({ prompt: "on", input: "shadow", role: "shadow", output: "shadow" });
+
+/** `modes` and `evalLast` are single keys (only `POST /api/admin/agent-scope/modes` writes the first); `log` is one list per UTC day. */
+export const AGENT_SCOPE_KEYS = {
+  modes: "agent-scope:modes",
+  evalLast: "agent-scope:eval:last",
+  log: (day: string) => `agent-scope:log:${day}`,
+} as const;
+
+/** The classifier's answer. `in` is work the team does; the rest are refused in enforce mode. */
+export const VERDICTS = ["in", "off_topic", "pro_advice", "other_business", "personal", "other_brand"] as const;
+export type Verdict = (typeof VERDICTS)[number];
+export const isVerdict = (x: unknown): x is Verdict => typeof x === "string" && (VERDICTS as readonly string[]).includes(x);
+
+/**
+ * The modes from whatever is stored, field by field: a missing key, a value that is not an object and any bad field give
+ * that field its default, so one bad word never turns a layer off or on by accident. Used by the reader and by the
+ * founder's route, so what the route stores is what the reader accepts.
+ */
+export function parseAgentScopeModes(raw: unknown): AgentScopeModes {
+  const o = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const d = AGENT_SCOPE_DEFAULT_MODES;
+  const mode = (v: unknown, fallback: AgentScopeMode): AgentScopeMode => (v === "off" || v === "shadow" || v === "enforce" ? v : fallback);
+  return { prompt: o.prompt === "on" || o.prompt === "off" ? o.prompt : d.prompt, input: mode(o.input, d.input), role: mode(o.role, d.role), output: mode(o.output, d.output) };
+}
+
+/** The stored modes, or the defaults. Never throws: a Redis error gives the defaults. */
+export async function readAgentScopeModes(): Promise<AgentScopeModes> {
+  try {
+    return parseAgentScopeModes(await db.get(AGENT_SCOPE_KEYS.modes));
+  } catch {
+    return parseAgentScopeModes(null);
+  }
+}
+
+type Lang = "ar" | "en";
+type Names = { brand: string; otherBrands: string[]; classified?: string };
+const key = (s: string) => s.trim().toLowerCase();
+
+/**
+ * The refusal an owner reads (spec 6.3). Names come from the owner's own brand list, never from the classifier's text:
+ * `other_brand` writes the entry of `names.otherBrands` that equals `names.classified` after trim and lowercase, spelled as
+ * the list spells it, and anything else reads "another of your brands". An empty brand name reads "your business" /
+ * «نشاطك», so no refusal ever says "for .".
+ */
+export function agentScopeRefusalText(verdict: Exclude<Verdict, "in">, lang: Lang, names: Names): string {
+  const ar = lang === "ar";
+  const brand = (typeof names.brand === "string" ? names.brand : "").trim() || (ar ? "نشاطك" : "your business");
+  switch (verdict) {
+    case "other_brand": {
+      const wanted = typeof names.classified === "string" ? key(names.classified) : "";
+      const hit = wanted ? names.otherBrands.find((n) => typeof n === "string" && key(n) === wanted) : undefined;
+      const other = (hit?.trim() ?? "") || (ar ? "علامة أخرى من علاماتك" : "another of your brands");
+      return ar ? `هذا الطلب يخص ${other}. انتقل إليها من قائمة العلامات ثم اسأل مرة أخرى.` : `This is about ${other}. Switch to it from the brand menu and ask again.`;
+    }
+    case "other_business":
+      return ar ? "هذا الطلب لنشاط تجاري آخر. أضفه علامةً جديدة أولاً، ثم اسأل مرة أخرى." : "This is for another business. Add it as a new brand first, then ask again.";
+    default:
+      return ar
+        ? `فريق ذكين يعمل على التسويق والمبيعات والنمو والمالية والتحليلات لـ${brand}. لا أستطيع المساعدة في هذا الطلب.`
+        : `Thakeen's team works on marketing, sales, growth, finance and analytics for ${brand}. I can't help with this one.`;
+  }
+}
+
+/** Shown when an account has hit the ceiling of enforced refusals (`agentScopePreflight`). */
+export const agentScopeSlowText = (lang: Lang): string =>
+  lang === "ar" ? "طلبات كثيرة خارج عمل الفريق. حاول مرة أخرى لاحقاً." : "Too many requests outside what the team works on. Try again later.";
+/** Shown when a publish in enforce mode could not be checked (it fails closed). */
+export const agentScopeRetryText = (lang: Lang): string =>
+  lang === "ar" ? "تعذّر فحص هذا العنصر الآن. حاول مرة أخرى بعد دقيقة." : "This item could not be checked right now. Try again in a minute.";
+
+export type AgentScopeLayer = "input" | "role" | "output";
+export type AgentScopeWhere = "chat" | "mcp_chat" | "generate" | "mcp_generate" | "items" | "save_draft" | "publish" | "chat_publish" | "tool";
+export type AgentScopeLogEntry = {
+  at: string;
+  email: string;
+  brandId: string;
+  agent: AgentId;
+  layer: AgentScopeLayer;
+  where: AgentScopeWhere;
+  verdict: Verdict | "error" | "wrong_agent";
+  error?: string;
+  mode: "shadow" | "enforce";
+  text: string;
+  itemId?: string;
+};
+
+/** How long a day's log is kept: 31 days from its first entry. */
+const LOG_TTL_S = 31 * 86400;
+/** The owner's words and an error message are cut to this many characters before they are stored. */
+const LOG_CUT = 200;
+
+/**
+ * One line in today's (UTC) log, for the founder's panel. The text is cut to 200 characters. The list keeps the newest
+ * `CAPS.agentScopeLog` lines and the day's key expires 31 days after its first line (EXPIRE NX, so a later line does not
+ * move it). Never throws: a log that cannot be written must not stop the owner's turn. Only the error's name is printed.
+ */
+export async function logAgentScope(e: Omit<AgentScopeLogEntry, "at">): Promise<void> {
+  try {
+    const now = new Date();
+    const k = AGENT_SCOPE_KEYS.log(now.toISOString().slice(0, 10));
+    const row: AgentScopeLogEntry = { ...e, at: now.toISOString(), text: e.text.slice(0, LOG_CUT), ...(e.error === undefined ? {} : { error: e.error.slice(0, LOG_CUT) }) };
+    await pushCapped(k, JSON.stringify(row), CAPS.agentScopeLog);
+    await db.expireNx(k, LOG_TTL_S);
+  } catch (err) {
+    console.error("agent scope log failed", err instanceof Error ? err.name : "error");
+  }
+}
+
+/** The text a check reads for an item: its title, a blank line, and the body the owner would publish (the edit, when there is one). */
+export const itemText = (t: { title: string; body: string; editedBody?: string }): string => `${t.title}\n\n${t.editedBody ?? t.body}`;
+/** sha256 (hex) of `itemText(t)`: ties a check to the exact text that was checked, so a later edit is a different hash. */
+export const itemHash = (t: { title: string; body: string; editedBody?: string }): string => createHash("sha256").update(itemText(t)).digest("hex");
+
+/**
+ * The names of the account's brands other than the active one, for the classifier and the refusal copy. The default
+ * brand's `BrandMeta.name` is "" (its name lives in the brand file), so it is read from `getBrand(user.email)`. Empty
+ * names are dropped. One `Promise.all`: the list and the default brand's file.
+ */
+export async function otherBrandNames(user: User): Promise<string[]> {
+  const active = user.brandId ?? "default";
+  const [rows, main] = await Promise.all([listBrands(user.email), getBrand(user.email)]);
+  return rows
+    .filter((b) => b.id !== active)
+    .map((b) => (b.id === "default" ? main?.name || b.name : b.name).trim())
+    .filter((n) => n !== "");
+}
+
+/**
+ * Thrown inside a generation batch when an enforced check refused it, so the existing catch refunds the whole batch.
+ * `reply` is the refusal text the owner reads.
+ */
+export class AgentScopeRefused extends Error {
+  constructor(readonly verdict: Exclude<Verdict, "in">, readonly reply: string) {
+    super(`agent_scope_${verdict}`);
+    this.name = "AgentScopeRefused";
+  }
+}

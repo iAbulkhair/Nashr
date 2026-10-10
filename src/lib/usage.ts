@@ -53,8 +53,10 @@ export const hasRate = (model: string): boolean => knownRate(model) !== undefine
 /**
  * `xreview` is the cross-agent review (`crossReview` in noor.ts): Razan's and Majed's notes on another agent's batch. It
  * is metered to the REVIEWING agent, not to the batch's owner, so it reads as what their review work costs.
+ * `agent_scope` is the agent-scope classifier (rule 790): it is metered to the global counters only (`meter(undefined, ...)`),
+ * never to an account, so the founder's monthly total includes it and no owner is charged for it.
  */
-export const KINDS = ["generate", "review", "chat", "onboard", "image_prompt", "tool", "judge", "xreview"] as const;
+export const KINDS = ["generate", "review", "chat", "onboard", "image_prompt", "tool", "judge", "xreview", "agent_scope"] as const;
 export type Kind = (typeof KINDS)[number];
 
 export function costUsd(model: string, u: TokenUsage): number {
