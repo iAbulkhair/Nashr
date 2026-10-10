@@ -36,7 +36,13 @@ Convention: this spec PR adds no `docs/system/tests/NNNN-*.md`. That file comes 
 
 ## 1. Disk facts (Hostinger Business, account `u472843410`)
 
-The Hostinger API connector was still connecting (`pending`) when this revision was written, so every number below is either **published** or **founder to confirm** in hPanel. Nothing here was measured on the server. The founder postponed these checks (D6); they are the pre-build checklist in section 9.
+Read through the Hostinger API connector on 2026-10-10 (read-only calls only):
+- Order 1009870060, plan `hostinger_business_v5`, active. Three sites share it: `maslakiyat.com` (main, WordPress), `thakeen.com` (addon, Node.js) and `staging.thakeen.com` (addon, detected type "other").
+- The 9 account crons are all still configured and every one reads `-H @/home/u472843410/domains/thakeen.com/.thakeen-cron`.
+- `thakeen.com` has 25 Node builds, all from `production`. The last 5 completed between 2026-10-09 10:55 and 2026-10-10 16:59 UTC, all after the header file was created (2026-10-08 13:58 UTC).
+- The API cannot show disk or inode usage, backups, or anything outside `public_html` for this plan. The disk metrics endpoints exist only for Agency plans and answer 404 here; the file listing is rooted at `public_html` (it holds only `.htaccess`) and refuses `..`.
+
+So the quota, usage and backup numbers below are still **published** or **founder to confirm** in hPanel. The founder postponed these checks (D6); they are the pre-build checklist in section 9.
 
 ### 1.1 Facts
 
@@ -48,7 +54,7 @@ The Hostinger API connector was still connecting (`pending`) when this revision 
 | Bandwidth | Not checked | **founder to confirm** |
 | Node process limits (workers, entry processes, memory) | Not checked | **founder to confirm** |
 | Where a Next.js build goes | `/home/{user}/domains/{domain}/nodejs`. `public_html` holds only the generated `.htaccess`, which every redeploy regenerates | [Hostinger deploy guide](https://www.hostinger.com/support/how-to-deploy-apps-built-with-codex-on-hostinger/), [redeploy](https://www.hostinger.com/support/how-to-redeploy-a-node-js-application/) |
-| Do files survive a build? | Hostinger documents no folder that survives a redeploy. Evidence that siblings of `nodejs/` and `public_html/` survive: the cron header file `/home/u472843410/domains/thakeen.com/.thakeen-cron` was created 2026-10-08, and the crons kept answering 200 after the #309 and #312 release builds | **founder to confirm** that the crons still answer 200; the console sentinel in 1.2 then proves it on every build |
+| Do files survive a build? | Hostinger documents no folder that survives a redeploy. Evidence that siblings of `nodejs/` and `public_html/` survive: the cron header file `/home/u472843410/domains/thakeen.com/.thakeen-cron` was created 2026-10-08, and the crons kept answering 200 after the #309 and #312 release builds | The API confirms the 9 crons still point at that file after 25 builds, but it shows no cron run results. **Founder to confirm** that the crons still answer 200; the console sentinel in 1.2 then proves it on every build |
 | Daily backup includes the store? | Not checked | **founder to confirm**: hPanel > Files > Backups, a file backup lists `domains/thakeen.com/media` |
 
 ### 1.2 Store location (rule 991)
@@ -429,7 +435,7 @@ Each is a draft PR and goes live only through a founder-merged release PR. Media
 
 ## 9. Pre-build checklist (founder, in hPanel, before PR 1 goes live)
 
-Postponed by the founder (D6). Each item stays "founder to confirm" until checked. The Hostinger API connector, once connected, can read most of them.
+Postponed by the founder (D6). Each item stays "founder to confirm" until checked. The Hostinger API connector cannot read these for a Business plan (section 1), so they are hPanel checks.
 
 - [ ] Disk quota and inode limit, and current usage of each, across thakeen.com, staging.thakeen.com and maslakiyat.com (hPanel > Resources Usage).
 - [ ] The daily file backup lists `domains/thakeen.com/media` once the folder exists (hPanel > Files > Backups).
