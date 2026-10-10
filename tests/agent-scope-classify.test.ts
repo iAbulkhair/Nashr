@@ -37,16 +37,16 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => st.state }));
-// The real classifier unless a test scripts it. NOTE: `@/lib/agent-scope` is imported before the classifier below on purpose.
-// agent-scope.ts imports the classifier and the classifier imports agent-scope.ts (call-time use only), and this factory loads
-// the real module with `orig()`; started from the classifier's side it would wait on itself.
+// The real classifier unless a test scripts it. The factory loads the real module with `orig()`: that works from either side
+// because the classifier reads the verdict words from the leaf file agent-scope-verdicts.ts and never from agent-scope.ts.
 vi.mock("@/lib/agent-scope-classify", async (orig) => {
   const m = await orig<typeof import("@/lib/agent-scope-classify")>();
   return { ...m, classify: (...a: Parameters<typeof m.classify>) => (hook.classify ? hook.classify(...a) : m.classify(...a)) };
 });
 
-import { AGENT_SCOPE_KEYS, VERDICTS, agentScopeRefusalText, agentScopeRetryText, scopeCheck, type AgentScopeLogEntry, type ScopeCtx } from "@/lib/agent-scope";
 import { agentScopeModel, classify, type ClassifyInput } from "@/lib/agent-scope-classify";
+import { AGENT_SCOPE_KEYS, VERDICTS, agentScopeRefusalText, agentScopeRetryText, isVerdict, scopeCheck, type AgentScopeLogEntry, type ScopeCtx } from "@/lib/agent-scope";
+import * as leaf from "@/lib/agent-scope-verdicts";
 import { db } from "@/lib/db";
 import { monthKey } from "@/lib/credits";
 import { costUsd, hasRate, usageMonthKeys } from "@/lib/usage";
@@ -86,6 +86,8 @@ beforeEach(() => {
   sdk.reply = toolReply({ verdict: "in" });
   st.state = "on";
   hook.classify = null;
+  // classify warns once per failed call (rule 791); the tests that read it use this spy, the others keep the output clean.
+  vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -293,6 +295,81 @@ describe("rule 791: the classifier call", () => {
       sdk.fail = { v };
       expect(await classify(input()), String(v)).toEqual({ ok: false, error: "api" });
     }
+  });
+
+  it("a failed call warns once with the error's class and status, and never the message, the text or the brand", async () => {
+    const warn = vi.mocked(console.warn);
+    class BadRequestError extends Error {
+      status = 400;
+    }
+    const secret = "sk-ant-api03-SECRETSECRET";
+    const owner = "اكتب لي ثلاثة منشورات عن القهوة";
+    // A message that quotes the request back (as an API 400 can) must not reach the log.
+    sdk.fail = { v: new BadRequestError(`invalid request: ${owner} ${secret} مقهى الفنجان`) };
+    expect(await classify(input({ text: owner }))).toEqual({ ok: false, error: "api" });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]).toHaveLength(1);
+    const line = String(warn.mock.calls[0][0]);
+    expect(line).toBe("agent_scope: classify failed, BadRequestError, status 400");
+    for (const leak of [owner, secret, "invalid request", "مقهى الفنجان", "Bakery Co"]) expect(line).not.toContain(leak);
+  });
+
+  it("the warn has no status when the error has none, and a timeout warns too", async () => {
+    const warn = vi.mocked(console.warn);
+    class APIConnectionTimeoutError extends Error {}
+    sdk.fail = { v: new APIConnectionTimeoutError("Request timed out.") };
+    expect(await classify(input())).toEqual({ ok: false, error: "timeout" });
+    sdk.fail = { v: Object.assign(new Error("overloaded"), { status: "529" }) };
+    expect(await classify(input())).toEqual({ ok: false, error: "api" });
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
+      "agent_scope: classify failed, APIConnectionTimeoutError",
+      "agent_scope: classify failed, Error",
+    ]);
+  });
+
+  it("something that is not an Error is warned about by its type only, and an answer without a verdict does not warn", async () => {
+    const warn = vi.mocked(console.warn);
+    for (const v of ["boom with the owner text", 42, null, undefined]) {
+      sdk.fail = { v };
+      expect(await classify(input())).toEqual({ ok: false, error: "api" });
+    }
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
+      "agent_scope: classify failed, string",
+      "agent_scope: classify failed, number",
+      "agent_scope: classify failed, object",
+      "agent_scope: classify failed, undefined",
+    ]);
+    warn.mockClear();
+    sdk.fail = null;
+    sdk.reply = toolReply({ verdict: "poetry" });
+    expect(await classify(input())).toEqual({ ok: false, error: "unknown_verdict" });
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("rule 791: the verdict words live in a leaf module, so the two agent-scope modules never wait on each other", () => {
+  const src = (f: string) => readFileSync(`src/lib/${f}`, "utf8");
+  const imports = (f: string) => [...src(f).matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+["']([^"']+)["']/gm)].map((m) => m[1]);
+
+  it("agent-scope-verdicts.ts imports nothing", () => {
+    expect(imports("agent-scope-verdicts.ts")).toEqual([]);
+    expect(src("agent-scope-verdicts.ts")).not.toMatch(/\bimport\s*\(|\brequire\s*\(/);
+  });
+
+  it("the classifier takes the verdict words from the leaf and never imports agent-scope.ts", () => {
+    const from = imports("agent-scope-classify.ts");
+    expect(from).toContain("./agent-scope-verdicts");
+    expect(from).not.toContain("./agent-scope");
+    expect(from).not.toContain("@/lib/agent-scope");
+  });
+
+  it("agent-scope.ts re-exports the same words, so every existing import keeps working", () => {
+    expect(VERDICTS).toBe(leaf.VERDICTS);
+    expect(isVerdict).toBe(leaf.isVerdict);
+    expect([...leaf.VERDICTS]).toEqual(["in", "off_topic", "pro_advice", "other_business", "personal", "other_brand"]);
+    expect(leaf.isVerdict("other_brand")).toBe(true);
+    expect(leaf.isVerdict("poetry")).toBe(false);
+    expect(leaf.isVerdict(undefined)).toBe(false);
   });
 });
 

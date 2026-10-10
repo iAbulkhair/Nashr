@@ -3,7 +3,7 @@ import { agentById, type AgentId } from "./agents";
 import { MODEL_BUDGET, anthropic, modelState, until } from "./model";
 import { route } from "./models/route";
 import { meter } from "./usage";
-import { VERDICTS, isVerdict, type Verdict } from "./agent-scope";
+import { VERDICTS, isVerdict, type Verdict } from "./agent-scope-verdicts";
 
 /**
  * The agent-scope classifier (rule 791; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md section
@@ -11,8 +11,9 @@ import { VERDICTS, isVerdict, type Verdict } from "./agent-scope";
  * the six verdicts (`VERDICTS` in agent-scope.ts). `scopeCheck` (agent-scope.ts) is the function every gate calls; this file
  * is only the call.
  *
- * CYCLE, ON PURPOSE: agent-scope.ts imports `classify` and this file imports the verdict words from agent-scope.ts. This file
- * uses them only inside functions, never while it loads, so the order the two load in does not matter. Keep it that way.
+ * NO CYCLE: agent-scope.ts imports `classify`, so this file must never import agent-scope.ts back. The verdict words come
+ * from the leaf file agent-scope-verdicts.ts. A test that mocks one of the two with `vi.mock(..., async (orig) => ...)` loads
+ * the real module, and two modules that import each other would make that wait on itself.
  */
 
 /** The classifier's model: `route("agentScope")`, Haiku 5.5 today. No other file or constant names it. */
@@ -80,7 +81,6 @@ function userMessage(i: ClassifyInput): string {
   ].join("\n");
 }
 
-/** Built when asked, not while the file loads: `VERDICTS` comes from agent-scope.ts (see the cycle note above). */
 const verdictTool = (): Anthropic.Tool => ({
   name: "verdict",
   description: "Report the verdict for the text between the tags.",
@@ -106,6 +106,19 @@ function isTimeout(e: unknown): boolean {
 }
 
 /**
+ * What a failed call leaves in the server log: one fixed line with the error's class and its HTTP status, nothing else. The
+ * message can quote the request (the owner's text, a brand name) and so is never printed. A 400 on every call and a 529 now
+ * and then both come back as `api`; this line is what tells them apart. The class name is the constructor's (the SDK's errors
+ * carry no `name` of their own) and only word characters survive, so it cannot carry text.
+ */
+function warnFailure(e: unknown): void {
+  const raw = e !== null && typeof e === "object" ? ((e as { constructor?: { name?: unknown } }).constructor?.name ?? (e as { name?: unknown }).name) : typeof e;
+  const name = typeof raw === "string" && /^\w{1,60}$/.test(raw) ? raw : "Error";
+  const status = e !== null && typeof e === "object" ? (e as { status?: unknown }).status : undefined;
+  console.warn(`agent_scope: classify failed, ${name}${typeof status === "number" && Number.isInteger(status) ? `, status ${status}` : ""}`);
+}
+
+/**
  * One verdict for one text. Never throws: every failure is an `error`, and each gate decides what an error means
  * (`scopeCheck`: input, chat reply, items and drafts go through, publish in enforce does not).
  *
@@ -117,7 +130,8 @@ function isTimeout(e: unknown): boolean {
  * One attempt, no retry, no thinking (a forced tool choice does not allow it), nothing cached: a short prompt that must
  * answer in 3 s. The cost goes to the GLOBAL counters only (`meter(undefined, ...)`): no owner is charged for the check, and
  * the founder's monthly total includes it. It is metered to `o.meterAgent`, else the agent that was checked. A call that
- * answered is metered even when its verdict is unknown; one that failed returned no usage.
+ * answered is metered even when its verdict is unknown; one that failed returned no usage. A call that failed leaves one
+ * `console.warn` line with the error's class and status (`warnFailure`), never its message.
  */
 export async function classify(input: ClassifyInput, o: { deadline?: number; meterAgent?: AgentId } = {}): Promise<Classified> {
   try {
@@ -145,6 +159,7 @@ export async function classify(input: ClassifyInput, o: { deadline?: number; met
     const brand = answer.verdict === "other_brand" && typeof answer.brand === "string" ? answer.brand.trim().slice(0, 200) : "";
     return brand ? { ok: true, verdict: answer.verdict, brand } : { ok: true, verdict: answer.verdict };
   } catch (e) {
+    warnFailure(e);
     return { ok: false, error: isTimeout(e) ? "timeout" : "api" };
   }
 }

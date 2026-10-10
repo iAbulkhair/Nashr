@@ -3,6 +3,7 @@ import { CAPS, db, pushCapped } from "./db";
 import { listBrands } from "./brands";
 import { getBrand } from "./brand";
 import { classify, type Classified } from "./agent-scope-classify";
+import { VERDICTS, isVerdict, type Verdict } from "./agent-scope-verdicts";
 import type { AgentId } from "./agents";
 import type { User } from "./auth";
 
@@ -11,7 +12,8 @@ import type { User } from "./auth";
  * four layers keep the agents on marketing, sales, growth, finance and analytics work. This is the pure core every gate
  * uses: the founder's modes, the verdict words, the refusal copy, the log and the hash of an item's text, and `scopeCheck`,
  * the one decision every gate asks for. It holds no model call of its own: `scopeCheck` calls the classifier in
- * agent-scope-classify.ts (rule 791), which imports the verdict words back from here (see the cycle note there).
+ * agent-scope-classify.ts (rule 791). The verdict words are in the leaf file agent-scope-verdicts.ts, which both files read,
+ * so neither imports the other's module back.
  * "Agent scope" is never "scope": `scope` and `sc(u)` already mean the tenant's brand scope.
  */
 
@@ -30,10 +32,8 @@ export const AGENT_SCOPE_KEYS = {
   log: (day: string) => `agent-scope:log:${day}`,
 } as const;
 
-/** The classifier's answer. `in` is work the team does; the rest are refused in enforce mode. */
-export const VERDICTS = ["in", "off_topic", "pro_advice", "other_business", "personal", "other_brand"] as const;
-export type Verdict = (typeof VERDICTS)[number];
-export const isVerdict = (x: unknown): x is Verdict => typeof x === "string" && (VERDICTS as readonly string[]).includes(x);
+/** The classifier's answer words live in the leaf file agent-scope-verdicts.ts (no cycle with the classifier); re-exported here unchanged. */
+export { VERDICTS, isVerdict, type Verdict };
 
 /**
  * The modes from whatever is stored, field by field: a missing key, a value that is not an object and any bad field give
