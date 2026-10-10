@@ -171,11 +171,12 @@ export async function otherBrandNames(user: User): Promise<string[]> {
 }
 
 /**
- * Thrown inside a generation batch when an enforced check refused it, so the existing catch refunds the whole batch.
- * `reply` is the refusal text the owner reads.
+ * Thrown inside a generation batch when an enforced check refused it (rule 801: every item, or any item of a claim's batch), so
+ * the existing catch refunds the whole batch. `reply` is the refusal text the owner reads; `verdict` is the first refused item's
+ * (`ScopeDecision`'s, so `error` only for a check told to fail closed, which the items' check never is).
  */
 export class AgentScopeRefused extends Error {
-  constructor(readonly verdict: Exclude<Verdict, "in">, readonly reply: string) {
+  constructor(readonly verdict: Exclude<Verdict, "in"> | "error", readonly reply: string) {
     super(`agent_scope_${verdict}`);
     this.name = "AgentScopeRefused";
   }
@@ -257,12 +258,13 @@ export type NotesDecision = { block: false } | { block: true; reply: string } | 
  * 2. The classifier ask is counted against the scope's bound (`agentScopeGenRefusal`: 60 an hour, 200 a day). Over it, enforce
  *    answers `slow` and shadow skips the check (no call, no log). A counter that cannot be read lets the check run (input fails open).
  * 3. The classifier reads the owner's words, trimmed and cut at `GENERATE_NOTES_READ`, with the owning agent of the type, the brand's
- *    name and sector (empty when it has no file) and the names of the account's other brands. A store error on those names reads `[]`
+ *    name and sector (empty when it has no file) and the names of the account's other brands (the batch's shared read, `names`, when
+ *    it passes one). A store error on those names reads `[]`
  *    and prints only the error's name: the gate reads none, and must not cost the owner the batch. The decision is `scopeCheck`'s:
  *    shadow logs and lets the batch run, enforce blocks with the refusal text and counts it toward the ceiling, and an error lets the
  *    batch through.
  */
-export async function checkGenerationNotes(user: User, type: TaskType, gate: NotesGate, brand: Pick<Brand, "name" | "industry"> | null, deadline?: number): Promise<NotesDecision> {
+export async function checkGenerationNotes(user: User, type: TaskType, gate: NotesGate, brand: Pick<Brand, "name" | "industry"> | null, deadline?: number, names?: () => Promise<string[]>): Promise<NotesDecision> {
   const text = gate.notes.trim().slice(0, GENERATE_NOTES_READ);
   if (gate.mode === "off" || !text) return { block: false };
   if (gate.mode === "enforce" && gate.slow) return { block: true, slow: gate.slow };
@@ -271,7 +273,8 @@ export async function checkGenerationNotes(user: User, type: TaskType, gate: Not
     return null;
   });
   if (over) return gate.mode === "enforce" ? { block: true, slow: over } : { block: false };
-  const otherBrands = await otherBrandNames(user).catch((e): string[] => {
+  // `names`: the batch's own read of them (`generateBatch` shares one with the items' check, rule 801); without it, read here.
+  const otherBrands = await (names ? names() : otherBrandNames(user)).catch((e): string[] => {
     console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
     return [];
   });

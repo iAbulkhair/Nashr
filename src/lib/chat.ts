@@ -40,7 +40,7 @@ import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoItems, chatIte
 import { getGov } from "./governance";
 import { DEFAULTS, route, type Rejected } from "./models/route";
 import { MODEL_UNAVAILABLE, MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
-import { AGENT_SCOPE_PARAGRAPH, logAgentScope, otherBrandNames, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx, type ScopeDecision } from "./agent-scope";
+import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandNames, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx } from "./agent-scope";
 
 /**
  * An inbox item as a chat card shows it. `xflag`: the other agents that flagged it in the cross-agent review, each with
@@ -282,7 +282,7 @@ ${fenceMemory(memory)}`;
   // the model's training data, and the week start from the brand's weekend (`weekend`, read by chat() from its Working
   // days settings; the zone's own without it). In the uncached block: it changes every minute.
   const now = `${nowLine(Date.now(), zoneOf(brand), weekend)}
-BUSINESS: ${brand ? asData(brand.name) : "not set yet"}.${agentScope.prompt && brand ? `\nSECTOR: ${asData(brand.industry)}.` : ""}
+BUSINESS: ${brand ? asData(brand.name) : "not set yet"}.${agentScope.prompt && brand?.industry ? `\nSECTOR: ${asData(brand.industry)}.` : ""}
 CREDITS: owner has ${user.credits}.
 PLAN: ${user.plan}${user.plan === "trial" ? ` (trial ends ${user.trialEnds.slice(0, 10)})` : ""}.
 GULF CALENDAR: ${seasons}.
@@ -416,8 +416,9 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // - enforce: checked before the call. A refusal is the whole turn: no main model call, the reply delivered the way the
   //   paused reply is, and no `usd`, so the route's settle gives the message back (the classifier's cost is Thakeen's, on
   //   the global meter only). `scopeCheck` counts it toward the brand scope's refusal ceiling. An error fails open.
-  // - shadow: started now, beside the turn, so it adds no wait before the first call, and awaited before every way out
-  //   below, so its log line is written before the request ends.
+  // - shadow: started now, beside the turn, so it adds no wait before the first call, and awaited in the `finally` below on
+  //   every way out (a return, a stream error, a throw from the meter, a tool or the save), so its log line is written before
+  //   the request ends. The reply's shadow check (rule 800) joins the same list.
   const scopeCtx: ScopeCtx = { user, agent: agentId, where: via === "mcp" ? "mcp_chat" : "chat", lang, brand: { name: brand?.name ?? "", industry: brand?.industry ?? "" }, otherBrands, deadline };
   if (scopeModes.input === "enforce") {
     const d = await scopeCheck("input", "enforce", text, scopeCtx);
@@ -427,93 +428,107 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       return m;
     }
   }
-  const pendingScope: Promise<ScopeDecision | null> = scopeModes.input === "shadow" ? scopeCheck("input", "shadow", text, scopeCtx) : Promise.resolve(null);
-  const connected = connectedTargets(conns);
-  // The brand's own weekend (its Working days settings, else its country's): the NOW line names the week start from it.
-  const weekend = calendarOf(workDays, zoneOf(brand), Date.now()).weekend;
-  const sys = system(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock(notes), weekend, { prompt: scopeModes.prompt === "on", roleEnforced: scopeModes.role === "enforce" });
-  const tools = toolsFor(agentId);
-  // The per-message ceiling (CHAT_TURN_MAX_USD), checked in code before every call (src/lib/chat-budget.ts). The first
-  // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
-  // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
-  // and output, plus the tool results added since.
-  const fit = fitFirstCall(model, trimHistory(thread), JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
-  const messages: Anthropic.MessageParam[] = fit.messages;
-  if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
-  let spent = 0;
-  let next: InputEst = { cached: 0, fresh: 0 };
-  let ended: "capped" | "cut" | "large" | "refused" | null = null;
-  let cutText = "";
+  const late: Promise<unknown>[] = scopeModes.input === "shadow" ? [scopeCheck("input", "shadow", text, scopeCtx)] : [];
+  try {
+    const connected = connectedTargets(conns);
+    // The brand's own weekend (its Working days settings, else its country's): the NOW line names the week start from it.
+    const weekend = calendarOf(workDays, zoneOf(brand), Date.now()).weekend;
+    const sys = system(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock(notes), weekend, { prompt: scopeModes.prompt === "on", roleEnforced: scopeModes.role === "enforce" });
+    const tools = toolsFor(agentId);
+    // The per-message ceiling (CHAT_TURN_MAX_USD), checked in code before every call (src/lib/chat-budget.ts). The first
+    // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
+    // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
+    // and output, plus the tool results added since.
+    const fit = fitFirstCall(model, trimHistory(thread), JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
+    const messages: Anthropic.MessageParam[] = fit.messages;
+    if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
+    let spent = 0;
+    let next: InputEst = { cached: 0, fresh: 0 };
+    let ended: "capped" | "cut" | "large" | "refused" | null = null;
+    let cutText = "";
 
-  // Two ceilings end the loop before a call. The per-message cost (CHAT_TURN_MAX_USD, above): no room left for a useful
-  // answer. The turn's overall deadline (rule 336): a call starts only with CHAT_TURN_MIN_MS left, and its stream ends
-  // CHAT_REPLY_MS before the deadline, so the reply is saved and answered before the platform's kill, and a tool that
-  // charged inside the turn (generate_content, draft_items) has its own refund within the same deadline.
-  let outOfTime = false;
-  for (let turn = 0; turn < CHAT_MAX_CALLS; turn++) {
-    const maxTokens = turn === 0 ? fit.maxTokens : nextMaxTokens(model, spent, inputEstimateUsd(model, next, false));
-    if (!maxTokens) {
-      ended = turn === 0 ? "large" : "capped";
-      break;
-    }
-    if (deadline - Date.now() < MODEL_BUDGET.CHAT_TURN_MIN_MS) { outOfTime = true; break; }
-    const call = until(deadline - MODEL_BUDGET.CHAT_REPLY_MS, { cap: MODEL_BUDGET.CHAT_MS });
-    let res: Anthropic.Message;
-    try {
-      res = await client.messages
-        .stream({ model, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
-        .finalMessage();
-    } catch (e) {
-      if (call.signal.aborted) { outOfTime = true; break; }
-      await pendingScope;
-      throw e;
-    }
-    spent += costUsd(res.model, res.usage);
-    await meter(user.email, res.model, "chat", res.usage, agentId);
-    if (res.stop_reason === "refusal") {
-      // The model's safety check declined the turn (Sonnet 5.5 has broader classifiers than Opus 5, false positives
-      // included). Billed and metered like any call; the owner is told plainly instead of "Done".
-      ended = "refused";
-      break;
-    }
-    if (res.stop_reason === "max_tokens") {
-      // Cut off at its cap: a tool call in it may be incomplete, so none of them runs. The text so far is kept, marked.
-      ended = "cut";
-      cutText = textOf(res.content);
-      break;
-    }
-    messages.push({ role: "assistant", content: res.content });
-    const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-    if (!uses.length) {
-      const m: ChatTurn = { role: "assistant", content: notice + (textOf(res.content) || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), agent: agentId };
-      await deliver(email, m, conv);
-      await pendingScope;
-      return withLimit(m, actions, spent);
-    }
-    const results: Anthropic.ToolResultBlockParam[] = [];
-    for (const u of uses) {
-      let out = "";
-      let isError = false;
-      opts.onStatus?.(statusFor(u.name, lang, agentName));
-      try {
-        out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, by, via, proposed, awayProposed, ownerMsg: text, conv, modes: scopeModes });
-      } catch (e) {
-        isError = true;
-        out = e instanceof Error ? e.message : "tool_failed";
+    // Two ceilings end the loop before a call. The per-message cost (CHAT_TURN_MAX_USD, above): no room left for a useful
+    // answer. The turn's overall deadline (rule 336): a call starts only with CHAT_TURN_MIN_MS left, and its stream ends
+    // CHAT_REPLY_MS before the deadline, so the reply is saved and answered before the platform's kill, and a tool that
+    // charged inside the turn (generate_content, draft_items) has its own refund within the same deadline.
+    let outOfTime = false;
+    for (let turn = 0; turn < CHAT_MAX_CALLS; turn++) {
+      const maxTokens = turn === 0 ? fit.maxTokens : nextMaxTokens(model, spent, inputEstimateUsd(model, next, false));
+      if (!maxTokens) {
+        ended = turn === 0 ? "large" : "capped";
+        break;
       }
-      results.push({ type: "tool_result", tool_use_id: u.id, content: out, is_error: isError });
+      if (deadline - Date.now() < MODEL_BUDGET.CHAT_TURN_MIN_MS) { outOfTime = true; break; }
+      const call = until(deadline - MODEL_BUDGET.CHAT_REPLY_MS, { cap: MODEL_BUDGET.CHAT_MS });
+      let res: Anthropic.Message;
+      try {
+        res = await client.messages
+          .stream({ model, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
+          .finalMessage();
+      } catch (e) {
+        if (call.signal.aborted) { outOfTime = true; break; }
+        throw e;
+      }
+      spent += costUsd(res.model, res.usage);
+      await meter(user.email, res.model, "chat", res.usage, agentId);
+      if (res.stop_reason === "refusal") {
+        // The model's safety check declined the turn (Sonnet 5.5 has broader classifiers than Opus 5, false positives
+        // included). Billed and metered like any call; the owner is told plainly instead of "Done".
+        ended = "refused";
+        break;
+      }
+      if (res.stop_reason === "max_tokens") {
+        // Cut off at its cap: a tool call in it may be incomplete, so none of them runs. The text so far is kept, marked.
+        ended = "cut";
+        cutText = textOf(res.content);
+        break;
+      }
+      messages.push({ role: "assistant", content: res.content });
+      const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+      if (!uses.length) {
+        // The final answer, and only it, gets the output check (rule 800): the fixed replies below and the paused reply are
+        // Thakeen's own words. `enforce` is awaited before the save and a refusal replaces the text; the cards stay and `usd`
+        // stays, because the main model was called. `shadow` starts beside the save and is awaited in the `finally`. An error,
+        // and an empty answer (nothing to read), let the text through.
+        const said = textOf(res.content);
+        let shown = said;
+        if (said && scopeModes.output !== "off") {
+          const check = scopeCheck("output", scopeModes.output, said, scopeCtx);
+          if (scopeModes.output === "enforce") {
+            const out = await check;
+            shown = out.block ? out.reply : said;
+          } else late.push(check);
+        }
+        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), agent: agentId };
+        await deliver(email, m, conv);
+        return withLimit(m, actions, spent);
+      }
+      const results: Anthropic.ToolResultBlockParam[] = [];
+      for (const u of uses) {
+        let out = "";
+        let isError = false;
+        opts.onStatus?.(statusFor(u.name, lang, agentName));
+        try {
+          out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, by, via, proposed, awayProposed, ownerMsg: text, conv, modes: scopeModes });
+        } catch (e) {
+          isError = true;
+          out = e instanceof Error ? e.message : "tool_failed";
+        }
+        results.push({ type: "tool_result", tool_use_id: u.id, content: out, is_error: isError });
+      }
+      messages.push({ role: "user", content: results });
+      next = { cached: (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0), fresh: (res.usage.input_tokens ?? 0) + (res.usage.output_tokens ?? 0) + estTokens(JSON.stringify(results).length) };
     }
-    messages.push({ role: "user", content: results });
-    next = { cached: (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0), fresh: (res.usage.input_tokens ?? 0) + (res.usage.output_tokens ?? 0) + estTokens(JSON.stringify(results).length) };
+    // The loop ended without a closing answer: the request ran out of time, the calls ran out, the model refused, a call was
+    // cut off at its cap, or the ceiling left no room for another call. What the tools made is on the reply's cards and in
+    // the inbox either way, and a limit a tool hit still raises its dialog.
+    const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
+    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
+    await deliver(email, m, conv);
+    return withLimit(m, actions, spent);
+  } finally {
+    await Promise.allSettled(late);
   }
-  // The loop ended without a closing answer: the request ran out of time, the calls ran out, the model refused, a call was
-  // cut off at its cap, or the ceiling left no room for another call. What the tools made is on the reply's cards and in
-  // the inbox either way, and a limit a tool hit still raises its dialog.
-  const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
-  const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
-  await deliver(email, m, conv);
-  await pendingScope;
-  return withLimit(m, actions, spent);
 }
 
 /** A name from a tool call as the answer quotes it: one cleaned line, at most 80 characters. */
@@ -614,7 +629,9 @@ function capReached(r: { agent: AgentId; spent: number; cap: number }): string {
 
 /**
  * A batch that did not run, as the tool result the model relays, with the `limit:*` action that raises the app's limit
- * dialog. A failed generation was already refunded; it is thrown into the turn, which hands the model the error.
+ * dialog. A failed generation was already refunded; it is thrown into the turn, which hands the model the error. A batch
+ * whose items the output check refused in `enforce` (rule 801, `AgentScopeRefused`) was refunded too, and is relayed as a
+ * plain "not done" with the refusal the owner reads.
  */
 function batchRefused(r: BatchRefusal, actions: string[], lowCredits: (need: number, have: number) => string): string {
   switch (r.reason) {
@@ -625,9 +642,13 @@ function batchRefused(r: BatchRefusal, actions: string[], lowCredits: (need: num
     case "no_credits": actions.push("limit:credits"); return lowCredits(r.need, r.credits);
     // Never answered to chat (its turn is the gate while paused); thrown as generate() would throw it.
     case "paused": throw new ModelPaused();
-    case "failed": throw r.error;
+    case "failed":
+      if (r.error instanceof AgentScopeRefused) return `Not done: ${r.error.reply} Nothing was saved and the credits were refunded.`;
+      throw r.error;
   }
 }
+/** What a batch that kept some of its items says about the rest (rule 801): appended to the tool result. */
+const withheld = (r: { held?: number }) => (r.held ? ` ${r.held} item(s) were withheld as outside the team's work, and their credits refunded.` : "");
 
 /**
  * Tools that change what the whole account publishes or knows, gated by the acting person's role exactly like the
@@ -694,7 +715,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const inline = created.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
       const held = r.gov.autoApprove[type] ? created.filter((t) => t.status === "pending").length : 0;
       const auto = r.gov.autoApprove[type] ? (held ? ` (auto-approve is on, but ${held} item(s) broke a brand rule and wait for the owner in the inbox)` : " (auto-approved per governance)") : "";
-      return `Created ${created.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}. Titles: ${created.map((i) => i.title).join(" | ")}${inline}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
+      return `Created ${created.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}.${withheld(r)} Titles: ${created.map((i) => i.title).join(" | ")}${inline}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
     }
     case "draft_items": {
       // The tool schema's enum is not the approval (the model is never the only approval): a type outside DRAFT_TYPES
@@ -710,7 +731,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const cost = r.cost;
       made.push(...created);
       actions.push(`drafted:${type}:${created.length}`);
-      return `Drafted ${created.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
+      return `Drafted ${created.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.${withheld(r)}\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
     }
     case "update_brand": {
       // Code-level gate, not a prompt rule: no tool call writes the brand file. The model that calls this reads crawled

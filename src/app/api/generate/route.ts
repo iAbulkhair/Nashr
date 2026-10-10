@@ -6,7 +6,7 @@ import { generateBatch } from "@/lib/generate-batch";
 import { ModelPaused, modelState } from "@/lib/model";
 import { deadlineFor } from "@/lib/media/keys";
 import { MODEL_UNAVAILABLE } from "@/lib/models/overrides";
-import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
+import { AgentScopeRefused, agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 import { WINDOW, retryLater } from "@/lib/rate";
 
 export const maxDuration = 300;
@@ -45,6 +45,9 @@ export async function POST(req: Request) {
       // Too many such requests, or too many checks, for this brand scope: 429 with the window's Retry-After.
       case "agent_scope_slow": return retryLater({ ok: false, error: "slow_down", retry: r.retry, message: agentScopeSlowText(lang) }, WINDOW[r.retry]);
       case "failed":
+        // Every item was outside what the team works on (rule 801, output check in enforce): the whole batch was refunded and
+        // nothing was saved. 422 like the notes' refusal, with the balance after the refund.
+        if (r.error instanceof AgentScopeRefused) return NextResponse.json({ ok: false, error: "agent_scope", message: r.error.reply, credits: r.credits }, { status: 422 });
         // Already refunded, with the charge's receipt.
         console.error("generate failed", r.error);
         await track(u.email, "error");
@@ -55,5 +58,6 @@ export async function POST(req: Request) {
   await track(u.email, "generate");
   // The brand's model pick was not used (src/lib/models/overrides.ts): the batch ran on the automatic choice, and the
   // owner reads why in the reply language.
-  return NextResponse.json({ ok: true, created: r.tasks.length, credits: u.credits, ...(r.modelRejected ? { notice: MODEL_UNAVAILABLE.generate[lang] } : {}) });
+  // `held`: items the output check kept back in enforce (rule 801), whose share was refunded; `credits` is after that refund.
+  return NextResponse.json({ ok: true, created: r.tasks.length, credits: u.credits, ...(r.held ? { held: r.held } : {}), ...(r.modelRejected ? { notice: MODEL_UNAVAILABLE.generate[lang] } : {}) });
 }

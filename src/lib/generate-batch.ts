@@ -39,7 +39,8 @@ import type { Grounding } from "./json";
 import { promptStamp } from "./prompt-stamp";
 import { byOf, systemBy, type By } from "./actor";
 import { recordActivity, type Activity } from "./activity";
-import { checkGenerationNotes, readAgentScopeModes, type AgentScopeModes, type NotesGate } from "./agent-scope";
+import { AgentScopeRefused, checkGenerationNotes, itemText, otherBrandNames, readAgentScopeModes, scopeCheck, type AgentScopeModes, type NotesGate, type ScopeDecision } from "./agent-scope";
+import { pmap } from "./parallel";
 
 /** Where a batch was asked for. Not the same as `source`: MCP and chat items are both `source:"chat"`. */
 export type BatchVia = "app" | "chat" | "mcp" | "weekly" | "routine" | "handoff";
@@ -155,8 +156,10 @@ export type BatchRefusal =
  * `receipt`: what the batch's charge was booked to (a reused hold's, for a batch that paid in an earlier run).
  * `modelRejected`: the brand's pick was not used and why (the batch ran on the automatic choice); the caller tells the
  * owner (`MODEL_UNAVAILABLE`, src/lib/models/overrides.ts). Absent when the pick ran, or there was none.
+ * `held` (rule 801): how many items the output check refused in `enforce` and did not save, present only when above 0. Their
+ * share of the price was refunded after the commit, so `cost` (and `credits`) are net of it.
  */
-export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected };
+export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected; held?: number };
 export type BatchResult = BatchDone | BatchRefusal;
 /**
  * What only a batch with a `notesGate` can answer (rule 796): `agent_scope` carries the refusal text the owner reads (the notes are
@@ -286,13 +289,21 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   if (trialOver(user)) return refuse({ ok: false, reason: "trial_over" });
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });
+  // The names of the account's other brands, for the classifier and the refusal copy: read at most once per batch, shared by the
+  // notes' gate and the items' check, and only when one of them asks. A store error reads `[]` (only the error's name is printed):
+  // the check reads none, and it must not cost the owner the batch.
+  let names: Promise<string[]> | undefined;
+  const brandNames = () => (names ??= otherBrandNames(user).catch((e): string[] => {
+    console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+    return [];
+  }));
   // The input gate on the notes (rule 796), after every free refusal and before the renewal and the charge, on this batch's own
   // brand read. Enforce is awaited here: a refusal charges nothing and saves nothing. Shadow runs beside the batch and is awaited
   // by `generateBatch` on the way out. The check does not throw (a failing counter or store read fails open inside it); the catch
   // is the backstop, so a late rejection can never reach the process as unhandled.
   const gate = opts.notesGate;
   if (gate && gate.mode !== "off") {
-    const check = checkGenerationNotes(user, type, gate, brand, opts.deadline).catch((e): { block: false } => {
+    const check = checkGenerationNotes(user, type, gate, brand, opts.deadline, brandNames).catch((e): { block: false } => {
       console.error("agent scope notes gate failed", e instanceof Error ? e.name : "error");
       return { block: false };
     });
@@ -334,6 +345,9 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   let ground: Grounding;
   let tasks: Task[] = [];
   let createdAt: string;
+  // Items the output check refused in `enforce` and that were not saved (rule 801), out of `made` generated.
+  let held = 0;
+  let made = 0;
   // Everything up to the commit is inside the try: the credits are already charged, and a failed read, generation, task
   // save or commit must reach the refund below. Before 2026-10-01 only the read and the generation were: a save that
   // failed, or a run killed while saving, kept the charge with no plan, and the Sunday retry charged again.
@@ -346,6 +360,32 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     createdAt = new Date().toISOString();
     const brief = opts.brief ?? briefOf(opts.notes);
     tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent }));
+    made = tasks.length;
+    // Layer 4, the output check on the items (rule 801; spec section 6), between generation and saving: each item's title and
+    // body, as the owning agent's text, five at a time (`pmap`, never one await per item). `enforce`: a refused item is not
+    // saved; when none is left, or any is refused in a claim's batch (`once`, which charges and refunds only whole), the batch
+    // throws here and the catch below refunds all of it; otherwise the rest is saved and the refused items' share is refunded
+    // after the commit. `shadow`: every item is saved, and the check runs beside the save and is awaited before `generateBatch`
+    // returns, so its log lines (with `itemId`) are written. An error lets the item through; while paused nothing is asked.
+    const output = scopeModes.output;
+    if (output !== "off" && tasks.length) {
+      const lang = brand.languages[0] ?? (user.lang === "en" ? "en" : "ar");
+      // `tasks` is read when the names arrive: in `enforce` it is reassigned only after `run` is awaited, in `shadow` never.
+      const run = brandNames().then((otherBrands) => pmap(tasks, (t) => scopeCheck("output", output, itemText(t), { user, agent, where: "items", lang, brand: { name: brand.name, industry: brand.industry ?? "" }, otherBrands, itemId: t.id, deadline: opts.deadline }), 5));
+      if (output === "enforce") {
+        const checks = await run;
+        const first = checks.find((c): c is Extract<ScopeDecision, { block: true }> => c.block);
+        if (first) {
+          const kept = tasks.filter((_, i) => !checks[i].block);
+          if (!kept.length || opts.once) {
+            tasks = [];
+            throw new AgentScopeRefused(first.verdict, first.reply);
+          }
+          held = tasks.length - kept.length;
+          tasks = kept;
+        }
+      } else late.push(run.catch((e) => console.error("agent scope items check failed", e instanceof Error ? e.name : "error")));
+    }
     // Together, not one round trip after another (Redis is HTTP per command). Every save settles before the guard
     // decides, so a refund below never races a save still landing.
     const saved = await Promise.allSettled(tasks.map((t) => saveTask(scope, t, true)));
@@ -364,11 +404,27 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     return { ok: false, reason: "failed", error, credits };
   }
 
+  // The share of the items the output check held back (rule 801), after the commit and outside the guard: the rest is saved and
+  // paid for. `Math.ceil(charged * held / made)`, rounded in the owner's favour, of what this batch charged; with the charge's
+  // receipt, so the agent's monthly counter comes down with the balance, exactly as the whole-batch refund above does. Never a
+  // claim's batch (`once` throws above instead). A refund that cannot be written is logged by name and the batch kept: the
+  // balance then lost the whole price, and the activity row and `cost` say so.
+  let back = 0;
+  if (held > 0) {
+    const share = Math.ceil((charged * held) / made);
+    try {
+      user.credits = await refund(user.email, share, receipt);
+      back = share;
+    } catch (e) {
+      console.error("agent scope partial refund failed", e instanceof Error ? e.name : "error");
+    }
+  }
+  const net = charged - back;
   // After the guard: the work is saved and paid for, so a failed log write must not refund it. The batch's one activity
   // row and, when other agents reviewed it, one row per reviewer.
-  const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: charged };
+  const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: net };
   await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
   judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model });
-  return { ok: true, tasks, credits: user.credits, receipt, cost: charged, agent, gov, ...(modelRejected ? { modelRejected } : {}) };
+  return { ok: true, tasks, credits: user.credits, receipt, cost: net, agent, gov, ...(modelRejected ? { modelRejected } : {}), ...(held > 0 ? { held } : {}) };
 }

@@ -20,7 +20,7 @@ import { deadlineFor } from "@/lib/media/keys";
 import { appOrigin } from "@/lib/origin";
 import { route } from "@/lib/models/route";
 import { MODEL_UNAVAILABLE_NOTE } from "@/lib/models/overrides";
-import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
+import { AgentScopeRefused, agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 
 export const maxDuration = 300;
 
@@ -42,7 +42,7 @@ const TOOLS = [
   // Reem's to-do tools: free, no model call, the bearer's active brand only; none of them completes, deletes, restores
   // or reopens, and none reads or writes a contact's phone number. handoff_note is chat only.
   ...SEC_TOOL_DEFS.map((d) => ({ name: d.name, description: d.description, inputSchema: d.schema })),
-  { name: "save_draft", description: `Save one draft you wrote into the owner's Thakeen approvals inbox as a pending item, for the owner to approve, edit or reject. Nothing is published and nothing is approved automatically. The brand rules are checked in code on save: a draft with a banned word is kept but held, and the answer names the rule, so run check_brand first and fix it. One item per call. Free, no credits, no model call; limited to ${DRAFTS_PER_HOUR} drafts an hour per account.`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST), description: "Thakeen item type, e.g. social, article, whatsapp, ads, gbp." }, channel: { type: "string", description: "Optional short channel name: instagram, snapchat, tiktok, x, whatsapp, blog, meta… Defaults to the type." }, title: { type: "string", description: `Optional short title (up to ${DRAFT_LIMITS.title} characters). Defaults to the first line of the body.` }, body: { type: "string", description: `The draft text, ready to use (up to ${DRAFT_LIMITS.body} characters).` }, notes: { type: "string", description: `Optional note for the owner: what this draft is for (up to ${DRAFT_LIMITS.notes} characters).` }, lang: { type: "string", enum: ["ar", "en"], description: "Optional language of the draft. Defaults to the brand's first language." } }, required: ["type", "body"] } },
+  { name: "save_draft", description: `Save one draft you wrote into the owner's Thakeen approvals inbox as a pending item, for the owner to approve, edit or reject. Nothing is published and nothing is approved automatically. The brand rules are checked in code on save: a draft with a banned word is kept but held, and the answer names the rule, so run check_brand first and fix it. One item per call. Free, no credits; a short check (Thakeen's cost, not the owner's) refuses a draft outside the team's marketing work, and nothing is saved then. Limited to ${DRAFTS_PER_HOUR} drafts an hour per account.`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST), description: "Thakeen item type, e.g. social, article, whatsapp, ads, gbp." }, channel: { type: "string", description: "Optional short channel name: instagram, snapchat, tiktok, x, whatsapp, blog, meta… Defaults to the type." }, title: { type: "string", description: `Optional short title (up to ${DRAFT_LIMITS.title} characters). Defaults to the first line of the body.` }, body: { type: "string", description: `The draft text, ready to use (up to ${DRAFT_LIMITS.body} characters).` }, notes: { type: "string", description: `Optional note for the owner: what this draft is for (up to ${DRAFT_LIMITS.notes} characters).` }, lang: { type: "string", enum: ["ar", "en"], description: "Optional language of the draft. Defaults to the brand's first language." } }, required: ["type", "body"] } },
 ];
 
 // The role each tool needs is MCP_TOOL_ACTION in src/lib/mcp.ts; a tool missing from it is refused.
@@ -136,12 +136,16 @@ export async function POST(req: Request) {
             case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}. ${NO_CREDITS_HINT}`), isError: true });
             case "agent_scope": return ok(id, { ...text(r.message), isError: true });
             case "agent_scope_slow": return ok(id, { ...text(agentScopeSlowText(lang)), isError: true });
-            // Refunded already; answered as a tool error by the catch below.
-            case "failed": throw r.error;
+            // Every item was outside what the team works on (rule 801): refunded, nothing saved, the refusal as a tool error.
+            case "failed":
+              if (r.error instanceof AgentScopeRefused) return ok(id, { ...text(r.error.reply), isError: true });
+              // Refunded already; answered as a tool error by the catch below.
+              throw r.error;
           }
         }
         // The brand's model pick was not used (src/lib/models/overrides.ts): the connected assistant relays it to the owner.
-        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n") + (r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : "")));
+        const held = r.held ? ` ${r.held} item(s) were withheld as outside the team's work, and their credits refunded.` : "";
+        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.${held}\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n") + (r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : "")));
       }
       case "list_inbox": {
         const status = String(args.status ?? "pending");
@@ -188,6 +192,8 @@ export async function POST(req: Request) {
         const parsed = parseDraft(args);
         if (!parsed.ok) return ok(id, { ...text(parsed.error), isError: true });
         const saved = await saveExternalDraft(user, parsed.draft);
+        // Outside what the team works on (rule 802, output check in enforce): nothing was saved.
+        if (!saved.ok && saved.reason === "agent_scope") return ok(id, { ...text(saved.reply), isError: true });
         if (!saved.ok && saved.reason === "rate") return ok(id, { ...text(`Too many drafts saved in a short time (the limit is ${DRAFTS_PER_HOUR} an hour). Nothing was saved. Wait and try again, or let the owner review what is already in the inbox.`), isError: true });
         if (!saved.ok) return ok(id, { ...text("No brand file yet. Run onboarding in the app first. Nothing was saved."), isError: true });
         return ok(id, text(JSON.stringify(draftReport(saved.task, saved.violations), null, 2)));

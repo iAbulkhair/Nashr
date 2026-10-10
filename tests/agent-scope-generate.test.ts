@@ -714,7 +714,8 @@ describe("rule 796: where the routes, the batch and the panels put the gate", ()
     const body = s.slice(s.indexOf("async function runBatch("));
     order(body, ['modelState() === "paused"', 'reason: "no_brand"', "trialOver(user)", "missingData(type, scope)", "checkGenerationNotes(", "renewalDue(user)", "chargeOnce(user.email"]);
     expect(s.match(/getBrand\(/g), "one brand read: the gate is given it").toHaveLength(1);
-    expect(s).toMatch(/checkGenerationNotes\(user, type, gate, brand, opts\.deadline\)/);
+    // Rule 801 adds the batch's one shared read of the other brands' names (`brandNames`), which the items' check reuses.
+    expect(s).toMatch(/checkGenerationNotes\(user, type, gate, brand, opts\.deadline, brandNames\)/);
     // The shadow check runs beside the batch and is awaited on every path.
     expect(s).toMatch(/finally \{\s*await Promise\.allSettled\(late\);/);
     expect(s).toMatch(/agentScope\?: AgentScopeModes;/);

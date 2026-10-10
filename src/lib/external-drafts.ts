@@ -1,7 +1,8 @@
 /**
  * Drafts written by the owner's own assistant (Claude, ChatGPT or any MCP client) and saved into the approval inbox
- * through the MCP tool `save_draft`. Free: no credits and no model call, because the owner's own subscription did the
- * writing. The inbox, the brand gate and the owner's approval are what Nashr adds.
+ * through the MCP tool `save_draft`. Free: no credits, because the owner's own subscription did the writing. The only
+ * model call is the agent-scope output check (rule 802), metered to Thakeen's global meter, never to the account. The
+ * inbox, the brand gate and the owner's approval are what Nashr adds.
  *
  * The text arrives from an outside model the owner steers, so it is untrusted input: every field is typed, trimmed and
  * bounded here, the storage scope is the authenticated caller's (`sc(u)`), never a value from the arguments, and the
@@ -9,6 +10,11 @@
  * (`gateTask`, the same check the approve and publish routes apply) and its result is returned to the caller; an item
  * that breaks a rule is kept, held in the inbox with the rule named, exactly like an agent's draft, so the owner can
  * edit it rather than lose it.
+ *
+ * The output check (rule 802, agent scope Layer 4) reads the draft's title and body as the owning agent's text, after the
+ * hourly draft rate (which bounds the classifier's calls, so a refused draft is counted there) and before the save: in
+ * `enforce` a draft outside what the team works on is refused and nothing is saved; `shadow` runs beside the save and only
+ * logs; an error lets the draft through.
  */
 import { randomBytes } from "crypto";
 import { sc, type User } from "./auth";
@@ -18,6 +24,8 @@ import { draftAllowed } from "./rate";
 import { isTaskType, type TaskType } from "./tasks";
 import { tokenBy } from "./actor";
 import { recordActivity } from "./activity";
+import { agentForTask } from "./agents";
+import { itemText, otherBrandNames, readAgentScopeModes, scopeCheck, type AgentScopeModes, type ScopeDecision } from "./agent-scope";
 
 export const DRAFT_LIMITS = { title: 200, body: 20000, notes: 500, channel: 30 } as const;
 
@@ -47,15 +55,32 @@ export function parseDraft(args: Record<string, unknown>): { ok: true; draft: Dr
 
 export type SaveDraftResult =
   | { ok: true; task: Task; violations: Violation[] }
-  | { ok: false; reason: "rate" | "no_brand" };
+  | { ok: false; reason: "rate" | "no_brand" }
+  /** Refused by the output check in `enforce` (rule 802): `reply` is the refusal the owner reads. Nothing was saved. */
+  | { ok: false; reason: "agent_scope"; reply: string };
 
-/** Save one external draft as a pending inbox item of the caller's active brand. No credits, no model call. */
-export async function saveExternalDraft(user: User, d: DraftInput): Promise<SaveDraftResult> {
-  // Per account, not per brand: switching brands must not multiply the allowance.
+/**
+ * Save one external draft as a pending inbox item of the caller's active brand. No credits and no generation; the only model
+ * call is the agent-scope classifier when the founder's `output` layer is on (Thakeen's cost, never the owner's). `agentScope`:
+ * the modes, when the caller already read them; otherwise read here, beside the brand file.
+ */
+export async function saveExternalDraft(user: User, d: DraftInput, o: { agentScope?: AgentScopeModes } = {}): Promise<SaveDraftResult> {
+  // Per account, not per brand: switching brands must not multiply the allowance. First, so it also bounds the classifier.
   if (!(await draftAllowed(user.email))) return { ok: false, reason: "rate" };
   const scope = sc(user);
-  const brand = await getBrand(scope);
+  const [brand, modes] = await Promise.all([getBrand(scope), o.agentScope ?? readAgentScopeModes()]);
   if (!brand) return { ok: false, reason: "no_brand" };
+  const output = modes.output;
+  const check: Promise<ScopeDecision> | null = output === "off" ? null : otherBrandNames(user)
+    .catch((e): string[] => {
+      console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+      return [];
+    })
+    .then((otherBrands) => scopeCheck("output", output, itemText({ title: d.title, body: d.body }), { user, agent: agentForTask(d.type).id, where: "save_draft", lang: d.lang ?? brand.languages[0] ?? (user.lang === "en" ? "en" : "ar"), brand: { name: brand.name, industry: brand.industry ?? "" }, otherBrands }));
+  if (check && output === "enforce") {
+    const out = await check;
+    if (out.block) return { ok: false, reason: "agent_scope", reply: out.reply };
+  }
   const brief = briefOf(d.notes);
   // The channel decides whether a personalisation slot such as {{1}} may stay (brand-rules.ts), as on the approve route.
   const draft = { type: d.type, channel: d.channel, title: d.title, body: d.body };
@@ -67,9 +92,11 @@ export async function saveExternalDraft(user: User, d: DraftInput): Promise<Save
     createdAt: new Date().toISOString(), lang: d.lang ?? brand.languages[0] ?? "ar", source: "external", ...(brief ? { brief } : {}),
   };
   // One activity row, with no agent: no Nashr agent wrote it. The title is the outside model's text, kept as a note.
+  // A shadow check ran beside the save and is awaited with it, so its log line is written before the answer.
   await Promise.all([
     saveTask(scope, t, true),
     recordActivity(scope, [{ at: t.createdAt, kind: "external_draft", by: tokenBy(user), via: "mcp", type: t.type, tasks: [t.id], count: 1, note: t.title }]),
+    output === "shadow" ? check : null,
   ]);
   return { ok: true, task: t, violations };
 }

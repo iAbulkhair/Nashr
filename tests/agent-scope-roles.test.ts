@@ -451,7 +451,9 @@ describe("rule 799: a tool the agent was not offered is Unknown tool. (R6)", () 
 describe("rules 797-799 are listed in the coverage map", () => {
   it("each rule has a row in docs/system/tests/0790-agent-scope.md, and the range row starts above them", () => {
     for (const n of [797, 798, 799]) expect(coverageRow(n), String(n)).toMatch(new RegExp(`^\\| ${n} \\|`));
-    expect(readFileSync("docs/system/tests/0790-agent-scope.md", "utf8")).toMatch(/^\| 800-808 \| Reserved for agent scope Part B/m);
+    // Later tasks move the range row's start up (rule 801's task moved it to 803), so the check is "above 799", not a number.
+    const start = readFileSync("docs/system/tests/0790-agent-scope.md", "utf8").match(/^\| (\d+)-808 \| Reserved for agent scope Part B/m);
+    expect(Number(start?.[1])).toBeGreaterThan(799);
   });
 });
 
