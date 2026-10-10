@@ -83,6 +83,7 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
         case "onboard_charged": return [];
         case "onboard_refunded": return [n(a.credits, r.credits), a.refunded];
         case "external_draft": return [typeOf(r), r.note ?? ""];
+        case "instructions_changed": return [n(a.items, r.count), r.note ?? ""];
         case "gov_changed": case "gov_rollback": return [r.note ? fill(a.changed, { list: r.note }) : ""];
         // The reviewing agent is the row's agent; `outcome` is "flags:N", written in code.
         case "cross_reviewed": {

@@ -28,6 +28,7 @@ import { isComposio, revokeAll } from "./connectors/via-composio";
 import { AD_PROVIDERS } from "./connectors/ads";
 import { AD_STATS_SOURCES, ADSTATS_KEY } from "./ad-stats";
 import { XSTATS_KEY } from "./social-read/common";
+import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -101,6 +102,8 @@ export async function wipeAccount(email: string) {
       `decisions:${s}`,
       // The governance history (who changed which setting, with their email) and its save lock (10 s TTL).
       `govhist:${s}`, `govlock:${s}`,
+      // The agent instructions of this brand: its layer, revision history and write lock (src/lib/instructions-store.ts).
+      ...instructionKeys(s),
       // The activity log (titles, file names, member emails) and the routines' "nothing new" markers (8 or 35 days).
       activityKey(s), ...routineSkipKeys(s),
       // Reem's list: every item ever created and not yet purged (open, done and deleted), its indexes (the reminder index
@@ -192,6 +195,8 @@ export async function wipeAccount(email: string) {
   );
   // The account record goes first, then the team under its lock: an invite accepted while this runs either finished
   // before `wipeTeam` took `lock:team` (and its member is deleted there) or re-reads the owner after it and finds none.
+  // The founder feed of instruction changes holds this account's email: its rows leave with it (a busy lock stops the wipe, a retry runs it again).
+  await removeFeedRowsFor(e);
   await pmap(keys, (k) => db.del(k));
   // The global reminder index names every scope with a reminder: this account's leave it.
   await Promise.all(scopes.map((s) => forgetDueScope(s)));
