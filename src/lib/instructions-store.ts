@@ -59,11 +59,11 @@ export type StoreError = "busy" | "too_long" | "too_many" | "bad_target" | "inst
 type Fail = { ok: false; error: StoreError; index?: number };
 type Done = { ok: true; layer: Layer; revision: Revision };
 
-const layerKey = (scope: string) => `skills:${scope}`;
+export const layerKey = (scope: string) => `skills:${scope}`;
 const histKey = (scope: string) => `skillshist:${scope}`;
 const lockKey = (scope: string) => `skillslock:${scope}`;
 const FEED = "skills:feed";
-const PAUSED = "skills:paused";
+export const PAUSED = "skills:paused";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const histCap = (scope: string) => (scope === PLATFORM ? CAPS.skillsHistory : CAPS.skillsWsHistory);
 const newId = () => randomBytes(6).toString("hex");
@@ -79,7 +79,11 @@ const isSet = (v: unknown): v is InstructionSet => isObj(v) && Array.isArray(v.i
 
 /** The layer of one scope; an empty one when nothing is stored or what is stored is not a layer. */
 export async function getLayer(scope: string): Promise<Layer> {
-  const l = await db.get<Layer>(layerKey(scope));
+  return parseLayer(await db.get<Layer>(layerKey(scope)));
+}
+
+/** A stored value as a layer; an empty one when it is not a layer. Shared by `getLayer` and the render's batch read. */
+export function parseLayer(l: unknown): Layer {
   if (!isObj(l) || !isSet(l.active) || !(l.draft === null || l.draft === undefined || isSet(l.draft))) return emptyLayer();
   return { active: l.active, draft: l.draft ?? null, at: typeof l.at === "string" ? l.at : emptyLayer().at, by: isBy(l.by) ? l.by : null };
 }
