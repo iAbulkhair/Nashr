@@ -62,7 +62,7 @@ describe("rule 949: authentication and roles", () => {
       expect(can(asAdmin, a)).toBe(true);
       expect(can(asMember, a)).toBe(false);
     }
-    // A founder acting through support access is not blocked, as for brand.write; the change records who acted.
+    // A founder acting through support access is not blocked by the table (the route-level proof is the next test).
     await signIn(u.email, { imp: "founder@test.example" });
     const support = (await currentUser())!;
     expect(support.actor?.kind).toBe("founder");
@@ -100,6 +100,60 @@ describe("rule 949: authentication and roles", () => {
     expect(second.status).toBe(200);
     expect(second.body.layer.active.v).toBe(2);
     expect(second.body.revision.by).toMatchObject({ kind: "member", role: "admin" });
+  });
+});
+
+describe("rule 949: who acted", () => {
+  it("rule 949: the stored by comes from the session, not the body; a member never reads the founder's login", async () => {
+    const founder = "support-founder@test.example";
+    const u = await owner("instr-by");
+    const m = await newMember(u, "member");
+    // A support session writes, with a forged `by` in every body.
+    await signIn(u.email, { imp: founder });
+    const forged = { kind: "owner", email: "someone-else@test.example", role: "owner" };
+    expect((await put({ items: [item("Support set this.")], by: forged })).status).toBe(200);
+    const live = await activate({ by: forged });
+    expect(live.status).toBe(200);
+    // What is stored names the founder and keeps imp (the console reads it); the body's by is nowhere.
+    const stored = await listHistory(u.email);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].by).toEqual({ kind: "founder", email: u.email, imp: founder });
+    expect((await getLayer(u.email)).by).toEqual({ kind: "founder", email: u.email, imp: founder });
+    // The writer sees the public shape too: the response never carries imp.
+    expect(live.body.revision.by).toEqual({ kind: "founder", email: u.email });
+    expect(live.body.layer.by).toEqual({ kind: "founder", email: u.email });
+    const second = await put({ items: [item("Support set this."), item("And this.")] });
+    expect(second.body.layer.by).toEqual({ kind: "founder", email: u.email });
+    expect((await discard()).body.layer.by).toEqual({ kind: "founder", email: u.email });
+    await put({ items: [item("Back again.")] });
+    const again = await activate();
+    const back = await restore({ revisionId: live.body.revision.id });
+    expect(back.body.revision.by).toEqual({ kind: "founder", email: u.email });
+    expect(JSON.stringify([second.body, again.body, back.body])).not.toContain(founder);
+
+    // A plain member's reads: layer, history and the compare diff carry no imp and never the founder's login.
+    await signIn(m.email);
+    const texts = [
+      await (await layerRoute.GET()).text(),
+      await (await historyRoute.GET(new Request("https://nashr.test/api/instructions/history"))).text(),
+      await (await historyRoute.GET(new Request(`https://nashr.test/api/instructions/history?compare=${live.body.revision.id}`))).text(),
+    ];
+    for (const t of texts) {
+      expect(t).not.toContain(founder);
+      expect(t).not.toContain('"imp"');
+      expect(t).toContain('"kind":"founder"');
+    }
+    expect(JSON.parse(texts[1]).history.every((r: { by: Body }) => r.by.kind === "founder" && !("imp" in r.by))).toBe(true);
+  });
+
+  it("rule 949: a plain write records the member's own role from the session", async () => {
+    const u = await owner("instr-by-m");
+    const admin = await newMember(u, "admin");
+    await signIn(admin.email);
+    await put({ items: [item("By an admin.")], by: { kind: "owner", email: u.email } });
+    const r = await activate();
+    expect(r.body.revision.by).toEqual({ kind: "member", email: admin.email, role: "admin" });
+    expect((await listHistory(u.email))[0].by).toEqual({ kind: "member", email: admin.email, role: "admin" });
   });
 });
 

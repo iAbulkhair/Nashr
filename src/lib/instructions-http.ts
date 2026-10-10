@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import type { StoreError } from "./instructions-store";
+import { publicBy } from "./actor";
+import type { Layer, Revision, StoreError } from "./instructions-store";
 
 /**
  * The status of a refused store call. `busy` (the workspace's lock was not taken), `no_draft` (nothing to activate: the
@@ -17,3 +18,12 @@ export function statusOf(error: StoreError): number {
 /** The JSON answer of a refused store call: `{ ok: false, error, index? }` with the status above. */
 export const refused = (r: { error: StoreError; index?: number }) =>
   NextResponse.json({ ok: false, error: r.error, ...(r.index !== undefined ? { index: r.index } : {}) }, { status: statusOf(r.error) });
+
+/**
+ * A stored `by` keeps `imp` (who impersonated: the founder's console login, or "key"), which a member must never read.
+ * Everything these routes send goes through these, as governance's `historyView` and `publicActivity` do: a support
+ * session shows as "founder" with the account's email and nothing else. `before`/`after`/`diff` hold items, which carry
+ * no `by`, so they pass as they are.
+ */
+export const publicLayer = (l: Layer): Layer => ({ ...l, by: l.by ? publicBy(l.by) : null });
+export const publicRevision = (r: Revision): Revision => ({ ...r, by: publicBy(r.by) });

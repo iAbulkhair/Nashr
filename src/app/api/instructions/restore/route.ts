@@ -3,7 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { byOf } from "@/lib/actor";
 import { entitlements } from "@/lib/entitlements";
 import { restore } from "@/lib/instructions-store";
-import { refused } from "@/lib/instructions-http";
+import { publicLayer, publicRevision, refused } from "@/lib/instructions-http";
 import { forbid } from "@/lib/roles";
 import { allow, INSTRUCTION_WRITES_PER_HOUR, retryLater, WINDOW } from "@/lib/rate";
 
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   if (!(await allow(`instr:w:${sc(u)}`, INSTRUCTION_WRITES_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
   const b = (await req.json().catch(() => null)) as { revisionId?: unknown } | null;
   const id = b && typeof b === "object" && typeof b.revisionId === "string" ? b.revisionId : "";
-  const r = await restore(sc(u), id, await byOf(u), { platform: false, limits: entitlements(u).instructions });
+  const r = await restore(sc(u), id, byOf(u), { platform: false, limits: entitlements(u).instructions });
   if (!r.ok) return refused(r);
-  return NextResponse.json({ ok: true, layer: r.layer, revision: r.revision });
+  return NextResponse.json({ ok: true, layer: publicLayer(r.layer), revision: publicRevision(r.revision) });
 }
