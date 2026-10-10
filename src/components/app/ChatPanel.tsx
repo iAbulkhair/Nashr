@@ -717,6 +717,9 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
               {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
               {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
+              {m.role === "assistant" && m.switchTo && isAgentId(m.switchTo) && m.switchTo !== agent && (
+                <button onClick={() => pick(m.switchTo!)} className="btn btn-secondary btn-xs mt-1.5">{t.chat.switchTo.replace("{name}", A[m.switchTo].name)}</button>
+              )}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
                   <button onClick={() => vote(m, 1)} aria-label={t.chat.helpful} title={t.chat.helpful} className={`rounded p-1 ${voted[m.at] === 1 ? "bg-ink text-lilac" : "text-muted hover:text-ink"}`}><Icon name="thumbUp" className="h-4 w-4" /></button>

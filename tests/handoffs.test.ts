@@ -17,7 +17,8 @@ import { saveGov } from "@/lib/governance";
 import { wipeAccount } from "@/lib/account";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { promptStamp } from "@/lib/prompt-stamp";
-import { CHAT_TOOL_NAMES, PROPOSE_HANDOFF_TOOL, leadRefusal, push, runTool, toolsFor, type ToolCtx } from "@/lib/chat";
+import { CHAT_TOOL_NAMES, PROPOSE_HANDOFF_TOOL, push, runTool, toolsFor, type ToolCtx } from "@/lib/chat";
+import { roleOwner, roleRefusalText } from "@/lib/agent-scope";
 import { HANDOFF_BRIEF_MAX, HANDOFF_OWNER_MSG_MAX, HANDOFF_RUN_LOCK_S, HANDOFF_TYPES, chatItemOf, createHandoff, declineHandoff, getHandoff, handoffKeys, handoffView, parseProposal, runHandoffItem, runItemLocked, type HandoffView } from "@/lib/handoffs";
 import { HANDOFF_RUNS_PER_HOUR } from "@/lib/rate";
 import { LEAD_BRIEF_LABEL, asData, groundingBlocks, leadBriefBlock } from "@/lib/json";
@@ -145,7 +146,8 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
     const u = await owner("ho-refuse");
     for (const agent of ["noor", "razan", "reem", undefined] as const) {
       const r = await propose(u, TWO, { agent });
-      expect(r.text, String(agent)).toContain("only Majed, the lead, proposes handoffs");
+      // Rule 799: a turn with an agent that was not offered the tool reads "Unknown tool."; a turn with no agent reads the tool's own refusal.
+      expect(r.text, String(agent)).toContain(agent ? "Unknown tool." : "only Majed, the lead, proposes handoffs");
       expect(r.id).toBeUndefined();
     }
     const tok = await propose(u, TWO, { by: { kind: "token", email: u.email } });
@@ -252,6 +254,7 @@ describe("Majed cannot produce other agents' work himself (rule 273)", () => {
     const before = await credits(u.email);
     const made: Task[] = [];
     const gen = await runTool(u, "generate_content", { type: "pricing_review", notes: "n" }, [], made, undefined, { agent: "majed", by: ownerBy(u) });
+    expect(gen).toBe(roleRefusalText("majed", "pricing_review"));
     expect(gen).toContain("pricing_review is Razan's work");
     expect(gen).toContain("propose it with propose_handoff");
     expect(gen).toContain("no credits were used");
@@ -269,9 +272,12 @@ describe("Majed cannot produce other agents' work himself (rule 273)", () => {
     expect(own).toMatch(/^Created 1 decision_memo item/);
     const noor = await runTool(u, "generate_content", { type: "pricing_review" }, [], [], undefined, { agent: "noor", by: ownerBy(u) });
     expect(noor).toMatch(/^Created 1 pricing_review item/);
-    expect(leadRefusal(undefined, "pricing_review")).toBeNull();
-    for (const t of TASK_TYPES) expect(leadRefusal("majed", t) === null, t).toBe(agentForTask(t).id === "majed");
-    for (const t of TASK_TYPES) expect(leadRefusal("sami", t), t).toBeNull();
+    // Rule 798 replaced `leadRefusal` with the role layer: no agent names no owner, and Majed's own types name none either.
+    expect(roleOwner(undefined, "pricing_review")).toBeNull();
+    for (const t of TASK_TYPES) expect(roleOwner("majed", t) === null, t).toBe(agentForTask(t).id === "majed");
+    // Every other agent still runs any type while the founder's role layer is in its default shadow mode (it logs, it does not refuse).
+    const sami = await runTool(u, "generate_content", { type: "decision_memo" }, [], [], undefined, { agent: "sami", by: ownerBy(u) });
+    expect(sami).toMatch(/^Created 1 decision_memo item/);
   });
 });
 
@@ -325,8 +331,9 @@ async function fixedBatch(type: TaskType, lead?: { leadBrief?: string }) {
   try {
     const noor = await import("@/lib/noor");
     const { scoreItems } = await import("@/lib/judge");
+    // Rule 797: the generation prompt ends with the scope paragraph unless `agentScope` is false; this test pins the prompt as it was before handoffs, so it generates without it.
     const ctx = { notes: "compare with Ramadan", memory: "--- brand.md ---\nhello", stats: "WORKSPACE DATA\norders: 12" };
-    const out = await noor.generate(type, brand, ["no emojis"], ctx.notes, { memory: ctx.memory, stats: ctx.stats, meter: "probe@test.example", ...(lead ?? {}) });
+    const out = await noor.generate(type, brand, ["no emojis"], ctx.notes, { memory: ctx.memory, stats: ctx.stats, meter: "probe@test.example", agentScope: false, ...(lead ?? {}) });
     await scoreItems("probe@test.example", brand, type, out, undefined, { ...ctx, ...(lead ?? {}) });
     return { gen, review, judge, cross };
   } finally {

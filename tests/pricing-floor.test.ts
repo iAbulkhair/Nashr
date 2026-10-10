@@ -462,8 +462,9 @@ describe("chat keeps the floor per tier: the hold covers each model's own ceilin
  * plus the onboarding goal at `goalLine`'s 140; the thread is the history guard's cap, CHAT_HISTORY_MAX_MSGS messages
  * together CHAT_HISTORY_MAX_CHARS (src/lib/chat-budget.ts). docs/system/costs.md section 2 measures the batch prompt
  * (`systemPrompt`), not chat's, which carries the tool definitions and the chat rules on top: hence the larger figures.
- * On 2026-10-09 the live prefix was 63,029 to 71,575 characters on an empty workspace and 105,948 to 114,494 with
- * the memory at the cap. The pinned figures use round sizes just above the live maxima (P_EMPTY, P_CAP, V), so
+ * On 2026-10-10 the live prefix was 63,556 to 72,102 characters on an empty workspace and 106,475 to 115,021 with
+ * the memory at the cap (on 2026-10-09: 63,029 to 71,575 and 105,948 to 114,494; rule 797's scope paragraph, about 640
+ * characters, and the changes since account for the rise, and the pins moved from 72,000 and 115,000 to 72,500 and 115,500). The pinned figures use round sizes just above the live maxima (P_EMPTY, P_CAP, V), so
  * preferences, a longer brand, feedback or handoff notes, which the live prompt here leaves out, are what moves a real
  * account toward the cliff; a larger volatile block or a longer newest message moves the cliff itself lower.
  */
@@ -476,7 +477,7 @@ describe("what each chat model's ceiling leaves for the answer, from the real ch
   const per = CHAT_HISTORY_MAX_CHARS / CHAT_HISTORY_MAX_MSGS;
   const thread = Array.from({ length: CHAT_HISTORY_MAX_MSGS }, (_, i) => ({ role: (i % 2 ? "user" : "assistant") as "user" | "assistant", content: `${i}`.padEnd(per, "x") }));
   const newest = thread.slice(-1);
-  const P_EMPTY = 72_000, P_CAP = 115_000, V = 1_000;
+  const P_EMPTY = 72_500, P_CAP = 115_500, V = 1_000;
   const fit = (model: string, prefix: number, volatile = V, msgs = thread) => fitFirstCall(model, msgs, prefix, volatile);
   /** The largest prefix whose first call still gets CHAT_MIN_OUT with only the newest message: past it, LARGE_REPLY. */
   const cliff = (model: string) => {
@@ -540,16 +541,16 @@ describe("what each chat model's ceiling leaves for the answer, from the real ch
     const row = (model: string) => { const f = fit(model, P_EMPTY); return [model, f.maxTokens, f.messages.length]; };
     // [model, max_tokens of the first call, messages of the thread kept]
     expect(chatModels.map((m) => row(m.id))).toEqual([
-      ["claude-sonnet-5-5", 6299, 16],
-      ["claude-opus-5-5", 6299, 16],
+      ["claude-sonnet-5-5", 6257, 16],
+      ["claude-opus-5-5", 6257, 16],
     ]);
   });
 
   it("pinned at P_CAP: Automatic and Opus 5.5 drop the oldest messages and still answer", () => {
     const row = (model: string) => { const f = fit(model, P_CAP); return [model, f.maxTokens, f.messages.length]; };
     expect(chatModels.map((m) => row(m.id))).toEqual([
-      ["claude-sonnet-5-5", 4043, 3],
-      ["claude-opus-5-5", 4043, 3],
+      ["claude-sonnet-5-5", 4002, 3],
+      ["claude-opus-5-5", 4002, 3],
     ]);
   });
 

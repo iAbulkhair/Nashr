@@ -39,7 +39,7 @@ import type { Grounding } from "./json";
 import { promptStamp } from "./prompt-stamp";
 import { byOf, systemBy, type By } from "./actor";
 import { recordActivity, type Activity } from "./activity";
-import { checkGenerationNotes, type AgentScopeModes, type NotesGate } from "./agent-scope";
+import { checkGenerationNotes, readAgentScopeModes, type AgentScopeModes, type NotesGate } from "./agent-scope";
 
 /** Where a batch was asked for. Not the same as `source`: MCP and chat items are both `source:"chat"`. */
 export type BatchVia = "app" | "chat" | "mcp" | "weekly" | "routine" | "handoff";
@@ -120,7 +120,8 @@ export type BatchOpts = {
   /**
    * The founder's agent-scope modes (src/lib/agent-scope.ts), read once by the route (`agentScopePreflight`) and handed down,
    * as `ChatOpts.agentScope` is for a chat turn. The owner's routes also hand the notes' gate (`notesGate`) and pass the modes on
-   * for the check of the items the batch makes (a later task of Part B); left out, the batch reads them itself.
+   * for the check of the items the batch makes (a later task of Part B); left out, the batch reads them itself. Its `prompt` is
+   * what puts the scope paragraph in the generation prompt (rule 797).
    */
   agentScope?: AgentScopeModes;
   /**
@@ -271,7 +272,9 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // a tool called outside a turn keeps the backstop every path has, generate() throwing and the charge refunded.
   if (opts.via !== "chat" && modelState() === "paused") return refuse({ ok: false, reason: "paused" });
   // Governance before the charge: the owner's monthly cap for this agent is checked inside the ledger's lock.
-  const [brand, gov] = await Promise.all([opts.brand ?? getBrand(scope), opts.gov ?? getGov(scope)]);
+  // The founder's scope modes are read here, beside them, only when the caller handed none (routines, the weekly plan, handoffs, an
+  // admin run): the prompt flag below (rule 797) is the `prompt` switch, so every generation path obeys it. Never throws.
+  const [brand, gov, scopeModes] = await Promise.all([opts.brand ?? getBrand(scope), opts.gov ?? getGov(scope), opts.agentScope ?? readAgentScopeModes()]);
   if (!brand) return refuse({ ok: false, reason: "no_brand" });
   // Resolved once (one decision): the caller's model, or the brand's pick when route() accepts it for this type, else
   // the automatic choice. `user` is the account's own record, so the China confirmation is the owner's stored one.
@@ -339,7 +342,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     // A lead brief rides along only when there is one, so every other batch's prompts and judge grounding are unchanged.
     const lead = opts.leadBrief?.trim() ? { leadBrief: opts.leadBrief } : {};
     ground = { notes: opts.notes, memory, stats, ...lead };
-    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, model, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
+    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, model, agentScope: scopeModes.prompt === "on", ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
     createdAt = new Date().toISOString();
     const brief = opts.brief ?? briefOf(opts.notes);
     tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent }));

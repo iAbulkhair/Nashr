@@ -1360,8 +1360,13 @@ describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for
       ];
       for (const [name, user, ctx] of cases) {
         const r = await contactAway(user, { name: "Sara", until: "2026-10-09" }, ctx);
-        expect(r.text, name).toMatch(/^Not done: /);
-        expect(r.text, name).toContain("Nothing was saved");
+        // Rule 799: another agent's turn was never offered the tool, so it reads "Unknown tool." before the tool's own refusal;
+        // a turn with no agent, over MCP and for a token still read that refusal.
+        if (ctx.agent !== undefined && ctx.agent !== "reem") expect(r.text, name).toBe("Unknown tool.");
+        else {
+          expect(r.text, name).toMatch(/^Not done: /);
+          expect(r.text, name).toContain("Nothing was saved");
+        }
         expect(r.awayProposed, name).toEqual([]);
         expect(r.actions, name).toEqual([]);
       }
