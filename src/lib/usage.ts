@@ -85,6 +85,55 @@ const modelKeyOf = (model: string): string => modelById(model)?.id ?? OTHER_MODE
  * gateway only with `LLM_PROVIDER=straitly` and its key), and a value that is not one of the two is ignored the same way. The model and the provider also count in the two global families above.
  */
 export async function meter(email: string | undefined, model: string, kind: Kind, usage?: TokenUsage | null, agent?: AgentId, provider?: LlmProvider) {
+  return record(email, model, kind, usage, agent, provider, true);
+}
+
+/**
+ * One entry of `usage.iterations` (beta responses): one sampling attempt inside a single request, at its own model.
+ * `model` null means the model the caller asked for. `type` is "message", "fallback_message", "advisor_message" or
+ * "compaction"; every one of them is billed.
+ */
+export type IterationUsage = TokenUsage & { type?: string; model?: string | null };
+/** A response's usage as the API bills it: the top-level counts, and with some betas every attempt in `iterations`. */
+export type BilledUsage = TokenUsage & { iterations?: IterationUsage[] | null };
+
+/**
+ * What one response cost, split per model (rule 981). With `iterations` (the server-side fallback beta; also server tool
+ * loops, compaction and the advisor), the top-level usage covers only the attempt that produced the message, while every
+ * attempt in `iterations` is billed at its own model's rate: a declined Opus attempt and the Sonnet that answered are two
+ * parts. Each part sums the iterations of one model, in order of first appearance; an entry with no model is the one the
+ * request asked for (`requested`, else the reply's `model`). Without iterations (every other call) it is the top-level
+ * usage at the reply's `model`, as `meter` always priced it.
+ */
+export function billedParts(model: string, usage: BilledUsage, requested: string = model): { model: string; usage: TokenUsage }[] {
+  const it = Array.isArray(usage.iterations) ? usage.iterations.filter((x) => x && typeof x === "object") : [];
+  if (!it.length) return [{ model, usage }];
+  const by = new Map<string, { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }>();
+  for (const x of it) {
+    const m = typeof x.model === "string" && x.model ? x.model : requested;
+    const s = by.get(m) ?? { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    s.input_tokens += x.input_tokens ?? 0;
+    s.output_tokens += x.output_tokens ?? 0;
+    s.cache_read_input_tokens += x.cache_read_input_tokens ?? 0;
+    s.cache_creation_input_tokens += x.cache_creation_input_tokens ?? 0;
+    by.set(m, s);
+  }
+  return [...by].map(([model, u]) => ({ model, usage: u }));
+}
+
+/**
+ * Meters one response as billed: every part of `billedParts` at its own model's rate. The request counts as ONE call for
+ * the account, the kind, the agent and the provider (the first part); each model that ran counts one call in its own
+ * global model counter. Callers go through `metered` (src/lib/metered.ts), which also meters an aborted stream.
+ */
+export async function meterBilled(email: string | undefined, model: string, kind: Kind, usage?: BilledUsage | null, agent?: AgentId, requested?: string) {
+  if (!usage) return;
+  const parts = billedParts(model, usage, requested);
+  await Promise.all(parts.map((p, i) => record(email, p.model, kind, p.usage, agent, undefined, i === 0)));
+}
+
+/** `countCall` false: the tokens and cost of a further model in the same request, so only that model's call counter moves. */
+async function record(email: string | undefined, model: string, kind: Kind, usage: TokenUsage | null | undefined, agent: AgentId | undefined, provider: LlmProvider | undefined, countCall: boolean) {
   if (!usage) return;
   const m = monthKey();
   const inp = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
@@ -98,9 +147,9 @@ export async function meter(email: string | undefined, model: string, kind: Kind
       ...targets.flatMap((k) => [
         db.incrby(`${k}:in`, inp),
         db.incrby(`${k}:out`, out),
-        db.incrby(`${k}:calls`, 1),
+        ...(countCall ? [db.incrby(`${k}:calls`, 1)] : []),
         db.incrby(`${k}:usd_micro`, micro),
-        db.incrby(`${k}:kind:${kind}`, 1),
+        ...(countCall ? [db.incrby(`${k}:kind:${kind}`, 1)] : []),
         // Same three numbers per kind, so cost per request type per account is a read, not an estimate.
         db.incrby(`${k}:kind:${kind}:in`, inp),
         db.incrby(`${k}:kind:${kind}:out`, out),
@@ -109,12 +158,13 @@ export async function meter(email: string | undefined, model: string, kind: Kind
         ...(usage.cache_read_input_tokens ? [db.incrby(`${k}:cache_read`, usage.cache_read_input_tokens)] : []),
         ...(usage.cache_creation_input_tokens ? [db.incrby(`${k}:cache_write`, usage.cache_creation_input_tokens)] : []),
         // Calls and cost per agent, so what each agent costs to run is a read, not an estimate from task counts.
-        ...(isAgentId(agent) ? [db.incrby(`${k}:agent:${agent}:calls`, 1), db.incrby(`${k}:agent:${agent}:usd_micro`, micro)] : []),
+        ...(isAgentId(agent) ? [...(countCall ? [db.incrby(`${k}:agent:${agent}:calls`, 1)] : []), db.incrby(`${k}:agent:${agent}:usd_micro`, micro)] : []),
       ]),
-      // Global only (see above): what each model and each provider costs us, for the founder console.
+      // Global only (see above): what each model and each provider costs us, for the founder console. A model that ran
+      // counts its call even when it was not the request's first part.
       db.incrby(`${mk}:calls`, 1),
       db.incrby(`${mk}:usd_micro`, micro),
-      db.incrby(`${pk}:calls`, 1),
+      ...(countCall ? [db.incrby(`${pk}:calls`, 1)] : []),
       db.incrby(`${pk}:usd_micro`, micro),
     ]);
   } catch (e) {

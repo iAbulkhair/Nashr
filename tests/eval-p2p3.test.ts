@@ -201,6 +201,7 @@ describe("untrusted text reaching the judge and the reviewer", () => {
             sent = p;
             return { model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([{ completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, notes: "ready" }]) }] };
           },
+          stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
         };
       },
     }));

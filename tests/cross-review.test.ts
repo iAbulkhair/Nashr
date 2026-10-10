@@ -85,6 +85,7 @@ async function load(o: { items?: Item[]; cross?: (by: Reviewer, p: Params) => st
           seen.cross.push({ by, p, opts });
           return reply((o.cross ?? (() => "[]"))(by as Reviewer, p), o.stop ? { stop_reason: o.stop } : {});
         },
+        stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));
@@ -401,7 +402,8 @@ describe("a failed review never blocks the batch (rule 266)", () => {
     expect([CROSS_REVIEW_TIMEOUT_MS, CROSS_REVIEW_MIN_MS]).toEqual([45_000, 60_000]);
     await generate("gtm_plan", brand, [], "");
     // No SDK retries and no 10-minute default: a slow reviewer cannot push a charged batch past the platform's limit.
-    expect(seen.cross.map((c) => c.opts)).toEqual([{ timeout: 45_000, maxRetries: 0 }, { timeout: 45_000, maxRetries: 0 }]);
+    // A stream's timeout covers only the wait for its headers, so the signal (rule 980) bounds the whole reply by 45 s.
+    expect(seen.cross.map((c) => c.opts)).toEqual([{ timeout: 45_000, maxRetries: 0, signal: expect.any(AbortSignal) }, { timeout: 45_000, maxRetries: 0, signal: expect.any(AbortSignal) }]);
     seen.cross.length = 0;
     const late = await generate("gtm_plan", brand, [], "", { deadline: Date.now() + CROSS_REVIEW_MIN_MS - 1_000 });
     expect(seen.cross).toHaveLength(0);
@@ -632,6 +634,7 @@ async function fixedBatch(type: TaskType, crossReview: boolean) {
           // A flag on every item, so the verdicts ride on the items handed to the judge.
           return reply(says(...items.map((_, i) => ({ id: i + 1, verdict: "flag", notes: ["a note"] }))));
         },
+        stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));

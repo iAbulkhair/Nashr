@@ -1,4 +1,4 @@
-import { meter } from "./usage";
+import { metered } from "./metered";
 import { agentById, agentForTask, type Agent } from "./agents";
 import { playbookSection, reviewBlock, skillsBlock } from "./skills";
 import { asData, fenceMemory, groundingBlocks, leadBriefBlock, parseObjectArray, type Grounding } from "./json";
@@ -233,21 +233,21 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const serverFallback = params.model === automaticFor("generate", type);
   let text = "";
   try {
-    const msg = await client.beta.messages
-      .stream(serverFallback ? { ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : params, until(deadline, { cap: MODEL_BUDGET.GEN_MS }))
-      .finalMessage();
-    // Meter first. A refused call is still billed by the API — input, thinking and output — but this threw before
-    // metering, so the account showed a free event (the route refunds the credits) and the founder console never saw
-    // what it cost. Golden runs left refused cases out of their spend the same way.
-    await meter(opts.meter, msg.model, "generate", msg.usage, agent.id);
+    // Metered first, inside `metered`. A refused call is still billed by the API — input, thinking and output — and so
+    // is a stream cut by the deadline. With the server-side fallback every attempt is its own entry in
+    // `usage.iterations`, metered at its own model's rate (rule 981): the top-level usage covers only the attempt that
+    // answered. An iteration that names no model is the one asked for, `params.model`.
+    const msg = await metered(
+      client.beta.messages.stream(serverFallback ? { ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })),
+      { email: opts.meter, kind: "generate", agent: agent.id, requested: params.model },
+    );
     if (msg.stop_reason === "refusal") throw new Error("refused");
     text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   } catch (e) {
     // Fallback parameter not accepted (older org/plan) → plain request. Only when the fallback was asked for: a request
     // without it that is refused is the model's own answer, and asking again would pay twice.
     if (serverFallback && e instanceof Anthropic.BadRequestError) {
-      const msg = await client.messages.stream(params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })).finalMessage();
-      await meter(opts.meter, msg.model, "generate", msg.usage, agent.id);
+      const msg = await metered(client.messages.stream(params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })), { email: opts.meter, kind: "generate", agent: agent.id, requested: params.model });
       // The same refusal check as the main path; without it a refused fallback fell through with empty text.
       if (msg.stop_reason === "refusal") throw new Error("refused");
       text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
@@ -328,7 +328,8 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
     return items;
   }
   try {
-    const review = await client.messages.create({
+    // A stream, so a review cut by the deadline is metered for what it was billed (rule 980).
+    const review = await metered(client.messages.stream({
       model: route("review", { task: type }).model,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
@@ -341,8 +342,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
           content: `<brand_file>\n${asData({ name: brand.name, industry: brand.industry, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, banned: brand.banned, preferred: brand.preferred, offers: brand.offers })}\n</brand_file>\n\n<owner_preferences>\n${asData(prefs.length ? prefs : ["none"])}\n</owner_preferences>${groundingBlocks(ctx)}\n\nTASK TYPE: ${type}\n\n<items>\n${asData(items.map((i) => ({ channel: i.channel, body: i.body })))}\n</items>`,
         },
       ],
-    }, until(end, { cap: MODEL_BUDGET.REVIEW_MS }));
-    await meter(ctx.meter, review.model, "review", review.usage, agentForTask(type).id);
+    }, until(end, { cap: MODEL_BUDGET.REVIEW_MS })), { email: ctx.meter, kind: "review", agent: agentForTask(type).id });
     const raw = review.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
     const verdicts = parseObjectArray(raw) as Array<{ ok?: boolean; body?: string }>;
     return items.map((it, i) => (verdicts[i] && verdicts[i].ok === false && typeof verdicts[i].body === "string" && verdicts[i].body!.length > 20 ? { ...it, body: verdicts[i].body! } : it));
@@ -496,15 +496,16 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
     const model = route("xreview").model;
     const per = await Promise.all(reviewers.map(async (r): Promise<(CrossVerdict | null)[]> => {
       try {
-        const res = await client.messages.create({
+        // A stream, so a review cut by its time limit is metered for what it was billed (rule 980). The limit bounds the
+        // whole reply, as it did when this was one request: `until` aborts the body too, not only the wait for headers.
+        const res = await metered(client.messages.stream({
           model,
           max_tokens: 4000,
           thinking: { type: "adaptive" },
           output_config: { effort: "low" },
           system: [{ type: "text", text: crossReviewPrompt(r), cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content }],
-        }, { timeout: CROSS_REVIEW_TIMEOUT_MS, maxRetries: 0 });
-        await meter(ctx.meter, res.model, "xreview", res.usage, r);
+        }, { ...until(Date.now() + CROSS_REVIEW_TIMEOUT_MS), maxRetries: 0 }), { email: ctx.meter, kind: "xreview", agent: r });
         if (res.stop_reason === "refusal") return [];
         const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
         return parseCrossVerdicts(raw, items.length, r, res.model, new Date().toISOString());

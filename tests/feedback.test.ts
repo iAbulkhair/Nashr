@@ -247,8 +247,9 @@ function sdk(gen: Sent[], chats: Sent[]) {
       static BadRequestError = class extends Error {};
       beta = { messages: { stream: (p: Sent) => { gen.push(p); return { finalMessage: async () => reply(JSON.stringify([{ channel: "instagram", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])) }; } } };
       messages = {
-        stream: (p: Sent) => { chats.push(p); return { finalMessage: async () => reply("تمام") }; },
+        chat: (p: Sent) => { chats.push(p); return { finalMessage: async () => reply("تمام") }; },
         create: async (p: Sent) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])),
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));

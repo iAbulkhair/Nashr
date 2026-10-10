@@ -26,7 +26,7 @@ import { MEET_MAX, MEET_TITLE_MAX, approveMeeting, cleanProposals, dropPending, 
 // Nothing here reaches a network: B2b's approve and the routes are plain code over the in-memory store, and the one model
 // call (`proposeFromText`) goes to a mocked client that records what it was sent.
 const model = vi.hoisted(() => ({ create: vi.fn(), state: "on" as "on" | "paused" }));
-vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => model.state, anthropic: () => ({ messages: { create: model.create } }) }));
+vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => model.state, anthropic: () => ({ messages: { stream: (p: unknown, o: unknown) => ({ finalMessage: async () => model.create(p, o) }) } }) }));
 const ZONE = "Asia/Riyadh" as const;
 const OWNER = { actor: "owner", via: "web" } as const;
 const TTL_14_DAYS = 14 * 86400;

@@ -196,7 +196,7 @@ describe("the golden set says when an agent's prompts changed (rule 230)", () =>
       default: class {
         static BadRequestError = class extends Error {};
         beta = { messages: { stream: () => ({ finalMessage: async () => reply(JSON.stringify([{ channel: "instagram", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة والحكم عليه في المجموعة الذهبية" }])) }) } };
-        messages = { create: async (p: { system: { text: string }[] }) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])) };
+        messages = { create: async (p: { system: { text: string }[] }) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])), stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const { runGolden, GOLDEN_CASES, GOLDEN_BRANDS } = await import("@/lib/golden");
@@ -226,7 +226,7 @@ describe("the golden set says when an agent's prompts changed (rule 230)", () =>
       default: class {
         static BadRequestError = class extends Error {};
         beta = { messages: { stream: () => ({ finalMessage: async () => reply(JSON.stringify([{ channel: "instagram", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة والحكم عليه في المجموعة الذهبية" }])) }) } };
-        messages = { create: async (p: { system: { text: string }[] }) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])) };
+        messages = { create: async (p: { system: { text: string }[] }) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])), stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const { runGolden, GOLDEN_CASES, GOLDEN_VERSION } = await import("@/lib/golden");

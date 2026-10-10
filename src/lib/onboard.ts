@@ -1,4 +1,4 @@
-import { meter } from "./usage";
+import { metered } from "./metered";
 import { MODEL_BUDGET, ModelPaused, anthropic, modelState, until } from "./model";
 import type { Brand } from "./brand";
 import { activeSeasons } from "./seasons";
@@ -129,7 +129,9 @@ strategy_md: 90-day plan in 3 phases with concrete weekly cadence per channel, t
 
   const run = async (name: PartName, attempt = 0): Promise<Record<string, unknown>> => {
     try {
-      const msg = await client.messages
+      // Onboarding is Noor's first-run work (it writes the brand file she opens with). Metered inside `metered`, so a part
+      // cut by the deadline, and the first try of a part that is retried, are counted for what the API billed (rule 980).
+      const msg = await metered(client.messages
         .stream({
           model,
           max_tokens: PARTS[name].maxTokens,
@@ -137,10 +139,7 @@ strategy_md: 90-day plan in 3 phases with concrete weekly cadence per channel, t
           messages: [{ role: "user", content: user }],
           thinking: { type: "adaptive" },
           output_config: { effort: "medium", format: { type: "json_schema", schema: PARTS[name].schema } },
-        }, until(end, { cap: MODEL_BUDGET.ONBOARD_MS }))
-        .finalMessage();
-      // Onboarding is Noor's first-run work (it writes the brand file she opens with).
-      await meter(email, msg.model, "onboard", msg.usage, "noor");
+        }, until(end, { cap: MODEL_BUDGET.ONBOARD_MS })), { email, kind: "onboard", agent: "noor" });
       const out = JSON.parse(msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("")) as Record<string, unknown>;
       onPart?.(name);
       return out;
