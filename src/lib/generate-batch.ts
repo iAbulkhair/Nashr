@@ -37,6 +37,8 @@ import { warnAgentCap } from "./notifications";
 import { initialStatus } from "./brand-rules";
 import type { Grounding } from "./json";
 import { promptStamp } from "./prompt-stamp";
+import { entitlements } from "./entitlements";
+import { instructionBlocks, loadLayers } from "./agent-instructions";
 import { byOf, systemBy, type By } from "./actor";
 import { recordActivity, type Activity } from "./activity";
 
@@ -163,6 +165,8 @@ export type ItemContext = {
   createdAt: string;
   /** The handoff item the batch was run for (`Task.parent`). */
   parent?: TaskParent;
+  /** The hashes of the platform and owner instruction blocks the batch carried (`instructionBlocks(...).stamp`), recorded in `pb`; left out, the stamp has neither field. */
+  ins?: { plat: string; ins: string };
 };
 
 /**
@@ -184,7 +188,7 @@ export function taskFromItem(it: Generated, c: ItemContext): Task {
     id: randomBytes(8).toString("hex"), type: c.type, channel: it.channel, title: it.title, body: it.body,
     status: initialStatus(c.forcePending || flagged ? false : c.autoApprove, c.brand, draft),
     createdAt: c.createdAt, lang: c.brand.languages[0] ?? "ar", source: c.source, ...(c.brief ? { brief: c.brief } : {}),
-    pb: promptStamp(c.type, c.brand),
+    pb: promptStamp(c.type, c.brand, c.ins),
     ...(verdicts ? { crossReview: verdicts } : {}),
     ...(c.parent ? { parent: { handoff: c.parent.handoff, item: c.parent.item, ...(c.parent.conv ? { conv: c.parent.conv } : {}), ...(c.parent.auto === true ? { auto: true as const } : {}) } } : {}),
   };
@@ -233,7 +237,9 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // a tool called outside a turn keeps the backstop every path has, generate() throwing and the charge refunded.
   if (opts.via !== "chat" && modelState() === "paused") return refuse({ ok: false, reason: "paused" });
   // Governance before the charge: the owner's monthly cap for this agent is checked inside the ledger's lock.
-  const [brand, gov] = await Promise.all([opts.brand ?? getBrand(scope), opts.gov ?? getGov(scope)]);
+  // The instruction layers ride along (agent skills portal): read with the brand and governance, the plan's limits from the
+  // caller's own entitlements, the reference files only of the items that reach the owning agent.
+  const [brand, gov, layers] = await Promise.all([opts.brand ?? getBrand(scope), opts.gov ?? getGov(scope), loadLayers(scope, entitlements(user).instructions, "active", [agentForTask(opts.type).id])]);
   if (!brand) return refuse({ ok: false, reason: "no_brand" });
   // Resolved once (one decision): the caller's model, or the brand's pick when route() accepts it for this type, else
   // the automatic choice. `user` is the account's own record, so the China confirmation is the owner's stored one.
@@ -286,10 +292,10 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
     // A lead brief rides along only when there is one, so every other batch's prompts and judge grounding are unchanged.
     const lead = opts.leadBrief?.trim() ? { leadBrief: opts.leadBrief } : {};
     ground = { notes: opts.notes, memory, stats, ...lead };
-    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, model, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
+    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, model, layers, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
     createdAt = new Date().toISOString();
     const brief = opts.brief ?? briefOf(opts.notes);
-    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent }));
+    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent, ins: instructionBlocks(layers, agent).stamp }));
     // Together, not one round trip after another (Redis is HTTP per command). Every save settles before the guard
     // decides, so a refund below never races a save still landing.
     const saved = await Promise.allSettled(tasks.map((t) => saveTask(scope, t, true)));

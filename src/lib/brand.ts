@@ -116,7 +116,7 @@ export type Task = {
    * industry playbook (`id:hash`) and the prompts written in code; "none" for a playbook that did not load. Set on every
    * generated batch (`taskFromItem`); absent on older tasks and on MCP `save_draft` drafts, which no Nashr prompt wrote.
    */
-  pb?: { skills: string; review: string; industry?: string; code: string };
+  pb?: { skills: string; review: string; industry?: string; code: string; /** hash of the platform instruction block this batch carried, `none` when empty (src/lib/agent-instructions.ts); old tasks lack it */ plat?: string; /** the same for the owner's instruction block */ ins?: string };
   /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
   /**

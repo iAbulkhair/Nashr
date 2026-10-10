@@ -485,7 +485,7 @@ describe("a run is one item through generateBatch, with its parent and the norma
       expect(t).toMatchObject({ type: "pricing_review", source: "handoff", parent: { handoff: id, item: 0, conv: CONV }, status: "pending" });
       // The owner's notes were never the brief: a handoff child keeps no `brief`, and its stamp is the type's own.
       expect(t.brief).toBeUndefined();
-      expect(t.pb).toEqual(promptStamp("pricing_review", brand));
+      expect(t.pb).toEqual(promptStamp("pricing_review", brand, { plat: "none", ins: "none" }));
     }
     const lite = await listLite(u.email);
     expect(lite.filter((l) => l.source === "handoff").map((l) => l.parent)).toEqual(tasks.map(() => ({ handoff: id, item: 0, conv: CONV })));
