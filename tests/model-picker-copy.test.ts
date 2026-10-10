@@ -375,6 +375,7 @@ describe("ruling 4: a China-hosted pick asks the owner once, then sends the conf
 describe("ruling 5: each refusal maps to one answer, and a failure is reported so the caller rolls back", () => {
   it("maps statuses and error codes", () => {
     expect(pickRefusal(503, "busy", false)).toBe("busy");
+    // A 409 `busy` is what a server older than rule 906 answered for a brand pick; the server now answers 503 for both.
     expect(pickRefusal(409, "busy", false)).toBe("busy");
     for (const e of ["unknown_model", "not_pickable", "china_unconfirmed"]) expect(pickRefusal(e === "china_unconfirmed" ? 409 : 400, e, false), e).toBe("unavailable");
     expect(pickRefusal(404, "not_found", false)).toBe("not_found");

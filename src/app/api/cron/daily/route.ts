@@ -196,7 +196,8 @@ export async function GET(req: Request) {
     concurrency: 8, startBudgetMs: Math.max(0, START_BUDGET_MS - (Date.now() - routeStart)), markerTtlSeconds: 2 * 86400, req,
   });
   if (!report.chained && new Date().getUTCDay() <= 2) {
-    const weekly = new URL("/api/cron/weekly", req.url).toString();
+    // On `appOrigin()`, never `req.url`: behind the Hostinger proxy that is the internal address (rule 904).
+    const weekly = `${appOrigin()}/api/cron/weekly`;
     const headers = { authorization: req.headers.get("authorization") ?? "" };
     after(() => fetch(weekly, { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined));
   }

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { appOrigin } from "@/lib/origin";
 import { allow, clientIp } from "@/lib/rate";
 import { cookieRef, partnerByCode, partnerCookie } from "@/lib/partners";
 import { PARTNER_COOKIE, codeProblem, normalizeCode, partnerCookieValue } from "@/lib/partner-rules";
@@ -22,11 +23,12 @@ function langOf(req: Request): "ar" | "en" {
  * the visitor already carries a partner's valid code (first touch: that cookie, and its click time, stay),
  * then sends the visitor to the localized signup with the code that will count filled in. An unknown code, or a visitor
  * over the limit, is sent to signup with nothing set. Separate from the credits referral (`/app/signup?ref=`), which this
- * never reads or writes.
+ * never reads or writes. The redirect is built on `appOrigin()`, never `req.url`: behind the Hostinger proxy the request URL
+ * is the internal address (`https://0.0.0.0:3000`), and every partner link landed on a dead host (rule 904).
  */
 export async function GET(req: Request, ctx: { params: Promise<{ code: string }> }) {
   const { code: raw } = await ctx.params;
-  const dest = new URL(`/${langOf(req)}/app/signup`, req.url);
+  const dest = new URL(`/${langOf(req)}/app/signup`, appOrigin());
   let code = "";
   try { code = normalizeCode(decodeURIComponent(raw)); } catch { code = ""; }
   if (!codeProblem(code) && (await allow(`plink:ip:${clientIp(req)}`, 60, 3600))) {
