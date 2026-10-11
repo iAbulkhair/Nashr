@@ -96,6 +96,7 @@ const ALLOWED: Record<string, { n: number; why: string }> = {
   "src/components/app/ChatPanel.tsx": { n: 2, why: "display: the activation bar and the first-step hint, shown to a trial only" },
   "src/components/app/settings/CreditUsageCard.tsx": { n: 1, why: "display and copy: the runway lines and the plan rules text differ for a trial (moved from the old profile page, rule 1153)" },
   "src/components/app/TrialBanner.tsx": { n: 1, why: "display: the countdown strip renders for a trial only" },
+  "src/lib/admin-users.ts": { n: 1, why: "filter: the founder's Users table chip \"trial ending\" (a trial whose end is within 24 hours, rule 1178), display only" },
   "src/lib/admin-stats.ts": { n: 4, why: "stats: the founder's counts of paying, active-trial and expired-trial accounts, and signups that paid" },
   "src/lib/auth.ts": { n: 1, why: "ACCESS: `trialOver`, the spend gate (chat, MCP, media, generation, onboarding, routines, the weekly plan): an ended trial or a Paymob-locked subscription may not spend; entitlements() reports them as inactive `trial_over` / `billing_locked`" },
   "src/lib/chat-allowance.ts": { n: 4, why: "ACCESS and mechanics: which counter holds a trial's messages, the status period, and `overflowAvailable` (continue on credits is a paid plan's option, not a trial's)" },

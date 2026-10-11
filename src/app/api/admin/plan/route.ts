@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan } from "@/lib/auth";
-import { CAPS, db, pushCapped } from "@/lib/db";
+import { db } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { getUsage } from "@/lib/usage";
 import { chatStatus } from "@/lib/chat-allowance";
@@ -11,6 +11,7 @@ import { enforceSeats } from "@/lib/team";
 import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 import { parseVideoGrant } from "@/lib/entitlements";
+import { adminAudit } from "@/lib/admin-audit";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -186,6 +187,6 @@ export async function POST(req: Request) {
     grantGiven ? `video:${grant ? `all@${grant.until}` : "plan"}` : "",
   ].filter(Boolean).join(" ") || "none";
   const teamChange = team && (team.disabled.length || team.enabled.length || team.cancelled.length) ? { disabled: team.disabled, enabled: team.enabled, cancelledInvites: team.cancelled.length } : undefined;
-  await pushCapped("admin:log", JSON.stringify({ actor: who, email: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video) }, team: teamChange, reason: (typeof b.reason === "string" ? b.reason.slice(0, 200) : "") || undefined, at: new Date().toISOString() }), CAPS.adminLog);
+  await adminAudit({ actor: who, section: "users", action: "plan", target: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video) }, reason: b.reason, ...(teamChange ? { extra: { team: teamChange } } : {}) });
   return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user), chatAllowance: chatAllowanceOf(user), chatOverride: user.chatAllowance ?? null, videoGrant: user.grants?.video ?? null }, ...(team ? { team } : {}) });
 }

@@ -29,6 +29,12 @@ export type Actor = {
   role: Role;
   /** The founder email (or "key" for the console key) behind an impersonation session. Only for kind "founder". */
   impersonating?: string;
+  /**
+   * Kind "founder" only (rule 1177): when the impersonation began and when it ends, epoch ms, for the console banner's
+   * countdown. `until` is the session's own `exp`, or `at` + 2 hours for a session written before 2026-10-11.
+   */
+  since?: number;
+  until?: number;
 };
 
 /**
@@ -262,7 +268,14 @@ export async function verifyPassword(u: User, password: string) {
  * `member:{email}` on every request. Sessions written before 2026-09-18 are a bare email with no issue time, which counts
  * as "issued at 0".
  */
-export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string };
+/**
+ * A stored session. `exp` (epoch ms, since 2026-10-11, rule 1177) is the end of an impersonation the founder chose in the
+ * console (15, 60 or 120 minutes); the record's TTL ends at the same moment. Optional (expand): a session without it
+ * reads as before, and an impersonation without it shows `at` + 2 hours, the TTL every one had until then.
+ */
+export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string; exp?: number };
+/** The impersonation length every session had before the founder could choose it (2 hours). */
+export const IMPERSONATION_LEGACY_MS = 2 * 60 * 60 * 1000;
 type SessionRec = string | Session;
 const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
 /** True when a session issued at `at` predates the revocation stamp `iso`. */
@@ -312,7 +325,9 @@ export async function sessionCookie(maxAge: number) {
  */
 export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string } = {}) {
   const token = randomBytes(32).toString("hex");
-  const rec: Session = opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: Date.now() };
+  const now = Date.now();
+  // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
+  const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: now };
   await db.set(`session:${token}`, rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
@@ -400,7 +415,10 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
     u.brandId = brandId;
     u.scope = scopeFor(u.email, brandId);
     const base = { email: u.email, name: u.name, lang: u.lang, role: "owner" as const };
-    u.actor = s.imp ? { ...base, kind: "founder", impersonating: s.imp } : { ...base, kind: "owner" };
+    if (s.imp && typeof s.exp === "number" && Date.now() >= s.exp) return null; // the founder's chosen length is over (rule 1177)
+    u.actor = s.imp
+      ? { ...base, kind: "founder", impersonating: s.imp, since: s.at, until: typeof s.exp === "number" ? s.exp : s.at + IMPERSONATION_LEGACY_MS }
+      : { ...base, kind: "owner" };
     return u;
   }
   // Member login. Impersonation sessions are only ever issued for owner accounts.

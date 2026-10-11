@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { isAgentId } from "@/lib/agents";
-import { CAPS, pushCapped } from "@/lib/db";
 import { playbook } from "@/lib/skills";
 import { GOLDEN_CASES, GOLDEN_VERSION, listGoldenRuns, runGolden } from "@/lib/golden";
 import { hasModelKey, modelState } from "@/lib/model";
 import { promptHashes } from "@/lib/prompt-stamp";
+import { adminAudit } from "@/lib/admin-audit";
 
 export const maxDuration = 300;
 
@@ -25,6 +25,6 @@ export async function POST(req: Request) {
   const run = await runGolden("manual", { agent: isAgentId(b.agent) ? b.agent : undefined, resume: !!b.resume });
   const state = modelState();
   if (!run) return NextResponse.json({ ok: false, error: state === "on" ? "already_running" : state === "paused" ? "model_paused" : "no_model_key" }, { status: 409 });
-  await pushCapped("admin:log", JSON.stringify({ actor: "founder", email: "golden-set", what: `golden:run${b.agent ? `:${b.agent}` : ""}${b.resume ? ":resume" : ""}`, after: { id: run.id, status: run.status, overall: run.overall, usd: run.usd }, at: new Date().toISOString() }), CAPS.adminLog);
+  await adminAudit({ actor: "founder", section: "quality", target: "golden-set", what: `golden:run${b.agent ? `:${b.agent}` : ""}${b.resume ? ":resume" : ""}`, after: { id: run.id, status: run.status, overall: run.overall, usd: run.usd } });
   return NextResponse.json({ ok: true, run });
 }

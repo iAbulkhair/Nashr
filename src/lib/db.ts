@@ -478,4 +478,4 @@ export async function pushCapped(key: string, value: string, cap: number) {
   await Promise.all([db.lpush(key, value), db.ltrim(key, cap)]);
 }
 /** Caps for the lists above. Reads never look past these, so trimming loses nothing a page shows. */
-export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, govHistory: 100, activity: 2000, secDone: 200, secAudit: 500, handoffs: 200 } as const;
+export const CAPS = { chat: 400, adminLog: 5000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, govHistory: 100, activity: 2000, secDone: 200, secAudit: 500, handoffs: 200 } as const;

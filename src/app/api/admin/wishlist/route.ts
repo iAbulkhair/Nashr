@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
-import { CAPS, pushCapped } from "@/lib/db";
 import { TITLE_MAX, isWishStatus, type WishArea } from "@/lib/changelog";
 import { cleanText, existingId, listSuggestions, listWishes, promoteWish, removeSuggestion, removeWish, restoreWish, setWishStatus, wellFormedId } from "@/lib/wishlist";
+import { adminAudit } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
 const AREAS: readonly WishArea[] = ["agents", "onboarding", "content", "channels", "commerce", "ads", "reports", "team", "billing", "integrations", "app"];
-const log = (what: string, after: unknown) => pushCapped("admin:log", JSON.stringify({ actor: "founder", email: "wishlist", what, after, at: new Date().toISOString() }), CAPS.adminLog);
+const log = (what: string, after: unknown) => adminAudit({ actor: "founder", section: "wishlist", target: "wishlist", what, after });
 const bad = (error: string, status = 400) => NextResponse.json({ ok: false, error }, { status });
 
 /** Founder console, Wishlist tab: the moderation queue and every item (hidden ones included) with its votes. */

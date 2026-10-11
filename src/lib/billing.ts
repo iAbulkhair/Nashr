@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { CAPS, db, pushCapped } from "./db";
+import { db } from "./db";
 import { getUser, normalizeEmail, normalizePhone, saveUser, type User } from "./auth";
 import { monthKey, withUserLock } from "./credits";
 import { setMonthly } from "./topups";
@@ -11,6 +11,7 @@ import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
 import { GRACE_DAYS, addDays, addMonths, billingLocked, paymobRenewalDue, type Billing } from "./billing-state";
 import { PaymobError, TOKEN_HMAC_FIELDS, TXN_HMAC_FIELDS, checkoutUrl, createIntention, parseTxn, payWithToken, paymobConfig, refundTxn, verifyHmac, type PaymobConfig, type Txn } from "./paymob";
+import { adminAudit } from "./admin-audit";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
@@ -88,7 +89,7 @@ export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unk
 /** The payment id recorded for a Paymob transaction: the same on every retry, so `recordPayment` records it once. */
 export const paymentIdFor = (txnId: number) => `pay_${createHash("sha256").update(`paymob:${txnId}`).digest("hex").slice(0, 24)}`;
 const newRef = () => `pmi_${randomBytes(12).toString("hex")}`;
-const log = (email: string, what: string) => pushCapped("admin:log", JSON.stringify({ actor: "paymob", email, what, at: new Date().toISOString() }), CAPS.adminLog);
+const log = (email: string, what: string) => adminAudit({ actor: "paymob", section: "billing", target: email, what });
 const keepTxns = (txns: string[] | undefined, id: string) => [...(txns ?? []).filter((t) => t !== id), id].slice(-12);
 
 function billingName(u: Pick<User, "name" | "email">): { firstName: string; lastName: string } {
