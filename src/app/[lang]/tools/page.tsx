@@ -24,13 +24,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <p className="eyebrow">{lang === "ar" ? "أدوات مجانية" : "Free tools"}</p>
         <h1 className="mt-3 font-display text-4xl font-bold"><span className="s-ul"><Scribble kind="underline" seed="tools-h" />{lang === "ar" ? `${TOOLS.length} أداة تسويق مجانية بالعربي` : `${TOOLS.length} free Arabic marketing tools`}</span></h1>
-        <p className="mt-3 max-w-2xl text-muted">{lang === "ar" ? "كلها تعمل بنور، بلهجتك، بدون تسجيل — 5 استخدامات يومياً." : "All powered by Noor, in your dialect, no signup — 5 uses a day."}</p>
+        <p className="mt-3 max-w-2xl text-foreground-muted">{lang === "ar" ? "كلها تعمل بنور، بلهجتك، بدون تسجيل — 5 استخدامات يومياً." : "All powered by Noor, in your dialect, no signup — 5 uses a day."}</p>
         <div className="mt-10 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
           {TOOLS.map((x) => (
             <Link key={x.slug} href={`/${lang}/tools/${x.slug}`} className="s-card block" data-boil>
               <Scribble kind="box" seed={`tools-${x.slug}`} fill="paper" boil />
               <h2 className="font-display text-lg font-bold">{x.name[lang]}</h2>
-              <p className="mt-1 text-sm text-muted">{x.desc[lang]}</p>
+              <p className="mt-1 text-sm text-foreground-muted">{x.desc[lang]}</p>
             </Link>
           ))}
         </div>

@@ -6,6 +6,8 @@ import { settingsHref } from "@/lib/settings-nav";
 import { Field, Input, Select } from "@/components/ui/Field";
 import Callout from "@/components/ui/Callout";
 import SettingsCard, { type CardStatus } from "./SettingsCard";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+import { THEME_COPY } from "@/lib/theme";
 import { readProfile, saveProfile } from "./profileSave";
 
 /** The account values the page renders with: the acting person's name and language, and the account's phone (owner only). */
@@ -96,6 +98,11 @@ export default function AccountSettings({ lang, initial, forbidden }: { lang: La
         </Field>
       </SettingsCard>
 
+      {/* Rule 1204: the theme is this browser's, applied at once; no Save and nothing sent to the server. */}
+      <SettingsCard title={THEME_COPY[lang].title} sub={THEME_COPY[lang].sub}>
+        <ThemeToggle lang={lang} className="justify-self-start" />
+      </SettingsCard>
+
       {stored.owner && (
         <SettingsCard title={T.phone} sub={T.phoneSub} onSave={() => save("phone", phoneT)} dirty={phoneT !== (stored.phone ?? "")} valid={phoneValid(phoneT)} busy={busy === "phone"} status={status.phone ?? null} saveLabel={T.save} savingLabel={T.saving}>
           <Field label={T.phone} hideLabel required error={phoneT && !phoneValid(phoneT) ? T.phoneBad : undefined}>
@@ -105,7 +112,7 @@ export default function AccountSettings({ lang, initial, forbidden }: { lang: La
       )}
 
       <SettingsCard title={T.email} sub={T.emailSub}>
-        <p className="tnum font-medium text-ink" dir="ltr">{stored.email}</p>
+        <p className="tnum font-medium text-foreground" dir="ltr">{stored.email}</p>
       </SettingsCard>
     </div>
   );

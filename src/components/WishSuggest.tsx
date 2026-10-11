@@ -33,17 +33,17 @@ export default function WishSuggest({ lang, labels }: { lang: "ar" | "en"; label
     <form onSubmit={send} className="s-card">
       <Scribble kind="box" seed="wish-suggest" fill="paper" />
       <h3 className="font-display text-lg font-bold">{labels.title}</h3>
-      <p className="mt-1 text-sm text-muted">{labels.sub}</p>
+      <p className="mt-1 text-sm text-foreground-muted">{labels.sub}</p>
       <label htmlFor="wish-suggest" className="sr-only">{labels.title}</label>
       <span className="s-input mt-3"><Scribble kind="box" seed="wish-suggest-box" fill="paper" ring /><textarea id="wish-suggest" value={text} onChange={(e) => setText(e.target.value)} maxLength={SUGGESTION_MAX} rows={3} dir="auto" placeholder={labels.placeholder} /></span>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted">{labels.note}</p>
+        <p className="text-xs text-foreground-muted">{labels.note}</p>
         <div className="flex items-center gap-3">
-          <span className="tnum text-xs text-muted" dir="ltr">{len}/{SUGGESTION_MAX}</span>
+          <span className="tnum text-xs text-foreground-muted" dir="ltr">{len}/{SUGGESTION_MAX}</span>
           <button type="submit" disabled={busy || len === 0} className="s-btn !min-h-10 !px-5 !text-base"><Scribble kind="pill" seed="wish-suggest-send" fill="ink" shadow ring />{labels.send}</button>
         </div>
       </div>
-      {msg && <p role="status" className={`mt-2 text-sm font-bold ${msg.ok ? "text-ink" : "text-danger"}`}>{msg.t}</p>}
+      {msg && <p role="status" className={`mt-2 text-sm font-bold ${msg.ok ? "text-foreground" : "text-danger"}`}>{msg.t}</p>}
     </form>
   );
 }

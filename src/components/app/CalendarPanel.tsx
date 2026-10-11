@@ -102,7 +102,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
   const badge = (x: CalendarRow) => <span className={`badge ${x.status === "approved" ? "badge-primary" : "badge-accent"}`}>{x.status === "approved" ? t.inbox.approved : t.inbox.pending}</span>;
   const item = (x: CalendarRow) => (
     <li key={x.id} className="rounded-lg border border-border p-2 text-xs">
-      <span className="flex flex-wrap items-center gap-1.5 text-ink"><Icon name={channelIcon(x.channel)} className="h-3.5 w-3.5" />{chName(x.channel)} · <span dir="auto">{x.title}</span> {badge(x)}</span>
+      <span className="flex flex-wrap items-center gap-1.5 text-foreground"><Icon name={channelIcon(x.channel)} className="h-3.5 w-3.5" />{chName(x.channel)} · <span dir="auto">{x.title}</span> {badge(x)}</span>
       <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-foreground-muted" dir="auto">{x.preview}</p>
     </li>
   );
@@ -124,7 +124,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
         <button type="button" onClick={() => shift(1)} className="icon-btn border border-border" aria-label={c.next}><Icon name="next" mirror className="h-4 w-4" /></button>
       </div>
 
-      <TabPanel idBase="cal" id="week" value={view} className="mt-4 overflow-x-auto rounded-card border border-border bg-paper">
+      <TabPanel idBase="cal" id="week" value={view} className="mt-4 overflow-x-auto rounded-card border border-border bg-surface">
         <table className="w-full min-w-[860px] table-fixed text-xs">
           <caption className="sr-only">{range}</caption>
           <thead>
@@ -132,7 +132,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
               <th scope="col" className="w-28 border-b border-border p-2 text-start text-xs font-semibold text-foreground-muted">{c.channel}</th>
               {days.map((k) => { const d = dateOf(k); const isT = k === today; return (
                 <th key={k} scope="col" aria-current={isT ? "date" : undefined} className={`border-b border-border p-2 text-center ${isT ? "bg-surface-muted" : ""}`}>
-                  <span className={`tnum font-display text-xl font-bold ${isT ? "text-ink" : "text-foreground-muted"}`}>{d.getUTCDate()}</span>
+                  <span className={`tnum font-display text-xl font-bold ${isT ? "text-foreground" : "text-foreground-muted"}`}>{d.getUTCDate()}</span>
                   <span className="block text-xs text-foreground-muted">{c.days[d.getUTCDay()]}</span>
                 </th>
               ); })}
@@ -141,13 +141,13 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
           <tbody>
             {rows.map((ch) => (
               <tr key={ch} className="border-t border-border">
-                <th scope="row" className="p-2 text-start align-top font-normal text-ink"><span className="flex items-center gap-1.5"><Icon name={channelIcon(ch)} className="h-4 w-4 text-ink" />{chName(ch)}</span></th>
+                <th scope="row" className="p-2 text-start align-top font-normal text-foreground"><span className="flex items-center gap-1.5"><Icon name={channelIcon(ch)} className="h-4 w-4 text-foreground" />{chName(ch)}</span></th>
                 {days.map((k) => { const items = (byDay.get(k) ?? []).filter((x) => x.channel === ch); return (
                   <td key={k} className={`h-16 p-1 align-top ${k === today ? "bg-surface-muted" : ""}`}>
                     {items.length === 0 ? (
-                      <Link href={askFor(k, ch)} className="flex h-full min-h-14 items-center justify-center rounded-lg border border-dashed border-border text-foreground-muted hover:border-ink hover:text-ink" aria-label={`${c.addContent}: ${chName(ch)}, ${dayLong.format(dateOf(k))}`}><Icon name="plus" className="h-4 w-4" /></Link>
+                      <Link href={askFor(k, ch)} className="flex h-full min-h-14 items-center justify-center rounded-lg border border-dashed border-border text-foreground-muted hover:border-border-strong hover:text-foreground" aria-label={`${c.addContent}: ${chName(ch)}, ${dayLong.format(dateOf(k))}`}><Icon name="plus" className="h-4 w-4" /></Link>
                     ) : items.map((x) => (
-                      <button type="button" key={x.id} onClick={() => setSel(k)} className={`clip mb-1 block w-full rounded-md px-2 py-1 text-start ${x.status === "approved" ? "bg-ink text-lilac" : "bg-lilac text-ink"}`} dir="auto" title={x.title}>{x.title}</button>
+                      <button type="button" key={x.id} onClick={() => setSel(k)} className={`clip mb-1 block w-full rounded-md px-2 py-1 text-start ${x.status === "approved" ? "bg-inverse text-inverse-muted" : "bg-background-muted text-foreground"}`} dir="auto" title={x.title}>{x.title}</button>
                     ))}
                   </td>
                 ); })}
@@ -157,13 +157,13 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
         </table>
       </TabPanel>
 
-      <TabPanel idBase="cal" id="month" value={view} className="mt-4 rounded-card border border-border bg-paper p-3">
+      <TabPanel idBase="cal" id="month" value={view} className="mt-4 rounded-card border border-border bg-surface p-3">
         <div className="grid grid-cols-7 text-center text-xs text-foreground-muted" aria-hidden>{c.days.map((d) => <div key={d} className="py-1">{d}</div>)}</div>
         <div className="grid grid-cols-7 gap-1">
           {Array.from({ length: startDow }).map((_, i) => <div key={"e" + i} />)}
           {Array.from({ length: daysIn }, (_, i) => i + 1).map((d) => { const k = key(d); const n = byDay.get(k)?.length ?? 0; const isSel = k === sel; const isToday = k === today; return (
-            <button type="button" key={k} onClick={() => setSel(k)} aria-pressed={isSel} aria-current={isToday ? "date" : undefined} aria-label={`${dayLong.format(dateOf(k))}${n ? `, ${n}` : ""}`} className={`flex aspect-square flex-col items-center justify-center rounded-lg border text-sm ${isSel ? "border-ink bg-ink text-lilac" : isToday ? "border-ink font-bold" : "border-border hover:bg-lilac"}`} suppressHydrationWarning>
-              <span className="tnum">{d}</span>{n > 0 && <span className={`tnum mt-0.5 rounded-full px-1.5 text-xs ${isSel ? "bg-lemon text-ink" : "bg-surface-muted text-ink"}`}>{n}</span>}
+            <button type="button" key={k} onClick={() => setSel(k)} aria-pressed={isSel} aria-current={isToday ? "date" : undefined} aria-label={`${dayLong.format(dateOf(k))}${n ? `, ${n}` : ""}`} className={`flex aspect-square flex-col items-center justify-center rounded-lg border text-sm ${isSel ? "border-border-strong bg-inverse text-inverse-muted" : isToday ? "border-border-strong font-bold" : "border-border hover:bg-background-muted"}`} suppressHydrationWarning>
+              <span className="tnum">{d}</span>{n > 0 && <span className={`tnum mt-0.5 rounded-full px-1.5 text-xs ${isSel ? "bg-lemon text-accent-foreground" : "bg-surface-muted text-foreground"}`}>{n}</span>}
             </button>
           ); })}
         </div>
@@ -176,7 +176,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
           <ol className="grid gap-4">
             {agenda.map((k) => (
               <li key={k}>
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-ink" suppressHydrationWarning>{dayLong.format(dateOf(k))}{k === today && <span className="badge badge-primary">{c.today}</span>}</h2>
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground" suppressHydrationWarning>{dayLong.format(dateOf(k))}{k === today && <span className="badge badge-primary">{c.today}</span>}</h2>
                 <ul className="mt-2 grid gap-2 md:grid-cols-2">{(byDay.get(k) ?? []).map(item)}</ul>
               </li>
             ))}
@@ -187,9 +187,9 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
       {view !== "agenda" && (
         <aside className="card mt-4" aria-label={dayLong.format(dateOf(sel))}>
           <div className="flex items-center justify-between">
-            <button type="button" onClick={() => setSel(addDays(sel, -1))} className="icon-btn border border-ink text-ink" aria-label={c.prev}><Icon name="next" mirror className="h-4 w-4 rotate-180" /></button>
+            <button type="button" onClick={() => setSel(addDays(sel, -1))} className="icon-btn border border-border-strong text-foreground" aria-label={c.prev}><Icon name="next" mirror className="h-4 w-4 rotate-180" /></button>
             <h2 className="font-display text-lg font-semibold" dir="auto" suppressHydrationWarning>{dateFormat(lang, { weekday: "short", month: "short", day: "numeric" }).format(dateOf(sel))}</h2>
-            <button type="button" onClick={() => setSel(addDays(sel, 1))} className="icon-btn border border-ink text-ink" aria-label={c.next}><Icon name="next" mirror className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setSel(addDays(sel, 1))} className="icon-btn border border-border-strong text-foreground" aria-label={c.next}><Icon name="next" mirror className="h-4 w-4" /></button>
           </div>
           {selected.length === 0 ? (
             <div className="py-10 text-center">
@@ -199,7 +199,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
           ) : (
             <ul className="mt-2 grid gap-2 md:grid-cols-2">{selected.map(item)}</ul>
           )}
-          {unscheduled.length > 0 && <p className="mt-3 text-xs text-foreground-muted">{c.unscheduled}: <span className="tnum">{unscheduled.length}</span> · <Link href={`/${lang}/app`} className="text-ink underline">{c.setDates}</Link></p>}
+          {unscheduled.length > 0 && <p className="mt-3 text-xs text-foreground-muted">{c.unscheduled}: <span className="tnum">{unscheduled.length}</span> · <Link href={`/${lang}/app`} className="text-foreground underline">{c.setDates}</Link></p>}
         </aside>
       )}
     </div>

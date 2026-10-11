@@ -68,7 +68,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
   return (
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="brandspanel-t1" />{ar ? "العلامات" : "Brands"}</span></h1>
-      <p className="mt-2 text-ink/70">{ar ? "لكل علامة ملفها ومحتواها وقنواتها وإعداداتها. الكريدت مشترك بين علاماتك." : "Each brand has its own file, content, channels and settings. Credits are shared across brands."}</p>
+      <p className="mt-2 text-foreground-muted">{ar ? "لكل علامة ملفها ومحتواها وقنواتها وإعداداتها. الكريدت مشترك بين علاماتك." : "Each brand has its own file, content, channels and settings. Credits are shared across brands."}</p>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 card card-sm text-sm">
         <span>{ar ? "العلامات" : "Brands"}: <b dir="ltr">{activeCount}</b></span>
         {manage && (
@@ -81,7 +81,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
         )}
       </div>
       {manage && (
-        <p className="mt-2 text-xs text-muted">
+        <p className="mt-2 text-xs text-foreground-muted">
           {ar
             ? `العلامات بلا حد في كل الخطط. إعداد علامتك الأولى مجاني، وإعداد كل علامة إضافية من رابطها يستخدم ${ONBOARD_EXTRA_BRAND_COST} كريدت من رصيد الحساب عند بدء الإعداد، ويُعاد إن تعذّر بناء ملف العلامة، وتعبئة النموذج يدوياً مجانية. خطة الأحد تبدأ متوقفة للعلامات المضافة، وتفعّلها من «المهام».`
             : `Brands are unlimited on every plan. Your first brand's setup is free; setting up each added brand from its URL uses ${ONBOARD_EXTRA_BRAND_COST} credits from the account's balance when setup starts, refunded if the brand file cannot be built, and filling the form by hand is free. The Sunday plan starts off for added brands; switch it on in Tasks.`}
@@ -92,10 +92,10 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
       {promptDialog}
       <ul className="mt-6 grid gap-3">
         {brands.map((b) => (
-          <li key={b.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${b.id === active ? "border-ink bg-white" : "border-ink/10 bg-white"} ${b.status === "archived" ? "opacity-60" : ""}`}>
+          <li key={b.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${b.id === active ? "border-border-strong bg-surface" : "border-foreground/10 bg-surface"} ${b.status === "archived" ? "opacity-60" : ""}`}>
             <div>
               <p className="flex flex-wrap items-center gap-2 font-display font-medium"><bdi>{b.name}</bdi>{b.id === active && <Badge tone="inverse">{ar ? "نشطة" : "Active"}</Badge>}{b.status === "archived" && <Badge tone="neutral">{ar ? "مؤرشفة" : "Archived"}</Badge>}{!b.hasBrandFile && <Badge tone="warning">{ar ? "لم يكتمل الإعداد" : "Setup incomplete"}</Badge>}</p>
-              <p className="mt-1 text-xs text-muted"><Time value={b.createdAt} lang={lang} /></p>
+              <p className="mt-1 text-xs text-foreground-muted"><Time value={b.createdAt} lang={lang} /></p>
             </div>
             <div className="flex flex-wrap gap-2">
               {b.id !== active && b.status === "active" && <Button size="sm" disabled={busy} onClick={() => act({ action: "switch", id: b.id })}>{ar ? "انتقل" : "Switch"}</Button>}

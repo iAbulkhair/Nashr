@@ -1,0 +1,72 @@
+/*
+ * The dark theme (rules 1202-1204, UI/UX report §5.2): deep aubergine ground, lilac text, lemon still the call to action.
+ * Only the semantic and component roles change; primitives, agent colours and lemon stay as they are. The head script in
+ * src/app/[lang]/layout.tsx sets `data-theme` on <html> before the first paint (src/lib/theme.ts): dark only on the
+ * signed-in screens (/{lang}/app and /{lang}/admin) when the viewer chose dark, or chose "system" and the device is
+ * dark. Public pages stay light this phase (report §8.1). Every name here also exists in tokens.css (light); the pairs
+ * are held to WCAG AA by tests/theme.test.ts.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-background: #1a1024;
+  --color-background-muted: #3a2850;
+  --color-surface: #231531;
+  --color-surface-muted: #2a1b3a;
+  --color-popover: #2a1b3a;
+  --color-overlay: rgb(0 0 0 / 0.6);
+  --color-foreground: #efe7f7;
+  --color-foreground-muted: #c9bcd6;
+  --color-foreground-subtle: rgb(239 231 247 / 0.7);
+  --color-border: rgb(239 231 247 / 0.18);
+  --color-border-input: rgb(239 231 247 / 0.5);
+  --color-border-strong: #efe7f7;
+
+  --color-primary: #efe7f7;
+  --color-primary-hover: #d9cbe8;
+  --color-primary-active: #efe7f7;
+  --color-primary-foreground: #2b193d;
+  --color-accent-foreground: #2b193d;
+
+  --color-inverse: #4a3366;
+  --color-inverse-background: #4a3366;
+  --color-inverse-surface: #4a3366;
+  --color-inverse-foreground: #ffffff;
+  --color-inverse-muted: #efe7f7;
+
+  --color-danger: #ff6b6b;
+  --color-danger-hover: #ff8f8f;
+  --color-danger-foreground: #2b193d;
+  --color-danger-tint: rgb(255 107 107 / 0.16);
+  --color-success: #5fd39a;
+  --color-success-foreground: #2b193d;
+  --color-success-tint: rgb(95 211 154 / 0.16);
+  --color-warning: #ffcf66;
+  --color-warning-foreground: #2b193d;
+  --color-warning-tint: rgb(255 207 102 / 0.16);
+  --color-info: #efe7f7;
+  --color-info-tint: #3a2850;
+  --color-text-accent: #efe7f7;
+  --color-notice-bg: #2a1b3a;
+  --color-notice-border: rgb(239 231 247 / 0.3);
+
+  --color-ring: #efe7f7;
+  --color-ring-inverse: #f9f871;
+
+  --button-bg: #efe7f7;
+  --button-fg: #2b193d;
+  --button-hover-bg: #d9cbe8;
+  --button-active-bg: #efe7f7;
+  --input-bg: #231531;
+  --input-border: rgb(239 231 247 / 0.5);
+  --input-focus-ring: #efe7f7;
+  --card-bg: #231531;
+  --card-border: rgb(239 231 247 / 0.16);
+
+  /* Chart series stay at least 3:1 on the dark surface (rule 967's bar, both themes). */
+  --chart-1: #efe7f7;
+  --chart-2: #d07bff;
+  --chart-3: #14b8a6;
+  --chart-4: #ff5da2;
+  --chart-5: #c9bcd6;
+}

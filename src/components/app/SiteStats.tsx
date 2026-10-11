@@ -66,9 +66,9 @@ function Choice({ lang, kind, label, options, current }: { lang: Lang; kind: "ga
     }
   }
   return (
-    <label className="grid gap-1 text-xs text-muted">
+    <label className="grid gap-1 text-xs text-foreground-muted">
       <span>{label}</span>
-      <select data-choose={kind} value={value} disabled={busy} onChange={(e) => pick(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+      <select data-choose={kind} value={value} disabled={busy} onChange={(e) => pick(e.target.value)} className="rounded border border-border bg-surface px-2 py-1 text-xs" dir="auto">
         {!value && <option value="" disabled>—</option>}
         {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
       </select>
@@ -96,11 +96,11 @@ export default function SiteStats({ lang, site, properties, canChoose = false, c
   const at = site ? new Date(site.at) : null;
   const when = at && !Number.isNaN(at.getTime()) ? dateFormat(lang, { day: "numeric", month: "short", year: "numeric" }).format(at) : null;
   const tile = (label: string, value: string, sub?: string, delta?: string | null) => (
-    <div className="rounded-lg border border-ink/10 p-3">
-      <p className="text-xs text-muted">{label}</p>
+    <div className="rounded-lg border border-foreground/10 p-3">
+      <p className="text-xs text-foreground-muted">{label}</p>
       <p className="mt-1 font-display text-2xl font-bold" dir="ltr">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-muted" dir="ltr">{sub}</p>}
-      {delta && <p className="mt-0.5 text-xs text-muted"><span dir="ltr">{delta}</span> {S.vsPrev}</p>}
+      {sub && <p className="mt-0.5 text-xs text-foreground-muted" dir="ltr">{sub}</p>}
+      {delta && <p className="mt-0.5 text-xs text-foreground-muted"><span dir="ltr">{delta}</span> {S.vsPrev}</p>}
     </div>
   );
   const ga = site?.ga;
@@ -109,7 +109,7 @@ export default function SiteStats({ lang, site, properties, canChoose = false, c
     <div id="site-stats" className="card mt-6" dir={lang === "ar" ? "rtl" : "ltr"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-xl font-bold">{S.title}</h2>
-        {when && <p className="text-xs text-muted">{S.read}: {when}</p>}
+        {when && <p className="text-xs text-foreground-muted">{S.read}: {when}</p>}
       </div>
       {canRefresh && <div className="mt-2"><RefreshButton lang={lang} kind="site" path="google" /></div>}
       {(ga4 || sites) && (
@@ -127,14 +127,14 @@ export default function SiteStats({ lang, site, properties, canChoose = false, c
           </div>
           {ga.channels.length > 0 && (
             <div className="mt-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">{S.channels}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{S.channels}</p>
               <ul className="mt-1 grid gap-1 text-sm">
-                {ga.channels.slice(0, 5).map((c) => <li key={c.name} className="flex justify-between gap-2"><span dir="auto">{c.name}</span><span dir="ltr" className="text-muted">{fmt(c.sessions)}</span></li>)}
+                {ga.channels.slice(0, 5).map((c) => <li key={c.name} className="flex justify-between gap-2"><span dir="auto">{c.name}</span><span dir="ltr" className="text-foreground-muted">{fmt(c.sessions)}</span></li>)}
               </ul>
             </div>
           )}
         </>
-      ) : <p className="mt-3 text-sm text-muted">{S.noGa}</p>}
+      ) : <p className="mt-3 text-sm text-foreground-muted">{S.noGa}</p>}
       {gsc ? (
         <>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -144,15 +144,15 @@ export default function SiteStats({ lang, site, properties, canChoose = false, c
           </div>
           {gsc.queries.length > 0 && (
             <div className="mt-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">{S.queries}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{S.queries}</p>
               <ul className="mt-1 grid gap-1 text-sm">
-                {gsc.queries.slice(0, 8).map((q) => <li key={q.query} className="flex justify-between gap-2"><span dir="auto">{q.query}</span><span dir="ltr" className="text-muted">{fmt(q.clicks)} / {fmt(q.impressions)}</span></li>)}
+                {gsc.queries.slice(0, 8).map((q) => <li key={q.query} className="flex justify-between gap-2"><span dir="auto">{q.query}</span><span dir="ltr" className="text-foreground-muted">{fmt(q.clicks)} / {fmt(q.impressions)}</span></li>)}
               </ul>
             </div>
           )}
         </>
-      ) : <p className="mt-3 text-sm text-muted">{S.noGsc}</p>}
-      <p className="mt-3 text-xs text-muted">{S.note}</p>
+      ) : <p className="mt-3 text-sm text-foreground-muted">{S.noGsc}</p>}
+      <p className="mt-3 text-xs text-foreground-muted">{S.note}</p>
     </div>
   );
 }

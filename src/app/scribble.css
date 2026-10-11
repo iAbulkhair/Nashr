@@ -32,7 +32,7 @@
 
 .s-art path {
   fill: none;
-  stroke: var(--color-ink);
+  stroke: var(--color-foreground);
   stroke-width: var(--pen, var(--stroke-pen));
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -41,8 +41,8 @@
 .s-art .ghost { stroke-width: 0.75px; opacity: 0.55; }
 .s-art .fill { fill: var(--s-fill, none); stroke: none; transform: translate(var(--reg-x), var(--reg-y)); }
 .s-art .at { transform: none; }
-.s-art .cap { fill: var(--s-fill, var(--color-ground)); stroke: none; }
-.s-art .ink { fill: var(--color-ink); stroke: none; }
+.s-art .cap { fill: var(--s-fill, var(--color-background)); stroke: none; }
+.s-art .ink { fill: var(--color-foreground); stroke: none; }
 .s-art .shadow { stroke-width: 1px; transform: translate(var(--sh-x), 5px); }
 .s-art .boil { opacity: 0; }
 .s-art .ring {
@@ -53,7 +53,7 @@
   transition: opacity var(--duration-normal) var(--ease-out), stroke-dashoffset var(--duration-normal) var(--ease-out);
 }
 .s-art .ring-2 { stroke-width: 1px; }
-.s-art .ring-paper { stroke: var(--color-paper); stroke-width: 5px; }
+.s-art .ring-paper { stroke: var(--color-surface); stroke-width: 5px; }
 :focus-visible > .scribble .ring,
 .s-input:focus-within > .scribble .ring {
   opacity: 1;
@@ -89,7 +89,7 @@
 .s-num { display: inline-grid; place-items: center; width: 46px; height: 46px; flex: none; font-weight: 800; font-size: 20px; }
 .s-tag { display: inline-block; padding: 1px 12px; font-weight: 700; }
 
-.s-btn, .s-chip { appearance: none; background: none; font: inherit; color: var(--color-ink); cursor: pointer; }
+.s-btn, .s-chip { appearance: none; background: none; font: inherit; color: var(--color-foreground); cursor: pointer; }
 .s-btn {
   display: inline-flex;
   align-items: center;
@@ -104,20 +104,20 @@
 }
 .s-btn:active { transform: translate(var(--sh-x), 5px); }
 .s-btn:active > .scribble .shadow { transform: none; }
-.s-btn--ghost, .s-btn:disabled { color: var(--color-ink); }
+.s-btn--ghost, .s-btn:disabled { color: var(--color-foreground); }
 .s-btn:disabled { cursor: not-allowed; transform: none; }
 /* Disabled: ink label on lilac, so the label never sits ink on ink (rule 519). */
-.s-btn[aria-disabled="true"] { color: var(--color-ink); }
-.s-btn:is(:disabled, [aria-disabled="true"]) > .scribble .fill { fill: var(--color-lilac); }
+.s-btn[aria-disabled="true"] { color: var(--color-foreground); }
+.s-btn:is(:disabled, [aria-disabled="true"]) > .scribble .fill { fill: var(--color-background-muted); }
 .s-btn--ghost > .scribble .fill { clip-path: inset(0 100% 0 0); transition: clip-path var(--duration-slow) var(--ease-out); }
 [dir="rtl"] .s-btn--ghost > .scribble .fill { clip-path: inset(0 0 0 100%); }
 .s-btn--ghost:is(:hover, :focus-visible) > .scribble .fill { clip-path: inset(0); }
 
 .s-input { display: flex; align-items: center; min-height: 52px; padding: 0 14px; }
-.s-input :is(input, textarea, select) { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--color-ink); padding: 12px 0; }
+.s-input :is(input, textarea, select) { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--color-foreground); padding: 12px 0; }
 .s-input textarea { align-self: stretch; resize: vertical; }
 .s-input select { cursor: pointer; }
-.s-input :is(input, textarea)::placeholder { color: var(--color-muted); opacity: 1; }
+.s-input :is(input, textarea)::placeholder { color: var(--color-foreground-muted); opacity: 1; }
 [dir="rtl"] .s-input input:placeholder-shown { direction: rtl; }
 
 .s-chip { min-height: 44px; padding: 8px 18px; font-size: 16px; font-weight: 600; }
@@ -127,7 +127,7 @@
 /* A heading word with the underline scribble beneath it. */
 .s-ul { display: inline-block; padding-block-end: 8px; }
 
-.s-link { display: inline-block; padding-block: 2px 7px; color: var(--color-ink); font-weight: 700; text-decoration: none; }
+.s-link { display: inline-block; padding-block: 2px 7px; color: var(--color-foreground); font-weight: 700; text-decoration: none; }
 .s-link > .scribble :is(.main, .ghost) {
   opacity: 0;
   stroke-dasharray: 1 1;

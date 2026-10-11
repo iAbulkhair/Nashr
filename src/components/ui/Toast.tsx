@@ -67,7 +67,7 @@ const REGION = { ar: "الإشعارات", en: "Notifications" } as const;
 
 const TONE_CLASS: Record<ToastTone, string> = {
   success: "border-success",
-  info: "border-ink",
+  info: "border-border-strong",
   warning: "border-warning",
   danger: "border-danger",
 };
@@ -85,10 +85,10 @@ function ToastView({ item, lang, onClose }: { item: ToastItem; lang: "ar" | "en"
       onMouseLeave={() => setHeld(false)}
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
-      className={`pointer-events-auto flex items-start gap-3 rounded-lg border-[1.5px] border-s-4 bg-popover px-4 py-3 text-sm text-ink ${TONE_CLASS[item.tone]}`}
+      className={`pointer-events-auto flex items-start gap-3 rounded-lg border-[1.5px] border-s-4 bg-popover px-4 py-3 text-sm text-foreground ${TONE_CLASS[item.tone]}`}
     >
       <p dir="auto" className="min-w-0 flex-1 leading-relaxed">{item.text}</p>
-      <button type="button" onClick={() => onClose(item.id)} aria-label={CLOSE[lang]} className="-my-2 -me-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-foreground-muted hover:text-ink">
+      <button type="button" onClick={() => onClose(item.id)} aria-label={CLOSE[lang]} className="-my-2 -me-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-foreground-muted hover:text-foreground">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="h-4 w-4" aria-hidden><path d="m6 6 12 12M18 6 6 18" /></svg>
       </button>
     </li>

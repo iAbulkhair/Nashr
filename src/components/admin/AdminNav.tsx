@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ADMIN_LABEL, ADMIN_LEADS_SEEN, ADMIN_SECTIONS, adminHref, type AdminSection } from "@/lib/admin-gate";
 import { adminFetch } from "@/lib/admin-fetch";
 import LangToggle from "../LangToggle";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import { Icon, type IconName } from "../app/Icons";
 
 const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", wishlist: "spark", log: "clock" };
@@ -46,13 +47,15 @@ export default function AdminNav({ lang, keySession, founder }: { lang: "ar" | "
       </div>
       <nav aria-label={lang === "ar" ? "أقسام لوحة المؤسس" : "Founder console sections"} className="grid gap-0.5">
         {ADMIN_SECTIONS.map((s) => (
-          <Link key={s} href={adminHref(lang, s)} onClick={() => setOpen(false)} aria-current={active(s) ? "page" : undefined} className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition ${active(s) ? "bg-lilac font-semibold text-ink" : "text-muted hover:bg-lilac/60 hover:text-ink"}`}>
+          <Link key={s} href={adminHref(lang, s)} onClick={() => setOpen(false)} aria-current={active(s) ? "page" : undefined} className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition ${active(s) ? "bg-background-muted font-semibold text-foreground" : "text-foreground-muted hover:bg-background-muted/60 hover:text-foreground"}`}>
             <span className="flex items-center gap-2"><Icon name={ICON[s]} className="h-4 w-4" />{ADMIN_LABEL[lang][s]}</span>
-            {s === "leads" && unread > 0 && <span className="tnum rounded-full bg-lemon px-1.5 text-xs font-semibold text-ink" data-testid="leads-unread" dir="ltr">{unread}</span>}
+            {s === "leads" && unread > 0 && <span className="tnum rounded-full bg-lemon px-1.5 text-xs font-semibold text-accent-foreground" data-testid="leads-unread" dir="ltr">{unread}</span>}
           </Link>
         ))}
       </nav>
-      <div className="mt-auto grid gap-2 border-t-[1.5px] border-ink/10 pt-3">
+      <div className="mt-auto grid gap-2 border-t-[1.5px] border-foreground/10 pt-3">
+        {/* Rule 1204: the same theme choice as the app's account menu. */}
+        <ThemeToggle lang={lang} size="sm" className="justify-self-start" />
         {founder && <Link href={`/${lang}/app`} className="btn btn-secondary btn-sm">{S.back}</Link>}
         {keySession && (
           // Ends the key session on the server (DELETE /api/admin/login), so the same cookie never opens the console again.
@@ -63,16 +66,16 @@ export default function AdminNav({ lang, keySession, founder }: { lang: "ar" | "
   );
   return (
     <>
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 border-e-[1.5px] border-ink bg-paper text-ink lg:block">{body}</aside>
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b-[1.5px] border-ink bg-paper px-4 py-3 text-ink lg:hidden">
+      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 border-e-[1.5px] border-border-strong bg-surface text-foreground lg:block">{body}</aside>
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b-[1.5px] border-border-strong bg-surface px-4 py-3 text-foreground lg:hidden">
         <Link href={adminHref(lang, "overview")} className="font-display text-lg font-bold">{S.title}</Link>
-        <button onClick={() => setOpen(!open)} aria-label={S.menu} aria-expanded={open} className="rounded-md border-[1.5px] border-ink p-1.5"><Icon name="menu" className="h-5 w-5" /></button>
+        <button onClick={() => setOpen(!open)} aria-label={S.menu} aria-expanded={open} className="rounded-md border-[1.5px] border-border-strong p-1.5"><Icon name="menu" className="h-5 w-5" /></button>
       </header>
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setOpen(false)}>
-          <div className="absolute inset-0 bg-ink/40" />
-          <aside className="absolute inset-y-0 start-0 w-72 border-e-[1.5px] border-ink bg-paper text-ink" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setOpen(false)} aria-label={S.menu} className="absolute end-2 top-2 rounded-md p-1.5 text-ink hover:bg-lilac"><Icon name="x" className="h-5 w-5" /></button>
+          <div className="absolute inset-0 bg-overlay" />
+          <aside className="absolute inset-y-0 start-0 w-72 border-e-[1.5px] border-border-strong bg-surface text-foreground" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setOpen(false)} aria-label={S.menu} className="absolute end-2 top-2 rounded-md p-1.5 text-foreground hover:bg-background-muted"><Icon name="x" className="h-5 w-5" /></button>
             {body}
           </aside>
         </div>

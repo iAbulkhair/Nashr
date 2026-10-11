@@ -55,7 +55,7 @@ export default function Tabs<T extends string>({ idBase, label, value, onChange,
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(it.id)}
             onKeyDown={(e) => onKey(e, i)}
-            className={`min-h-[var(--hit-min)] rounded-full px-4 text-sm pointer-fine:min-h-8 pointer-fine:px-3 pointer-fine:text-xs ${on ? "bg-ink font-semibold text-paper" : "text-foreground-muted hover:text-ink"}`}
+            className={`min-h-[var(--hit-min)] rounded-full px-4 text-sm pointer-fine:min-h-8 pointer-fine:px-3 pointer-fine:text-xs ${on ? "bg-inverse font-semibold text-inverse-foreground" : "text-foreground-muted hover:text-foreground"}`}
           >
             {it.label}
           </button>

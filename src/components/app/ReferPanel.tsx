@@ -26,31 +26,31 @@ export default function ReferPanel({ t, lang, code, count, earned, origin }: { t
   return (
     <div className="mx-auto w-full max-w-2xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="referpanel-t1" />{r.title}</span></h1>
-      <p className="mt-2 text-ink/70">{r.sub}</p>
+      <p className="mt-2 text-foreground-muted">{r.sub}</p>
       <div className="mt-5 flex gap-2">
-        {(["refer", "social"] as const).map((k) => <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm ${tab === k ? "bg-ink text-lilac" : "border border-ink/15"}`}>{k === "refer" ? r.tabRefer : r.tabSocial}</button>)}
+        {(["refer", "social"] as const).map((k) => <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm ${tab === k ? "bg-inverse text-inverse-muted" : "border border-border"}`}>{k === "refer" ? r.tabRefer : r.tabSocial}</button>)}
       </div>
-      {msg && <p className="mt-3 text-sm text-ink">{msg}</p>}
+      {msg && <p className="mt-3 text-sm text-foreground">{msg}</p>}
       {tab === "social" && (
         <div className="mt-4 card">
-          <p className="text-sm text-ink/70">{r.socialSub}</p>
+          <p className="text-sm text-foreground-muted">{r.socialSub}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {shares.map((s) => <button key={s.id} onClick={() => shared(s.id, s.url)} disabled={done.includes(s.id)} className="rounded-full border border-ink px-4 py-2 text-sm text-ink disabled:opacity-50">{done.includes(s.id) ? "✓ " : ""}{s.label}</button>)}
+            {shares.map((s) => <button key={s.id} onClick={() => shared(s.id, s.url)} disabled={done.includes(s.id)} className="rounded-full border border-border-strong px-4 py-2 text-sm text-foreground disabled:opacity-50">{done.includes(s.id) ? "✓ " : ""}{s.label}</button>)}
           </div>
         </div>
       )}
       <div className={`mt-4 card ${tab !== "refer" ? "hidden" : ""}`}>
-        <p className="text-xs uppercase tracking-wide text-muted">{r.link}</p>
+        <p className="text-xs uppercase tracking-wide text-foreground-muted">{r.link}</p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <code className="flex-1 break-all rounded bg-lilac px-3 py-2 text-sm" dir="ltr">{link}</code>
+          <code className="flex-1 break-all rounded bg-background-muted px-3 py-2 text-sm" dir="ltr">{link}</code>
           <button onClick={async () => { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-primary btn-pill">{copied ? r.copied : r.copy}</button>
-          <a href={`https://wa.me/?text=${encodeURIComponent(r.shareText + " " + link)}`} target="_blank" rel="noreferrer" className="rounded-full border border-ink px-4 py-2 text-sm text-ink">{r.share}</a>
+          <a href={`https://wa.me/?text=${encodeURIComponent(r.shareText + " " + link)}`} target="_blank" rel="noreferrer" className="rounded-full border border-border-strong px-4 py-2 text-sm text-foreground">{r.share}</a>
         </div>
-        <p className="mt-3 text-xs text-muted">{r.code}: <span className="font-mono">{code}</span></p>
+        <p className="mt-3 text-xs text-foreground-muted">{r.code}: <span className="font-mono">{code}</span></p>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-4">
-        <div className="card"><p className="text-xs text-muted">{r.count}</p><p className="page-title">{count}</p></div>
-        <div className="card"><p className="text-xs text-muted">{r.earned}</p><p className="page-title">{earned}</p></div>
+        <div className="card"><p className="text-xs text-foreground-muted">{r.count}</p><p className="page-title">{count}</p></div>
+        <div className="card"><p className="text-xs text-foreground-muted">{r.earned}</p><p className="page-title">{earned}</p></div>
       </div>
     </div>
   );

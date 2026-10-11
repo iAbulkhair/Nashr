@@ -39,15 +39,15 @@ export function Dialog({ lang, title, description, onClose, blockClose = false, 
       aria-describedby={description ? `${id}-desc` : undefined}
       onCancel={(e) => { if (blockClose) e.preventDefault(); }}
       onClose={onClose}
-      className={`card m-auto w-[calc(100%-2rem)] p-0 text-ink backdrop:bg-overlay ${className}`}
+      className={`card m-auto w-[calc(100%-2rem)] p-0 text-foreground backdrop:bg-overlay ${className}`}
     >
       <div className="p-6 text-start">
         <h2 id={`${id}-title`} className="pe-10 font-display text-lg font-bold"><bdi>{title}</bdi></h2>
-        {description && <div id={`${id}-desc`} className="mt-2 text-sm leading-relaxed text-ink/80">{description}</div>}
+        {description && <div id={`${id}-desc`} className="mt-2 text-sm leading-relaxed text-foreground-muted">{description}</div>}
         <div className="mt-4">{children}</div>
       </div>
       {/* Last in the order, so `showModal()` puts focus on the first field, not on close; drawn at the top inline end. */}
-      <button type="button" onClick={() => { if (!blockClose) ref.current?.close(); }} aria-label={CLOSE[lang]} className="absolute end-2 top-2 grid h-11 w-11 place-items-center rounded-full text-foreground-muted hover:text-ink">
+      <button type="button" onClick={() => { if (!blockClose) ref.current?.close(); }} aria-label={CLOSE[lang]} className="absolute end-2 top-2 grid h-11 w-11 place-items-center rounded-full text-foreground-muted hover:text-foreground">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="h-4 w-4" aria-hidden><path d="m6 6 12 12M18 6 6 18" /></svg>
       </button>
     </dialog>

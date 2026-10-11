@@ -164,43 +164,43 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
   const keptCount = drafts.filter((d) => d.keep).length;
 
   return (
-    <section aria-labelledby={`${uid}-title`} className="mt-3 rounded-xl border border-ink/10 bg-white p-3 sm:p-4">
+    <section aria-labelledby={`${uid}-title`} className="mt-3 rounded-xl border border-foreground/10 bg-surface p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id={`${uid}-title`} className="font-semibold">{T.title}</h3>
         {onClose && <button type="button" onClick={onClose} className="btn btn-secondary btn-xs">{T.close}</button>}
       </div>
-      <p className="mt-1 text-sm text-ink/80">{T.intro}</p>
-      <p className="mt-1 text-xs text-muted">{T.agentNote}</p>
-      <p className="mt-1 text-xs text-muted">{T.savedNote}</p>
+      <p className="mt-1 text-sm text-foreground-muted">{T.intro}</p>
+      <p className="mt-1 text-xs text-foreground-muted">{T.agentNote}</p>
+      <p className="mt-1 text-xs text-foreground-muted">{T.savedNote}</p>
 
       <div className="mt-4 grid gap-4">
         <div>
-          <label htmlFor={`${uid}-notes`} className="text-xs text-ink/70">{T.notesLabel}</label>
+          <label htmlFor={`${uid}-notes`} className="text-xs text-foreground-muted">{T.notesLabel}</label>
           <textarea id={`${uid}-notes`} value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder={T.notesPh} disabled={off} dir="auto" className="input mt-1" />
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button type="button" disabled={off || !notes.trim() || notesLong} onClick={() => void propose("notes")} className="btn btn-primary btn-sm">{busy === "propose:notes" ? T.working : T.notesButton}</button>
-            <span className="text-xs text-muted">{T.notesFree}</span>
+            <span className="text-xs text-foreground-muted">{T.notesFree}</span>
           </div>
         </div>
 
         <div>
-          <label htmlFor={`${uid}-transcript`} className="text-xs text-ink/70">{T.transcriptLabel}</label>
+          <label htmlFor={`${uid}-transcript`} className="text-xs text-foreground-muted">{T.transcriptLabel}</label>
           <textarea id={`${uid}-transcript`} value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={6} placeholder={T.transcriptPh} disabled={off} dir="auto" className="input mt-1" />
           <div className="mt-2 grid gap-1">
-            <label htmlFor={`${uid}-file`} className="text-xs text-ink/70">{T.fileLabel}</label>
+            <label htmlFor={`${uid}-file`} className="text-xs text-foreground-muted">{T.fileLabel}</label>
             <input id={`${uid}-file`} type="file" accept=".txt,.vtt,.srt,text/plain,text/vtt" onChange={onFile} disabled={off} className="max-w-full text-sm" />
             {fileError && <p role="alert" className="text-sm text-danger">{fileError}</p>}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button type="button" disabled={off || !transcript.trim() || transcriptLong} onClick={() => void propose("transcript")} className="btn btn-primary btn-sm">{busy === "propose:transcript" ? T.working : T.transcriptButton}</button>
-            <span className="tnum text-xs text-muted">{fill(T.cost, { n: String(MEETING_TRANSCRIPT_COST) })}</span>
+            <span className="tnum text-xs text-foreground-muted">{fill(T.cost, { n: String(MEETING_TRANSCRIPT_COST) })}</span>
           </div>
           {(notesLong || transcriptLong) && <p role="alert" className="mt-2 text-sm text-danger">{fill(T.textTooLong, { max: String(notesLong ? MEETING_NOTES_MAX : MEETING_TEXT_MAX) })}</p>}
         </div>
       </div>
 
       <div className="mt-5" aria-live="polite">
-        {load === "loading" && <p className="text-sm text-muted">{T.loading}</p>}
+        {load === "loading" && <p className="text-sm text-foreground-muted">{T.loading}</p>}
         {load === "failed" && (
           <div>
             <p role="alert" className="text-sm text-danger">{T.loadFailed}</p>
@@ -212,21 +212,21 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
             <h4 className="text-sm font-semibold">{T.proposals}</h4>
             <ul className="mt-2 grid gap-3">
               {drafts.map((d) => (
-                <li key={d.ref} className="rounded-xl border border-ink/10 p-3">
+                <li key={d.ref} className="rounded-xl border border-foreground/10 p-3">
                   <div className="flex items-start gap-2">
                     <input type="checkbox" checked={d.keep} onChange={(e) => edit(d.ref, { keep: e.target.checked })} disabled={off} aria-label={T.keepLabel} className="mt-2" />
-                    <label className="min-w-0 flex-1 text-xs text-ink/70">{T.taskLabel}
+                    <label className="min-w-0 flex-1 text-xs text-foreground-muted">{T.taskLabel}
                       <input value={d.title} onChange={(e) => edit(d.ref, { title: e.target.value })} maxLength={TITLE_MAX} disabled={off} dir="auto" className="input mt-1" />
                     </label>
                   </div>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <label className="text-xs text-ink/70">{T.agentLabel}
+                    <label className="text-xs text-foreground-muted">{T.agentLabel}
                       <select value={d.agent} onChange={(e) => edit(d.ref, { agent: e.target.value })} disabled={off} className="input mt-1">
                         <option value="owner">{T.owner}</option>
                         {AGENT_IDS.map((id) => <option key={id} value={id}>{t.agents[id].name}</option>)}
                       </select>
                     </label>
-                    <label className="text-xs text-ink/70">{T.dueLabel}
+                    <label className="text-xs text-foreground-muted">{T.dueLabel}
                       <input type="date" value={d.dueAt} onChange={(e) => edit(d.ref, { dueAt: e.target.value })} disabled={off} dir="ltr" className="input mt-1" />
                     </label>
                   </div>
@@ -245,7 +245,7 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
       </div>
 
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
-      {note && <p role="status" className="mt-3 text-sm text-ink">{note}</p>}
+      {note && <p role="status" className="mt-3 text-sm text-foreground">{note}</p>}
     </section>
   );
 }
