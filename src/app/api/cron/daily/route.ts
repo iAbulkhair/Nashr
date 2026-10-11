@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { dailyRoster, runDaily, sweepWeeklyHolds } from "@/lib/schedule";
 import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import type { User } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { mailReady, sendEmail, sendOnce } from "@/lib/notify";
@@ -201,6 +202,7 @@ export async function GET(req: Request) {
     const headers = { authorization: req.headers.get("authorization") ?? "" };
     after(() => fetch(weekly, { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined));
   }
+  await recordCronRun("daily");
   const count = (word: string) => Object.values(report.results).filter((r) => r.split("+").some((x) => x.startsWith(word))).length;
   return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: mailReady(), reminders });
 }

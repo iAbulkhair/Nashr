@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { allUsers, runWeekly } from "@/lib/schedule";
 import { lastSundayUtc, runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import { deadlineFor } from "@/lib/media/keys";
 import { systemBy } from "@/lib/actor";
 
@@ -22,5 +23,6 @@ export async function GET(req: Request) {
     job: "weekly", period: lastSundayUtc(), items: await allUsers(), id: (u) => u.scope ?? u.email, run: (u) => runWeekly(u, systemBy("cron"), { deadline }),
     concurrency: 4, startBudgetMs: 160_000, markerTtlSeconds: 8 * 86400, req,
   });
+  await recordCronRun("weekly");
   return NextResponse.json({ ok: true, ...report });
 }

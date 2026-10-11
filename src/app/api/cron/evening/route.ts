@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sameSecret } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import { sc } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { dailyRoster } from "@/lib/schedule";
@@ -29,7 +30,10 @@ export async function GET(req: Request) {
   if (parts && (!parts.length || !parts.every(isZone))) return NextResponse.json({ ok: false, error: "bad_zones" }, { status: 400 });
   const zones = parts as Zone[] | null;
   const now = Date.now();
-  if (!zones && isRamadan(now)) return NextResponse.json({ ok: true, skipped: "ramadan" });
+  if (!zones && isRamadan(now)) {
+    await recordCronRun("evening");
+    return NextResponse.json({ ok: true, skipped: "ramadan" });
+  }
   const roster = await dailyRoster();
   let users = roster.users;
   if (zones) {
@@ -42,6 +46,7 @@ export async function GET(req: Request) {
     id: (u) => sc(u), run: (u) => eveningWrap(u, Date.now()),
     concurrency: 8, startBudgetMs: 240_000, markerTtlSeconds: 2 * 86400, req,
   });
+  await recordCronRun("evening");
   const count = (word: string) => Object.values(report.results).filter((r) => r === word).length;
   return NextResponse.json({ ok: true, ...report, sent: count("sent"), silent: count("silent") });
 }

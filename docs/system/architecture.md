@@ -210,6 +210,8 @@ Per-route authorization is in `permissions.md`.
 
 The six routes other than `/api/cron/secretary` require `Authorization: Bearer ${CRON_SECRET}`, compared with `sameSecret`, and return 401 when the variable is unset. `/api/cron/secretary` accepts that bearer or a valid QStash signature (permissions row 112): with CRON_SECRET unset it still runs the reminder sweep on a signed call, but does not start the evening pass.
 
+Heartbeats (rules 1014-1015): each of the eight cron routes (the seven in `vercel.json` and `secretary`) calls `recordCronRun(job)` (`src/lib/cron-heartbeat.ts`) after it has authenticated the caller and finished, which writes `cronbeat:{job}` (the time in ms, kept 60 days). A 401, a 409 (golden not started) or a throw leaves the old value. `CRON_MAX_AGE_SEC` gives each job the age past which it is late: 26 h for the daily ones, 14 h for `stores`, 8 days for the weekly ones, 1 h for the 15-minute `secretary` tick. A job with no value yet is `waiting`, which is not late. `cronStatuses()` reads all eight with one `MGET`.
+
 Opportunistic sweep: the image, video and poll routes schedule `maybeSweep(mediaDeps(), deadline)` in `after()`. It runs `sweepMedia` with `limit: 6` only when it wins the `msweep` lock (one per 5 minutes across all instances) and at least 30 s of the request's deadline are left, so abandoned renders are usually collected within minutes, not at 05:20 UTC.
 
 ### 2.7 External services
@@ -517,7 +519,7 @@ Two Node.js web apps on one Hostinger Business order (the plan includes five, so
 | Address | `https://thakeen.com` | `https://staging.thakeen.com` (`APP_ORIGIN` is its own origin, so links, robots and the access redirect stay on it) |
 | Git auto-deploy branch | `production` (`main` until the switch) | `main`, switched on after the lock has merged (see the status above) |
 | What moves it | The founder's merge of a release pull request `main` to `production` | Every merge into `main` |
-| Build | `npm run build:hostinger` (`next build --webpack`), Node 22, npm, output `.next` | The same settings, the same build |
+| Build | `npm run build:hostinger` (`next build --webpack`), Node 22, npm, output `.next` | The same settings, the same build. CI builds the same way since rule 1017 (`setup-node` 22, `npm run build:hostinger`, and the end-to-end server `playwright.config.ts` builds with it too) |
 | `APP_ENV` | Unset | `staging`: still production for rules 430 and 431 (never the memory store, never the model mock), and it turns the lock on |
 | Access | Public | Locked: a bare 404 on every path but the access page, its route and `/robots.txt`, unless the request carries the `thakeen_staging` cookie (`STAGING_ACCESS_KEY` decides who gets in; rules 674 and 675) |
 | Indexing | `robots.txt` and sitemap as in 2.1 | Disallow everything, empty sitemap, `X-Robots-Tag: noindex, nofollow` on every response the proxy handles (the static assets, `/_next/image` and `/favicon.ico` do not pass through it; rule 677) |
@@ -528,5 +530,7 @@ Two Node.js web apps on one Hostinger Business order (the plan includes five, so
 | `GET /api/health` | Public, shows the release commit | The same route behind the lock; the scripts send the cookie |
 
 Left unset on staging: `RESEND_API_KEY` and `MAIL_FROM` (`mailReady()` is false, so staging sends no email), payment, connector and media provider credentials (added one by one, as test credentials, only when a change needs them), and `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` (unset means not checked; the lock already keeps strangers out). `docs/system/variables.md` is the authoritative list of names; the founder copies each from the live app into hPanel and gives it the staging value above. Values are entered by the founder in hPanel, never in chat and never committed.
+
+Health and monitoring (rules 1011-1016): `GET /api/health` is still `{ ok, commit, built }`; `?store=1` adds a one-key Redis read (`store: { ok, ms }`, 503 when it fails) and `?crons=1` (cron bearer) adds the heartbeat state of the eight cron routes from `src/lib/cron-heartbeat.ts`. Each cron route writes `cronbeat:{job}` when it finishes; `GET /api/admin/overview` carries the ages as `crons` and the Usage page shows them. The external uptime monitor is a founder step (flows section 62).
 
 Build identity: `next.config.ts` inlines `BUILD_COMMIT` and `BUILD_TIME`, and `GET /api/health` answers them. Both apps are built from a Git checkout, so `commit` is expected to be a real sha; if the build area has no `.git` it is `unknown` and the host's build record (`hosting_nodejs_list-builds`, `options.source_options.commit.hash`) names the commit instead (spec section 12).
