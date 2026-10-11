@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sameSecret } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import { sc } from "@/lib/auth";
 import { dailyRoster } from "@/lib/schedule";
 import { runCronBatch } from "@/lib/cron-batch";
@@ -26,6 +27,7 @@ export async function GET(req: Request) {
     id: (u) => sc(u), run: (u) => syncStoreIfDue(sc(u)),
     concurrency: 6, startBudgetMs: 240_000, markerTtlSeconds: 2 * 86400, req,
   });
+  await recordCronRun("stores");
   const count = (prefix: string) => Object.values(report.results).filter((r) => r.startsWith(prefix)).length;
   return NextResponse.json({ ok: true, ...report, synced: count("synced:"), failed_sync: count("failed:") });
 }

@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { appOrigin } from "@/lib/origin";
 import { allow, clientIp, sameSecret, retryLater } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import { verifyQstash } from "@/lib/qstash";
 import { SWEEP_BUDGET_TICK_MS, sweepReminders } from "@/lib/secretary-remind";
 import { sweepCalendars } from "@/lib/secretary-gcal";
@@ -82,5 +83,6 @@ export async function POST(req: Request) {
     const kick = () => fetch(url, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
     try { after(kick); } catch { void kick(); }
   }
+  await recordCronRun("secretary");
   return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, calendars, evening: zones.length && secret ? zones.length : 0 });
 }
