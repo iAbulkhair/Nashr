@@ -1,4 +1,4 @@
-import { appScreenMeta } from "@/lib/screen-titles";
+import { settingsScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -6,7 +6,7 @@ import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/roles";
 import BrandsPanel from "@/components/app/BrandsPanel";
 export const dynamic = "force-dynamic";
-export const generateMetadata = appScreenMeta("brands");
+export const generateMetadata = settingsScreenMeta("brands");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ADMIN_LABEL, type AdminSection } from "./admin-gate";
 import { appDict } from "./app-i18n";
 import { dict, isLang, type Lang } from "./i18n";
+import { SETTINGS_COPY, type SettingsSection } from "./settings-nav";
 
 /**
  * Every app and founder-console screen's own `<title>` (rule 961, WCAG 2.4.2): «الشاشة · ذكين» / "Screen · Thakeen".
@@ -11,9 +12,9 @@ import { dict, isLang, type Lang } from "./i18n";
  * the link that opened it agree; the founder console uses its own sidebar labels (`ADMIN_LABEL`).
  */
 export const APP_SCREENS = [
-  "home", "activity", "admin", "billing", "brands", "calendar", "chat", "conversations", "files", "forgot", "generate",
-  "governance", "help", "inspo", "integrations", "join", "login", "mcp", "notifications", "onboarding", "partner",
-  "profile", "refer", "reports", "reset", "signup", "start", "tasks", "team", "todo", "verify",
+  "home", "activity", "admin", "calendar", "chat", "conversations", "files", "forgot", "generate", "help", "inspo",
+  "join", "login", "mcp", "notifications", "partner", "refer", "reports", "reset", "settings", "signup", "start", "tasks",
+  "todo", "verify",
 ] as const;
 export type AppScreen = (typeof APP_SCREENS)[number];
 
@@ -22,24 +23,20 @@ const nav = (lang: Lang) => appDict[lang].nav;
 /** The screen's name in each language. */
 export const APP_SCREEN_NAME: Record<Lang, Record<AppScreen, string>> = {
   ar: {
-    home: nav("ar").inbox, activity: nav("ar").activity, admin: nav("ar").adminPanel, billing: nav("ar").billing,
-    brands: nav("ar").brands, calendar: nav("ar").calendar, chat: nav("ar").chat, conversations: nav("ar").history,
-    files: nav("ar").files, forgot: "نسيت كلمة المرور", generate: nav("ar").generate, governance: nav("ar").governance,
-    help: nav("ar").help, inspo: nav("ar").inspo, integrations: nav("ar").integrations, join: "الانضمام إلى فريق",
-    login: "تسجيل الدخول", mcp: "ربط مساعدك الذكي", notifications: nav("ar").notifications, onboarding: nav("ar").brand,
-    partner: "برنامج الشركاء", profile: nav("ar").profile, refer: nav("ar").refer, reports: nav("ar").reports,
-    reset: "كلمة مرور جديدة", signup: "إنشاء حساب", start: "ابدأ", tasks: nav("ar").tasks, team: nav("ar").members,
-    todo: nav("ar").todo, verify: "تأكيد البريد",
+    home: nav("ar").inbox, activity: nav("ar").activity, admin: nav("ar").adminPanel, calendar: nav("ar").calendar,
+    chat: nav("ar").chat, conversations: nav("ar").history, files: nav("ar").files, forgot: "نسيت كلمة المرور",
+    generate: nav("ar").generate, help: nav("ar").help, inspo: nav("ar").inspo, join: "الانضمام إلى فريق",
+    login: "تسجيل الدخول", mcp: "ربط مساعدك الذكي", notifications: nav("ar").notifications, partner: "برنامج الشركاء",
+    refer: nav("ar").refer, reports: nav("ar").reports, reset: "كلمة مرور جديدة", settings: nav("ar").settings,
+    signup: "إنشاء حساب", start: "ابدأ", tasks: nav("ar").tasks, todo: nav("ar").todo, verify: "تأكيد البريد",
   },
   en: {
-    home: nav("en").inbox, activity: nav("en").activity, admin: nav("en").adminPanel, billing: nav("en").billing,
-    brands: nav("en").brands, calendar: nav("en").calendar, chat: nav("en").chat, conversations: nav("en").history,
-    files: nav("en").files, forgot: "Forgot password", generate: nav("en").generate, governance: nav("en").governance,
-    help: nav("en").help, inspo: nav("en").inspo, integrations: nav("en").integrations, join: "Join a team",
-    login: "Log in", mcp: "Connect your AI assistant", notifications: nav("en").notifications, onboarding: nav("en").brand,
-    partner: "Partner programme", profile: nav("en").profile, refer: nav("en").refer, reports: nav("en").reports,
-    reset: "New password", signup: "Sign up", start: "Get started", tasks: nav("en").tasks, team: nav("en").members,
-    todo: "My to-dos", verify: "Verify your email",
+    home: nav("en").inbox, activity: nav("en").activity, admin: nav("en").adminPanel, calendar: nav("en").calendar,
+    chat: nav("en").chat, conversations: nav("en").history, files: nav("en").files, forgot: "Forgot password",
+    generate: nav("en").generate, help: nav("en").help, inspo: nav("en").inspo, join: "Join a team",
+    login: "Log in", mcp: "Connect your AI assistant", notifications: nav("en").notifications, partner: "Partner programme",
+    refer: nav("en").refer, reports: nav("en").reports, reset: "New password", settings: nav("en").settings,
+    signup: "Sign up", start: "Get started", tasks: nav("en").tasks, todo: "My to-dos", verify: "Verify your email",
   },
 };
 
@@ -52,6 +49,15 @@ type LangParams = { params: Promise<{ lang: string }> };
 export const appScreenMeta = (screen: AppScreen) => async ({ params }: LangParams): Promise<Metadata> => {
   const { lang } = await params;
   return isLang(lang) ? { title: screenTitle(lang, APP_SCREEN_NAME[lang][screen]) } : {};
+};
+
+/**
+ * A settings section under /{lang}/app/settings (rule 1140): «الأمان · الإعدادات · ذكين». The section's name comes
+ * first, then the area's, so the notification feed («التنبيهات · ذكين») and its preferences never share a title.
+ */
+export const settingsScreenMeta = (section: SettingsSection) => async ({ params }: LangParams): Promise<Metadata> => {
+  const { lang } = await params;
+  return isLang(lang) ? { title: screenTitle(lang, `${SETTINGS_COPY[lang].sections[section].name} · ${SETTINGS_COPY[lang].title}`) } : {};
 };
 
 /** The same for a founder console section under /{lang}/admin. */

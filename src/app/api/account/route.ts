@@ -1,30 +1,14 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { createSession, currentUser, destroySession, revokeSessions, saveUser, strongPassword, type User } from "@/lib/auth";
+import { createSession, currentUser, destroySession, revokeSessions, saveUser, strongPassword } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBook } from "@/lib/booking-token";
 import { revokeFeed } from "@/lib/feed-token";
 import { forbid } from "@/lib/roles";
-import { getMember, saveMember, withMemberLock } from "@/lib/team";
-
-/**
- * The acting LOGIN's own password hash: the member record for a member, the owner record for the owner. Null for any
- * other actor (a founder impersonating, a token) and for a member no longer in this account. The account record's
- * hash is never the answer for a member: knowing the owner's password must not let a member act as the owner.
- */
-async function ownHash(u: User): Promise<string | null> {
-  const a = u.actor;
-  if (a?.kind === "owner" && a.email === u.email) return u.passHash;
-  if (a?.kind !== "member") return null;
-  const m = await getMember(a.email);
-  return m && m.memberOf === u.email && !m.disabled ? m.passHash : null;
-}
-const matches = async (u: User, password: unknown) => {
-  const hash = await ownHash(u);
-  return !!hash && typeof password === "string" && (await bcrypt.compare(password, hash));
-};
+import { saveMember, withMemberLock } from "@/lib/team";
+import { ownPasswordMatches as matches } from "@/lib/own-password";
 
 /**
  * PATCH {currentPassword, newPassword}: the acting login changes ITS OWN password. A member rewrites the member record

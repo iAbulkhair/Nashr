@@ -205,7 +205,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             {DICT_COPY.title[lang]}
           </h1>
           <p className="mt-1 text-ink/70">{DICT_COPY.subtitle[lang]}</p>
-          <Link href={`/${lang}/app/onboarding`} className="mt-2 inline-block text-sm text-muted underline">
+          <Link href={`/${lang}/app/settings/brand`} className="mt-2 inline-block text-sm text-muted underline">
             {t.start.manual}
           </Link>
 

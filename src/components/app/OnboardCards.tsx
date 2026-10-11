@@ -93,7 +93,7 @@ export function ActivationBar({ lang, goal, first }: { lang: "ar" | "en"; goal: 
       <Icon name="spark" className="h-4 w-4 shrink-0 text-ink" />
       <span className="font-semibold" dir="auto">{goal}</span>
       {first && <span className="min-w-0 flex-1 text-xs text-ink/70" dir="auto">{S.firstUp}: {first}</span>}
-      <Link href={`/${lang}/app/billing`} className="btn btn-accent btn-xs ms-auto">{S.activate}</Link>
+      <Link href={`/${lang}/app/settings/billing`} className="btn btn-accent btn-xs ms-auto">{S.activate}</Link>
     </div>
   );
 }

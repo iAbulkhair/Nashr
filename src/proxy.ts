@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";
 import { STAGING_COOKIE, STAGING_OPEN_PATHS, hasAccess } from "@/lib/staging-access";
+import { legacySettingsPath } from "@/lib/settings-nav";
 
 type Lang = "ar" | "en";
 
@@ -40,6 +41,13 @@ export function proxy(req: NextRequest) {
     // (src/app/manifest.ts, rule 681): the same choice, into the app.
     const url = req.nextUrl.clone();
     url.pathname = pathname === "/" ? `/${pickLang(req)}` : `/${pickLang(req)}/app`;
+    url.search = search;
+    res = NextResponse.redirect(url, 307);
+  } else if (legacySettingsPath(pathname)) {
+    // The old account, team, brand and billing pages moved under /app/settings (rule 1141, expand step): a 307 keeps the
+    // query string (a Paymob return, an integration error) and lets a rollback find the old pages again.
+    const url = req.nextUrl.clone();
+    url.pathname = legacySettingsPath(pathname)!;
     url.search = search;
     res = NextResponse.redirect(url, 307);
   } else if (APP_PATH.test(pathname)) {

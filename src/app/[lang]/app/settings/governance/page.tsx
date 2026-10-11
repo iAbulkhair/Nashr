@@ -1,4 +1,4 @@
-import { appScreenMeta } from "@/lib/screen-titles";
+import { settingsScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -12,7 +12,7 @@ import { autoQueue } from "@/lib/handoff-auto";
 
 export const dynamic = "force-dynamic";
 
-export const generateMetadata = appScreenMeta("governance");
+export const generateMetadata = settingsScreenMeta("governance");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;

@@ -14,10 +14,10 @@ export type Journey = { milestones: Milestone[]; done: number; total: number; po
 /** Order is the order an owner meets them in; each links to the page where it is done. */
 const PATH: { id: MilestoneId; points: number; href: string }[] = [
   { id: "brand", points: 10, href: "/files" },
-  { id: "guard", points: 20, href: "/onboarding#guard" },
+  { id: "guard", points: 20, href: "/settings/brand#guard" },
   { id: "approve", points: 20, href: "" },
   { id: "schedule", points: 15, href: "/calendar" },
-  { id: "connect", points: 25, href: "/integrations" },
+  { id: "connect", points: 25, href: "/settings/connections" },
   { id: "publish", points: 30, href: "" },
   { id: "ai", points: 30, href: "/mcp" },
 ];

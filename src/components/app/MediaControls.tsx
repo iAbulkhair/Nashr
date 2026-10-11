@@ -288,7 +288,7 @@ export default function MediaControls({ task, lang, t, available, included, cred
         {n && (
           <p role="alert" className="text-xs text-danger">
             {n.text}
-            {n.billing && <> <Link href={`/${lang}/app/billing${n.topup ? "#topup" : ""}`} className="font-semibold underline">{n.topup ? i.topupLink : i.billingLink}</Link></>}
+            {n.billing && <> <Link href={`/${lang}/app/settings/billing${n.topup ? "#topup" : ""}`} className="font-semibold underline">{n.topup ? i.topupLink : i.billingLink}</Link></>}
           </p>
         )}
         {!rendering && !n && last && <p className="text-xs text-danger">{plural(i.mediaLastFailed, last.credits)} {errText(last.error)}</p>}

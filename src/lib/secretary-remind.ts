@@ -30,6 +30,7 @@ import { listBrands, scopeFor } from "./brands";
 import { SEC_KEYS, fireReminder, zoneFor } from "./secretary";
 import { formatWhen, type SecItem } from "./secretary-agenda";
 import { pushNotifs, type Push } from "./notifications";
+import { emailAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
 import { sendEmail } from "./notify";
 import { DEFAULT_ZONE, type Zone } from "./zones";
 import { appOrigin } from "./origin";
@@ -95,14 +96,8 @@ function notifFor(scope: string, zone: Zone, item: SecItem, user: Pick<User, "la
   };
 }
 
-/** The email preference of a scope (`profile:{scope}`, else the account's), "all" when none was set. */
-async function emailPrefs(scopes: string[], email: string): Promise<Map<string, string>> {
-  const rows = await db.mget<{ emails?: string }>([...scopes.map((s) => `profile:${s}`), `profile:${email}`]);
-  const account = rows[scopes.length]?.emails;
-  return new Map(scopes.map((s, i) => [s, rows[i]?.emails ?? account ?? "all"]));
-}
 
-type AccountCtx = { email: string; user: User; now: number; deadline: number; prefs: () => Promise<Map<string, string>>; tally: Tally };
+type AccountCtx = { email: string; user: User; now: number; deadline: number; prefs: () => Promise<Map<string, NotifyPrefs>>; tally: Tally };
 
 /**
  * One reminder's delivery, run by `fireReminder` under the item's lock before the item is written: the bell entry, and
@@ -110,10 +105,12 @@ type AccountCtx = { email: string; user: User; now: number; deadline: number; pr
  */
 async function deliver(ctx: AccountCtx, scope: string, zone: Zone, cur: SecItem): Promise<void> {
   const push = notifFor(scope, zone, cur, ctx.user, ctx.now);
-  const [pushed] = await pushNotifs(ctx.email, [push]);
+  const [pushed] = await pushNotifs(ctx.email, [{ ...push, scope }]);
   if (!pushed) return;
   ctx.tally.notified++;
-  if (!process.env.RESEND_API_KEY || (await ctx.prefs()).get(scope) === "none") return;
+  // The reminder email follows its own switch (Settings, Notifications; the old "none" level reads as off, rule 1147).
+  const prefs = (await ctx.prefs()).get(scope);
+  if (!process.env.RESEND_API_KEY || (prefs && !emailAllowed(prefs, "reminders"))) return;
   const ar = ctx.user.lang === "ar";
   // The HTML part says what the bell says, with a button to the list. The title holds the task's title, which the
   // owner or an agent wrote: `notice` escapes it as text (rule 686).
@@ -177,8 +174,8 @@ async function sweepAccount(email: string, scopes: string[], now: number, deadli
     tally.held += held.length;
   }
   if (!live.length) return tally;
-  let prefs: Promise<Map<string, string>> | null = null;
-  const ctx: AccountCtx = { email, user, now, deadline, tally, prefs: () => (prefs ??= emailPrefs(live, email)) };
+  let prefs: Promise<Map<string, NotifyPrefs>> | null = null;
+  const ctx: AccountCtx = { email, user, now, deadline, tally, prefs: () => (prefs ??= readPrefsMany(live, email)) };
   const results = await Promise.allSettled(live.map((s) => sweepScope(ctx, s)));
   for (const r of results) if (r.status === "rejected") {
     tally.failed++;
