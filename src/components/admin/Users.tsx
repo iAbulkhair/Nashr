@@ -26,6 +26,8 @@ const newRefundId = () => `rf_${Array.from(crypto.getRandomValues(new Uint8Array
 /** A prompt's words as a field label: the trailing colon goes. */
 const lab = (s: string) => s.replace(/[:：]\s*$/, "");
 const ok = <T,>(value: T): Parsed<T> => ({ ok: true, value });
+/** The only places an impersonation may send the browser (rule 1188); anything else goes to the console's own language. */
+export const IMPERSONATE_REDIRECT = /^\/(ar|en)\/app$/;
 
 type TableAnswer = { users: U[]; matched: number; page: number; pages: number; per: number; facets: { all: number; plan: Record<string, number>; filter: Record<UserFilter, number> }; tiles: TileCounts; total: PlanTotal | null };
 
@@ -157,7 +159,7 @@ export default function Users({ lang, keySession }: SectionProps) {
     setBusy(false);
     if (!j.ok) { setMsg(failed(email, j.error ?? status)); return j; }
     if (action === "resetPassword") { setTemp({ email, password: j.tempPassword }); setMsg(`${email}: ${UC.passwordReset}`); }
-    else if (action === "impersonate") { window.location.assign(j.redirect); return j; }
+    else if (action === "impersonate") { window.location.assign(IMPERSONATE_REDIRECT.test(j.redirect) ? j.redirect : `/${lang}/app`); return j; }
     else if (action === "delete") { setMsg(`${email}: ${UC.deleted}`); setSel(null); }
     else if (action === "resendVerification") setMsg(`${email}: ${S.codeSent}`);
     else if (action === "removeMember") { setMsg(`${email}: ${UC.memberRemoved}`); setMemberSel(null); return j; }

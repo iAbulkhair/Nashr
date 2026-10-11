@@ -1,4 +1,6 @@
 import { randomBytes } from "crypto";
+import { NextResponse } from "next/server";
+import { parseReason } from "./admin-input";
 import { CAPS, pushCapped } from "./db";
 import { AUDIT_SECTIONS, type AuditSection } from "./admin-audit-shape";
 
@@ -95,10 +97,23 @@ export function redact(v: unknown, depth = 0): unknown {
   return out;
 }
 
+/** The fields `adminAudit` sets itself: an `extra` field of the same name is dropped, never spread over them (rule 1184). */
+const RESERVED = new Set(["id", "at", "actor", "imp", "section", "action", "target", "email", "what", "before", "after", "reason", "legacy"]);
+
+/** `extra` without the reserved names, redacted like the rest of the row. */
+function extraOf(extra: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!extra) return {};
+  const out = redact(extra) as Record<string, unknown>;
+  for (const k of Object.keys(out)) if (RESERVED.has(k)) delete out[k];
+  return out;
+}
+
 /** The row `adminAudit` writes, without writing it (tests and the planted-secret check use it). */
 export function auditRow(i: AuditInput, now = new Date()): AuditRow {
   const action = (i.action ?? i.what.split(/[\s:]/)[0] ?? "").slice(0, 60) || "unknown";
   const row: AuditRow = {
+    // Extra first, and without the reserved names, so it can never stand in for who, when or what (rule 1184).
+    ...extraOf(i.extra),
     id: randomBytes(6).toString("hex"),
     at: now.toISOString(),
     actor: String(i.actor).slice(0, 200),
@@ -109,21 +124,44 @@ export function auditRow(i: AuditInput, now = new Date()): AuditRow {
     what: i.what.slice(0, 1000),
     ...(i.before !== undefined ? { before: redact(i.before) } : {}),
     ...(i.after !== undefined ? { after: redact(i.after) } : {}),
-    ...(i.extra ? (redact(i.extra) as Record<string, unknown>) : {}),
   };
   const reason = cleanReason(i.reason);
   if (reason) row.reason = reason;
   return row;
 }
 
-/** Mask every secret environment value inside a serialised row. */
+/**
+ * Text that looks like a secret whatever its name (rule 1189): an `sk-` key, a `Bearer` token, a run of 32 or more hex
+ * digits (a session token, a hash), and a run of 40 or more base64 or base64url characters holding a letter and a digit.
+ * A key name or an environment value catches most secrets; these catch one pasted into a reason or a free-text summary.
+ * Emails, dates, ids such as `rf_` plus 18 hex digits and ordinary words are shorter or broken by other characters.
+ */
+const SECRET_SHAPES: readonly RegExp[] = [
+  /\bsk-[A-Za-z0-9_-]{16,}/g,
+  /\bBearer\s+[A-Za-z0-9._~+/-]{8,}=*/gi,
+  /\b[a-f0-9]{32,}\b/gi,
+  /(?<![A-Za-z0-9+/_-])(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[A-Za-z])[A-Za-z0-9+/_-]{40,}={0,2}/g,
+];
+
+/** Mask every secret environment value, and every secret-shaped run of text, inside a serialised row. */
 export function maskSecrets(json: string): string {
   let s = json;
   for (const v of secretValues()) {
     const enc = JSON.stringify(v).slice(1, -1);
     if (enc && s.includes(enc)) s = s.split(enc).join(MASK);
   }
+  for (const re of SECRET_SHAPES) s = s.replace(re, MASK);
   return s;
+}
+
+/**
+ * The server's check on a founder change's reason (rule 1185, Control Center spec rule 1070): 3 to 200 characters after
+ * trimming, the same `parseReason` the console runs. A 400 `reason_short` or `reason_long` when it fails, else null.
+ * Every founder caller goes through it, the console key included: the key is an admin caller like the cookie.
+ */
+export function reasonRefused(raw: unknown): NextResponse | null {
+  const r = parseReason(typeof raw === "string" ? raw : null);
+  return r.ok ? null : NextResponse.json({ ok: false, error: r.error }, { status: 400 });
 }
 
 /** Write one audit row to `admin:log` (newest first, capped at `AUDIT_CAP`). The only writer of that list. */

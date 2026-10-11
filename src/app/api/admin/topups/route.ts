@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { adminActor, getUser, normalizeEmail } from "@/lib/auth";
 import { addPaidTopup, refundPaidTopup, voidPaidTopup, type Payment, type PaidTopupError, type RefundTopupError } from "@/lib/partners";
 import { parseTopup, parseTopupRefund, topupCredits } from "@/lib/topups";
-import { adminAudit } from "@/lib/admin-audit";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +72,9 @@ export async function POST(req: Request) {
   const email = typeof b.email === "string" ? normalizeEmail(b.email) : "";
   const reason = (typeof b.reason === "string" ? b.reason.slice(0, 200) : "") || undefined;
   if (b.action !== "add" && b.action !== "void" && b.action !== "refund") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
+  // Add, void, refund and finish all ask a reason in the console, so the server asks it too (rule 1185).
+  const noReason = reasonRefused(b.reason);
+  if (noReason) return noReason;
   const parsed = b.action === "add" ? parseTopup(b) : null;
   if (parsed && !parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: 400 });
   // "Finish refund" sends no credits, day or reference: they come from the pack's refund record (rule 465).

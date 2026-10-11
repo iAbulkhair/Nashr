@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
-import { adminSignIn, json, newUser, signIn, signOut } from "./helpers/session";
+import { adminSignIn, jar, json, newUser, signIn, signOut, TEST_REASON } from "./helpers/session";
 import { adminConsoleSrc } from "./helpers/admin-console";
-import { createUser, currentUser, IMPERSONATION_LEGACY_MS } from "@/lib/auth";
+import { createUser, currentUser, getUser, IMPERSONATION_LEGACY_MS } from "@/lib/auth";
 import { CAPS, db } from "@/lib/db";
 import { AUDIT_CAP, adminAudit, auditRow, auditView, pageAudit, parseAuditFilter, redact, type AuditRow } from "@/lib/admin-audit";
 import { ADMIN_INPUT_ERRORS, IMPERSONATE_DEFAULT, inputError, parseImpersonateMinutes, parseReason, REASON_MAX } from "@/lib/admin-input";
@@ -13,6 +13,7 @@ import { AUDIT_SECTIONS } from "@/lib/admin-audit";
 import { FORM_COPY, formGate, formReady, initialValues, submitForm, type ActionSpec } from "@/components/admin/AdminForm";
 import { TABLE_COPY } from "@/components/admin/DataTable";
 import { USERS_COPY } from "@/components/admin/users-copy";
+import { IMPERSONATE_REDIRECT } from "@/components/admin/Users";
 import { LOG_COPY } from "@/components/admin/Log";
 import { IMPERSONATION_COPY, minutesLeft } from "@/components/app/ImpersonationBanner";
 import * as planRoute from "@/app/api/admin/plan/route";
@@ -66,7 +67,7 @@ describe("rule 1172 (spec 1069): adminAudit is the only writer of admin:log, and
     expect(auditRow({ actor: "key", section: "billing", what: "x", reason: "   " }).reason).toBeUndefined();
   });
 
-  it("a real change through the users route writes one row with the founder's reason (an expand: reason stays optional on the server)", async () => {
+  it("a real change through the users route writes one row with the founder's reason (required on the server since rule 1185)", async () => {
     const c = await createUser({ email: `a4-${Date.now().toString(36)}@test.example`, name: "C", phone: "", password: "abc12345", lang: "en" });
     const users = await import("@/app/api/admin/users/[email]/route");
     await adminSignIn();
@@ -76,7 +77,7 @@ describe("rule 1172 (spec 1069): adminAudit is the only writer of admin:log, and
     const [lang, sus] = await rows(2);
     expect(sus).toMatchObject({ actor: "key", section: "users", action: "suspend", target: c.email, reason: "chargeback", before: { suspended: false }, after: { suspended: true } });
     expect(lang).toMatchObject({ action: "setLang", before: { lang: "en" }, after: { lang: "ar" } });
-    expect(lang.reason).toBeUndefined();
+    expect(lang.reason).toBe(TEST_REASON);
   });
 });
 
@@ -465,3 +466,126 @@ describe("rule 1182 (spec 1073): no native prompt, confirm or alert in the conso
   });
 });
 
+describe("security review fixes (rules 1184-1190)", () => {
+  const userParams = (email: string) => ({ params: Promise.resolve({ email: encodeURIComponent(email) }) });
+
+  it("rule 1184: an extra field never stands in for who, when, what or why", () => {
+    const r = auditRow({
+      actor: "founder@test.example", section: "users", what: "suspend", target: "c@test.example",
+      extra: { id: "forged", at: "1999-01-01T00:00:00.000Z", actor: "someone-else", section: "system", action: "forged", reason: "forged reason", imp: "x", email: "y", what: "z", before: 1, after: 2, legacy: true, team: "kept" },
+    }, new Date("2026-10-11T10:00:00.000Z"));
+    expect(r).toMatchObject({ actor: "founder@test.example", section: "users", action: "suspend", target: "c@test.example", email: "c@test.example", what: "suspend", at: "2026-10-11T10:00:00.000Z", team: "kept" });
+    expect(r.id).not.toBe("forged");
+    expect(r.id).toMatch(/^[0-9a-f]{12}$/);
+    for (const k of ["reason", "imp", "before", "after", "legacy"]) expect(r, k).not.toHaveProperty(k);
+    const src = read("src/lib/admin-audit.ts");
+    const body = src.slice(src.indexOf("export function auditRow"), src.indexOf("export function maskSecrets"));
+    expect(body.indexOf("...extraOf(i.extra)")).toBeLessThan(body.indexOf("id: randomBytes(6)"));
+  });
+
+  it("rule 1185 (spec 1070): the founder write routes refuse a change without a reason, the key caller included", async () => {
+    const c = await createUser({ email: `a5-${Date.now().toString(36)}@test.example`, name: "C", phone: "", password: "abc12345", lang: "en" });
+    const users = await import("@/app/api/admin/users/[email]/route");
+    const topups = await import("@/app/api/admin/topups/route");
+    const payments = await import("@/app/api/admin/payments/[email]/route");
+    const partners = await import("@/app/api/admin/partners/route");
+    await adminSignIn();
+    for (const reason of ["", "ab", " \n "]) {
+      const r = await users.POST(json("/api/admin/users/x", "POST", { action: "suspend", reason }), userParams(c.email));
+      expect(r.status).toBe(400);
+      expect(await r.json()).toEqual({ ok: false, error: "reason_short" });
+    }
+    const long = await users.POST(json("/api/admin/users/x", "POST", { action: "suspend", reason: "x".repeat(201) }), userParams(c.email));
+    expect(await long.json()).toEqual({ ok: false, error: "reason_long" });
+    expect((await planRoute.POST(json("/api/admin/plan", "POST", { email: c.email, addCredits: 5, reason: "" }))).status).toBe(400);
+    expect((await topups.POST(json("/api/admin/topups", "POST", { email: c.email, action: "void", id: "x", reason: "" }))).status).toBe(400);
+    expect(await (await payments.POST(json("/api/admin/payments/x", "POST", { action: "void", id: "x", reason: "" }), userParams(c.email))).json()).toEqual({ ok: false, error: "reason_short" });
+    expect(await (await partners.POST(json("/api/admin/partners", "POST", { action: "void_payout", email: c.email, id: "x", reason: "" }))).json()).toEqual({ ok: false, error: "reason_short" });
+    // The key header is an admin caller like the cookie: the same refusal.
+    signOut();
+    const viaKey = await users.POST(json("/api/admin/users/x", "POST", { action: "suspend", reason: "" }, { "x-admin-key": KEY }), userParams(c.email));
+    expect(viaKey.status).toBe(400);
+    expect((await getUser(c.email))!.suspended).toBeFalsy();
+    expect(await rows()).toHaveLength(0);
+    // With a reason the change goes through and the row carries it.
+    expect((await users.POST(json("/api/admin/users/x", "POST", { action: "suspend", reason: "chargeback" }, { "x-admin-key": KEY }), userParams(c.email))).status).toBe(200);
+    expect((await rows(1))[0]).toMatchObject({ action: "suspend", reason: "chargeback" });
+    // The forms without a reason field yet keep it optional: a payment record is not refused for its reason.
+    signOut();
+    await adminSignIn();
+    const rec = await (await payments.POST(json("/api/admin/payments/x", "POST", { action: "record", reason: "" }), userParams(c.email))).json();
+    expect(rec.error).not.toBe("reason_short");
+    for (const f of ["src/app/api/admin/users/[email]/route.ts", "src/app/api/admin/plan/route.ts", "src/app/api/admin/topups/route.ts", "src/app/api/admin/payments/[email]/route.ts", "src/app/api/admin/partners/route.ts"]) {
+      expect(read(f), f).toMatch(/const noReason = reasonRefused\(b\.reason\);\n\s+if \(noReason\) return noReason;/);
+    }
+  });
+
+  it("rule 1186: the golden run and the wishlist log who acted, never the fixed word founder", async () => {
+    for (const f of ["src/app/api/admin/golden/route.ts", "src/app/api/admin/wishlist/route.ts"]) {
+      const src = read(f);
+      expect(src, f).not.toMatch(/actor: "founder"/);
+      expect(src, f).toMatch(/const who = await adminActor\(req\);/);
+    }
+    const wishlist = await import("@/app/api/admin/wishlist/route");
+    await adminSignIn();
+    expect((await wishlist.POST(json("/api/admin/wishlist", "POST", { action: "promote", title: { ar: "عنوان", en: "Title" } }))).status).toBe(200);
+    expect((await rows(1))[0]).toMatchObject({ actor: "key", section: "wishlist", action: "wish" });
+  });
+
+  it("rule 1187: the impersonation row is written before the session; a log that fails opens no view", async () => {
+    const src = read("src/app/api/admin/users/[email]/route.ts");
+    const body = src.slice(src.indexOf('case "impersonate"'), src.indexOf('case "resendVerification"'));
+    expect(body.indexOf('await log("impersonate"')).toBeGreaterThan(-1);
+    expect(body.indexOf('await log("impersonate"')).toBeLessThan(body.indexOf("await createSession(email, ttl"));
+    expect(body.indexOf('await log("impersonate"')).toBeLessThan(body.indexOf('jar.set("nashr_impersonate"'));
+    const c = await createUser({ email: `a6-${Date.now().toString(36)}@test.example`, name: "C", phone: "", password: "abc12345", lang: "en" });
+    const users = await import("@/app/api/admin/users/[email]/route");
+    await adminSignIn();
+    const real = db.lpush.bind(db);
+    vi.spyOn(db, "lpush").mockImplementation(((key: string, value: string) => (key === "admin:log" ? Promise.reject(new Error("store down")) : real(key, value))) as typeof db.lpush);
+    await expect(users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", minutes: 15 }), userParams(c.email))).rejects.toThrow();
+    vi.restoreAllMocks();
+    expect(jar().get("nashr_impersonate")).toBeUndefined();
+  });
+
+  it("rule 1188: the console follows only /ar/app or /en/app, and the server builds it from a fixed list", () => {
+    for (const ok of ["/ar/app", "/en/app"]) expect(IMPERSONATE_REDIRECT.test(ok), ok).toBe(true);
+    for (const bad of ["https://evil.example/ar/app", "//evil.example", "/fr/app", "/ar/app/x", "/ar/app?next=//x", "javascript:alert(1)", ""]) expect(IMPERSONATE_REDIRECT.test(bad), bad).toBe(false);
+    expect(read("src/components/admin/Users.tsx")).toContain("window.location.assign(IMPERSONATE_REDIRECT.test(j.redirect) ? j.redirect : `/${lang}/app`)");
+    expect(read("src/app/api/admin/users/[email]/route.ts")).toContain('redirect: `/${u.lang === "en" ? "en" : "ar"}/app`');
+  });
+
+  it("rule 1189: secret-shaped text is masked in free text; emails, dates and short ids are not", async () => {
+    const pasted = {
+      sk: "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv",
+      bearer: "Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig",
+      hex: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      b64: "QWxhZGRpbjpvcGVuIHNlc2FtZQ1234567890abcdefXYZ",
+    };
+    const r = await adminAudit({
+      actor: "key", section: "system", target: "mail", what: `failed with ${pasted.bearer}`,
+      reason: `pasted ${pasted.sk} and ${pasted.hex}`, extra: { note: `token ${pasted.b64}`, refund: "rf_0123456789abcdef01", when: "2026-10-11T10:00:00.000Z", who: "owner@test.example" },
+    });
+    const stored = (await db.lrange("admin:log", 0, 0))[0];
+    for (const v of Object.values(pasted)) expect(stored).not.toContain(v);
+    expect(r.what).toBe("failed with [redacted]");
+    expect(r.reason).toBe("pasted [redacted] and [redacted]");
+    expect(r).toMatchObject({ note: "token [redacted]", refund: "rf_0123456789abcdef01", when: "2026-10-11T10:00:00.000Z", who: "owner@test.example" });
+    expect(r.id).toMatch(/^[0-9a-f]{12}$/);
+  });
+
+  it("rule 1190: the reminder sweep passes the preferences it read, so a push makes no second read", async () => {
+    const { pushNotifs } = await import("@/lib/notifications");
+    const { readPrefsMany } = await import("@/lib/notify-prefs");
+    const u = await newUser("p4n");
+    const known = await readPrefsMany([u.email], u.email);
+    const mget = vi.spyOn(db, "mget");
+    const [pushed] = await pushNotifs(u.email, [{ n: { kind: "todo", title: "A to-do", body: "b", href: "/x" }, scope: u.email }], known);
+    expect(pushed).toBeTruthy();
+    expect(mget).not.toHaveBeenCalled();
+    // A scope the map does not hold reads them all, as before.
+    await pushNotifs(u.email, [{ n: { kind: "todo", title: "B", body: "b", href: "/x" }, scope: "other-scope" }], known);
+    expect(mget).toHaveBeenCalledTimes(1);
+    expect(read("src/lib/secretary-remind.ts")).toContain("await pushNotifs(ctx.email, [{ ...push, scope }], await ctx.prefs())");
+  });
+});

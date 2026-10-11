@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, rotateSession, saveUser } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { forbid } from "@/lib/roles";
-import { allow, retryLater, spent, WINDOW } from "@/lib/rate";
+import { allow, giveBack, retryLater, WINDOW } from "@/lib/rate";
 import { ownPasswordMatches } from "@/lib/own-password";
 import { saveMember, withMemberLock } from "@/lib/team";
 
@@ -21,8 +21,9 @@ const SIGN_OUT_OTHERS_PER_HOUR = 10;
  * is older than any stamp and is signed out too.
  *
  * Needs the login's own password, so a stolen cookie cannot use it to push the real person out; refused while a founder
- * impersonates (`sessions.revoke`). The limit counts wrong passwords only (rule 1170): it is checked before the password
- * and spent after a failure, so the real owner's correct tries never use it up.
+ * impersonates (`sessions.revoke`). The limit counts wrong passwords only (rules 1170 and 1183): every try takes a hit
+ * with `allow` before the password is compared (one atomic INCR, so parallel tries with a stolen cookie cannot all pass
+ * a read of the counter), and a correct password gives its hit back, so the real owner's tries never use it up.
  * Order (rule 1171): `rotateSession` writes this device's new session first, then the stamp, then drops the old record,
  * so a failure at any step leaves this device signed in.
  */
@@ -32,12 +33,11 @@ export async function POST(req: Request) {
   const no = forbid(u, "sessions.revoke");
   if (no) return no;
   const a = u.actor!;
-  if (await spent(`signoutothers:${a.email}`, SIGN_OUT_OTHERS_PER_HOUR)) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
+  const bucket = `signoutothers:${a.email}`;
+  if (!(await allow(bucket, SIGN_OUT_OTHERS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
   const b = (await req.json().catch(() => ({}))) as { password?: unknown };
-  if (!(await ownPasswordMatches(u, b.password))) {
-    await allow(`signoutothers:${a.email}`, SIGN_OUT_OTHERS_PER_HOUR, WINDOW.hour);
-    return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
-  }
+  if (!(await ownPasswordMatches(u, b.password))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
+  await giveBack(bucket);
   const done = await rotateSession(a.email, async (stamp) => {
     if (a.kind === "member") {
       const ok = await withMemberLock(a.email, async (m) => {
