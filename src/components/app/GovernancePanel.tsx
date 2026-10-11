@@ -11,15 +11,7 @@ import { dateFormat } from "@/lib/dates";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
-
-/** `label` is the switch's accessible name (its row's title): a screen reader announces what it turns on, not "switch, off". */
-function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink" : "bg-ink/20"}`}>
-      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
-    </button>
-  );
-}
+import Switch from "@/components/ui/Switch";
 
 /** Declared at module scope: a component created during render is remounted on every keystroke and loses focus. */
 function Row({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
@@ -203,11 +195,11 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
             })}
           </div>
         </div>
-        <Row title={g.reviewer} sub={g.reviewerSub}><Toggle label={g.reviewer} on={gov.reviewer} onChange={(v) => setGov({ ...gov, reviewer: v })} /></Row>
+        <Row title={g.reviewer} sub={g.reviewerSub}><Switch label={g.reviewer} checked={gov.reviewer} onChange={(v) => setGov({ ...gov, reviewer: v })} /></Row>
         {/* A record saved before the switch existed has no value: the server reads it as on, and so does the page. */}
-        <Row title={g.crossReview} sub={g.crossReviewSub}><Toggle label={g.crossReview} on={gov.crossReview !== false} onChange={(v) => setGov({ ...gov, crossReview: v })} /></Row>
-        <Row title={g.learning} sub={g.learningSub}><Toggle label={g.learning} on={gov.learning} onChange={(v) => setGov({ ...gov, learning: v })} /></Row>
-        <Row title={g.noEmDash} sub={g.noEmDashSub}><Toggle label={g.noEmDash} on={gov.noEmDash} onChange={(v) => setGov({ ...gov, noEmDash: v })} /></Row>
+        <Row title={g.crossReview} sub={g.crossReviewSub}><Switch label={g.crossReview} checked={gov.crossReview !== false} onChange={(v) => setGov({ ...gov, crossReview: v })} /></Row>
+        <Row title={g.learning} sub={g.learningSub}><Switch label={g.learning} checked={gov.learning} onChange={(v) => setGov({ ...gov, learning: v })} /></Row>
+        <Row title={g.noEmDash} sub={g.noEmDashSub}><Switch label={g.noEmDash} checked={gov.noEmDash} onChange={(v) => setGov({ ...gov, noEmDash: v })} /></Row>
         <Row title={g.weeklyCap} sub={g.weeklyCapSub}><input type="number" min={0} max={200} value={gov.weeklyCap} onChange={(e) => setGov({ ...gov, weeklyCap: Number(e.target.value) })} className="w-24 rounded border border-ink/15 px-2 py-1 text-sm" dir="ltr" /></Row>
         <Row title={g.notify} sub={g.notifySub}><input type="number" min={0} max={1440} value={gov.notifyMinutes} onChange={(e) => setGov({ ...gov, notifyMinutes: Number(e.target.value) })} className="w-24 rounded border border-ink/15 px-2 py-1 text-sm" dir="ltr" /></Row>
         <div className="card">
@@ -235,7 +227,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
           </ul>
         </div>
         {/* After the caps it depends on. Off for a record saved before the switch existed. Turning it on asks first. */}
-        <Row title={g.autoHandoff} sub={g.autoHandoffSub}><Toggle label={g.autoHandoff} on={gov.majedAutoHandoff === true} onChange={toggleAuto} disabled={!!restoring} /></Row>
+        <Row title={g.autoHandoff} sub={g.autoHandoffSub}><Switch label={g.autoHandoff} checked={gov.majedAutoHandoff === true} onChange={toggleAuto} disabled={!!restoring} /></Row>
         {!readOnly && (
           <div className="flex items-center gap-3">
             <button onClick={save} disabled={busy || !!restoring} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>

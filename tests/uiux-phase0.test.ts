@@ -200,7 +200,8 @@ describe("rule 975: a brand save that fails says why", () => {
   const src = read("src/components/app/BrandForm.tsx");
   it("shows an alert on a refusal and stays on the form after a save of a brand that exists", () => {
     expect(src).toMatch(/if \(!res\?\.ok\) \{/);
-    expect(src).toMatch(/\{err && <p role="alert"/);
+    // The alert is the danger Callout now (rule 1087), which renders role="alert".
+    expect(src).toMatch(/\{err && <Callout tone="danger">/);
     expect(src).toMatch(/if \(initial\) r\.refresh\(\);/);
   });
   it("maps the route's codes and statuses", () => {
@@ -217,7 +218,7 @@ describe("rule 976: Connections never shows a raw error code", () => {
     expect(src).not.toMatch(NATIVE("alert"));
     expect(src).toMatch(/connectError\(lang, errorCode\)/);
     expect(src).not.toMatch(/sp\.get\("error"\)\}\)/);
-    expect(src).toMatch(/<p role="alert"[^>]*>\{actErr \|\| flashErr\}<\/p>/);
+    expect(src).toMatch(/<Callout tone="danger"[^>]*>\{actErr \|\| flashErr\}<\/Callout>/);
   });
   it("covers every code the connect routes answer, in both languages, with a generic fallback", () => {
     const routes = globSync("src/app/api/connect/**/route.ts").map(read).join("\n");

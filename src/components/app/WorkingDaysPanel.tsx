@@ -5,6 +5,10 @@ import type { CalendarView, EidDay, SecCalendar } from "@/lib/secretary-calendar
 import { DEFAULT_RAMADAN_HOURS, DEFAULT_WORK_HOURS, addDays, zoneTimeLabel, type QuietWhy } from "@/lib/secretary-agenda";
 import { fill } from "@/lib/fill";
 import ReadOnlyNote from "./ReadOnlyNote";
+// A day off's switch (rule 1085) is named by the day: a screen reader announces which day it turns off. The name holds
+// a formatted date, which the server's and the browser's ICU may word differently (src/lib/dates.ts), hence
+// `suppressHydrationWarning` on it.
+import Switch from "@/components/ui/Switch";
 import { localDay, useOneWrite } from "./useOneWrite";
 
 /** The settings a save sends: the whole object (PUT /api/secretary/calendar replaces it); `v` and the stamps are the server's. */
@@ -64,18 +68,6 @@ export function withAdded(cal: CalBody | null, value: string, add: boolean): Cal
 }
 /** A day every year: "MM-DD" (Gregorian) or "H-MM-DD" (Hijri). */
 export const yearlyValue = (kind: "greg" | "hijri", month: number, day: number) => `${kind === "hijri" ? "H-" : ""}${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-/**
- * `label` is the switch's accessible name: a screen reader announces which day it turns off. It holds a formatted date,
- * which the server's and the browser's ICU may word differently (src/lib/dates.ts), hence `suppressHydrationWarning`.
- */
-function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled: boolean }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} suppressHydrationWarning onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink" : "bg-ink/20"}`}>
-      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
-    </button>
-  );
-}
 
 const WEEK = [0, 1, 2, 3, 4, 5, 6];
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/, MD = /^(\d{2})-(\d{2})$/, H_MD = /^H-(\d{2})-(\d{2})$/, H_YMD = /^H-(\d{4})-(\d{2})-(\d{2})$/;
@@ -168,7 +160,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
           ))}
         </div>
         <p className="mt-2 text-xs text-muted">{fill(C.defaultLine, { country: C.countries[eff.country], days: dayNames(eff.defaultWeekend) })}</p>
-        {cityHint && !eff.weekend.includes(5) && <p className="mt-2 text-xs text-danger">{C.sharjahHint}</p>}
+        {cityHint && !eff.weekend.includes(5) && <p className="mt-2 text-xs font-medium text-warning">{C.sharjahHint}</p>}
         {canEdit && (
           <div className="mt-3 flex flex-wrap gap-2">
             <button disabled={!!busy || !weekendChanged} onClick={() => save("weekend", withWeekend(v.calendar, days, eff.defaultWeekend))} className="btn btn-primary btn-xs">{C.saveWeekend}</button>
@@ -227,7 +219,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
       <div className="mt-6">
         <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">{C.eid} <span className="badge badge-accent">{C.expected}</span></h3>
         <p className="mt-1 text-xs text-muted">{C.eidSub}</p>
-        {eff.country === "SA" && <p className="mt-1 text-xs text-danger">{C.eidNoteSA}</p>}
+        {eff.country === "SA" && <p className="mt-1 text-xs font-medium text-warning">{C.eidNoteSA}</p>}
         {years.map((y) => (
           <div key={y} className="mt-3">
             <p className="tnum text-xs font-semibold text-ink/70">{fill(C.eidYear, { year: String(y) })}</p>
@@ -272,7 +264,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
                   <span>{nameOf(why)}</span>
                   {why.kind === "added" && <span className="badge badge-primary ms-2">{C.added}</span>}
                 </span>
-                {why.kind !== "added" && <Toggle on label={`${nameOf(why)}: ${day(d)}`} disabled={locked} onChange={() => save("holidays", withHolidayOff(v.calendar, d, true))} />}
+                {why.kind !== "added" && <Switch checked label={`${nameOf(why)}: ${day(d)}`} disabled={locked} suppressHydrationWarning onChange={() => save("holidays", withHolidayOff(v.calendar, d, true))} />}
               </li>
             ))}
           </ul>

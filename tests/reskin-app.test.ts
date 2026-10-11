@@ -117,7 +117,8 @@ describe("app screens are quiet D (rule 519)", () => {
     for (const file of ["src/components/app/AuthForm.tsx", "src/components/app/JoinForm.tsx", "src/components/app/AdminLogin.tsx", "src/components/app/VerifyForm.tsx"]) {
       const src = read(file);
       expect(src, file).not.toMatch(/<button\b[^>]*className="btn btn-primary"/);
-      expect(src.match(/className="s-btn"><Scribble kind="pill" seed="[^"]+" fill="ink" shadow ring \/>/g)?.length ?? 0, file).toBeGreaterThan(0);
+      // Written out, or through the Button primitive's pill (rule 1082), which renders the same `s-btn` with the same scribble.
+      expect(src.match(/className="s-btn"><Scribble kind="pill" seed="[^"]+" fill="ink" shadow ring \/>|<Button type="submit" variant="pill" seed="[^"]+"/g)?.length ?? 0, file).toBeGreaterThan(0);
     }
   });
 

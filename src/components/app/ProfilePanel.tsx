@@ -17,6 +17,8 @@ import PasswordField from "./PasswordField";
 import DeleteAccountDialog from "./DeleteAccountDialog";
 import LogoutButton from "./LogoutButton";
 import Scribble from "@/components/Scribble";
+import Button from "@/components/ui/Button";
+import { Time } from "@/components/ui/Time";
 
 /**
  * GET /api/profile. `me` and `role` are the person acting; `user` is the account summary (the owner also gets the
@@ -207,7 +209,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
               {split.packs.map((p, i) => (
                 <div key={i} className="flex justify-between gap-2 ps-3 text-muted" data-pack-expiry="">
                   <dt>{ar ? <>باقة <span dir="ltr">{formatCount(p.credits)}</span>: متبقٍ <span dir="ltr">{formatCount(p.left)}</span></> : `${formatCount(p.credits)}-credit pack: ${formatCount(p.left)} left`}</dt>
-                  <dd>{ar ? "تنتهي" : "expires"} <span className="font-mono" dir="ltr">{p.expiresAt.slice(0, 10)}</span></dd>
+                  <dd>{ar ? "تنتهي" : "expires"} <Time value={p.expiresAt} lang={lang} className="tnum" /></dd>
                 </div>
               ))}
             </dl>
@@ -322,7 +324,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
       {d.impersonating ? null : canDelete ? (
         <Card title={ar ? "حذف الحساب" : "Delete account"}>
           <p className="text-sm text-muted">{ar ? "يحذف حسابك وكل بياناته نهائياً. لا رجوع." : "Permanently delete your account and all associated data. This action cannot be undone."}</p>
-          <button type="button" onClick={() => setDeleting(true)} className="mt-3 btn btn-danger btn-sm">{ar ? "احذف حسابي" : "Delete account"}</button>
+          <Button variant="danger" size="sm" aria-haspopup="dialog" onClick={() => setDeleting(true)} className="mt-3">{ar ? "احذف حسابي" : "Delete account"}</Button>
           {deleting && <DeleteAccountDialog lang={lang} email={me.email} onClose={() => setDeleting(false)} onDeleted={deleted} failText={deleteFail} />}
         </Card>
       ) : (

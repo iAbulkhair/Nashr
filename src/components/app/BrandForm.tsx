@@ -10,6 +10,11 @@ import { Icon } from "./Icons";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { BrandModelField } from "./ModelPicker";
 import Scribble from "@/components/Scribble";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import Callout from "@/components/ui/Callout";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
 
 const GUARD = {
   ar: { title: "حارس العلامة", body: "كلمات لا تريدها في أي منشور. أي مسودة تحتوي واحدة منها لا تُعتمد ولا تُنشر حتى تعدّلها. التحقق في الكود، وليس وعداً من النموذج.", examples: "أمثلة شائعة، اضغط للإضافة:", count: (n: number) => `${n} كلمة محمية`, none: "لا كلمات بعد: الحارس متوقف.", ex: ["مضمون", "الأفضل", "رقم 1", "رخيص", "بدون ألم"] },
@@ -29,7 +34,6 @@ export function brandSaveError(lang: Lang, status: number, code?: string): strin
   return E.failed;
 }
 
-const input = "input";
 const CHANNELS = ["instagram", "snapchat", "tiktok", "x", "linkedin", "whatsapp", "google"];
 
 /**
@@ -41,20 +45,20 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
   const r = useRouter();
   const o = t.onboarding;
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [langs, setLangs] = useState<string[]>(initial?.languages ?? [lang === "en" ? "en" : "ar"]);
   const [channels, setChannels] = useState<string[]>(initial?.channels ?? ["instagram", "snapchat", "tiktok", "whatsapp"]);
   const [banned, setBanned] = useState(initial?.banned ?? "");
   const G = GUARD[lang];
+  const toast = useToast();
   const terms = bannedTerms(banned);
   const addTerm = (w: string) => setBanned((b) => (bannedTerms(b).some((x) => x.toLowerCase() === w.toLowerCase()) ? b : [b.trim(), w].filter(Boolean).join(lang === "ar" ? "، " : ", ")));
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (readOnly) return;
+    if (busy) return;
     setBusy(true);
-    setMsg("");
     setErr("");
     const fd = Object.fromEntries(new FormData(e.currentTarget));
     const res = await fetch("/api/brand", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, languages: langs, channels }) }).catch(() => null);
@@ -66,7 +70,8 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
       setErr(brandSaveError(lang, res?.status ?? 0, j.error));
       return;
     }
-    setMsg(o.saved);
+    // "Saved" is a toast (rule 1088): it stays readable after the first save moves on to the chat.
+    toast.success(o.saved);
     if (initial) r.refresh();
     else { r.push(`/${lang}/app/chat`); r.refresh(); }
   }
@@ -79,22 +84,26 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
       <form onSubmit={onSubmit} className="mt-6">
         <fieldset disabled={readOnly} className="grid min-w-0 gap-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input name="name" required defaultValue={initial?.name} placeholder={o.name} className={input} />
-            <input name="website" dir="ltr" defaultValue={initial?.website} placeholder={o.website} className={input} />
-            <select name="industry" required defaultValue={initial?.industry ?? ""} className={input}>
-              <option value="" disabled>{o.industry}</option>
-              {o.industries.map((i) => <option key={i} value={i}>{i}</option>)}
-            </select>
-            <input name="city" defaultValue={initial?.city ?? (lang === "ar" ? "الرياض" : "Riyadh")} placeholder={o.city} className={input} />
-            <select name="dialect" defaultValue={initial?.dialect ?? "saudi"} className={input} aria-label={o.dialect}>
-              {Object.entries(o.dialects).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-            <label className="text-xs text-ink/70 sm:col-span-2">{o.timeZone}
-              <select name="timeZone" defaultValue={zoneOf(initial)} className={`${input} mt-1`} dir="auto">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={o.name} required><Input name="name" defaultValue={initial?.name} autoComplete="organization" /></Field>
+            <Field label={o.website}><Input name="website" dir="ltr" inputMode="url" autoComplete="url" defaultValue={initial?.website} /></Field>
+            <Field label={o.industry} required>
+              <Select name="industry" defaultValue={initial?.industry ?? ""}>
+                <option value="" disabled>{o.industry}</option>
+                {o.industries.map((i) => <option key={i} value={i}>{i}</option>)}
+              </Select>
+            </Field>
+            <Field label={o.city}><Input name="city" defaultValue={initial?.city ?? (lang === "ar" ? "الرياض" : "Riyadh")} /></Field>
+            <Field label={o.dialect}>
+              <Select name="dialect" defaultValue={initial?.dialect ?? "saudi"}>
+                {Object.entries(o.dialects).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+            </Field>
+            <Field label={o.timeZone} className="sm:col-span-2">
+              <Select name="timeZone" defaultValue={zoneOf(initial)} dir="auto">
                 {ZONE_IDS.map((z) => <option key={z} value={z}>{`${ZONES[z].city[lang]} (${zoneUtcLabel(z)})`}</option>)}
-              </select>
-            </label>
+              </Select>
+            </Field>
             <fieldset className="flex items-center gap-4 text-sm">
               <legend className="sr-only">{o.languages}</legend>
               <span className="text-muted">{o.languages}:</span>
@@ -105,33 +114,33 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
               ))}
             </fieldset>
           </div>
-          <input name="tone" required defaultValue={initial?.tone} placeholder={o.tone} className={input} />
-          <textarea name="products" required rows={3} defaultValue={initial?.products} placeholder={o.products} className={input} />
-          <textarea name="audience" required rows={2} defaultValue={initial?.audience} placeholder={o.audience} className={input} />
-          <textarea name="offers" rows={2} defaultValue={initial?.offers} placeholder={o.offers} className={input} />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input name="competitors" defaultValue={initial?.competitors} placeholder={o.competitors} className={input} />
-            <input name="preferred" defaultValue={initial?.preferred} placeholder={o.preferred} className={input} />
+          <Field label={o.tone} required><Input name="tone" defaultValue={initial?.tone} /></Field>
+          <Field label={o.products} required><Textarea name="products" rows={3} defaultValue={initial?.products} /></Field>
+          <Field label={o.audience} required><Textarea name="audience" rows={2} defaultValue={initial?.audience} /></Field>
+          <Field label={o.offers}><Textarea name="offers" rows={2} defaultValue={initial?.offers} /></Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={o.competitors}><Input name="competitors" defaultValue={initial?.competitors} /></Field>
+            <Field label={o.preferred}><Input name="preferred" defaultValue={initial?.preferred} /></Field>
           </div>
-          <section id="guard" className={`rounded-xl border p-4 ${terms.length ? "border-ink/30 bg-ink/5" : "border-lemon/50 bg-lemon/10"}`}>
-            <p className="flex items-center gap-2 font-display font-bold text-ink"><Icon name="shield" className="h-5 w-5" />{G.title}<span className={`badge ms-auto ${terms.length ? "badge-primary" : "badge-accent"}`}>{terms.length ? G.count(terms.length) : G.none}</span></p>
+          {/* No terms yet is a heads-up, not an error: the notice pair (rule 1080), where it was lemon on a light ground. */}
+          <section id="guard" aria-labelledby="guard-title" className={`rounded-xl border-[1.5px] p-4 ${terms.length ? "border-border bg-surface-muted" : "border-notice-border bg-notice-bg"}`}>
+            <p id="guard-title" className="flex items-center gap-2 font-display font-bold text-ink"><Icon name="shield" className="h-5 w-5" />{G.title}<Badge tone={terms.length ? "info" : "warning"} className="ms-auto">{terms.length ? G.count(terms.length) : G.none}</Badge></p>
             <p className="mt-1 text-xs text-ink/70">{G.body}</p>
-            <input name="banned" value={banned} onChange={(e) => setBanned(e.target.value)} placeholder={o.banned} aria-label={G.title} className={`${input} mt-3`} />
+            <Field label={o.banned} className="mt-3"><Input name="banned" value={banned} onChange={(e) => setBanned(e.target.value)} /></Field>
             {terms.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5">{terms.map((w) => <li key={w} className="pop-in flex items-center gap-1 rounded-full bg-ink px-2.5 py-0.5 text-xs text-lilac" dir="auto"><Icon name="lock" className="h-3 w-3 text-lemon" />{w}</li>)}</ul>}
             <p className="mt-3 text-xs text-muted">{G.examples}</p>
-            <div className="mt-1 flex flex-wrap gap-1.5">{G.ex.filter((w) => !terms.some((x) => x.toLowerCase() === w.toLowerCase())).map((w) => <button type="button" key={w} onClick={() => addTerm(w)} className="rounded-full border border-dashed border-ink/40 px-2.5 py-0.5 text-xs text-ink hover:bg-ink hover:text-lilac" dir="auto">+ {w}</button>)}</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">{G.ex.filter((w) => !terms.some((x) => x.toLowerCase() === w.toLowerCase())).map((w) => <button type="button" key={w} onClick={() => addTerm(w)} className="min-h-8 rounded-full border border-dashed border-ink/40 px-3 py-1 text-xs text-ink hover:bg-ink hover:text-lilac" dir="auto">+ {w}</button>)}</div>
           </section>
           <fieldset className="flex flex-wrap items-center gap-2 text-sm">
             <legend className="mb-1 w-full text-muted">{o.channels}</legend>
             {CHANNELS.map((c) => (
-              <button type="button" key={c} onClick={() => toggle(channels, setChannels, c)} className={`rounded-full border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-60 ${channels.includes(c) ? "border-ink bg-ink text-lilac" : "border-ink/20 bg-white"}`}>
+              <button type="button" key={c} aria-pressed={channels.includes(c)} onClick={() => toggle(channels, setChannels, c)} className={`min-h-9 rounded-full border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-60 ${channels.includes(c) ? "border-ink bg-ink text-lilac" : "border-ink/20 bg-white"}`}>
                 {c}
               </button>
             ))}
           </fieldset>
-          {!readOnly && <button disabled={busy} className="btn btn-primary">{o.save}</button>}
-          <p role="status" className="text-sm text-ink">{msg}</p>
-          {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+          {err && <Callout tone="danger">{err}</Callout>}
+          {!readOnly && <Button type="submit" loading={busy} className="justify-self-start">{o.save}</Button>}
         </fieldset>
       </form>
       {initial && <BrandModelField t={t} lang={lang} stored={initial.model} readOnly={readOnly} canConfirmChina={canConfirmChina} />}
