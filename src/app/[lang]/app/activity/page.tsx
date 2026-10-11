@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -6,6 +7,8 @@ import { listActivity, publicActivity } from "@/lib/activity";
 import ActivityPanel from "@/components/app/ActivityPanel";
 
 export const dynamic = "force-dynamic";
+
+export const generateMetadata = appScreenMeta("activity");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;

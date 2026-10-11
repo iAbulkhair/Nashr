@@ -102,7 +102,9 @@ export async function scoreItems(email: string | undefined, brand: Brand, type: 
   const client = anthropic({ timeoutMs: MODEL_BUDGET.JUDGE_MS, maxRetries: 1 });
   // A stream, so a judge cut by its time limit is metered for what it was billed (rule 980). `until` bounds the whole
   // reply by JUDGE_MS, as the request's own timeout did when this was one request (a stream's timeout covers only the
-  // wait for the headers); a retry, only of an attempt that never started, shares the same limit.
+  // wait for the headers); a retry, only of an attempt that never started, shares the same limit. The clock is read once,
+  // so the timeout equals JUDGE_MS exactly (rule 1206).
+  const now = Date.now();
   const res = await metered(client.messages.stream({
     model: route("judge", { generatedBy: ctx.generatedBy, task: type }).model,
     max_tokens: 8000,
@@ -113,7 +115,7 @@ export async function scoreItems(email: string | undefined, brand: Brand, type: 
       role: "user",
       content: `AGENT: ${agent.name.en}, ${agent.role.en}\n\nTASK SPEC\n${taskSpec(type)}${requested < TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${requested} item(s) of this type, not the full batch of ${TASK_COUNT[type]}. Do not penalize the missing rest of the batch or the channel mix; judge each item against the part of the spec it covers.` : ""}${items.length < requested ? `\n\nSHORTFALL: the owner asked for ${requested} item(s) and only ${items.length} were delivered. That is a completeness failure of the batch: reflect it in the completeness score of every item, and say so in the notes.` : ""}\n\n<brand_file>\n${asData({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n</brand_file>${groundingBlocks(ctx)}\n\n<items>\n${asData(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, JUDGE_BODY_CHARS) })))}\n</items>`,
     }],
-  }, until(Date.now() + MODEL_BUDGET.JUDGE_MS)), { email, kind: "judge", agent: agent.id });
+  }, until(now + MODEL_BUDGET.JUDGE_MS, { now })), { email, kind: "judge", agent: agent.id });
   const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   let arr: Array<Record<string, unknown>>;
   try {

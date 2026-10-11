@@ -87,7 +87,10 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
   const xAt = (i: number) => PAD + (pts.length > 1 ? (i / (pts.length - 1)) * (W - 2 * PAD) : (W - 2 * PAD) / 2);
   const yAt = (v: number) => H - PAD - (v / maxY) * (H - 2 * PAD);
   const line = (key: "created" | "approved" | "published") => pts.map((d, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(d[key]).toFixed(1)}`).join(" ");
-  const colors = { created: "var(--color-inverse-muted)", approved: "var(--color-primary)", published: "var(--color-accent)" };
+  // Chart series tokens (rule 967): each at least 3:1 on paper, each with its own dash so the lines differ without colour.
+  const colors = { created: "var(--chart-1)", approved: "var(--chart-2)", published: "var(--chart-3)" };
+  const dashes = { created: undefined, approved: "6 3", published: "2 3" };
+  const swatch = (key: keyof typeof colors) => <svg width="16" height="8" aria-hidden="true" className="shrink-0"><line x1="0" y1="4" x2="16" y2="4" stroke={colors[key]} strokeWidth="2" strokeDasharray={dashes[key]} /></svg>;
   const rangeHref = (rg: string) => `/${lang}/app/reports?range=${rg}`;
 
   return (
@@ -154,11 +157,11 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
           <div className="flex gap-2"><button onClick={() => setSeries({ created: true, approved: true, published: true })} className="btn btn-secondary btn-xs">{R.showAll}</button><button onClick={() => setSeries({ created: false, approved: false, published: false })} className="btn btn-secondary btn-xs">{R.hideAll}</button></div>
         </div>
         <div className="mt-2 flex flex-wrap gap-3 text-xs">
-          {(["created", "approved", "published"] as const).map((key) => <label key={key} className="flex items-center gap-1.5"><input type="checkbox" checked={series[key]} onChange={() => setSeries((p) => ({ ...p, [key]: !p[key] }))} /><span className="inline-block h-2 w-4 rounded" style={{ background: colors[key] }} />{R.series[key]}</label>)}
+          {(["created", "approved", "published"] as const).map((key) => <label key={key} className="flex items-center gap-1.5"><input type="checkbox" checked={series[key]} onChange={() => setSeries((p) => ({ ...p, [key]: !p[key] }))} />{swatch(key)}{R.series[key]}</label>)}
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full" role="img" aria-label={R.trendsTitle}>
           {[0, 0.5, 1].map((f) => <g key={f}><line x1={PAD} x2={W - PAD} y1={yAt(maxY * f)} y2={yAt(maxY * f)} stroke="currentColor" strokeOpacity="0.08" /><text x={W - PAD + 4} y={yAt(maxY * f) + 4} fontSize="10" fill="currentColor" fillOpacity="0.5">{Math.round(maxY * f)}</text></g>)}
-          {(["created", "approved", "published"] as const).filter((key) => series[key]).map((key) => <path key={key} d={line(key)} fill="none" stroke={colors[key]} strokeWidth="2" strokeLinejoin="round" />)}
+          {(["created", "approved", "published"] as const).filter((key) => series[key]).map((key) => <path key={key} d={line(key)} fill="none" stroke={colors[key]} strokeWidth="2" strokeDasharray={dashes[key]} strokeLinejoin="round" />)}
           {pts.length > 0 && [0, Math.floor(pts.length / 2), pts.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => <text key={i} x={xAt(i)} y={H - 6} fontSize="10" textAnchor="middle" fill="currentColor" fillOpacity="0.5">{pts[i].date.slice(5)}</text>)}
         </svg>
       </div>

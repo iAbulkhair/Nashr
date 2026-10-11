@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -45,6 +46,8 @@ const calReady = (id: "gcal" | "mscal") => {
  * for the form. The brand file, `sec:cal` and `sec:away` are the records the agenda was read with
  * (`todoPage`), at the same instant: nothing is read twice.
  */
+export const generateMetadata = appScreenMeta("todo");
+
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams?: Promise<{ series?: string | string[] }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();

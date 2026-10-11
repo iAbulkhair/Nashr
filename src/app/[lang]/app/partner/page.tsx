@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
@@ -19,6 +20,8 @@ export const dynamic = "force-dynamic";
  * only (`partner`): a member of a partner's team sees a note and nothing is read. An account that is not a partner is
  * pointed at the public application page and the terms.
  */
+export const generateMetadata = appScreenMeta("partner");
+
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();

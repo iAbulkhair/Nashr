@@ -498,6 +498,8 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
       try {
         // A stream, so a review cut by its time limit is metered for what it was billed (rule 980). The limit bounds the
         // whole reply, as it did when this was one request: `until` aborts the body too, not only the wait for headers.
+        // The clock is read once, so the timeout equals the budget exactly (rule 1206).
+        const now = Date.now();
         const res = await metered(client.messages.stream({
           model,
           max_tokens: 4000,
@@ -505,7 +507,7 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
           output_config: { effort: "low" },
           system: [{ type: "text", text: crossReviewPrompt(r), cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content }],
-        }, { ...until(Date.now() + CROSS_REVIEW_TIMEOUT_MS), maxRetries: 0 }), { email: ctx.meter, kind: "xreview", agent: r });
+        }, { ...until(now + CROSS_REVIEW_TIMEOUT_MS, { now }), maxRetries: 0 }), { email: ctx.meter, kind: "xreview", agent: r });
         if (res.stop_reason === "refusal") return [];
         const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
         return parseCrossVerdicts(raw, items.length, r, res.model, new Date().toISOString());

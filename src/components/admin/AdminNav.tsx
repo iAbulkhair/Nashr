@@ -2,15 +2,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ADMIN_LEADS_SEEN, ADMIN_SECTIONS, adminHref, type AdminSection } from "@/lib/admin-gate";
+import { ADMIN_LABEL, ADMIN_LEADS_SEEN, ADMIN_SECTIONS, adminHref, type AdminSection } from "@/lib/admin-gate";
 import { adminFetch } from "@/lib/admin-fetch";
 import LangToggle from "../LangToggle";
 import { Icon, type IconName } from "../app/Icons";
 
-export const ADMIN_LABEL: Record<"en" | "ar", Record<AdminSection, string>> = {
-  en: { overview: "Overview", users: "Users", leads: "Leads", usage: "Usage", billing: "Billing", partners: "Partners", quality: "Quality", wishlist: "Wishlist", log: "Audit log" },
-  ar: { overview: "نظرة عامة", users: "المستخدمون", leads: "العملاء المحتملون", usage: "الاستخدام", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", wishlist: "الأمنيات", log: "سجل الإجراءات" },
-};
 const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", wishlist: "spark", log: "clock" };
 const T = {
   ar: { title: "لوحة المؤسس", back: "العودة للتطبيق", endKey: "إنهاء جلسة المفتاح", menu: "القائمة" },
@@ -48,7 +44,7 @@ export default function AdminNav({ lang, keySession, founder }: { lang: "ar" | "
         <Link href={adminHref(lang, "overview")} onClick={() => setOpen(false)} className="font-display text-lg font-bold">{S.title}</Link>
         <LangToggle lang={lang} size="sm" />
       </div>
-      <nav className="grid gap-0.5">
+      <nav aria-label={lang === "ar" ? "أقسام لوحة المؤسس" : "Founder console sections"} className="grid gap-0.5">
         {ADMIN_SECTIONS.map((s) => (
           <Link key={s} href={adminHref(lang, s)} onClick={() => setOpen(false)} aria-current={active(s) ? "page" : undefined} className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition ${active(s) ? "bg-lilac font-semibold text-ink" : "text-muted hover:bg-lilac/60 hover:text-ink"}`}>
             <span className="flex items-center gap-2"><Icon name={ICON[s]} className="h-4 w-4" />{ADMIN_LABEL[lang][s]}</span>

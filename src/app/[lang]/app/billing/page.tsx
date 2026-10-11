@@ -1,6 +1,7 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { dict, isLang } from "@/lib/i18n";
+import { SUPPORT_EMAIL, dict, isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, seatLimit } from "@/lib/auth";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthPriceSar, formatCount, type SelfServePlan } from "@/lib/pricing";
@@ -20,6 +21,8 @@ import Scribble from "@/components/Scribble";
 import { PaymobPayButton, PaymobPlanCard } from "@/components/app/PaymobBilling";
 import { paymobConfig } from "@/lib/paymob";
 import { billingView } from "@/lib/billing";
+
+export const generateMetadata = appScreenMeta("billing");
 
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const { lang } = await params;
@@ -121,7 +124,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               ) : href ? (
                 <a href={href} target="_blank" rel="noreferrer" className="mt-4 rounded-full bg-ink px-4 py-2 text-center text-sm font-semibold text-lilac">{offer ? O.activate : links[k] ? t.billing.pay : t.billing.contact}</a>
               ) : (
-                <a href="mailto:hello@nashr.ai" className="mt-4 rounded-full border border-ink/20 px-4 py-2 text-center text-sm">{offer ? `${O.noWa} ` : ""}hello@nashr.ai</a>
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="mt-4 rounded-full border border-ink/20 px-4 py-2 text-center text-sm">{offer ? `${O.noWa} ` : ""}{SUPPORT_EMAIL}</a>
               )}
               {offer && !online && links[k] && <a href={links[k]} target="_blank" rel="noreferrer" className="mt-2 text-center text-xs text-muted underline">{O.fullPrice}</a>}
             </div>
