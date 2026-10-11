@@ -1,4 +1,9 @@
-"""Build Nashr seed pitch deck (16:9) with python-pptx."""
+"""Build Nashr seed pitch deck (16:9) with python-pptx.
+
+Honesty rules (rule 928, tests/release-honesty.test.ts): no invented customer or merchant quote, no invented product
+log numbers, plan prices and credits as in src/lib/pricing.ts (SAR, VAT added on top), no trial length (undecided),
+no data-residency or compliance claim the code does not prove, and the contact address is hello@thakeen.com.
+"""
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
@@ -139,23 +144,19 @@ s = prs.slides.add_slide(BLANK)
 bg(s, DEEP)
 text(s, Inches(0.8), Inches(1.6), Inches(6), Inches(1), "نشر  ·  Nashr", 22, SAFF, True)
 text(s, Inches(0.8), Inches(2.3), Inches(11), Inches(2.4), ["While you sleep,", "Noor markets."], 60, MIST, True)
-text(s, Inches(0.8), Inches(4.7), Inches(10), Inches(1), "The autonomous AI marketing agent for Gulf businesses — Arabic-first, WhatsApp-native, hosted in-Kingdom.", 18, DIM)
+text(s, Inches(0.8), Inches(4.7), Inches(10), Inches(1), "The AI marketing team for Gulf businesses, Arabic-first: it drafts, you approve.", 18, DIM)
 text(s, Inches(0.8), Inches(6.2), Inches(10), Inches(0.5), "Seed round  ·  September 2026  ·  Riyadh", 12, DIM)
 sadu(s)
 
 # 2 Problem
 s = slide_light("Every Gulf business needs daily marketing in two languages across six channels. Almost none have a marketer.", "Problem", 2)
-bullets(s, Inches(0.8), Inches(2.6), Inches(6.2), Inches(4), [
+bullets(s, Inches(0.8), Inches(2.6), Inches(11.7), Inches(4), [
     "40k+ Salla and Zid stores, 100k+ SMEs on Snap/TikTok ads — most run by the owner, at night.",
     "Freelancers and agencies charge SAR 2–6k/month for inconsistent Arabic content and zero accountability.",
     "Ads are tuned by gut. Seasons (Ramadan, National Day, White Friday) arrive unplanned.",
     "Leads land on WhatsApp and go cold. No one follows up.",
     "Global AI tools are English-first, non-agentic, and blind to Gulf channels, payments, and calendar.",
 ], 16)
-rect(s, Inches(7.6), Inches(2.6), Inches(4.9), Inches(3.6), OASIS, MSO_SHAPE.ROUNDED_RECTANGLE)
-text(s, Inches(7.9), Inches(2.8), Inches(4.4), Inches(0.5), "What a merchant told us", 12, SAFF, True)
-text(s, Inches(7.9), Inches(3.3), Inches(4.4), Inches(2.8), "“I spend SAR 25k a month on Snap and I have no idea if it works. I post when I remember. Ramadan came and I had nothing ready.”", 18, MIST)
-text(s, Inches(7.9), Inches(5.6), Inches(4.4), Inches(0.5), "— Perfume store, Riyadh, SAR 1.8M GMV", 11, DIM)
 
 # 3 Solution
 s = slide_dark("Noor: an AI agent that plans, creates, publishes, tunes ads, and reports — you only approve.", "Solution", 3)
@@ -172,26 +173,23 @@ for i, (h, b) in enumerate(cols):
     text(s, x + Inches(0.2), Inches(2.75), Inches(1.9), Inches(0.5), h, 18, SAFF, True)
     text(s, x + Inches(0.2), Inches(3.3), Inches(1.9), Inches(2.6), b, 12, MIST)
 
-# 4 Product (overnight log)
-s = slide_light("A night with Noor", "Product", 4)
+# 4 Product (how a week works; what the product does today, no invented numbers)
+s = slide_light("A week with Noor", "Product", 4)
 rows = [
-    ("Time", "Action", "Agent"),
-    ("23:40", "Snap campaign ROAS fell to 1.8 → cut 30%, moved budget to TikTok", "Sultan · Ads"),
-    ("01:15", "Wrote 1,800-word Arabic article on a keyword competitors miss", "Faisal · SEO/GEO"),
-    ("02:50", "12 posts for next week in light Saudi dialect + 3 UGC scripts", "Lama · Social"),
-    ("04:30", "Competitor changed 6 prices → comparison added to brief", "Noor"),
-    ("06:00", "Abandoned-cart WhatsApp to 214 customers (expected 8–12% conversion)", "Reem · WhatsApp"),
-    ("08:00", "Morning brief sent: 4 approvals pending, revenue SAR 18,420 (+11%)", "Noor"),
+    ("When", "What happens", "Agent"),
+    ("Sunday morning", "Drafts the brand's weekly plan", "Noor"),
+    ("When you ask", "Posts, articles, WhatsApp messages and ad copy in the brand's voice", "Noor"),
+    ("When you ask", "Pricing review, customer follow-up sequences, reports", "Razan · Sami · Dana"),
+    ("Every day, 08:00 KSA", "Morning brief in the app: what waits for approval, credits, seasons ahead", "Noor"),
 ]
-table(s, Inches(0.8), Inches(2.5), Inches(11.7), rows, [Inches(1.1), Inches(8.2), Inches(2.4)], 13)
-text(s, Inches(0.8), Inches(5.9), Inches(11), Inches(0.6), "Default: everything waits for approval. Trust builds → delegate by type. Acceptance rate reaches 95% by week 8.", 13, GREY)
+table(s, Inches(0.8), Inches(2.5), Inches(11.7), rows, [Inches(2.4), Inches(6.9), Inches(2.4)], 13)
+text(s, Inches(0.8), Inches(5.9), Inches(11), Inches(0.6), "An illustrative example, not a real account. Nothing is published before you approve it.", 13, GREY)
 
 # 5 Why now
 s = slide_dark("Why now", "Timing", 5)
 stat(s, Inches(0.8), Inches(2.5), "90%+", "of Saudi internet users on Snapchat; TikTok Shop live in KSA")
 stat(s, Inches(3.9), Inches(2.5), "40k+", "Salla/Zid merchants — an app-store distribution channel that didn't exist 4 years ago")
-stat(s, Inches(7.0), Inches(2.5), "PDPL", "In-Kingdom data rules now enforced — global tools can't comply cheaply")
-stat(s, Inches(10.1), Inches(2.5), "$39→", "Agentic marketing proven in the US (Enrich Labs, 1,400+ businesses in 18 months)")
+stat(s, Inches(7.0), Inches(2.5), "$39→", "Agentic marketing proven in the US (Enrich Labs, 1,400+ businesses in 18 months)")
 text(s, Inches(0.8), Inches(4.9), Inches(11.5), Inches(1.5), "Frontier models now write Gulf Arabic well enough to ship with a human QA loop. WhatsApp Business API is open. Agent frameworks are mature. The window to own “the marketer for Salla stores” is 12–18 months.", 16, MIST)
 
 # 6 Market
@@ -203,15 +201,16 @@ text(s, Inches(0.8), Inches(4.6), Inches(11.5), Inches(1.6), ["Beachhead: KSA e-
 
 # 7 Business model
 s = slide_dark("Subscription + credits. Cheaper than one hire, faster than an agency.", "Business model", 7)
+# Prices, credits and seats as in src/lib/pricing.ts (PLAN_PRICE_SAR, PLAN_CREDITS, PLAN_SEATS, AGENCY_MIN).
 rows = [
-    ("Plan", "SAR / month", "Credits", "For", "Gross margin"),
-    ("Starter", "149", "200", "Solo sellers, creators", "~69%"),
-    ("Pro", "399", "700", "Founders, stores, clinics", "~75%"),
-    ("Agency", "799", "2,000 (roll over)", "Agencies, multi-branch", "~72%"),
-    ("Enterprise", "custom (~4,500)", "custom", "Groups, real-estate developers", "~79%"),
+    ("Plan", "SAR / month + VAT", "Credits / month", "Seats", "For"),
+    ("Starter", "299", "300", "1", "Solo sellers, creators"),
+    ("Pro", "499", "700", "3", "Founders, stores, clinics"),
+    ("Business", "999", "1,500", "7", "Bigger teams and businesses"),
+    ("Agency", "Contact us", "from 1,500", "sized to the team", "Agencies and large groups"),
 ]
-table(s, Inches(0.8), Inches(2.5), Inches(11.7), rows, [Inches(1.6), Inches(2.0), Inches(2.2), Inches(3.9), Inches(2.0)], 13, dark=True)
-text(s, Inches(0.8), Inches(5.0), Inches(11.5), Inches(1.4), ["Credits meter real model + media cost (post = 1, article = 2, WhatsApp campaign = 3, video = 12–24). Top-ups and extra seats/brands add ~12% revenue.", "7-day trial, no card. Annual = 2 months free. Billing via Tap/Moyasar (mada, Apple Pay, STC Pay)."], 13, DIM)
+table(s, Inches(0.8), Inches(2.5), Inches(11.7), rows, [Inches(1.6), Inches(2.4), Inches(2.2), Inches(2.0), Inches(3.5)], 13, dark=True)
+text(s, Inches(0.8), Inches(5.0), Inches(11.5), Inches(1.4), ["Credits meter each task's real model and media cost; the cost of every task is on thakeen.com/pricing. Monthly credits do not roll over; paid plans can add top-up packs.", "Free trial, no card. Prices are in SAR and exclude VAT."], 13, DIM)
 
 # 8 Moat
 s = slide_light("Why a US player can't just localize", "Moat", 8)
@@ -222,7 +221,6 @@ rows = [
     ("Owned channel", "Email (Klaviyo)", "WhatsApp Business API (+SMS, email)"),
     ("Commerce", "Shopify, Woo", "Salla, Zid, Shopify, Woo — app-store distribution"),
     ("Calendar", "US retail", "Hijri + national days + White Friday + DSF"),
-    ("Data", "US hosting", "KSA region, PDPL-compliant"),
     ("Payments", "Stripe", "Tap / Moyasar, mada, Tabby/Tamara awareness"),
 ]
 table(s, Inches(0.8), Inches(2.4), Inches(11.7), rows, [Inches(2.0), Inches(3.5), Inches(6.2)], 12)
@@ -230,7 +228,7 @@ table(s, Inches(0.8), Inches(2.4), Inches(11.7), rows, [Inches(2.0), Inches(3.5)
 # 9 GTM
 s = slide_dark("Go-to-market: distribution we don't have to buy", "GTM", 9)
 bullets(s, Inches(0.8), Inches(2.5), Inches(5.8), Inches(4), [
-    "Salla + Zid app stores — “Noor for Salla”, 30 days free for installs.",
+    "Salla + Zid app stores — “Noor for Salla”.",
     "Founder-led Arabic content: free tools (hook generator, Ramadan planner, Snap audit), weekly threads, YouTube teardowns.",
     "Agency white-label: 25% rev-share; agencies bring 5–10 brands each.",
     "Partnerships: Tap/Moyasar merchant base, Monsha'at programs, Snap KSA partner team, TikTok Shop MENA.",
@@ -319,7 +317,7 @@ bullets(s, Inches(0.8), Inches(4.3), Inches(6.2), Inches(2), [
     "Milestones unlocked: Salla + Zid app-store listings, WhatsApp + Snap approvals, 20 design partners → 220 paying by month 6, 970 by month 12.",
     "Series A trigger: SAR 1M MRR (~month 18), NRR ≥ 105%, UAE live.",
 ], 14)
-text(s, Inches(0.8), Inches(6.4), Inches(11), Inches(0.5), "hello@nashr.ai  ·  nashr.ai", 12, GREY)
+text(s, Inches(0.8), Inches(6.4), Inches(11), Inches(0.5), "hello@thakeen.com  ·  thakeen.com", 12, GREY)
 
 prs.save(OUT)
 print("saved", OUT, len(prs.slides), "slides")
