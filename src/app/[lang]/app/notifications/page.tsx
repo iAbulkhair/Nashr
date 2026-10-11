@@ -15,5 +15,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  return <NotificationsPanel t={appDict[lang]} initial={await listNotifs(u.email)} />;
+  return <NotificationsPanel t={appDict[lang]} lang={lang} initial={await listNotifs(u.email)} />;
 }
