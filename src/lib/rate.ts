@@ -25,6 +25,14 @@ export async function allow(bucket: string, max: number, windowSeconds: number):
   return n <= max;
 }
 
+/**
+ * True when `bucket` already holds `max` hits, without adding one. With `allow` called only on a failure, a route counts
+ * failed attempts alone (rule 1170): a correct answer never spends the allowance.
+ */
+export async function spent(bucket: string, max: number): Promise<boolean> {
+  return Number((await db.get<number | string>(`rate:${bucket}`)) ?? 0) >= max;
+}
+
 /** The `Retry-After` header for a wait of `seconds`: whole seconds, at least one. */
 export const retryAfter = (seconds: number) => ({ "Retry-After": String(Math.max(1, Math.ceil(seconds))) });
 

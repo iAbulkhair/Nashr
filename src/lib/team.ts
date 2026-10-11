@@ -41,6 +41,8 @@ export type Member = {
   acceptedAt: string;
   /** Sessions issued before it are dead (own password change or reset). Set to `acceptedAt` on creation. */
   sessionsAfter?: string;
+  /** The member's last "sign out other devices" (rule 1170): browser sessions only, never feed or booking links. Optional (expand). */
+  devicesAfter?: string;
   /** Set by `enforceSeats` when the plan shrinks; the member is kept, never deleted for it. */
   disabled?: "seats";
 };

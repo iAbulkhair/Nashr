@@ -62,6 +62,12 @@ export type User = {
   /** ISO time of the last password change: every session issued before it is dead (src/lib/auth.ts `currentUser`). */
   sessionsAfter?: string;
   /**
+   * ISO time of the owner's last "sign out other devices" (rule 1170): browser sessions issued before it are dead, and
+   * nothing else is. Unlike `sessionsAfter` it never ends the calendar feed or booking links (`loginHolds` does not read
+   * it), MCP tokens or connected apps. Optional, added 2026-10-11 (expand): a record without it signs nothing out.
+   */
+  devicesAfter?: string;
+  /**
    * Credits charged this UTC calendar month per brand scope and agent (`charge` in src/lib/credits.ts, under the same
    * lock and in the same save as the balance). A record whose `month` is not the current one counts as empty.
    */
@@ -312,6 +318,27 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
 }
 
+/**
+ * Give this device a fresh session for `email`, then run `revoke(stamp)`, then drop the old session record (rule 1171).
+ * The new session is written first and issued at or after `stamp`, so a revocation stamped `stamp` never ends it, and
+ * a failure at any step leaves the device signed in: before `revoke` the old session still holds, after it the new one
+ * does. When `revoke` answers false (nothing was revoked) the new session is removed and the old cookie put back.
+ */
+export async function rotateSession(email: string, revoke: (stamp: string) => Promise<boolean>): Promise<boolean> {
+  const jar = await cookies();
+  const old = jar.get(COOKIE)?.value;
+  const stamp = new Date().toISOString();
+  await createSession(email);
+  const fresh = jar.get(COOKIE)?.value;
+  if (!(await revoke(stamp))) {
+    if (fresh && fresh !== old) await db.del(`session:${fresh}`);
+    if (old) jar.set(COOKIE, old, await sessionCookie(SESSION_TTL));
+    return false;
+  }
+  if (old && old !== fresh) await db.del(`session:${old}`).catch(() => {});
+  return true;
+}
+
 export async function destroySession() {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
@@ -365,6 +392,7 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   if (u) {
     if (u.suspended) return null;
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
+    if (issuedBefore(s.at, u.devicesAfter)) return null; // issued before the owner's last "sign out other devices" (rule 1170)
     // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
     // `currentUserUnverified`. A founder impersonation passes (support must reach the account). A member login (below)
     // is gated by its owner's state too (rule 767).
@@ -379,7 +407,7 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   if (!m || s.imp || m.disabled) return null;
   if (m.role !== "admin" && m.role !== "member") return null;
   if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === email) return null;
-  if (issuedBefore(s.at, m.sessionsAfter)) return null;
+  if (issuedBefore(s.at, m.sessionsAfter) || issuedBefore(s.at, m.devicesAfter)) return null;
   // The roster entry too, in the same round: removal deletes both under `lock:member`, and a record that outlived its
   // entry anyway (restored by a racing write, left by a deleted account) is off the owner's Members page, so it must
   // not sign in either.
