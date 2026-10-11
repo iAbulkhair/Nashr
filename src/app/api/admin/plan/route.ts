@@ -12,7 +12,7 @@ import { enforceSeats } from "@/lib/team";
 import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 import { parseVideoGrant } from "@/lib/entitlements";
-import { adminAudit } from "@/lib/admin-audit";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -111,6 +111,9 @@ export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { email?: string; plan?: Plan; deal?: unknown; addCredits?: unknown; seats?: number | null; chatAllowance?: unknown; videoGrant?: unknown; reason?: string };
+  // Every plan change asks a reason in the console, so the server asks it too (rule 1185).
+  const noReason = reasonRefused(b.reason);
+  if (noReason) return noReason;
   const email = typeof b.email === "string" ? normalizeEmail(b.email) : "";
   // A seat override is a whole number of seats, the owner included; null or 0 goes back to the plan's.
   const seatsGiven = b.seats !== undefined;

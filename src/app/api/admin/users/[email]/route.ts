@@ -24,7 +24,7 @@ import { forceRemoveMember, getMember, membersKey, onRoster } from "@/lib/team";
 import { unfinishedRefunds } from "@/lib/partners";
 import { sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
 import { TRIAL_EXTEND_MAX_DAYS, parseImpersonateMinutes } from "@/lib/admin-input";
-import { adminAudit } from "@/lib/admin-audit";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +84,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   const email = normalizeEmail(decodeURIComponent(raw)); // the same normalized key for lookup, locks and deletion
   const u = await getUser(email);
   const b = (await req.json().catch(() => ({}))) as Action;
+  // Every action here asks a reason in the console, so the server asks it too (rule 1185).
+  const noReason = reasonRefused(b.reason);
+  if (noReason) return noReason;
   const log = (what: string, extra: Record<string, unknown> = {}) => {
     const { before, after, action, ...rest } = extra;
     return adminAudit({ actor: who, section: "users", target: email, what, reason: b.reason, before, after, ...(typeof action === "string" ? { action } : {}), ...(Object.keys(rest).length ? { extra: rest } : {}) });
@@ -142,20 +145,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const minutes = parseImpersonateMinutes(b.minutes);
       if (!minutes) return NextResponse.json({ ok: false, error: "bad_minutes" }, { status: 400 });
       const ttl = minutes * 60;
+      // Opened with the console key: the session is tied to that key and key session, so "End key session" and a key
+      // rotation end it too (rule 429).
+      const bind = who === "key" ? await keyImpBinding() : null;
+      // The audit row is written BEFORE the session exists (rule 1187): when the log cannot be written, no view of the
+      // account opens. `minutes` at most; one opened from a key session also ends with it: after 15 minutes without a
+      // request on either side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
+      await log("impersonate", { action: "impersonate.start", expiresInMin: minutes, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
       const jar = await cookies();
       const mine = jar.get("nashr_session")?.value;
       if (mine) jar.set("nashr_return", mine, await sessionCookie(ttl));
       jar.set("nashr_impersonate", email, await sessionCookie(ttl));
       // The session record carries the founder (`imp`): it resolves to actor kind "founder", which never passes the
       // founder console and is refused account delete, password change, invites, role changes, MCP tokens and OAuth.
-      // Opened with the console key: the session is tied to that key and key session, so "End key session" and a key
-      // rotation end it too (rule 429).
-      const bind = who === "key" ? await keyImpBinding() : null;
       await createSession(email, ttl, { imp: who, ...(bind ?? {}) });
-      // `minutes` at most; one opened from a key session also ends with it: after 15 minutes without a request on either
-      // side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
-      await log("impersonate", { action: "impersonate.start", expiresInMin: minutes, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
-      return NextResponse.json({ ok: true, redirect: `/${u.lang}/app` });
+      // The redirect is built from a fixed list, never from the stored value as it is (rule 1188).
+      return NextResponse.json({ ok: true, redirect: `/${u.lang === "en" ? "en" : "ar"}/app` });
     }
     case "resendVerification": {
       // Rule 777: support mails a fresh code to the account's own address, through the same refusals as the owner's

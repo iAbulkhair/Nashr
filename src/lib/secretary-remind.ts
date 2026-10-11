@@ -105,7 +105,8 @@ type AccountCtx = { email: string; user: User; now: number; deadline: number; pr
  */
 async function deliver(ctx: AccountCtx, scope: string, zone: Zone, cur: SecItem): Promise<void> {
   const push = notifFor(scope, zone, cur, ctx.user, ctx.now);
-  const [pushed] = await pushNotifs(ctx.email, [{ ...push, scope }]);
+  // The account's preferences are read once per sweep (`ctx.prefs`), not once per reminder (rule 1190).
+  const [pushed] = await pushNotifs(ctx.email, [{ ...push, scope }], await ctx.prefs());
   if (!pushed) return;
   ctx.tally.notified++;
   // The reminder email follows its own switch (Settings, Notifications; the old "none" level reads as off, rule 1147).

@@ -21,10 +21,31 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
     await signIn(u.email);
     // Twelve correct tries in a row: all answer 200, none is counted.
     for (let i = 0; i < 12; i++) expect((await post("abc12345")).status, `try ${i}`).toBe(200);
-    expect(await db.get(`rate:signoutothers:${u.email}`)).toBeNull();
+    expect(Number((await db.get(`rate:signoutothers:${u.email}`)) ?? 0)).toBe(0);
     for (let i = 0; i < 10; i++) expect((await post("wrong-pass")).status).toBe(401);
     // Spent: refused before the password is even read, a correct one included.
     expect((await post("abc12345")).status).toBe(429);
+  });
+
+  it("rule 1183: parallel wrong passwords cannot slip past the cap; the hit is taken before the compare", async () => {
+    const u = await newUser("so4");
+    await signIn(u.email);
+    // Fifteen at once (a stolen cookie guessing in parallel): a read-then-spend limit let all fifteen reach bcrypt.
+    const codes = (await Promise.all(Array.from({ length: 15 }, () => post("wrong-pass")))).map((r) => r.status);
+    expect(codes.filter((c) => c === 401)).toHaveLength(10);
+    expect(codes.filter((c) => c === 429)).toHaveLength(5);
+    expect((await post("abc12345")).status).toBe(429);
+    const src = read("src/app/api/account/sessions/route.ts");
+    expect(src.indexOf("await allow(bucket")).toBeGreaterThan(-1);
+    expect(src.indexOf("await allow(bucket")).toBeLessThan(src.indexOf("ownPasswordMatches(u, b.password)"));
+    expect(src.indexOf("ownPasswordMatches(u, b.password)")).toBeLessThan(src.indexOf("await giveBack(bucket)"));
+    expect(read("src/lib/rate.ts")).not.toMatch(/export async function spent\(/);
+  });
+
+  it("rule 1183: giveBack never leaves a counter below zero", async () => {
+    const { giveBack } = await import("@/lib/rate");
+    await giveBack("so4-empty-bucket");
+    expect(await db.get("rate:so4-empty-bucket")).toBeNull();
   });
 
   it("the owner's sign-out stamps devicesAfter, never sessionsAfter, so a feed or booking link made earlier still holds", async () => {
@@ -68,7 +89,7 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
 
   it("the route and the copy say what stays, and the feed check never reads the new stamp", () => {
     const src = read("src/app/api/account/sessions/route.ts");
-    expect(src).toMatch(/spent\(`signoutothers:\$\{a\.email\}`/);
+    expect(src).toMatch(/await giveBack\(bucket\)/);
     expect(src).not.toMatch(/revokeSessions/);
     expect(src).toMatch(/the calendar feed and booking links/);
     expect(read("src/lib/secretary-feed.ts")).not.toMatch(/devicesAfter/);

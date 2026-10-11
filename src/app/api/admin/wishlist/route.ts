@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "@/lib/auth";
+import { adminActor, isAdmin } from "@/lib/auth";
 import { TITLE_MAX, isWishStatus, type WishArea } from "@/lib/changelog";
 import { cleanText, existingId, listSuggestions, listWishes, promoteWish, removeSuggestion, removeWish, restoreWish, setWishStatus, wellFormedId } from "@/lib/wishlist";
 import { adminAudit } from "@/lib/admin-audit";
@@ -7,7 +7,6 @@ import { adminAudit } from "@/lib/admin-audit";
 export const dynamic = "force-dynamic";
 
 const AREAS: readonly WishArea[] = ["agents", "onboarding", "content", "channels", "commerce", "ads", "reports", "team", "billing", "integrations", "app"];
-const log = (what: string, after: unknown) => adminAudit({ actor: "founder", section: "wishlist", target: "wishlist", what, after });
 const bad = (error: string, status = 400) => NextResponse.json({ ok: false, error }, { status });
 
 /** Founder console, Wishlist tab: the moderation queue and every item (hidden ones included) with its votes. */
@@ -26,7 +25,10 @@ export async function GET(req: Request) {
  *   dismiss  {suggestionId}                             drop a suggestion from the queue
  */
 export async function POST(req: Request) {
-  if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
+  // Who acted, as every other founder write logs it (rule 1186): the founder's email or the console key, never a fixed word.
+  const who = await adminActor(req);
+  if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  const log = (what: string, after: unknown) => adminAudit({ actor: who, section: "wishlist", target: "wishlist", what, after });
   const b = (await req.json().catch(() => ({}))) as { action?: unknown; id?: unknown; status?: unknown; title?: { ar?: unknown; en?: unknown }; area?: unknown; suggestionId?: unknown };
   const suggestionId = wellFormedId(b.suggestionId) ? b.suggestionId : undefined;
   switch (b.action) {

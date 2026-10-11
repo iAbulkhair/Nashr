@@ -28,8 +28,9 @@ export const REASON_MIN = 3;
 export const REASON_MAX = 200;
 
 /**
- * The reason every founder change asks for (rule 1176): one line, 3 to 200 characters after trimming. Required in the
- * console; the server still accepts a change without one (older callers and the API), and logs what it gets.
+ * The reason every founder change asks for (rule 1176): one line, 3 to 200 characters after trimming. The console checks
+ * it first, and since rule 1185 the server runs the same check (`reasonRefused` in admin-audit.ts) on every change the
+ * console sends a reason with.
  */
 export function parseReason(raw: string | null | undefined): Parsed<string> {
   const t = (raw ?? "").replace(/[\r\n\t]+/g, " ").trim();

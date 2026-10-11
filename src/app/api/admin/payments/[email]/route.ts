@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
 import { paymentsView, recordPayment, voidPayment } from "@/lib/partners";
 import { refundPaymobPayment } from "@/lib/billing";
-import { adminAudit } from "@/lib/admin-audit";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +44,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     return NextResponse.json(res);
   }
   if (b.action === "void") {
+    // The void form asks a reason (rule 1185). "record" and "refund" have no reason form yet, so theirs stays optional.
+    const noReason = reasonRefused(b.reason);
+    if (noReason) return noReason;
     const res = await voidPayment(email, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "topup_live" ? 409 : 404 });
     await log(`payment:${res.payment.id} void${res.reclassified ? ` reclassified:${res.reclassified.join(",")}` : ""}`, res.payment.voidReason);

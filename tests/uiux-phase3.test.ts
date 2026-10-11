@@ -297,7 +297,8 @@ describe("rule 1150: sign out other devices", () => {
   });
   it("is rate limited per login, and no session list is invented", () => {
     const src = read("src/app/api/account/sessions/route.ts");
-    expect(src).toMatch(/allow\(`signoutothers:\$\{a\.email\}`/);
+    expect(src).toContain("const bucket = `signoutothers:${a.email}`;");
+    expect(src).toMatch(/allow\(bucket, SIGN_OUT_OTHERS_PER_HOUR, WINDOW\.hour\)/);
     expect(src).not.toMatch(/db\.(keys|scan)\(/);
     expect(read("src/lib/roles.ts")).toMatch(/"sessions\.revoke": "member"/);
   });

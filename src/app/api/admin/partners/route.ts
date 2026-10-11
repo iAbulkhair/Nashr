@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
 import { approvePartner, confirmBank, listApplications, listPartners, recordPayout, rejectApplication, voidPayout } from "@/lib/partners";
-import { adminAudit } from "@/lib/admin-audit";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +58,9 @@ export async function POST(req: Request) {
     return NextResponse.json(res);
   }
   if (b.action === "void_payout") {
+    // The void form asks a reason (rule 1185). Approve, reject, payout and bank confirm have no reason form yet.
+    const noReason = reasonRefused(b.reason);
+    if (noReason) return noReason;
     const email = typeof b.email === "string" ? b.email : "";
     const res = await voidPayout(email, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: 404 });
