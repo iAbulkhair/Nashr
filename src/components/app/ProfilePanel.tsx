@@ -19,6 +19,8 @@ import LogoutButton from "./LogoutButton";
 import Scribble from "@/components/Scribble";
 import Button from "@/components/ui/Button";
 import { Time } from "@/components/ui/Time";
+import ErrorState from "@/components/ui/ErrorState";
+import { formatTime } from "@/lib/format";
 
 /**
  * GET /api/profile. `me` and `role` are the person acting; `user` is the account summary (the owner also gets the
@@ -81,8 +83,12 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
   const [formKey, setFormKey] = useState(0);
   // The account delete dialog (rule 964): open while true, closed (and its typed password gone) when false.
   const [deleting, setDeleting] = useState(false);
-  useEffect(() => { fetchProfile().then((j) => { if (j.ok) setD(j); }).catch(() => {}); }, []);
-  if (!d) return <p className="text-muted">…</p>;
+  // B-12 (rule 1116): a failed read used to leave "…" on screen for good. Now it says so and offers Try again.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const load = () => fetchProfile().then((j) => { if (j.ok) { setD(j); setLoadFailed(false); } else setLoadFailed(true); }).catch(() => setLoadFailed(true));
+  useEffect(() => { load(); }, []);
+  if (!d && loadFailed) return <ErrorState title={t.ux.profile.loadFail} retryLabel={t.ux.retry} onRetry={load} />;
+  if (!d) return <p className="text-muted" role="status" aria-busy="true">…</p>;
   const input = "input";
   // Owner-only: phone, account language, email preferences, subscription and deleting the account. Admin+: brand fields.
   const role: Role = d.role ?? d.me?.role ?? "owner";
@@ -185,7 +191,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
   // One label source for every plan, business included: the sidebar and the billing page read the same names.
   const planLabel = (t.nav.plans as Record<string, string>)[d.user.plan] ?? d.user.plan;
   const rules = d.user.plan === "trial"
-    ? (ar ? `تجربتك تشمل ${d.allowance} كريدت لمدة 3 أيام. تنتهي ${d.user.trialEnds.slice(0, 10)}.` : `Your trial includes ${d.allowance} credits for 3 days. Ends ${d.user.trialEnds.slice(0, 10)}.`)
+    ? (ar ? `تجربتك تشمل ${d.allowance} كريدت لمدة 3 أيام. تنتهي ${formatTime(d.user.trialEnds, lang)}.` : `Your trial includes ${d.allowance} credits for 3 days. Ends ${formatTime(d.user.trialEnds, lang)}.`)
     : (ar ? `خطتك تشمل ${d.allowance} كريدت شهرياً. يتجدد كريدت الخطة في اليوم الأول من كل شهر (UTC)، وتبقى باقات الشحن السارية حتى تنتهي صلاحيتها. التجديد القادم: ${d.nextReset}.` : `Your plan includes ${d.allowance} credits per month. The plan's credits reset on the 1st of each month (UTC); top-up packs keep what is left in them until they expire. Next reset: ${d.nextReset}.`);
   // The balance as plan credits and top-up credits, each pack with its expiry (rule 456): the renewal on the 1st resets
   // only the plan credits, so the card never presents the whole balance as one that resets.

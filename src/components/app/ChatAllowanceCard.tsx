@@ -5,6 +5,7 @@ import type { ChatStatus } from "@/lib/chat-allowance";
 import { runwayLine, type Runway } from "@/lib/usage-view";
 import { formatCount } from "@/lib/pricing";
 import ReadOnlyNote from "./ReadOnlyNote";
+import Switch from "@/components/ui/Switch";
 
 /**
  * The billing page's chat card (rule 315): the account's chat messages used of the plan's allowance, when they renew,
@@ -108,9 +109,7 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
               <p className="mt-1 text-sm" data-chat-overflow={s.overflow.on ? "on" : "off"}>{state}</p>
             </div>
             {owner && (
-              <button type="button" role="switch" aria-checked={s.overflow.on} aria-label={label} disabled={saving} onClick={() => toggle(!s.overflow.on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${s.overflow.on ? "bg-ink" : "bg-ink/20"}`}>
-                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${s.overflow.on ? "start-[22px]" : "start-0.5"}`} />
-              </button>
+              <Switch checked={s.overflow.on} label={label} disabled={saving} onChange={toggle} />
             )}
           </div>
           <p className="mt-2 text-xs text-muted" data-chat-overflow-terms="">{ar
