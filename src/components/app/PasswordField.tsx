@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Lang } from "@/lib/i18n";
+import { useFieldProps } from "@/components/ui/Field";
 
 /**
  * The toggle's accessible name. One name for both states: `aria-pressed` says whether the password shows, so a screen
@@ -21,7 +22,9 @@ export const PASSWORD_TOGGLE = {
  * the form. On submit the password is hidden again before the form's own handler runs, so the browser never files it
  * with plain text fields in its autofill history.
  */
-export default function PasswordField({ lang, className = "input", ...input }: Omit<React.ComponentProps<"input">, "type"> & { lang: Lang }) {
+export default function PasswordField({ lang, className = "input control", ...own }: Omit<React.ComponentProps<"input">, "type"> & { lang: Lang }) {
+  // Inside a `Field` (rule 1084) the id, the hint and error ids and aria-invalid come from the field; alone, `own` as is.
+  const input = useFieldProps(own);
   const [shown, setShown] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
