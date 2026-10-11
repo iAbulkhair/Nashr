@@ -47,12 +47,15 @@ jobs:
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
           echo "build=$build e2e=$e2e"
+      # Node 22 and the webpack build, the same as thakeen.com's Hostinger build (docs/system/architecture.md, "Build":
+      # Node 22, `npm run build:hostinger`). CI built with Turbopack on Node 24, so a webpack-only or Node 22-only failure
+      # showed up only when the release pull request was merged and Hostinger built (rule 1017).
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
       - run: npm ci
-      # Next's build cache (Turbopack's persistent cache is on for `next build` since 16.3). A cache saved by a pull
+      # Next's build cache (webpack's under `.next/cache`, as on Hostinger). A cache saved by a pull
       # request is readable only by later runs of that pull request, so the first run of a PR builds cold and every
       # push after it starts warm. The key moves with the lockfile and the sources; restore-keys falls back to the
       # newest cache for the same lockfile.
@@ -70,7 +73,7 @@ jobs:
       # segment merged green and left main unbuildable, which only the host's failed deploy showed.
       - name: Build
         if: steps.scope.outputs.build == 'true'
-        run: npx next build
+        run: npm run build:hostinger
       - name: Type-check
         if: steps.scope.outputs.build == 'true'
         run: npx tsc --noEmit -p .
