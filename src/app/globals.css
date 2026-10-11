@@ -61,6 +61,9 @@ html {
   /* One light palette (rule 966): without this, a browser in dark mode drew form controls, scrollbars and autofill dark
      on the light pages. */
   color-scheme: light;
+  /* Rule 1132: an anchor or a focused field scrolled into view clears the phone's sticky header and the chat's sticky
+     composer instead of landing under them. */
+  scroll-padding-block: 4.5rem 6rem;
 }
 
 /*
@@ -103,6 +106,8 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-body), system-ui, sans-serif;
+  /* Rule 1132: the body's line height is the token, 1.5, and 1.7 for Arabic (:lang(ar) above). */
+  line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -159,10 +164,29 @@ body {
   .btn-block { width: 100%; }
 
   /* Cards */
-  .card { background: var(--card-bg); border: var(--stroke-figure) solid var(--card-border); border-radius: var(--card-radius); padding: var(--card-padding); box-shadow: var(--card-shadow); }
+  /* Rule 1132: the card's corner is the semantic radius token (12px), the one the primitives use. */
+  .card { background: var(--card-bg); border: var(--stroke-figure) solid var(--card-border); border-radius: var(--radius-card); padding: var(--card-padding); box-shadow: var(--card-shadow); }
   .card-sm { padding: var(--primitive-spacing-4); }
   .card-inverse { background: var(--color-inverse-surface); color: var(--color-inverse-foreground); border-color: color-mix(in oklab, var(--color-inverse-foreground) 15%, transparent); }
   .card-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-lg); font-weight: 700; }
+
+  /* An icon-only button (rule 1117): 44px on touch screens, 32px under a mouse, never under the 24px floor. */
+  .icon-btn { display: inline-grid; place-items: center; flex: none; min-width: var(--hit-min); min-height: var(--hit-min); border-radius: var(--primitive-radius-full); color: var(--color-foreground-muted); background: transparent; }
+  @media (pointer: fine) { .icon-btn { min-width: 2rem; min-height: 2rem; } }
+  .icon-btn:hover { color: var(--color-ink); background: var(--color-surface-muted); }
+  .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .icon-btn[aria-pressed="true"] { color: var(--color-paper); background: var(--color-ink); }
+
+  /* Skeleton (rule 1115): a quiet block that breathes while a screen loads; still under reduced motion. */
+  .skeleton { border-radius: var(--primitive-radius-md); background: var(--color-surface-muted); animation: skeleton-breathe 1.6s ease-in-out infinite; }
+
+  /* Sheet (rule 1111): slides in from its edge; the inline sides follow the reading direction. */
+  .sheet[open] { animation: sheet-in var(--duration-fast, 160ms) var(--ease-out, ease-out); }
+  .sheet-start[open] { --sheet-from: -100%; }
+  .sheet-end[open] { --sheet-from: 100%; }
+  [dir="rtl"] .sheet-start[open] { --sheet-from: 100%; }
+  [dir="rtl"] .sheet-end[open] { --sheet-from: -100%; }
+  .sheet-bottom[open] { animation-name: sheet-up; }
 
   /* Inputs */
   .input { width: 100%; background: var(--input-bg); border: var(--stroke-figure) solid var(--input-border); border-radius: var(--input-radius); padding: var(--input-padding-y) var(--input-padding-x); font-size: var(--primitive-fontSize-sm); color: var(--color-foreground); transition: border-color var(--duration-fast) var(--ease-out); }
@@ -231,6 +255,11 @@ body {
 }
 
 /* Overnight log rows rise one by one on load */
+@keyframes skeleton-breathe { 50% { opacity: 0.55; } }
+@keyframes sheet-in { from { transform: translateX(var(--sheet-from, -100%)); } }
+@keyframes sheet-up { from { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) { .skeleton, .sheet[open] { animation: none; } }
+
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .log-row { animation: rise 0.5s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .log-row { animation: none; } html { scroll-behavior: auto; } }

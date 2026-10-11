@@ -140,7 +140,8 @@ describe("rule 696: the sign-up, login, reset, join and profile change-password 
 });
 
 describe("rule 697: the confirm dialog is a native modal <dialog> that answers once; Escape or Go back answer no and a click outside it does nothing", () => {
-  const src = app("ConfirmDialog");
+  // Moved into src/components/ui in phase 2 (rule 1110); the app path re-exports it.
+  const src = read("src/components/ui/ConfirmDialog.tsx");
 
   it("opens a native dialog with showModal, named and described for screen readers", () => {
     expect(src).toContain("<dialog");
@@ -212,7 +213,7 @@ describe("rule 697: the confirm dialog is a native modal <dialog> that answers o
 
   it("the new components use logical direction classes only", () => {
     for (const name of ["ConfirmDialog", "PasswordField"]) {
-      const classes = (app(name).match(/className=(?:"[^"]*"|\{`[^`]*`\})/g) ?? []).join(" ");
+      const classes = ((name === "ConfirmDialog" ? read("src/components/ui/ConfirmDialog.tsx") : app(name)).match(/className=(?:"[^"]*"|\{`[^`]*`\})/g) ?? []).join(" ");
       expect(classes, name).not.toBe("");
       expect(classes, name).not.toMatch(PHYSICAL);
     }
