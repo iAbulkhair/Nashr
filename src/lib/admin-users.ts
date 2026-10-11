@@ -99,6 +99,20 @@ export function userFacets(list: UserFacts[], q: UserQuery, now = Date.now()) {
   return { all: base.length, plan, filter };
 }
 
+/** The account tiles over every account (the table pages; the tiles never do): live paying, live trial, today, suspended. */
+export function tileCounts(list: UserFacts[], now = Date.now()) {
+  const day = new Date(now).toISOString().slice(0, 10);
+  const live = list.filter((u) => !u.suspended);
+  return {
+    users: list.length,
+    paying: live.filter((u) => u.plan !== "trial").length,
+    trial: live.filter((u) => u.plan === "trial").length,
+    today: list.filter((u) => u.createdAt.slice(0, 10) === day).length,
+    suspended: list.length - live.length,
+  };
+}
+export type TileCounts = ReturnType<typeof tileCounts>;
+
 /** The page's slice and the number of pages. A page past the end gives the last page. */
 export function pageOf<T>(list: T[], page: number, per: number): { rows: T[]; page: number; pages: number } {
   const pages = Math.max(1, Math.ceil(list.length / per));

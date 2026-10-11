@@ -368,8 +368,10 @@ describe("out of credits, the line fits the plan and the role (rule 457)", () =>
 
   it("the console's deal copy says a deal sets the month's plan credits and live packs are kept", async () => {
     const src = adminConsoleSrc();
-    expect(src).toContain("OK sets the month's plan credits to the deal's credits today (live top-up packs keep what is left in them)");
-    expect(src).toContain("«موافق» يجعل كريدت الخطة الشهري كريدت العقد اليوم (وتحتفظ باقات الشحن السارية بما بقي فيها)");
+    // Since rule 1176 the choice is the deal form's "apply now" box, not an OK/Cancel question.
+    expect(src).toContain("Apply now: the month's plan credits become the deal's credits today (live top-up packs keep what is left in them)");
+    expect(src).toContain("طبّقه الآن: يصبح كريدت الخطة الشهري كريدت العقد اليوم (وتحتفظ باقات الشحن السارية بما بقي فيها)");
+    expect(src).toContain('...(u.deal ? [{ name: "applyNow", label: UC.dealApplyNow, kind: "check" as const }] : []),');
     expect(src).not.toContain("OK sets the balance to the deal's credits");
     expect(src).toContain("the month's plan credits become the deal's credits; live top-up packs are kept");
   });
@@ -416,7 +418,7 @@ describe("a pack's payment date is the Riyadh day, as for every recorded payment
     expect(parseTopup(body("2026-10-02"), noon)).toEqual({ ok: false, error: "bad_date" });
     expect(parseTopup(body("2025-09-30"), noon)).toEqual({ ok: false, error: "bad_date" });
     const src = adminConsoleSrc();
-    expect(src, "the console's default date is today in Riyadh").toContain("prompt(S.promptTopupDate, ksaDay())");
+    expect(src, "the console's default date is today in Riyadh").toContain('{ name: "date", label: lab(S.promptTopupDate), kind: "date", initial: ksaDay(), ltr: true },');
   });
 
   it("a member account is never sold a pack, and the payment carries the account's plan", async () => {

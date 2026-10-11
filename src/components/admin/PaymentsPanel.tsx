@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
+import { useAdminForm } from "./AdminForm";
 import { ksaDay, sarText } from "@/lib/partner-rules";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount, type SelfServePlan } from "@/lib/pricing";
 
@@ -68,6 +69,7 @@ export const newPaymentId = () => `pay_${Array.from(crypto.getRandomValues(new U
  */
 export default function PaymentsPanel({ email, lang }: { email: string; lang: "ar" | "en" }) {
   const L = S[lang];
+  const [askForm, formDialog] = useAdminForm(lang);
   const who = encodeURIComponent(email);
   const [view, setView] = useState<View | null>(null);
   const [msg, setMsg] = useState("");
@@ -100,9 +102,15 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
       setBusy(false);
     }
   }
+  /** Void a payment (rule 1176): its form asks why, 3 to 200 characters, kept on the payment and in the audit log. */
+  async function voidPayment(p: Payment) {
+    const v = await askForm({ title: L.void, subject: `${p.id} · ${sarText(p.amountSar)} SAR`, message: L.voidReason, destructive: true, submitLabel: L.void, fields: [], parse: () => ({ ok: true, value: {} }) });
+    if (v) void post({ action: "void", id: p.id, reason: v.reason });
+  }
   if (!view) return <p className="mt-4 text-xs text-muted">{L.loading}</p>;
   return (
     <section className="mt-4 rounded border border-ink/10 p-3 text-xs" data-payments>
+      {formDialog}
       <p className="font-semibold">{L.title}</p>
       <p className="text-muted">{L.note}</p>
       {/* One entry point for a top-up's payment (rule 454): the Top-ups block, never this form. */}
@@ -131,7 +139,7 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
               <td className="p-1">{p.offer ? `-${FIRST_MONTH_DISCOUNT_PCT}% ${L.kinds[p.offer] ?? p.offer}${p.expectedSar ? ` (${p.expectedSar})` : ""}` : ""}</td>
               <td className="p-1">{p.commission ? `${L.commission} ${sarText(p.commission.sar)}` : p.notCounted ? `${L.notCounted}: ${L.reasons[p.notCounted] ?? p.notCounted}` : ""}</td>
               <td className="p-1" dir="auto">{p.reference}</td>
-              <td className="p-1">{p.voidedAt ? `${L.voided}${p.voidReason ? `: ${p.voidReason}` : ""}` : p.topup && view.livePacks?.includes(p.topup.lot) ? <span className="text-muted" data-void-with-pack>{L.withPack}</span> : <button disabled={busy} onClick={() => { const reason = prompt(L.voidReason); if (reason !== null) void post({ action: "void", id: p.id, reason }); }} className="text-danger underline">{L.void}</button>}</td>
+              <td className="p-1">{p.voidedAt ? `${L.voided}${p.voidReason ? `: ${p.voidReason}` : ""}` : p.topup && view.livePacks?.includes(p.topup.lot) ? <span className="text-muted" data-void-with-pack>{L.withPack}</span> : <button disabled={busy} onClick={() => voidPayment(p)} className="min-h-[var(--hit-min)] text-danger underline pointer-fine:min-h-6">{L.void}</button>}</td>
             </tr>
           ))}</tbody>
         </table>
