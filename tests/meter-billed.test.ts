@@ -211,9 +211,16 @@ describe("callers meter what was billed (rules 985-986)", () => {
   it("rule 986: the judge's whole reply is bounded by JUDGE_MS through a signal (a stream's timeout covers only its headers)", async () => {
     const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
     sdk.reply = { model: SONNET55, stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([verdict]) }] };
-    await scoreItems(undefined, brand, "social", [{ channel: "instagram", title: "t", body: "b" }], 1);
+    // Rule 1206: a clock that ticks 1 ms on every read still gives the whole budget, because the deadline reads it once.
+    let t = 1_800_000_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => t++);
+    try {
+      await scoreItems(undefined, brand, "social", [{ channel: "instagram", title: "t", body: "b" }], 1);
+    } finally {
+      clock.mockRestore();
+    }
     expect(sdk.calls).toHaveLength(1);
     expect(sdk.calls[0].opts?.signal).toBeInstanceOf(AbortSignal);
-    expect(sdk.calls[0].opts!.timeout).toBeLessThanOrEqual(MODEL_BUDGET.JUDGE_MS);
+    expect(sdk.calls[0].opts!.timeout).toBe(MODEL_BUDGET.JUDGE_MS);
   });
 });
