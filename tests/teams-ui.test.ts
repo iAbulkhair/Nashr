@@ -107,11 +107,12 @@ describe("invite links keep the token in the URL fragment", () => {
     expect(form).toMatch(/JSON\.stringify\(\{ token: tok \}\)/);
   });
 
-  it("/join is public in the layout and in the e2e route inventory; /team is an app route", () => {
+  // Members moved to /app/settings/members in UI/UX phase 3 (rule 1141); /app/team redirects there for one release.
+  it("/join is public in the layout and in the e2e route inventory; members is an app route", () => {
     const layout = readFileSync("src/app/[lang]/app/layout.tsx", "utf8");
     expect(layout).toMatch(/const PUBLIC = \[[^\]]*"\/join"[^\]]*\]/);
     expect(APP_PUBLIC_ROUTES).toContain("/app/join");
-    expect(APP_ROUTES.map((r) => r.path)).toContain("/app/team");
+    expect(APP_ROUTES.map((r) => r.path)).toContain("/app/settings/members");
     expect(APP_ROUTES.map((r) => r.path)).not.toContain("/app/join");
   });
 });
