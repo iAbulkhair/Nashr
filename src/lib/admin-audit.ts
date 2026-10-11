@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { CAPS, pushCapped } from "./db";
+import { AUDIT_SECTIONS, type AuditSection } from "./admin-audit-shape";
 
 /**
  * The founder audit log, `admin:log` (rules 1172-1175, Control Center spec rules 1069, 1071 and 1072): `adminAudit` is its only
@@ -18,9 +19,8 @@ import { CAPS, pushCapped } from "./db";
  * secret-named environment variable is masked wherever it appears. A reason is one line of at most 200 characters.
  */
 
-/** Where a row came from, for the Log page's filter. */
-export const AUDIT_SECTIONS = ["users", "billing", "partners", "quality", "wishlist", "system"] as const;
-export type AuditSection = (typeof AUDIT_SECTIONS)[number];
+// The section names live in the client-safe half, which the Log page reads (rule 1179).
+export { AUDIT_SECTIONS, type AuditSection };
 
 export type AuditRow = {
   /** 12 hex characters; rows written before 2026-10-11 have none (legacy). */
