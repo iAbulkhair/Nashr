@@ -103,7 +103,7 @@ describe("app screens are quiet D (rule 519)", () => {
       expect(src, `${file}: error boxes are rose, not a tint of danger`).not.toMatch(/bg-danger\/\d/);
       expect(src, `${file}: the old sadu band is gone`).not.toMatch(/sadu-thin/);
       // Lemon reads only on ink: an icon in lemon must sit on a line that sets the ink ground.
-      const lemonOnLight = src.split("\n").filter((l) => /<Icon [^>]*text-lemon/.test(l) && !/\bbg-ink\b/.test(l));
+      const lemonOnLight = src.split("\n").filter((l) => /<Icon [^>]*text-lemon/.test(l) && !/\bbg-(?:ink|inverse)\b/.test(l)); // bg-inverse: the ink panel since rule 1200
       expect(lemonOnLight, `${file}: lemon is never an icon colour on a light ground`).toEqual([]);
       // The app's main column is a flex column and these wrappers centre with auto margins, which turns off stretch: without
       // w-full a long command or URL inside sizes the wrapper past a 360px screen.
@@ -128,24 +128,24 @@ describe("app screens are quiet D (rule 519)", () => {
     expect(src).toMatch(/background: "var\(--color-ink\)", color: "var\(--color-paper\)"/);
   });
 
-  it("a disabled pill keeps its label readable: lilac fill under ink text", () => {
+  it("a disabled pill keeps its label readable: lilac fill under ink text (the background-muted and foreground roles since rule 1202)", () => {
     const css = read("src/app/scribble.css");
-    expect(css).toMatch(/\.s-btn:is\(:disabled, \[aria-disabled="true"\]\) > \.scribble \.fill \{ fill: var\(--color-lilac\); \}/);
-    expect(css).toMatch(/\.s-btn\[aria-disabled="true"\]\s*\{[^}]*color: var\(--color-ink\)/);
+    expect(css).toMatch(/\.s-btn:is\(:disabled, \[aria-disabled="true"\]\) > \.scribble \.fill \{ fill: var\(--color-background-muted\); \}/);
+    expect(css).toMatch(/\.s-btn\[aria-disabled="true"\]\s*\{[^}]*color: var\(--color-foreground\)/);
   });
 });
 
 describe("an agent's avatar in the app is its initial on its own colour (rules 517, 519)", () => {
-  it("fills with agent-<id> inside a hand-drawn ring; text is ink, paper on Faris and Majed", async () => {
+  it("fills with agent-<id> inside a hand-drawn ring; text is ink, paper on Faris and Majed (accent-foreground and inverse-foreground since rule 1200)", async () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { createElement } = await import("react");
     const { default: AgentAvatar } = await import("@/components/app/AgentAvatar");
     const noor = renderToStaticMarkup(createElement(AgentAvatar, { id: "noor", name: "نور" }));
     expect(noor).toContain("--s-fill:var(--color-agent-noor)");
-    expect(noor).toMatch(/class="[^"]*text-ink[^"]*"/);
+    expect(noor).toMatch(/class="[^"]*text-accent-foreground[^"]*"/);
     expect(noor).toContain("ن</span>");
     expect(noor).toContain('aria-hidden="true"');
-    for (const id of ["faris", "majed"] as const) expect(renderToStaticMarkup(createElement(AgentAvatar, { id, name: id }))).toMatch(/class="[^"]*text-paper[^"]*"/);
+    for (const id of ["faris", "majed"] as const) expect(renderToStaticMarkup(createElement(AgentAvatar, { id, name: id }))).toMatch(/class="[^"]*text-inverse-foreground[^"]*"/);
   });
   it("the chat, onboarding and inbox avatars use it", () => {
     for (const file of ["src/components/app/ChatPanel.tsx", "src/components/app/Inbox.tsx"]) {

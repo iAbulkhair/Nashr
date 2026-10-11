@@ -65,6 +65,7 @@ Files: `reset/page.tsx`, `AuthForm.tsx` (`ResetForm`, the same rules display and
 | `nashr_return` | `api/admin/users/[email]/route.ts:120` | The founder's own session token, saved while impersonating | httpOnly, lax, secure in production | 2 hours |
 | `nashr_impersonate` | `api/admin/users/[email]/route.ts:121` | Email of the impersonated user (display and audit only; `byOf` never reads it: who acted comes from the session record's `imp`) | httpOnly, lax, secure in production | 2 hours |
 | `nashr_lang` | `src/components/LangToggle.tsx:8` (client JS) | `ar` or `en` | not httpOnly, lax | 1 year |
+| `nashr_theme` | `src/lib/theme.ts` `themeCookie`, written by `ThemeToggle` (client JS, rule 1204) | `system`, `light` or `dark`; read only by the head script and `ThemeScope` in the browser, never by the server | not httpOnly, lax, `secure` on https | 1 year |
 
 `currentUser()` (`src/lib/auth.ts:248`, `resolveSession`; rewritten 2026-09-29): cookie, `session:{token}`, then in one parallel round `user:{login}`, `member:{login}` and `activebrand:{login}`.
 

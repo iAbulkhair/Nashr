@@ -544,8 +544,8 @@ describe("the founder console", () => {
     expect(block).toContain("ov.modelUsage.providers");
     expect(block).toContain("ov.modelUsage.rejectedPicks");
     expect(block).toContain("ov.modelUsage.fallbacks");
-    expect(block).not.toMatch(/text-ink\/\d|\btext-(left|right)\b|\b(ml|mr|pl|pr)-\d|\b(left|right)-\d/);
-    expect(block).toContain("text-muted");
+    expect(block).not.toMatch(/text-ink\/\d|text-foreground\/\d|\btext-(left|right)\b|\b(ml|mr|pl|pr)-\d|\b(left|right)-\d/);
+    expect(block).toContain("text-foreground-muted"); // text-muted until the rule 1200 codemod
   });
 
   it("the console block has its own column headers (Provider, and the Arabic word for model) and one muted line saying what the figures are", () => {
@@ -561,7 +561,7 @@ describe("the founder console", () => {
     expect(src).toMatch(/\bllmModel: "Model"/);
     expect(src).toMatch(/\bllmProvider: "Provider"/);
     // The caveat: one muted paragraph under the providers table, in both languages, with no number in it.
-    expect(block).toMatch(/<p className="[^"]*\btext-muted\b[^"]*">\{O\.llmCaveat\}<\/p>/);
+    expect(block).toMatch(/<p className="[^"]*\btext-foreground-muted\b[^"]*">\{O\.llmCaveat\}<\/p>/);
     const caveats = [...src.matchAll(/\bllmCaveat: "([^"]+)"/g)].map((m) => m[1]);
     expect(caveats).toHaveLength(2);
     expect(caveats[0]).toMatch(/catalog/i);
