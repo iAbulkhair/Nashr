@@ -2,12 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { adminSignIn, json, newUser, signIn, signOut } from "./helpers/session";
+import { adminConsoleSrc } from "./helpers/admin-console";
 import { createUser, currentUser, IMPERSONATION_LEGACY_MS } from "@/lib/auth";
 import { CAPS, db } from "@/lib/db";
 import { AUDIT_CAP, adminAudit, auditRow, auditView, pageAudit, parseAuditFilter, redact, type AuditRow } from "@/lib/admin-audit";
 import { ADMIN_INPUT_ERRORS, IMPERSONATE_DEFAULT, inputError, parseImpersonateMinutes, parseReason, REASON_MAX } from "@/lib/admin-input";
-import { DEFAULT_USER_QUERY, hasFilter, matchUser, pageOf, parseUserQuery, sortUsers, userFacets, userQueryParams, type UserFacts } from "@/lib/admin-users";
-import { formGate, formReady, initialValues, submitForm, type ActionSpec } from "@/components/admin/AdminForm";
+import { DEFAULT_USER_QUERY, hasFilter, matchUser, pageOf, parseUserQuery, sortUsers, tileCounts, userFacets, userQueryParams, type UserFacts } from "@/lib/admin-users";
+import { AUDIT_SECTIONS as SHAPE_SECTIONS, auditDiff } from "@/lib/admin-audit-shape";
+import { AUDIT_SECTIONS } from "@/lib/admin-audit";
+import { FORM_COPY, formGate, formReady, initialValues, submitForm, type ActionSpec } from "@/components/admin/AdminForm";
+import { TABLE_COPY } from "@/components/admin/DataTable";
+import { USERS_COPY } from "@/components/admin/users-copy";
+import { LOG_COPY } from "@/components/admin/Log";
+import { IMPERSONATION_COPY, minutesLeft } from "@/components/app/ImpersonationBanner";
+import * as planRoute from "@/app/api/admin/plan/route";
 import * as logRoute from "@/app/api/admin/log/route";
 
 /**
@@ -290,4 +298,170 @@ describe("rule 1178: the Users table is filtered, sorted and paged on the server
     expect(f.plan.trial).toBe(1);
     expect(f.filter.suspended).toBe(1);
   });
+
+  it("tiles count every account, not the page: paying and trial live accounts only, suspended apart", () => {
+    const t = tileCounts([...list, u({ email: "d@x.example", plan: "trial", suspended: true, createdAt: "2026-10-11T08:00:00Z" })], now);
+    expect(t).toEqual({ users: 4, paying: 1, trial: 1, today: 1, suspended: 2 });
+  });
+
+  it("GET /api/admin/plan?view=table is founder only, answers one page with its counts, and the old answer is unchanged", async () => {
+    signOut();
+    expect((await planRoute.GET(new Request("http://localhost/api/admin/plan?view=table"))).status).toBe(401);
+    const tag = `p4t${Date.now().toString(36)}`;
+    const made = await Promise.all([1, 2, 3].map(() => newUser(tag)));
+    await adminSignIn();
+    const res = await planRoute.GET(new Request(`http://localhost/api/admin/plan?view=table&q=${tag}&per=25&sort=email&dir=asc`));
+    const j = (await res.json()) as { ok: boolean; view: string; users: { email: string; chatAllowance?: number }[]; matched: number; page: number; pages: number; per: number; facets: { all: number }; tiles: { users: number }; total: unknown };
+    expect(j).toMatchObject({ ok: true, view: "table", matched: 3, page: 1, pages: 1, per: 25, facets: { all: 3 } });
+    expect(j.users.map((x) => x.email)).toEqual(made.map((m) => m.email).sort());
+    // The page rows carry the usage and chat columns the old list carried.
+    expect(j.users.every((x) => typeof x.chatAllowance === "number")).toBe(true);
+    expect(j.tiles.users).toBeGreaterThanOrEqual(3);
+    const old = (await (await planRoute.GET(new Request("http://localhost/api/admin/plan"))).json()) as { view?: string; users: unknown[]; total: unknown };
+    expect(old.view).toBeUndefined();
+    expect(old.users.length).toBeGreaterThanOrEqual(3);
+    // The usage of a page's rows is read for that page only, in one pmap, never per account in a loop.
+    const route = read("src/app/api/admin/plan/route.ts");
+    expect(route).toMatch(/pmap\(pg\.rows, rowOf\)/);
+  });
+
+  it("the table is a real table: caption, sortable headers as buttons with aria-sort and words, a pager with 44px controls", () => {
+    const t = read("src/components/admin/DataTable.tsx");
+    expect(t).toMatch(/<caption className="sr-only">\{caption\}<\/caption>/);
+    expect(t).toMatch(/aria-sort=\{on \? \(dir === "asc" \? "ascending" : "descending"\) : undefined\}/);
+    expect(t).toMatch(/<button type="button" onClick=\{\(\) => onSort\(c\.sort!\)\}[^>]*min-h-\[var\(--hit-min\)\]/);
+    expect(t).toMatch(/<span className="sr-only">/);
+    expect(t).toContain("overflow-x-auto");
+    expect(t).not.toMatch(/\btext-(left|right)\b|\b(ml|mr|pl|pr)-\d/);
+    expect(t.match(/<Button variant="secondary" size="md" aria-disabled=/g)?.length).toBe(2);
+    expect(t).not.toMatch(/size="sm"/);
+    const users = read("src/components/admin/Users.tsx");
+    expect(users).toContain("useUserTable(query)");
+    expect(users).toContain("router.replace(p ? `${pathname}?${p}` : pathname, { scroll: false });");
+    expect(users).toContain("if (n !== seq.current) return;");
+    expect(users).toContain("<PlanTiles lang={lang} counts={data?.tiles ?? null} total={data?.total ?? null} />");
+  });
 });
+
+describe("rule 1179: the Log page shows who, the change key by key and the reason, with its filters in the URL", () => {
+  it("diffs before and after key by key; a plain value is one change; nothing changed is empty", () => {
+    expect(auditDiff({ plan: "trial", credits: 50, seats: 3 }, { plan: "pro", credits: 50, seats: 5 })).toEqual([
+      { key: "plan", before: "trial", after: "pro" },
+      { key: "seats", before: "3", after: "5" },
+    ]);
+    expect(auditDiff({ deal: null }, { deal: { credits: 3000 } })).toEqual([{ key: "deal", before: "null", after: '{"credits":3000}' }]);
+    expect(auditDiff({ a: 1 }, { a: 1, b: true })).toEqual([{ key: "b", before: "", after: "true" }]);
+    expect(auditDiff(false, true)).toEqual([{ key: "", before: "false", after: "true" }]);
+    expect(auditDiff(undefined, undefined)).toEqual([]);
+    expect(auditDiff({ a: 1 }, { a: 1 })).toEqual([]);
+  });
+
+  it("the section names come from one client-safe list the writer re-exports", () => {
+    expect(AUDIT_SECTIONS).toBe(SHAPE_SECTIONS);
+    expect(read("src/lib/admin-audit-shape.ts")).not.toMatch(/^import /m);
+    const log = read("src/components/admin/Log.tsx");
+    expect(log).toContain('from "@/lib/admin-audit-shape"');
+    expect(log).not.toMatch(/from "@\/lib\/admin-audit"/);
+    for (const lang of ["en", "ar"] as const) expect(Object.keys(LOG_COPY[lang].sections).sort(), lang).toEqual([...AUDIT_SECTIONS].sort());
+  });
+
+  it("filters go to the address and the server; older pages add on; a legacy row is marked; values are text", () => {
+    const log = read("src/components/admin/Log.tsx");
+    expect(log).toContain("router.replace(p ? `${pathname}?${p}` : pathname, { scroll: false });");
+    expect(log).toMatch(/adminFetch\(`\/api\/admin\/log/);
+    expect(log).toContain("onClick={() => void fetchPage(next)}");
+    expect(log).toContain("setRows((prev) => (from && prev ? [...prev, ...(j.log ?? [])] : j.log ?? []));");
+    expect(log).toContain("{l.legacy && <Badge tone=\"neutral\">{L.legacy}</Badge>}");
+    expect(log).toContain("auditDiff(l.before, l.after)");
+    expect(log).toContain("L.scanned(scanned)");
+    expect(log).not.toMatch(/dangerouslySetInnerHTML/);
+    expect(log).toMatch(/<caption className="sr-only">/);
+  });
+});
+
+describe("rule 1180: an account opens in a Sheet with tabs", () => {
+  it("the sheet is the inline-end, large Sheet with five tabs and their panels", () => {
+    const sheet = read("src/components/admin/UserSheet.tsx");
+    expect(sheet).toContain('<Sheet lang={lang} label={`${UC.sheetLabel} ${sel.user.email}`} onClose={onClose} side="end" size="lg">');
+    expect(sheet).toContain('const TAB_IDS = ["overview", "billing", "usage", "activity", "brand"] as const;');
+    for (const id of ["overview", "billing", "usage", "activity", "brand"]) expect(sheet, id).toContain(`<TabPanel idBase={idBase} id="${id}" value={tab}`);
+    // The brand file is fields now, text only, not a JSON dump.
+    expect(sheet).toContain("<dl ");
+    expect(sheet).not.toMatch(/JSON\.stringify\(sel\.brand/);
+    expect(sheet).not.toMatch(/dangerouslySetInnerHTML/);
+    expect(read("src/components/ui/Sheet.tsx")).toContain('size === "lg" ? "w-[min(48rem,calc(100%-1rem))]"');
+    // A member login opens in its own sheet; the account's sheet remounts per account so its tab starts on Overview.
+    const users = read("src/components/admin/Users.tsx");
+    expect(users).toContain("<UserSheet\n          key={sel.user.email}");
+    expect(users).toMatch(/<Sheet lang=\{lang\} label=\{`\$\{S\.memberLogin\} \$\{memberSel\.email\}`\}/);
+  });
+});
+
+describe("rule 1177 (banner): the founder's view of an account shows a sticky banner with the time left and Stop", () => {
+  it("counts whole minutes up, never below zero", () => {
+    expect(minutesLeft(60_000 * 15, 0)).toBe(15);
+    expect(minutesLeft(60_000 * 15, 1)).toBe(15);
+    expect(minutesLeft(60_001, 0)).toBe(2);
+    expect(minutesLeft(0, 5)).toBe(0);
+  });
+
+  it("is shown from the session's founder actor, never from the cookie alone, and Stop posts to the impersonate route", () => {
+    const layout = read("src/app/[lang]/app/layout.tsx");
+    expect(layout).toContain('{actor?.kind === "founder" && <ImpersonationBanner lang={lang} email={user.email} until={actor.until} />}');
+    expect(layout).not.toContain('jar.get("nashr_impersonate")');
+    const b = read("src/components/app/ImpersonationBanner.tsx");
+    expect(b).toContain('action="/api/admin/impersonate"');
+    expect(b).toContain('method="post"');
+    expect(b).toMatch(/className="sticky top-0/);
+    expect(b).toMatch(/<button type="submit" className="[^"]*min-h-\[var\(--hit-min\)\]/);
+    expect(b).toContain('<bdi className="break-all font-mono" dir="ltr">{email}</bdi>');
+    for (const lang of ["en", "ar"] as const) {
+      expect(IMPERSONATION_COPY[lang].left(15), lang).toMatch(/15/);
+      expect(IMPERSONATION_COPY[lang].left(15), lang).not.toMatch(/[\u0660-\u0669]/);
+    }
+  });
+});
+
+describe("rule 1181: the console's panels live in src/components/admin", () => {
+  it("no admin panel is left in components/app, and nothing imports one from there", () => {
+    const moved = ["PaymentsPanel", "PartnersPanel", "WishlistPanel", "LeadsPanel", "GoldenPanel", "EntitlementsTable"];
+    for (const m of moved) {
+      expect(() => statSync(`src/components/app/${m}.tsx`), m).toThrow();
+      expect(statSync(`src/components/admin/${m}.tsx`).isFile(), m).toBe(true);
+    }
+    const importers = filesUnder("src").filter((f) => moved.some((m) => read(f).includes(`components/app/${m}"`)));
+    expect(importers).toEqual([]);
+  });
+});
+
+describe("rule 1182 (spec 1073): no native prompt, confirm or alert in the console, and every console word in both languages", () => {
+  const NATIVE = (name: string) => new RegExp(`(?<![\\w$.\`])(?:window\\.)?${name}\\(`);
+  it("no file under src/components/admin calls the browser's prompt, confirm or alert", () => {
+    for (const f of filesUnder("src/components/admin")) {
+      const src = read(f);
+      for (const n of ["prompt", "confirm", "alert"]) expect(src, `${f}: ${n}`).not.toMatch(NATIVE(n));
+    }
+  });
+
+  it("each console dictionary has the same keys in Arabic and English, none empty", () => {
+    const shape = (o: unknown): string[] => (typeof o === "object" && o !== null && !Array.isArray(o) ? Object.entries(o).flatMap(([k, v]) => [k, ...shape(v).map((x) => `${k}.${x}`)]).sort() : []);
+    const values = (o: unknown): unknown[] => (typeof o === "object" && o !== null ? Object.values(o).flatMap(values) : [o]);
+    for (const [name, d] of Object.entries({ USERS_COPY, TABLE_COPY, FORM_COPY, LOG_COPY, IMPERSONATION_COPY, ADMIN_INPUT_ERRORS }) as [string, { en: object; ar: object }][]) {
+      expect(shape(d.ar), name).toEqual(shape(d.en));
+      for (const lang of ["en", "ar"] as const) for (const v of values(d[lang])) if (typeof v === "string") expect(v.trim(), `${name}.${lang}`).not.toBe("");
+    }
+    // The Arabic words are Arabic: every plain string in the ar half that has letters has Arabic letters.
+    for (const [name, d] of Object.entries({ USERS_COPY, TABLE_COPY, FORM_COPY, LOG_COPY }) as [string, { ar: object }][]) {
+      for (const v of values(d.ar)) if (typeof v === "string" && /[a-z]{3}/i.test(v)) expect(v, name).toMatch(/[\u0600-\u06FF]/);
+    }
+  });
+
+  it("the console shows no hard-coded English state words: the suspended badge and the table words come from the dictionaries", () => {
+    const src = adminConsoleSrc();
+    expect(src).not.toMatch(/>SUSPENDED</);
+    expect(src).not.toContain('" · SUSPENDED"');
+    for (const f of ["src/components/admin/Users.tsx", "src/components/admin/UserSheet.tsx"]) expect(read(f), f).not.toContain("— not completed —");
+    expect(read("src/components/admin/Log.tsx")).not.toMatch(/<th[^>]*>(at|user|action|reason)<\/th>/);
+  });
+});
+
