@@ -2,8 +2,8 @@
 import { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { adminFetch } from "@/lib/admin-fetch";
-import PaymentsPanel, { newPaymentId } from "../app/PaymentsPanel";
-import EntitlementsTable, { videoGrantRequest } from "../app/EntitlementsTable";
+import PaymentsPanel, { newPaymentId } from "./PaymentsPanel";
+import EntitlementsTable, { videoGrantRequest } from "./EntitlementsTable";
 import { ksaDay, sarText } from "@/lib/partner-rules";
 import { parseTrialDays, TRIAL_EXTEND_MAX_DAYS } from "@/lib/admin-input";
 import TempPasswordDialog from "./TempPasswordDialog";

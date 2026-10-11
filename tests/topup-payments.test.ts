@@ -260,7 +260,7 @@ describe("voiding a pack voids its payment and the commission; a live pack's pay
     expect(src).toContain("if (j.ok || (r.status >= 400 && r.status < 500)) pendingTopup.current = null;");
     expect(src).toContain("key={`${sel.user.email}:${payTick}`}");
     expect(src).toContain("data-topup-pay-note");
-    const panel = readFileSync("src/components/app/PaymentsPanel.tsx", "utf8");
+    const panel = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     expect(panel).toContain("p.topup && view.livePacks?.includes(p.topup.lot)");
     expect(panel).toContain("data-topup-note");
     for (const lang of ["en", "ar"] as const) {

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
 import { TITLE_MAX, WISH_STATUSES, type Bi, type WishArea, type WishStatus } from "@/lib/changelog";
-import { useConfirm } from "./ConfirmDialog";
+import { useConfirm } from "../app/ConfirmDialog";
 
 type Item = { id: string; title: Bi; area: WishArea | null; status: WishStatus; votes: number; seeded: boolean; hidden: boolean };
 type Sugg = { id: string; email: string; text: string; lang: "ar" | "en"; at: string };

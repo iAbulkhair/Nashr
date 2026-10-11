@@ -371,7 +371,7 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
     expect(src).toContain("data-topup-refund-note");
     expect(src).not.toMatch(/[^n]fetch\("\/api\/admin\/topups"/);
     for (const [lang, re] of [["en", /Refund unused[\s\S]*only when the customer asks, before the pack expires[\s\S]*excluding VAT/], ["ar", /استرداد غير المستخدم[\s\S]*فقط إذا طلبه العميل، وقبل انتهاء الباقة[\s\S]*دون الضريبة/]] as const) expect(src, lang).toMatch(re);
-    const panel = readFileSync("src/components/app/PaymentsPanel.tsx", "utf8");
+    const panel = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     expect(panel).toContain("data-payment-refund");
     expect(panel).toContain('refunded: "refunded in full"');
     expect(panel).toContain('refunded: "استُردت كاملة"');
