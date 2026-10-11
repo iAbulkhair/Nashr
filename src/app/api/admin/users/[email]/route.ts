@@ -23,6 +23,7 @@ import { cookies } from "next/headers";
 import { forceRemoveMember, getMember, membersKey, onRoster } from "@/lib/team";
 import { unfinishedRefunds } from "@/lib/partners";
 import { sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
+import { TRIAL_EXTEND_MAX_DAYS } from "@/lib/admin-input";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +102,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       return NextResponse.json({ ok: true, suspended: !!user.suspended });
     }
     case "extendTrial": {
-      const days = Math.max(1, Math.min(90, Math.trunc(b.days ?? 7)));
+      const days = Math.max(1, Math.min(TRIAL_EXTEND_MAX_DAYS, Math.trunc(b.days ?? 7)));
       const prevTrial = String(u.trialEnds);
       const user = await withUserLock(email, async (x) => {
         const base = new Date(x.trialEnds).getTime() > Date.now() ? new Date(x.trialEnds) : new Date();

@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -20,6 +21,8 @@ import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
+
+export const generateMetadata = appScreenMeta("reports");
 
 export default async function Page({ params, searchParams }: PageProps<"/[lang]/app/reports">) {
   const { lang } = await params;

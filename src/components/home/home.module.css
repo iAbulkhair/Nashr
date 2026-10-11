@@ -4,7 +4,8 @@
  */
 .home {
   --home-display: var(--font-display), ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
-  --home-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
+  /* Running text in the body face (rule 965): it was the system stack alone, so the Plex files the layout preloads went unused here. */
+  --home-body: var(--font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
   /* Prototype D's type steps, gutter and caption overhang (rule 516). */
   --t-xs: 16px;
   --t-s: 16px;

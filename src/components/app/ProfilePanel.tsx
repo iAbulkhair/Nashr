@@ -14,6 +14,7 @@ import type { ChatStatus } from "@/lib/chat-allowance";
 import { paceStart, runway, runwayLine } from "@/lib/usage-view";
 import ReadOnlyNote from "./ReadOnlyNote";
 import PasswordField from "./PasswordField";
+import DeleteAccountDialog from "./DeleteAccountDialog";
 import LogoutButton from "./LogoutButton";
 import Scribble from "@/components/Scribble";
 
@@ -76,6 +77,8 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
   // Bumped after a save: the form's fields are uncontrolled (defaultValue), so a new key re-mounts them with the
   // values the server stored instead of what was typed.
   const [formKey, setFormKey] = useState(0);
+  // The account delete dialog (rule 964): open while true, closed (and its typed password gone) when false.
+  const [deleting, setDeleting] = useState(false);
   useEffect(() => { fetchProfile().then((j) => { if (j.ok) setD(j); }).catch(() => {}); }, []);
   if (!d) return <p className="text-muted">…</p>;
   const input = "input";
@@ -174,13 +177,9 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
       : t.team.errors.failed);
     (e.target as HTMLFormElement).reset();
   }
-  async function del() {
-    const pw = prompt(ar ? "لتأكيد الحذف النهائي اكتب كلمة المرور:" : "To permanently delete, enter your password:");
-    if (!pw) return;
-    const res = await fetch("/api/account", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
-    if (res.ok) { r.push(`/${lang}`); r.refresh(); }
-    else setMsg(res.status === 403 ? t.team.errors.forbidden : res.status === 401 ? (ar ? "كلمة المرور غير صحيحة" : "Wrong password") : t.team.errors.failed);
-  }
+  // The password is asked in the app's own masked dialog (rule 964), never `window.prompt`, which showed it as plain text.
+  const deleteFail = (status: number) => (status === 403 ? t.team.errors.forbidden : t.team.errors.failed);
+  function deleted() { r.push(`/${lang}`); r.refresh(); }
   // One label source for every plan, business included: the sidebar and the billing page read the same names.
   const planLabel = (t.nav.plans as Record<string, string>)[d.user.plan] ?? d.user.plan;
   const rules = d.user.plan === "trial"
@@ -323,7 +322,8 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
       {d.impersonating ? null : canDelete ? (
         <Card title={ar ? "حذف الحساب" : "Delete account"}>
           <p className="text-sm text-muted">{ar ? "يحذف حسابك وكل بياناته نهائياً. لا رجوع." : "Permanently delete your account and all associated data. This action cannot be undone."}</p>
-          <button onClick={del} className="mt-3 btn btn-danger btn-sm">{ar ? "احذف حسابي" : "Delete account"}</button>
+          <button type="button" onClick={() => setDeleting(true)} className="mt-3 btn btn-danger btn-sm">{ar ? "احذف حسابي" : "Delete account"}</button>
+          {deleting && <DeleteAccountDialog lang={lang} email={me.email} onClose={() => setDeleting(false)} onDeleted={deleted} failText={deleteFail} />}
         </Card>
       ) : (
         <Card title={t.team.leave} sub={t.team.leaveSub}>

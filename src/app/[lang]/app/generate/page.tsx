@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -6,6 +7,8 @@ import { getBrand } from "@/lib/brand";
 import GeneratePanel from "@/components/app/GeneratePanel";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
+
+export const generateMetadata = appScreenMeta("generate");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;

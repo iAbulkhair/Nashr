@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -14,6 +15,8 @@ import { availableModels, offModels } from "@/lib/media/config";
 import { modelState } from "@/lib/model";
 
 export const dynamic = "force-dynamic";
+
+export const generateMetadata = appScreenMeta("home");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
