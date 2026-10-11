@@ -27,7 +27,7 @@ const weekStart = (k: string) => addDays(k, -dateOf(k).getUTCDay());
  * drawn on the wrong column. Pure, for the tests.
  */
 export function dayIn(moment: Date, timeZone: string = BRAND_TZ): string {
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(moment).map((x) => [x.type, x.value]));
+  const p = Object.fromEntries(dateFormat("en", { year: "numeric", month: "2-digit", day: "2-digit" }, timeZone).formatToParts(moment).map((x) => [x.type, x.value]));
   return `${p.year}-${p.month}-${p.day}`;
 }
 
