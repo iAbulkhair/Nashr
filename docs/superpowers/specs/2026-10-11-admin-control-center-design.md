@@ -267,7 +267,7 @@ Founder only today: every admin route authenticates with `adminActor(req)` / `is
 Designed for a future support role without building it:
 - `src/lib/admin-roles.ts`: `AdminRole = "founder" | "support"`, `ADMIN_CAN: Record<AdminAction, AdminRole[]>`, and `adminCan(actor, action)`. Every admin route checks its action through `adminCan` after `adminActor`. Today `adminActor` only ever returns founders, so every check passes for them; the map exists so the support role is a data change plus one identity source.
 - Support (when built): read every section except payment details and the evidence viewer of the learning loop; actions limited to: resend verification email, issue a temporary password, extend a trial by at most 7 days, run a `safeToRun` cron, retry a stuck item. Never: pause, agents, models, workflow, flags, plans, credits, top-ups, refunds, deals, impersonation, skills, proposals, rollouts.
-- Identity source for support (open question Q3): a separate environment list, so admin power is never granted from a session.
+- Identity source for support (founder answer Q3, section 18): a separate environment list set in hPanel, so admin power is never granted from a session.
 - `ADMIN_SECTIONS` gains a `role` attribute per section so the nav can hide what a role cannot open; the page gate (`requireAdmin()`) gains the same check.
 
 ## 12. Stored shapes and releases (rule 679)
@@ -316,7 +316,7 @@ Pages: `/{lang}/admin/agents`, `/{lang}/admin/workflow`, `/{lang}/admin/flags` b
 
 ## 15. Environment variables
 
-**None new.** Names read (meaning unchanged): the readiness lists in section 7.1, `ADMIN_EMAILS` and `WAITLIST_ADMIN_KEY` (console gate), `CRON_SECRET` (crons, unchanged). Reserved for the future support role, not added now: one name for the support email list, chosen when Q3 is answered.
+**None new.** Names read (meaning unchanged): the readiness lists in section 7.1, `ADMIN_EMAILS` and `WAITLIST_ADMIN_KEY` (console gate), `CRON_SECRET` (crons, unchanged). Reserved for the future support role, not added now: one name for the support email list (founder answer Q3: an environment list), named in `variables.md` when the role is built.
 
 ## 16. Tests and rules (1050-1079)
 
@@ -371,9 +371,11 @@ Prerequisite: #316 merged (the Agents page links to it and shows `skills:paused`
 
 Total about 12 working days. Phase 1 first: it removes the slowest incident step (pausing needs a release today) and gives the companion spec its audit helper and flags.
 
-## 18. Open questions for the founder (with recommended answers)
+## 18. Founder questions, answered
 
-| # | Question | Recommended answer |
+Founder decision 2026-10-11 («موافق على الكل»): every recommended answer below is accepted as written.
+
+| # | Question | Decided answer |
 |---|---|---|
 | Q1 | Does "Pause all agents" also stop the golden set, the learning crons and your own console tests? | Yes, one switch stops every model call. The learning crons also have their own `learn_cron` flag for when only they should stop. |
 | Q2 | What does a platform quiet day stop? | Automated work only: weekly batches, routines, Majed's auto-run and Reem's nudges. Owners can still chat, draft and publish. |

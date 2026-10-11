@@ -37,7 +37,7 @@ Goals
 6. The new plan/industry layer (layer 3) and the binding precedence in the one merge point.
 
 Non-goals (version 1)
-- Proposals for a single client's own instructions (layers 4 and 5). Clients own those (#316); see open question Q4.
+- Proposals for a single client's own instructions (layers 4 and 5). Clients own those (#316); not in version 1 (founder answer Q4, section 18).
 - Proposals for the reviewer or the judge (section 6.4).
 - A self-hosted fine-tune, embeddings, or any model other than the product's three (Opus 5.5, Sonnet 5.5, Haiku 5.5, rule 809).
 - Editing playbook files from the browser (still #316's non-goal).
@@ -237,7 +237,7 @@ Approved proposals for layers 2 and 3 (Redis layers). Base proposals ship in a r
 
 - One rollout per layer at a time, and one per agent target across layers, so a change in the counters has one cause (409 `rollout_running`).
 - While a rollout runs, activating a new version of that layer in the #316 editor answers 409 `rollout_running`: the founder finishes or stops the rollout first.
-- **Ramp up** only by founder click (5 → 10 → 25 → 50 → 100), never by the watch job. Nothing moves forward automatically (D2).
+- **Ramp up** only by founder click, never by the watch job. Default path 10 → 50 → 100 (founder answer Q2, section 18), with 5 and 25 still selectable; the ramp button stays off until the treatment arm has at least 3 days and 30 judged items since the last step. Nothing moves forward automatically (D2).
 - **Finish** (at 100%, founder click): the candidate set becomes the active set as a new revision through #316's store (`activate` with `note: "learn:{proposalId}"`), `rollout` is cleared, the proposal becomes `live`.
 - **Stop** (founder click, reason required): `rollout` is cleared, the active set (control) stays; the proposal goes back to `approved`.
 - Starting a rollout is refused unless the control center flag `learn_rollout` is on (companion spec), which the founder turns on only after the release that carries the rollout reader is live everywhere. This protects the expand step: old code that rewrites a `Layer` without knowing `rollout` cannot run at the same time as a rollout.
@@ -296,7 +296,7 @@ Layer 1 is code-reviewed content that is stamped by file hash (`playbookHash`) a
 3. The founder merges as any PR, then a release PR moves it live.
 4. The app marks the proposal `live` when it sees `playbookHash(file)` equal to the `afterHash` it computed at approval (checked by `learn-watch`), and the counters (5.3) then measure it by the `skills` part of the stamp. Rollback of a base change is a git revert and a release, as for any code.
 
-No GitHub token is added to the app (open question Q5).
+No GitHub token is added to the app (founder answer Q5, section 18).
 
 ### 11.3 Promote to playbook
 
@@ -402,9 +402,12 @@ Prerequisite: #316 merged and live; the companion spec's phase 1 (`adminAudit`, 
 
 Total about 13 working days, one draft PR per phase or two, per the CI rules in CLAUDE.md.
 
-## 18. Open questions for the founder (with recommended answers)
+## 18. Founder questions, answered
 
-| # | Question | Recommended answer |
+Founder decision 2026-10-11 («موافق على الكل»): every recommended answer below is accepted as written.
+The privacy sentence from Q1 is added to the drafts in `docs/legal/` (PR #325) for the lawyer's review.
+
+| # | Question | Decided answer |
 |---|---|---|
 | Q1 | May anonymised, aggregated signals from all accounts with learning on (labels and counts, never text, at least 5 workspaces) improve the platform defaults? Does the privacy policy need a sentence? | Yes, on for accounts with learning on, off for those with it off; add one sentence to the privacy policy ("we use counts of anonymous feedback categories across accounts to improve the agents; never your content"). |
 | Q2 | Rollout defaults: steps and thresholds | Start at 10%, then 50%, then 100%; at least 3 days and 30 judged items in the treatment arm between steps; roll back on −4 judge points, +3 points auto-fail rate, +8 points rejection rate or +5 points thumbs-down rate. |
