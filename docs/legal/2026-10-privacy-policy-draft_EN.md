@@ -109,6 +109,7 @@ What you type into the free tools (no account needed) is sent to the AI provider
 | The `nashr_partner` cookie, to know who referred you | Partner code, click time | [Legitimate interest or consent — Lawyer] |
 | Security, abuse and fraud prevention | IP, browser data, logs | Legitimate interest |
 | Improving the service with aggregated internal statistics | Usage counters | Legitimate interest |
+| Improving the agents for everyone: we use counts of anonymous feedback categories across accounts (never your content, never fewer than 5 workspaces), only for accounts with learning on | Feedback categories and counts, no text | [Legitimate interest or consent — Lawyer] |
 | Answering support and requests | Contact data | Performing the contract, or steps you asked for before a contract |
 | Complying with requests from competent authorities | What the law requires | Legal obligation |
 

@@ -235,3 +235,4 @@ Further questions:
 18. **Partner programme terms.** Please review `src/lib/partner-terms.ts`: IBAN, tax number, VAT or withholding on commissions.
 19. **Comparison pages.** Please review the competitor price pages (`src/lib/pages-vs.ts`, C-008) for comparative advertising rules.
 20. **Personal WhatsApp number.** Is publishing the founder's personal WhatsApp number as a support contact a problem? It is being replaced as the rights contact.
+21. **Cross-account anonymous learning.** The founder decided on 2026-10-11 that counts of anonymous feedback categories across accounts may improve the agents for everyone (Prompt Studio learning loop, spec in PR #326, Q1). This never includes content or text, never fewer than 5 workspaces, and covers only accounts with learning on. What is the legal basis: legitimate interest or consent? Is a per-account opt-out toggle enough, or must it be opt-in? Privacy §4 has the matching row.
