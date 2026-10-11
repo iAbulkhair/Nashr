@@ -27,6 +27,27 @@
   --color-agent-reem: var(--primitive-color-agent-reem);
   --color-agent-you: var(--primitive-color-agent-you);
 
+  /* Phase 1 roles (rule 1080): `text-foreground-muted`, `border-border`, `bg-success-tint`, `bg-notice-bg` and so on.
+     Same values as tokens.css, written from the primitives. */
+  --color-foreground-muted: var(--primitive-color-muted);
+  --color-foreground-subtle: color-mix(in srgb, var(--primitive-color-ink) 65%, transparent);
+  --color-border: color-mix(in srgb, var(--primitive-color-ink) 18%, transparent);
+  --color-border-input: color-mix(in srgb, var(--primitive-color-ink) 55%, transparent);
+  --color-border-strong: var(--primitive-color-ink);
+  --color-surface-muted: var(--primitive-color-ground);
+  --color-popover: var(--primitive-color-paper);
+  --color-overlay: color-mix(in srgb, var(--primitive-color-ink) 45%, transparent);
+  --color-success: var(--primitive-color-success);
+  --color-success-tint: color-mix(in srgb, var(--primitive-color-success) 10%, transparent);
+  --color-warning: var(--primitive-color-warning);
+  --color-warning-tint: var(--primitive-color-warning-tint);
+  --color-info: var(--primitive-color-ink);
+  --color-info-tint: var(--primitive-color-lilac);
+  --color-danger-tint: color-mix(in srgb, var(--primitive-color-danger) 8%, transparent);
+  --color-notice-bg: var(--primitive-color-lilac);
+  --color-notice-border: color-mix(in srgb, var(--primitive-color-ink) 30%, transparent);
+  --radius-card: var(--primitive-radius-lg);
+
   /* Tailwind's white is D's paper, so `bg-white` and `text-white` stay on the palette. */
   --color-white: var(--primitive-color-paper);
 
@@ -52,7 +73,15 @@ html {
   --chart-2: var(--color-agent-faris);
   --chart-3: color-mix(in oklab, var(--color-agent-dana) 55%, var(--color-ink));
   --chart-4: color-mix(in oklab, var(--color-agent-sami) 60%, var(--color-ink));
+  --chart-5: var(--color-muted);
 }
+
+/* Arabic reads with more room between lines and a 13px floor for small text (rule 1080). The primitives use these;
+   the global leading and the old classes stay as they were (expand only). */
+:lang(ar) { --leading-body: 1.7; --leading-title: 1.4; --text-xs-min: 0.8125rem; }
+
+/* The accent role on light ground is bold ink, never lemon text (rule 1080). */
+@utility text-accent { color: var(--color-text-accent); font-weight: 700; }
 
 /* "Skip to content" (rule 968): the first focusable thing on every page, shown only when focused. */
 .skip-link { position: absolute; inset-inline-start: 1rem; top: -100px; z-index: 100; padding: 0.5rem 1rem; border-radius: var(--primitive-radius-md); background: var(--color-ink); color: var(--color-paper); font-weight: 700; }
@@ -120,6 +149,15 @@ body {
   .btn-xs { border-radius: var(--primitive-radius-full); padding: 0.25rem 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; }
   .btn-lg { border-radius: var(--primitive-radius-full); padding: 0.75rem 1.5rem; font-size: var(--primitive-fontSize-base); }
 
+  /* Phase 1 additions (rules 1082-1083): a ghost button, three heights with a 44px main target, and the busy look. */
+  .btn-ghost { background: transparent; color: var(--color-foreground); border-color: transparent; }
+  .btn-ghost:hover:not(:disabled) { background: var(--color-background-muted); }
+  .btn-h-sm { min-height: 2.25rem; }
+  .btn-h-md { min-height: var(--hit-min); }
+  .btn-h-lg { min-height: 3rem; }
+  .btn[aria-busy="true"], .s-btn[aria-busy="true"] { cursor: progress; }
+  .btn-block { width: 100%; }
+
   /* Cards */
   .card { background: var(--card-bg); border: var(--stroke-figure) solid var(--card-border); border-radius: var(--card-radius); padding: var(--card-padding); box-shadow: var(--card-shadow); }
   .card-sm { padding: var(--primitive-spacing-4); }
@@ -133,12 +171,46 @@ body {
   .input:focus { outline: var(--stroke-focus) solid var(--input-focus-ring); outline-offset: 1px; border-color: var(--color-ink); }
   .input:disabled { opacity: 0.6; cursor: not-allowed; }
   .input[aria-invalid="true"] { border-color: var(--color-danger); }
+  /* The Field family's controls (rule 1084): a 44px target, and 16px text under 640px so iOS does not zoom the page on
+     focus. Added beside `.input`, so every other input keeps its size. */
+  .control { min-height: var(--hit-min); }
+  textarea.control { min-height: 6rem; line-height: var(--leading-body); }
+  @media (max-width: 639px) { .control { font-size: var(--primitive-fontSize-base); } }
+  .field-label { display: block; font-size: var(--primitive-fontSize-sm); font-weight: 600; color: var(--color-foreground); }
+  .field-hint { font-size: max(var(--primitive-fontSize-xs), var(--text-xs-min)); line-height: var(--leading-body); color: var(--color-foreground-muted); }
+  .field-error { font-size: var(--primitive-fontSize-sm); line-height: var(--leading-body); color: var(--color-danger); }
+
+  /* Switch (rule 1085): the track is 44 by 24 inside a 44px target. */
+  .switch { display: inline-flex; align-items: center; justify-content: center; min-width: var(--hit-min); min-height: var(--hit-min); flex: none; cursor: pointer; background: transparent; border: 0; padding: 0; }
+  .switch:disabled { cursor: not-allowed; opacity: 0.5; }
+  .switch-track { position: relative; display: inline-block; width: 2.75rem; height: 1.5rem; border-radius: var(--primitive-radius-full); border: var(--stroke-figure) solid var(--color-border-input); background: var(--color-surface-muted); transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); }
+  .switch-thumb { position: absolute; top: 50%; inset-inline-start: 0.1875rem; width: 1rem; height: 1rem; border-radius: var(--primitive-radius-full); background: var(--color-foreground-muted); transform: translateY(-50%); transition: inset-inline-start var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
+  .switch[aria-checked="true"] .switch-track { background: var(--color-ink); border-color: var(--color-ink); }
+  .switch[aria-checked="true"] .switch-thumb { inset-inline-start: 1.4375rem; background: var(--color-paper); }
+
+  /* Callout (rule 1087): a status box with text, never colour alone; the tone sets the tint and the border. */
+  .callout { display: flex; align-items: flex-start; gap: 0.5rem; border-radius: var(--primitive-radius-md); border: var(--stroke-figure) solid var(--color-border); padding: 0.75rem; font-size: var(--primitive-fontSize-sm); line-height: var(--leading-body); color: var(--color-foreground); text-align: start; }
+  .callout-info { background: var(--color-info-tint); border-color: var(--color-border); }
+  .callout-notice { background: var(--color-notice-bg); border-color: var(--color-notice-border); }
+  .callout-success { background: var(--color-success-tint); border-color: color-mix(in srgb, var(--color-success) 35%, transparent); }
+  .callout-success .callout-icon { color: var(--color-success); }
+  .callout-warning { background: var(--color-warning-tint); border-color: color-mix(in srgb, var(--color-warning) 35%, transparent); }
+  .callout-warning .callout-icon { color: var(--color-warning); }
+  .callout-danger { background: var(--color-danger-tint); border-color: color-mix(in srgb, var(--color-danger) 35%, transparent); }
+  .callout-danger .callout-icon, .callout-danger .callout-title { color: var(--color-danger); }
+  .callout-icon { flex: none; margin-top: 0.125rem; width: 1rem; height: 1rem; }
+  .callout-title { font-weight: 700; }
 
   /* Badges: a flat D fill with ink text */
   .badge { display: inline-flex; align-items: center; border-radius: var(--primitive-radius-full); padding: 0.125rem 0.5rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; color: var(--color-ink); }
   .badge-primary { background: var(--color-lilac); }
   .badge-accent { background: var(--color-lemon); }
   .badge-danger { background: var(--color-agent-sami); }
+  /* Badge tones (rule 1086): tint fills with text in the tone's own 4.5:1 colour. No lemon on a light ground. */
+  .badge-neutral { background: var(--color-surface-muted); border: var(--stroke-fine) solid var(--color-border); }
+  .badge-success { background: var(--color-success-tint); color: var(--color-success); }
+  .badge-warning { background: var(--color-warning-tint); color: var(--color-warning); }
+  .badge-inverse { background: var(--color-ink); color: var(--color-paper); }
 
   /* Typography */
   .page-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-3xl); font-weight: 700; line-height: 1.2; color: var(--color-primary); }
@@ -164,6 +236,9 @@ body {
 @media (prefers-reduced-motion: reduce) { .log-row { animation: none; } html { scroll-behavior: auto; } }
 
 :focus-visible { outline: var(--stroke-focus) solid var(--color-ring); outline-offset: 2px; }
+/* Lemon is the focus ring on ink (rule 1081): an ink ring on an ink surface is invisible. Comes after the global ring so
+   it wins at equal specificity. */
+:where(.bg-ink, .card-inverse, [data-surface="inverse"]) :focus-visible { outline-color: var(--color-ring-inverse); }
 
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
