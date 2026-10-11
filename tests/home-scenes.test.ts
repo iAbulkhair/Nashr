@@ -57,7 +57,7 @@ describe("the scenes under the cover are illustrative and true to the product (r
     for (const s of SCENES.filter((x) => x.agent === "reem")) for (const p of NOT_YET) expect(`${s.line.ar} ${s.line.en}`).not.toMatch(p);
   });
   it("puts the line under the heading before the first scene; the line says the scenes are illustrative examples (rule 926)", () => {
-    expect(SCENES_COPY.h.ar).toBe("كيف يشتغلون مع ذكين.");
+    expect(SCENES_COPY.h.ar).toBe("عملاء جربوا ذكين.");
     expect(SCENES_COPY.h.en).toBe("How owners work with Thakeen.");
     expect(SCENES_COPY.sub.ar).toBe("أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.");
     expect(SCENES_COPY.sub.en).toBe("Illustrative examples: what they like, what they learned, and what they recommend.");

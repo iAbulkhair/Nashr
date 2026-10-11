@@ -1,8 +1,10 @@
-"""Build Nashr seed pitch deck (16:9) with python-pptx.
+"""Build the Thakeen (ذكين) seed pitch deck (16:9) with python-pptx. The output file keeps its old name.
 
 Honesty rules (rule 928, tests/release-honesty.test.ts): no invented customer or merchant quote, no invented product
 log numbers, plan prices and credits as in src/lib/pricing.ts (SAR, VAT added on top), no trial length (undecided),
 no data-residency or compliance claim the code does not prove, and the contact address is hello@thakeen.com.
+The product is named Thakeen / ذكين (Nashr was the code name). Market figures, targets and the financial base case
+carry a visible "To verify" marker until each has a checked source (founder decision 2026-10-11).
 """
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -117,6 +119,14 @@ def stat(slide, x, y, num, label, dark=True):
     text(slide, x, y + Inches(0.85), Inches(2.9), Inches(0.8), label, 13, DIM if dark else GREY)
 
 
+VERIFY = "TO VERIFY: figures not yet checked against a source"
+
+
+def to_verify(slide):
+    """A visible marker on a slide whose market figures, targets or base case are not yet sourced."""
+    text(slide, W - Inches(6.3), Inches(0.5), Inches(5.5), Inches(0.4), VERIFY, 11, SADU, True, align=PP_ALIGN.RIGHT)
+
+
 def table(slide, x, y, w, rows, col_w=None, size=12, dark=False):
     nrows, ncols = len(rows), len(rows[0])
     shp = slide.shapes.add_table(nrows, ncols, x, y, w, Inches(0.4) * nrows)
@@ -142,7 +152,7 @@ def table(slide, x, y, w, rows, col_w=None, size=12, dark=False):
 # 1 Cover
 s = prs.slides.add_slide(BLANK)
 bg(s, DEEP)
-text(s, Inches(0.8), Inches(1.6), Inches(6), Inches(1), "نشر  ·  Nashr", 22, SAFF, True)
+text(s, Inches(0.8), Inches(1.6), Inches(6), Inches(1), "ذكين  ·  Thakeen", 22, SAFF, True)
 text(s, Inches(0.8), Inches(2.3), Inches(11), Inches(2.4), ["While you sleep,", "Noor markets."], 60, MIST, True)
 text(s, Inches(0.8), Inches(4.7), Inches(10), Inches(1), "The AI marketing team for Gulf businesses, Arabic-first: it drafts, you approve.", 18, DIM)
 text(s, Inches(0.8), Inches(6.2), Inches(10), Inches(0.5), "Seed round  ·  September 2026  ·  Riyadh", 12, DIM)
@@ -157,15 +167,16 @@ bullets(s, Inches(0.8), Inches(2.6), Inches(11.7), Inches(4), [
     "Leads land on WhatsApp and go cold. No one follows up.",
     "Global AI tools are English-first, non-agentic, and blind to Gulf channels, payments, and calendar.",
 ], 16)
+to_verify(s)
 
 # 3 Solution
 s = slide_dark("Noor: an AI agent that plans, creates, publishes, tunes ads, and reports — you only approve.", "Solution", 3)
 cols = [
-    ("Connect", "Salla · Zid · Shopify · Snap · TikTok · Meta · Google · WhatsApp — one-click OAuth."),
+    ("Connect", "Salla · Zid · Shopify · Snap · TikTok · Meta · Google · WhatsApp — connectors built, each switched on once its platform keys and approvals are in place."),
     ("Learn", "Brand voice file: dialect, tone, banned words, competitors. Improves with every edit."),
     ("Plan", "Weekly plan from your real numbers and the Gulf calendar, 4 weeks ahead of every season."),
     ("Execute", "Posts, articles, WhatsApp flows, ad budget moves — inside guardrails you set."),
-    ("Report", "08:00 WhatsApp brief: revenue, ROAS, what she did, what needs a yes."),
+    ("Report", "08:00 morning brief in the app (and by email): what waits for your approval, credits, seasons ahead."),
 ]
 for i, (h, b) in enumerate(cols):
     x = Inches(0.8 + i * 2.45)
@@ -187,6 +198,7 @@ text(s, Inches(0.8), Inches(5.9), Inches(11), Inches(0.6), "An illustrative exam
 
 # 5 Why now
 s = slide_dark("Why now", "Timing", 5)
+to_verify(s)
 stat(s, Inches(0.8), Inches(2.5), "90%+", "of Saudi internet users on Snapchat; TikTok Shop live in KSA")
 stat(s, Inches(3.9), Inches(2.5), "40k+", "Salla/Zid merchants — an app-store distribution channel that didn't exist 4 years ago")
 stat(s, Inches(7.0), Inches(2.5), "$39→", "Agentic marketing proven in the US (Enrich Labs, 1,400+ businesses in 18 months)")
@@ -194,6 +206,7 @@ text(s, Inches(0.8), Inches(4.9), Inches(11.5), Inches(1.5), "Frontier models no
 
 # 6 Market
 s = slide_light("Market", "Size", 6)
+to_verify(s)
 stat(s, Inches(0.8), Inches(2.4), "SAR 9B", "GCC digital ad spend 2026 (SAM proxy: SMB share ~35%)", dark=False)
 stat(s, Inches(4.2), Inches(2.4), "1.2M", "SMEs in KSA (Monsha'at); ~300k actively advertising online", dark=False)
 stat(s, Inches(7.6), Inches(2.4), "SAR 1.4B", "Serviceable: 300k SMBs × SAR 4.8k/yr blended ARPA", dark=False)
@@ -215,13 +228,13 @@ text(s, Inches(0.8), Inches(5.0), Inches(11.5), Inches(1.4), ["Credits meter eac
 # 8 Moat
 s = slide_light("Why a US player can't just localize", "Moat", 8)
 rows = [
-    ("", "Enrich Labs (Helena)", "Nashr (Noor)"),
+    ("", "Enrich Labs (Helena)", "Thakeen (Noor)"),
     ("Language", "English", "Arabic, dialect-aware (Saudi / Emirati / Kuwaiti) + English"),
     ("Ads", "Meta, Google, TikTok", "Snapchat first, TikTok, Meta, Google, X"),
     ("Owned channel", "Email (Klaviyo)", "WhatsApp Business API (+SMS, email)"),
     ("Commerce", "Shopify, Woo", "Salla, Zid, Shopify, Woo — app-store distribution"),
     ("Calendar", "US retail", "Hijri + national days + White Friday + DSF"),
-    ("Payments", "Stripe", "Tap / Moyasar, mada, Tabby/Tamara awareness"),
+    ("Payments", "Stripe", "Paymob, mada, Tabby/Tamara awareness"),
 ]
 table(s, Inches(0.8), Inches(2.4), Inches(11.7), rows, [Inches(2.0), Inches(3.5), Inches(6.2)], 12)
 
@@ -231,13 +244,13 @@ bullets(s, Inches(0.8), Inches(2.5), Inches(5.8), Inches(4), [
     "Salla + Zid app stores — “Noor for Salla”.",
     "Founder-led Arabic content: free tools (hook generator, Ramadan planner, Snap audit), weekly threads, YouTube teardowns.",
     "Agency white-label: 25% rev-share; agencies bring 5–10 brands each.",
-    "Partnerships: Tap/Moyasar merchant base, Monsha'at programs, Snap KSA partner team, TikTok Shop MENA.",
+    "Partnerships: Paymob merchant base, Monsha'at programs, Snap KSA partner team, TikTok Shop MENA.",
     "Paid: Snap + Meta to merchants; LinkedIn to real-estate and agencies.",
 ], 15, MIST)
 rect(s, Inches(7.2), Inches(2.5), Inches(5.3), Inches(3.8), OASIS, MSO_SHAPE.ROUNDED_RECTANGLE)
 text(s, Inches(7.5), Inches(2.7), Inches(4.8), Inches(0.4), "Launch sequence", 12, SAFF, True)
 bullets(s, Inches(7.5), Inches(3.2), Inches(4.8), Inches(3), [
-    "Now: waitlist live (nashr site, AR/EN)",
+    "Now: live at thakeen.com (AR/EN), onboarding founding customers",
     "Weeks 4–8: 20 design partners",
     "Week 10: Salla app-store beta",
     "November: public launch before White Friday",
@@ -246,6 +259,7 @@ bullets(s, Inches(7.5), Inches(3.2), Inches(4.8), Inches(3), [
 
 # 10 Traction plan
 s = slide_light("Traction plan and targets", "Milestones", 10)
+to_verify(s)
 rows = [
     ("", "Month 3", "Month 6", "Month 12", "Month 24"),
     ("Paying brands", "80", "220", "970", "4,800"),
@@ -261,7 +275,7 @@ text(s, Inches(0.8), Inches(5.3), Inches(11.5), Inches(1), "Leading indicator we
 s = slide_dark("Competition", "Landscape", 11)
 rows = [
     ("", "Agentic (does the work)", "Gulf-native", "Ads + WhatsApp + content in one"),
-    ("Nashr", "✓", "✓", "✓"),
+    ("Thakeen", "✓", "✓", "✓"),
     ("Enrich Labs / Helena", "✓", "✗", "partial (email, not WhatsApp)"),
     ("Jasper, Copy.ai", "✗ (writes only)", "✗", "✗"),
     ("Hootsuite, Predis", "✗ (schedules only)", "✗", "✗"),
@@ -272,6 +286,7 @@ table(s, Inches(0.8), Inches(2.4), Inches(11.7), rows, [Inches(3.0), Inches(2.9)
 
 # 12 Financials
 s = slide_light("Financials (base case, SAR)", "Model", 12)
+to_verify(s)
 rows = [
     ("", "Year 1", "Year 2", "Year 3"),
     ("Revenue", "1.9M", "15.1M", "43.2M"),
@@ -284,7 +299,7 @@ table(s, Inches(0.8), Inches(2.5), Inches(7.2), rows, [Inches(2.7), Inches(1.5),
 rect(s, Inches(8.6), Inches(2.5), Inches(3.9), Inches(3.6), OASIS, MSO_SHAPE.ROUNDED_RECTANGLE)
 text(s, Inches(8.9), Inches(2.7), Inches(3.4), Inches(0.4), "Unit economics (blended)", 12, SAFF, True)
 bullets(s, Inches(8.9), Inches(3.2), Inches(3.4), Inches(3), ["ARPA SAR 452/mo", "Gross profit / brand SAR 336", "CAC SAR 650", "Payback 1.9 months", "LTV:CAC 12.9×  (25-month life)"], 13, MIST)
-text(s, Inches(0.8), Inches(5.4), Inches(7.5), Inches(1), "Full 36-month model with live assumptions: Nashr_Financial_Model.xlsx. Figures above are indicative outputs of the base case; verify in the workbook.", 11, GREY)
+text(s, Inches(0.8), Inches(5.4), Inches(7.5), Inches(1), "Full 36-month model with live assumptions in the financial model workbook (docs/Nashr_Financial_Model.xlsx). Figures above are indicative outputs of the base case; verify in the workbook.", 11, GREY)
 
 # 13 Team
 s = slide_dark("Team", "People", 13)
@@ -303,6 +318,7 @@ text(s, Inches(0.8), Inches(6.3), Inches(11.5), Inches(0.5), "Advisors to recrui
 
 # 14 Ask
 s = slide_light("The ask", "Raise", 14)
+to_verify(s)
 text(s, Inches(0.8), Inches(2.3), Inches(6), Inches(1.2), "SAR 6M seed (~USD 1.6M)", 40, OASIS, True)
 text(s, Inches(0.8), Inches(3.3), Inches(6), Inches(0.6), "Funds the team to cash-flow positive (~month 20): 1,000 paying brands and SAR 430k MRR by month 12", 16, GREY)
 rows = [

@@ -18,11 +18,11 @@ Pull requests merged into `main` since the last release (`git log --oneline --fi
 | (R1 prep) | not merged | This branch: honesty fixes for the release (rules 924-929, `docs/system/tests/0924-release-honesty.md`). Needs its own pull request into `main` first |
 
 Rule 924-929 changes, carried by the R1 prep branch:
-- The home scenes heading claims no customers again and the line under it says «أمثلة توضيحية» / "Illustrative examples" (reverts the heading and line of #311; the slider work of #311 stays).
+- The line under the home scenes heading says «أمثلة توضيحية» / "Illustrative examples" again; the heading «عملاء جربوا ذكين.» of #311 is kept by founder decision 2026-10-11, and the slider work of #311 stays.
 - `hello@nashr.ai` is replaced by `hello@thakeen.com` (one constant, `SUPPORT_EMAIL` in `src/lib/i18n.ts`).
 - The unused `waitlist` dictionary (with "first 100 brands get two months free") is removed.
-- Paid-tier bullets carry no "coming soon" / «قريباً» item. The Agency line "Dedicated success manager" / «مدير نجاح مخصص» stays for the founder to confirm.
-- The pitch deck generator (`scripts/build_deck.py`) and `docs/Nashr_Pitch_Deck.pptx` lose the invented merchant quote, old prices, the trial length, the invented night-log numbers and the KSA hosting / PDPL claims.
+- Paid-tier bullets carry no "coming soon" / «قريباً» item. The Agency line "Dedicated success manager" / «مدير نجاح مخصص» stays (founder decision 2026-10-11).
+- The pitch deck generator (`scripts/build_deck.py`) and `docs/Nashr_Pitch_Deck.pptx` lose the invented merchant quote, old prices, the trial length, the invented night-log numbers and the KSA hosting / PDPL claims; the deck says Thakeen / ذكين, Paymob, the brief in the app, connectors waiting on keys and "live at thakeen.com", and marks unsourced figures "TO VERIFY".
 
 ## 2. Before the release pull request
 
@@ -46,18 +46,19 @@ Warm-up first: one request each to `/ar`, `/en`, `/ar/app`, `/api/health`.
 
 - [ ] `/api/health` on thakeen.com answers 200 and shows the release commit (or, while `commit` is `unknown`, a `built` time later than before).
 - [ ] `node scripts/smoke.mjs https://thakeen.com` passes (anonymous checks only).
-- [ ] Home heading, Arabic (`/ar`): the scenes section reads «كيف يشتغلون مع ذكين.» with «أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.» under it; «عملاء جربوا ذكين.» appears nowhere.
+- [ ] Home heading, Arabic (`/ar`): the scenes section reads «عملاء جربوا ذكين.» with «أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.» under it; «عملاء جربوا ذكين.» appears nowhere.
 - [ ] Home heading, English (`/en`): "How owners work with Thakeen." with "Illustrative examples: what they like, what they learned, and what they recommend." under it.
 - [ ] `GET https://thakeen.com/p/<any code>` answers a redirect to `https://thakeen.com/ar/app/signup...`, never to `0.0.0.0` (rule 904).
 - [ ] Billing page (`/ar/app/billing`, a paid test account without WhatsApp support set, or the plan cards' email button): the address shown is `hello@thakeen.com`; no `nashr.ai` anywhere in the page source.
-- [ ] Pricing page (`/ar/pricing`, `/en/pricing`): no plan bullet says «قريباً» / "coming soon"; Agency still lists "Dedicated success manager" (until the founder decides).
+- [ ] Pricing page (`/ar/pricing`, `/en/pricing`): no plan bullet says «قريباً» / "coming soon"; Agency still lists "Dedicated success manager".
 - [ ] Founder console: a reason prompt (for example "change plan") with Cancel changes nothing; "Extend trial" with Cancel sends nothing (rule 960).
 - [ ] Page titles: an app screen and a console section show «الشاشة · ذكين» / "Screen · Thakeen" in the browser tab (rule 961).
 - [ ] Chat: one message gets an answer on the live site (production stays on direct Anthropic).
 - [ ] A wrong commit in `/api/health` 10 minutes after the merge: read the Hostinger build list and the build log; rollback is a revert pull request into `production` (flows.md 52, item 11).
 
-## 5. Left for the founder (not changed by this release)
+## 5. Founder decisions of 2026-10-11 (kept as they are)
 
-- Agency bullet "Dedicated success manager" / «مدير نجاح مخصص»: keep, reword or remove.
-- Pricing line "Pay yearly, get two months free (coming soon)" / «ادفع سنوياً ووفّر شهرين (قريباً)» (`pricing.annual`, shown on the pricing page) and the integrations line "X (coming soon)" / «X (قريباً)»: not plan bullets, so left as they are.
-- The scenes heading wording: the founder may choose other words in `SCENES_COPY` (`src/lib/home.ts`) as long as rule 926 holds.
+- Home: the Arabic scenes heading «عملاء جربوا ذكين.» stays; the line under it carries «أمثلة توضيحية» / "Illustrative examples" (rule 926).
+- Agency bullet "Dedicated success manager" / «مدير نجاح مخصص» stays.
+- Pricing line "Pay yearly, get two months free (coming soon)" / «ادفع سنوياً ووفّر شهرين (قريباً)» and the integrations line "X (coming soon)" / «X (قريباً)» stay.
+- Deck: every item fixed in `scripts/build_deck.py` (rule 928); the market figures, targets and base case stay with a "TO VERIFY" marker.

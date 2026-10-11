@@ -41,25 +41,25 @@ describe("rule 925: no dead launch promise of free months for the first brands",
   });
 });
 
-describe("rule 926: the scenes heading claims no customers and the line under it says the scenes are illustrative", () => {
-  const CLAIM = /عملاء جربوا|عملاؤنا|جربوا ذكين|customers? (tried|love|use)|our customers|real customers/i;
-
-  it("has a heading with no customer claim, in both languages", () => {
-    for (const lang of LANGS) expect(SCENES_COPY.h[lang], lang).not.toMatch(CLAIM);
-  });
-
+describe("rule 926: the scenes subline marks them as illustrative examples in both languages", () => {
   it("opens the line under the heading with «أمثلة توضيحية» / \"Illustrative examples\"", () => {
     expect(SCENES_COPY.sub.ar.startsWith("أمثلة توضيحية")).toBe(true);
     expect(SCENES_COPY.sub.en.startsWith("Illustrative examples")).toBe(true);
   });
 
-  it("renders the line, keeps the wording in src/lib/home.ts only, and nowhere says «عملاء جربوا»", () => {
+  it("keeps the founder's Arabic heading (decision 2026-10-11) and the English one", () => {
+    expect(SCENES_COPY.h.ar).toBe("عملاء جربوا ذكين.");
+    expect(SCENES_COPY.h.en).toBe("How owners work with Thakeen.");
+  });
+
+  it("renders the heading and the line, with the wording in src/lib/home.ts only", () => {
     const stories = read("src/components/home/Stories.tsx");
     expect(stories).toContain("{c.h[lang]}");
     expect(stories).toContain("{c.sub[lang]}");
-    const typed = files(["src"]).filter((f) => f !== "src/lib/home.ts" && read(f).includes(SCENES_COPY.sub.ar));
-    expect(typed).toEqual([]);
-    expect(files(["src"]).filter((f) => /عملاء جربوا/.test(read(f)))).toEqual([]);
+    expect(stories.indexOf("{c.sub[lang]}")).toBeLessThan(stories.indexOf("<SceneTrack"));
+    for (const t of [SCENES_COPY.h.ar, SCENES_COPY.sub.ar, SCENES_COPY.sub.en]) {
+      expect(files(["src"]).filter((f) => f !== "src/lib/home.ts" && read(f).includes(t)), t).toEqual([]);
+    }
   });
 });
 
@@ -110,6 +110,30 @@ describe("rule 928: the pitch deck generator states no invented quote, number or
     expect(deck).not.toMatch(/PDPL-compliant|KSA region|hosted in-Kingdom|In-Kingdom data/i);
     expect(deck).not.toMatch(/nashr\.ai/);
     expect(deck).toContain("hello@thakeen.com");
+  });
+
+  // Founder decisions 2026-10-11: the product's name, the payment provider, the brief, the connectors, the launch status
+  // and a visible marker on figures that have no checked source yet.
+  it("names the product Thakeen / ذكين, never Nashr, outside file names", () => {
+    const quoted = (deck.match(/"[^"\n]*"/g) ?? []).join("\n").replace(/Nashr_[A-Za-z_]+\.(pptx|xlsx)/g, "");
+    expect(quoted).not.toMatch(/Nashr|نشر/);
+    expect(deck).toContain("ذكين  ·  Thakeen");
+  });
+
+  it("states Paymob, the in-app brief, connectors waiting on keys and the live status, with no one-click or waitlist claim", () => {
+    expect(deck).not.toMatch(/Tap ?\/ ?Moyasar|Moyasar|one-click OAuth|WhatsApp brief|waitlist live/i);
+    expect(deck).toContain("Paymob");
+    expect(deck).toContain("morning brief in the app");
+    expect(deck).toContain("Now: live at thakeen.com");
+  });
+
+  it("marks every slide with market figures, targets or the base case as to verify", () => {
+    for (const marker of ["# 2 Problem", "# 5 Why now", "# 6 Market", "# 10 Traction plan", "# 12 Financials", "# 14 Ask"]) {
+      const start = deck.indexOf(marker);
+      const next = deck.indexOf("\n# ", start + 1);
+      expect(deck.slice(start, next === -1 ? undefined : next), marker).toContain("to_verify(s)");
+    }
+    expect(deck).toMatch(/VERIFY = "TO VERIFY/);
   });
 });
 
