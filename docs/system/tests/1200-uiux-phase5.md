@@ -30,7 +30,9 @@ Free in this range: 1206-1219.
 - When a client navigation goes from a public page into the app, `ThemeScope` applies the theme after the first paint, so one light frame can show. A full load has none.
 - If the CSP ever gains `script-src`, the head script needs a hash or a nonce.
 
-## Phase 5b plan: the marketing live UI gallery (rules 1220-1229, not built)
+## Phase 5b plan: the marketing live UI gallery (rules 1220-1229)
+
+Items 1-4 and 6 are built on `claude/uiux-phase5b`: see `docs/system/tests/1220-uiux-phase5b.md`. Item 5 is still to come.
 
 1. The gallery copy goes in a new file, `src/lib/home-gallery.ts`, with Arabic and English. `src/lib/home.ts` stays as it is. The heading «عملاء جربوا ذكين.» and the sub-line «أمثلة توضيحية: …» / "Illustrative examples: …" stay exactly as on `claude/r1-release-prep` (PR #322).
 2. The explorer renders the real app components (Inbox card, approval card, chat bubble, a report tile) with fictional data that is labelled illustrative on screen. It shows no customer names, logos, testimonials, quotes, numbers or promised results.
