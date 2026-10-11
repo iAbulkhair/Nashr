@@ -180,8 +180,8 @@ describe("rule 1014: a cron that finishes records its heartbeat, and only then",
       expect(src, job).toContain(`recordCronRun("${job}")`);
     }
   });
-  it("the vercel.json schedules and the heartbeat limits cover the same jobs, and each limit exceeds the schedule's gap", () => {
-    const paths = new Set((JSON.parse(readFileSync("vercel.json", "utf8")).crons as { path: string }[]).map((c) => c.path.replace("/api/cron/", "")));
+  it("the crons.json schedules and the heartbeat limits cover the same jobs, and each limit exceeds the schedule's gap", () => {
+    const paths = new Set((JSON.parse(readFileSync("crons.json", "utf8")).crons as { path: string }[]).map((c) => c.path.replace("/api/cron/", "")));
     for (const p of paths) expect(CRON_JOBS, p).toContain(p);
     // The daily jobs run every 24 hours, weekly ones every 7 days, stores every 12 hours, the tick every 15 minutes.
     expect(CRON_MAX_AGE_SEC.daily).toBeGreaterThan(86400);

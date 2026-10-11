@@ -16,7 +16,7 @@ Status on 2026-10-11 on branch `claude/prompt-studio-specs`: design only, `docs/
 | 1059 | Forced approval ignores `autoApprove` for listed types at creation and judge withdrawal; existing items unchanged | designed, not pinned | `tests/admin-control.test.ts` |
 | 1060 | Publish hold refuses `publish_held` inside publish-once before any connector call, Composio drafts included | designed, not pinned | `tests/admin-control.test.ts` |
 | 1061 | Platform quiet day: weekly, routines, Majed auto-run and Reem nudges skip without charge for matching countries; owner actions not blocked | designed, not pinned | `tests/admin-control.test.ts` |
-| 1062 | `CRONS` equals `vercel.json` plus the secretary tick plus the learning crons; every cron writes `cronrun:{name}` at start and end; status rules | designed, not pinned | `tests/admin-control.test.ts` |
+| 1062 | `CRONS` equals `crons.json` (`vercel.json` until rule 989) plus the secretary tick plus the learning crons; every cron writes `cronrun:{name}` at start and end; status rules | designed, not pinned | `tests/admin-control.test.ts` |
 | 1063 | Run now only for `safeToRun`; server-side function call; no `CRON_SECRET` leaves the server | designed, not pinned | `tests/admin-control.test.ts` |
 | 1064 | Queue health reads only global structures | designed, not pinned | `tests/admin-control.test.ts` |
 | 1065 | `stuck:{kind}` maintained on enter and leave; retry through the existing idempotent path; never charges | designed, not pinned | `tests/admin-control.test.ts` |

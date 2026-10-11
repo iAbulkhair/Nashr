@@ -10,7 +10,7 @@ import { db } from "./db";
  * authenticated the caller and finished without throwing; it says nothing about every workspace inside the batch
  * (that is the job's own report). A run that throws, or answers 401 or 409, leaves the old heartbeat in place.
  *
- * The limits are the schedule plus slack for a late start and a chain of hops (`vercel.json`; `secretary` is the
+ * The limits are the schedule plus slack for a late start and a chain of hops (`crons.json`; `secretary` is the
  * 15-minute QStash tick, which is not in that file).
  */
 export const CRON_MAX_AGE_SEC = {
