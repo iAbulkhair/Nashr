@@ -76,10 +76,12 @@ async function write(system: string, brand: Brand, task: Task, fallback: string,
   try {
     // Spec A18: video prompts are metered as image_prompt too. The render is for the agent who owns the item, the same
     // agent its credit is charged to. A stream, so a prompt cut by its time limit is metered for what it was billed
-    // (rule 980); `until` bounds the whole reply, as the request's own timeout did when this was one request.
+    // (rule 980); `until` bounds the whole reply, as the request's own timeout did when this was one request. The clock is
+    // read once, so the timeout equals the budget exactly (rule 1206).
+    const now = Date.now();
     const res = await metered(anthropic({ timeoutMs: PROMPT_MAX_MS, maxRetries: 0 }).messages.stream(
       { model: route("imagePrompt").model, max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: postOf(brand, task) }] },
-      { ...until(Date.now() + Math.min(PROMPT_MAX_MS, timeoutMs)), maxRetries: 0 },
+      { ...until(now + Math.min(PROMPT_MAX_MS, timeoutMs), { now }), maxRetries: 0 },
     ), { email, kind: "image_prompt", agent: agentForTask(task.type).id });
     const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(" ").trim();
     if (text) return text;
