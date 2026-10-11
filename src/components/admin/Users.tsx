@@ -5,9 +5,10 @@ import { adminFetch } from "@/lib/admin-fetch";
 import PaymentsPanel, { newPaymentId } from "../app/PaymentsPanel";
 import EntitlementsTable, { videoGrantRequest } from "../app/EntitlementsTable";
 import { ksaDay, sarText } from "@/lib/partner-rules";
-import { parseTrialDays, TRIAL_EXTEND_MAX_DAYS } from "@/lib/admin-input";
+import { parseChat, parseCreditDelta, parseDealForm, parseRefundForm, parseSeats, parseTopupForm, parseTrialDays, withReason, TRIAL_EXTEND_MAX_DAYS } from "@/lib/admin-input";
 import TempPasswordDialog from "./TempPasswordDialog";
-import { AGENCY_MIN, MAX_SEAT_OVERRIDE, PLANS, TOPUP_PACKS, formatCount, isChatOverride, isTopupPack, parseDeal, topupPriceSar, topupsSold, type AgencyDeal, type Plan } from "@/lib/pricing";
+import { useActionDialog, type FieldSpec, type FormValues } from "./ActionDialog";
+import { AGENCY_MIN, PLANS, TOPUP_PACKS, formatCount, isTopupPack, topupPriceSar, topupsSold, type AgencyDeal, type Plan } from "@/lib/pricing";
 import type { TopupLot } from "@/lib/topups";
 // The refund amount the founder is shown, computed as the server computes it (rule 460). topups.ts is client-safe (rule 451).
 import { unusedRefundSar } from "@/lib/topups";
@@ -47,18 +48,24 @@ export default function Users({ lang, keySession }: SectionProps) {
   /** The temporary password from "Reset password", shown once in its own dialog and dropped from state when it closes. */
   const [temp, setTemp] = useState<{ email: string; password: string } | null>(null);
   /**
-   * The reason every founder change asks for (rule 960). Cancel is `null` and stops the change: before this, `?? ""`
-   * turned Cancel into an empty reason and the plan, seats, chat, deal, credits, top-up, void, refund or member removal
-   * went through anyway. An empty reason typed and confirmed with OK still goes, as before.
+   * Every founder change asks in the console's own form (rules 1100-1102), never in the browser's prompt or confirm:
+   * one form per change with all its fields and the reason, checked by the shared parsers (`@/lib/admin-input`) before it
+   * closes. Cancel and Escape answer null and the change sends nothing (rule 960: before, a cancelled reason prompt
+   * still sent the plan, seats, chat, deal, credits, top-up, void, refund or member removal). An empty reason still goes.
    */
-  const askReason = (): string | null => prompt(O.reason, "");
-  /** "Extend trial" (rule 960): a whole number of days from 1 to 90; Cancel sends nothing, a bad number says so. */
+  const [ask, actionDialog] = useActionDialog(lang);
+  /** The reason field every change but "Extend trial", the video grant and the account delete carries (logged, 200 characters). */
+  const REASON: FieldSpec = { name: "reason", label: O.reason, kind: "textarea", maxLength: 200 };
+  const reasonOnly = (v: FormValues) => withReason({ ok: true, value: {} }, v.reason);
+  /** "Extend trial" (rule 960): a whole number of days from 1 to 90; Cancel sends nothing, a bad number says so in the form. */
   async function extendTrial(email: string) {
-    const raw = prompt(S.promptDays, "7");
-    if (raw === null) return;
-    const days = parseTrialDays(raw);
-    if (days === null) { setMsg(`${email}: bad_days (1-${TRIAL_EXTEND_MAX_DAYS})`); return; }
-    await act(email, "extendTrial", { days });
+    const v = await ask({
+      title: S.extend, subject: email, submitLabel: S.extend,
+      fields: [{ name: "days", label: S.promptDays, initial: "7", ltr: true }],
+      parse: (f) => { const days = parseTrialDays(f.days); return days === null ? { ok: false, error: `bad_days (1-${TRIAL_EXTEND_MAX_DAYS})` } : { ok: true, value: { days } }; },
+    });
+    if (!v) return;
+    await act(email, "extendTrial", v);
   }
   async function act(email: string, action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
@@ -76,15 +83,27 @@ export default function Users({ lang, keySession }: SectionProps) {
     if (sel && action !== "delete") await open(email);
     return j;
   }
+  /** Delete an account: the form's button stays off until the account's own email is typed (rule 1102). */
+  async function deleteAccount(email: string) {
+    const v = await ask({ title: S.del, subject: email, submitLabel: S.del, destructive: true, fields: [{ name: "email", label: S.promptDelete, ltr: true, mustMatch: email }], parse: () => ({ ok: true, value: {} }) });
+    if (!v) return;
+    await act(email, "delete");
+  }
+  /** Remove a member login (it frees the address): the member's email typed, and the reason (rule 1102). */
+  async function removeMember(email: string) {
+    const v = await ask({ title: S.removeMember, subject: email, submitLabel: S.removeMember, destructive: true, fields: [{ name: "email", label: S.promptRemoveMember, ltr: true, mustMatch: email }, REASON], parse: reasonOnly });
+    if (!v) return;
+    await act(email, "removeMember", v);
+  }
   /** A deal as "credits @ price SAR", or that the account has no deal and counts as Business. */
   const dealText = (d?: AgencyDeal | null) => (d ? `${formatCount(d.credits)} @ ${formatCount(d.priceSar)} SAR` : S.noDeal);
   /** The team change a plan or seat change made, in one line: who was paused, who came back, how many invites went. */
   const teamLine = (t?: TeamChange) => (!t ? "" : [t.disabled.length ? `${S.teamPaused}: ${t.disabled.join(", ")}` : "", t.enabled.length ? `${S.teamResumed}: ${t.enabled.join(", ")}` : "", t.cancelled.length ? `${S.teamCancelled}: ${t.cancelled.length}` : ""].filter(Boolean).join(" · "));
-  async function setPlan(email: string, plan: string) {
-    const reason = askReason();
-    if (reason === null) return;
+  async function setPlan(email: string, from: string, plan: string) {
+    const v = await ask({ title: `${S.plan}: ${from} → ${plan}`, subject: email, fields: [REASON], parse: reasonOnly });
+    if (!v) return;
     setBusy(true);
-    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, ...v }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${email} → ${plan}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${email}: ${j.error ?? r.status}`);
     await load();
@@ -92,14 +111,14 @@ export default function Users({ lang, keySession }: SectionProps) {
   }
   /** The founder seat override (spec §5; Agency "seats sized to your team"). 0 clears it back to the plan's number. */
   async function setSeats(u: U) {
-    const raw = prompt(S.promptSeats, String(u.seatsOverride ?? u.seats ?? ""));
-    if (raw === null || raw.trim() === "") return;
-    const n = Number(raw.trim());
-    if (!Number.isInteger(n) || n < 0 || n > MAX_SEAT_OVERRIDE) { setMsg(`${u.email}: bad_seats`); return; }
-    const reason = askReason();
-    if (reason === null) return;
+    const v = await ask({
+      title: S.setSeats, subject: u.email,
+      fields: [{ name: "seats", label: S.promptSeats, initial: String(u.seatsOverride ?? u.seats ?? ""), ltr: true }, REASON],
+      parse: (f) => withReason(parseSeats(f.seats), f.reason),
+    });
+    if (!v) return;
     setBusy(true);
-    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, seats: n === 0 ? null : n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...v }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { seats: number }; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${u.email}: ${S.seats} ${j.user?.seats ?? ""}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${u.email}: ${j.error ?? r.status}`);
     await load();
@@ -108,19 +127,17 @@ export default function Users({ lang, keySession }: SectionProps) {
   /**
    * The founder chat override (rule 316): the account's messages per month, or for the whole trial. 0 is an override that
    * stops chat, so it is sent as 0; empty or "plan" clears the override back to the plan's number (null). Checked here
-   * with the server's own test (`isChatOverride`), and again by the server.
+   * with the server's own test (`isChatOverride`, through `parseChat`), and again by the server.
    */
   async function setChat(u: U) {
-    const raw = prompt(S.promptChat, u.chatOverride != null ? String(u.chatOverride) : "plan");
-    if (raw === null) return;
-    const t = raw.trim();
-    const clear = t === "" || t.toLowerCase() === "plan" || t === "الخطة";
-    const n = Number(t);
-    if (!clear && !isChatOverride(n)) { setMsg(`${u.email}: bad_chat`); return; }
-    const reason = askReason();
-    if (reason === null) return;
+    const v = await ask({
+      title: S.setChat, subject: u.email,
+      fields: [{ name: "chat", label: S.promptChat, initial: u.chatOverride != null ? String(u.chatOverride) : "plan", ltr: true }, REASON],
+      parse: (f) => withReason(parseChat(f.chat), f.reason),
+    });
+    if (!v) return;
     setBusy(true);
-    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, chatAllowance: clear ? null : n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...v }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { chatAllowance: number; chatOverride: number | null }; error?: string };
     setMsg(j.ok ? `${u.email}: ${S.chat} ${j.user?.chatAllowance ?? ""}${j.user?.chatOverride == null ? "" : ` (${S.seatsOverride})`}` : `${u.email}: ${j.error ?? r.status}`);
     await load();
@@ -128,21 +145,22 @@ export default function Users({ lang, keySession }: SectionProps) {
     setBusy(false);
   }
   /**
-   * The founder's video grant (rule 783): every video model for a trial, through the end of a UTC day. Asks for the day and
-   * a note and sends `videoGrant: {until, note?}` (`videoGrantRequest`); an empty day clears the grant, and sends nothing
-   * when the account has none (ruling R13, so no no-op `admin:log` entry). The day is not checked here: the server is the
-   * one check (`parseVideoGrant`, which pulls the store into whatever imports it, so the console cannot) and answers 400
-   * `bad_grant` for a day that is today, past, over 366 days ahead or not a day, or a note over 200 characters. The error is
-   * shown as the other actions show theirs, and the detail is read again.
+   * The founder's video grant (rule 783): every video model for a trial, through the end of a UTC day. One form asks for
+   * the day and a note and sends `videoGrant: {until, note?}` (`videoGrantRequest`); an empty day clears the grant, and
+   * sends nothing when the account has none (ruling R13, so no no-op `admin:log` entry). The day is not checked here: the
+   * server is the one check (`parseVideoGrant`, which pulls the store into whatever imports it, so the console cannot) and
+   * answers 400 `bad_grant` for a day that is today, past, over 366 days ahead or not a day, or a note over 200
+   * characters. The error is shown as the other actions show theirs, and the detail is read again.
    */
   async function setVideoGrant(u: U) {
     const have = sel?.user.email === u.email ? sel.entitlements?.grants.video : null;
-    const raw = prompt(S.promptGrantUntil, have && !have.expired ? have.until : "");
-    if (raw === null) return;
-    const note = raw.trim() === "" ? "" : prompt(S.promptGrantNote, have?.note ?? "");
-    if (note === null) return;
-    const body = videoGrantRequest(raw, note, !!have);
-    if (!body) return;
+    const v = await ask({
+      title: S.grantVideo, subject: u.email,
+      fields: [{ name: "until", label: S.promptGrantUntil, kind: "date", initial: have && !have.expired ? have.until : "", ltr: true }, { name: "note", label: S.promptGrantNote, initial: have?.note ?? "", maxLength: 200 }],
+      parse: (f) => ({ ok: true, value: { body: videoGrantRequest(f.until, f.until.trim() === "" ? "" : f.note, !!have) } }),
+    });
+    if (!v?.body) return;
+    const body = v.body;
     setBusy(true);
     const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -154,80 +172,74 @@ export default function Users({ lang, keySession }: SectionProps) {
   /** The chat cell's tooltip: what to click, and what chat cost this month in all and per message. */
   const chatTitle = (u: U) => [S.setChat, `${S.chatCost} ${(u.chatUsd ?? 0).toFixed(2)}`, `${S.perMsg} ${u.usdPerMsg == null ? "—" : u.usdPerMsg.toFixed(4)}`, `${S.overflow}: ${u.plan === "trial" ? S.overflowTrial : u.chatOverflowOn ? S.overflowOn : S.overflowOff}`].join(" · ");
   /**
-   * An Agency deal: monthly credits and a SAR price at or above the Business rate, and optionally the seats. Checked here
-   * with the same parser the server uses (src/lib/pricing.ts) so a typo is caught before the request; the server checks
-   * it again and refuses a deal on any plan but agency. Empty credits clears the deal (the account then counts as Business,
-   * and the server clears the deal's seats too).
+   * An Agency deal in one form: monthly credits and a SAR price at or above the Business rate, and optionally the seats.
+   * Checked here with the parser the server uses (`parseDeal`, through `parseDealForm`) so a typo is caught before the
+   * request; the server checks it again and refuses a deal on any plan but agency. Empty credits clears the deal (the
+   * account then counts as Business, and the server clears the deal's seats too).
    *
    * The account's first deal is sent with plan "agency", which grants the deal's allowance at once: the plan change that
    * made the account Agency gave it Business's credits, and a deal sent alone keeps the balance until the next renewal,
    * so a new 3,000-credit customer would otherwise hold Business's credits for the first month. A change to an existing
-   * deal asks whether to apply it now (the same) or at the next renewal (the deal alone).
+   * deal offers "apply now" (the same), unticked by default (the deal alone, from the next renewal).
    */
   async function setDeal(u: U) {
-    const rawCredits = prompt(S.promptDealCredits, String(u.deal?.credits ?? AGENCY_MIN.credits));
-    if (rawCredits === null) return;
-    const body: Record<string, unknown> = {};
-    if (rawCredits.trim() === "") body.deal = null;
-    else {
-      const rawPrice = prompt(S.promptDealPrice, String(u.deal?.priceSar ?? AGENCY_MIN.priceSar));
-      if (rawPrice === null) return;
-      const parsed = parseDeal({ credits: Number(rawCredits.trim()), priceSar: Number(rawPrice.trim()) });
-      if (!parsed.ok) { setMsg(`${u.email}: ${parsed.error}`); return; }
-      body.deal = parsed.deal;
-      if (!u.deal || confirm(S.dealApplyNow)) body.plan = "agency";
-      const rawSeats = prompt(S.promptDealSeats, String(u.seatsOverride ?? ""));
-      if (rawSeats === null) return;
-      if (rawSeats.trim() !== "") {
-        const n = Number(rawSeats.trim());
-        if (!Number.isInteger(n) || n < 1 || n > MAX_SEAT_OVERRIDE) { setMsg(`${u.email}: bad_seats`); return; }
-        body.seats = n;
-      }
-    }
-    const reason = askReason();
-    if (reason === null) return;
+    const fields: FieldSpec[] = [
+      { name: "credits", label: S.promptDealCredits, initial: String(u.deal?.credits ?? AGENCY_MIN.credits), ltr: true },
+      { name: "price", label: S.promptDealPrice, initial: String(u.deal?.priceSar ?? AGENCY_MIN.priceSar), ltr: true },
+      ...(u.deal ? [{ name: "applyNow", label: S.dealApplyNow, kind: "check" } as FieldSpec] : []),
+      { name: "seats", label: S.promptDealSeats, initial: String(u.seatsOverride ?? ""), ltr: true },
+      REASON,
+    ];
+    const v = await ask({
+      title: S.setDeal, subject: u.email, fields,
+      parse: (f) => withReason(parseDealForm({ credits: f.credits, price: f.price, seats: f.seats, applyNow: f.applyNow === "1" }, !!u.deal), f.reason),
+    });
+    if (!v) return;
     setBusy(true);
-    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...v }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { deal?: AgencyDeal | null }; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${u.email}: ${S.deal} ${dealText(j.user?.deal)}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${u.email}: ${j.error ?? r.status}`);
     await load();
     setBusy(false);
   }
   async function addCredits(email: string) {
-    const n = Number(prompt(S.promptCredits, "100"));
-    if (!n) return;
-    const reason = askReason();
-    if (reason === null) return;
+    const v = await ask({
+      title: S.addCredits, subject: email,
+      fields: [{ name: "credits", label: S.promptCredits, initial: "100", ltr: true }, REASON],
+      parse: (f) => withReason(parseCreditDelta(f.credits), f.reason),
+    });
+    if (!v) return;
     setBusy(true);
-    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...v }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-    setMsg(j.ok ? `${email} +${n} credits` : `${email}: ${j.error ?? r.status}`);
+    setMsg(j.ok ? `${email} +${v.addCredits} credits` : `${email}: ${j.error ?? r.status}`);
     await load();
     setBusy(false);
   }
   /**
-   * A pack paid for outside the app (rules 446-447, 454): the pack, the amount paid excluding VAT (its list price by
-   * default), the payment date (today in Riyadh by default, `ksaDay`, the day every recorded payment uses), the payment
-   * reference and the reason. The pack is checked here with the server's own test (`isTopupPack`); the server checks every
-   * field again (`parseTopup`) and refuses a trial. The server records the pack's payment, and the partner's commission
-   * when one is due, with the pack: the founder does not record it in Payments. Through `adminFetch` (rule 436).
+   * A pack paid for outside the app (rules 446-447, 454), in one form: the pack, the amount paid excluding VAT (its list
+   * price, following the pack until the founder types one), the payment date (today in Riyadh by default, `ksaDay`, the
+   * day every recorded payment uses), the payment reference and the reason. The pack is checked here with the server's own
+   * test (`isTopupPack`, through `parseTopupForm`); the server checks every field again (`parseTopup`) and refuses a
+   * trial. The server records the pack's payment, and the partner's commission when one is due, with the pack: the
+   * founder does not record it in Payments. Through `adminFetch` (rule 436).
    */
   async function addTopup(u: U) {
-    const rawPack = prompt(S.promptTopupPack, String(TOPUP_PACKS[0]));
-    if (rawPack === null) return;
-    const credits = Number(rawPack.replace(/,/g, "").trim());
-    if (!isTopupPack(credits)) { setMsg(`${u.email}: bad_pack`); return; }
-    const rawPaid = prompt(S.promptTopupPaid, String(topupPriceSar(credits)));
-    if (rawPaid === null) return;
-    const paidSar = Number(rawPaid.replace(/,/g, "").trim());
-    if (rawPaid.trim() === "" || !Number.isFinite(paidSar) || paidSar < 0) { setMsg(`${u.email}: bad_paid`); return; }
-    const paidOn = prompt(S.promptTopupDate, ksaDay());
-    if (paidOn === null) return;
-    const ref = prompt(S.promptTopupRef, "");
-    if (ref === null) return;
-    const reason = askReason();
-    if (reason === null) return;
-    const pack = { email: u.email, action: "add", credits, paidSar, paidOn: paidOn.trim(), ref };
+    const v = await ask({
+      title: S.addTopup, subject: u.email,
+      fields: [
+        { name: "pack", label: S.promptTopupPack, kind: "select", initial: String(TOPUP_PACKS[0]), options: TOPUP_PACKS.map((p) => ({ value: String(p), label: formatCount(p) })), ltr: true },
+        { name: "paid", label: S.promptTopupPaid, ltr: true, follow: (f) => (isTopupPack(Number(f.pack)) ? String(topupPriceSar(Number(f.pack))) : f.paid ?? "") },
+        { name: "date", label: S.promptTopupDate, kind: "date", initial: ksaDay(), ltr: true },
+        { name: "ref", label: S.promptTopupRef, ltr: true },
+        REASON,
+      ],
+      parse: (f) => withReason(parseTopupForm({ pack: f.pack, paid: f.paid, date: f.date, ref: f.ref }), f.reason),
+    });
+    if (!v) return;
+    const { reason, ...rest } = v;
+    const pack = { email: u.email, action: "add", ...rest };
+    const credits = rest.credits;
     const key = JSON.stringify(pack);
     if (pendingTopup.current?.key !== key) pendingTopup.current = { key, id: newPaymentId() };
     setBusy(true);
@@ -246,15 +258,15 @@ export default function Users({ lang, keySession }: SectionProps) {
   }
   /**
    * Void a pack (a payment reversed, a pack recorded by mistake): its payment and the partner's commission on it are
-   * voided, then its unspent credits leave the balance (rule 455). Logged. Through `adminFetch` (rule 436).
+   * voided, then its unspent credits leave the balance (rule 455). One form says what goes and asks the reason. Logged.
+   * Through `adminFetch` (rule 436).
    */
   async function voidTopup(u: U, l: TopupLot) {
-    if (!confirm(S.confirmVoid(l.credits, l.left))) return;
-    const reason = askReason();
-    if (reason === null) return;
+    const v = await ask({ title: S.voidTopup, subject: u.email, message: S.confirmVoid(l.credits, l.left), submitLabel: S.voidTopup, destructive: true, fields: [REASON], parse: reasonOnly });
+    if (!v) return;
     setBusy(true);
     try {
-      const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, action: "void", id: l.id, reason }) });
+      const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, action: "void", id: l.id, ...v }) });
       const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; credits?: number; removed?: number };
       setMsg(j.ok ? `${u.email}: ${S.topups} ${S.voidTopup} −${formatCount(j.removed ?? 0)} → ${j.credits ?? ""}` : `${u.email}: ${j.error ?? r.status}`);
     } catch {
@@ -266,26 +278,25 @@ export default function Users({ lang, keySession }: SectionProps) {
   }
   /**
    * Refund a live pack's unused credits (founder decision of 2026-10-02, rule 460): the customer asked, the pack has not
-   * expired. The console shows the amount (`unusedRefundSar`: credits left × the price per credit paid, excluding VAT) and
-   * sends the credits left it showed, so the server refuses (`left_changed`) rather than record another amount; then the
-   * transfer's date (today in Riyadh by default) and its reference, and the reason. One request id per refund, kept until
-   * a definite answer, so a retry is recognised. Through `adminFetch` (rule 436).
+   * expired. One form shows the amount (`unusedRefundSar`: credits left × the price per credit paid, excluding VAT) and
+   * asks the transfer's date (today in Riyadh by default), its reference (required) and the reason; it sends the credits
+   * left it showed, so the server refuses (`left_changed`) rather than record another amount. One request id per refund,
+   * kept until a definite answer, so a retry is recognised. Through `adminFetch` (rule 436).
    */
   async function refundTopup(u: U, l: TopupLot) {
-    if (!confirm(S.confirmRefund(l.left, l.credits, sarText(unusedRefundSar(l))))) return;
-    const on = prompt(S.promptRefundDate, ksaDay());
-    if (on === null) return;
-    const ref = prompt(S.promptRefundRef, "");
-    if (ref === null) return;
-    if (!ref.trim()) { setMsg(`${u.email}: bad_ref`); return; }
-    const reason = askReason();
-    if (reason === null) return;
-    const ask = { email: u.email, action: "refund", id: l.id, credits: l.left, on: on.trim(), ref };
-    const key = JSON.stringify(ask);
+    const v = await ask({
+      title: S.refundTopup, subject: u.email, message: S.confirmRefund(l.left, l.credits, sarText(unusedRefundSar(l))), submitLabel: S.refundTopup, destructive: true,
+      fields: [{ name: "date", label: S.promptRefundDate, kind: "date", initial: ksaDay(), ltr: true }, { name: "ref", label: S.promptRefundRef, ltr: true }, REASON],
+      parse: (f) => withReason(parseRefundForm({ date: f.date, ref: f.ref }), f.reason),
+    });
+    if (!v) return;
+    const { reason, on, ref } = v;
+    const req = { email: u.email, action: "refund", id: l.id, credits: l.left, on, ref };
+    const key = JSON.stringify(req);
     if (pendingRefund.current?.key !== key) pendingRefund.current = { key, id: newRefundId() };
     setBusy(true);
     try {
-      const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ask, refundId: pendingRefund.current.id, reason }) });
+      const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...req, refundId: pendingRefund.current.id, reason }) });
       const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; credits?: number; refunded?: { credits: number; sar: number }; payment?: { commission?: { sar: number } } | null; left?: number; sar?: number };
       // A definite answer ends the attempt: a success, or a refusal that wrote nothing. A server error keeps the id.
       if (j.ok || (r.status >= 400 && r.status < 500)) pendingRefund.current = null;
@@ -330,6 +341,7 @@ export default function Users({ lang, keySession }: SectionProps) {
   const shown = list.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
   return (
     <div className="grid gap-6">
+      {actionDialog}
       {temp && <TempPasswordDialog lang={lang} email={temp.email} password={temp.password} onClose={() => setTemp(null)} />}
       <PlanTiles lang={lang} users={users} total={total} />
       {msg && <p className="text-sm text-ink">{msg}</p>}
@@ -347,7 +359,7 @@ export default function Users({ lang, keySession }: SectionProps) {
           </div>
           <p className="mt-2" dir="auto">{memberSel.name} · {S.memberOf} <button onClick={() => open(memberSel.memberOf)} className="text-ink underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <span dir="ltr">{memberSel.invitedBy}</span> · {memberSel.acceptedAt.slice(0, 10)}</p>
           {(!memberSel.ownerExists || !memberSel.onRoster) && <p className="mt-1 text-danger">{[!memberSel.ownerExists ? S.ownerMissing : "", !memberSel.onRoster ? S.offRoster : ""].filter(Boolean).join(" · ")}</p>}
-          <button disabled={busy} onClick={() => { if (prompt(S.promptRemoveMember) !== memberSel.email) return; const reason = askReason(); if (reason !== null) void act(memberSel.email, "removeMember", { reason }); }} className="btn btn-danger-solid btn-xs mt-3">{S.removeMember}</button>
+          <button disabled={busy} onClick={() => removeMember(memberSel.email)} className="btn btn-danger-solid btn-xs mt-3">{S.removeMember}</button>
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
@@ -362,7 +374,7 @@ export default function Users({ lang, keySession }: SectionProps) {
                 <td>{u.name}</td>
                 <td className="font-mono text-xs"><a href={`https://wa.me/${u.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="underline">{u.phone}</a></td>
                 <td>
-                  <select value={u.plan} disabled={busy} onChange={(e) => setPlan(u.email, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1">
+                  <select value={u.plan} disabled={busy} onChange={(e) => setPlan(u.email, u.plan, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1">
                     {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
                   </select>
                   {u.plan === "agency" && <button disabled={busy} onClick={() => setDeal(u)} title={S.setDeal} className="ms-2 whitespace-nowrap text-xs underline decoration-dotted">{S.setDeal} <span className="font-mono">{dealText(u.deal)}</span></button>}
@@ -408,7 +420,7 @@ export default function Users({ lang, keySession }: SectionProps) {
             {!sel.user.emailVerifiedAt && <button disabled={busy} onClick={() => act(sel.user.email, "resendVerification")} className="btn btn-secondary btn-xs">{S.resendCode}</button>}
             <button disabled={busy} onClick={() => act(sel.user.email, "setLang", { lang: sel.user.lang === "ar" ? "en" : "ar" })} className="btn btn-secondary btn-xs">{S.emailsIn} {sel.user.lang === "ar" ? S.english : S.arabic}</button>
             <button disabled={busy} onClick={() => act(sel.user.email, sel.user.suspended ? "unsuspend" : "suspend")} className={`rounded-full px-3 py-1 font-semibold ${sel.user.suspended ? "bg-ink text-lilac" : "border border-danger text-danger"}`}>{sel.user.suspended ? S.unsuspend : S.suspend}</button>
-            <button disabled={busy} onClick={() => { if (prompt(S.promptDelete) === sel.user.email) act(sel.user.email, "delete"); }} className="btn btn-danger-solid btn-xs">{S.del}</button>
+            <button disabled={busy} onClick={() => deleteAccount(sel.user.email)} className="btn btn-danger-solid btn-xs">{S.del}</button>
           </div>
           {/* Partner programme: record payments (the source of truth for commissions) and void them (src/lib/partners.ts). */}
           <PaymentsPanel key={`${sel.user.email}:${payTick}`} email={sel.user.email} lang={lang} />

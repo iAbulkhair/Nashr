@@ -362,10 +362,10 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
   it("the console shows the amount, sends the credits it showed and one request id through adminFetch; Payments shows the refund", () => {
     const src = adminConsoleSrc();
     expect(src).toContain('import { unusedRefundSar } from "@/lib/topups";');
-    expect(src).toContain("if (!confirm(S.confirmRefund(l.left, l.credits, sarText(unusedRefundSar(l))))) return;");
-    expect(src).toContain('const ask = { email: u.email, action: "refund", id: l.id, credits: l.left, on: on.trim(), ref };');
+    expect(src).toContain("message: S.confirmRefund(l.left, l.credits, sarText(unusedRefundSar(l))), submitLabel: S.refundTopup, destructive: true,");
+    expect(src).toContain('const req = { email: u.email, action: "refund", id: l.id, credits: l.left, on, ref };');
     expect(src).toContain("if (pendingRefund.current?.key !== key) pendingRefund.current = { key, id: newRefundId() };");
-    expect(src).toContain('await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ask, refundId: pendingRefund.current.id, reason }) });');
+    expect(src).toContain('await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...req, refundId: pendingRefund.current.id, reason }) });');
     expect(src).toContain("if (j.ok || (r.status >= 400 && r.status < 500)) pendingRefund.current = null;");
     expect(src).toContain("l.paidSar > 0 && l.left > 0 && <button");
     expect(src).toContain("data-topup-refund-note");

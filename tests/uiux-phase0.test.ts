@@ -2,7 +2,7 @@
 // Source-reading checks (no DOM in this suite) plus the pure helpers driven directly.
 import { describe, expect, it } from "vitest";
 import { existsSync, globSync, readFileSync } from "node:fs";
-import { parseTrialDays, TRIAL_EXTEND_MAX_DAYS } from "@/lib/admin-input";
+import { parseTrialDays, TRIAL_EXTEND_MAX_DAYS, withReason } from "@/lib/admin-input";
 import { APP_SCREENS, APP_SCREEN_NAME, appScreenMeta, adminScreenMeta, screenTitle, SKIP_TO_CONTENT } from "@/lib/screen-titles";
 import { ADMIN_LABEL, ADMIN_SECTIONS } from "@/lib/admin-gate";
 import { emailMatches, DELETE_ACCOUNT_TEXT } from "@/components/app/DeleteAccountDialog";
@@ -15,19 +15,34 @@ const count = (src: string, re: RegExp) => src.match(re)?.length ?? 0;
 // the name quoted in a comment (`alert()`).
 const NATIVE = (name: string) => new RegExp(`(?<![\\w$.\`])(?:window\\.)?${name}\\(`);
 
-describe("rule 960: founder console prompts stop on Cancel, the trial days are checked, the temporary password is shown once", () => {
+describe("rule 960: founder console changes stop on Cancel, the trial days are checked, the temporary password is shown once", () => {
   const users = read("src/components/admin/Users.tsx");
 
-  it("never turns a cancelled reason into an empty one", () => {
-    expect(users).not.toMatch(/prompt\(O\.reason, ""\) \?\? ""/);
-    expect(users).toMatch(/const askReason = \(\): string \| null => prompt\(O\.reason, ""\);/);
+  it("asks in the console's own form, never in the browser's prompt or confirm (rule 1100)", () => {
+    for (const name of ["prompt", "confirm", "alert"]) expect(users, name).not.toMatch(NATIVE(name));
+    expect(users).not.toMatch(/askReason/);
+    expect(users).toMatch(/const \[ask, actionDialog\] = useActionDialog\(lang\);/);
+    expect(count(users, /\{actionDialog\}/g)).toBe(1);
   });
 
-  it("stops each of the nine changes that ask a reason when it is cancelled", () => {
-    // plan, seats, chat, deal, credits, top-up, void, refund: return on null; member removal: act only when not null.
-    expect(count(users, /const reason = askReason\(\);\n\s*if \(reason === null\) return;/g)).toBe(8);
-    expect(users).toMatch(/const reason = askReason\(\); if \(reason !== null\) void act\(/);
-    expect(count(users, /askReason\(\)/g)).toBe(9);
+  it("sends nothing when a form is cancelled: every change returns on null before its request", () => {
+    // extend trial, delete, member removal, plan, seats, chat, video grant, deal, credits, top-up, void, refund.
+    const asks = [...users.matchAll(/const (\w+) = await ask\(/g)];
+    expect(asks.length).toBe(12);
+    for (const m of asks) {
+      const rest = users.slice(m.index! + m[0].length);
+      const send = rest.search(/(?<![\w.])(?:adminFetch|act)\(/);
+      expect(send, m[1]).toBeGreaterThan(0);
+      expect(rest.slice(0, send), `${m.index}`).toMatch(new RegExp(`\\n\\s*if \\(!${m[1]}(?:\\?\\.body)?\\) return;\\n`));
+    }
+  });
+
+  it("carries the reason in the same form for each of the nine changes that ask one", () => {
+    // plan, seats, chat, deal, credits, top-up, void, refund, member removal; an empty reason still goes (withReason).
+    expect(users).toMatch(/const REASON: FieldSpec = \{ name: "reason", label: O\.reason, kind: "textarea", maxLength: 200 \};/);
+    expect(count(users, /\bREASON(?=\s*[\],])/g)).toBe(9);
+    expect(withReason({ ok: true, value: { seats: 3 } }, "")).toEqual({ ok: true, value: { seats: 3, reason: "" } });
+    expect(withReason({ ok: false, error: "bad_seats" }, "why")).toEqual({ ok: false, error: "bad_seats" });
   });
 
   it("extends a trial only by a whole number of days from 1 to 90", () => {
@@ -37,7 +52,7 @@ describe("rule 960: founder console prompts stop on Cancel, the trial days are c
     expect(parseTrialDays("1")).toBe(1);
     expect(parseTrialDays(" 14 ")).toBe(14);
     expect(parseTrialDays("90")).toBe(90);
-    expect(users).not.toMatch(/Number\(prompt\(S\.promptDays/);
+    expect(users).toMatch(/const days = parseTrialDays\(f\.days\); return days === null \? \{ ok: false, error: `bad_days/);
     expect(users).toMatch(/onClick=\{\(\) => extendTrial\(sel\.user\.email\)\}/);
     expect(read("src/app/api/admin/users/[email]/route.ts")).toMatch(/Math\.min\(TRIAL_EXTEND_MAX_DAYS,/);
   });
