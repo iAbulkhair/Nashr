@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
 import type { HandoffItemStatus, HandoffView } from "@/lib/handoffs";
@@ -11,89 +11,44 @@ import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { formatCount } from "@/lib/pricing";
-import { AGENTS, isAgentId, type AgentId } from "@/lib/agents";
+import { AGENTS, type AgentId } from "@/lib/agents";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
-import { Icon, channelIcon } from "./Icons";
+import { Icon } from "./Icons";
+import ApprovalCard from "./ApprovalCard";
+import CopyButton from "@/components/ui/CopyButton";
+import Menu from "@/components/ui/Menu";
+import { announceCredits } from "./WorkspaceContext";
 import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
 import type { Journey } from "@/lib/journey";
 import JourneyCard from "./JourneyCard";
 import AgentAvatar from "@/components/app/AgentAvatar";
 import { ChatModelPicker } from "./ModelPicker";
 import { nextMadePicks, storedPick, type MadePicks } from "@/lib/model-picker";
-import { taskVersion } from "@/lib/task-version";
 
 /** A conversation as GET /api/conversations lists it. `model`: its chat pick (absent: automatic), shown by the header's picker. */
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId; model?: string };
-const LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, meta: 63206, linkedin: 3000 };
+/** The chat's approval card (src/components/app/ApprovalCard.tsx), under the name its callers and tests import. */
+export const ItemCard = ApprovalCard;
 
 /**
- * A generated item inside the chat: channel header, rendered body, count vs limit, copy, approve with undo. Approving is
- * admin and owner only (`canApprove` = `can(u, "publish")` from the page); a member sees a note instead of the button.
- * An item another agent flagged in the cross-agent review (`item.xflag`) shows each reviewer's pill and, instead of
- * Approve, a link to the inbox, where the notes are: it is never approved from here unread.
+ * Whether Enter in the message box sends (rule 1125). Shift+Enter is a new line; so is Enter while an input method is
+ * composing (Arabic or Japanese keyboards confirm a word with Enter: `isComposing`, or keyCode 229 in older Safari), and
+ * on a touch screen, where Enter is the keyboard's new-line key and the Send button sends. Pure, for the tests.
  */
-export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { item: ChatItem; t: AppDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean }) {
-  const [open, setOpen] = useState(true);
-  const [copied, setCopied] = useState(false);
-  const [status, setStatus] = useState(item.status);
-  const [err, setErr] = useState("");
-  const [undoAt, setUndoAt] = useState(0);
-  const [held, setHeld] = useState<string[]>([]);
-  const limit = LIMITS[item.channel];
-  const ar = lang === "ar";
-  const chName = (t.channelNames as Record<string, string>)[item.channel] ?? item.channel;
-  async function setState(next: "approved" | "pending") {
-    setErr("");
-    // The version of the text on this card (src/lib/task-version.ts): an approval is refused when the item changed since.
-    const r = await fetch(`/api/tasks/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next, version: taskVersion(item) }) });
-    if (!r.ok) {
-      // The brand rules hold this item on the server: say which word, and send the owner to the inbox to fix it.
-      const j = (await r.json().catch(() => ({}))) as { error?: string; violations?: { term: string }[] };
-      if (r.status === 409 && j.error === "brand_violation") { setHeld((j.violations ?? []).map((v) => v.term)); return; }
-      // Edited in the inbox, or given an image, after this card was written: it is reviewed there, where the current
-      // version is shown.
-      if (r.status === 409 && j.error === "changed") { setErr(ar ? "تغيّر هذا العنصر بعد كتابة هذه البطاقة، فلم يُعتمد. راجع النسخة الحالية في صندوق الموافقة." : "This item changed after this card was written, so it was not approved. Review the current version in the inbox."); return; }
-      setErr(r.status === 403 ? t.team.errors.forbidden : t.chat.approveFail);
-      return;
-    }
-    setStatus(next);
-    // The sidebar badge listens for this; only the inbox used to send it, so approving from a chat card left the badge
-    // one too high until the owner navigated. That matters more now the badge is exhaustive and therefore trusted.
-    window.dispatchEvent(new Event("nashr:pending-changed"));
-    if (next === "approved") { setUndoAt(Date.now()); onApproved?.(item.id); setTimeout(() => setUndoAt((v) => (Date.now() - v >= 4000 ? 0 : v)), 4200); }
-    else setUndoAt(0);
-  }
-  const over = !!limit && item.body.length > limit;
-  const flags = (item.xflag ?? []).filter((f) => isAgentId(f.by));
-  const flagged = flags.length > 0 && status !== "approved";
-  return (
-    <article className="mt-3 overflow-hidden rounded-xl border border-ink/10 bg-white text-ink">
-      <header className="flex items-center justify-between gap-2 border-b border-ink/5 px-3 py-2 text-xs">
-        <span className="flex min-w-0 items-center gap-2 font-semibold"><Icon name={channelIcon(item.channel)} className="h-4 w-4 text-ink" />{chName}<span className="clip font-normal text-muted" dir="auto">· {item.title}</span></span>
-        <span className="flex flex-wrap items-center justify-end gap-1.5">
-          {flags.map((f) => <span key={f.by} className="whitespace-nowrap rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger">{f.n === 1 ? fill(t.inbox.xNote, { name: t.agents[f.by].name }) : fill(t.inbox.xNotes, { name: t.agents[f.by].name, n: f.n })}</span>)}
-          <span className={`badge whitespace-nowrap ${status === "approved" ? "badge-primary" : "badge-accent"}`}>{status === "approved" ? t.inbox.approved : t.inbox.pending}</span>
-        </span>
-      </header>
-      {open && <div className="prose-nashr prose-compact px-4 py-3 text-sm" dir="auto" dangerouslySetInnerHTML={{ __html: render(item.body) }} />}
-      <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
-        <span className={`tnum ${over ? "font-semibold text-danger" : "text-muted"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
-        {err && <span className="text-danger">{err}</span>}
-        {held.length > 0 && <span role="alert" className="flex items-center gap-1 font-semibold text-danger"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={`/${lang}/app`} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
-        {undoAt > 0 && status === "approved" && <span className="flex items-center gap-2 text-ink"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button onClick={() => setState("pending")} className="underline">{t.chat.undo}</button></span>}
-        {flagged && <span className="font-semibold text-danger">{t.chat.xflagHint}</span>}
-        <span className="ms-auto flex gap-1.5">
-          <button onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>
-          <button onClick={async () => { await navigator.clipboard.writeText(item.body); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? t.inbox.copied : status === "approved" ? `${t.chat.copyTo} ${chName}` : t.inbox.copy}</button>
-          {status !== "approved" && !canApprove && <span className="text-muted">{t.inbox.waitAdmin}</span>}
-          {flagged && canApprove && <Link href={`/${lang}/app`} className="btn btn-primary btn-xs">{t.chat.readNotes}</Link>}
-          {status !== "approved" && canApprove && !flagged && <button onClick={() => setState("approved")} disabled={over || held.length > 0} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
-        </span>
-      </footer>
-    </article>
-  );
+export function enterSends(e: { key: string; shiftKey: boolean; isComposing?: boolean; keyCode?: number }, coarse: boolean): boolean {
+  return e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229 && !coarse;
 }
+
+/** The tallest the message box grows before it scrolls inside, in pixels (about eight lines). */
+export const COMPOSER_MAX_PX = 160;
+
+// A touch screen (no hover, a coarse pointer): read through useSyncExternalStore, so the server renders the mouse words
+// and the browser switches without an effect.
+const COARSE = "(pointer: coarse)";
+const onPointerChange = (cb: () => void) => { const mq = window.matchMedia(COARSE); mq.addEventListener("change", cb); return () => mq.removeEventListener("change", cb); };
+const isCoarse = () => window.matchMedia(COARSE).matches;
+const notCoarse = () => false;
 
 /** A string from the dictionary with its {placeholders} filled. */
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
@@ -280,7 +235,7 @@ export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = 
                     <span className={`badge ${badge(it.status)}`}>{busy === n ? H.status.running : H.status[it.status]}</span>
                   </span>
                 </div>
-                <p className="mt-1.5 text-xs font-semibold text-danger">{fill(H.brief, { name: t.agents.majed.name })}</p>
+                <p className="mt-1.5 text-xs font-semibold text-foreground-muted">{fill(H.brief, { name: t.agents.majed.name })}</p>
                 {/* Model-written: rendered as text, never as HTML. */}
                 <p className="mt-0.5 whitespace-pre-line break-words text-sm leading-relaxed text-ink/85" dir="auto">{it.brief}</p>
                 {can && (canRun || canDecline) && (
@@ -352,9 +307,9 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
   };
   const closed = state === "applied" || state === "dismissed" || state === "gone" || state === "stale";
   return (
-    <article className="mt-3 overflow-hidden rounded-xl border border-lemon/40 bg-white text-ink">
+    <article className="mt-3 overflow-hidden rounded-xl border border-border-input bg-paper text-ink">
       <header className="flex items-center gap-2 border-b border-ink/5 px-3 py-2 text-xs font-semibold">
-        <Icon name="shield" className="h-4 w-4 text-danger" />{canBrand ? (ar ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waiting for your Save") : (ar ? "تغيير في ملف العلامة ينتظر قرار المالك أو المشرف" : "A brand change waiting for the owner or an admin")}<span className="font-normal text-muted">· {label}</span>
+        <Icon name="shield" className="h-4 w-4 text-ink" />{canBrand ? (ar ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waiting for your Save") : (ar ? "تغيير في ملف العلامة ينتظر قرار المالك أو المشرف" : "A brand change waiting for the owner or an admin")}<span className="font-normal text-muted">· {label}</span>
       </header>
       <div className="grid gap-2 px-4 py-3 text-sm">
         {p.via === "mcp" && <p className="text-xs font-semibold text-danger">{ar ? "طلب هذا التغيير مساعد آخر متصل عبر MCP، لا هذه المحادثة. احفظه فقط إن كنت طلبته بنفسك." : "Another assistant connected over MCP asked for this change, not this chat. Save it only if you asked for it yourself."}</p>}
@@ -432,9 +387,9 @@ export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; 
   const closed = state === "saved" || state === "dismissed" || state === "gone" || state === "decided";
   const items = ar ? `المهام المفتوحة على هذا الاسم: ${p.openItems}` : `${p.openItems} open item${p.openItems === 1 ? "" : "s"} they owe`;
   return (
-    <article className="mt-3 overflow-hidden rounded-xl border border-lemon/40 bg-white text-ink">
+    <article className="mt-3 overflow-hidden rounded-xl border border-border-input bg-paper text-ink">
       <header className="flex items-center gap-2 border-b border-ink/5 px-3 py-2 text-xs font-semibold">
-        <Icon name="calendar" className="h-4 w-4 text-danger" />
+        <Icon name="calendar" className="h-4 w-4 text-ink" />
         {ending ? (ar ? "إنهاء غياب ينتظر حفظك" : "Ending an absence, waiting for your Save") : (ar ? "غياب جهة اتصال ينتظر حفظك" : "A contact away, waiting for your Save")}
       </header>
       <dl className="grid gap-1.5 px-4 py-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-3">
@@ -483,7 +438,6 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   const [convs, setConvs] = useState<Conv[]>([]);
   const [conv, setConv] = useState(initialConv ?? "default");
   const [agent, setAgent] = useState<AgentId>((initialAgent as AgentId) ?? "noor");
-  const [pickOpen, setPickOpen] = useState(false);
   const [voted, setVoted] = useState<Record<string, 1 | -1>>({});
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -494,8 +448,35 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   const ranOnboard = useRef(false);
   const [goal, setGoal] = useState(starter ?? null);
   const [onboarded, setOnboarded] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy, steps]);
+  const input = useRef<HTMLTextAreaElement>(null);
+  // Stop (rule 1126): the request's controller, and whether the person stopped waiting (then no recovery runs).
+  const ctl = useRef<AbortController | null>(null);
+  const stopped = useRef(false);
+  const [stoppedNote, setStoppedNote] = useState(false);
+  const coarse = useSyncExternalStore(onPointerChange, isCoarse, notCoarse);
+  // Whether the reader is at the end of the thread: new messages follow only then, so reading back up is not pulled down.
+  // On a wide screen the list scrolls; on a phone the page does, with the box held at the bottom (rule 1125).
+  const near = useRef(true);
+  useEffect(() => {
+    const onScroll = () => { const d = document.documentElement; near.current = d.scrollHeight - window.scrollY - window.innerHeight < 120; };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    const el = list.current;
+    if (!el || !near.current) return;
+    if (el.scrollHeight > el.clientHeight + 1) el.scrollTop = el.scrollHeight;
+    else if (msgs.length > 0 || busy) window.scrollTo({ top: document.documentElement.scrollHeight });
+  }, [msgs, busy, steps]);
+  // The box grows with what is typed, up to COMPOSER_MAX_PX, and shrinks back when it is sent.
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_PX)}px`;
+  }, [text]);
+  // The shell's balance (rail, phone header) follows this panel's: every answer and every handoff run brings it.
+  useEffect(() => { announceCredits(credits); }, [credits]);
   useEffect(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }); }, [initialConv]);
   // After the model picker's `not_found` (the conversation is gone): the list again, without touching the agent.
   const reloadConvs = useCallback(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) setConvs(j.conversations); }).catch(() => {}); }, []);
@@ -505,8 +486,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (e.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA") { e.preventDefault(); input.current?.focus(); }
-      if (e.key === "Escape") setPickOpen(false);
+      if (e.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA" && !(e.target as HTMLElement)?.isContentEditable) { e.preventDefault(); input.current?.focus(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -567,7 +547,6 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     router.replace(`/${lang}/app/chat?conv=${j.conversation.id}${withAgent === "noor" ? "" : `&agent=${withAgent}`}`);
   }
   async function pick(id: AgentId) {
-    setPickOpen(false);
     if (id === agent || busy) return;
     if (conv === "default") { if (id !== "noor") await newConv(id); return; }
     const cur = convs.find((c) => c.id === conv);
@@ -578,7 +557,10 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   async function send(msg: string) {
     const m = msg.trim();
     if (!m || busy) return;
-    setText(""); setNotice("");
+    setText(""); setNotice(""); setStoppedNote(false);
+    stopped.current = false; near.current = true;
+    const ac = new AbortController();
+    ctl.current = ac;
     // Kept by identity: a message the server refuses before saving it leaves the thread and goes back into the box.
     const mine: ChatMsg = { role: "user", content: m, at: new Date().toISOString() };
     setMsgs((p) => [...p, mine]);
@@ -600,7 +582,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       raiseLimit(why, { period: j.chat?.period, hold: j.chat?.overflow.hold, allowance: j.chat?.allowance });
     };
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", "x-lang": lang }, body: JSON.stringify({ text: m, conv, agent, stream: true }) });
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", "x-lang": lang }, body: JSON.stringify({ text: m, conv, agent, stream: true }), signal: ac.signal });
       if (!res.body || !res.headers.get("content-type")?.includes("text/event-stream")) {
         const j = (await res.json()) as Answer;
         const why = refusalOf(res.status, j.error);
@@ -625,12 +607,16 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       // A stream that ends cleanly without a message or an error (the server process died mid-turn) is a dropped stream.
       if (!got) throw new Error("ended");
     } catch {
+      // Stopped (rule 1126): this page stops waiting, nothing more. The server still answers, saves and charges the reply,
+      // so the words say that, the typed text is not put back, and no recovery polls for it.
+      if (stopped.current) { setStoppedNote(true); return; }
       // The server keeps working and saves the reply even when the connection drops: look for it before giving up.
       setSteps((p) => [...p, lang === "ar" ? "انقطع الاتصال، أسترجع الرد…" : "Connection dropped, recovering the reply…"]);
       const sentAt = Date.now() - 5000;
       let found: ChatMsg | null = null;
       for (let n = 0; n < 40 && !found; n++) {
         await new Promise((r) => setTimeout(r, 5000));
+        if (stopped.current) break;
         try {
           const j = await (await fetch(`/api/chat?conv=${encodeURIComponent(conv)}`)).json();
           if (j.chat) setChatNow(j.chat as ChatStatus);
@@ -638,10 +624,23 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           if (last && last.role === "assistant" && new Date(last.at).getTime() >= sentAt) found = last;
         } catch { /* still offline, keep trying */ }
       }
+      // Stopped while recovering: the same words as a stop during the answer.
+      if (stopped.current && !found) { setStoppedNote(true); return; }
       // No saved reply: the typed text goes back into the box, unless something new was typed.
       if (found) done({ ok: true, message: found }); else { done({ ok: false, error: "network" }); setText((cur) => cur || m); }
     }
-    finally { setBusy(false); setSteps([]); }
+    finally { ctl.current = null; setBusy(false); setSteps([]); }
+  }
+  /** Stop waiting for the answer in flight (rule 1126). */
+  function stop() {
+    if (!busy || onboardUrl) return;
+    stopped.current = true;
+    ctl.current?.abort();
+  }
+  /** Retry (rule 1126): the question before message `i`, sent again as a new turn. */
+  function retryAt(i: number) {
+    const q = msgs.slice(0, i).findLast((x) => x.role === "user");
+    if (q) void send(q.content);
   }
   async function vote(m: ChatMsg, value: 1 | -1) {
     if (voted[m.at]) return;
@@ -671,28 +670,28 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5" role="tablist" aria-label={t.agents.pick}>
-        <button role="tab" aria-selected={agent === "noor"} aria-label={A.noor.name} onClick={() => pick("noor")} className={`rounded-full border px-3 py-1.5 text-sm transition ${agent === "noor" ? "border-ink bg-ink text-lilac" : "border-ink/15 bg-white text-ink/70 hover:border-ink"}`}><span className="font-semibold">{A.noor.name}</span> <span className="opacity-70">· {A.noor.role}</span></button>
-        {agent !== "noor" && <button role="tab" aria-selected aria-label={A[agent].name} className="rounded-full border border-ink bg-ink px-3 py-1.5 text-sm text-lilac"><span className="font-semibold">{A[agent].name}</span> <span className="opacity-70">· {A[agent].role}</span></button>}
-        <span className="relative">
-          <button onClick={() => setPickOpen(!pickOpen)} aria-expanded={pickOpen} aria-haspopup="listbox" className="rounded-full border border-dashed border-ink/25 px-3 py-1.5 text-sm text-ink/70 hover:border-ink hover:text-ink"><Icon name="plus" className="me-1 inline h-3.5 w-3.5" />{t.nav.askSpecialist}</button>
-          {pickOpen && (
-            <ul role="listbox" className="absolute start-0 top-full z-20 mt-1 w-72 rounded-xl border-[1.5px] border-ink bg-white p-1.5">
-              {AGENTS.filter((a) => a.id !== "noor").map((a) => (
-                <li key={a.id} role="option" aria-selected={agent === a.id}>
-                  <button onClick={() => pick(a.id)} className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-start text-sm hover:bg-lilac">
-                    <AgentAvatar id={a.id} name={A[a.id].name} className="h-7 w-7 text-xs" />
-                    <span className="min-w-0"><span className="block font-semibold">{A[a.id].name} <span className="font-normal text-muted">· {A[a.id].role}</span></span><span className="clip block text-xs text-muted">{A[a.id].blurb}</span></span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </span>
+      {/* Who answers (rule 1127): toggle buttons, not tabs (nothing here is a tab panel); the specialists are a menu. */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.agents.pick}>
+        <button type="button" aria-pressed={agent === "noor"} onClick={() => pick("noor")} className={`min-h-[var(--hit-min)] rounded-full border px-3 text-sm transition pointer-fine:min-h-9 ${agent === "noor" ? "border-ink bg-ink text-lilac" : "border-border bg-paper text-foreground-muted hover:border-ink"}`}><span className="font-semibold">{A.noor.name}</span> <span className="opacity-70">· {A.noor.role}</span></button>
+        {agent !== "noor" && <span aria-current="true" className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-ink bg-ink px-3 text-sm text-lilac pointer-fine:min-h-9"><span className="font-semibold">{A[agent].name}</span>&nbsp;<span className="opacity-70">· {A[agent].role}</span></span>}
+        <Menu
+          label={t.ux.chat.specialists}
+          items={AGENTS.filter((a) => a.id !== "noor").map((a) => ({
+            key: a.id,
+            onSelect: () => { void pick(a.id); },
+            label: (
+              <span className="flex w-72 max-w-[calc(100vw-4rem)] items-center gap-2.5 py-1.5">
+                <AgentAvatar id={a.id} name={A[a.id].name} className="h-7 w-7 text-xs" />
+                <span className="min-w-0"><span className="block font-semibold text-ink">{A[a.id].name} <span className="font-normal text-foreground-muted">· {A[a.id].role}</span></span><span className="clip block text-xs">{A[a.id].blurb}</span></span>
+              </span>
+            ),
+          }))}
+          trigger={(props) => <button {...props} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-dashed border-border-input px-3 text-sm text-foreground-muted hover:border-ink hover:text-ink pointer-fine:min-h-9"><Icon name="plus" className="me-1 h-3.5 w-3.5" />{t.nav.askSpecialist}</button>}
+        />
       </div>
 
       {/* A log (rule 963): a screen reader reads each new message as it arrives, without moving focus from the box. */}
-      <div ref={list} role="log" aria-live="polite" aria-label={A[agent].name} className="mt-2 min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl border border-ink/10 bg-white p-4">
+      <div ref={list} role="log" aria-live="polite" aria-label={A[agent].name} onScroll={(e) => { const el = e.currentTarget; near.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} className="mt-2 min-h-0 flex-1 space-y-4 rounded-xl border border-border bg-paper p-4 lg:overflow-y-auto">
         {journey?.next && <JourneyCard journey={journey} lang={lang} compact />}
         {(left > 0 || briefLines.length > 0) && msgs.length <= 1 && (
           <section className="rounded-xl border border-ink/20 bg-ground p-3" aria-label={t.chat.todayFromTeam}>
@@ -713,7 +712,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-ink text-lilac" : "bg-lilac text-ink"}`} dir="auto">
-              {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-danger">{A[m.agent ?? agent].name}</span>}
+              {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-ink">{A[m.agent ?? agent].name}</span>}
               {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
               {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
               {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
@@ -723,9 +722,12 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
               {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
               {m.role === "assistant" && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                  <button onClick={() => vote(m, 1)} aria-label={t.chat.helpful} title={t.chat.helpful} className={`rounded p-1 ${voted[m.at] === 1 ? "bg-ink text-lilac" : "text-muted hover:text-ink"}`}><Icon name="thumbUp" className="h-4 w-4" /></button>
-                  <button onClick={() => vote(m, -1)} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className={`rounded p-1 ${voted[m.at] === -1 ? "bg-danger text-white" : "text-muted hover:text-danger"}`}><Icon name="thumbDown" className="h-4 w-4" /></button>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
+                  {/* Rule 1126: each answer can be copied; the last one (or an error) can be asked again. */}
+                  <CopyButton text={m.content} lang={lang} label={t.ux.chat.copy} iconOnly />
+                  {i === msgs.length - 1 && !busy && msgs.slice(0, i).some((x) => x.role === "user") && <button type="button" onClick={() => retryAt(i)} aria-label={t.ux.chat.retry} title={t.ux.chat.retry} className="icon-btn"><Icon name="retry" className="h-4 w-4" /></button>}
+                  <button type="button" onClick={() => vote(m, 1)} aria-pressed={voted[m.at] === 1} aria-label={t.chat.helpful} title={t.chat.helpful} className="icon-btn"><Icon name="thumbUp" className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => vote(m, -1)} aria-pressed={voted[m.at] === -1} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className="icon-btn"><Icon name="thumbDown" className="h-4 w-4" /></button>
                   {reasonFor === m.at && !voted[m.at] && (
                     <form onSubmit={(e) => { e.preventDefault(); vote(m, -1); }} className="flex flex-1 items-center gap-1">
                       <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t.chat.whyBad} className="input py-1 text-xs" />
@@ -751,10 +753,19 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
 
       {plan === "trial" && goal?.goal && <ActivationBar lang={lang} goal={goal.goal} first={goal.first} />}
       <p role="status" className="sr-only">{busy ? (agent === "noor" ? t.chat.thinking : `${A[agent].name}…`) : ""}</p>
-      <form onSubmit={(e) => { e.preventDefault(); send(text); }} aria-busy={busy} className="mt-3 flex gap-2">
-        <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} className="input rounded-full" />
-        <button disabled={busy || !text.trim()} className="btn btn-accent btn-lg shrink-0" aria-label={t.chat.send}><Icon name="send" className="h-4 w-4" /><span className="hidden sm:inline">{t.chat.send}</span></button>
+      {/* Rule 1125: a growing box. Enter sends and Shift+Enter is a new line with a mouse and keyboard; on a touch screen
+          Enter is a new line and the button sends. On a phone the page scrolls and the box stays at the bottom, above
+          the home bar. While an answer is coming the button is Stop (rule 1126). */}
+      <form onSubmit={(e) => { e.preventDefault(); send(text); }} aria-busy={busy} className="sticky bottom-0 z-10 -mx-4 mt-3 bg-ground px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:p-0">
+        <div className="flex items-end gap-2">
+          <textarea ref={input} rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (enterSends({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, coarse)) { e.preventDefault(); send(text); } }} enterKeyHint={coarse ? "enter" : "send"} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} aria-describedby="chat-enter-hint" className="input min-h-[var(--hit-min)] resize-none overflow-y-auto rounded-2xl py-2.5 leading-normal" />
+          {busy && !onboardUrl
+            ? <button type="button" onClick={stop} className="btn btn-secondary btn-lg shrink-0" aria-label={t.ux.chat.stop}><Icon name="stop" className="h-4 w-4" /><span className="hidden sm:inline">{t.ux.chat.stop}</span></button>
+            : <button type="submit" disabled={busy || !text.trim()} className="btn btn-accent btn-lg shrink-0" aria-label={t.chat.send}><Icon name="send" mirror className="h-4 w-4" /><span className="hidden sm:inline">{t.chat.send}</span></button>}
+        </div>
+        <p id="chat-enter-hint" className="mt-1 text-xs text-foreground-muted">{coarse ? t.ux.chat.enterHintTouch : t.ux.chat.enterHint}</p>
       </form>
+      {stoppedNote && <p role="status" className="mt-2 text-xs text-ink" dir="auto">{t.ux.chat.stopped}</p>}
       {notice && <p role="alert" className="mt-2 text-xs font-semibold text-danger" dir="auto">{notice}</p>}
       {line && <p className={`tnum mt-2 text-xs ${line.low ? "font-semibold text-danger" : "text-ink/70"}`} dir="auto">{line.text}</p>}
       {step && plan === "trial" && !goal?.goal && <p className="mt-2 flex items-center gap-2 text-xs text-ink/70"><Icon name="spark" className="h-3.5 w-3.5 text-ink" />{t.limit.firstUp}: {step}</p>}
