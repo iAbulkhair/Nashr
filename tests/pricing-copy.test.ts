@@ -300,9 +300,9 @@ describe("the other pages read the same tables (rule 248)", () => {
   it("no copy module types a current price or allowance: they all come from the table", () => {
     const FILES = [
       "src/lib/i18n.ts", "src/lib/app-i18n.ts", "src/lib/help.ts", "src/lib/site.ts", "src/lib/pages-industry.ts", "src/lib/pages-vs.ts",
-      "src/lib/lifecycle.ts", "src/lib/changelog.ts", "src/components/Pricing.tsx", "src/app/[lang]/app/billing/page.tsx",
+      "src/lib/lifecycle.ts", "src/lib/changelog.ts", "src/components/Pricing.tsx", "src/app/[lang]/app/settings/billing/page.tsx",
       "src/app/[lang]/ai-marketing-agent/page.tsx", "src/components/app/BrandsPanel.tsx", "src/components/app/StartLaunch.tsx", "src/components/app/DictionaryStart.tsx",
-      "src/components/app/TasksPanel.tsx", "src/components/app/ProfilePanel.tsx", "src/components/admin/shared.tsx", "src/components/admin/Users.tsx",
+      "src/components/app/TasksPanel.tsx", "src/components/app/settings/CreditUsageCard.tsx", "src/components/admin/shared.tsx", "src/components/admin/Users.tsx",
     ];
     // The paid plans' chat messages too (rule 308). The trial's 30 is left out: "30 days" is common copy.
     const literals = [...SELF_SERVE_PLANS.map((k) => P[k]), ...SELF_SERVE_PLANS.map((k) => PLAN_CREDITS[k]).filter((n) => n >= 1000), ...SELF_SERVE_PLANS.map((k) => CHAT_ALLOWANCE[k])];

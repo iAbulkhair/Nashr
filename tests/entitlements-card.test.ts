@@ -158,7 +158,7 @@ describe("the owner's plan-includes card (rule 785)", () => {
   });
 
   it("the billing page reads the view once, shows the card above the chat card, and no longer reads the seats and chat itself", () => {
-    const page = readFileSync("src/app/[lang]/app/billing/page.tsx", "utf8");
+    const page = readFileSync("src/app/[lang]/app/settings/billing/page.tsx", "utf8");
     expect(page.match(/entitlementView\(u\)/g)).toHaveLength(1);
     expect(page).not.toMatch(/\bseatsUsed\b|\bchatStatus\b/);
     // Founder-only data (`grants`, with the founder's email and note) never leaves the page: the card gets `ent` and `used` only (I1).

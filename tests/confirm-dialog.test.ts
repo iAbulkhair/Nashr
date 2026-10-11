@@ -86,14 +86,14 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
 });
 
 describe("rule 696: the sign-up, login, reset, join and profile change-password inputs are PasswordFields with a show toggle that never submits", () => {
-  // Six fields: sign-up, login and reset in AuthForm, the invite form in JoinForm, current and new in ProfilePanel.
-  // Account deletion in ProfilePanel still asks for the password with the browser's prompt(), which shows it in clear
-  // text. That is an open item recorded in docs/system/tests.md, outside this rule.
+  // Seven fields: sign-up, login and reset in AuthForm, the invite form in JoinForm, and in Settings, Security (rule 1150,
+  // where the old profile page's two moved) the current and new password and the password that confirms "sign out other
+  // devices". Account deletion asks in its own masked dialog (rule 964).
   it("the forms use PasswordField and no bare password input remains", () => {
-    for (const [name, n] of [["AuthForm", 3], ["JoinForm", 1], ["ProfilePanel", 2]] as const) {
+    for (const [name, n] of [["AuthForm", 3], ["JoinForm", 1], ["settings/SecuritySettings", 3]] as const) {
       const src = app(name);
       expect(src, name).not.toContain('type="password"');
-      expect(src, name).toContain('import PasswordField from "./PasswordField";');
+      expect(src, name).toMatch(/import PasswordField from "\.\.?\/PasswordField";/);
       expect(count(src, /<PasswordField lang=\{lang\} /g), name).toBe(n);
     }
   });
@@ -107,9 +107,11 @@ describe("rule 696: the sign-up, login, reset, join and profile change-password 
     const reset = auth.slice(auth.indexOf("export function ResetForm"));
     expect(reset).toMatch(/<PasswordField lang=\{lang\} ref=\{pwRef\}[^\n]*autoFocus autoComplete="new-password" value=\{pw\}[^\n]*aria-describedby="reset-rules"/);
     expect(app("JoinForm")).toMatch(/<PasswordField lang=\{lang\} ref=\{pwRef\}[^\n]*autoComplete="new-password" value=\{pw\}[^\n]*aria-describedby="join-rules"/);
-    const profile = app("ProfilePanel");
-    expect(profile).toMatch(/<PasswordField [^\n]*name="currentPassword" autoComplete="current-password" required/);
-    expect(profile).toMatch(/<PasswordField [^\n]*name="newPassword" autoComplete="new-password" required minLength=\{8\}/);
+    const security = app("settings/SecuritySettings");
+    expect(security).toMatch(/<PasswordField [^\n]*name="currentPassword" autoComplete="current-password"/);
+    // The new password shows the sign-up rules live, from the same checks (rule 1150).
+    expect(security).toMatch(/<PasswordField [^\n]*name="newPassword" autoComplete="new-password" value=\{pw\}[^\n]*aria-describedby="settings-pw-rules"/);
+    expect(security).toMatch(/<PasswordRules id="settings-pw-rules" rules=\{rules\} checks=\{checks\}/);
   });
 
   it("the toggle is a button that never submits, says whether the password shows, and is named in both languages", () => {

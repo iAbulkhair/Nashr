@@ -29,7 +29,7 @@ import { estimateBatch } from "@/lib/task-costs";
 import { maxCostPerCreditUsd } from "@/lib/pricing";
 import * as govRoute from "@/app/api/governance/route";
 import * as rollbackRoute from "@/app/api/governance/rollback/route";
-import GovPage from "@/app/[lang]/app/governance/page";
+import GovPage from "@/app/[lang]/app/settings/governance/page";
 import InboxPage from "@/app/[lang]/app/page";
 import ActivityPage from "@/app/[lang]/app/activity/page";
 import { HandoffCard } from "@/components/app/ChatPanel";

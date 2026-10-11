@@ -32,7 +32,7 @@ import * as adminPartners from "@/app/api/admin/partners/route";
 import * as adminPayments from "@/app/api/admin/payments/[email]/route";
 import * as affiliates from "@/app/api/affiliates/route";
 import * as profileRoute from "@/app/api/profile/route";
-import BillingPage from "@/app/[lang]/app/billing/page";
+import BillingPage from "@/app/[lang]/app/settings/billing/page";
 import PartnerPage from "@/app/[lang]/app/partner/page";
 import AffiliatesPage from "@/app/[lang]/affiliates/page";
 import PartnerTermsPage from "@/app/[lang]/affiliates/terms/page";

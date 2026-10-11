@@ -478,7 +478,7 @@ describe("the billing page (rule 722)", () => {
   type AsyncPage = (p: { params: Promise<{ lang: string }>; searchParams?: Promise<Record<string, string>> }) => Promise<React.ReactElement>;
   const html = async (sp: Record<string, string> = {}) => {
     const { renderToStaticMarkup } = await import("react-dom/server");
-    const Page = (await import("@/app/[lang]/app/billing/page")).default as unknown as AsyncPage;
+    const Page = (await import("@/app/[lang]/app/settings/billing/page")).default as unknown as AsyncPage;
     return renderToStaticMarkup(await Page({ params: Promise.resolve({ lang: "en" }), searchParams: Promise.resolve(sp) }));
   };
   it("with Paymob off the pay links and WhatsApp are unchanged and no card button is shown", async () => {
