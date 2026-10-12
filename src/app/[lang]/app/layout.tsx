@@ -16,6 +16,7 @@ import { sc } from "@/lib/auth";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
 import { SKIP_TO_CONTENT } from "@/lib/screen-titles";
+import { ToastProvider } from "@/components/ui/Toast";
 
 /**
  * Paths reachable without a session. `/join` accepts a team invite (the token is in the URL fragment). `/verify` is the
@@ -42,7 +43,9 @@ export default async function AppLayout({ children, params }: { children: React.
   if (!user && !isPublic && path) redirect(`/${lang}/app/login`);
 
   if (!user) {
+    // Rule 1088: one toast region for every screen under the app, signed in or not.
     return (
+      <ToastProvider lang={lang}>
       <div className="min-h-screen bg-ground">
         <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
         <header className="border-b-[1.5px] border-ink bg-ground text-ink">
@@ -53,6 +56,7 @@ export default async function AppLayout({ children, params }: { children: React.
         </header>
         <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-10 sm:px-6">{children}</main>
       </div>
+      </ToastProvider>
     );
   }
 
@@ -63,6 +67,7 @@ export default async function AppLayout({ children, params }: { children: React.
   const actor = user.actor;
   const owner = can(user, "billing");
   return (
+    <ToastProvider lang={lang}>
     <div className="flex min-h-dvh flex-col bg-ground lg:h-dvh lg:flex-row lg:overflow-hidden">
       {/* Rule 968: past the sidebar's links straight to the screen. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
@@ -81,5 +86,6 @@ export default async function AppLayout({ children, params }: { children: React.
       </main>
       <LimitModal t={t} lang={lang} owner={owner} governs={can(user, "governance.write")} topups={topupsSold(user.plan)} />
     </div>
+    </ToastProvider>
   );
 }

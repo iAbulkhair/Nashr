@@ -79,8 +79,9 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
     // One dialog at a time (confirmGate): a second question while one is open resolves false at once. A restore that
     // needs the auto-run question must not find the switch's question already open.
     const gov = app("GovernancePanel");
-    expect(gov).toMatch(/<Toggle label=\{g\.autoHandoff\} on=\{gov\.majedAutoHandoff === true\} onChange=\{toggleAuto\} disabled=\{!!restoring\} \/>/);
-    expect(gov).toMatch(/role="switch"[^>]*disabled=\{disabled\}/);
+    expect(gov).toMatch(/<Switch label=\{g\.autoHandoff\} checked=\{gov\.majedAutoHandoff === true\} onChange=\{toggleAuto\} disabled=\{!!restoring\} \/>/);
+    // The switch is the shared primitive now (rule 1085); it passes `disabled` to its button.
+    expect(read("src/components/ui/Switch.tsx")).toMatch(/role="switch"[^>]*disabled=\{disabled\}/);
   });
 });
 

@@ -14,6 +14,9 @@
   --primitive-color-lemon: #f9f871;
   --primitive-color-gold: #c9a227;
   --primitive-color-danger: #cc0000;
+  --primitive-color-success: #1f7a4d;
+  --primitive-color-warning: #8a5a00;
+  --primitive-color-warning-tint: #fff4d6;
   --primitive-color-agent-noor: #f9f871;
   --primitive-color-agent-sami: #ff5da2;
   --primitive-color-agent-razan: #00d9ff;
@@ -93,6 +96,36 @@
   --color-inverse-foreground: #ffffff;
   --color-inverse-muted: #efe7f7;
   --color-ring: #2b193d;
+  /* Phase 1 roles (UI/UX report §5.1, rule 1080). Status colours: text on paper, the tint, and the ground at least
+     4.5:1. Danger is for errors only; lemon only on ink or as the accent CTA; notices use the notice pair. */
+  --color-foreground-muted: #5d4a70;
+  --color-foreground-subtle: rgb(43 25 61 / 0.65);
+  --color-border: rgb(43 25 61 / 0.18);
+  --color-border-input: rgb(43 25 61 / 0.55);
+  --color-border-strong: #2b193d;
+  --color-surface-muted: #f7f3f9;
+  --color-popover: #ffffff;
+  --color-overlay: rgb(43 25 61 / 0.45);
+  --color-success: #1f7a4d;
+  --color-success-foreground: #ffffff;
+  --color-success-tint: rgb(31 122 77 / 0.1);
+  --color-warning: #8a5a00;
+  --color-warning-foreground: #ffffff;
+  --color-warning-tint: #fff4d6;
+  --color-info: #2b193d;
+  --color-info-tint: #efe7f7;
+  --color-danger-tint: rgb(204 0 0 / 0.08);
+  --color-text-accent: #2b193d;
+  --color-notice-bg: #efe7f7;
+  --color-notice-border: rgb(43 25 61 / 0.3);
+  --color-ring-inverse: #f9f871;
+  --radius-card: 0.75rem;
+  /* English values; globals.css raises them under :lang(ar). */
+  --leading-body: 1.5;
+  --leading-title: 1.25;
+  --text-xs-min: 0.75rem;
+  --hit-min: 44px;
+  --hit-floor: 24px;
   --spacing-component: 1rem;
   --spacing-section: 5rem;
   --stroke-pen: 1.25px;
