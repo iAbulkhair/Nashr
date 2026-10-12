@@ -60,7 +60,7 @@ describe("impersonation stop (rules 540-542)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actor: founder, email: u.email, what: "impersonate:stop" });
     expect(JSON.stringify(rows)).not.toContain("someone-else@test.example");
-    expect(await db.get(`session:${temp}`)).toBeNull();
+    expect(await (await import("@/lib/auth")).sessionRecord(temp)).toBeNull();
     // The burned session cannot be replayed into a second log row.
     jar().set("nashr_session", temp);
     await stop();

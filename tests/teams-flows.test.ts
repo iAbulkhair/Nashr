@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash, randomBytes } from "crypto";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, saveUser, sc, type Plan, type User } from "@/lib/auth";
+import { currentUser, getUser, saveUser, sc, sessionRecord, type Plan, type User } from "@/lib/auth";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { scopeFor } from "@/lib/brands";
 import { createMember, getMember, listInvites, saveMember } from "@/lib/team";
@@ -56,7 +56,7 @@ const loginAs = (email: string, password: string) => login.POST(json("/api/auth/
 const inviteReq = (body: unknown) => invite.POST(json("/api/team/invite", "POST", body, ip()));
 const tokenOf = (text: string) => text.match(/#t=([a-f0-9]{64})/)![1];
 const resetTokenOf = (text: string) => text.match(/\/app\/reset#t=([a-f0-9]{64})/)![1];
-const sessionRec = () => db.get<{ email: string; at: number }>(`session:${jar().get("nashr_session")}`);
+const sessionRec = async () => (await sessionRecord(jar().get("nashr_session")!)) as { email: string; at: number } | null;
 
 beforeEach(() => {
   sent.length = 0;

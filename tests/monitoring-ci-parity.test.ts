@@ -235,7 +235,7 @@ describe("rule 1017: CI builds the way Hostinger builds", () => {
     return yml.slice(at, next < 0 ? yml.length : next);
   };
   it("sets up Node 22, the version thakeen.com builds on", () => {
-    expect(yml).toMatch(/uses: actions\/setup-node@v4\n\s+with:\n\s+node-version: 22\n/);
+    expect(yml).toMatch(/uses: actions\/setup-node@[0-9a-f]{40} # v4\.\d+\.\d+\n\s+with:\n\s+node-version: 22\n/);
     expect(yml).not.toMatch(/node-version: 24/);
   });
   it("the Build step runs the package script thakeen.com runs, which is next build --webpack", () => {

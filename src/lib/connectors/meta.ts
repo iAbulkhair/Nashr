@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { providerTimeout } from "../fetch-timeout";
 
 /**
  * Facebook Pages and Instagram professional accounts through the Graph API. The host is fixed; nothing about a request
@@ -30,8 +31,8 @@ async function graphError(r: Response, what: string): Promise<Error> {
 
 async function graph<T>(path: string, token: string, init?: { body: Record<string, string> }): Promise<T> {
   const r = await fetch(`${GRAPH}${path}`, init
-    ? { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(init.body) }
-    : { headers: { Authorization: `Bearer ${token}` } });
+    ? { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(init.body), signal: providerTimeout() }
+    : { headers: { Authorization: `Bearer ${token}` }, signal: providerTimeout() });
   if (!r.ok) throw await graphError(r, path.split("?")[0].split("/").pop() || "call");
   return (await r.json()) as T;
 }
@@ -40,6 +41,7 @@ async function graph<T>(path: string, token: string, init?: { body: Record<strin
 export async function longLivedToken(short: string): Promise<string> {
   const r = await fetch(`${GRAPH}/oauth/access_token`, {
     method: "POST",
+    signal: providerTimeout(),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "fb_exchange_token", client_id: process.env.META_APP_ID ?? "", client_secret: process.env.META_APP_SECRET ?? "", fb_exchange_token: short }),
   });

@@ -244,3 +244,10 @@ export const ADMIN_SKILL_TESTS_PER_HOUR = 30;
 /** Constant-time string comparison for secrets. It lives in secret.ts, which has no store behind it, so the proxy can use
  * it; this re-export keeps every existing import working. */
 export { sameSecret } from "./secret";
+
+/**
+ * Integration requests and votes, per login (`POST /api/integrations`). Each one is a row in the capped request log
+ * the founder reads, so a script must not be able to flood it and push the real requests out; a person asking for a
+ * few connectors stays far below this. Rule 1353.
+ */
+export const INTEGRATION_REQUESTS_PER_HOUR = 30;

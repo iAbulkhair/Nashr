@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { adminSignIn, jar, json, signIn, signOut } from "./helpers/session";
 import { createHash } from "node:crypto";
-import { adminEmails, ADMIN_SESSION_IDLE, ADMIN_SESSION_MAX, ADMIN_SESSION_RENEW, createUser, isAdmin, isAdminCookie, isFounder } from "@/lib/auth";
+import { adminEmails, ADMIN_SESSION_IDLE, ADMIN_SESSION_MAX, ADMIN_SESSION_RENEW, createUser, isAdmin, isAdminCookie, isFounder, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 import * as adminLogin from "@/app/api/admin/login/route";
@@ -263,7 +263,7 @@ describe("the founder console's key session (rules 420-424, 429, 435)", () => {
     const first = await impersonate();
     expect((await adminLogin.DELETE()).status).toBe(200);
     expect(await currentUser(), "logout of the key session").toBeNull();
-    expect(await db.get(`session:${first}`), "the record may linger until its TTL, but it opens nothing").not.toBeNull();
+    expect(await sessionRecord(first), "the record may linger until its TTL, but it opens nothing").not.toBeNull();
 
     // Opened from a key session, then the key is rotated: the customer session stops working.
     signOut();

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUserUnverified, getUser, saveUser, type User } from "@/lib/auth";
+import { currentUserUnverified, getUser, saveUser, sessionRecord, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { applyReferral, codeFor, ownerOf, referralStats, registerCode } from "@/lib/referral";
 import { hasPendingCode } from "@/lib/verify-email";
@@ -158,7 +158,7 @@ describe("change a mistyped signup email", () => {
 
     // The cookie resolves to the new address; the old session token is dead; a code went to the new address only.
     expect((await currentUserUnverified())!.email).toBe(to);
-    expect(await db.get(`session:${token}`)).toBeNull();
+    expect(await sessionRecord(token)).toBeNull();
     jar().set("nashr_session", token);
     expect(await currentUserUnverified()).toBeNull();
     expect(mails).toHaveLength(1);

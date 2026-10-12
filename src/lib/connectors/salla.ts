@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
 
@@ -35,7 +36,7 @@ function money(m: Money): string {
 
 /** The merchant's store name and domain, shown on the Integrations card. Missing fields are simply left out. */
 export async function sallaStore(c: Connection): Promise<{ name?: string; domain?: string } | null> {
-  const r = await fetch(PROFILE, { headers: auth(c) });
+  const r = await fetch(PROFILE, { headers: auth(c), signal: providerTimeout() });
   if (!r.ok) return null;
   const j = (await r.json().catch(() => null)) as { data?: { merchant?: { name?: string; domain?: string } } } | null;
   const m = j?.data?.merchant;
@@ -46,7 +47,7 @@ export async function sallaStore(c: Connection): Promise<{ name?: string; domain
 export async function importSalla(email: string, c: Connection) {
   const items: SallaProduct[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const r = await fetch(`${API}/products?page=${page}&per_page=${PER_PAGE}`, { headers: auth(c) });
+    const r = await fetch(`${API}/products?page=${page}&per_page=${PER_PAGE}`, { headers: auth(c), signal: providerTimeout() });
     if (!r.ok) throw new Error(`salla ${r.status}`);
     const j = (await r.json()) as Page;
     items.push(...(j.data ?? []));
@@ -93,7 +94,7 @@ async function pages<T>(c: Connection, path: string, max: number): Promise<{ row
   const rows: T[] = [];
   let total: number | null = null;
   for (let page = 1; page <= max; page++) {
-    const r = await fetch(`${API}${path}${path.includes("?") ? "&" : "?"}page=${page}`, { headers: auth(c) });
+    const r = await fetch(`${API}${path}${path.includes("?") ? "&" : "?"}page=${page}`, { headers: auth(c), signal: providerTimeout() });
     if (!r.ok) throw new Error(`salla ${r.status}`);
     const j = (await r.json()) as ListPage<T>;
     rows.push(...(j.data ?? []));

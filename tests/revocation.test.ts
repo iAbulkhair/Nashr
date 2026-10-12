@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash, randomBytes } from "crypto";
 import { jar, json, newUser, signIn, signOut } from "./helpers/session";
-import { createSession, currentUser, getUser, saveUser } from "@/lib/auth";
+import { createSession, currentUser, getUser, saveUser, sessionRecord } from "@/lib/auth";
 import { charge } from "@/lib/credits";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { issueCode, issueTokens, listGrants, redeemCode, registerClient, rotateRefresh } from "@/lib/oauth";
@@ -171,7 +171,7 @@ describe("createSession", () => {
     const u = await newUser("sess");
     signOut();
     await createSession(u.email);
-    const rec = await db.get<{ email: string; at: number }>(`session:${jar().get("nashr_session")}`);
+    const rec = (await sessionRecord(jar().get("nashr_session")!)) as { email: string; at: number } | null;
     expect(rec!.email).toBe(u.email);
     expect(rec!.at).toBeGreaterThan(Date.now() - 5000);
   });
