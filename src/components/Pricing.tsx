@@ -32,7 +32,6 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
             <Scribble kind="stamp" seed="pricing-trial" fill="lemon" />
             {p.trial}
           </span>
-          <span className="text-foreground-muted">{p.annual}</span>
         </div>
 
         <div className="mt-12 grid gap-x-6 gap-y-9 md:grid-cols-2 lg:grid-cols-4">

@@ -5,6 +5,7 @@ import { adminFetch } from "@/lib/admin-fetch";
 import { newPaymentId } from "./PaymentsPanel";
 import { videoGrantRequest } from "./EntitlementsTable";
 import { ksaDay, sarText } from "@/lib/partner-rules";
+import { defaultPaidThrough, parsePaidThrough } from "@/lib/hand-plan";
 import { ADMIN_INPUT_ERRORS, parseBrandCap, parseChat, parseCreditDelta, parseDealForm, parseImpersonateMinutes, parseRefundForm, parseSeats, parseTopupForm, parseTrialDays, type Parsed } from "@/lib/admin-input";
 import { USER_FILTERS, USER_PAGE_SIZES, parseUserQuery, userQueryParams, type TileCounts, type UserFilter, type UserQuery, type UserSort } from "@/lib/admin-users";
 import TempPasswordDialog from "./TempPasswordDialog";
@@ -193,8 +194,17 @@ export default function Users({ lang, keySession }: SectionProps) {
   async function setPlan(u: U) {
     const v = await askForm({
       title: UC.planTitle, subject: u.email, message: UC.planNote,
-      fields: [{ name: "plan", label: UC.planField, kind: "select", initial: u.plan, options: PLANS.map((p) => ({ value: p, label: p })) }],
-      parse: (f) => ((PLANS as readonly string[]).includes(f.plan) ? ok({ plan: f.plan }) : { ok: false, error: "failed" }),
+      fields: [
+        { name: "plan", label: UC.planField, kind: "select", initial: u.plan, options: PLANS.map((p) => ({ value: p, label: p })) },
+        // Rule 1302: a hand-set paid plan refills only through this day; one month from today unless the founder picks another.
+        { name: "paidThrough", label: UC.paidThroughField, kind: "date", initial: defaultPaidThrough(ksaDay()), ltr: true },
+      ],
+      parse: (f) => {
+        if (!(PLANS as readonly string[]).includes(f.plan)) return { ok: false, error: "failed" };
+        if (f.plan === "trial") return ok({ plan: f.plan });
+        const d = parsePaidThrough(f.paidThrough.trim(), ksaDay());
+        return d.ok ? ok({ plan: f.plan, paidThrough: d.day }) : { ok: false, error: "bad_paid_through" };
+      },
     });
     if (!v) return;
     await postPlan<{ ok?: boolean; error?: string; team?: TeamChange }>(u.email, v, (j) => [`${u.email} → ${v.plan}`, teamLine(j.team)].filter(Boolean).join(" · "));

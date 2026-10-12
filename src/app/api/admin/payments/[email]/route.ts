@@ -59,7 +59,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   if (b.action === "refund") {
     const res = await refundPaymobPayment(email, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "not_paymob" || res.error === "busy" ? 409 : res.error === "paymob_refund_failed" ? 502 : 404 });
-    await log(`paymob_refund payment:${res.payment.id}${res.alreadyRefunded ? " already_refunded" : ""}`, res.payment.voidReason);
+    await log(`paymob_refund payment:${res.payment.id}${res.alreadyRefunded ? " already_refunded" : ""}${res.planEnded ? " plan_ended" : ""}`, res.payment.voidReason);
     return NextResponse.json(res);
   }
   return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });

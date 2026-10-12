@@ -153,7 +153,7 @@ export type Dict = {
   industries: { eyebrow: string; title: string; items: { name: string; body: string }[] };
   integrations: { eyebrow: string; title: string; sub: string; groups: { label: string; items: string[] }[] };
   calendar: { eyebrow: string; title: string; sub: string; items: { when: string; name: string; play: string }[] };
-  pricing: { eyebrow: string; title: string; sub: string; trial: string; annual: string; plans: PlanCard[]; creditsTitle: string; credits: { action: string; cost: string }[] };
+  pricing: { eyebrow: string; title: string; sub: string; trial: string; plans: PlanCard[]; creditsTitle: string; credits: { action: string; cost: string }[] };
   faq: { eyebrow: string; title: string; items: { q: string; a: string }[] };
   footer: { tagline: string; rights: string; links: { label: string; href: string }[] };
 };
@@ -207,7 +207,7 @@ export const dict: Record<Lang, Dict> = {
       items: [
         { name: "نور", role: "التسويق", body: "تخطط وتكتب محتواك لكل القنوات. هي التي تجهّز ملخصك الصباحي.", does: ["الخطة الأسبوعية", "منشورات ومقالات SEO", "واتساب وإعلانات", "Google Business"] },
         { name: "سامي", role: "تمكين المبيعات", body: "يحوّل الاهتمام إلى صفقات: تأهيل العملاء، سكربتات، اعتراضات، متابعة.", does: ["بطاقة تأهيل العملاء", "سكربت مكالمة وواتساب", "جدول الاعتراضات", "سلسلة متابعة 7 رسائل"] },
-        { name: "رزان", role: "المالية والتسعير", body: "تسعير بالريال شامل الضريبة، اقتصاديات الوحدة، وتدفق نقدي لـ 90 يوماً.", does: ["مراجعة التسعير", "اقتصاديات الوحدة", "توقع التدفق النقدي", "مراجعة الإيرادات"] },
+        { name: "رزان", role: "المالية والتسعير", body: "الأسعار بالريال السعودي غير شاملة الضريبة، اقتصاديات الوحدة، وتدفق نقدي لـ 90 يوماً.", does: ["مراجعة التسعير", "اقتصاديات الوحدة", "توقع التدفق النقدي", "مراجعة الإيرادات"] },
         { name: "فارس", role: "الدخول للسوق والنمو", body: "التموضع، خطة 90 يوماً، تجارب نمو بتقييم ICE، والاحتفاظ والإحالة.", does: ["خطة GTM", "5 تجارب نمو", "3 خطط احتفاظ", "برامج الإحالة"] },
         { name: "دانة", role: "التقارير والعروض", body: "تقرير أسبوعي صادق من بياناتك، مواصفة لوحة المؤشرات، وعرض مجلس إدارة يُحمَّل PowerPoint.", does: ["التقرير الأسبوعي", "لوحة المؤشرات", "عرض المستثمرين", "الملخص التنفيذي"] },
         { name: "ماجد", role: "المستشار التنفيذي", body: "فريقك التنفيذي في شخص واحد: مراجعة استراتيجية، أهداف الربع، مذكرات قرار، قرارات محفظة المنتجات، وأين يفيدك الذكاء الاصطناعي فعلاً.", does: ["مراجعة 90 يوماً", "OKRs", "مذكرة قرار", "محفظة المنتجات", "خطة تبنّي الذكاء الاصطناعي"] },
@@ -260,7 +260,6 @@ export const dict: Record<Lang, Dict> = {
       title: "أرخص من موظف واحد.",
       sub: "الأسعار بالريال السعودي غير شاملة الضريبة. ألغِ في أي وقت.",
       trial: `تجربة 3 أيام مجاناً: ${PLAN_CREDITS.trial} كريدت و${chatMessagesText("ar", CHAT_ALLOWANCE.trial)} — بدون بطاقة`,
-      annual: "ادفع سنوياً ووفّر شهرين (قريباً)",
       plans: [
         { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, tagline: "للتاجر الفرد والمبدع", features: [`${brandsText("ar", PLAN_BRANDS.starter)}، ${seatsText("ar", PLAN_SEATS.starter)}`, `${chatMessagesText("ar", CHAT_ALLOWANCE.starter)} مع الفريق شهرياً`, "منشورات سوشال", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
         { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", brandsText("ar", PLAN_BRANDS.pro), `${chatMessagesText("ar", CHAT_ALLOWANCE.pro)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`], cta: "ابدأ مجاناً" },
@@ -348,7 +347,7 @@ export const dict: Record<Lang, Dict> = {
       items: [
         { name: "Noor", role: "Marketing", body: "Plans and writes your content for every channel. She's the one who leaves your brief each morning.", does: ["Weekly plan", "Posts and SEO articles", "WhatsApp and ads", "Google Business"] },
         { name: "Sami", role: "Sales enablement", body: "Turns attention into deals: lead qualification, scripts, objections, follow-ups.", does: ["Lead qualification card", "Call and WhatsApp scripts", "Objection sheet", "7-touch follow-up cadence"] },
-        { name: "Razan", role: "Finance and pricing", body: "SAR pricing with VAT in mind, unit economics, and a 90-day cash-flow forecast.", does: ["Pricing review", "Unit economics", "Cash-flow forecast", "Revenue review"] },
+        { name: "Razan", role: "Finance and pricing", body: "Prices in Saudi riyals, excluding VAT, unit economics, and a 90-day cash-flow forecast.", does: ["Pricing review", "Unit economics", "Cash-flow forecast", "Revenue review"] },
         { name: "Faris", role: "Go-to-market and growth", body: "Positioning, a 90-day plan, ICE-scored growth experiments, retention and referrals.", does: ["GTM plan", "5 growth experiments", "3 retention plays", "Referral programs"] },
         { name: "Dana", role: "Reports and decks", body: "An honest weekly report from your data, a dashboard spec, and a board deck that downloads as PowerPoint.", does: ["Weekly report", "Dashboard spec", "Investor deck", "Executive summary"] },
         { name: "Majed", role: "Executive advisor", body: "Your executive team in one person: strategy review, quarterly OKRs, decision memos, product portfolio calls, and where AI actually pays off.", does: ["90-day review", "OKRs", "Decision memo", "Product portfolio", "AI adoption plan"] },
@@ -401,7 +400,6 @@ export const dict: Record<Lang, Dict> = {
       title: "Cheaper than one hire.",
       sub: "Prices in Saudi riyals, excluding VAT. Cancel anytime.",
       trial: `3-day free trial: ${PLAN_CREDITS.trial} credits and ${chatMessagesText("en", CHAT_ALLOWANCE.trial)} — no card`,
-      annual: "Pay yearly, get two months free (coming soon)",
       plans: [
         { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, tagline: "For solo sellers and creators", features: [`${brandsText("en", PLAN_BRANDS.starter)}, ${seatsText("en", PLAN_SEATS.starter)}`, `${chatMessagesText("en", CHAT_ALLOWANCE.starter)} a month with the team`, "Social posts", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
         { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", brandsText("en", PLAN_BRANDS.pro), `${chatMessagesText("en", CHAT_ALLOWANCE.pro)} a month with the team`, `${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`], cta: "Start free" },

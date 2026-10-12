@@ -276,6 +276,10 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
     }
   }
   let items = parseItems(text);
+  // A reply with no usable item (an empty array, or no element with a string body) is a failure, not an empty success
+  // (rule 1306, issue #79): every charging caller refunds on a throw (`generateBatch`, the instruction test), so an empty
+  // batch is never paid for. Thrown before the reviewer, so nothing more is spent on it.
+  if (!items.length) throw new Error("empty_generation");
   // The grounding the reviewer, the cross-reviewers and (through generateBatch) the judge read; `leadBrief` only when set.
   const ground: Grounding = { notes: extra, memory: opts.memory, stats: opts.stats, ...(opts.leadBrief ? { leadBrief: opts.leadBrief } : {}) };
   if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, deadline, ...ground, layers: opts.layers });
