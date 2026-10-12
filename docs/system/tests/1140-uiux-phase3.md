@@ -2,7 +2,7 @@
 
 Status on 2026-10-11 on branch `claude/uiux-phase3` (cut from `claude/uiux-phase2` at 7cd52745): phase 3 of `docs/reports/2026-10-10-supastarter-uiux-report.md` (settings and billing). Every rule 1140-1158 is pinned in `tests/uiux-phase3.test.ts`: the route handlers run against the in-memory store, the cards render with `renderToStaticMarkup`, and the rest are source-reading checks, because the suite has no DOM. Rules 1159-1169 are unused and stay with this phase for its follow-ups (phase 3b).
 
-Stored shapes: one expand (rule 679), `profile:{scope}` gains `notify` next to `emails` (rules 1144-1148, `flows.md` 63 items 2-3), and one new key, `paymob:last:{email}` (rule 1155, 24 h TTL, removed with the account). New routes: `POST /api/account/sessions`, `PUT /api/notifications/prefs`, `GET /api/billing/status` (`permissions.md` rows 158-160, `tests/role-gates.test.ts`). New action: `sessions.revoke` (member, refused to a founder impersonating). No new environment variables. Nothing here turns Paymob on or changes a price.
+Stored shapes: one expand (rule 679), `profile:{scope}` gains `notify` next to `emails` (rules 1144-1148, `flows.md` 63 items 2-3), and one new key, `paymob:last:{email}` (rule 1155, 24 h TTL, removed with the account). New routes: `POST /api/account/sessions`, `PUT /api/notifications/prefs`, `GET /api/billing/status` (`permissions.md` rows 161-163, `tests/role-gates.test.ts`). New action: `sessions.revoke` (member, refused to a founder impersonating). No new environment variables. Nothing here turns Paymob on or changes a price.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
