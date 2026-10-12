@@ -17,6 +17,10 @@ const P: Record<string, React.ReactNode> = {
   check: <><path d="m5 12.5 4.5 4.5L19 7.5" /></>,
   x: <><path d="m6 6 12 12M18 6 6 18" /></>,
   chevron: <><path d="m6 9 6 6 6-6" /></>,
+  // Points to the inline end in English (forward, "next"); drawn with `mirror` it points the other way in Arabic (rule 1118).
+  next: <><path d="m9 6 6 6-6 6" /></>,
+  stop: <><rect x="6.5" y="6.5" width="11" height="11" rx="2" /></>,
+  retry: <><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4.5 4.5v3.5H8" /></>,
   send: <><path d="M4 12 20 4l-4 16-4-7-8-1Z" /></>,
   copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></>,
   share: <><path d="M12 4v12M8 8l4-4 4 4" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
@@ -52,14 +56,19 @@ const P: Record<string, React.ReactNode> = {
   lock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></>,
   trophy: <><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z" /><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4" /></>,
   plug: <><path d="M9 3v4M15 3v4M7 7h10v3a5 5 0 0 1-10 0V7ZM12 15v6" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6" /></>,
   users: <><circle cx="9" cy="8.5" r="3.5" /><path d="M3 19.5c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M15.5 5.2a3.5 3.5 0 0 1 0 6.6M17.5 14.3c2 .7 3.5 2.6 3.5 5.2" /></>,
 };
 export type IconName = keyof typeof P;
 export const CHANNEL_ICON: Record<string, IconName> = { instagram: "instagram", snapchat: "snapchat", tiktok: "tiktok", x: "xcom", whatsapp: "whatsapp", gbp: "gbp", blog: "blog", linkedin: "linkedin", email: "email", call: "phone", meta: "instagram", plan: "plan", sales: "sales", finance: "finance", growth: "growth", report: "report", deck: "deck", dashboard: "dashboard", strategy: "strategy", product: "product" };
-export function Icon({ name, className = "h-4 w-4", title }: { name: IconName | string; className?: string; title?: string }) {
+/**
+ * One icon. `mirror` flips a directional icon (send, next, back) in a right-to-left page (rule 1118), so "forward" points
+ * the way the line reads; symbols that mean the same both ways (a check, a bell) leave it off.
+ */
+export function Icon({ name, className = "h-4 w-4", title, mirror = false }: { name: IconName | string; className?: string; title?: string; mirror?: boolean }) {
   const body = P[name as IconName] ?? P.general;
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden={title ? undefined : true} role={title ? "img" : undefined}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={mirror ? `${className} rtl:-scale-x-100` : className} aria-hidden={title ? undefined : true} role={title ? "img" : undefined}>
       {title && <title>{title}</title>}
       {body}
     </svg>

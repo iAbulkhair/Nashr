@@ -181,6 +181,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
 
   // Every member of the account.
   "PATCH /api/account": g("member", "password.change"),
+  // Sign out other devices (rule 1150): the caller's own sessions only, never while impersonating.
+  "POST /api/account/sessions": g("member", "sessions.revoke"),
+  // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
+  "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "POST /api/team/leave": g("member", "team.leave"),
   "POST /api/chat": "member",
   "POST /api/chat/feedback": "member",
@@ -241,6 +245,8 @@ const READS: Record<string, Gate> = {
   "GET /p/[code]": "public",
   "GET /api/team": g("member", "team.view"),
   "GET /api/profile": g("member", "read"),
+  // The Paymob return page's poll (rule 1155): the caller's own last checkout and plan, owner only.
+  "GET /api/billing/status": g("owner", "billing"),
   "GET /api/activity": g("member", "read"),
   "GET /api/activity/export": g("member", "read"),
   "GET /api/handoffs/[id]": g("member", "read"),
@@ -261,6 +267,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/wishlist": "admin-console",
   "GET /api/admin/skills": "admin-console",
   "GET /api/admin/leads": "admin-console",
+  "GET /api/admin/client-ip": "admin-console",
   "GET /api/admin/log": "admin-console",
   "GET /api/admin/overview": "admin-console",
   "GET /api/admin/plan": "admin-console",
@@ -331,7 +338,11 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models", "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test"];
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
+  // Agent instructions (rules 930-959).
+  "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
+  // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
+  "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",

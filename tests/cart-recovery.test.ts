@@ -115,7 +115,7 @@ describe("no discount the owner did not offer (rule 74)", () => {
       default: class {
         beta = { messages: { stream: (p: { messages: { content: string }[] }) => { userMsg = p.messages[0].content; return { finalMessage: async () => reply(JSON.stringify(first)) }; } } };
         // The reviewer "fixes" the second item by adding a discount of its own.
-        messages = { create: async () => reply(JSON.stringify([{ ok: true }, { ok: false, body: "خصم 25% اليوم على مسك أبيض فقط" }])) };
+        messages = { create: async () => reply(JSON.stringify([{ ok: true }, { ok: false, body: "خصم 25% اليوم على مسك أبيض فقط" }])), stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const { generate } = await import("@/lib/noor");

@@ -23,7 +23,7 @@ export const APP: string[] = [
   "src/app/[lang]/app/tasks/page.tsx",
   "src/app/[lang]/app/calendar/page.tsx",
   "src/app/[lang]/app/files/page.tsx",
-  "src/app/[lang]/app/brands/page.tsx",
+  "src/app/[lang]/app/settings/brands/page.tsx",
   "src/app/[lang]/app/generate/page.tsx",
   "src/app/[lang]/app/inspo/page.tsx",
   "src/components/app/HomeSide.tsx",
@@ -44,15 +44,14 @@ export const APP: string[] = [
   "src/components/app/WorkingDaysPanel.tsx",
   "src/components/app/AgentAvatar.tsx",
   // Task 18: account screens (rule 519).
-  "src/app/[lang]/app/billing/page.tsx",
+  "src/app/[lang]/app/settings/billing/page.tsx",
   "src/app/[lang]/app/partner/page.tsx",
   "src/app/[lang]/app/refer/page.tsx",
-  "src/app/[lang]/app/profile/page.tsx",
-  "src/app/[lang]/app/team/page.tsx",
+  "src/app/[lang]/app/settings/members/page.tsx",
   "src/app/[lang]/app/notifications/page.tsx",
-  "src/app/[lang]/app/integrations/page.tsx",
+  "src/app/[lang]/app/settings/connections/page.tsx",
   "src/app/[lang]/app/mcp/page.tsx",
-  "src/app/[lang]/app/governance/page.tsx",
+  "src/app/[lang]/app/settings/governance/page.tsx",
   "src/app/[lang]/app/reports/page.tsx",
   "src/app/[lang]/app/activity/page.tsx",
   "src/app/[lang]/app/help/page.tsx",
@@ -81,7 +80,7 @@ export const APP: string[] = [
   "src/components/app/PartnersPanel.tsx",
   "src/components/app/PaymentsPanel.tsx",
   "src/components/app/PerformanceImport.tsx",
-  "src/components/app/ProfilePanel.tsx",
+  "src/components/app/settings/CreditUsageCard.tsx",
   "src/components/app/ReferPanel.tsx",
   "src/components/app/ReportsPanel.tsx",
   "src/components/app/TeamPanel.tsx",
@@ -117,7 +116,8 @@ describe("app screens are quiet D (rule 519)", () => {
     for (const file of ["src/components/app/AuthForm.tsx", "src/components/app/JoinForm.tsx", "src/components/app/AdminLogin.tsx", "src/components/app/VerifyForm.tsx"]) {
       const src = read(file);
       expect(src, file).not.toMatch(/<button\b[^>]*className="btn btn-primary"/);
-      expect(src.match(/className="s-btn"><Scribble kind="pill" seed="[^"]+" fill="ink" shadow ring \/>/g)?.length ?? 0, file).toBeGreaterThan(0);
+      // Written out, or through the Button primitive's pill (rule 1082), which renders the same `s-btn` with the same scribble.
+      expect(src.match(/className="s-btn"><Scribble kind="pill" seed="[^"]+" fill="ink" shadow ring \/>|<Button type="submit" variant="pill" seed="[^"]+"/g)?.length ?? 0, file).toBeGreaterThan(0);
     }
   });
 

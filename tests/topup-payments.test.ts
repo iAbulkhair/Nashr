@@ -12,7 +12,7 @@ import { addPaidTopup, approvePartner, paymentsView, recordPayment, voidPayment,
 import { lotsOf, monthlyCredits, parseTopup, creditSplit } from "@/lib/topups";
 import { appDict } from "@/lib/app-i18n";
 import { noCreditsText } from "@/components/app/LimitModal";
-import ProfilePanel from "@/components/app/ProfilePanel";
+import CreditUsageCard from "@/components/app/settings/CreditUsageCard";
 import { shortOfCredits } from "@/components/app/MediaControls";
 import { firstMonthPriceSar } from "@/lib/pricing";
 import * as topupsRoute from "@/app/api/admin/topups/route";
@@ -270,7 +270,8 @@ describe("voiding a pack voids its payment and the commission; a live pack's pay
   });
 });
 
-describe("the profile shows plan credits and top-up credits apart, with each pack's expiry (rule 456)", () => {
+// The credit card moved from the old profile page to Settings, Billing in UI/UX phase 3 (rule 1153), unchanged.
+describe("the credit card shows plan credits and top-up credits apart, with each pack's expiry (rule 456)", () => {
   it("creditSplit: the plan part is the rest of the balance, packs sorted by expiry, never more than the balance", () => {
     const soon = { credits: 300, left: 120, expiresAt: "2026-11-01T00:00:00.000Z" };
     const late = { credits: 1000, left: 1000, expiresAt: "2026-12-30T00:00:00.000Z" };
@@ -289,7 +290,7 @@ describe("the profile shows plan credits and top-up credits apart, with each pac
     brand: { name: "Roastery", website: "roastery.example", sitemap: "", products: "Beans", audience: "Locals", tone: "warm", valueProp: "", social: {} },
   });
   const render = (lang: "en" | "ar", topups?: { credits: number; left: number; expiresAt: string }[]) =>
-    renderToStaticMarkup(createElement(ProfilePanel, { t: appDict[lang], lang, initial: initial(topups) }));
+    renderToStaticMarkup(createElement(CreditUsageCard, { t: appDict[lang], lang, user: initial(topups).user, month: { usage: {}, images: 0, mediaCredits: 0, nextReset: "2026-11-01" }, allowance: 300 }));
 
   it("the credit card splits the balance and dates each pack, in both languages; without packs it shows the balance alone", () => {
     const packs = [{ credits: 1000, left: 1000, expiresAt: "2026-12-30T10:00:00.000Z" }, { credits: 300, left: 120, expiresAt: "2026-11-15T10:00:00.000Z" }];

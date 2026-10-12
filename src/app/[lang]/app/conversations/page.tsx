@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
@@ -9,6 +10,8 @@ import { kpiSince } from "@/lib/stats";
 import Scribble from "@/components/Scribble";
 
 export const dynamic = "force-dynamic";
+
+export const generateMetadata = appScreenMeta("conversations");
 
 export default async function Page({ params, searchParams }: PageProps<"/[lang]/app/conversations">) {
   const { lang } = await params;

@@ -325,12 +325,12 @@ describe("the hard per-message ceiling (rule 311)", () => {
     const j = await (await send()).json();
     expect(j.message).not.toHaveProperty("usd");
   });
-  it("chat runs on Sonnet 5.5 under a $0.14 ceiling: the same tokens a message had under $0.35 on Opus 5, and a 2-credit hold", () => {
+  it("chat runs on Sonnet 5.5 under a $0.14 ceiling: the same 14,000 output tokens a message had under $0.35 on Opus 5 ($25/M, removed by rule 970), and a 2-credit hold", () => {
     expect(CHAT_MODEL).toBe("claude-sonnet-5-5");
     expect(CHAT_TURN_MAX_USD).toBe(0.14);
     expect(chatOverflowHold()).toBe(2);
     const tokensUnder = (ceiling: number, model: string) => ceiling / costUsd(model, { output_tokens: 1 });
-    expect(tokensUnder(CHAT_TURN_MAX_USD, CHAT_MODEL)).toBeCloseTo(tokensUnder(0.35, "claude-opus-5"), 6);
+    expect(tokensUnder(CHAT_TURN_MAX_USD, CHAT_MODEL)).toBeCloseTo(0.35 / 25e-6, 6);
   });
   it("a turn the model refuses says so, never \"Done\", and is still metered", async () => {
     const u = await owner("starter");

@@ -1,8 +1,11 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { currentUser } from "@/lib/auth";
 import HelpCenter from "@/components/HelpCenter";
 import { appOrigin } from "@/lib/origin";
+export const generateMetadata = appScreenMeta("help");
+
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();

@@ -32,7 +32,7 @@ import * as adminPartners from "@/app/api/admin/partners/route";
 import * as adminPayments from "@/app/api/admin/payments/[email]/route";
 import * as affiliates from "@/app/api/affiliates/route";
 import * as profileRoute from "@/app/api/profile/route";
-import BillingPage from "@/app/[lang]/app/billing/page";
+import BillingPage from "@/app/[lang]/app/settings/billing/page";
 import PartnerPage from "@/app/[lang]/app/partner/page";
 import AffiliatesPage from "@/app/[lang]/affiliates/page";
 import PartnerTermsPage from "@/app/[lang]/affiliates/terms/page";
@@ -1437,8 +1437,9 @@ describe("rule 418: the Partners tab and the Payments panel make their admin cal
     expect(readFileSync("src/app/[lang]/admin/partners/page.tsx", "utf8")).toContain("<PartnersPanel lang={lang} />");
     expect(readFileSync("src/app/[lang]/admin/leads/page.tsx", "utf8")).toContain("<LeadsPanel lang={lang} />");
     expect(readFileSync("src/components/app/LeadsPanel.tsx", "utf8")).toContain("window.dispatchEvent(new Event(ADMIN_LEADS_SEEN))");
-    expect(readFileSync("src/components/admin/AdminNav.tsx", "utf8")).toMatch(/partners: "Partners"/);
-    expect(readFileSync("src/components/admin/AdminNav.tsx", "utf8")).toMatch(/partners: "الشركاء"/);
+    // The section labels moved next to ADMIN_SECTIONS (rule 961), so page titles on the server read the same names.
+    expect(readFileSync("src/lib/admin-gate.ts", "utf8")).toMatch(/partners: "Partners"/);
+    expect(readFileSync("src/lib/admin-gate.ts", "utf8")).toMatch(/partners: "الشركاء"/);
   });
 });
 

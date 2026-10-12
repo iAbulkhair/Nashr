@@ -5,6 +5,8 @@ import { adminFetch } from "@/lib/admin-fetch";
 import PaymentsPanel, { newPaymentId } from "../app/PaymentsPanel";
 import EntitlementsTable, { videoGrantRequest } from "../app/EntitlementsTable";
 import { ksaDay, sarText } from "@/lib/partner-rules";
+import { parseTrialDays, TRIAL_EXTEND_MAX_DAYS } from "@/lib/admin-input";
+import TempPasswordDialog from "./TempPasswordDialog";
 import { AGENCY_MIN, MAX_SEAT_OVERRIDE, PLANS, TOPUP_PACKS, formatCount, isChatOverride, isTopupPack, parseDeal, topupPriceSar, topupsSold, type AgencyDeal, type Plan } from "@/lib/pricing";
 import type { TopupLot } from "@/lib/topups";
 // The refund amount the founder is shown, computed as the server computes it (rule 460). topups.ts is client-safe (rule 451).
@@ -42,13 +44,29 @@ export default function Users({ lang, keySession }: SectionProps) {
   const pendingTopup = useRef<{ key: string; id: string } | null>(null);
   /** The request id of a "Refund unused" not yet confirmed, with what it was sent with: a retry is recognised (rule 460). */
   const pendingRefund = useRef<{ key: string; id: string } | null>(null);
+  /** The temporary password from "Reset password", shown once in its own dialog and dropped from state when it closes. */
+  const [temp, setTemp] = useState<{ email: string; password: string } | null>(null);
+  /**
+   * The reason every founder change asks for (rule 960). Cancel is `null` and stops the change: before this, `?? ""`
+   * turned Cancel into an empty reason and the plan, seats, chat, deal, credits, top-up, void, refund or member removal
+   * went through anyway. An empty reason typed and confirmed with OK still goes, as before.
+   */
+  const askReason = (): string | null => prompt(O.reason, "");
+  /** "Extend trial" (rule 960): a whole number of days from 1 to 90; Cancel sends nothing, a bad number says so. */
+  async function extendTrial(email: string) {
+    const raw = prompt(S.promptDays, "7");
+    if (raw === null) return;
+    const days = parseTrialDays(raw);
+    if (days === null) { setMsg(`${email}: bad_days (1-${TRIAL_EXTEND_MAX_DAYS})`); return; }
+    await act(email, "extendTrial", { days });
+  }
   async function act(email: string, action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
     const r = await adminFetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
     const j = await r.json();
     setBusy(false);
     if (!j.ok) { setMsg(`${action} failed: ${j.error ?? r.status}`); return j; }
-    if (action === "resetPassword") { window.prompt(`${email}: ${S.promptTemp}`, j.tempPassword); setMsg(`${email}: password reset`); }
+    if (action === "resetPassword") { setTemp({ email, password: j.tempPassword }); setMsg(`${email}: password reset`); }
     else if (action === "impersonate") { window.location.assign(j.redirect); return j; }
     else if (action === "delete") { setMsg(`${email} deleted`); setSel(null); }
     else if (action === "resendVerification") setMsg(`${email}: ${S.codeSent}`);
@@ -63,7 +81,8 @@ export default function Users({ lang, keySession }: SectionProps) {
   /** The team change a plan or seat change made, in one line: who was paused, who came back, how many invites went. */
   const teamLine = (t?: TeamChange) => (!t ? "" : [t.disabled.length ? `${S.teamPaused}: ${t.disabled.join(", ")}` : "", t.enabled.length ? `${S.teamResumed}: ${t.enabled.join(", ")}` : "", t.cancelled.length ? `${S.teamCancelled}: ${t.cancelled.length}` : ""].filter(Boolean).join(" · "));
   async function setPlan(email: string, plan: string) {
-    const reason = prompt(O.reason, "") ?? "";
+    const reason = askReason();
+    if (reason === null) return;
     setBusy(true);
     const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; team?: TeamChange; error?: string };
@@ -77,7 +96,8 @@ export default function Users({ lang, keySession }: SectionProps) {
     if (raw === null || raw.trim() === "") return;
     const n = Number(raw.trim());
     if (!Number.isInteger(n) || n < 0 || n > MAX_SEAT_OVERRIDE) { setMsg(`${u.email}: bad_seats`); return; }
-    const reason = prompt(O.reason, "") ?? "";
+    const reason = askReason();
+    if (reason === null) return;
     setBusy(true);
     const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, seats: n === 0 ? null : n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { seats: number }; team?: TeamChange; error?: string };
@@ -97,7 +117,8 @@ export default function Users({ lang, keySession }: SectionProps) {
     const clear = t === "" || t.toLowerCase() === "plan" || t === "الخطة";
     const n = Number(t);
     if (!clear && !isChatOverride(n)) { setMsg(`${u.email}: bad_chat`); return; }
-    const reason = prompt(O.reason, "") ?? "";
+    const reason = askReason();
+    if (reason === null) return;
     setBusy(true);
     const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, chatAllowance: clear ? null : n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { chatAllowance: number; chatOverride: number | null }; error?: string };
@@ -163,7 +184,8 @@ export default function Users({ lang, keySession }: SectionProps) {
         body.seats = n;
       }
     }
-    const reason = prompt(O.reason, "") ?? "";
+    const reason = askReason();
+    if (reason === null) return;
     setBusy(true);
     const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { deal?: AgencyDeal | null }; team?: TeamChange; error?: string };
@@ -174,7 +196,8 @@ export default function Users({ lang, keySession }: SectionProps) {
   async function addCredits(email: string) {
     const n = Number(prompt(S.promptCredits, "100"));
     if (!n) return;
-    const reason = prompt(O.reason, "") ?? "";
+    const reason = askReason();
+    if (reason === null) return;
     setBusy(true);
     const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -202,7 +225,8 @@ export default function Users({ lang, keySession }: SectionProps) {
     if (paidOn === null) return;
     const ref = prompt(S.promptTopupRef, "");
     if (ref === null) return;
-    const reason = prompt(O.reason, "") ?? "";
+    const reason = askReason();
+    if (reason === null) return;
     const pack = { email: u.email, action: "add", credits, paidSar, paidOn: paidOn.trim(), ref };
     const key = JSON.stringify(pack);
     if (pendingTopup.current?.key !== key) pendingTopup.current = { key, id: newPaymentId() };
@@ -226,7 +250,8 @@ export default function Users({ lang, keySession }: SectionProps) {
    */
   async function voidTopup(u: U, l: TopupLot) {
     if (!confirm(S.confirmVoid(l.credits, l.left))) return;
-    const reason = prompt(O.reason, "") ?? "";
+    const reason = askReason();
+    if (reason === null) return;
     setBusy(true);
     try {
       const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, action: "void", id: l.id, reason }) });
@@ -253,7 +278,8 @@ export default function Users({ lang, keySession }: SectionProps) {
     const ref = prompt(S.promptRefundRef, "");
     if (ref === null) return;
     if (!ref.trim()) { setMsg(`${u.email}: bad_ref`); return; }
-    const reason = prompt(O.reason, "") ?? "";
+    const reason = askReason();
+    if (reason === null) return;
     const ask = { email: u.email, action: "refund", id: l.id, credits: l.left, on: on.trim(), ref };
     const key = JSON.stringify(ask);
     if (pendingRefund.current?.key !== key) pendingRefund.current = { key, id: newRefundId() };
@@ -304,6 +330,7 @@ export default function Users({ lang, keySession }: SectionProps) {
   const shown = list.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
   return (
     <div className="grid gap-6">
+      {temp && <TempPasswordDialog lang={lang} email={temp.email} password={temp.password} onClose={() => setTemp(null)} />}
       <PlanTiles lang={lang} users={users} total={total} />
       {msg && <p className="text-sm text-ink">{msg}</p>}
       {users === null && <p className="text-sm text-muted">{S.loading}</p>}
@@ -320,7 +347,7 @@ export default function Users({ lang, keySession }: SectionProps) {
           </div>
           <p className="mt-2" dir="auto">{memberSel.name} · {S.memberOf} <button onClick={() => open(memberSel.memberOf)} className="text-ink underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <span dir="ltr">{memberSel.invitedBy}</span> · {memberSel.acceptedAt.slice(0, 10)}</p>
           {(!memberSel.ownerExists || !memberSel.onRoster) && <p className="mt-1 text-danger">{[!memberSel.ownerExists ? S.ownerMissing : "", !memberSel.onRoster ? S.offRoster : ""].filter(Boolean).join(" · ")}</p>}
-          <button disabled={busy} onClick={() => { if (prompt(S.promptRemoveMember) === memberSel.email) void act(memberSel.email, "removeMember", { reason: prompt(O.reason, "") ?? "" }); }} className="btn btn-danger-solid btn-xs mt-3">{S.removeMember}</button>
+          <button disabled={busy} onClick={() => { if (prompt(S.promptRemoveMember) !== memberSel.email) return; const reason = askReason(); if (reason !== null) void act(memberSel.email, "removeMember", { reason }); }} className="btn btn-danger-solid btn-xs mt-3">{S.removeMember}</button>
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
@@ -374,7 +401,7 @@ export default function Users({ lang, keySession }: SectionProps) {
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <button disabled={busy} onClick={() => act(sel.user.email, "impersonate")} className="rounded-full bg-ink px-3 py-1 font-semibold text-lilac">{S.impersonate}</button>
-            <button disabled={busy} onClick={() => act(sel.user.email, "extendTrial", { days: Number(prompt(S.promptDays, "7")) || 7 })} className="btn btn-secondary btn-xs">{S.extend}</button>
+            <button disabled={busy} onClick={() => extendTrial(sel.user.email)} className="btn btn-secondary btn-xs">{S.extend}</button>
             <button disabled={busy} onClick={() => setVideoGrant(sel.user)} className="btn btn-secondary btn-xs" data-testid="video-grant-button">{S.grantVideo}</button>
             <button disabled={busy} onClick={() => act(sel.user.email, "resetPassword")} className="btn btn-secondary btn-xs">{S.reset}</button>
             {/* Rule 777: only while the address is unproved; the route refuses a verified owner and rate-limits per address. */}

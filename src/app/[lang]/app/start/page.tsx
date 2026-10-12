@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -9,6 +10,8 @@ import { can } from "@/lib/roles";
 import DictionaryStart from "@/components/app/DictionaryStart";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import Scribble from "@/components/Scribble";
+
+export const generateMetadata = appScreenMeta("start");
 
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ url?: string }> }) {
   const { lang } = await params;

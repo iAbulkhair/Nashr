@@ -11,13 +11,13 @@ import { forgetInviteToken, readInviteToken, recallInviteToken, rememberInviteTo
 import { teamPerms } from "@/components/app/teamPerms";
 import TrialBanner from "@/components/app/TrialBanner";
 import Sidebar from "@/components/app/Sidebar";
-import TeamPage from "@/app/[lang]/app/team/page";
+import TeamPage from "@/app/[lang]/app/settings/members/page";
 import JoinPage from "@/app/[lang]/app/join/page";
-import BillingPage from "@/app/[lang]/app/billing/page";
-import GovernancePage from "@/app/[lang]/app/governance/page";
+import BillingPage from "@/app/[lang]/app/settings/billing/page";
+import GovernancePage from "@/app/[lang]/app/settings/governance/page";
 import TasksPage from "@/app/[lang]/app/tasks/page";
-import OnboardingPage from "@/app/[lang]/app/onboarding/page";
-import BrandsPage from "@/app/[lang]/app/brands/page";
+import OnboardingPage from "@/app/[lang]/app/settings/brand/page";
+import BrandsPage from "@/app/[lang]/app/settings/brands/page";
 import ReferPage from "@/app/[lang]/app/refer/page";
 import McpPage from "@/app/[lang]/app/mcp/page";
 import InboxPage from "@/app/[lang]/app/page";
@@ -107,11 +107,12 @@ describe("invite links keep the token in the URL fragment", () => {
     expect(form).toMatch(/JSON\.stringify\(\{ token: tok \}\)/);
   });
 
-  it("/join is public in the layout and in the e2e route inventory; /team is an app route", () => {
+  // Members moved to /app/settings/members in UI/UX phase 3 (rule 1141); /app/team redirects there for one release.
+  it("/join is public in the layout and in the e2e route inventory; members is an app route", () => {
     const layout = readFileSync("src/app/[lang]/app/layout.tsx", "utf8");
     expect(layout).toMatch(/const PUBLIC = \[[^\]]*"\/join"[^\]]*\]/);
     expect(APP_PUBLIC_ROUTES).toContain("/app/join");
-    expect(APP_ROUTES.map((r) => r.path)).toContain("/app/team");
+    expect(APP_ROUTES.map((r) => r.path)).toContain("/app/settings/members");
     expect(APP_ROUTES.map((r) => r.path)).not.toContain("/app/join");
   });
 });
@@ -336,7 +337,7 @@ describe("working screens offer a plain member only what the server lets a membe
     const o = await page(StartPage);
     expect(o).toContain(esc(DICT_COPY.title.en));
     expect(o).toContain(esc(en.start.manual));
-    expect(o).toContain('href="/en/app/onboarding"');
+    expect(o).toContain('href="/en/app/settings/brand"');
     await signIn(shopMember.email);
     expect(await page(StartPage)).not.toContain(esc(DICT_COPY.title.en));
     await saveBrand(shop.email, BRAND);
@@ -403,8 +404,8 @@ describe("account-level prompts tell other roles to ask the owner", () => {
   it("trial banner: the owner gets Activate; others get 'ask the account owner'", () => {
     const own = renderToStaticMarkup(createElement(TrialBanner, { lang: "en", days: 2, plan: "trial", owner: true }));
     const other = renderToStaticMarkup(createElement(TrialBanner, { lang: "en", days: 2, plan: "trial", owner: false }));
-    expect(own).toContain("/en/app/billing");
-    expect(other).not.toContain("/en/app/billing");
+    expect(own).toContain("/en/app/settings/billing");
+    expect(other).not.toContain("/en/app/settings/billing");
     expect(other).toContain("Ask the account owner");
   });
 
@@ -414,7 +415,8 @@ describe("account-level prompts tell other roles to ask the owner", () => {
     const m = render("member", member.email);
     expect(m).toContain(member.email);
     expect(m).toContain(en.team.roles.member);
-    expect(m).toContain('href="/en/app/team"');
+    // Members live in the settings area since UI/UX phase 3 (rule 1141): one rail row for all of settings.
+    expect(m).toContain('href="/en/app/settings"');
     expect(m).not.toContain('href="/en/app/refer"');
     expect(m).toContain(esc(en.nav.sharedCredits));
     const o = render("owner", owner.email);

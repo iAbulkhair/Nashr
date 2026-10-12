@@ -1,3 +1,4 @@
+import { adminScreenMeta } from "@/lib/screen-titles";
 import { notFound } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { requireAdmin } from "@/lib/admin-gate-server";
@@ -6,6 +7,7 @@ import SkillsAdminPanel from "@/components/admin/SkillsAdminPanel";
 import { EndedGate, EndedNotice } from "@/components/admin/shared";
 
 export const dynamic = "force-dynamic";
+export const generateMetadata = adminScreenMeta("skills");
 
 // Founder console, section "skills" (rules 958-959): a plain 404 without the gate (src/lib/admin-gate-server.ts). The props
 // are the server's own reads (`consoleState`, the same function GET /api/admin/skills answers with); nothing comes from the request.

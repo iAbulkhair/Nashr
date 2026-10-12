@@ -114,6 +114,11 @@ export const MIN_ROLE = {
   "team.leave": "member",
   /** Change one's OWN password (the member record for members, the owner record for the owner). */
   "password.change": "member",
+  /**
+   * Sign one's OWN other browser sessions out (POST /api/account/sessions, rule 1150): the member record's stamp for a
+   * member, the account's for the owner. Refused while impersonating: it would end the customer's own sessions.
+   */
+  "sessions.revoke": "member",
   /** One's own display name and interface language. */
   "profile.self": "member",
 } as const satisfies Record<string, Role>;
@@ -125,6 +130,7 @@ export const ACTIONS = Object.keys(MIN_ROLE) as Action[];
 export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "account.delete",
   "password.change",
+  "sessions.revoke",
   "team.invite.member",
   "team.invite.admin",
   "team.invite.cancel",

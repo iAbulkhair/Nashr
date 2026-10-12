@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -9,6 +10,8 @@ import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import { appOrigin } from "@/lib/origin";
 import Scribble from "@/components/Scribble";
 export const dynamic = "force-dynamic";
+export const generateMetadata = appScreenMeta("refer");
+
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();

@@ -18,6 +18,7 @@ import { isAgentId } from "@/lib/agents";
 import AgentAvatar from "@/components/app/AgentAvatar";
 import Scribble from "@/components/Scribble";
 import { taskVersion } from "@/lib/task-version";
+import { CHANNEL_LIMITS } from "@/lib/channel-limits";
 
 const GUARD = {
   ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", heldPh: "فيه خانات لم تُعبّأ بعد (مثل [رقم] أو [date])، فلا يُعتمد ولا يُنشر حتى تضع القيمة الحقيقية مكانها أو تحذفها:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة ولا خانات فارغة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", rulePh: "قاعدة الخانات الفارغة", editBrand: "ملف العلامة" },
@@ -70,7 +71,8 @@ function Hit({ v }: { v: Violation }) {
   return <span dir="auto">{v.excerpt.slice(0, i)}<mark className="guard-hit text-inherit">{v.excerpt.slice(i, i + v.term.length)}</mark>{v.excerpt.slice(i + v.term.length)}</span>;
 }
 
-const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
+// One list with the chat's approval card (rule 1124).
+const CHAR_LIMITS = CHANNEL_LIMITS;
 
 /** A string from the dictionary with its {placeholders} filled. */
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
@@ -365,7 +367,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   <ul className="mt-1.5 grid gap-1">{hits.map((v) => <li key={v.ruleId} className="text-xs text-ink/80"><span className="font-semibold" dir="auto">«{v.term}»</span> · <Hit v={v} /></li>)}</ul>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-primary btn-xs">{G.fix}</button>
-                    {hits.some((v) => v.kind === "banned") && <Link href={`/${lang}/app/onboarding`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
+                    {hits.some((v) => v.kind === "banned") && <Link href={`/${lang}/app/settings/brand`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
                   </div>
                 </div>
               )}

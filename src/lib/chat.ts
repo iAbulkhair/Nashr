@@ -1,7 +1,8 @@
 import { AGENTS, AGENT_IDS, agentById, agentForTask, type AgentId } from "./agents";
 import { skillsBlock } from "./skills";
 import { asData, fenceMemory } from "./json";
-import { costUsd, meter } from "./usage";
+import { costUsd } from "./usage";
+import { metered } from "./metered";
 import { CHAT_MAX_CALLS, estTokens, fitFirstCall, inputEstimateUsd, nextMaxTokens, trimHistory, type InputEst } from "./chat-budget";
 import { MODEL_BUDGET, ModelPaused, PAUSED_REPLY, anthropic, modelState, until } from "./model";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -475,15 +476,13 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     const call = until(deadline - MODEL_BUDGET.CHAT_REPLY_MS, { cap: MODEL_BUDGET.CHAT_MS });
     let res: Anthropic.Message;
     try {
-      res = await client.messages
-        .stream({ model, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
-        .finalMessage();
+      // Metered inside `metered`, an aborted stream included: the API bills what it read and wrote before the deadline.
+      res = await metered(client.messages.stream({ model, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call), { email: user.email, kind: "chat", agent: agentId, requested: model });
     } catch (e) {
       if (call.signal.aborted) { outOfTime = true; break; }
       throw e;
     }
     spent += costUsd(res.model, res.usage);
-    await meter(user.email, res.model, "chat", res.usage, agentId);
     if (res.stop_reason === "refusal") {
       // The model's safety check declined the turn (Sonnet 5.5 has broader classifiers than Opus 5, false positives
       // included). Billed and metered like any call; the owner is told plainly instead of "Done".

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { hasBuild, webServerCommand } from "./e2e/web-server";
 
 /**
  * End-to-end suite. Runs against a production build of the app with no environment variables except `APP_ENV=test`
@@ -62,8 +63,11 @@ export default defineConfig({
 
   // Against a deployed preview (`E2E_BASE_URL`) there is nothing to start.
   webServer: process.env.E2E_BASE_URL ? undefined : {
-    command: `npm run build && npx next start -p ${PORT}`,
-    // Marks this production build as a test so the memory store and the model mock stay on (rules 430-431).
+    // The same webpack build thakeen.com runs (`build:hostinger`, rule 1017), so the suite exercises what is deployed. In
+    // CI the Build step has made it already and the server only starts it (rule 1207, `e2e/web-server.ts`); locally it builds.
+    command: webServerCommand(PORT, { ci: isCI, prebuilt: hasBuild() }),
+    // Marks this production build as a test so the memory store and the model mock stay on (rules 430-431). Read at
+    // runtime, so a build made without it (CI's, like thakeen.com's) serves the suite the same.
     env: { APP_ENV: "test" },
     url: baseURL,
     // Never reuse. The rate limiters (signup five per IP per hour, forgot three per address per fifteen minutes, login

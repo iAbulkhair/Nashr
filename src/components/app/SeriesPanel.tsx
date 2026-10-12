@@ -4,6 +4,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import { fill } from "@/lib/fill";
 import { useOneWrite } from "./useOneWrite";
 import Scribble from "@/components/Scribble";
+import Switch from "@/components/ui/Switch";
 
 /** One closed copy of a series as the page shows it: every date already formatted on the server, in the brand's zone. */
 export type SeriesRow = { id: string; title: string; due: string | null; closedAt: string | null; result: string; closedBy: string | null };
@@ -33,13 +34,10 @@ export default function SeriesPanel({ t, id, rows, total, kept, canWrite, canClo
           <section aria-labelledby="series-keep" className="card mt-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 id="series-keep" className="card-title">{S.keep}</h2>
-              <button
-                type="button" role="switch" aria-checked={kept} aria-label={S.keep} disabled={!!busy || locked}
-                onClick={() => void send("keep", `/api/secretary/series/${id}/keep`, "PUT", { keep: !kept })}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${kept ? "bg-ink" : "bg-ink/20"}`}
-              >
-                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${kept ? "start-[22px]" : "start-0.5"}`} />
-              </button>
+              <Switch
+                checked={kept} labelledBy="series-keep" disabled={!!busy || locked}
+                onChange={(next) => void send("keep", `/api/secretary/series/${id}/keep`, "PUT", { keep: next })}
+              />
             </div>
             <p className="mt-2 text-xs text-muted">{S.keepHint}</p>
             {kept && !canClose && <p className="mt-1 text-xs text-muted">{S.keepOffOwner}</p>}

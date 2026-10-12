@@ -159,7 +159,11 @@ async function load() {
       static BadRequestError = class extends Error {};
       beta = { messages: { stream: (p: { system: { text: string }[] }) => { systems.push(p.system); return { finalMessage: async () => reply(JSON.stringify([ITEM])) }; } } };
       messages = {
-        stream: () => ({ finalMessage: async () => reply("تمام") }),
+        // The reviewer and the judge stream through `metered` (rules 980-981); both are recorded like a `create`.
+        stream: (b: { system: string | { text: string }[]; messages: { content: string }[] }) => {
+          creates.push({ system: typeof b.system === "string" ? b.system : b.system.map((x) => x.text).join("\n"), user: b.messages[0].content });
+          return { finalMessage: async () => reply(JSON.stringify([{ completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" }])) };
+        },
         create: async (b: { system: { text: string }[]; messages: { content: string }[] }) => creates.push({ system: b.system.map((x) => x.text).join("\n"), user: b.messages[0].content }) && reply(JSON.stringify([{ completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" }])),
       };
     },
@@ -336,7 +340,7 @@ describe("chat system() with layers (rule 948)", () => {
   });
 });
 
-/** A fresh noor/judge/prompts pair over a recording SDK: every `create` call is kept with its system text and user message. */
+/** A fresh noor/judge/prompts pair over a recording SDK: every `messages.stream` or `create` call is kept with its system text and user message. */
 type Call = { system: string; user: string };
 async function loadModels() {
   vi.resetModules();
@@ -351,7 +355,11 @@ async function loadModels() {
       static BadRequestError = class extends Error {};
       beta = { messages: { stream: () => ({ finalMessage: async () => text(gen) }) } };
       messages = {
-        stream: () => ({ finalMessage: async () => text(gen) }),
+        // Generation streams through `beta`; the reviewer, cross-review, judge and media prompts stream here (rules 980-981).
+        stream: (b: { system: string | { text: string }[]; messages: { content: string }[] }) => {
+          calls.push({ system: typeof b.system === "string" ? b.system : b.system.map((x) => x.text).join("\n"), user: b.messages[0].content });
+          return { finalMessage: async () => text(answer) };
+        },
         create: async (b: { system: string | { text: string }[]; messages: { content: string }[] }) => {
           calls.push({ system: typeof b.system === "string" ? b.system : b.system.map((x) => x.text).join("\n"), user: b.messages[0].content });
           return text(answer);

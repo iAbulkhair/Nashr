@@ -46,7 +46,7 @@ const spend = async (email: string, scope = email) => agentSpendFor((await getUs
 const allOn = Object.fromEntries(ROUTINE_IDS.map((id) => [id, true])) as Record<RoutineId, boolean>;
 
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[]; output_config?: { format?: unknown } };
-const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
+const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
 const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 
 /**
@@ -65,11 +65,12 @@ function sdk(opts: { genFails?: boolean; state?: "on" | "paused"; hang?: { on: b
       constructor() { seen.made++; }
       beta = { messages: { stream: (p: Params) => ({ finalMessage: async () => { seen.prompts.push(String(p.messages[0].content)); if (opts.genFails) throw new Error("model down"); if (opts.hang?.on) return new Promise<never>(() => {}); return reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])); } }) } };
       messages = {
-        stream: () => ({ finalMessage: async () => reply("تمام") }),
+        chat: () => ({ finalMessage: async () => reply("تمام") }),
         create: async (p: Params) => {
           const sys = typeof p.system === "string" ? p.system : p.system[0].text;
           return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([verdict]) : JSON.stringify([{ ok: true }]));
         },
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));

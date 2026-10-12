@@ -387,14 +387,17 @@ describe("rule 957: the server render", () => {
 });
 
 describe("rule 957: the sidebar row", () => {
-  it("is after Governance, before Activity, for every role (no show.owner gate)", () => {
+  // Governance moved into the settings area (rule 1141), so the row sits in the brand group, after content inspiration.
+  it("is in the brand group, after content inspiration, for every role (no show.owner gate)", () => {
     const src = readFileSync("src/components/app/Sidebar.tsx", "utf8");
-    const gov = src.indexOf("${base}/governance");
+    const brand = src.indexOf("group(`${p}-brand`");
+    const inspo = src.indexOf("${base}/inspo");
     const ins = src.indexOf("${base}/instructions");
-    const act = src.indexOf("${base}/activity");
-    expect(gov).toBeGreaterThan(0);
-    expect(ins).toBeGreaterThan(gov);
-    expect(act).toBeGreaterThan(ins);
+    const account = src.indexOf("group(`${p}-account`");
+    expect(brand).toBeGreaterThan(0);
+    expect(inspo).toBeGreaterThan(brand);
+    expect(ins).toBeGreaterThan(inspo);
+    expect(account).toBeGreaterThan(ins);
     const line = src.split("\n").find((l) => l.includes("${base}/instructions"))!;
     expect(line).toContain("N.instructions");
     expect(line).not.toContain("show.");

@@ -12,7 +12,7 @@ import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import * as profileRoute from "@/app/api/profile/route";
 import * as overflowRoute from "@/app/api/billing/chat-overflow/route";
-import BillingPage from "@/app/[lang]/app/billing/page";
+import BillingPage from "@/app/[lang]/app/settings/billing/page";
 
 // The billing page also renders client components that read the router (the partner-code field of a trial owner,
 // src/components/app/PartnerCodeForm.tsx); outside Next there is none. Server-only helpers (redirect, notFound) stay real.
@@ -258,14 +258,15 @@ describe("rule 907: the billing card names the hold of a conversation on a Premi
     const html = card({ premiumHold: 9 });
     expect(html).toContain("needs at least 9 credits in your balance and is billed what it actually cost, at most 9 credits.");
     expect(readFileSync("src/components/app/ChatAllowanceCard.tsx", "utf8")).not.toMatch(/models\/credits|models\/catalog/);
-    expect(readFileSync("src/app/[lang]/app/billing/page.tsx", "utf8")).toMatch(/<ChatAllowanceCard [^>]*premiumHold=\{chatPremiumHold\(\)\}/);
+    expect(readFileSync("src/app/[lang]/app/settings/billing/page.tsx", "utf8")).toMatch(/<ChatAllowanceCard [^>]*premiumHold=\{chatPremiumHold\(\)\}/);
   });
 });
 
-describe("rule 315: the client card and the profile panel, by source", () => {
+describe("rule 315: the client card and the billing credit card, by source", () => {
   const card = readFileSync("src/components/app/ChatAllowanceCard.tsx", "utf8");
-  const panel = readFileSync("src/components/app/ProfilePanel.tsx", "utf8");
-  const page = readFileSync("src/app/[lang]/app/billing/page.tsx", "utf8");
+  // The credit card moved from the old profile page to Settings, Billing (rule 1153).
+  const panel = readFileSync("src/components/app/settings/CreditUsageCard.tsx", "utf8");
+  const page = readFileSync("src/app/[lang]/app/settings/billing/page.tsx", "utf8");
   const SERVER = ["@/lib/chat-allowance", "@/lib/db", "@/lib/auth", "@/lib/credits", "@/lib/usage", "@/lib/chat", "@/lib/roles", "@/lib/team"];
   const valueImports = (src: string) => src.split("\n").filter((l) => /^\s*import\s/.test(l) && !/^\s*import\s+type\s/.test(l)).map((l) => /from\s+["']([^"']+)["']/.exec(l)?.[1]).filter((s): s is string => !!s);
 
@@ -273,20 +274,21 @@ describe("rule 315: the client card and the profile panel, by source", () => {
     expect(card).toMatch(/^\s*["']use client["']/);
     expect(valueImports(card).filter((s) => SERVER.includes(s))).toEqual([]);
     expect(card).toMatch(/import type \{ ChatStatus \} from "@\/lib\/chat-allowance"/);
-    // The profile panel is a client component too.
+    // The credit card imports no server code either: the page hands it the figures.
     expect(valueImports(panel).filter((s) => SERVER.includes(s))).toEqual([]);
   });
 
   it("the switch posts the owner's boolean to /api/billing/chat-overflow and renders for the owner only", () => {
     expect(card).toContain('fetch("/api/billing/chat-overflow", { method: "POST"');
     expect(card).toContain("JSON.stringify({ on })");
-    expect(card).toMatch(/\{owner && \(\s*<button type="button" role="switch"/);
+    // The shared Switch since UI/UX phase 2 (rule 1130): a <button role="switch"> with aria-checked, see src/components/ui/Switch.tsx.
+    expect(card).toMatch(/\{owner && \(\s*<Switch checked=\{s\.overflow\.on\}/);
     // The page decides who the owner is with the same check the route makes.
     expect(page).toContain('const owner = can(u, "billing");');
     expect(page).toMatch(/<ChatAllowanceCard [^>]*owner=\{owner\}/);
     // The seats and the chat status are read together in one place, `entitlementView` (one Promise.all, rule 784), once
     // for the whole page (rule 785); the chat card takes the status from that view.
-    expect(page).toMatch(/const view = await entitlementView\(u\);/);
+    expect(page).toMatch(/const \[view, month, history\] = await Promise\.all\(\[entitlementView\(u\), /);
     expect(page).toMatch(/const \{ seats: used, chat \} = view\.used;/);
     expect(page).toMatch(/<ChatAllowanceCard [^>]*status=\{chat\}/);
     // The view reads the status for the default chat model, the hold the account-level cards show; the billing card adds the

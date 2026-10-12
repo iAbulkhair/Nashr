@@ -903,7 +903,9 @@ async function alertsAt(u: User, ms: number): Promise<Notif[]> {
     return sent;
   });
 }
-const seen = (u: User, fp: string) => db.get(`notifseen:${u.email}:${fp}`);
+// Read on a clock before every fake date in this file: a marker lives a week after its write (at a fake time), so on the
+// real clock the October 2026 ones were gone from 12 October 2026 on and these checks failed by date alone.
+const seen = (u: User, fp: string) => fakeAt(Date.parse("2026-01-01T00:00:00Z"), () => db.get(`notifseen:${u.email}:${fp}`));
 /** An away entry as the page's PUT stores it (Task 7). DELETE ends one by setting `until` to yesterday and keeping it. */
 const goAway = (u: User, label: string, until: string) => db.hset(SEC_KEYS.away(u.email), partyKey(label)!, { label, until, by: u.email, via: "web", at: "2026-10-01T00:00:00.000Z" });
 

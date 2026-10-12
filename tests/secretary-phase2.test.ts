@@ -476,8 +476,8 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect((await getItem(u.email, it2.id))?.remindAt).toBe(it2.remindAt);
   });
 
-  it("vercel.json schedules the evening cron at 15:00 UTC; the QStash tick is not a Vercel cron", () => {
-    const crons = JSON.parse(readFileSync("vercel.json", "utf8")).crons as { path: string; schedule: string }[];
+  it("crons.json schedules the evening cron at 15:00 UTC; the QStash tick is not in the GET cron list", () => {
+    const crons = JSON.parse(readFileSync("crons.json", "utf8")).crons as { path: string; schedule: string }[];
     expect(crons).toContainEqual({ path: "/api/cron/evening", schedule: "0 15 * * *" });
     expect(crons.map((c) => c.path)).not.toContain("/api/cron/secretary");
   });
@@ -497,7 +497,7 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect(page).toContain(fill(appDict.ar.todo.timedOff, { brief: "09:00" }));
     for (const lang of ["ar", "en"] as const) for (const k of ["remindBrief", "timedOff", "note"] as const) expect(appDict[lang].todo[k], `${lang}.${k}`).not.toContain("08:00");
     // The brief's hour is the daily cron's.
-    expect(JSON.parse(readFileSync("vercel.json", "utf8")).crons).toContainEqual({ path: "/api/cron/daily", schedule: `0 ${DAILY_CRON_UTC_HOUR} * * *` });
+    expect(JSON.parse(readFileSync("crons.json", "utf8")).crons).toContainEqual({ path: "/api/cron/daily", schedule: `0 ${DAILY_CRON_UTC_HOUR} * * *` });
   });
 
   it("the daily route sweeps again while a sweep hits its scope cap, and the sweep's time comes out of the batch's start budget", async () => {

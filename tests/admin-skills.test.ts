@@ -471,7 +471,7 @@ describe("rule 958: the console section, its link and its page", () => {
   it("rule 958: ADMIN_SECTIONS holds skills, its link is /{lang}/admin/skills and the nav labels it in both languages", async () => {
     expect(ADMIN_SECTIONS).toContain("skills");
     expect(adminHref("en", "skills")).toBe("/en/admin/skills");
-    const { ADMIN_LABEL } = await import("@/components/admin/AdminNav");
+    const { ADMIN_LABEL } = await import("@/lib/admin-gate");
     expect(ADMIN_LABEL.en.skills).toBe("Agent skills");
     expect(ADMIN_LABEL.ar.skills).toMatch(/\S/);
     const AdminNav = (await import("@/components/admin/AdminNav")).default;

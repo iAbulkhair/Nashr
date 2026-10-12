@@ -57,8 +57,8 @@ const mcpCall = (token: string, name: string, args: Record<string, unknown>) =>
   mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }));
 
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[]; output_config?: { format?: unknown } };
-const reply = (text: string) => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
-const toolUse = (name: string, input: Record<string, unknown>) => ({ model: "claude-opus-5", stop_reason: "tool_use", usage: { input_tokens: 100, output_tokens: 10 }, content: [{ type: "tool_use", id: "tu1", name, input }] });
+const reply = (text: string) => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
+const toolUse = (name: string, input: Record<string, unknown>) => ({ model: "claude-opus-5-5", stop_reason: "tool_use", usage: { input_tokens: 100, output_tokens: 10 }, content: [{ type: "tool_use", id: "tu1", name, input }] });
 const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 
 /**
@@ -77,11 +77,12 @@ function sdk(opts: { genFails?: boolean; chat?: (p: Params) => unknown } = {}) {
       constructor() { made.n++; }
       beta = { messages: { stream: () => ({ finalMessage: async () => { if (opts.genFails) throw new Error("model down"); return reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])); } }) } };
       messages = {
-        stream: (p: Params) => ({ finalMessage: async () => (p.output_config?.format ? reply("{}") : opts.chat ? opts.chat(p) : reply("تمام")) }),
+        chat: (p: Params) => ({ finalMessage: async () => (p.output_config?.format ? reply("{}") : opts.chat ? opts.chat(p) : reply("تمام")) }),
         create: async (p: Params) => {
           const sys = typeof p.system === "string" ? p.system : p.system[0].text;
           return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([verdict]) : sys.startsWith("You write one image") ? "a cup of coffee on a wooden table" : JSON.stringify([{ ok: true }]));
         },
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));
@@ -349,17 +350,17 @@ describe("model usage per agent (rule 110)", () => {
     const u = await newUser("usage-agent");
     const m = monthKey();
     const all = Number((await db.get(`usage:_all:${m}:agent:faris:calls`)) ?? 0);
-    await meter(u.email, "claude-opus-5", "generate", { input_tokens: 1000, output_tokens: 1000 }, "faris");
-    await meter(u.email, "claude-sonnet-5", "judge", { input_tokens: 1000, output_tokens: 0 }, "faris");
-    await meter(u.email, "claude-sonnet-5", "tool", { input_tokens: 10, output_tokens: 10 });
-    await meter(u.email, "claude-sonnet-5", "tool", { input_tokens: 10, output_tokens: 10 }, "ghost" as AgentId);
+    await meter(u.email, "claude-opus-5-5", "generate", { input_tokens: 1000, output_tokens: 1000 }, "faris");
+    await meter(u.email, "claude-sonnet-5-5", "judge", { input_tokens: 1000, output_tokens: 0 }, "faris");
+    await meter(u.email, "claude-sonnet-5-5", "tool", { input_tokens: 10, output_tokens: 10 });
+    await meter(u.email, "claude-sonnet-5-5", "tool", { input_tokens: 10, output_tokens: 10 }, "ghost" as AgentId);
     expect(await db.get(`usage:${u.email}:${m}:agent:faris:calls`)).toBe(2);
-    expect(await db.get(`usage:${u.email}:${m}:agent:faris:usd_micro`)).toBe(30000 + 2000);
+    expect(await db.get(`usage:${u.email}:${m}:agent:faris:usd_micro`)).toBe(24000 + 2000);
     expect(Number(await db.get(`usage:_all:${m}:agent:faris:calls`))).toBe(all + 2);
     expect(await db.get(`usage:${u.email}:${m}:agent:ghost:calls`)).toBeNull();
     const usage = await getUsage(u.email);
     expect(usage.calls).toBe(4);
-    expect(usage.byAgent).toEqual({ faris: { calls: 2, usd: 0.032 } });
+    expect(usage.byAgent).toEqual({ faris: { calls: 2, usd: 0.026 } });
   });
 
   it("every model call is attributed: generation, review and judge to the type's owner, the cross-agent review to the reviewer, a chat turn to its agent, an image prompt to the item's owner, onboarding to Noor", async () => {
@@ -393,7 +394,7 @@ describe("model usage per agent (rule 110)", () => {
 
   it("wipeAccount deletes every per-agent counter; the key list is built from KINDS and AGENT_IDS", async () => {
     const u = await newUser("usage-wipe");
-    await Promise.all(AGENT_IDS.map((a) => meter(u.email, "claude-opus-5", "generate", { input_tokens: 5, output_tokens: 5 }, a)));
+    await Promise.all(AGENT_IDS.map((a) => meter(u.email, "claude-opus-5-5", "generate", { input_tokens: 5, output_tokens: 5 }, a)));
     expect(await db.get(`usage:${u.email}:${monthKey()}:agent:layan:usd_micro`)).not.toBeNull();
     await wipeAccount(u.email);
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>> } }).__nashrMem;

@@ -3,14 +3,15 @@ import { after } from "next/server";
 import { dailyRoster, runDaily, sweepWeeklyHolds } from "@/lib/schedule";
 import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import type { User } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { mailReady, sendEmail, sendOnce } from "@/lib/notify";
 import { runLifecycle } from "@/lib/lifecycle";
-import { db } from "@/lib/db";
 import { renewIfDue, saveSettledTopups } from "@/lib/credits";
 import { earlyOfferDue, grantEarlyOffer } from "@/lib/partners";
 import { followUps, notifEmailText } from "@/lib/notifications";
+import { emailAllowed, readPrefs } from "@/lib/notify-prefs";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
 import { syncSiteIfDue } from "@/lib/site-stats";
@@ -125,14 +126,15 @@ async function dailyFor(u: User): Promise<string> {
   const brief = await runDaily(u);
   const fu = await followUps(u, u.scope ?? u.email);
   if (fu.length) out.push(`followups:${fu.length}`);
-  const pref = ((await db.get<{ emails?: string }>(`profile:${u.scope ?? u.email}`)) ?? (await db.get<{ emails?: string }>(`profile:${u.email}`)) ?? {}).emails ?? "all";
+  // Noor's brief email: every day, only when something waits, or never (Settings, Notifications; the old field reads the same, rule 1147).
+  const prefs = await readPrefs(u.scope ?? u.email, u.email);
   if (brief) {
     out.push("brief");
     // "important": something waits for a decision, a follow-up fired, or a to-do is overdue or due today.
-    const worth = pref === "all" || (pref === "important" && (brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0));
+    const worth = emailAllowed(prefs, "brief", brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0);
     const extra = fu.length ? `\n\n${notifEmailText(u, fu)}` : "";
     if (worth && (await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + extra + `\n\n${appOrigin()}/${u.lang}/app`))) out.push("email");
-  } else if (fu.length && pref !== "none") {
+  } else if (fu.length && prefs.brief !== "none") {
     if (await sendEmail(u.email, u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team", notifEmailText(u, fu))) out.push("email");
   }
   // Instagram and LinkedIn page results for Dana (src/lib/social-stats.ts), last: up to 30 post reads may be slow, and a
@@ -201,6 +203,7 @@ export async function GET(req: Request) {
     const headers = { authorization: req.headers.get("authorization") ?? "" };
     after(() => fetch(weekly, { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined));
   }
+  await recordCronRun("daily");
   const count = (word: string) => Object.values(report.results).filter((r) => r.split("+").some((x) => x.startsWith(word))).length;
   return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: mailReady(), reminders });
 }

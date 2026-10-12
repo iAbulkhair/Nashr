@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { appOrigin } from "@/lib/origin";
 import { allow, clientIp, sameSecret, retryLater } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import { verifyQstash } from "@/lib/qstash";
 import { SWEEP_BUDGET_TICK_MS, sweepReminders } from "@/lib/secretary-remind";
 import { sweepCalendars } from "@/lib/secretary-gcal";
@@ -40,8 +41,8 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
 }
 
 /**
- * Reem's tick: every 15 minutes from an Upstash QStash schedule (the Vercel project is on Hobby, whose crons run once a
- * day). It fires the reminders whose time has come (`sweepReminders`, which starts nothing new after
+ * Reem's tick: every 15 minutes from an Upstash QStash schedule (chosen when the site ran on Vercel Hobby, whose crons ran
+ * once a day). It fires the reminders whose time has come (`sweepReminders`, which starts nothing new after
  * `SWEEP_BUDGET_TICK_MS`), then syncs the linked calendars that are due (`sweepCalendars`, same deadline; `calendars` in the answer) and, when a zone's evening wrap time has just passed, starts the wrap for that zone's
  * workspaces (`/api/cron/evening?zones=…`, with the cron bearer; only when CRON_SECRET is set). Answers counts only.
  *
@@ -82,5 +83,6 @@ export async function POST(req: Request) {
     const kick = () => fetch(url, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
     try { after(kick); } catch { void kick(); }
   }
+  await recordCronRun("secretary");
   return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, calendars, evening: zones.length && secret ? zones.length : 0 });
 }

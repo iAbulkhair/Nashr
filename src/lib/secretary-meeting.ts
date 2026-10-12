@@ -59,7 +59,7 @@ import { MODEL_BUDGET, anthropic, modelState, until } from "./model";
 import { route } from "./models/route";
 import { MEETING_NOTES_MAX, MEETING_TEXT_MAX, MEETING_TRANSCRIPT_COST } from "./pricing";
 import { allow } from "./rate";
-import { meter } from "./usage";
+import { metered } from "./metered";
 import { deadlineFor } from "./media/keys";
 import { SEC_ID, SEC_KEYS, SEC_WRITES_PER_HOUR, calFor, cleanLine, createItem, fail, getItem, isLocalDay, newSecId, reindexOpen, toolError, withLock, zoneFor, type SecFail, type Who } from "./secretary";
 import { addDays, zoneDay, type SecItem } from "./secretary-agenda";
@@ -404,15 +404,15 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
   let zone!: Zone;
   try {
     ({ zone } = await calFor(scope, now));
-    const res = await anthropic({ timeoutMs: MODEL_BUDGET.TOOL_MS, maxRetries: 1 }).messages.create({
+    // A stream, so an extraction cut by the deadline is metered for what it was billed (rule 980).
+    const res = await metered(anthropic({ timeoutMs: MODEL_BUDGET.TOOL_MS, maxRetries: 1 }).messages.stream({
       model: route("meeting").model,
       max_tokens: EXTRACT_MAX_TOKENS,
       system: extractSystem(lang, zoneDay(now, zone)),
       tools: [EXTRACT_TOOL],
       tool_choice: { type: "tool", name: TOOL_NAME },
       messages: [{ role: "user", content: `<meeting_text>${asData(text)}</meeting_text>` }],
-    }, until(deadline, { cap: MODEL_BUDGET.TOOL_MS }));
-    await meter(user.email, res.model, "tool", res.usage, "reem");
+    }, until(deadline, { cap: MODEL_BUDGET.TOOL_MS })), { email: user.email, kind: "tool", agent: "reem" });
     const block = res.content.find((b) => b.type === "tool_use" && b.name === TOOL_NAME);
     if (!block || block.type !== "tool_use") throw new Error("no_tool_call");
     tasks = (block.input as { tasks?: unknown } | null)?.tasks;

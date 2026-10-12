@@ -7,6 +7,7 @@ import type { RoutineId, RoutineView } from "@/lib/routines";
 import { TASK_COST } from "@/lib/tasks";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Scribble from "@/components/Scribble";
+import Switch from "@/components/ui/Switch";
 
 type Which = "weekly" | "daily" | "followups";
 type ScheduleKey = "weeklyPlan" | "dailyBrief" | "followUps";
@@ -43,9 +44,7 @@ function RoutineRow({ t, r, on, saving, onToggle, readOnly }: { t: AppDict; r: R
         <p className="mt-1 text-xs text-muted">{k.routineWhen[r.id]}</p>
         <p className="mt-1 font-mono text-xs text-muted" dir="ltr">{k.lastRun}: {r.last ? r.last.slice(0, 16).replace("T", " ") : k.never}</p>
       </div>
-      <button type="button" role="switch" aria-checked={on} aria-label={`${t.agents[r.agent].name}: ${what.t}`} disabled={saving || readOnly} onClick={() => onToggle(r.id, !on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${on ? "bg-ink" : "bg-ink/20"}`}>
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
-      </button>
+      <Switch checked={on} label={`${t.agents[r.agent].name}: ${what.t}`} disabled={saving || readOnly} onChange={(next) => onToggle(r.id, next)} />
     </li>
   );
 }
