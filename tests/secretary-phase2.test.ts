@@ -391,7 +391,7 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect(check(qsign("x", KEY, { body: `${createHash("sha256").update("x").digest("base64url")}=` }), "x")).toBe(true);
   });
 
-  it("the tick route runs only for a signed QStash call or the cron bearer, writes the tick only for QStash, and is rate limited per IP", async () => {
+  it("the tick route runs only for a signed QStash call or the cron bearer, writes the tick for both (rule 1432), and is rate limited per IP", async () => {
     vi.stubEnv("QSTASH_CURRENT_SIGNING_KEY", KEY);
     vi.stubEnv("QSTASH_NEXT_SIGNING_KEY", NEXT);
     vi.stubEnv("CRON_SECRET", "cron-p2-tick");
@@ -408,7 +408,9 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect(byBearer.status).toBe(200);
     expect(await byBearer.json()).toMatchObject({ ok: true, via: "bearer" });
     expect((await getItem(u.email, it.id))?.remindAt).toBeNull();
-    expect(await db.get(SEC_KEYS.tick)).toBeNull();
+    // Rule 1432: on thakeen.com the 15-minute tick is an hPanel cron with this bearer, so it marks timed reminders too.
+    expect(await timedReminders()).toBe(true);
+    await db.del(SEC_KEYS.tick);
     const byQstash = await tick({ ...ip, "upstash-signature": qsign("", NEXT) });
     expect(await byQstash.json()).toMatchObject({ ok: true, via: "qstash" });
     expect(await timedReminders()).toBe(true);

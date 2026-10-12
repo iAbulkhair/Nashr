@@ -41,14 +41,14 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
 }
 
 /**
- * Reem's tick: every 15 minutes from an Upstash QStash schedule (chosen when the site ran on Vercel Hobby, whose crons ran
- * once a day). It fires the reminders whose time has come (`sweepReminders`, which starts nothing new after
+ * Reem's tick: every 15 minutes. On thakeen.com an hPanel cron job POSTs it with the cron bearer; an Upstash QStash
+ * schedule (chosen when the site ran on Vercel Hobby, whose crons ran once a day) is still accepted. It fires the reminders whose time has come (`sweepReminders`, which starts nothing new after
  * `SWEEP_BUDGET_TICK_MS`), then syncs the linked calendars that are due (`sweepCalendars`, same deadline; `calendars` in the answer) and, when a zone's evening wrap time has just passed, starts the wrap for that zone's
  * workspaces (`/api/cron/evening?zones=…`, with the cron bearer; only when CRON_SECRET is set). Answers counts only.
  *
  * Who may call: QStash, proven by the `Upstash-Signature` JWT over the raw body (src/lib/qstash.ts: the current or next
  * signing key, issuer, destination, validity window, body hash); or the CRON_SECRET bearer, compared with `sameSecret`,
- * for manual runs. Oversized input is refused before any check or count (413 for a body over 64 KB, 401 for a signature
+ * for the hPanel cron and manual runs. Oversized input is refused before any check or count (413 for a body over 64 KB, 401 for a signature
  * header over 4096 characters); the proxy has buffered the body before this route runs (rule 774), so the 64 KB is what
  * the route keeps, not what the server reads. Anything unauthenticated is 401 and nothing runs; only those failed calls count against the per-IP
  * limit (429 past it), so strangers sharing QStash's egress addresses can never fill the bucket the real tick uses.
@@ -67,7 +67,9 @@ export async function POST(req: Request) {
   }
   const now = Date.now();
   const deadline = now + SWEEP_BUDGET_TICK_MS;
-  const sweep = await sweepReminders(now, { fromQstash: byQstash, deadline });
+  // Both callers are the tick (rule 1432): QStash, or on thakeen.com the hPanel cron with the bearer. Either one marks
+  // timed reminders as running; the daily fallback (`/api/cron/daily`) never does.
+  const sweep = await sweepReminders(now, { tick: true, deadline });
   // The linked calendars, with the same deadline: each due brand's next 7 days are read and kept (spec §7). A failure here never loses the reminders' answer.
   const calendars = await sweepCalendars(now, deadline).catch((e) => {
     console.error("cal sweep failed", e instanceof Error ? e.name : "error");

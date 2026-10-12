@@ -183,13 +183,14 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadli
 /** Daily brief: no model call, no credits. Pure summary from stored data. */
 export async function runDaily(user: User): Promise<Brief | null> {
   const email = user.scope ?? user.email;
-  const sched = await getSchedule(email);
-  if (!sched.dailyBrief) return null;
-  const brand = await getBrand(email);
+  // One round of reads, not three in a row (rule 1434).
+  const [sched, brand, stamp] = await Promise.all([getSchedule(email), getBrand(email), indexedAt(email)]);
   // Weekly: rebuild the light index from the tasks themselves, so a write that failed half way cannot stay wrong for long.
-  const stamp = await indexedAt(email);
+  // Daily: reconcile the pending-ids set. Both run whether or not the brief is on (rule 1434): they used to sit after the
+  // brief check, so a workspace with the brief switched off never had its index or its approvals badge repaired.
   const tasks = stamp && Date.now() - new Date(stamp).getTime() < 7 * 864e5 ? await listLite(email) : await rebuildIndex(email);
-  await rebuildPending(email, tasks); // daily reconcile of the pending-ids set
+  await rebuildPending(email, tasks);
+  if (!sched.dailyBrief) return null;
   const dayAgo = Date.now() - 7 * 864e5;
   const pending = tasks.filter((t) => t.status === "pending").length;
   const approved7d = tasks.filter((t) => t.status === "approved" && new Date(t.createdAt).getTime() > dayAgo).length;
