@@ -27,6 +27,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
         email={u.actor?.email ?? u.email}
         owner={u.actor?.role === "owner"}
         canDelete={can(u, "account.delete")}
+        canExport={can(u, "account.export")}
         impersonating={u.actor?.kind === "founder"}
         logoutLabel={t.nav.logout}
         failText={{ forbidden: t.team.errors.forbidden, failed: t.team.errors.failed }}

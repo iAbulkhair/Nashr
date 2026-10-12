@@ -7,6 +7,7 @@ import type { Member } from "./team";
 import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
 import { settleTopups, type Receipt, type TopupLot } from "./topups";
 import { billingLocked, type Billing } from "./billing-state";
+import { signupConsent, type Consent } from "./consent";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -170,6 +171,11 @@ export type User = {
   gatedSignup?: true;
   /** Change-email budget carried across address moves (3 per account per UTC day): the day (YYYY-MM-DD) and moves made on it. */
   emailMoves?: { day: string; n: number };
+  /**
+   * The terms and privacy versions the owner agreed to at signup, and when (src/lib/consent.ts, rule 1325). Optional,
+   * added 2026-10-12 (expand, rule 679): older accounts have none and read through `consentOf` as not recorded.
+   */
+  consent?: Consent;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;
@@ -253,6 +259,8 @@ export async function createUser(input: { email: string; name: string; phone: st
     // session issued before this account existed: a re-registered address never inherits an old login.
     sessionsAfter: now.toISOString(),
     gatedSignup: true,
+    // What the signup notice under the form named, from the versions in code (rule 1325).
+    consent: signupConsent(input.lang, now),
   };
   await saveUser(u);
   return u;
