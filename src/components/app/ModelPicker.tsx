@@ -84,7 +84,7 @@ function refusalText(why: Refusal, t: AppDict, surface: PickSurface): string {
 /** "{x} per message" with the multiplier kept left to right inside an Arabic sentence. */
 function Multiplier({ template, x }: { template: string; x: string }) {
   const [before, after = ""] = template.split("{x}");
-  return <>{before}<span dir="ltr" className="tnum font-semibold text-ink">{x}</span>{after}</>;
+  return <>{before}<span dir="ltr" className="tnum font-semibold text-foreground">{x}</span>{after}</>;
 }
 
 /** One option's text: the server's label, its tier, "Hosted in China" when it is, the multiplier and the chat units. */
@@ -94,14 +94,14 @@ function OptionBody({ o, t, lang, surface }: { o: PickerOption; t: AppDict; lang
   return (
     <span className="min-w-0 flex-1">
       <span className="flex flex-wrap items-center gap-1.5">
-        <bdi className="font-semibold text-ink">{o.label}</bdi>
+        <bdi className="font-semibold text-foreground">{o.label}</bdi>
         {o.tier && <span className="badge badge-primary">{m.tiers[o.tier]}</span>}
         {o.china && <span className="badge badge-accent">{m.china}</span>}
       </span>
-      <span className="mt-0.5 block text-xs text-muted">
+      <span className="mt-0.5 block text-xs text-foreground-muted">
         {o.multiplier ? <Multiplier template={surface === "chat" ? m.perMessage : m.perBatch} x={o.multiplier} /> : m.autoHint}
       </span>
-      {units && <span className="block text-xs text-muted">{units}</span>}
+      {units && <span className="block text-xs text-foreground-muted">{units}</span>}
     </span>
   );
 }
@@ -117,8 +117,8 @@ export function ModelOptionList({ t, lang, surface, options, selected, onPick }:
         const sel = o.id === selected;
         return (
           <li key={o.id ?? "auto"}>
-            <button type="button" aria-current={sel ? "true" : undefined} onClick={() => onPick(o)} className={`flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-start text-sm hover:bg-lilac ${sel ? "bg-lilac/60" : ""}`}>
-              <Icon name={sel ? "check" : "spark"} className={`mt-0.5 h-4 w-4 shrink-0 ${sel ? "text-ink" : "text-muted"}`} />
+            <button type="button" aria-current={sel ? "true" : undefined} onClick={() => onPick(o)} className={`flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-start text-sm hover:bg-background-muted ${sel ? "bg-background-muted/60" : ""}`}>
+              <Icon name={sel ? "check" : "spark"} className={`mt-0.5 h-4 w-4 shrink-0 ${sel ? "text-foreground" : "text-foreground-muted"}`} />
               <OptionBody o={o} t={t} lang={lang} surface={surface} />
             </button>
           </li>
@@ -220,17 +220,17 @@ export function ChatModelPicker({ t, lang, conv, stored, replying, canConfirmChi
         <Icon name="chevron" className="h-3 w-3 shrink-0" />
       </button>
       {open && (
-        <div id={popId} className="absolute start-0 top-full z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl border-[1.5px] border-ink bg-white p-1.5">
+        <div id={popId} className="absolute start-0 top-full z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl border-[1.5px] border-border-strong bg-surface p-1.5">
           {failed ? (
-            <p role="status" className="px-2 py-2 text-sm text-ink/80">{m.loadFailed}</p>
+            <p role="status" className="px-2 py-2 text-sm text-foreground-muted">{m.loadFailed}</p>
           ) : conv === "default" ? (
-            <p className="px-2 py-2 text-sm text-ink/80">{m.defaultThread}</p>
+            <p className="px-2 py-2 text-sm text-foreground-muted">{m.defaultThread}</p>
           ) : (
             <ModelOptionList t={t} lang={lang} surface="chat" options={options} selected={selected} onPick={choose} />
           )}
         </div>
       )}
-      {note && <span role="status" className="absolute start-0 top-full z-10 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg bg-ink px-3 py-2 text-xs text-lilac">{note}</span>}
+      {note && <span role="status" className="absolute start-0 top-full z-10 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg bg-inverse px-3 py-2 text-xs text-inverse-muted">{note}</span>}
       {confirmDialog}
     </span>
   );
@@ -285,16 +285,16 @@ export function BrandModelField({ t, lang, stored, readOnly, canConfirmChina }: 
   }
 
   return (
-    <section aria-labelledby={titleId} className="mt-8 rounded-xl border border-ink/15 bg-white p-4">
-      <h2 id={titleId} className="flex items-center gap-2 font-display font-bold text-ink"><Icon name="spark" className="h-5 w-5" />{m.brandTitle}</h2>
-      <p className="mt-1 text-xs text-muted">{m.brandSub}</p>
+    <section aria-labelledby={titleId} className="mt-8 rounded-xl border border-border bg-surface p-4">
+      <h2 id={titleId} className="flex items-center gap-2 font-display font-bold text-foreground"><Icon name="spark" className="h-5 w-5" />{m.brandTitle}</h2>
+      <p className="mt-1 text-xs text-foreground-muted">{m.brandSub}</p>
       {failed ? (
-        <p role="status" className="mt-3 text-sm text-ink/80">{m.loadFailed}</p>
+        <p role="status" className="mt-3 text-sm text-foreground-muted">{m.loadFailed}</p>
       ) : (
         <fieldset disabled={readOnly || busy || !view} className="mt-3 grid min-w-0 gap-1.5">
           <legend className="sr-only">{m.brandTitle}</legend>
           {options.map((o) => (
-            <label key={o.id ?? "auto"} className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-sm ${current === o.id ? "border-ink bg-lilac/40" : "border-ink/15"}`}>
+            <label key={o.id ?? "auto"} className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-sm ${current === o.id ? "border-border-strong bg-background-muted/40" : "border-border"}`}>
               <input type="radio" name="brand-model" className="mt-1" checked={current === o.id} onChange={() => { setMsg(""); setPick((p) => ({ ...p, choice: o.id })); }} />
               <OptionBody o={o} t={t} lang={lang} surface="generate" />
             </label>
@@ -303,8 +303,8 @@ export function BrandModelField({ t, lang, stored, readOnly, canConfirmChina }: 
       )}
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {!readOnly && <button type="button" onClick={save} disabled={busy || !view || !canSave} className="btn btn-primary btn-sm">{m.save}</button>}
-        {changed && !readOnly && <span className="text-xs text-muted">{m.unsaved}</span>}
-        {msg && <p role="status" className="text-sm text-ink">{msg}</p>}
+        {changed && !readOnly && <span className="text-xs text-foreground-muted">{m.unsaved}</span>}
+        {msg && <p role="status" className="text-sm text-foreground">{msg}</p>}
       </div>
       {confirmDialog}
     </section>

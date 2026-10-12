@@ -51,7 +51,7 @@ export default function Sheet({ lang, label, onClose, side = "start", size = "sm
       // The backdrop is the dialog element itself: a press that starts and ends on it closes the sheet.
       onPointerDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
       onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) ref.current?.close(); downOnBackdrop.current = false; }}
-      className={`sheet sheet-${side} border-ink bg-paper p-0 text-ink backdrop:bg-overlay ${place} ${className}`}
+      className={`sheet sheet-${side} border-border-strong bg-surface p-0 text-foreground backdrop:bg-overlay ${place} ${className}`}
     >
       <div className="relative h-full overflow-y-auto overscroll-contain">
         {children}

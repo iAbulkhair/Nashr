@@ -39,8 +39,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <main className="mx-auto max-w-4xl px-4 py-16 sm:px-6">
         <p className="eyebrow">{ar ? "برنامج الشركاء" : "Partner program"}</p>
         <h1 className="mt-3 font-display text-4xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><Scribble kind="underline" seed="affiliates-h" />{ar ? `اكسب ${C}% من كل دفعة لأول ${M} أشهر، وعميلك يوفّر ${D}% على شهره الأول.` : `Earn ${C}% of every payment for ${M} months, and your customer saves ${D}% on their first month.`}</span></h1>
-        <p className="mt-4 max-w-2xl text-lg text-muted">{ar ? "للوكالات والمستشارين وصنّاع المحتوى والنشرات البريدية المقيمين في السعودية. لك كود خاص بك ورابط، وصفحة شراكة داخل حسابك في ذكين تتابع منها إحالاتك وعمولاتك ودفعاتك." : "For agencies, consultants, creators and newsletters living in Saudi Arabia. You get your own code and link, and a partner page inside your Thakeen account to follow your referrals, commissions and payouts."}</p>
-        <div className="mt-10 grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">{items.map(([n, l], i) => <div key={l} className="s-card"><Scribble kind="box" seed={`affiliates-n-${i}`} fill={i === 0 ? "lemon" : "paper"} /><p className="font-display text-3xl font-bold" dir="ltr">{n}</p><p className="mt-1 text-sm text-muted">{l}</p></div>)}</div>
+        <p className="mt-4 max-w-2xl text-lg text-foreground-muted">{ar ? "للوكالات والمستشارين وصنّاع المحتوى والنشرات البريدية المقيمين في السعودية. لك كود خاص بك ورابط، وصفحة شراكة داخل حسابك في ذكين تتابع منها إحالاتك وعمولاتك ودفعاتك." : "For agencies, consultants, creators and newsletters living in Saudi Arabia. You get your own code and link, and a partner page inside your Thakeen account to follow your referrals, commissions and payouts."}</p>
+        <div className="mt-10 grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">{items.map(([n, l], i) => <div key={l} className="s-card"><Scribble kind="box" seed={`affiliates-n-${i}`} fill={i === 0 ? "lemon" : "paper"} /><p className="font-display text-3xl font-bold" dir="ltr">{n}</p><p className="mt-1 text-sm text-foreground-muted">{l}</p></div>)}</div>
         <div className="mt-12 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-2">
           <div>
             <h2 className="font-display text-2xl font-bold">{ar ? "كيف يعمل" : "How it works"}</h2>
@@ -51,11 +51,11 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               ).map((s, i) => <li key={i} className="flex gap-3"><span className="s-num !h-8 !w-8 !text-base"><Scribble kind="circleLoop" seed={`affiliates-step-${i}`} fill="paper" />{i + 1}</span><span className="pt-1">{s}</span></li>)}
             </ol>
             <h2 className="mt-8 font-display text-2xl font-bold">{ar ? "الشروط" : "Terms"}</h2>
-            <ul className="mt-4 list-disc space-y-2 ps-5 text-sm text-muted">{(ar
+            <ul className="mt-4 list-disc space-y-2 ps-5 text-sm text-foreground-muted">{(ar
               ? ["لا إحالة ذاتية: حسابك أنت أو أعضاء فريقك لا يُحسبون.", "إذا أُلغيت دفعة أو استُردّت تُلغى عمولتها.", `العمولة على الدفعة قبل ضريبة القيمة المضافة، وخصم عميلك ${D}% على الشهر الأول فقط قبل الضريبة، ولا يجتمع مع خصم آخر.`, "يتحمّل ذكين ضريبة القيمة المضافة على العمولة وضريبة الاستقطاع حيث تنطبق.", "لا إعلانات مدفوعة على اسم «ذكين» أو «Thakeen»، ولا رسائل مزعجة، واذكر أنها شراكة مدفوعة."]
               : ["No self-referral: your own account or your team members do not count.", "If a payment is voided or refunded, its commission is voided.", `Commission is on the payment before VAT, and your customer's ${D}% is off the first month only, before VAT, and does not combine with another discount.`, "Thakeen bears VAT on the commission and withholding tax where it applies.", "No paid ads on the names ذكين / Thakeen, no spam, and say it is a paid partnership."]
             ).map((x) => <li key={x}>{x}</li>)}</ul>
-            <p className="mt-4 text-sm"><Link href={`/${lang}/affiliates/terms`} data-terms-link className="font-bold text-ink underline">{ar ? "اقرأ شروط برنامج الشركاء كاملة" : "Read the full partner programme terms"}</Link></p>
+            <p className="mt-4 text-sm"><Link href={`/${lang}/affiliates/terms`} data-terms-link className="font-bold text-foreground underline">{ar ? "اقرأ شروط برنامج الشركاء كاملة" : "Read the full partner programme terms"}</Link></p>
           </div>
           <AffiliateForm lang={lang} />
         </div>

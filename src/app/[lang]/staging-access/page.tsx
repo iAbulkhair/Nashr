@@ -26,7 +26,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   return (
     <main className="page-wrap">
       <form method="post" action="/api/staging-access" className="mx-auto grid max-w-sm gap-3">
-        <h1 className="font-display text-2xl font-bold text-ink">{t.title}</h1>
+        <h1 className="font-display text-2xl font-bold text-foreground">{t.title}</h1>
         <input type="hidden" name="lang" value={lang} />
         <label htmlFor="code" className="text-sm">{t.label}</label>
         <input id="code" name="code" type="password" autoComplete="off" required dir="ltr" className="input" />

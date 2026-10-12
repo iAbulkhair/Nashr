@@ -847,7 +847,7 @@ describe("the log, the card, the chip and the page (rule 281)", () => {
     const html = renderToStaticMarkup(createElement(HandoffCard, { id: view.id, t: en, lang: "en", initial: view }));
     expect(html).toContain(esc(fill(en.handoff.title, { name: en.agents.majed.name })));
     // Majed's "why" takes its direction from its own text: the label outside, the model's line isolated.
-    expect(html).toContain(`<p class="mt-1 text-xs text-ink/80"><span class="font-semibold">${en.handoff.why}:</span> <bdi dir="auto">${esc("<b>why</b>")}</bdi></p>`);
+    expect(html).toContain(`<p class="mt-1 text-xs text-foreground-muted"><span class="font-semibold">${en.handoff.why}:</span> <bdi dir="auto">${esc("<b>why</b>")}</bdi></p>`);
     expect(html).toContain(esc(fill(en.handoff.to, { agent: en.agents.razan.name, type: en.generate.types.pricing_review.t })));
     expect(html).toContain(esc("<script>alert(1)</script> راجعي الأسعار"));
     expect(html).not.toContain("<script>");

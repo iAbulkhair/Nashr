@@ -34,10 +34,10 @@ export default function AffiliateForm({ lang }: { lang: Lang }) {
       <span className="s-input"><Scribble kind="box" seed="affiliate-channel" fill="paper" ring /><input name="channel" required placeholder={ar ? "أين ستروّج؟ (وكالة، يوتيوب، نشرة، لينكدإن…)" : "Where will you promote? (agency, YouTube, newsletter, LinkedIn…)"} aria-label={ar ? "أين ستروّج؟" : "Where will you promote?"} /></span>
       <span className="s-input"><Scribble kind="box" seed="affiliate-audience" fill="paper" ring /><input name="audience" placeholder={ar ? "حجم جمهورك / عدد عملائك" : "Audience size / number of clients"} aria-label={ar ? "حجم جمهورك" : "Audience size"} /></span>
       <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" name="consent" required data-terms-consent className="mt-1 h-4 w-4 accent-ink" />
+        <input type="checkbox" name="consent" required data-terms-consent className="mt-1 h-4 w-4 accent-foreground" />
         <span>
           {ar ? "أوافق على " : "I agree to the "}
-          <Link href={`/${lang}/affiliates/terms`} target="_blank" className="font-bold text-ink underline">{ar ? "شروط برنامج الشركاء" : "partner programme terms"}</Link>
+          <Link href={`/${lang}/affiliates/terms`} target="_blank" className="font-bold text-foreground underline">{ar ? "شروط برنامج الشركاء" : "partner programme terms"}</Link>
         </span>
       </label>
       <button disabled={state === "busy"} className="s-btn justify-self-start"><Scribble kind="pill" seed="affiliate-send" fill="ink" shadow ring />{ar ? "أرسل الطلب" : "Send application"}</button>

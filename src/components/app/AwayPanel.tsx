@@ -53,17 +53,17 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
   return (
     <section id="todo-away" aria-labelledby="todo-away-title" className="card mt-8">
       <h2 id="todo-away-title" className="card-title">{T.title}</h2>
-      <p className="mt-1 text-sm text-muted">{T.sub}</p>
+      <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
       {entries.length === 0 ? (
-        <p className="mt-3 text-sm text-muted">{T.empty}</p>
+        <p className="mt-3 text-sm text-foreground-muted">{T.empty}</p>
       ) : (
-        <ul className="mt-3 divide-y divide-ink/10 rounded-xl border border-ink/10">
+        <ul className="mt-3 divide-y divide-foreground/10 rounded-xl border border-foreground/10">
           {entries.map((e) => (
             <li key={e.label} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="break-words font-medium" dir="auto">{e.label}</p>
-                <p className={`mt-0.5 text-xs ${e.ended ? "text-muted" : "text-ink"}`} suppressHydrationWarning>{fill(e.ended ? T.ended : T.until, { date: day(e.until) })}</p>
-                {e.note && <p className="mt-0.5 break-words text-xs text-muted" dir="auto">{e.note}</p>}
+                <p className={`mt-0.5 text-xs ${e.ended ? "text-foreground-muted" : "text-foreground"}`} suppressHydrationWarning>{fill(e.ended ? T.ended : T.until, { date: day(e.until) })}</p>
+                {e.note && <p className="mt-0.5 break-words text-xs text-foreground-muted" dir="auto">{e.note}</p>}
               </div>
               {canEdit && (e.ended ? (
                 <button disabled={!!busy} onClick={() => write(`remove:${e.label}`, awayCall("remove", e.label))} className="btn btn-secondary btn-xs">{T.removeEntry}</button>
@@ -77,14 +77,14 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
       {canEdit && (
         <form ref={formRef} onSubmit={save} className="mt-4 grid gap-3 sm:grid-cols-2">
           <h3 className="text-sm font-semibold sm:col-span-2">{T.add}</h3>
-          <label className="min-w-0 text-xs text-ink/70">{T.name}
+          <label className="min-w-0 text-xs text-foreground-muted">{T.name}
             <input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} list="todo-away-labels" placeholder={T.namePh} maxLength={80} required dir="auto" className="input mt-1" />
           </label>
           <datalist id="todo-away-labels">{labels.map((l) => <option key={l} value={l} />)}</datalist>
-          <label className="min-w-0 text-xs text-ink/70">{T.lastDay}
+          <label className="min-w-0 text-xs text-foreground-muted">{T.lastDay}
             <input ref={dateRef} type="date" value={form.until} onChange={(e) => setForm({ ...form, until: e.target.value })} min={today} max={last} required dir="ltr" className="input mt-1" />
           </label>
-          <label className="min-w-0 text-xs text-ink/70 sm:col-span-2">{T.note}
+          <label className="min-w-0 text-xs text-foreground-muted sm:col-span-2">{T.note}
             <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} maxLength={200} dir="auto" className="input mt-1" />
           </label>
           <div className="sm:col-span-2">

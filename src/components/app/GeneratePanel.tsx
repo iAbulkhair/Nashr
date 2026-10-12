@@ -49,7 +49,7 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
   return (
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="generatepanel-t1" />{g.title}</span></h1>
-      <p className="mt-2 text-ink/70">{g.sub}</p>
+      <p className="mt-2 text-foreground-muted">{g.sub}</p>
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={g.notes} className="mt-5 input" />
       {/* Agents that own deliverables; Reem keeps the owner's to-dos and has none. */}
       {AGENTS.filter((a) => a.tasks.length > 0).map((a) => {
@@ -59,8 +59,8 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
             <div className="flex items-center gap-3">
               <AgentAvatar id={a.id} name={info.name} className="h-9 w-9 text-base" />
               <div>
-                <h2 className="font-display text-lg font-semibold text-ink">{info.name} <span className="text-sm font-normal text-muted">· {info.role}</span></h2>
-                <p className="text-xs text-muted">{info.blurb}</p>
+                <h2 className="font-display text-lg font-semibold text-foreground">{info.name} <span className="text-sm font-normal text-foreground-muted">· {info.role}</span></h2>
+                <p className="text-xs text-foreground-muted">{info.blurb}</p>
               </div>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -68,12 +68,12 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
                 const cost = TASK_COST[type];
                 const can = credits >= cost && !busy;
                 return (
-                  <button key={type} disabled={!can} onClick={() => run(type)} className={`rounded-xl border p-4 text-start transition ${busy === type ? "border-lemon bg-ink text-lilac" : "border-ink/10 bg-white hover:border-ink"} disabled:opacity-50`}>
+                  <button key={type} disabled={!can} onClick={() => run(type)} className={`rounded-xl border p-4 text-start transition ${busy === type ? "border-lemon bg-inverse text-inverse-muted" : "border-foreground/10 bg-surface hover:border-border-strong"} disabled:opacity-50`}>
                     <div className="flex items-center justify-between">
                       <span className="font-display font-medium">{g.types[type].t}</span>
                       <span className="font-mono text-xs text-danger" dir="ltr">{cost} {g.cost}</span>
                     </div>
-                    <p className={`mt-1 text-sm ${busy === type ? "text-lilac/75" : "text-ink/70"}`}>{g.types[type].d}</p>
+                    <p className={`mt-1 text-sm ${busy === type ? "text-inverse-muted/75" : "text-foreground-muted"}`}>{g.types[type].d}</p>
                   </button>
                 );
               })}
@@ -81,7 +81,7 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
           </section>
         );
       })}
-      {msg && <p role="status" className="sticky bottom-4 mt-5 rounded-lg border border-ink/30 bg-lilac p-3 text-sm text-ink">{msg}</p>}
+      {msg && <p role="status" className="sticky bottom-4 mt-5 rounded-lg border border-foreground/30 bg-background-muted p-3 text-sm text-foreground">{msg}</p>}
     </div>
   );
 }

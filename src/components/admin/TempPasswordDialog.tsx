@@ -30,13 +30,13 @@ export default function TempPasswordDialog({ lang, email, password, onClose }: {
     }
   }
   return (
-    <dialog ref={ref} aria-labelledby={`${id}-title`} aria-describedby={`${id}-body`} onClose={onClose} className="card m-auto w-[calc(100%-2rem)] max-w-md p-0 text-ink backdrop:bg-ink/40">
+    <dialog ref={ref} aria-labelledby={`${id}-title`} aria-describedby={`${id}-body`} onClose={onClose} className="card m-auto w-[calc(100%-2rem)] max-w-md p-0 text-foreground backdrop:bg-overlay">
       <div className="p-6 text-start">
         <h2 id={`${id}-title`} className="font-display text-lg font-bold">{S.title}</h2>
-        <p className="mt-1 text-sm text-muted" dir="ltr">{email}</p>
-        <p id={`${id}-body`} className="mt-3 text-sm leading-relaxed text-ink/80">{S.body}</p>
+        <p className="mt-1 text-sm text-foreground-muted" dir="ltr">{email}</p>
+        <p id={`${id}-body`} className="mt-3 text-sm leading-relaxed text-foreground-muted">{S.body}</p>
         <div className="mt-4 flex items-center gap-2">
-          <code className="flex-1 select-all rounded-lg border border-ink/20 bg-ground px-3 py-2 font-mono text-sm" dir="ltr" data-testid="temp-password">{password}</code>
+          <code className="flex-1 select-all rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm" dir="ltr" data-testid="temp-password">{password}</code>
           <button type="button" onClick={copy} className="btn btn-secondary btn-sm">{copied ? S.copied : S.copy}</button>
         </div>
         <p role="status" className="sr-only">{copied ? S.copied : ""}</p>

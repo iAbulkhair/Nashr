@@ -28,9 +28,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
     <>
       <Nav t={t} lang={lang} />
       <main className="page-wrap">
-        <p className="font-mono text-xs text-muted" dir="ltr">{p.date}</p>
+        <p className="font-mono text-xs text-foreground-muted" dir="ltr">{p.date}</p>
         <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><Scribble kind="underline" seed="post-h" />{p.title}</span></h1>
-        <p className="mt-4 text-lg text-muted">{p.desc}</p>
+        <p className="mt-4 text-lg text-foreground-muted">{p.desc}</p>
         <article className="prose-nashr mt-10" dangerouslySetInnerHTML={{ __html: render(p.body) }} />
       </main>
       <FinalCta t={t} lang={lang} />

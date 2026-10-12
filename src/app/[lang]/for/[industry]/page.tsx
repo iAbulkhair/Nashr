@@ -40,7 +40,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
               {p.headline}
             </span>
           </h1>
-          <p className="mt-5 max-w-2xl text-lg text-muted">{p.sub}</p>
+          <p className="mt-5 max-w-2xl text-lg text-foreground-muted">{p.sub}</p>
           <Link href={`/${lang}/app/signup`} className="s-btn mt-8"><Scribble kind="pill" seed={`for-${p.slug}-go`} fill="ink" shadow ring />{t.hero.cta}</Link>
         </section>
         <section className="mx-auto grid max-w-6xl gap-10 px-4 pb-16 sm:px-6 lg:grid-cols-[1fr_1.4fr]">
@@ -55,13 +55,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
                 <div key={w.t} className="s-card">
                   <Scribble kind="box" seed={`for-${p.slug}-${i}`} fill="paper" />
                   <h3 className="font-display font-bold">{w.t}</h3>
-                  <p className="mt-1 text-sm text-muted">{w.d}</p>
+                  <p className="mt-1 text-sm text-foreground-muted">{w.d}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
-        <section className="border-y-[1.5px] border-ink bg-lilac">
+        <section className="border-y-[1.5px] border-border-strong bg-background-muted">
           <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:grid-cols-3 sm:px-6">
             {p.proof.map((x) => <div key={x.l}><p className="font-display text-4xl font-bold" dir="ltr">{x.n}</p><p className="mt-1 text-sm">{x.l}</p></div>)}
           </div>
@@ -70,7 +70,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
         <section className="page-wrap">
           <h2 className="font-display text-2xl font-bold">{t.faq.title}</h2>
           <QaList items={p.faq} className="mt-6" />
-          <p className="mt-8 text-sm text-muted">{lang === "ar" ? "قطاعات أخرى:" : "Other industries:"} {INDUSTRY_PAGES[lang].filter((x) => x.slug !== p.slug).map((x) => <Link key={x.slug} href={`/${lang}/for/${x.slug}`} className="me-3 font-bold text-ink underline">{x.name}</Link>)}</p>
+          <p className="mt-8 text-sm text-foreground-muted">{lang === "ar" ? "قطاعات أخرى:" : "Other industries:"} {INDUSTRY_PAGES[lang].filter((x) => x.slug !== p.slug).map((x) => <Link key={x.slug} href={`/${lang}/for/${x.slug}`} className="me-3 font-bold text-foreground underline">{x.name}</Link>)}</p>
         </section>
         <FinalCta t={t} lang={lang} />
       </main>

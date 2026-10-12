@@ -63,8 +63,8 @@ export default function UserSheet({
     <Sheet lang={lang} label={`${UC.sheetLabel} ${sel.user.email}`} onClose={onClose} side="end" size="lg">
       <div className="grid gap-4 p-5 pe-14">
         <header className="grid gap-1">
-          <h2 className="font-display text-lg font-bold text-ink"><bdi dir="ltr">{sel.user.email}</bdi></h2>
-          <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
+          <h2 className="font-display text-lg font-bold text-foreground"><bdi dir="ltr">{sel.user.email}</bdi></h2>
+          <p className="flex flex-wrap items-center gap-2 text-sm text-foreground-muted">
             <span dir="auto">{sel.user.name}</span>
             <span aria-hidden>·</span>
             <bdi dir="ltr">{sel.user.phone}</bdi>
@@ -76,7 +76,7 @@ export default function UserSheet({
             {sel.user.emailVerifiedAt ? <span>{S.verifiedOn} <bdi dir="ltr">{sel.user.emailVerifiedAt.slice(0, 10)}</bdi></span> : <Badge tone="warning">{S.unverified}</Badge>}
           </p>
         </header>
-        {msg && <p role="status" className="text-sm text-ink" dir="auto">{msg}</p>}
+        {msg && <p role="status" className="text-sm text-foreground" dir="auto">{msg}</p>}
         <Tabs idBase={idBase} label={UC.sheetLabel} value={tab} onChange={setTab} items={TAB_IDS.map((id) => ({ id, label: UC.tabs[id] }))} />
 
         <TabPanel idBase={idBase} id="overview" value={tab} className="grid gap-4">
@@ -97,9 +97,9 @@ export default function UserSheet({
             <button disabled={busy} onClick={() => act(sel.user.email, "delete")} className="btn btn-danger-solid btn-xs min-h-[var(--hit-min)]">{S.del}</button>
           </section>
           <div className="grid gap-2 text-xs sm:grid-cols-3">
-            <div className="rounded border border-border p-2"><p className="text-muted">{S.trialRenewed}</p><p className="font-mono" dir="ltr">{sel.user.trialEnds.slice(0, 10)} · {sel.user.renewedAt ?? "—"}</p><p className="text-xs text-muted">{UC.joinedOn} <bdi className="font-mono" dir="ltr">{sel.user.createdAt.slice(0, 10)}</bdi></p></div>
-            <div className="rounded border border-border p-2"><p className="text-muted">{S.integrations}</p><p className="font-mono">{sel.connections.length ? sel.connections.map((c) => c.provider).join(", ") : UC.none}</p></div>
-            <div className="rounded border border-border p-2"><p className="text-muted">{S.brandsEtc}</p><p className="font-mono">{sel.brands.length} · {sel.conversations} · {sel.referrals} · {sel.avgScore ?? "—"}</p></div>
+            <div className="rounded border border-border p-2"><p className="text-foreground-muted">{S.trialRenewed}</p><p className="font-mono" dir="ltr">{sel.user.trialEnds.slice(0, 10)} · {sel.user.renewedAt ?? "—"}</p><p className="text-xs text-foreground-muted">{UC.joinedOn} <bdi className="font-mono" dir="ltr">{sel.user.createdAt.slice(0, 10)}</bdi></p></div>
+            <div className="rounded border border-border p-2"><p className="text-foreground-muted">{S.integrations}</p><p className="font-mono">{sel.connections.length ? sel.connections.map((c) => c.provider).join(", ") : UC.none}</p></div>
+            <div className="rounded border border-border p-2"><p className="text-foreground-muted">{S.brandsEtc}</p><p className="font-mono">{sel.brands.length} · {sel.conversations} · {sel.referrals} · {sel.avgScore ?? "—"}</p></div>
           </div>
         </TabPanel>
 
@@ -110,14 +110,14 @@ export default function UserSheet({
               activated it. Text only: the reference is what the founder typed. */}
           <div className="rounded border border-border p-3 text-xs" data-testid="topups-detail">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-muted">{S.topups}{sel.user.topups?.length ? ` · ${formatCount(sel.user.topups.reduce((n, l) => n + l.left, 0))}` : ""}</p>
+              <p className="text-foreground-muted">{S.topups}{sel.user.topups?.length ? ` · ${formatCount(sel.user.topups.reduce((n, l) => n + l.left, 0))}` : ""}</p>
               <button disabled={busy || !topupsSold(sel.user.plan as Plan)} title={topupsSold(sel.user.plan as Plan) ? S.addTopup : S.topupTrial} onClick={() => addTopup(sel.user)} className="btn btn-secondary btn-xs min-h-[var(--hit-min)]">{S.addTopup}</button>
             </div>
-            {!topupsSold(sel.user.plan as Plan) && <p className="mt-1 text-muted">{S.topupTrial}</p>}
+            {!topupsSold(sel.user.plan as Plan) && <p className="mt-1 text-foreground-muted">{S.topupTrial}</p>}
             {/* One entry point for a top-up's payment (rule 454): this block records it, the Payments panel never does. */}
-            <p className="mt-1 text-muted" data-topup-pay-note>{S.topupPayNote}</p>
-            <p className="mt-1 text-muted" data-topup-refund-note>{S.topupRefundNote}</p>
-            {!sel.user.topups?.length ? <p className="mt-1 text-muted">{S.noTopups}</p> : (
+            <p className="mt-1 text-foreground-muted" data-topup-pay-note>{S.topupPayNote}</p>
+            <p className="mt-1 text-foreground-muted" data-topup-refund-note>{S.topupRefundNote}</p>
+            {!sel.user.topups?.length ? <p className="mt-1 text-foreground-muted">{S.noTopups}</p> : (
               <div className="overflow-x-auto">
                 <table className="mt-1 w-full font-mono">
                   <tbody>
@@ -134,7 +134,7 @@ export default function UserSheet({
                           ? <>{S.topupRefunded(l.refund.credits, sarText(l.refund.sar), l.refund.on)}{l.refund.ref ? ` · ${S.topupRef} ${l.refund.ref}` : ""}
                             {/* Rule 465: the refund is on the pack but not on its payment yet (a request that stopped). */}
                             {sel.unfinishedRefunds?.includes(l.id) && <> · <button type="button" disabled={busy} title={S.finishRefundTitle} onClick={() => finishRefund(sel.user, l)} className="min-h-[var(--hit-min)] text-danger underline" data-finish-refund>{S.finishRefund}</button></>}</>
-                          : l.paidSar > 0 && l.left > 0 && <button type="button" disabled={busy} onClick={() => refundTopup(sel.user, l)} className="min-h-[var(--hit-min)] text-ink underline">{S.refundTopup}</button>}</td>
+                          : l.paidSar > 0 && l.left > 0 && <button type="button" disabled={busy} onClick={() => refundTopup(sel.user, l)} className="min-h-[var(--hit-min)] text-foreground underline">{S.refundTopup}</button>}</td>
                         <td className="text-end"><button type="button" disabled={busy} onClick={() => voidTopup(sel.user, l)} className="min-h-[var(--hit-min)] text-danger underline">{S.voidTopup}</button></td>
                       </tr>
                     ))}
@@ -146,19 +146,19 @@ export default function UserSheet({
         </TabPanel>
 
         <TabPanel idBase={idBase} id="usage" value={tab} className="grid gap-2 text-xs sm:grid-cols-2">
-          <div className="rounded border border-border p-2"><p className="text-muted">{S.usage}</p><p className="font-mono" dir="ltr">{Math.round((sel.usage.in + sel.usage.out) / 1000)}k {UC.tokensWord} · ${sel.usage.usd.toFixed(2)} · {sel.usage.calls} {UC.callsWord}</p><p className="font-mono text-xs text-muted" dir="ltr">{Object.entries(sel.usage.kinds).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</p></div>
+          <div className="rounded border border-border p-2"><p className="text-foreground-muted">{S.usage}</p><p className="font-mono" dir="ltr">{Math.round((sel.usage.in + sel.usage.out) / 1000)}k {UC.tokensWord} · ${sel.usage.usd.toFixed(2)} · {sel.usage.calls} {UC.callsWord}</p><p className="font-mono text-xs text-foreground-muted" dir="ltr">{Object.entries(sel.usage.kinds).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</p></div>
           {sel.chat && (
             <div className="rounded border border-border p-2" data-testid="chat-detail">
-              <p className="text-muted">{S.chatMessages} ({sel.chat.period === "trial" ? S.chatTrial : S.chatMonth})</p>
+              <p className="text-foreground-muted">{S.chatMessages} ({sel.chat.period === "trial" ? S.chatTrial : S.chatMonth})</p>
               {/* The raw count, as the list shows it, and this month's messages on credits with what they were billed. */}
               <p className={`font-mono ${chatLow(sel.chat.counted, sel.chat.allowance, sel.chat.left) ? "font-semibold text-danger" : ""}`}>{sel.chat.counted} / {sel.chat.allowance}{sel.chat.overflow.used > 0 || sel.chat.overflow.credits > 0 ? ` · ${S.onCredits(sel.chat.overflow.used, sel.chat.overflow.credits)}` : ""}</p>
-              <p className="font-mono text-xs text-muted">{S.overflow}: {!sel.chat.overflow.available ? S.overflowTrial : sel.chat.overflow.on ? S.overflowOn : S.overflowOff}{sel.usage.byKind?.chat ? ` · ${S.chatCost} ${sel.usage.byKind.chat.usd.toFixed(2)}` : ""}{sel.chatUsdPerMsg != null ? ` · ${S.perMsg} ${sel.chatUsdPerMsg.toFixed(4)}` : ""}</p>
+              <p className="font-mono text-xs text-foreground-muted">{S.overflow}: {!sel.chat.overflow.available ? S.overflowTrial : sel.chat.overflow.on ? S.overflowOn : S.overflowOff}{sel.usage.byKind?.chat ? ` · ${S.chatCost} ${sel.usage.byKind.chat.usd.toFixed(2)}` : ""}{sel.chatUsdPerMsg != null ? ` · ${S.perMsg} ${sel.chatUsdPerMsg.toFixed(4)}` : ""}</p>
             </div>
           )}
           {sel.entitlements && <div className="col-span-full min-w-0"><EntitlementsTable view={sel.entitlements} lang={lang} deal={sel.user.deal} /></div>}
           {sel.usage.byKind && Object.keys(sel.usage.byKind).length > 0 && (
             <div className="col-span-full overflow-x-auto rounded border border-border p-2">
-              <p className="text-muted">{S.perKind}</p>
+              <p className="text-foreground-muted">{S.perKind}</p>
               <table className="mt-1 w-full font-mono text-xs" dir="ltr">
                 <tbody>
                   {Object.entries(sel.usage.byKind).sort((a, b) => b[1].usd - a[1].usd).map(([k, v]) => (
@@ -167,7 +167,7 @@ export default function UserSheet({
                       <td className="text-end">{v.calls}×</td>
                       <td className="text-end">${(v.usd / Math.max(1, v.calls)).toFixed(4)}</td>
                       <td className="text-end">${v.usd.toFixed(2)}</td>
-                      <td className="text-end text-muted">{Math.round((v.in + v.out) / 1000)}k</td>
+                      <td className="text-end text-foreground-muted">{Math.round((v.in + v.out) / 1000)}k</td>
                     </tr>
                   ))}
                 </tbody>
@@ -176,7 +176,7 @@ export default function UserSheet({
           )}
           {sel.usage.byAgent && Object.keys(sel.usage.byAgent).length > 0 && (
             <div className="col-span-full overflow-x-auto rounded border border-border p-2">
-              <p className="text-muted">{S.perAgent}</p>
+              <p className="text-foreground-muted">{S.perAgent}</p>
               <table className="mt-1 w-full font-mono text-xs" dir="ltr">
                 <tbody>
                   {Object.entries(sel.usage.byAgent).sort((a, b) => b[1].usd - a[1].usd).map(([k, v]) => (
@@ -194,20 +194,20 @@ export default function UserSheet({
         </TabPanel>
 
         <TabPanel idBase={idBase} id="activity" value={tab} className="grid gap-3">
-          <h3 className="text-xs font-semibold text-muted">{UC.tasks} ({sel.tasks.length}) · {S.approved} {sel.tasks.filter((t) => t.status === "approved").length} · {S.rejected} {sel.tasks.filter((t) => t.status === "rejected").length}</h3>
+          <h3 className="text-xs font-semibold text-foreground-muted">{UC.tasks} ({sel.tasks.length}) · {S.approved} {sel.tasks.filter((t) => t.status === "approved").length} · {S.rejected} {sel.tasks.filter((t) => t.status === "rejected").length}</h3>
           <ul className="grid max-h-96 gap-2 overflow-auto">
             {sel.tasks.map((t) => (
               <li key={t.id} className="rounded border border-border p-3 text-xs">
-                <div className="flex justify-between gap-2 text-muted"><span>{t.type} · {t.channel} · {t.status}{t.quality ? ` · ${S.judge} ${t.quality.score}` : ""}</span><bdi className="font-mono" dir="ltr">{t.createdAt.slice(0, 16).replace("T", " ")}</bdi></div>
+                <div className="flex justify-between gap-2 text-foreground-muted"><span>{t.type} · {t.channel} · {t.status}{t.quality ? ` · ${S.judge} ${t.quality.score}` : ""}</span><bdi className="font-mono" dir="ltr">{t.createdAt.slice(0, 16).replace("T", " ")}</bdi></div>
                 <p className="mt-1 whitespace-pre-wrap" dir="auto">{(t.editedBody ?? t.body).slice(0, 600)}</p>
               </li>
             ))}
           </ul>
-          <h3 className="text-xs font-semibold text-muted">{S.activity}</h3>
+          <h3 className="text-xs font-semibold text-foreground-muted">{S.activity}</h3>
           {(sel.activity ?? []).map((b) => (
             <div key={b.brand} className="max-h-72 overflow-auto rounded border border-border p-2">
-              <p className="text-xs text-muted" dir="auto">{b.name} · {b.rows.length}</p>
-              {b.rows.length === 0 ? <p className="text-xs text-muted">{S.activityNone}</p> : (
+              <p className="text-xs text-foreground-muted" dir="auto">{b.name} · {b.rows.length}</p>
+              {b.rows.length === 0 ? <p className="text-xs text-foreground-muted">{S.activityNone}</p> : (
                 <table className="mt-1 w-full font-mono text-xs">
                   <tbody>
                     {/* Text only: the note is a title or file name a model or an outside app wrote. */}
@@ -231,11 +231,11 @@ export default function UserSheet({
 
         <TabPanel idBase={idBase} id="brand" value={tab}>
           {/* The brand file as fields, text only: every value is the customer's or a crawled page's text (untrusted). */}
-          {brandEntries.length === 0 ? <p className="text-sm text-muted">{UC.noBrand}</p> : (
+          {brandEntries.length === 0 ? <p className="text-sm text-foreground-muted">{UC.noBrand}</p> : (
             <dl className="grid gap-2 text-sm" aria-label={UC.brandFields}>
               {brandEntries.map(([k, v]) => (
                 <div key={k} className="grid gap-0.5 rounded border border-border p-2 sm:grid-cols-[10rem_1fr] sm:gap-3">
-                  <dt className="font-mono text-xs text-muted" dir="ltr">{k}</dt>
+                  <dt className="font-mono text-xs text-foreground-muted" dir="ltr">{k}</dt>
                   <dd className="whitespace-pre-wrap break-words" dir="auto">{brandValue(v)}</dd>
                 </div>
               ))}

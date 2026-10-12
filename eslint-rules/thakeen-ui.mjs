@@ -83,7 +83,9 @@ const dangerTextNeedsAlert = {
 };
 
 const LEMON = /^(?:bg|text|border|fill|stroke|ring|outline|decoration|from|to|via)-lemon(?:\/|$)/;
-const INVERSE = (tokens) => tokens.some((t) => ["bg-ink", "card-inverse"].includes(baseOf(t)));
+// The codemod (rule 1200) split `bg-ink` into `bg-inverse` (a panel) and `bg-foreground` (a dot or a bar); both read as
+// the ink fill this rule always allowed lemon beside.
+const INVERSE = (tokens) => tokens.some((t) => ["bg-ink", "bg-inverse", "bg-foreground", "card-inverse"].includes(baseOf(t)));
 
 const lemonOnInk = {
   meta: { type: "suggestion", docs: { description: "Lemon reads only on ink: on paper or lilac it fails contrast." }, schema: [], messages: { light: "`{{token}}` outside an ink surface. Lemon passes contrast only on ink (bg-ink, card-inverse, data-surface=\"inverse\"); on a light ground use lilac or a Badge (rule 1096)." } },
@@ -123,6 +125,97 @@ const noDateSlice = {
   },
 };
 
+/**
+ * Raw palette colours (rules 1200-1201, UI/UX phase 5). A colour utility that names a palette primitive (ink, paper,
+ * white, black, ground, lilac, muted), with or without an opacity, or an arbitrary colour value, keeps one colour in both
+ * themes, so it shows ink on the dark ground. Components use the semantic roles instead (`text-foreground`,
+ * `text-foreground-muted`, `bg-surface`, `bg-background`, `border-border`, `bg-inverse`...), which the dark block in
+ * src/app/theme-dark.css points at its own values. Lemon, gold, danger and the agent colours are brand and status
+ * colours, not raw: they keep their own rules (1095, 1096).
+ */
+export const RAW_COLOUR = /^(?:bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|outline|fill|stroke|divide|from|to|via|decoration|placeholder|shadow|caret|accent)-(?:ink|paper|white|black|ground|lilac|muted)(?:\/(?:\d+|\[[^\]]+\]))?$/;
+export const ARBITRARY_COLOUR = /^(?:bg|text|border(?:-[xytrblse])?|ring|outline|fill|stroke|divide|from|to|via|decoration|shadow|caret|accent)-\[(?:#|rgba?\(|hsla?\(|oklch\(|oklab\(|color-mix\(|var\(--(?:primitive-)?color-(?:ink|paper|white|ground|lilac|muted)\))/;
+
+/** A bright fill whose colour does not change with the theme: text on it stays ink in both themes. */
+const FIXED_FILL = /(?:^|\s|:)(?:bg-(?:lemon|gold|agent-[a-z]+|accent)|btn-accent|badge-accent)(?=\s|$)/;
+/** A class list that paints a panel or a pill with its own text (rather than a dot, a bar or a line). */
+const PANEL = /(?:^|\s|:)(?:text-(?:paper|white|lilac|lemon|ground|inverse-[a-z]+)|card\b|p[xy]?-\d|rounded-(?:xl|2xl|lg))/;
+
+/** The exact replacements: the report's §5.1 table and the roles tokens.css already had. */
+const EXACT = {
+  "text-ink": "text-foreground",
+  "text-ink/70": "text-foreground-muted",
+  "text-ink/80": "text-foreground-muted",
+  "text-ink/85": "text-foreground",
+  "text-ink/90": "text-foreground",
+  "text-muted": "text-foreground-muted",
+  "bg-ink/40": "bg-overlay",
+  "bg-black/40": "bg-overlay",
+  "bg-white": "bg-surface",
+  "bg-paper": "bg-surface",
+  "bg-ground": "bg-background",
+  "bg-lilac": "bg-background-muted",
+  "text-lilac": "text-inverse-muted",
+  "text-paper": "text-inverse-foreground",
+  "text-white": "text-inverse-foreground",
+  "text-ground": "text-inverse-foreground",
+  "border-ink": "border-border-strong",
+  "border-ink/15": "border-border",
+  "border-ink/20": "border-border",
+  "ring-ink": "ring-ring",
+  "ring-paper": "ring-surface",
+  "accent-ink": "accent-foreground",
+  "divide-ink": "divide-border-strong",
+};
+/** The palette name each family's opacity form moves onto. */
+const FAMILY = { ink: "foreground", ground: "background", lilac: "background-muted", paper: "surface", white: "surface" };
+
+/**
+ * The semantic class for a raw colour (no variant prefix), given the rest of its class list. `bg-ink` is a panel or pill
+ * (`bg-inverse`) when its list also sets text or padding, else a dot or a bar (`bg-foreground`); ink text on a fixed
+ * bright fill stays ink (`text-accent-foreground`). Returns undefined for a token that is not raw.
+ */
+export function semanticColour(base, list = "") {
+  if (!RAW_COLOUR.test(base)) return undefined;
+  if (FIXED_FILL.test(list) && (base === "text-ink" || base === "text-muted" || base === "text-ink/70" || base === "text-ink/80")) return "text-accent-foreground";
+  if (base === "bg-ink") return PANEL.test(list) ? "bg-inverse" : "bg-foreground";
+  if (EXACT[base]) return EXACT[base];
+  const m = /^(.*)-(ink|ground|lilac|paper|white)(\/.+)$/.exec(base);
+  if (m) {
+    // Lilac, paper and white lines or text sit on ink: they are the inverse surface's own colours.
+    if (m[1] !== "bg" && m[2] === "lilac") return `${m[1]}-inverse-muted${m[3]}`;
+    if (m[1] !== "bg" && m[2] !== "ink") return `${m[1]}-inverse-foreground${m[3]}`;
+    return `${m[1]}-${FAMILY[m[2]]}${m[3]}`;
+  }
+  return undefined;
+}
+
+/** SVG shapes carry the scribble's own class names (`ring-paper`, `ink`), which are not Tailwind utilities. */
+const SVG_SHAPES = new Set(["path", "circle", "rect", "ellipse", "line", "polyline", "polygon"]);
+
+const noRawColour = {
+  meta: { type: "problem", docs: { description: "Colours come from the semantic roles, so both themes work." }, schema: [], messages: { raw: "`{{token}}` is a raw palette colour and stays the same in the dark theme. Use `{{semantic}}` (rules 1200-1201)." } },
+  create(context) {
+    const sourceCode = context.sourceCode ?? context.getSourceCode();
+    const check = (node, text) => {
+      if (typeof text !== "string" || !/-(?:ink|paper|white|black|ground|lilac|muted|\[)/.test(text)) return;
+      const ancestors = sourceCode.getAncestors ? sourceCode.getAncestors(node) : context.getAncestors();
+      const owner = [...ancestors].reverse().find((a) => a.type === "JSXOpeningElement");
+      if (owner && SVG_SHAPES.has(elementName(owner))) return;
+      for (const token of text.split(/\s+/).filter(Boolean)) {
+        const base = baseOf(token);
+        if (RAW_COLOUR.test(base) || ARBITRARY_COLOUR.test(base)) {
+          context.report({ node, messageId: "raw", data: { token, semantic: semanticColour(base, text) ?? "a semantic colour role" } });
+        }
+      }
+    };
+    return {
+      Literal(node) { check(node, node.value); },
+      TemplateElement(node) { check(node, node.value.cooked ?? node.value.raw); },
+    };
+  },
+};
+
 const plugin = {
   meta: { name: "thakeen-ui" },
   rules: {
@@ -130,7 +223,13 @@ const plugin = {
     "lemon-on-ink": lemonOnInk,
     "no-date-slice": noDateSlice,
     "no-physical-direction": noPhysicalDirection,
+    "no-raw-colour": noRawColour,
   },
+};
+
+/** The rules that fail the lint (rule 1201): a raw colour would come back dark-blind. */
+export const errors = {
+  "thakeen-ui/no-raw-colour": "error",
 };
 
 /** The four rules as warnings, for `eslint.config.mjs`. */

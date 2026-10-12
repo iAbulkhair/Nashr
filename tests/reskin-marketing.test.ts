@@ -240,8 +240,9 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
   it("long-form prose speaks D: ink headings and links, a drawn rule under table heads", () => {
     const css = readFileSync("src/app/globals.css", "utf8");
     const prose = css.split("\n").filter((l) => l.startsWith(".prose-nashr")).join("\n");
-    expect(prose).not.toMatch(/--color-(primary|foreground|accent)/);
-    expect(prose).toMatch(/\.prose-nashr th \{[^}]*border-bottom: 1\.5px solid var\(--color-ink\)/);
+    // Ink through the foreground and border-strong roles since rule 1202, so the dark theme reaches prose too.
+    expect(prose).not.toMatch(/--color-(primary|accent|ink)\b/);
+    expect(prose).toMatch(/\.prose-nashr th \{[^}]*border-bottom: 1\.5px solid var\(--color-border-strong\)/);
   });
 
   it("the old dark homepage hero is gone (no page imports it)", () => {

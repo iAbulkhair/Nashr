@@ -47,13 +47,13 @@ export default function ImpersonationBanner({ lang, email, until }: { lang: "ar"
       action="/api/admin/impersonate"
       method="post"
       aria-label={C.label}
-      className="sticky top-0 z-30 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-[1.5px] border-danger bg-paper px-3 py-2 text-sm text-ink"
+      className="sticky top-0 z-30 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-[1.5px] border-danger bg-surface px-3 py-2 text-sm text-foreground"
       data-impersonation-banner
     >
       <input type="hidden" name="lang" value={lang} />
       <p className="min-w-0">
         <span className="font-semibold">{C.viewing}</span> <bdi className="break-all font-mono" dir="ltr">{email}</bdi>
-        {left !== null && <span className="tabular-nums text-muted"> · {left > 0 ? C.left(left) : C.over}</span>}
+        {left !== null && <span className="tabular-nums text-foreground-muted"> · {left > 0 ? C.left(left) : C.over}</span>}
       </p>
       <button type="submit" className="btn btn-danger min-h-[var(--hit-min)] px-3 text-sm">{C.stop}</button>
     </form>

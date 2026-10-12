@@ -26,8 +26,8 @@ export default function LangToggle({ lang, size = "md" }: { lang: Lang; size?: "
     router.push(swapLang(path, to) + window.location.search + window.location.hash);
   }
 
-  const on = "bg-ink text-paper";
-  const off = "text-muted hover:text-ink";
+  const on = "bg-inverse text-inverse-foreground";
+  const off = "text-foreground-muted hover:text-foreground";
   const pad = size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs";
 
   const seg = (to: Lang, label: string, title: string) => (
@@ -45,7 +45,7 @@ export default function LangToggle({ lang, size = "md" }: { lang: Lang; size?: "
   );
 
   return (
-    <span role="group" aria-label={lang === "ar" ? "اللغة" : "Language"} dir="ltr" className="inline-flex items-center gap-0.5 rounded-full border-[1.5px] border-ink bg-paper p-0.5">
+    <span role="group" aria-label={lang === "ar" ? "اللغة" : "Language"} dir="ltr" className="inline-flex items-center gap-0.5 rounded-full border-[1.5px] border-border-strong bg-surface p-0.5">
       {seg("ar", "عربي", "العربية")}
       {seg("en", "EN", "English")}
     </span>

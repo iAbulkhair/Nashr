@@ -68,7 +68,7 @@ export default function Menu({ label, items, trigger, footer, placement = "botto
     if (next !== null) { e.preventDefault(); rows.current[next]?.focus(); }
   }
   const choose = (it: MenuItem) => { close(false); it.onSelect?.(); };
-  const row = "flex min-h-[var(--hit-min)] w-full items-center gap-2 rounded-lg px-3 text-start text-sm text-foreground-muted hover:bg-lilac hover:text-ink focus-visible:bg-lilac focus-visible:text-ink pointer-fine:min-h-9";
+  const row = "flex min-h-[var(--hit-min)] w-full items-center gap-2 rounded-lg px-3 text-start text-sm text-foreground-muted hover:bg-background-muted hover:text-foreground focus-visible:bg-background-muted focus-visible:text-foreground pointer-fine:min-h-9";
 
   return (
     // Focus leaving the trigger, the rows and the footer (Tab past the end, a click elsewhere) closes the menu; Tab from a
@@ -85,7 +85,7 @@ export default function Menu({ label, items, trigger, footer, placement = "botto
         onKeyDown: onTriggerKey,
       }, open)}
       {open && (
-        <div className={`absolute z-50 min-w-56 rounded-xl border-[1.5px] border-ink bg-popover p-2 text-sm text-ink ${placement === "top" ? "bottom-full mb-1" : "top-full mt-1"} ${align === "start" ? "start-0" : "end-0"}`}>
+        <div className={`absolute z-50 min-w-56 rounded-xl border-[1.5px] border-border-strong bg-popover p-2 text-sm text-foreground ${placement === "top" ? "bottom-full mb-1" : "top-full mt-1"} ${align === "start" ? "start-0" : "end-0"}`}>
           <ul id={`${id}-menu`} role="menu" aria-label={label} onKeyDown={onMenuKey} className="grid gap-0.5">
             {items.map((it, i) => (
               <li key={it.key} role="none">

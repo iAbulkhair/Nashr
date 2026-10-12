@@ -167,7 +167,7 @@ describe("rules 1483-1484: a quiet hint when the workspace is large", () => {
     const chat = readFileSync("src/lib/chat.ts", "utf8");
     expect(chat).toContain('...(large && ended !== "large" && !outOfTime ? { large: true as const } : {})');
     const panel = readFileSync("src/components/app/ChatPanel.tsx", "utf8");
-    expect(panel).toContain('m.role === "assistant" && m.large && <p className="mt-1 text-xs text-muted" data-workspace-large>');
+    expect(panel).toContain('m.role === "assistant" && m.large && <p className="mt-1 text-xs text-foreground-muted" data-workspace-large>');
   });
 });
 

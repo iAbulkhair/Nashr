@@ -43,9 +43,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
                 {p.tagline}
               </span>
             </p>
-            <p className="mt-5 max-w-2xl text-lg text-muted">{p.intro}</p>
+            <p className="mt-5 max-w-2xl text-lg text-foreground-muted">{p.intro}</p>
             <div className="mt-8"><UrlStart t={t} lang={lang} /></div>
-            {agent !== "noor" && <p className="mt-4 text-sm text-muted">{s.startWith} <Link href={`/${lang}/agents/noor`} className="font-bold text-ink underline">{agentById("noor").name[lang]}</Link></p>}
+            {agent !== "noor" && <p className="mt-4 text-sm text-foreground-muted">{s.startWith} <Link href={`/${lang}/agents/noor`} className="font-bold text-foreground underline">{agentById("noor").name[lang]}</Link></p>}
           </div>
           {/* The agent standing on its own colour, as in the homepage lineup. */}
           <div className="relative isolate mx-auto w-24 sm:w-32" aria-hidden="true">
@@ -60,12 +60,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
               <div key={o.t} className="s-card">
                 <Scribble kind="box" seed={`agent-out-${o.t.length}-${o.d.length}`} fill="paper" />
                 <h3 className="font-display text-lg font-bold">{o.t}</h3>
-                <p className="mt-1 text-sm text-muted">{o.d}</p>
+                <p className="mt-1 text-sm text-foreground-muted">{o.d}</p>
               </div>
             ))}
           </div>
         </section>
-        <section className="border-y-[1.5px] border-ink bg-lilac">
+        <section className="border-y-[1.5px] border-border-strong bg-background-muted">
           <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-2">
             <div>
               <h2 className="font-display text-2xl font-bold">{s.works}</h2>
@@ -103,7 +103,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
               <Link key={x.id} href={`/${lang}/agents/${x.id}`} className="s-card flex items-center gap-3 !py-3" data-boil>
                 <Scribble kind="box" seed={`agent-other-${x.id}`} fill="paper" boil />
                 <Face who={x.id} seed={`agent-other-face-${x.id}`} small />
-                <span><span className="block font-display font-bold">{x.name[lang]}</span><span className="block text-sm text-muted">{x.role[lang]}</span></span>
+                <span><span className="block font-display font-bold">{x.name[lang]}</span><span className="block text-sm text-foreground-muted">{x.role[lang]}</span></span>
               </Link>
             ))}
           </div>
