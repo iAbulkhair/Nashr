@@ -111,8 +111,8 @@ Directional icons take `mirror` (rule 1118): `send` and `next` point along the r
 
 8. Accessibility target is WCAG 2.2 AA: text 4.5:1, controls and focus 3:1, targets 44px (24px floor for dense lists), focus visible on every surface (lemon ring on ink), every field labelled, status and errors announced.
 
-## 4. Status · الحالة (2026-09-17)
+## 4. Status · الحالة (entries dated; the undated bullets below are from 2026-09-17)
 - 2026-10-11, phase 1 of the UI/UX report (`docs/system/tests/1080-uiux-phase1.md`): semantic tokens and the `src/components/ui` primitives above; sign-in, sign-up, forgot and reset, the brand form, brands list, account deletion, integrations, governance and working-days switches and the trial strip moved onto them; lint warnings on. Left for phase 2: the other screens (160 warnings on 2026-10-11), the inline switches in tasks, chat allowance and series, `ConfirmDialog` into `ui/` with a busy confirm, the card radius and body line height, Skeleton and EmptyState.
 - Tokens generated and wired; 160 repeated class strings replaced across 40+ components with the classes above; visual parity verified on landing, inbox, profile and founder console in Arabic.
 - Founder console and its login are now bilingual; every other page already reads from the dictionaries.
-- Dark mode: semantic layer ready, not switched on.
+- Dark mode: semantic layer ready, not switched on (on 2026-10-12 `src/app/*.css` carries no `prefers-color-scheme` or theme-attribute rule).

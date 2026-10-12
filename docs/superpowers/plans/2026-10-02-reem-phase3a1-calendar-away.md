@@ -1,5 +1,7 @@
 # Reem phase 3 A1: work calendar, chase rule, away contacts — Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built (A1 is live per the 2026-10-02 decisions); PR number not looked up. The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reem stops suggesting the owner chase people on the brand's weekend, Eid, official holidays, outside Ramadan hours, and while a contact is away. The brand's admin sets the working days, and away contacts are recorded per person.

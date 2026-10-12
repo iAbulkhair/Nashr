@@ -1,5 +1,7 @@
 # Social Analytics in Dana's Reports Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built and merged as #300 (in `production`). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Dana's weekly report, board deck and dashboard spec and Majed's strategy review get real per-platform numbers (ads, site, Instagram, Facebook Page, LinkedIn page and ads, YouTube, TikTok, X) with honest previous-period changes and a code-built "Not read" list.

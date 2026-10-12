@@ -285,7 +285,7 @@
   .think[data-on] { transition: none; }
 }
 
-/* ---------- قاموس ذكين: the game (Dictionary.tsx) ---------- */
+/* ---------- قاموس ذكين: the game (the component, Dictionary.tsx, was deleted 2026-10-12; these rules stay until a CSS sweep) ---------- */
 
 .dict {
   font-family: var(--home-body);

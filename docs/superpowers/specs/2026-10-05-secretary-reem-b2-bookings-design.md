@@ -1,5 +1,7 @@
 # Reem phase 3 B2: bookings in (B2a) and the follow-up after the meeting (B2b)
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** B2a merged as #262 (2026-10-05, in `production`); B2b (the meeting routes under `src/app/api/secretary/meeting/[id]`) is on `main` through #314 (2026-10-10) and not in `production`.
+
 Status: draft for the founder's review, 2026-10-05. Part B of phase 3 (see `2026-10-02-secretary-reem-phase3a-design.md`); B1 (the calendar feed) is merged, B3 (Google and Outlook busy times) is a separate spec. B2a and B2b share this spec and ship as two pull requests, B2a first, because B2b works on the meeting items B2a creates.
 
 ## 1. Goal and what the founder decided

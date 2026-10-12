@@ -15,9 +15,8 @@ describe("the homepage is D, without the game (rule 516)", () => {
   });
   it("mounts neither the dictionary game nor the old story and truths", () => {
     for (const gone of ["Dictionary", "Story", "Truths"]) expect(page).not.toMatch(new RegExp(`import ${gone}\\b`));
-    // The game is unmounted, not deleted (it still uses StartForm); the old sections are deleted.
-    for (const f of ["Dictionary", "StartForm"]) expect(existsSync(join(process.cwd(), `src/components/home/${f}.tsx`)), f).toBe(true);
-    for (const f of ["Story", "Truths", "QuestionFlip", "Figure"]) expect(existsSync(join(process.cwd(), `src/components/home/${f}.tsx`)), f).toBe(false);
+    // The game component is deleted (2026-10-12, nothing imported it; the first-login game is `DictionaryStart` in the app).
+    for (const f of ["Dictionary", "Story", "Truths", "QuestionFlip", "Figure"]) expect(existsSync(join(process.cwd(), `src/components/home/${f}.tsx`)), f).toBe(false);
   });
   it("gives each section the id the homepage nav points at", () => {
     const ids: [string, string][] = [["Cover", "team"], ["Rules", "rules"], ["Day", "day"], ["Steps", "steps"], ["Plans", "price"], ["HomeFaq", "faq"]];

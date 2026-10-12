@@ -1,5 +1,7 @@
 # Media providers and video: implementation plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built (the media routes, adapters and `src/lib/media/` are on `main`; rules in `docs/system/tests.md`); PR numbers not looked up. The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 Design: `docs/superpowers/specs/2026-09-29-media-providers-design.md` (read it first; section and decision numbers below
 refer to it). Revised on 2026-09-29 after a 47-point critique; the verdict on each point is in the "Critique log" at the
 end. Code references are to HEAD `99d9801`. Next.js is 16.3.5: route handlers take `ctx: { params: Promise<{...}> }` and

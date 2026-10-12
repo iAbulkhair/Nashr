@@ -1,5 +1,7 @@
 # Reem phase 3 A2: recurring items and the 90-day purge of closed copies — Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built and merged as #247 (2026-10-03). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** An item can repeat. Closing one copy opens the next on its next scheduled date, once, with no pile-up. Closed copies of a series are deleted 90 days after they close, after a warning of at least 7 days, unless the customer keeps the series' history. The customer can download a series as CSV.

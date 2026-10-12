@@ -1,5 +1,7 @@
 # قاموس ذكين in first-login onboarding — design
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built and merged as #249 (2026-10-04, in `production`); `src/lib/dictionary.ts` and `src/components/app/DictionaryStart.tsx` are on `main`, pinned by `tests/dictionary.test.ts` and `tests/dictionary-onboarding.test.ts`.
+
 Date: 2026-10-04. Branch: `claude/dictionary-onboarding`. Status: draft, awaiting the founder's approval. Test rules 520-529
 (510-519 left free for the re-skin session).
 
