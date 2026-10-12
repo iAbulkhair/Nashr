@@ -40,7 +40,7 @@ import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoItems, chatIte
 import { getGov } from "./governance";
 import { DEFAULTS, route, type Rejected } from "./models/route";
 import { MODEL_UNAVAILABLE, MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
-import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandNames, publishScopeCheck, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx } from "./agent-scope";
+import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandNames, itemHash, publishScopeCheck, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx } from "./agent-scope";
 
 /**
  * An inbox item as a chat card shows it. `xflag`: the other agents that flagged it in the cross-agent review, each with
@@ -838,21 +838,24 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const brandNow = await getBrand(email);
       const held = gateTask(brandNow, t, { publish: true, provider });
       if (held.length) return `Not published. ${explain(held)} Tell the owner what to fix and where; do not work around the rule.`;
-      // The agent-scope publish check (rule 1410), last before the send. The approval check under the lock below holds the
-      // text: an approved, reviewed item is not edited without leaving approved. Enforce holds a refusal and an error.
+      // The agent-scope publish check (rule 1410), last before the send. An owner can edit an approved item and keep it
+      // approved, so the copy sent under the lock below must still have the text that was checked (`itemHash`), or nothing
+      // goes out. Enforce holds a refusal and an error.
+      const checkedHash = itemHash(t);
       const scopeHeld = await publishScopeCheck(user, t, "chat_publish", ctx.lang ?? (t.lang === "en" ? "en" : "ar"), ctx.modes ?? (await readAgentScopeModes()), deadline);
       if (scopeHeld.block) return `Not sent: ${scopeHeld.reply}`;
       // The same checks again on the copy that is sent, under the publish lock.
       const r = await publishOnce(email, t.id, provider, {
         check: (cur) => {
           if (cur.status !== "approved" || !reviewed(cur)) return { error: "not_approved" };
+          if (itemHash(cur) !== checkedHash) return { error: "changed" };
           const v = gateTask(brandNow, cur, { publish: true, provider });
           return v.length ? { error: "brand_violation", violations: v } : null;
         },
       });
       if (!r.ok) {
         switch (r.error) {
-          case "refused": return r.refusal.error === "brand_violation" ? `Not published. ${explain(r.refusal.violations as Violation[])} The item changed a moment ago; tell the owner what to fix.` : "Not published: the item changed a moment ago and is not approved by the owner any more. Tell the owner to check it in the inbox.";
+          case "refused": return r.refusal.error === "brand_violation" ? `Not published. ${explain(r.refusal.violations as Violation[])} The item changed a moment ago; tell the owner what to fix.` : r.refusal.error === "changed" ? "Not published: the owner edited this item a moment ago. Ask again to publish the new text." : "Not published: the item changed a moment ago and is not approved by the owner any more. Tell the owner to check it in the inbox.";
           case "already_published": return `Not published again: this item already went to ${provider}${r.url ? ` (${r.url})` : ""}. Publishing it a second time is the owner's, from the inbox.`;
           case "publish_unknown": return `Not published: an earlier publish to ${provider} (${r.at}) ended without an answer, so it may already be live. Tell the owner to check ${provider}, then publish again from the inbox if it is not there.`;
           case "publish_busy": return `Not published: a publish of this item to ${provider} is already running. Wait a few minutes and check the inbox.`;

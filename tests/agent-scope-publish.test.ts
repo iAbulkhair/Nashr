@@ -13,11 +13,12 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
  * The classifier is mocked per call (`cls.decide`, `cls.error`); the platform send is mocked as in the other publish tests.
  */
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "on" as const }));
-const cls = vi.hoisted(() => ({ decide: () => "in" as string, error: null as null | string, calls: [] as { kind: string; text: string; agent: string }[] }));
+const cls = vi.hoisted(() => ({ decide: () => "in" as string, error: null as null | string, calls: [] as { kind: string; text: string; agent: string }[], during: null as null | (() => Promise<unknown>) }));
 vi.mock("@/lib/agent-scope-classify", async (orig) => ({
   ...(await orig<typeof import("@/lib/agent-scope-classify")>()),
   classify: async (input: { kind: string; text: string; agent: string }) => {
     cls.calls.push(input);
+    if (cls.during) await cls.during();
     return cls.error ? { ok: false, error: cls.error } : { ok: true, verdict: cls.decide() };
   },
 }));
@@ -43,6 +44,7 @@ beforeEach(() => {
   cls.decide = () => "in";
   cls.error = null;
   cls.calls = [];
+  cls.during = null;
   published.length = 0;
   vi.stubEnv("ANTHROPIC_API_KEY", "test");
 });
@@ -131,6 +133,19 @@ describe("rule 1410: the publish route checks the item before the send", () => {
     expect((await logOf(u.email))[0]).toMatchObject({ where: "chat_publish", verdict: "pro_advice" });
     cls.decide = () => "in";
     expect(await runTool(u, "publish_item", { task_id: "c1", provider: "telegram" }, [])).toMatch(/Published/);
+  });
+  it("chat publish_item: an edit made while the check runs is not sent (the sent copy must have the checked text)", async () => {
+    await setModes(modes("shadow"));
+    const u = await owner("asp6");
+    await saveTask(u.email, task("c2", "approved", { decidedAt: new Date().toISOString() }), true);
+    // The owner edits the approved item (it stays approved) while the classifier is asked.
+    cls.during = async () => { cls.during = null; const cur = (await getTask(u.email, "c2"))!; await saveTask(u.email, { ...cur, editedBody: "نص عدّله المالك أثناء الفحص" }); };
+    const out = await runTool(u, "publish_item", { task_id: "c2", provider: "telegram" }, []);
+    expect(out).toBe("Not published: the owner edited this item a moment ago. Ask again to publish the new text.");
+    expect(published).toEqual([]);
+    // Asked again, the new text is checked and sent.
+    expect(await runTool(u, "publish_item", { task_id: "c2", provider: "telegram" }, [])).toMatch(/Published/);
+    expect(cls.calls.at(-1)!.text).toBe("c2\n\nنص عدّله المالك أثناء الفحص");
   });
 });
 

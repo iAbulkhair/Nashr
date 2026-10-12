@@ -18,7 +18,9 @@ export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
   if (modelState() !== "on") return NextResponse.json({ ok: false, error: "model_paused" }, { status: 503 });
-  if (!(await db.lock(AGENT_SCOPE_KEYS.evalLock, maxDuration))) return NextResponse.json({ ok: false, error: "already_running" }, { status: 409 });
+  // An owned lock: a run that outlives the 300 s never frees the lock a later run took (`unlockOwned` checks the token).
+  const token = await db.lockOwned(AGENT_SCOPE_KEYS.evalLock, maxDuration);
+  if (!token) return NextResponse.json({ ok: false, error: "already_running" }, { status: 409 });
   try {
     const result = await runAgentScopeEval();
     await Promise.all([
@@ -27,6 +29,6 @@ export async function POST(req: Request) {
     ]);
     return NextResponse.json({ ok: true, eval: result });
   } finally {
-    await db.unlock(AGENT_SCOPE_KEYS.evalLock).catch(() => {});
+    await db.unlockOwned(AGENT_SCOPE_KEYS.evalLock, token).catch(() => {});
   }
 }
