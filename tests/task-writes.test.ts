@@ -10,7 +10,32 @@ import { randomBytes } from "crypto";
  * The render here is the real engine over a scripted kie provider; each test lands its finalize inside the other
  * writer's window, the one place the old code lost it.
  */
-const h = vi.hoisted(() => ({ duringPublish: null as null | (() => Promise<unknown>), duringGov: null as null | (() => Promise<unknown>) }));
+const h = vi.hoisted(() => ({
+  duringPublish: null as null | (() => Promise<unknown>),
+  duringGov: null as null | (() => Promise<unknown>),
+  /** The judge, off unless a test turns it on: `duringJudge` runs inside its model call, `verdict` is what it answers. */
+  judgeOn: false,
+  duringJudge: null as null | (() => Promise<unknown>),
+  verdict: {} as Record<string, unknown>,
+}));
+vi.mock("@/lib/model", async (orig) => {
+  const real = await orig<typeof import("@/lib/model")>();
+  return { ...real, modelState: () => (h.judgeOn ? ("on" as const) : real.modelState()) };
+});
+vi.mock("@anthropic-ai/sdk", () => ({
+  default: class {
+    messages = {
+      create: async () => {
+        // Once: the publish it runs makes model calls of its own through this same fake, which would land here again.
+        const during = h.duringJudge;
+        h.duringJudge = null;
+        await during?.();
+        return { model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([h.verdict]) }] };
+      },
+      stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
+    };
+  },
+}));
 vi.mock("@/lib/connectors/publish", async (orig) => ({
   ...(await orig<typeof import("@/lib/connectors/publish")>()),
   publishTask: async (_e: string, _t: unknown, provider: string) => {
@@ -27,6 +52,9 @@ import { db } from "@/lib/db";
 import { getTask, saveTask, updateTask, type Task } from "@/lib/brand";
 import { saveConnection } from "@/lib/connectors/store";
 import { runTool } from "@/lib/chat";
+import { judgeTasks } from "@/lib/judge";
+import { listNotifs } from "@/lib/notifications";
+import type { Brand } from "@/lib/brand";
 import { advance, startMedia } from "@/lib/media/jobs";
 import type { MediaJob, StartInput } from "@/lib/media/types";
 import { fakeAdapter, fakeDeps, noNetwork, resetMediaCounters } from "./helpers/media";
@@ -42,6 +70,8 @@ beforeEach(() => {
   resetMediaCounters();
   h.duringPublish = null;
   h.duringGov = null;
+  h.judgeOn = false;
+  h.duringJudge = null;
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(async () => {
@@ -162,5 +192,65 @@ describe("a render finishing while another writer holds the task", () => {
     expect(patching).not.toBeNull();
     expect((await patching!).status).toBe(200);
     expect((await getTask(u.email, t.id))!).toMatchObject({ status: "approved", videoUrl: video.deps.stored[0].url, mediaCredits: 12 });
+  });
+});
+
+/**
+ * The judge scores in the background and writes its verdict as one more whole-task write (rule 136). An owner who
+ * publishes while it thinks, or whose publish is in flight when it writes, must keep both: the verdict and the post.
+ */
+describe("the judge's verdict racing a publish", () => {
+  const brand: Brand = { name: "Rose Coffee", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "warm", products: "coffee", audience: "Riyadh", offers: "", competitors: "", banned: "", preferred: "", channels: ["telegram"], city: "Riyadh", updatedAt: new Date().toISOString() };
+  const good = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, notes: "ready" };
+  const connect = (u: User) => saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+  const publish = async (t: Task) => publishRoute.POST(await vjson(`/api/publish/${t.id}`, "POST", { provider: "telegram" }), params({ id: t.id }));
+  const vetoNotes = async (email: string) => (await listNotifs(email)).filter((n) => n.title.startsWith("أُعيد"));
+
+  it("a publish that lands while the judge thinks stays, and the verdict is saved beside it", async () => {
+    const u = await newUser("tw");
+    await signIn(u.email);
+    await connect(u);
+    const t = await taskFor(u);
+    h.judgeOn = true;
+    h.verdict = good;
+    h.duringJudge = async () => { expect((await publish(t)).status).toBe(200); };
+    await judgeTasks(u.email, u.email, brand, [t]);
+    const saved = (await getTask(u.email, t.id))!;
+    expect(saved).toMatchObject({ status: "approved", published: [{ provider: "telegram" }], quality: { score: 90 } });
+  });
+
+  it("a verdict that lands while the owner's publish is in flight is kept by the publish's own write", async () => {
+    const u = await newUser("tw");
+    await signIn(u.email);
+    await connect(u);
+    const t = await taskFor(u);
+    h.judgeOn = true;
+    h.verdict = good;
+    h.duringPublish = async () => { await judgeTasks(u.email, u.email, brand, [t]); };
+    expect((await publish(t)).status).toBe(200);
+    const saved = (await getTask(u.email, t.id))!;
+    expect(saved).toMatchObject({ status: "approved", published: [{ provider: "telegram" }], quality: { score: 90 } });
+  });
+
+  it("an auto-approved item the judge fails goes back to the inbox, unless it was published while the judge worked", async () => {
+    const u = await newUser("tw");
+    await signIn(u.email);
+    await connect(u);
+    h.judgeOn = true;
+    h.verdict = { ...good, honesty: 20, autofail: "fake_proof", notes: "invented testimonial" };
+
+    // Control: nobody touched it, so the veto applies (approved by auto-approval alone: no decidedAt).
+    const held = await taskFor(u, { status: "approved" });
+    await judgeTasks(u.email, u.email, brand, [held]);
+    expect(await getTask(u.email, held.id)).toMatchObject({ status: "pending", quality: { autofail: "fake_proof" } });
+    expect(await vetoNotes(u.email)).toHaveLength(1);
+
+    // The owner publishes it while the judge thinks: a post that went out is never reverted to pending.
+    const posted = await taskFor(u, { status: "approved" });
+    h.duringJudge = async () => { expect((await publish(posted)).status).toBe(200); };
+    await judgeTasks(u.email, u.email, brand, [posted]);
+    const saved = (await getTask(u.email, posted.id))!;
+    expect(saved).toMatchObject({ status: "approved", published: [{ provider: "telegram" }], quality: { autofail: "fake_proof" } });
+    expect(await vetoNotes(u.email), "no new send-back notice for the published one").toHaveLength(1);
   });
 });

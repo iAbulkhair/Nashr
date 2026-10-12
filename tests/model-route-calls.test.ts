@@ -45,9 +45,11 @@ vi.mock("@anthropic-ai/sdk", () => {
       };
       messages = {
         // Every model call is a stream since rule 980. "stream" here is the chat turn (tools) and onboarding (a JSON schema
-        // format), as before; every other call is answered by `create`, the call those sites made before.
-        stream(p: { model: string; system: unknown; tools?: unknown; output_config?: { format?: unknown } }) {
-          return p.tools || p.output_config?.format ? this.chat(p) : { finalMessage: () => this.create(p) };
+        // format), as before; every other call is answered by `create`, the call those sites made before. The agent-scope
+        // classifier forces its `verdict` tool and was a `create` call too (it streams since the 2026-10-12 build batch).
+        stream(p: { model: string; system: unknown; tools?: unknown; tool_choice?: { name?: string }; output_config?: { format?: unknown } }) {
+          const chatTurn = (p.tools && p.tool_choice?.name !== "verdict") || p.output_config?.format;
+          return chatTurn ? this.chat(p) : { finalMessage: () => this.create(p) };
         },
         chat: (p: { model: string; system: unknown }) => ({
           finalMessage: async () => {
@@ -96,6 +98,7 @@ import { crossReviewPrompt, generate, reviewerPrompt } from "@/lib/noor";
 import { generateBatch } from "@/lib/generate-batch";
 import { buildFromSite } from "@/lib/onboard";
 import { imagePrompt } from "@/lib/media/prompts";
+import { classify } from "@/lib/agent-scope-classify";
 import { json, newUser, params, settle, signIn } from "./helpers/session";
 import * as chatRoute from "@/app/api/chat/route";
 import * as mcpRoute from "@/app/api/mcp/route";
@@ -322,11 +325,15 @@ describe("the other call sites ask route() for their purpose and send what it re
   const task = { id: "t1", type: "social", channel: "instagram", title: "t", body: "نص تجريبي", status: "pending" } as unknown as Task;
   const site = { url: "https://example.test", ok: true, platform: "unknown", title: "t", description: "d", links: [], text: "x" } as unknown as Parameters<typeof buildFromSite>[0];
 
-  it("today's models, call site by call site: tool Haiku 5.5, image prompt Haiku 5.5, onboarding Opus 5.5 (rules 809 and 900)", async () => {
+  it("today's models, call site by call site: tool Haiku 5.5, image prompt Haiku 5.5, agent-scope classifier Haiku 5.5, onboarding Opus 5.5 (rules 791, 809 and 900)", async () => {
     expect((await toolCall()).status).toBe(200);
     expect(calls("create").map((c) => c.model)).toEqual([HAIKU]);
     sdk.calls = [];
     await imagePrompt(brand, task, "img-fast", "square", "mrc@test.example", 20_000);
+    expect(calls("create").map((c) => c.model)).toEqual([HAIKU]);
+    sdk.calls = [];
+    // The scripted SDK answers with text, not a tool call, so the verdict is unknown: the model it was sent to is the point.
+    expect(await classify({ kind: "input", text: "مرحبا", agent: "noor", brand: { name: brand.name, industry: brand.industry }, otherBrands: [], lang: "ar" })).toEqual({ ok: false, error: "unknown_verdict" });
     expect(calls("create").map((c) => c.model)).toEqual([HAIKU]);
     sdk.calls = [];
     await buildFromSite(site, "ar", undefined, undefined, undefined, Date.now() + 285_000).catch(() => null);
@@ -339,6 +346,13 @@ describe("the other call sites ask route() for their purpose and send what it re
     expect((await toolCall()).status).toBe(200);
     expect(calls("create").map((c) => c.model)).toEqual(["routed-tool"]);
     expect(askedFor("tool")).toHaveLength(1);
+  });
+
+  it("the agent-scope classifier asks for agentScope, once, and sends what it gets", async () => {
+    rt.pick.agentScope = "routed-scope";
+    await classify({ kind: "output", text: "x", agent: "noor", brand: { name: brand.name, industry: brand.industry }, otherBrands: [], lang: "en" });
+    expect(calls("create").map((c) => c.model)).toEqual(["routed-scope"]);
+    expect(askedFor("agentScope")).toHaveLength(1);
   });
 
   it("the image prompt asks for imagePrompt", async () => {

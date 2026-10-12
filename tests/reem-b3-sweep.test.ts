@@ -672,7 +672,7 @@ describe("rule 921 (reset part): a password reset and an account wipe drop the o
 
   it("addBrand's brands are covered: a link on a brand added through the product is dropped too", async () => {
     const o = await owner();
-    const b = await addBrand((await getUser(o.email))!, "Second");
+    const b = await addBrand({ ...(await getUser(o.email))!, brandCap: 2 }, "Second");
     expect("error" in b).toBe(false);
     const scope = scopeFor(o.email, (b as BrandMeta).id);
     await putLink(scope, seed(o.email));

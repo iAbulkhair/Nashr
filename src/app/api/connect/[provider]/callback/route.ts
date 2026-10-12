@@ -1,4 +1,5 @@
 import { track } from "@/lib/track";
+import { errorTag } from "@/lib/log-safe";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { currentUser } from "@/lib/auth";
@@ -125,7 +126,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     await track(st.email.split("#")[0], "connect");
     return back(`connected=${p.id}`);
   } catch (e) {
-    console.error("oauth callback failed", e);
+    console.error("oauth callback failed", p.id, errorTag(e));
     return back(`error=${encodeURIComponent(e instanceof Error ? e.message.slice(0, 120) : "token_failed")}`);
   }
 }

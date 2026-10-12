@@ -1,3 +1,5 @@
+import { GENERATE_NOTES_READ } from "./notes-read";
+
 /**
  * Parse a model reply that should be a JSON array of objects. Tolerates code
  * fences, prose around the JSON, a single object instead of a one-item array,
@@ -68,5 +70,5 @@ export function leadBriefBlock(brief: string | undefined): string {
 export function groundingBlocks(g: Grounding): string {
   const block = (tag: string, v: string | undefined) => (v?.trim() ? `\n\n<${tag}>\n${asData(v)}\n</${tag}>` : "");
   const lead = leadBriefBlock(g.leadBrief);
-  return block("owner_notes", g.notes?.slice(0, 2000)) + block("workspace_files", g.memory) + block("workspace_data", g.stats) + (lead ? `\n\n${lead}` : "");
+  return block("owner_notes", g.notes?.slice(0, GENERATE_NOTES_READ)) + block("workspace_files", g.memory) + block("workspace_data", g.stats) + (lead ? `\n\n${lead}` : "");
 }

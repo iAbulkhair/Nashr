@@ -589,10 +589,12 @@ describe("each reviewer's work is one activity row per batch (rule 269)", () => 
  */
 // 2026-10-09: every hash below changed only by the model id (Opus 5 to Opus 5.5, Sonnet 5 to Sonnet 5.5). Hashed with the
 // ids mapped back to the old ones, the previous values came out unchanged, so the prompt bytes are the same.
+// 2026-10-12 (rule 1473): the `gen` hashes changed deliberately. The task spec and Razan's persona now name the brand's
+// currency (`{CURRENCY}`, SAR by default) instead of a fixed "SAR" line; review and judge are unchanged.
 const BEFORE: Record<string, { gen: string; review: string; judge: string }> = {
-  pricing_review: { gen: "59acef725d127ffdfec6a2f6d755717b66ed4a5695e47165cb33592b2428ccd6", review: "dd00dab0de7730d79b7b94f881bbeb4bf8d7dfb80739f05ce3aaa96a0b9aae35", judge: "8abb968d5e83f823acfcdffcee7bebaee7e344bca18df835ee430cdede4aa6b3" },
-  gtm_plan: { gen: "7d13eb4a488b344e849287e5b69db2927a493efedcd9d817871d2fa5a95660d4", review: "796294f59d2818bc8870c0ac2aabe504c6360fba7561b345b3b51f0875068850", judge: "fb3065c7f4a3fc14cf3e7c1ced0374cf82548e90b5acf4cef8ae9b7613404301" },
-  social: { gen: "e700b0eff93f8fce1dd8890ed7f600d45f0650f36dec63fab19a44e9d19c980f", review: "f1c9f976c5e00fc4f547c6c784b9095b3f322638c6fe36fd64df7180b64951e4", judge: "e1fbf464052a44f9f614c53505183b377125b8e52417350e8eb6aed4f90076b9" },
+  pricing_review: { gen: "76ff259b1227d52855a00708341dd288bc4dfead9d296fc13ac4dc8fa9445318", review: "dd00dab0de7730d79b7b94f881bbeb4bf8d7dfb80739f05ce3aaa96a0b9aae35", judge: "8abb968d5e83f823acfcdffcee7bebaee7e344bca18df835ee430cdede4aa6b3" },
+  gtm_plan: { gen: "5d16165e9aaa42d03688946065aaa727517c64fba2a19c0fac5290d4aaed89fa", review: "796294f59d2818bc8870c0ac2aabe504c6360fba7561b345b3b51f0875068850", judge: "fb3065c7f4a3fc14cf3e7c1ced0374cf82548e90b5acf4cef8ae9b7613404301" },
+  social: { gen: "b033012a22b563c964f5c7600319e22d1d15fc545fe14aa0ca4cd35af511c49f", review: "f1c9f976c5e00fc4f547c6c784b9095b3f322638c6fe36fd64df7180b64951e4", judge: "e1fbf464052a44f9f614c53505183b377125b8e52417350e8eb6aed4f90076b9" },
 };
 /**
  * Each cross-reviewer's system block for the same fixed batch (the fixed playbooks above), pinned since step 3a was
@@ -642,8 +644,10 @@ async function fixedBatch(type: TaskType, crossReview: boolean) {
     const noor = await import("@/lib/noor");
     const { scoreItems, JUDGE_RUBRIC } = await import("@/lib/judge");
     const { reviewBlock } = await import("@/lib/skills");
+    // Rule 797: the generation prompt ends with the scope paragraph unless `agentScope` is false. This test pins that the cross-review leaves the
+    // prompt as it was before it existed, so it generates without the paragraph (the paragraph is pinned in tests/agent-scope-roles.test.ts).
     const ctx = { notes: "compare with Ramadan", memory: "--- brand.md ---\nhello", stats: "WORKSPACE DATA\norders: 12" };
-    const out = await noor.generate(type, brand, ["no emojis"], ctx.notes, { memory: ctx.memory, stats: ctx.stats, meter: "probe@test.example", ...(crossReview ? {} : { crossReview: false }) });
+    const out = await noor.generate(type, brand, ["no emojis"], ctx.notes, { memory: ctx.memory, stats: ctx.stats, meter: "probe@test.example", agentScope: false, ...(crossReview ? {} : { crossReview: false }) });
     await scoreItems("probe@test.example", brand, type, out, undefined, ctx);
     return {
       gen: gen.map(sha), review: review.map(sha), judge: judge.map(sha), cross: cross.length, verdicts: out.filter((i) => i.crossReview?.length).length,
@@ -651,7 +655,7 @@ async function fixedBatch(type: TaskType, crossReview: boolean) {
       crossSystem: Object.fromEntries(cross.map((p) => [(p.system as { text: string }[])[0].text.startsWith("You are Razan") ? "razan" : "majed", createHash("sha256").update(JSON.stringify(p.system)).digest("hex")])),
       // The strings the prompt builders make, compared with what was sent.
       built: {
-        gen: JSON.stringify(gen[0].system) === JSON.stringify(noor.systemPrompt(brand, ["no emojis"], agentForTask(type), ctx.memory)),
+        gen: JSON.stringify(gen[0].system) === JSON.stringify(noor.systemPrompt(brand, ["no emojis"], agentForTask(type), ctx.memory, undefined, undefined, false)),
         review: (review[0].system as { text: string }[])[0].text === noor.reviewerPrompt(type),
         judge: (judge[0].system as { text: string }[])[0].text === `${JUDGE_RUBRIC}${reviewBlock()}`,
       },

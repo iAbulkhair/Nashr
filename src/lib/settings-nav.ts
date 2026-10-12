@@ -58,7 +58,7 @@ export const SETTINGS_COPY: Record<Lang, { title: string; sub: string; back: str
       billing: { name: "الاشتراك", sub: "خطتك ورصيدك وطرق الدفع." },
       connections: { name: "التكاملات", sub: "المتجر والحسابات المربوطة." },
       governance: { name: "الحوكمة", sub: "حدود الوكلاء والموافقة التلقائية." },
-      danger: { name: "منطقة الخطر", sub: "حذف الحساب أو مغادرة الفريق." },
+      danger: { name: "منطقة الخطر", sub: "تنزيل بياناتك، أو حذف الحساب، أو مغادرة الفريق." },
     },
   },
   en: {
@@ -77,7 +77,7 @@ export const SETTINGS_COPY: Record<Lang, { title: string; sub: string; back: str
       billing: { name: "Billing", sub: "Your plan, credits and how you pay." },
       connections: { name: "Integrations", sub: "Your store and linked accounts." },
       governance: { name: "Governance", sub: "Agent limits and auto-approval." },
-      danger: { name: "Danger zone", sub: "Delete the account or leave the team." },
+      danger: { name: "Danger zone", sub: "Download your data, delete the account or leave the team." },
     },
   },
 };

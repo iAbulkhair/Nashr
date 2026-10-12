@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { providerTimeout } from "../fetch-timeout";
 import { clean, type Row } from "../perf-import";
 
 /**
@@ -41,7 +42,7 @@ async function fail(r: Response, who: string, what: string): Promise<Error> {
   return new Error(`${who} ${what} ${status}: ${(j.error?.message ?? j.debug_message ?? j.display_message ?? "").slice(0, 160)}`);
 }
 async function get<T>(url: string, token: string, who: string, what: string): Promise<T> {
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: providerTimeout() });
   if (!r.ok) throw await fail(r, who, what);
   return (await r.json()) as T;
 }
@@ -73,6 +74,7 @@ export async function metaLongLived(short: string): Promise<{ token: string; exp
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "fb_exchange_token", client_id: process.env.META_APP_ID ?? "", client_secret: process.env.META_APP_SECRET ?? "", fb_exchange_token: short }),
+    signal: providerTimeout(),
   });
   if (!r.ok) throw await fail(r, "meta_ads", "token");
   const j = (await r.json()) as { access_token?: string; expires_in?: number };

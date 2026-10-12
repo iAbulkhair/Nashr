@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, json, markVerified, newUser, params, settle, signIn, signOut } from "./helpers/session";
-import { createUser, currentUser, getUser, type User } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { createUser, currentUser, getUser, sessionRecord, type User } from "@/lib/auth";
 
 import * as overview from "@/app/api/admin/overview/route";
 import * as plan from "@/app/api/admin/plan/route";
@@ -13,6 +12,7 @@ import * as golden from "@/app/api/admin/golden/route";
 import * as impersonate from "@/app/api/admin/impersonate/route";
 import * as wishlist from "@/app/api/admin/wishlist/route";
 import * as leads from "@/app/api/admin/leads/route";
+import * as media from "@/app/api/admin/media/route";
 import * as cronDaily from "@/app/api/cron/daily/route";
 import * as cronWeekly from "@/app/api/cron/weekly/route";
 import * as cronGolden from "@/app/api/cron/golden/route";
@@ -39,6 +39,7 @@ const adminCalls = (headers: Record<string, string> = {}, query = ""): (() => Pr
     () => wishlist.POST(json(`/api/admin/wishlist${query}`, "POST", { action: "promote", title: { ar: "عنوان", en: "Title" } }, headers)),
     () => leads.GET(json(`/api/admin/leads${query}`, "GET", undefined, headers)),
     () => leads.POST(json(`/api/admin/leads${query}`, "POST", { action: "seen" }, headers)),
+    () => media.GET(json(`/api/admin/media${query}`, "GET", undefined, headers)),
   ];
 };
 const statuses = async (calls: (() => Promise<Response>)[]) => { const out: number[] = []; for (const c of calls) out.push((await c()).status); return out; };
@@ -73,6 +74,8 @@ describe("founder console routes (rule 6)", () => {
   it("accept the key in the x-admin-key header, and a founder session", async () => {
     signOut();
     expect((await overview.GET(json("/api/admin/overview", "GET", undefined, { "x-admin-key": KEY }))).status).toBe(200);
+    // The media check answers the key in the header too (nothing is configured here, so it reaches no provider).
+    expect((await media.GET(json("/api/admin/media", "GET", undefined, { "x-admin-key": KEY }))).status).toBe(200);
     await signIn(founder.email);
     expect((await log.GET(json("/api/admin/log", "GET"))).status).toBe(200);
   });
@@ -91,7 +94,7 @@ describe("impersonation (rule 12)", () => {
     // The temporary session dies on its own after two hours.
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
     vi.setSystemTime(Date.now() + 2 * 3600e3 + 1000);
-    expect(await db.get(`session:${temp}`)).toBeNull();
+    expect(await sessionRecord(temp)).toBeNull();
     vi.useRealTimers();
 
     // A fresh impersonation, then the founder returns.
@@ -101,7 +104,7 @@ describe("impersonation (rule 12)", () => {
     const form = new FormData(); form.set("lang", "ar");
     const back = await impersonate.POST(new Request("https://nashr.test/api/admin/impersonate", { method: "POST", body: form }));
     expect(back.status).toBe(303);
-    expect(await db.get(`session:${temp2}`)).toBeNull();
+    expect(await sessionRecord(temp2)).toBeNull();
     expect(jar().get("nashr_session")).toBe(mine);
     expect(jar().has("nashr_return")).toBe(false);
     expect(jar().has("nashr_impersonate")).toBe(false);

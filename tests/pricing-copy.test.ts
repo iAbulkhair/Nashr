@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CREDIT_TABLE_TYPES, chatMessagesText, creditCost, dict, seatsText, type Lang } from "@/lib/i18n";
+import { CREDIT_TABLE_TYPES, brandsText, chatMessagesText, creditCost, dict, seatsText, type Lang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { HELP } from "@/lib/help";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
@@ -10,7 +10,7 @@ import { VS_PAGES } from "@/lib/pages-vs";
 import { SITE } from "@/lib/site";
 import { CHANGELOG } from "@/lib/changelog";
 import { MEDIA_MODELS } from "@/lib/media-catalog";
-import { AGENCY_MIN, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, PLANS, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, PUBLIC_TIERS, SELF_SERVE_PLANS, chatOverflowHold, formatCount } from "@/lib/pricing";
+import { AGENCY_MIN, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, PLANS, PLAN_BRANDS, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, PUBLIC_TIERS, SELF_SERVE_PLANS, chatOverflowHold, formatCount } from "@/lib/pricing";
 import { TASK_COST, TASK_COUNT } from "@/lib/tasks";
 import Pricing from "@/components/Pricing";
 import BrandsPanel from "@/components/app/BrandsPanel";
@@ -88,12 +88,16 @@ describe("the pricing cards render the plan table (rule 248)", () => {
     expect(dict.ar.pricing.sub).toBe("الأسعار بالريال السعودي غير شاملة الضريبة. ألغِ في أي وقت.");
   });
 
-  it("every card says brands are unlimited and none states a brand limit or a paid extra brand", () => {
+  it("every card states its brand count from PLAN_BRANDS, and none says unlimited or sells a paid extra brand (rule 1394)", () => {
     for (const lang of LANGS) {
       const plans = dict[lang].pricing.plans;
-      expect(plans.find((p) => p.id === "starter")!.features[0], lang).toMatch(lang === "en" ? /^Unlimited brands, / : /^علامات بلا حد، /);
+      const card = (id: string) => plans.find((p) => p.id === id)!.features;
+      expect(card("starter")[0], lang).toBe(`${brandsText(lang, PLAN_BRANDS.starter)}${lang === "ar" ? "، " : ", "}${seatsText(lang, PLAN_SEATS.starter)}`);
+      expect(card("pro"), lang).toContain(brandsText(lang, PLAN_BRANDS.pro));
+      expect(card("business"), lang).toContain(brandsText(lang, PLAN_BRANDS.business));
+      expect(card("agency"), lang).toContain(lang === "ar" ? "عدد العلامات حسب الاتفاق" : "Brands set by agreement");
       const all = plans.flatMap((p) => [p.credits, ...p.features]).join(" · ");
-      expect(all, lang).not.toMatch(lang === "en" ? /\d+ brands?\b|included\)|Extra brand|Multi-brand|brands \(coming soon\)/i : /علامة واحدة|مشمولة|علامة إضافية|علامات متعددة|بلا حد \(قريباً\)/);
+      expect(all, lang).not.toMatch(lang === "en" ? /unlimited brands|included\)|Extra brand|Multi-brand|brands \(coming soon\)/i : /بلا حد|مشمولة|علامة إضافية|علامات متعددة/);
     }
   });
 });
@@ -159,7 +163,9 @@ describe("the other pages read the same tables (rule 248)", () => {
     expect(faq("ar")).toContain(`وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت`);
     // The old landing page and its `land` copy are gone with the new homepage (PR #213); the homepage shows the
     // same pricing cards (`src/components/Pricing.tsx`) and FAQ, which the tests above and this one pin.
-    for (const lang of LANGS) expect(dict[lang].industries.items.find((i) => i.name === (lang === "ar" ? "وكالات التسويق" : "Marketing agencies"))!.body, lang).toMatch(lang === "ar" ? /على أي خطة/ : /on any plan/);
+    for (const lang of LANGS) expect(dict[lang].industries.items.find((i) => i.name === (lang === "ar" ? "وكالات التسويق" : "Marketing agencies"))!.body, lang).toContain(brandsText(lang, PLAN_BRANDS.business));
+    // Rule 1394: several brands are no longer on any plan (Starter has one).
+    for (const lang of LANGS) expect(JSON.stringify(dict[lang].industries.items), lang).not.toMatch(lang === "ar" ? /على أي خطة/ : /on any plan/);
   });
 
   it("the help answers the chat model repeats carry TASK_COST, the plan prices and the setup cost", () => {
@@ -212,7 +218,7 @@ describe("the other pages read the same tables (rule 248)", () => {
     }
   });
 
-  it("industry pages: price tiles are the table's prices, and the agencies page states unlimited brands, Business and the setup cost", () => {
+  it("industry pages: price tiles are the table's prices, and the agencies page states Business's brands, Business and the setup cost", () => {
     const prices = SELF_SERVE_PLANS.map((k) => String(P[k]));
     for (const lang of LANGS) {
       const pages = INDUSTRY_PAGES[lang];
@@ -222,7 +228,8 @@ describe("the other pages read the same tables (rule 248)", () => {
       const agencies = pages.find((p) => p.slug === "agencies")!;
       expect(agencies.proof.map((x) => x.n), lang).toEqual(expect.arrayContaining([String(P.business), formatCount(PLAN_CREDITS.business)]));
       const text = JSON.stringify(agencies);
-      expect(text, lang).toMatch(lang === "ar" ? /علامات بلا حد/ : /Unlimited brands/);
+      expect(text, lang).toContain(brandsText(lang, PLAN_BRANDS.business));
+      expect(JSON.stringify(pages), lang).not.toMatch(lang === "ar" ? /بلا حد/ : /unlimited brands/i);
       expect(text, lang).toContain(`${ONBOARD_EXTRA_BRAND_COST} ${lang === "ar" ? "كريدت" : "credits"}`);
       const all = JSON.stringify(pages);
       expect(all, lang).not.toMatch(lang === "ar" ? /\(خطة الوكالة\)|خطة الوكالة تدير/ : /\(Agency plan\)|Agency plan runs/);
@@ -240,7 +247,7 @@ describe("the other pages read the same tables (rule 248)", () => {
     }
   });
 
-  it("the Agencies page and menu: the menu item is Agencies, the allowance line is the Agency floor, brands are unlimited", () => {
+  it("the Agencies page and menu: the menu item is Agencies, the allowance line is the Agency floor, brands per plan (rule 1394)", () => {
     expect(SITE.ar.menu.enterprise).toBe("الوكالات");
     expect(SITE.en.menu.enterprise).toBe("Agencies");
     // The e2e suite finds this page by its title, and the route stays /enterprise.
@@ -249,6 +256,8 @@ describe("the other pages read the same tables (rule 248)", () => {
       const text = SITE[lang].enterprise.features.map((f) => f.d).join(" ");
       expect(text, lang).toContain(formatCount(AGENCY_MIN.credits));
       expect(text, lang).toContain(`${ONBOARD_EXTRA_BRAND_COST} ${lang === "ar" ? "كريدت" : "credits"}`);
+      for (const k of ["starter", "pro", "business"] as const) expect(text, `${lang} ${k}`).toContain(brandsText(lang, PLAN_BRANDS[k]));
+      expect(text, lang).not.toMatch(lang === "ar" ? /بلا حد/ : /unlimited/i);
     }
   });
 
@@ -286,7 +295,9 @@ describe("the other pages read the same tables (rule 248)", () => {
   });
 
   it("the Updates page announces the new prices, the setup cost and the task-price rises from the tables", () => {
-    const entry = CHANGELOG.find((e) => e.title.en === "New plans and prices, and unlimited brands")!;
+    // Retitled by rule 1394: brands are no longer unlimited, and the entry no longer says they are.
+    const entry = CHANGELOG.find((e) => e.title.en === "New plans and prices")!;
+    for (const lang of LANGS) expect(entry.desc[lang] + entry.title[lang], lang).not.toMatch(lang === "ar" ? /بلا حد/ : /unlimited/i);
     // Dated no earlier than the day phase 1 was finished (the file dates entries by their merge on main).
     expect(entry.date >= "2026-09-30", entry.date).toBe(true);
     expect(entry.desc.en).toContain(`Starter ${P.starter}, Pro ${P.pro} and Business ${P.business} SAR a month, excluding VAT`);
@@ -396,13 +407,14 @@ describe("public copy: chat messages from CHAT_ALLOWANCE and the overflow hold (
 });
 
 describe("the app states what an added brand costs before anyone adds or sets one up (rules 245-247)", () => {
-  it("the brands page has no brand limit, and says the setup cost and that the Sunday plan starts off", () => {
+  it("the brands page says the cap comes from the plan, the setup cost and that the Sunday plan starts off (rules 246-247, 1392)", () => {
     for (const lang of LANGS) {
       const html = renderToStaticMarkup(createElement(BrandsPanel, { lang, manage: true }));
       expect(html, lang).toContain(`<b dir="ltr">0</b>`);
-      expect(html, lang).not.toMatch(/ \/ \d|disabled=""|Upgrade to Agency|لخطة الوكالة/);
+      // Before GET answers, the cap is unknown (0): no "N / cap" and no full-plan message yet.
+      expect(html, lang).not.toMatch(/ \/ \d|disabled=""|Upgrade to Agency|لخطة الوكالة|unlimited|بلا حد/);
       expect(html, lang).toContain(`${ONBOARD_EXTRA_BRAND_COST} ${lang === "ar" ? "كريدت" : "credits"}`);
-      expect(html, lang).toMatch(lang === "ar" ? /بلا حد في كل الخطط[\s\S]*خطة الأحد تبدأ متوقفة للعلامات المضافة/ : /unlimited on every plan[\s\S]*The Sunday plan starts off for added brands/);
+      expect(html, lang).toMatch(lang === "ar" ? /عدد العلامات النشطة حسب خطتك[\s\S]*خطة الأحد تبدأ متوقفة للعلامات المضافة/ : /Your plan sets how many brands can be active[\s\S]*The Sunday plan starts off for added brands/);
       // A member sees no add form and so no cost note.
       expect(renderToStaticMarkup(createElement(BrandsPanel, { lang, manage: false, readOnlyNote: "x" })), lang).not.toContain(`${ONBOARD_EXTRA_BRAND_COST} ${lang === "ar" ? "كريدت" : "credits"}`);
     }

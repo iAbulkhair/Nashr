@@ -1,5 +1,7 @@
 # Agent scope (Part B) Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built and merged as #305 (in `production`). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Thakeen's agents work only on marketing, sales, growth, finance and analytics for the owner's brands. Four layers enforce this: the prompt, an input gate, code on actions and an output check. Each layer has a founder switch (off, shadow, enforce). A labelled test set and a founder console decide when the input and output gates may be enforced.

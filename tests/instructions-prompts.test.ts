@@ -11,6 +11,7 @@ import type { Instruction, InstructionSet } from "@/lib/instructions-store";
 import { NO_LAYERS, instructionBlocks, type Layers } from "@/lib/agent-instructions";
 import { brandFileBlock, fixedPrompt, playbookBlock, systemPrompt } from "@/lib/noor";
 import { promptStamp } from "@/lib/prompt-stamp";
+import { AGENT_SCOPE_PARAGRAPH } from "@/lib/agent-scope";
 
 /**
  * Rules 946-947: the instruction layers reach the batch prompt in one place (946): the platform text is appended to the
@@ -44,7 +45,8 @@ describe("systemPrompt with layers (rule 946)", () => {
     const brand = GOLDEN_BRANDS.roastery;
     const none = systemPrompt(brand, ["no emojis"], noor, "m1", "fb").map((b) => b.text);
     // Block 1 and the head of block 2 are built here from the pieces that existed before layers: no default argument is compared with itself.
-    expect(none[0]).toBe(fixedPrompt(noor));
+    // Since rule 797 (agent scope, on by default) the scope paragraph follows the agent's own text in block 1.
+    expect(none[0]).toBe(`${fixedPrompt(noor)}\n\n${AGENT_SCOPE_PARAGRAPH}`);
     expect(none[1].startsWith(`${brandFileBlock(brand)}\n\n${playbookBlock(brand)}\n\nWORKSPACE FILES (Noor's memory:`)).toBe(true);
     expect(systemPrompt(brand, [], noor).map((b) => b.text)[1]).toBe(`${brandFileBlock(brand)}\n\n${playbookBlock(brand)}`);
     for (const text of none) {
@@ -64,7 +66,7 @@ describe("systemPrompt with layers (rule 946)", () => {
     expect(platform).toContain("Always answer in the owner's language.");
     const a = systemPrompt(GOLDEN_BRANDS.roastery, ["a"], noor, "m1", undefined, l)[0].text;
     const b = systemPrompt(GOLDEN_BRANDS.clinic, ["b"], noor, "m2", "fb", l)[0].text;
-    expect(a).toBe(`${fixedPrompt(noor)}\n\n${platform}`);
+    expect(a).toBe(`${fixedPrompt(noor)}\n\n${AGENT_SCOPE_PARAGRAPH}\n\n${platform}`);
     expect(b).toBe(a);
   });
 
@@ -219,7 +221,7 @@ describe("generateBatch reads the layers (rules 946-947)", () => {
     const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
     expect(r.ok).toBe(true);
     const gen = systems.find((s) => s.length === 3)!;
-    expect(gen[0].text).toBe(fixedPrompt(AGENTS.find((a) => a.id === "noor")!));
+    expect(gen[0].text).toBe(`${fixedPrompt(AGENTS.find((a) => a.id === "noor")!)}\n\n${AGENT_SCOPE_PARAGRAPH}`);
     expect(gen[1].text).not.toContain("OWNER INSTRUCTIONS");
     for (const t of await listTasks(u.email)) expect([t.pb?.plat, t.pb?.ins]).toEqual(["none", "none"]);
   });
@@ -334,6 +336,10 @@ describe("chat system() with layers (rule 948)", () => {
   });
 
   it("rule 948: no layers, NO_LAYERS or nothing that applies leaves all three blocks as they were", async () => {
+    // The NOW line names the minute: five prompts built across a minute boundary differed only there (CI, 2026-10-12).
+    // Only Date is frozen, so the store's timers run as usual; the file's afterEach restores the real clock.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-12T13:27:30Z"));
     const before = await sys(brand, undefined);
     none(before.join("\n"), "THAKEEN STANDARDS", "OWNER INSTRUCTIONS", "<owner_instructions>", LINE);
     for (const l of [NO_LAYERS, layers([], []), layers([], WS, { paused: true }), layers([], WS, { limits: null })]) expect(await sys(brand, l)).toEqual(before);

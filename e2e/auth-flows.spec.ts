@@ -45,7 +45,7 @@ test.describe("signup", () => {
   test.use({ extraHTTPHeaders: { "x-forwarded-for": simulatedIp("browser-signup") } });
 
   /**
-   * The public start form (`UrlStart` here, `StartForm` on the new homepage: both a plain GET into signup with `?url=`)
+   * The public start form (`UrlStart`: a plain GET into signup with `?url=`; the homepage's own `StartForm` was deleted 2026-10-12)
    * end to end. The carried site used to start the crawl and the brand build straight after signup, so whoever sent the
    * link chose the new workspace's brand. It now waits on the start page until the owner presses Go (rule 97).
    */

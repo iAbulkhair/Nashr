@@ -1,14 +1,23 @@
+import type { LookupAddress, LookupOptions } from "dns";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
+import { Agent } from "undici";
+import { providerTimeout } from "./fetch-timeout";
 
 /**
  * fetch() for URLs that come from users (site to crawl, catalog or sitemap,
  * connector base URLs). Blocks SSRF: only http(s), no credentials in the URL,
  * no loopback / private / link-local / metadata / multicast targets, and every
  * redirect hop is validated again instead of followed blindly.
- * Residual risk: DNS can change between the check and the connection
- * (rebinding). Closing that needs a pinned-IP agent; this guard removes the
- * direct and redirect-based paths.
+ *
+ * DNS rebinding (rule 1342): the check in `assertPublicUrl` resolves the name, and the connection used to resolve it a
+ * second time, so a name that answered a public address to the check and a private one to the connection reached the
+ * private network. Every request now goes through `pinnedAgent`, whose connect-time lookup (`pinnedLookup`) resolves
+ * once, refuses when any address is private, and hands the socket exactly the addresses it checked: there is no second
+ * lookup left to rebind. `assertPublicUrl` still runs first, so a refused URL is refused before any request.
+ *
+ * Every call has a deadline (rule 1343): the caller's own `signal`, or `PROVIDER_TIMEOUT_MS` across the whole redirect
+ * chain and the body.
  */
 export class UnsafeUrlError extends Error {
   constructor(reason: string) { super(`unsafe_url:${reason}`); }
@@ -47,6 +56,32 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
   return u;
 }
 
+/**
+ * The connect-time lookup of `pinnedAgent` (the shape `net.connect` expects). Resolves the name once and answers only
+ * when every address is public; the socket then connects to one of exactly those addresses.
+ */
+export function pinnedLookup(
+  hostname: string,
+  options: LookupOptions,
+  callback: (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void,
+): void {
+  lookup(hostname, { all: true }).then(
+    (addrs) => {
+      if (!addrs.length || addrs.some((a) => blockedIp(a.address))) return callback(new UnsafeUrlError("private_ip"), "");
+      if (options?.all) return callback(null, addrs);
+      callback(null, addrs[0].address, addrs[0].family);
+    },
+    () => callback(new UnsafeUrlError("dns"), ""),
+  );
+}
+
+let agent: Agent | null = null;
+/** One connection pool for every user-supplied URL, made on first use. Its lookup is `pinnedLookup`. */
+export function pinnedAgent(): Agent {
+  agent ??= new Agent({ connect: { lookup: pinnedLookup } });
+  return agent;
+}
+
 /** Headers that authenticate the caller. They belong to the origin they were issued for and to no other. */
 const CREDENTIAL_HEADERS = ["authorization", "cookie", "proxy-authorization", "x-shopify-access-token", "api-key"];
 
@@ -61,14 +96,19 @@ export type SafeFetchOptions = {
   httpsOnly?: boolean;
 };
 
+/** Node's fetch takes undici's `dispatcher`; the DOM `RequestInit` type does not name it. */
+type PinnedInit = RequestInit & { dispatcher: Agent };
+
 /** fetch's signature plus options. Redirects are followed by hand (max 5), each hop re-validated. */
 export async function safeFetch(input: string, init: RequestInit = {}, opts: SafeFetchOptions = {}): Promise<Response> {
   let url = input;
   let current = init;
+  // One deadline for the whole chain and the body: the caller's, else the default (rule 1343).
+  const signal = init.signal ?? providerTimeout();
   for (let hop = 0; hop < 5; hop++) {
     const u = await assertPublicUrl(url);
     if (opts.httpsOnly && u.protocol !== "https:") throw new UnsafeUrlError("not_https");
-    const res = await fetch(url, { ...current, redirect: "manual" });
+    const res = await fetch(url, { ...current, signal, redirect: "manual", dispatcher: pinnedAgent() } as PinnedInit);
     if (res.status < 300 || res.status >= 400 || !res.headers.get("location")) return res;
     const next = new URL(res.headers.get("location")!, url);
     // A redirect must never carry credentials or a request body to another host. Connector calls pass the owner's

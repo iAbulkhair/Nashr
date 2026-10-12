@@ -1,5 +1,7 @@
 # Social platform analytics in the agents' reports (design, 2026-10-08)
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged as #300 (2026-10-09, in `production`); dormant until the `COMPOSIO_*` variables are set.
+
 Branch `claude/social-analytics-reports` (cut from `main` at d1a8f3f, after PR #281). Rules 730-749, flows §50,
 permissions route rows from 154 (agreed with the staging and Paymob sessions on 2026-10-08). Builds on
 `2026-10-08-social-results-via-composio-design.md` (the Instagram and LinkedIn readers).

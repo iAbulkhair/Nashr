@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { TITLE_MAX, isWishStatus, type WishArea } from "@/lib/changelog";
 import { cleanText, existingId, listSuggestions, listWishes, promoteWish, removeSuggestion, removeWish, restoreWish, setWishStatus, wellFormedId } from "@/lib/wishlist";
 import { adminAudit } from "@/lib/admin-audit";
@@ -28,6 +29,9 @@ export async function POST(req: Request) {
   // Who acted, as every other founder write logs it (rule 1186): the founder's email or the console key, never a fixed word.
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const log = (what: string, after: unknown) => adminAudit({ actor: who, section: "wishlist", target: "wishlist", what, after });
   const b = (await req.json().catch(() => ({}))) as { action?: unknown; id?: unknown; status?: unknown; title?: { ar?: unknown; en?: unknown }; area?: unknown; suggestionId?: unknown };
   const suggestionId = wellFormedId(b.suggestionId) ? b.suggestionId : undefined;

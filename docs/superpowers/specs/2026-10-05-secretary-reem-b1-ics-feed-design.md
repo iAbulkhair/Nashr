@@ -1,5 +1,7 @@
 # Reem phase 3 B1: a calendar subscription feed (ICS)
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** B1 merged as #255 (2026-10-05, in `production`).
+
 Status: draft for the founder's review, 2026-10-05. Part B of phase 3 (see `2026-10-02-secretary-reem-phase3a-design.md`, section "Out of scope for A"); B2 (Calendly and Cal.com) and B3 (Google and Outlook busy times) are separate specs.
 
 ## 1. Goal and what the founder decided

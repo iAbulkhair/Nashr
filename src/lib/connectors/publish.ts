@@ -30,20 +30,31 @@ export async function publishTask(email: string, task: Task, provider: string, o
   }
 }
 
+/**
+ * The post title and the body without it, for blog drafts (WordPress, Shopify): the first H1 is the title wherever it
+ * sits, and that same line is taken out of the body, so a draft whose H1 follows an intro line no longer repeats its title
+ * (rule 1482, issue #144). No H1: the item's own title and the body as it is.
+ */
+export function splitTitle(body: string, fallback: string): { title: string; rest: string } {
+  const h1 = /^#[ \t]+(.+)$\n?/m;
+  const m = h1.exec(body);
+  return m ? { title: m[1].trim(), rest: body.slice(0, m.index) + body.slice(m.index + m[0].length) } : { title: fallback, rest: body };
+}
+
 async function publishWith(email: string, task: Task, provider: string, opts: PublishOptions): Promise<PublishResult> {
   const c = await getFreshConnection(email, CONNECTION_OF[provider] ?? provider);
   if (!c) throw new Error("not_connected");
   const body = task.editedBody ?? task.body;
-  const title = body.match(/^#\s+(.+)$/m)?.[1] ?? task.title;
+  const { title, rest } = splitTitle(body, task.title);
   switch (provider) {
     case "wordpress": {
       // The post this item went to before, from the item's own record (never from a request): updated in place on "publish again".
       const before = opts.again ? [...(task.published ?? [])].reverse().find((p) => p.provider === "wordpress" && p.id) : undefined;
-      const r = await publishWordPress(c, { title, body: body.replace(/^#\s+.+\n/, ""), status: opts.live ? "publish" : "draft", imageUrl: hasArtwork(task) ? task.imageUrl : undefined, updateId: before?.id });
+      const r = await publishWordPress(c, { title, body: rest, status: opts.live ? "publish" : "draft", imageUrl: hasArtwork(task) ? task.imageUrl : undefined, updateId: before?.id });
       return { ...r, id: String(r.id), provider };
     }
     case "shopify": {
-      const r = await publishShopifyArticle(c, { title, body: body.replace(/^#\s+.+\n/, ""), published: false });
+      const r = await publishShopifyArticle(c, { title, body: rest, published: false });
       return { ...r, provider, status: "draft" };
     }
     case "telegram": {

@@ -2,12 +2,13 @@
 import { Fragment, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
 import GoldenPanel from "./GoldenPanel";
+import AgentScopePanel from "./AgentScopePanel";
 import { EndedNotice, STR, useAdminEnded, type SectionProps } from "./shared";
 
 type TM = { type: string; n: number; approved: number; rejected: number; autoApproved: number; approvalRate: number | null; edited: number; editRate: number | null; editMagnitude: number | null; published: number; judged: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
 type AM = { agent: string; n: number; decided: number; autoApproved: number; approvalRate: number | null; reviewedApproved: number; editRate: number | null; judged: number; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
-/** Founder console, Quality (/{lang}/admin/quality): agent quality over 30 days, then the golden set (GoldenPanel). */
+/** Founder console, Quality (/{lang}/admin/quality): agent quality over 30 days, then the golden set (GoldenPanel), then agent scope (AgentScopePanel, rules 1412-1413). */
 export default function Quality({ lang, keySession }: SectionProps) {
   const ended = useAdminEnded();
   const S = STR[lang];
@@ -47,6 +48,7 @@ export default function Quality({ lang, keySession }: SectionProps) {
         )}
       </section>
       <GoldenPanel lang={lang} />
+      <AgentScopePanel lang={lang} />
     </div>
   );
 }

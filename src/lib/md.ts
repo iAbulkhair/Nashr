@@ -18,7 +18,8 @@ export function render(md: string) {
   };
   for (const raw of lines) {
     const l = raw.trimEnd();
-    if (/^\|/.test(l)) { table.push(l.split("|").slice(1, -1).map((c) => c.trim())); continue; }
+    // The outer pipes are cut before the split, so a row without a closing pipe keeps its last cell (rule 1481).
+    if (/^\|/.test(l)) { table.push(l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim())); continue; }
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(l.trim())) { flush(); out.push("<hr>"); }
     else if (/^#{1,6}\s/.test(l)) { flush(); const n = Math.min(l.match(/^#+/)![0].length + 1, 6); out.push(`<h${n}>${inline(l.replace(/^#+\s*/, ""))}</h${n}>`); }
     else if (/^\s*[-*•]\s+/.test(l)) { if (table.length) flush(); list.push(inline(l.replace(/^\s*[-*•]\s+/, ""))); }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jar, json, markVerified, newUser, params, settle, signIn, signOut } from "./helpers/session";
 import { vjson } from "./helpers/version";
-import { getUser } from "@/lib/auth";
+import { getUser, saveUser } from "@/lib/auth";
 import { getBrand, getTask, listLite, type Task } from "@/lib/brand";
 import { listFiles } from "@/lib/files";
 import { saveConnection } from "@/lib/connectors/store";
@@ -110,8 +110,9 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
 
 describe("journey: an account works in a second brand", () => {
   it("keeps the two workspaces apart, charges the second brand's setup once, and a bearer token follows the active brand", async () => {
-    // Any plan, a trial included: brands are unlimited on every plan (rule 245).
+    // A trial has one brand (rule 1390); the founder cap gives this one room for a second (rule 1393).
     const u = await newUser("second");
+    await saveUser({ ...(await getUser(u.email))!, brandCap: 2 });
     await signIn(u.email);
     expect((await getUser(u.email))!.credits).toBe(50);
 

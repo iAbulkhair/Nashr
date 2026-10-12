@@ -1,5 +1,7 @@
 # Media storage on Hostinger disk, with Google Drive as the client's archive — design
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** the spec merged as #320 (2026-10-12); still design only (no code was part of #320).
+
 Status: design only, no code. Written 2026-10-10 on branch `claude/media-storage-spec-41fe7e` from main `3bf67673`, revised the same day with the founder's answers (section D). The founder approves before any plan or code. Rules **991-1015** are reserved for this work. They come after PR #319's 987-990, and they do not collide with #316 (930-959) or #317 (960-969, 974-977). Check `git ls-tree origin/main docs/system/tests/` and the titles of open PRs again before the first code PR.
 
 Founder decision (2026-10-10): our own copies live on Hostinger's disk and are served from thakeen.com. Google Drive is the **client's** optional permanent archive. Meta never publishes from Drive.

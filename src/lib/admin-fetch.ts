@@ -7,8 +7,29 @@
  */
 export const ADMIN_ENDED_EVENT = "nashr:admin-session-ended";
 
+/**
+ * Fired on `window` when a founder write answers 403 `second_factor` (rule 1377). The console's code prompt
+ * (src/components/admin/SecondFactor.tsx) sets `handled` while the event is dispatched, asks for the code, and calls
+ * `done(true)` once a step-up is open (`done(false)` when the founder cancels). Without a prompt on the page nobody sets
+ * `handled`, and the 403 goes back to the caller unchanged.
+ */
+export const ADMIN_2FA_EVENT = "nashr:admin-second-factor";
+export type SecondFactorAsk = { handled: boolean; done: (ok: boolean) => void };
+
+/** The request again once the code prompt opened a step-up; the 403 itself otherwise. */
+export async function secondFactorRetry(r: Response, again: () => Promise<Response>): Promise<Response> {
+  if (r.status !== 403 || typeof window === "undefined") return r;
+  const j = (await r.clone().json().catch(() => null)) as { error?: unknown } | null;
+  if (j?.error !== "second_factor") return r;
+  let done: (ok: boolean) => void = () => {};
+  const passed = new Promise<boolean>((res) => { done = res; });
+  const ask: SecondFactorAsk = { handled: false, done: (ok) => done(ok) };
+  window.dispatchEvent(new CustomEvent<SecondFactorAsk>(ADMIN_2FA_EVENT, { detail: ask }));
+  return ask.handled && (await passed) ? again() : r;
+}
+
 export async function adminFetch(input: string, init?: RequestInit, f: typeof fetch = fetch): Promise<Response> {
-  const r = await f(input, init);
+  const r = await secondFactorRetry(await f(input, init), () => f(input, init));
   if (r.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event(ADMIN_ENDED_EVENT));
   return r;
 }

@@ -8,8 +8,23 @@ import { appOrigin } from "./origin";
  * accepts both personal tokens and OAuth tokens.
  */
 export const SCOPES = ["noor"];
-const ACCESS_TTL = 60 * 60 * 24 * 30; // 30d
+/**
+ * Access tokens live one hour (rule 1347, C-014; 30 days until 2026-10-12): a leaked one is good for an hour, and the
+ * client gets a new one with its refresh token, which every MCP client that registers here holds. A token minted before
+ * this change keeps the 30-day TTL it was written with, so no connected client breaks at the release: each moves to
+ * one-hour tokens at its next refresh.
+ */
+export const ACCESS_TTL = 60 * 60;
 const REFRESH_TTL = 60 * 60 * 24 * 90;
+/**
+ * A registered client lives 90 days from its last use (rule 1349): registration, an authorization code and every token
+ * it is issued renew it. One registered and never used, or abandoned, goes on its own. A client registered before this
+ * change has no TTL and gets one at its next use.
+ */
+export const CLIENT_TTL = REFRESH_TTL;
+const clientKey = (id: string) => `oauthclient:${id}`;
+/** Push a client's end 90 days out. A client that is already gone stays gone (EXPIRE on a missing key does nothing). */
+const touchClient = (id: string) => db.expire(clientKey(id), CLIENT_TTL);
 
 export type Client = { client_id: string; client_secret?: string; client_name?: string; redirect_uris: string[]; created_at: number };
 
@@ -60,11 +75,11 @@ export async function registerClient(body: { redirect_uris?: string[]; client_na
   if (!uris.length) throw new Error("invalid_redirect_uri");
   const c: Client = { client_id: "nc_" + randomBytes(12).toString("hex"), client_name: (body.client_name ?? "").slice(0, 100), redirect_uris: uris, created_at: Math.floor(Date.now() / 1000) };
   if (body.token_endpoint_auth_method === "client_secret_post") c.client_secret = randomBytes(24).toString("base64url");
-  await db.set(`oauthclient:${c.client_id}`, c);
+  await db.set(clientKey(c.client_id), c, CLIENT_TTL);
   return c;
 }
 export async function getClient(id: string) {
-  return db.get<Client>(`oauthclient:${id}`);
+  return db.get<Client>(clientKey(id));
 }
 
 /**
@@ -79,7 +94,7 @@ const isRaw = (t: string) => t.startsWith("nashr_");
 type CodeRec = { client_id: string; redirect_uri: string; challenge: string; email: string; scope: string };
 export async function issueCode(p: CodeRec) {
   const code = randomBytes(24).toString("base64url");
-  await db.set(`oauthcode:${tokenHash(code)}`, p, 600);
+  await Promise.all([db.set(`oauthcode:${tokenHash(code)}`, p, 600), touchClient(p.client_id)]);
   return code;
 }
 export async function redeemCode(code: string, client_id: string, redirect_uri: string, verifier: string) {
@@ -140,13 +155,22 @@ async function mint(email: string, client_id: string, scope: string, prev: Grant
     db.set(`mcptoken:${accessHash}`, { email, grant: id } satisfies AccessRec, ACCESS_TTL),
     db.set(`oauthrefresh:${refreshHash}`, { email, client_id, scope, grant: id } satisfies RefreshRec, REFRESH_TTL),
     db.sadd(`mcpgrants:${email}`, id),
-    // Rotation: the previous access token must not stay valid for the rest of its 30 days.
+    touchClient(client_id),
+    // Rotation: the previous access token must not stay valid for the rest of its life.
     ...(prev ? grantTokenKeys(prev).map((k) => db.del(k)) : []),
   ]);
   return { access_token: access, token_type: "Bearer", expires_in: ACCESS_TTL, refresh_token: refresh, scope };
 }
 
+/**
+ * A new grant for a code just redeemed. One grant per client per account (rule 1348, C-014, issue #108): authorising the
+ * same client again replaces its earlier grant, whose tokens stop working, instead of leaving a second row under
+ * "Connected apps" that keeps working after the owner thinks they reconnected. Grants of other clients are untouched.
+ */
 export async function issueTokens(email: string, client_id: string, scope: string) {
+  const ids = await db.smembers(`mcpgrants:${email}`);
+  const rows = await Promise.all(ids.map((id) => db.get<Grant>(grantKey(email, id))));
+  await Promise.all(rows.filter((g): g is Grant => !!g && g.client_id === client_id).map((g) => revokeGrant(email, g.id)));
   return (await mint(email, client_id, scope, null))!;
 }
 export async function rotateRefresh(refresh: string, client_id: string) {

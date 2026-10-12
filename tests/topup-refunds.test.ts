@@ -403,7 +403,8 @@ describe("the owner is told unused top-up credits can be refunded; a refunded pa
     expect(terms("en")).toContain("Credits are non-refundable and non-transferable, except that unused top-up credits can be refunded on request before they expire.");
     expect(terms("ar")).toContain("إلا أن كريدت باقات الشحن غير المستخدم يمكن استرداده عند الطلب قبل انتهاء صلاحيته");
     expect(LEGAL.en.terms.updated).toBe("Last updated: 2026-10-02");
-    expect(LEGAL.en.privacy.updated, "the privacy policy did not change").toBe("Last updated: 2026-10-01");
+    // The privacy policy changed on its own since, with the processor list and the export (rules 1320-1330) and the agent scope log (rule 1415).
+    expect(LEGAL.en.privacy.updated).toBe("Last updated: 2026-10-12");
   });
 
   it("a refunded pack is not listed on the billing page or sent by the profile; the console still shows it", async () => {
@@ -513,7 +514,7 @@ describe("a refund that stopped halfway can be finished, and a pack's missing pa
 
 describe("the partner terms say a partly refunded payment's commission is reduced in proportion (rule 466)", () => {
   it("both languages, at the new version", () => {
-    expect(PARTNER_TERMS_VERSION).toBe("2026-10-02");
+    expect(PARTNER_TERMS_VERSION).toBe("2026-10-12"); // the Saudi-residence line (rule 1471) bumped it again
     const en = PARTNER_TERMS.en.sections.find((s) => s.id === "payouts")!.p.join(" ");
     const ar = PARTNER_TERMS.ar.sections.find((s) => s.id === "payouts")!.p.join(" ");
     expect(en).toContain("Commission on a refunded or voided payment is cancelled; when only part of a payment is refunded, its commission is reduced in proportion to the amount refunded.");

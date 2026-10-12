@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { safeFetch } from "../safe-fetch";
 
@@ -50,7 +51,7 @@ export async function importPrestaShop(email: string, c: Connection) {
 // ---------- Telegram (bot token + channel) ----------
 export async function verifyTelegram(d: Record<string, string>) {
   try {
-  const r = await fetch(`https://api.telegram.org/bot${d.botToken}/getChat?chat_id=${encodeURIComponent(d.chatId)}`);
+  const r = await fetch(`https://api.telegram.org/bot${d.botToken}/getChat?chat_id=${encodeURIComponent(d.chatId)}`, { signal: providerTimeout() });
   const j = (await r.json()) as { ok: boolean; result?: { title?: string; username?: string }; description?: string };
   return j.ok ? { ok: true, name: j.result?.title ?? j.result?.username } : { ok: false, error: j.description ?? "bot cannot see this chat (add the bot as channel admin)" };
   } catch (e) {
@@ -111,7 +112,7 @@ export async function draftKlaviyoTemplate(c: Connection, d: { name: string; htm
 // ---------- Brevo (API key) ----------
 export async function verifyBrevo(d: Record<string, string>) {
   try {
-    const r = await fetch("https://api.brevo.com/v3/account", { headers: { "api-key": d.apiKey } });
+    const r = await fetch("https://api.brevo.com/v3/account", { headers: { "api-key": d.apiKey }, signal: providerTimeout() });
     if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
     const j = (await r.json()) as { companyName?: string; email?: string };
     return { ok: true, name: j.companyName ?? j.email };

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { paymentsView, recordPayment, voidPayment } from "@/lib/partners";
 import { refundPaymobPayment } from "@/lib/billing";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
@@ -33,6 +34,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const email = decodeURIComponent((await ctx.params).email);
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const log = (what: string, reason?: string) => adminAudit({ actor: who, section: "billing", target: email, what, reason });
@@ -55,7 +59,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   if (b.action === "refund") {
     const res = await refundPaymobPayment(email, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "not_paymob" || res.error === "busy" ? 409 : res.error === "paymob_refund_failed" ? 502 : 404 });
-    await log(`paymob_refund payment:${res.payment.id}${res.alreadyRefunded ? " already_refunded" : ""}`, res.payment.voidReason);
+    await log(`paymob_refund payment:${res.payment.id}${res.alreadyRefunded ? " already_refunded" : ""}${res.planEnded ? " plan_ended" : ""}`, res.payment.voidReason);
     return NextResponse.json(res);
   }
   return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });

@@ -391,7 +391,7 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect(check(qsign("x", KEY, { body: `${createHash("sha256").update("x").digest("base64url")}=` }), "x")).toBe(true);
   });
 
-  it("the tick route runs only for a signed QStash call or the cron bearer, writes the tick only for QStash, and is rate limited per IP", async () => {
+  it("the tick route runs only for a signed QStash call or the cron bearer, writes the tick for both (rule 1432), and is rate limited per IP", async () => {
     vi.stubEnv("QSTASH_CURRENT_SIGNING_KEY", KEY);
     vi.stubEnv("QSTASH_NEXT_SIGNING_KEY", NEXT);
     vi.stubEnv("CRON_SECRET", "cron-p2-tick");
@@ -408,7 +408,9 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect(byBearer.status).toBe(200);
     expect(await byBearer.json()).toMatchObject({ ok: true, via: "bearer" });
     expect((await getItem(u.email, it.id))?.remindAt).toBeNull();
-    expect(await db.get(SEC_KEYS.tick)).toBeNull();
+    // Rule 1432: on thakeen.com the 15-minute tick is an hPanel cron with this bearer, so it marks timed reminders too.
+    expect(await timedReminders()).toBe(true);
+    await db.del(SEC_KEYS.tick);
     const byQstash = await tick({ ...ip, "upstash-signature": qsign("", NEXT) });
     expect(await byQstash.json()).toMatchObject({ ok: true, via: "qstash" });
     expect(await timedReminders()).toBe(true);
@@ -1105,8 +1107,8 @@ describe("handoff notes: a blocked agent opens one item, similar notes join it, 
     expect(now.match(/<\/handoff_notes>/g)).toHaveLength(1);
     expect(now).toContain("\\u003c/handoff_notes>");
     expect(fixed).not.toContain("handoff_notes>");
-    // chat() hands the notes of this agent to its prompt (and, since rule 478, the brand's weekend, and since rule 948 the instruction layers, after them).
-    expect(readFileSync("src/lib/chat.ts", "utf8")).toMatch(/handoffNotesFor\(email, agentId\)[\s\S]*system\(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock\(notes\), weekend, layers\)/);
+    // chat() hands the notes of this agent to its prompt (and, since rule 478, the brand's weekend, and since rule 948 the instruction layers, after them; the agent-scope flags, rule 797, may follow).
+    expect(readFileSync("src/lib/chat.ts", "utf8")).toMatch(/handoffNotesFor\(email, agentId\)[\s\S]*system\(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock\(notes\), weekend, layers(?:, \{[^}]*\})?\)/);
     // The list keeps the last 30.
     await Promise.all(Array.from({ length: 25 }, (_, i) => runTool(u, "handoff_note", { to: "noor", kind: "note", body: `more ${i}` }, [], [], undefined, { agent: "sami", lang: "en" })));
     expect(await db.lrange(SEC_KEYS.notes(u.email), 0, -1)).toHaveLength(30);

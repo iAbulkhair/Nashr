@@ -3,7 +3,7 @@
  * Client-safe: it imports only the client-safe pricing module. The server checks again; these only stop a request the
  * founder did not mean to send, and say why inside the form that asked (`AdminForm`), which stays open.
  */
-import { MAX_SEAT_OVERRIDE, isChatOverride, isTopupPack, parseDeal, type DealInput } from "./pricing";
+import { MAX_BRAND_CAP, MAX_SEAT_OVERRIDE, isBrandCap, isChatOverride, isTopupPack, parseDeal, type DealInput } from "./pricing";
 
 /** A form's answer: the request body it makes, or the error code shown in the form. */
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -55,6 +55,13 @@ export function parseSeats(raw: string): Parsed<{ seats: number | null }> {
   const n = num(raw);
   if (!Number.isInteger(n) || n < 0 || n > MAX_SEAT_OVERRIDE) return { ok: false, error: "bad_seats" };
   return { ok: true, value: { seats: n === 0 ? null : n } };
+}
+
+/** The brand cap override (rule 1393): 1 to MAX_BRAND_CAP, or 0 to go back to the plan's number (sent as null). */
+export function parseBrandCap(raw: string): Parsed<{ brandCap: number | null }> {
+  const n = num(raw);
+  if (n === 0) return { ok: true, value: { brandCap: null } };
+  return isBrandCap(n) ? { ok: true, value: { brandCap: n } } : { ok: false, error: "bad_brand_cap" };
 }
 
 /** The chat override (rule 316): a number `isChatOverride` takes (0 stops chat), or empty / "plan" / «الخطة» to clear (null). */
@@ -128,6 +135,7 @@ export const ADMIN_INPUT_ERRORS = {
     reason_short: `Write a reason of at least ${REASON_MIN} characters.`,
     reason_long: `Keep the reason to ${REASON_MAX} characters.`,
     bad_seats: `Seats: a whole number from 1 to ${MAX_SEAT_OVERRIDE}, or 0 for the plan's number.`,
+    bad_brand_cap: `Brands: a whole number from 1 to ${MAX_BRAND_CAP}, or 0 for the plan's number.`,
     bad_chat: "Chat messages: a whole number, 0 to stop chat, or empty for the plan's number.",
     bad_deal: "The deal needs whole numbers for credits and price.",
     below_floor: "That price is under the Business rate per credit.",
@@ -138,6 +146,9 @@ export const ADMIN_INPUT_ERRORS = {
     bad_days: `Days: a whole number from 1 to ${TRIAL_EXTEND_MAX_DAYS}.`,
     bad_minutes: "Pick how long to view the account.",
     bad_grant: "Pick a day after today, at most a year ahead.",
+    bad_paid_through: "Paid through: a day from today to 400 days ahead.",
+    paid_through_needs_plan: "A trial has no paid-through day: set a paid plan first.",
+    paid_through_paymob: "This account pays online: its subscription sets the paid-through day.",
     mismatch: "Type the email exactly to confirm.",
     failed: "That did not go through. Try again.",
   },
@@ -145,6 +156,7 @@ export const ADMIN_INPUT_ERRORS = {
     reason_short: `اكتب سببًا لا يقل عن ${REASON_MIN} أحرف.`,
     reason_long: `اجعل السبب في حدود ${REASON_MAX} حرف.`,
     bad_seats: `المقاعد: عدد صحيح من 1 إلى ${MAX_SEAT_OVERRIDE}، أو 0 للعودة إلى عدد الخطة.`,
+    bad_brand_cap: `العلامات: عدد صحيح من 1 إلى ${MAX_BRAND_CAP}، أو 0 للعودة إلى عدد الخطة.`,
     bad_chat: "رسائل المحادثة: عدد صحيح، أو 0 لإيقاف المحادثة، أو فارغ للعودة إلى رقم الخطة.",
     bad_deal: "تحتاج الصفقة أعدادًا صحيحة للرصيد والسعر.",
     below_floor: "هذا السعر أقل من سعر الرصيد في خطة الأعمال.",
@@ -155,6 +167,9 @@ export const ADMIN_INPUT_ERRORS = {
     bad_days: `الأيام: عدد صحيح من 1 إلى ${TRIAL_EXTEND_MAX_DAYS}.`,
     bad_minutes: "اختر مدة عرض الحساب.",
     bad_grant: "اختر يومًا بعد اليوم، وفي حدود سنة.",
+    bad_paid_through: "مدفوع حتى: يوم من اليوم إلى 400 يوم قادمة.",
+    paid_through_needs_plan: "التجربة ليس لها يوم دفع: اختر خطة مدفوعة أولًا.",
+    paid_through_paymob: "هذا الحساب يدفع إلكترونيًا: اشتراكه يحدد يوم الدفع.",
     mismatch: "اكتب البريد كما هو للتأكيد.",
     failed: "لم يتم ذلك. حاول مرة أخرى.",
   },

@@ -37,7 +37,7 @@ import type { Task } from "./brand";
 import type { ChatItem } from "./chat";
 import { isBy, type By } from "./actor";
 import { recordActivity } from "./activity";
-import { BATCH_RUN_MIN_MS, generateBatch, type BatchRefusal } from "./generate-batch";
+import { BATCH_RUN_MIN_MS, generateBatch, type BatchRefusal, type BatchResult } from "./generate-batch";
 import { LEAD_BRIEF_MAX } from "./json";
 import { getGov, type Governance } from "./governance";
 import { estimateBatch } from "./task-costs";
@@ -551,7 +551,7 @@ export async function runItemLocked(user: User, scope: string, h: Handoff, n: nu
     return { ok: false, error: "not_found" };
   }
   const parent = { handoff: id, item: n, ...(h.conv ? { conv: h.conv } : {}), ...(o.auto ? { auto: true as const } : {}) };
-  let r: Awaited<ReturnType<typeof generateBatch>>;
+  let r: BatchResult;
   try {
     r = await generateBatch(user, scope, { type: it.type, leadBrief: it.brief, source: "handoff", via: "handoff", parent, by: o.by, ...(o.auto ? { forcePending: true } : {}), ...(o.gov ? { gov: o.gov } : {}), ...(o.settle ? { settle: o.settle } : {}), ...(o.deadline !== undefined ? { deadline: o.deadline } : {}) });
   } catch (e) {

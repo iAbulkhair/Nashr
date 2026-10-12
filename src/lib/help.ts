@@ -12,7 +12,12 @@ import { TASK_COST as C, TASK_COUNT as N } from "./tasks";
  */
 const HOLD = chatOverflowHold();
 
-export type HelpTopic = { id: string; title: Record<Lang, string>; items: { q: Record<Lang, string>; a: Record<Lang, string> }[] };
+/**
+ * `chat: false` keeps an item out of the chat prompt (src/lib/chat.ts), which carries every other English answer: the
+ * processor list is a legal disclosure read on the help page and in the privacy policy, and the prompt has a pinned
+ * size (rule 1328, tests/pricing-floor.test.ts).
+ */
+export type HelpTopic = { id: string; title: Record<Lang, string>; items: { q: Record<Lang, string>; a: Record<Lang, string>; chat?: false }[] };
 
 /**
  * Where an answer names the app's own address (the MCP URL). Filled by `helpTopics` with the canonical origin, which the
@@ -24,7 +29,7 @@ export const ORIGIN_SLOT = "{origin}";
 /** HELP with every `ORIGIN_SLOT` replaced by `origin`. Read through this, never HELP directly, wherever an answer is shown. */
 export function helpTopics(origin: string): HelpTopic[] {
   const fill = (s: string) => s.replaceAll(ORIGIN_SLOT, origin);
-  return HELP.map((t) => ({ ...t, items: t.items.map((i) => ({ q: i.q, a: { ar: fill(i.a.ar), en: fill(i.a.en) } })) }));
+  return HELP.map((t) => ({ ...t, items: t.items.map((i) => ({ q: i.q, a: { ar: fill(i.a.ar), en: fill(i.a.en) }, ...(i.chat === false ? { chat: false as const } : {}) })) }));
 }
 
 export const HELP: HelpTopic[] = [
@@ -87,6 +92,8 @@ export const HELP: HelpTopic[] = [
   ] },
   { id: "privacy", title: { ar: "الخصوصية والحساب", en: "Privacy and account" }, items: [
     { q: { ar: "هل تُدرَّب النماذج على بياناتي؟", en: "Are models trained on my data?" }, a: { ar: "لا يدرّب ذكين نماذج على بياناتك، وتفضيلاتك خاصة بحسابك فقط. لتوليد الصور والفيديو يُرسل وصف الصورة وصورة المنشور إلى مزوّدي الوسائط، وتسمح شروط Higgsfield لها باستخدام المدخلات والمخرجات لتحسين نماذجها، وشروط kie.ai باستخدام المحتوى لتحسين خدمتها. التفاصيل في سياسة الخصوصية.", en: "Thakeen does not train models on your data, and your preferences are private to your account. To make images and video, the image description and the post's image go to our media providers; Higgsfield's terms allow it to use inputs and outputs to improve its models, and kie.ai's allow it to use content to improve its service. Details are in the privacy policy." } },
-    { q: { ar: "كيف أحذف حسابي؟", en: "How do I delete my account?" }, a: { ar: "من صفحة «حسابك» اضغط «احذف حسابي» واكتب كلمة المرور للتأكيد؛ يُحذف حسابك وعلاماتك وملفاتك ومحتواك ورموز الربط من ذكين فوراً، ولا يمكن التراجع. الصور والفيديو المولَّدة محفوظة في تخزين الوسائط لدينا (Vercel Blob) بعناوين عامة لا يمكن تخمينها، وبعض الصور لدى مزوّد الصور fal.ai، وسجلات التوليد تُحذف تلقائياً خلال 14 يوماً؛ ولا يُحذف أي منها بهذه الخطوة، ويمكن طلب حذفها عبر نموذج الدعم في مركز المساعدة.", en: "On “Your profile”, click “Delete account” and enter your password to confirm; your account, brands, files, content and connection tokens are deleted from Thakeen immediately, and this cannot be undone. Generated images and videos are stored on our media storage (Vercel Blob) at public addresses that cannot be guessed, and some images at our image provider fal.ai; render records expire on their own within 14 days. None of these is removed by this step; support can remove them on request through the support form in the Help Center." } },
+    { q: { ar: "كيف أحذف حسابي؟", en: "How do I delete my account?" }, a: { ar: "من «الإعدادات» ثم «منطقة الخطر» اضغط «احذف حسابي» واكتب كلمة المرور للتأكيد؛ يُحذف حسابك وعلاماتك وملفاتك ومحتواك ورموز الربط من ذكين فوراً، ولا يمكن التراجع. الصور والفيديو المولَّدة محفوظة في تخزين الوسائط لدينا (Vercel Blob) بعناوين عامة لا يمكن تخمينها، وبعض الصور لدى مزوّد الصور fal.ai، وسجلات التوليد تُحذف تلقائياً خلال 14 يوماً؛ ولا يُحذف أي منها بهذه الخطوة، ويمكن طلب حذفها عبر نموذج الدعم في مركز المساعدة.", en: "In Settings, Danger zone: “Download my data” gives you a copy, and “Delete my account” with your password deletes your account, brands, files, content and connection tokens from Thakeen immediately, and this cannot be undone. Generated images and videos are stored on our media storage (Vercel Blob) at public addresses that cannot be guessed, and some images at our image provider fal.ai; render records expire on their own within 14 days. None of these is removed by this step; support can remove them on request through the Help Center form." } },
+    { chat: false, q: { ar: "كيف أحصل على نسخة من بياناتي؟", en: "How do I get a copy of my data?" }, a: { ar: "من «الإعدادات» ثم «منطقة الخطر» اضغط «نزّل بياناتي» (لصاحب الحساب): ملف JSON واحد فيه حسابك والموافقة المسجّلة وباقتك وكريدتك وعلاماتك ومهامك وملفاتك ومحادثاتك والحسابات المرتبطة، دون كلمات المرور ورموز الوصول. 3 مرات في الساعة.", en: "Settings, Danger zone, “Download my data” (owner only): one JSON file of your account, consent record, plan, credits, brands, tasks, files, chats and connected accounts, without passwords or tokens. 3 times an hour." } },
+    { chat: false, q: { ar: "من يعالج بياناتي؟", en: "Who processes my data?" }, a: { ar: "الاستضافة: Hostinger. البيانات: Upstash. الصور والفيديو: fal.ai وkie.ai وHiggsfield، وتُحفظ في Vercel Blob. البريد: Resend. بعض الحسابات المرتبطة: Composio. حين تُشغَّل: بوابة Straitly وCloudflare Turnstile وPaymob. القائمة كاملة في سياسة الخصوصية.", en: "Hosting: Hostinger. Data: Upstash. Images and video: fal.ai, kie.ai, Higgsfield, stored on Vercel Blob. Email: Resend. Some connected accounts: Composio. When switched on: the Straitly gateway, Cloudflare Turnstile, Paymob. The privacy policy has the full list." } },
   ] },
 ];

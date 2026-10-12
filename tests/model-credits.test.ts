@@ -550,7 +550,9 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     expect(src).toContain("refund(user.email,cost,receipt)");
     // What is reported is what was charged: the price, or a reused hold's credits (chargeOnce reuses only an equal one).
     expect(src).toContain('constcharged="hold"inpaid?paid.hold.credits:cost;');
-    expect(src).toContain("count:tasks.length,credits:charged}");
-    expect(src).toContain("receipt,cost:charged,agent,gov,...(modelRejected?{modelRejected}:{})}");
+    // Less the share of the items the output check held back, refunded after the commit (rule 801): `back` is 0 otherwise.
+    expect(src).toContain("constnet=charged-back;");
+    expect(src).toContain("count:tasks.length,credits:net}");
+    expect(src).toContain("receipt,cost:net,agent,gov,...(modelRejected?{modelRejected}:{})");
   });
 });

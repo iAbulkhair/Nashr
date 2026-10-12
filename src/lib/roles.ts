@@ -14,6 +14,8 @@ export const MIN_ROLE = {
   "billing.pay": "owner",
   /** DELETE /api/account. */
   "account.delete": "owner",
+  /** GET /api/account/export: the owner's own copy of the account's data (rule 1320). Refused while impersonating. */
+  "account.export": "owner",
   /** PUT /api/governance (agent caps, auto-approve, weekly cap, reviewer, learning). */
   "governance.write": "owner",
   /** MCP personal token: mint, rotate, revoke and status. */
@@ -78,6 +80,8 @@ export const MIN_ROLE = {
   "team.remove.member": "admin",
   /** See pending invites. */
   "team.invites.view": "admin",
+  /** See who on the team approved and rejected what, the last 30 days (rule 1480). */
+  "team.approvals.view": "admin",
   /** Cancel a pending invite (an admin only one for role "member"; see team.ts `cancelInvite`). */
   "team.invite.cancel": "admin",
   /**
@@ -129,6 +133,8 @@ export const ACTIONS = Object.keys(MIN_ROLE) as Action[];
 /** Refused while a founder impersonates an account, whatever the role: nothing that outlives the two-hour session. */
 export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "account.delete",
+  // A founder viewing an account never downloads its whole data (rule 1320).
+  "account.export",
   "password.change",
   "sessions.revoke",
   "team.invite.member",

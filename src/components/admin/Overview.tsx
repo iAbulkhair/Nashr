@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { adminHref } from "@/lib/admin-gate";
+import { Time } from "@/components/ui/Time";
 import { EndedNotice, OV, PlanTiles, STR, useAdminEnded, useOverview, usePlanList, type Overview as OverviewData, type SectionProps } from "./shared";
 
 function Events({ data }: { data: OverviewData["events"] }) {
@@ -60,6 +61,16 @@ export default function Overview({ lang, keySession }: SectionProps) {
             <div className="overflow-x-auto"><table className="mt-2 w-full text-xs"><thead className="text-start text-foreground-muted"><tr><th className="p-1 text-start">{S.email}</th><th>{S.plan}</th><th>{S.credits}</th><th>{O.activated}</th><th>{O.lastActive}</th><th>chat/generate/approve</th></tr></thead>
               <tbody>{ov.recent.map((u) => <tr key={u.email} className="border-t border-foreground/5"><td className="p-1"><Link href={`${adminHref(lang, "users")}?q=${encodeURIComponent(u.email)}`} className="text-foreground underline" dir="ltr">{u.email}</Link></td><td>{u.plan}</td><td className="tnum">{u.credits}</td><td>{u.activated ? "✓" : "—"}</td><td className="tnum" dir="ltr">{u.lastActive ? u.lastActive.slice(0, 16).replace("T", " ") : "—"}</td><td className="tnum">{u.events.chat ?? 0}/{u.events.generate ?? 0}/{u.events.approve ?? 0}</td></tr>)}</tbody></table></div>
           </section>
+          {ov.stalled && (
+            <section className="card card-sm" data-stalled>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{O.stalled} · <span className="tnum">{ov.stalled.total}</span></h2>
+              {ov.stalled.rows.length === 0 ? <p className="mt-2 text-xs text-foreground-muted">{O.stalledNone}</p> : (
+                <div className="overflow-x-auto"><table className="mt-2 w-full text-xs"><thead className="text-start text-foreground-muted"><tr><th className="p-1 text-start">{S.email}</th><th>{S.plan}</th><th>{O.signedUp}</th><th>{O.stalledReason}</th></tr></thead>
+                  <tbody>{ov.stalled.rows.map((u) => <tr key={u.email} className="border-t border-foreground/5"><td className="p-1"><Link href={`${adminHref(lang, "users")}?q=${encodeURIComponent(u.email)}`} className="text-foreground underline" dir="ltr">{u.email}</Link>{u.phone ? <span className="ms-2 text-foreground-muted" dir="ltr">{u.phone}</span> : null}</td><td>{u.plan}</td><td className="tnum whitespace-nowrap"><Time value={u.createdAt} lang={lang} style="datetime" /></td><td>{O[u.reason]}</td></tr>)}</tbody></table></div>
+              )}
+              {ov.stalled.total > ov.stalled.rows.length && <p className="mt-2 text-xs text-foreground-muted">{O.stalledMore.replace("{n}", String(ov.stalled.total))}</p>}
+            </section>
+          )}
         </div>
       )}
     </div>

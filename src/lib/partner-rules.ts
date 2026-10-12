@@ -12,7 +12,8 @@
  *   price before VAT; VAT is then computed on the discounted price.
  * - The early-partner offer (the trial's last day) ends 7 days after that day.
  * - No self-referral: the partner's own account or a member of either team is never counted.
- * - Partners from any country. Thakeen bears the taxes on a commission: VAT a VAT-registered partner adds on top, and
+ * - Partners living in Saudi Arabia only for now (`PARTNER_COUNTRIES`, rules 1470-1471, founder decision 2026-10-12): other
+ *   countries wait for the accountant's answer on withholding tax. Thakeen bears the taxes on a commission: VAT a VAT-registered partner adds on top, and
  *   withholding tax where it applies; the partner receives the full 15% and stays responsible for their own income tax.
  *   No tax rate is coded here: the founder enters the amounts paid with each payout.
  *
@@ -32,7 +33,7 @@ export const NEW_TERMS_FROM = "2026-10-01";
  * The version of the public programme terms (/{lang}/affiliates/terms, "last updated"). An application stores the
  * version its applicant agreed to (rule 414); change it whenever the terms page changes.
  */
-export const PARTNER_TERMS_VERSION = "2026-10-02";
+export const PARTNER_TERMS_VERSION = "2026-10-12";
 /** The early-partner offer can be used until the end of this many Riyadh days after the trial's last day (rule 410). */
 export const EARLY_OFFER_DAYS = 7;
 /** The first-party cookie a partner link sets (httpOnly, 30 days), `CODE.<click ms>`. Never the credits referral's `?ref=`. */
@@ -350,6 +351,16 @@ export function validCountry(raw: unknown): string | null {
   const c = typeof raw === "string" ? raw.trim().toUpperCase() : "";
   return COUNTRIES.has(c) ? c : null;
 }
+/**
+ * Where a partner may live (rules 1470, 1471): Saudi Arabia only until the founder opens more countries. The public
+ * application and the payout details both refuse any other residence (`country_closed`). The IBAN check stays for any
+ * country's account (rule 411).
+ */
+export const PARTNER_COUNTRIES: readonly string[] = ["SA"];
+export const partnerCountryOpen = (raw: unknown): boolean => {
+  const c = validCountry(raw);
+  return !!c && PARTNER_COUNTRIES.includes(c);
+};
 /**
  * The partner's optional VAT or tax registration number: undefined when nothing was typed, else 3 to 30 letters,
  * digits, spaces, dots, dashes or slashes, stored uppercase; "bad" when what was typed is not one.
