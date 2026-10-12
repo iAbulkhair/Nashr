@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
 import { revokeFeeds } from "@/lib/feed-token";
@@ -80,6 +81,9 @@ type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const { email: raw } = await ctx.params;
   const email = normalizeEmail(decodeURIComponent(raw)); // the same normalized key for lookup, locks and deletion
   const u = await getUser(email);

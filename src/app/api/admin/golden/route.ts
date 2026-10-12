@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { isAgentId } from "@/lib/agents";
 import { playbook } from "@/lib/skills";
 import { GOLDEN_CASES, GOLDEN_VERSION, listGoldenRuns, runGolden } from "@/lib/golden";
@@ -23,6 +24,9 @@ export async function POST(req: Request) {
   // Who acted, as every other founder write logs it (rule 1186): the founder's email or the console key, never a fixed word.
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const b = (await req.json().catch(() => ({}))) as { agent?: string; resume?: boolean };
   const run = await runGolden("manual", { agent: isAgentId(b.agent) ? b.agent : undefined, resume: !!b.resume });
   const state = modelState();

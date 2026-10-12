@@ -105,6 +105,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
 
   "POST /api/admin/login": "admin-console",
   "DELETE /api/admin/login": "admin-console",
+  // The founder console second factor (rules 1370-1384): enrolment and the code prompt, founder or console key only.
+  "POST /api/admin/2fa": "admin-console",
   "POST /api/admin/golden": "admin-console",
   "POST /api/admin/impersonate": "admin-console",
   "POST /api/admin/plan": "admin-console",
@@ -262,6 +264,7 @@ const READS: Record<string, Gate> = {
 
   "GET /api/admin/evals": "admin-console",
   "GET /api/admin/export": "admin-console",
+  "GET /api/admin/2fa": "admin-console",
   "GET /api/admin/golden": "admin-console",
   "GET /api/admin/media": "admin-console",
   "GET /api/admin/wishlist": "admin-console",
