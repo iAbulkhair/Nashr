@@ -15,7 +15,7 @@ export const maxDuration = 300;
  * Reem's evening wrap for every active workspace (src/lib/secretary-evening.ts), eight at a time, resumable through
  * runCronBatch like the daily job, each wrap at most once per scope and local day.
  *
- * Two callers, both with the CRON_SECRET bearer (compared with `sameSecret`): the Vercel cron at 15:00 UTC (18:00
+ * Two callers, both with the CRON_SECRET bearer (compared with `sameSecret`): the daily cron at 15:00 UTC (18:00
  * Riyadh, 19:00 Dubai), which serves every workspace and does nothing in Ramadan (the wrap then waits for 21:30 local,
  * after Taraweeh); and the QStash tick (`/api/cron/secretary`), which passes `?zones=` when those zones' wrap time has
  * just passed, in and out of Ramadan. Without QStash there is no wrap in Ramadan. `?zones=` must name only allow-listed

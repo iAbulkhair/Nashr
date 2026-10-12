@@ -9,7 +9,7 @@ import { syncStoreIfDue } from "@/lib/store-sales";
 export const maxDuration = 300;
 
 /**
- * The store sales snapshot of every active workspace that has a store connected, twice a day (`vercel.json`: 02:00 and
+ * The store sales snapshot of every active workspace that has a store connected, twice a day (`crons.json`: 02:00 and
  * 14:00 UTC; one entry each, so a plan that allows a cron once a day still runs both). Each workspace's sync runs at most
  * once per slot (`runCronBatch` markers per workspace and half-day), six at a time, resumable like the daily job.
  *

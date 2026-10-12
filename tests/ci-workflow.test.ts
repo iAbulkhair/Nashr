@@ -7,9 +7,8 @@ import { dirname, join } from "node:path";
 /**
  * Rule 772: CI stays inside the plan's Actions minutes without losing a check. Every pull request runs the job and
  * reports "Nashr CI"; draft PRs skip the end-to-end suite, which runs once a PR is ready for review; a change to docs
- * only runs the unit tests alone. A push to main runs the unit tests alone, because Vercel's Deployment Check waits
- * for "Nashr CI" on main's commits and the commit was already checked in full as its pull request. Next's build cache
- * and Playwright's browsers are cached. The Scope step's shell is executed here for real, in throwaway git
+ * only runs the unit tests alone. Rule 988 (2026-10-10): pull requests only, no push run on main; that run existed only
+ * for the old Vercel project's Deployment Check. Next's build cache and Playwright's browsers are cached. The Scope step's shell is executed here for real, in throwaway git
  * repositories, so the test pins what CI decides.
  */
 const yml = readFileSync(".github/workflows/ci.yml", "utf8");
@@ -28,25 +27,20 @@ afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@test.example", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@test.example" } }).trim();
 const write = (root: string, files: string[]) => { for (const f of files) { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), `${f} ${Math.random()}\n`); } };
 
-/** A repository with a base commit, then `files` changed either as a PR (GitHub's merge commit) or as a push. */
-function scope(files: string[], how: { event: "pull_request"; draft: boolean } | { event: "push" }) {
+/** A repository with a base commit, then `files` changed as a PR, checked out as GitHub's merge commit. */
+function scope(files: string[], how: { draft: boolean }) {
   const root = mkdtempSync(join(tmpdir(), "ci-scope-"));
   roots.push(root);
   git(root, "init", "-q", "-b", "main");
   write(root, ["src/app.ts", "docs/a.md"]);
   git(root, "add", "-A"); git(root, "commit", "-qm", "base");
-  if (how.event === "pull_request") {
-    git(root, "checkout", "-qb", "feature");
-    write(root, files);
-    git(root, "add", "-A"); git(root, "commit", "-qm", "change");
-    git(root, "checkout", "-q", "main");
-    write(root, ["unrelated-on-main.txt"]);
-    git(root, "add", "-A"); git(root, "commit", "-qm", "main moved");
-    git(root, "merge", "-q", "--no-ff", "-m", "merge ref", "feature");
-  } else {
-    write(root, files);
-    git(root, "add", "-A"); git(root, "commit", "-qm", "push");
-  }
+  git(root, "checkout", "-qb", "feature");
+  write(root, files);
+  git(root, "add", "-A"); git(root, "commit", "-qm", "change");
+  git(root, "checkout", "-q", "main");
+  write(root, ["unrelated-on-main.txt"]);
+  git(root, "add", "-A"); git(root, "commit", "-qm", "main moved");
+  git(root, "merge", "-q", "--no-ff", "-m", "merge ref", "feature");
   const out = join(root, "github_output");
   writeFileSync(out, "");
   execFileSync("bash", ["-e", "-c", scopeScript], {
@@ -55,8 +49,7 @@ function scope(files: string[], how: { event: "pull_request"; draft: boolean } |
     env: {
       ...process.env,
       GITHUB_OUTPUT: out,
-      EVENT: how.event,
-      DRAFT: how.event === "pull_request" ? String(how.draft) : "",
+      DRAFT: String(how.draft),
     },
   });
   return Object.fromEntries(readFileSync(out, "utf8").trim().split("\n").map((l) => l.split("=") as [string, string]));
@@ -77,10 +70,11 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
     expect(on).toMatch(/types: \[opened, synchronize, reopened, ready_for_review\]/);
   });
 
-  it("main keeps a push run only for Vercel's Deployment Check, and the header says when it can go", () => {
+  it("rule 988: pull requests only, no push run on main and nothing left that only a push would run", () => {
     const on = yml.slice(yml.indexOf("\non:"), yml.indexOf("\nconcurrency:"));
-    expect(on).toMatch(/push:\n    branches: \[main\]/);
-    expect(yml.slice(0, yml.indexOf("\non:"))).toMatch(/Deployment Check is removed in Vercel, the `push` trigger can go/);
+    expect(on).toBe("\non:\n  pull_request:\n    # ready_for_review: marking a draft ready starts the full suite (see the Scope step).\n    types: [opened, synchronize, reopened, ready_for_review]\n");
+    expect(yml).not.toMatch(/event_name|\$EVENT|EVENT:/);
+    expect(yml).not.toMatch(/- name: Seed Playwright cache/);
   });
 
   it("unit tests run on every run; build, type-check and lint follow Scope's build; the e2e suite follows Scope's e2e", () => {
@@ -91,19 +85,14 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
   });
 
   it("a ready PR that touches code runs everything; a draft skips only the e2e suite", () => {
-    expect(scope(["src/lib/x.ts"], { event: "pull_request", draft: false })).toEqual({ build: "true", e2e: "true" });
-    expect(scope(["src/lib/x.ts", "docs/b.md"], { event: "pull_request", draft: true })).toEqual({ build: "true", e2e: "false" });
+    expect(scope(["src/lib/x.ts"], { draft: false })).toEqual({ build: "true", e2e: "true" });
+    expect(scope(["src/lib/x.ts", "docs/b.md"], { draft: true })).toEqual({ build: "true", e2e: "false" });
   });
 
   it("docs/, .archify/ and top-level .md files alone are docs-only; product content in .md is not", () => {
-    expect(scope(["docs/system/tests.md", "docs/system/tests/0788-x.md", "README.md", ".archify/x/y.png"], { event: "pull_request", draft: false })).toEqual({ build: "false", e2e: "false" });
-    expect(scope(["content/skills/ads.md"], { event: "pull_request", draft: false })).toEqual({ build: "true", e2e: "true" });
-    expect(scope([".github/workflows/ci.yml"], { event: "pull_request", draft: false })).toEqual({ build: "true", e2e: "true" });
-  });
-
-  it("a push to main runs the unit tests alone, whatever it changed", () => {
-    expect(scope(["src/lib/x.ts"], { event: "push" })).toEqual({ build: "false", e2e: "false" });
-    expect(scope(["docs/c.md"], { event: "push" })).toEqual({ build: "false", e2e: "false" });
+    expect(scope(["docs/system/tests.md", "docs/system/tests/0788-x.md", "README.md", ".archify/x/y.png"], { draft: false })).toEqual({ build: "false", e2e: "false" });
+    expect(scope(["content/skills/ads.md"], { draft: false })).toEqual({ build: "true", e2e: "true" });
+    expect(scope([".github/workflows/ci.yml"], { draft: false })).toEqual({ build: "true", e2e: "true" });
   });
 
   it("Next's build cache is restored before the build, keyed on the lockfile and the sources", () => {
@@ -114,9 +103,9 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
     expect(c).toMatch(/restore-keys: \|\n\s+nextjs-\$\{\{ runner\.os \}\}-\$\{\{ hashFiles\('package-lock\.json'\) \}\}-\n/);
   });
 
-  it("Playwright's browsers are cached by version: a hit installs only the system packages, a miss downloads, main seeds", () => {
+  it("Playwright's browsers are cached by version: a hit installs only the system packages, a miss downloads", () => {
     expect(step("Playwright version")).toMatch(/require\('@playwright\/test\/package\.json'\)\.version/);
-    expect(step("Playwright version")).toMatch(/if: steps\.scope\.outputs\.e2e == 'true' \|\| github\.event_name == 'push'/);
+    expect(step("Playwright version")).toMatch(/if: steps\.scope\.outputs\.e2e == 'true'\n/);
     const c = cacheStep("Cache Playwright browsers");
     expect(c).toMatch(/path: ~\/\.cache\/ms-playwright\n/);
     expect(c).toMatch(/key: playwright-\$\{\{ runner\.os \}\}-\$\{\{ steps\.playwright\.outputs\.version \}\}-/);
@@ -126,9 +115,6 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
     const hit = step("Install Playwright system dependencies");
     expect(hit).toMatch(/if: steps\.scope\.outputs\.e2e == 'true' && steps\.playwright-cache\.outputs\.cache-hit == 'true'/);
     expect(hit).toMatch(/run: npx playwright install-deps chromium webkit/);
-    const seed = step("Seed Playwright cache");
-    expect(seed).toMatch(/if: github\.event_name == 'push' && steps\.playwright-cache\.outputs\.cache-hit != 'true'/);
-    expect(seed).toMatch(/run: npx playwright install chromium webkit\n?$/);
     // Every browser step comes before the suite that needs it.
     for (const s of ["Cache Playwright browsers", "Install Playwright browsers", "Install Playwright system dependencies"]) {
       expect(yml.indexOf(`- name: ${s}`), s).toBeLessThan(yml.indexOf("- name: End-to-end tests"));

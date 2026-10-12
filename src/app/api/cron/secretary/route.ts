@@ -41,8 +41,8 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
 }
 
 /**
- * Reem's tick: every 15 minutes from an Upstash QStash schedule (the Vercel project is on Hobby, whose crons run once a
- * day). It fires the reminders whose time has come (`sweepReminders`, which starts nothing new after
+ * Reem's tick: every 15 minutes from an Upstash QStash schedule (chosen when the site ran on Vercel Hobby, whose crons ran
+ * once a day). It fires the reminders whose time has come (`sweepReminders`, which starts nothing new after
  * `SWEEP_BUDGET_TICK_MS`), then syncs the linked calendars that are due (`sweepCalendars`, same deadline; `calendars` in the answer) and, when a zone's evening wrap time has just passed, starts the wrap for that zone's
  * workspaces (`/api/cron/evening?zones=…`, with the cron bearer; only when CRON_SECRET is set). Answers counts only.
  *
