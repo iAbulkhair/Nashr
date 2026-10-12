@@ -28,16 +28,16 @@ export default function PlanCard({ lang, id, name, price, period, credits, featu
   const tid = `plan-${id}-title`;
   return (
     <section data-tier={id} data-current={current ? "" : undefined} aria-labelledby={tid}
-      className={`flex flex-col card ${current ? "border-2 border-ink" : ""}`}>
+      className={`flex flex-col card ${current ? "border-2 border-border-strong" : ""}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id={tid} className="font-display text-lg font-medium">{name}</h3>
-        {current ? <span className="rounded-full bg-ink px-2.5 py-0.5 text-xs font-semibold text-lilac" data-plan-current="">{T.current}</span>
-          : highlight ? <span className="rounded-full border border-ink/20 px-2.5 py-0.5 text-xs font-semibold text-ink" data-plan-recommended="">{T.recommended}</span> : null}
+        {current ? <span className="rounded-full bg-inverse px-2.5 py-0.5 text-xs font-semibold text-inverse-muted" data-plan-current="">{T.current}</span>
+          : highlight ? <span className="rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-foreground" data-plan-recommended="">{T.recommended}</span> : null}
       </div>
-      <p className="mt-2 font-display text-3xl font-bold text-ink" dir="ltr">{price} <span className="text-xs font-normal text-muted">{period}</span></p>
+      <p className="mt-2 font-display text-3xl font-bold text-foreground" dir="ltr">{price} <span className="text-xs font-normal text-foreground-muted">{period}</span></p>
       {offerLine}
-      <p className="text-sm font-semibold text-ink" data-plan-credits="">{credits}</p>
-      <ul className="mt-3 flex-1 space-y-1 text-xs text-ink/70">{features.map((f) => <li key={f}>• {f}</li>)}</ul>
+      <p className="text-sm font-semibold text-foreground" data-plan-credits="">{credits}</p>
+      <ul className="mt-3 flex-1 space-y-1 text-xs text-foreground-muted">{features.map((f) => <li key={f}>• {f}</li>)}</ul>
       {children}
     </section>
   );

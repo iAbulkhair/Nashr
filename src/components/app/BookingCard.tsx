@@ -62,9 +62,9 @@ export function BookingView({ t, state, busy = null, error = null, confirming = 
   const off = !!busy;
   const copyRow = (which: "url" | "secret", label: string, text: string) => (
     <div>
-      <p className="text-xs text-ink/70">{label}</p>
+      <p className="text-xs text-foreground-muted">{label}</p>
       <div className="mt-1 flex flex-wrap items-start gap-2">
-        <code className="min-w-0 flex-1 basis-56 break-all rounded bg-lilac px-3 py-2 text-xs" dir="ltr">{text}</code>
+        <code className="min-w-0 flex-1 basis-56 break-all rounded bg-background-muted px-3 py-2 text-xs" dir="ltr">{text}</code>
         <button type="button" onClick={() => onCopy?.(which, text)} aria-label={`${T.copy}: ${label}`} className="btn btn-secondary btn-xs">{copied === which ? T.copied : T.copy}</button>
         <span role="status" aria-live="polite" className="sr-only">{copied === which ? T.copied : ""}</span>
       </div>
@@ -90,27 +90,27 @@ export function BookingView({ t, state, busy = null, error = null, confirming = 
   );
 
   const calcomRow = (row: BookRow) => (
-    <div className="rounded-xl border border-ink/10 p-3">
+    <div className="rounded-xl border border-foreground/10 p-3">
       <h3 className="font-semibold">{T.calcom}</h3>
       {row.kind === "created" ? (
         <div className="mt-3 grid gap-3">
           {copyRow("url", T.url, row.url)}
           {copyRow("secret", T.key, row.secret)}
-          <p className="text-xs text-muted">{T.shownOnce}</p>
-          <ol className="grid list-decimal gap-1 ps-5 text-sm text-ink/80">
+          <p className="text-xs text-foreground-muted">{T.shownOnce}</p>
+          <ol className="grid list-decimal gap-1 ps-5 text-sm text-foreground-muted">
             <li>{T.calcomStepOpen}</li>
             <li>{T.calcomStepPaste}</li>
             <li>{T.calcomStepEvents}</li>
           </ol>
-          <p className="rounded-xl border border-ink/10 px-3 py-2 text-sm">{T.warning}</p>
-          <p className="text-xs text-muted">{T.renewNote}</p>
+          <p className="rounded-xl border border-foreground/10 px-3 py-2 text-sm">{T.warning}</p>
+          <p className="text-xs text-foreground-muted">{T.renewNote}</p>
         </div>
       ) : row.kind === "exists" ? (
         <div className="mt-3 grid gap-2 text-sm">
           <p>{fill(T.since, { date: row.since })}</p>
-          {row.sameBrand === false && <p className="text-muted">{T.otherBrand}</p>}
-          <p className="rounded-xl border border-ink/10 px-3 py-2">{T.warning}</p>
-          <p className="text-xs text-muted">{T.renewNote}</p>
+          {row.sameBrand === false && <p className="text-foreground-muted">{T.otherBrand}</p>}
+          <p className="rounded-xl border border-foreground/10 px-3 py-2">{T.warning}</p>
+          <p className="text-xs text-foreground-muted">{T.renewNote}</p>
         </div>
       ) : (
         <div className="mt-3">
@@ -126,27 +126,27 @@ export function BookingView({ t, state, busy = null, error = null, confirming = 
     const exists = row.kind === "exists";
     const form = !exists || renewOpen;
     return (
-      <div className="rounded-xl border border-ink/10 p-3">
+      <div className="rounded-xl border border-foreground/10 p-3">
         <h3 className="font-semibold">{T.calendly}</h3>
         {exists && (
           <div className="mt-3 grid gap-1 text-sm">
             <p>{fill(T.since, { date: row.since })}</p>
-            {row.sameBrand === false && <p className="text-muted">{T.otherBrand}</p>}
+            {row.sameBrand === false && <p className="text-foreground-muted">{T.otherBrand}</p>}
           </div>
         )}
         {form && (
           <form onSubmit={(e) => onConnectCalendly?.(e)} className="mt-3 grid gap-2">
-            <label htmlFor="booking-calendly-token" className="text-xs text-ink/70">{T.tokenLabel}</label>
+            <label htmlFor="booking-calendly-token" className="text-xs text-foreground-muted">{T.tokenLabel}</label>
             <div className="flex flex-wrap items-start gap-2">
               <input id="booking-calendly-token" ref={tokenRef} type="password" autoComplete="off" spellCheck={false} dir="ltr" disabled={off} className="input min-w-0 flex-1 basis-56" />
               <button type="submit" disabled={off} className="btn btn-primary btn-sm">{busy === "calendly:create" || busy === "calendly:renew" ? T.connecting : exists ? T.renew : T.connect}</button>
             </div>
-            <p className="text-xs text-muted">{T.tokenWhere}</p>
-            <p className="text-xs text-muted">{T.tokenNote}</p>
-            <p className="text-xs text-muted">{T.planNote}</p>
+            <p className="text-xs text-foreground-muted">{T.tokenWhere}</p>
+            <p className="text-xs text-foreground-muted">{T.tokenNote}</p>
+            <p className="text-xs text-foreground-muted">{T.planNote}</p>
           </form>
         )}
-        {(exists || (row.kind === "none" && row.left)) && <p className="mt-3 text-xs text-muted">{T.calendlyLeft}</p>}
+        {(exists || (row.kind === "none" && row.left)) && <p className="mt-3 text-xs text-foreground-muted">{T.calendlyLeft}</p>}
         {exists && actions("calendly", () => onRenewOpen?.(!renewOpen), renewOpen ? T.cancel : T.renew)}
         {rowError("calendly")}
       </div>
@@ -156,8 +156,8 @@ export function BookingView({ t, state, busy = null, error = null, confirming = 
   return (
     <section id="todo-booking" aria-labelledby="todo-booking-title" className="card mt-8">
       <h2 id="todo-booking-title" className="card-title">{T.title}</h2>
-      <p className="mt-1 text-sm text-muted">{T.sub}</p>
-      {state.kind === "loading" && <p className="mt-3 text-sm text-muted">{T.loading}</p>}
+      <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
+      {state.kind === "loading" && <p className="mt-3 text-sm text-foreground-muted">{T.loading}</p>}
       {state.kind === "failed" && (
         <div className="mt-3">
           <p role="alert" className="text-sm text-danger">{state.text ?? T.error}</p>

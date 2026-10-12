@@ -141,11 +141,11 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
   };
   const when = v2 ? date(v2.at) : null;
   const tile = (label: string, value: string, sub?: string, delta?: string | null) => (
-    <div className="rounded-lg border border-ink/10 p-3">
-      <p className="text-xs text-muted">{label}</p>
+    <div className="rounded-lg border border-foreground/10 p-3">
+      <p className="text-xs text-foreground-muted">{label}</p>
       <p className="mt-1 font-display text-2xl font-bold" dir="ltr">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-muted" dir="ltr">{sub}</p>}
-      {delta && <p className="mt-0.5 text-xs text-muted"><span dir="ltr">{delta}</span> {S.vsPrev}</p>}
+      {sub && <p className="mt-0.5 text-xs text-foreground-muted" dir="ltr">{sub}</p>}
+      {delta && <p className="mt-0.5 text-xs text-foreground-muted"><span dir="ltr">{delta}</span> {S.vsPrev}</p>}
     </div>
   );
   /** A number isolated left to right, so in an Arabic line it stays beside its own label. */
@@ -169,18 +169,18 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
   const postList = (posts: SocialPost[], name: Platform | "x") =>
     posts.length > 0 && (
       <div className="mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">{S.topPosts}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{S.topPosts}</p>
         <ul className="mt-1 grid gap-2 text-sm">
           {top(posts).map((p) => {
             const href = postLink(name, p.url);
             return (
-              <li key={p.id} className="rounded-lg border border-ink/10 p-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+              <li key={p.id} className="rounded-lg border border-foreground/10 p-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-foreground-muted">
                   <span dir="ltr">{p.date} · {S.types[p.type] ?? p.type}</span>
-                  {p.fromThakeen && <span className="rounded-full bg-ink/5 px-2 py-0.5">{S.fromThakeen}</span>}
+                  {p.fromThakeen && <span className="rounded-full bg-foreground/5 px-2 py-0.5">{S.fromThakeen}</span>}
                 </div>
                 <p className="mt-1" dir="auto">{p.caption}</p>
-                <p className="mt-1 text-xs text-muted">
+                <p className="mt-1 text-xs text-foreground-muted">
                   {num(fmt(p.views))} {S.views} · {num(fmt(p.reach))} {S.reach} · {num(fmt(p.likes))} {S.likes} · {num(fmt(p.comments))} {S.comments}
                   {href && <> · <a href={href} rel="noopener noreferrer" target="_blank" className="underline">{S.open}</a></>}
                 </p>
@@ -209,16 +209,16 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
           )}
         </div>
         {name !== "instagram" && (
-          <p className="mt-2 text-xs text-muted">
+          <p className="mt-2 text-xs text-foreground-muted">
             {figure(t.clicks, pv?.clicks, S.clicks)} · {figure(t.likes, pv?.likes, li ? S.reactions : S.likes)} · {figure(t.comments, pv?.comments, S.comments)} · {figure(t.shares, pv?.shares, S.shares)}
           </p>
         )}
         {extra.length > 0 && (
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-1 text-xs text-foreground-muted">
             {extra.map((k, i) => <span key={k}>{i > 0 && " · "}{figure(t[k], pv?.[k], S[k])}</span>)}
           </p>
         )}
-        {p.prev && <p className="mt-1 text-xs text-muted">{S.prevWindow}: <span dir="ltr">{range(p.prev.range)}</span></p>}
+        {p.prev && <p className="mt-1 text-xs text-foreground-muted">{S.prevWindow}: <span dir="ltr">{range(p.prev.range)}</span></p>}
         {postList(p.posts, name)}
       </div>
     );
@@ -227,7 +227,7 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
   // A known state keeps its own line; any other failure is said by the not-read list when it names the platform.
   const failed = (name: Platform, code: string) =>
     code === "li_no_page_access" || (code !== "ig_not_professional" && listed(name)) ? null : (
-      <p key={`e-${name}`} className="mt-3 text-sm text-muted">
+      <p key={`e-${name}`} className="mt-3 text-sm text-foreground-muted">
         {code === "ig_not_professional" ? S.notProfessional : `${S.names[name]} ${S.partNotRead}`}
       </p>
     );
@@ -244,7 +244,7 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
     <div id="social-stats" className="card mt-6" dir={lang === "ar" ? "rtl" : "ltr"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-xl font-bold">{S.title}</h2>
-        {when && <p className="text-xs text-muted">{S.read}: {when}</p>}
+        {when && <p className="text-xs text-foreground-muted">{S.read}: {when}</p>}
       </div>
       {(refresh || refreshX) && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -252,7 +252,7 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
           {refreshX && <RefreshButton lang={lang} kind="x" path="x" noCredits={noCredits} />}
         </div>
       )}
-      {social && !v2 && <p className="mt-3 text-sm text-muted">{S.notReadYet}</p>}
+      {social && !v2 && <p className="mt-3 text-sm text-foreground-muted">{S.notReadYet}</p>}
       {v2 && ORDER.map((name) => {
         const p = v2.parts[name];
         const code = v2.errors?.[name];
@@ -261,24 +261,24 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
       {x && (
         <div data-platform="x" className="mt-4 first:mt-2">
           {head("x", x.account)}
-          <p className="mt-0.5 text-xs text-muted">{S.read}: {date(x.at)}</p>
+          <p className="mt-0.5 text-xs text-foreground-muted">{S.read}: {date(x.at)}</p>
           <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">{tile(S.followers, fmt(x.followers))}</div>
           {postList(x.posts, "x")}
         </div>
       )}
-      {(liNoPage || v2?.errors?.linkedin === "li_no_page_access") && !choosePage && <p className="mt-3 text-sm text-muted">{S.liNoPage}</p>}
+      {(liNoPage || v2?.errors?.linkedin === "li_no_page_access") && !choosePage && <p className="mt-3 text-sm text-foreground-muted">{S.liNoPage}</p>}
       {shownNotRead.length > 0 && (
-        <div data-not-read="" className="mt-4 border-t border-ink/10 pt-3">
+        <div data-not-read="" className="mt-4 border-t border-foreground/10 pt-3">
           <p className="text-sm font-semibold">{S.notRead}</p>
-          <ul className="mt-1 grid gap-1 text-sm text-muted">
+          <ul className="mt-1 grid gap-1 text-sm text-foreground-muted">
             {other.map((i) => <li key={`${i.platform}-${i.reason}`}>{S.nrNames[i.platform]}: {S.reasons[i.reason]}</li>)}
             {unconnected.length > 0 && <li>{S.reasons.not_connected}: {unconnected.map((i) => S.nrNames[i.platform]).join(S.sep)}</li>}
           </ul>
-          <p className="mt-1 text-xs text-muted">{S.notReadNote}</p>
+          <p className="mt-1 text-xs text-foreground-muted">{S.notReadNote}</p>
         </div>
       )}
       {/* X is never in the daily read (rule 744): with its row or its button shown, the note says it is read only on a click. */}
-      <p className="mt-3 text-xs text-muted">{x || refreshX ? S.noteX : S.note}</p>
+      <p className="mt-3 text-xs text-foreground-muted">{x || refreshX ? S.noteX : S.note}</p>
     </div>
   );
 }

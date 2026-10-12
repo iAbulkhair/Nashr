@@ -108,7 +108,7 @@ export default function RefreshButton({ lang, kind, path, noCredits }: { lang: L
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       <button type="button" onClick={go} disabled={busy} className="btn btn-secondary btn-xs">{busy ? S.reading : S[kind]}</button>
-      {note && <span role="status" className="text-xs text-muted" dir="auto">{note}</span>}
+      {note && <span role="status" className="text-xs text-foreground-muted" dir="auto">{note}</span>}
     </span>
   );
 }

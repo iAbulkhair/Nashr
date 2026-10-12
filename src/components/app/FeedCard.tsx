@@ -31,9 +31,9 @@ export function FeedView({ t, state, busy = null, error = null, confirming = fal
   const off = !!busy;
   const copyRow = (which: "url" | "webcal", label: string, text: string) => (
     <div>
-      <p className="text-xs text-ink/70">{label}</p>
+      <p className="text-xs text-foreground-muted">{label}</p>
       <div className="mt-1 flex flex-wrap items-start gap-2">
-        <code className="min-w-0 flex-1 basis-56 break-all rounded bg-lilac px-3 py-2 text-xs" dir="ltr">{text}</code>
+        <code className="min-w-0 flex-1 basis-56 break-all rounded bg-background-muted px-3 py-2 text-xs" dir="ltr">{text}</code>
         <button type="button" onClick={() => onCopy?.(which, text)} aria-label={`${T.copy}: ${label}`} className="btn btn-secondary btn-xs">{copied === which ? T.copied : T.copy}</button>
         <span role="status" aria-live="polite" className="sr-only">{copied === which ? T.copied : ""}</span>
       </div>
@@ -42,8 +42,8 @@ export function FeedView({ t, state, busy = null, error = null, confirming = fal
   return (
     <section id="todo-feed" aria-labelledby="todo-feed-title" className="card mt-8">
       <h2 id="todo-feed-title" className="card-title">{T.title}</h2>
-      <p className="mt-1 text-sm text-muted">{T.sub}</p>
-      {state.kind === "loading" && <p className="mt-3 text-sm text-muted">{T.loading}</p>}
+      <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
+      {state.kind === "loading" && <p className="mt-3 text-sm text-foreground-muted">{T.loading}</p>}
       {state.kind === "failed" && (
         <div className="mt-3">
           <p role="alert" className="text-sm text-danger">{state.text ?? T.error}</p>
@@ -59,9 +59,9 @@ export function FeedView({ t, state, busy = null, error = null, confirming = fal
         <div className="mt-3 grid gap-3">
           {copyRow("url", T.link, state.url)}
           {copyRow("webcal", T.webcal, state.webcal)}
-          <p className="text-xs text-muted">{T.shownOnce}</p>
-          <p className="rounded-xl border border-ink/10 px-3 py-2 text-sm">{T.warning}</p>
-          <ul className="grid gap-1 text-sm text-ink/80">
+          <p className="text-xs text-foreground-muted">{T.shownOnce}</p>
+          <p className="rounded-xl border border-foreground/10 px-3 py-2 text-sm">{T.warning}</p>
+          <ul className="grid gap-1 text-sm text-foreground-muted">
             <li>{T.iphone}</li>
             <li>{T.google}</li>
             <li>{T.outlook}</li>
@@ -71,7 +71,7 @@ export function FeedView({ t, state, busy = null, error = null, confirming = fal
       {state.kind === "exists" && (
         <div className="mt-3 grid gap-1 text-sm">
           <p>{fill(T.since, { date: state.since })}</p>
-          {state.sameBrand === false && <p className="text-muted">{T.otherBrand}</p>}
+          {state.sameBrand === false && <p className="text-foreground-muted">{T.otherBrand}</p>}
         </div>
       )}
       {(state.kind === "created" || state.kind === "exists") && (

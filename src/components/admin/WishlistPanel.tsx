@@ -66,19 +66,19 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
   }
   const done = async (m: string) => { setMsg(m); setOpen(null); await load(); };
 
-  if (!data) return <p className="text-sm text-muted">{L.loading}</p>;
+  if (!data) return <p className="text-sm text-foreground-muted">{L.loading}</p>;
   return (
     <div className="grid gap-6">
-      {msg && <p className="text-sm text-ink">{msg}</p>}
+      {msg && <p className="text-sm text-foreground">{msg}</p>}
       <section className="card card-sm">
-        <h2 className="font-display text-lg font-semibold text-ink">{L.queue} <span className="tnum text-sm text-muted" dir="ltr">({data.suggestions.length})</span></h2>
-        <p className="text-xs text-muted">{L.queueNote}</p>
-        {data.suggestions.length === 0 ? <p className="mt-3 text-sm text-muted">{L.none}</p> : (
+        <h2 className="font-display text-lg font-semibold text-foreground">{L.queue} <span className="tnum text-sm text-foreground-muted" dir="ltr">({data.suggestions.length})</span></h2>
+        <p className="text-xs text-foreground-muted">{L.queueNote}</p>
+        {data.suggestions.length === 0 ? <p className="mt-3 text-sm text-foreground-muted">{L.none}</p> : (
           <ul className="mt-3 grid gap-2">
             {data.suggestions.map((s) => (
-              <li key={s.id} className="rounded-lg border border-ink/10 p-3 text-sm">
+              <li key={s.id} className="rounded-lg border border-foreground/10 p-3 text-sm">
                 <p className="whitespace-pre-wrap" dir="auto">{s.text}</p>
-                <p className="mt-1 text-xs text-muted"><span dir="ltr">{s.email}</span> · {s.lang} · <span className="tnum" dir="ltr">{s.at.slice(0, 16).replace("T", " ")}</span></p>
+                <p className="mt-1 text-xs text-foreground-muted"><span dir="ltr">{s.email}</span> · {s.lang} · <span className="tnum" dir="ltr">{s.at.slice(0, 16).replace("T", " ")}</span></p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button onClick={() => setOpen(open === s.id ? null : s.id)} className="btn btn-primary btn-xs">{L.promote}</button>
                   <button onClick={() => act({ action: "dismiss", suggestionId: s.id })} className="btn btn-secondary btn-xs">{L.dismiss}</button>
@@ -91,21 +91,21 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
       </section>
 
       <section className="card card-sm">
-        <h2 className="font-display text-lg font-semibold text-ink">{L.newItem}</h2>
+        <h2 className="font-display text-lg font-semibold text-foreground">{L.newItem}</h2>
         <PromoteForm lang={lang} onDone={done} />
       </section>
 
       <section className="card card-sm overflow-x-auto">
-        <h2 className="font-display text-lg font-semibold text-ink">{L.items} <span className="tnum text-sm text-muted" dir="ltr">({data.items.length})</span></h2>
+        <h2 className="font-display text-lg font-semibold text-foreground">{L.items} <span className="tnum text-sm text-foreground-muted" dir="ltr">({data.items.length})</span></h2>
         <table className="mt-3 w-full text-sm">
-          <thead className="text-xs text-muted"><tr><th className="p-1 text-start">{lang === "ar" ? "الأمنية" : "Wish"}</th><th className="p-1">{L.votes}</th><th className="p-1">{L.status}</th><th className="p-1" /></tr></thead>
+          <thead className="text-xs text-foreground-muted"><tr><th className="p-1 text-start">{lang === "ar" ? "الأمنية" : "Wish"}</th><th className="p-1">{L.votes}</th><th className="p-1">{L.status}</th><th className="p-1" /></tr></thead>
           <tbody>
             {data.items.map((w) => (
-              <tr key={w.id} className={`border-t border-ink/5 ${w.hidden ? "opacity-50" : ""}`}>
-                <td className="p-1"><span dir="auto">{w.title[lang]}</span> <span className="text-xs text-muted">· {w.seeded ? L.seeded : L.promoted}{w.hidden ? ` · ${L.hidden}` : ""}</span></td>
+              <tr key={w.id} className={`border-t border-foreground/5 ${w.hidden ? "opacity-50" : ""}`}>
+                <td className="p-1"><span dir="auto">{w.title[lang]}</span> <span className="text-xs text-foreground-muted">· {w.seeded ? L.seeded : L.promoted}{w.hidden ? ` · ${L.hidden}` : ""}</span></td>
                 <td className="tnum p-1 text-center" dir="ltr">{w.votes}</td>
                 <td className="p-1 text-center">
-                  <select value={w.status} onChange={(e) => act({ action: "status", id: w.id, status: e.target.value })} aria-label={`${L.status}: ${w.title[lang]}`} className="rounded border border-ink/15 bg-white px-1 py-0.5 text-xs">
+                  <select value={w.status} onChange={(e) => act({ action: "status", id: w.id, status: e.target.value })} aria-label={`${L.status}: ${w.title[lang]}`} className="rounded border border-border bg-surface px-1 py-0.5 text-xs">
                     {WISH_STATUSES.map((st) => <option key={st} value={st}>{L.statuses[st]}</option>)}
                   </select>
                 </td>

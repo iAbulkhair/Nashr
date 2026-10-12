@@ -66,15 +66,15 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
   const name = unread > 0 ? `${U.title}, ${U.unreadN.replace("{n}", bellCount(unread))}` : U.title;
   return (
     <div ref={box} className="relative" onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); btn.current?.focus(); } }}>
-      <button ref={btn} type="button" onClick={toggle} aria-expanded={open} aria-controls={open ? `${id}-panel` : undefined} aria-label={name} title={name} className="icon-btn relative text-ink">
+      <button ref={btn} type="button" onClick={toggle} aria-expanded={open} aria-controls={open ? `${id}-panel` : undefined} aria-label={name} title={name} className="icon-btn relative text-foreground">
         <Icon name="bell" className="h-5 w-5" />
-        {unread > 0 && <span aria-hidden className="tnum absolute -top-0.5 end-0 min-w-5 rounded-full bg-danger px-1 text-center text-xs font-semibold leading-5 text-paper" dir="ltr">{bellCount(unread)}</span>}
+        {unread > 0 && <span aria-hidden className="tnum absolute -top-0.5 end-0 min-w-5 rounded-full bg-danger px-1 text-center text-xs font-semibold leading-5 text-inverse-foreground" dir="ltr">{bellCount(unread)}</span>}
       </button>
       {open && (
-        <section id={`${id}-panel`} aria-label={U.title} className={`absolute top-full z-50 mt-1 w-[min(22rem,calc(100vw-2rem))] rounded-xl border-[1.5px] border-ink bg-popover text-ink ${align === "start" ? "start-0" : "end-0"}`}>
+        <section id={`${id}-panel`} aria-label={U.title} className={`absolute top-full z-50 mt-1 w-[min(22rem,calc(100vw-2rem))] rounded-xl border-[1.5px] border-border-strong bg-popover text-foreground ${align === "start" ? "start-0" : "end-0"}`}>
           <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
             <h2 className="text-sm font-semibold">{U.title}</h2>
-            {unread > 0 && <button type="button" onClick={markAll} className="min-h-[var(--hit-min)] rounded-lg px-2 text-xs font-semibold text-ink underline-offset-2 hover:underline pointer-fine:min-h-8">{U.markAll}</button>}
+            {unread > 0 && <button type="button" onClick={markAll} className="min-h-[var(--hit-min)] rounded-lg px-2 text-xs font-semibold text-foreground underline-offset-2 hover:underline pointer-fine:min-h-8">{U.markAll}</button>}
           </header>
           <p role="status" className="sr-only">{said}</p>
           {failed ? (
@@ -87,8 +87,8 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
             <ul className="max-h-[60dvh] divide-y divide-border overflow-y-auto">
               {items.map((n) => (
                 <li key={n.id}>
-                  <Link href={n.href} onClick={() => setOpen(false)} className="flex gap-2 px-3 py-2.5 hover:bg-lilac/60">
-                    <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-ink"}`} />
+                  <Link href={n.href} onClick={() => setOpen(false)} className="flex gap-2 px-3 py-2.5 hover:bg-background-muted/60">
+                    <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-foreground"}`} />
                     <span className="min-w-0 flex-1">
                       <span className={`block text-sm ${n.read ? "" : "font-semibold"}`} dir="auto">{n.title}{!n.read && <span className="sr-only"> ({U.unread})</span>}</span>
                       <span className="block text-xs text-foreground-muted"><span>{t.notifications.kinds[n.kind]}</span> · <Time value={n.at} lang={lang} style="datetime" /></span>
@@ -99,7 +99,7 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
             </ul>
           )}
           <footer className="border-t border-border px-3 py-2 text-sm">
-            <Link href={`/${lang}/app/notifications`} onClick={() => setOpen(false)} className="inline-flex min-h-[var(--hit-min)] items-center font-semibold text-ink underline-offset-2 hover:underline pointer-fine:min-h-8">{U.seeAll}</Link>
+            <Link href={`/${lang}/app/notifications`} onClick={() => setOpen(false)} className="inline-flex min-h-[var(--hit-min)] items-center font-semibold text-foreground underline-offset-2 hover:underline pointer-fine:min-h-8">{U.seeAll}</Link>
           </footer>
         </section>
       )}

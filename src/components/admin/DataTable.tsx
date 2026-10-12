@@ -43,7 +43,7 @@ export function DataTable<R, K extends string>({ lang, caption, columns, rows, r
     <div className="overflow-x-auto rounded-xl border border-border bg-surface" aria-busy={loading || undefined}>
       <table className="w-full text-sm">
         <caption className="sr-only">{caption}</caption>
-        <thead className="bg-lilac text-start text-xs text-muted">
+        <thead className="bg-background-muted text-start text-xs text-foreground-muted">
           <tr>
             {columns.map((c) => {
               const on = !!c.sort && c.sort === sort;
@@ -63,9 +63,9 @@ export function DataTable<R, K extends string>({ lang, caption, columns, rows, r
         </thead>
         <tbody>
           {rows === null ? (
-            <tr><td colSpan={columns.length} className="p-4 text-muted">{T.loading}</td></tr>
+            <tr><td colSpan={columns.length} className="p-4 text-foreground-muted">{T.loading}</td></tr>
           ) : rows.length === 0 ? (
-            <tr><td colSpan={columns.length} className="p-4 text-muted">{T.empty}</td></tr>
+            <tr><td colSpan={columns.length} className="p-4 text-foreground-muted">{T.empty}</td></tr>
           ) : rows.map((r) => (
             <tr key={rowKey(r)} className={`border-t border-border align-top ${rowClassName?.(r) ?? ""}`}>
               {columns.map((c) => <td key={c.id} className={`p-2 ${c.className ?? ""}`}>{c.cell(r)}</td>)}
@@ -87,7 +87,7 @@ export function Pager({ lang, page, pages, per, sizes, onPage, onPer }: { lang: 
         <span aria-live="polite" dir="auto" className="tabular-nums">{T.page(page, pages)}</span>
         <Button variant="secondary" size="md" aria-disabled={page >= pages || undefined} onClick={() => { if (page < pages) onPage(page + 1); }}>{T.next}</Button>
       </div>
-      <label className="flex items-center gap-2 text-xs text-muted">
+      <label className="flex items-center gap-2 text-xs text-foreground-muted">
         <span>{T.per}</span>
         <Select value={String(per)} onChange={(e) => onPer(Number(e.target.value))} className="w-auto">
           {sizes.map((n) => <option key={n} value={n}>{n}</option>)}

@@ -113,12 +113,12 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, destructive 
       // runs, Escape waits: the request is on its way and its answer belongs in this dialog.
       onCancel={(e) => { if (busy) e.preventDefault(); }}
       onClose={() => answer(false)}
-      className="card m-auto w-[calc(100%-2rem)] max-w-md p-0 text-ink backdrop:bg-overlay"
+      className="card m-auto w-[calc(100%-2rem)] max-w-md p-0 text-foreground backdrop:bg-overlay"
     >
       <div className="p-6 text-start">
         {/* A name or a file name typed by someone else keeps its own direction inside the page's. */}
         <h2 id={`${id}-title`} className="font-display text-lg font-bold"><bdi>{title}</bdi></h2>
-        <p id={`${id}-message`} className="mt-2 text-sm leading-relaxed text-ink/80">{message}</p>
+        <p id={`${id}-message`} className="mt-2 text-sm leading-relaxed text-foreground-muted">{message}</p>
         {refusal && <p role="alert" className="field-error mt-3" dir="auto">{refusal}</p>}
         <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button ref={cancelRef} type="button" onClick={(e) => press(e, false)} disabled={busy} className="btn btn-secondary btn-sm">{cancelLabel}</button>

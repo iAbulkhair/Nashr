@@ -89,14 +89,14 @@ function AppRow({ a, L, onAct }: { a: App; L: L; onAct: Act }) {
   const bad = codeProblem(normalizeCode(code));
   const consented = !!(a.consentAt && a.termsVersion);
   return (
-    <tr className="border-t border-ink/5 align-top">
-      <td className="p-1"><p>{a.name}</p><p className="text-muted" dir="ltr">{a.email}</p><p className="text-muted" dir="ltr">{a.phone}</p></td>
-      <td className="p-1"><p>{a.channel}</p><p className="text-muted">{a.audience}</p></td>
+    <tr className="border-t border-foreground/5 align-top">
+      <td className="p-1"><p>{a.name}</p><p className="text-foreground-muted" dir="ltr">{a.email}</p><p className="text-foreground-muted" dir="ltr">{a.phone}</p></td>
+      <td className="p-1"><p>{a.channel}</p><p className="text-foreground-muted">{a.audience}</p></td>
       <td className="tnum p-1" dir="ltr">
         {a.at.slice(0, 10)}
         {a.at && a.at.slice(0, 10) < NEW_TERMS_FROM && <p data-old-terms className="max-w-56 text-danger" dir="auto">{L.oldTerms}</p>}
         {a.consentAt && a.termsVersion
-          ? <p data-consent className="max-w-56 text-ink" dir="auto">{L.consent(a.termsVersion, a.consentAt.slice(0, 10))}</p>
+          ? <p data-consent className="max-w-56 text-foreground" dir="auto">{L.consent(a.termsVersion, a.consentAt.slice(0, 10))}</p>
           : <p data-no-consent className="max-w-56 text-danger" dir="auto">{L.noConsent}</p>}
       </td>
       <td className="p-1">
@@ -137,13 +137,13 @@ function PayoutForm({ p, L, onAct }: { p: PartnerRow; L: L; onAct: Act }) {
         if (await onAct({ action: "payout", email: p.email, id, amountSar: Number(amount), vatSar: taxField(vat), whtSar: taxField(wht), date, reference })) { setId(newPayoutId()); setReference(""); setVat(""); setWht(""); }
       } finally { setBusy(false); }
     }} className="mt-2 flex flex-wrap items-end gap-2">
-      <label className="grid gap-0.5"><span className="text-muted">{L.amount}</span><input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" dir="ltr" className="input w-28" /></label>
-      <label className="grid gap-0.5"><span className="text-muted">{L.vat}</span><input value={vat} onChange={(e) => setVat(e.target.value)} inputMode="decimal" dir="ltr" data-payout-vat className="input w-28" /></label>
-      <label className="grid gap-0.5"><span className="text-muted">{L.wht}</span><input value={wht} onChange={(e) => setWht(e.target.value)} inputMode="decimal" dir="ltr" data-payout-wht className="input w-28" /></label>
-      <label className="grid gap-0.5"><span className="text-muted">{L.date}</span><input type="date" value={date} max={ksaDay()} onChange={(e) => setDate(e.target.value)} className="input" /></label>
-      <label className="grid gap-0.5"><span className="text-muted">{L.reference}</span><input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} dir="auto" className="input w-44" /></label>
+      <label className="grid gap-0.5"><span className="text-foreground-muted">{L.amount}</span><input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" dir="ltr" className="input w-28" /></label>
+      <label className="grid gap-0.5"><span className="text-foreground-muted">{L.vat}</span><input value={vat} onChange={(e) => setVat(e.target.value)} inputMode="decimal" dir="ltr" data-payout-vat className="input w-28" /></label>
+      <label className="grid gap-0.5"><span className="text-foreground-muted">{L.wht}</span><input value={wht} onChange={(e) => setWht(e.target.value)} inputMode="decimal" dir="ltr" data-payout-wht className="input w-28" /></label>
+      <label className="grid gap-0.5"><span className="text-foreground-muted">{L.date}</span><input type="date" value={date} max={ksaDay()} onChange={(e) => setDate(e.target.value)} className="input" /></label>
+      <label className="grid gap-0.5"><span className="text-foreground-muted">{L.reference}</span><input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} dir="auto" className="input w-44" /></label>
       <button disabled={busy || p.payable <= 0 || !p.bankConfirmed} className="btn btn-primary btn-xs">{L.payout}</button>
-      <p className="w-full text-muted">{L.payoutNote}</p>
+      <p className="w-full text-foreground-muted">{L.payoutNote}</p>
     </form>
   );
 }
@@ -180,22 +180,22 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
     const v = await askForm({ title: L.voidPayout, subject: email, message: L.voidPayoutReason, destructive: true, submitLabel: L.voidPayout, fields: [], parse: () => ({ ok: true, value: {} }) });
     if (v) void act({ action: "void_payout", email, id, reason: v.reason });
   };
-  if (!data) return <p className="text-sm text-muted">{L.loading}</p>;
+  if (!data) return <p className="text-sm text-foreground-muted">{L.loading}</p>;
   const waiting = data.applications.filter((a) => !a.decision);
   const decided = data.applications.filter((a) => a.decision);
   const manualBad = codeProblem(normalizeCode(manual.code));
   return (
     <div className="grid gap-6 text-xs">
       {formDialog}
-      {msg && <p className="text-sm text-ink" role="status">{msg}</p>}
+      {msg && <p className="text-sm text-foreground" role="status">{msg}</p>}
       <section className="card card-sm">
         <h2 className="font-display text-lg font-bold">{L.apps}</h2>
-        <p className="mt-1 text-muted">{L.appsNote}</p>
-        {waiting.length === 0 ? <p className="mt-2 text-muted">{L.none}</p> : (
+        <p className="mt-1 text-foreground-muted">{L.appsNote}</p>
+        {waiting.length === 0 ? <p className="mt-2 text-foreground-muted">{L.none}</p> : (
           <div className="mt-2 overflow-x-auto"><table className="w-full"><tbody>{waiting.map((a) => <AppRow key={a.id} a={a} L={L} onAct={act} />)}</tbody></table></div>
         )}
-        <form onSubmit={(e) => { e.preventDefault(); void act({ action: "approve", ...manual }); }} className="mt-3 flex flex-wrap items-end gap-2 border-t border-ink/10 pt-3">
-          <span className="w-full text-muted">{L.manual}</span>
+        <form onSubmit={(e) => { e.preventDefault(); void act({ action: "approve", ...manual }); }} className="mt-3 flex flex-wrap items-end gap-2 border-t border-foreground/10 pt-3">
+          <span className="w-full text-foreground-muted">{L.manual}</span>
           <input value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })} placeholder={L.name} aria-label={L.name} className="input w-40" />
           <input value={manual.email} onChange={(e) => setManual({ ...manual, email: e.target.value })} placeholder={L.email} aria-label={L.email} dir="ltr" className="input w-56" />
           <input value={manual.code} onChange={(e) => setManual({ ...manual, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16) })} placeholder={L.code} aria-label={L.code} dir="ltr" className="input w-32 font-mono" />
@@ -204,7 +204,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
           {manual.code && manualBad && <span className="text-danger">{L.codeErrors[manualBad]}</span>}
         </form>
         {decided.length > 0 && (
-          <details className="mt-3"><summary className="cursor-pointer text-muted">{L.decided} ({decided.length})</summary>
+          <details className="mt-3"><summary className="cursor-pointer text-foreground-muted">{L.decided} ({decided.length})</summary>
             <ul className="mt-1 grid gap-0.5">{decided.map((a) => <li key={a.id}><span dir="ltr">{a.email}</span> · {a.decision!.status === "approved" ? `${L.approved} ${a.decision!.code ?? ""}` : L.rejected} · <span dir="ltr">{a.decision!.at.slice(0, 10)}</span></li>)}</ul>
           </details>
         )}
@@ -212,10 +212,10 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
 
       <section className="card card-sm">
         <h2 className="font-display text-lg font-bold">{L.partners}</h2>
-        {data.partners.length === 0 ? <p className="mt-2 text-muted">{L.noPartners}</p> : (
+        {data.partners.length === 0 ? <p className="mt-2 text-foreground-muted">{L.noPartners}</p> : (
           <div className="mt-2 overflow-x-auto">
             <table className="w-full">
-              <thead className="text-muted"><tr><th className="p-1 text-start">{L.email}</th><th className="p-1 text-start">{L.code}</th><th className="p-1">{L.referrals}</th><th className="p-1">{L.earned}</th><th className="p-1">{L.paidOut}</th><th className="p-1">{L.balance}</th><th className="p-1">{L.payable}</th><th className="p-1 text-start">{L.bank}</th><th /></tr></thead>
+              <thead className="text-foreground-muted"><tr><th className="p-1 text-start">{L.email}</th><th className="p-1 text-start">{L.code}</th><th className="p-1">{L.referrals}</th><th className="p-1">{L.earned}</th><th className="p-1">{L.paidOut}</th><th className="p-1">{L.balance}</th><th className="p-1">{L.payable}</th><th className="p-1 text-start">{L.bank}</th><th /></tr></thead>
               <tbody>{data.partners.map((p) => (
                 <PartnerRows key={p.email} p={p} L={L} lang={lang} open={open === p.email} toggle={() => setOpen(open === p.email ? null : p.email)} onAct={act} onVoid={voidPayout} />
               ))}</tbody>
@@ -230,13 +230,13 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
 function PartnerRows({ p, L, lang, open, toggle, onAct, onVoid }: { p: PartnerRow; L: L; lang: "ar" | "en"; open: boolean; toggle: () => void; onAct: Act; onVoid: (email: string, id: string) => void }) {
   return (
     <>
-      <tr className="border-t border-ink/5 align-top">
+      <tr className="border-t border-foreground/5 align-top">
         <td className="p-1">
-          <p>{p.name}</p><p className="text-muted" dir="ltr">{p.email}</p>
-          {!p.hasAccount && <p className="text-muted">{L.noAccount}</p>}
+          <p>{p.name}</p><p className="text-foreground-muted" dir="ltr">{p.email}</p>
+          {!p.hasAccount && <p className="text-foreground-muted">{L.noAccount}</p>}
           {p.accountAfterApproval && <p data-late-account className="max-w-64 text-danger">{L.lateAccount}</p>}
           {p.terms
-            ? <p data-partner-consent className="max-w-64 text-muted">{p.terms.via === "founder" ? L.consentByFounder(p.terms.version, p.terms.at.slice(0, 10), p.terms.by ?? "") : L.consent(p.terms.version, p.terms.at.slice(0, 10))}</p>
+            ? <p data-partner-consent className="max-w-64 text-foreground-muted">{p.terms.via === "founder" ? L.consentByFounder(p.terms.version, p.terms.at.slice(0, 10), p.terms.by ?? "") : L.consent(p.terms.version, p.terms.at.slice(0, 10))}</p>
             : <p data-partner-no-consent className="max-w-64 font-semibold text-danger">{L.partnerNoConsent}</p>}
         </td>
         <td className="p-1 font-mono" dir="ltr">{p.code}</td>
@@ -244,7 +244,7 @@ function PartnerRows({ p, L, lang, open, toggle, onAct, onVoid }: { p: PartnerRo
         <td className="tnum p-1 text-center" dir="ltr">{sarText(p.earned)}</td>
         <td className="tnum p-1 text-center" dir="ltr">{sarText(p.paid)}</td>
         <td className="tnum p-1 text-center" dir="ltr">{sarText(p.balance)}</td>
-        <td className={`tnum p-1 text-center ${p.payable > 0 ? "font-semibold text-ink" : ""}`} dir="ltr">{sarText(p.payable)}</td>
+        <td className={`tnum p-1 text-center ${p.payable > 0 ? "font-semibold text-foreground" : ""}`} dir="ltr">{sarText(p.payable)}</td>
         <td className="p-1">
           {p.bank ? (
             <>
@@ -255,29 +255,29 @@ function PartnerRows({ p, L, lang, open, toggle, onAct, onVoid }: { p: PartnerRo
               {p.tax.outsideSaudi && <p data-flag-wht className="max-w-64 font-semibold text-danger">{L.flagWht}</p>}
               {p.tax.noCountry && <p data-flag-no-country className="max-w-64 text-danger">{L.flagNoCountry}</p>}
               {p.bankConfirmed
-                ? <p className="text-ink">{L.confirmedOn(p.bank.confirmedAt!.slice(0, 10))}</p>
+                ? <p className="text-foreground">{L.confirmedOn(p.bank.confirmedAt!.slice(0, 10))}</p>
                 : <>
                     <p data-bank-unconfirmed className="max-w-64 text-danger">{L.unconfirmed(p.bank.savedAt.slice(0, 10))}</p>
                     <button onClick={() => void onAct({ action: "confirm_bank", email: p.email, savedAt: p.bank!.savedAt })} className="btn btn-secondary btn-xs mt-1">{L.confirm}</button>
                   </>}
             </>
-          ) : <span className="text-muted">{L.noBank}</span>}
+          ) : <span className="text-foreground-muted">{L.noBank}</span>}
         </td>
-        <td className="p-1"><button onClick={toggle} className="text-ink underline">{open ? L.hide : L.show}</button></td>
+        <td className="p-1"><button onClick={toggle} className="text-foreground underline">{open ? L.hide : L.show}</button></td>
       </tr>
       {open && (
-        <tr><td colSpan={9} className="bg-lilac/50 p-2">
+        <tr><td colSpan={9} className="bg-background-muted/50 p-2">
           <PayoutForm p={p} L={L} onAct={onAct} />
-          <p data-tax-totals className="mt-1 text-muted" dir="auto">{L.taxTotals(sarText(p.tax.vatPaid), sarText(p.tax.whtBorne))}</p>
+          <p data-tax-totals className="mt-1 text-foreground-muted" dir="auto">{L.taxTotals(sarText(p.tax.vatPaid), sarText(p.tax.whtBorne))}</p>
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <div><p className="font-semibold">{L.commissions}</p>
-              <table className="mt-1 w-full"><thead className="text-muted"><tr><th className="text-start">{L.customer}</th><th>{L.paymentDate}</th><th>{L.base}</th><th>{L.commission}</th></tr></thead>
-                <tbody>{p.commissions.map((c) => <tr key={c.id} className={c.voidedAt ? "text-muted line-through" : ""}><td dir="ltr"><span className="font-mono">{c.label}</span> {c.customer ?? <span className="text-muted">({L.deleted})</span>}</td><td className="tnum text-center" dir="ltr">{c.paymentDate}</td><td className="tnum text-center" dir="ltr">{sarText(c.baseSar)}</td><td className="tnum text-center" dir="ltr">{sarText(c.sar)}{c.voidedAt ? ` (${L.voided})` : ""}</td></tr>)}</tbody></table>
+              <table className="mt-1 w-full"><thead className="text-foreground-muted"><tr><th className="text-start">{L.customer}</th><th>{L.paymentDate}</th><th>{L.base}</th><th>{L.commission}</th></tr></thead>
+                <tbody>{p.commissions.map((c) => <tr key={c.id} className={c.voidedAt ? "text-foreground-muted line-through" : ""}><td dir="ltr"><span className="font-mono">{c.label}</span> {c.customer ?? <span className="text-foreground-muted">({L.deleted})</span>}</td><td className="tnum text-center" dir="ltr">{c.paymentDate}</td><td className="tnum text-center" dir="ltr">{sarText(c.baseSar)}</td><td className="tnum text-center" dir="ltr">{sarText(c.sar)}{c.voidedAt ? ` (${L.voided})` : ""}</td></tr>)}</tbody></table>
             </div>
             <div><p className="font-semibold">{L.payouts}</p>
-              <table className="mt-1 w-full"><thead className="text-muted"><tr><th>{L.date}</th><th>{L.amount}</th><th>{L.vatCol}</th><th>{L.whtCol}</th><th className="text-start">{L.reference}</th><th /></tr></thead>
+              <table className="mt-1 w-full"><thead className="text-foreground-muted"><tr><th>{L.date}</th><th>{L.amount}</th><th>{L.vatCol}</th><th>{L.whtCol}</th><th className="text-start">{L.reference}</th><th /></tr></thead>
                 <tbody>{p.payouts.map((x) => (
-                  <tr key={x.id} className={x.voidedAt ? "text-muted line-through" : ""}>
+                  <tr key={x.id} className={x.voidedAt ? "text-foreground-muted line-through" : ""}>
                     <td className="tnum text-center" dir="ltr">{x.date}</td><td className="tnum text-center" dir="ltr">{sarText(x.sar)}</td><td className="tnum text-center" dir="ltr">{x.vatSar ? sarText(x.vatSar) : "—"}</td><td className="tnum text-center" dir="ltr">{x.whtSar ? sarText(x.whtSar) : "—"}</td><td dir="auto">{x.reference || "—"}{x.voidedAt && x.voidReason ? ` · ${x.voidReason}` : ""}</td>
                     <td>{x.voidedAt ? L.voided : <button onClick={() => onVoid(p.email, x.id)} className="min-h-[var(--hit-min)] text-danger underline pointer-fine:min-h-6">{L.voidPayout}</button>}</td>
                   </tr>

@@ -145,7 +145,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
   return (
     <section id="todo-working-days" aria-labelledby="todo-cal-title" className="card mt-8">
       <h2 id="todo-cal-title" className="card-title">{C.title}</h2>
-      <p className="mt-1 text-sm text-muted">{C.sub}</p>
+      <p className="mt-1 text-sm text-foreground-muted">{C.sub}</p>
       {!canEdit && <ReadOnlyNote text={t.readOnly.admin} />}
 
       <fieldset className="mt-5">
@@ -159,7 +159,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
             </label>
           ))}
         </div>
-        <p className="mt-2 text-xs text-muted">{fill(C.defaultLine, { country: C.countries[eff.country], days: dayNames(eff.defaultWeekend) })}</p>
+        <p className="mt-2 text-xs text-foreground-muted">{fill(C.defaultLine, { country: C.countries[eff.country], days: dayNames(eff.defaultWeekend) })}</p>
         {cityHint && !eff.weekend.includes(5) && <p className="mt-2 text-xs font-medium text-warning">{C.sharjahHint}</p>}
         {canEdit && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -171,15 +171,15 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
       </fieldset>
 
       <fieldset className="mt-6">
-        <legend className="text-sm font-semibold">{C.ramadan} {v.calendar?.ramadanHours == null && <span className="text-xs font-normal text-muted">{C.isDefault}</span>}</legend>
-        <p className="mt-1 text-xs text-muted">{fill(C.ramadanSub, { zone: zoneTimeLabel(eff.zone, lang) })}</p>
-        {hours.length === 0 && <p className="mt-2 text-sm text-ink/70">{C.noHours}</p>}
+        <legend className="text-sm font-semibold">{C.ramadan} {v.calendar?.ramadanHours == null && <span className="text-xs font-normal text-foreground-muted">{C.isDefault}</span>}</legend>
+        <p className="mt-1 text-xs text-foreground-muted">{fill(C.ramadanSub, { zone: zoneTimeLabel(eff.zone, lang) })}</p>
+        {hours.length === 0 && <p className="mt-2 text-sm text-foreground-muted">{C.noHours}</p>}
         {hours.map((w, i) => (
           <div key={i} className="mt-2 flex flex-wrap items-end gap-2">
-            <label className="text-xs text-ink/70">{C.from}
+            <label className="text-xs text-foreground-muted">{C.from}
               <input type="time" step={900} value={w.from} disabled={locked} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, from: e.target.value } : x)))} dir="ltr" className="input mt-1 w-32" />
             </label>
-            <label className="text-xs text-ink/70">{C.to}
+            <label className="text-xs text-foreground-muted">{C.to}
               <input type="time" step={900} value={w.to} disabled={locked} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, to: e.target.value } : x)))} dir="ltr" className="input mt-1 w-32" />
             </label>
             {canEdit && <button type="button" disabled={!!busy} onClick={() => setHours(hours.filter((_, j) => j !== i))} className="btn btn-secondary btn-xs">{C.removeWindow}</button>}
@@ -196,11 +196,11 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
       </fieldset>
 
       <fieldset className="mt-6">
-        <legend className="text-sm font-semibold">{C.workHours} {savedWork == null && <span className="text-xs font-normal text-muted">{C.isDefault}</span>}</legend>
-        <p className="mt-1 text-xs text-muted">{fill(C.workHoursSub, { zone: zoneTimeLabel(eff.zone, lang) })}</p>
+        <legend className="text-sm font-semibold">{C.workHours} {savedWork == null && <span className="text-xs font-normal text-foreground-muted">{C.isDefault}</span>}</legend>
+        <p className="mt-1 text-xs text-foreground-muted">{fill(C.workHoursSub, { zone: zoneTimeLabel(eff.zone, lang) })}</p>
         <div className="mt-2 flex flex-wrap items-end gap-2">
           {(["from", "to"] as const).map((k) => (
-            <label key={k} className="text-xs text-ink/70">{C[k]}
+            <label key={k} className="text-xs text-foreground-muted">{C[k]}
               <select value={work[k]} disabled={locked} onChange={(e) => setWork(e.target.value ? { from: work.from || DEFAULT_WORK_HOURS.from, to: work.to || DEFAULT_WORK_HOURS.to, [k]: e.target.value } : { from: "", to: "" })} dir="ltr" className="input mt-1 w-36">
                 <option value="">{fill(C.workHoursDefault, { hours: defaultWork })}</option>
                 {QUARTERS.filter((q) => k === "from" || q !== "00:00").map((q) => <option key={q} value={q}>{q}</option>)}
@@ -218,11 +218,11 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
 
       <div className="mt-6">
         <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">{C.eid} <span className="badge badge-accent">{C.expected}</span></h3>
-        <p className="mt-1 text-xs text-muted">{C.eidSub}</p>
+        <p className="mt-1 text-xs text-foreground-muted">{C.eidSub}</p>
         {eff.country === "SA" && <p className="mt-1 text-xs font-medium text-warning">{C.eidNoteSA}</p>}
         {years.map((y) => (
           <div key={y} className="mt-3">
-            <p className="tnum text-xs font-semibold text-ink/70">{fill(C.eidYear, { year: String(y) })}</p>
+            <p className="tnum text-xs font-semibold text-foreground-muted">{fill(C.eidYear, { year: String(y) })}</p>
             <ul className="mt-1 space-y-2">
               {v.eids.filter((e) => e.year === y).map((e) => (
                 <li key={e.field} className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -230,8 +230,8 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
                     <span className="font-medium">{e.name[lang]}</span>
                     {" · "}
                     <span suppressHydrationWarning>{fill(C.eidDay, { date: day(e.day) })}</span>
-                    {e.start !== e.uq && <span className="text-xs text-muted" suppressHydrationWarning> ({fill(C.eidMoved, { date: day(e.kind === "eid_fitr" ? e.uq : addDays(e.uq, 9)) })})</span>}
-                    <span className="block text-xs text-muted" suppressHydrationWarning>
+                    {e.start !== e.uq && <span className="text-xs text-foreground-muted" suppressHydrationWarning> ({fill(C.eidMoved, { date: day(e.kind === "eid_fitr" ? e.uq : addDays(e.uq, 9)) })})</span>}
+                    <span className="block text-xs text-foreground-muted" suppressHydrationWarning>
                       {!e.off ? C.eidOffNone : e.off.first === e.off.last ? fill(C.eidOffOne, { day: day(e.off.first) }) : fill(C.eidOff, { from: day(e.off.first), to: day(e.off.last) })}
                     </span>
                   </span>
@@ -251,11 +251,11 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
 
       <div className="mt-6">
         <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">{C.holidays} <span className="badge badge-accent">{C.expected}</span></h3>
-        {v.upcoming.ramadan && <p className="mt-1 text-xs text-muted" suppressHydrationWarning>{fill(C.ramadanLine, { start: day(v.upcoming.ramadan.start), end: day(v.upcoming.ramadan.end) })}</p>}
+        {v.upcoming.ramadan && <p className="mt-1 text-xs text-foreground-muted" suppressHydrationWarning>{fill(C.ramadanLine, { start: day(v.upcoming.ramadan.start), end: day(v.upcoming.ramadan.end) })}</p>}
         {v.upcoming.days.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">{C.holidaysNone}</p>
+          <p className="mt-2 text-sm text-foreground-muted">{C.holidaysNone}</p>
         ) : (
-          <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10">
+          <ul className="mt-2 divide-y divide-foreground/10 rounded-xl border border-foreground/10">
             {v.upcoming.days.map(({ day: d, why }) => (
               <li key={d} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                 <span className="min-w-0">
@@ -271,7 +271,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
         )}
         {removed.length > 0 && (
           <div className="mt-3">
-            <p className="text-xs font-semibold text-ink/70">{C.offList}</p>
+            <p className="text-xs font-semibold text-foreground-muted">{C.offList}</p>
             <ul className="mt-1 space-y-1 text-sm">
               {removed.map((r) => (
                 <li key={r} className="flex flex-wrap items-center justify-between gap-2">
@@ -284,7 +284,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
         )}
         {added.length > 0 && (
           <div className="mt-3">
-            <p className="text-xs font-semibold text-ink/70">{C.addedList}</p>
+            <p className="text-xs font-semibold text-foreground-muted">{C.addedList}</p>
             <ul className="mt-1 space-y-1 text-sm">
               {added.map((a) => (
                 <li key={a} className="flex flex-wrap items-center justify-between gap-2">
@@ -298,29 +298,29 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
         {canEdit && (
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <form onSubmit={async (e) => { e.preventDefault(); if (once && (await save("holidays", withAdded(v.calendar, once, true)))) setOnce(""); }} className="min-w-0">
-              <p className="text-xs font-semibold text-ink/70">{C.addOnce}</p>
+              <p className="text-xs font-semibold text-foreground-muted">{C.addOnce}</p>
               <div className="mt-1 flex flex-wrap items-end gap-2">
-                <label className="min-w-0 flex-1 text-xs text-ink/70">{C.date}
+                <label className="min-w-0 flex-1 text-xs text-foreground-muted">{C.date}
                   <input type="date" value={once} min={today} onChange={(e) => setOnce(e.target.value)} required dir="ltr" className="input mt-1" />
                 </label>
                 <button disabled={!!busy || !once} className="btn btn-secondary btn-sm">{C.add}</button>
               </div>
             </form>
             <form onSubmit={(e) => { e.preventDefault(); void save("holidays", withAdded(v.calendar, yearlyValue(yearly.kind, yearly.month, yearly.day), true)); }} className="min-w-0">
-              <p className="text-xs font-semibold text-ink/70">{C.addYearly}</p>
+              <p className="text-xs font-semibold text-foreground-muted">{C.addYearly}</p>
               <div className="mt-1 grid grid-cols-2 items-end gap-2">
-                <label className="block min-w-0 text-xs text-ink/70">{C.calendar}
+                <label className="block min-w-0 text-xs text-foreground-muted">{C.calendar}
                   <select value={yearly.kind} onChange={(e) => setYearly({ ...yearly, kind: e.target.value === "hijri" ? "hijri" : "greg" })} className="input mt-1">
                     <option value="greg">{C.gregorian}</option>
                     <option value="hijri">{C.hijri}</option>
                   </select>
                 </label>
-                <label className="block min-w-0 text-xs text-ink/70">{C.month}
+                <label className="block min-w-0 text-xs text-foreground-muted">{C.month}
                   <select value={yearly.month} onChange={(e) => setYearly({ ...yearly, month: +e.target.value })} className="input mt-1">
                     {(yearly.kind === "hijri" ? C.hijriMonths : C.months).map((name, i) => <option key={i} value={i + 1}>{name}</option>)}
                   </select>
                 </label>
-                <label className="block min-w-0 text-xs text-ink/70">{C.day}
+                <label className="block min-w-0 text-xs text-foreground-muted">{C.day}
                   <input type="number" min={1} max={yearly.kind === "hijri" ? 30 : 31} value={yearly.day} onChange={(e) => setYearly({ ...yearly, day: Math.trunc(+e.target.value) || 1 })} required dir="ltr" className="input mt-1" />
                 </label>
                 <div><button disabled={!!busy} className="btn btn-secondary btn-sm">{C.add}</button></div>

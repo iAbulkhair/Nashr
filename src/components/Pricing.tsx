@@ -26,7 +26,7 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
             {p.title}
           </span>
         </Heading>
-        <p className="mt-3 text-muted">{p.sub}</p>
+        <p className="mt-3 text-foreground-muted">{p.sub}</p>
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
           <span className="s-stamp max-w-full whitespace-normal">
             <Scribble kind="stamp" seed="pricing-trial" fill="lemon" />
@@ -39,12 +39,12 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
             <article key={plan.id} data-tier={plan.id} className="s-card flex flex-col">
               <Scribble kind="box" seed={`pricing-${plan.id}`} fill={plan.highlight ? "lilac" : "paper"} heavy={plan.highlight} shadow={plan.highlight} />
               <h3 className="font-display text-2xl font-bold">{plan.name}</h3>
-              <p className="mt-1 text-sm text-muted">{plan.tagline}</p>
+              <p className="mt-1 text-sm text-foreground-muted">{plan.tagline}</p>
               <p className="mt-5 flex items-baseline gap-2">
                 <span className="font-display text-4xl font-bold" dir={plan.id === "agency" ? undefined : "ltr"}>
                   {plan.price}
                 </span>
-                <span className="text-sm text-muted">{plan.period}</span>
+                <span className="text-sm text-foreground-muted">{plan.period}</span>
               </p>
               <p className="mt-1 text-sm font-bold">{plan.credits}</p>
               <ul className="mt-5 flex-1 space-y-2 text-sm" role="list">
@@ -68,7 +68,7 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
         <div className="mt-14 max-w-lg">
           <h3 className="font-display text-xl font-bold">{p.creditsTitle}</h3>
           <table className="mt-3 w-full text-sm">
-            <tbody className="divide-y divide-ink/15 border-y-[1.5px] border-ink">
+            <tbody className="divide-y divide-foreground/15 border-y-[1.5px] border-border-strong">
               {p.credits.map((c) => (
                 <tr key={c.action}>
                   <td className="py-2">{c.action}</td>

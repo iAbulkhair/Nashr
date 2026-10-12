@@ -72,36 +72,36 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   return (
     <div>
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="filespanel-t1" />{f.title}</span></h1>
-      <p className="mt-2 text-ink/70">{f.sub}</p>
+      <p className="mt-2 text-foreground-muted">{f.sub}</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {canImport && <button disabled={importing} onClick={importCatalog} className="btn btn-primary btn-pill disabled:opacity-60">{f.importCatalog}</button>}
-        {importMsg && <span role="status" className="text-sm text-muted">{importMsg}</span>}
+        {importMsg && <span role="status" className="text-sm text-foreground-muted">{importMsg}</span>}
       </div>
       {locked.length > 0 && <ReadOnlyNote text={t.readOnly.admin} />}
       {err && <p role="alert" className="mt-3 text-sm text-danger">{err}</p>}
       <div className="mt-6 grid gap-4 md:grid-cols-[260px_1fr]">
-        <aside className="rounded-xl border border-ink/10 bg-white p-3">
-          {files.length === 0 && <p className="p-2 text-sm text-muted">{f.empty}</p>}
+        <aside className="rounded-xl border border-foreground/10 bg-surface p-3">
+          {files.length === 0 && <p className="p-2 text-sm text-foreground-muted">{f.empty}</p>}
           <ul className="grid gap-1">
             {files.map((x) => (
               <li key={x.name}>
-                <button onClick={() => { setOpen(x.name); setEditing(false); }} className={`w-full rounded-lg px-3 py-2 text-start text-sm ${open === x.name ? "bg-ink text-lilac" : "hover:bg-lilac"}`} dir="ltr">
+                <button onClick={() => { setOpen(x.name); setEditing(false); }} className={`w-full rounded-lg px-3 py-2 text-start text-sm ${open === x.name ? "bg-inverse text-inverse-muted" : "hover:bg-background-muted"}`} dir="ltr">
                   <span className="font-mono">{x.name}</span>
-                  <span className={`block text-xs ${open === x.name ? "text-lilac/75" : "text-muted"}`}>{x.updatedAt.slice(0, 10)} · {f.by[x.by]}</span>
+                  <span className={`block text-xs ${open === x.name ? "text-inverse-muted/75" : "text-foreground-muted"}`}>{x.updatedAt.slice(0, 10)} · {f.by[x.by]}</span>
                 </button>
               </li>
             ))}
           </ul>
           <form onSubmit={(e) => { e.preventDefault(); if (newName) save(newName.endsWith(".md") ? newName : newName + ".md", "# " + newName + "\n"); setNewName(""); }} className="mt-3 flex gap-1">
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={f.newFile} dir="ltr" className="min-w-0 flex-1 rounded border border-ink/15 px-2 py-1 text-xs" />
-            <button className="rounded bg-ink px-2 text-xs text-lilac">+</button>
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={f.newFile} dir="ltr" className="min-w-0 flex-1 rounded border border-border px-2 py-1 text-xs" />
+            <button className="rounded bg-inverse px-2 text-xs text-inverse-muted">+</button>
           </form>
         </aside>
         <section className="card">
           {cur ? (
             <>
               <div className="flex items-center justify-between gap-2">
-                <h2 className="font-mono text-sm text-ink" dir="ltr">{cur.name}</h2>
+                <h2 className="font-mono text-sm text-foreground" dir="ltr">{cur.name}</h2>
                 <div className="flex gap-2 text-sm">
                   {editing ? (
                     <>
@@ -117,13 +117,13 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
                 </div>
               </div>
               {editing ? (
-                <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={24} dir="auto" className="mt-4 w-full rounded-lg border border-ink/15 p-3 font-body text-sm leading-relaxed" />
+                <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={24} dir="auto" className="mt-4 w-full rounded-lg border border-border p-3 font-body text-sm leading-relaxed" />
               ) : (
                 <pre className="mt-4 whitespace-pre-wrap font-body text-sm leading-relaxed" dir="auto">{cur.content}</pre>
               )}
             </>
           ) : (
-            <p className="text-sm text-muted">{f.empty}</p>
+            <p className="text-sm text-foreground-muted">{f.empty}</p>
           )}
         </section>
       </div>

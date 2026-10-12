@@ -12,7 +12,7 @@ type Item = { href: string; label: string; note?: string };
 /** A nav link as D draws it: ink text, a hand-drawn underline on hover and keyboard focus. */
 function NavLink({ href, children, className = "" }: { href: string; children: React.ReactNode; className?: string }) {
   return (
-    <Link href={href} className={`s-link text-ink ${className}`}>
+    <Link href={href} className={`s-link text-foreground ${className}`}>
       <Scribble kind="underline" seed={`nav-${href}`} />
       {children}
     </Link>
@@ -23,7 +23,7 @@ function NavLink({ href, children, className = "" }: { href: string; children: R
 function Drop({ label, href, items }: { label: string; href: string; items: Item[] }) {
   return (
     <div className="group relative">
-      <Link href={href} className="s-link flex items-center gap-1 text-ink" aria-haspopup="true">
+      <Link href={href} className="s-link flex items-center gap-1 text-foreground" aria-haspopup="true">
         <Scribble kind="underline" seed={`nav-${href}`} />
         {label}
         <svg viewBox="0 0 12 12" className="h-3 w-3" aria-hidden><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
@@ -31,9 +31,9 @@ function Drop({ label, href, items }: { label: string; href: string; items: Item
       <div className="invisible absolute start-0 top-full z-50 mt-1 w-72 isolate p-2 opacity-0 transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
         <Scribble kind="box" seed={`drop-${href}`} fill="paper" />
         {items.map((i) => (
-          <Link key={i.href} href={i.href} className="block rounded-md px-3 py-2 text-sm text-ink hover:bg-lilac">
+          <Link key={i.href} href={i.href} className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-background-muted">
             <span className="font-medium">{i.label}</span>
-            {i.note && <span className="block text-xs text-muted">{i.note}</span>}
+            {i.note && <span className="block text-xs text-foreground-muted">{i.note}</span>}
           </Link>
         ))}
       </div>
@@ -53,9 +53,9 @@ export default function Nav({ t, lang, sections }: { t: Dict; lang: Lang; sectio
   const resources: Item[] = SITE[lang].resources.cards.map((c) => ({ href: `/${lang}${c.href}`, label: c.t }));
   const flat: Item[] = [{ href: `/${lang}/customers`, label: m.customers }, { href: `/${lang}/enterprise`, label: m.enterprise }, { href: `/${lang}/pricing`, label: m.pricing }];
   return (
-    <header className="sticky top-0 z-40 border-b-[1.5px] border-ink bg-ground/95 text-ink backdrop-blur">
+    <header className="sticky top-0 z-40 border-b-[1.5px] border-border-strong bg-background/95 text-foreground backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <Link href={`/${lang}`} className="font-display text-2xl font-bold tracking-tight text-ink">
+        <Link href={`/${lang}`} className="font-display text-2xl font-bold tracking-tight text-foreground">
           <Wordmark lang={lang} name={t.brand} />
         </Link>
         <nav className="hidden items-center gap-5 text-sm lg:flex" aria-label="Main">
@@ -77,18 +77,18 @@ export default function Nav({ t, lang, sections }: { t: Dict; lang: Lang; sectio
             {t.nav.cta}
           </Link>
           <details className="relative lg:hidden">
-            <summary className="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-lg border-[1.5px] border-ink" aria-label={m.open}>
+            <summary className="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-lg border-[1.5px] border-border-strong" aria-label={m.open}>
               <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden><path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
             </summary>
-            <div className="absolute end-0 top-full z-50 mt-2 max-h-[75vh] w-72 overflow-y-auto rounded-xl border-[1.5px] border-ink bg-paper p-3 text-sm">
-              {anchors.map((a) => <a key={a.href} href={a.href} className="block rounded-lg px-2 py-2 font-medium hover:bg-lilac">{a.label}</a>)}
+            <div className="absolute end-0 top-full z-50 mt-2 max-h-[75vh] w-72 overflow-y-auto rounded-xl border-[1.5px] border-border-strong bg-surface p-3 text-sm">
+              {anchors.map((a) => <a key={a.href} href={a.href} className="block rounded-lg px-2 py-2 font-medium hover:bg-background-muted">{a.label}</a>)}
               {[{ title: m.agents, items: agents }, { title: m.industries, items: industries }, { title: m.resources, items: resources }].map((g) => (
-                <details key={g.title} className="border-b border-ink/15 py-1">
+                <details key={g.title} className="border-b border-border py-1">
                   <summary className="cursor-pointer list-none px-2 py-2 font-medium">{g.title}</summary>
-                  {g.items.map((i) => <Link key={i.href} href={i.href} className="block rounded-lg px-4 py-1.5 text-muted hover:bg-lilac hover:text-ink">{i.label}</Link>)}
+                  {g.items.map((i) => <Link key={i.href} href={i.href} className="block rounded-lg px-4 py-1.5 text-foreground-muted hover:bg-background-muted hover:text-foreground">{i.label}</Link>)}
                 </details>
               ))}
-              {[...flat, { href: `/${lang}/app/login`, label: m.login }].map((l) => <Link key={l.href} href={l.href} className="block rounded-lg px-2 py-2 font-medium hover:bg-lilac">{l.label}</Link>)}
+              {[...flat, { href: `/${lang}/app/login`, label: m.login }].map((l) => <Link key={l.href} href={l.href} className="block rounded-lg px-2 py-2 font-medium hover:bg-background-muted">{l.label}</Link>)}
             </div>
           </details>
         </div>

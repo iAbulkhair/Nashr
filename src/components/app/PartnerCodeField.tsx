@@ -22,7 +22,7 @@ export default function PartnerCodeField({ lang }: { lang: Lang }) {
   return (
     <div className="grid gap-1">
       <input name="partnerCode" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))} autoComplete="off" dir="ltr" placeholder={S.label} aria-label={S.label} aria-describedby="partner-code-hint" className="input font-mono" />
-      <p id="partner-code-hint" className="text-xs text-muted">{initial && clean === initial ? S.applied(clean) : S.hint}</p>
+      <p id="partner-code-hint" className="text-xs text-foreground-muted">{initial && clean === initial ? S.applied(clean) : S.hint}</p>
     </div>
   );
 }

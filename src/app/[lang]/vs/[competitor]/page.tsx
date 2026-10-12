@@ -44,17 +44,17 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
           <Scribble kind="box" seed={`vs-${p.slug}-tldr`} fill="lemon" />
           {p.tldr}
         </p>
-        <div className="mt-10 overflow-x-auto border-y-[1.5px] border-ink">
+        <div className="mt-10 overflow-x-auto border-y-[1.5px] border-border-strong">
           <table className="w-full text-sm">
-            <thead><tr className="border-b-[1.5px] border-ink"><th className="p-3 text-start"></th><th className="p-3 text-start font-display">{p.competitor}</th><th className="p-3 text-start font-display">{us}</th></tr></thead>
-            <tbody className="divide-y divide-ink/15">{p.rows.map((r) => <tr key={r.dim}><td className="p-3 font-bold">{r.dim}</td><td className="p-3 text-muted">{r.them}</td><td className="p-3 font-bold">{r.us}</td></tr>)}</tbody>
+            <thead><tr className="border-b-[1.5px] border-border-strong"><th className="p-3 text-start"></th><th className="p-3 text-start font-display">{p.competitor}</th><th className="p-3 text-start font-display">{us}</th></tr></thead>
+            <tbody className="divide-y divide-foreground/15">{p.rows.map((r) => <tr key={r.dim}><td className="p-3 font-bold">{r.dim}</td><td className="p-3 text-foreground-muted">{r.them}</td><td className="p-3 font-bold">{r.us}</td></tr>)}</tbody>
           </table>
         </div>
         <div className="mt-10 grid gap-6 sm:grid-cols-2">
           <div className="s-card">
             <Scribble kind="box" seed={`vs-${p.slug}-them`} fill="paper" />
             <h2 className="font-display text-lg font-bold">{lang === "ar" ? `اختر ${p.competitor} إذا:` : `Choose ${p.competitor} if:`}</h2>
-            <ul className="mt-3 list-disc space-y-2 ps-5 text-sm text-muted">{p.chooseThem.map((x) => <li key={x}>{x}</li>)}</ul>
+            <ul className="mt-3 list-disc space-y-2 ps-5 text-sm text-foreground-muted">{p.chooseThem.map((x) => <li key={x}>{x}</li>)}</ul>
           </div>
           <div className="s-card">
             <Scribble kind="box" seed={`vs-${p.slug}-us`} fill="lilac" heavy shadow />
@@ -64,7 +64,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
         </div>
         <p className="mt-10 font-display text-2xl font-bold">{p.verdict}</p>
         {p.faq.length > 0 && <QaList items={p.faq} className="mt-10" />}
-        <p className="mt-8 text-sm text-muted">{lang === "ar" ? "مقارنات أخرى:" : "More comparisons:"} {VS_PAGES[lang].filter((x) => x.slug !== p.slug).map((x) => <Link key={x.slug} href={`/${lang}/vs/${x.slug}`} className="me-3 font-bold text-ink underline">{x.competitor}</Link>)}</p>
+        <p className="mt-8 text-sm text-foreground-muted">{lang === "ar" ? "مقارنات أخرى:" : "More comparisons:"} {VS_PAGES[lang].filter((x) => x.slug !== p.slug).map((x) => <Link key={x.slug} href={`/${lang}/vs/${x.slug}`} className="me-3 font-bold text-foreground underline">{x.competitor}</Link>)}</p>
       </main>
       <FinalCta t={t} lang={lang} />
       <Footer t={t} />

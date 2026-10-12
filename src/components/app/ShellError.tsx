@@ -24,12 +24,12 @@ export default function ShellError({ error, retry, area }: { error: Error & { di
   return (
     <div role="alert" className="mx-auto mt-10 grid w-full max-w-lg gap-3 card p-6 text-start">
       <h1 className="font-display text-xl font-bold">{S.title}</h1>
-      <p className="text-sm text-muted">{S.body}</p>
+      <p className="text-sm text-foreground-muted">{S.body}</p>
       <div className="mt-2 flex flex-wrap gap-3">
         <button type="button" onClick={() => retry()} className="btn btn-primary btn-sm">{S.retry}</button>
         <Link href={`/${lang}/${area}`} className="btn btn-secondary btn-sm">{S.home}</Link>
       </div>
-      {error.digest && <p className="font-mono text-xs text-muted" dir="ltr">ref: {error.digest}</p>}
+      {error.digest && <p className="font-mono text-xs text-foreground-muted" dir="ltr">ref: {error.digest}</p>}
     </div>
   );
 }

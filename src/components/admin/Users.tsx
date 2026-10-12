@@ -420,9 +420,9 @@ export default function Users({ lang, keySession }: SectionProps) {
       id: "email", header: S.email, sort: "email", className: "min-w-56",
       cell: (u) => (
         <span className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => open(u.email)} className="min-h-[var(--hit-min)] text-start text-ink underline pointer-fine:min-h-6"><bdi dir="ltr">{u.email}</bdi></button>
+          <button type="button" onClick={() => open(u.email)} className="min-h-[var(--hit-min)] text-start text-foreground underline pointer-fine:min-h-6"><bdi dir="ltr">{u.email}</bdi></button>
           {u.suspended && <Badge tone="danger">{UC.suspendedBadge}</Badge>}
-          {!u.emailVerifiedAt && <span className="rounded border border-border px-1.5 text-xs text-muted" data-testid="unverified">{S.unverified}</span>}
+          {!u.emailVerifiedAt && <span className="rounded border border-border px-1.5 text-xs text-foreground-muted" data-testid="unverified">{S.unverified}</span>}
         </span>
       ),
     },
@@ -440,9 +440,9 @@ export default function Users({ lang, keySession }: SectionProps) {
     },
     {
       id: "seats", header: S.seats, className: "whitespace-nowrap text-xs",
-      cell: (u) => <><button type="button" disabled={busy} onClick={() => setSeats(u)} title={S.setSeats} className="min-h-[var(--hit-min)] font-mono underline decoration-dotted pointer-fine:min-h-6">{u.seats ?? "—"}</button>{u.seatsOverride != null && <span className="ms-1 text-muted">({S.seatsOverride})</span>}</>,
+      cell: (u) => <><button type="button" disabled={busy} onClick={() => setSeats(u)} title={S.setSeats} className="min-h-[var(--hit-min)] font-mono underline decoration-dotted pointer-fine:min-h-6">{u.seats ?? "—"}</button>{u.seatsOverride != null && <span className="ms-1 text-foreground-muted">({S.seatsOverride})</span>}</>,
     },
-    { id: "credits", header: S.credits, sort: "credits", className: "font-mono", cell: (u) => <>{u.credits}{(u.topupCredits ?? 0) > 0 && <span className="ms-1 text-xs text-muted" title={S.topups}>({u.topupCredits} {S.ofTopup})</span>}</> },
+    { id: "credits", header: S.credits, sort: "credits", className: "font-mono", cell: (u) => <>{u.credits}{(u.topupCredits ?? 0) > 0 && <span className="ms-1 text-xs text-foreground-muted" title={S.topups}>({u.topupCredits} {S.ofTopup})</span>}</> },
     {
       // The raw count against the allowance (it can pass one lowered mid-period); "+N msgs on credits (M credits)" this
       // month. Red when the count reached the allowance or little is left.
@@ -450,7 +450,7 @@ export default function Users({ lang, keySession }: SectionProps) {
       cell: (u) => (
         <span className={`whitespace-nowrap text-xs ${chatLow(u.chatUsed ?? 0, u.chatAllowance, u.chatLeft) ? "font-semibold text-danger" : ""}`} data-testid="chat-cell">
           <button type="button" disabled={busy} onClick={() => setChat(u)} title={chatTitle(u)} className="min-h-[var(--hit-min)] font-mono underline decoration-dotted pointer-fine:min-h-6" dir="ltr">{u.chatUsed ?? 0} / {u.chatAllowance ?? "—"}</button>
-          {u.chatOverride != null && <span className="ms-1 text-muted">({S.seatsOverride})</span>}
+          {u.chatOverride != null && <span className="ms-1 text-foreground-muted">({S.seatsOverride})</span>}
           {((u.chatOverflowUsed ?? 0) > 0 || (u.chatCredits ?? 0) > 0) && <span className="ms-1 font-mono">{S.onCredits(u.chatOverflowUsed ?? 0, u.chatCredits ?? 0)}</span>}
         </span>
       ),
@@ -458,7 +458,7 @@ export default function Users({ lang, keySession }: SectionProps) {
     { id: "tokens", header: S.tokensMo, className: "font-mono text-xs", cell: (u) => <span title={`${u.calls ?? 0} ${UC.modelCalls}`}>{((u.tokens ?? 0) / 1000).toFixed(1)}k</span> },
     { id: "cost", header: S.costMo, className: "font-mono text-xs", cell: (u) => (u.usd ?? 0).toFixed(2) },
     // Plan price against this month's model cost. Red once the account keeps less than half of what it pays.
-    { id: "margin", header: S.marginMo, cell: (u) => <span className={`font-mono text-xs ${u.marginPct == null ? "text-muted" : u.marginPct < 50 ? "font-semibold text-danger" : ""}`} title={u.priceSar ? `${u.priceSar} SAR/mo` : ""}>{u.marginPct == null ? "—" : `${u.marginPct}%`}</span> },
+    { id: "margin", header: S.marginMo, cell: (u) => <span className={`font-mono text-xs ${u.marginPct == null ? "text-foreground-muted" : u.marginPct < 50 ? "font-semibold text-danger" : ""}`} title={u.priceSar ? `${u.priceSar} SAR/mo` : ""}>{u.marginPct == null ? "—" : `${u.marginPct}%`}</span> },
     { id: "trialEnds", header: S.trialEnds, sort: "trialEnds", className: "font-mono text-xs", cell: (u) => (u.plan === "trial" ? u.trialEnds.slice(0, 10) : "—") },
     { id: "createdAt", header: S.joined, sort: "createdAt", className: "font-mono text-xs", cell: (u) => u.createdAt.slice(0, 10) },
     { id: "add", header: <span className="sr-only">{UC.actions}</span>, cell: (u) => <button type="button" disabled={busy} onClick={() => addCredits(u.email)} className="btn btn-secondary btn-xs min-h-[var(--hit-min)] whitespace-nowrap">{S.addCredits}</button> },
@@ -470,20 +470,20 @@ export default function Users({ lang, keySession }: SectionProps) {
       {formDialog}
       {temp && <TempPasswordDialog lang={lang} email={temp.email} password={temp.password} onClose={() => setTemp(null)} />}
       <PlanTiles lang={lang} counts={data?.tiles ?? null} total={data?.total ?? null} />
-      {msg && !sel && <p role="status" className="text-sm text-ink" dir="auto">{msg}</p>}
+      {msg && !sel && <p role="status" className="text-sm text-foreground" dir="auto">{msg}</p>}
       <div className="flex flex-wrap items-end gap-3">
-        <label className="grid min-w-0 flex-1 basis-64 gap-1 text-xs text-muted">
+        <label className="grid min-w-0 flex-1 basis-64 gap-1 text-xs text-foreground-muted">
           <span>{UC.searchLabel}</span>
           <Input type="search" value={text} onChange={(e) => onText(e.target.value)} placeholder={S.search} maxLength={120} />
         </label>
-        <label className="grid gap-1 text-xs text-muted">
+        <label className="grid gap-1 text-xs text-foreground-muted">
           <span>{UC.planFilter}</span>
           <Select value={query.plan} onChange={(e) => setQuery({ plan: e.target.value as UserQuery["plan"] })}>
             <option value="">{UC.allPlans}{count(facets?.all)}</option>
             {PLANS.map((p) => <option key={p} value={p}>{p}{count(facets?.plan[p])}</option>)}
           </Select>
         </label>
-        <label className="grid gap-1 text-xs text-muted">
+        <label className="grid gap-1 text-xs text-foreground-muted">
           <span>{UC.stateFilter}</span>
           <Select value={query.filter} onChange={(e) => setQuery({ filter: e.target.value as UserQuery["filter"] })}>
             <option value="">{UC.filters[""]}</option>
@@ -493,7 +493,7 @@ export default function Users({ lang, keySession }: SectionProps) {
         {/* Member logins are not in this list (they never enter users:all): an exact address is looked up instead. */}
         {text.includes("@") && <button type="button" disabled={busy} onClick={() => open(text.trim().toLowerCase())} className="btn btn-secondary btn-xs min-h-[var(--hit-min)]">{S.lookup}</button>}
       </div>
-      {data && <p className="text-xs text-muted" aria-live="polite">{UC.matched(data.matched, data.facets.all)}</p>}
+      {data && <p className="text-xs text-foreground-muted" aria-live="polite">{UC.matched(data.matched, data.facets.all)}</p>}
       <DataTable
         lang={lang}
         caption={UC.caption}
@@ -508,16 +508,16 @@ export default function Users({ lang, keySession }: SectionProps) {
         rowClassName={(u) => (u.suspended ? "bg-agent-sami/20" : "")}
       />
       {data && <Pager lang={lang} page={data.page} pages={data.pages} per={data.per} sizes={USER_PAGE_SIZES} onPage={(p) => setQuery({ page: p })} onPer={(n) => setQuery({ per: n })} />}
-      <p className="text-xs text-muted">{S.planNote}</p>
-      <p className="text-xs text-muted">{S.chatNote}</p>
+      <p className="text-xs text-foreground-muted">{S.planNote}</p>
+      <p className="text-xs text-foreground-muted">{S.chatNote}</p>
       {memberSel && (
         <Sheet lang={lang} label={`${S.memberLogin} ${memberSel.email}`} onClose={() => setMemberSel(null)} side="end">
           <div className="grid gap-3 p-5 pe-14 text-sm">
-            <h2 className="font-display text-lg font-bold text-ink"><bdi dir="ltr">{memberSel.email}</bdi></h2>
-            <p className="text-muted">{S.memberLogin} · {memberSel.role}{memberSel.disabled ? ` · ${memberSel.disabled}` : ""}</p>
-            <p dir="auto">{memberSel.name} · {S.memberOf} <button type="button" onClick={() => open(memberSel.memberOf)} className="min-h-[var(--hit-min)] text-ink underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <bdi dir="ltr">{memberSel.invitedBy}</bdi> · <bdi dir="ltr">{memberSel.acceptedAt.slice(0, 10)}</bdi></p>
+            <h2 className="font-display text-lg font-bold text-foreground"><bdi dir="ltr">{memberSel.email}</bdi></h2>
+            <p className="text-foreground-muted">{S.memberLogin} · {memberSel.role}{memberSel.disabled ? ` · ${memberSel.disabled}` : ""}</p>
+            <p dir="auto">{memberSel.name} · {S.memberOf} <button type="button" onClick={() => open(memberSel.memberOf)} className="min-h-[var(--hit-min)] text-foreground underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <bdi dir="ltr">{memberSel.invitedBy}</bdi> · <bdi dir="ltr">{memberSel.acceptedAt.slice(0, 10)}</bdi></p>
             {(!memberSel.ownerExists || !memberSel.onRoster) && <p className="text-danger">{[!memberSel.ownerExists ? S.ownerMissing : "", !memberSel.onRoster ? S.offRoster : ""].filter(Boolean).join(" · ")}</p>}
-            {msg && <p role="status" className="text-sm text-ink" dir="auto">{msg}</p>}
+            {msg && <p role="status" className="text-sm text-foreground" dir="auto">{msg}</p>}
             <button type="button" disabled={busy} onClick={() => act(memberSel.email, "removeMember")} className="btn btn-danger-solid btn-xs min-h-[var(--hit-min)] justify-self-start">{S.removeMember}</button>
           </div>
         </Sheet>

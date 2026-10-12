@@ -60,14 +60,14 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(artLd) }} />
       <Nav t={t} lang={lang} />
       <main className="page-wrap">
-        <p className="font-mono text-xs text-muted" dir="ltr">2026-09-17</p>
+        <p className="font-mono text-xs text-foreground-muted" dir="ltr">2026-09-17</p>
         <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-5xl">
           <span className="s-ul">
             <Scribble kind="underline" seed="definition-h" />
             {c.title}
           </span>
         </h1>
-        <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-muted">
+        <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-foreground-muted">
           <span>{c.askAi}:</span>
           {ask.map(([n, u]) => <a key={n} href={u} target="_blank" rel="noreferrer" className="s-chip inline-flex items-center"><Scribble kind="pill" seed={`definition-ask-${n}`} fill="paper" ring />{n}</a>)}
         </div>
@@ -79,12 +79,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
         <h2 className="mt-12 font-display text-2xl font-bold">{lang === "ar" ? "كيف يعمل" : "How it works"}</h2>
         <ol className="mt-4 space-y-3">{c.how.map((s, i) => <li key={i} className="flex gap-3 leading-relaxed"><span className="font-mono font-bold">{i + 1}.</span>{s}</li>)}</ol>
         <h2 className="mt-12 font-display text-2xl font-bold">{lang === "ar" ? "وكيل، مساعد، أداة، أم وكالة؟" : "Agent, assistant, tool, or agency?"}</h2>
-        <div className="mt-4 overflow-x-auto border-y-[1.5px] border-ink"><table className="w-full text-sm"><thead><tr className="border-b-[1.5px] border-ink">{c.table[0].map((h, i) => <th key={i} className="p-3 text-start font-display">{h}</th>)}</tr></thead><tbody className="divide-y divide-ink/15">{c.table.slice(1).map((r, i) => <tr key={i}>{r.map((cell, j) => <td key={j} className={`p-3 ${j === 0 ? "font-bold" : j === 1 ? "bg-lilac font-bold" : "text-muted"}`}>{cell}</td>)}</tr>)}</tbody></table></div>
+        <div className="mt-4 overflow-x-auto border-y-[1.5px] border-border-strong"><table className="w-full text-sm"><thead><tr className="border-b-[1.5px] border-border-strong">{c.table[0].map((h, i) => <th key={i} className="p-3 text-start font-display">{h}</th>)}</tr></thead><tbody className="divide-y divide-foreground/15">{c.table.slice(1).map((r, i) => <tr key={i}>{r.map((cell, j) => <td key={j} className={`p-3 ${j === 0 ? "font-bold" : j === 1 ? "bg-background-muted font-bold" : "text-foreground-muted"}`}>{cell}</td>)}</tr>)}</tbody></table></div>
         <h2 className="mt-12 font-display text-2xl font-bold">{lang === "ar" ? "ماذا يختلف في الخليج" : "What's different in the Gulf"}</h2>
         <p className="mt-3 leading-relaxed">{c.gulf}</p>
         <h2 className="mt-12 font-display text-2xl font-bold">{lang === "ar" ? "الأسئلة الشائعة" : "FAQ"}</h2>
         <QaList items={c.faq.map(([q, a]) => ({ q, a }))} className="mt-4" />
-        <p className="mt-10 text-sm text-muted">{lang === "ar" ? "اقرأ أيضاً:" : "Read next:"} <Link href={`/${lang}/blog/best-ai-marketing-agents-gulf-2026`} className="font-bold text-ink underline">{lang === "ar" ? "معيار أفضل وكلاء التسويق للخليج" : "The Gulf AI marketing agent benchmark"}</Link> · <Link href={`/${lang}/vs/chatgpt`} className="font-bold text-ink underline">{lang === "ar" ? "نور مقابل ChatGPT" : "Noor vs ChatGPT"}</Link> · <Link href={`/${lang}/blog/replace-your-agency-with-ai`} className="font-bold text-ink underline">{lang === "ar" ? "استبدل وكالتك" : "Replace your agency"}</Link></p>
+        <p className="mt-10 text-sm text-foreground-muted">{lang === "ar" ? "اقرأ أيضاً:" : "Read next:"} <Link href={`/${lang}/blog/best-ai-marketing-agents-gulf-2026`} className="font-bold text-foreground underline">{lang === "ar" ? "معيار أفضل وكلاء التسويق للخليج" : "The Gulf AI marketing agent benchmark"}</Link> · <Link href={`/${lang}/vs/chatgpt`} className="font-bold text-foreground underline">{lang === "ar" ? "نور مقابل ChatGPT" : "Noor vs ChatGPT"}</Link> · <Link href={`/${lang}/blog/replace-your-agency-with-ai`} className="font-bold text-foreground underline">{lang === "ar" ? "استبدل وكالتك" : "Replace your agency"}</Link></p>
       </main>
       <FinalCta t={t} lang={lang} />
       <Footer t={t} />

@@ -14,11 +14,11 @@ const CLEAN: string[] = (readdirSync("src", { recursive: true }) as string[])
   .sort();
 
 /**
- * Files that may write a hex value, each for a reason: the token sheet is where the values live; global-error replaces
+ * Files that may write a hex value, each for a reason: the token sheets (light, and dark since rule 1202) are where the values live; global-error replaces
  * the document and cannot load the stylesheet, so it writes D's values out (reskin-marketing pins them); the crawler and
  * the media store handle colours found in customers' sites and files, which are data, not the product's palette.
  */
-const HEX_OK = new Set(["src/app/tokens.css", "src/app/global-error.tsx", "src/lib/crawl.ts", "src/lib/media/blob.ts"]);
+const HEX_OK = new Set(["src/app/tokens.css", "src/app/theme-dark.css", "src/app/global-error.tsx", "src/lib/crawl.ts", "src/lib/media/blob.ts"]);
 
 /**
  * An old palette name used as a colour: a utility (`text-oasis`, `hover:bg-salt-dim/40`), a CSS variable
