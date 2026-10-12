@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { saveGov } from "@/lib/governance";
 import { ModelPaused } from "@/lib/model";
 import { confirmOnboard, sweepOnboardHolds } from "@/lib/onboard-confirm";
-import { ONBOARD_EXTRA_BRAND_COST } from "@/lib/pricing";
+import { AGENCY_BRANDS, ONBOARD_EXTRA_BRAND_COST, PLAN_BRANDS } from "@/lib/pricing";
 import { BRANDS_PER_DAY, BRANDS_PER_HOUR } from "@/lib/rate";
 import { getSchedule, runDaily, runWeekly, saveSchedule } from "@/lib/schedule";
 import { DRAFT_TYPES, TASK_COST } from "@/lib/tasks";
@@ -16,12 +16,13 @@ import { runTool } from "@/lib/chat";
 import { wipeAccount } from "@/lib/account";
 
 /**
- * Brands are unlimited on every plan (founder decision 2, 2026-09-29), with two guardrails in code, not in copy:
- * an added brand's onboarding costs ONBOARD_EXTRA_BRAND_COST credits (shown at confirm, 402 before any stream,
+ * Active brands are capped per plan (founder decision 2026-10-09, rules 1390-1392, replacing rule 245's "unlimited"):
+ * 1/1/2/5 for trial/starter/pro/business, Agency 10 or the founder's `User.brandCap`. Two more guardrails in code, not in
+ * copy: an added brand's onboarding costs ONBOARD_EXTRA_BRAND_COST credits (shown at confirm, 402 before any stream,
  * refunded when the brand is not saved, never charged twice), and the paid Sunday plan is on by default only for the
- * default brand. Brand creation is bounded by a rate and a lock, never by a cap.
- * Rules 245 (unlimited brands, rate, lock), 246 (added-brand onboarding), 247 (weekly plan per brand) and 250
- * (draft_items types checked in code). No model key and no network: every agent call takes its mock path.
+ * default brand. Brand creation is bounded by a rate (checked first), the cap and a lock.
+ * Rules 245 (rate, lock), 246 (added-brand onboarding), 247 (weekly plan per brand), 250 (draft_items types checked in
+ * code) and 1390-1392 (the cap). No model key and no network: every agent call takes its mock path.
  */
 const crawled: string[] = [];
 vi.mock("@/lib/crawl", () => ({ crawl: async (url: string) => (crawled.push(url), { url: `https://${url}`, ok: true, title: "Roastery | Home", description: "Coffee", text: "", links: [], platform: "unknown", colors: [], fonts: [] }) }));
@@ -63,10 +64,13 @@ async function killedRun(email: string, scope: string, at?: string) {
   if (at) { const x = (await getUser(email))!; await saveUser({ ...x, onboardPaid: { ...x.onboardPaid, [scope]: { ...c.hold, at } } }); }
 }
 
-/** A signed-in owner on `plan` whose active brand is a freshly added one. */
+/** Give the account a founder brand cap (rule 1393), so a test about something else can add brands on any plan. */
+const roomFor = async (email: string, brandCap = 200) => saveUser({ ...(await getUser(email))!, brandCap });
+
+/** A signed-in owner on `plan` whose active brand is a freshly added one (the founder cap lets any plan add it). */
 async function withAddedBrand(plan: Plan = "trial", prefix = "gr"): Promise<{ u: User; id: string; scope: string }> {
   const u = await newUser(prefix);
-  if (plan !== "trial") await saveUser({ ...(await getUser(u.email))!, plan });
+  await saveUser({ ...(await getUser(u.email))!, plan, brandCap: 10 });
   await signIn(u.email);
   const res = await add("Second");
   expect(res.status).toBe(200);
@@ -74,26 +78,79 @@ async function withAddedBrand(plan: Plan = "trial", prefix = "gr"): Promise<{ u:
   return { u, id, scope: scopeFor(u.email, id) };
 }
 
-describe("unlimited brands, a creation rate and a locked add (rule 245)", () => {
-  it("trial, starter, pro and business accounts add a 2nd and a 3rd brand, and GET returns no limit", async () => {
-    for (const plan of ["trial", "starter", "pro", "business"] as const) {
+describe("brands capped per plan, a creation rate and a locked add (rules 245, 1390-1392)", () => {
+  it("each plan adds up to its cap (default brand included), then 402 brand_limit with the cap and plan, nothing written", async () => {
+    for (const plan of ["trial", "starter", "pro", "business", "agency"] as const) {
       const u = await newUser(`p-${plan}`);
       if (plan !== "trial") await saveUser({ ...(await getUser(u.email))!, plan });
       await signIn(u.email);
-      for (const name of ["Two", "Three"]) {
-        const res = await add(name);
-        expect(res.status, `${plan} adds ${name}`).toBe(200);
-        expect(await res.json()).toMatchObject({ ok: true, brand: { name, status: "active" } });
-      }
-      const got = (await (await brandsRoute.GET()).json()) as Record<string, unknown> & { brands: { status: string }[] };
-      expect(got.brands.filter((b) => b.status === "active"), plan).toHaveLength(3);
-      // A `limit` of Infinity would reach the browser as null, and `active >= null` disables Add for everyone.
-      expect(got, "no brand cap is sent at all").not.toHaveProperty("limit");
+      const cap = plan === "agency" ? AGENCY_BRANDS : PLAN_BRANDS[plan];
+      for (let i = 1; i < cap; i++) expect((await add(`b${i}`)).status, `${plan} adds brand ${i + 1} of ${cap}`).toBe(200);
+      const over = await add("one too many");
+      expect(over.status, plan).toBe(402);
+      expect(await over.json()).toEqual({ ok: false, error: "brand_limit", cap, plan });
+      expect(await listBrands(u.email), plan).toHaveLength(cap);
+      const got = (await (await brandsRoute.GET()).json()) as { cap: number; count: number; canUpgrade: boolean };
+      expect(got, plan).toMatchObject({ cap, count: cap, canUpgrade: true });
     }
+    expect(PLAN_BRANDS).toEqual({ trial: 1, starter: 1, pro: 2, business: 5 });
+  });
+
+  it("the rate is checked before the cap: a refused rate answers 429 even at the cap", async () => {
+    const u = await newUser("rate-first");
+    await signIn(u.email);
+    await db.set(`rate:brandadd:d:${u.email}`, BRANDS_PER_DAY, 86400);
+    const res = await add("x");
+    expect(res.status).toBe(429);
+  });
+
+  it("archived brands do not count; a restore over the cap is 402 and stays archived; a downgrade keeps every brand", async () => {
+    const u = await newUser("arch");
+    await saveUser({ ...(await getUser(u.email))!, plan: "pro" });
+    await signIn(u.email);
+    const second = ((await (await add("Two")).json()) as { brand: { id: string } }).brand.id;
+    expect((await add("Three")).status).toBe(402);
+    const post = (body: object) => brandsRoute.POST(json("/api/brands", "POST", body));
+    expect((await post({ action: "archive", id: second })).status, "archiving is never capped").toBe(200);
+    const third = ((await (await add("Three")).json()) as { brand: { id: string } }).brand.id;
+    const restore = await post({ action: "archive", id: second });
+    expect(restore.status).toBe(402);
+    expect(await restore.json()).toMatchObject({ ok: false, error: "brand_limit", cap: 2 });
+    expect((await listBrands(u.email)).find((b) => b.id === second)!.status).toBe("archived");
+
+    // Downgrade to starter (cap 1) with 2 active: nothing is archived or deleted, switch and rename still work, adds stop.
+    await saveUser({ ...(await getUser(u.email))!, plan: "starter" });
+    const rows = await listBrands(u.email);
+    expect(rows.filter((b) => b.status === "active").map((b) => b.id)).toEqual(["default", third]);
+    expect((await post({ action: "switch", id: third })).status).toBe(200);
+    expect((await post({ action: "rename", id: third, name: "Kept" })).status).toBe(200);
+    expect((await add("Four")).status).toBe(402);
+    expect(await listBrands(u.email)).toHaveLength(3);
+  });
+
+  it("the founder's brandCap overrides the plan's number, either way, and an out-of-range one is ignored", async () => {
+    const u = await newUser("override");
+    await saveUser({ ...(await getUser(u.email))!, plan: "agency", brandCap: 2 });
+    await signIn(u.email);
+    expect((await add("Two")).status).toBe(200);
+    expect(await (await add("Three")).json()).toEqual({ ok: false, error: "brand_limit", cap: 2, plan: "agency" });
+    await saveUser({ ...(await getUser(u.email))!, plan: "agency", brandCap: 9999 });
+    expect(((await (await brandsRoute.GET()).json()) as { cap: number }).cap, "out of range reads as Agency's number").toBe(AGENCY_BRANDS);
+  });
+
+  it("adds sent side by side at the cap: exactly the room left passes, the rest are 402", async () => {
+    const u = await newUser("race");
+    await saveUser({ ...(await getUser(u.email))!, plan: "business" });
+    await signIn(u.email);
+    const res = await Promise.all(["A", "B", "C", "D", "E", "F", "G"].map((n) => add(n)));
+    const codes = res.map((r) => r.status).filter((c) => c !== 409);
+    expect(codes.filter((c) => c === 200)).toHaveLength(PLAN_BRANDS.business - 1);
+    expect((await listBrands(u.email)).filter((b) => b.status === "active").length).toBeLessThanOrEqual(PLAN_BRANDS.business);
   });
 
   it("the hourly bucket answers 429 slow_down and writes nothing; so does the daily one; each says which window refused", async () => {
     const u = await newUser("rate");
+    await roomFor(u.email);
     await signIn(u.email);
     const codes: number[] = [];
     for (let i = 0; i < BRANDS_PER_HOUR; i++) codes.push((await add(`b${i}`)).status);
@@ -106,6 +163,7 @@ describe("unlimited brands, a creation rate and a locked add (rule 245)", () => 
     expect(await db.get(`rate:brandadd:d:${u.email}`), "a refusal by the hour uses none of the day's adds").toBe(BRANDS_PER_HOUR);
 
     const v = await newUser("rate-day");
+    await roomFor(v.email);
     await signIn(v.email);
     await db.set(`rate:brandadd:d:${v.email}`, BRANDS_PER_DAY, 86400);
     const day = await add("x");
@@ -118,6 +176,7 @@ describe("unlimited brands, a creation rate and a locked add (rule 245)", () => 
 
   it("adds sent side by side are all kept, and an add beside a rename keeps both", async () => {
     const u = await newUser("par");
+    await roomFor(u.email);
     await signIn(u.email);
     const res = await Promise.all(["A", "B", "C", "D", "E"].map((n) => add(n)));
     expect(res.map((r) => r.status)).toEqual([200, 200, 200, 200, 200]);
@@ -132,7 +191,7 @@ describe("unlimited brands, a creation rate and a locked add (rule 245)", () => 
     expect(after.map((b) => b.name)).toContain("F");
   });
 
-  it("an add that cannot take the list's lock answers 409 busy, never 402, and writes nothing", async () => {
+  it("an add that cannot take the list's lock answers 409 busy and writes nothing", async () => {
     const u = await newUser("busy");
     await signIn(u.email);
     expect(await db.lock(`brandslock:${u.email}`, 10)).toBe(true);

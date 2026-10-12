@@ -20,7 +20,7 @@ const dueTask = (id: string): Task => ({ id, type: "social", channel: "instagram
 /** One account with its default brand and one added brand, each with a brand file and an approved item due today. */
 async function twoBrands(): Promise<{ u: User; a: User; b: User; scopeB: string }> {
   const u = await newUser("mb");
-  const added = await addBrand({ ...u, actor: { kind: "owner", email: u.email, name: u.name, lang: u.lang, role: "owner" } }, "Second Roastery");
+  const added = await addBrand({ ...u, brandCap: 2, actor: { kind: "owner", email: u.email, name: u.name, lang: u.lang, role: "owner" } }, "Second Roastery");
   if ("error" in added) throw new Error(added.error);
   const scopeB = scopeFor(u.email, added.id);
   await Promise.all([saveBrand(u.email, file("First Roastery")), saveBrand(scopeB, file("Second Roastery file"))]);

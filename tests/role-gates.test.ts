@@ -110,6 +110,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/golden": "admin-console",
   "POST /api/admin/impersonate": "admin-console",
   "POST /api/admin/plan": "admin-console",
+  "POST /api/admin/brand-cap": "admin-console",
   // Partner programme (rules 390-402): approvals, payouts, recorded payments and voids.
   "POST /api/admin/partners": "admin-console",
   "POST /api/admin/payments/[email]": "admin-console",

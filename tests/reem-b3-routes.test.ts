@@ -608,7 +608,7 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
     fakeProviders();
     const o = await owner();
     await putLink(o.email, seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined }));
-    const b = (await addBrand(o, "Second")) as { id: string };
+    const b = (await addBrand({ ...o, brandCap: 2 }, "Second")) as { id: string };
     await setActiveBrand(o.email, b.id);
     expect(await body(await get())).toEqual({ ok: true, link: null });
     expect((await list()).status).toBe(404);

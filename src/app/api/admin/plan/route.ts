@@ -10,7 +10,7 @@ import { route } from "@/lib/models/route";
 import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
 import { enforceSeats } from "@/lib/team";
-import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
+import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, brandCapFor, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 import { parseVideoGrant } from "@/lib/entitlements";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
@@ -66,6 +66,8 @@ async function rowOf(u: User) {
     // Rule 776: when the owner proved the address (null: not yet, so the account reads as signed out until they do).
     emailVerifiedAt: u.emailVerifiedAt ?? null,
     seats: seatLimit(u), seatsOverride: u.seats ?? null,
+    // Rule 1393: the active-brand cap and the founder override (POST /api/admin/brand-cap sets it).
+    brandCap: brandCapFor(u), brandCapOverride: u.brandCap ?? null,
     deal: u.deal ?? null, allowance: allowanceOf(u),
     videoGrant: u.grants?.video ?? null,
     tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls, byKind: usage.byKind,
