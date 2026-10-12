@@ -115,13 +115,22 @@ describe("rule 1115: loading screens, skeletons, and the card and line height on
     expect(region).toContain('<span class="sr-only">Loading</span>');
   });
   it("each signed-in area that waits on the server has a loading.tsx on RouteLoading", () => {
-    for (const dir of ["", "/chat", "/calendar", "/reports", "/notifications", "/conversations", "/activity", "/billing", "/files"]) {
+    for (const dir of ["/chat", "/calendar", "/reports", "/notifications", "/conversations", "/activity", "/billing", "/files"]) {
       const f = `src/app/[lang]/app${dir}/loading.tsx`;
       expect(existsSync(f), f).toBe(true);
       expect(read(f), f).toContain("<RouteLoading");
     }
     // loading.tsx gets no params: the language comes from the URL.
     expect(read("src/components/app/RouteLoading.tsx")).toContain("useParams");
+  });
+  it("no loading.tsx at the app root, so the pages that redirect still answer a 307", () => {
+    // A root loading.tsx wraps every page under /app in a Suspense boundary, and a redirect() behind a boundary is streamed
+    // as a meta refresh with a 200: the start page, verify, login, signup and the home page stopped redirecting on the server.
+    expect(existsSync("src/app/[lang]/app/loading.tsx")).toBe(false);
+    for (const page of ["", "/start", "/verify", "/login", "/signup", "/admin"]) {
+      expect(read(`src/app/[lang]/app${page}/page.tsx`), page || "/").toContain("redirect(");
+      expect(existsSync(`src/app/[lang]/app${page}/loading.tsx`), page || "/").toBe(false);
+    }
   });
   it(".card and the body's line height read the tokens; scroll-padding clears the sticky phone header", () => {
     const g = read("src/app/globals.css");
@@ -183,8 +192,11 @@ describe("rule 1119: the shell's counts are read once on the server and shared",
 
 describe("rules 1120-1121: the rail is grouped, the phone menu is a Sheet, the account menu is a Menu", () => {
   const src = read("src/components/app/Sidebar.tsx");
-  it("groups are named sections; the active row is aria-current; rows are 44px on touch screens", () => {
-    expect(src).toMatch(/<section aria-labelledby=\{id\}>/);
+  it("groups are named groups, not headings; the active row is aria-current; rows are 44px on touch screens", () => {
+    expect(src).toMatch(/<div role="group" aria-labelledby=\{id\}>/);
+    // The rail comes before the screen's own headings: its titles are labels, so the heading list is the page's alone.
+    expect(src).not.toMatch(/<h[1-6][\s>]/);
+    expect(src).not.toContain("<section");
     expect(src).toContain('aria-current={active(href) ? "page" : undefined}');
     expect(src).toContain("min-h-[var(--hit-min)]");
   });

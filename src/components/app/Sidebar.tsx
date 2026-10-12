@@ -71,12 +71,17 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
       {badge ? <span className="tnum rounded-full bg-ink px-2 text-xs font-semibold text-paper" dir="ltr">{badge}</span> : null}
     </Link>
   );
-  /** A named group of rows: the heading names the list for screen readers too. */
+  /**
+   * A named group of rows. The title is a label, not a heading: the rail sits before the screen's own h1 and h2s, so six
+   * headings here (twelve with the phone sheet open) came first in a screen reader's heading list and on the same level
+   * as the screen's sections; and a named section element is a region landmark, six of them inside the one nav. A `group`
+   * named by its title is announced on entry ("Work, group") and leaves the outline to the page.
+   */
   const group = (id: string, title: string, rows: React.ReactNode) => (
-    <section aria-labelledby={id}>
-      <h2 id={id} className="mb-1 px-3 text-xs font-semibold text-foreground-muted">{title}</h2>
+    <div role="group" aria-labelledby={id}>
+      <p id={id} className="mb-1 px-3 text-xs font-semibold text-foreground-muted">{title}</p>
       <ul className="grid gap-0.5">{rows}</ul>
-    </section>
+    </div>
   );
   const initial = (brandName || t.appName).trim().charAt(0);
   const specialists = AGENTS.filter((a) => a.id !== "noor");
@@ -133,8 +138,8 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
         </li>
       </>)}
 
-      <section aria-labelledby={`${p}-history`}>
-        <h2 id={`${p}-history`} className="mb-1 px-3 text-xs font-semibold text-foreground-muted">{N.history}</h2>
+      <div role="group" aria-labelledby={`${p}-history`}>
+        <p id={`${p}-history`} className="mb-1 px-3 text-xs font-semibold text-foreground-muted">{N.history}</p>
         <form role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) { setOpen(false); r.push(`${base}/conversations?q=${encodeURIComponent(q.trim())}`); } }} className="relative">
           <Icon name="search" className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground-muted" />
           <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={N.searchConv} aria-label={N.searchConv} className="min-h-[var(--hit-min)] w-full rounded-lg border-[1.5px] border-border-input bg-paper pe-3 ps-8 text-sm text-ink placeholder:text-foreground-muted focus:border-ink pointer-fine:min-h-9" />
@@ -143,7 +148,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
           {convs.slice(0, 3).map((c) => <li key={c.id}>{row(`${base}/chat?conv=${c.id}`, <span dir="auto">{c.title || "…"}</span>, "chat")}</li>)}
           <li><Link href={`${base}/conversations`} onClick={() => setOpen(false)} className="flex min-h-[var(--hit-min)] items-center px-3 text-xs text-foreground-muted hover:text-ink pointer-fine:min-h-8">{N.seeAll}</Link></li>
         </ul>
-      </section>
+      </div>
 
       {group(`${p}-brand`, X.brand, <>
         <li>{row(`${base}/files`, N.files, "folder")}</li>
