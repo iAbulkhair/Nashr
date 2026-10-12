@@ -728,6 +728,12 @@ const AWAY_CARDS_PER_REPLY = 5;
 /** Instruction cards one reply carries at most (spec 7): a further propose_instruction is refused in its answer, with no card. */
 export const INSTRUCTION_CARDS_PER_REPLY = 2;
 
+/** The refusal another agent's turn reads for one of Reem's own tools (rules 607 and 919); the same words as the tool's gate below. */
+const REEM_ONLY_REFUSAL: Readonly<Record<string, string>> = {
+  free_slots: "Not done: only Reem looks up open meeting times. Ask Reem; nothing was read.",
+  propose_meeting_tasks: "Not done: only Reem proposes a meeting's follow-up tasks. Nothing was stored.",
+};
+
 /**
  * Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop.
  * `deadline` is the chat request's (see chat()); a call outside a chat turn counts as the start of one. `ctx` comes from
@@ -737,7 +743,9 @@ export async function runTool(user: User, name: string, input: Record<string, un
   // The offered-tool check (rule 799, R6), before every other check and write: a tool this agent was not offered in this turn
   // (`toolsFor`: propose_handoff is Majed's, contact_away is Reem's) does not exist for it, whatever the model names. A call with
   // no agent (a test, a caller outside a chat turn) keeps each tool's own answer below.
-  if (ctx.agent && !toolsFor(ctx.agent).some((t) => t.name === name)) return "Unknown tool.";
+  // Reem's two read or store tools keep their own refusal text (rules 607 and 919), which says who to ask; it is still
+  // answered here, before any read or write.
+  if (ctx.agent && !toolsFor(ctx.agent).some((t) => t.name === name)) return Object.hasOwn(REEM_ONLY_REFUSAL, name) ? REEM_ONLY_REFUSAL[name] : "Unknown tool.";
   const email = user.scope ?? user.email;
   // The role gate comes first: a refused tool reaches no pipeline, write or activity row.
   const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;

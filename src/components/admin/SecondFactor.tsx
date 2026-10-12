@@ -146,7 +146,7 @@ export default function SecondFactor({ lang, enrolled }: { lang: Lang; enrolled:
       {setup && !recovery && (
         <FormDialog lang={lang} title={S.setUp} submitLabel={S.confirm} cancelLabel={S.cancel} busyLabel={S.busy} onSubmit={confirmSetup} onClose={() => setSetup(null)}>
           <p className="text-sm">{S.step1}</p>
-          <p dir="ltr" className="select-all rounded-lg bg-lilac/60 px-3 py-2 text-center font-mono text-sm tracking-wider">{groups(setup.secret)}</p>
+          <p dir="ltr" className="select-all rounded-lg bg-background-muted/60 px-3 py-2 text-center font-mono text-sm tracking-wider">{groups(setup.secret)}</p>
           <p><a className="text-sm underline" href={setup.uri}>{S.openApp}</a></p>
           <Field label={S.code}><Input name="code" inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} pattern="\d{6}" required /></Field>
         </FormDialog>
@@ -155,7 +155,7 @@ export default function SecondFactor({ lang, enrolled }: { lang: Lang; enrolled:
       {recovery && (
         <FormDialog lang={lang} title={S.saveTitle} role="alertdialog" submitLabel={S.saved} cancelLabel={S.cancel} onSubmit={async () => null} onClose={() => { setRecovery(null); setSetup(null); router.refresh(); }}>
           <p className="text-sm">{S.saveNote}</p>
-          <p dir="ltr" className="select-all rounded-lg bg-lilac/60 px-3 py-2 text-center font-mono text-base tracking-wider">{recovery}</p>
+          <p dir="ltr" className="select-all rounded-lg bg-background-muted/60 px-3 py-2 text-center font-mono text-base tracking-wider">{recovery}</p>
         </FormDialog>
       )}
 

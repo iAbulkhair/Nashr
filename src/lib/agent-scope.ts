@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { CAPS, db, pushCapped } from "./db";
-import { listBrands } from "./brands";
+import { listBrands, scopeFor } from "./brands";
 import { getBrand, type Brand, type Task } from "./brand";
 import { GENERATE_NOTES_READ } from "./notes-read";
 import { classify, type Classified } from "./agent-scope-classify";
@@ -160,12 +160,13 @@ export const itemHash = (t: { title: string; body: string; editedBody?: string }
 
 /**
  * The names of the account's brands other than the active one, for the classifier and the refusal copy. The default
- * brand's `BrandMeta.name` is "" (its name lives in the brand file), so it is read from `getBrand(user.email)`. Empty
+ * brand's `BrandMeta.name` is "" (its name lives in the brand file), so it is read from the default brand's scope. Empty
  * names are dropped. One `Promise.all`: the list and the default brand's file.
  */
 export async function otherBrandNames(user: User): Promise<string[]> {
   const active = user.brandId ?? "default";
-  const [rows, main] = await Promise.all([listBrands(user.email), getBrand(user.email)]);
+  // The default brand by name (`scopeFor(email, "default")`), whichever brand is active: not a read of the active workspace.
+  const [rows, main] = await Promise.all([listBrands(user.email), getBrand(scopeFor(user.email, "default"))]);
   return rows
     .filter((b) => b.id !== active)
     .map((b) => (b.id === "default" ? main?.name || b.name : b.name).trim())

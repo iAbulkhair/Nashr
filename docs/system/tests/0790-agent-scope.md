@@ -58,3 +58,11 @@ Update 2026-10-12 (Tasks 7-9, same branch): rules 790-802 do not clash with `ori
 - Rule 1411: the release route writes `admin:log` with `pushCapped` and `adminActor`, as the other founder routes on this branch do; after `main` is merged in, it should move to `adminAudit` if `main` has replaced the direct writes by then.
 - Rule 1412: the set has 205 cases; the plan's table is a floor. The eval is never run by a test or a cron: the founder runs it from the console, after approving the spend.
 - Rule 1413: the panel lives in `src/components/admin/` beside `Quality.tsx` (the console moved there in rule 874), not in `src/components/app/` as the plan said.
+
+## 2026-10-12 build batch (merged with main and nine other pull requests)
+
+- Rule 1411 note above, done: the release, modes and eval routes write `admin:log` through `adminAudit` (section `quality`; rule 1172, pinned by `tests/uiux-phase4.test.ts`) and call `secondFactorRefusal(req, who)` right after `adminActor` (rule 1376, pinned by the route scan in `tests/admin-2fa.test.ts`).
+- Rule 791: `classify` streams through `metered` (main's rule 980, pinned by `tests/meter-billed.test.ts`), still on the global counters only. A check cut by its time limit is now metered for what its stream had received; it is priced as the reply's model, like every other call site. Test mocks that script chat turns answer the forced `verdict` tool with an error, as the missing `create` did before.
+- Rule 799 and main's rules 607 and 919: the offered-tool check still comes before any read or write, but for Reem's `free_slots` and `propose_meeting_tasks` another agent's turn reads those tools' own "only Reem" refusal instead of "Unknown tool.".
+- Rule 1413: the eval button asks through the console's own dialog (`useConfirm`, rule 1182), not `window.confirm`; the panel's raw colours went through `scripts/semantic-colours.mjs` (rule 1200).
+- `otherBrandNames` reads the default brand's file with `scopeFor(email, "default")`, which names the brand it means (main's rule 1352 scan).
