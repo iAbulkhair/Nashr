@@ -145,7 +145,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const minutes = parseImpersonateMinutes(b.minutes);
       if (!minutes) return NextResponse.json({ ok: false, error: "bad_minutes" }, { status: 400 });
       const ttl = minutes * 60;
-      // One view at a time (rule 1270, C-015). While this browser already shows a customer's account, its `nashr_session`
+      // One view at a time (rule 1350, C-015). While this browser already shows a customer's account, its `nashr_session`
       // is that impersonation: a second one would save it as `nashr_return`, and "Stop" would hand the founder the first
       // customer's session instead of their own. Refused before the audit row, so a refused start logs nothing.
       const jar = await cookies();

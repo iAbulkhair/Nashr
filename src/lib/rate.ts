@@ -248,6 +248,6 @@ export { sameSecret } from "./secret";
 /**
  * Integration requests and votes, per login (`POST /api/integrations`). Each one is a row in the capped request log
  * the founder reads, so a script must not be able to flood it and push the real requests out; a person asking for a
- * few connectors stays far below this. Rule 1273.
+ * few connectors stays far below this. Rule 1353.
  */
 export const INTEGRATION_REQUESTS_PER_HOUR = 30;

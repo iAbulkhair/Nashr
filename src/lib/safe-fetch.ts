@@ -10,13 +10,13 @@ import { providerTimeout } from "./fetch-timeout";
  * no loopback / private / link-local / metadata / multicast targets, and every
  * redirect hop is validated again instead of followed blindly.
  *
- * DNS rebinding (rule 1262): the check in `assertPublicUrl` resolves the name, and the connection used to resolve it a
+ * DNS rebinding (rule 1342): the check in `assertPublicUrl` resolves the name, and the connection used to resolve it a
  * second time, so a name that answered a public address to the check and a private one to the connection reached the
  * private network. Every request now goes through `pinnedAgent`, whose connect-time lookup (`pinnedLookup`) resolves
  * once, refuses when any address is private, and hands the socket exactly the addresses it checked: there is no second
  * lookup left to rebind. `assertPublicUrl` still runs first, so a refused URL is refused before any request.
  *
- * Every call has a deadline (rule 1263): the caller's own `signal`, or `PROVIDER_TIMEOUT_MS` across the whole redirect
+ * Every call has a deadline (rule 1343): the caller's own `signal`, or `PROVIDER_TIMEOUT_MS` across the whole redirect
  * chain and the body.
  */
 export class UnsafeUrlError extends Error {
@@ -103,7 +103,7 @@ type PinnedInit = RequestInit & { dispatcher: Agent };
 export async function safeFetch(input: string, init: RequestInit = {}, opts: SafeFetchOptions = {}): Promise<Response> {
   let url = input;
   let current = init;
-  // One deadline for the whole chain and the body: the caller's, else the default (rule 1263).
+  // One deadline for the whole chain and the body: the caller's, else the default (rule 1343).
   const signal = init.signal ?? providerTimeout();
   for (let hop = 0; hop < 5; hop++) {
     const u = await assertPublicUrl(url);

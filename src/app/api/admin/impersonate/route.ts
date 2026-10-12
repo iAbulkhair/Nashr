@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const who = jar.get("nashr_impersonate")?.value;
   // Burn the impersonated session so it cannot be reused after the founder returns. Its record names the founder (`imp`).
   const temp = jar.get("nashr_session")?.value;
-  // Hashed key first, then the raw key of a session written before rule 1265 (src/lib/auth.ts `sessionRecord`).
+  // Hashed key first, then the raw key of a session written before rule 1345 (src/lib/auth.ts `sessionRecord`).
   const rec = temp && temp !== back ? await sessionRecord(temp) : null;
   const imp = rec && typeof rec === "object" && typeof rec.imp === "string" && rec.imp ? rec : null;
   if (temp && temp !== back && (imp || who)) await dropSession(temp);

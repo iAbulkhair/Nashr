@@ -20,7 +20,7 @@ const LISTED = new Map(INTEGRATIONS.map((i) => [i.id, i.name]));
  * A vote counts only for an id in the catalogue (`INTEGRATIONS`), keyed by that id, and the log row names the catalogue's
  * own name: a request body can no longer mint a new `integration-votes:*` key per call. A free-text request from the
  * "other" box (`id` = "other:…") is logged with its text cut to 80 characters and counted under the one `other` key.
- * Rate limited per login (rule 1273, 360 study C-016).
+ * Rate limited per login (rule 1353, 360 study C-016).
  */
 export async function POST(req: Request) {
   const u = await currentUser();

@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import type { NextConfig } from "next";
 
-// The full policy the app should end up enforcing, sent REPORT-ONLY for now (rule 1261, 360 study C-006/F-019): the
+// The full policy the app should end up enforcing, sent REPORT-ONLY for now (rule 1341, 360 study C-006/F-019): the
 // browser logs what it would block in the console and blocks nothing, so customers see no change. The enforced header
 // below stays as it was. Allowed beyond 'self':
 //  - Cloudflare Turnstile: its script, iframe and calls (https://challenges.cloudflare.com, rule 428).
@@ -52,7 +52,7 @@ const buildCommit = () => {
 };
 
 const nextConfig: NextConfig = {
-  // No `X-Powered-By: Next.js` on any answer (rule 1260, 360 study F-019): it names the framework to a scanner for nothing.
+  // No `X-Powered-By: Next.js` on any answer (rule 1340, 360 study F-019): it names the framework to a scanner for nothing.
   poweredByHeader: false,
   // Inlined into the server bundle at build time (process.env.BUILD_COMMIT and BUILD_TIME, read as written, never
   // destructured). Neither is a secret. BUILD_TIME alone tells two builds apart when the commit is unknown.

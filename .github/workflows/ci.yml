@@ -47,7 +47,7 @@ jobs:
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
           echo "build=$build e2e=$e2e"
-      # Secret scan of this pull request's own commits (rule 1275, 360 study J-004): a key, token or password pasted into
+      # Secret scan of this pull request's own commits (rule 1355, 360 study J-004): a key, token or password pasted into
       # a commit fails the run before anything else is installed. gitleaks is a single binary, downloaded at a fixed
       # version and checked against its published SHA-256, so no third-party action runs; a few seconds of the job.
       # `HEAD^1..HEAD^2` is the PR's commits on GitHub's merge checkout (the Scope step above). `--redact` keeps a found

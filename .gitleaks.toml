@@ -1,4 +1,4 @@
-# Secret scan settings for the CI "Secret scan" step (.github/workflows/ci.yml, rule 1275).
+# Secret scan settings for the CI "Secret scan" step (.github/workflows/ci.yml, rule 1355).
 # The full default rule set, plus one allowance: the generic "looks like a key" rule fires on the made-up values the unit
 # tests, the study reports and the .archify diagrams use. Every specific rule (AWS, GitHub, Stripe, Anthropic, private
 # keys, ...) still runs on those paths. Never add a real value's path here: rotate the value instead.

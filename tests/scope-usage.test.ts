@@ -11,7 +11,7 @@ const READERS = ["getBrand", "saveBrand", "listFiles", "readFile", "writeFile", 
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(f) ? [p] : []; });
 
 /**
- * Pages and routes, and since rule 1272 (360 study C-016) the helpers in `src/lib` they call: a helper that reads with
+ * Pages and routes, and since rule 1352 (360 study C-016) the helpers in `src/lib` they call: a helper that reads with
  * the bare email defeats the route's `sc(u)` just as well. The founder console's own helpers (`src/lib/admin-*`) look
  * at accounts from outside, like the admin routes, and comment lines are prose.
  */
@@ -35,7 +35,7 @@ describe("workspace readers take the active scope", () => {
   it("no page or customer API route passes the acting login's or a member's email to a workspace reader", () => {
     expect(offending(new RegExp(`\\b(${READERS.join("|")})\\(${WHO}`))).toEqual([]);
   });
-  it("the scan covers the src/lib helpers, not only pages and routes (rule 1272)", () => {
+  it("the scan covers the src/lib helpers, not only pages and routes (rule 1352)", () => {
     const files = customerFiles();
     expect(files.some((p) => p.startsWith("src/lib/"))).toBe(true);
     expect(files).toContain("src/lib/tasks.ts");

@@ -8,7 +8,7 @@ import { legacySettingsPath } from "@/lib/settings-nav";
 
 /**
  * Security hardening batch of 2026-10-12 (360 study C-006, C-007, C-013, C-014, C-015, C-016, C-018, F-019, J-004;
- * leftovers L065, L066, L089). Rules 1260-1276, docs/system/tests/1260-security-hardening.md.
+ * leftovers L065, L066, L089). Rules 1340-1356, docs/system/tests/1340-security-hardening.md.
  */
 
 // The resolver pinnedLookup asks. Each test sets the answer; nothing here touches DNS or the network.
@@ -23,7 +23,7 @@ vi.mock("dns/promises", async (orig) => ({
 
 const read = (p: string) => readFileSync(p, "utf8");
 
-describe("rule 1260: no framework banner, a security.txt", () => {
+describe("rule 1340: no framework banner, a security.txt", () => {
   it("next.config turns X-Powered-By off", async () => {
     const config = (await import("../next.config")).default;
     expect(config.poweredByHeader).toBe(false);
@@ -41,7 +41,7 @@ describe("rule 1260: no framework banner, a security.txt", () => {
   });
 });
 
-describe("rule 1261: a full CSP, report-only; the enforced one unchanged", () => {
+describe("rule 1341: a full CSP, report-only; the enforced one unchanged", () => {
   const headers = async () => {
     const config = (await import("../next.config")).default;
     const rules = await config.headers!();
@@ -64,7 +64,7 @@ describe("rule 1261: a full CSP, report-only; the enforced one unchanged", () =>
   });
 });
 
-describe("rule 1262: safeFetch connects only to the addresses it checked", () => {
+describe("rule 1342: safeFetch connects only to the addresses it checked", () => {
   beforeEach(() => { dns.answer = []; dns.fail = false; });
   afterEach(() => vi.unstubAllGlobals());
   const ask = (opts: { all?: boolean } = {}) => new Promise<{ err: Error | null; address: unknown; family?: number }>(async (done) => {
@@ -97,7 +97,7 @@ describe("rule 1262: safeFetch connects only to the addresses it checked", () =>
   });
 });
 
-describe("rules 1263-1264: every outside call has a deadline", () => {
+describe("rules 1343-1344: every outside call has a deadline", () => {
   afterEach(() => vi.unstubAllGlobals());
   it("safeFetch adds a 30 second deadline when the caller sets none, and keeps the caller's own", async () => {
     const { safeFetch } = await import("@/lib/safe-fetch");
@@ -121,7 +121,7 @@ describe("rules 1263-1264: every outside call has a deadline", () => {
   });
 });
 
-describe("rules 1265-1266: session tokens are stored hashed (expand step)", () => {
+describe("rules 1345-1346: session tokens are stored hashed (expand step)", () => {
   it("a new session is written under the token's SHA-256, never the token", async () => {
     const u = await newUser("hs1");
     await createSession(u.email);
@@ -165,8 +165,8 @@ describe("rules 1265-1266: session tokens are stored hashed (expand step)", () =
   });
 });
 
-describe("rules 1267-1269: MCP OAuth tokens", () => {
-  it("1267: an access token lives one hour; the refresh token keeps the client connected", async () => {
+describe("rules 1347-1349: MCP OAuth tokens", () => {
+  it("1347: an access token lives one hour; the refresh token keeps the client connected", async () => {
     const { ACCESS_TTL, issueTokens } = await import("@/lib/oauth");
     expect(ACCESS_TTL).toBe(3600);
     const u = await newUser("mcpttl");
@@ -176,7 +176,7 @@ describe("rules 1267-1269: MCP OAuth tokens", () => {
     expect(ttl).toBeGreaterThan(3500);
     expect(ttl).toBeLessThanOrEqual(3600);
   });
-  it("1268: authorising the same client again replaces its grant; another client's grant stays", async () => {
+  it("1348: authorising the same client again replaces its grant; another client's grant stays", async () => {
     const { issueTokens, listGrants } = await import("@/lib/oauth");
     const { userFromBearer } = await import("@/lib/mcp");
     const bearer = (t: string) => new Request("https://thakeen.com/api/mcp", { headers: { authorization: `Bearer ${t}` } });
@@ -190,7 +190,7 @@ describe("rules 1267-1269: MCP OAuth tokens", () => {
     expect((await userFromBearer(bearer(second.access_token)))?.email).toBe(u.email);
     expect((await userFromBearer(bearer(other.access_token)))?.email).toBe(u.email);
   });
-  it("1269: a registered client expires after 90 days unused, and every code or token renews it", async () => {
+  it("1349: a registered client expires after 90 days unused, and every code or token renews it", async () => {
     const { CLIENT_TTL, issueCode, issueTokens, registerClient } = await import("@/lib/oauth");
     expect(CLIENT_TTL).toBe(90 * 86400);
     const c = await registerClient({ redirect_uris: ["https://claude.ai/api/mcp/auth_callback"], client_name: "T" });
@@ -206,7 +206,7 @@ describe("rules 1267-1269: MCP OAuth tokens", () => {
   });
 });
 
-describe("rule 1270: one impersonation at a time", () => {
+describe("rule 1350: one impersonation at a time", () => {
   beforeEach(() => vi.stubEnv("WAITLIST_ADMIN_KEY", "k".repeat(40)));
   afterEach(() => vi.unstubAllEnvs());
   it("starting one from a browser that already shows a customer is refused, and nothing is logged", async () => {
@@ -234,7 +234,7 @@ describe("rule 1270: one impersonation at a time", () => {
   });
 });
 
-describe("rule 1271: connector records name their key, and the previous key still opens them", () => {
+describe("rule 1351: connector records name their key, and the previous key still opens them", () => {
   afterEach(() => vi.unstubAllEnvs());
   it("a record sealed with the old key opens after a rotation, and is sealed with the new key on its next save", async () => {
     const store = await import("@/lib/connectors/store");
@@ -269,7 +269,7 @@ describe("rule 1271: connector records name their key, and the previous key stil
   });
 });
 
-describe("rule 1273: integration votes count only listed ids, and are rate limited", () => {
+describe("rule 1353: integration votes count only listed ids, and are rate limited", () => {
   const post = async (body: unknown) => (await import("@/app/api/integrations/route")).POST(json("/api/integrations", "POST", body));
   it("a listed id counts under its id, whatever name the body sends", async () => {
     const u = await newUser("iv1");
@@ -307,7 +307,7 @@ describe("rule 1273: integration votes count only listed ids, and are rate limit
   });
 });
 
-describe("rule 1274: provider error text stays out of logs", () => {
+describe("rule 1354: provider error text stays out of logs", () => {
   it("errorTag keeps the error's name and an HTTP status, never its message", async () => {
     const { errorTag } = await import("@/lib/log-safe");
     expect(errorTag(new Error("salla token 400 invalid_client: secret=abc"))).toBe("Error 400");
@@ -330,7 +330,7 @@ describe("rule 1274: provider error text stays out of logs", () => {
   });
 });
 
-describe("rule 1275: secret scan in CI, every action pinned", () => {
+describe("rule 1355: secret scan in CI, every action pinned", () => {
   const yml = read(".github/workflows/ci.yml");
   it("the scan runs before any install, on the PR's commits, from a checksummed binary, redacted", () => {
     const scan = yml.indexOf("- name: Secret scan");
@@ -361,15 +361,15 @@ describe("rule 1275: secret scan in CI, every action pinned", () => {
   });
 });
 
-describe("rule 1276: the docs name the change", () => {
+describe("rule 1356: the docs name the change", () => {
   it("flows, architecture, permissions, variables and the coverage file", () => {
     expect(read("docs/system/flows.md")).toMatch(/^## 66\. Security hardening/m);
     const arch = read("docs/system/architecture.md");
-    for (const s of ["`session:h:{sha256(token)}`", "`CLIENT_TTL`", "rule 1267", "rule 1268", "`kid`", "`integration-votes:{id}`", "`pinnedAgent()`", "`Content-Security-Policy-Report-Only`"]) expect(arch, s).toContain(s);
+    for (const s of ["`session:h:{sha256(token)}`", "`CLIENT_TTL`", "rule 1347", "rule 1348", "`kid`", "`integration-votes:{id}`", "`pinnedAgent()`", "`Content-Security-Policy-Report-Only`"]) expect(arch, s).toContain(s);
     const perms = read("docs/system/permissions.md");
-    for (const s of ["impersonation_active", "INTEGRATION_REQUESTS_PER_HOUR", "rule 1267", "rules 1262-1263"]) expect(perms, s).toContain(s);
+    for (const s of ["impersonation_active", "INTEGRATION_REQUESTS_PER_HOUR", "rule 1347", "rules 1342-1343"]) expect(perms, s).toContain(s);
     expect(read("docs/system/variables.md")).toMatch(/^\| `CONNECT_SECRET_PREVIOUS` \|/m);
-    const cov = read("docs/system/tests/1260-security-hardening.md");
-    for (let n = 1260; n <= 1276; n++) expect(cov, String(n)).toMatch(new RegExp(`^\\| ${n} \\|`, "m"));
+    const cov = read("docs/system/tests/1340-security-hardening.md");
+    for (let n = 1340; n <= 1356; n++) expect(cov, String(n)).toMatch(new RegExp(`^\\| ${n} \\|`, "m"));
   });
 });

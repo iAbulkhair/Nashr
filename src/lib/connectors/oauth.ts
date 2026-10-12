@@ -53,7 +53,7 @@ async function tokenRequest(p: Provider, body: URLSearchParams, shop?: string): 
   else { body.set("client_id", id); body.set("client_secret", secret); }
   const res = await fetch(url, { method: "POST", headers, body, signal: providerTimeout() });
   const text = await res.text();
-  // The provider, the status and the OAuth error code only (rule 1274): the rest of a refused exchange's body is the
+  // The provider, the status and the OAuth error code only (rule 1354): the rest of a refused exchange's body is the
   // provider's own text, which reaches the logs and can echo what was sent. The code (RFC 6749 §5.2, such as
   // `invalid_grant`) is a fixed word, and the calendar sync reads it to tell a lost link from a passing failure.
   if (!res.ok) throw new Error(`${p.id} token ${res.status}${oauthErrorCode(text)}`);

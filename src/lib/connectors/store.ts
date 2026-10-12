@@ -24,7 +24,7 @@ export function connectSecret(): string {
 }
 
 /**
- * Key versions (rule 1271, C-015). Every sealed connection record now names the key that sealed it: `kid`, the first 16
+ * Key versions (rule 1351, C-015). Every sealed connection record now names the key that sealed it: `kid`, the first 16
  * hex characters of SHA-256("kid:" + secret), a fingerprint that reveals nothing about the secret. To rotate, set
  * `CONNECT_SECRET` to the new value and `CONNECT_SECRET_PREVIOUS` to the old one: records sealed with either still open,
  * and each one is sealed with the new key the next time it is saved. A record whose `kid` matches neither key fails with
@@ -77,7 +77,7 @@ export function decrypt(blob: string, kid?: string) {
   throw new Error("connect_key_unknown");
 }
 
-/** `kid`: the key that sealed `enc` (rule 1271); absent on a record written before key versions. */
+/** `kid`: the key that sealed `enc` (rule 1351); absent on a record written before key versions. */
 type Stored = Omit<Connection, "data"> & { enc: string; kid?: string };
 
 export async function saveConnection(email: string, c: Connection) {

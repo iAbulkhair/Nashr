@@ -9,7 +9,7 @@ import { appOrigin } from "./origin";
  */
 export const SCOPES = ["noor"];
 /**
- * Access tokens live one hour (rule 1267, C-014; 30 days until 2026-10-12): a leaked one is good for an hour, and the
+ * Access tokens live one hour (rule 1347, C-014; 30 days until 2026-10-12): a leaked one is good for an hour, and the
  * client gets a new one with its refresh token, which every MCP client that registers here holds. A token minted before
  * this change keeps the 30-day TTL it was written with, so no connected client breaks at the release: each moves to
  * one-hour tokens at its next refresh.
@@ -17,7 +17,7 @@ export const SCOPES = ["noor"];
 export const ACCESS_TTL = 60 * 60;
 const REFRESH_TTL = 60 * 60 * 24 * 90;
 /**
- * A registered client lives 90 days from its last use (rule 1269): registration, an authorization code and every token
+ * A registered client lives 90 days from its last use (rule 1349): registration, an authorization code and every token
  * it is issued renew it. One registered and never used, or abandoned, goes on its own. A client registered before this
  * change has no TTL and gets one at its next use.
  */
@@ -163,7 +163,7 @@ async function mint(email: string, client_id: string, scope: string, prev: Grant
 }
 
 /**
- * A new grant for a code just redeemed. One grant per client per account (rule 1268, C-014, issue #108): authorising the
+ * A new grant for a code just redeemed. One grant per client per account (rule 1348, C-014, issue #108): authorising the
  * same client again replaces its earlier grant, whose tokens stop working, instead of leaving a second row under
  * "Connected apps" that keeps working after the owner thinks they reconnected. Grants of other clients are untouched.
  */

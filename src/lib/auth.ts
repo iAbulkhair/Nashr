@@ -279,7 +279,7 @@ export const IMPERSONATION_LEGACY_MS = 2 * 60 * 60 * 1000;
 type SessionRec = string | Session;
 const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
 /**
- * Where a session record lives (rule 1265, expand step of rule 679, started 2026-10-12). New records are stored under
+ * Where a session record lives (rule 1345, expand step of rule 679, started 2026-10-12). New records are stored under
  * the SHA-256 (hex) of the cookie's token, `session:h:{sha256}`, so a read of the store (a leaked dump, a support query,
  * a log of keys) yields nothing that signs anyone in. Records written before this release live under the raw token,
  * `session:{token}`: they are still read (`sessionKeys`, raw last) and deleted with the hashed one, so nobody is signed
@@ -291,9 +291,9 @@ const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typ
  */
 export const sessionKey = (token: string) => `session:h:${createHash("sha256").update(token).digest("hex")}`;
 const RAW_TOKEN = /^[0-9a-f]{64}$/;
-/** Every key a cookie's session may live under: the hashed one first, then the raw one written before rule 1265. */
+/** Every key a cookie's session may live under: the hashed one first, then the raw one written before rule 1345. */
 export const sessionKeys = (token: string) => (RAW_TOKEN.test(token) ? [sessionKey(token), `session:${token}`] : [sessionKey(token)]);
-/** Read the record behind a cookie token: hashed first, then the raw key of a session written before rule 1265. */
+/** Read the record behind a cookie token: hashed first, then the raw key of a session written before rule 1345. */
 export async function sessionRecord(token: string): Promise<SessionRec | null> {
   const [hashed, raw] = await Promise.all(sessionKeys(token).map((k) => db.get<SessionRec>(k)));
   return hashed ?? raw ?? null;
@@ -353,7 +353,7 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   const now = Date.now();
   // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
   const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: now };
-  // Hashed key only (rule 1265): the raw token is in the cookie and nowhere else.
+  // Hashed key only (rule 1345): the raw token is in the cookie and nowhere else.
   await db.set(sessionKey(token), rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
