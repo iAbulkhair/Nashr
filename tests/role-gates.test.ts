@@ -247,6 +247,8 @@ const READS: Record<string, Gate> = {
   "GET /p/[code]": "public",
   "GET /api/team": g("member", "team.view"),
   "GET /api/profile": g("member", "read"),
+  // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
+  "GET /api/account/export": g("owner", "account.export"),
   // The Paymob return page's poll (rule 1155): the caller's own last checkout and plan, owner only.
   "GET /api/billing/status": g("owner", "billing"),
   "GET /api/activity": g("member", "read"),

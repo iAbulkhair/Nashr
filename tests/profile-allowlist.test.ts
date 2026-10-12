@@ -64,6 +64,8 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     gatedSignup: true,
     emailMoves: { day: iso(0).slice(0, 10), n: 1 },
     chinaHostingOk: true,
+    // The signup consent record (rule 1325): not a profile field; the owner reads it in the data download.
+    consent: { terms: "2026-10-02", privacy: "2026-10-12", at: iso(-40), lang: "ar", via: "signup_notice" },
   };
   await saveUser(full);
   return full;

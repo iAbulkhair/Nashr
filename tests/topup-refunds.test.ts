@@ -403,7 +403,8 @@ describe("the owner is told unused top-up credits can be refunded; a refunded pa
     expect(terms("en")).toContain("Credits are non-refundable and non-transferable, except that unused top-up credits can be refunded on request before they expire.");
     expect(terms("ar")).toContain("إلا أن كريدت باقات الشحن غير المستخدم يمكن استرداده عند الطلب قبل انتهاء صلاحيته");
     expect(LEGAL.en.terms.updated).toBe("Last updated: 2026-10-02");
-    expect(LEGAL.en.privacy.updated, "the privacy policy did not change").toBe("Last updated: 2026-10-01");
+    // The privacy policy changed on its own since, with the processor list and the export (rules 1320-1330).
+    expect(LEGAL.en.privacy.updated).toBe("Last updated: 2026-10-12");
   });
 
   it("a refunded pack is not listed on the billing page or sent by the profile; the console still shows it", async () => {
