@@ -7,6 +7,7 @@ import { TASK_COST, type TaskType } from "@/lib/tasks";
 import { agentById } from "@/lib/agents";
 import { limitFromError, noCreditsText } from "./LimitModal";
 import { scopeRefusalText } from "@/lib/scope-refusal";
+import { modelErrorText } from "@/lib/provider-errors";
 import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
@@ -60,7 +61,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     const refused = scopeRefusalText(j);
     if (refused) { setMsg(refused); return; }
     const map: Record<string, string> = { no_credits: noCreditsText(t.generate, owner, topups), trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle };
-    setMsg(map[j.error] ?? t.generate.failed);
+    setMsg(map[j.error] ?? modelErrorText(lang, j.error) ?? t.generate.failed);
   }
 
   const delta = (cur: number, prev: number) => kpiDelta(cur, prev, R.vsPrev);
@@ -307,7 +308,7 @@ function StoreSales({ R, paused, provider, store, failedAt, lang }: { R: AppDict
       const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "cart_recovery" }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
       // The same refusal copy as the report buttons (rule 796), shown as text.
-      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(scopeRefusalText(j) ?? (j.error === "model_paused" ? paused : j.error ?? `HTTP ${res.status}`)); }
+      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(scopeRefusalText(j) ?? (j.error === "model_paused" ? paused : modelErrorText(lang, j.error) ?? j.error ?? `HTTP ${res.status}`)); }
     } catch { setErr("failed"); } finally { setDrafting(false); }
   }
   async function sync() {

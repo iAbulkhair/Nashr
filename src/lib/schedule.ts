@@ -15,8 +15,8 @@ import { briefAgenda, type BriefAgenda } from "./secretary-agenda";
 import { agendaFor } from "./secretary";
 
 /**
- * Per-user recurring tasks. Cron hits /api/cron/* → we loop users. `routines` holds the owner's opt-ins for the
- * routines in src/lib/routines.ts: all off unless turned on; their last runs live in their own keys, not here.
+ * Per-user recurring tasks. Cron hits /api/cron/* → we loop users. `routines` holds the owner's switches for the
+ * routines in src/lib/routines.ts: a missing one is on, a stored `false` is the owner's off (`routineOn`, rule 1486); their last runs live in their own keys, not here.
  */
 export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string; routines?: Partial<Record<RoutineId, boolean>> };
 /** The defaults of the default brand. An added brand's `weeklyPlan` defaults to off (`defaultsFor`). */

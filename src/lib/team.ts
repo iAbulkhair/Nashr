@@ -6,6 +6,7 @@ import { revokeBook } from "./booking-token";
 import { revokeFeed } from "./feed-token";
 import { getUser, normalizeEmail, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
 import { can } from "./roles";
+import { teamApprovals } from "./approver-stats";
 
 /**
  * Teams (seats): member logins, invites and seat accounting (docs/superpowers/specs/2026-09-29-teams-design.md).
@@ -479,12 +480,13 @@ export async function wipeTeam(owner: string) {
 
 /**
  * The team as GET /api/team returns it: the acting person, seats, the roster (owner first) and, for admin and owner,
- * pending invites. Never a password hash or an invite token. Null without an actor.
+ * pending invites. Never a password hash or an invite token. Null without an actor. For admin and owner also
+ * `approvals`: each person's approvals, rejections, edits and approval rate over the last 30 days (rule 1480).
  */
 export async function teamView(u: User) {
   const a = u.actor;
   if (!a) return null;
-  const [members, invites] = await Promise.all([listMembers(u.email), listInvites(u.email)]);
+  const [members, invites, approvals] = await Promise.all([listMembers(u.email), listInvites(u.email), can(u, "team.approvals.view") ? teamApprovals(u.email) : null]);
   return {
     you: { email: a.email, name: a.name, role: a.role },
     seats: { used: 1 + members.filter((m) => !m.disabled).length + invites.length, limit: seatLimit(u) },
@@ -493,5 +495,6 @@ export async function teamView(u: User) {
       ...members.map((m) => ({ email: m.email, name: m.name, role: m.role, acceptedAt: m.acceptedAt, ...(m.disabled ? { disabled: m.disabled } : {}) })),
     ],
     invites: can(u, "team.invites.view") ? invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt, invitedBy: i.invitedBy })) : [],
+    ...(approvals ? { approvals } : {}),
   };
 }

@@ -462,7 +462,8 @@ left, the console's cost per message) are these units from then on; the copy tha
   The losses the design accepts are a render the provider billed but we could not keep (`store_failed`) and a submit that
   timed out ambiguously and rendered anyway after the refund (spec R9); the breaker bounds the first, the limits and the
   kie caps the second.
-- **Routines** (since 2026-09-29) are opt-in per brand and charge like a batch the owner asked for: `TASK_COST` of the
+- **Routines** (since 2026-09-29) are on by default for every brand, added brands included, since rule 1486 (2026-10-12;
+  opt-in before it; an owner's stored off is kept) and charge like a batch the owner asked for: `TASK_COST` of the
   type (Dana's weekly report 3 since 2026-09-30, Noor's cart recovery 3, Razan's cash forecast 4, Majed's strategy review 5), one
   generation plus the reviewer and the judge per run, at most once per UTC week or month. Every run passes the owning
   agent and its monthly cap to `charge`, and the weekly cap on scheduled items counts the whole batch before charging,

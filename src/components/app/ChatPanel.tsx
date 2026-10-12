@@ -15,6 +15,7 @@ import { formatCount } from "@/lib/pricing";
 import { AGENTS, isAgentId, type AgentId } from "@/lib/agents";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
+import { modelErrorCause, modelErrorText } from "@/lib/provider-errors";
 import { Icon } from "./Icons";
 import ApprovalCard from "./ApprovalCard";
 import CopyButton from "@/components/ui/CopyButton";
@@ -547,7 +548,8 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       setBusy(true); setSteps([]);
       const S = t.start;
       const fill = (text: string, n: number, have: number) => text.split("{n}").join(String(n)).split("{credits}").join(String(have));
-      const fail = (code?: string, ev?: { refunded?: number; credits?: number }) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: code === "charge" ? S.notCharged : code === "refunded" ? fill(S.refunded, ev?.refunded ?? 0, ev?.credits ?? 0) : code === "saved" ? S.partial : code === "daily" ? (lang === "ar" ? "وصلت إلى حد إعداد العلامات لهذا اليوم. هذه المحاولة لم تخصم شيئاً، والإعداد المدفوع مسبقاً يبقى محسوباً لك. حاول غداً." : "You reached today's brand setup limit. This try charged nothing, and a setup already paid for stays paid. Try again tomorrow.") : code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : code === "paused" ? (lang === "ar" ? "تجهيز المساحة متوقف مؤقتاً، ولم يُحفظ شيء. حدّث الصفحة لاحقاً للمحاولة مرة أخرى." : "Workspace setup is paused for now and nothing was saved. Refresh later to try again.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.") }]);
+      // A provider fault (rule 1477) says why first, then what happened to the credits.
+      const fail = (code?: string, ev?: { refunded?: number; credits?: number; error?: string }) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: (modelErrorCause(lang, ev?.error) ? `${modelErrorCause(lang, ev?.error)} ` : "") + (code === "charge" ? S.notCharged : code === "refunded" ? fill(S.refunded, ev?.refunded ?? 0, ev?.credits ?? 0) : code === "saved" ? S.partial : code === "daily" ? (lang === "ar" ? "وصلت إلى حد إعداد العلامات لهذا اليوم. هذه المحاولة لم تخصم شيئاً، والإعداد المدفوع مسبقاً يبقى محسوباً لك. حاول غداً." : "You reached today's brand setup limit. This try charged nothing, and a setup already paid for stays paid. Try again tomorrow.") : code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : code === "paused" ? (lang === "ar" ? "تجهيز المساحة متوقف مؤقتاً، ولم يُحفظ شيء. حدّث الصفحة لاحقاً للمحاولة مرة أخرى." : "Workspace setup is paused for now and nothing was saved. Refresh later to try again.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.")) }]);
       try {
         const res = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: onboardUrl }) });
         if (res.status === 409) return fail("busy");
@@ -616,7 +618,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     const done = (j: Answer) => {
       if (j.chat) setChatNow(j.chat);
       if (j.message) { setMsgs((p) => [...p, j.message!]); if (typeof j.credits === "number") setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); if (j.limit === "credits" || j.limit === "trial" || j.limit === "agent_cap") raiseLimit(j.limit); }
-      else setMsgs((p) => [...p, { role: "assistant", content: `⚠︎ ${j.error === "network" ? (lang === "ar" ? "انقطع الاتصال. حاول مرة أخرى." : "Connection lost. Try again.") : (lang === "ar" ? "تعذّر الرد. حاول مرة أخرى." : "Could not reply. Try again.")}`, at: new Date().toISOString(), agent: "noor" }]);
+      else setMsgs((p) => [...p, { role: "assistant", content: `⚠︎ ${j.error === "network" ? (lang === "ar" ? "انقطع الاتصال. حاول مرة أخرى." : "Connection lost. Try again.") : modelErrorText(lang, j.error) ?? (lang === "ar" ? "تعذّر الرد. حاول مرة أخرى." : "Could not reply. Try again.")}`, at: new Date().toISOString(), agent: "noor" }]);
     };
     /** Refused before anything was saved or counted: out of the thread, back in the box, and the reason shown. */
     const unsend = (why: "chat" | "chat_credits" | "slow_down", j: Answer) => {
@@ -772,6 +774,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               {m.role === "assistant" && m.switchTo && isAgentId(m.switchTo) && m.switchTo !== agent && (
                 <button onClick={() => pick(m.switchTo!)} className="btn btn-secondary btn-xs mt-1.5">{t.chat.switchTo.replace("{name}", A[m.switchTo].name)}</button>
               )}
+              {m.role === "assistant" && m.large && <p className="mt-1 text-xs text-foreground-muted" data-workspace-large>{lang === "ar" ? "ملفات مساحة العمل كبيرة، فكان لهذا الرد مساحة أقل: ربما تركتُ رسائل سابقة من المحادثة أو اختصرتُ الجواب. " : "Your workspace files are large, so this reply had less room: I may have left out earlier messages or kept the answer short. "}<Link href={`/${lang}/app/files`} className="underline">{lang === "ar" ? "اختصر ملفاتك الطويلة" : "Shorten your long files"}</Link>{lang === "ar" ? " أو ابدأ محادثة جديدة." : " or start a new conversation."}</p>}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
                   {/* Rule 1126: each answer can be copied; the last one (or an error) can be asked again. */}

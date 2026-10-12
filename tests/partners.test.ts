@@ -10,8 +10,8 @@ import { codeFor } from "@/lib/referral";
 import { wipeAccount } from "@/lib/account";
 import {
   ATTRIBUTION_DAYS, COMMISSION_MONTHS, COMMISSION_PCT, COUNTRY_CODES, EARLY_OFFER_DAYS, IBAN_LENGTHS, NEW_TERMS_FROM, PARTNER_COOKIE,
-  PARTNER_TERMS_VERSION, PAYOUT_MIN_SAR, attributionDeadline, balances, bankConfirmed, codeProblem, commissionDecision, commissionSar,
-  countryOptions, earlyOfferLastDay, ksaDay, maskIban, normalizeCode, optionalTax, parsePartnerCookie, partnerCookieValue, payoutProblem,
+  PARTNER_COUNTRIES, PARTNER_TERMS_VERSION, PAYOUT_MIN_SAR, attributionDeadline, balances, bankConfirmed, codeProblem, commissionDecision, commissionSar,
+  countryOptions, earlyOfferLastDay, ksaDay, maskIban, normalizeCode, optionalTax, parsePartnerCookie, partnerCookieValue, partnerCountryOpen, payoutProblem,
   referralStatus, suggestCode, taxField, taxFlags, taxNumberOf, taxTotals, trialLastDay, validAmount, validCountry, validIban, windowEnd, type LedgerRow,
 } from "@/lib/partner-rules";
 import {
@@ -639,7 +639,7 @@ describe("rule 399: the partner page shows no customer PII; bank details are the
 describe("rule 400: the founder console lists applications with ids, decisions and suggested codes", () => {
   it("a public application gets an id the founder can approve or reject by", async () => {
     const email = `apply-${randomBytes(4).toString("hex")}@test.example`;
-    expect(await status(affiliates.POST(json("/api/affiliates", "POST", { name: "Reem Saleh", email, phone: "+966500000000", channel: "YouTube", consent: true }, { "x-forwarded-for": ip() })))).toBe(200);
+    expect(await status(affiliates.POST(json("/api/affiliates", "POST", { name: "Reem Saleh", email, phone: "+966500000000", channel: "YouTube", consent: true, country: "SA" }, { "x-forwarded-for": ip() })))).toBe(200);
     await asFounder();
     const { applications } = await body<{ applications: { id: string; email: string; suggested: string; decision: unknown }[] }>(adminPartners.GET(json("/api/admin/partners", "GET")));
     const app = applications.find((x) => x.email === email)!;
@@ -1127,19 +1127,21 @@ describe("rule 411: partners from any country: a generic IBAN check, the country
     expect(countryOptions("en").find(([c]) => c === "EG")![1]).toBe("Egypt");
   });
 
-  it("a UAE partner saves a UAE IBAN, country and VAT number; a missing country or a bad tax number is refused", async () => {
+  it("a partner's IBAN may be from any country; a missing country, one outside Saudi Arabia (rule 1471) or a bad tax number is refused", async () => {
     const a = await partner("ae");
     await signIn(a.user.email);
     const iban = ibanFor("AE", digits(19));
     const put = (b: Record<string, unknown>) => partnerRoute.PUT(json("/api/partner", "PUT", { holder: "Partner Name", iban, ...b }));
     expect(await body(put({}))).toMatchObject({ ok: false, error: "bad_country" });
     expect(await body(put({ country: "ZZ" }))).toMatchObject({ ok: false, error: "bad_country" });
-    expect(await body(put({ country: "AE", taxNumber: "x" }))).toMatchObject({ ok: false, error: "bad_tax_number" });
-    const ok = await body<{ ok: boolean; bank: Record<string, unknown> }>(put({ country: "ae", taxNumber: "100123456700003" }));
-    expect(ok).toMatchObject({ ok: true, bank: { iban: maskIban(iban), country: "AE", taxNumber: "100123456700003" } });
-    expect((await getPartner(a.user.email))!.bank).toMatchObject({ iban, country: "AE", taxNumber: "100123456700003" });
+    expect(await body(put({ country: "AE" }))).toMatchObject({ ok: false, error: "country_closed" });
+    expect(await body(put({ country: "SA", taxNumber: "x" }))).toMatchObject({ ok: false, error: "bad_tax_number" });
+    const ok = await body<{ ok: boolean; bank: Record<string, unknown> }>(put({ country: "sa", taxNumber: "100123456700003" }));
+    expect(ok).toMatchObject({ ok: true, bank: { iban: maskIban(iban), country: "SA", taxNumber: "100123456700003" } });
+    expect((await getPartner(a.user.email))!.bank).toMatchObject({ iban, country: "SA", taxNumber: "100123456700003" });
     const page = await html(PartnerPage);
-    expect(page).toContain(`<option value="AE"`);
+    expect(page).toContain(`<option value="SA"`);
+    expect(page, "rule 1471: only open countries are offered").not.toContain(`<option value="AE"`);
     expect(page).toContain("so you receive the full 15%");
     expect(page).not.toContain(iban);
     expect((await db.lrange("admin:log", 0, -1)).join("\n")).not.toContain(iban);
@@ -1177,7 +1179,10 @@ describe("rule 412: Thakeen bears the taxes: payouts record VAT on top and withh
 
   it("a VAT-registered partner outside Saudi Arabia: flagged, paid the full commission, the taxes recorded as entered", async () => {
     const a = await partner("tax");
-    await bankReady(a.user.email, { iban: ibanFor("EG", digits(25)), country: "EG", taxNumber: "EG-123-456", vatRegistered: true });
+    await bankReady(a.user.email, { taxNumber: "EG-123-456", vatRegistered: true });
+    // Details saved before rule 1471 by a partner living outside Saudi Arabia: still paid and flagged.
+    const p = (await getPartner(a.user.email))!;
+    await db.set(`partner:${a.user.email}`, { ...p, bank: { ...p.bank!, iban: ibanFor("EG", digits(25)), country: "EG" } });
     await earn(a.code, 2000); // 300 SAR commission
     expect(await body(payout(a.user.email, { amountSar: 300, vatSar: -5 }))).toMatchObject({ ok: false, error: "bad_vat" });
     expect(await body(payout(a.user.email, { amountSar: 300, whtSar: 1.234 }))).toMatchObject({ ok: false, error: "bad_wht" });
@@ -1213,34 +1218,35 @@ describe("rule 412: Thakeen bears the taxes: payouts record VAT on top and withh
 
 describe("rule 413: the public programme terms, in Arabic and English, linked from /affiliates and the partner page", () => {
   it("states each of the founder's points with the last-updated date", async () => {
-    expect(PARTNER_TERMS_VERSION).toBe("2026-10-02");
+    expect(PARTNER_TERMS_VERSION).toBe("2026-10-12");
     const en = await html(PartnerTermsPage, "en");
     for (const t of [
-      "Partner programme terms", "Last updated 2026-10-02", "18 or older", "One partner account per person", "A bank account (IBAN) in your name",
+      "Partner programme terms", "Last updated 2026-10-12", "18 or older", "One partner account per person", "A bank account (IBAN) in your name",
       `first ${COMMISSION_MONTHS} months of each customer you refer`, `within ${ATTRIBUTION_DAYS} days of using your link or code`,
       `${FIRST_MONTH_DISCOUNT_PCT}% off their first month`, "does not combine with other discounts", `payable balance reaches SAR ${PAYOUT_MIN_SAR}`,
       "Commission on a refunded or voided payment is cancelled", "Thakeen bears VAT on the commission", "withholding tax where it applies",
       "responsible for your own income tax", "Referring yourself or your own team", "Paid ads on the names ذكين / Thakeen", "Spam or unsolicited messages",
       "Promising results or discounts that do not exist", "Presenting yourself as Thakeen", "cancels the commission linked to it", "paid partnership",
-      "Mawthooq licence", "30 days&#x27; notice", "your payable balance is paid", "Partners from any country can join",
+      "Mawthooq licence", "30 days&#x27; notice", "your payable balance is paid", "You live in Saudi Arabia: for now the programme is open only to people living there",
     ]) expect(en, t).toContain(t);
     const ar = await html(PartnerTermsPage, "ar");
     for (const t of [
-      "شروط برنامج الشركاء", "آخر تحديث: 2026-10-02", "18 سنة أو أكثر", "حساب شريك واحد لكل شخص", "حساب بنكي (آيبان) باسمك", `خلال أول ${COMMISSION_MONTHS} أشهر`,
+      "شروط برنامج الشركاء", "آخر تحديث: 2026-10-12", "18 سنة أو أكثر", "حساب شريك واحد لكل شخص", "حساب بنكي (آيبان) باسمك", `خلال أول ${COMMISSION_MONTHS} أشهر`,
       `خلال ${ATTRIBUTION_DAYS} يوماً`, `خصم ${FIRST_MONTH_DISCOUNT_PCT}% على شهره الأول`, "لا يجتمع مع خصومات أخرى", `رصيدك المستحق ${PAYOUT_MIN_SAR} ريال`,
       "تُلغى عمولتها", "يتحمّل ذكين ضريبة القيمة المضافة", "ضريبة الاستقطاع حيث تنطبق", "ضريبة الدخل الخاصة بك", "إحالة نفسك أو فريقك",
       "«ذكين» أو «Thakeen»", "الرسائل المزعجة", "الوعد بنتائج أو خصومات غير موجودة", "تقديم نفسك على أنك ذكين", "شراكة مدفوعة", "«موثوق»",
-      "بإشعار قبل 30 يوماً", "يُصرف لك رصيدك المستحق",
+      "بإشعار قبل 30 يوماً", "يُصرف لك رصيدك المستحق", "مقيماً في السعودية",
     ]) expect(ar, t).toContain(t);
     for (const h of [en, ar]) expect(h).not.toMatch(/25%|guarantee|نضمن|مضمون/i);
     expect(PARTNER_TERMS.en.sections.map((s) => s.id)).toEqual(PARTNER_TERMS.ar.sections.map((s) => s.id));
   });
 
-  it("/affiliates and the partner page link the terms; /affiliates is open to every country", async () => {
+  it("/affiliates and the partner page link the terms; /affiliates says Saudi Arabia only (rule 1470)", async () => {
     for (const lang of ["en", "ar"] as const) {
       const page = await html(AffiliatesPage, lang);
       expect(page, lang).toContain(`href="/${lang}/affiliates/terms"`);
-      expect(page, lang).not.toMatch(/Gulf agencies|في الخليج\. لك كود/);
+      expect(page, lang).not.toMatch(/Gulf agencies|في الخليج\. لك كود|in any country|من أي دولة/);
+      expect(page, lang).toContain(lang === "en" ? "living in Saudi Arabia" : "المقيمين في السعودية");
     }
     const a = await partner("tl");
     await signIn(a.user.email);
@@ -1253,7 +1259,7 @@ describe("rule 413: the public programme terms, in Arabic and English, linked fr
 });
 
 describe("rule 414: an application needs consent to the terms, and records when and which version", () => {
-  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+971500000000", channel: "Newsletter", ...b }, { "x-forwarded-for": ip() }));
+  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+966500000000", channel: "Newsletter", country: "SA", ...b }, { "x-forwarded-for": ip() }));
   const apps = async () => {
     await asFounder();
     return (await body<{ applications: { email: string; consentAt: string | null; termsVersion: string | null }[] }>(adminPartners.GET(json("/api/admin/partners", "GET")))).applications;
@@ -1297,7 +1303,7 @@ describe("rule 414: an application needs consent to the terms, and records when 
 });
 
 describe("rule 415: no partner without a recorded agreement to the terms, carried onto the partner record", () => {
-  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+971500000000", channel: "Newsletter", ...b }, { "x-forwarded-for": ip() }));
+  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+966500000000", channel: "Newsletter", country: "SA", ...b }, { "x-forwarded-for": ip() }));
   const appOf = async (email: string) => {
     await asFounder();
     return (await body<{ applications: { id: string; email: string; consentAt: string | null }[] }>(adminPartners.GET(json("/api/admin/partners", "GET")))).applications.find((a) => a.email === email)!;
@@ -1358,14 +1364,14 @@ describe("rule 415: no partner without a recorded agreement to the terms, carrie
 });
 
 describe("rule 416: VAT registration is the partner's own answer, separate from the tax number", () => {
-  const put = (b: Record<string, unknown>) => partnerRoute.PUT(json("/api/partner", "PUT", { holder: "Partner Name", iban: VALID_IBAN, country: "EG", ...b }));
+  const put = (b: Record<string, unknown>) => partnerRoute.PUT(json("/api/partner", "PUT", { holder: "Partner Name", iban: VALID_IBAN, country: "SA", ...b }));
   const flags = async (email: string) => (await listPartners()).find((p) => p.email === email)!.tax;
 
   it("a tax number alone (an income-tax id) flags nothing; the box needs a number; only true counts", async () => {
     const a = await partner("vat");
     await signIn(a.user.email);
     expect(await body(put({ taxNumber: "TIN-998877" }))).toMatchObject({ ok: true, bank: { taxNumber: "TIN-998877", vatRegistered: false } });
-    expect(await flags(a.user.email)).toMatchObject({ vatRegistered: false, outsideSaudi: true });
+    expect(await flags(a.user.email)).toMatchObject({ vatRegistered: false, outsideSaudi: false });
     await signIn(a.user.email);
     const r = await put({ vatRegistered: true });
     expect(r.status).toBe(400);
@@ -1481,5 +1487,36 @@ describe("rule 419: signup looks up a partner code only after Turnstile", () => 
     const src = readFileSync("src/app/api/auth/signup/route.ts", "utf8");
     expect(src.indexOf("captchaRefusal(req, b.turnstile)")).toBeGreaterThan(0);
     expect(src.indexOf("captchaRefusal(req, b.turnstile)")).toBeLessThan(src.indexOf("signupPartner(b.partnerCode)"));
+  });
+});
+
+describe("rules 1470-1471: the partner programme is open only to people living in Saudi Arabia", () => {
+  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+966500000000", channel: "Newsletter", consent: true, ...b }, { "x-forwarded-for": ip() }));
+
+  it("an application from another country, or with none, is refused and nothing is stored; a Saudi one stores its country", async () => {
+    const tag = `c${Date.now()}`;
+    for (const country of [undefined, "", "other", "AE", "ZZ"]) {
+      const r = await apply({ email: `no-${tag}@co.example`, country });
+      expect(r.status, String(country)).toBe(400);
+      expect(await body(r)).toMatchObject({ ok: false, error: "country_closed" });
+    }
+    expect((await apply({ email: `sa-${tag}@co.example`, country: " sa " })).status).toBe(200);
+    await asFounder();
+    const apps = (await body<{ applications: { email: string; country?: string }[] }>(adminPartners.GET(json("/api/admin/partners", "GET")))).applications;
+    expect(apps.find((a) => a.email === `sa-${tag}@co.example`)).toMatchObject({ country: "SA" });
+    expect(apps.some((a) => a.email === `no-${tag}@co.example`)).toBe(false);
+  });
+
+  it("the open list is Saudi Arabia; the form asks where the applicant lives and stops before sending for another country", () => {
+    expect(PARTNER_COUNTRIES).toEqual(["SA"]);
+    expect(partnerCountryOpen("SA")).toBe(true);
+    expect(partnerCountryOpen(" sa ")).toBe(true);
+    for (const c of ["AE", "EG", "", null, 5, "other"]) expect(partnerCountryOpen(c), String(c)).toBe(false);
+    const src = readFileSync("src/components/AffiliateForm.tsx", "utf8");
+    expect(src).toContain('name="country"');
+    expect(src).toContain('<option value="SA">');
+    expect(src).toContain('if (fd.country !== "SA") return setState("closed");');
+    expect(src).toContain("للمقيمين في السعودية فقط");
+    expect(src).toContain("open only to people living in Saudi Arabia");
   });
 });

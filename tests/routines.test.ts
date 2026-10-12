@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { json, newUser, settle, signIn } from "./helpers/session";
 import { claudeOn } from "./helpers/model";
 import { getUser, saveUser, type User } from "@/lib/auth";
@@ -14,7 +15,7 @@ import { getSchedule, saveSchedule } from "@/lib/schedule";
 import { statsFor } from "@/lib/stats";
 import { listNotifs } from "@/lib/notifications";
 import { TASK_COST } from "@/lib/tasks";
-import { OWNER_SYNC_KEY, ROUTINES, ROUTINE_IDS, dueRoutines, isRoutineId, markOwnerSync, periodOf, ranThisPeriod, routineKeys, runRoutine, type RoutineId } from "@/lib/routines";
+import { OWNER_SYNC_KEY, ROUTINES, ROUTINE_IDS, dueRoutines, isRoutineId, markOwnerSync, periodOf, ranThisPeriod, routineKeys, routineOn, runRoutine, type RoutineId } from "@/lib/routines";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 import * as scheduleRoute from "@/app/api/schedule/route";
 import * as cronRoutines from "@/app/api/cron/routines/route";
@@ -35,10 +36,14 @@ const snap = (at: string, over: Partial<SalesSnapshot> = {}): SalesSnapshot => (
   unread: 0, ...over,
 });
 const item = (id: string, over: Partial<Task> = {}): Task => ({ id, type: "social", channel: "instagram", title: `title ${id}`, body: "نص العنصر", status: "pending", createdAt: new Date().toISOString(), lang: "ar", source: "manual", ...over });
-/** An owner with a brand file and these routines switched on in the default brand. */
+/**
+ * An owner with a brand file and these routines switched on in the default brand. Since rule 1486 a routine is on unless
+ * switched off, so every routine not named here is stored off: these tests keep running only the routines they name.
+ */
 async function owner(prefix: string, routines: Partial<Record<RoutineId, boolean>> = {}): Promise<User> {
   const u = await newUser(prefix);
-  await Promise.all([db.set(`brand:${u.email}`, brand), saveSchedule(u.email, { routines })]);
+  const all = { ...Object.fromEntries(ROUTINE_IDS.map((id) => [id, false])), ...routines } as Record<RoutineId, boolean>;
+  await Promise.all([db.set(`brand:${u.email}`, brand), saveSchedule(u.email, { routines: all })]);
   return (await getUser(u.email))!;
 }
 const credits = async (email: string) => (await getUser(email))!.credits;
@@ -90,11 +95,25 @@ describe("the routine registry (rule 111)", () => {
     expect(isRoutineId("razan_cash_forecast")).toBe(true);
   });
 
-  it("every routine is off until the owner turns it on", async () => {
+  it("every routine is on by default, on added brands too, and the owner's off stays off (rule 1486)", async () => {
     const u = await newUser("rt-default");
     expect((await getSchedule(u.email)).routines).toBeUndefined();
     await db.set(`brand:${u.email}`, brand);
-    for (const id of ROUTINE_IDS) expect(await runRoutine(u, id)).toBe("off");
+    for (const id of ROUTINE_IDS) expect(routineOn(await getSchedule(u.email), id), id).toBe(true);
+    expect((await dueRoutines([u])).map((x) => x.id).sort()).toEqual([...ROUTINE_IDS].sort());
+    // An added brand's routines are on too (unlike its Sunday plan, rule 247).
+    const added = scopeFor(u.email, "b2");
+    for (const id of ROUTINE_IDS) expect(routineOn(await getSchedule(added), id), id).toBe(true);
+    // The owner's explicit off is kept, and only that routine is off.
+    await saveSchedule(u.email, { routines: { razan_cash_forecast: false } });
+    expect(await runRoutine(u, "razan_cash_forecast")).toBe("off");
+    expect((await dueRoutines([u])).map((x) => x.id)).not.toContain("razan_cash_forecast");
+    expect((await dueRoutines([u])).length).toBe(ROUTINE_IDS.length - 1);
+    // Plan caps are unchanged: the runner still checks trial, gate, weekly cap, agent cap and credits before charging.
+    const src = readFileSync("src/lib/routines.ts", "utf8");
+    expect(src).toMatch(/if \(!routineOn\(sched, id\)\) return "off";/);
+    for (const k of ["trialOver(user)", "holdBatch(scope", "generateBatch(user"]) expect(src).toContain(k);
+    expect(readFileSync("src/components/app/TasksPanel.tsx", "utf8")).toContain("on={s.routines?.[x.id] !== false");
   });
 });
 
@@ -443,7 +462,7 @@ describe("the owner's switches and the cron (rule 115)", () => {
     const second = await addBrand((await getUser(multi.email))!, "Second");
     if ("error" in second) throw new Error(second.error);
     const scope = scopeFor(multi.email, second.id);
-    await Promise.all([db.set(`brand:${scope}`, brand), saveSchedule(scope, { routines: { noor_cart_recovery: true } })]);
+    await Promise.all([db.set(`brand:${scope}`, brand), saveSchedule(scope, { routines: { ...Object.fromEntries(ROUTINE_IDS.map((id) => [id, false])), noor_cart_recovery: true } })]);
 
     const res = await cronRoutines.GET(new Request("https://nashr.test/api/cron/routines", { headers: { authorization: "Bearer cron-secret-abcdef" } }));
     expect(res.status).toBe(200);

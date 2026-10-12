@@ -80,6 +80,8 @@ export const MIN_ROLE = {
   "team.remove.member": "admin",
   /** See pending invites. */
   "team.invites.view": "admin",
+  /** See who on the team approved and rejected what, the last 30 days (rule 1480). */
+  "team.approvals.view": "admin",
   /** Cancel a pending invite (an admin only one for role "member"; see team.ts `cancelInvite`). */
   "team.invite.cancel": "admin",
   /**

@@ -514,7 +514,7 @@ describe("a refund that stopped halfway can be finished, and a pack's missing pa
 
 describe("the partner terms say a partly refunded payment's commission is reduced in proportion (rule 466)", () => {
   it("both languages, at the new version", () => {
-    expect(PARTNER_TERMS_VERSION).toBe("2026-10-02");
+    expect(PARTNER_TERMS_VERSION).toBe("2026-10-12"); // the Saudi-residence line (rule 1471) bumped it again
     const en = PARTNER_TERMS.en.sections.find((s) => s.id === "payouts")!.p.join(" ");
     const ar = PARTNER_TERMS.ar.sections.find((s) => s.id === "payouts")!.p.join(" ");
     expect(en).toContain("Commission on a refunded or voided payment is cancelled; when only part of a payment is refunded, its commission is reduced in proportion to the amount refunded.");

@@ -8,7 +8,7 @@ import { partnerDashboard } from "@/lib/partners";
 import { appOrigin } from "@/lib/origin";
 import PartnerPanel from "@/components/app/PartnerPanel";
 import { PARTNER_COPY } from "@/lib/partner-copy";
-import { countryOptions } from "@/lib/partner-rules";
+import { PARTNER_COUNTRIES, countryOptions } from "@/lib/partner-rules";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import Scribble from "@/components/Scribble";
 
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * The partner's own page (rules 399, 411-413): code, link, share text, the programme terms link, referrals without any
- * customer name or email, the commission ledger, payouts and the payout details form (any country). The account owner
+ * customer name or email, the commission ledger, payouts and the payout details form (Saudi residence only for now, rule 1471). The account owner
  * only (`partner`): a member of a partner's team sees a note and nothing is read. An account that is not a partner is
  * pointed at the public application page and the terms.
  */
@@ -48,5 +48,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   }
   // The canonical origin, never the request's Host header: a link copied on a preview deployment must still point at
   // production (src/lib/origin.ts).
-  return <PartnerPanel lang={lang} link={`${appOrigin()}/p/${d.code}`} data={d} bankEditable={can(u, "partner.bank")} countries={countryOptions(lang)} />;
+  return <PartnerPanel lang={lang} link={`${appOrigin()}/p/${d.code}`} data={d} bankEditable={can(u, "partner.bank")} countries={countryOptions(lang).filter(([c]) => PARTNER_COUNTRIES.includes(c))} />;
 }

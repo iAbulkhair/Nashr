@@ -11,6 +11,7 @@ import { chatStatus, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { chatRouteFor } from "@/lib/models/overrides";
 import { noteRejectedPick } from "@/lib/usage";
 import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
+import { customerModelError } from "@/lib/provider-fault-note";
 
 export const maxDuration = 300;
 
@@ -81,7 +82,8 @@ export async function POST(req: Request) {
     } catch (e) {
       console.error("chat failed", e);
       await track(u.email, "error");
-      return NextResponse.json({ ok: false, error: "chat_failed" }, { status: 502 });
+      // A provider rate limit, overload or spent balance gets its own message (rule 1477), never the provider's text.
+      return NextResponse.json({ ok: false, error: (await customerModelError(e, "chat")) ?? "chat_failed" }, { status: 502 });
     }
   }
 
@@ -99,7 +101,7 @@ export async function POST(req: Request) {
       } catch (e) {
         console.error("chat failed", e);
         await track(u.email, "error");
-        send({ type: "error", error: "chat_failed" });
+        send({ type: "error", error: (await customerModelError(e, "chat")) ?? "chat_failed" });
       } finally {
         clearInterval(beat);
         try { controller.close(); } catch { /* already closed */ }

@@ -4,7 +4,8 @@ import { FIRST_MONTH_DISCOUNT_PCT } from "./pricing";
 /**
  * The partner programme terms, as the founder decided them on 2026-10-01 (rule 413), shown at /{lang}/affiliates/terms
  * and agreed to on the application form (rule 414). 2026-10-02: the payouts point says a partly refunded payment's
- * commission is reduced in proportion (the founder's decision on refunding unused top-up credits, rule 466). Plain words, no boilerplate beyond these points. Every number comes
+ * commission is reduced in proportion (the founder's decision on refunding unused top-up credits, rule 466). 2026-10-12:
+ * the "who" points say the programme is open only to people living in Saudi Arabia (rule 1471). Plain words, no boilerplate beyond these points. Every number comes
  * from the tables the code pays from (src/lib/partner-rules.ts, src/lib/pricing.ts). When this text changes, change
  * `PARTNER_TERMS_VERSION` too, so new applications record the version they agreed to.
  */
@@ -18,7 +19,7 @@ export const PARTNER_TERMS: Record<"ar" | "en", TermsDoc> = {
     updated: `آخر تحديث: ${PARTNER_TERMS_VERSION}`,
     intro: "هذه شروط برنامج الشركاء في ذكين. توافق عليها عند تقديم طلب الشراكة.",
     sections: [
-      { id: "who", h: "من يمكنه الانضمام", p: ["أن يكون عمرك 18 سنة أو أكثر.", "حساب شريك واحد لكل شخص.", "حساب بنكي (آيبان) باسمك. البرنامج مفتوح للشركاء من كل الدول."] },
+      { id: "who", h: "من يمكنه الانضمام", p: ["أن يكون عمرك 18 سنة أو أكثر.", "حساب شريك واحد لكل شخص.", "أن تكون مقيماً في السعودية: البرنامج مفتوح الآن للمقيمين فيها فقط.", "حساب بنكي (آيبان) باسمك."] },
       { id: "commission", h: "العمولة", p: [`${C}% من كل دفعة (قبل ضريبة القيمة المضافة) يدفعها عميل أحلته، خلال أول ${M} أشهر من اشتراكه، إذا اشترك العميل خلال ${W} يوماً من استخدام رابطك أو كودك.`] },
       { id: "discount", h: "خصم العميل", p: [`كودك يعطي عميلك خصم ${D}% على شهره الأول. الخصم على السعر قبل الضريبة، ثم تُحسب ضريبة القيمة المضافة على السعر بعد الخصم.`, "لا يجتمع مع خصومات أخرى."] },
       { id: "payouts", h: "الصرف", p: [`نحوّل لك شهرياً بتحويل بنكي متى بلغ رصيدك المستحق ${MIN} ريال.`, "إذا استُردّت دفعة كاملةً أو أُلغيت، تُلغى عمولتها؛ وإذا استُرد جزء منها، تُخفَّض عمولتها بنسبة المبلغ المسترد."] },
@@ -34,7 +35,7 @@ export const PARTNER_TERMS: Record<"ar" | "en", TermsDoc> = {
     updated: `Last updated ${PARTNER_TERMS_VERSION}`,
     intro: "These are the terms of the Thakeen partner programme. You agree to them when you apply.",
     sections: [
-      { id: "who", h: "Who can join", p: ["You are 18 or older.", "One partner account per person.", "A bank account (IBAN) in your name. Partners from any country can join."] },
+      { id: "who", h: "Who can join", p: ["You are 18 or older.", "One partner account per person.", "You live in Saudi Arabia: for now the programme is open only to people living there.", "A bank account (IBAN) in your name."] },
       { id: "commission", h: "Commission", p: [`${C}% of each payment (before VAT) for the first ${M} months of each customer you refer, if the customer subscribes within ${W} days of using your link or code.`] },
       { id: "discount", h: "Customer discount", p: [`Your code gives the customer ${D}% off their first month. The discount comes off the price before VAT; VAT is then computed on the discounted price.`, "It does not combine with other discounts."] },
       { id: "payouts", h: "Payouts", p: [`Monthly by bank transfer once your payable balance reaches SAR ${MIN}.`, "Commission on a refunded or voided payment is cancelled; when only part of a payment is refunded, its commission is reduced in proportion to the amount refunded."] },

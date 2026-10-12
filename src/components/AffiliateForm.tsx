@@ -6,18 +6,21 @@ import Scribble from "@/components/Scribble";
 
 /**
  * The public partner application. The terms box is required (rule 414): the browser will not send the form without it,
- * and the API refuses an application without consent, so nobody joins without having been shown the terms.
+ * and the API refuses an application without consent, so nobody joins without having been shown the terms. Saudi
+ * Arabia only for now (rule 1470): an applicant who picks another country sees why and nothing is sent.
  */
 export default function AffiliateForm({ lang }: { lang: Lang }) {
   const ar = lang === "ar";
-  const [state, setState] = useState<"idle" | "busy" | "ok" | "err" | "consent">("idle");
+  const [state, setState] = useState<"idle" | "busy" | "ok" | "err" | "consent" | "closed">("idle");
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.currentTarget));
+    if (fd.country !== "SA") return setState("closed");
     if (fd.consent !== "on") return setState("consent");
     setState("busy");
     const res = await fetch("/api/affiliates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, consent: true, lang }) }).catch(() => null);
-    setState(res?.ok ? "ok" : "err");
+    const j = res && !res.ok ? ((await res.json().catch(() => ({}))) as { error?: string }) : {};
+    setState(res?.ok ? "ok" : j.error === "country_closed" ? "closed" : "err");
   }
   if (state === "ok") return <p role="status" className="s-card font-bold"><Scribble kind="box" seed="affiliate-sent" fill="lemon" />{ar ? "وصلنا طلبك. نرد خلال يوم عمل على واتساب أو الإيميل." : "Got it. We reply within one business day on WhatsApp or email."}</p>;
   return (
@@ -27,6 +30,7 @@ export default function AffiliateForm({ lang }: { lang: Lang }) {
       <span className="s-input"><Scribble kind="box" seed="affiliate-name" fill="paper" ring /><input name="name" required placeholder={ar ? "اسمك" : "Your name"} aria-label={ar ? "اسمك" : "Your name"} /></span>
       <span className="s-input"><Scribble kind="box" seed="affiliate-email" fill="paper" ring /><input name="email" required type="email" dir="ltr" placeholder="Email" aria-label="Email" /></span>
       <span className="s-input"><Scribble kind="box" seed="affiliate-phone" fill="paper" ring /><input name="phone" required dir="ltr" placeholder={ar ? "واتساب (مع رمز الدولة)" : "WhatsApp (with country code)"} aria-label={ar ? "واتساب" : "WhatsApp"} /></span>
+      <span className="s-input"><Scribble kind="box" seed="affiliate-country" fill="paper" ring /><select name="country" required defaultValue="" aria-label={ar ? "دولة إقامتك" : "Country you live in"}><option value="" disabled>{ar ? "دولة إقامتك" : "Country you live in"}</option><option value="SA">{ar ? "السعودية" : "Saudi Arabia"}</option><option value="other">{ar ? "دولة أخرى" : "Another country"}</option></select></span>
       <span className="s-input"><Scribble kind="box" seed="affiliate-channel" fill="paper" ring /><input name="channel" required placeholder={ar ? "أين ستروّج؟ (وكالة، يوتيوب، نشرة، لينكدإن…)" : "Where will you promote? (agency, YouTube, newsletter, LinkedIn…)"} aria-label={ar ? "أين ستروّج؟" : "Where will you promote?"} /></span>
       <span className="s-input"><Scribble kind="box" seed="affiliate-audience" fill="paper" ring /><input name="audience" placeholder={ar ? "حجم جمهورك / عدد عملائك" : "Audience size / number of clients"} aria-label={ar ? "حجم جمهورك" : "Audience size"} /></span>
       <label className="flex items-start gap-2 text-sm">
@@ -37,6 +41,7 @@ export default function AffiliateForm({ lang }: { lang: Lang }) {
         </span>
       </label>
       <button disabled={state === "busy"} className="s-btn justify-self-start"><Scribble kind="pill" seed="affiliate-send" fill="ink" shadow ring />{ar ? "أرسل الطلب" : "Send application"}</button>
+      {state === "closed" && <p role="alert" className="text-sm font-bold text-danger">{ar ? "البرنامج مفتوح الآن للمقيمين في السعودية فقط." : "For now the programme is open only to people living in Saudi Arabia."}</p>}
       {state === "consent" && <p role="alert" className="text-sm font-bold text-danger">{ar ? "وافق على شروط برنامج الشركاء لإرسال الطلب." : "Agree to the partner programme terms to send your application."}</p>}
       {state === "err" && <p role="alert" className="text-sm font-bold text-danger">{ar ? "لم يُرسل. حاول مرة أخرى." : "Didn't send. Try again."}</p>}
     </form>

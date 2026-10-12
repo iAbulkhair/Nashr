@@ -8,6 +8,7 @@ import { deadlineFor } from "@/lib/media/keys";
 import { MODEL_UNAVAILABLE } from "@/lib/models/overrides";
 import { AgentScopeRefused, agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 import { WINDOW, retryLater } from "@/lib/rate";
+import { customerModelError } from "@/lib/provider-fault-note";
 
 export const maxDuration = 300;
 
@@ -52,7 +53,8 @@ export async function POST(req: Request) {
         console.error("generate failed", r.error);
         await track(u.email, "error");
         if (r.error instanceof ModelPaused) return NextResponse.json({ ok: false, error: "model_paused", credits: r.credits }, { status: 503 });
-        return NextResponse.json({ ok: false, error: "generation_failed" }, { status: 502 });
+        // A provider rate limit, overload or spent balance gets its own message (rule 1477), never the provider's text.
+        return NextResponse.json({ ok: false, error: (await customerModelError(r.error, "generate")) ?? "generation_failed" }, { status: 502 });
     }
   }
   await track(u.email, "generate");

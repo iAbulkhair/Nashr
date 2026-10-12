@@ -90,6 +90,13 @@ export function trimHistory(thread: Pick<ChatMsg, "role" | "content">[]): Turn[]
 }
 
 /**
+ * The workspace is large for this turn (D-019, rule 1483): the first call had to leave out earlier messages of the thread
+ * that the history guard kept (`trimmed`, the count after `trimHistory`), or still has less than a full answer's room. The
+ * chat then shows a quiet hint under the reply (rule 1484). Pure.
+ */
+export const workspaceLarge = (trimmed: number, fit: { messages: unknown[]; maxTokens: number }): boolean => fit.messages.length < trimmed || fit.maxTokens < CHAT_FIRST_MIN_OUT;
+
+/**
  * The first call of a turn: drop the oldest messages until the call gets at least CHAT_FIRST_MIN_OUT output tokens, or
  * only the newest is left. `prefixChars` is the cached prefix (tools and the first two system blocks), `volatileChars`
  * the uncached system block. Returns the messages to send and the call's `max_tokens` (0 when even the newest message
