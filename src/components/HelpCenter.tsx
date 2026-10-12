@@ -29,19 +29,19 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
   return (
     <div className={inApp ? "" : "mx-auto max-w-4xl px-4 py-16 sm:px-6"}>
       <h1 className="font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><Scribble kind="underline" seed="help-h" />{ar ? "مركز المساعدة" : "Help center"}</span></h1>
-      <p className="mt-2 text-muted">{ar ? "ابحث، أو اسأل نور في الدردشة «كيف أسوي…»، أو راسلنا." : "Search, ask Noor in chat “how do I…”, or message us."}</p>
+      <p className="mt-2 text-foreground-muted">{ar ? "ابحث، أو اسأل نور في الدردشة «كيف أسوي…»، أو راسلنا." : "Search, ask Noor in chat “how do I…”, or message us."}</p>
       <span className="s-input mt-6 max-w-xl"><Scribble kind="box" seed="help-search" fill="paper" ring /><input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? "ابحث في المساعدة…" : "Search help…"} aria-label={ar ? "ابحث في المساعدة" : "Search help"} /></span>
       <div className="mt-4 flex flex-wrap gap-2">
         {chip(topic === "all", "all", ar ? "الكل" : "All", () => setTopic("all"))}
         {HELP.map((t) => chip(topic === t.id, t.id, t.title[lang], () => setTopic(t.id)))}
       </div>
       <div className="mt-8 grid gap-8">
-        {shown.length === 0 && <p className="text-sm text-muted">{ar ? "لا نتائج. اسأل نور أو راسلنا أدناه." : "No results. Ask Noor or message us below."}</p>}
+        {shown.length === 0 && <p className="text-sm text-foreground-muted">{ar ? "لا نتائج. اسأل نور أو راسلنا أدناه." : "No results. Ask Noor or message us below."}</p>}
         {shown.map((t) => (
           <section key={t.id}>
             <h2 className="font-display text-xl font-bold">{t.title[lang]}</h2>
-            <div className="mt-3 divide-y divide-ink/15 border-y-[1.5px] border-ink">
-              {t.items.map((i) => <details key={i.q.en} className="py-3"><summary className="cursor-pointer font-bold">{i.q[lang]}</summary><p className="mt-2 text-sm leading-relaxed text-muted" dir="auto">{i.a[lang]}</p></details>)}
+            <div className="mt-3 divide-y divide-foreground/15 border-y-[1.5px] border-border-strong">
+              {t.items.map((i) => <details key={i.q.en} className="py-3"><summary className="cursor-pointer font-bold">{i.q[lang]}</summary><p className="mt-2 text-sm leading-relaxed text-foreground-muted" dir="auto">{i.a[lang]}</p></details>)}
             </div>
           </section>
         ))}

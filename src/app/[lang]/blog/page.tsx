@@ -33,8 +33,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               <Link href={`/${lang}/blog/${p.slug}`} className="s-card block" data-boil>
                 <Scribble kind="box" seed={`blog-${p.slug}`} fill="paper" boil />
                 <h2 className="font-display text-2xl font-bold">{p.title}</h2>
-                <p className="mt-2 text-muted">{p.desc}</p>
-                <p className="mt-1 font-mono text-xs text-muted" dir="ltr">{p.date}</p>
+                <p className="mt-2 text-foreground-muted">{p.desc}</p>
+                <p className="mt-1 font-mono text-xs text-foreground-muted" dir="ltr">{p.date}</p>
               </Link>
             </li>
           ))}

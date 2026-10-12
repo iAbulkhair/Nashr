@@ -59,18 +59,18 @@ export default function CreditUsageCard({ t, lang, user, month, allowance, chat,
   return (
     <section className="mt-6 card" aria-labelledby="credit-usage-title" data-credit-usage="">
       <h2 id="credit-usage-title" className="font-display text-lg font-bold">{ar ? "استخدام الكريدت" : "Credit usage"}</h2>
-      <p className="mt-1 text-sm text-muted">{rules}</p>
+      <p className="mt-1 text-sm text-foreground-muted">{rules}</p>
       <div className="mt-3 flex items-center justify-between text-sm"><span>{ar ? "المستخدم" : "Credits used"}</span><span className="font-mono" dir="ltr">{usedCredits} / {allowance} ({pct}%)</span></div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-lilac"><div className="h-full bg-ink" style={{ width: `${pct}%` }} /></div>
-      {creditLine && <p className="mt-1 text-xs text-muted" data-runway="credits">{creditLine}</p>}
-      <div className="mt-3 rounded-lg bg-ink/5 p-3" data-credit-split="">
-        <span className="font-display text-2xl font-bold text-ink" dir="ltr">{user.credits}</span> <span className="text-sm text-muted">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-background-muted"><div className="h-full bg-foreground" style={{ width: `${pct}%` }} /></div>
+      {creditLine && <p className="mt-1 text-xs text-foreground-muted" data-runway="credits">{creditLine}</p>}
+      <div className="mt-3 rounded-lg bg-foreground/5 p-3" data-credit-split="">
+        <span className="font-display text-2xl font-bold text-foreground" dir="ltr">{user.credits}</span> <span className="text-sm text-foreground-muted">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>
         {split.topup > 0 && (
-          <dl className="mt-2 grid gap-1 text-xs text-ink/70">
+          <dl className="mt-2 grid gap-1 text-xs text-foreground-muted">
             <div className="flex justify-between gap-2" data-plan-credits=""><dt>{trial ? (ar ? "كريدت التجربة" : "Trial credits") : (ar ? `كريدت الخطة (يتجدد في ${nextReset})` : `Plan credits (reset on ${nextReset})`)}</dt><dd className="font-mono" dir="ltr">{formatCount(split.plan)}</dd></div>
             <div className="flex justify-between gap-2" data-topup-credits=""><dt>{ar ? "كريدت باقات الشحن (يُصرف بعد كريدت الخطة، ولا يتجدد)" : "Top-up credits (used after the plan credits; no reset)"}</dt><dd className="font-mono" dir="ltr">{formatCount(split.topup)}</dd></div>
             {split.packs.map((p, i) => (
-              <div key={i} className="flex justify-between gap-2 ps-3 text-muted" data-pack-expiry="">
+              <div key={i} className="flex justify-between gap-2 ps-3 text-foreground-muted" data-pack-expiry="">
                 <dt>{ar ? <>باقة <span dir="ltr">{formatCount(p.credits)}</span>: متبقٍ <span dir="ltr">{formatCount(p.left)}</span></> : `${formatCount(p.credits)}-credit pack: ${formatCount(p.left)} left`}</dt>
                 <dd>{ar ? "تنتهي" : "expires"} <Time value={p.expiresAt} lang={lang} className="tnum" /></dd>
               </div>
@@ -82,29 +82,29 @@ export default function CreditUsageCard({ t, lang, user, month, allowance, chat,
       {chat && chatBar && (
         <div className="mt-4" data-chat-usage="">
           <div className="flex items-center justify-between text-sm"><span>{chatTrial ? (ar ? "رسائل الدردشة في التجربة" : "Chat messages in your trial") : (ar ? "رسائل الدردشة هذا الشهر" : "Chat messages this month")}</span><span className="font-mono" dir="ltr">{formatCount(chat.used)} / {formatCount(chat.allowance)}</span></div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-lilac"><div className={`h-full ${chat.left > 0 ? "bg-ink" : "bg-lemon"}`} style={{ width: `${chatPct}%` }} /></div>
-          {chatLine && <p className="mt-1 text-xs text-muted" data-runway="messages">{chatLine}</p>}
-          {chatOverflowShown && <p className="mt-1 text-xs text-muted" data-chat-overflow-used="">{ar ? `${formatCount(chat.overflow.used)} رسالة إضافية هذا الشهر على الكريدت، خُصم عليها ${formatCount(chatCredits)} كريدت.` : `${formatCount(chat.overflow.used)} more this month, continued on credits: ${formatCount(chatCredits)} ${chatCredits === 1 ? "credit" : "credits"} billed.`}</p>}
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-background-muted"><div className={`h-full ${chat.left > 0 ? "bg-foreground" : "bg-lemon"}`} style={{ width: `${chatPct}%` }} /></div>
+          {chatLine && <p className="mt-1 text-xs text-foreground-muted" data-runway="messages">{chatLine}</p>}
+          {chatOverflowShown && <p className="mt-1 text-xs text-foreground-muted" data-chat-overflow-used="">{ar ? `${formatCount(chat.overflow.used)} رسالة إضافية هذا الشهر على الكريدت، خُصم عليها ${formatCount(chatCredits)} كريدت.` : `${formatCount(chat.overflow.used)} more this month, continued on credits: ${formatCount(chatCredits)} ${chatCredits === 1 ? "credit" : "credits"} billed.`}</p>}
         </div>
       )}
       <h3 className="mt-4 text-sm font-semibold">{ar ? "تفصيل الاستخدام" : "Usage breakdown"}</h3>
-      <div className="overflow-x-auto"><table className="mt-2 w-full text-sm"><thead className="text-start text-xs text-muted"><tr><th scope="col" className="py-1 text-start">{ar ? "الإجراء" : "Action"}</th><th scope="col">{ar ? "كريدت لكل دفعة" : "Credits each"}</th><th scope="col">{ar ? "دفعات" : "Used"}</th><th scope="col">{ar ? "الإجمالي" : "Total credits"}</th></tr></thead>
+      <div className="overflow-x-auto"><table className="mt-2 w-full text-sm"><thead className="text-start text-xs text-foreground-muted"><tr><th scope="col" className="py-1 text-start">{ar ? "الإجراء" : "Action"}</th><th scope="col">{ar ? "كريدت لكل دفعة" : "Credits each"}</th><th scope="col">{ar ? "دفعات" : "Used"}</th><th scope="col">{ar ? "الإجمالي" : "Total credits"}</th></tr></thead>
         <tbody>
           {AGENTS.map((a) => a.tasks.map((k: TaskType) => (
-            <tr key={k} className="border-t border-ink/5"><td className="py-1"><span className="text-xs text-muted">{t.agents[a.id].name} · </span>{t.generate.types[k].t}</td><td className="text-center font-mono">{TASK_COST[k]}</td><td className="text-center font-mono">{Math.round((usage[k]?.count ?? 0) / TASK_COUNT[k])}</td><td className="text-center font-mono">{usage[k]?.credits ?? 0}</td></tr>
+            <tr key={k} className="border-t border-foreground/5"><td className="py-1"><span className="text-xs text-foreground-muted">{t.agents[a.id].name} · </span>{t.generate.types[k].t}</td><td className="text-center font-mono">{TASK_COST[k]}</td><td className="text-center font-mono">{Math.round((usage[k]?.count ?? 0) / TASK_COUNT[k])}</td><td className="text-center font-mono">{usage[k]?.credits ?? 0}</td></tr>
           )))}
           {/* The catalogue's prices (src/lib/media-catalog.ts), as the pricing page states them, and what the renders really charged. */}
-          <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الصور ومقاطع الفيديو" : "Images and videos"}</td><td className="text-center font-mono" dir="ltr">{mediaRange("image")} · {mediaRange("video")}</td><td className="text-center font-mono">{images}</td><td className="text-center font-mono">{mediaUsed}</td></tr>
+          <tr className="border-t border-foreground/5"><td className="py-1">{ar ? "الصور ومقاطع الفيديو" : "Images and videos"}</td><td className="text-center font-mono" dir="ltr">{mediaRange("image")} · {mediaRange("video")}</td><td className="text-center font-mono">{images}</td><td className="text-center font-mono">{mediaUsed}</td></tr>
           {/* Chat messages inside the plan's allowance cost no credits; past it, when the owner turned "continue on
               credits" on, each is billed what it actually cost, at most `overflow.hold`: the month's total is
               `overflow.credits`, counted in the credits used above. */}
-          <tr className="border-t border-ink/5" data-chat-row=""><td className="py-1">{ar ? "الدردشة مع الفريق (رسائل خطتك)" : "Chat with the team (your plan's messages)"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono" dir="ltr">{chat ? `${formatCount(chat.used)} / ${formatCount(chat.allowance)}` : "—"}</td><td className="text-center font-mono">0</td></tr>
+          <tr className="border-t border-foreground/5" data-chat-row=""><td className="py-1">{ar ? "الدردشة مع الفريق (رسائل خطتك)" : "Chat with the team (your plan's messages)"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono" dir="ltr">{chat ? `${formatCount(chat.used)} / ${formatCount(chat.allowance)}` : "—"}</td><td className="text-center font-mono">0</td></tr>
           {chat && chatOverflowShown && (
-            <tr className="border-t border-ink/5" data-chat-overflow-row=""><td className="py-1">{ar ? "رسائل إضافية على الكريدت" : "Extra messages on credits"}</td><td className="text-center font-mono" dir="ltr">≤ {formatCount(chat.overflow.hold)}</td><td className="text-center font-mono">{formatCount(chat.overflow.used)}</td><td className="text-center font-mono" data-chat-overflow-credits="">{formatCount(chatCredits)}</td></tr>
+            <tr className="border-t border-foreground/5" data-chat-overflow-row=""><td className="py-1">{ar ? "رسائل إضافية على الكريدت" : "Extra messages on credits"}</td><td className="text-center font-mono" dir="ltr">≤ {formatCount(chat.overflow.hold)}</td><td className="text-center font-mono">{formatCount(chat.overflow.used)}</td><td className="text-center font-mono" data-chat-overflow-credits="">{formatCount(chatCredits)}</td></tr>
           )}
-          <tr className="border-t border-ink/5"><td className="py-1">{ar ? "إعداد علامتك الأولى من الرابط" : "Setting up your first brand from its URL"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
+          <tr className="border-t border-foreground/5"><td className="py-1">{ar ? "إعداد علامتك الأولى من الرابط" : "Setting up your first brand from its URL"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
           {/* Not a task, so it is not in the usage counts above: the setup charge shows in the balance only. */}
-          <tr className="border-t border-ink/5"><td className="py-1">{ar ? "إعداد كل علامة إضافية من رابطها" : "Setting up each added brand from its URL"}</td><td className="text-center font-mono">{ONBOARD_EXTRA_BRAND_COST}</td><td className="text-center font-mono">—</td><td className="text-center font-mono">—</td></tr>
+          <tr className="border-t border-foreground/5"><td className="py-1">{ar ? "إعداد كل علامة إضافية من رابطها" : "Setting up each added brand from its URL"}</td><td className="text-center font-mono">{ONBOARD_EXTRA_BRAND_COST}</td><td className="text-center font-mono">—</td><td className="text-center font-mono">—</td></tr>
         </tbody></table></div>
     </section>
   );

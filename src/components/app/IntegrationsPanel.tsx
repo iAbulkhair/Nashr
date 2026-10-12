@@ -176,7 +176,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
   return (
     <div>
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="integrationspanel-t1" />{g.title}</span></h1>
-      <p className="mt-2 text-ink/70">{g.sub}</p>
+      <p className="mt-2 text-foreground-muted">{g.sub}</p>
       {flash && <Callout tone="success" className="mt-3">{flash}</Callout>}
       {(actErr || flashErr) && <Callout tone="danger" className="mt-3">{actErr || flashErr}</Callout>}
       <Callout tone="info" role="note" className="mt-2">{g.note}</Callout>
@@ -188,43 +188,43 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
           <h2 className="eyebrow">{g.connected}</h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {conns.map((c) => (
-              <div key={c.provider} className="flex items-start justify-between gap-3 rounded-xl border border-ink/40 bg-white p-4">
+              <div key={c.provider} className="flex items-start justify-between gap-3 rounded-xl border border-foreground/40 bg-surface p-4">
                 <div>
                   <p className="font-display font-medium">{providerById.get(c.provider)?.name ?? c.provider}</p>
-                  <p className="mt-1 text-xs text-muted" dir="ltr">{c.meta?.account ?? c.meta?.shop ?? c.meta?.site ?? ""}</p>
-                  <p className="mt-1 text-xs text-muted"><Time value={c.connectedAt} lang={lang} /></p>
+                  <p className="mt-1 text-xs text-foreground-muted" dir="ltr">{c.meta?.account ?? c.meta?.shop ?? c.meta?.site ?? ""}</p>
+                  <p className="mt-1 text-xs text-foreground-muted"><Time value={c.connectedAt} lang={lang} /></p>
                   {c.needsReconnect && <Badge tone="warning" className="mt-1">{g.reconnect}</Badge>}
                   {c.provider === "meta" && c.meta?.pages && (
-                    <label className="mt-2 grid gap-1 text-xs text-muted">
+                    <label className="mt-2 grid gap-1 text-xs text-foreground-muted">
                       <span>{g.metaPage}</span>
-                      <select value={c.meta.pageId} disabled={busy || !manage} onChange={(e) => selectPage(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                      <select value={c.meta.pageId} disabled={busy || !manage} onChange={(e) => selectPage(e.target.value)} className="rounded border border-border bg-surface px-2 py-1 text-xs" dir="auto">
                         {(JSON.parse(c.meta.pages) as { id: string; name: string; ig: string }[]).map((pg) => <option key={pg.id} value={pg.id}>{pg.ig ? `${pg.name} · @${pg.ig}` : pg.name}</option>)}
                       </select>
                     </label>
                   )}
                   {c.provider === "linkedin" && c.meta?.liOrgs && (
-                    <label className="mt-2 grid gap-1 text-xs text-muted">
+                    <label className="mt-2 grid gap-1 text-xs text-foreground-muted">
                       <span>{g.linkedinPage}</span>
-                      <select value={c.meta.liOrg ?? ""} disabled={busy || !manage} onChange={(e) => selectOrg(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                      <select value={c.meta.liOrg ?? ""} disabled={busy || !manage} onChange={(e) => selectOrg(e.target.value)} className="rounded border border-border bg-surface px-2 py-1 text-xs" dir="auto">
                         {!c.meta.liOrg && <option value="" disabled>—</option>}
                         {(JSON.parse(c.meta.liOrgs) as { urn: string; name: string }[]).map((o) => <option key={o.urn} value={o.urn}>{o.name}</option>)}
                       </select>
                     </label>
                   )}
                   {c.provider === "linkedin" && c.meta?.via === "composio" && c.meta?.liOrg && (
-                    <label className="mt-2 grid gap-1 text-xs text-muted">
+                    <label className="mt-2 grid gap-1 text-xs text-foreground-muted">
                       <span>{g.postAs}</span>
-                      <select value={c.meta.liPostAs === "org" ? "org" : "me"} disabled={busy || !manage} onChange={(e) => postAs(e.target.value === "org" ? "org" : "me")} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                      <select value={c.meta.liPostAs === "org" ? "org" : "me"} disabled={busy || !manage} onChange={(e) => postAs(e.target.value === "org" ? "org" : "me")} className="rounded border border-border bg-surface px-2 py-1 text-xs" dir="auto">
                         <option value="me">{g.postAsMe}</option>
                         <option value="org">{(c.meta.liOrgs ? (JSON.parse(c.meta.liOrgs) as { urn: string; name: string }[]).find((o) => o.urn === c.meta?.liOrg)?.name : undefined) ?? c.meta.liOrg}</option>
                       </select>
                     </label>
                   )}
-                  {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && c.meta.via !== "composio" && <p className="mt-1 text-xs text-muted">{g.metaNoIg}</p>}
+                  {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && c.meta.via !== "composio" && <p className="mt-1 text-xs text-foreground-muted">{g.metaNoIg}</p>}
                   {READS_ADS.includes(c.provider) && c.meta?.adAccounts && (
-                    <label className="mt-2 grid gap-1 text-xs text-muted">
+                    <label className="mt-2 grid gap-1 text-xs text-foreground-muted">
                       <span>{g.adAccount}</span>
-                      <select value={c.meta.adAccount} disabled={busy || !manage} onChange={(e) => selectAdAccount(c.provider, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                      <select value={c.meta.adAccount} disabled={busy || !manage} onChange={(e) => selectAdAccount(c.provider, e.target.value)} className="rounded border border-border bg-surface px-2 py-1 text-xs" dir="auto">
                         {(JSON.parse(c.meta.adAccounts) as { id: string; name: string }[]).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>
                     </label>
@@ -263,7 +263,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
                 <div key={i.id} className="flex items-start justify-between gap-3 card card-sm">
                   <div>
                     <p className="font-display font-medium">{i.name}</p>
-                    {i.note && <p className="mt-1 text-xs text-muted">{i.note}</p>}
+                    {i.note && <p className="mt-1 text-xs text-foreground-muted">{i.note}</p>}
                     <Badge tone={tone(status === "ready" ? "soon" : status)} className="mt-2">{status === "ready" ? g.ready : status === "live" ? g.connected : status === "soon" && p?.kind === "oauth" ? g.waiting : g.status[i.status]}</Badge>
                   </div>
                   {canConnect ? (

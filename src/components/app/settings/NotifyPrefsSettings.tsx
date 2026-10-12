@@ -106,9 +106,9 @@ export default function NotifyPrefsSettings({ lang, initial, canEdit }: { lang: 
         <fieldset disabled={!canEdit} className="grid gap-2">
           <legend className="sr-only">{T.brief}</legend>
           {(["all", "important", "none"] as const).map((v) => (
-            <label key={v} className="flex min-h-[var(--hit-min)] cursor-pointer items-start gap-3 rounded-lg border border-border p-3 has-[:checked]:border-ink">
+            <label key={v} className="flex min-h-[var(--hit-min)] cursor-pointer items-start gap-3 rounded-lg border border-border p-3 has-[:checked]:border-border-strong">
               <input type="radio" name="brief" value={v} checked={brief === v} onChange={() => setBrief(v)} className="mt-1" />
-              <span><span className="block font-semibold text-ink">{T.levels[v][0]}</span><span className="block text-sm text-foreground-muted">{T.levels[v][1]}</span></span>
+              <span><span className="block font-semibold text-foreground">{T.levels[v][0]}</span><span className="block text-sm text-foreground-muted">{T.levels[v][1]}</span></span>
             </label>
           ))}
         </fieldset>
@@ -130,7 +130,7 @@ export default function NotifyPrefsSettings({ lang, initial, canEdit }: { lang: 
                 return (
                   <tr key={row.key} className="border-t border-border">
                     <th scope="row" className="px-1 py-2 text-start font-normal">
-                      <span className="block font-semibold text-ink">{name}</span>
+                      <span className="block font-semibold text-foreground">{name}</span>
                       <span className="block text-xs text-foreground-muted">{sub}</span>
                     </th>
                     <td className="px-1 py-2 text-center">{cell(row, "inApp", name)}</td>
@@ -142,7 +142,7 @@ export default function NotifyPrefsSettings({ lang, initial, canEdit }: { lang: 
           </table>
         </div>
       </SettingsCard>
-      <p className="text-sm"><Link href={`/${lang}/app/notifications`} className="font-medium text-ink underline underline-offset-4">{T.feed}</Link></p>
+      <p className="text-sm"><Link href={`/${lang}/app/notifications`} className="font-medium text-foreground underline underline-offset-4">{T.feed}</Link></p>
     </div>
   );
 }

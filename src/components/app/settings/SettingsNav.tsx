@@ -26,7 +26,7 @@ export default function SettingsNav({ lang, variant = "column", current }: { lan
         <ul className="grid gap-2 sm:grid-cols-2">
           {SETTINGS_SECTIONS.map((s) => (
             <li key={s}>
-              <Link href={settingsHref(lang, s)} className={`flex min-h-[var(--hit-min)] items-center justify-between gap-3 rounded-xl border border-border bg-paper p-4 hover:border-ink ${s === "danger" ? "text-danger" : "text-ink"}`}>
+              <Link href={settingsHref(lang, s)} className={`flex min-h-[var(--hit-min)] items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4 hover:border-border-strong ${s === "danger" ? "text-danger" : "text-foreground"}`}>
                 <span className="min-w-0">
                   <span className="block font-semibold">{C.sections[s].name}</span>
                   <span className="block text-sm text-foreground-muted">{C.sections[s].sub}</span>
@@ -47,7 +47,7 @@ export default function SettingsNav({ lang, variant = "column", current }: { lan
             <Link
               href={settingsHref(lang, s)}
               aria-current={on === s ? "page" : undefined}
-              className={`flex min-h-[var(--hit-min)] items-center rounded-lg px-3 text-sm transition pointer-fine:min-h-9 ${on === s ? "bg-lilac font-semibold text-ink" : s === "danger" ? "text-danger hover:bg-lilac/60" : "text-foreground-muted hover:bg-lilac/60 hover:text-ink"}`}
+              className={`flex min-h-[var(--hit-min)] items-center rounded-lg px-3 text-sm transition pointer-fine:min-h-9 ${on === s ? "bg-background-muted font-semibold text-foreground" : s === "danger" ? "text-danger hover:bg-background-muted/60" : "text-foreground-muted hover:bg-background-muted/60 hover:text-foreground"}`}
             >
               {C.sections[s].name}
             </Link>
@@ -63,7 +63,7 @@ export function SettingsBack({ lang }: { lang: Lang }) {
   const path = usePathname() ?? "";
   if (!sectionOf(path)) return null;
   return (
-    <Link href={settingsHref(lang)} className="mb-3 inline-flex min-h-[var(--hit-min)] items-center gap-1.5 text-sm font-medium text-ink underline-offset-4 hover:underline lg:hidden">
+    <Link href={settingsHref(lang)} className="mb-3 inline-flex min-h-[var(--hit-min)] items-center gap-1.5 text-sm font-medium text-foreground underline-offset-4 hover:underline lg:hidden">
       <Icon name="next" mirror className="h-4 w-4 rotate-180" />
       {SETTINGS_COPY[lang].back}
     </Link>

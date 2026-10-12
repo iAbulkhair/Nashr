@@ -15,7 +15,7 @@ export function PasswordRules({ id, rules, checks, lang }: { id: string; rules: 
     <>
       <ul id={id} className="grid gap-1 text-xs">
         {rules.map((rule, i) => (
-          <li key={rule} className={`flex items-center gap-2 ${checks[i] ? "text-ink" : "text-muted"}`}>
+          <li key={rule} className={`flex items-center gap-2 ${checks[i] ? "text-foreground" : "text-foreground-muted"}`}>
             <span aria-hidden className="inline-block w-3 text-center font-bold">{checks[i] ? "✓" : "✗"}</span>
             {rule}
             <span className="sr-only"> ({checks[i] ? T.met : T.unmet})</span>

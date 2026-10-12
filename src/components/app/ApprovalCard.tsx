@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useId, useState } from "react";
-import type { AppDict } from "@/lib/app-i18n";
+import type { ApprovalDict } from "@/lib/approval-dict";
 import type { ChatItem } from "@/lib/chat";
 import { isAgentId } from "@/lib/agents";
 import { render } from "@/lib/md";
@@ -24,8 +24,11 @@ const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w
  * Phase 2: moved out of ChatPanel (which still exports it as `ItemCard`), the channel limits shared with the inbox, the
  * body's toggle says whether it is open, a disabled Approve names its reason with `aria-describedby`, and Copy says
  * "Copied" (or that the browser refused) instead of failing silently.
+ *
+ * Phase 5b: `t` is the slice of the app dictionary the card reads (`ApprovalDict`), so the public home page sends only
+ * that; with `demo` the card is a sample whose buttons write nothing.
  */
-export default function ApprovalCard({ item, t, lang, onApproved, canApprove = true }: { item: ChatItem; t: AppDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean }) {
+export default function ApprovalCard({ item, t, lang, onApproved, canApprove = true, demo = false }: { item: ChatItem; t: ApprovalDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean; /** the home page's gallery (rule 1222): Approve and Undo change only this card, nothing is sent or saved */ demo?: boolean }) {
   const [open, setOpen] = useState(true);
   const [status, setStatus] = useState(item.status);
   const [err, setErr] = useState("");
@@ -38,6 +41,13 @@ export default function ApprovalCard({ item, t, lang, onApproved, canApprove = t
   const chName = (t.channelNames as Record<string, string>)[item.channel] ?? item.channel;
   async function setState(next: "approved" | "pending") {
     if (saving) return;
+    // A sample on the public home page has no task behind it: the card shows the approval and its undo, and nothing else.
+    if (demo) {
+      setStatus(next);
+      if (next === "approved") { setUndoAt(Date.now()); setTimeout(() => setUndoAt((v) => (Date.now() - v >= 4000 ? 0 : v)), 4200); }
+      else setUndoAt(0);
+      return;
+    }
     setErr(""); setSaving(true);
     try {
       // The version of the text on this card (src/lib/task-version.ts): an approval is refused when the item changed since.
@@ -65,9 +75,9 @@ export default function ApprovalCard({ item, t, lang, onApproved, canApprove = t
   const flagged = flags.length > 0 && status !== "approved";
   const blocked = over || held.length > 0;
   return (
-    <article className="mt-3 overflow-hidden rounded-xl border border-border bg-paper text-ink" aria-labelledby={`${id}-h`}>
+    <article className="mt-3 overflow-hidden rounded-xl border border-border bg-surface text-foreground" aria-labelledby={`${id}-h`}>
       <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 text-xs">
-        <span id={`${id}-h`} className="flex min-w-0 items-center gap-2 font-semibold"><Icon name={channelIcon(item.channel)} className="h-4 w-4 text-ink" />{chName}<span className="clip font-normal text-foreground-muted" dir="auto">· {item.title}</span></span>
+        <span id={`${id}-h`} className="flex min-w-0 items-center gap-2 font-semibold"><Icon name={channelIcon(item.channel)} className="h-4 w-4 text-foreground" />{chName}<span className="clip font-normal text-foreground-muted" dir="auto">· {item.title}</span></span>
         <span className="flex flex-wrap items-center justify-end gap-1.5">
           {flags.map((f) => <Badge key={f.by} tone="danger" className="whitespace-nowrap">{f.n === 1 ? fill(t.inbox.xNote, { name: t.agents[f.by].name }) : fill(t.inbox.xNotes, { name: t.agents[f.by].name, n: f.n })}</Badge>)}
           <span className={`badge whitespace-nowrap ${status === "approved" ? "badge-primary" : "badge-accent"}`}>{status === "approved" ? t.inbox.approved : t.inbox.pending}</span>
@@ -76,11 +86,11 @@ export default function ApprovalCard({ item, t, lang, onApproved, canApprove = t
       {/* Model output: through render() in src/lib/md.ts, never raw. */}
       {open && <div id={`${id}-body`} className="prose-nashr prose-compact px-4 py-3 text-sm" dir="auto" dangerouslySetInnerHTML={{ __html: render(item.body) }} />}
       <footer className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2 text-xs">
-        <span id={`${id}-count`} className={`tnum ${over ? "font-semibold text-ink" : "text-foreground-muted"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
+        <span id={`${id}-count`} className={`tnum ${over ? "font-semibold text-foreground" : "text-foreground-muted"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
         {over && <Badge id={`${id}-over`} tone="danger">{ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit"}</Badge>}
         {err && <span role="alert" className="text-danger">{err}</span>}
         {held.length > 0 && <span role="alert" id={`${id}-held`} className="flex items-center gap-1 font-semibold text-danger"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={`/${lang}/app`} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
-        {undoAt > 0 && status === "approved" && <span role="status" className="flex items-center gap-2 text-ink"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button type="button" onClick={() => setState("pending")} className="min-h-[var(--hit-min)] underline pointer-fine:min-h-0">{t.chat.undo}</button></span>}
+        {undoAt > 0 && status === "approved" && <span role="status" className="flex items-center gap-2 text-foreground"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button type="button" onClick={() => setState("pending")} className="min-h-[var(--hit-min)] underline pointer-fine:min-h-0">{t.chat.undo}</button></span>}
         {flagged && <Badge tone="warning">{t.chat.xflagHint}</Badge>}
         <span className="ms-auto flex flex-wrap gap-1.5">
           <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={`${id}-body`} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>

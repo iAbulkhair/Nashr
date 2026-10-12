@@ -10,7 +10,7 @@ const ON_DARK: ReadonlySet<AgentId> = new Set(["faris", "majed"]);
  */
 export default function AgentAvatar({ id, name, className = "h-8 w-8 text-sm" }: { id: AgentId; name: string; className?: string }) {
   return (
-    <span data-scribble className={`grid shrink-0 place-items-center font-display font-bold ${ON_DARK.has(id) ? "text-paper" : "text-ink"} ${className}`} aria-hidden="true">
+    <span data-scribble className={`grid shrink-0 place-items-center font-display font-bold ${ON_DARK.has(id) ? "text-inverse-foreground" : "text-accent-foreground"} ${className}`} aria-hidden="true">
       <Scribble kind="circleLoop" seed={`avatar-${id}`} fill={`agent-${id}`} />
       {name.charAt(0)}
     </span>

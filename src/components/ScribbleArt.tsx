@@ -20,8 +20,9 @@ export type ScribbleLook = {
 };
 
 export const SCRIBBLE_SIZE: Partial<Record<ScribbleKind, [number, number]>> = { box: [240, 64], pill: [160, 48], underline: [120, 10], cloud: [280, 120], bubble: [240, 80] };
-const DEFAULT_FILL: Partial<Record<ScribbleKind, string>> = { bubble: "paper", cloud: "paper", tape: "color-mix(in oklab, var(--color-lemon) 85%, transparent)", puddle: "agent-noor", swash: "agent-noor" };
-const TOKEN = /^(paper|ink|ground|lemon|lilac|gold|muted|agent-[a-z]+)$/;
+const DEFAULT_FILL: Partial<Record<ScribbleKind, string>> = { bubble: "surface", cloud: "surface", tape: "color-mix(in oklab, var(--color-lemon) 85%, transparent)", puddle: "agent-noor", swash: "agent-noor" };
+// Semantic fills (surface, background, foreground) follow the theme (rule 1202); the palette names stay for brand art.
+const TOKEN = /^(paper|ink|ground|lemon|lilac|gold|muted|surface|background|background-muted|foreground|agent-[a-z]+)$/;
 const colour = (fill: string) => (TOKEN.test(fill) ? `var(--color-${fill})` : fill);
 
 /** The `<svg>` for one look at one size and direction. `svgRef` is the client scribble's handle on it. */

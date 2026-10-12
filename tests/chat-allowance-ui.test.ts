@@ -145,7 +145,7 @@ describe("the messages-left line under the chat box (rule 315)", () => {
       const t = appDict[lang];
       const html = renderToStaticMarkup(createElement(ChatPanel, { ...base, t, lang, chat: status(S, 40) }));
       expect(html, lang).toContain(esc(chatLine(t, status(S, 40)).text));
-      expect(html, lang).toMatch(/class="tnum mt-2 text-xs text-ink\/70" dir="auto">/);
+      expect(html, lang).toMatch(/class="tnum mt-2 text-xs text-foreground-muted" dir="auto">/);
       const low = renderToStaticMarkup(createElement(ChatPanel, { ...base, t, lang, chat: status(S, S) }));
       expect(low, lang).toContain('class="tnum mt-2 text-xs font-semibold text-danger" dir="auto">');
       expect(renderToStaticMarkup(createElement(ChatPanel, { ...base, t, lang })), lang).not.toContain('class="tnum mt-2 text-xs');

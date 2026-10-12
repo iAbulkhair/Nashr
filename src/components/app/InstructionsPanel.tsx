@@ -28,7 +28,7 @@ type Reply = { ok: boolean; status: number; j: Record<string, unknown> };
 
 /** Model text, as plain text or through the safe renderer: the same `render` the approval inbox shows a draft's body with (it escapes HTML). */
 function Body({ md }: { md: string }) {
-  return <div className="prose-nashr prose-compact mt-2 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(md) }} />;
+  return <div className="prose-nashr prose-compact mt-2 text-sm text-foreground" dir="auto" dangerouslySetInnerHTML={{ __html: render(md) }} />;
 }
 
 /**
@@ -39,9 +39,9 @@ function Body({ md }: { md: string }) {
 export function TestOutput({ t, before, after, spent }: { t: AppDict; before: Item; after: Item; spent: number }) {
   const I = t.instructions;
   const col = (label: string, it: Item) => (
-    <section className="min-w-0 rounded-xl border-[1.5px] border-ink/20 p-3">
+    <section className="min-w-0 rounded-xl border-[1.5px] border-border p-3">
       <h3 className="text-sm font-semibold">{label}</h3>
-      <p className="mt-1 text-xs text-muted"><bdi>{it.channel}</bdi></p>
+      <p className="mt-1 text-xs text-foreground-muted"><bdi>{it.channel}</bdi></p>
       <p className="mt-1 font-medium" dir="auto">{it.title}</p>
       <Body md={it.body} />
     </section>
@@ -49,7 +49,7 @@ export function TestOutput({ t, before, after, spent }: { t: AppDict; before: It
   return (
     <div className="mt-4">
       <div className="grid gap-3 md:grid-cols-2">{col(I.before, before)}{col(I.after, after)}</div>
-      <p className="tnum mt-2 text-xs text-muted">{fill(I.spent, { n: spent })}</p>
+      <p className="tnum mt-2 text-xs text-foreground-muted">{fill(I.spent, { n: spent })}</p>
     </div>
   );
 }
@@ -61,7 +61,7 @@ function ItemLine({ t, i }: { t: AppDict; i: Instruction }) {
   return (
     <p className="text-sm">
       <bdi>{i.text}</bdi>
-      {meta && <span className="text-xs text-muted"> · {meta}</span>}
+      {meta && <span className="text-xs text-foreground-muted"> · {meta}</span>}
     </p>
   );
 }
@@ -287,19 +287,19 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   return (
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="instructionspanel-t1" />{I.title}</span></h1>
-      <p className="mt-2 text-ink/70">{I.sub}</p>
-      <p className="mt-2 text-sm text-muted">{I.safetyNote}</p>
-      <p className="mt-1 text-sm text-muted">{I.notCovered}</p>
+      <p className="mt-2 text-foreground-muted">{I.sub}</p>
+      <p className="mt-2 text-sm text-foreground-muted">{I.safetyNote}</p>
+      <p className="mt-1 text-sm text-foreground-muted">{I.notCovered}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
       {paused && <p role="note" className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm">{I.paused}</p>}
 
       <section className="card mt-6" aria-labelledby="ins-edit">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="ins-edit" className="font-display font-medium">{I.editorTitle}</h2>
-          <p className="text-sm text-muted">{layer.active.v > 0 ? fill(I.activeNow, { v: layer.active.v, n: activeOn }) : I.noneActive}</p>
+          <p className="text-sm text-foreground-muted">{layer.active.v > 0 ? fill(I.activeNow, { v: layer.active.v, n: activeOn }) : I.noneActive}</p>
         </div>
-        <p className="mt-1 text-xs text-muted">{fill(I.limitHint, { max: limits.max })}</p>
-        {!limits.refs && <p className="mt-1 text-xs text-muted">{I.refsPlan}</p>}
+        <p className="mt-1 text-xs text-foreground-muted">{fill(I.limitHint, { max: limits.max })}</p>
+        {!limits.refs && <p className="mt-1 text-xs text-foreground-muted">{I.refsPlan}</p>}
         {skipped > 0 && <p role="status" className="mt-2 rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm">{fill(I.skipped, { n: skipped, max: limits.max })}</p>}
         {draftDiffers && !dirty && <p role="status" className="mt-2 rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm">{fill(I.draftBanner, { v: layer.active.v })}</p>}
         <fieldset disabled={readOnly} className="mt-4 min-w-0">
@@ -309,10 +309,10 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
               <button type="button" onClick={() => void save()} disabled={locked || !dirty} className="btn btn-secondary btn-sm">{busy === "save" ? I.saving : I.saveDraft}</button>
               <button type="button" onClick={() => void activate()} disabled={locked || (!dirty && !hasDraft)} className="btn btn-primary btn-sm">{busy === "activate" ? I.activating : I.activate}</button>
               <button type="button" onClick={() => void discard()} disabled={locked || !hasDraft} className="btn btn-danger btn-sm">{busy === "discard" ? I.discarding : I.discard}</button>
-              {dirty && <span className="text-sm text-muted">{I.unsaved}</span>}
+              {dirty && <span className="text-sm text-foreground-muted">{I.unsaved}</span>}
             </div>
           )}
-          {msg && <p role="status" className="mt-2 text-sm text-ink">{msg}</p>}
+          {msg && <p role="status" className="mt-2 text-sm text-foreground">{msg}</p>}
           {err && (
             <p role="alert" className="mt-2 text-sm text-danger">
               {err}
@@ -326,12 +326,12 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       {googleOn && limits.refs && !readOnly && (
         <section className="card mt-4" aria-labelledby="ins-import">
           <h2 id="ins-import" className="font-display font-medium">{I.importTitle}</h2>
-          <p className="mt-1 text-sm text-muted">{I.importSub}</p>
+          <p className="mt-1 text-sm text-foreground-muted">{I.importSub}</p>
           <form className="mt-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void search(); }}>
             <input className="input min-w-0 flex-1" dir="auto" maxLength={100} value={q} onChange={(e) => setQ(e.target.value)} aria-label={I.importQuery} placeholder={I.importQuery} />
             <button type="submit" disabled={locked} className="btn btn-secondary btn-sm">{busy === "search" ? I.importSearching : I.importSearch}</button>
           </form>
-          {impMsg && <p role="status" className="mt-2 text-sm text-ink">{impMsg}</p>}
+          {impMsg && <p role="status" className="mt-2 text-sm text-foreground">{impMsg}</p>}
           {impErr && (
             <p role="alert" className="mt-2 text-sm text-danger">
               {impErr}
@@ -339,11 +339,11 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
             </p>
           )}
           {hits && (
-            hits.length === 0 ? <p className="mt-3 text-sm text-muted">{I.importNone}</p> : (
-              <ul className="mt-3 divide-y divide-ink/10">
+            hits.length === 0 ? <p className="mt-3 text-sm text-foreground-muted">{I.importNone}</p> : (
+              <ul className="mt-3 divide-y divide-foreground/10">
                 {hits.map((h) => (
                   <li key={`${h.kind}:${h.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <p className="min-w-0 text-sm"><bdi>{h.title}</bdi> <span className="badge badge-primary">{h.kind === "doc" ? I.kindDoc : I.kindSheet}</span>{h.modified && !Number.isNaN(Date.parse(h.modified)) && <span className="text-xs text-muted"> · {when.format(new Date(h.modified))}</span>}</p>
+                    <p className="min-w-0 text-sm"><bdi>{h.title}</bdi> <span className="badge badge-primary">{h.kind === "doc" ? I.kindDoc : I.kindSheet}</span>{h.modified && !Number.isNaN(Date.parse(h.modified)) && <span className="text-xs text-foreground-muted"> · {when.format(new Date(h.modified))}</span>}</p>
                     <button type="button" onClick={() => void importRef(h.kind, h.id, h.title, `${h.kind}:${h.id}`)} disabled={locked} className="btn btn-secondary btn-xs">{importing === `${h.kind}:${h.id}` ? I.importing : I.importDo}</button>
                   </li>
                 ))}
@@ -353,10 +353,10 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
           {Object.keys(refs).length > 0 && (
             <div className="mt-4">
               <h3 className="text-sm font-semibold">{I.importedList}</h3>
-              <ul className="mt-1 divide-y divide-ink/10">
+              <ul className="mt-1 divide-y divide-foreground/10">
                 {Object.entries(refs).sort(([, a], [, b]) => b.at.localeCompare(a.at)).map(([name, r]) => (
                   <li key={name} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <p className="min-w-0 text-sm"><bdi>{r.title || name}</bdi> <span className="badge badge-primary">{r.source === "gdocs" ? I.kindDoc : I.kindSheet}</span> <span className="text-xs text-muted" dir="ltr">{name}</span>{!files.includes(name) && <span className="text-xs text-danger"> · {I.importMissing}</span>}</p>
+                    <p className="min-w-0 text-sm"><bdi>{r.title || name}</bdi> <span className="badge badge-primary">{r.source === "gdocs" ? I.kindDoc : I.kindSheet}</span> <span className="text-xs text-foreground-muted" dir="ltr">{name}</span>{!files.includes(name) && <span className="text-xs text-danger"> · {I.importMissing}</span>}</p>
                     <button type="button" onClick={() => void importRef(r.source === "gdocs" ? "doc" : "sheet", r.id, r.title, name)} disabled={locked} className="btn btn-secondary btn-xs">{importing === name ? I.importing : I.importRefresh}</button>
                   </li>
                 ))}
@@ -369,33 +369,33 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       {canTest && !readOnly && (
         <section className="card mt-4" aria-labelledby="ins-test">
           <h2 id="ins-test" className="font-display font-medium">{I.testTitle}</h2>
-          <p className="mt-1 text-sm text-muted">{I.testSub}</p>
+          <p className="mt-1 text-sm text-foreground-muted">{I.testSub}</p>
           {testOptions.length === 0 ? (
-            <p className="mt-3 text-sm text-muted">{I.testNone}</p>
+            <p className="mt-3 text-sm text-foreground-muted">{I.testNone}</p>
           ) : (
             <div className="mt-3 grid gap-3">
               <div className="flex flex-wrap gap-3">
                 <label className="grid gap-1 text-sm">
-                  <span className="text-muted">{I.testAgent}</span>
-                  <select value={agent} onChange={(e) => { const a = e.target.value; if (isAgentId(a)) { setAgent(a); setType(testOptions.find((o) => o.agent === a)?.type ?? ""); } }} className="rounded border border-ink/15 bg-white px-2 py-1">
+                  <span className="text-foreground-muted">{I.testAgent}</span>
+                  <select value={agent} onChange={(e) => { const a = e.target.value; if (isAgentId(a)) { setAgent(a); setType(testOptions.find((o) => o.agent === a)?.type ?? ""); } }} className="rounded border border-border bg-surface px-2 py-1">
                     {agentsOffered.map((a) => <option key={a} value={a}>{t.agents[a].name}</option>)}
                   </select>
                 </label>
                 <label className="grid gap-1 text-sm">
-                  <span className="text-muted">{I.testType}</span>
-                  <select value={type} onChange={(e) => { const v = testOptions.find((o) => o.agent === agent && o.type === e.target.value); if (v) setType(v.type); }} className="rounded border border-ink/15 bg-white px-2 py-1">
+                  <span className="text-foreground-muted">{I.testType}</span>
+                  <select value={type} onChange={(e) => { const v = testOptions.find((o) => o.agent === agent && o.type === e.target.value); if (v) setType(v.type); }} className="rounded border border-border bg-surface px-2 py-1">
                     {testOptions.filter((o) => o.agent === agent).map((o) => <option key={o.type} value={o.type}>{t.generate.types[o.type].t}</option>)}
                   </select>
                 </label>
               </div>
               <label className="grid gap-1 text-sm">
-                <span className="text-muted">{I.testBrief}</span>
+                <span className="text-foreground-muted">{I.testBrief}</span>
                 <textarea className="input" rows={2} dir="auto" maxLength={TEST_BRIEF_CHARS} value={brief} placeholder={I.testBriefHint} onChange={(e) => setBrief(e.target.value)} />
-                <span className="tnum text-xs text-muted" dir="ltr">{fill(I.counter, { n: brief.length, max: TEST_BRIEF_CHARS })}</span>
+                <span className="tnum text-xs text-foreground-muted" dir="ltr">{fill(I.counter, { n: brief.length, max: TEST_BRIEF_CHARS })}</span>
               </label>
               <div className="flex flex-wrap items-center gap-3">
                 <button type="button" onClick={() => void runTest()} disabled={locked || !option || !!testHint} className="btn btn-primary btn-sm">{busy === "test" ? I.testing : fill(I.testButton, { n: option?.price ?? 0 })}</button>
-                {testHint && <span className="text-sm text-muted">{testHint}</span>}
+                {testHint && <span className="text-sm text-foreground-muted">{testHint}</span>}
               </div>
             </div>
           )}
@@ -407,22 +407,22 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       {/* Outside the fieldset: every role reads the history; only admin and owner get Restore (the route checks it too). */}
       <section className="card mt-4" aria-labelledby="ins-history">
         <h2 id="ins-history" className="font-display font-medium">{I.history}</h2>
-        <p className="mt-1 text-sm text-muted">{I.historySub}</p>
-        {!readOnly && restoreBlocked(dirty) && <p className="mt-2 text-sm text-muted">{I.restoreNeedsSaved}</p>}
-        {histMsg && <p role="status" className="mt-2 text-sm text-ink">{histMsg}</p>}
+        <p className="mt-1 text-sm text-foreground-muted">{I.historySub}</p>
+        {!readOnly && restoreBlocked(dirty) && <p className="mt-2 text-sm text-foreground-muted">{I.restoreNeedsSaved}</p>}
+        {histMsg && <p role="status" className="mt-2 text-sm text-foreground">{histMsg}</p>}
         {histErr && <p role="alert" className="mt-2 text-sm text-danger">{histErr}</p>}
         {history.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">{I.historyEmpty}</p>
+          <p className="mt-3 text-sm text-foreground-muted">{I.historyEmpty}</p>
         ) : (
-          <ul className="mt-3 divide-y divide-ink/10">
+          <ul className="mt-3 divide-y divide-foreground/10">
             {history.map((r) => (
               <li key={r.id} className="py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm">
                     <strong id={`ins-rev-${r.id}`}>{fill(I.version, { v: r.v })}</strong>
-                    <span className="text-muted"> · </span>
+                    <span className="text-foreground-muted"> · </span>
                     <time dateTime={r.at} suppressHydrationWarning>{when.format(new Date(r.at))} UTC</time>
-                    <span className="text-muted"> · </span>
+                    <span className="text-foreground-muted"> · </span>
                     <span dir="auto">{who(r.by)}</span>
                     {r.rollbackOf && <span className="ms-2 badge">{I.restoreBadge}</span>}
                   </p>
@@ -431,23 +431,23 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
                     {!readOnly && <button type="button" onClick={() => void restore(r)} disabled={locked || restoreBlocked(dirty)} aria-describedby={`ins-rev-${r.id}`} className="btn btn-secondary btn-xs">{restoring === r.id ? I.restoring : I.restore}</button>}
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-ink/70"><span className="tnum">{fill(I.on, { n: r.count })}</span> · {fill(I.changes, { a: r.added, r: r.removed, c: r.changed })}</p>
+                <p className="mt-1 text-xs text-foreground-muted"><span className="tnum">{fill(I.on, { n: r.count })}</span> · {fill(I.changes, { a: r.added, r: r.removed, c: r.changed })}</p>
                 {cmp?.id === r.id && cmp.diff && (
-                  <div className="mt-2 rounded-lg border border-ink/15 p-3">
+                  <div className="mt-2 rounded-lg border border-border p-3">
                     <h3 className="text-sm font-semibold">{I.compareTitle}</h3>
                     {cmp.diff.added.length + cmp.diff.removed.length + cmp.diff.changed.length === 0 ? (
-                      <p className="mt-1 text-sm text-muted">{I.noDiff}</p>
+                      <p className="mt-1 text-sm text-foreground-muted">{I.noDiff}</p>
                     ) : (
                       <div className="mt-1 grid gap-2">
-                        {cmp.diff.added.length > 0 && <div><p className="text-xs font-semibold text-muted">{I.diffAdded}</p>{cmp.diff.added.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
-                        {cmp.diff.removed.length > 0 && <div><p className="text-xs font-semibold text-muted">{I.diffRemoved}</p>{cmp.diff.removed.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
+                        {cmp.diff.added.length > 0 && <div><p className="text-xs font-semibold text-foreground-muted">{I.diffAdded}</p>{cmp.diff.added.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
+                        {cmp.diff.removed.length > 0 && <div><p className="text-xs font-semibold text-foreground-muted">{I.diffRemoved}</p>{cmp.diff.removed.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
                         {cmp.diff.changed.length > 0 && (
                           <div>
-                            <p className="text-xs font-semibold text-muted">{I.diffChanged}</p>
+                            <p className="text-xs font-semibold text-foreground-muted">{I.diffChanged}</p>
                             {cmp.diff.changed.map((c) => (
                               <div key={c.after.id} className="mt-1 grid gap-1 md:grid-cols-2">
-                                <div><p className="text-xs text-muted">{I.then}</p><ItemLine t={t} i={c.before} /></div>
-                                <div><p className="text-xs text-muted">{I.now}</p><ItemLine t={t} i={c.after} /></div>
+                                <div><p className="text-xs text-foreground-muted">{I.then}</p><ItemLine t={t} i={c.before} /></div>
+                                <div><p className="text-xs text-foreground-muted">{I.now}</p><ItemLine t={t} i={c.after} /></div>
                               </div>
                             ))}
                           </div>

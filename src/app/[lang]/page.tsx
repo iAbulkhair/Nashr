@@ -6,6 +6,7 @@ import Cover from "@/components/home/Cover";
 import Stories from "@/components/home/Stories";
 import Rules from "@/components/home/Rules";
 import Day from "@/components/home/Day";
+import Gallery from "@/components/home/Gallery";
 import Steps from "@/components/home/Steps";
 import Plans from "@/components/home/Plans";
 import HomeFaq from "@/components/home/HomeFaq";
@@ -13,7 +14,7 @@ import { Seam } from "@/components/home/Decor";
 import Footer from "@/components/Footer";
 import styles from "@/components/home/home.module.css";
 
-/** The homepage is prototype D (rule 516): cover and team, the scenes (rule 775), house rules, your day, the seven steps, plans, questions. */
+/** The homepage is prototype D (rule 516): cover and team, the scenes (rule 775), house rules, your day, the live UI gallery (rule 1220), the seven steps, plans, questions. */
 export default async function Home({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
@@ -30,6 +31,8 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
         <Seam kind="team" />
         <Day lang={lang} />
         <Seam kind="ink" />
+        <Gallery lang={lang} />
+        <Seam kind="fly" pace={{ t: "12s", d: "-4s" }} />
         <Steps lang={lang} />
         <Seam kind="fly" pace={{ t: "13s", d: "-7s" }} />
         <Plans t={t} lang={lang} />

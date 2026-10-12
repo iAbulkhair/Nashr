@@ -40,7 +40,7 @@ export default function SettingsCard({ title, sub, children, onSave, dirty = fal
   };
   const body = (
     <>
-      <h2 id={`${id}-t`} className={`font-display text-lg font-bold ${tone === "danger" ? "text-danger" : "text-ink"}`}>{title}</h2>
+      <h2 id={`${id}-t`} className={`font-display text-lg font-bold ${tone === "danger" ? "text-danger" : "text-foreground"}`}>{title}</h2>
       {sub && <p className="mt-1 text-sm text-foreground-muted">{sub}</p>}
       {children && <div className="mt-4 grid gap-3">{children}</div>}
       {(onSave || note || status) && (

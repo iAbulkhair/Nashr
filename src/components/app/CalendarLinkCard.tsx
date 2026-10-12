@@ -89,16 +89,16 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
   const link = state.kind === "choose" || state.kind === "linked" || state.kind === "reconnect" ? state.link : null;
   const account = link && (
     <p className="text-sm">
-      <span className="text-muted">{T.accountLabel}: </span>
+      <span className="text-foreground-muted">{T.accountLabel}: </span>
       <bdi dir="auto" className="break-all">{link.account}</bdi>
     </p>
   );
   return (
     <section id="todo-calendar" aria-labelledby="todo-calendar-title" className="card mt-8 min-w-0">
       <h2 id="todo-calendar-title" className="card-title">{T.title}</h2>
-      <p className="mt-1 text-sm text-muted">{T.sub}</p>
-      {fromError && <p role="alert" className="mt-3 rounded-xl border border-ink/10 px-3 py-2 text-sm text-danger">{T.calError[fromError]}</p>}
-      {state.kind === "loading" && <p className="mt-3 text-sm text-muted">{T.loading}</p>}
+      <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
+      {fromError && <p role="alert" className="mt-3 rounded-xl border border-foreground/10 px-3 py-2 text-sm text-danger">{T.calError[fromError]}</p>}
+      {state.kind === "loading" && <p className="mt-3 text-sm text-foreground-muted">{T.loading}</p>}
       {state.kind === "failed" && (
         <div className="mt-3">
           <p role="alert" className="text-sm text-danger">{state.text ?? T.error}</p>
@@ -113,7 +113,7 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
             {connect("gcal", T.connectGoogle)}
             {connect("mscal", T.connectOutlook)}
           </div>
-          <p className="text-xs text-muted">{T.googleNote}</p>
+          <p className="text-xs text-foreground-muted">{T.googleNote}</p>
         </div>
       )}
 
@@ -122,9 +122,9 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
           {account}
           <div>
             <h3 className="text-sm font-semibold">{T.chooseTitle}</h3>
-            <p className="mt-1 text-xs text-muted">{T.chooseHint}</p>
+            <p className="mt-1 text-xs text-foreground-muted">{T.chooseHint}</p>
           </div>
-          {state.calendars === null && <p className="text-sm text-muted">{T.loading}</p>}
+          {state.calendars === null && <p className="text-sm text-foreground-muted">{T.loading}</p>}
           {state.calendars !== null && state.calendars.length === 0 && (
             <div className="grid gap-2">
               <p className="text-sm">{T.noCalendars}</p>
@@ -135,14 +135,14 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
             <fieldset className="grid min-w-0 gap-2 border-0 p-0">
               <legend className="sr-only">{T.chooseTitle}</legend>
               {state.needsDeclaration && (
-                <label className="flex min-w-0 items-start gap-2 rounded-xl border border-ink/10 px-3 py-2 text-sm">
-                  <input type="checkbox" checked={declared} disabled={off} onChange={(e) => onDeclare?.(e.target.checked)} className="mt-1 shrink-0 accent-ink" />
+                <label className="flex min-w-0 items-start gap-2 rounded-xl border border-foreground/10 px-3 py-2 text-sm">
+                  <input type="checkbox" checked={declared} disabled={off} onChange={(e) => onDeclare?.(e.target.checked)} className="mt-1 shrink-0 accent-foreground" />
                   <span className="min-w-0">{T.declare}</span>
                 </label>
               )}
               {state.calendars.map((c) => (
                 <label key={c.choice} className="flex min-w-0 items-start gap-2 text-sm">
-                  <input type="radio" name="todo-calendar-choice" value={c.choice} checked={picked === c.choice} disabled={off} onChange={() => onPick?.(c.choice)} className="mt-1 shrink-0 accent-ink" />
+                  <input type="radio" name="todo-calendar-choice" value={c.choice} checked={picked === c.choice} disabled={off} onChange={() => onPick?.(c.choice)} className="mt-1 shrink-0 accent-foreground" />
                   <bdi dir="auto" className="min-w-0 break-words">{c.name}</bdi>
                 </label>
               ))}
@@ -163,24 +163,24 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
         <div className="mt-3 grid gap-3">
           <div className="grid gap-1">
             <p className="text-sm">
-              <span className="text-muted">{T.calendarLabel}: </span>
+              <span className="text-foreground-muted">{T.calendarLabel}: </span>
               <bdi dir="auto" className="break-words font-semibold">{state.link.calendarName ?? ""}</bdi>
             </p>
             {account}
             <p>
-              <span className="inline-block rounded-full border border-ink/20 px-2 py-0.5 text-xs">{state.link.proof === "domain" ? T.badgeDomain : T.badgeDeclared}</span>
+              <span className="inline-block rounded-full border border-border px-2 py-0.5 text-xs">{state.link.proof === "domain" ? T.badgeDomain : T.badgeDeclared}</span>
             </p>
-            <p className="text-xs text-muted">{state.link.lastSyncAt ? fill(T.lastSync, { when: sinceText(state.link.lastSyncAt, lang, now) }) : T.notSynced}</p>
+            <p className="text-xs text-foreground-muted">{state.link.lastSyncAt ? fill(T.lastSync, { when: sinceText(state.link.lastSyncAt, lang, now) }) : T.notSynced}</p>
           </div>
           <div>
             <h3 className="text-sm font-semibold">{T.todayTitle}</h3>
             {state.link.today.length === 0 ? (
-              <p className="mt-1 text-sm text-muted">{T.noneToday}</p>
+              <p className="mt-1 text-sm text-foreground-muted">{T.noneToday}</p>
             ) : (
               <ul className="mt-1 grid gap-1 text-sm">
                 {state.link.today.map((m, i) => (
                   <li key={i} className="flex min-w-0 flex-wrap gap-x-2">
-                    <bdi dir="ltr" className="shrink-0 text-muted">{m.start}–{m.end}</bdi>
+                    <bdi dir="ltr" className="shrink-0 text-foreground-muted">{m.start}–{m.end}</bdi>
                     <bdi dir="auto" className="min-w-0 break-words">{m.title}</bdi>
                   </li>
                 ))}
@@ -199,10 +199,10 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
 
       {state.kind === "reconnect" && (
         <div className="mt-3 grid gap-3">
-          <div className="rounded-xl border border-ink/10 px-3 py-2">
+          <div className="rounded-xl border border-foreground/10 px-3 py-2">
             <h3 className="text-sm font-semibold">{T.reconnectTitle}</h3>
             <p className="mt-1 text-sm">{state.link.lostReason && LOST.includes(state.link.lostReason) ? T.lost[state.link.lostReason] : T.lost.token}</p>
-            <p className="mt-1 text-xs text-muted">{T.reconnectNote}</p>
+            <p className="mt-1 text-xs text-foreground-muted">{T.reconnectNote}</p>
           </div>
           {account}
           {!confirming && (

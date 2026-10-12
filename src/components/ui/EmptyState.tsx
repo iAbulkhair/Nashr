@@ -13,9 +13,9 @@ export default function EmptyState({ icon = "spark", title, body, action, classN
   className?: string;
 }) {
   return (
-    <div className={`grid justify-items-center gap-2 rounded-card border border-dashed border-border bg-paper px-6 py-10 text-center ${className}`}>
-      <span className="grid h-11 w-11 place-items-center rounded-full bg-surface-muted text-ink" aria-hidden><Icon name={icon} className="h-5 w-5" /></span>
-      <p className="font-display text-base font-bold text-ink">{title}</p>
+    <div className={`grid justify-items-center gap-2 rounded-card border border-dashed border-border bg-surface px-6 py-10 text-center ${className}`}>
+      <span className="grid h-11 w-11 place-items-center rounded-full bg-surface-muted text-foreground" aria-hidden><Icon name={icon} className="h-5 w-5" /></span>
+      <p className="font-display text-base font-bold text-foreground">{title}</p>
       {body && <p className="max-w-prose text-sm text-foreground-muted">{body}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>

@@ -66,7 +66,7 @@ export default function DeleteAccountDialog({ lang, email, onClose, onDeleted, f
       </>
     }>
       <form ref={form} onSubmit={submit} className="grid gap-4">
-        <Field label={<>{S.typeEmail} <bdi className="font-mono text-xs text-muted" dir="ltr">{email}</bdi></>}>
+        <Field label={<>{S.typeEmail} <bdi className="font-mono text-xs text-foreground-muted" dir="ltr">{email}</bdi></>}>
           <Input type="email" autoFocus autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
         </Field>
         <Field label={S.password}>
