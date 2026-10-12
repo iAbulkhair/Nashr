@@ -280,7 +280,8 @@ describe("rule 315: the client card and the profile panel, by source", () => {
   it("the switch posts the owner's boolean to /api/billing/chat-overflow and renders for the owner only", () => {
     expect(card).toContain('fetch("/api/billing/chat-overflow", { method: "POST"');
     expect(card).toContain("JSON.stringify({ on })");
-    expect(card).toMatch(/\{owner && \(\s*<button type="button" role="switch"/);
+    // The shared Switch since UI/UX phase 2 (rule 1130): a <button role="switch"> with aria-checked, see src/components/ui/Switch.tsx.
+    expect(card).toMatch(/\{owner && \(\s*<Switch checked=\{s\.overflow\.on\}/);
     // The page decides who the owner is with the same check the route makes.
     expect(page).toContain('const owner = can(u, "billing");');
     expect(page).toMatch(/<ChatAllowanceCard [^>]*owner=\{owner\}/);

@@ -17,6 +17,10 @@ const P: Record<string, React.ReactNode> = {
   check: <><path d="m5 12.5 4.5 4.5L19 7.5" /></>,
   x: <><path d="m6 6 12 12M18 6 6 18" /></>,
   chevron: <><path d="m6 9 6 6 6-6" /></>,
+  // Points to the inline end in English (forward, "next"); drawn with `mirror` it points the other way in Arabic (rule 1118).
+  next: <><path d="m9 6 6 6-6 6" /></>,
+  stop: <><rect x="6.5" y="6.5" width="11" height="11" rx="2" /></>,
+  retry: <><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4.5 4.5v3.5H8" /></>,
   send: <><path d="M4 12 20 4l-4 16-4-7-8-1Z" /></>,
   copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></>,
   share: <><path d="M12 4v12M8 8l4-4 4 4" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
@@ -56,10 +60,14 @@ const P: Record<string, React.ReactNode> = {
 };
 export type IconName = keyof typeof P;
 export const CHANNEL_ICON: Record<string, IconName> = { instagram: "instagram", snapchat: "snapchat", tiktok: "tiktok", x: "xcom", whatsapp: "whatsapp", gbp: "gbp", blog: "blog", linkedin: "linkedin", email: "email", call: "phone", meta: "instagram", plan: "plan", sales: "sales", finance: "finance", growth: "growth", report: "report", deck: "deck", dashboard: "dashboard", strategy: "strategy", product: "product" };
-export function Icon({ name, className = "h-4 w-4", title }: { name: IconName | string; className?: string; title?: string }) {
+/**
+ * One icon. `mirror` flips a directional icon (send, next, back) in a right-to-left page (rule 1118), so "forward" points
+ * the way the line reads; symbols that mean the same both ways (a check, a bell) leave it off.
+ */
+export function Icon({ name, className = "h-4 w-4", title, mirror = false }: { name: IconName | string; className?: string; title?: string; mirror?: boolean }) {
   const body = P[name as IconName] ?? P.general;
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden={title ? undefined : true} role={title ? "img" : undefined}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={mirror ? `${className} rtl:-scale-x-100` : className} aria-hidden={title ? undefined : true} role={title ? "img" : undefined}>
       {title && <title>{title}</title>}
       {body}
     </svg>

@@ -74,8 +74,8 @@ describe("rule 1080: semantic tokens, expand only, mirrored in assets/design-tok
     expect(tokenValue("color-ink")).toBe("#2b193d");
     expect(tokenValue("color-ring")).toBe("#2b193d");
     expect(tokens).toMatch(/--primitive-color-lemon: #f9f871;/);
-    // `.card` keeps its radius and the body its line height until phase 2 moves them onto the new tokens.
-    expect(globals).not.toMatch(/\.card \{[^}]*var\(--radius-card\)/);
+    // Phase 2 (rule 1115) moved `.card` and the body's line height onto the tokens; uiux-phase2.test.ts pins that.
+    expect(globals).toMatch(/\.card \{[^}]*var\(--radius-card\)/);
   });
 
   it("every text pair reaches WCAG 2.2 AA (4.5:1) on its ground", () => {

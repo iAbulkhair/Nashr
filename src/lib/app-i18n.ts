@@ -26,6 +26,21 @@ const ar = {
     chatPausedCredits: "استُخدمت رسائل هذا الشهر ({allowance} رسالة)، والدردشة متوقفة: رصيدك أقل من {hold} كريدت، وهو أقل ما تحتاجه الرسالة على الكريدت.",
     chatOff: "الدردشة غير متاحة في هذا الحساب. تواصل مع الدعم.",
     notSent: "لم تُرسل رسالتك ولم تُحسب، وأعدناها إلى خانة الكتابة.", slowDown: "رسائل كثيرة في وقت قصير. انتظر قليلاً ثم أرسل مرة أخرى؛ رسالتك لم تُحسب وأعدناها إلى خانة الكتابة." },
+  // UI/UX phase 2 (rules 1110-1139): the shell, the loading and empty states, the chat's controls and the calendar's agenda.
+  ux: {
+    close: "إغلاق", loading: "يُحمَّل…", loadingScreen: "تُحمَّل الصفحة…", retry: "حاول مرة أخرى", errorTitle: "تعذّر التحميل", errorBody: "لم تصل البيانات. تحقق من الاتصال ثم حاول مرة أخرى.",
+    copy: "انسخ", copied: "نُسخ", copyFailed: "تعذّر النسخ. حدّد النص وانسخه يدوياً.",
+    nav: { work: "العمل", brand: "العلامة", workspace: "الحساب والفريق", support: "المساعدة", account: "قائمة الحساب" },
+    notif: { title: "التنبيهات", none: "لا تنبيهات جديدة.", markAll: "علّم الكل كمقروء", marked: "عُلّمت كلها كمقروءة.", seeAll: "كل التنبيهات", unread: "غير مقروء", unreadN: "{n} غير مقروء", failed: "تعذّر تحميل التنبيهات." },
+    chat: {
+      stop: "أوقف الانتظار", stopped: "توقفنا عن انتظار الرد في هذه الصفحة. قد يكمل الوكيل ويحفظ رده (ويُحسب)، وستجده حين تفتح المحادثة من جديد.",
+      retry: "أعد الإرسال", copy: "انسخ الرد", enterHint: "Enter للإرسال، Shift+Enter لسطر جديد", enterHintTouch: "زر الإرسال يرسل، وEnter يضيف سطراً",
+      specialists: "المتخصصون", latest: "إلى آخر الرسائل",
+    },
+    calendar: { agenda: "قائمة", agendaEmpty: "لا شيء مجدول في هذه الفترة.", addForDay: "اطلب محتوى لهذا اليوم", prompt: "جهّزي محتوى ليوم {date}", views: "طريقة العرض" },
+    reports: { table: "الأرقام كجدول", date: "اليوم", rangeLabel: "الفترة" },
+    profile: { loadFail: "تعذّر تحميل بيانات حسابك." },
+  },
   handoff: {
     title: "تسليم من {name}", sub: "لا يُنفَّذ شيء ولا يُخصم كريدت حتى تضغط «نفّذ». كل بند يكتبه الوكيل صاحب النوع ويصل إلى صندوق الموافقة.",
     why: "لماذا", brief: "طلب {name}", to: "{agent} · {type}", cost: "{n} كريدت", total: "المجموع إن نُفّذ كله: {n} كريدت",
@@ -458,6 +473,20 @@ const en: typeof ar = {
     chatPausedCredits: "This month's messages ({allowance}) are used, and chat is paused: your balance is below the {hold} credits a message on credits needs.",
     chatOff: "Chat is not available on this account. Contact support.",
     notSent: "Your message was not sent and not counted; it is back in the message box.", slowDown: "Too many messages in a short time. Wait a little, then send again; your message was not counted and is back in the message box." },
+  ux: {
+    close: "Close", loading: "Loading…", loadingScreen: "Loading the page…", retry: "Try again", errorTitle: "Could not load", errorBody: "The data did not arrive. Check your connection, then try again.",
+    copy: "Copy", copied: "Copied", copyFailed: "Could not copy. Select the text and copy it yourself.",
+    nav: { work: "Work", brand: "Brand", workspace: "Account and team", support: "Help", account: "Account menu" },
+    notif: { title: "Notifications", none: "No new notifications.", markAll: "Mark all as read", marked: "All marked as read.", seeAll: "All notifications", unread: "unread", unreadN: "{n} unread", failed: "Could not load notifications." },
+    chat: {
+      stop: "Stop waiting", stopped: "This page stopped waiting for the reply. The agent may still finish and save it (and it is counted); you will find it when you open the conversation again.",
+      retry: "Send again", copy: "Copy reply", enterHint: "Enter to send, Shift+Enter for a new line", enterHintTouch: "The send button sends; Enter adds a line",
+      specialists: "Specialists", latest: "Jump to latest",
+    },
+    calendar: { agenda: "Agenda", agendaEmpty: "Nothing scheduled in this period.", addForDay: "Ask for content for this day", prompt: "Prepare content for {date}", views: "View" },
+    reports: { table: "Numbers as a table", date: "Day", rangeLabel: "Period" },
+    profile: { loadFail: "Could not load your account details." },
+  },
   handoff: {
     title: "{name}'s handoff", sub: "Nothing runs and no credits are charged until you press Run. Each item is written by the agent who owns its type and lands in the approval inbox.",
     why: "Why", brief: "{name}'s brief", to: "{agent} · {type}", cost: "{n} credits", total: "Total if every item runs: {n} credits",

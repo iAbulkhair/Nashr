@@ -22,6 +22,7 @@ import type { StoredSocial, XStats } from "@/lib/social-stats";
 import type { NotReadItem, NotReadReason } from "@/lib/not-read";
 import { READS_ADS } from "@/lib/connectors/working";
 import Scribble from "@/components/Scribble";
+import { Time } from "@/components/ui/Time";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 /**
@@ -92,6 +93,8 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
   const dashes = { created: undefined, approved: "6 3", published: "2 3" };
   const swatch = (key: keyof typeof colors) => <svg width="16" height="8" aria-hidden="true" className="shrink-0"><line x1="0" y1="4" x2="16" y2="4" stroke={colors[key]} strokeWidth="2" strokeDasharray={dashes[key]} /></svg>;
   const rangeHref = (rg: string) => `/${lang}/app/reports?range=${rg}`;
+  // The chart's day labels and the table under it (rule 1129): a calendar day, in the page's language and Western digits.
+  const dayLabel = dateFormat(lang, { month: "short", day: "numeric" });
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -105,10 +108,11 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       )}
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="reportspanel-t1" />{R.title}</span></h1>
       <p className="mt-2 text-ink/70">{R.sub}</p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {(["1", "2", "7", "30", "60", "90", "ytd", "ly"] as const).map((rg) => <Link key={rg} href={rangeHref(rg)} className={`rounded-full px-3 py-1 text-xs ${range === rg ? "bg-ink text-ground" : "border border-ink/15 text-muted hover:border-ink"}`}>{R.ranges[rg]}</Link>)}
-        <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-ground" : "border border-ink/15 text-muted"}`}>{R.ranges.custom}</button></form>
-      </div>
+      {/* Rule 1129: the chosen range is marked for screen readers as well as by fill; 44px targets on touch screens. */}
+      <nav aria-label={t.ux.reports.rangeLabel} className="mt-4 flex flex-wrap gap-2">
+        {(["1", "2", "7", "30", "60", "90", "ytd", "ly"] as const).map((rg) => <Link key={rg} href={rangeHref(rg)} aria-current={range === rg ? "page" : undefined} className={`inline-flex min-h-[var(--hit-min)] items-center rounded-full px-3 text-xs pointer-fine:min-h-7 ${range === rg ? "bg-ink font-semibold text-ground" : "border border-border text-foreground-muted hover:border-ink"}`}>{R.ranges[rg]}</Link>)}
+        <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button aria-current={range === "custom" ? "page" : undefined} className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-ground" : "border border-ink/15 text-muted"}`}>{R.ranges.custom}</button></form>
+      </nav>
       <p className="mt-2 font-mono text-xs text-muted" dir="ltr">{k.window.from} → {k.window.to}</p>
       <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} canImport={perfImport} canDelete={perfDelete} />
       {/* A Composio Google record opens the card before its first read, or after a read that failed for both parts, so
@@ -159,11 +163,29 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <div className="mt-2 flex flex-wrap gap-3 text-xs">
           {(["created", "approved", "published"] as const).map((key) => <label key={key} className="flex items-center gap-1.5"><input type="checkbox" checked={series[key]} onChange={() => setSeries((p) => ({ ...p, [key]: !p[key] }))} />{swatch(key)}{R.series[key]}</label>)}
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full" role="img" aria-label={R.trendsTitle}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full" role="img" aria-label={R.trendsTitle} aria-describedby="trend-table">
           {[0, 0.5, 1].map((f) => <g key={f}><line x1={PAD} x2={W - PAD} y1={yAt(maxY * f)} y2={yAt(maxY * f)} stroke="currentColor" strokeOpacity="0.08" /><text x={W - PAD + 4} y={yAt(maxY * f) + 4} fontSize="10" fill="currentColor" fillOpacity="0.5">{Math.round(maxY * f)}</text></g>)}
           {(["created", "approved", "published"] as const).filter((key) => series[key]).map((key) => <path key={key} d={line(key)} fill="none" stroke={colors[key]} strokeWidth="2" strokeDasharray={dashes[key]} strokeLinejoin="round" />)}
-          {pts.length > 0 && [0, Math.floor(pts.length / 2), pts.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => <text key={i} x={xAt(i)} y={H - 6} fontSize="10" textAnchor="middle" fill="currentColor" fillOpacity="0.5">{pts[i].date.slice(5)}</text>)}
+          {pts.length > 0 && [0, Math.floor(pts.length / 2), pts.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => <text key={i} x={xAt(i)} y={H - 6} fontSize="10" textAnchor="middle" fill="currentColor" fillOpacity="0.5" suppressHydrationWarning>{dayLabel.format(new Date(pts[i].date))}</text>)}
         </svg>
+        {/* The same numbers as a table (rule 1129): the chart is a picture; this is what a screen reader and a careful
+            reader use. Closed by default, so the card stays a chart. */}
+        {pts.length > 0 && (
+          <details className="mt-3 text-sm">
+            <summary className="inline-flex min-h-[var(--hit-min)] cursor-pointer items-center text-xs font-semibold text-ink pointer-fine:min-h-8">{t.ux.reports.table}</summary>
+            <div className="mt-2 max-h-72 overflow-auto rounded-lg border border-border">
+              <table id="trend-table" className="w-full text-xs">
+                <caption className="sr-only">{R.trendsTitle}</caption>
+                <thead className="sticky top-0 bg-surface-muted">
+                  <tr><th scope="col" className="p-2 text-start font-semibold">{t.ux.reports.date}</th>{(["created", "approved", "published"] as const).map((key) => <th key={key} scope="col" className="p-2 text-end font-semibold">{R.series[key]}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {pts.map((d) => <tr key={d.date}><th scope="row" className="p-2 text-start font-normal" suppressHydrationWarning>{dayLabel.format(new Date(d.date))}</th><td className="tnum p-2 text-end">{d.created}</td><td className="tnum p-2 text-end">{d.approved}</td><td className="tnum p-2 text-end">{d.published}</td></tr>)}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
@@ -235,7 +257,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
             const can = credits >= cost && !busy;
             return (
               <button key={type} disabled={!can} onClick={() => run(type)} className={`rounded-xl border p-4 text-start transition ${busy === type ? "border-lemon bg-ink text-lilac" : "border-ink/10 bg-white hover:border-ink"} disabled:opacity-50`}>
-                <div className="flex items-center justify-between"><span className="font-display font-medium">{t.generate.types[type].t}</span><span className="font-mono text-xs text-danger" dir="ltr">{cost} {t.generate.cost}</span></div>
+                <div className="flex items-center justify-between"><span className="font-display font-medium">{t.generate.types[type].t}</span><span className="tnum text-xs font-semibold text-ink" dir="ltr">{cost} {t.generate.cost}</span></div>
                 <p className={`mt-1 text-xs ${busy === type ? "text-lilac/75" : "text-ink/70"}`}>{t.generate.types[type].d}</p>
               </button>
             );
@@ -252,7 +274,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
               <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                 <div className="min-w-0">
                   <p className="truncate font-medium" dir="auto">{x.title}</p>
-                  <p className="text-xs text-muted"><span>{typeLabel(x.type)}</span> · <span className="font-mono" dir="ltr">{x.createdAt.slice(0, 10)}</span> · {x.status}</p>
+                  <p className="text-xs text-muted"><span>{typeLabel(x.type)}</span> · <Time value={x.createdAt} lang={lang} className="tnum" /> · {x.status}</p>
                 </div>
                 <div className="flex gap-2">
                   {x.type === "board_deck" && <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-xs">{t.inbox.pptx}</a>}
@@ -318,7 +340,7 @@ function StoreSales({ R, paused, provider, store, failedAt, lang }: { R: AppDict
           </p>
           <p className="mt-1 text-xs text-muted">{R.note}</p>
           <p className="mt-1 text-xs text-muted">{R.auto}</p>
-          {failedAt && <p className="mt-1 text-xs text-danger" role="status">{fill(R.syncFailed, { date: dateFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(failedAt)) })}</p>}
+          {failedAt && <p className="mt-1 text-xs text-danger" role="alert">{fill(R.syncFailed, { date: dateFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(failedAt)) })}</p>}
           {store.carts.top.length > 0 && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button onClick={draft} disabled={drafting || busy} className="btn btn-primary btn-xs">{drafting ? R.drafting : R.draft} <span className="font-mono" dir="ltr">· {TASK_COST.cart_recovery}</span></button>
@@ -327,7 +349,7 @@ function StoreSales({ R, paused, provider, store, failedAt, lang }: { R: AppDict
           )}
         </>
       )}
-      {err && <p className="mt-2 text-xs text-danger" dir="auto">{err}</p>}
+      {err && <p role="alert" className="mt-2 text-xs text-danger" dir="auto">{err}</p>}
     </div>
   );
 }

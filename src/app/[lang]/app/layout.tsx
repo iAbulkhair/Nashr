@@ -11,7 +11,9 @@ import InstallHint from "@/components/app/InstallHint";
 import LangToggle from "@/components/LangToggle";
 import Wordmark from "@/components/Wordmark";
 import LimitModal from "@/components/app/LimitModal";
-import { getBrand } from "@/lib/brand";
+import { getBrand, pendingCount } from "@/lib/brand";
+import { listNotifs } from "@/lib/notifications";
+import { WorkspaceProvider } from "@/components/app/WorkspaceContext";
 import { sc } from "@/lib/auth";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
@@ -60,14 +62,19 @@ export default async function AppLayout({ children, params }: { children: React.
     );
   }
 
-  const brand = await getBrand(sc(user));
-  const impersonating = (await cookies()).get("nashr_impersonate")?.value;
+  // Rule 1119: the shell's first numbers (bell, approvals badge) are read here, in one round of parallel reads with the
+  // brand, so the rail paints with them instead of fetching them again on every navigation. Scope and email are the
+  // session's, never the request's.
+  const [brand, jar, notifs, toApprove] = await Promise.all([getBrand(sc(user)), cookies(), listNotifs(user.email), pendingCount(sc(user))]);
+  const impersonating = jar.get("nashr_impersonate")?.value;
+  const unread = notifs.filter((n) => !n.read).length;
   // `user` is the ACCOUNT (the owner's record); the person acting is `user.actor`. Plan and credits belong to the account,
   // the name, email and role shown are the actor's. The flags only hide controls; the routes enforce the same `can()`.
   const actor = user.actor;
   const owner = can(user, "billing");
   return (
     <ToastProvider lang={lang}>
+    <WorkspaceProvider initial={{ credits: user.credits, unread, pending: toApprove }}>
     <div className="flex min-h-dvh flex-col bg-ground lg:h-dvh lg:flex-row lg:overflow-hidden">
       {/* Rule 968: past the sidebar's links straight to the screen. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
@@ -86,6 +93,7 @@ export default async function AppLayout({ children, params }: { children: React.
       </main>
       <LimitModal t={t} lang={lang} owner={owner} governs={can(user, "governance.write")} topups={topupsSold(user.plan)} />
     </div>
+    </WorkspaceProvider>
     </ToastProvider>
   );
 }
