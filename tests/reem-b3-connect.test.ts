@@ -187,7 +187,7 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
   it("a link goes to the brand the flow started on, not the one active at the callback", async () => {
     fakeProviders();
     const owner = await newUser("calcb6");
-    const b = (await addBrand(owner, "Second")) as { id: string };
+    const b = (await addBrand({ ...owner, brandCap: 2 }, "Second")) as { id: string };
     const scope = scopeFor(owner.email, b.id);
     await signIn(owner.email);
     await saveState("s-brand", { email: scope, provider: "gcal", lang: "ar", shop: "", verifier: "", actor: owner.email });
@@ -294,7 +294,7 @@ describe("rule 912c: failures end in fixed codes, with no provider text and no l
   it("a brand archived between start and callback is brand_inactive, with no link and no revoke call", async () => {
     fakeProviders();
     const owner = await newUser("calarch");
-    const b = (await addBrand(owner, "Gone")) as { id: string };
+    const b = (await addBrand({ ...owner, brandCap: 2 }, "Gone")) as { id: string };
     const scope = scopeFor(owner.email, b.id);
     await signIn(owner.email);
     await saveState("s-arch", { email: scope, provider: "gcal", lang: "ar", shop: "", verifier: "", actor: owner.email });

@@ -1,4 +1,4 @@
-import { AGENCY_MIN, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, chatOverflowHold, formatCount, type PublicTier } from "./pricing";
+import { AGENCY_MIN, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, PLAN_BRANDS, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, chatOverflowHold, formatCount, type PublicTier } from "./pricing";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
 import { MEDIA_MODELS } from "./media-catalog";
 
@@ -23,6 +23,14 @@ export function isLang(v: string): v is Lang {
 export function seatsText(lang: Lang, n: number): string {
   if (lang === "en") return `${n} ${n === 1 ? "seat" : "seats"}`;
   return n === 1 ? "مقعد واحد" : n === 2 ? "مقعدان" : n <= 10 ? `${n} مقاعد` : `${n} مقعداً`;
+}
+/**
+ * "1 brand", "5 brands"; in Arabic "علامة واحدة", "علامتان", "5 علامات" (3-10) and "11 علامة" (11 and up). The counts
+ * come from PLAN_BRANDS (rule 1394), never typed here.
+ */
+export function brandsText(lang: Lang, n: number): string {
+  if (lang === "en") return `${n} ${n === 1 ? "brand" : "brands"}`;
+  return n === 1 ? "علامة واحدة" : n === 2 ? "علامتان" : n <= 10 ? `${n} علامات` : `${n} علامة`;
 }
 /**
  * "40 chat messages"; in Arabic "40 رسالة محادثة", "3 رسائل محادثة", "رسالتا محادثة": the noun follows the last part of
@@ -217,7 +225,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "الشركات الناشئة", body: "إطلاق منتج، LinkedIn وX، تجارب نمو أسبوعية بميزانية محدودة." },
         { name: "العيادات والتجميل", body: "منشورات Google Business Profile، رسائل حجز عبر واتساب، ومحتوى يراعي ضوابط الإعلان الطبي." },
         { name: "المطاعم والضيافة", body: "عروض يومية، مراجعات، توصيل، محتوى مرئي بلهجة محلية." },
-        { name: "وكالات التسويق", body: "عدة علامات من حساب واحد على أي خطة، ولكل علامة ملفها وصندوق موافقتها." },
+        { name: "وكالات التسويق", body: `عدة علامات من حساب واحد: ${brandsText("ar", PLAN_BRANDS.business)} في خطة الأعمال، وفي الوكالات حسب الاتفاق، ولكل علامة ملفها وصندوق موافقتها.` },
         { name: "الخدمات المهنية", body: "محاسبة، استشارات، تعليم — محتوى يبني الثقة، مقالات SEO ومنشورات Google Business." },
       ],
     },
@@ -254,10 +262,10 @@ export const dict: Record<Lang, Dict> = {
       trial: `تجربة 3 أيام مجاناً: ${PLAN_CREDITS.trial} كريدت و${chatMessagesText("ar", CHAT_ALLOWANCE.trial)} — بدون بطاقة`,
       annual: "ادفع سنوياً ووفّر شهرين (قريباً)",
       plans: [
-        { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, tagline: "للتاجر الفرد والمبدع", features: [`علامات بلا حد، ${seatsText("ar", PLAN_SEATS.starter)}`, `${chatMessagesText("ar", CHAT_ALLOWANCE.starter)} مع الفريق شهرياً`, "منشورات سوشال", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
-        { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", `${chatMessagesText("ar", CHAT_ALLOWANCE.pro)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`], cta: "ابدأ مجاناً" },
-        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً — يتجدد كل شهر ولا يترحّل`, tagline: "للفرق والشركات الأكبر", features: ["كل ما في الاحتراف", `${chatMessagesText("ar", CHAT_ALLOWANCE.business)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`], cta: "ابدأ مجاناً" },
-        { id: "agency", name: "الوكالات", price: "تواصل معنا", period: "فوترة سنوية", credits: `رصيد مخصص، من ${formatCount(AGENCY_MIN.credits)} كريدت شهرياً`, tagline: "للوكالات والمجموعات الكبيرة", features: ["الوكلاء المتخصصون كلهم", "رسائل محادثة شهرية حسب الاتفاق", "مدير نجاح مخصص", "عدد مقاعد حسب فريقك"], cta: "تواصل معنا" },
+        { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, tagline: "للتاجر الفرد والمبدع", features: [`${brandsText("ar", PLAN_BRANDS.starter)}، ${seatsText("ar", PLAN_SEATS.starter)}`, `${chatMessagesText("ar", CHAT_ALLOWANCE.starter)} مع الفريق شهرياً`, "منشورات سوشال", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
+        { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", brandsText("ar", PLAN_BRANDS.pro), `${chatMessagesText("ar", CHAT_ALLOWANCE.pro)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`], cta: "ابدأ مجاناً" },
+        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً — يتجدد كل شهر ولا يترحّل`, tagline: "للفرق والشركات الأكبر", features: ["كل ما في الاحتراف", brandsText("ar", PLAN_BRANDS.business), `${chatMessagesText("ar", CHAT_ALLOWANCE.business)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`], cta: "ابدأ مجاناً" },
+        { id: "agency", name: "الوكالات", price: "تواصل معنا", period: "فوترة سنوية", credits: `رصيد مخصص، من ${formatCount(AGENCY_MIN.credits)} كريدت شهرياً`, tagline: "للوكالات والمجموعات الكبيرة", features: ["الوكلاء المتخصصون كلهم", "رسائل محادثة شهرية حسب الاتفاق", "مدير نجاح مخصص", "عدد مقاعد حسب فريقك", "عدد العلامات حسب الاتفاق"], cta: "تواصل معنا" },
       ],
       creditsTitle: "كم تكلّف كل مهمة؟",
       credits: creditRows("ar"),
@@ -358,7 +366,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "Startups", body: "Product launches, LinkedIn and X, weekly growth experiments on a tight budget." },
         { name: "Clinics & aesthetics", body: "Google Business Profile posts, WhatsApp booking messages, content written with MOH advertising rules in mind." },
         { name: "Restaurants & hospitality", body: "Daily offers, reviews, delivery, visual content in local dialect." },
-        { name: "Marketing agencies", body: "Several brands from one account on any plan, each with its own brand file and approval inbox." },
+        { name: "Marketing agencies", body: `Several brands from one account: ${brandsText("en", PLAN_BRANDS.business)} on Business and as agreed on Agency, each with its own brand file and approval inbox.` },
         { name: "Professional services", body: "Accounting, consulting, education — authority content, SEO articles and Google Business posts." },
       ],
     },
@@ -395,10 +403,10 @@ export const dict: Record<Lang, Dict> = {
       trial: `3-day free trial: ${PLAN_CREDITS.trial} credits and ${chatMessagesText("en", CHAT_ALLOWANCE.trial)} — no card`,
       annual: "Pay yearly, get two months free (coming soon)",
       plans: [
-        { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, tagline: "For solo sellers and creators", features: [`Unlimited brands, ${seatsText("en", PLAN_SEATS.starter)}`, `${chatMessagesText("en", CHAT_ALLOWANCE.starter)} a month with the team`, "Social posts", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
-        { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", `${chatMessagesText("en", CHAT_ALLOWANCE.pro)} a month with the team`, `${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`], cta: "Start free" },
-        { id: "business", name: "Business", price: String(P.business), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.business)} credits / month, reset monthly`, tagline: "For bigger teams and businesses", features: ["Everything in Pro", `${chatMessagesText("en", CHAT_ALLOWANCE.business)} a month with the team`, `${seatsText("en", PLAN_SEATS.business)} including the owner`], cta: "Start free" },
-        { id: "agency", name: "Agency", price: "Contact us", period: "annual billing", credits: `Custom credits, from ${formatCount(AGENCY_MIN.credits)} a month`, tagline: "For agencies and large groups", features: ["All specialist agents", "Custom monthly chat messages", "Dedicated success manager", "Seats sized to your team"], cta: "Contact us" },
+        { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, tagline: "For solo sellers and creators", features: [`${brandsText("en", PLAN_BRANDS.starter)}, ${seatsText("en", PLAN_SEATS.starter)}`, `${chatMessagesText("en", CHAT_ALLOWANCE.starter)} a month with the team`, "Social posts", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
+        { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", brandsText("en", PLAN_BRANDS.pro), `${chatMessagesText("en", CHAT_ALLOWANCE.pro)} a month with the team`, `${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`], cta: "Start free" },
+        { id: "business", name: "Business", price: String(P.business), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.business)} credits / month, reset monthly`, tagline: "For bigger teams and businesses", features: ["Everything in Pro", brandsText("en", PLAN_BRANDS.business), `${chatMessagesText("en", CHAT_ALLOWANCE.business)} a month with the team`, `${seatsText("en", PLAN_SEATS.business)} including the owner`], cta: "Start free" },
+        { id: "agency", name: "Agency", price: "Contact us", period: "annual billing", credits: `Custom credits, from ${formatCount(AGENCY_MIN.credits)} a month`, tagline: "For agencies and large groups", features: ["All specialist agents", "Custom monthly chat messages", "Dedicated success manager", "Seats sized to your team", "Brands set by agreement"], cta: "Contact us" },
       ],
       creditsTitle: "What does each task cost?",
       credits: creditRows("en"),

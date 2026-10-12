@@ -156,11 +156,11 @@ export async function draftAllowed(email: string): Promise<boolean> {
 }
 
 /**
- * Brands added per account (POST /api/brands add). Brands are unlimited on every plan (src/lib/pricing.ts), so nothing
- * else bounds how many an account creates, and every active brand fans out into each cron (the daily brief, the
- * routines, and the Sunday plan once the owner switches it on). These buckets are the only bound, and they are a rate,
- * never a cap: an agency can keep adding brands every hour. Well above a real agency's onboarding pace, and the
- * onboarding itself stays at three a day per account (src/app/api/onboard/route.ts). Rule 245, tests/brand-guardrails.test.ts.
+ * Brands added per account (POST /api/brands add). Active brands are capped per plan (src/lib/pricing.ts `brandCapFor`,
+ * rules 1390-1391), but archiving and adding again would get round a count alone, and every active brand fans out into
+ * each cron (the daily brief, the routines, and the Sunday plan once the owner switches it on). So adds are also bounded
+ * by these buckets, a rate checked before the cap. Well above a real agency's onboarding pace, and the onboarding itself
+ * stays at three a day per account (src/app/api/onboard/route.ts). Rule 245, tests/brand-guardrails.test.ts.
  */
 export const BRANDS_PER_HOUR = 10;
 export const BRANDS_PER_DAY = 30;

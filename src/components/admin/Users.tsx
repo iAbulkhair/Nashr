@@ -5,7 +5,7 @@ import { adminFetch } from "@/lib/admin-fetch";
 import { newPaymentId } from "./PaymentsPanel";
 import { videoGrantRequest } from "./EntitlementsTable";
 import { ksaDay, sarText } from "@/lib/partner-rules";
-import { ADMIN_INPUT_ERRORS, parseChat, parseCreditDelta, parseDealForm, parseImpersonateMinutes, parseRefundForm, parseSeats, parseTopupForm, parseTrialDays, type Parsed } from "@/lib/admin-input";
+import { ADMIN_INPUT_ERRORS, parseBrandCap, parseChat, parseCreditDelta, parseDealForm, parseImpersonateMinutes, parseRefundForm, parseSeats, parseTopupForm, parseTrialDays, type Parsed } from "@/lib/admin-input";
 import { USER_FILTERS, USER_PAGE_SIZES, parseUserQuery, userQueryParams, type TileCounts, type UserFilter, type UserQuery, type UserSort } from "@/lib/admin-users";
 import TempPasswordDialog from "./TempPasswordDialog";
 import { AGENCY_MIN, PLANS, TOPUP_PACKS, formatCount, topupPriceSar, type AgencyDeal } from "@/lib/pricing";
@@ -208,6 +208,28 @@ export default function Users({ lang, keySession }: SectionProps) {
     });
     if (!v) return;
     await postPlan<{ ok?: boolean; error?: string; user?: { seats: number }; team?: TeamChange }>(u.email, v, (j) => [`${u.email}: ${S.seats} ${j.user?.seats ?? ""}`, teamLine(j.team)].filter(Boolean).join(" · "));
+  }
+  /**
+   * The founder brand cap (rule 1393): how many brands the account may have active, mostly for Agency. 0 clears it back
+   * to the plan's number. POST /api/admin/brand-cap, with the reason, under the account's lock; it archives nothing.
+   */
+  async function setBrandCap(u: U) {
+    const v = await askForm({
+      title: UC.brandsTitle, subject: u.email, message: UC.brandsNote,
+      fields: [{ name: "brandCap", label: UC.brandsField, initial: String(u.brandCapOverride ?? u.brandCap ?? ""), ltr: true }],
+      parse: (f) => parseBrandCap(f.brandCap),
+    });
+    if (!v) return;
+    setBusy(true);
+    try {
+      const r = await adminFetch("/api/admin/brand-cap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...v }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; user?: { brandCap: number; activeBrands: number } };
+      setMsg(j.ok ? `${u.email}: ${UC.brands} ${j.user?.activeBrands ?? ""}/${j.user?.brandCap ?? ""}` : failed(u.email, j.error ?? r.status));
+    } catch {
+      setMsg(`${u.email}: ${UC.network}`);
+    }
+    await reload(u.email);
+    setBusy(false);
   }
   /**
    * The founder chat override (rule 316): the account's messages per month, or for the whole trial. 0 is an override that
@@ -431,6 +453,10 @@ export default function Users({ lang, keySession }: SectionProps) {
     {
       id: "seats", header: S.seats, className: "whitespace-nowrap text-xs",
       cell: (u) => <><button type="button" disabled={busy} onClick={() => setSeats(u)} title={S.setSeats} className="min-h-[var(--hit-min)] font-mono underline decoration-dotted pointer-fine:min-h-6">{u.seats ?? "—"}</button>{u.seatsOverride != null && <span className="ms-1 text-muted">({S.seatsOverride})</span>}</>,
+    },
+    {
+      id: "brands", header: UC.brands, className: "whitespace-nowrap text-xs",
+      cell: (u) => <><button type="button" disabled={busy} onClick={() => setBrandCap(u)} title={UC.brandsTitle} className="min-h-[var(--hit-min)] font-mono underline decoration-dotted pointer-fine:min-h-6">{u.brandCap ?? "—"}</button>{u.brandCapOverride != null && <span className="ms-1 text-muted">({S.seatsOverride})</span>}</>,
     },
     { id: "credits", header: S.credits, sort: "credits", className: "font-mono", cell: (u) => <>{u.credits}{(u.topupCredits ?? 0) > 0 && <span className="ms-1 text-xs text-muted" title={S.topups}>({u.topupCredits} {S.ofTopup})</span>}</> },
     {

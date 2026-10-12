@@ -136,13 +136,13 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     { re: /(SAR ?(149|399|799)\b|\b(149|399|799) ?(SAR|ريال)|\b149[–-]799\b|"(149|399|799)", l: "(SAR|ريال))/, why: "a retired plan price (149 / 399 / 799)" },
     { re: /(Starter|Pro|Agency|البداية|الاحتراف|الوكالة) (149|399|799)\b/, why: "a retired plan price next to a tier name" },
     { re: /(\b200 credits|\b200 كريدت|2,000 credits|2,000 كريدت|"2,000", l: "(credits|كريدت)|(Starter|ستارتر) 200\b)/, why: "a retired allowance (Starter 200, Agency 2,000)" },
-    { re: /(5 included|5 brands included|5 مشمولة|5 علامات مشمولة|runs 5 brands|تدير 5 علامات|for 5 brands|لـ 5 علامات)/, why: "a brand limit; brands are unlimited on every plan" },
+    { re: /(5 included|5 brands included|5 مشمولة|5 علامات مشمولة|runs 5 brands|تدير 5 علامات|for 5 brands|لـ 5 علامات)/, why: "a retired brand-limit wording; the brand counts come from PLAN_BRANDS (rule 1394)" },
     { re: /(Extra brand SAR 99|علامة إضافية (بـ )?99)/, why: "a paid extra brand; an added brand costs its setup credits only" },
-    { re: /(Unlimited brands \(coming soon\)|علامات بلا حد \(قريباً\))/, why: "unlimited brands are live on every plan" },
+    { re: /(unlimited brands|brands are unlimited|علامات (و\S+ )?بلا حد|العلامات بلا حد)/i, why: "a retired unlimited-brands promise; brands are capped per plan (rule 1394)" },
     { re: /(Upgrade to Agency for 5 brands|لخطة الوكالة لـ 5 علامات)/, why: "a brand-limit upsell" },
     { re: /(ten thousand credits|عشرة آلاف كريدت|بعشرة آلاف كريدت)/i, why: "the retired Enterprise allowance" },
-    { re: /(limits by plan|بحدود حسب الخطة)/i, why: "brands have no plan limit" },
-    { re: /plans differ only in monthly credits and number of brands/, why: "plans differ in credits and seats; brands are unlimited (the chat prompt repeats this to owners)" },
+    { re: /(limits by plan|بحدود حسب الخطة)/i, why: "a retired vague limit wording; copy states the numbers from PLAN_BRANDS (rule 1394)" },
+    { re: /plans differ only in monthly credits and number of brands/, why: "plans differ in credits, seats and active brands (the chat prompt repeats this to owners)" },
     { re: /(\bplan\b[^.()]{0,60}\(1 credit\)|خطة[^.()]{0,60}\(1 كريدت\))/i, why: "the weekly plan costs TASK_COST.weekly_plan, not 1" },
     // Pricing phase 2 (rules 308-310): chat is included up to the plan's monthly messages, then pauses or, if the owner
     // turned it on, costs credits. Copy that calls it free or unlimited is what the allowance retired.
@@ -178,6 +178,11 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
       `"علامات متعددة (5 مشمولة)", "علامة إضافية 99 ريال (قريباً)"`,
       `"Unlimited brands (coming soon)"`,
       `"علامات بلا حد (قريباً)"`,
+      // Rule 1394: the unlimited-brands copy of 2026-09-30, retired when brands were capped per plan.
+      'features: [`علامات بلا حد، ${seatsText("ar", PLAN_SEATS.starter)}`]',
+      '"SAR/month on Business, with unlimited brands"',
+      'a: `نعم، على أي خطة: علامات ومشاريع بلا حد من حساب واحد.`',
+      "plans differ in monthly credits and seats; brands are unlimited on every plan, the first",
       "`You've reached your plan's limit of ${j.limit}. Upgrade to Agency for 5 brands.`",
       `d: "The enterprise plan carries ten thousand credits a month"`,
       `d: "ملف علامة وصندوق اعتماد مستقل لكل علامة، بحدود حسب الخطة."`,
@@ -207,7 +212,7 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     expect(missed).toEqual([]);
     // And the copy that replaced them is not caught.
     const CURRENT = [
-      `us: "from SAR 299" }`, `"(2 credits)"`, `"1,500 credits / month, reset monthly"`, `"Unlimited brands, 1 seat"`, `"7 seats including the owner"`,
+      `us: "from SAR 299" }`, `"(2 credits)"`, `"1,500 credits / month, reset monthly"`, `"1 brand, 1 seat"`, `"7 seats including the owner"`,
       `: { action: "Setting up your first brand from your URL", cost: "Free" },`, `? { action: "إعداد علامتك الأولى من رابط موقعك", cost: "مجاناً" }`,
       `"250 chat messages a month with the team"`, `"250 رسالة محادثة مع الفريق شهرياً"`, `"Custom monthly chat messages"`,
       `Chat with the team is included up to your plan's monthly messages: Starter 250, Pro 650, Business 1,300, and 30 for the whole trial.`,

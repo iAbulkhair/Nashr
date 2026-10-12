@@ -28,10 +28,10 @@ describe("rule 960: founder console prompts stop on Cancel, the trial days are c
   });
 
   it("stops each change that asks a reason when it is cancelled", () => {
-    // plan, seats, chat, video grant, deal, credits, top-up, void, refund, finish refund, and every users-route action
-    // through `act` (member removal included): each awaits its form and returns on null before any request.
-    expect(count(users, /= await askForm\(/g)).toBe(11);
-    expect(count(users, /if \(!v\) return( null)?;/g)).toBe(11);
+    // plan, seats, brand cap (rule 1393), chat, video grant, deal, credits, top-up, void, refund, finish refund, and every
+    // users-route action through `act` (member removal included): each awaits its form and returns on null before any request.
+    expect(count(users, /= await askForm\(/g)).toBe(12);
+    expect(count(users, /if \(!v\) return( null)?;/g)).toBe(12);
     expect(users).toMatch(/const v = await askForm\(actionSpec\(email, action, extra\)\);\n\s*if \(!v\) return null;\n\s*return send\(email, action, \{ \.\.\.extra, \.\.\.v \}\);/);
   });
 

@@ -10,7 +10,7 @@ import { billingLocked, type Billing } from "./billing-state";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
-export { PLANS, PLAN_CREDITS, PLAN_SEATS, isPlan, seatLimit } from "./pricing";
+export { PLANS, PLAN_CREDITS, PLAN_SEATS, brandCapFor, isPlan, seatLimit } from "./pricing";
 export type { AgencyDeal, Plan } from "./pricing";
 
 /** Who may do what inside an account (src/lib/roles.ts). The owner role belongs to the `user:` record only. */
@@ -83,6 +83,12 @@ export type User = {
    * here too: one seat source for every plan (`seatLimit`).
    */
   seats?: number;
+  /**
+   * Founder-console override of the plan's active-brand count (`PLAN_BRANDS` in src/lib/pricing.ts, `brandCapFor`), a
+   * whole number from 1 to 200. Written only by POST /api/admin/brand-cap under `withUserLock`. Optional and new
+   * (rule 679 expand, rule 1393): older code ignores it, and a record without it reads as the plan's number.
+   */
+  brandCap?: number;
   /**
    * The Agency contract: monthly credits and price (src/lib/pricing.ts `allowanceOf`, `priceOf`). Written only by the
    * founder console (POST /api/admin/plan, under `withUserLock`), never taken from any other request, and cleared when

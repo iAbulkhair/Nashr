@@ -45,6 +45,7 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     sessionsAfter: u.sessionsAfter!,
     agentSpend: { month, by: { [u.email]: { noor: 12 } } },
     seats: 7,
+    brandCap: 12,
     deal: { credits: 5000, priceSar: 3330, setAt: iso(-3), setBy: "founder-deal@test.example" },
     grants: { video: { value: "all", until: iso(10).slice(0, 10), by: "founder-grant@test.example", at: iso(-1), note: "SECRET-GRANT-NOTE" } },
     referredBy: { partner: "partner-owner@test.example", code: "PARTNER787", at: iso(-40), via: "code", ref: "SECRET-PARTNER-REF" },
