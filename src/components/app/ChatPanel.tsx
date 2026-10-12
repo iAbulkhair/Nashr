@@ -22,6 +22,7 @@ import CopyButton from "@/components/ui/CopyButton";
 import Menu from "@/components/ui/Menu";
 import { announceCredits } from "./WorkspaceContext";
 import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
+import ChatBubble from "./ChatBubble";
 import type { Journey } from "@/lib/journey";
 import JourneyCard from "./JourneyCard";
 import AgentAvatar from "@/components/app/AgentAvatar";
@@ -759,36 +760,33 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           </div>
         )}
         {msgs.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-inverse text-inverse-muted" : "bg-background-muted text-foreground"}`} dir="auto">
-              {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-foreground">{A[m.agent ?? agent].name}</span>}
-              {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
-              {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
-              {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
-              {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
-              {m.handoff && <HandoffCard id={m.handoff.id} t={t} lang={lang} initial={handoffs?.[m.handoff.id]} canRun={canRun} canDecline={canDecline} canApprove={canApprove} onCredits={setCredits} />}
-              {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
-              {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
-              {m.instructionProposals && m.instructionProposals.length > 0 && <div className="mt-1">{m.instructionProposals.map((p) => <InstructionProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canInstructions} />)}</div>}
-              {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-foreground-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
-              {m.role === "assistant" && m.large && <p className="mt-1 text-xs text-foreground-muted" data-workspace-large>{lang === "ar" ? "ملفات مساحة العمل كبيرة، فكان لهذا الرد مساحة أقل: ربما تركتُ رسائل سابقة من المحادثة أو اختصرتُ الجواب. " : "Your workspace files are large, so this reply had less room: I may have left out earlier messages or kept the answer short. "}<Link href={`/${lang}/app/files`} className="underline">{lang === "ar" ? "اختصر ملفاتك الطويلة" : "Shorten your long files"}</Link>{lang === "ar" ? " أو ابدأ محادثة جديدة." : " or start a new conversation."}</p>}
-              {m.role === "assistant" && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
-                  {/* Rule 1126: each answer can be copied; the last one (or an error) can be asked again. */}
-                  <CopyButton text={m.content} lang={lang} label={t.ux.chat.copy} iconOnly />
-                  {i === msgs.length - 1 && !busy && msgs.slice(0, i).some((x) => x.role === "user") && <button type="button" onClick={() => retryAt(i)} aria-label={t.ux.chat.retry} title={t.ux.chat.retry} className="icon-btn"><Icon name="retry" className="h-4 w-4" /></button>}
-                  <button type="button" onClick={() => vote(m, 1)} aria-pressed={voted[m.at] === 1} aria-label={t.chat.helpful} title={t.chat.helpful} className="icon-btn"><Icon name="thumbUp" className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => vote(m, -1)} aria-pressed={voted[m.at] === -1} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className="icon-btn"><Icon name="thumbDown" className="h-4 w-4" /></button>
-                  {reasonFor === m.at && !voted[m.at] && (
-                    <form onSubmit={(e) => { e.preventDefault(); vote(m, -1); }} className="flex flex-1 items-center gap-1">
-                      <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t.chat.whyBad} className="input py-1 text-xs" />
-                      <button className="btn btn-secondary btn-xs">{t.chat.send_}</button>
-                    </form>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length)}>
+            {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
+            {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
+            {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
+            {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
+            {m.handoff && <HandoffCard id={m.handoff.id} t={t} lang={lang} initial={handoffs?.[m.handoff.id]} canRun={canRun} canDecline={canDecline} canApprove={canApprove} onCredits={setCredits} />}
+            {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
+            {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
+            {m.instructionProposals && m.instructionProposals.length > 0 && <div className="mt-1">{m.instructionProposals.map((p) => <InstructionProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canInstructions} />)}</div>}
+            {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-foreground-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
+            {m.role === "assistant" && m.large && <p className="mt-1 text-xs text-foreground-muted" data-workspace-large>{lang === "ar" ? "ملفات مساحة العمل كبيرة، فكان لهذا الرد مساحة أقل: ربما تركتُ رسائل سابقة من المحادثة أو اختصرتُ الجواب. " : "Your workspace files are large, so this reply had less room: I may have left out earlier messages or kept the answer short. "}<Link href={`/${lang}/app/files`} className="underline">{lang === "ar" ? "اختصر ملفاتك الطويلة" : "Shorten your long files"}</Link>{lang === "ar" ? " أو ابدأ محادثة جديدة." : " or start a new conversation."}</p>}
+            {m.role === "assistant" && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
+                {/* Rule 1126: each answer can be copied; the last one (or an error) can be asked again. */}
+                <CopyButton text={m.content} lang={lang} label={t.ux.chat.copy} iconOnly />
+                {i === msgs.length - 1 && !busy && msgs.slice(0, i).some((x) => x.role === "user") && <button type="button" onClick={() => retryAt(i)} aria-label={t.ux.chat.retry} title={t.ux.chat.retry} className="icon-btn"><Icon name="retry" className="h-4 w-4" /></button>}
+                <button type="button" onClick={() => vote(m, 1)} aria-pressed={voted[m.at] === 1} aria-label={t.chat.helpful} title={t.chat.helpful} className="icon-btn"><Icon name="thumbUp" className="h-4 w-4" /></button>
+                <button type="button" onClick={() => vote(m, -1)} aria-pressed={voted[m.at] === -1} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className="icon-btn"><Icon name="thumbDown" className="h-4 w-4" /></button>
+                {reasonFor === m.at && !voted[m.at] && (
+                  <form onSubmit={(e) => { e.preventDefault(); vote(m, -1); }} className="flex flex-1 items-center gap-1">
+                    <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t.chat.whyBad} className="input py-1 text-xs" />
+                    <button className="btn btn-secondary btn-xs">{t.chat.send_}</button>
+                  </form>
+                )}
+              </div>
+            )}
+          </ChatBubble>
         ))}
         {needPhone && (onboarded || (msgs.some((m) => m.plan?.length) && !busy)) && <WhatsAppCard lang={lang} />}
         {busy && onboardUrl && (

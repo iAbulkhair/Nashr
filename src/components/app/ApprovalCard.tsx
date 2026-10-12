@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useId, useState } from "react";
-import type { AppDict } from "@/lib/app-i18n";
+import type { ApprovalDict } from "@/lib/approval-dict";
 import type { ChatItem } from "@/lib/chat";
 import { isAgentId } from "@/lib/agents";
 import { render } from "@/lib/md";
@@ -24,8 +24,11 @@ const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w
  * Phase 2: moved out of ChatPanel (which still exports it as `ItemCard`), the channel limits shared with the inbox, the
  * body's toggle says whether it is open, a disabled Approve names its reason with `aria-describedby`, and Copy says
  * "Copied" (or that the browser refused) instead of failing silently.
+ *
+ * Phase 5b: `t` is the slice of the app dictionary the card reads (`ApprovalDict`), so the public home page sends only
+ * that; with `demo` the card is a sample whose buttons write nothing.
  */
-export default function ApprovalCard({ item, t, lang, onApproved, canApprove = true }: { item: ChatItem; t: AppDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean }) {
+export default function ApprovalCard({ item, t, lang, onApproved, canApprove = true, demo = false }: { item: ChatItem; t: ApprovalDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean; /** the home page's gallery (rule 1222): Approve and Undo change only this card, nothing is sent or saved */ demo?: boolean }) {
   const [open, setOpen] = useState(true);
   const [status, setStatus] = useState(item.status);
   const [err, setErr] = useState("");
@@ -38,6 +41,13 @@ export default function ApprovalCard({ item, t, lang, onApproved, canApprove = t
   const chName = (t.channelNames as Record<string, string>)[item.channel] ?? item.channel;
   async function setState(next: "approved" | "pending") {
     if (saving) return;
+    // A sample on the public home page has no task behind it: the card shows the approval and its undo, and nothing else.
+    if (demo) {
+      setStatus(next);
+      if (next === "approved") { setUndoAt(Date.now()); setTimeout(() => setUndoAt((v) => (Date.now() - v >= 4000 ? 0 : v)), 4200); }
+      else setUndoAt(0);
+      return;
+    }
     setErr(""); setSaving(true);
     try {
       // The version of the text on this card (src/lib/task-version.ts): an approval is refused when the item changed since.
