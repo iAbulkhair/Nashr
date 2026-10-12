@@ -272,9 +272,17 @@ test.describe("logout", () => {
     await authed.goto("/en/app/settings/danger", { waitUntil: "domcontentloaded" });
     // Log out lives in the sidebar's account menu, which has to be opened first — the trigger is the button showing
     // the signed-in address. The settings danger zone has its own Log out button too (rule 750, rule 1149), so the click is scoped to
-    // the menu: an unscoped `getByRole("button", { name: "Log out" })` matches both and fails strict mode.
-    await authed.getByRole("button").filter({ hasText: solo.email }).click();
-    await authed.getByRole("menu").getByRole("button", { name: "Log out" }).click();
+    // the sidebar: an unscoped `getByRole("button", { name: "Log out" })` matches both and fails strict mode.
+    // Not scoped to role="menu": since UI/UX phase 2 the menu holds only `menuitem` rows (rule 1112, the WAI-ARIA menu
+    // button pattern) and the sign-out form sits in its footer, outside the menu role, reached with Tab.
+    const trigger = authed.getByRole("button").filter({ hasText: solo.email });
+    // A click that lands before React hydrates the rail does nothing, so click again until the trigger says it is open.
+    await expect(async () => {
+      if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+      await expect(trigger).toHaveAttribute("aria-expanded", "true", { timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
+    await expect(authed.getByRole("menu")).toBeVisible();
+    await authed.getByTestId("app-sidebar").getByRole("button", { name: "Log out", exact: true }).click({ timeout: 10_000 });
     await authed.waitForURL("**/app/login");
 
     await authed.goto("/en/app", { waitUntil: "domcontentloaded" });
