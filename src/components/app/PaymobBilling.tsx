@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import type { BillingView } from "@/lib/billing";
@@ -22,7 +22,11 @@ const T = {
     cancelNote: "لن نخصم من بطاقتك. يبقى اشتراكك حتى نهاية الشهر المدفوع.",
     confirmCancelTitle: "إيقاف التجديد التلقائي؟", confirmCancel: "يبقى اشتراكك حتى نهاية الشهر المدفوع، ثم لن نخصم من بطاقتك: تدفع كل شهر بنفسك.",
     confirmRemoveTitle: "حذف البطاقة المحفوظة؟", confirmRemove: "يتوقف التجديد التلقائي معها، وتحتاج دفعة جديدة بالبطاقة لحفظ بطاقة أخرى.",
-    keep: "تراجع",
+    keep: "تراجع", working: "يحفظ…",
+    ret: {
+      pending: "نتحقق من دفعتك…", plan: "وصلت دفعتك وتفعّل اشتراكك.", topup: "وصلت دفعتك وأُضيف الكريدت إلى رصيدك.",
+      failed: "لم تكتمل الدفعة ولم يتغيّر اشتراكك. إن خُصم مبلغ من بطاقتك فتواصل معنا.", late: "لم يصلنا تأكيد الدفع بعد. حدّث الصفحة بعد دقيقة لترى حالته.",
+    },
   },
   en: {
     pay: "Pay by card", busy: "…",
@@ -40,7 +44,11 @@ const T = {
     cancelNote: "We will not charge your card. Your plan stays until the end of the paid month.",
     confirmCancelTitle: "Turn off automatic renewal?", confirmCancel: "Your plan stays until the end of the paid month; after that we will not charge your card, and you pay each month yourself.",
     confirmRemoveTitle: "Remove the saved card?", confirmRemove: "Automatic renewal stops with it, and saving another card takes a new card payment.",
-    keep: "Go back",
+    keep: "Go back", working: "Saving…",
+    ret: {
+      pending: "Checking your payment…", plan: "Your payment went through and your plan is active.", topup: "Your payment went through and the credits were added to your balance.",
+      failed: "The payment was not completed and your plan did not change. If your card was charged, contact us.", late: "We have not received the payment confirmation yet. Refresh this page in a minute to see it.",
+    },
   },
 } as const;
 
@@ -92,10 +100,18 @@ export function PaymobPlanCard({ lang, billing }: { lang: Lang; billing: Billing
   async function act(action: "cancel" | "resume" | "remove_card") {
     if (busy) return;
     if (action !== "resume") {
-      const sure = await ask(action === "cancel"
-        ? { title: S.confirmCancelTitle, message: S.confirmCancel, confirmLabel: S.cancel, cancelLabel: S.keep, destructive: true }
-        : { title: S.confirmRemoveTitle, message: S.confirmRemove, confirmLabel: S.remove, cancelLabel: S.keep, destructive: true });
-      if (!sure) return;
+      // The dialog runs the change itself (rule 1157, B-9): its button turns busy, a refusal shows inside it, and it
+      // closes only once the change is saved.
+      const run = async () => {
+        const j = await post("/api/billing/renewal", { action });
+        if (!j.ok) return S.errors[j.error ?? "server"] ?? S.errors.server;
+        r.refresh();
+      };
+      const common = { cancelLabel: S.keep, destructive: true, run, busyLabel: S.working, failLabel: S.errors.server };
+      await ask(action === "cancel"
+        ? { title: S.confirmCancelTitle, message: S.confirmCancel, confirmLabel: S.cancel, ...common }
+        : { title: S.confirmRemoveTitle, message: S.confirmRemove, confirmLabel: S.remove, ...common });
+      return;
     }
     setBusy(true);
     setErr("");
@@ -125,14 +141,52 @@ export function PaymobPlanCard({ lang, billing }: { lang: Lang; billing: Billing
       {b.status !== "active" && <PaymobPayButton lang={lang} kind="plan" plan={b.plan} label={S.renew} />}
       <div className="mt-4 flex flex-wrap gap-2">
         {b.autoRenew ? (
-          <button type="button" disabled={busy} onClick={() => act("cancel")} className="rounded-full border border-ink/20 px-4 py-2" data-paymob-action="cancel">{S.cancel}</button>
+          <button type="button" disabled={busy} onClick={() => act("cancel")} className="min-h-[var(--hit-min)] rounded-full border border-ink/20 px-4 py-2" data-paymob-action="cancel">{S.cancel}</button>
         ) : b.card ? (
-          <button type="button" disabled={busy} onClick={() => act("resume")} className="rounded-full border border-ink/20 px-4 py-2" data-paymob-action="resume">{S.resume}</button>
+          <button type="button" disabled={busy} onClick={() => act("resume")} className="min-h-[var(--hit-min)] rounded-full border border-ink/20 px-4 py-2" data-paymob-action="resume">{S.resume}</button>
         ) : null}
-        {b.card && <button type="button" disabled={busy} onClick={() => act("remove_card")} className="rounded-full border border-ink/20 px-4 py-2" data-paymob-action="remove_card">{S.remove}</button>}
+        {b.card && <button type="button" disabled={busy} onClick={() => act("remove_card")} className="min-h-[var(--hit-min)] rounded-full border border-ink/20 px-4 py-2" data-paymob-action="remove_card">{S.remove}</button>}
       </div>
       {err && <p role="alert" className="mt-2 text-sm text-danger">{err}</p>}
       {confirmDialog}
     </section>
+  );
+}
+
+/**
+ * The page Paymob sends the owner back to (`?paymob=return`, rule 1155): asks GET /api/billing/status every few seconds
+ * until the latest checkout is paid or failed, for about a minute, and says so in a live region. A paid checkout refreshes
+ * the page once, so the plan, the balance and the subscription card show it. It reads only; the payment itself is applied
+ * by Paymob's callback, never by this page.
+ */
+export function PaymobReturnStatus({ lang, every = 3000, tries = 20 }: { lang: Lang; every?: number; tries?: number }) {
+  const S = T[lang].ret;
+  const r = useRouter();
+  const [text, setText] = useState<string>(S.pending);
+  const [tone, setTone] = useState<"wait" | "ok" | "bad">("wait");
+  useEffect(() => {
+    // Per run of the effect, so a remount (React strict mode) starts its own polling and the old one stops.
+    let done = false;
+    let n = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = (t: string, k: "ok" | "bad") => { done = true; setText(t); setTone(k); };
+    async function tick() {
+      if (done) return;
+      n += 1;
+      const j = await fetch("/api/billing/status", { cache: "no-store" }).then((x) => x.json()).catch(() => null) as
+        | { ok?: boolean; enabled?: boolean; checkout?: { state?: string; kind?: string } } | null;
+      if (done) return;
+      const state = j?.ok && j.enabled ? j.checkout?.state : undefined;
+      if (state === "success") { stop(j?.checkout?.kind === "topup" ? S.topup : S.plan, "ok"); r.refresh(); return; }
+      if (state === "failed") { stop(S.failed, "bad"); return; }
+      // A dropped request (no answer) tries again like a pending one; an answer with no checkout to wait for stops.
+      if (n >= tries || (j !== null && state !== "pending")) { stop(S.late, "bad"); return; }
+      timer = setTimeout(tick, every);
+    }
+    void tick();
+    return () => { done = true; if (timer) clearTimeout(timer); };
+  }, [S, every, tries, r]);
+  return (
+    <p role="status" aria-live="polite" className={`mt-4 card text-sm ${tone === "bad" ? "border-danger" : ""}`} data-paymob-return={tone}>{text}</p>
   );
 }

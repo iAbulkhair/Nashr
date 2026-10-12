@@ -115,7 +115,8 @@ describe("rule 1115: loading screens, skeletons, and the card and line height on
     expect(region).toContain('<span class="sr-only">Loading</span>');
   });
   it("each signed-in area that waits on the server has a loading.tsx on RouteLoading", () => {
-    for (const dir of ["/chat", "/calendar", "/reports", "/notifications", "/conversations", "/activity", "/billing", "/files"]) {
+    // Billing moved into the settings area in UI/UX phase 3 (rule 1140), its loading screen with it.
+    for (const dir of ["/chat", "/calendar", "/reports", "/notifications", "/conversations", "/activity", "/settings/billing", "/files"]) {
       const f = `src/app/[lang]/app${dir}/loading.tsx`;
       expect(existsSync(f), f).toBe(true);
       expect(read(f), f).toContain("<RouteLoading");
@@ -149,12 +150,12 @@ describe("rule 1116: empty and failed states say what happened; the profile no l
     expect(err).toContain('role="alert"');
     expect(err).toContain("Try again");
   });
-  it("the profile shows ErrorState on a failed read and the trial end as a formatted date", () => {
-    const src = read("src/components/app/ProfilePanel.tsx");
-    expect(src).toMatch(/if \(!d && loadFailed\) return <ErrorState title=\{t\.ux\.profile\.loadFail\}/);
-    expect(src).toMatch(/\.catch\(\(\) => setLoadFailed\(true\)\)/);
-    expect(src).toContain("formatTime(d.user.trialEnds, lang)");
-    expect(src).not.toMatch(/Ends \$\{d\.user\.trialEnds\.slice/);
+  // The profile page left in UI/UX phase 3 (rule 1140): its settings pages render on the server from the record, so there
+  // is no client read to fail; the credit card moved to billing and keeps the formatted trial end.
+  it("the credit card shows the trial end as a formatted date", () => {
+    const src = read("src/components/app/settings/CreditUsageCard.tsx");
+    expect(src).toContain("formatTime(user.trialEnds, lang)");
+    expect(src).not.toMatch(/Ends \$\{user\.trialEnds\.slice/);
   });
 });
 

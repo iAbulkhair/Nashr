@@ -319,7 +319,8 @@ describe("the limit dialog's chat kinds (rule 315)", () => {
     const src = readFileSync("src/components/app/LimitModal.tsx", "utf8");
     expect(src).toContain('const cta = topup ? L.topup : (kind === "chat" && open.period !== "trial") || kind === "chat_credits" ? L.billing : L.plans;');
     // Out of credits on a paid plan, the same page at its top-up packs (rule 450, tests/topups.test.ts).
-    expect(src).toContain("<Link href={`/${lang}/app/billing${topup ? \"#topup\" : \"\"}`} className=\"btn btn-primary\">{cta}</Link>");
+    // Settings, Billing since UI/UX phase 3 (rule 1141); the old /app/billing redirects there for one release.
+    expect(src).toContain("<Link href={`/${lang}/app/settings/billing${topup ? \"#topup\" : \"\"}`} className=\"btn btn-primary\">{cta}</Link>");
   });
 });
 

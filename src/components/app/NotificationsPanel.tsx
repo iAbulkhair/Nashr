@@ -5,9 +5,11 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Notif } from "@/lib/notifications";
 import Scribble from "@/components/Scribble";
 import Button from "@/components/ui/Button";
+import { buttonClass } from "@/components/ui/button-class";
 import EmptyState from "@/components/ui/EmptyState";
 import { Time } from "@/components/ui/Time";
 import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { SETTINGS_COPY, settingsHref } from "@/lib/settings-nav";
 
 /**
  * Every notification (rule 1123). Unread ones carry a dot, a bold title and the word "unread" for screen readers, and
@@ -39,7 +41,11 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
           <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="notificationspanel-t1" />{N.title}</span></h1>
           <p className="mt-2 text-foreground-muted">{N.sub}</p>
         </div>
-        {unread > 0 && <Button variant="secondary" size="sm" onClick={markAll}>{U.markAll}</Button>}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Rule 1144: what reaches the bell and the inbox is chosen in Settings, Notifications. */}
+          <Link href={settingsHref(lang, "notifications")} className={buttonClass({ variant: "ghost", size: "sm" })}>{SETTINGS_COPY[lang].prefsLink}</Link>
+          {unread > 0 && <Button variant="secondary" size="sm" onClick={markAll}>{U.markAll}</Button>}
+        </div>
       </div>
       <p role="status" className="sr-only">{said}</p>
       {failed && <p role="alert" className="field-error mt-3">{U.failed}</p>}

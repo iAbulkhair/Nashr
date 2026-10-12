@@ -332,7 +332,7 @@ describe("rules 1092-1094: dates, money and plurals", () => {
   it("the migrated screens show dates through Time (no ISO cut in their JSX: the lint check below)", () => {
     expect(read("src/components/app/IntegrationsPanel.tsx")).toMatch(/<Time value=\{c\.connectedAt\} lang=\{lang\} \/>/);
     expect(read("src/components/app/BrandsPanel.tsx")).toMatch(/<Time value=\{b\.createdAt\} lang=\{lang\} \/>/);
-    expect(read("src/components/app/ProfilePanel.tsx")).toMatch(/<Time value=\{p\.expiresAt\} lang=\{lang\} className="tnum" \/>/);
+    expect(read("src/components/app/settings/CreditUsageCard.tsx")).toMatch(/<Time value=\{p\.expiresAt\} lang=\{lang\} className="tnum" \/>/);
   });
 });
 
@@ -423,7 +423,7 @@ describe("rules 1095-1098: the UI lint warnings", () => {
       "src/components/ui/Button.tsx", "src/components/ui/Field.tsx", "src/components/ui/Switch.tsx", "src/components/ui/Badge.tsx", "src/components/ui/Callout.tsx",
       "src/components/ui/Toast.tsx", "src/components/ui/Dialog.tsx", "src/components/ui/Time.tsx",
       "src/components/app/AuthForm.tsx", "src/components/app/BrandForm.tsx", "src/components/app/BrandsPanel.tsx", "src/components/app/DeleteAccountDialog.tsx",
-      "src/components/app/ProfilePanel.tsx", "src/components/app/IntegrationsPanel.tsx", "src/components/app/TrialBanner.tsx", "src/components/app/ReadOnlyNote.tsx",
+      "src/components/app/settings/CreditUsageCard.tsx", "src/components/app/settings/AccountSettings.tsx", "src/components/app/settings/SecuritySettings.tsx", "src/components/app/IntegrationsPanel.tsx", "src/components/app/TrialBanner.tsx", "src/components/app/ReadOnlyNote.tsx",
       "src/components/app/GovernancePanel.tsx", "src/components/app/WorkingDaysPanel.tsx", "src/components/app/PasswordField.tsx",
     ];
     for (const f of files) {

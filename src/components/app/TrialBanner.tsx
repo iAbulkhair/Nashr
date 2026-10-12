@@ -23,7 +23,7 @@ export default function TrialBanner({ lang, days, plan, industry, owner = true }
         <p className="mt-0.5 text-muted">{promise}{industry ? "" : ""}</p>
       </div>
       {owner ? (
-        <Link href={`/${lang}/app/billing`} className="btn btn-primary shrink-0 rounded-full px-5 py-2">{ar ? "فعّل نور" : "Activate Noor"}</Link>
+        <Link href={`/${lang}/app/settings/billing`} className="btn btn-primary shrink-0 rounded-full px-5 py-2">{ar ? "فعّل نور" : "Activate Noor"}</Link>
       ) : (
         <p className="shrink-0 text-muted">{ar ? "لتفعيل الاشتراك اطلب من مالك الحساب." : "Ask the account owner to activate."}</p>
       )}

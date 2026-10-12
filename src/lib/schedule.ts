@@ -176,7 +176,7 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadli
   }
   // One notice per brand (#15): the fingerprint carries an added brand's id, and a multi-brand account sees which brand.
   const tag = await brandTag(user.email, email).catch(() => "");
-  await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: withBrand(user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", tag), body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, brandFingerprint(email, `weekly:${new Date().toISOString().slice(0, 10)}`), 2);
+  await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: withBrand(user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", tag), body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, brandFingerprint(email, `weekly:${new Date().toISOString().slice(0, 10)}`), 2, email);
   return `ok:${r.tasks.length}`;
 }
 

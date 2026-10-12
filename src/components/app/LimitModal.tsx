@@ -96,7 +96,7 @@ export default function LimitModal({ t, lang, owner = true, governs = true, topu
         <p className="page-sub">{body}</p>
         <div className="mt-6 flex justify-center gap-3">
           <button id="limit-later" onClick={() => setOpen(null)} className={`btn ${act ? "btn-secondary" : "btn-primary"}`}>{act ? L.later : L.ok}</button>
-          {!act ? null : kind === "agent_cap" ? <Link href={`/${lang}/app/governance`} className="btn btn-primary">{L.governance}</Link> : <Link href={`/${lang}/app/billing${topup ? "#topup" : ""}`} className="btn btn-primary">{cta}</Link>}
+          {!act ? null : kind === "agent_cap" ? <Link href={`/${lang}/app/settings/governance`} className="btn btn-primary">{L.governance}</Link> : <Link href={`/${lang}/app/settings/billing${topup ? "#topup" : ""}`} className="btn btn-primary">{cta}</Link>}
         </div>
       </div>
     </div>

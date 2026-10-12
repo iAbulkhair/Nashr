@@ -593,7 +593,7 @@ describe("the pages wire the pickers in", () => {
     expect(chat).toMatch(/<ChatModelPicker\b/);
     const brand = readFileSync("src/components/app/BrandForm.tsx", "utf8");
     expect(brand).toMatch(/<BrandModelField\b/);
-    for (const page of ["src/app/[lang]/app/chat/page.tsx", "src/app/[lang]/app/onboarding/page.tsx"]) {
+    for (const page of ["src/app/[lang]/app/chat/page.tsx", "src/app/[lang]/app/settings/brand/page.tsx"]) {
       const src = readFileSync(page, "utf8");
       expect(src, page).toMatch(/can\(u, "profile\.account"\) && u\.actor\?\.kind !== "founder"/);
       expect(src, page).toMatch(/canConfirmChina=\{/);

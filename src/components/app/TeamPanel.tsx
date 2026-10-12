@@ -147,7 +147,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
       <div className="mt-4 card card-sm text-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="flex items-center gap-2"><Icon name="users" className="h-4 w-4 text-ink" />{T.seats}: <b className="tnum" dir="ltr">{used} / {limit}</b></span>
-          {full && perms.inviteAdmin && <Link href={`/${lang}/app/billing`} className="text-xs font-medium text-ink underline">{T.plans}</Link>}
+          {full && perms.inviteAdmin && <Link href={`/${lang}/app/settings/billing`} className="text-xs font-medium text-ink underline">{T.plans}</Link>}
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10" role="progressbar" aria-label={T.seats} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)}>
           <div className={`h-full rounded-full ${full ? "bg-lemon" : "bg-ink"}`} style={{ width: `${pct}%` }} />

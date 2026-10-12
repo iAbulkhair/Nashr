@@ -113,15 +113,21 @@ describe("a save that cannot take its lock answers busy and writes nothing (rule
     expect((await getBrand(u.email))!).toMatchObject({ tone: "warm" });
   }, 15_000);
 
-  it("the Profile page says nothing was saved only for answers the server gives before writing; any other failure re-reads the profile", () => {
-    const src = readFileSync("src/components/app/ProfilePanel.tsx", "utf8");
-    const fn = src.slice(src.indexOf("async function save("), src.indexOf("async function password("));
+  // Since UI/UX phase 3 (rule 1142) every settings card saves through `saveProfile`, and the card re-reads on an unknown result.
+  it("a settings card says nothing was saved only for answers the server gives before writing; any other failure re-reads the profile", () => {
+    const src = readFileSync("src/components/app/settings/profileSave.ts", "utf8");
+    const fn = src.slice(src.indexOf("export async function saveProfile("), src.indexOf("/** GET /api/profile, for a card"));
     expect(fn).toContain('j.error === "busy"');
-    // The fallback for a dropped connection or a server error: never "Nothing was saved", and the form is re-read.
-    const fallback = fn.slice(fn.indexOf("if (refused)"), fn.indexOf("// Show what the server stored"));
-    expect(fallback).toContain("fetchProfile()");
+    // The fallback for a dropped connection or a server error: never "Nothing was saved".
+    const fallback = fn.slice(fn.indexOf("if (refused)"));
+    expect(fallback).toContain('kind: "unknown"');
     expect(fallback).not.toMatch(/Nothing was saved|لم يُحفظ شيء/);
     expect(fallback).toContain("Could not confirm the save");
+    // ... and the cards then read what is stored.
+    for (const f of ["AccountSettings", "BrandExtras"]) {
+      const card = readFileSync(`src/components/app/settings/${f}.tsx`, "utf8");
+      expect(card, f).toMatch(/out\.kind === "unknown"[\s\S]{0,160}readProfile\(\)/);
+    }
   });
 });
 
@@ -191,16 +197,20 @@ describe("full name, business name, mobile phone and email are required on the P
     expect(got.me.email).toBe(u.email);
   });
 
-  it("the Profile page marks the four fields required and asks an account without a phone for one", () => {
-    const src = readFileSync("src/components/app/ProfilePanel.tsx", "utf8");
-    for (const k of ["name", "business", "phone"]) expect(src, k).toMatch(new RegExp(`name="${k}"[^>]*\\brequired\\b`));
-    expect(src).toContain('fid("email"), req)');
+  // Settings, Account since UI/UX phase 3 (rule 1143): the name and the phone are required fields, the email is shown and
+  // never sent, the business name is the brand form's own required field.
+  it("the account settings mark the fields required and ask an account without a phone for one", () => {
+    const src = readFileSync("src/components/app/settings/AccountSettings.tsx", "utf8");
+    expect(src).toMatch(/<Field label=\{T\.name\} hideLabel required/);
+    expect(src).toMatch(/<Field label=\{T\.phone\} hideLabel required/);
     expect(src).not.toMatch(/name="email"/);
-    expect(src).toContain("رقم الجوال مطلوب");
+    expect(src).toContain("phoneMissing");
+    expect(readFileSync("src/components/app/settings/profileSave.ts", "utf8")).toContain("أضف رقم جوالك أولاً");
     expect(src).not.toMatch(/leave it empty|اتركه فارغاً/);
-    // The browser never blocks the save first: the form is noValidate and the phone carries no minLength, so an empty or
-    // short phone reaches PUT /api/profile and the page shows its own "رقم الجوال مطلوب" / bad_phone message.
-    expect(src).toMatch(/<form key=\{formKey\} onSubmit=\{save\} noValidate/);
+    // The browser never blocks the save first: every card is noValidate and the phone carries no minLength; Save stays
+    // off until the phone has 9 digits, and the server's bad_phone message still shows if one gets through.
+    expect(readFileSync("src/components/app/settings/SettingsCard.tsx", "utf8")).toMatch(/onSubmit=\{submit\} noValidate/);
     expect(src).not.toMatch(/name="phone"[^>]*minLength/);
+    expect(src).toMatch(/valid=\{phoneValid\(phoneT\)\}/);
   });
 });

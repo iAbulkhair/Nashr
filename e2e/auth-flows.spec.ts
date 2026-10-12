@@ -269,9 +269,9 @@ test.describe("logout", () => {
     const signedIn = await browser.newContext();
     await signedIn.addCookies(state.cookies);
     const authed = await signedIn.newPage();
-    await authed.goto("/en/app/profile", { waitUntil: "domcontentloaded" });
+    await authed.goto("/en/app/settings/danger", { waitUntil: "domcontentloaded" });
     // Log out lives in the sidebar's account menu, which has to be opened first — the trigger is the button showing
-    // the signed-in address. The profile page has its own Log out button too (rule 750), so the click is scoped to
+    // the signed-in address. The settings danger zone has its own Log out button too (rule 750, rule 1149), so the click is scoped to
     // the sidebar: an unscoped `getByRole("button", { name: "Log out" })` matches both and fails strict mode.
     // Not scoped to role="menu": since UI/UX phase 2 the menu holds only `menuitem` rows (rule 1112, the WAI-ARIA menu
     // button pattern) and the sign-out form sits in its footer, outside the menu role, reached with Tab.

@@ -2,6 +2,7 @@ import { db } from "./db";
 import { getUser } from "./auth";
 import { listBrands } from "./brands";
 import { brandFingerprint, brandTag, pushNotifs, withBrand, type Notif } from "./notifications";
+import { emailAllowed, readPrefs } from "./notify-prefs";
 import { sendEmail } from "./notify";
 import { appOrigin } from "./origin";
 import { COPY, notice, paragraphs } from "../emails";
@@ -116,7 +117,7 @@ export async function warnSeries(scope: string, now = Date.now()): Promise<numbe
     const title = withBrand(text.title, tag);
     const href = `/${lang}/app/todo?series=${named[0].sid}`;
     const n: Omit<Notif, "id" | "at"> = { kind: "todo", agent: "reem", title, body: text.body, href };
-    const [pushed] = await pushNotifs(email, [{ n, fingerprint: brandFingerprint(scope, `todo-purge:${zoneDay(now, zone as Zone)}`), ttlDays: 7 }]);
+    const [pushed] = await pushNotifs(email, [{ n, fingerprint: brandFingerprint(scope, `todo-purge:${zoneDay(now, zone as Zone)}`), ttlDays: 7, scope }]);
     // The day's warning went out already (another run): its copies wait for the next local day.
     if (!pushed) return moved;
     // The marker first (SET, not SET NX: a stale marker whose TTL has not lapsed yet is replaced), then the copies.
@@ -126,9 +127,8 @@ export async function warnSeries(scope: string, now = Date.now()): Promise<numbe
     await Promise.all(rowsN.map((r) => db.zrem(SEC_KEYS.sdone(scope), r.id)));
     moved += rowsN.length;
     try {
-      const [brandProfile, accountProfile] = await Promise.all([db.get<{ emails?: string }>(`profile:${scope}`), db.get<{ emails?: string }>(`profile:${email}`)]);
-      const pref = brandProfile?.emails ?? accountProfile?.emails ?? "all";
-      if (pref !== "none") await sendEmail(email, title, `${text.body}\n\n${appOrigin()}${href}`, notice({ lang, title, paragraphs: paragraphs(text.body), cta: { href: `${appOrigin()}${href}`, label: COPY[lang].notice.todo } }));
+      // Reem's reminder switch (rule 1147); the old "none" level reads as off, as before.
+      if (emailAllowed(await readPrefs(scope, email), "reminders")) await sendEmail(email, title, `${text.body}\n\n${appOrigin()}${href}`, notice({ lang, title, paragraphs: paragraphs(text.body), cta: { href: `${appOrigin()}${href}`, label: COPY[lang].notice.todo } }));
     } catch (e) {
       console.error("sec series warning email failed", e instanceof Error ? e.name : "error");
     }

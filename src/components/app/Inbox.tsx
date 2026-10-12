@@ -367,7 +367,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   <ul className="mt-1.5 grid gap-1">{hits.map((v) => <li key={v.ruleId} className="text-xs text-ink/80"><span className="font-semibold" dir="auto">«{v.term}»</span> · <Hit v={v} /></li>)}</ul>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-primary btn-xs">{G.fix}</button>
-                    {hits.some((v) => v.kind === "banned") && <Link href={`/${lang}/app/onboarding`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
+                    {hits.some((v) => v.kind === "banned") && <Link href={`/${lang}/app/settings/brand`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
                   </div>
                 </div>
               )}

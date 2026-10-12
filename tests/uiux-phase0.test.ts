@@ -56,9 +56,11 @@ describe("rule 960: founder console prompts stop on Cancel, the trial days are c
 describe("rule 961: every app and founder console screen has its own title", () => {
   const pages = [...globSync("src/app/[[]lang[]]/app/**/page.tsx"), ...globSync("src/app/[[]lang[]]/admin/**/page.tsx")];
 
-  it("finds all 40 pages and each exports generateMetadata from the shared helper", () => {
-    expect(pages.length).toBe(40);
-    for (const p of pages) expect(read(p), p).toMatch(/export const generateMetadata = (?:app|admin)ScreenMeta\("[a-z]+"\);/);
+  // 44 since UI/UX phase 3 (rule 1140): the profile page left, the settings index and its account, security,
+  // notifications and danger sections came; a settings section's title comes from `settingsScreenMeta`.
+  it("finds all 44 pages and each exports generateMetadata from the shared helper", () => {
+    expect(pages.length).toBe(44);
+    for (const p of pages) expect(read(p), p).toMatch(/export const generateMetadata = (?:app|admin|settings)ScreenMeta\("[a-z]+"\);/);
   });
 
   it("names each screen once per language, with the brand last", async () => {
@@ -110,12 +112,13 @@ describe("rule 963: the chat's messages are a live log", () => {
 });
 
 describe("rule 964: deleting the account asks in the app's own masked dialog", () => {
-  const profile = read("src/components/app/ProfilePanel.tsx");
+  // Settings, Danger zone since UI/UX phase 3 (rule 1149).
+  const profile = read("src/components/app/settings/DangerZone.tsx");
   const dlg = read("src/components/app/DeleteAccountDialog.tsx");
 
   it("has no browser prompt for the password", () => {
     expect(profile).not.toMatch(NATIVE("prompt"));
-    expect(profile).toMatch(/<DeleteAccountDialog lang=\{lang\} email=\{me\.email\}/);
+    expect(profile).toMatch(/<DeleteAccountDialog lang=\{lang\} email=\{email\}/);
     expect(dlg).toMatch(/<PasswordField /);
     expect(dlg).toMatch(/role="alertdialog"/);
     expect(dlg).toMatch(/disabled=\{!ready\}/);
@@ -190,7 +193,11 @@ describe("rule 974: Paymob renewal off and card removal ask first", () => {
   it("confirms cancel and remove_card in the app's own dialog, not resume", () => {
     expect(src).toMatch(/const \[ask, confirmDialog\] = useConfirm\(\);/);
     expect(src).toMatch(/if \(action !== "resume"\) \{/);
-    expect(count(src, /destructive: true/g)).toBe(2);
+    // Since rule 1157 both confirmations share one `common` part (destructive, and the dialog runs the change).
+    expect(count(src, /destructive: true/g)).toBe(1);
+    expect(src).toMatch(/const common = \{ cancelLabel: S\.keep, destructive: true, run, /);
+    expect(src).toContain("title: S.confirmCancelTitle");
+    expect(src).toContain("title: S.confirmRemoveTitle");
     expect(src).toMatch(/\{confirmDialog\}/);
     expect(src).not.toMatch(NATIVE("confirm"));
   });

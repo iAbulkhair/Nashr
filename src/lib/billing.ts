@@ -34,8 +34,14 @@ const refundedKey = (txnId: number) => `paymob:refunded:${txnId}`;
 const refundLockKey = (txnId: number) => `paymob:refundlock:${txnId}`;
 const attemptKey = (email: string, day: string) => `paymob:attempt:${email}:${day}`;
 export const cardKey = (email: string) => `paymob:card:${email}`;
+/**
+ * The account's latest checkout ref (rule 1155), so the return page asks "how did my payment go?" with the session's
+ * account alone and never a ref from the request. A new key only (expand): code without it never reads or misses it.
+ */
+export const lastCheckoutKey = (email: string) => `paymob:last:${email}`;
+const LAST_TTL = 86400;
 /** Keys that belong to one account and leave with it (src/lib/account.ts `wipeAccount`). */
-export const paymobAccountKeys = (email: string) => [cardKey(email)];
+export const paymobAccountKeys = (email: string) => [cardKey(email), lastCheckoutKey(email)];
 
 export type IntentKind = "plan" | "topup" | "renewal";
 /** What we asked Paymob to charge, stored before the call. The only source of the account and the amount for a callback. */
@@ -120,7 +126,7 @@ export async function startCheckout(owner: Pick<User, "email">, body: unknown, l
     ref, email: acc.email, kind, ...(kind === "plan" ? { plan: b.plan as SelfServePlan } : { credits: b.credits as number }),
     ...price, currency: "SAR", offer, createdAt: new Date().toISOString(), by: acc.email, status: "open",
   };
-  await db.set(intentKey(ref), intent, DAYS_400);
+  await Promise.all([db.set(intentKey(ref), intent, DAYS_400), db.set(lastCheckoutKey(acc.email), ref, LAST_TTL)]);
   const label = kind === "plan" ? `Thakeen ${intent.plan} plan, 1 month` : `Thakeen ${intent.credits} credits top-up`;
   try {
     const it = await createIntention(cfg, {
@@ -386,6 +392,43 @@ async function chargeSavedCard(cfg: PaymobConfig, u: User, b: Billing, card: Sav
 }
 
 export type RenewalAction = "cancel" | "resume" | "remove_card";
+
+/** What the return page shows of the latest checkout: no ref, still open, paid, or not paid. */
+export type CheckoutState = "none" | "pending" | "success" | "failed";
+export const checkoutState = (status: PayIntent["status"] | undefined): CheckoutState =>
+  status === "paid" ? "success" : status === "failed" || status === "mismatch" ? "failed" : status === "open" ? "pending" : "none";
+
+/**
+ * The latest checkout of `email` (the session's account) for the return page (GET /api/billing/status, rule 1155): its
+ * state and what it was for, never the amount's internals, the order or the transaction. The ref comes from the
+ * account's own pointer, and an intent that names another account answers "none".
+ */
+export async function lastCheckout(email: string): Promise<{ state: CheckoutState; kind?: IntentKind; plan?: SelfServePlan; credits?: number }> {
+  const ref = await db.get<string>(lastCheckoutKey(email));
+  if (typeof ref !== "string" || !REF.test(ref)) return { state: "none" };
+  const intent = await db.get<PayIntent>(intentKey(ref));
+  if (!intent || intent.email !== email) return { state: "none" };
+  return { state: checkoutState(intent.status), kind: intent.kind, ...(intent.plan ? { plan: intent.plan } : {}), ...(intent.credits ? { credits: intent.credits } : {}) };
+}
+
+/** One row of the owner's payment history: the recorded payment's day, what it bought, the amount before VAT and its state. */
+export type PaymentRow = { id: string; date: string; plan: string; topupCredits: number | null; amountSar: number; state: "paid" | "voided" | "refunded"; refundSar: number | null };
+
+/**
+ * The owner's payment history (rule 1156), from the payments already recorded on the account (`payments:{email}`, written
+ * by the founder console and the Paymob callback) and nothing else: no invoice is made up here. Only safe fields: never
+ * the partner's commission, who recorded it, the payment reference or a void reason. Newest first.
+ */
+export async function paymentHistory(email: string): Promise<PaymentRow[]> {
+  const all = await db.hgetall<Payment>(paymentsKey(email));
+  return Object.values(all ?? {})
+    .filter((p): p is Payment => !!p && typeof p.id === "string" && typeof p.date === "string")
+    .sort((a, b) => (a.date === b.date ? ((a.recordedAt ?? "") < (b.recordedAt ?? "") ? 1 : -1) : a.date < b.date ? 1 : -1))
+    .map((p) => ({
+      id: p.id, date: p.date.slice(0, 10), plan: p.plan, topupCredits: p.topup ? p.topup.credits : null,
+      amountSar: Number(p.amountSar) || 0, state: p.voidedAt ? "voided" as const : p.refund ? "refunded" as const : "paid" as const, refundSar: p.refund ? p.refund.sar : null,
+    }));
+}
 export type BillingView = { plan: string; status: Billing["status"]; paidThrough: string; graceUntil: string | null; autoRenew: boolean; card: { brand: string; last4: string } | null };
 /** What a page may show of the subscription: never the token. */
 export const billingView = (b: Billing | undefined): BillingView | null =>

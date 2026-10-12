@@ -86,6 +86,15 @@ React components over the classes above, restyled to our tokens and RTL (not sha
 
 Directional icons take `mirror` (rule 1118): `send` and `next` point along the reading direction. `ScribbleStatic` (`src/components/ScribbleStatic.tsx`) is the server-drawn scribble for underlines and ticks; the client `Scribble` stays for art that measures its parent. Phase 2 moved `.card` to `--radius-card` and the body line height to `--leading-body` (rule 1115). Rules 1110-1130: `docs/system/tests/1110-uiux-phase2.md`.
 
+### Settings building blocks (phase 3, rules 1140-1158)
+
+| Piece | File | Use |
+|---|---|---|
+| `SettingsCard`, `saveEnabled` | `src/components/app/settings/SettingsCard.tsx` | One setting, one card, one Save. The card is its own `<form noValidate>`; Save is `aria-disabled` (still focusable) until the value is changed and valid and no save is on its way; the result is a `role="status"` line under it. Without `onSave` it is a `<section>` with a note in place of Save |
+| `SettingsNav`, `SettingsBack` | `src/components/app/settings/SettingsNav.tsx` | The settings sections as links from `SETTINGS_SECTIONS`; the column marks the current one `aria-current="page"`; the `list` variant (the index on a phone) shows each section's line; `SettingsBack` is the phone's way back from a section. 44px rows on touch |
+| `PlanCard` | `src/components/app/settings/PlanCard.tsx` | One plan on the billing page. The price is ink, never `text-danger`; the current plan says «خطتك الحالية» / "Your current plan" and has a 2px ink border; «مقترحة» / "Recommended" comes from the pricing `highlight` flag and never shows on the current plan. The pay control is passed in |
+| `PaymentHistory` | `src/components/app/settings/PaymentHistory.tsx` | A table of the payments already recorded (`paymentHistory`): date as stored, item, amount in SAR before VAT, the state in words. Western digits |
+
 ### Lint warnings (rules 1095-1098)
 `eslint-rules/thakeen-ui.mjs`, loaded for `src/` as warnings: `danger-text-needs-alert` (red text is an alert or a destructive action), `lemon-on-ink` (lemon only inside `bg-ink`, `card-inverse` or `data-surface="inverse"`), `no-date-slice` (no `.slice(0, 10|16|19)` inside JSX; use `<Time>`), `no-physical-direction` (ml/mr/pl/pr/left/right/text-left/rounded-l/border-l and the like, with the logical name in the message). The primitives and the migrated screens raise none.
 

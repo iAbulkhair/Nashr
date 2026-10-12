@@ -12,10 +12,11 @@ describe("log out is visible (rule 750)", () => {
     expect(src).toMatch(/className = "[^"]*\btext-ink\b[^"]*"/);
   });
 
-  it("the profile page offers log out next to the account settings", () => {
-    const src = read("src/components/app/ProfilePanel.tsx");
-    expect(src).toMatch(/import LogoutButton from "\.\/LogoutButton";/);
-    expect(src).toMatch(/<LogoutButton label=\{t\.nav\.logout\} lang=\{lang\} className="btn btn-secondary btn-sm" \/>/);
+  it("the settings danger zone offers log out (it moved there from the old profile page, rule 1149)", () => {
+    const src = read("src/components/app/settings/DangerZone.tsx");
+    expect(src).toMatch(/import LogoutButton from "\.\.\/LogoutButton";/);
+    expect(src).toMatch(/<LogoutButton label=\{logoutLabel\} lang=\{lang\} className=\{buttonClass\(\{ variant: "secondary", size: "sm" \}\)\} \/>/);
+    expect(read("src/app/[lang]/app/settings/danger/page.tsx")).toContain("logoutLabel={t.nav.logout}");
   });
 
   it("the sidebar menu keeps its log out button", () => {

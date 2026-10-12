@@ -16,7 +16,7 @@ import { LEGAL } from "@/lib/legal";
 import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as profileRoute from "@/app/api/profile/route";
 import * as adminUser from "@/app/api/admin/users/[email]/route";
-import BillingPage from "@/app/[lang]/app/billing/page";
+import BillingPage from "@/app/[lang]/app/settings/billing/page";
 import { adminConsoleSrc } from "./helpers/admin-console";
 
 /**
