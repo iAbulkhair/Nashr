@@ -494,9 +494,10 @@ describe("rule 802: MCP save_draft", () => {
 });
 
 describe("rules 800-802 are listed in the coverage map", () => {
-  it("each rule has a row in docs/system/tests/0790-agent-scope.md, and the range row starts above them", () => {
+  it("each rule has a row in docs/system/tests/0790-agent-scope.md, and no range row reserves them", () => {
     for (const n of [800, 801, 802]) expect(coverageRow(n), String(n)).toMatch(new RegExp(`^\\| ${n} \\|`));
-    const start = readFileSync("docs/system/tests/0790-agent-scope.md", "utf8").match(/^\| (\d+)-808 \| Reserved for agent scope Part B/m);
-    expect(Number(start?.[1])).toBeGreaterThan(802);
+    // Task 9 removed the range row (803-808 went unused: the later rules are 1410-1415); a range row that comes back must start above 802.
+    const start = readFileSync("docs/system/tests/0790-agent-scope.md", "utf8").match(/^\| (\d+)-\d+ \| Reserved for agent scope/m);
+    if (start) expect(Number(start[1])).toBeGreaterThan(802);
   });
 });
