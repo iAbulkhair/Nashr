@@ -32,6 +32,8 @@ export const AGENT_SCOPE_DEFAULT_MODES: AgentScopeModes = Object.freeze({ prompt
 export const AGENT_SCOPE_KEYS = {
   modes: "agent-scope:modes",
   evalLast: "agent-scope:eval:last",
+  /** Held while the founder's eval runs (rule 1412), so a second press does not pay for the set twice. */
+  evalLock: "agent-scope:eval:lock",
   log: (day: string) => `agent-scope:log:${day}`,
 } as const;
 
