@@ -5,6 +5,7 @@ import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { SITE } from "@/lib/site";
 import { VS_PAGES } from "@/lib/pages-vs";
 import LangToggle from "./LangToggle";
+import ThemeToggle from "./ui/ThemeToggle";
 import Scribble from "./Scribble";
 import Wordmark from "./Wordmark";
 
@@ -34,9 +35,13 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
             </nav>
           ))}
         </div>
-        <div className="mt-10 flex items-center justify-between gap-4 border-t border-border pt-6 text-xs">
+        <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-6 text-xs">
           <p>{t.footer.rights}</p>
-          <LangToggle lang={lang} />
+          {/* Rule 1215: the viewer's light, dark or device choice, on every public page, beside the language. */}
+          <div className="flex flex-wrap items-center gap-3">
+            <ThemeToggle lang={lang} size="sm" />
+            <LangToggle lang={lang} />
+          </div>
         </div>
       </div>
     </footer>

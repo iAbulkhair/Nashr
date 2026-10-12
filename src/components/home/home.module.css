@@ -19,8 +19,8 @@
   /* The page is 1200px wide at most; the margins stay inside the page, so a doodle in them never scrolls it sideways. */
   padding: 54px max(16px, calc((100% - 1200px) / 2)) 36px;
   overflow-x: clip;
-  background: var(--color-ground);
-  color: var(--color-ink);
+  background: var(--color-background);
+  color: var(--color-foreground);
   font-family: var(--home-body);
 }
 @media (min-width: 700px) {
@@ -61,6 +61,11 @@
 .doodle[data-cast="reem"] { --fill: var(--color-agent-reem); }
 .doodle[data-cast="you"] { --fill: var(--color-agent-you); }
 
+/*
+ * The figures are stickers (rule 1213): drawn in ink on their own agent colours and paper in both themes, because a
+ * light line on a bright fill would vanish (lilac on Noor's lemon is 1.07:1). On the dark page a thin lilac halo traces
+ * each figure, so its ink outline and Majed's ink body still read on the aubergine ground.
+ */
 .doodle :is(path, circle, ellipse, rect, line) {
   fill: none;
   stroke: var(--color-ink);
@@ -73,6 +78,10 @@
 .doodle .paper { fill: var(--color-paper); }
 .doodle .inkFill { fill: var(--color-ink); }
 .doodle .dot { fill: var(--color-ink); stroke: none; }
+:global(:root[data-theme="dark"]) .doodle { filter: drop-shadow(0 0 0.6px var(--color-foreground)) drop-shadow(0 0 0.6px var(--color-foreground)); }
+@media (forced-colors: active) {
+  :global(:root[data-theme="dark"]) .doodle { filter: none; }
+}
 .doodle .fine { stroke-width: 1px; }
 .doodle .gold { stroke: var(--color-gold); stroke-width: 1.75px; }
 
@@ -132,7 +141,7 @@
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  background: var(--color-ink);
+  background: var(--color-foreground);
 }
 .value {
   font-family: var(--home-body);
@@ -161,10 +170,10 @@
   display: inline-grid;
   flex: none;
   padding: 0.3rem 0.85rem;
-  border: 1.5px solid color-mix(in oklab, var(--color-ink) 55%, var(--color-ground));
+  border: 1.5px solid color-mix(in oklab, var(--color-foreground) 55%, var(--color-background));
   border-radius: 999px;
   background: none;
-  color: var(--color-ink);
+  color: var(--color-foreground);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
@@ -174,8 +183,8 @@
 }
 .motionToggle > * { grid-area: 1 / 1; text-align: center; }
 .motionToggle > :not([data-on]) { visibility: hidden; }
-.motionToggle:hover { border-color: var(--color-ink); }
-.motionToggle:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 2px; }
+.motionToggle:hover { border-color: var(--color-border-strong); }
+.motionToggle:focus-visible { outline: 3px solid var(--color-ring); outline-offset: 2px; }
 /* Without JavaScript nothing could pause anything, so there is no button. */
 @media (scripting: none) {
   .motionToggle { display: none; }
@@ -216,7 +225,7 @@
   .cast > li { flex-basis: calc(100% / 9); }
 }
 .who {
-  --tagfill: var(--color-paper);
+  --tagfill: var(--color-surface);
   appearance: none;
   display: grid;
   justify-items: center;
@@ -225,12 +234,12 @@
   padding: 4px 2px 2px;
   border: 0;
   background: none;
-  color: var(--color-ink);
+  color: var(--color-foreground);
   font: inherit;
   cursor: pointer;
   touch-action: manipulation;
 }
-.who:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 4px; }
+.who:focus-visible { outline: 3px solid var(--color-ring); outline-offset: 4px; }
 .fig {
   position: relative;
   display: block;
@@ -253,6 +262,8 @@
   white-space: nowrap;
 }
 .who:is(:hover, :focus-visible, [aria-pressed="true"]) { --tagfill: var(--tag); }
+/* On the agent's own colour the name is ink in both themes; the darker agents keep white (the rule below). */
+.who:is(:hover, :focus-visible, [aria-pressed="true"]) .tag { color: var(--color-accent-foreground); }
 .who:is(:hover, :focus-visible, [aria-pressed="true"]) .fig { transform: scale(1.25); }
 .who[data-dark]:is(:hover, :focus-visible, [aria-pressed="true"]) .tag { color: var(--color-paper); }
 
@@ -487,9 +498,9 @@
   width: 48px;
   height: 48px;
   padding: 0;
-  border: 2px solid var(--color-ink);
+  border: 2px solid var(--color-border-strong);
   border-radius: 50%;
-  background: var(--color-ground);
+  background: var(--color-background);
   overflow: hidden;
 }
 /* The full figure at twice the circle's width, lifted so the head sits in the middle. */
@@ -690,7 +701,7 @@
 .sh { display: grid; gap: 8px; margin-block-end: 44px; max-width: 44rem; }
 .sh h2 { font: 900 var(--t-xl)/1.25 var(--home-display); }
 .ul { position: relative; isolation: isolate; display: inline-block; padding-block-end: 8px; }
-.sub { font-size: var(--t-m); color: var(--color-muted); }
+.sub { font-size: var(--t-m); color: var(--color-foreground-muted); }
 .home :global(.s-bubble) { font-size: var(--t-s); line-height: 1.5; }
 .home :global(.s-stamp) { font-size: var(--t-xs); }
 .home :global(.s-tag), .home :global(.s-tape) { font-size: var(--t-xs); }
@@ -719,15 +730,38 @@
   isolation: isolate;
   display: inline-block;
   padding: 6px 16px 8px;
-  color: var(--color-paper);
+  color: var(--color-primary-foreground);
   font-size: clamp(22px, 3.4vw, 38px);
   transform: rotate(-2deg);
 }
 .offer { font-size: clamp(18px, 2.2vw, 23px); font-weight: 600; max-width: 46rem; text-wrap: balance; }
+/* The offer, the call to action, the trial line and the freshness chip, one column (rules 1228, 1229). */
+.lead { display: grid; gap: 14px; justify-items: start; min-width: 0; }
+.lead > form { width: 100%; }
+.trialLine { font-size: var(--t-s); color: var(--color-foreground-muted); }
+.fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  min-height: var(--hit-min);
+  padding: 2px 14px;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-size: var(--t-s);
+  font-weight: 700;
+  text-decoration: none;
+}
+.fresh:hover { text-decoration: underline; }
+.fresh:focus-visible { outline: 3px solid var(--color-ring); outline-offset: 2px; }
 .sw { position: relative; isolation: isolate; display: inline-block; }
-.hint { display: flex; align-items: center; gap: 6px; max-width: 26rem; font-size: var(--t-s); font-weight: 700; color: var(--color-muted); }
+/* The lemon swash lies under only part of the words: on the dark page it is a soft lemon wash, so lilac text stays
+   readable over it (rule 1216). */
+:global(:root[data-theme="dark"]) .sw :global(.scribble .fill) { fill: color-mix(in oklab, var(--color-lemon) 30%, transparent); }
+.hint { display: flex; align-items: center; gap: 6px; max-width: 26rem; font-size: var(--t-s); font-weight: 700; color: var(--color-foreground-muted); }
 .hint svg { width: 40px; height: 28px; flex: none; overflow: visible; }
-.hint path { fill: none; stroke: var(--color-ink); stroke-width: 1px; stroke-linecap: round; }
+.hint path { fill: none; stroke: var(--color-foreground); stroke-width: 1px; stroke-linecap: round; }
 .hint svg:dir(ltr) { transform: scaleX(-1); }
 @media (min-width: 900px) { .hint { max-width: 17rem; } }
 /* The hint says "point at" with a mouse and "tap" on a touch screen. */
@@ -785,7 +819,7 @@
 @media (max-width: 699px) { .phone { margin-inline-end: 10px; } }
 .glow { position: absolute; inset: -20px -14px; z-index: -2; isolation: isolate; }
 .rays { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.rays path { fill: none; stroke: var(--color-ink); stroke-width: 1px; stroke-linecap: round; }
+.rays path { fill: none; stroke: var(--color-foreground); stroke-width: 1px; stroke-linecap: round; }
 .p2 { margin-block-start: 14px; }
 .peek { position: absolute; top: -34px; inset-inline: 10px; display: flex; justify-content: center; z-index: -2; }
 .peek > i { display: block; flex: 0 1 58px; min-width: 0; margin-inline: -9px; }
@@ -829,7 +863,7 @@
 .what { font-size: var(--t-s); }
 .act { margin-block-start: auto; display: grid; gap: 4px; justify-items: start; }
 .act > :global(.s-bubble) { max-width: 100%; }
-.now { font-size: var(--t-s); color: var(--color-muted); padding-block-start: 4px; }
+.now { font-size: var(--t-s); color: var(--color-foreground-muted); padding-block-start: 4px; }
 .plug { width: 52px; height: 52px; flex: none; }
 .s5in { display: grid; gap: 14px; grid-template-columns: 72px minmax(0, 1fr); align-items: end; }
 .s5fig { display: block; width: 72px; justify-self: center; }
@@ -854,7 +888,7 @@
 @container (min-width: 960px) { .plans { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .plan { display: grid; gap: 10px; align-content: start; padding: 26px 22px; }
 .plan h3 { font: 900 24px/1.25 var(--home-display); }
-.planTag { font-size: var(--t-s); color: var(--color-muted); }
+.planTag { font-size: var(--t-s); color: var(--color-foreground-muted); }
 .planTape { justify-self: start; margin-block-end: 4px; }
 .price { padding-block: 4px; font-size: var(--t-s); font-weight: 700; }
 .price b { font: 900 30px/1.1 var(--home-display); margin-inline-end: 4px; }
@@ -863,8 +897,8 @@
 .feat { display: grid; gap: 8px; font-size: var(--t-s); }
 .feat > li { display: flex; align-items: flex-start; gap: 10px; }
 .mk { position: relative; isolation: isolate; flex: none; width: 20px; height: 18px; margin-block-start: 4px; display: inline-block; }
-.planCta { justify-self: start; margin-block-start: 6px; font-weight: 800; color: var(--color-ink); text-decoration: none; padding-block-end: 4px; }
-.planCta:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 4px; }
+.planCta { justify-self: start; margin-block-start: 6px; font-weight: 800; color: var(--color-foreground); text-decoration: none; padding-block-end: 4px; }
+.planCta:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 4px; }
 .rulel { font-size: var(--t-m); font-weight: 700; }
 
 /* Questions */
@@ -883,7 +917,7 @@
   list-style: none;
 }
 .qa > summary::-webkit-details-marker { display: none; }
-.qa > summary:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+.qa > summary:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
 .ans { display: grid; gap: 8px; position: relative; padding-inline-start: 20px; font-size: var(--t-s); margin-block: 4px 20px; margin-inline-start: 34px; }
 .brk { position: absolute; top: 2px; inset-inline-start: 0; width: 10px; height: calc(100% - 4px); }
 .brk:dir(ltr) { transform: scaleX(-1); }
@@ -896,9 +930,9 @@
 
 .fl { position: absolute; z-index: 0; display: block; width: var(--s, 44px); pointer-events: none; transform: rotate(var(--r0, -4deg)); }
 .fl svg { display: block; width: 100%; height: auto; overflow: visible; }
-.fi { fill: none; stroke: var(--color-ink); stroke-width: 1.25px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.fi { fill: none; stroke: var(--color-foreground); stroke-width: 1.25px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .ff { fill: var(--f); stroke: none; transform: translate(var(--reg-x), var(--reg-y)); }
-.fd { fill: var(--color-ink); stroke: none; }
+.fd { fill: var(--color-foreground); stroke: none; }
 .fdash { stroke-dasharray: 2 4; }
 .fl-q svg:dir(rtl) { transform: scaleX(-1); }
 .fl-q { --s: 44px; --t: 9s; --dl: -2s; --dy: -9px; --r0: -6deg; --r1: 3deg; top: -84px; inset-inline-end: 12%; }
@@ -928,12 +962,12 @@
 }
 .seam svg { display: block; overflow: visible; }
 .seamLine { position: absolute; inset-inline: 0; top: 50%; width: 100%; height: 24px; transform: translateY(-50%); }
-.seamFly .seamLine .fi { stroke-dasharray: 0.006 0.012; stroke: var(--color-muted); }
+.seamFly .seamLine .fi { stroke-dasharray: 0.006 0.012; stroke: var(--color-foreground-muted); }
 .plane { position: absolute; top: 50%; inset-inline-start: -56px; width: clamp(30px, 4vw, 42px); margin-top: calc(-0.5 * clamp(30px, 4vw, 42px)); }
 .plane > span { display: block; }
 .plane svg:dir(rtl) { transform: scaleX(-1); }
 .dots { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; gap: clamp(8px, 1.6vw, 18px); }
-.dots > i { display: block; width: clamp(10px, 1.4vw, 15px); aspect-ratio: 1; border: 1.25px solid var(--color-ink); border-radius: 52% 46% 50% 48%; background: var(--c); }
+.dots > i { display: block; width: clamp(10px, 1.4vw, 15px); aspect-ratio: 1; border: 1.25px solid var(--color-foreground); border-radius: 52% 46% 50% 48%; background: var(--c); }
 .seamTeam .seamLine { top: auto; bottom: 4px; transform: none; height: 8px; }
 .seamInk .seamLine { height: auto; aspect-ratio: 1000 / 48; }
 .seamInk .seamLine:dir(rtl) { transform: translateY(-50%) scaleX(-1); }
@@ -982,7 +1016,7 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
   scrollbar-width: none;
 }
 .track::-webkit-scrollbar { display: none; }
-.track:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ink); outline-offset: 4px; }
+.track:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ring); outline-offset: 4px; }
 /* Room inside each slide for the scribbled outlines, which draw 4px past their box, and for the kind tag's overhang. */
 .slide { min-width: 0; padding: 18px 10px 10px; scroll-snap-align: start; }
 .scn { justify-content: space-between; }
@@ -992,7 +1026,7 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 .kind { margin-block-start: -38px; margin-inline-start: var(--brk); width: fit-content; }
 .swho { display: flex; align-items: center; gap: 12px; }
 .swho b { display: block; font-weight: 800; line-height: 1.35; }
-.swho small { display: block; font-size: var(--t-xs); color: var(--color-muted); }
+.swho small { display: block; font-size: var(--t-xs); color: var(--color-foreground-muted); }
 /* The face sits in an empty hand-drawn ring; the drawing is clipped round so the shoulders stay inside it. */
 .pface { position: relative; isolation: isolate; display: block; flex: none; width: 76px; height: 76px; padding: 5px; }
 .pface > i { display: block; border-radius: 50%; overflow: hidden; }
@@ -1010,18 +1044,18 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
   padding: 0;
   border: 0;
   background: none;
-  color: var(--color-ink);
+  color: var(--color-foreground);
   cursor: pointer;
 }
 .chev, .glyph { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.25px; stroke-linecap: round; stroke-linejoin: round; }
 /* The slider's own pause button has nothing to do for a visitor who asked for less motion: the row never moves by itself. */
 @media (prefers-reduced-motion: reduce) { .autoBtn { display: none; } }
 :global([dir="rtl"]) .chev { transform: scaleX(-1); }
-.arrow:focus-visible, .pip:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ink); outline-offset: 2px; border-radius: 50%; }
+.arrow:focus-visible, .pip:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ring); outline-offset: 2px; border-radius: 50%; }
 .pips { display: flex; gap: 2px; }
 .pip { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; }
-.pip::before { content: ""; width: 10px; height: 10px; border: 1.5px solid var(--color-ink); border-radius: 50%; }
-.pip[aria-current="true"]::before { background: var(--color-ink); }
+.pip::before { content: ""; width: 10px; height: 10px; border: 1.5px solid var(--color-foreground); border-radius: 50%; }
+.pip[aria-current="true"]::before { background: var(--color-foreground); }
 @media (scripting: none) { .carNav { display: none; } .track { scrollbar-width: thin; } }
 @media (prefers-reduced-motion: no-preference) {
   html:not([data-motion="off"]) .home .pface > i { transform-origin: 50% 85%; animation: nod var(--nw, 5.4s) ease-in-out var(--nd, 0s) infinite; }

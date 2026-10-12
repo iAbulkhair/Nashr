@@ -4,7 +4,6 @@ import { isLang } from "@/lib/i18n";
 import { adminKeySession, currentUser, isAdminCookie, isFounderActor } from "@/lib/auth";
 import AdminNav from "@/components/admin/AdminNav";
 import { SKIP_TO_CONTENT } from "@/lib/screen-titles";
-import ThemeScope from "@/components/ThemeScope";
 
 export const dynamic = "force-dynamic";
 // Never indexed: robots.txt disallows only /{lang}/app/, and naming /{lang}/admin there would advertise it.
@@ -19,12 +18,10 @@ export const metadata: Metadata = { robots: { index: false, follow: false } };
 export default async function AdminLayout({ children, params }: { children: React.ReactNode; params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
-  if (!(await isAdminCookie())) return <div className="min-h-dvh bg-background"><ThemeScope /><a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a><main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-10 sm:px-6">{children}</main></div>;
+  if (!(await isAdminCookie())) return <div className="min-h-dvh bg-background"><a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a><main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-10 sm:px-6">{children}</main></div>;
   const [keySession, user] = await Promise.all([adminKeySession(), currentUser()]);
   return (
     <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
-      {/* Rule 1203: the founder's theme choice applies to the console too. */}
-      <ThemeScope />
       {/* Rule 968: past the console's links straight to the section. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
       <AdminNav lang={lang} keySession={keySession} founder={isFounderActor(user)} />

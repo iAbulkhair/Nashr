@@ -98,7 +98,7 @@
   padding: 10px 26px;
   font-size: 17px;
   font-weight: 800;
-  color: var(--color-paper);
+  color: var(--color-primary-foreground);
   text-decoration: none;
   --pen: var(--stroke-figure);
 }
@@ -112,6 +112,12 @@
 .s-btn--ghost > .scribble .fill { clip-path: inset(0 100% 0 0); transition: clip-path var(--duration-slow) var(--ease-out); }
 [dir="rtl"] .s-btn--ghost > .scribble .fill { clip-path: inset(0 0 0 100%); }
 .s-btn--ghost:is(:hover, :focus-visible) > .scribble .fill { clip-path: inset(0); }
+/*
+ * Rule 1216: text on a bright scribbled fill (lemon, gold, a light agent colour) is ink in both themes, as on a solid
+ * bright fill (globals.css). A ghost button's fill shows only on hover and focus, so its text turns ink only then.
+ */
+:where(.s-btn, .s-chip, .s-card, .s-stamp, .s-tag, .s-bubble, .s-cloud):not(.s-btn--ghost):has(> .scribble[data-bright]) { color: var(--color-accent-foreground); }
+:where(.s-btn--ghost):is(:hover, :focus-visible):has(> .scribble[data-bright]) { color: var(--color-accent-foreground); }
 
 .s-input { display: flex; align-items: center; min-height: 52px; padding: 0 14px; }
 .s-input :is(input, textarea, select) { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--color-foreground); padding: 12px 0; }

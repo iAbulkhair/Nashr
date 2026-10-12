@@ -21,7 +21,7 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
     setSent(res.ok ? "ok" : "err");
   }
   const chip = (on: boolean, id: string, label: string, pick: () => void) => (
-    <button key={id} type="button" onClick={pick} aria-pressed={on} className="s-chip inline-flex items-center !min-h-10 !py-1.5 !text-sm" style={{ ["--chip-on" as string]: "var(--color-lilac)" }}>
+    <button key={id} type="button" onClick={pick} aria-pressed={on} className="s-chip inline-flex items-center !min-h-10 !py-1.5 !text-sm" style={{ ["--chip-on" as string]: "var(--color-background-muted)" }}>
       <Scribble kind="pill" seed={`help-topic-${id}`} fill="paper" ring />
       {label}
     </button>
