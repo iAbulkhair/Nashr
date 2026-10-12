@@ -7,7 +7,8 @@ import { PASSWORD_TOGGLE } from "@/components/app/PasswordField";
 import { appDict } from "@/lib/app-i18n";
 
 const read = (f: string) => readFileSync(f, "utf8");
-const app = (name: string) => read(`src/components/app/${name}.tsx`);
+// WishlistPanel moved to the founder console's folder (rule 1181); the others are app panels.
+const app = (name: string) => read(name === "WishlistPanel" ? "src/components/admin/WishlistPanel.tsx" : `src/components/app/${name}.tsx`);
 const count = (src: string, re: RegExp) => src.match(re)?.length ?? 0;
 // A call to the browser's confirm: `confirm(` or `window.confirm(`, not `askConfirm(`, `.confirm(` on another object
 // or a `confirm:` key in a dictionary.
@@ -23,7 +24,7 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
     for (const [name, asks] of Object.entries(PANELS)) {
       const src = app(name);
       expect(src, name).not.toMatch(NATIVE_CONFIRM);
-      expect(src, name).toContain('import { useConfirm } from "./ConfirmDialog";');
+      expect(src, name).toContain(name === "WishlistPanel" ? 'import { useConfirm } from "../app/ConfirmDialog";' : 'import { useConfirm } from "./ConfirmDialog";');
       expect(src, name).toContain("const [ask, confirmDialog] = useConfirm();");
       expect(count(src, /\bask\(\{/g), name).toBe(asks);
       expect(count(src, /\{confirmDialog\}/g), `${name} renders the dialog once`).toBe(1);

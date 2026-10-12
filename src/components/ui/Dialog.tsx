@@ -58,9 +58,10 @@ export function Dialog({ lang, title, description, onClose, blockClose = false, 
  * A form in a dialog (rule 1089): the fields, one error line, cancel and a submit that shows it is working. `onSubmit`
  * gets the form's data and returns nothing when it is done (the dialog closes) or the words of the refusal, which show
  * inside the dialog. While it runs, the submit is busy and Escape and the close button wait. The caller's route still
- * checks everything; this only asks.
+ * checks everything; this only asks. `submitReady={false}` (rule 1176: a type-to-confirm field not matched yet) keeps
+ * the submit focusable but `aria-disabled`, and a submit then sends nothing.
  */
-export function FormDialog({ lang, title, description, submitLabel, cancelLabel, busyLabel, destructive = false, onSubmit, onClose, children, className }: {
+export function FormDialog({ lang, title, description, submitLabel, cancelLabel, busyLabel, destructive = false, submitReady = true, role, onSubmit, onClose, children, className }: {
   lang: Lang;
   title: React.ReactNode;
   description?: React.ReactNode;
@@ -68,6 +69,9 @@ export function FormDialog({ lang, title, description, submitLabel, cancelLabel,
   cancelLabel: string;
   busyLabel?: string;
   destructive?: boolean;
+  submitReady?: boolean;
+  /** "alertdialog" for a change that removes or pays out money (rule 1102). */
+  role?: "dialog" | "alertdialog";
   onSubmit: (data: FormData) => Promise<string | null | void>;
   onClose: () => void;
   children: React.ReactNode;
@@ -78,7 +82,7 @@ export function FormDialog({ lang, title, description, submitLabel, cancelLabel,
   const form = useRef<HTMLFormElement>(null);
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !submitReady) return;
     setBusy(true); setErr("");
     let refused: string | null | void = null;
     try {
@@ -90,13 +94,13 @@ export function FormDialog({ lang, title, description, submitLabel, cancelLabel,
     form.current?.closest("dialog")?.close();
   }
   return (
-    <Dialog lang={lang} title={title} description={description} onClose={onClose} blockClose={busy} className={className}>
+    <Dialog lang={lang} title={title} description={description} onClose={onClose} blockClose={busy} role={role} className={className}>
       <form ref={form} onSubmit={submit} className="grid gap-4">
         {children}
         {err && <p role="alert" className="field-error">{err}</p>}
         <div className="flex flex-wrap justify-end gap-3">
           <Button variant="secondary" size="sm" disabled={busy} onClick={() => form.current?.closest("dialog")?.close()}>{cancelLabel}</Button>
-          <Button type="submit" variant={destructive ? "danger-solid" : "primary"} size="sm" loading={busy} loadingText={busyLabel}>{submitLabel}</Button>
+          <Button type="submit" variant={destructive ? "danger-solid" : "primary"} size="sm" loading={busy} loadingText={busyLabel} aria-disabled={submitReady ? undefined : true}>{submitLabel}</Button>
         </div>
       </form>
     </Dialog>

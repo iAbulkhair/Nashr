@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
-import { CAPS, pushCapped } from "@/lib/db";
 import { paymentsView, recordPayment, voidPayment } from "@/lib/partners";
 import { refundPaymobPayment } from "@/lib/billing";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
   const email = decodeURIComponent((await ctx.params).email);
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const log = (what: string, reason?: string) => pushCapped("admin:log", JSON.stringify({ actor: who, email, what, reason: reason || undefined, at: new Date().toISOString() }), CAPS.adminLog);
+  const log = (what: string, reason?: string) => adminAudit({ actor: who, section: "billing", target: email, what, reason });
   if (b.action === "record") {
     const res = await recordPayment(email, { id: b.id, amountSar: b.amountSar, plan: b.plan, date: b.date, reference: b.reference }, who);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "not_found" ? 404 : 400 });
@@ -44,6 +44,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     return NextResponse.json(res);
   }
   if (b.action === "void") {
+    // The void form asks a reason (rule 1185). "record" and "refund" have no reason form yet, so theirs stays optional.
+    const noReason = reasonRefused(b.reason);
+    if (noReason) return noReason;
     const res = await voidPayment(email, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "topup_live" ? 409 : 404 });
     await log(`payment:${res.payment.id} void${res.reclassified ? ` reclassified:${res.reclassified.join(",")}` : ""}`, res.payment.voidReason);

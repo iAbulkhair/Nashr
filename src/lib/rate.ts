@@ -25,6 +25,17 @@ export async function allow(bucket: string, max: number, windowSeconds: number):
   return n <= max;
 }
 
+/**
+ * Hands one hit back to `bucket` (rule 1183). A route that counts failures only takes the hit with `allow` BEFORE the
+ * check it guards (INCR is atomic, so parallel requests cannot all slip under the cap) and gives it back when the check
+ * passes. A counter that expired in between would go below zero; it is removed instead.
+ */
+export async function giveBack(bucket: string): Promise<void> {
+  const key = `rate:${bucket}`;
+  const n = await db.incrby(key, -1);
+  if (n < 0) await db.del(key);
+}
+
 /** The `Retry-After` header for a wait of `seconds`: whole seconds, at least one. */
 export const retryAfter = (seconds: number) => ({ "Retry-After": String(Math.max(1, Math.ceil(seconds))) });
 

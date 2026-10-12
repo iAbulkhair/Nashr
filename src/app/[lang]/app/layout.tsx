@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { safeNext } from "@/lib/safe-next";
@@ -8,6 +8,7 @@ import { currentUser, currentUserUnverified, isFounderActor, trialDaysLeft } fro
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
 import InstallHint from "@/components/app/InstallHint";
+import ImpersonationBanner from "@/components/app/ImpersonationBanner";
 import LangToggle from "@/components/LangToggle";
 import Wordmark from "@/components/Wordmark";
 import LimitModal from "@/components/app/LimitModal";
@@ -65,8 +66,7 @@ export default async function AppLayout({ children, params }: { children: React.
   // Rule 1119: the shell's first numbers (bell, approvals badge) are read here, in one round of parallel reads with the
   // brand, so the rail paints with them instead of fetching them again on every navigation. Scope and email are the
   // session's, never the request's.
-  const [brand, jar, notifs, toApprove] = await Promise.all([getBrand(sc(user)), cookies(), listNotifs(user.email), pendingCount(sc(user))]);
-  const impersonating = jar.get("nashr_impersonate")?.value;
+  const [brand, notifs, toApprove] = await Promise.all([getBrand(sc(user)), listNotifs(user.email), pendingCount(sc(user))]);
   const unread = notifs.filter((n) => !n.read).length;
   // `user` is the ACCOUNT (the owner's record); the person acting is `user.actor`. Plan and credits belong to the account,
   // the name, email and role shown are the actor's. The flags only hide controls; the routes enforce the same `can()`.
@@ -80,13 +80,8 @@ export default async function AppLayout({ children, params }: { children: React.
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
       <Sidebar t={t} lang={lang} user={{ name: actor?.name ?? user.name, email: actor?.email ?? user.email, role: actor?.role ?? "member", credits: user.credits, plan: user.plan }} show={{ owner, refer: can(user, "referral"), mcp: can(user, "mcp.token"), partner: !!user.partnerCode && can(user, "partner") }} brandName={brand?.name} admin={isFounderActor(user)} supportWa={(process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "") || undefined} />
       <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-8 lg:overflow-y-auto">
-        {impersonating && (
-          <form action="/api/admin/impersonate" method="post" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-[1.5px] border-danger bg-paper px-3 py-2 text-xs text-ink">
-            <input type="hidden" name="lang" value={lang} />
-            <span>{lang === "ar" ? `تتصفح كالمستخدم ${impersonating} (لمدة ساعتين كحد أقصى)` : `Viewing as ${impersonating} (2 hours max)`}</span>
-            <button type="submit" className="btn btn-danger btn-xs">{lang === "ar" ? "إنهاء والعودة للوحة" : "Stop and return to console"}</button>
-          </form>
-        )}
+        {/* Rule 1177: from the session, never the cookie alone; the account's email and the end the founder chose. */}
+        {actor?.kind === "founder" && <ImpersonationBanner lang={lang} email={user.email} until={actor.until} />}
         {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} />}
         <InstallHint lang={lang} />
         {children}

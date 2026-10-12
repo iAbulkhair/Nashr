@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
-import GoldenPanel from "../app/GoldenPanel";
+import GoldenPanel from "./GoldenPanel";
 import { EndedNotice, STR, useAdminEnded, type SectionProps } from "./shared";
 
 type TM = { type: string; n: number; approved: number; rejected: number; autoApproved: number; approvalRate: number | null; edited: number; editRate: number | null; editMagnitude: number | null; published: number; judged: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };

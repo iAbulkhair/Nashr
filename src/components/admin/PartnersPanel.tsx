@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
+import { useAdminForm } from "./AdminForm";
 import { NEW_TERMS_FROM, PAYOUT_MIN_SAR, codeProblem, countryName, ksaDay, normalizeCode, sarText, taxField, type Bank, type Commission, type Payout } from "@/lib/partner-rules";
 
 type App = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: string; at: string; consentAt: string | null; termsVersion: string | null; suggested: string; decision: { status: "approved" | "rejected"; code?: string; at: string; by: string } | null };
@@ -156,6 +157,7 @@ function PayoutForm({ p, L, onAct }: { p: PartnerRow; L: L; onAct: Act }) {
  */
 export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
   const L = S[lang];
+  const [askForm, formDialog] = useAdminForm(lang);
   const [data, setData] = useState<{ applications: App[]; partners: PartnerRow[] } | null>(null);
   const [msg, setMsg] = useState("");
   const [open, setOpen] = useState<string | null>(null);
@@ -173,12 +175,18 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
     if (j.ok) await load();
     return !!j.ok;
   }, [L, load]);
+  /** Void a payout (rule 1176): its form asks why, 3 to 200 characters, kept on the payout and in the audit log. */
+  const voidPayout = async (email: string, id: string) => {
+    const v = await askForm({ title: L.voidPayout, subject: email, message: L.voidPayoutReason, destructive: true, submitLabel: L.voidPayout, fields: [], parse: () => ({ ok: true, value: {} }) });
+    if (v) void act({ action: "void_payout", email, id, reason: v.reason });
+  };
   if (!data) return <p className="text-sm text-muted">{L.loading}</p>;
   const waiting = data.applications.filter((a) => !a.decision);
   const decided = data.applications.filter((a) => a.decision);
   const manualBad = codeProblem(normalizeCode(manual.code));
   return (
     <div className="grid gap-6 text-xs">
+      {formDialog}
       {msg && <p className="text-sm text-ink" role="status">{msg}</p>}
       <section className="card card-sm">
         <h2 className="font-display text-lg font-bold">{L.apps}</h2>
@@ -209,7 +217,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
             <table className="w-full">
               <thead className="text-muted"><tr><th className="p-1 text-start">{L.email}</th><th className="p-1 text-start">{L.code}</th><th className="p-1">{L.referrals}</th><th className="p-1">{L.earned}</th><th className="p-1">{L.paidOut}</th><th className="p-1">{L.balance}</th><th className="p-1">{L.payable}</th><th className="p-1 text-start">{L.bank}</th><th /></tr></thead>
               <tbody>{data.partners.map((p) => (
-                <PartnerRows key={p.email} p={p} L={L} lang={lang} open={open === p.email} toggle={() => setOpen(open === p.email ? null : p.email)} onAct={act} />
+                <PartnerRows key={p.email} p={p} L={L} lang={lang} open={open === p.email} toggle={() => setOpen(open === p.email ? null : p.email)} onAct={act} onVoid={voidPayout} />
               ))}</tbody>
             </table>
           </div>
@@ -219,7 +227,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
   );
 }
 
-function PartnerRows({ p, L, lang, open, toggle, onAct }: { p: PartnerRow; L: L; lang: "ar" | "en"; open: boolean; toggle: () => void; onAct: Act }) {
+function PartnerRows({ p, L, lang, open, toggle, onAct, onVoid }: { p: PartnerRow; L: L; lang: "ar" | "en"; open: boolean; toggle: () => void; onAct: Act; onVoid: (email: string, id: string) => void }) {
   return (
     <>
       <tr className="border-t border-ink/5 align-top">
@@ -271,7 +279,7 @@ function PartnerRows({ p, L, lang, open, toggle, onAct }: { p: PartnerRow; L: L;
                 <tbody>{p.payouts.map((x) => (
                   <tr key={x.id} className={x.voidedAt ? "text-muted line-through" : ""}>
                     <td className="tnum text-center" dir="ltr">{x.date}</td><td className="tnum text-center" dir="ltr">{sarText(x.sar)}</td><td className="tnum text-center" dir="ltr">{x.vatSar ? sarText(x.vatSar) : "—"}</td><td className="tnum text-center" dir="ltr">{x.whtSar ? sarText(x.whtSar) : "—"}</td><td dir="auto">{x.reference || "—"}{x.voidedAt && x.voidReason ? ` · ${x.voidReason}` : ""}</td>
-                    <td>{x.voidedAt ? L.voided : <button onClick={() => { const reason = prompt(L.voidPayoutReason); if (reason !== null) void onAct({ action: "void_payout", email: p.email, id: x.id, reason }); }} className="text-danger underline">{L.voidPayout}</button>}</td>
+                    <td>{x.voidedAt ? L.voided : <button onClick={() => onVoid(p.email, x.id)} className="min-h-[var(--hit-min)] text-danger underline pointer-fine:min-h-6">{L.voidPayout}</button>}</td>
                   </tr>
                 ))}</tbody></table>
             </div>

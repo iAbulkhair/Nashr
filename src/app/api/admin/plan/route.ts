@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan } from "@/lib/auth";
-import { CAPS, db, pushCapped } from "@/lib/db";
+import { adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan, type User } from "@/lib/auth";
+import { matchUser, pageOf, parseUserQuery, sortUsers, tileCounts, userFacets } from "@/lib/admin-users";
+import { db } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { getUsage } from "@/lib/usage";
 import { chatStatus } from "@/lib/chat-allowance";
@@ -11,6 +12,7 @@ import { enforceSeats } from "@/lib/team";
 import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 import { parseVideoGrant } from "@/lib/entitlements";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -47,42 +49,59 @@ const videoLabel = (g: Grant<"all"> | undefined) => (g ? `all@${g.until}` : "pla
 //      A plan or seat change fits the team to the new limit at once (src/lib/team.ts `enforceSeats`): the newest
 //      members over it are paused, never deleted. Every change is logged in admin:log with the deal before and after.
 //      Rules 243-244 and 316, tests/admin-deal.test.ts.
+/** One account's row: its record with this month's usage and chat. Two reads per account (usage and chat). */
+async function rowOf(u: User) {
+  const [usage, chat] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model)]);
+  // The list price, or an Agency account's deal price (Business's without a deal).
+  const priceSar = priceOf(u);
+  const costSar = usage.usd * SAR_PER_USD;
+  // `chatStatus`, not the month counter alone: a trial's messages are counted once for the whole trial.
+  const chatUsd = usage.byKind.chat?.usd ?? 0;
+  return ({
+    email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt,
+    // Of `credits`, what is left in live top-up packs (src/lib/topups.ts): the rest is the month's plan credits.
+    topupCredits: topupCredits(u),
+    renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang,
+    // Rule 776: when the owner proved the address (null: not yet, so the account reads as signed out until they do).
+    emailVerifiedAt: u.emailVerifiedAt ?? null,
+    seats: seatLimit(u), seatsOverride: u.seats ?? null,
+    deal: u.deal ?? null, allowance: allowanceOf(u),
+    videoGrant: u.grants?.video ?? null,
+    tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls, byKind: usage.byKind,
+    priceSar,
+    // A trial has no list price, so a margin would be meaningless rather than negative.
+    marginPct: priceSar > 0 ? Math.round(((priceSar - costSar) / priceSar) * 100) : null,
+    // `chatUsed` is the RAW count (`counted`), not the owner's clamped `used`: after the allowance was lowered
+    // mid-period it can pass `chatAllowance`, and the console shows that as it is.
+    chatUsed: chat.counted, chatAllowance: chat.allowance, chatLeft: chat.left, chatPeriod: chat.period,
+    chatOverride: u.chatAllowance ?? null, chatOverflowOn: chat.overflow.on, chatOverflowUsed: chat.overflow.used,
+    // What the messages continued on credits were billed this month (each its metered cost, at most `chatOverflowHold`).
+    chatCredits: chat.overflow.credits,
+    chatUsd, usdPerMsg: chatUsdPerMessage(chatUsd, chat),
+  });
+}
+
+/**
+ * `?view=table` (rule 1178): the founder's Users table, filtered, sorted and paged here (`src/lib/admin-users.ts`
+ * `parseUserQuery`: q, plan, filter, sort, dir, page, per). Every account record is read once (one `getUser` each,
+ * through `pmap`), the filters and the sort run on the record's own fields, and usage and chat are read for the page's
+ * rows only. Answers `{ok, view, users, matched, page, pages, per, facets, tiles, total}`. Without `view` the answer is
+ * the whole list as before (the Overview tiles and older consoles read it).
+ */
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
+  const params = new URL(req.url).searchParams;
   const emails = await db.smembers("users:all");
-  const rows = await pmap(emails, async (e) => {
-    const u = await getUser(e);
-    if (!u) return null;
-    const [usage, chat] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model)]);
-    // The list price, or an Agency account's deal price (Business's without a deal).
-    const priceSar = priceOf(u);
-    const costSar = usage.usd * SAR_PER_USD;
-    // `chatStatus`, not the month counter alone: a trial's messages are counted once for the whole trial.
-    const chatUsd = usage.byKind.chat?.usd ?? 0;
-    return ({
-      email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt,
-      // Of `credits`, what is left in live top-up packs (src/lib/topups.ts): the rest is the month's plan credits.
-      topupCredits: topupCredits(u),
-      renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang,
-      // Rule 776: when the owner proved the address (null: not yet, so the account reads as signed out until they do).
-      emailVerifiedAt: u.emailVerifiedAt ?? null,
-      seats: seatLimit(u), seatsOverride: u.seats ?? null,
-      deal: u.deal ?? null, allowance: allowanceOf(u),
-      videoGrant: u.grants?.video ?? null,
-      tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls, byKind: usage.byKind,
-      priceSar,
-      // A trial has no list price, so a margin would be meaningless rather than negative.
-      marginPct: priceSar > 0 ? Math.round(((priceSar - costSar) / priceSar) * 100) : null,
-      // `chatUsed` is the RAW count (`counted`), not the owner's clamped `used`: after the allowance was lowered
-      // mid-period it can pass `chatAllowance`, and the console shows that as it is.
-      chatUsed: chat.counted, chatAllowance: chat.allowance, chatLeft: chat.left, chatPeriod: chat.period,
-      chatOverride: u.chatAllowance ?? null, chatOverflowOn: chat.overflow.on, chatOverflowUsed: chat.overflow.used,
-      // What the messages continued on credits were billed this month (each its metered cost, at most `chatOverflowHold`).
-      chatCredits: chat.overflow.credits,
-      chatUsd, usdPerMsg: chatUsdPerMessage(chatUsd, chat),
-    });
-  });
-  const users = rows.filter((x): x is NonNullable<typeof x> => !!x);
+  const accounts = (await pmap(emails, (e) => getUser(e))).filter((u): u is User => !!u);
+  if (params.get("view") === "table") {
+    const q = parseUserQuery(params);
+    const now = Date.now();
+    const matched = sortUsers(accounts.filter((u) => matchUser(u, q, now)), q.sort, q.dir);
+    const pg = pageOf(matched, q.page, q.per);
+    const [rows, total] = await Promise.all([pmap(pg.rows, rowOf), getUsage("_all")]);
+    return NextResponse.json({ ok: true, view: "table", users: rows, matched: matched.length, page: pg.page, pages: pg.pages, per: q.per, facets: userFacets(accounts, q, now), tiles: tileCounts(accounts, now), total });
+  }
+  const users = await pmap(accounts, rowOf);
   users.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const total = await getUsage("_all");
   return NextResponse.json({ ok: true, count: users.length, users, total });
@@ -92,6 +111,9 @@ export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { email?: string; plan?: Plan; deal?: unknown; addCredits?: unknown; seats?: number | null; chatAllowance?: unknown; videoGrant?: unknown; reason?: string };
+  // Every plan change asks a reason in the console, so the server asks it too (rule 1185).
+  const noReason = reasonRefused(b.reason);
+  if (noReason) return noReason;
   const email = typeof b.email === "string" ? normalizeEmail(b.email) : "";
   // A seat override is a whole number of seats, the owner included; null or 0 goes back to the plan's.
   const seatsGiven = b.seats !== undefined;
@@ -186,6 +208,6 @@ export async function POST(req: Request) {
     grantGiven ? `video:${grant ? `all@${grant.until}` : "plan"}` : "",
   ].filter(Boolean).join(" ") || "none";
   const teamChange = team && (team.disabled.length || team.enabled.length || team.cancelled.length) ? { disabled: team.disabled, enabled: team.enabled, cancelledInvites: team.cancelled.length } : undefined;
-  await pushCapped("admin:log", JSON.stringify({ actor: who, email: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video) }, team: teamChange, reason: (typeof b.reason === "string" ? b.reason.slice(0, 200) : "") || undefined, at: new Date().toISOString() }), CAPS.adminLog);
+  await adminAudit({ actor: who, section: "users", action: "plan", target: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video) }, reason: b.reason, ...(teamChange ? { extra: { team: teamChange } } : {}) });
   return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user), chatAllowance: chatAllowanceOf(user), chatOverride: user.chatAllowance ?? null, videoGrant: user.grants?.video ?? null }, ...(team ? { team } : {}) });
 }

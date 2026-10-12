@@ -337,7 +337,7 @@ describe("the console says when its session ended and links back in (rule 436)",
     // The console is one component per section since rule 874 (src/components/admin), with the shared hooks in shared.tsx.
     const files = [
       ...["shared", "Overview", "Users", "Usage", "Billing", "Quality", "Log", "AdminNav"].map((f) => `src/components/admin/${f}.tsx`),
-      ...["GoldenPanel", "WishlistPanel", "LeadsPanel", "PartnersPanel", "PaymentsPanel"].map((f) => `src/components/app/${f}.tsx`),
+      ...["GoldenPanel", "WishlistPanel", "LeadsPanel", "PartnersPanel", "PaymentsPanel"].map((f) => `src/components/admin/${f}.tsx`), // moved from components/app (rule 1181)
     ];
     for (const f of files) {
       const src = readFileSync(f, "utf8");

@@ -1,4 +1,5 @@
-import { CAPS, db, pushCapped } from "./db";
+import { db } from "./db";
+import { adminAudit } from "./admin-audit";
 
 /**
  * Whether email can actually reach a customer. It needs the API key AND a real sender. Without MAIL_FROM the sender is
@@ -68,11 +69,7 @@ async function mailFailed(from: string, reason: string) {
   console.error("email refused", { from, reason });
   // The recipient is deliberately NOT recorded: this ring is read by the founder console and an address here would
   // turn a delivery log into a list of who asked for a password reset.
-  await pushCapped(
-    "admin:log",
-    JSON.stringify({ actor: "system", email: "mail", what: "mail:refused", after: { from, reason: reason.slice(0, 200) }, at: new Date().toISOString() }),
-    CAPS.adminLog,
-  ).catch(() => {});
+  await adminAudit({ actor: "system", section: "system", target: "mail", what: "mail:refused", after: { from, reason: reason.slice(0, 200) } }).catch(() => {});
 }
 
 /**

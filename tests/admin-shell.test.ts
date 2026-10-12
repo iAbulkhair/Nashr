@@ -124,7 +124,7 @@ describe("one component per console section (rule 874)", () => {
 
   it("with a key session every section page renders its own component (rule 874)", async () => {
     await adminSignIn();
-    const marks: Record<AdminSection, RegExp> = { overview: /…/, users: /type="text"|placeholder=/, leads: /data-testid="leads-panel"/, usage: /Loading…|جارٍ التحميل…/, billing: /Loading…|جارٍ التحميل…/, partners: /^<p class="text-sm text-muted">Loading…<\/p>$/, quality: /Agent quality/, wishlist: /^<p class="text-sm text-muted">Loading…<\/p>$/, log: /Every founder action/ };
+    const marks: Record<AdminSection, RegExp> = { overview: /…/, users: /type="text"|placeholder=/, leads: /data-testid="leads-panel"/, usage: /Loading…|جارٍ التحميل…/, billing: /Loading…|جارٍ التحميل…/, partners: /^<p class="text-sm text-muted">Loading…<\/p>$/, quality: /Agent quality/, wishlist: /^<p class="text-sm text-muted">Loading…<\/p>$/, log: /Audit log/ }; // The Log page's title since rule 1179.
     for (const s of ADMIN_SECTIONS) {
       const html = renderToStaticMarkup((await (await pageFor(s))({ params: P("en"), searchParams: Q({}) })) as React.ReactElement);
       expect(html, s).toMatch(marks[s]);
