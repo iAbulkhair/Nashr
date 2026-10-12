@@ -39,7 +39,9 @@ Its own route tree and layout (rules 870-872): `layout.tsx` renders `AdminNav` (
 
 Second factor (2026-10-12, rules 1370-1384): the layout also renders `SecondFactor` (`src/components/admin/SecondFactor.tsx`) above every section: a banner with "set up" while `secondFactorStatus()` (`src/lib/admin-2fa.ts`) finds no enrolment, a status line with "replace" once there is one, and the code prompt that `adminFetch` opens when a write answers 403 `second_factor` (the write is sent again after a right code). The codes come from `src/lib/totp.ts` (RFC 6238 in `crypto`, no dependency).
 
-### 2.4 API routes (132 route files, 185 method handlers plus 5 CORS `OPTIONS`, on 2026-10-12)
+### 2.4 API routes (139 route files, 193 method handlers plus 5 CORS `OPTIONS`, on 2026-10-12)
+
+Counted on the 2026-10-12 build batch (ten pull requests merged on one branch) with the two commands below: 139 files and 198 exports (193 method handlers plus 5 CORS `OPTIONS`). Next to `admin/2fa` below, the batch added `account/export` (GET, the owner's data download, rules 1320-1324), `admin/brand-cap` (POST, rule 1393) and four agent-scope files (`admin/agent-scope` GET, `admin/agent-scope/modes`, `admin/agent-scope/eval` and `admin/agent-scope/release`, POST each, rules 1411-1413). The figures in the paragraphs after this one are history.
 
 The founder console's second factor (2026-10-12, rules 1370-1384) added one file and two exports: `admin/2fa` (GET, POST).
 
