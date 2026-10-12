@@ -33,14 +33,18 @@ export function FileCard({ file, lang, defaultOpen = false }: { file: { name: st
   );
 }
 
-/** Starter plan from onboarding: each task can be added to the owner's list or started right away. */
-export function PlanCard({ plan, lang, onStart }: { plan: PlanItem[]; lang: "ar" | "en"; onStart: (prompt: string) => void }) {
+/**
+ * Starter plan from onboarding: each task can be added to the owner's list or started right away. With `demo` (the home
+ * page's gallery, rule 1222) it reads and writes nothing: Add marks the row on this card only.
+ */
+export function PlanCard({ plan, lang, onStart, demo = false }: { plan: PlanItem[]; lang: "ar" | "en"; onStart: (prompt: string) => void; demo?: boolean }) {
   const S = STR[lang];
   const [items, setItems] = useState(plan);
   const [hidden, setHidden] = useState(false);
-  useEffect(() => { fetch("/api/onboard/plan").then((r) => r.json()).then((j) => { if (j.ok && Array.isArray(j.plan) && j.plan.length === plan.length) setItems(j.plan); }).catch(() => {}); }, [plan.length]);
+  useEffect(() => { if (demo) return; fetch("/api/onboard/plan").then((r) => r.json()).then((j) => { if (j.ok && Array.isArray(j.plan) && j.plan.length === plan.length) setItems(j.plan); }).catch(() => {}); }, [plan.length, demo]);
   async function add(i: number) {
     setItems((p) => p.map((x, n) => (n === i ? { ...x, added: true } : x)));
+    if (demo) return;
     await fetch("/api/onboard/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ index: i, added: true }) }).catch(() => {});
   }
   if (hidden) return null;

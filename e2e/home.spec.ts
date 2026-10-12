@@ -9,7 +9,8 @@ import { CLAUDE_PAUSED } from "../src/lib/model";
  * doodles and seams move only without reduced motion and stop with the page's pause button.
  */
 
-const SECTIONS = HOME_NAV.map((n) => n.href.slice(1));
+// The gallery (rule 1220) sits after your day and has no nav link: its copy stays out of src/lib/home.ts.
+const SECTIONS = HOME_NAV.map((n) => n.href.slice(1)).flatMap((id) => (id === "day" ? [id, "gallery"] : [id]));
 
 for (const lang of LANGS) {
   test.describe(`home · ${lang}`, () => {
