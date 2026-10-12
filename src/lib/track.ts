@@ -46,7 +46,9 @@ export async function track(email: string | undefined, event: Event) {
 
 export async function userEvents(email: string): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
-  for (const e of EVENTS) { const n = await db.get<number>(`uev:${email}:${e}`); if (n) out[e] = Number(n); }
+  // One MGET for the eleven counters (rule 1433), not eleven GETs in a row: the console reads this for every user it lists.
+  const counts = await db.mget<number>(EVENTS.map((e) => `uev:${email}:${e}`));
+  EVENTS.forEach((e, i) => { if (counts[i]) out[e] = Number(counts[i]); });
   return out;
 }
 export const lastActive = (email: string) => db.get<string>(`ulast:${email}`);
