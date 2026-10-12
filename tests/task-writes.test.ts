@@ -26,7 +26,10 @@ vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
     messages = {
       create: async () => {
-        await h.duringJudge?.();
+        // Once: the publish it runs makes model calls of its own through this same fake, which would land here again.
+        const during = h.duringJudge;
+        h.duringJudge = null;
+        await during?.();
         return { model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([h.verdict]) }] };
       },
       stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
