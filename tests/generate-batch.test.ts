@@ -192,7 +192,7 @@ describe("a failed read or a failed generation is refunded with the receipt (rul
     expect(await listTasks(u.email)).toEqual([]);
   });
 
-  it("a generation that returns no usable item is a failure and is refunded, never charged (rule 1246, issue #79)", async () => {
+  it("a generation that returns no usable item is a failure and is refunded, never charged (rule 1306, issue #79)", async () => {
     for (const items of [[], [{ channel: "instagram", title: "no body" }]] as unknown as Item[][]) {
       const { generateBatch, seen } = await load({ items });
       const u = await owner("gb-empty");

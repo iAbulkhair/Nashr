@@ -158,7 +158,7 @@ export type User = {
    */
   billing?: Billing;
   /**
-   * A plan set by hand and the Riyadh day it is paid through (src/lib/hand-plan.ts, rules 1242-1245): the monthly refill
+   * A plan set by hand and the Riyadh day it is paid through (src/lib/hand-plan.ts, rules 1302-1305): the monthly refill
    * stops after that day. Written only by POST /api/admin/plan under `withUserLock`; removed by a Paymob plan payment, a
    * Paymob refund that ends the plan, and a change to the trial. Absent on plans set before 2026-10-12 (no end).
    */

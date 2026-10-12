@@ -486,7 +486,7 @@ export async function renewIfDue(email: string): Promise<boolean> {
     return u.billing ? false : { plan: u.plan, before, after: u.credits, month: u.renewedAt, paidThrough: u.handPlan?.paidThrough ?? null };
   });
   if (hand === null) return false;
-  // Every month of credits a hand-set plan receives leaves a row in the founder's log (rule 1244, 360 study G-012): who
+  // Every month of credits a hand-set plan receives leaves a row in the founder's log (rule 1304, 360 study G-012): who
   // granted (the system, for the founder's plan), the plan, the balance before and after, and the paid-through day (none
   // for a plan set before paid-through days existed). After the save: a failed log write never undoes the month.
   if (hand) {
@@ -504,7 +504,7 @@ export async function renewIfDue(email: string): Promise<boolean> {
  * is not in the current UTC month. A copy read before the lock may only skip the lock: `renewedAt` only moves forward,
  * so a copy that says "not due" is never wrong, and one that says "due" is checked again under the lock. A Paymob
  * subscription locked for an unpaid renewal gets no new month (rule 712): paying again gives it the month's credits.
- * A plan set by hand gets no new month after its paid-through day (Riyadh, `handPlanEnded`, rule 1243); one set before
+ * A plan set by hand gets no new month after its paid-through day (Riyadh, `handPlanEnded`, rule 1303); one set before
  * paid-through days existed has none and refills as before (the expand step of rule 679).
  */
 export const renewalDue = (u: Pick<User, "plan" | "renewedAt" | "createdAt" | "billing" | "handPlan">, month = monthKey(), today = ksaDay()) =>

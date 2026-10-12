@@ -452,10 +452,10 @@ describe("the founder (rules 717, 718)", () => {
   });
 });
 
-describe("a refund ends the plan (rules 1240, 1241, 1245)", () => {
+describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
   const refund = (email: string, b: Record<string, unknown>) => adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", { action: "refund", ...b }), params({ email: encodeURIComponent(email) }));
   const logRows = async (email: string, action: string) => (await db.lrange("admin:log", 0, 100)).map(String).filter((l) => l.includes(email) && l.includes(`"action":"${action}"`));
-  it("a refunded plan payment ends the plan at once: ended trial, no subscription, plan credits 0, packs kept, logged; a retry changes nothing (rule 1240)", async () => {
+  it("a refunded plan payment ends the plan at once: ended trial, no subscription, plan credits 0, packs kept, logged; a retry changes nothing (rule 1300)", async () => {
     const u = await owner();
     const { obj } = await payAndConfirm({ kind: "plan", plan: "starter" });
     await payAndConfirm({ kind: "topup", credits: 300 });
@@ -482,7 +482,7 @@ describe("a refund ends the plan (rules 1240, 1241, 1245)", () => {
     expect((await getUser(u.email))!.credits).toBe(300);
     expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
   });
-  it("a pack's refund leaves the plan alone (rule 1240)", async () => {
+  it("a pack's refund leaves the plan alone (rule 1300)", async () => {
     const u = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter" });
     const { obj } = await payAndConfirm({ kind: "topup", credits: 300 });
@@ -494,7 +494,7 @@ describe("a refund ends the plan (rules 1240, 1241, 1245)", () => {
     expect(after.plan).toBe("starter");
     expect(after.billing).toMatchObject({ status: "active" });
   });
-  it("a refund or partial refund made in Paymob's dashboard arrives as a refunded or child transaction and changes nothing (rule 1241)", async () => {
+  it("a refund or partial refund made in Paymob's dashboard arrives as a refunded or child transaction and changes nothing (rule 1301)", async () => {
     const u = await owner();
     const { it: intent } = await payAndConfirm({ kind: "plan", plan: "starter" });
     const before = (await getUser(u.email))!;
@@ -505,7 +505,7 @@ describe("a refund ends the plan (rules 1240, 1241, 1245)", () => {
     const after = (await getUser(u.email))!;
     expect([after.plan, after.credits, after.billing?.paidThrough]).toEqual([before.plan, before.credits, before.billing?.paidThrough]);
   });
-  it("a Paymob plan payment removes a paid-through day set by hand: the subscription's own day governs (rule 1245)", async () => {
+  it("a Paymob plan payment removes a paid-through day set by hand: the subscription's own day governs (rule 1305)", async () => {
     const u = await owner();
     await saveUser({ ...(await getUser(u.email))!, plan: "pro", handPlan: { paidThrough: addDays(today(), 5), by: "key", at: new Date().toISOString() } });
     await payAndConfirm({ kind: "plan", plan: "starter" });

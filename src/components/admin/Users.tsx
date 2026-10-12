@@ -196,7 +196,7 @@ export default function Users({ lang, keySession }: SectionProps) {
       title: UC.planTitle, subject: u.email, message: UC.planNote,
       fields: [
         { name: "plan", label: UC.planField, kind: "select", initial: u.plan, options: PLANS.map((p) => ({ value: p, label: p })) },
-        // Rule 1242: a hand-set paid plan refills only through this day; one month from today unless the founder picks another.
+        // Rule 1302: a hand-set paid plan refills only through this day; one month from today unless the founder picks another.
         { name: "paidThrough", label: UC.paidThroughField, kind: "date", initial: defaultPaidThrough(ksaDay()), ltr: true },
       ],
       parse: (f) => {

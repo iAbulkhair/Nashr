@@ -34,7 +34,7 @@ const headers = {};
 const call = (email: string, body: Record<string, unknown>) => plan.POST(json("/api/admin/plan", "POST", { email, ...body }, headers));
 /** A body sent as raw text, for what JSON.stringify cannot write (1e999 parses to Infinity). */
 const raw = (text: string) => plan.POST(new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: text }));
-/** A paid plan set by hand without a day gets one month from today, named in the log (rule 1242). */
+/** A paid plan set by hand without a day gets one month from today, named in the log (rule 1302). */
 const PAID = ` paid_through:${defaultPaidThrough(ksaDay())}`;
 const logLength = async () => (await db.lrange("admin:log", 0, -1)).length;
 const lastLog = async () => JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { what: string; before: { deal: string; seats: number; chat: number }; after: { deal: string; credits: number; seats: number; chat: number }; actor: string; reason?: string };

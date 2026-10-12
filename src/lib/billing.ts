@@ -182,7 +182,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     const changed = u.plan !== plan || billingLocked(b);
     u.plan = plan;
     delete u.deal;
-    // Paid online from now on: the subscription's own `paidThrough` governs, not a day the founder set by hand (rule 1245).
+    // Paid online from now on: the subscription's own `paidThrough` governs, not a day the founder set by hand (rule 1305).
     delete u.handPlan;
     if (changed) {
       setMonthly(u, allowanceOf(u));
@@ -215,7 +215,7 @@ const ok = (result: string): CallbackResult => ({ status: 200, result });
  */
 export async function applyTransaction(cfg: PaymobConfig, t: Txn): Promise<CallbackResult> {
   // A refund or void made in Paymob's dashboard, full or partial, arrives here as a child or refunded transaction and
-  // changes nothing on the account (rule 1241): only the founder console's refund ends a plan (`refundPaymobPayment`).
+  // changes nothing on the account (rule 1301): only the founder console's refund ends a plan (`refundPaymobPayment`).
   if (t.hasParent || t.isRefunded || t.isVoided || t.pending) return ok("ignored");
   if (!t.ref || !REF.test(t.ref)) return ok("ignored");
   if (await db.get(doneKey(t.id))) return ok("already");
@@ -459,7 +459,7 @@ export type RefundError = "not_enabled" | "not_found" | "not_paymob" | "busy" | 
 /**
  * The founder's refund of a Paymob payment (spec 4.5): the whole transaction at Paymob, once, then the payment voided
  * through the existing path (a pack's payment with its pack), then, for a plan or renewal payment, the plan ended
- * (`endPlanOnRefund`, rule 1240). A retry after the Paymob refund only finishes the void and the end.
+ * (`endPlanOnRefund`, rule 1300). A retry after the Paymob refund only finishes the void and the end.
  */
 export async function refundPaymobPayment(email: string, id: unknown, by: string, reason: unknown): Promise<{ ok: true; payment: Payment; alreadyRefunded: boolean; planEnded: boolean } | { ok: false; error: RefundError }> {
   const cfg = paymobConfig();
@@ -497,16 +497,16 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   }
   const v = await voidPayment(e, id, by, why);
   if (!v.ok) return { ok: false, error: "not_found" };
-  // A plan or renewal payment refunded in full ends the plan now (founder decision 2026-10-12, rule 1240). This path
+  // A plan or renewal payment refunded in full ends the plan now (founder decision 2026-10-12, rule 1300). This path
   // always refunds the whole transaction (`rec.amountCents` above); a partial refund does not exist here, and one made
   // in Paymob's own dashboard reaches us only as a refunded transaction, which `applyTransaction` ignores: it changes
-  // nothing on the account (open question in rule 1241). A pack's payment never reaches this line.
+  // nothing on the account (open question in rule 1301). A pack's payment never reaches this line.
   const planEnded = await endPlanOnRefund(e, id, by);
   return { ok: true, payment: v.payment, alreadyRefunded, planEnded };
 }
 
 /**
- * The plan ends at the moment of a full refund (rule 1240): the plan goes back to an ended trial (`trialOver`, so every
+ * The plan ends at the moment of a full refund (rule 1300): the plan goes back to an ended trial (`trialOver`, so every
  * spending gate refuses exactly as after a trial), the online subscription is removed (nothing renews: automatic renewal
  * is off with it), a hand-set paid-through day and an Agency deal go too, and the month's plan credits are set to 0.
  * Live top-up packs keep their credits: each is its own payment, refunded on its own. Under the ledger lock, once: a

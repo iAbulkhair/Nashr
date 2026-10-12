@@ -1,7 +1,7 @@
 import { addDays, addMonths, type Billing } from "./billing-state";
 
 /**
- * A plan the founder set by hand (POST /api/admin/plan) and the Riyadh day it is paid through (rules 1242-1245, 360
+ * A plan the founder set by hand (POST /api/admin/plan) and the Riyadh day it is paid through (rules 1302-1305, 360
  * study G-013). Import free apart from the date helpers, so `src/lib/credits.ts` and the console can read it.
  *
  * Stored shape, an expand (rule 679): `User.handPlan` is new and optional. A record without it (every plan set by hand

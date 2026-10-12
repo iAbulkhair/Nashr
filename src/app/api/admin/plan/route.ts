@@ -48,7 +48,7 @@ const videoLabel = (g: Grant<"all"> | undefined) => (g ? `all@${g.until}` : "pla
 //            ahead, `note` at most 200 characters on one line; anything else is 400 bad_grant, decided before the account
 //            is read). Only `until` and `note` are read from the body: the value, the actor and the time are set here. A
 //            plan change keeps the grant; only null removes it (rule 783, tests/entitlements-grant.test.ts).
-//      paidThrough: the Riyadh day (YYYY-MM-DD) a plan set by hand is paid through (rules 1242-1245, src/lib/hand-plan.ts):
+//      paidThrough: the Riyadh day (YYYY-MM-DD) a plan set by hand is paid through (rules 1302-1305, src/lib/hand-plan.ts):
 //            from today to 400 days ahead, else 400 bad_paid_through. With a paid plan it is stored in `User.handPlan`
 //            (left out: one calendar month from today); the monthly refill stops after it. Alone, it moves the day of
 //            the current hand-set plan (400 paid_through_needs_plan on a trial, 409 paid_through_paymob on an online
@@ -203,7 +203,7 @@ export async function POST(req: Request) {
       // A plan set by hand makes the account hand-managed: the online subscription (src/lib/billing.ts, rule 717) stops
       // renewing, and a renewal lock on it ends here. The saved card stays until the owner removes it or the account goes.
       if (u.billing) { delete u.billing; billingEnded = true; }
-      // The plan's paid-through day (rule 1242): the trial has none; a paid plan gets the one sent, or one month from
+      // The plan's paid-through day (rule 1302): the trial has none; a paid plan gets the one sent, or one month from
       // today, unless the request clears it (no end, the old behaviour).
       if (u.plan === "trial" || clearPaid) delete u.handPlan;
       else u.handPlan = { paidThrough: paidDay ?? defaultPaidThrough(today), by: who, at: new Date().toISOString() };
