@@ -192,6 +192,19 @@ describe("a failed read or a failed generation is refunded with the receipt (rul
     expect(await listTasks(u.email)).toEqual([]);
   });
 
+  it("a generation that returns no usable item is a failure and is refunded, never charged (rule 1246, issue #79)", async () => {
+    for (const items of [[], [{ channel: "instagram", title: "no body" }]] as unknown as Item[][]) {
+      const { generateBatch, seen } = await load({ items });
+      const u = await owner("gb-empty");
+      const r = await generateBatch(u, u.email, { type: "pricing_review", source: "manual", via: "app" });
+      expect(r).toMatchObject({ ok: false, reason: "failed", credits: 50 });
+      expect(!r.ok && r.reason === "failed" && (r.error as Error).message).toBe("empty_generation");
+      expect(seen.charged).toBe(1);
+      expect([await credits(u.email), await spend(u.email)]).toEqual([50, { razan: 0 }]);
+      expect(await listTasks(u.email)).toEqual([]);
+    }
+  });
+
   it("a small ask that fails gives back exactly what it was charged, not the full batch price (rules 222 and 241)", async () => {
     const { generateBatch, countCost } = await load({ genFails: true });
     const u = await owner("gb-smallfail");

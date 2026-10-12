@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "./db";
-import { getUser, normalizeEmail, normalizePhone, saveUser, type User } from "./auth";
+import { getUser, normalizeEmail, normalizePhone, saveUser, trialOver, type User } from "./auth";
 import { monthKey, withUserLock } from "./credits";
 import { setMonthly } from "./topups";
 import { PLAN_PRICE_SAR, SELF_SERVE_PLANS, VAT_RATE, allowanceOf, firstMonthPriceSar, isTopupPack, topupPriceSar, topupsSold, type SelfServePlan } from "./pricing";
@@ -182,6 +182,8 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     const changed = u.plan !== plan || billingLocked(b);
     u.plan = plan;
     delete u.deal;
+    // Paid online from now on: the subscription's own `paidThrough` governs, not a day the founder set by hand (rule 1245).
+    delete u.handPlan;
     if (changed) {
       setMonthly(u, allowanceOf(u));
       u.renewedAt = monthKey();
@@ -212,6 +214,8 @@ const ok = (result: string): CallbackResult => ({ status: 200, result });
  * marker, a short lock, and idempotent steps inside; a failure throws so the caller answers 500 and Paymob retries.
  */
 export async function applyTransaction(cfg: PaymobConfig, t: Txn): Promise<CallbackResult> {
+  // A refund or void made in Paymob's dashboard, full or partial, arrives here as a child or refunded transaction and
+  // changes nothing on the account (rule 1241): only the founder console's refund ends a plan (`refundPaymobPayment`).
   if (t.hasParent || t.isRefunded || t.isVoided || t.pending) return ok("ignored");
   if (!t.ref || !REF.test(t.ref)) return ok("ignored");
   if (await db.get(doneKey(t.id))) return ok("already");
@@ -454,9 +458,10 @@ export async function setRenewal(email: string, action: unknown): Promise<{ ok: 
 export type RefundError = "not_enabled" | "not_found" | "not_paymob" | "busy" | "paymob_refund_failed";
 /**
  * The founder's refund of a Paymob payment (spec 4.5): the whole transaction at Paymob, once, then the payment voided
- * through the existing path (a pack's payment with its pack). A retry after the Paymob refund only finishes the void.
+ * through the existing path (a pack's payment with its pack), then, for a plan or renewal payment, the plan ended
+ * (`endPlanOnRefund`, rule 1240). A retry after the Paymob refund only finishes the void and the end.
  */
-export async function refundPaymobPayment(email: string, id: unknown, by: string, reason: unknown): Promise<{ ok: true; payment: Payment; alreadyRefunded: boolean } | { ok: false; error: RefundError }> {
+export async function refundPaymobPayment(email: string, id: unknown, by: string, reason: unknown): Promise<{ ok: true; payment: Payment; alreadyRefunded: boolean; planEnded: boolean } | { ok: false; error: RefundError }> {
   const cfg = paymobConfig();
   if (!cfg) return { ok: false, error: "not_enabled" };
   const e = normalizeEmail(email);
@@ -488,9 +493,43 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   const why = typeof reason === "string" && reason.trim() ? reason : "paymob refund";
   if (p.topup) {
     const r = await voidPaidTopup(e, p.topup.lot, by, why);
-    if (r.ok) return { ok: true, payment: r.payment ?? p, alreadyRefunded };
+    if (r.ok) return { ok: true, payment: r.payment ?? p, alreadyRefunded, planEnded: false };
   }
   const v = await voidPayment(e, id, by, why);
   if (!v.ok) return { ok: false, error: "not_found" };
-  return { ok: true, payment: v.payment, alreadyRefunded };
+  // A plan or renewal payment refunded in full ends the plan now (founder decision 2026-10-12, rule 1240). This path
+  // always refunds the whole transaction (`rec.amountCents` above); a partial refund does not exist here, and one made
+  // in Paymob's own dashboard reaches us only as a refunded transaction, which `applyTransaction` ignores: it changes
+  // nothing on the account (open question in rule 1241). A pack's payment never reaches this line.
+  const planEnded = await endPlanOnRefund(e, id, by);
+  return { ok: true, payment: v.payment, alreadyRefunded, planEnded };
+}
+
+/**
+ * The plan ends at the moment of a full refund (rule 1240): the plan goes back to an ended trial (`trialOver`, so every
+ * spending gate refuses exactly as after a trial), the online subscription is removed (nothing renews: automatic renewal
+ * is off with it), a hand-set paid-through day and an Agency deal go too, and the month's plan credits are set to 0.
+ * Live top-up packs keep their credits: each is its own payment, refunded on its own. Under the ledger lock, once: a
+ * retry finds the ended trial with no subscription and changes nothing. Seats are fitted to the trial's and the change
+ * is logged with the balance before and after.
+ */
+async function endPlanOnRefund(email: string, paymentId: string, by: string): Promise<boolean> {
+  const now = new Date();
+  const change = await withUserLock(email, async (u) => {
+    if (!u.billing && trialOver(u)) return null;
+    const before = { plan: String(u.plan), credits: Number(u.credits) || 0, autoRenew: u.billing?.autoRenew ?? false, paidThrough: u.billing?.paidThrough ?? u.handPlan?.paidThrough ?? null };
+    u.plan = "trial";
+    // A second in the past: `trialOver` compares strictly, so a read in the same millisecond still sees it ended.
+    u.trialEnds = new Date(now.getTime() - 1000).toISOString();
+    delete u.billing;
+    delete u.handPlan;
+    delete u.deal;
+    setMonthly(u, 0);
+    await saveUser(u);
+    return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null } };
+  });
+  if (!change) return false;
+  await enforceSeats(email);
+  await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}`, before: change.before, after: change.after });
+  return true;
 }

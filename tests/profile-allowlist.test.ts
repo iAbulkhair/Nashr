@@ -18,7 +18,7 @@ const OWNER_KEYS = ["createdAt", "credits", "deal", "email", "lang", "name", "ph
 /** A member's `user`: its own name, email, language and role, and the account summary every seat shares. */
 const MEMBER_KEYS = ["createdAt", "credits", "email", "lang", "name", "plan", "renewedAt", "role", "topups", "trialEnds"];
 /** Strings stored in fields the customer must never be sent. None may appear anywhere in the answer. */
-const SECRETS = ["founder-deal@test.example", "founder-grant@test.example", "SECRET-GRANT-NOTE", "SECRET-BANK-REF", "founder-topup@test.example", "SECRET-INTENT-REF", "SECRET-TXN", "partner-owner@test.example", "SECRET-PARTNER-REF", "pay_7870000000000000"];
+const SECRETS = ["founder-deal@test.example", "founder-grant@test.example", "SECRET-GRANT-NOTE", "SECRET-BANK-REF", "founder-topup@test.example", "SECRET-INTENT-REF", "SECRET-TXN", "partner-owner@test.example", "SECRET-PARTNER-REF", "pay_7870000000000000", "founder-hand@test.example"];
 
 const DAY = 86400_000;
 const iso = (days: number) => new Date(Date.now() + days * DAY).toISOString();
@@ -64,6 +64,7 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     gatedSignup: true,
     emailMoves: { day: iso(0).slice(0, 10), n: 1 },
     chinaHostingOk: true,
+    handPlan: { paidThrough: iso(20).slice(0, 10), by: "founder-hand@test.example", at: iso(-1) },
   };
   await saveUser(full);
   return full;

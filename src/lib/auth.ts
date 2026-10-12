@@ -7,6 +7,7 @@ import type { Member } from "./team";
 import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
 import { settleTopups, type Receipt, type TopupLot } from "./topups";
 import { billingLocked, type Billing } from "./billing-state";
+import type { HandPlan } from "./hand-plan";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -156,6 +157,12 @@ export type User = {
    * Written only by src/lib/billing.ts under `withUserLock`. Absent for accounts activated by hand.
    */
   billing?: Billing;
+  /**
+   * A plan set by hand and the Riyadh day it is paid through (src/lib/hand-plan.ts, rules 1242-1245): the monthly refill
+   * stops after that day. Written only by POST /api/admin/plan under `withUserLock`; removed by a Paymob plan payment, a
+   * Paymob refund that ends the plan, and a change to the trial. Absent on plans set before 2026-10-12 (no end).
+   */
+  handPlan?: HandPlan;
   /** Runtime only: `getUser` settled the stored packs (one expired); the next locked save writes them. Never persisted. */
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
