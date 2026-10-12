@@ -28,6 +28,8 @@ import { isComposio, revokeAll } from "./connectors/via-composio";
 import { AD_PROVIDERS } from "./connectors/ads";
 import { AD_STATS_SOURCES, ADSTATS_KEY } from "./ad-stats";
 import { XSTATS_KEY } from "./social-read/common";
+import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
+import { instructionProposalKeys } from "./instruction-proposals";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -83,9 +85,9 @@ export async function wipeAccount(email: string) {
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals] = perScope[i];
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
@@ -101,6 +103,8 @@ export async function wipeAccount(email: string) {
       `decisions:${s}`,
       // The governance history (who changed which setting, with their email) and its save lock (10 s TTL).
       `govhist:${s}`, `govlock:${s}`,
+      // The agent instructions of this brand: its layer, revision history and write lock (src/lib/instructions-store.ts).
+      ...instructionKeys(s),
       // The activity log (titles, file names, member emails) and the routines' "nothing new" markers (8 or 35 days).
       activityKey(s), ...routineSkipKeys(s),
       // Reem's list: every item ever created and not yet purged (open, done and deleted), its indexes (the reminder index
@@ -115,6 +119,9 @@ export async function wipeAccount(email: string) {
       // claims and index, and the brand lock. The publish markers (`pubtry:`, `publock:`) are left to their TTL (3 days
       // at most): they hold a time or a lock, not account data, and finding them would take every item on every platform.
       ...proposals,
+      // Instructions an agent proposed from chat (7 days, the owner's own rule text), their outcomes and claims, the index
+      // and the day's proposal counter (src/lib/instruction-proposals.ts).
+      ...instrProposals,
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
@@ -192,6 +199,8 @@ export async function wipeAccount(email: string) {
   );
   // The account record goes first, then the team under its lock: an invite accepted while this runs either finished
   // before `wipeTeam` took `lock:team` (and its member is deleted there) or re-reads the owner after it and finds none.
+  // The founder feed of instruction changes holds this account's email: its rows leave with it (a busy lock stops the wipe, a retry runs it again).
+  await removeFeedRowsFor(e);
   await pmap(keys, (k) => db.del(k));
   // The global reminder index names every scope with a reminder: this account's leave it.
   await Promise.all(scopes.map((s) => forgetDueScope(s)));

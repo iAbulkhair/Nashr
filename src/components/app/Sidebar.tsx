@@ -157,6 +157,8 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
         <li>{row(`${base}/reports`, N.performance, "chart")}</li>
         <li>{row(`${base}/activity`, N.activity, "clock")}</li>
         <li>{row(`${base}/inspo`, N.contentInspo, "spark")}</li>
+        {/* The workspace's agent instructions (rule 957). */}
+        <li>{row(`${base}/instructions`, N.instructions, "strategy")}</li>
       </>)}
 
       {group(`${p}-account`, X.workspace, <>

@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
-import { IMPORTS_PRODUCTS, READS_ADS, isWorking } from "@/lib/connectors/working";
+import { IMPORTS_PRODUCTS, READS_ADS, READS_REFERENCES, isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 import { connectError } from "@/lib/connect-errors";
 import ReadOnlyNote from "./ReadOnlyNote";
@@ -160,8 +160,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
   };
   // A provider connected in parts shows each part's card as connected only when that part is: Instagram by its account,
   // Facebook by its Page.
-  const PART_MARK: Record<string, string> = { instagram: "igId", facebook: "pageId" };
-  const partLabel: Record<string, string> = { instagram: "Instagram", facebook: "Facebook" };
+  const PART_MARK: Record<string, string> = { instagram: "igId", facebook: "pageId", googledocs: "docs", googlesheets: "sheets" };
+  const partLabel: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", googledocs: "Google Docs", googlesheets: "Google Sheets" };
 
   const connectedIds = new Set(conns.map((c) => c.provider));
   const providerById = new Map(providers.map((p) => [p.id, p]));
@@ -171,7 +171,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
 
   // Map catalog ids → connector ids where they differ
   // Meta Ads and WhatsApp are not built: they keep their catalog status instead of borrowing the Meta connection's.
-  const connectorId = (i: Integration) => ({ snap_ads: "snapchat", instagram: "meta", facebook: "meta", gbp: "google", ga4: "google", gsc: "google" } as Record<string, string>)[i.id] ?? i.id;
+  const connectorId = (i: Integration) => ({ snap_ads: "snapchat", instagram: "meta", facebook: "meta", gbp: "google", ga4: "google", gsc: "google", googledocs: "google_workspace", googlesheets: "google_workspace" } as Record<string, string>)[i.id] ?? i.id;
 
   return (
     <div>
@@ -251,8 +251,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
               // A card offers "Connect" or shows "Connected" only when code uses that connection; the others keep their
               // catalog status. The Connected section above still lists every stored connection so it can be removed.
               const found = providerById.get(connectorId(i));
-              // Working: publishes or imports. Reading ad results counts too (READS_ADS).
-              const p = found && (isWorking(found.id) || READS_ADS.includes(found.id)) ? found : undefined;
+              // Working: publishes or imports. Reading ad results counts too (READS_ADS), and so do the reference files (READS_REFERENCES).
+              const p = found && (isWorking(found.id) || READS_ADS.includes(found.id) || READS_REFERENCES.includes(found.id)) ? found : undefined;
               const part = p?.toolkits && p.toolkits.length > 1 && p.toolkits.includes(i.id) ? i.id : undefined;
               const isConnected = p ? (part ? !!conns.find((c) => c.provider === p.id)?.meta?.[PART_MARK[part]] : connectedIds.has(p.id)) : false;
               const ready = !!p?.available && !isConnected;
