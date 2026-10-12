@@ -1,19 +1,19 @@
 # Thakeen / Nashr — Development Log
 
-**Period:** 2026-09-17 (first commit) to 2026-10-10. **Repository:** `iAbulkhair/Nashr`. **Times are UTC** unless a source gave none (then the time is the earliest commit/message in the cluster).
+**Period:** 2026-09-17 (first commit) to 2026-10-12 (collection ended 2026-10-12 about 16:30 UTC). **Repository:** `iAbulkhair/Nashr`. **Times are UTC** unless a source gave none (then the time is the earliest commit/message in the cluster).
 
 This is a log, not a summary. Every entry says what was known, what was decided and why, what was done (commits, PRs, branches), what went wrong, how it was corrected, and what the founder said. Where the sources do not record a reason or a time, the entry says `unknown` or `reason not recorded` instead of guessing.
 
 ## How to read it
 
-- Entries are chronological: `## date`, then `### HH:MM UTC — title (eNNN)`. Each has a **Type** line with tags: `action`, `founder`, `rule`, `decision`, `error`, `correction`, `merge`, `planning`, `security`, `design`, `docs`, `ci`, `deploy`, `research`, `incident`, `branch`.
+- Entries are chronological: `## date`, then `### HH:MM UTC — title (eNNN)`. Each has a **Type** line with tags: `action`, `founder`, `rule`, `error`, `decision`, `correction`, `merge`, `planning`, `ci`, `security`, `docs`, `design`, `research`, `deploy`, `incident`, `branch`.
 - `(inferred)` marks a statement that is not stated in any source but follows from them.
 - Founder quotes are verbatim, in the language they were written in. Founder: أبوالخير.
 - Appendices: [A branch ledger](#appendix-a--branch-ledger) · [B PR ledger](#appendix-b--pr-ledger) · [C mistakes and lessons](#appendix-c--mistakes--lessons-index) · [D founder instructions](#appendix-d--founder-instructions--corrections-index) · [E sources and gaps](#appendix-e--sources-method-and-gaps).
 
 ## Scale
 
-- 615 log entries over 18 calendar days with activity; 921 commits (`git log --all` when the sources were collected on 2026-10-10; later commits are not in the log), 123 pull requests (122 merged, 1 closed unmerged), 207 branches (remote and local-only), 161 Claude sessions on this machine.
+- 755 log entries over 20 calendar days with activity; 1104 commits (`git log --all`, collected in two passes: 2026-10-10 for the period up to 11:40 UTC and 2026-10-12 about 16:30 UTC for the rest; later commits are not in the log), 157 pull requests (140 merged, 3 closed unmerged), 290 branches (remote and local-only), 161 Claude sessions on this machine at the first collection (2026-10-10; not recounted in the second pass).
 
 ## Contents
 
@@ -35,7 +35,9 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 - [2026-10-07](#2026-10-07) — 4 entries. The founder registers a Saudi domain request and, in the afternoon, deploys Thakeen to Hostinger for the first time: two failed builds, two code fixes, and a l…
 - [2026-10-08](#2026-10-08) — 120 entries. (UTC 00:00-14:00 part) Hostinger goes from a stopgap to a hardened, auto-deploying site with real auth and cron jobs; ten pull requests land or are opened (soc…
 - [2026-10-09](#2026-10-09) — 38 entries. A day of parallel sessions colliding: GitHub Actions refused every job until an account-level budget was found and fixed, then ten PRs, two release PRs (#309,…
-- [2026-10-10](#2026-10-10) — 10 entries. Morning of merge and cleanup: #298 landed after a green run, #311, #315, #313 and #314 followed, the Straitly spike hit an empty wallet, and agent-scope Part B…
+- [2026-10-10](#2026-10-10) — 47 entries. Morning of merge and cleanup: #298 landed after a green run, #311, #315, #313 and #314 followed, the Straitly spike hit an empty wallet, and agent-scope Part B…
+- [2026-10-11](#2026-10-11) — 36 entries. The 360 study landed and the founder turned one chat (session abedc961, worktree thakeen-arabic-word-search-1c99ad) into a dispatcher. Subagents on separate br…
+- [2026-10-12](#2026-10-12) — 67 entries. Morning (00:00-11:00 UTC): the coordinating session worked through the UI/UX stack and merged #327, #319, #333, #328, #329, #334 and #330 into main (none of it…
 
 ---
 
@@ -7042,7 +7044,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 
 <a id="2026-10-10"></a>
 ## 2026-10-10
-> Morning of merge and cleanup: #298 landed after a green run, #311, #315, #313 and #314 followed, the Straitly spike hit an empty wallet, and agent-scope Part B was built on its own branch.
+> Morning of merge and cleanup: #298 landed after a green run, #311, #315, #313 and #314 followed, the Straitly spike hit an empty wallet, and agent-scope Part B was built on its own branch. From 11:00 to 21:06 UTC, nine or more sessions ran in parallel: agent-scope Part B Tasks 4-6 (local), the 360 review (log, UI/UX report, leftovers audit, skills portal draft #316), UI phase 0 draft #317, the pre-5.5 model removal and metered streams (#318, merged), retiring Vercel (#319), the media storage spec (#320), a Straitly all-models study, and a staging build that went up with its lock off.
 
 <a id="e606"></a>
 ### 09:36 UTC — #298 merged: catalog, tiered credits, routing, per-customer model picks (Straitly) (e606)
@@ -7127,7 +7129,29 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 - **Outcome / state:** Straitly remains off; the spike and the golden set both need money or a key from the founder.
 
 <a id="e614"></a>
-### 11:34 UTC — #314 merged: Reem B2b meeting follow-up, B3 marketing calendar read, PRD v3.2 (e614)
+### 11:01 UTC — Agent scope Part B, Task 4: review finds a money leak, fix dfeffea9 (e614)
+
+- **Type:** action, error, correction, decision, rule, branch
+- **Context / Thinking:** Session thakeen-setup-configs-5ba1b2. Agent scope Part B (rules 790-808) is on local branch `claude/entitlements-part-b`, built by SDD. This is a different thing from "brand limits Part B". Tasks 1-3 were already done (bc7cba39, d92cdead, f494663d, 5243dae9). Task 4 (221dadd3) was in review.
+- **Decision:** The assistant made three calls on its own and recorded them in the ledger:
+  - move the scope gate into `generateBatch`, after the free refusals;
+  - cap classifier asks per brand scope at 60 per hour and 200 per day;
+  - apply the ceiling only to requests that carry notes.
+- **Action:** Answered the founder: Tasks 5-9 were left, and the founder still had to run the eval on staging, keep two weeks in shadow, then merge. At 11:04 the Task 4 review came back. Fix commit dfeffea9 at 11:14 (rule 796):
+  - `BatchOpts.notesGate`;
+  - refusal codes `agent_scope` (422) and `agent_scope_slow` (429);
+  - rate keys `rate:agent-scope-gen:h|d:{scope}`;
+  - new `src/lib/scope-refusal.ts` and `src/lib/notes-read.ts` (GENERATE_NOTES_READ).
+- **Errors & mistakes:** The Task 4 review found three problems:
+  - Money leak: the paid Haiku classifier ran before generation's free refusals (trial_over, no_brand, no credits), and nothing capped it in shadow mode.
+  - The ceiling also held requests that had no notes.
+  - ReportsPanel could not show the refusal.
+- **Correction:** dfeffea9; 5307 tests. Re-review at 11:19: ADDRESSED.
+- **Founder:** 11:01 "any task left?"
+- **Outcome / state:** Local only. Parked for the final pass: an owner who sends more than 60 requests an hour gets the wrong message.
+
+<a id="e615"></a>
+### 11:34 UTC — #314 merged: Reem B2b meeting follow-up, B3 marketing calendar read, PRD v3.2 (e615)
 
 - **Type:** merge, rule, docs
 - **Context / Thinking:** Work that existed only on the founder's Mac (found by the leftovers audit; B3 tasks 1-7 had been built on 2026-10-05 and never pushed). Reem reads one linked Google or Outlook calendar only, every 15 minutes, time and title never attendees or descriptions; reminders held during a meeting; working hours; `free_slots` read-only, never books.
@@ -7135,8 +7159,39 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 - **Action:** merge `1fb56b90` (PR #314, +8136/-281; rules 600-608 and 910-923; PRD `docs/PRD-Thakeen.md` v3.2).
 - **Outcome / state:** On `main` (staging). Release PR needed. Memory flagged: trial 3 vs 7 days inconsistency, staging unwired and golden set never run.
 
-<a id="e615"></a>
-### 11:40 UTC — New session: portal for agent skills (rules 930-959 reserved) (e615)
+<a id="e616"></a>
+### 11:38 UTC — Part B Task 5: scope paragraph and role refusals (022e3f41) (e616)
+
+- **Type:** action, rule, branch
+- **Context / Thinking:** The next SDD task on `claude/entitlements-part-b` (rules 797-799).
+- **Action:** Commit 022e3f41:
+  - A 606-character scope paragraph now ends the cached fixed block, with a separate SECTOR line in the chat block.
+  - `roleOwner`/`roleRefusalText` replace `leadRefusal`.
+  - `ChatMsg.switchTo` shows a switch button.
+  - `runTool` answers "Unknown tool." for a tool that was not offered.
+  - Five existing tests changed. The pricing-floor prefix pins grew, so costs.md and row 817 were edited.
+  - 5332 tests. Review at 11:43-11:44: spec-compliant, and the 60% floor holds.
+- **Errors & mistakes:** 
+  - The commit trailer names Sonnet 5.5 instead of the briefed Opus line.
+  - `npx next build` could not run because the sandbox blocks Google Fonts.
+- **Outcome / state:** Local only.
+
+<a id="e617"></a>
+### 11:39 UTC — Founder orders a 360 review in four parts (e617)
+
+- **Type:** founder, planning
+- **Context / Thinking:** Session thakeen-arabic-word-search-1c99ad, titled "Project 360 review and development log" (local_b6857bc2).
+- **Decision:** One session per part, each in its own worktree. No production changes and no PR before a part is done. Reason not recorded beyond the founder's ask.
+- **Action:** At 11:41 the assistant started four sessions: journey log, UI/UX benchmark, leftovers audit, skills portal. Their briefs are session-written and are not founder words.
+- **Founder:** 11:39 "I need a 360 mapped and deep veiw with all angles for the project". The four asks:
+  1. a development journey log ("not summary... log file with details");
+  2. recheck supastarter.dev and write a huge UI/UX report;
+  3. a portal to develop agent skills, for all users or per client workspace;
+  4. every task, leftover and todo.
+- **Outcome / state:** The four parts are logged below. The 11:40 skills-portal session start is already logged.
+
+<a id="e618"></a>
+### 11:40 UTC — New session: portal for agent skills (rules 930-959 reserved) (e618)
 
 - **Type:** planning, design
 - **Context / Thinking:** The founder wants a portal to keep developing agent skills: (a) the founder as platform admin adds instructions/inputs applying to all users' agents; (b) each client adds instructions for their own workspace only. Building blocks: `skills.ts`, `playbooks.ts`, `agents.ts`, `brand-rules.ts`, `brand-proposals.ts`, `governance.ts`, `entitlements.ts`, `prompt-stamp.ts`, `chat.ts`, `judge.ts`, admin shell spec.
@@ -7145,11 +7200,1647 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 - **Founder:** 11:01 "any task left?" (session not identified).
 - **Outcome / state:** Spec in progress at the end of the window.
 
+<a id="e619"></a>
+### 11:56 UTC — Skills portal: founder answers, spec and plan (e619)
+
+- **Type:** founder, decision, design, docs
+- **Context / Thinking:** Session laughing-elion-9449f8, branch `claude/agent-skills-portal-47b7dd`. Brainstorming went through AskUserQuestion pop-ups. The pop-up answers are recorded only as the options the founder picked, so there are no verbatim quotes.
+- **Decision:** The founder chose the recommended option every time:
+  - no admin review;
+  - all 8 agents can take instructions; the reviewer and judge stay platform-only;
+  - tiered limits of trial 3 / starter 10 / pro 25 / business 60 / agency 100 items, 600 characters each, per-agent from Pro up;
+  - v1 includes chat proposals, a Test button and reference files;
+  - round 2 adds Google Docs and Sheets through Composio, read only;
+  - media prompts now.
+- **Action:** Spec 15e52963 (11:56), revised by b3e4ddd8 (11:59), at `docs/superpowers/specs/2026-10-10-agent-skills-portal-design.md`. Plan 9339fdb4 (12:07). Layer precedence, highest first: hard safety, platform locked, workspace per-agent, workspace general, platform default, playbooks.
+- **Outcome / state:** Build started at 12:12, logged below.
+
+<a id="e620"></a>
+### 11:58 UTC — Part B Task 6: output check and partial refunds (c54a40f4, fix 19fdf185) (e620)
+
+- **Type:** action, error, correction, decision, rule, branch
+- **Context / Thinking:** Rules 800-802 on `claude/entitlements-part-b`.
+- **Decision:** The assistant ruled for the spec.
+- **Action:** c54a40f4:
+  - the output check covers chat replies, generated items and MCP `save_draft`;
+  - a partial refund is `ceil(charged*held/items)`; `AgentScopeRefused` refunds in full;
+  - 5354 tests.
+  - Cost note recorded: in shadow mode every item and every reply costs one Haiku call, metered to Thakeen.
+- **Errors & mistakes:** The 12:04 review found the money path correct, but a reply cut at max_tokens skipped the output check. The plan allowed that; the spec did not.
+- **Correction:** 19fdf185 at 12:07:
+  - cut replies are checked;
+  - `BatchDone.refunded` carries the real refunded amount;
+  - the failure log no longer includes the email.
+  - 5358 tests. Re-review at 12:09: ADDRESSED.
+- **Outcome / state:** Seven local commits, no PR. At 12:43 the 360 orchestrator called them "the only work that exists nowhere else". Memory says 19fdf185 was pushed to origin on 2026-10-11, still with no PR. Tasks 7-9 are still open.
+
+<a id="e621"></a>
+### 12:01 UTC — Leftovers audit v1: 93 open items (8543bbf2) (e621)
+
+- **Type:** research, docs, planning
+- **Context / Thinking:** A read-only side session, leftovers-audit-360-341a20. 11 sweeps produced 334 raw findings.
+- **Action:** Report `docs/reports/2026-10-10-leftovers-360.md`, committed locally as 8543bbf2 at 12:01 and not pushed. Private artifact https://claude.ai/artifact/8CbvV8q3SPCZpFdapW5T8d.
+  - 93 items: founder 42 (10 P0), Claude 51 (4 P0).
+  - Ground truth: live is 487984f and main (1fb56b90) is 73 commits ahead. #298, #311, #313, #314 and #315 wait for a release PR. The /p/ redirect bug is still live. Staging is a placeholder.
+  - Claims it disproved: "125 unpushed commits on Part B" (really 7); "no email verification" (live since #297); Owner_Tasks_AR is stale; 23 fixed issues are still open on GitHub.
+  - Founder P0s:
+  - finalize the heading «عملاء جربوا ذكين», then approve the release PR;
+  - rotate WAITLIST_ADMIN_KEY and pause nashr-tau;
+  - test the signup and forgot-password emails;
+  - Upstash backup and spend limits;
+  - company papers and an accountant;
+  - a Saudi lawyer for PDPL.
+  - Claude P0s:
+  - an invented merchant quote in `scripts/build_deck.py:156-158`;
+  - an uncoded promise of "first 100 brands two months free" (`i18n.ts:277,429`);
+  - hello@nashr.ai hard-coded;
+  - PDPL export and consent record missing.
+- **Outcome / state:** Refreshed at 21:06 (entry below).
+
+<a id="e622"></a>
+### 12:11 UTC — UI/UX benchmark against supastarter (d2b23bcd) (e622)
+
+- **Type:** research, design, docs
+- **Context / Thinking:** Side session staging-zero-downtime-updates-f99ead. The license allows describing supastarter patterns but not copying its code.
+- **Action:** Report `docs/reports/2026-10-10-supastarter-uiux-report.md`, commit d2b23bcd on `claude/supastarter-uiux-report-fca589`, not pushed. Artifact https://claude.ai/artifact/SuJz2htHiHQaBc8TuJpu17 with 57 screenshots. The plan has phases 0-5.
+- **Errors & mistakes:** It found 16 bugs in Thakeen, among them:
+  - in the founder console, Cancel on a reason prompt still applies plan, credit and refund changes (`Users.tsx:66` and 8 more places);
+  - Cancel on "extend trial" adds 7 days anyway;
+  - account deletion asks for the password in `window.prompt`, and a temporary password is shown in a prompt;
+  - a possibly stale chat thread;
+  - one title shared by 40 pages;
+  - the home page font.
+- **Outcome / state:** Phase 0 was built at 15:29 (entry below).
+
+<a id="e623"></a>
+### 12:12 UTC — Skills portal build, Tasks 1-2: safety filter and store (critical isPaused bug) (e623)
+
+- **Type:** action, error, correction, rule, security
+- **Context / Thinking:** SDD on `claude/agent-skills-portal-47b7dd`: implementer, then reviewer, then fix rounds.
+- **Action:** 
+  - b672eeef (12:12, rules 930-935): instruction safety filter.
+  - 1937a2f5 (12:17): protective rules are no longer refused.
+  - 622bbee9 (12:22): a negator must govern the verb.
+  - eab71c56 (12:28, rules 936-941): store.
+- **Errors & mistakes:** Critical bug: `isPaused` compared against a string, but Upstash returns the number 1, so pausing never took effect. The review also found the lock was not owned and the limits were optional.
+- **Correction:** 15088f98 at 12:33: `String(v)==="1"`, an owned lock, and limits made required.
+- **Outcome / state:** Local commits, pushed later as one batch.
+
+<a id="e624"></a>
+### 12:29 UTC — Development journey log, first version (a2134d6f) (e624)
+
+- **Type:** docs
+- **Context / Thinking:** Part 1 of the 360 review.
+- **Action:** a2134d6f on `claude/journey-log-0111b9`: 615 entries, ledgers of 123 PRs and 207 branches, 9 lessons. Artifact https://claude.ai/artifact/M7KxcaACTVbXtnkvPMfXx5. Not pushed.
+- **Errors & mistakes:** The session recorded these gaps:
+  - 12 merge actors unknown;
+  - no activity found on 09-19, 09-23 to 09-26 and 10-06;
+  - pop-up answers not captured;
+  - commits from later on 10-10 missing.
+- **Outcome / state:** This file belongs to the follow-up that fills those gaps.
+
+<a id="e625"></a>
+### 12:38 UTC — Skills portal Tasks 3-5: merge point, batch prompts, all agent prompts (e625)
+
+- **Type:** action, error, correction, rule
+- **Action:** 
+  - 2c1144e9 (12:38, rules 942-945): layer merge.
+  - b8983764 (12:49, rules 946-947): batch prompts and a prompt stamp.
+  - c9523264 (13:00, rule 948): chat, reviewer, judge and media prompts.
+  - 7c1035fe (13:06): fix round.
+- **Errors & mistakes:** The review found that the word `also` widened the platform block, and that reference files could be read by agents other than their target.
+- **Correction:** 518f7919 (12:43): `also` no longer widens the block, and refs are read only by their target.
+- **Outcome / state:** At 12:43 a cross-session heads-up said the next free rule was 924, not 905 as the brief claimed. The portal kept 930-959.
+
+<a id="e626"></a>
+### 13:12 UTC — Skills portal routes: founder login leaked through `by` (143b0aea) (e626)
+
+- **Type:** action, error, correction, security, rule
+- **Action:** eade3a7d (13:12, rules 949-951): API routes.
+- **Errors & mistakes:** The Task 6 review found that the raw `by` field exposed the founder's login to customers.
+- **Correction:** 143b0aea (13:18): a `publicBy` value replaces the raw field.
+- **Outcome / state:** Fixed before any push.
+
+<a id="e627"></a>
+### 13:23 UTC — Skills portal paid Test button (663944ed) (e627)
+
+- **Type:** action, rule
+- **Action:** 663944ed (13:23, rule 952): the Test button charges once per click. Follow-ups 64776415 (13:24) and 18f8959d (13:31).
+- **Outcome / state:** An open founder item stayed in the PR body: the charge for an untargeted test.
+
+<a id="e628"></a>
+### 13:42 UTC — Skills portal chat proposals: stale save dropped an applied item (19e58076) (e628)
+
+- **Type:** action, error, correction, rule
+- **Action:** 68bdb731 (13:42, rules 953-954): chat can propose instructions.
+- **Errors & mistakes:** If the page was opened before chat applied an item, saving the page later silently dropped that item.
+- **Correction:** 19e58076 (13:53): apply returns 409 on a stale version, and retries are idempotent.
+- **Outcome / state:** Fixed before any push.
+
+<a id="e629"></a>
+### 14:09 UTC — Skills portal: Google Docs/Sheets import, customer page, founder console (e629)
+
+- **Type:** action, rule, docs
+- **Action:** 
+  - 7d2b5add (14:09, rules 955-956): read-only Google Docs and Sheets import through Composio.
+  - 2232425d (14:21): `seq` edit counter, plan gate on refs, Arabic slug.
+  - d8462ba3 (14:38, rule 957): customer page `/{lang}/app/instructions`. Follow-up b6a0e377 (14:45).
+  - 29fb6b7d (14:57, rules 958-959): founder console `/{lang}/admin/skills`. Follow-up 45476360 (15:04).
+  - aa45c450 (15:13): docs, flows §60 and permissions 190-203.
+  - 8a48bf58 (15:25): final review fixes.
+- **Outcome / state:** Google import is dormant until the founder creates the Composio auth configs (COMPOSIO_AUTH_GOOGLEDOCS / COMPOSIO_AUTH_GOOGLESHEETS).
+
+<a id="e630"></a>
+### 15:29 UTC — Draft PR #316 skills portal opened, pushed once (e630)
+
+- **Type:** ci, branch, action
+- **Action:** At 15:29-15:30, 28 commits pushed once and opened as draft PR #316 (rules 930-959).
+  - `npm run check` passed with 5972 tests, and the webpack build exited 0.
+  - The Turbopack build was blocked locally by the sandbox's port-bind limit. No browser preview was done.
+- **Outcome / state:** Founder items open in the PR body include the Composio Google auth configs, the judge line versus veto, and the untargeted test charge. Merged later, on 2026-10-12 at 11:20 (outside this window).
+
+<a id="e631"></a>
+### 15:29 UTC — UI phase 0 built; draft PR #317; Vercel `git_info_fail` (e631)
+
+- **Type:** action, ci, error, rule, branch
+- **Context / Thinking:** Session 41b6e62d, started from local_e4daa977. The brief came from a session, not the founder. Branch `claude/uiux-phase0`.
+- **Action:** a2a5a915 at 15:49 (rules 960-973): bugs B-1 to B-11 plus quick wins:
+  - admin Cancel guards;
+  - a masked delete dialog;
+  - titles on all 40 pages;
+  - chat key and `role=log`;
+  - chart tokens;
+  - Paymob confirms;
+  - BrandForm and Integrations error states;
+  - a skip link;
+  - nav landmark and `aria-current`;
+  - error boundaries using `retry()`.
+  - 5470 tests and the webpack build passed. Pushed once, draft PR #317 at 15:50.
+- **Errors & mistakes:** 
+  - The local runtime check of B-5 was blocked by the sandbox port bind, so B-5 was checked only by reading code.
+  - The Vercel check failed 3 s after start with `errorCode: git_info_fail`.
+- **Correction:** Nobody re-ran the check, per CLAUDE.md. Nashr CI passed in about 9 minutes. At 16:45-16:47 an Auto-fix event fired; the session found the cause outside the code and pushed nothing. The orchestrator handed the Vercel–GitHub link to the founder.
+- **Outcome / state:** #317 was merged on 2026-10-11 at 02:32 (outside this window).
+
+<a id="e632"></a>
+### 15:55 UTC — Founder: Anthropic token costs do not match (e632)
+
+- **Type:** founder, research
+- **Context / Thinking:** Session e4b825ee, "حساب تكاليف التوكنز في Anthropic" (local_71440904).
+- **Action:** The assistant's analysis:
+  - The CSV totals $34.54 at list prices: the Nashr key used $25.75 in September; in October the ANTHROPIC_API_KEY key used $5.28 and the Nashr key $3.50.
+  - The balance is $85.50, and $120 − 85.50 = $34.50, which matches.
+  - The $5.75 charge is likely $5 plus 15% VAT (inferred).
+  - Rates are correct. Four metering gaps exist: aborts, timeout retries and fallback attempts are not metered.
+  - Two keys likely mean two deployments (Vercel and Hostinger) running the same crons (inferred).
+- **Founder:** 16:02 «اول شي احذف استخدام النماذج التي قبل 5.5 .. ثم قم بتنفيذ توصياتك الثلاثة / انا عملت ديسيبل لمفتاح نشر»
+- **Outcome / state:** The founder disabled the "Nashr" key. Still open for the founder: stop the Vercel crons, and send Thakeen console totals for September and October so the $5.75 can be settled.
+
+<a id="e633"></a>
+### 16:13 UTC — Pre-5.5 models removed (6db81ec9); metered streams child (d908f640); rule clash and permission-laundering refusal (e633)
+
+- **Type:** action, rule, error, security, branch
+- **Action:** 
+  - 6db81ec9 (16:13, rules 970-972) removes claude-opus-5 and sonnet-5 from the catalog and deletes RATES, DEFAULT_RATE and hasOldRate.
+  - A stored pick of a removed model is refused as unknown and the default model runs.
+  - Unknown ids are priced at the highest catalog rate.
+  - 5420 tests; `next build` ok; not pushed.
+  - A child metering session (634ca232, happy-gould worktree, local_87cd6ce1) made d908f640 at 16:17 (rules 980-986): every Messages call is a metered stream; 37 files.
+- **Errors & mistakes:** 
+  - Rule clash: the parent claimed 970-979. The child saw 960-973 already used by UI phase 0, took 980-986, and proposed 974-979.
+  - Draft PR #318 opened at 16:19 with incomplete local proof: the webpack build ran with fonts faked.
+  - At 16:22 the parent asked the child to merge 6db81ec9, because the permission classifier had blocked the parent's own git merge.
+- **Correction:** The child refused, calling the request permission laundering, and asked for the founder to say it directly.
+- **Founder:** 16:18 in the child: "push it and open the draft PR". 16:20 in the parent: «قم بعمل توصياتك كلها».
+- **Outcome / state:** The founder gave the instruction at 16:24 (next entry).
+
+<a id="e634"></a>
+### 16:24 UTC — «ادمجها أنت هنا»: model removal merged into #318 (3af3c87b) (e634)
+
+- **Type:** founder, merge, action
+- **Action:** The parent merged: 3af3c87b at 16:26 resolved four conflicts (architecture.md, tests/activity-sources, handoffs, security-gates). 5434 tests; `next build` ok. Pushed once; still a draft.
+- **Founder:** 16:38 in the child: "turn on auto-fix for #318". All 3 checks passed. A 16:37 Auto-fix review-comment event arrived; its content is unknown.
+- **Outcome / state:** Merged at 16:44 (entry below).
+
+<a id="e635"></a>
+### 16:25 UTC — Straitly spike passes; golden set split vs all-Opus (e635)
+
+- **Type:** research, founder
+- **Context / Thinking:** Session ebea977c (claude-api-agents-2c7b35). `LLM_PROVIDER=straitly` is default-off.
+- **Decision:** Keep rule 901. The split saves about 6%.
+- **Action:** At 16:25 the spike passed all checks through api.straitly.ai using `x-api-key`: strict tools, adaptive thinking with effort, a cache read of 22,966 tokens, and gpt-6-astra on `/messages`. The golden set (19 cases) scored split 85.5 ($3.68) against all-Opus 85.4 ($3.91).
+- **Founder:** 16:31 «قبل تجهيز المسودة.. اعطيني تقرير مفصل لكل الموديل الي جربتها؟؟ هل جربت النماذج الصينية؟ جرب كل النماذج مو بس انثروبيك»
+- **Outcome / state:** No draft prepared. The all-models study follows.
+
+<a id="e636"></a>
+### 16:44 UTC — #318 merged on "merge it" without waiting for the pending run (e636)
+
+- **Type:** merge, founder, error, ci
+- **Action:** #318 merged into main as 3bf67673.
+- **Errors & mistakes:** 
+  - In its own words, the assistant merged "without waiting for a second run that had not finished", likely e2e.
+  - #318 was still a draft and was never marked ready, so the e2e suite (which runs only on ready PRs) probably never ran (inferred).
+  - The merge brought a timing flake in `tests/media-prompts.test.ts` (19999 vs 20000 ms) into main. It broke #320's CI at 18:22.
+- **Founder:** 16:44 "merge it"
+- **Outcome / state:** Main moved to 3bf67673, 77 commits ahead of production 487984f. Not live until a release PR.
+
+<a id="e637"></a>
+### 16:44 UTC — "Do we still need vercel??": founder disables Vercel crons; live gets APP_ENV (e637)
+
+- **Type:** founder, research, action, incident
+- **Context / Thinking:** Session 9b282145 (local_46d0779f). Findings:
+  - nashr-tau serves main 1fb56b90 while live is 487984f;
+  - 8 crons probably still run there;
+  - media depends on `@vercel/blob`, and BLOB_READ_WRITE_TOKEN is not set on live, so media is off;
+  - FALLBACK_ORIGIN points to nashr-tau.
+- **Action:** 
+  - Step A, done by the founder in the dashboards: disable the crons, disconnect Git, disable the Vercel Anthropic key. The last Vercel deploy was at 16:52.
+  - Step B: set APP_ENV=production on live in hPanel. Live rebuilt at 16:58 on 487984f; health ok.
+- **Founder:** 16:44 "Do we still need vercel??"; 16:50 "guide me to do these now, step by step"; 16:55 "A done".
+- **Outcome / state:** nashr-tau no longer builds from Git. Deleting the project is still a founder step.
+
+<a id="e638"></a>
+### 16:46 UTC — #316 conflicts: host-side merge aborted; Auto-fix keeps nudging (e638)
+
+- **Type:** ci, rule, correction
+- **Context / Thinking:** At 16:46-16:48 Auto-fix reported merge conflicts on #316 (flows.md, judge.ts, media/prompts.ts). The app had started the merge on the host.
+- **Decision:** Abort, per CLAUDE.md: a conflict alone waits until right before merge.
+- **Action:** Merge aborted. The branch is back at 8a48bf58; nothing pushed. Reminders came again at 17:18, 18:20 and 20:22; the session answered "Waiting on a decision" and suggested turning off Auto-fix for #316. At 17:19 the orchestrator reported the abort.
+- **Outcome / state:** #316 stays DIRTY until right before its merge.
+
+<a id="e639"></a>
+### 16:47 UTC — Stale memory fixed; #317 renumbered off main's 970-972 (d6307768) (e639)
+
+- **Type:** founder, docs, correction, rule
+- **Action:** 
+  - The 360 orchestrator corrected 15 memory files and added a thakeen-360-review note.
+  - At 16:48 it flagged that #317's 970-973 clashed with main's 970-972 (from #318) and 980-986.
+  - At 16:49 the #317 session made d6307768: 970-973 renumbered to 974-977, local only, to ride with the next push. The PR title and body were edited, which starts no CI run.
+- **Founder:** 16:47 "yes fix the stale memory notes"
+- **Outcome / state:** #317 holds 960-969 and 974-977.
+
+<a id="e640"></a>
+### 16:59 UTC — Draft PR #319: retire the old Vercel project (e640)
+
+- **Type:** action, ci, rule, branch
+- **Action:** The retire-vercel child (session 78ec989a) made 9062def6 at 16:59, draft PR #319 (rules 987-990):
+  - FALLBACK_ORIGIN = https://thakeen.com;
+  - CI runs on PRs only;
+  - `vercel.json` renamed to `crons.json`;
+  - variables.md gains the APP_ENV steps.
+  - 5438 tests; `build:hostinger` ok; Turbopack could not run locally.
+- **Outcome / state:** Vercel did not build #319, which confirms the Git disconnect. Merged on 2026-10-12 at 06:00 (outside this window).
+
+<a id="e641"></a>
+### 17:03 UTC — Founder proposes client Google Drive for media; spec #320 (e641)
+
+- **Type:** founder, decision, design, docs
+- **Context / Thinking:** The assistant answered that provider links die in 1-14 days and that Meta needs a public URL, so Drive works as an archive but not as a publish source.
+- **Action:** Child session 26b2ab7b (happy-gould) made 74777c4e at 17:15. Draft PR #320 opened at 17:17: media on the Hostinger disk under `MEDIA_DIR`, a public `/m/{32hex}` route, and a Drive archive. It started with 60-day retention, and the disk facts were unverified.
+- **Founder:** 17:03 "why we need it?? I suggest every client uses his own google drive and google workspace"; 17:06 "yes, write the spec".
+- **Outcome / state:** Founder answers at 18:03 below.
+
+<a id="e642"></a>
+### 17:06 UTC — All-models report, then a second stage on $40 (e642)
+
+- **Type:** research, founder
+- **Action:** More report versions on founder asks:
+  - v2: the prompts used, behind a button (17:28);
+  - v3: the model replies (17:32).
+  - The founder said «كمّل» at 17:48 and 17:54.
+  - Stage A: 1848 jobs, about $6.7; 58 models passed (13 Chinese); 14 leak CJK characters.
+  - A 10-factor evaluation table at 18:13.
+- **Founder:** 17:23 «اضفت ٤٠ دولار.. قم بعمل التجارب... ثم حدث التقرير واضف التحديث كمرحلة ثانية مع وضع معالم لهذه التجربة الثانية»
+- **Outcome / state:** Nothing committed.
+
+<a id="e643"></a>
+### 17:57 UTC — Founder: wait for all sessions before a fresh 360 (e643)
+
+- **Type:** founder, planning
+- **Founder:** 17:57 "Just wait, we will begin a new fresh 360 major updates, im waiting all chats to deliver their results."
+- **Outcome / state:** The orchestrator stayed idle until 20:57.
+
+<a id="e644"></a>
+### 18:03 UTC — Founder media decisions applied to #320 (2d1d48be, 0d720fab) (e644)
+
+- **Type:** founder, decision, docs, rule
+- **Action:** 
+  - 2d1d48be at 18:13 applied the answers (rules 991-1015 reserved): 30-day retention with a warning to archive.
+  - Founder 18:18 "recheck Hostinger MCP"; 0d720fab at 18:19 recorded the facts: plan hostinger_business_v5 with 3 sites (maslakiyat.com, thakeen.com, staging), 9 crons, 25 builds. The API cannot report disk, inodes or backups.
+- **Founder:** 18:03 «1. 30 day, with warning to client to archive them / 2. none, the client must save them directly, we provide links and medium generated thumbs». The founder also wrote "3. what is the best call?", "4. automatically for all", "5. both" and "6. let it later, it needs access now i have it".
+- **Outcome / state:** Pushed together with the flake fix (next entry).
+
+<a id="e645"></a>
+### 18:22 UTC — #320 CI red: media-prompts timing flake inherited from #318 (3f4f2bb1) (e645)
+
+- **Type:** ci, error, correction
+- **Errors & mistakes:** `tests/media-prompts.test.ts` compared 19999 with 20000 ms. The flake came into main with #318.
+- **Correction:** 3f4f2bb1 at 18:24 pins the clock. It was pushed in one push with 0d720fab.
+- **Outcome / state:** Fixes the test for main too once #320 merges.
+
+<a id="e646"></a>
+### 18:31 UTC — STAGING INCIDENT: first build went up with the lock off (e646)
+
+- **Type:** incident, deploy, error, founder, security
+- **Context / Thinking:** Founder 18:28 "check staging node app deploy". The assistant found staging never deployed: build settings saved, no Git link. It offered to build once the founder had set the env vars.
+- **Action:** The first build from main 3bf67673 finished at 18:34:55.
+- **Errors & mistakes:** 
+  - APP_ENV=staging was missing, so the lock was off: /ar answered 200 without a cookie and had no noindex. That made staging an open, publicly indexable copy of the app.
+  - The auto-mode classifier had refused listing env var names, so the assistant could not check them before building.
+  - "env vars done" was not true for staging. Most likely the founder had set them on the live site instead (inferred from the 19:59 reply).
+- **Correction:** Entry at 20:06 below.
+- **Founder:** 19:59 «موجود بالاول.. لكن القيمة production», «شلون؟»; 20:05 «كيف اشيك؟», «لا يوجد متغيرات اصلا في staging».
+- **Outcome / state:** The site was open from about 18:35 to 20:06 (inferred from the build times).
+
+<a id="e647"></a>
+### 18:33 UTC — Straitly repeats ×3 and Haiku test (e647)
+
+- **Type:** research, founder
+- **Action:** Results:
+  - Sonnet 85.8±1.1, gpt-5.6-sol-pro 85.0±0.9 and Haiku 84.8±0.9, all within noise. Upper bound about $16.4 spent (v5).
+  - Founder 18:33 «جرب هايكو.. باقي عندي ١٤ دولار»: Haiku replacing Sonnet in the product split scored 85.1 / 86.1 / 85.0 = 85.4, with zero check failures, at $2.44-2.86 a run, about a third cheaper (v6).
+  - The current split has only one run to compare against.
+- **Founder:** 18:52 «كذا انتهينا؟؟». Answer: 12 rounds, each on its own tab; repo clean; no PR.
+- **Outcome / state:** No routing change decided.
+
+<a id="e648"></a>
+### 18:53 UTC — #320 last suggestions D7/D8 (0c356200) (e648)
+
+- **Type:** founder, decision, docs, ci
+- **Action:** 0c356200 at 18:56:
+  - D7: kie and Higgsfield media keep our own 30-day copy.
+  - D8: fal thumbnails are kept 30 days.
+  - Pushed only after confirming no CI run was in progress.
+- **Founder:** 18:53 "do your 2 suggestions"
+- **Outcome / state:** No questions left except the §9 hPanel checklist. #320 merged on 2026-10-11 at 21:37 (outside this window).
+
+<a id="e649"></a>
+### 18:56 UTC — Top-10 models by cost: chat list wrong, corrected; no Chinese model fits (e649)
+
+- **Type:** research, founder, error, correction
+- **Action:** Answer: only deepseek-v4-1-flash is a candidate. It scores 7.01 with golden 83.5, is the slowest writer at 119 s, and its hosting location is unverified. 10 of the 62 Chinese models pass on quality but are excluded by policy. Written at the top of the report as v8 at 19:16.
+- **Errors & mistakes:** The top-10 given in chat was wrong: gpt-5.3-codex and gpt-5-mini had been dropped by mistake.
+- **Correction:** At 19:02 the corrected list removed gpt-5.4-mini and gpt-6-sol, and gpt-6.1-sol came in at quality 7.53.
+- **Founder:** 19:13 «يعني ولا نموذج صيني مناسب حسب نطاقات التقييم تبعنا؟»
+- **Outcome / state:** Nothing committed; production untouched. claude-mem has been signed out since 19:02.
+
+<a id="e650"></a>
+### 20:06 UTC — Staging locked after the founder sets APP_ENV, but the access API returns 500 (e650)
+
+- **Type:** incident, deploy, correction, founder
+- **Action:** 
+  - The founder set APP_ENV=staging and STAGING_ACCESS_KEY, rebuilt at 20:06 and said "done" at 20:08. The assistant's rebuild started at 20:09 (01a1276f).
+  - At 20:11 the lock was verified: /ar, /en and /api return 404 with `x-robots-tag: noindex`; the staging-access pages and robots.txt return 200.
+- **Errors & mistakes:** 
+  - POST /api/staging-access returns 500 because no Redis env is set, so the DB is unconfigured.
+  - Auto-deploy from main was already on. Who enabled it is not recorded; the founder is the likely one (inferred).
+  - The Upstash free plan allows one database (thakeen-prod), so the founder must add a payment method. The assistant also warned that the live DB is on the free tier, at 26k commands in 2 days.
+- **Founder:** 20:36 «ما لقيت هذه؟»; 20:46 «كويس؟» (a screenshot with the Name field wrong and a London read region); 20:50 «قم بشرح الخطوات من جديد بتفصيل مبسط لغير المختص»; 20:53 «هذه ما لقيتها».
+- **Outcome / state:** Staging is locked but unusable. The founder still has to set:
+  - a separate staging Upstash (KV_REST_API_URL/TOKEN);
+  - ANTHROPIC_API_KEY for staging, with a cap;
+  - CRON_SECRET and CONNECT_SECRET;
+  - APP_ORIGIN;
+  - the mail keys.
+
+<a id="e651"></a>
+### 20:57 UTC — Recheck all sessions; unified 360 master prompt (e651)
+
+- **Type:** founder, planning, docs
+- **Action:** 
+  - Memory updated, and a leftovers refresh requested by cross-session message.
+  - At 21:05: `docs/prompts/2026-10-11-thakeen-360-master-prompt.md`, not committed. It has sections 0-9, workstreams A-K and a founder ledger of 25 items.
+- **Founder:** 20:57 "rechek the new chat sessions.. and do the updates required"; 21:01 "buil a unified 360 major prompt to study it.. dont forget to make a section for my tasks from day 1".
+- **Outcome / state:** It became the base of the 2026-10-11 360 study.
+
+<a id="e652"></a>
+### 21:06 UTC — Leftovers audit refreshed to 100 items (9d6c7ca7) (e652)
+
+- **Type:** docs, research
+- **Action:** 9d6c7ca7 committed locally and not pushed; the same artifact URL now serves version 2.
+  - 100 items: 7 new (L094-L100), 16 changed, 0 closed. Founder 46, Claude 54.
+  - Main 3bf67673 is 77 commits ahead of production 487984f4. Six PRs wait for a release PR: #298, #311, #313, #314, #315, #318.
+  - /p/TEST still answers 307 to `https://0.0.0.0:3000/...` on live.
+  - Drafts: #316 DIRTY, #317 (only the old project's Vercel check red), #319 CLEAN, #320 CLEAN.
+- **Errors & mistakes:** The session hit a claude-mem "signed out" error. Separately, an older session in the main folder had shown 'Failed to authenticate: OAuth session expired' from 11:04 to 14:34. Cause unknown; that session appears to have produced nothing.
+- **Outcome / state:** End of the 2026-10-10 log.
+
+
+<a id="2026-10-11"></a>
+## 2026-10-11
+> The 360 study landed and the founder turned one chat (session abedc961, worktree thakeen-arabic-word-search-1c99ad) into a dispatcher. Subagents on separate branches built the R1 honesty fixes, Turnstile/client IP, monitoring, legal drafts, Prompt Studio specs and UI/UX phases 1-5b. The founder approved through AskUserQuestion cards, and #317, #322, #323, #324, #320, #325 and #326 were merged into main (nothing live). Problems that day: duplicate sessions, a flaky deadline test, an e2e selector break, a PR opened ready by mistake, and two sessions pushing to #319 at once.
+
+<a id="e653"></a>
+### 02:08 UTC — 360 study runs 11 workstream agents and reports P0s one by one (e653)
+
+- **Type:** research, security, planning
+- **Context / Thinking:** The study was started on 10-10 from the master prompt `docs/prompts/2026-10-11-thakeen-360-master-prompt.md`. It ran in session strange-kilby-e46c6b, a session started by the main session (local_b6857bc2), not typed by the founder. Snapshot at 02:08: main `3bf67673`, production `487984f`, main 77 commits ahead, `/p/` bug still live, staging.thakeen.com answers 404. A shared brief went to 11 workstream subagents (A-K).
+- **Decision:** Read-only study. No code, env or production change. The main session relays each workstream result to the founder as it arrives.
+- **Action:** Results relayed 02:17-02:20. D (agents/cost) and F (infra) came first; F noted the old Vercel project may still run the weekly golden cron (~$3.9/run). I-001: on main, #311 removed «أمثلة توضيحية» and put «عملاء جربوا ذكين» over invented quotes, so the next release would publish a customer claim with no evidence. The assistant recommended no release until it was fixed. E-001 (P0): founder-console Cancel still applies plan/credit/refund changes; the fix was in #317. C-001 (P0): nashr-tau.vercel.app still serves main and holds `WAITLIST_ADMIN_KEY`, the key printed in chat on 2026-09-17. Two founder steps were listed: disconnect/delete the Vercel project, then rotate the key. C also found PDPL privacy gaps and VAT shown with no VAT registration. J: nashr.ai has no A or MX record, so `hello@nashr.ai` is undeliverable (verified).
+- **Errors & mistakes:** At 02:18 the main session told the founder "9 of 10 workstreams are back". It had misread a "waiting on 7" status.
+- **Correction:** 02:19, same session: "Correction to my last update: 'waiting on 7' meant 7 workstreams were still out… Now 4 of 10 are in".
+- **Outcome / state:** Workstreams finished by about 02:30; synthesis followed (see 02:32).
+
+<a id="e654"></a>
+### 02:13 UTC — Founder in the #317 session: "we dont work on vercel anymore"; #317 renumber pushed and marked ready (e654)
+
+- **Type:** founder, decision, ci
+- **Context / Thinking:** The UI phase 0 session (thakeen-setup-configs-5ba1b2) held #317. Its pushed head still defined rules 970-973, which collided with main's 970-972. The renumber commit `d6307768` (to 974-977) existed only locally. The red "Vercel" status on #317 came from the old nashr-tau project.
+- **Decision:** Founder: Vercel checks are no longer relevant, and #317 may be pushed and marked ready. Memory note recorded: never treat a Vercel check or deploy failure as a blocker or a reason to push; only Nashr CI counts. Founder confirmed the Vercel Git link was already disconnected (founder step 1 of #319 done).
+- **Action:** `d6307768` pushed to `claude/uiux-phase0` and #317 marked ready (02:18). Full local check before the push: type-check, lint, 5470 tests in 211 files.
+- **Founder:** 02:13 "put in your mind that we dont work on vercel anymore.. recheck the #317"; 02:17 "its already disconnected"; 02:17 "yes push it and mark ready".
+- **Outcome / state:** #317 head `d6307768`, full CI running (see 02:31).
+
+<a id="e655"></a>
+### 02:13 UTC — INCIDENT: claude-mem cannot save all day; repeated OAuth failures in the main checkout (e655)
+
+- **Type:** incident, error
+- **Context / Thinking:** Sessions in the main checkout logged "Failed to authenticate: OAuth session expired and could not be refreshed" about 25 times between 02:13 and 18:02 UTC. Nearly every worktree session that day also reported that claude-mem saved nothing ("Claude Code reported the observer as signed out"). A phase 3 subagent dated the outage to 2026-10-10 19:02 UTC.
+- **Decision:** Ask the founder to run `/login` (or `claude auth login`). The sessions kept writing their own memory files under `~/.claude/projects/.../memory/` in the meantime.
+- **Action:** Warnings were sent to the founder at 03:12 (main session), 03:14 (legal session, in Arabic), 09:29, 09:33, 12:28/12:36, 13:36 and 17:22.
+- **Errors & mistakes:** Every session lost automatic cross-session memory for the day. Assistants mentioned the problem but nobody fixed it that day.
+- **Correction:** unknown (not fixed in this window).
+- **Outcome / state:** Memory continuity relied on the hand-edited memory files (`thakeen-360-review-2026-10-10.md` was updated after every step).
+
+<a id="e656"></a>
+### 02:21 UTC — Founder: wanted a unified report, not a prompt (e656)
+
+- **Type:** founder, correction, planning
+- **Context / Thinking:** On 10-10 the founder had asked to "buil a unified 360 major prompt to study it". The study session was already producing the report.
+- **Decision:** Wait for the unified report. The assistant confirmed nothing had been changed in code from the reports, since the study is read-only. Other sessions' fixes (#317, #319, #320) were still drafts and not live.
+- **Founder:** 02:21 "I was mistaken, I was needed a unified report :).. did you make any changes from your reports yet?"; 02:24 "ok wait for the unified report".
+- **Outcome / state:** Main session waits for the study.
+
+<a id="e657"></a>
+### 02:31 UTC — #317 merged into main: UI/UX phase 0 (rules 960-969, 974-977) (e657)
+
+- **Type:** merge, founder, ci
+- **Context / Thinking:** #317 holds phase 0 of the supastarter UI/UX report: bugs B-1 to B-11 (admin reason prompts Cancel = null, `parseTrialDays`, `DeleteAccountDialog`, `TempPasswordDialog`, chat thread key, `generateMetadata` titles, chart contrast, Paymob confirms, BrandForm alert, connect-errors map) and quick wins (skip link, nav labels). The assistant checked the latest runs before merging. CI passed on `d6307768`; a duplicate run of the same commit was cancelled. That cancelled run is the "Nashr CI" failed/cancelled check on the PR. No conflict, and no rule-number clash.
+- **Decision:** The founder asked (as a question) "merge it?". The assistant read it as approval and merged at once with a merge commit. This was main only.
+- **Action:** merge commit `37b00583` (+945/-66).
+- **Founder:** 02:31 "UI Phase 0: admin Cancel, delete prompt, chat key, titles.. the ci is green merge it?"
+- **Outcome / state:** Main has phase 0, but nothing is live: thakeen.com deploys from `production`. The assistant warned that the «عملاء جربوا ذكين» heading is on main too and would ship in the same release unless decided first.
+
+<a id="e658"></a>
+### 02:32 UTC — 360 study delivered: 162 findings, founder ledger from day 1 (local commit, not pushed) (e658)
+
+- **Type:** research, docs, planning
+- **Context / Thinking:** The unified report the founder wanted.
+- **Decision:** Commit locally only. The proposed `Owner_Tasks` rewrite is not applied.
+- **Action:** commit `109d8aef` (02:31) on local branch `claude/360-study-2026-10-11` (worktree strange-kilby-e46c6b). It holds `docs/reports/2026-10-11-thakeen-360/`: 00 summary (AR), 01 snapshot, 02 founder ledger (105 tasks, 56 open), 03 Claude ledger (CL-001..039), 04-A..J, 05 roadmap, 06 stale claims, and `findings.jsonl` (162 = 12 P0 / 60 P1 / 90 P2). Dashboard artifact https://claude.ai/artifact/MHBV8UKNhebwxQiyoCkkau. `npm run check` passed with 5434 tests. About 15 stale memory notes were corrected, and new memory file `thakeen-360-study-2026-10-11.md` was added.
+- **Errors & mistakes:** Several tool retries during file writes (a hook demanded restated "facts" before each write). This cost time, not correctness.
+- **Outcome / state:** Roadmap R1 (week 1): heading decision, hello fix, #317, #319, release. R2: staging env, monitoring, CI parity, Turnstile, trial fix. R3/R4: Paymob after company papers, legal, #316 with admin 2FA, brand limits, media #320. Founder top 5: heading and release, stop nashr-tau and rotate the key, and others.
+
+<a id="e659"></a>
+### 02:40 UTC — Founder: plain-language edition, and one chat to follow the whole 360 work (e659)
+
+- **Type:** founder, docs, planning
+- **Context / Thinking:** The founder is not technical and wanted step-by-step guidance on their own tasks. They also wanted every task run by subagents that report back to this one chat.
+- **Decision:** Write a second, plain edition. The first report stays untouched. This session (abedc961) becomes the hub.
+- **Action:** A writer subagent committed `e22bc8c3` (03:08) on `claude/360-founder-guide`, on top of `109d8aef`. The assistant then fixed task T-014 (support email) and committed `9bd8fb09` (03:11): "plain edition records the hello@thakeen.com decision". It was published as a new private artifact, https://claude.ai/artifact/EsY4ryC8ED6ERAyWgTs4Ua («ذكين: دليلك المبسّط»): 58 tasks with steps, a 40-term glossary, ticks in the browser. The assistant read the whole page before publishing. The branch later exists on origin; push time unknown.
+- **Founder:** 02:40 "make the voice's tone of the report clear well-explained with steps to accomplish my tasks, for me cause im not tech guy"; "i need one chat to follow the whole 360 major development"; 02:41 "make another version, dont touch the first report".
+- **Outcome / state:** Two editions exist; the founder has a plain task guide.
+
+<a id="e660"></a>
+### 02:50 UTC — Founder asks for a "Prompt Studio"; decision: spec it, founder approval always in the admin panel (e660)
+
+- **Type:** founder, decision, design
+- **Context / Thinking:** The founder wanted system prompts managed in three aspects: inside Thakeen (founder and agents improve skills), per client account, and admin control of everything. The founder also asked whether supastarter covers it. The assistant found that supastarter's AI module is a demo with one hard-coded OpenAI prompt, and its admin area only lists users and organisations and bans. Nothing to reuse. About 60% already exists in draft #316 (agent skills portal, rules 930-959).
+- **Decision:** One layered "Prompt Studio": 0 code safety > 1 git playbooks > 2 founder platform > 3 plan/industry (new) > 4 client workspace > 5 client per-agent. Agents propose, the founder always approves in the admin panel, nothing auto-applies. Golden A/B runs only on the founder's click, and automatic rollback goes only to an approved version.
+- **Action:** A spec subagent started on new branch `claude/prompt-studio-specs` (no push); see 03:15.
+- **Founder:** 02:50 "I need to make in admin panel something to build "system prompts" in three aspects"; "if its inside superstart.dev , use it"; 02:53 "spec it, always my approval in admin panel".
+- **Outcome / state:** Specs in progress, built on #316 merging first.
+
+<a id="e661"></a>
+### 02:58 UTC — Founder checks the UI/UX report is being followed; orders one agent and worktree per task (e661)
+
+- **Type:** founder, correction, planning
+- **Context / Thinking:** Founder asked where `docs/reports/2026-10-10-supastarter-uiux-report.md` is. It existed only on local branch `claude/supastarter-uiux-report-fca589` (commit `d2b23bcd`, not pushed), plus artifact SuJz2htHiHQaBc8TuJpu17. Asked "do you work as per Supastarter UI/UX report?", the assistant admitted only phase 0 was done and phases 1-5 had not started. None of its 6 queued tasks was a UI phase. Recommendations: (1) pick the inbox replacing `hello@nashr.ai`, (2) release phase 0 with the other fixes after the heading decision, (3) start phase 1 after the queued tasks.
+- **Decision:** Founder: support email = `hello@thakeen.com`; release phase 0 after the heading decision; every task gets its own agent, worktree and branch now, including phase 1 onward. The UI phases run one after another, each cut from the previous branch. Phase 4 is merged with the Control Center spec.
+- **Action:** 03:05: 7 agents running. Branches: `claude/360-founder-guide`, `claude/prompt-studio-specs`, `claude/r1-release-prep` (924-929), `claude/privacy-terms-draft`, `claude/monitoring-ci-parity` (1011-1019), `claude/turnstile-client-ip` (908-909, 978-979), `claude/uiux-phase1` (1080-1109 reserved). Nothing pushed without the founder's word.
+- **Errors & mistakes:** The founder had already ordered agent-per-task work, and the assistant had not queued the UI phases.
+- **Founder:** 03:03 "i ordered you to assign an agent for each task needs a branch in with worktree here, so add Phase 1 and so on"; "1. you can use hello@thakeen.com 2. yes 3. yes. as per my order above".
+- **Outcome / state:** Parallel build-out began.
+
+<a id="e662"></a>
+### 03:07 UTC — Three proposal sessions from the study start in parallel and duplicate the hub's work (e662)
+
+- **Type:** action, error, planning
+- **Context / Thinking:** The 360 study session had proposed task cards. The founder started three of them at about 03:07: "R1 release prep: hello＠ fix + heading copy" (local_80741487, worktree thakeen-setup-configs-5ba1b2), "Finish #317: rule renumber + Cancel fix check" (local_f5f5852d, worktree cool-antonelli-82c36a), and a privacy/terms draft (worktree competent-matsumoto-ba65ca). The hub had launched agents for the same work minutes earlier.
+- **Decision:** Each ran on its own. Later, the hub recommended stopping or dropping them.
+- **Action:** "Finish #317" found #317 already merged and added a missing pin as `79a17477` (03:13) on local `claude/uiux-phase0-cancel-pin`. The pin covers the 15 earlier console prompts and the void/refund confirms (rule 960); it was mutation-checked on rawPaid. `next build` was blocked locally (Turbopack port binding); test-only change. The legal session committed `cd91d29e` (03:14) on local `claude/legal-privacy-terms-draft` and reported in Arabic. The R1 duplicate committed `647f32e3` on `claude/r1-release-fixes` (see 09:33).
+- **Errors & mistakes:** Three duplicate branches of work already assigned in the hub. `79a17477` became redundant when #321 rewrote the rule-960 test (09:40).
+- **Correction:** 12:56-13:02, after founder approval: R1 and legal duplicates archived and deleted, and the legal accountant questions folded into #325 (see 12:56). `79a17477` was never pushed.
+- **Outcome / state:** Duplicates contained; no duplicate PR reached GitHub except #321 (see 09:39).
+
+<a id="e663"></a>
+### 03:15 UTC — Specs committed: agent learning loop (1020-1049) and admin Control Center (1050-1079) (e663)
+
+- **Type:** design, rule, docs
+- **Context / Thinking:** Follows the 02:50 decision. Both specs assume #316 merges first. They reuse its layer store and merge point, and the `skills:paused` switch. Background for the Control Center: `CLAUDE_PAUSED` is a code constant; per-task models (`TASK_MODELS`, rule 901) are code-only; features are on or off only by hPanel env names; `admin:log` rows are ad hoc (cap 2000); Users still used `window.prompt`.
+- **Decision:** Learning loop decisions D1-D5. Agents propose weekly from anonymised signals (a type counts only from 5+ workspaces; no client text reaches the proposer). The founder approves, edits or rejects in `/admin/skills` → Proposals. Golden A/B runs only on click, with the price shown. Rollout is staged with automatic rollback; base-playbook changes become a Claude brief, never a Redis write. Rejected for v1: proposals for single clients' layers 4-5, proposals for the reviewer or judge, any other model or a fine-tune, and in-browser playbook edits. Control Center: Redis pause switch checked in code, agent on/off per plan, model per task within margin, workflow page, feature flags that turn on only when env names exist, one audit writer, no `prompt`/`confirm`/`alert`. Editing env vars or secrets in the browser is rejected.
+- **Action:** commit `094a9617` on `claude/prompt-studio-specs`: `docs/superpowers/specs/2026-10-11-agent-learning-loop-design.md`, `docs/superpowers/specs/2026-10-11-admin-control-center-design.md`, and coverage files 1020 and 1050 ("designed, not pinned"). Open questions are in §18 of each spec.
+- **Outcome / state:** Docs only, local. Answered at 12:45, pushed as #326 at 12:35.
+
+<a id="e664"></a>
+### 03:21 UTC — R1 honesty fixes committed (rules 924-929); four questions put to the founder (e664)
+
+- **Type:** action, rule, decision
+- **Context / Thinking:** The release blocker I-001 and other honesty items from the study had to be fixed before the main→production release.
+- **Decision:** The assistant's first draft restored the live heading «كيف يشتغلون مع ذكين.» and the «أمثلة توضيحية» line. Remaining choices went to the founder by AskUserQuestion (03:22): heading (recommended «كيف يشتغلون مع ذكين»), Agency «مدير نجاح مخصص» (recommended remove), pricing "coming soon" lines (recommended remove both), and the pitch deck (recommended fix all now).
+- **Action:** `de5112e7` on `claude/r1-release-prep`, cut from main `37b00583`. 924: single `SUPPORT_EMAIL = hello@thakeen.com`, no `nashr.ai` left in src/content/public/scripts. 925: unused waitlist dictionary removed (an unbacked "first 100 brands get two months free" promise). 926: scenes subline. 927: no "coming soon" plan bullet. 928: deck has no invented merchant quote, prices 299/499/999 SAR + VAT, no KSA-region or PDPL claims. 929: `docs/release/2026-10-R1-checklist.md`. Tests in `tests/release-honesty.test.ts`; coverage `0924-release-honesty.md`.
+- **Outcome / state:** Local; the founder answered at 09:19.
+
+<a id="e665"></a>
+### 03:22 UTC — Turnstile fails closed and client IP gets a trusted-hop setting (rules 908-909, 978-979) (e665)
+
+- **Type:** security, action, rule
+- **Context / Thinking:** Study finding C-005. Behind Hostinger's hcdn, `clientIp` reads the last `x-forwarded-for` hop. If that hop is the CDN edge, every caller behind one edge shares the signup, forgot, free-tool and admin-key rate buckets. This was unverified.
+- **Decision:** Make the hop configurable with the default unchanged, give the founder a way to see evidence, and fail closed on a half-configured Turnstile.
+- **Action:** `983833d3` on `claude/turnstile-client-ip`. 979: `TRUSTED_PROXY_HOPS` (1-3, default 1). 908: `GET /api/admin/client-ip` (`isAdmin` first, no-store, logs nothing). 978: in production, exactly one Turnstile key set returns 503 `captcha_unavailable`. 909: "turnstile off" logged once. Docs: permissions row 158, variables, flows 51.7; coverage `0908-client-ip-turnstile.md`.
+- **Outcome / state:** Local; became #323. Nothing changes live until `TRUSTED_PROXY_HOPS` is set.
+
+<a id="e666"></a>
+### 03:22 UTC — Privacy policy and terms drafts for the lawyer (docs only) (e666)
+
+- **Type:** docs, action
+- **Context / Thinking:** Study finding C-002: the privacy policy is not PDPL-complete.
+- **Decision:** Arabic-primary drafts with English versions, written from the code with no invented facts, regions or certifications. Marked "draft, not in force" with `[...]` placeholders. No product page changed.
+- **Action:** `073dee24` on `claude/privacy-terms-draft`: `docs/legal/` privacy and terms (AR, EN), plus `2026-10-gap-list.md` (code changes needed before publishing, 20 lawyer questions).
+- **Outcome / state:** Local; became #325.
+
+<a id="e667"></a>
+### 03:24 UTC — Monitoring and CI parity: store health, cron heartbeats, CI built like Hostinger (rules 1011-1019) (e667)
+
+- **Type:** action, rule, ci
+- **Context / Thinking:** Roadmap R2: no uptime signal for Redis or crons. CI built with Turbopack while Hostinger builds with webpack.
+- **Decision:** No new env vars and no data conversion. Uptime monitor steps go to the founder (flows §62).
+- **Action:** `c4125ee0` on `claude/monitoring-ci-parity`. `GET /api/health?store=1` (public, one Redis read raced against 2 s). `?crons=1` (bearer `CRON_SECRET` via `sameSecret`). `cronbeat:{job}` written by the 8 cron routes; the Usage page shows last run and "late". CI uses Node 22 and `npm run build:hostinger`; the Playwright server is built the same way.
+- **Outcome / state:** Local; became #324.
+
+<a id="e668"></a>
+### 03:56 UTC — UI/UX phase 1: semantic tokens and core primitives (rules 1080-1099) (e668)
+
+- **Type:** action, design, rule
+- **Context / Thinking:** Phase 1 of the supastarter UI/UX report §7. Expand only: tokens are added, none removed.
+- **Decision:** Build the primitives restyled to the project's own tokens and RTL, with no shadcn import. Lint rules start as warnings only.
+- **Action:** `9075ee12` (tokens, inverse focus ring, Arabic 13px floor and taller leading; 1080-1081, 1083). `6189be84` (`src/components/ui`: Button, Field/Input/Textarea/Select, Switch, Badge, Callout, Toast, Dialog/FormDialog/usePrompt, Time/Money over `src/lib/format.ts`, Arabic six-form `plural`; `dateFormat` gains an optional zone, default UTC; 1082-1094). `3cae3177` (auth, BrandForm, BrandsPanel, DeleteAccountDialog, Integrations moved onto the primitives; 1089-1091, 1094, 1099). `08e3cc7f` (`eslint-rules/thakeen-ui.mjs`, four warnings: decorative red, lemon on light, ISO date slicing, physical sides; 160 warnings on unmigrated screens; 1095-1098). `4852423f` (`tests/uiux-phase1.test.ts`, coverage `1080-uiux-phase1.md`). Branch `claude/uiux-phase1`.
+- **Errors & mistakes:** Signed-in screens were not checked visually (needs staging). The auth field accessible names changed, which later broke an e2e test (see 21:18).
+- **Outcome / state:** Local; became #327.
+
+<a id="e669"></a>
+### 09:19 UTC — Founder answers R1: keep «عملاء جربوا ذكين», keep Agency bullet and "coming soon" lines, fix the deck (e669)
+
+- **Type:** founder, decision, rule
+- **Context / Thinking:** The AskUserQuestion from 03:22 was answered at 09:19. On the heading and Agency questions the founder chose the options the assistant had marked "Not recommended" and "Remove (Recommended)" against.
+- **Decision:** Founder decisions: keep heading «عملاء جربوا ذكين.»; keep Agency "Dedicated success manager"; keep both pricing "coming soon" lines (yearly, X); fix every deck item now. The assistant kept «أمثلة توضيحية:» at the start of the subline. It told the founder the heading reads as a real-customer claim, against the project's own "no invented customers" rule, and offered to reword the rule to match the decision.
+- **Action:** `4f7321f6` (09:23) on `claude/r1-release-prep`. Rule 926 is now "the scenes subline marks them as illustrative examples in both languages". The deck (`scripts/build_deck.py`, .pptx rebuilt) now says Thakeen / ذكين, uses Paymob instead of Tap/Moyasar, and has the 08:00 brief in the app and by email instead of WhatsApp. It says connectors switch on once keys are set, not "one-click OAuth", and "Live at thakeen.com, onboarding founding customers" replaces the waitlist line. "TO VERIFY" marks are on slides 2, 5, 6, 10, 12 and 14; the numbers are unchanged. 5,505 tests passed.
+- **Founder:** 09:19 (card answers) "Keep «عملاء جربوا ذكين»", "Keep it", "Keep both", "Fix all now (Recommended)".
+- **Outcome / state:** R1 branch complete with the founder's choices.
+
+<a id="e670"></a>
+### 09:33 UTC — Duplicate R1 session claimed "build passed" from a stale log, then corrected itself (e670)
+
+- **Type:** error, correction, ci
+- **Context / Thinking:** The duplicate "R1 release prep" session (see 03:07) finished its own copy of the R1 fixes as `647f32e3` on local `claude/r1-release-fixes`, cut from `37b00583` before the founder's decisions.
+- **Decision:** none (self-correction).
+- **Action:** It first told the founder, in Arabic, that `npx next build` passed. It then noticed the background build log said `exit=1`.
+- **Errors & mistakes:** The success it reported was read from an old log file in a temp folder shared between sessions. The real run failed: Turbopack needs a local port for CSS and the machine refused it with "Operation not permitted", inside and outside the sandbox. This is a known local limit, not a code error.
+- **Correction:** 09:33, same session: «تصحيح لرسالتي السابقة: قلت إن `npx next build` نجح، وهذا خطأ». It reran with its own log in the scratchpad. From then on the hub's PRs cite `npx next build --webpack` (the Hostinger build) as the local proof.
+- **Outcome / state:** `647f32e3` was never pushed. The hub recommended dropping it (09:33, 09:40), and it was deleted at 12:59.
+
+<a id="e671"></a>
+### 09:39 UTC — #321 opened (draft): founder console asks in one in-page form (rules 1100-1102) (e671)
+
+- **Type:** action, rule, error
+- **Context / Thinking:** A session started from another proposal card ("Founder console: in-page dialogs instead of prompt()", worktree loving-greider-66b8f3, started 09:29) followed up on P0 E-001. The 26 `window.prompt`/`confirm` calls in `src/components/admin/Users.tsx` (up to six in a row for one change) can be blocked by browsers and speak the browser's language.
+- **Decision:** One native `<dialog>` `ActionDialog` per change. Cancel and Escape send nothing. Shared parsers go in `src/lib/admin-input.ts`.
+- **Action:** commit `4f6a1d93` on `claude/console-dialogs`, pushed, draft #321 (+565/-144). New `tests/console-dialogs.test.ts`; a guard was removed on purpose to prove the test fails. `npm run check`: 213 files, 5496 tests.
+- **Errors & mistakes:** It took rules 1100-1102 from the block the hub had set aside for phase 1 fixes. It also built a second in-page form next to phase 1's FormDialog, so whichever merged second would have to switch. The hub recommended stopping it ("stop them", 09:33/09:40), but the session finished and pushed first.
+- **Correction:** Closed at 17:38 on founder approval. #330 (phase 4) ports its parsers and error words onto FormDialog and cites rules 1100-1102.
+- **Outcome / state:** Draft PR; superseded the same day.
+
+<a id="e672"></a>
+### 09:41 UTC — UI/UX phase 2: shell, chat and states (rules 1110-1130) (e672)
+
+- **Type:** action, design, rule
+- **Context / Thinking:** Built on `claude/uiux-phase1` as the founder ordered.
+- **Decision:** none recorded beyond the phase plan.
+- **Action:** `16f20adf` (Sheet, Menu, Tabs, PageHeader, Skeleton, EmptyState, ErrorState, CopyButton; busy ConfirmDialog moved to ui/; 1110-1118). `6b8b47b7` (rail grouped by purpose with 44px touch rows, phone Sheet, account Menu, global Escape listener removed, bell and approvals counts read in one `Promise.all`; 1119-1122). `4a256db4` (`loading.tsx` for 9 routes; 1115). `9cd45625` (growing composer, Enter/Shift+Enter and IME handling, Stop, copy, retry, ApprovalCard; 1124-1127). `9b4f99eb` (notifications stay unread until "Mark all as read", calendar agenda with RTL arrows and brand-zone today, reports data table; 1123, 1128, 1129). `fc316cfd` (shared Switch, profile ErrorState for bug B-12; 1116, 1130). `7cd52745` (`tests/uiux-phase2.test.ts`, coverage `1110-uiux-phase2.md`). Branch `claude/uiux-phase2`.
+- **Errors & mistakes:** Not checked visually: the sandbox blocks binding a local port. The staging check list is in the coverage file.
+- **Outcome / state:** Local; became #328 (base phase 1). Phase 3 started from it at about 10:02.
+
+<a id="e673"></a>
+### 12:24 UTC — UI/UX phase 3: one settings area and billing (rules 1140-1158), with a stored-shape expand (e673)
+
+- **Type:** action, design, rule, security
+- **Context / Thinking:** Built on phase 2. Notification preferences needed a new field on the stored profile, which falls under rule 679 (expand then contract).
+- **Decision:** `/{lang}/app/settings/{section}` (account, security, notifications, brand, brands, members, billing, connections, governance, danger). Old pages answer a 307 for one release (expand). `profile:{scope}` gains `notify`, and `emails` is still written and read; contract steps are in flows §62. Security and billing mail never consult preferences. "Sign out other devices" needs the password and is blocked while impersonating. Paymob stays off and no price changes. A list of signed-in devices, 2FA and data export were deferred.
+- **Action:** `6f5e22ee`, `303ad2ad` (PlanCard, `GET /api/billing/status` Paymob return poll, payment history, CreditUsageCard), `5e5e0bb2` (`tests/uiux-phase3.test.ts`, coverage `1140-uiux-phase3.md`), `01520482` (e2e routes follow the settings area). Branch `claude/uiux-phase3`. 5,775 tests and the build passed. A read-only security review (about 12:29-12:41) found no critical, high or medium issue and three low ones: rate limit counted before the password check, destroy-then-create sign-out, and a wrong comment about owner calendar feeds. All were sent to the phase 4 agent.
+- **Outcome / state:** Local; became #329 (base phase 2).
+
+<a id="e674"></a>
+### 12:31 UTC — Founder: "push the finished ones": 8 draft PRs (#322-#329) opened (e674)
+
+- **Type:** founder, action, ci
+- **Context / Thinking:** Seven branches were finished locally. Under the CI-minutes rules (772/789), PRs open as drafts; only a ready PR runs the end-to-end suite.
+- **Decision:** Push each branch once, open drafts only, mark none ready. The UI phases are stacked: each PR's base is the previous phase.
+- **Action:** 12:34-12:35: #322 `claude/r1-release-prep`, #323 `claude/turnstile-client-ip`, #324 `claude/monitoring-ci-parity`, #325 `claude/privacy-terms-draft`, #326 `claude/prompt-studio-specs`, #327 `claude/uiux-phase1` (base main), #328 `claude/uiux-phase2` (base phase 1), #329 `claude/uiux-phase3` (base phase 2). Each body says `npm run check` and `npx next build --webpack` passed locally. Two possible merge clashes were flagged: permissions.md row 158 (#323 vs phase 3) and rows 158-160.
+- **Founder:** 12:31 "push the finished ones, what your recommendiotn about duplicate release-prep branch?"
+- **Outcome / state:** 8 drafts on GitHub, none ready, none merged.
+
+<a id="e675"></a>
+### 12:41 UTC — Founder accepts all 13 Prompt Studio answers; #326 and #325 updated with one push each (e675)
+
+- **Type:** founder, decision, docs
+- **Context / Thinking:** The founder asked where the Prompt Studio questions were (they had looked in «مهام المؤسس»). Those T-021 items are #316's 7 questions; the Prompt Studio ones sit in §18 of each spec. The founder also asked what "Turnstile keys: both or none" meant, and said the nashr-tau stop and key rotation were in progress. The assistant listed all 13 questions with recommendations.
+- **Decision:** Founder accepted every recommendation. Learning loop: Q1 anonymised cross-account signals yes, plus a privacy line; Q2 rollout 10→50→100, at least 3 days and 30 judged items per step, auto-rollback thresholds; Q3 $10/week proposer cap (about $2 expected); Q4 no single-client proposals in v1; Q5 base-layer changes via a Claude brief, no GitHub token in the app; Q6 the general instruction beats per-agent on conflict; Q7 never change the reviewer or judge. Control Center: Q1 pause stops every model call; Q2 quiet day stops automated work only; Q3 support role via an hPanel env list; Q4 model upgrade only if the margin holds; Q5 a paused agent shows greyed; Q6 `LLM_PROVIDER`/`PAYMOB_LIVE`/`MEDIA_MODELS_ON` stay in hPanel.
+- **Action:** `40ee36ed` (12:47) on #326: §18 "Founder questions, answered"; the agent also fixed the spec's ramp to match Q2 (default 10→50→100, with 5% and 25% still selectable). `54f8b96c` (12:46) on #325: cross-account learning purpose (AR/EN) and lawyer question 21 (legitimate interest vs consent). Each was pushed once.
+- **Founder:** 12:41 "where? is it the مهام الموسس؟"; "what is that?" (Turnstile); "im working on it" (nashr-tau and key rotation); 12:45 «موافق على الكل».
+- **Outcome / state:** Both specs are now decided; recorded in memory "so I won't ask again".
+
+<a id="e676"></a>
+### 12:43 UTC — UI/UX phase 4: founder console and Control Center phase 1 (rules 1170-1190); #330 opened (e676)
+
+- **Type:** action, security, rule
+- **Context / Thinking:** Phase 4 merges with the Control Center spec. It had to include phase 3's three low review items.
+- **Decision:** One audit writer and one log page, reason forms everywhere, time-boxed impersonation, server-side Users table. A security review runs before any push.
+- **Action:** `97f1ba51` (12:43; sign-out counts only wrong passwords, rotate session first; 1170-1171). `3a098cec` (`adminAudit` sole writer of `admin:log`, secrets dropped or masked, cap 5000, legacy rows read; `GET /api/admin/log` 300 reads/hour, pages of 50; 1172-1178). `c92b9197` (console panels moved to `components/admin`; 1181). `a645ecf3` (server-side Users table `/api/admin/plan?view=table`, additive; UserSheet with 5 tabs; 1176, 1178, 1180). `fa95b762` (Log page with key-by-key diff; 1179). `aad98c9f` (sticky impersonation banner with time left and Stop; 1177). `c8e7754b` (tests and docs). The review (13:39) found 1 medium and 6 low. Medium: the sign-out-others limit was check-then-spend, so parallel guesses could pass the 10/hour cap. `95351a33` (13:52) fixed all 7 (1183-1190): atomic `allow()` before compare with `giveBack`; server refuses founder writes without a reason (400 `reason_short`/`reason_long`); `adminActor` on golden and wishlist; impersonation audit row written first; redirect pinned to `/(ar|en)/app`; wider secret masking; no second MGET in `pushNotifs`. 5,852 tests and the webpack build passed. Pushed once, draft #330 opened (13:53, base `claude/uiux-phase3`).
+- **Errors & mistakes:** The review caught a real rate-limit race (medium) introduced in phase 3/4 before any push.
+- **Outcome / state:** #330 draft. Five actions still accept no reason (payment record, Paymob refund, partner approve/reject/payout); this is written in permissions.md.
+
+<a id="e677"></a>
+### 12:56 UTC — Founder approves cleanup of duplicate branches; accountant questions folded into #325 (e677)
+
+- **Type:** founder, action, correction
+- **Context / Thinking:** Two duplicates existed: `claude/r1-release-fixes` (`647f32e3`, local) and `claude/legal-privacy-terms-draft` (`cd91d29e`, local). #325 covered everything in the second except an accountant-questions file.
+- **Decision:** Copy the accountant questions into #325, then archive both duplicate sessions and delete their local branches.
+- **Action:** Auto mode blocked the first `git` branch delete; the assistant used the app's worktree cleanup tool instead. R1 duplicate session archived; `claude/r1-release-fixes` deleted (restorable from `647f32e3`). `c95c4adb` (13:01) on #325: `docs/legal/2026-10-accountant-questions_AR.md`, 11 questions, facts re-checked against main. One fact corrected: the 15% VAT add-on applies only once Paymob is on. Dropped: an unsupported claim that Razan quotes VAT-inclusive prices, and the removed "first 100" offer. Shared questions cross-referenced to lawyer Q10, Q11 and Q18. Pushed once. Legal duplicate session archived.
+- **Founder:** 12:56 "yes, go ahead".
+- **Outcome / state:** No duplicate branches left from the study proposals, apart from the unpushed `79a17477` pin.
+
+<a id="e678"></a>
+### 14:13 UTC — UI/UX phase 5: semantic colours and dark theme (rules 1200-1205); #331 opened; 5b deferred (e678)
+
+- **Type:** action, design, rule
+- **Context / Thinking:** Built on phase 4, which was merged in rather than rebased (merge `d12d2ce3`). The public home gallery was split off as 5b so the home page heading owned by #322 stays untouched.
+- **Decision:** Dark mode applies only to `/{lang}/app` and `/{lang}/admin`; public pages stay light this phase. The theme lives in a browser cookie that no server code reads, so no stored-shape change.
+- **Action:** `61d8e1d0`: codemod `scripts/semantic-colours.mjs` moved 1,625 raw colour classes in 127 files (1200); lint `thakeen-ui/no-raw-colour` became an error (1201); dark values in `src/app/theme-dark.css` (1202); a no-flash head script `THEME_SCRIPT` (1203); `nashr_theme` cookie and ThemeToggle (1204). `6a14638f`: `tests/uiux-phase5.test.ts`, WCAG AA in both themes (1205), coverage `1200-uiux-phase5.md`; rules 1220-1229 held for 5b. Pushed once, draft #331 opened (14:18, base `claude/uiux-phase4`). At 14:19 the gallery was proposed as a separate session card.
+- **Outcome / state:** UI stack #327→#328→#329→#330→#331, all drafts.
+
+<a id="e679"></a>
+### 17:09 UTC — UI/UX phase 5b home gallery built locally (rules 1220-1227) (e679)
+
+- **Type:** action, design, rule
+- **Context / Thinking:** The 5b card was started as session local_ed1c539f (worktree competent-matsumoto-ba65ca, brief from the hub, not typed by the founder). It cut `claude/uiux-phase5b` from phase 5 (`d12d2ce3`). Source: supastarter report §4.12, fix 2 ("show the real product without inventing customers").
+- **Decision:** Use real app components (ChatBubble moved out of ChatPanel, ApprovalCard, PlanCard) with a `demo` prop that sends no request. Made-up data for an unnamed roastery, an «مثال توضيحي» badge on every panel, no model or maker named, no digits, prices, quotes or logos. `src/lib/home.ts` untouched.
+- **Action:** `e2ecde69` (17:21). New `src/lib/home-gallery.ts` and `src/lib/approval-dict.ts` (the public page gets under a tenth of the app dictionary); 28 tests in `tests/uiux-phase5b.test.ts`. Check passed (219 files, 5933 tests), webpack build passed, `/ar` and `/en` still static. The local visual check passed: Arabic and English, 360px width, keyboard navigation, zero `/api/` requests, no console errors.
+- **Outcome / state:** Local, not pushed: the brief said to wait for the founder's word (see 20:44).
+
+<a id="e680"></a>
+### 17:14 UTC — Founder: "do what is the best for thakeen"; auto mode blocks GitHub writes until an explicit card answer (e680)
+
+- **Type:** founder, decision, action
+- **Context / Thinking:** Asked "what should we do now?", the assistant recommended release R1 first. Main was about 77 commits ahead of live, including the `/p/` fix. Order: #322, then #323 and #324, then a draft main→production release PR that the founder merges. It asked for the word «جهّز الإصدار».
+- **Decision:** The assistant took "do what is the best" as approval and ran `gh pr ready 322/323`. The auto-mode classifier denied it ("External System Writes") and denied a Part B read ("Unrequested Commit in a Connected App"). The assistant did not work around the block and asked by AskUserQuestion (17:16). At 17:37 the founder approved all four options: ready and merge #322/#323/#324 when green (#324 merges main in first, since it shares 4 docs files with #323); open the release PR as a draft; push Part B without a PR; close #321.
+- **Action:** 17:38: #322 and #323 marked ready, #321 closed with comment "Closed on founder approval: #330 … ports the admin-input parsers…". 17:39: `claude/entitlements-part-b` pushed as a fast-forward (`19fdf185`, 9 commits, rules 790-802; no PR, so no CI). 17:40: GitHub auto-merge attempted on #322/#323 and refused: "Auto merge is not allowed for this repository". The assistant then waited for the founder's next message to merge by hand.
+- **Errors & mistakes:** The first `gh pr ready` was attempted on an ambiguous "do what is best" before an explicit yes; the classifier stopped it.
+- **Founder:** 17:14 "what should we do now?"; 17:15 "do what is the best for thakeen"; 17:37 (card) "Ready + merge R1, Turnstile, monitoring (Recommended), Open release PR (draft), Push Part B (no PR), Close #321".
+- **Outcome / state:** Full CI running on #322 and #323. Part B is safe on GitHub.
+
+<a id="e681"></a>
+### 17:50 UTC — #322 CI red: flaky deadline test (19999 vs 20000); fixed at source as rule 1206 (e681)
+
+- **Type:** ci, error, rule, correction
+- **Context / Thinking:** An Auto-fix CI event: 1 check failed on #322 (run 38160469570). The media prompt timeout was 19999 ms instead of 20000. `until(Date.now() + X)` read the clock a second time inside `until()`, so a 1 ms tick lost one millisecond. The code came from main (#318), not from the R1 work.
+- **Decision:** Fix the cause, not the test: read the clock once at every deadline. Pin the exact budget and forbid the pattern in a source scan. #323/#324 could hit the same flake until #322 merged.
+- **Action:** The R1 agent committed `602f8251` (18:12, "read the clock once per deadline so the timeout equals the budget (rule 1206)"). It changes 7 files: media prompts, the judge, and Noor's cross-review. Tests pin the budget under a clock that ticks 1 ms per read; a scan forbids `until(Date.now(` in src. Coverage `docs/system/tests/1206-deadline-clock.md`. 5,509 tests and the webpack build passed. Pushed once (`4f7321f6..602f8251`).
+- **Errors & mistakes:** CI red on #322 from a latent timing bug already on main.
+- **Correction:** `602f8251`, noticed through Auto-fix and diagnosed by the hub. Rule 1206 taken; 1207-1219 free.
+- **Outcome / state:** The new run on #322 went green (seen at 20:45).
+
+<a id="e682"></a>
+### 20:44 UTC — Founder "merge all greens": #322 (R1) and #323 (Turnstile) merged into main (e682)
+
+- **Type:** founder, merge, rule
+- **Context / Thinking:** #322 head `602f8251` showed SUCCESS and #323 was clean. The founder's queued "what we still have to do?" (20:45) was absorbed mid-turn.
+- **Decision:** Merge in order with `--match-head-commit`, using merge commits. This is main only; the production merge stays the founder's.
+- **Action:** #322 merged 20:45 (`6ddc203e`, +409/-91, rules 924-929). #323 merged 20:46 (`870e6e62`, +313/-20, rules 908, 909, 978, 979). A subagent was started to merge main into #324 (one push).
+- **Founder:** 20:44 "merge all greens"; 20:45 "what we still have to do?"
+- **Outcome / state:** Main carries the R1 honesty fixes (heading «عملاء جربوا ذكين» with the «أمثلة توضيحية» line) and fail-closed Turnstile. Not live. Founder action still open: set `TRUSTED_PROXY_HOPS` from evidence.
+
+<a id="e683"></a>
+### 20:44 UTC — #332 opened ready against main by the founder's "Create PR" click, then turned into a stacked draft (e683)
+
+- **Type:** action, ci, error, founder, correction
+- **Context / Thinking:** At 20:44:47 the 5b session received the app's "Create PR" command (not "Create draft PR"), meaning the founder chose it in that session's UI. That choice overrides the draft default. The session pushed `claude/uiux-phase5b` and opened #332 ready, against `main`, showing 28 commits (phases 4 and 5 included). The full paid CI run started. Auto-fix then started a merge of main to clear conflicts in `docs/system/permissions.md` and `src/app/[lang]/app/settings/billing/page.tsx`. The 5b session aborted that merge (20:47), citing CLAUDE.md: a conflict alone waits until right before merging, and this rule overrides Auto-fix. Branch back at `e2ecde69`, nothing pushed.
+- **Decision:** The hub recommended draft and a phase 5 base so it merges last in the UI stack. The founder agreed.
+- **Action:** 20:53 (hub): checked phase 5 is an ancestor of 5b, then `gh pr ready 332 --undo` and base set to `claude/uiux-phase5`. #332 now shows its own 13 files; no new CI run. 20:54 (5b session): the founder also typed the retarget; the session updated the PR body's stacking note.
+- **Errors & mistakes:** A full CI run was spent on a PR that was not meant to be ready. At 20:49 the hub told the founder "No go-ahead: you hadn't said «ارفعه» yet". That was inaccurate: the founder had pressed "Create PR" in the 5b session (inferred from that session's transcript).
+- **Founder:** 20:52 "yes, make #332 a draft and stack it"; 20:54 (5b session) "retarget it to claude/uiux-phase5".
+- **Outcome / state:** #332 is a draft on phase 5. The conflicts are left for merge time.
+
+<a id="e684"></a>
+### 20:47 UTC — Founder widens the merge list: docs PRs, UI stack, #319, #320; #324 brought up to date and marked ready (e684)
+
+- **Type:** founder, decision, ci, action
+- **Context / Thinking:** The other green PRs were drafts, so only their unit tests had run. Merging one means marking it ready, which starts about 20 minutes of paid e2e CI. Main also feeds staging.
+- **Decision:** The founder chose all four options (AskUserQuestion 20:46, answered 20:47): docs-only #325 and #326 (the recommended option), the UI stack #327→#331, #319 retire Vercel, and #320 media spec. #316 was not included.
+- **Action:** 20:48: #320, #325, #326 and #327 marked ready. #319 was CONFLICTING, and the hub decided to update it only after #324 merged to avoid a second push. #324: the subagent merged main (`027b091e`, `f142727b` "after #322, #323"). No textual conflicts; docs checked for row and number collisions (permissions row 158, `TRUSTED_PROXY_HOPS`, row 153, flows §62). 5,562 tests and the build passed; pushed once. 20:52: #324 marked ready.
+- **Errors & mistakes:** Marking #324 ready right after the push cancelled the shorter draft run that the push had started. The assistant noted that the cancelled run is still billed; it is the cancelled "Nashr CI" check on #324. Two old docs errors already on main were found (two rows numbered 114 in permissions.md; rows 152-153 describing the pre-#323 client IP) and deferred to #319's update to save a push.
+- **Founder:** 20:47 (card) "Docs only: #325, #326 (Recommended), UI stack #327→#331, #319 retire Vercel, #320 media storage spec".
+- **Outcome / state:** Full CI running on #320, #324, #325, #326, #327.
+
+<a id="e685"></a>
+### 20:48 UTC — #319's own Auto-fix session merges main into retire-vercel (`8db3c4db`) (e685)
+
+- **Type:** action, ci, merge
+- **Context / Thinking:** #319 (`claude/retire-vercel`, rules 987-990) is watched by its own session (worktree anthropic-token-cost-calculation-3ec086) with Auto-fix on. After #322/#323 landed, a merge-conflict event arrived.
+- **Decision:** That session resolved and pushed. In `docs/system/variables.md` it kept #319's `VERCEL_ENV` row with the hPanel steps for `APP_ENV=production` (rule 990), and main's rule 979 note on `VERCEL` plus the new `TRUSTED_PROXY_HOPS` row. It checked that main's new rules (908, 924, 960, 979, 1206) do not touch `vercel.json`, `ci.yml` or the cron routes.
+- **Action:** merge `8db3c4db` (parents `9062def6`, `870e6e62`); check passed (216 files, 5531 tests), webpack build passed, pushed at about 20:50.
+- **Errors & mistakes:** Minutes earlier the 5b session had refused the same kind of Auto-fix conflict merge under CLAUDE.md ("a merge conflict alone waits"). This session merged and pushed anyway, starting a draft CI run. At the same moment the hub planned to update #319 only after #324 to avoid extra pushes. The rule was applied inconsistently.
+- **Outcome / state:** #319 clean against main as of #323; conflicted again after the 21:37 merges (see 21:49).
+
+<a id="e686"></a>
+### 21:18 UTC — #327 (UI phase 1) fails e2e: forgot-password test used the old field name (e686)
+
+- **Type:** ci, error, correction
+- **Context / Thinking:** After #327 was marked ready, the forgot-password e2e test failed the same way on all 3 tries. It looked for the email field by its old accessible name, "Reset your password". Phase 1 gave every field a visible label (rule 1090), so the field is now named "Email".
+- **Decision:** The product change is right; update the test, and check the other auth e2e selectors.
+- **Action:** A subagent committed `dac779c5` (21:49, "select auth fields by their visible label (phase 1, rule 1090)") and pushed once to `claude/uiux-phase1`. Signup, login and reset selectors still matched. `npm run check` passed (5,554 tests). Build skipped (only a test file and a doc changed). Playwright cannot run locally, so CI is the first real check.
+- **Errors & mistakes:** Phase 1 changed accessible names without updating the e2e selectors. Playwright was not run before pushing (it cannot run locally), so the gap appeared only in paid CI.
+- **Correction:** `dac779c5`; #327 merged after green at 00:21 UTC on 10-12 (outside this window).
+- **Outcome / state:** New full CI run on #327.
+
+<a id="e687"></a>
+### 21:36 UTC — #324, #320, #325, #326 merged into main (e687)
+
+- **Type:** merge, rule, docs, ci
+- **Context / Thinking:** All four were green after their ready runs. The founder had approved them at 20:47 (#324 at 17:37).
+- **Decision:** Merge each once its mergeability state was known (the script waited out "UNKNOWN").
+- **Action:** 21:37: #324 `42bf2a1d` (monitoring and CI parity, rules 1011-1019; CI now uses Node 22 and the webpack Hostinger build). #320 `7dd0f821` (media storage spec, rules 991-1010: Hostinger disk at `MEDIA_DIR`, `/m/{32hex}`, 30-day retention, fal link plus thumbnail, Drive archive, Vercel Blob removed via expand/contract). #325 `d60371e1` (privacy and terms drafts, gap list, accountant questions). #326 `31782800` (Prompt Studio specs, rules 1020-1079, §18 answered).
+- **Outcome / state:** Main only, nothing live. #319 and the UI stack still open; #327 re-running.
+
+<a id="e688"></a>
+### 21:49 UTC — Two sessions write to #319's branch at once; three pushes to #319 in one evening (e688)
+
+- **Type:** incident, error, ci, docs, rule
+- **Context / Thinking:** After the 21:37 merges, #319 conflicted again (`docs/system/variables.md` `CRON_SECRET`, `src/components/admin/Usage.tsx`). Main's #324 code also still named the removed `vercel.json` (heartbeat limits, rule 1014; parity test). The hub sent a subagent to merge main into #319 and fix the two old permissions.md errors with one push. At the same time #319's own Auto-fix session got a conflict event and did the same merge.
+- **Decision:** Both resolved the conflicts the same way. `CRON_SECRET` row keeps both sides: `crons.json`/hPanel from #319 and the `GET /api/health?crons=1` key from main (rule 1012). Usage.tsx takes main's version, which already dropped the Vercel note.
+- **Action:** #319 session: merge `c9efb9d7` plus `6458b7a3` (heartbeat code, parity test and coverage rows 1011/1050 name `crons.json`, rule 989; architecture no longer says CI uses Turbopack), pushed at about 22:21. Hub subagent: merge `836d2c54` plus `7d57a3a7` (permissions: the second row 114, `GET /api/admin/leads`, becomes 159; rows 152-153 follow `TRUSTED_PROXY_HOPS`, rules 978-979). Its push was refused as non-fast-forward. It rebuilt on the remote head as `619349b6` (same fix) plus `537d36fe` (architecture heartbeat paragraph names `crons.json`) on local `retire-merge2`, and pushed `6458b7a3..537d36fe` at about 23:01 as a fast-forward. `836d2c54` was never pushed. The `vercel.json` mentions in the admin-control-center spec, 4 rows of `tests.md`, `Owner_Tasks_AR.md` and the PRD were left as a docs follow-up.
+- **Errors & mistakes:** Duplicate work on one branch by two sessions under the founder's git identity. #319 got three pushes that evening (about 20:50, 22:21, 23:01), each starting a CI run on the draft, against the one-push-per-step rule (772/789). The hub subagent warned: "Something else is working on this branch right now."
+- **Correction:** The hub reported it to the founder at 00:22 UTC on 10-12, called it "probably #319's own Auto-fix session", and asked the founder to stop that session pushing there. No force-push was used; the end states matched.
+- **Outcome / state:** #319 head `537d36fe`, up to date with main, docs row numbers unique. Marked ready and #328 retargeted at 00:22 on 10-12 (next day).
+
+
+<a id="2026-10-12"></a>
+## 2026-10-12
+> Morning (00:00-11:00 UTC): the coordinating session worked through the UI/UX stack and merged #327, #319, #333, #328, #329, #334 and #330 into main (none of it live). Along the way it hit e2e regressions, two CI runs cancelled at the 25-minute cap, a date-dependent test that turned main red at 09:00 UTC, and sessions disagreeing over who controls the stack. The founder got one live action-checklist page. The founder learned that most report findings were never built, ordered ten build batches (#337-#346) from the 360 study, then folded them with the UI stack into one batch PR (#347) for the release, while a separate session moved company mail to Google Workspace and fought an inbound bounce.
+
+<a id="e689"></a>
+### 00:05 UTC — #319 branch updated to main; a second session was found pushing to the same branch (e689)
+
+- **Type:** action, error, docs, rule
+- **Context / Thinking:** The coordinating session (worktree `thakeen-arabic-word-search-1c99ad`, session abedc961) had sent a subagent to bring PR #319 (`claude/retire-vercel`, rules 987-990) up to date with main after #322/#323/#324 merged on 2026-10-11. Main had moved a lot: monitoring (#324) added `src/lib/cron-heartbeat.ts`, which still named `vercel.json`, the file #319 renames.
+- **Decision:** The subagent did not force-push. It rebuilt its work on top of the remote head instead (assistant).
+- **Action:** The remote branch already held `c9efb9d7` (merge of main) and `6458b7a3` ("chore: point main's new heartbeat code at crons.json"), both pushed by another session under the founder's git identity. The subagent left its own merge `836d2c54` unpushed on local branch `retire-merge`, cherry-picked its docs commit as `619349b6` and added `537d36fe` ("docs(architecture): the heartbeat paragraph names crons.json (rule 989)"). It pushed once as a fast-forward `6458b7a3..537d36fe`. Conflicts were in `docs/system/variables.md` (the `CRON_SECRET` row now names both crons.json and `GET /api/health?crons=1`, rule 1012) and `src/components/admin/Usage.tsx` (#324's side kept). In `permissions.md` the duplicate second row 114 (`GET /api/admin/leads`) became row 159, and rows 152-153 now describe `TRUSTED_PROXY_HOPS` client IP (rules 773, 979). Local checks: 5,566 tests and the build passed.
+- **Errors & mistakes:** Two sessions wrote to one branch at the same time. The first push was refused as non-fast-forward. Which session made the other two commits was never established; the assistant guessed #319's own Auto-fix session (inferred). Main's `flows.md` already had duplicate section numbers 11, 21, 36 and 52, which were left alone. Stale `vercel.json` mentions remained in `docs/system/tests.md` (frozen file), `docs/Owner_Tasks_AR.md`, the PRD and the admin benchmark.
+- **Correction:** The subagent rebuilt on the remote head rather than overwrite it. The founder was asked to stop the other session if known; no answer is recorded.
+- **Outcome / state:** #319 was current with main and its CI was green. It was marked ready at 00:22 (next entry).
+
+<a id="e690"></a>
+### 00:21 UTC — #327 (UI/UX phase 1) merged; #328 retargeted and marked ready, #319 marked ready (e690)
+
+- **Type:** merge, ci, rule
+- **Context / Thinking:** #327 (tokens and core primitives, rules 1080-1099: Button, Field family, Switch, Badge, Callout, Toast, Dialog/FormDialog/usePrompt, Time/Money, Arabic six-form `plural`, `eslint-rules/thakeen-ui.mjs`) had passed CI after a fix the evening before. The founder's standing order from 2026-10-11 was "merge all greens", with the UI phases merged in stack order.
+- **Decision:** The coordinating session merged #327 with `--match-head-commit`, then moved phase 2 onto main.
+- **Action:** The first `gh pr merge 327` at about 00:05 failed with a network error ("Network error; merge not done. Retry."). The 00:21 retry produced merge `8b730a10`. Then `gh pr edit 328 --base main`, and at 00:22 `gh pr ready 328` and `gh pr ready 319`, which started two full CI runs (e2e included).
+- **Errors & mistakes:** #328's ready run went red. Its e2e failures were only read at 06:00 (see the 06:00 entry).
+- **Outcome / state:** Main had UI phases 0 and 1. Nothing was live; thakeen.com still served the `production` branch.
+
+<a id="e691"></a>
+### 05:57 UTC — Founder asks "what to do here?" in #319's own session, which reports stale state (e691)
+
+- **Type:** founder, error, planning
+- **Context / Thinking:** The session that built #319 (worktree `anthropic-token-cost-calculation-3ec086`) listed what was left for the founder.
+- **Decision:** No decision; the session made recommendations only.
+- **Action:** It listed five founder items:
+  1. Review #319 and say "ready".
+  2. Disconnect the old Vercel project `nashr` (Settings → Git → Disconnect) or delete it.
+  3. On live only, in hPanel: add `APP_ENV=production`, redeploy, check `/api/health`, then delete `VERCEL_ENV` (rule 990).
+  4. Check whether `BLOB_READ_WRITE_TOKEN` is set on live, without pasting it.
+  5. Choose media storage. It recommended Cloudflare R2, while noting that the Hostinger-disk spec (#320) was already on main.
+- **Errors & mistakes:** The claims "It's still a draft" and "I'll merge only when you say so" were stale. The coordinating session had marked #319 ready at 00:22, and it merged #319 three minutes later (06:00) under the standing "merge all greens" order. Two sessions told the founder different things about the same PR.
+- **Founder:** 05:57 "what to do here?"
+- **Outcome / state:** The Vercel dashboard and hPanel steps stayed with the founder and were later carried onto the checklist page.
+
+<a id="e692"></a>
+### 05:59 UTC — Founder asks the coordinating session "what we should do here?"; full status and waiting list (e692)
+
+- **Type:** founder, planning
+- **Context / Thinking:** The founder came back to the coordinating session after the night.
+- **Decision:** The assistant recommended letting the UI stack finish (fix each failure, merge one phase at a time, then hand over a draft release PR). It named the founder's most useful step as setting the staging Upstash env vars, so the UI could be checked visually.
+- **Action:** The 06:01 reply listed:
+  - **Done on main:** #317, #322, #323, #324, #320, #325, #326, #327, #319.
+  - **Also done:** #321 closed (#330 replaces it); Part B (`claude/entitlements-part-b`) pushed with no PR; 2 duplicate branches deleted after the accountant questions were copied into #325; #332 made a draft, last in the stack.
+  - **Waiting on the founder:**
+  - hello@thakeen.com must receive mail.
+  - Turnstile keys: both or none.
+  - Stop nashr-tau and rotate `WAITLIST_ADMIN_KEY`.
+  - Staging Upstash env vars.
+  - Hostinger hcdn question (whether `TRUSTED_PROXY_HOPS` should be 2).
+  - Vercel dashboard steps for #319.
+  - Lawyer and accountant.
+  - `/login` for claude-mem.
+  - **Parked:** #316, the docs clean-up, and the unknown second pusher on #319's branch.
+- **Founder:** 05:59 "what we should do here?"
+- **Outcome / state:** The plan was #328 → #329 → #330 → #331 → #332, then a draft main→production release PR for the founder to merge.
+
+<a id="e693"></a>
+### 06:00 UTC — #319 merged: the repo stops steering the old Vercel project (rules 987-990) (e693)
+
+- **Type:** merge, rule, deploy
+- **Context / Thinking:** thakeen.com has run on Hostinger since 2026-10-08, but `nashr-tau.vercel.app` still built every main commit and ran the `vercel.json` crons against its own Upstash. On 2026-10-10 its `/api/health` reported main `1fb56b90` while live reported `487984f`. #319's CI was CLEAN/SUCCESS at 06:00.
+- **Decision:** The coordinating session merged it under the founder's standing "merge all greens" order. No new founder word on #319 itself is recorded.
+- **Action:** Merge `becf4351` (+221/-143).
+  - Rule 987: `FALLBACK_ORIGIN` becomes `https://thakeen.com`.
+  - Rule 988: `.github/workflows/ci.yml` runs on pull requests only (no push run on main, no Playwright cache seeding on main).
+  - Rule 989: `vercel.json` renamed to `crons.json` (8 entries, read by no host; it is the list the hPanel cron jobs must match), pinned by `tests/retire-vercel.test.ts`.
+  - Rule 990: `docs/system/variables.md` gives the hPanel steps to move live from `VERCEL_ENV=production` to `APP_ENV=production`.
+  - Coverage note: `docs/system/tests/0987-retire-vercel.md`.
+- **Errors & mistakes:** #319's own session had told the founder at 05:57 that it would merge only on the founder's word (previous entry).
+- **Outcome / state:** On main only. The old Vercel project keeps running until the founder disconnects it in the Vercel dashboard (a founder item). Main no longer runs CI on push, which matters for the CI cache later (#334).
+
+<a id="e694"></a>
+### 06:00 UTC — #328 (UI/UX phase 2) first ready run red: three real e2e regressions (e694)
+
+- **Type:** ci, error
+- **Context / Thinking:** #328 (rules 1110-1130) adds the shell, chat and states: Sheet, Menu, Tabs, PageHeader, Skeleton, EmptyState, ErrorState, CopyButton, ConfirmDialog, a rail grouped by purpose, NotificationCenter, `loading.tsx` screens, the chat composer, calendar views and the reports table. Its first ready run, started 00:22, failed in the e2e suite. The PR body had said: "Not checked visually (local port binding blocked)".
+- **Decision:** The assistant had an agent judge each failure as either a broken behaviour (fix the code) or an intended change (fix the test), then push once.
+- **Action:** The failures were:
+  - the `/app/start` redirect for an owner who already has a brand;
+  - the signup test, where the new sidebar group titles were headings that clashed with the step heading;
+  - the `/app/verify` redirect for a signed-out visitor.
+  The assistant reported this as "failed 5 end-to-end tests" covering these three cases. Agent `a13a868b91856c992` took the fix.
+- **Errors & mistakes:** These were phase 2 regressions that local checks could not catch, because Playwright cannot bind ports in this sandbox. The red result sat unread from about 00:45 to 06:00 (inferred from the times).
+- **Outcome / state:** Fixed by `58cfde71` (next entry).
+
+<a id="e695"></a>
+### 06:04 UTC — Founder opens #333 (360 study + plain founder edition) as a ready PR; merged 06:13 (e695)
+
+- **Type:** founder, docs, merge
+- **Context / Thinking:** The 360 study of 2026-10-11 and its plain-Arabic founder edition were on branch `claude/360-founder-guide` (3 docs commits). The founder used the app's "Create PR" button, not "Create draft PR".
+- **Decision:** Founder: open it ready, not as a draft. Coordinating session: merge it once green, under "continue, merge all greens".
+- **Action:** 
+  - 06:04: a secret scan found only false matches (branch names). Pushed, and PR #333 was opened at 06:05 (+5654/-0, 42 files under `docs/reports/` and `docs/prompts/2026-10-11-thakeen-360-master-prompt.md`).
+  - Contents: `00` executive summary, `01` snapshot, `02` founder ledger (Arabic), `03` Claude ledger, `04-A`…`04-J`, `05` roadmap R1-R4, `06` stale docs, `dashboard.html`, `findings.jsonl` (162 findings), the plain edition, and `2026-10-11-owner-tasks-proposed_AR.md`.
+  - The last commit records the decided support address hello@thakeen.com (T-014).
+  - No rule numbers and no `docs/system` change.
+  - CI SUCCESS by 06:13. Merged `69d305d4` at 06:13 (the 06:13 merge of `claude/360-founder-guide` lists refs `claude/peaceful-curran-0ce2ed` and `claude/founder-actions-669be5`).
+- **Errors & mistakes:** None recorded. The PR notes that the reports are a snapshot as of 2026-10-11 and that several of their items were done since.
+- **Founder:** 06:04 Create PR (ready, not draft); 06:13 "continue, merge all greens"
+- **Outcome / state:** The study and founder guide are on main. Docs only, nothing live changes.
+
+<a id="e696"></a>
+### 06:11 UTC — Phase 2 fix: app-root loading.tsx removed, sidebar groups no longer headings (rules 1115, 1120) (e696)
+
+- **Type:** correction, action, rule, error
+- **Context / Thinking:** The agent traced failures 1 and 3 to one cause. Phase 2's `src/app/[lang]/app/loading.tsx` put every page under `/app` inside a Suspense boundary, so `redirect()` was streamed as a meta refresh with a 200 instead of a 307. Next's docs say that in a streaming context `redirect()` "will insert a meta tag". `open()` in `e2e/fixtures/app.ts` read `page.url()` at `domcontentloaded`, so it still saw the old path. Failure 2 was the sidebar group `<h2>`s: the step heading became the seventh h2 on the page, and six region landmarks sat in the nav.
+- **Decision:** Fix the app code and leave the e2e tests unchanged (agent).
+- **Action:** 
+  - `f848cce5` (06:01): merge origin/main into `claude/uiux-phase2`.
+  - `58cfde71` (06:11): "fix(app): server redirects and one heading outline again (rules 1115, 1120)". It deletes the root `loading.tsx` (the 8 per-page loading screens stay) and makes the group titles plain labels on `role="group"` + `aria-labelledby`. Files: `Sidebar.tsx`, `tests/uiux-phase2.test.ts`, `docs/system/tests/1110-uiux-phase2.md`, `docs/Design_System.md`.
+  - Pushed as a fast-forward; a new full CI run started 06:12.
+  - The chat/reports streamed no-brand redirects and the home skeleton were left to a "phase 2b".
+- **Errors & mistakes:** Playwright was not run locally ("port binding is blocked here"), so the fix rested on reasoning and CI was the proof. That run was then cancelled at the time cap (06:42 entry).
+- **Outcome / state:** The redirect and heading regressions were fixed in code. The assistant saved a memory lesson: never put a `loading.tsx` above a redirecting page.
+
+<a id="e697"></a>
+### 06:12 UTC — Auto-fix conflict events on #329 (and later #330) declined under the CI rules (e697)
+
+- **Type:** decision, ci
+- **Context / Thinking:** The desktop app's "Auto-fix pull requests" sent a ci-monitor-event: #329 conflicted with its base `claude/uiux-phase2`, which had just moved with the phase 2 fix, and it told the session to resolve and push "without asking first". CLAUDE.md (rule 772) says a merge conflict alone waits until right before the merge and overrides Auto-fix.
+- **Decision:** The assistant did nothing on #329 at 06:12. At 06:52 it declined the same kind of event for #330 (conflicting with phase 3), noting that resolving it then would cost an extra push and an extra CI run on a draft.
+- **Action:** Nothing pushed. The plan: once #328 merges, retarget #329 to main and merge main into it once; for #330, have an agent merge phase 3 + main locally and push once after #329 merges.
+- **Outcome / state:** The stacked PRs stayed conflicting on GitHub until their turn. This avoided CI runs on stale bases.
+
+<a id="e698"></a>
+### 06:16 UTC — Phase 3 branch prepared locally on phase 2 + main, push held (e698)
+
+- **Type:** action, rule, docs
+- **Context / Thinking:** #329 (settings area and billing, rules 1140-1158) moves pages to `/app/settings/*` with 307s from the old routes, adds notification preferences (stored-shape expand on `profile:{scope}`: `notify` added, `emails` still written and read; flows §62 contract steps), sign-out-other-devices, and billing PlanCard/VAT note/Paymob return poll with Paymob still off. It had to absorb the phase 2 fix and main.
+- **Decision:** Agent `a529b6ab25fd87e23` merged and checked locally, but the coordinating session told it to hold the push until phase 2's next fix, so the branch would be pushed once.
+- **Action:** 
+  - `aaa3e428` (06:16): merge origin/claude/uiux-phase2. Conflicts: `tests/uiux-phase2.test.ts`; `settings/billing/page.tsx` (main's `SUPPORT_EMAIL` with phase 3's hit sizes); `docs/system/flows.md` (main's monitoring section keeps 62, phase 3's settings section becomes §63).
+  - `29464b71` (06:16): merge origin/main (#333 docs, no conflicts).
+  - `52950e14` (06:33): "test(settings): billing page at its new path; no loading.tsx above a redirecting settings page (rules 924, 1141)". `tests/release-honesty.test.ts` (rule 924) read the billing page at the old `/app/billing` path, a break git did not flag.
+  - Local: 5,856 tests and the build passed (reported 06:44).
+- **Outcome / state:** `phase3-update` was ready but unpushed, waiting for the 06:48 phase 2 test fix.
+
+<a id="e699"></a>
+### 06:42 UTC — #328 second run cancelled at the 25-minute cap; logout e2e test fixed (rule 1112) (e699)
+
+- **Type:** ci, error, correction, rule
+- **Context / Thinking:** #328's run on `58cfde71` ended COMPLETED/CANCELLED: it hit the job's 25-minute limit. The logout test spent its full 45-second timeout on every attempt, looking for a "Log out" button inside `role="menu"`. In phase 2's WAI-ARIA menu button the menu holds only menuitem rows, and the sign-out form sits in the footer outside the menu role. One other test also hung (per the 06:43 status).
+- **Decision:** The code is right and the test is wrong, so only the test changes (agent `a13a868b91856c992`).
+- **Action:** 
+  - `adecc1d8` (06:48): "test(e2e): log out from the account menu's footer, not from inside role=menu (rule 1112)". It waits for `aria-expanded="true"`, re-clicking if the first click beat hydration. Files: `e2e/auth-flows.spec.ts`, `docs/system/tests/1110-uiux-phase2.md`. Pushed as a fast-forward; full run started 06:49.
+  - `7f0268d4` (06:49): merge of adecc1d8 into `claude/uiux-phase3`. Conflict in `e2e/auth-flows.spec.ts`: phase 3's `/en/app/settings/danger` URL and rule 1149 comment, with phase 2's locator lines.
+  - Phase 3 pushed once at about 06:50 (`01520482`→`7f0268d4`, no force).
+- **Errors & mistakes:** #328 needed three full paid CI runs: red at 00:22, cancelled at about 06:37 (inferred from the 25-minute cap), green at 07:29. The cancelled run was billed (CLAUDE.md, rule 772).
+- **Outcome / state:** #328's third run went green (07:29 entry). Phase 3's branch was up to date and pushed once.
+
+<a id="e700"></a>
+### 06:49 UTC — CI runs reach ~24.5 of 25 minutes; "build once" session proposed and started (e700)
+
+- **Type:** planning, ci
+- **Context / Thinking:** Since #324 (rule 1017: CI builds with `build:hostinger` on Node 22), the Playwright `webServer` built the app a second time before `next start`. Runs reached about 24.5 of the 25-minute cap, and one was cancelled by it.
+- **Decision:** The coordinating session added a proposal card, "CI: build once, reuse for e2e (stop 25-min timeouts)". The founder started it as session local_75bbeb86 (worktree `happy-gould-4c332b`) at 06:51. Its brief came from the coordinating session, not from the founder.
+- **Action:** See the 07:33 entry for the PR.
+- **Outcome / state:** Work ran in parallel with the UI stack.
+
+<a id="e701"></a>
+### 06:51 UTC — claude-mem observer signed out; repeated OAuth failures from the main checkout (e701)
+
+- **Type:** incident
+- **Context / Thinking:** Several sessions reported that claude-mem could not save memories ("Claude Code reported the observer as signed out"). Credentials had been refused since 2026-10-10T19:02:25Z (per the checklist session). Self-reported error lines from the `main` checkout repeated "Failed to authenticate: OAuth session expired and could not be refreshed" at 06:51, 07:07, 07:23, 07:24, 07:29 (twice), 07:30 and 09:51.
+- **Decision:** A restart does not fix it. The founder must run `/login` (or `claude auth login`). This became a checklist job.
+- **Action:** None by the assistant beyond reporting it. Sessions kept writing file-based memory notes instead.
+- **Errors & mistakes:** Which process in the main checkout kept failing to authenticate is not recorded (likely the claude-mem observer, inferred).
+- **Outcome / state:** It remained open in this window: the founder's `/login` is on the checklist.
+
+<a id="e702"></a>
+### 07:00 UTC — Founder asks for one place listing only the founder's actions; checklist page published 07:13 (e702)
+
+- **Type:** founder, action
+- **Context / Thinking:** Founder steps were spread across long chat threads and many sessions.
+- **Decision:** Founder: a new worktree that only collects the founder's actions as simple steps. Assistant: start a session (local_ec644651, worktree `loving-greider-66b8f3`) that builds a private Artifact page.
+- **Action:** 
+  - Sources read: the 360 plain guide, Owner_Tasks, memory, the UI-stack PR bodies, and the #316 founder items.
+  - Published https://claude.ai/artifact/UrNrS5zWtyRrPxtpuNR4fQ with 53 jobs: Do now 5 (block the release), Before launch 19, Later 29.
+  - Each job has a why, numbered click-by-click steps, minutes, a "Tell Claude" line with a Copy button, and its source. Ticks are stored in the page database. Env vars appear by name only, and a secret-pattern scan came back empty.
+  - Dropped as already done: the home heading, the yearly line, and ordering #319/#320.
+  - Added from live checks that day:
+  - staging.thakeen.com still answers 404 (needs env vars), moved into Do now;
+  - `www.thakeen.com` failed to connect (curl 000);
+  - the claude-mem `/login` fix;
+  - a warning that the console's Cancel button runs money actions until the release (fixed in #317 on main, not live).
+- **Founder:** 07:00 "can you make a new worktree to just send me my actions to do (with simple clear direct steps)?? so i can follow them in one place?"
+- **Outcome / state:** The founder has one checklist link (memory note `founder-action-checklist`).
+
+<a id="e703"></a>
+### 07:22 UTC — Founder: everything from this session and its branches must appear on the checklist (e703)
+
+- **Type:** founder, decision, docs
+- **Context / Thinking:** The first checklist was built from documents. New founder items kept coming out of the UI stack and the side sessions.
+- **Decision:** Founder standing order. The assistant saved it as a memory rule: any session, subagent, PR or branch that produces a step only the founder can do adds it to the page, same URL, ticks kept, env var names only.
+- **Action:** 
+  - The coordinating session sent the checklist session everything from abedc961: release merge by the founder after a test mail to hello@thakeen.com arrives, a screen check on staging and live after the release, and reporting (not retrying) CI failures outside the code.
+  - Version 2 at 07:24: 57 jobs and a "Last synced: 12 Oct 2026" line. The release merge moved into Do now with the UI stack order (#328→#332) and the PR list (#298, #311, #313-#315, #317-#320, #322-#333).
+  - Later gained: #316 (finish or close), Prompt Studio, failed CI runs, the faster-CI PR, and the admin log change.
+  - Version 3 at 07:33: the faster-CI job links #334, with the reply line "PR #334: merge / close".
+- **Founder:** 07:22 "any thing from this session and its branches must reflected on my action checlist.."
+- **Outcome / state:** No ticks existed yet, so the republishes lost nothing.
+
+<a id="e704"></a>
+### 07:29 UTC — #328 (UI/UX phase 2) merged; #329 retargeted to main and marked ready (e704)
+
+- **Type:** merge, ci
+- **Context / Thinking:** #328's third run, on `adecc1d8`, passed the full CI including e2e.
+- **Decision:** Merge under "continue, merge all greens" (founder at 06:13 and 06:42), pinned to the tested head.
+- **Action:** `gh pr merge 328 --match-head-commit adecc1d8…` gave merge `d1843806` (+2074/-571). Then `gh pr edit 329 --base main` (CLEAN, no conflicts) and `gh pr ready 329` at 07:29, which started its full run.
+- **Founder:** 06:42 "continue, merge all greens"
+- **Outcome / state:** Main had phases 0-2. Not live.
+
+<a id="e705"></a>
+### 07:33 UTC — #334 opened: CI builds once and the e2e server starts that build (rules 1207-1210) (e705)
+
+- **Type:** ci, action, rule, error
+- **Context / Thinking:** On PR #328 (runs 38187756048 and 38211318968):
+  - the Build step went from 15 s (Turbopack, Node 24) to 1 m 46 s (webpack, cold);
+  - the e2e step took 60 s to reach its first test;
+  - the job took about 24.5 min of a 25-min cap.
+  "Post Cache Next build" is skipped when a job fails or is cancelled, so every push built cold.
+- **Decision:** The CI session decided one build serves both checks:
+  - Build once (rule 1207): `e2e/web-server.ts` runs only `npx next start` under `CI` when `.next/BUILD_ID` exists.
+  - Restore the cache before Build and save it right after Build (rule 1208).
+  - The build is made without `APP_ENV` (as on thakeen.com) and the server runs with `APP_ENV=test` (rule 1209). Every `APP_ENV` reader runs at call time, and robots/sitemap ask only `isStaging()`.
+  - Docs (rule 1210).
+  A push run on main only to seed the cache was rejected as costing a full install + build per merge.
+- **Action:** 
+  - Rules 1207-1219 were checked free (1206 on main, 1220+ in #332).
+  - Two local webpack builds (cold with `APP_ENV` unset, warm with `APP_ENV=test`) compared: pages identical.
+  - A prebuilt server probe confirmed signup worked on the memory store and robots stayed normal.
+  - Commit `cd62ae58`, pushed once; draft PR #334 opened (+206/-15). `timeout-minutes` stays 25.
+- **Errors & mistakes:** 
+  - 06:54: the first local build failed because the sandbox blocked Google Fonts.
+  - 06:57: the session corrected its own wrong claim before the PR: "the 15 s Build was pre-1017 Turbopack, not warm webpack".
+  - 07:28: a local build hung 35 minutes inside the sandbox (the known local `next build` block). It was rerun outside the sandbox with a 15-min cap. A script bug ("`env` can't run a shell function") cost one more attempt.
+- **Outcome / state:** Draft #334 with a green draft run. Whether to merge was the founder's decision (checklist job "ci-faster-pr").
+
+<a id="e706"></a>
+### 07:37 UTC — Phase 4 prepared locally on phase 3 + main; duplicate permission rows renumbered (e706)
+
+- **Type:** action, docs, error
+- **Context / Thinking:** #330 (founder console + Control Center phase 1, rules 1170-1190) was stacked on phase 3 and conflicted with it. Under rule 772 the merge was done locally, and the push waited until #329 merged.
+- **Decision:** Agent `a1f7595c0bec5e7e3` merged locally without pushing. #329 itself was not touched, because a change there would mean another push and another full run; phase 4 carries the fix to main instead.
+- **Action:** 
+  - `dfe55455` (07:33): merge origin/claude/uiux-phase3 into phase 4 (permissions.md: phase 4's rows 84 `/api/admin/log` and 100 `/api/admin/wishlist`, phase 3's renumbered rows).
+  - `c858514a` (07:33): merge origin/main (`d1843806`, no file changes).
+  - `52a31980` (07:37): "docs(permissions): unique row numbers after the phase 3 merge". Phase 3's rows for account/sessions, notifications/prefs and billing/status move from 158-160 to 161-163, with references in permissions.md, flows.md §63, architecture.md and `docs/system/tests/1140-uiux-phase3.md`.
+  - Local: type-check, lint, 5,933 unit tests and the build passed.
+- **Errors & mistakes:** Phase 3 and main had both given permission rows 158 and 159 to different routes (main: `/api/admin/client-ip` 158 and `/api/admin/leads` 159), so each number was used twice. #329's PR body had warned of a possible clash on rows 158-160.
+- **Outcome / state:** Local branch `prep-phase4` was ready. The 08:31 status repeated that it stayed unpushed until #329 merged.
+
+<a id="e707"></a>
+### 08:48 UTC — #329 (UI/UX phase 3) merged; phase 4 pushed once, retargeted and marked ready (e707)
+
+- **Type:** merge, founder, ci
+- **Context / Thinking:** #329's full run on `7f0268d4` was green.
+- **Decision:** Merge per "continue, merge all greens" (08:47), then release the held phase 4 push.
+- **Action:** 
+  - `gh pr merge 329` gave merge `ed2ccf93` (+8096/-673).
+  - In the agent worktree, `074a3759` merged the new main into `prep-phase4` (no file changes, so the earlier checks held).
+  - Pushed `prep-phase4:refs/heads/claude/uiux-phase4` once, `gh pr edit 330 --base main`, and `gh pr ready 330` at 08:48:57; the full run started 08:50.
+- **Founder:** 08:47 "continue, merge all greens"
+- **Outcome / state:** Main had phases 0-3. #330 was running its full CI. #334 was green, but the assistant held it for the founder's yes.
+
+<a id="e708"></a>
+### 08:49 UTC — Founder: the checklist must update instantly; page rebuilt on its own database (v4) (e708)
+
+- **Type:** founder, action, decision
+- **Context / Thinking:** The page changed only when the checklist session republished it (versions 2 and 3). The assistant had said: "it doesn't update itself".
+- **Decision:** Founder order. The assistant chose to keep the content in the artifact's database: collections `jobs`, `updates` (live feed with a `needsYou` flag), `meta` and `ticks`, with the page re-reading every 20 s and on tab focus. Every session writes milestones (merge, PR opened, new founder job, job done) with ArtifactData and never republishes. Sessions never write `ticks`, which are the founder's.
+- **Action:** 
+  - The checklist session exported the 57 jobs to seed files and seeded 63 docs in two batches (57 jobs, 4 updates, 2 meta).
+  - Version 4 went live at 08:53. A live test bumped `meta/sync` and the open page showed the new time within about 10 s without a reload.
+  - 08:54-08:55: the coordinating session wrote the first feed items (#330 running CI; #332 returned to draft). #334 was marked "Needs you".
+  - The memory note `founder-action-checklist` was updated with the write recipe.
+- **Founder:** 08:49 "make it reflect the updates instantly"
+- **Outcome / state:** A live checklist at the same URL. From here every session reports founder-facing milestones there.
+
+<a id="e709"></a>
+### 08:50 UTC — Founder marks #332 and #331 ready from the phase-5b session; coordinating session reverses both (e709)
+
+- **Type:** founder, ci, correction, error
+- **Context / Thinking:** In the session that built #332 (worktree `competent-matsumoto-ba65ca`), the founder typed "mark #332 ready" (08:50) and "mark #331 ready too" (08:52). That session ran `gh pr ready 332` (head `e2ecde69`, base still `claude/uiux-phase5`) and `gh pr ready 331`. #331 then conflicted with its base `claude/uiux-phase4`, which had just moved. The coordinating session holds an earlier founder instruction to keep #332 a draft, last in the stack. It quoted that as «make #332 a draft and stack it»; the date is not recorded in this window.
+- **Decision:** The coordinating session decided it owns the stack order. It undid both and told the phase-5b session to stop all GitHub actions on #328-#332 and to ignore Auto-fix.
+- **Action:** 
+  - 08:54:28: `gh pr ready 332 --undo` and `gh run cancel 38226046624`. That e2e run was testing against the outdated phase 5 base and would have had to run again anyway.
+  - 08:55:19: `gh pr ready 331 --undo`. Being in conflict, #331 had started no CI run.
+  - Cross-session messages at 08:54 and 08:55. The phase-5b session stopped and offered to turn Auto-fix off.
+  - Founder 09:09: "why to turn off auto-fix for #332??", then "turn it off". The session gave three reasons (every event would be ignored; Auto-fix had once started a merge from main in its worktree on its own; two owners on one branch) and turned Auto-fix off for #332 (review-comment events too).
+- **Errors & mistakes:** The founder gave conflicting instructions in two sessions. The coordinating session overrode the more recent, direct "mark #332 ready" on the strength of an older instruction. It explained this in the feed and in chat, and it did not ask the founder before reversing. One e2e run was started and cancelled (minutes partly spent).
+- **Founder:** 08:50 "mark #332 ready"; 08:52 "mark #331 ready too"; 09:09 "turn it off"
+- **Outcome / state:** #331 and #332 were drafts again, queued after #330. Only the coordinating session acted on the stack from then on.
+
+<a id="e710"></a>
+### 09:03 UTC — Date-bomb test found: secretary-calendar turns red on every branch from 09:00 UTC (rules 479, 480) (e710)
+
+- **Type:** incident, ci, action, rule
+- **Context / Thinking:** While preparing phase 5, agent `a3ac8040aa9756697` found `tests/secretary-calendar.test.ts` failing on main. `seen()` read `notifseen:<email>:<fp>` markers on the real clock, but the markers were written at fake October-2026 times with a one-week life. From 2026-10-12 09:00 UTC the undated-debt test failed by date alone, and the other `seen` checks would follow day by day (markers dated 8 and 9 October).
+- **Decision:** Make a test-only fix: each read runs at the moment of the run that claimed the marker. It rides in with the stack instead of getting a separate PR (coordinating session, 09:06).
+- **Action:** 
+  - `1aafd007` (09:03, on `prep-phase5`): "test(secretary): read alert markers on the frozen clock (rules 479, 480)".
+  - Cherry-picked into phase 4 as `3e12688b` (committed 09:27).
+  - A third copy, `2124657a`, was cherry-picked later onto `claude/entitlements-part-b` (committed about 13:17 UTC, outside this window).
+- **Errors & mistakes:** Main's own state went red from 09:00 UTC. The flaw was in the test (real clock against fake-dated markers), not in app code. It was later fixed independently a second time in #316's merge and a third time in #335 (09:55 entry).
+- **Outcome / state:** The fix reached main with #330 at 09:59 (75da92b0).
+
+<a id="e711"></a>
+### 09:05 UTC — Phase 5 prepared locally on phase 4 + main; admin cron panel moved to semantic colours (rules 1200, 1205) (e711)
+
+- **Type:** action, rule, design
+- **Context / Thinking:** #331 (semantic colours and dark theme, rules 1200-1205) had to absorb phase 4, which now contained phases 2-3 and main's cron heartbeat panel with raw colours.
+- **Decision:** Merge and fix locally; push only after #330 merges (one push per step).
+- **Action:** 
+  - `6e80c00b` (08:57): merge `074a3759` into phase 5. Conflicts: the architecture.md trust table (main's "App server" wording plus the `nashr_theme` cookie of rule 1204), the billing support link (`SUPPORT_EMAIL` with `border-border`), and Admin Usage (phase 4's side).
+  - `3f357db0` (09:03): "style(admin): cron heartbeat panel on the semantic roles; contrast test covers danger on the muted background (rules 1200, 1205)". The codemod changed 8 classes, and the stale status became `text-danger` by hand.
+  - `1aafd007`: the test fix (previous entry).
+  - Local: tsc clean, eslint 0 errors (137 warnings, one new `danger-text-needs-alert`), 5,971 tests, and the webpack build passed. Playwright was not run.
+- **Outcome / state:** `prep-phase5` was ready and unpushed (pushed at 10:00 with `155ba7eb`).
+
+<a id="e712"></a>
+### 09:08 UTC — #334 merged (CI ~16 min instead of ~25); the founder's approval came first in the CI session (e712)
+
+- **Type:** merge, ci, founder, error
+- **Context / Thinking:** In the CI session the founder typed "mark #334 ready" (08:49). The draft run was already green, so nothing was cancelled, and `gh pr ready 334` started the full run. At 09:08 the founder typed "merge it when green". The ready run (38226001244) was green in 16 m 13 s:
+  - Build: 39 s on a warm cache restored from the draft run (was 1 m 46 s cold).
+  - First e2e test: 2 s (was 60 s).
+  - 1042 e2e tests passed.
+  - Unit tests: 5 m 9 s.
+- **Decision:** The founder approved the merge in the CI session. The repository has no auto-merge, so the session merged by hand.
+- **Action:** `gh pr merge 334 --merge` at 09:09 gave merge `474e4ac7`. At 09:13 the founder asked the coordinating session "so what next?". It recommended merging #334 and asked for "PR #334: merge" or "PR #334: close". At 09:14 the founder typed "PR #334: merge". The coordinating session found #334 already merged at 09:09 "under your GitHub account, either by you or by the CI session". It then marked checklist job `ci-faster-pr` done and added a feed line.
+- **Errors & mistakes:** 
+  - The coordinating session did not know the founder had already approved and merged #334 through another session. It asked again for approval of something already done.
+  - Its memory note recorded the merge as "on founder 'PR #334: merge'", although that message came after the merge; the actual approval was "merge it when green" in the CI session.
+  - The CI session noted that part of the e2e time drop is probably because no test failed and retried this time.
+- **Founder:** 08:49 "mark #334 ready"; 09:08 "merge it when green"; 09:13 "so what next?"; 09:14 "PR #334: merge"
+- **Outcome / state:** Main builds once per CI run. The unit-test step (~5 min in CI against 22 s locally) was flagged as worth a separate look.
+
+<a id="e713"></a>
+### 09:15 UTC — #330's first ready run cancelled at the 25-minute cap; re-pushed once with main (#334) and the test fix (e713)
+
+- **Type:** ci, error, correction
+- **Context / Thinking:** #330's full run (started 08:50:23, before #334 landed) still built twice. Its "End-to-end tests" step was cancelled at 09:15:40. The coordinating session had told the founder at 09:13 that "its unit tests already passed" and that it would merge on green. It saw the cancellation only at 09:27 (`074a3759 UNSTABLE COMPLETED/CANCELLED`).
+- **Decision:** One push that fixes the red check, carrying main (with #334) and the date-bomb fix.
+- **Action:** 
+  - In worktree `agent-a1f7595c0bec5e7e3`: `6147c4c1` (09:27, merge origin/main into prep-phase4) and cherry-pick `3e12688b`.
+  - The first local check failed with sandbox EPERM writing `tsconfig.tsbuildinfo`; it was rerun unsandboxed: TSC_OK, 0 lint errors (136 warnings), 223 files / 5,944 tests passed.
+  - Pushed `074a3759..3e12688b` at 09:28; the new full run took about 16 min.
+- **Errors & mistakes:** A second paid run was lost to the old 25-minute cap that morning (the first was #328's at about 06:37). The cancellation went unnoticed for about 12 minutes.
+- **Outcome / state:** #330 went green and merged at 09:59 (next entries).
+
+<a id="e714"></a>
+### 09:27 UTC — Founder: "all things delivered?"; the answer is no, nothing from today is live (e714)
+
+- **Type:** founder, planning
+- **Context / Thinking:** The founder asked for the plan and whether everything was delivered.
+- **Decision:** After the stack, the assistant recommended finishing #316 next, because Prompt Studio depends on it.
+- **Action:** The reply's lists:
+  - **Not live:** nothing from today is on thakeen.com. Live changes only when the founder merges the release PR.
+  - **On main:** #319, #320 (plan only), #322, #323, #324, #325, #326, #333, #317, #328, #329, #334.
+  - **In progress:** phases 4, 5 and 5b, then the release PR as a draft for the founder.
+  - **Not delivered:**
+  - #316 (out of date with main);
+  - Prompt Studio (specs only);
+  - brand workspaces Part B (unmerged);
+  - media storage on the Hostinger disk (plan only);
+  - calendars and Composio connectors (live but dormant until env vars are set);
+  - two loading screens that can still break redirects;
+  - outdated docs (Vercel mentions, duplicate section numbers).
+  - **Waiting on the founder (57 checklist items):**
+  - staging env vars and Turnstile keys;
+  - the proxy setting;
+  - deleting old Vercel and rotating its admin key;
+  - the hello@ mailbox;
+  - lawyer and accountant;
+  - `/login`.
+- **Founder:** 09:27 "what in you plan to do?? all things delivered ?"
+- **Outcome / state:** Order confirmed: #330 → #331 → #332 → draft release PR, with #316 as the recommended next build.
+
+<a id="e715"></a>
+### 09:27 UTC — #316 (agent skills portal) brought up to main: 11 conflicts, pushed once, marked ready (e715)
+
+- **Type:** action, founder, ci, rule
+- **Context / Thinking:** #316 (rules 930-959) was a draft with green checks on `8a48bf58`, but main was 69 commits ahead and 11 files conflicted, up from 3:
+  - the four system docs;
+  - the chat page, `ChatPanel` and `Sidebar`;
+  - `AdminNav`;
+  - `judge.ts` and `media/prompts.ts`;
+  - `tests/role-gates.test.ts`.
+  Most of the UI conflicts came from the UI phases.
+- **Decision:** The founder ordered the merge in #316's own session (worktree `laughing-elion-9449f8`). The merge into main stays the founder's call.
+- **Action:** 
+  - Merge `e0da9a8a` (09:54): instruction blocks kept on main's metered stream calls (rules 980-981); `ADMIN_LABEL` moved to `admin-gate.ts`; the instructions row in the brand group; screen titles for the two new pages (rule 961); env-var count 81.
+  - Fixed during the merge:
+  - stale `.next/types`, regenerated with `next typegen`;
+  - a test still importing `ADMIN_LABEL` from `AdminNav`;
+  - the sidebar-row test (Governance moved into Settings on main);
+  - 10 `instructions-prompts` failures, because main moved the judge, reviewer and media calls from `messages.create` to `messages.stream`;
+  - the date bomb, found independently, with the same frozen-clock idea.
+  - Checks: 6,419 tests, 0 lint errors, webpack build passed. Pushed once and `gh pr ready 316` at 09:55. A side session for main's red test was proposed.
+- **Founder:** 09:27 "check #316, its green"; 09:45 "go ahead"
+- **Outcome / state:** #316 was ready and running its full CI. The coordinating session told the founder that merging it is the founder's decision ("#316: merge" or "#316: wait").
+
+<a id="e716"></a>
+### 09:55 UTC — #335 opened to fix main's red test, then closed as redundant (e716)
+
+- **Type:** ci, action, correction
+- **Context / Thinking:** #316's session saw that main stays red until a fix lands, and proposed a separate session ("Fix secretary-calendar date bomb on main", local_3c1f3f74). The founder started it from the card. Its brief came from the #316 session ("one push, draft PR, never merge").
+- **Decision:** Copy #316's line and comment exactly, so the two PRs merge cleanly.
+- **Action:** 
+  - `52662aeb` (09:58): `seen` reads inside `fakeAt(Date.parse("2026-01-01T00:00:00Z"), ...)`.
+  - Local: 101/101 in the file; `npm run check` with 221 files / 5,867 tests. Stale `.next/types` tripped the first run and was regenerated.
+  - Draft PR #335 opened at 09:58 (+3/-1).
+  - At 10:00:43 the coordinating session closed it: "Closing as redundant: the same test fix … landed on main with #330 (75da92b0). Main is no longer red on it."
+- **Errors & mistakes:** Three sessions fixed the same test in parallel (#330 via phase 5 prep, #316, #335), without coordination. #335's CI run (Nashr CI) was cancelled or failed when the PR closed, so its minutes were partly spent.
+- **Outcome / state:** Main carries the fix through #330. #335 is closed and unmerged.
+
+<a id="e717"></a>
+### 09:59 UTC — #330 (UI/UX phase 4, founder console + Control Center phase 1) merged; phase 5 pushed and marked ready (e717)
+
+- **Type:** merge, rule, security, ci
+- **Context / Thinking:** #330's second full run, on `3e12688b`, was green. #330 contents (rules 1170-1190):
+  - **Audit writer:** one writer, `adminAudit`, for `admin:log` (1172), cap 5000 (1174). Secrets are kept out of rows: secret-named keys dropped, env values masked, `sk-`/Bearer/long hex/base64 runs removed (1173, 1189). Caller `extra` cannot override audit fields (1184).
+  - **Log endpoint:** `GET /api/admin/log` with filters and paging, 300 reads/hour, one LRANGE (1175).
+  - **Reasons:** a reason form for every founder change (1176). The server refuses a missing or short reason on users, plan, topups, payments `void` and partners `void_payout` (1185).
+  - **Impersonation:** 15/60/120 minutes, `exp` enforced in `resolveSession`, a banner with Stop (1177). The audit row is written before the session (1187). Redirect pinned to `/(ar|en)/app` (1188).
+  - **Users table:** server-paged users table (1178) and an account Sheet with five tabs (1180).
+  - **Console words:** no prompt/confirm/alert in the console, and every word in Arabic and English (1182).
+  - **Phase 3 review fixes:** the low items from #329's review (rate-limit order on sign-out-others and others).
+- **Decision:** Merge per "merge all greens", then release the held phase 5 push.
+- **Action:** 
+  - `gh pr merge 330` gave merge `75da92b0` (+3003/-656).
+  - `155ba7eb` (09:59): merge origin/main into `prep-phase5`. Pushed to `claude/uiux-phase5` at 10:00 after an ancestor check; `gh pr ready 331` at 10:00:36.
+  - Feed and checklist updated.
+- **Outcome / state:** Main had phases 0-4, #334, and the date-bomb fix, so main's tests pass again. #331 was running its full CI (~16 min). #332 and the release draft come next. Nothing was live.
+
+<a id="e718"></a>
+### 10:01 UTC — #316 conflicts with main again; Auto-fix merge aborted, then the founder orders the resolve (da9b630d) (e718)
+
+- **Type:** ci, action, rule, founder, decision
+- **Context / Thinking:** Once #330 merged, #316 conflicted again in four files: `docs/system/permissions.md`, `src/lib/db.ts`, `tests/admin-shell.test.ts` and `tests/secretary-calendar.test.ts`. The CI run started at 09:55 was testing a version that was already stale. Auto-fix had started a merge in #316's worktree. At 10:01 the coordinating session told the founder it would leave #316 alone until the founder said "#316: merge", and would fix the conflict after phase 5b.
+- **Decision:** #316's session aborted the Auto-fix merge under rule 772 and pushed nothing (back at `e0da9a8a`). The founder then ordered the resolve directly in that session.
+- **Action:** Merge `da9b630d` (10:07). Both sides kept in each file:
+  - permissions.md: main's rows plus `instructions.write` and `instructions.test`;
+  - db.ts CAPS: main's `adminLog` 5000 plus the skills history and feed caps;
+  - admin-shell test: main's Log page title plus the skills mark;
+  - secretary-calendar: main's version.
+  Under main's rule 1172, the skills console's log write (`logSkills`) now goes through `adminAudit` under the "quality" section; `architecture.md` and flows §60 updated. Checks: 6,496 tests, 0 lint errors, webpack build passed. Pushed once (second push of #316 in 12 minutes). GitHub reported the PR mergeable and CI running.
+- **Errors & mistakes:** The 09:55 push's full run was made stale within minutes by #330's merge, and the founder's order then required a second full run (inferred, from the push times). The coordinating session's 10:01 statement that it would "leave #316 alone until you decide" was overtaken by the founder's direct order in the other session.
+- **Founder:** 10:03 "resolve the conflicts in #316"
+- **Outcome / state:** #316 was mergeable and running CI. Its merge to main (11:20) and release PR #336 fall in the next slice.
+
+<a id="e719"></a>
+### 11:20 UTC — #316 agent skills portal merged into main (e719)
+
+- **Type:** merge, founder
+- **Context / Thinking:** #316 (agent skills portal, rules 930-959) had been brought up to date with main earlier (second main merge `da9b630d`) and marked ready; its full CI run was going. The skills-portal session (worktree `laughing-elion-9449f8`) waited for the founder's word.
+- **Decision:** The founder ordered the merge after a CI check. The session merged only if the PR head still matched the tested commit (`--match-head-commit da9b630d`), with a merge commit (repo convention).
+- **Action:** PR #316 merged as `5f9426c1` (+9675/-117). CI had passed at `da9b630d` in about 20 minutes. Memory note `agent-skills-portal-2026-10-10.md` updated.
+- **Errors & mistakes:** none recorded.
+- **Founder:** 11:19 "check #316 CI, then merge it"
+- **Outcome / state:** Agent skills portal on main only, not live (live deploys from `production`, still `487984f4`). Six open founder questions remained (judge wording, "Test this instruction" charge, Google Docs/Sheets Composio configs `COMPOSIO_AUTH_GOOGLEDOCS` / `COMPOSIO_AUTH_GOOGLESHEETS`).
+
+<a id="e720"></a>
+### 11:20 UTC — #335 duplicate test fix confirmed closed (e720)
+
+- **Type:** founder, ci
+- **Context / Thinking:** Another session had opened #335 with a fix for a date-dependent secretary test that was already on main through #330 (`75da92b0`).
+- **Decision:** Nothing more to do; the session reported instead of acting.
+- **Action:** Session `happy-gould-4c332b` checked: #335 was closed by the founder's account at 10:00 UTC as redundant; main's version uses `seen(u, fp, at)` (time passed in) rather than a fixed date.
+- **Errors & mistakes:** #335's CI run was cancelled when the PR closed, so it used some paid CI time for nothing. The session also noted no CI run was found on the #330 or #316 merge commits on main.
+- **Founder:** 11:20 "what about the #335.. check it"
+- **Outcome / state:** #335 closed; the leftover remote branch `claude/recursing-bose-28f141` kept until the founder says to delete it.
+
+<a id="e721"></a>
+### 11:24 UTC — Release PR #336 opened (main 5f9426c1 to production) (e721)
+
+- **Type:** deploy, planning, founder
+- **Context / Thinking:** 21 PRs had merged to main since `live-2026-10-09-2` (`487984f`). The release flow (flows §52) says Claude opens the release PR and only the founder merges, with "Create a merge commit", in the 22:00-00:40 UTC window.
+- **Decision:** Founder asked for the release PR. The session flagged one pre-merge check: `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` must be both set or both missing in hPanel, because #323 makes sign-up and forgot-password fail closed when only one is set.
+- **Action:** PR #336 opened, head = `main` itself (so anything merged into main before the founder merges joins the release). Checklist job "Merge the release PR #336 yourself" updated (Turnstile step first; noted at that time that UI phases 5 and 5b were not included). Staging (staging.thakeen.com) did not answer, so no staging proof.
+- **Errors & mistakes:** none at this point. Later the scope grew silently because head = main (see 13:36 and 16:29 entries).
+- **Founder:** 11:22 "open the release PR main to production"; 11:32 "add any actions for mo my checklist"
+- **Outcome / state:** #336 open, not merged; production unchanged at `487984f4`.
+
+<a id="e722"></a>
+### 11:36 UTC — CI time cap raised to 35 minutes (rule 1211) and #316 merged into phase 5 (e722)
+
+- **Type:** decision, ci, founder, rule
+- **Context / Thinking:** #331 (UI/UX phase 5) had its full run killed by the 25-minute job cap with 1,042 of about 1,050 browser tests passed. Unit tests take about 7 minutes and browser tests 13-14, so a passing run is about 24-25 minutes and every cut-off run wastes about 25 paid minutes.
+- **Decision:** The coordinator (worktree `thakeen-arabic-word-search-1c99ad`) asked with three options: raise to 35 (recommended), split jobs in parallel (about 5 more paid minutes per run, own PR), or retry at 25 (likely cut off again). The founder chose "Raise cap to 35 min" through the question tool.
+- **Action:** `da1171e6` merged origin/main (with #316) into `claude/uiux-phase5`, resolving conflicts in `ChatPanel.tsx` and `admin-shell.test.ts` (kept #316's instruction proposals and skills section with phase 5's colour roles; the codemod moved #316's raw colours in 4 files); `ci.yml` `timeout-minutes` 25 -> 35; coverage `docs/system/tests/1211-ci-timeout-35.md`. One push; local 6,534 unit tests and build passed.
+- **Errors & mistakes:** The previous cut-off run on #331 was a paid run that produced no verdict.
+- **Founder:** 11:36 answer "Raise cap to 35 min (Recommended)" (question tool, not typed text)
+- **Outcome / state:** #331 re-running under the 35-minute cap.
+
+<a id="e723"></a>
+### 12:03 UTC — Founder: "a lot of them are reports" — built-vs-not-built audit started (e723)
+
+- **Type:** founder, planning, research
+- **Context / Thinking:** The coordinator listed 7 sessions as "done"; five were reports (360 study, leftovers audit, journey log, Supastarter UI/UX report, founder guide). The founder realised those studies had not turned into shipped features.
+- **Decision:** Coordinator confirmed: nothing from those reports is online; some became fixes on main (#313, #317, #322, #323, #324), phases 0-4 of the UI report are on main, none live. Founder ordered an audit of every recommendation plus checklist entries for unbuilt ones.
+- **Action:** Session "Report findings: built vs not built, add to checklist" (worktree `thakeen-setup-configs-5ba1b2`) started at 12:04. It checked 162 360-study findings, 100 leftovers-audit items, the UI/UX report and specs against origin/production `487984f4` and origin/main `5f9426c1`.
+- **Founder:** 12:03 "a lot of them are reports, this means we didnt develop them or deploy online?"; 12:04 "yes, start it and add unbuilt items to my checklist"
+- **Outcome / state:** Audit running in its own session.
+
+<a id="e724"></a>
+### 12:13 UTC — Audit result: about 110 items unbuilt, 24 decision jobs added to the checklist (e724)
+
+- **Type:** research, planning, docs
+- **Context / Thinking:** The founder wanted one place to decide "build now, later or skip".
+- **Decision:** Group the ~110 unbuilt items into 24 jobs (10 "before launch": brand limits, money bugs, fair-use margin, admin second factor, privacy in code, price wording, security batch, AI safety gates, and others).
+- **Action:** One batch write to the founder checklist artifact (`UrNrS5zWtyRrPxtpuNR4fQ`): 24 jobs, one `updates` note, sync version 10 -> 11 (99 docs). No repo, PR or branch touched. Status counts: about 15 live, about 35 on main waiting for the release, 3 in open PRs (#331, #332, #336), about 110 not built, about 60 founder-only actions already listed.
+- **Errors & mistakes:** The session could not confirm four items (E-016 login labels, its shell check failed; H-002 LinkedIn pin; C-011 judge veto test; G-005 refund flow not fully traced) and said so.
+- **Outcome / state:** 24 jobs waiting for the founder's build/later/skip.
+
+<a id="e725"></a>
+### 12:13 UTC — claude-mem observer signed out; memory saves failing all afternoon (e725)
+
+- **Type:** incident, error
+- **Context / Thinking:** Every session in the window opened its reply with the same warning: claude-mem had refused the observer's credentials since about 2026-10-10 ("Claude Code reported the observer as signed out"). The main repo directory logged repeated "Failed to authenticate: OAuth session expired and could not be refreshed" from summariser runs (12:11 to 15:55).
+- **Decision:** Fix is the founder's: `/login` in Claude Code or `claude auth login`. Already on the checklist as job `claude-mem-login`.
+- **Action:** none in code.
+- **Errors & mistakes:** Nothing from any session was saved to claude-mem for about 41-45 hours by this point.
+- **Outcome / state:** Unresolved at end of window.
+
+<a id="e726"></a>
+### 12:41 UTC — Founder asks what to do with each group; recommendations given; LinkedIn check started (e726)
+
+- **Type:** founder, decision, planning
+- **Context / Thinking:** Groups: ON MAIN (~35), IN PR (3), BRANCH ONLY (2), NOT BUILT (24 jobs).
+- **Decision:** Recommendations from the audit session: ship ON MAIN via #336 (first create the `hello@thakeen.com` mailbox; Turnstile both-or-neither; smoke from `docs/release/2026-10-R1-checklist.md` because staging returns 404; Straitly stays off, no `LLM_PROVIDER` without a separate yes); hold #331 and #332 until #336 is live ("Don't add them to #336: that changes what the release contains and starts another paid CI run"); finish `claude/entitlements-part-b` only on "build"; delete 3 local report branches (job `report-branches`); treat `linkedin-version` as urgent.
+- **Action:** Own-initiative session "Check LinkedIn API version before 15 Oct" proposed; the founder started it (12:43).
+- **Errors & mistakes:** The "hold #331/#332 out of #336" advice was overtaken within an hour: the coordinator merged both into main, which is #336's head (see 13:36 and 15:44 entries). Two sessions gave the founder different release scopes.
+- **Founder:** 12:41 "what we should do with: (ON MAIN, IN PR, BRANCH ONLY, NOT BUILT) tell me for each"
+- **Outcome / state:** Founder moved to choosing build jobs.
+
+<a id="e727"></a>
+### 12:43 UTC — LinkedIn 202510 sunset: no code pin, Composio header unverified; docs fixed on a branch (e727)
+
+- **Type:** research, docs, founder
+- **Context / Thinking:** A memory note said a LinkedIn API version sunsets on 15 Oct. 360 finding H-002 / L058 called the pin unverified.
+- **Decision:** No code change. Our code sends no `Linkedin-Version` header and calls no LinkedIn endpoint; `TOOLKIT_VERSION` pins Composio snapshots (`linkedin` 20260924_00, `linkedin_ads` 20260826_00), not LinkedIn versions. LinkedIn's official versioning page (checked 2026-10-12) confirms 202510 sunsets 15 Oct 2026; latest 202609. Which version Composio sends stays unverified; next step is asking Composio support before enabling LinkedIn (connector dormant until `COMPOSIO_*` is set).
+- **Action:** Session `intelligent-aryabhata-353f6e`: `1ad1f775` (13:08, H-002 and social-analytics spec), `7a7c6925` (13:25, PRD row no longer names stale toolkit 20250915_00) on local branch `claude/linkedin-version-h002`, not pushed (rule 772).
+- **Errors & mistakes:** Its web search failed (Firecrawl returned 401). During the check a clock-flaky test (rule 948, NOW line crossing 4:24 -> 4:25 PM) failed once; the session proposed a separate fix (`b934b2f7`, see 16:29 entry).
+- **Founder:** 13:05 "fix the spec and H-002 wording on a branch"; 13:23 "fix the PRD toolkit number too"
+- **Outcome / state:** Two local commits waiting for the founder's push word.
+
+<a id="e728"></a>
+### 12:44 UTC — Founder decides money questions; money and price batch started (e728)
+
+- **Type:** founder, decision, planning
+- **Context / Thinking:** 360 findings G-005 (a Paymob refund leaves plan and auto-renew on), G-012/G-013 (hand-set plans refill monthly with no paid-through day or ledger row), G-016 (empty generation charged); price copy: the pricing page offered «ادفع سنوياً ووفّر شهرين (قريباً)» though yearly cannot be bought, and Razan's card said «شامل الضريبة» while prices are 299/499/999 SAR excluding VAT.
+- **Decision:** Founder picked "End now (Recommended)" for a full refund (plan off, auto-renew off, paid credits removed) and "Remove it (Recommended)" for the yearly line. Partial refunds: change nothing, list as open question.
+- **Action:** Session "Money bugs + price lines batch" (branch from main, `money-price-fixes`) started 12:46; told to name the rule 679 expand step for the new stored field.
+- **Founder:** 12:44 "start money-bugs and price-copy-fix batch"; 12:45 answers via question tool
+- **Outcome / state:** Checklist jobs `money-bugs` and `price-copy-fix` set to "waiting" with the decisions written in.
+
+<a id="e729"></a>
+### 12:49 UTC — Eight parallel build sessions started, each with its own rule block (e729)
+
+- **Type:** founder, planning, rule, action
+- **Context / Thinking:** The founder wanted every recommended fix built now. Several areas overlap (billing, brands, admin, docs, `flows.md`, `i18n.ts`).
+- **Decision:** Founder ordered privacy and security next, then all remaining recommended jobs "by subagents". The audit session used separate visible sessions (so the founder can follow or stop each), one branch and one draft PR each, one push after local checks, and rule blocks: money 1300-1319, privacy 1320-1339, security 1340-1369, admin 2FA 1370-1389, brand limits + agent scope Part B 1390-1429, reliability 1430-1449, tests+docs 1450-1469, small fixes 1470-1499. Held: `fair-use-margin`, `founding-mechanics`, routines default, `ai-safety-gates` and `comparison-pages-fix` (lawyer), `media-storage-build` (needs hPanel limits), `dmarc` and `linkedin-version` (founder actions), `ui-leftovers` (after #331/#332), `cleanup-housekeeping` (last). Skipped as recommended: `unbuilt-features`, `cost-model-refresh`, `integrations-panel`. Privacy: vendor names stay in legal/help text only (recommended default); lawyer drafts from #325 not published.
+- **Action:** Sessions started 12:49-12:52 (money, privacy, security, admin 2FA, entitlements, reliability, tests-docs on a Sonnet model, small fixes). Rule-block messages sent at 12:51 to the first three.
+- **Errors & mistakes:** The block assignments reached money, privacy and security after they had already picked numbers (1240-1249, 1260-1279, 1260-1276). Privacy renumbered before its push; money and security renumbered after their first push, costing a second push each (see 13:17 and 13:20 entries).
+- **Founder:** 12:49 "start privacy-in-code and security-batch next"; 12:50 "do them bu subagents to finish all tasks as per your order"
+- **Outcome / state:** Eight sessions building; estimate given: about eight CI runs of ~20 minutes.
+
+<a id="e730"></a>
+### 13:00 UTC — Routines on by default: founder decision, refused once as cross-session order, then confirmed (rule 1486) (e730)
+
+- **Type:** founder, decision, rule, correction
+- **Context / Thinking:** 360 A-011 / L052: routines were opt-in. The small-fixes session had been told to leave routines out until the founder confirmed.
+- **Decision:** Founder: routines on by default within plan caps. The audit session relayed it. The small-fixes session's auto-mode permission check refused the edit as "Instruction Poisoning" because the order came from another session, and it noted the change makes every customer's routines spend credits without anyone asking. The founder then confirmed directly in that session, adding "added brands too".
+- **Action:** `3615bdb3` (13:27) on `claude/small-decided-fixes-bd589f`: `routineOn()` reads a missing switch as on and a stored false (only the owner's switch writes one) as off; `dueRoutines`, `runRoutine` and the Scheduled tasks switch use it; trial, data gate, weekly cap, agent cap and credit checks before each charge unchanged; no stored-shape change. Rule 1486.
+- **Errors & mistakes:** Second push to #343 for this item (first push `868f6f9d` at 13:21 was made before the confirmation arrived).
+- **Founder:** 13:00 "routines on by default within plan caps"; 13:23 "confirmed, routines on by default, added brands too"
+- **Outcome / state:** Rule 1486 in draft #343.
+
+<a id="e731"></a>
+### 13:08 UTC — #337 reliability batch: batched Redis reads, no-await-in-loop test (rules 1430-1435) (e731)
+
+- **Type:** action, rule
+- **Context / Thinking:** 360 B-003..B-006, F-013, F-023; leftovers L063, L075. Redis is HTTP per command; the app home read about 200 tasks one GET each.
+- **Decision:** Batch reads; pin the loop rule in a test; leave live timed tests (cache purge, Hostinger request limit) as founder actions.
+- **Action:** `290a7cf3`, draft PR #337 (+488/-38): `mgetChunked` in `db.ts` (MGET per 100 keys) for `listTasks` and `rebuildIndex` (1430); `listConversations` one MGET, `searchConversations` via `pmap` (1431); `POST /api/cron/secretary` writes `sec:tick:last` for the cron bearer too, because on thakeen.com the tick is an hPanel cron and the marker was never written (1432, supersedes a clause of rule 299); `userEvents` one MGET (1433); `runDaily` repairs index even when brief is off (1434); `tests/redis-loops.test.ts` fails on new `await db.` in loops under `src/` (1435). `docs/release/rollback.md`. Coverage `docs/system/tests/1430-reliability-batch.md`.
+- **Errors & mistakes:** Plain `npx next build` not run (Turbopack hangs on this machine); `npm run build:hostinger` (webpack) passed instead. Request counts come from memory-store tests, not measured on Upstash.
+- **Outcome / state:** Draft, one push, 6,506 tests passed locally.
+
+<a id="e732"></a>
+### 13:10 UTC — #338 admin second sign-in factor (rules 1370-1384) (e732)
+
+- **Type:** action, security, rule
+- **Context / Thinking:** 360 C-004, leftovers L055: founder console writes rested on one key.
+- **Decision:** TOTP on node `crypto` (no dependency, no lockfile change, no new env var); nothing enforced until the founder enrols, so rollout cannot lock the console; reads stay key-only.
+- **Action:** `0bae9563`, draft PR #338 (+1019/-5): `src/lib/totp.ts`, `src/lib/admin-2fa.ts` (secret sealed AES-256-GCM from `CONNECT_SECRET`, recovery code stored as SHA-256, `sameSecret` compares), 403 `second_factor` on every founder write once enrolled, step-up cookie `nashr_admin_2fa` (30 min idle, 12 h max), `x-admin-otp` header for scripts, 5 wrong codes per IP / 15 min and 30 per hour then 429, audit rows. Gated routes listed in PR; source scan in `tests/admin-2fa.test.ts`. Release step: single release, expand only (new keys `admin:2fa`, `admin:2fa:pending`, `admin2fa:*`).
+- **Errors & mistakes:** none recorded; six design questions left for the founder.
+- **Outcome / state:** Draft, one push.
+
+<a id="e733"></a>
+### 13:11 UTC — #339 tests and docs (rules 1450-1458); #346 StartForm cleanup follows (rule 1459) (e733)
+
+- **Type:** action, docs, rule, founder
+- **Context / Thinking:** 360 B-012, D-003 and leftovers L071/L072/L090 listed rules without tests; many docs were stale (flows §52 said production did not exist, PRD status lines lagged, MobPay still planned).
+- **Decision:** Tests and docs only; if a test exposed a bug, skip it and report (none did). `Dictionary.tsx` deleted as orphan; `StartForm.tsx` then had no importer, so a follow-up was proposed rather than widening #339.
+- **Action:** `d1cbbf71` (tests: chat heartbeat/error/saved reply rule 19 server half, video `trial_over` 402 and agent cap, judge vs publish race in `tests/task-writes.test.ts`, admin media route, `tests/coverage-refs.test.ts` rule 1450) and `08c655cb` (docs), draft PR #339 (+529/-781). Follow-up session opened draft PR #346 at 13:44 (`3813ce8c`, +32/-407): deletes `StartForm.tsx` and 384 lines of `home.module.css`, keeps `.face` used by `DictionaryStart.tsx`; base = #339's branch; coverage `1459-home-dead-code.md`.
+- **Errors & mistakes:** The judge-race tests added here later crashed the batch CI (see 16:20 entry). The StartForm session first found the shared `node_modules` stale (51 failing files, 5 type errors) and reinstalled; first build attempts in several sessions failed on Google Fonts fetches inside the sandbox.
+- **Founder:** 13:23 "propose the StartForm cleanup as a follow-up"
+- **Outcome / state:** Two drafts, #346 stacked on #339.
+
+<a id="e734"></a>
+### 13:14 UTC — #340 brand caps per plan with founder override (rules 1390-1395) (e734)
+
+- **Type:** action, rule, decision
+- **Context / Thinking:** Founder decision of 2026-10-09 (spec #303 Part B only): 1/1/2/5 active brands for trial, Starter, Pro, Business; Agency per account. Code allowed unlimited brands and copy said «علامات بلا حد».
+- **Decision:** Agency default 10 until the founder sets a number; accounts above their cap keep every brand working (nothing archived or deleted); archiving never capped. Part C (brand id in URL) not included.
+- **Action:** `ce89d27d`, draft PR #340 (+582/-130): `PLAN_BRANDS`, `brandCapFor` in `pricing.ts` (1390); cap checked inside `brandslock:{email}`, 402 `brand_limit` (1391); `GET /api/brands` returns cap/count/canUpgrade (1392); `POST /api/admin/brand-cap` founder-only with reason and audit (1393); all "unlimited brands" copy replaced in AR/EN (1394); docs (1395).
+- **Outcome / state:** Draft, one push.
+
+<a id="e735"></a>
+### 13:15 UTC — #341 privacy in code: data download, consent record, processor list (rules 1320-1330) (e735)
+
+- **Type:** action, rule, security, founder
+- **Context / Thinking:** 360 C-002, D-005, E-014; leftovers L045, L099. The live privacy text still named Vercel and left out Straitly.
+- **Decision:** Owner-only JSON export (no CSV, so no `csvSafe` cell); consent stored at signup from `TERMS_VERSION` / `PRIVACY_VERSION` in `src/lib/legal.ts`, never from the request; old accounts read as `{ recorded: false }` (rule 679 expand, no conversion script).
+- **Action:** `501bfaf8`, draft PR #341 (+643/-22): `GET /api/account/export` (`account.export`, impersonation blocked, 3/hour and 10/day, chunked `mget` + `pmap`, no tokens, no password hash, no card token); `User.consent`; processor list corrected. Flows section 64 (later renumbered 65 in the batch). Five lawyer questions added to the checklist job "Book a Saudi lawyer".
+- **Errors & mistakes:** The session first claimed rules 1260-1279, which clashed with the security session; renumbered before its single push.
+- **Founder:** 13:23 "add the lawyer items to the founder checklist"
+- **Outcome / state:** Draft, one push, CI passed (reported 15:54).
+
+<a id="e736"></a>
+### 13:17 UTC — #342 money fixes and price copy; renumbered to 1300-1308 in a second push (e736)
+
+- **Type:** action, rule, error, founder
+- **Context / Thinking:** Needed before Paymob KSA card payments are switched on; founder decisions from 12:45.
+- **Decision:** Full Paymob refund of a plan/renewal ends the plan at once (trial with `trialEnds` in the past, `billing` and `handPlan` removed, plan credits 0, packs kept, `refund_plan_ended` audit) (1300); dashboard refunds still change nothing (1301, open question); hand-set plans get `paidThrough` (default one month), refill stops after it, audit row per refill (1302-1305); no charge for an empty batch; yearly line removed; Razan's card says excluding VAT. Release step expand: new optional `User.handPlan`.
+- **Action:** `eb577bbd` (13:17, rules 1240-1249) pushed, draft PR #342 opened; `a523a1eb` (13:20) renumbered to 1300-1309 after the coordinator's block message; coverage `docs/system/tests/1300-money-price-fixes.md`. Five open questions added to the checklist as «Answer 5 money questions» (partial refund, saved card after refund, after the paid-through date, and two more).
+- **Errors & mistakes:** The renumber was a second push; the session itself noted that if the first CI run was still going, it was cancelled and both are billed (rule 772). Turbopack could not bind a local port, so a webpack build was used as the compile check.
+- **Founder:** 13:23 "add the open questions to the founder checklist"
+- **Outcome / state:** Draft at `a523a1eb`.
+
+<a id="e737"></a>
+### 13:20 UTC — #343 small decided fixes (rules 1470-1485, plus 1486) (e737)
+
+- **Type:** action, rule
+- **Context / Thinking:** 360 A-009, D-019 and leftovers L048, L057, L081, L085, L086, L087, L091: fixes the founder had already decided.
+- **Decision:** Partner programme Saudi-only (`country_closed`, terms v2026-10-12) (1470-1471); brand currency via `currencyOf(zone)`, SAR default (1472-1473); stalled sign-ups in console (1474-1475); provider rate-limit/balance errors shown as "busy" or "unavailable, nothing charged", never the provider's name (1476-1478); approval rate per team member (1479-1480); `render` keeps last Markdown table column (1481); WordPress/Shopify title from first H1 (1482); "workspace is large" hint (1483-1484); upstream pins bumped (1485).
+- **Action:** `868f6f9d`, draft PR #343 (+668/-123); coverage `docs/system/tests/1470-small-decided-fixes.md`.
+- **Errors & mistakes:** First `npm run check` had 8 failing tests (prompt hash pins changed on purpose); pins updated. First build failed on a Google Fonts download; second attempt clean.
+- **Outcome / state:** Draft; routines item added at 13:27 (see 13:00 entry).
+
+<a id="e738"></a>
+### 13:20 UTC — #344 security hardening batch (expand), renumbered to rules 1340-1356 (e738)
+
+- **Type:** action, security, rule, error
+- **Context / Thinking:** 360 C-006, C-007, C-013, C-014, C-015, C-016, C-018, F-019, J-004; leftovers L065, L066, L089.
+- **Decision:** CSP shipped as Report-Only (a nonce CSP would make every page dynamic, and Turnstile is off live so the full policy cannot be proven locally); `poweredByHeader` off; `security.txt` with `hello@thakeen.com`; `safeFetch` DNS pinning via undici `Agent` plus 30 s deadline; sessions stored at `session:h:{sha256(token)}` with raw-key read kept (expand; contract at least 30 days after live); MCP access token 1 hour; secret scan in CI.
+- **Action:** `9911ee11` (13:20) pushed as draft PR #344 with rules 1260-1276; `5f0cb3bb` (13:23) added 80 to every rule number -> 1340-1356, coverage renamed `docs/system/tests/1340-security-hardening.md`, flows section 66.
+- **Errors & mistakes:** Rule-block collision found after the first push; the renumber was a second push. The session also found the shared `$TMPDIR` log clobbered by other sessions and re-ran checks with its own scratchpad log.
+- **Outcome / state:** Draft at `5f0cb3bb`; Auto-fix later turned off by the session (15:49).
+
+<a id="e739"></a>
+### 13:23 UTC — Agent scope Part B tasks 7-9 built; #345 opened (rules 790-802, 1410-1415) (e739)
+
+- **Type:** action, security, rule
+- **Context / Thinking:** Branch `claude/entitlements-part-b` held tasks 1-6 (rules 790-802, pushed, no PR). 360 J-003, ledger CL-001, leftovers L047. Paid evals need the founder's yes.
+- **Decision:** Keep 790-802 (checked: no clash); new rules 1410-1415. Default modes: prompt on; input, role and output gates in shadow (log only). Enforce only after a passed eval on the classifier's current model.
+- **Action:** `eb0dbe46` (publish check at `POST /api/publish/{id}` and chat `publish_item`, 409 `agent_scope_held`, 503 `agent_scope_unavailable` fail-closed, founder release by hash; 1410-1411), `19dcaf41` (205-case labelled set with invented brands, scorer pass = >=95% refusals caught and <=2% wrong refusals, modes and eval routes, founder panel; 1412-1413), `2a41c410` (source scans, privacy text: first 200 characters, agent and verdict, 31 days; 1414-1415), `24330c6d` (review fix: chat sends only the checked text; owned eval lock). Cherry-picked main's clock fix `3e12688b` so the check could pass. Draft PR #345 opened 13:38 (+7990/-243), expand only (`Task.agentScopeRelease`, `ChatMsg.switchTo`).
+- **Errors & mistakes:** The branch was about 153 commits behind main and conflicted in 16 files. Batch notes later flagged a cost effect: shadow mode makes one paid Haiku check per chat turn.
+- **Outcome / state:** Draft, conflicting with main.
+
+<a id="e740"></a>
+### 13:24 UTC — Founder reports #336 green; release not merged; coordinator returns #336 to draft (e740)
+
+- **Type:** founder, deploy, ci
+- **Context / Thinking:** #336's CI passed in 25 minutes. With #336 marked ready, every merge into main (its head) would start another full ~24-minute run on it, and many merges were coming.
+- **Decision:** Skills-portal session restated the founder's steps (Turnstile check, "Create a merge commit", night window 22:00-00:40 UTC at the listed minutes, then tell it «دمجت»). At 13:37 the coordinator put #336 back to draft "as you approved earlier" (that approval is not in this slice's sources) and planned to mark it ready once, after the UI stack and chosen batches merge.
+- **Action:** `gh pr ready 336 --undo` at 13:37.
+- **Founder:** 13:24 "its green #336"
+- **Outcome / state:** #336 draft, not merged; production still `487984f4`.
+
+<a id="e741"></a>
+### 13:35 UTC — Clock flake reds #342; Auto-fix merges main into #342 and #343 while #345 refuses (e741)
+
+- **Type:** ci, error, correction
+- **Context / Thinking:** #342's CI failed one unit test, rule 948 "no layers" in `tests/instructions-prompts.test.ts`: several chat prompts differed only in the NOW line ("4:27 PM" vs "4:28 PM", CI run 38255007967). After #331 merged at 13:36, the desktop app's Auto-fix began sending merge-conflict events.
+- **Decision:** Money session froze `Date` in that one test. Auto-fix events then led the money and small-fixes sessions to merge main and push; the entitlements session aborted the same Auto-fix merge on #345 three times (13:39, 14:10, 15:15), citing CLAUDE.md rule 772 (a conflict alone waits until just before merge, and that rule overrides Auto-fix).
+- **Action:** `f6c123ea` (13:37, #342 clock freeze); `98bfcaa3` (13:39-13:40, main into #342: `Pricing.tsx`, `UserSheet.tsx`, colour-class rename `text-muted` -> `text-foreground-muted`); `472aa8e6` (13:42, main into #343, 5 conflicts, all colour renames).
+- **Errors & mistakes:** Sessions applied rule 772 inconsistently: #342 and #343 took conflict-only main merges (extra paid CI runs) while #345, #338 and #346 refused. #342 reached four pushes in about 23 minutes (`eb577bbd`, `a523a1eb`, `f6c123ea`, `98bfcaa3`).
+- **Correction:** The audit session recommended turning Auto-fix off for #345; security and privacy sessions turned Auto-fix off on #344 and #341 later (15:49-15:54).
+- **Outcome / state:** #342 and #343 up to date with main at 13:42; #345 still conflicting.
+
+<a id="e742"></a>
+### 13:36 UTC — #331 UI/UX phase 5 merged (semantic colours, dark theme; rules 1200-1205); #332 prepared (e742)
+
+- **Type:** merge, ci, design
+- **Context / Thinking:** #331's full CI passed under the new 35-minute cap. #332 (phase 5b, home gallery) was stacked next.
+- **Decision:** Coordinator merged #331 and delegated #332 prep to a worktree agent (one push, then full CI).
+- **Action:** PR #331 merged as `d30c30aa` (+2229/-1417): codemod moved 1,625 raw colour classes in 127 files; lint rule `thakeen-ui/no-raw-colour`; dark values in `src/app/theme-dark.css`; no-flash `THEME_SCRIPT`; cookie `nashr_theme`; WCAG AA contrast tests; dark only on `/{lang}/app` and `/{lang}/admin`. Agent pushed `f33a170c` (13:42, main into #332, `ChatPanel.tsx` conflict: kept `ChatBubble` and added `InstructionProposalCard` inside it), retargeted to main and marked ready; local 6,577 tests and build passed.
+- **Errors & mistakes:** Marking #332 ready 30 seconds after the push started a second run that cancelled the first (billed, called "normal" by the coordinator). Because #336's head is main, #331 joined the release, contrary to the 12:41 advice to keep it out.
+- **Outcome / state:** UI phases 0-5 on main, not live.
+
+<a id="e743"></a>
+### 13:42 UTC — Coordinator asks: build PRs in this release or the next? Plan: merge one at a time (e743)
+
+- **Type:** planning, decision
+- **Context / Thinking:** Nine (then ten with #346) draft build PRs touched the same areas; once one merged, the others would conflict.
+- **Decision:** Coordinator proposed merging them one at a time (ready, full CI, merge, update next, push once), about 25 minutes each, about 4 hours for nine, and asked the founder whether they go into this release. It repeated the question at 13:43, 13:45 and 14:10.
+- **Action:** none until the founder answered.
+- **Outcome / state:** Superseded at 14:42 by a single batch branch.
+
+<a id="e744"></a>
+### 14:07 UTC — #332 full CI red on a real e2e failure; fixed by e9a727a6 (e744)
+
+- **Type:** ci, error, correction
+- **Context / Thinking:** (time inferred from a ~24-minute run starting 13:43; exact time not recorded) #332 adds `section#gallery` between "your day" and "steps"; `e2e/home.spec.ts` built the expected list only from `HOME_NAV`, which correctly has no gallery link.
+- **Decision:** Fix the test, not the page.
+- **Action:** `e9a727a6` (14:47) on `claude/uiux-phase5b`: expected sections include the gallery (rule 1220); coverage doc updated; type-check, lint and 6,577 tests clean before one push.
+- **Errors & mistakes:** 4 e2e tests failed on all four projects, 1,110 passed. The coordinator's borrowed `node_modules` was stale and the sandbox blocked writes outside its worktree; both worked around.
+- **Outcome / state:** #332 re-running full CI.
+
+<a id="e745"></a>
+### 14:42 UTC — Founder: include the ten build PRs in this release; one batch branch instead of ten CI runs (e745)
+
+- **Type:** founder, decision, ci, merge
+- **Context / Thinking:** Ten drafts (#337-#346) each needing a full run plus conflict merges would cost about ten runs and hours.
+- **Decision:** The coordinator chose one integration branch from main with real `--no-ff` merges (no rebase or squash), so every PR head stays an ancestor and GitHub marks all ten merged when the batch lands. Original PRs not to be changed.
+- **Action:** Background worktree agent built `claude/build-batch-2026-10-12` from `d30c30aa`: merges `15e45e55` (#339), `bc776a17` (#346), `e5377502` (#337), `93b1a825` (#338), `a8878c10` (#341; its flows §64 renumbered §65 because #338 holds 64), `792e78f4` (#344; §66 moved to the end; variables.md keeps `CONNECT_SECRET` and adds `CONNECT_SECRET_PREVIOUS`, noting it does not cover the 2FA secret), `12d8d1f8` (#340), `d14b9e2e` (#345, `chat.ts` restructure kept with main's layers and `metered` stream), `c8f18623` (#343; §64 -> §67), `c9f3bfad` (#342). Combination fixes: `d45f2827` (#345 tests vs main's rate catalog, streamed judge/reviewer, brand caps; pricing-floor pins re-measured 75,000 and 117,400), `17bb6d60` (second-factor gate and `adminAudit` on four new founder routes, rule 1376/1172), `f5f60a4f` (agent-scope classifier streams through `metered`, rule 980), `157c2dbc` (Reem-only refusals, rules 919/607 vs 799; default-brand scope; console dialog and colours), `a7020f7a` (docs: section 65 reference, route count 139 files / 198 exports).
+- **Errors & mistakes:** The agent's caveats: shadow mode makes one paid Haiku check per chat turn; the classifier is priced from the reply model; the "81 names" count in variables.md was not re-checked. Its local "3 skipped" report hid a crash (see 16:20 entry).
+- **Founder:** 14:42 "include them in this release, merge all greens"
+- **Outcome / state:** Local batch at `a7020f7a` by 15:43: tsc clean, lint 0 errors, 6,962 of 6,965 tests passed (3 skipped), webpack build passed; `docs/system/tests.md` still 799 rows (rule 788 held).
+
+<a id="e746"></a>
+### 14:49 UTC — Company mail moved to Google Workspace: MX and SPF set through the Hostinger connector (e746)
+
+- **Type:** action, founder, error
+- **Context / Thinking:** The founder had set up Google Workspace for thakeen.com. DNS (nameservers on Hostinger's dns-parking.com; domain registered at name.com) still pointed mail at Hostinger Mail. A separate session (worktree `claude-api-agents-2c7b35`) checked the zone through the Hostinger connector.
+- **Decision:** Replace the Hostinger MX with Google's MX, SPF to `include:_spf.google.com`, remove stale Hostinger mail records, then DKIM and DMARC.
+- **Action:** After two blocked attempts, the change went through at 14:54: MX set to Google's classic 5 records, SPF updated. Rollback snapshot id 187756035 recorded. The connector's delete step returned 422, so the founder deleted the stale `hostingermail` / `autodiscover` / `autoconfig` records by hand.
+- **Errors & mistakes:** "apply all" (14:51) and "1" (14:52) were blocked by the auto-mode permission check; "try again" (14:54) succeeded. Connector delete failed with 422.
+- **Founder:** 14:49 "i used google workspace, use hostinger connector to check the dns for the email"; 14:51 "apply all"; 14:54 "try again"
+- **Outcome / state:** Google MX and SPF live in DNS; DKIM not yet added.
+
+<a id="e747"></a>
+### 15:07 UTC — DKIM added; DMARC raised to quarantine; hello@ made an alias (e747)
+
+- **Type:** action, founder, security
+- **Context / Thinking:** Google Workspace gives a DKIM key for `google._domainkey`; the key is longer than one TXT string.
+- **Decision:** Add DKIM split into two strings; raise DMARC from monitoring to `p=quarantine` with aggregate reports to `hello@thakeen.com`.
+- **Action:** DKIM TXT at `google._domainkey` added at 15:08 (key not reproduced here). DMARC changed to quarantine at 15:18. The founder made `hello@thakeen.com` an alias of `the founder's own mailbox on the thakeen.com domain` (15:26).
+- **Errors & mistakes:** DMARC moved to quarantine before the session saw DKIM confirmed as authenticating in Google's admin console (inferred risk: genuine mail could be quarantined if DKIM was not yet active).
+- **Founder:** about 15:07 "I deleted the stale records by hand, now add the DKIM"; about 15:18 "raise DMARC to quarantine with reports"; 15:26 "hello@thakeen.com"
+- **Outcome / state:** Sending from Workspace worked (founder: "i sent email: works.. receiving is not working").
+
+<a id="e748"></a>
+### 15:44 UTC — #332 UI/UX phase 5b merged (live UI gallery, rules 1220-1227); batch updated with main (e748)
+
+- **Type:** merge, ci
+- **Context / Thinking:** #332's second full run passed after `e9a727a6`.
+- **Decision:** Merge #332, then bring the batch branch up to date so #347 tests the final combination.
+- **Action:** PR #332 merged as `07ac4684`. Batch merged main as `56764250` (15:46).
+- **Outcome / state:** origin/main `07ac4684`; UI phases 0-5b on main, not live.
+
+<a id="e749"></a>
+### 15:46 UTC — #339 and #343 tip pushes from Auto-fix; coordinator stops eight sessions (e749)
+
+- **Type:** ci, error, correction
+- **Context / Thinking:** The batch already contained every PR head, so any new push to an original PR started a billed CI run for nothing and left a tip outside the batch.
+- **Decision:** Coordinator stopped the build sessions and asked the rest to stop pushing; sessions turned Auto-fix off on #344, #341 and #338.
+- **Action:** stop_session called on 8 sessions at 15:49; for 3 the auto-mode check blocked the stop, so they got a message instead.
+- **Errors & mistakes:** After #332 merged, Auto-fix led the tests-docs and small-fixes sessions to merge main and push again: `1c612b1f` into #339 and `c74dbdc6` into #343 (15:46-15:47). Both started extra CI runs against rule 772, and those tips are not in #347 (they hold only a main merge). Earlier the entitlements session had refused the same Auto-fix order three times; the admin-2fa session refused one on #338 at 16:28.
+- **Outcome / state:** #339 and #343 to be closed with a comment when #347 merges (their real content is in the batch).
+
+<a id="e750"></a>
+### 15:50 UTC — #347 build batch PR opened and marked ready (e750)
+
+- **Type:** branch, ci, planning
+- **Context / Thinking:** One PR to land all ten build PRs; GitHub marks each merged because each head is an ancestor.
+- **Decision:** Open #347 and mark ready once (15:54) so the full suite runs once. Coordinator checked: every PR head is inside #347 except the main-merge-only tips of #339 and #343; no duplicate rule numbers across blocks.
+- **Action:** PR #347 opened from `claude/build-batch-2026-10-12`; local run 7,005 tests passed before the push.
+- **Errors & mistakes:** none at this step.
+- **Outcome / state:** Full CI started on #347.
+
+<a id="e751"></a>
+### 15:55 UTC — Inbound mail bounces from Gmail; MX advice reversed; cause unresolved (e751)
+
+- **Type:** incident, error, correction, founder
+- **Context / Thinking:** Sending worked, receiving did not. Gmail to `the founder's own mailbox on the thakeen.com domain` bounced with `554 5.7.1 Relay access denied`. The founder suspected name.com (registrar) and its NS records.
+- **Decision:** The session said nameservers are Hostinger's and the zone is correct; at 15:43 it changed MX to Google's current recommended set: `smtp.google.com` priority 1 plus ASPMX 5 and ALT1-ALT4 at 10/15/20/25.
+- **Action:** MX replaced (6 records). Test from Outlook at 16:00 was delivered (to spam). Gmail test still bounced.
+- **Errors & mistakes:** At 15:09 the session had said not to add `SMTP.GOOGLE.COM`; at 15:43 it added it as priority 1. The reversal was not explained to the founder at the time (inferred from the transcript). The final diagnosis, a stale MX cache at Gmail, was not proven.
+- **Founder:** about 15:55 "maybe cause the domain under name.com??"; 16:00 "sent from outlook, will check log.. its arrived to spam"; about 16:05 "still bounces, same error"
+- **Outcome / state:** Gmail-to-thakeen.com inbound unresolved at end of window; Outlook path works (spam folder).
+
+<a id="e752"></a>
+### 16:20 UTC — #347 CI red: unit worker out of memory; fixed by 0c42ad5f (e752)
+
+- **Type:** ci, error, correction
+- **Context / Thinking:** CI run 38273598564 died with SIGABRT / out of memory in `tests/task-writes.test.ts`. #339's judge-versus-publish race hook re-ran on every fake model call, growing to about 4.5 GB.
+- **Decision:** Make the judge fake run its race hook once.
+- **Action:** `0c42ad5f` (16:23): file 9/9 in 1.6 s, full suite 7,008/7,008 locally. One push; CI re-running.
+- **Errors & mistakes:** The integration agent's earlier local report ("0 failures, 3 skipped") was wrong: those tests had crashed, not skipped. The bad test came from #339, whose own CI had passed (inferred: the hook only exploded in the batch combination).
+- **Outcome / state:** #347 not merged at end of window; result of the re-run unknown.
+
+<a id="e753"></a>
+### 16:29 UTC — Founder sweeps idle sessions: LinkedIn docs #348, redundant clock fix #349, public dark mode (e753)
+
+- **Type:** founder, branch, planning, design
+- **Context / Thinking:** The founder went through idle sessions one by one.
+- **Decision:** LinkedIn session pushed both local branches as drafts. Session `heuristic-snyder` found the clock fix already in the batch (`f6c123ea`) and pushed nothing. Session `happy-gould-4c332b` got the yes for public dark mode after #332.
+- **Action:** Draft PR #348 (LinkedIn H-002 / spec / PRD docs, `1ad1f775` + `7a7c6925`) and draft PR #349 (clock test `b934b2f7`) opened 16:31. `happy-gould` built the phase 5b remainder on `claude/uiux-phase5b-rest`: freshness chip from CHANGELOG, hero CTA with UrlStart, public dark mode (reverses rule 1227).
+- **Errors & mistakes:** #349 duplicates `f6c123ea` already in #347; it should be closed (inferred). Opening it started another CI run.
+- **Founder:** 16:29 "push both branches and open draft PRs"; 16:29 "yes to public dark mode, build it after #332"; 16:30 "fold it into the next release PR branch"
+- **Outcome / state:** #348, #349 draft; phase 5b remainder on a branch.
+
+<a id="e754"></a>
+### 16:33 UTC — Stale requests answered: #321 already replaced, R1 fixes already on main (e754)
+
+- **Type:** founder, correction
+- **Context / Thinking:** Two sessions held work that had since landed elsewhere.
+- **Decision:** No action in either.
+- **Action:** `cool-antonelli`: #321 already closed and replaced by #330. `strange-kilby`: R1 fixes already on main via #322; nothing pushed.
+- **Founder:** "راجع #321 وجهّزه للدمج"; "push R1 fixes and open draft PR" (exact times not recorded, about 16:30-16:34)
+- **Outcome / state:** No change.
+
+<a id="e755"></a>
+### 16:35 UTC — Release PR #336 rewritten for 23 merges (main 07ac468); leftovers jobs started (e755)
+
+- **Type:** deploy, planning, founder, docs
+- **Context / Thinking:** #336's head is main, so #331 and #332 had joined it; its body still described 21 PRs.
+- **Decision:** Update the title and body; the batch #347 joins only if it merges before the founder merges #336.
+- **Action:** Session `staging-zero-downtime-updates` retitled #336 "release: 2026-10-12-1 (main 07ac468 to production)" with 23 merges listed (16:35-16:36). Session `leftovers-audit-360` started five subagents in order and was told to update the founder checklist after (16:37). This journey-log session was told to extend the log to 10-12 (16:35).
+- **Founder:** 16:35 "prepare the release PR"; 16:37 "do all the 5 by subagents in order, the update the founder checklist"; 16:35 "extend the log to 10-12"
+- **Outcome / state:** #336 draft, not merged; production still `487984f4`; #347 CI re-running.
+
 ---
 
 # Appendix A — Branch ledger
 
-"Opened" is the PR creation time when a PR exists, else the first commit unique to the branch, else the branch tip time (marked *tip*). "Fate" combines PR state and git ancestry at 2026-10-10. A branch with no commits beyond main is a session branch (a Claude worktree) or was merged and kept. `Kind` says whether the branch is on the remote or local only.
+"Opened" is the PR creation time when a PR exists, else the first commit unique to the branch, else the branch tip time (marked *tip*). "Fate" combines PR state and git ancestry at 2026-10-12 about 16:30 UTC. A branch with no commits beyond main is a session branch (a Claude worktree) or was merged and kept. `Kind` says whether the branch is on the remote or local only.
 
 | Branch | Kind | Purpose (PR title or first own commit) | Opened (UTC) | Last commit | Fate |
 |---|---|---|---|---|---|
@@ -7339,7 +9030,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 | `claude/wishlist-feature-launch-7c7b2d` | local-only | Merge pull request #300 from iAbulkhair/claude/social-analytics-reports | 2026-10-09 10:11 *tip* | 2026-10-09 10:11 | no commits beyond main (session branch or already merged); contained in production |
 | `claude/admin-panel-brand-management-7d1abe` | remote | docs(spec): admin shell, brand limits per plan, brand in the URL | 2026-10-09 11:31 | 2026-10-09 11:43 | PR #303 merged 2026-10-09 21:09; contained in production |
 | `claude/admin-shell` | remote | Admin console in its own shell at /{lang}/admin (870-874) | 2026-10-09 12:13 | 2026-10-09 20:40 | PR #304 merged 2026-10-09 21:09; contained in production |
-| `claude/entitlements-part-b` | remote | docs(plan): agent scope Part B implementation plan (rules 790-808) | 2026-10-09 15:03 | 2026-10-09 10:21 | PR #305 merged 2026-10-09 20:34; contained in production |
+| `claude/entitlements-part-b` | remote | docs(plan): agent scope Part B implementation plan (rules 790-808) | 2026-10-09 15:03 | 2026-10-12 13:38 | PR #305 merged 2026-10-09 20:34; PR #345 open; 14 commit(s) ahead of main after PR |
 | `claude/ci-minutes-agent-rules` | remote | docs(agents): CI-minutes rules for every agent (rule 789) | 2026-10-09 18:28 | 2026-10-09 19:11 | PR #306 merged 2026-10-09 19:22; contained in production |
 | `claude/ci-minutes-cache` | remote | ci: cut Actions minutes and split the coverage map (rules 772, 788) | 2026-10-09 18:32 | 2026-10-09 18:31 | PR #307 merged 2026-10-09 19:09; contained in production |
 | `claude/ci-checks-merge-flow-a8faea` | local-only | Merge pull request #307 from iAbulkhair/claude/ci-minutes-cache | 2026-10-09 19:09 *tip* | 2026-10-09 19:09 | no commits beyond main (session branch or already merged); contained in production |
@@ -7355,11 +9046,94 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 | `claude/reem-b2b-b3-prd` | remote | Reem B2b meeting follow-up + B3 marketing calendar read, PRD v3.2 | 2026-10-09 22:44 | 2026-10-10 10:39 | PR #314 merged 2026-10-10 11:34; contained in main |
 | `claude/298-followups` | remote | Follow-ups of #298: wipeAccount race, brand lock 503, Premium hold on the billing card (rules 905-9… | 2026-10-10 10:09 | 2026-10-10 10:05 | PR #315 merged 2026-10-10 10:33; contained in main |
 | `claude/audit-undeployed-tasks-a86e78` | local-only | Merge remote-tracking branch 'origin/main' into claude/audit-undeployed-tasks-a86e78 | 2026-10-10 10:39 *tip* | 2026-10-10 10:39 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/agent-skills-portal-47b7dd` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/journey-log-0111b9` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/leftovers-audit-360-341a20` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/nice-cray-981386` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
 | `claude/project-360-review-log-cbc7b2` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/supastarter-uiux-report-fca589` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/vercel-necessity-review-6a1a3b` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/xenodochial-galileo-4d712e` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/leftovers-audit-360-341a20` | local-only | docs(reports): leftovers 360 audit, 2026-10-10 | 2026-10-10 12:01 | 2026-10-10 21:06 | UNMERGED: 2 commit(s) ahead of main, no PR |
+| `claude/supastarter-uiux-report-fca589` | local-only | docs(reports): supastarter UI/UX benchmark and adoption plan | 2026-10-10 12:11 | 2026-10-10 12:11 | UNMERGED: 1 commit(s) ahead of main, no PR |
+| `claude/journey-log-0111b9` | local-only | docs(journey): add development log 2026-09-17 to 2026-10-10 | 2026-10-10 12:29 | 2026-10-10 12:29 | UNMERGED: 1 commit(s) ahead of main, no PR |
+| `claude/agent-skills-portal-47b7dd` | remote | feat(instructions): agent skills portal (rules 930-959) | 2026-10-10 15:29 | 2026-10-12 10:07 | PR #316 merged 2026-10-12 11:20; contained in main |
+| `claude/uiux-phase0` | remote | fix(ui): UI/UX phase 0, bugs B-1 to B-11 and quick wins (rules 960-969, 974-977) | 2026-10-10 15:49 | 2026-10-10 16:49 | PR #317 merged 2026-10-11 02:32; contained in main |
+| `claude/happy-gould-4c332b` | remote | fix(usage): meter every billed call (980-986); 5.5 models only (970-972) | 2026-10-10 16:18 | 2026-10-10 16:26 | PR #318 merged 2026-10-10 16:44; contained in main |
+| `claude/anthropic-token-cost-calculation-3ec086` | local-only | Merge claude/happy-gould-4c332b (metering, rules 980-986) with the pre-5.5 removal (rules 970-972) | 2026-10-10 16:26 *tip* | 2026-10-10 16:26 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/strange-kilby-e46c6b` | local-only | Merge pull request #318 from iAbulkhair/claude/happy-gould-4c332b | 2026-10-10 16:44 *tip* | 2026-10-10 16:44 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/retire-vercel` | remote | chore: stop steering the old Vercel project (rules 987-990) | 2026-10-10 16:59 | 2026-10-11 23:01 | PR #319 merged 2026-10-12 06:00; contained in main |
+| `retire-merge` | local-only | chore: stop steering the old Vercel project (rules 987-990) | 2026-10-10 16:59 | 2026-10-11 22:08 | UNMERGED: 2 commit(s) ahead of main, no PR |
+| `claude/media-storage-spec-41fe7e` | remote | docs(spec): media storage on Hostinger disk, Drive as the client's archive (rules 991-1010) | 2026-10-10 17:17 | 2026-10-10 18:56 | PR #320 merged 2026-10-11 21:37; contained in main |
+| `claude/360-study-2026-10-11` | local-only | docs(reports): Thakeen 360 study 2026-10-11 (read-only) | 2026-10-11 02:31 *tip* | 2026-10-11 02:31 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/busy-wozniak-b9a270` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/competent-matsumoto-ba65ca` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/cool-antonelli-82c36a` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/laughing-poitras-87cde9` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/loving-greider-66b8f3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a0ab6fed7a0b27a9b` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a1337ded774a41a4c` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a2cb5eed482c70972` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a40873f0755c8caa3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a42435cdf0cb5cc65` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a523fa1882d547569` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a55bc79c5f1723345` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a60ae3b167492aed3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a8686f65c5649a63f` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-ac9376c2c0b6810f4` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/uiux-phase0-cancel-pin` | local-only | test(admin): pin Cancel on every founder console prompt and confirm (rule 960) | 2026-10-11 03:13 | 2026-10-11 03:13 | UNMERGED: 1 commit(s) ahead of main, no PR |
+| `monitoring-ci-parity-merge` | local-only | feat(ops): store health check, cron heartbeats, CI built like Hostinger (rules 1011-1019) | 2026-10-11 03:24 | 2026-10-11 20:47 | UNMERGED: 1 commit(s) ahead of main, no PR |
+| `claude/console-dialogs` | remote | feat(admin): founder console changes ask in one in-page form (rules 1100-1102) | 2026-10-11 09:39 | 2026-10-11 09:39 | PR #321 closed 2026-10-11 17:38; 1 commit(s) ahead of main after PR |
+| `claude/monitoring-ci-parity` | remote | feat(ops): store health check, cron heartbeats, CI built like Hostinger (rules 1011-1019) | 2026-10-11 12:34 | 2026-10-11 20:48 | PR #324 merged 2026-10-11 21:37; contained in main |
+| `claude/r1-release-prep` | remote | fix(release): honesty fixes for release R1 (rules 924-929) | 2026-10-11 12:34 | 2026-10-11 18:12 | PR #322 merged 2026-10-11 20:45; contained in main |
+| `claude/turnstile-client-ip` | remote | fix(security): trusted proxy hop for client IP, Turnstile fails closed (rules 908, 909, 978, 979) | 2026-10-11 12:34 | 2026-10-11 03:22 | PR #323 merged 2026-10-11 20:46; contained in main |
+| `claude/privacy-terms-draft` | remote | docs(legal): privacy policy + terms drafts for lawyer review | 2026-10-11 12:35 | 2026-10-11 13:01 | PR #325 merged 2026-10-11 21:37; contained in main |
+| `claude/prompt-studio-specs` | remote | docs(specs): agent learning loop + admin control center (rules 1020-1079) | 2026-10-11 12:35 | 2026-10-11 12:47 | PR #326 merged 2026-10-11 21:37; contained in main |
+| `claude/uiux-phase1` | remote | feat(ui): UI/UX phase 1, tokens and core primitives (rules 1080-1099) | 2026-10-11 12:35 | 2026-10-11 21:49 | PR #327 merged 2026-10-12 00:21; contained in main |
+| `claude/uiux-phase2` | remote | feat(ui): UI/UX phase 2, shell, chat and states (rules 1110-1130) | 2026-10-11 12:35 | 2026-10-12 06:48 | PR #328 merged 2026-10-12 07:29; contained in main |
+| `claude/uiux-phase3` | remote | feat(ui): UI/UX phase 3, settings area and billing (rules 1140-1158) | 2026-10-11 12:35 | 2026-10-12 06:49 | PR #329 merged 2026-10-12 08:48; contained in main |
+| `claude/uiux-phase4` | remote | feat(admin): UI/UX phase 4, founder console and Control Center phase 1 (rules 1170-1190) | 2026-10-11 13:53 | 2026-10-12 09:27 | PR #330 merged 2026-10-12 09:59; contained in main |
+| `claude/uiux-phase5` | remote | feat(ui): UI/UX phase 5, semantic colours and dark theme for app and console (rules 1200-1205) | 2026-10-11 14:18 | 2026-10-12 11:50 | PR #331 merged 2026-10-12 13:36; contained in main |
+| `claude/uiux-phase5b` | remote | feat(home): live UI gallery on the home page (UI/UX phase 5b, rules 1220-1227) | 2026-10-11 20:45 | 2026-10-12 14:47 | PR #332 merged 2026-10-12 15:44; contained in main |
+| `worktree-agent-a0818c92a49a505f9` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a0b94983f1cd1569c` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-aaaa33f21a65e9b2b` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in main |
+| `monitoring-merge` | local-only | Merge main into claude/monitoring-ci-parity (after #322, #323) | 2026-10-11 20:48 *tip* | 2026-10-11 20:48 | no commits beyond main (session branch or already merged); contained in main |
+| `phase1-e2e-fix` | local-only | test(e2e): select auth fields by their visible label (phase 1, rule 1090) | 2026-10-11 21:49 *tip* | 2026-10-11 21:49 | no commits beyond main (session branch or already merged); contained in main |
+| `retire-merge2` | local-only | docs(architecture): the heartbeat paragraph names crons.json (rule 989) | 2026-10-11 23:01 *tip* | 2026-10-11 23:01 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a13a868b91856c992` | local-only | Merge pull request #327 from iAbulkhair/claude/uiux-phase1 | 2026-10-12 00:21 *tip* | 2026-10-12 00:21 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a529b6ab25fd87e23` | local-only | Merge pull request #319 from iAbulkhair/claude/retire-vercel | 2026-10-12 06:00 *tip* | 2026-10-12 06:00 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/360-founder-guide` | remote | docs(reports): Thakeen 360 study 2026-10-11 + plain-language founder edition | 2026-10-12 06:05 | 2026-10-11 03:11 | PR #333 merged 2026-10-12 06:13; contained in main |
+| `claude/founder-actions-669be5` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/peaceful-curran-0ce2ed` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a1f7595c0bec5e7e3` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in main |
+| `phase2-e2e-fix` | local-only | test(e2e): log out from the account menu's footer, not from inside role=menu (rule 1112) | 2026-10-12 06:48 *tip* | 2026-10-12 06:48 | no commits beyond main (session branch or already merged); contained in main |
+| `phase3-update` | local-only | Merge origin/claude/uiux-phase2 (adecc1d8) into claude/uiux-phase3 | 2026-10-12 06:49 *tip* | 2026-10-12 06:49 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/ci-build-once` | remote | ci: build once and start that build for the e2e suite (rules 1207-1210) | 2026-10-12 07:32 | 2026-10-12 07:32 | PR #334 merged 2026-10-12 09:09; contained in main |
+| `worktree-agent-a3ac8040aa9756697` | local-only | Merge pull request #329 from iAbulkhair/claude/uiux-phase3 | 2026-10-12 08:48 *tip* | 2026-10-12 08:48 | no commits beyond main (session branch or already merged); contained in main |
+| `prep-phase4` | local-only | test(secretary): read alert markers on the frozen clock (rules 479, 480) | 2026-10-12 09:27 *tip* | 2026-10-12 09:27 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/recursing-bose-28f141` | remote | test: fix date-expired notifseen reads in secretary-calendar (main red from 2026-10-12) | 2026-10-12 09:58 | 2026-10-12 09:58 | PR #335 closed 2026-10-12 10:00; 1 commit(s) ahead of main after PR |
+| `claude/intelligent-aryabhata-353f6e` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/optimistic-proskuriakova-16b9f4` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/reliability-batch-fe3f2e` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/report-gap-check-119af7` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in main |
+| `prep-phase5` | local-only | Merge origin/main (agent skills portal #316) into UI/UX phase 5; raise CI cap to 35 minutes (rule 1… | 2026-10-12 11:50 *tip* | 2026-10-12 11:50 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/reliability-batch` | remote | Reliability batch: batched Redis reads, no-await-in-loop test, Reem tick marker, rollback doc (rule… | 2026-10-12 13:08 | 2026-10-12 13:07 | PR #337 open; 1 commit(s) ahead of main after PR |
+| `claude/admin-second-factor-0bcf96` | remote | feat(admin): second sign-in factor for founder console writes (rules 1370-1384) | 2026-10-12 13:10 | 2026-10-12 13:10 | PR #338 open; 1 commit(s) ahead of main after PR |
+| `claude/tests-and-docs-54926f` | remote | test+docs: close 360-study test gaps, correct stale docs (rules 1450-1458) | 2026-10-12 13:12 | 2026-10-12 15:46 | PR #339 open; 3 commit(s) ahead of main after PR |
+| `claude/brand-limits-a3c893` | remote | feat(brands): cap active brands per plan, founder override (rules 1390-1395) | 2026-10-12 13:15 | 2026-10-12 13:14 | PR #340 open; 1 commit(s) ahead of main after PR |
+| `claude/privacy-in-code-2aa534` | remote | feat(privacy): owner data download, signup consent record, processor list (rules 1320-1330) | 2026-10-12 13:15 | 2026-10-12 13:15 | PR #341 open; 1 commit(s) ahead of main after PR |
+| `claude/money-price-fixes-7604ef` | remote | fix(billing): refund ends the plan, hand-set paid-through day, no charge for an empty batch, price… | 2026-10-12 13:17 | 2026-10-12 13:39 | PR #342 open; 4 commit(s) ahead of main after PR |
+| `claude/small-decided-fixes-bd589f` | remote | Small decided fixes: Saudi-only partners, brand currency, stalled sign-ups, provider errors, approv… | 2026-10-12 13:20 | 2026-10-12 15:47 | PR #343 open; 4 commit(s) ahead of main after PR |
+| `claude/security-hardening-a50eea` | remote | Security hardening batch (expand): headers, pinned fetches, hashed sessions, MCP tokens, secret scan | 2026-10-12 13:21 | 2026-10-12 13:23 | PR #344 open; 2 commit(s) ahead of main after PR |
+| `claude/google-workspace-dns-email-bde458` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/heuristic-snyder-789657` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/quirky-perlman-30ae7b` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-a23b4a4fa7598ccf5` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
+| `worktree-agent-aded0f8c6b3a82ce9` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
+| `prep-phase5b` | local-only | Merge origin/main into UI/UX phase 5b (live UI gallery, rules 1220-1227) | 2026-10-12 13:42 *tip* | 2026-10-12 13:42 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/home-startform-cleanup` | remote | chore(home): delete the unmounted StartForm and its dead CSS (rule 1459) | 2026-10-12 13:44 | 2026-10-12 13:44 | PR #346 open; 3 commit(s) ahead of main after PR |
+| `fix-5b-e2e` | local-only | test(e2e): home sections include the gallery after your day (rule 1220) | 2026-10-12 14:47 *tip* | 2026-10-12 14:47 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/uiux-phase5b-rest` | local-only | Merge pull request #332 from iAbulkhair/claude/uiux-phase5b | 2026-10-12 15:44 *tip* | 2026-10-12 15:44 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/build-batch-2026-10-12` | remote | Build batch 2026-10-12: PRs #337-#346 in one merge | 2026-10-12 15:50 | 2026-10-12 16:23 | PR #347 open; 47 commit(s) ahead of main after PR |
+| `claude/fix-flaky-chat-now-clock` | remote | test: freeze the clock in the rule 948 chat system() block | 2026-10-12 16:31 | 2026-10-12 13:42 | PR #349 open; 1 commit(s) ahead of main after PR |
+| `claude/linkedin-version-h002` | remote | docs(linkedin): H-002, spec and PRD on the 202510 sunset | 2026-10-12 16:31 | 2026-10-12 13:25 | PR #348 open; 2 commit(s) ahead of main after PR |
 
 # Appendix B — PR ledger
 
@@ -7471,13 +9245,13 @@ GitHub numbers pull requests and issues together (#1–#315); only pull requests
 | #294 | fix: harden the proxy body cap, staging door and health limiter (post-#282 review) | merged | 2026-10-08 18:01 | 2026-10-08 20:44 | `claude/pr282-hardening` → `main` | +144/−39 | 1 comments, 0 reviews | [e513](#e513), [e523](#e523), [e536](#e536), [e537](#e537), [e543](#e543), [e556](#e556), [e590](#e590), [e595](#e595) |
 | #295 | feat(home): illustrative stories under the cover, 24 drawn personas (rule 775) | closed | 2026-10-08 18:12 | 2026-10-08 18:26 | `claude/festive-lovelace-7b8c4c` → `main` | +535/−8 | closed without merge; failed/cancelled checks: Nashr CI; 2 comments, 0 reviews | [e527](#e527) |
 | #296 | feat(home): illustrative scenes under the cover, 24 smiling faces (rule 775) | merged | 2026-10-08 18:26 | 2026-10-09 19:22 | `claude/success-stories-hero-60981f` → `main` | +568/−3 | 2 comments, 0 reviews | [e527](#e527), [e531](#e531), [e535](#e535), [e536](#e536), [e537](#e537), [e539](#e539), [e543](#e543), [e553](#e553) |
-| #297 | release: 2026-10-08 #1 — email verification, Paymob (off), chat stream fix | merged | 2026-10-08 19:07 | 2026-10-08 19:35 | `release/2026-10-08-1` → `production` | +4610/−122 | release PR; 1 comments, 0 reviews | [e533](#e533), [e538](#e538), [e541](#e541), [e547](#e547), [e550](#e550), [e577](#e577) |
+| #297 | release: 2026-10-08 #1 — email verification, Paymob (off), chat stream fix | merged | 2026-10-08 19:07 | 2026-10-08 19:35 | `release/2026-10-08-1` → `production` | +4610/−122 | release PR; 1 comments, 0 reviews | [e533](#e533), [e538](#e538), [e541](#e541), [e547](#e547), [e550](#e550), [e577](#e577), [e621](#e621) |
 | #298 | feat(models): catalog, tiered credits, routing and per-customer model overrides (Straitly) | merged | 2026-10-08 20:34 | 2026-10-10 09:36 | `claude/thakeen-ai-models-integration-b3855c` → `main` | +7938/−243 | 2 comments, 0 reviews | [e557](#e557), [e566](#e566), [e567](#e567), [e570](#e570), [e571](#e571), [e573](#e573), [e574](#e574), [e586](#e586) |
 | #299 | feat(entitlements): one record of what each account includes (Part A, rules 780-784) | merged | 2026-10-08 20:34 | 2026-10-09 09:37 | `claude/entitlements-part-a` → `main` | +2518/−43 | 2 comments, 0 reviews | [e551](#e551), [e557](#e557), [e561](#e561), [e564](#e564), [e567](#e567), [e569](#e569), [e570](#e570), [e590](#e590) |
 | #300 | Social platform analytics in Dana's reports (rules 730-749) | merged | 2026-10-08 20:37 | 2026-10-09 10:11 | `claude/social-analytics-reports` → `main` | +8991/−594 | 2 comments, 0 reviews | [e525](#e525), [e545](#e545), [e557](#e557), [e558](#e558), [e565](#e565), [e567](#e567), [e568](#e568), [e573](#e573) |
 | #301 | feat(admin): verified badge and resend verification code in the founder console (rules 776-777) | merged | 2026-10-09 09:49 | 2026-10-09 20:31 | `claude/supastarter-admin-thakeen-153857` → `main` | +122/−10 | 1 comments, 0 reviews | [e559](#e559), [e570](#e570), [e571](#e571), [e572](#e572), [e586](#e586), [e589](#e589), [e591](#e591), [e592](#e592) |
 | #302 | fix(profile): GET /api/profile sends an allow-list of account fields (rule 787) | merged | 2026-10-09 09:50 | 2026-10-09 20:12 | `claude/beautiful-albattani-ac2a11` → `main` | +152/−14 | 1 comments, 0 reviews | [e572](#e572), [e586](#e586), [e589](#e589), [e590](#e590), [e591](#e591), [e595](#e595) |
-| #303 | docs(spec): admin shell, brand limits per plan, brand in the URL | merged | 2026-10-09 11:31 | 2026-10-09 21:09 | `claude/admin-panel-brand-management-7d1abe` → `main` | +507/−0 | draft; 1 comments, 0 reviews | [e578](#e578), [e586](#e586), [e591](#e591), [e594](#e594), [e598](#e598) |
+| #303 | docs(spec): admin shell, brand limits per plan, brand in the URL | merged | 2026-10-09 11:31 | 2026-10-09 21:09 | `claude/admin-panel-brand-management-7d1abe` → `main` | +507/−0 | draft; 1 comments, 0 reviews | [e578](#e578), [e586](#e586), [e591](#e591), [e594](#e594), [e598](#e598), [e734](#e734) |
 | #304 | Admin console in its own shell at /{lang}/admin (870-874) | merged | 2026-10-09 12:13 | 2026-10-09 21:09 | `claude/admin-shell` → `main` | +2037/−893 | 1 comments, 0 reviews | [e571](#e571), [e579](#e579), [e586](#e586), [e591](#e591), [e592](#e592), [e593](#e593), [e594](#e594), [e598](#e598) |
 | #305 | docs(plan): agent scope Part B implementation plan (rules 790-808) | merged | 2026-10-09 15:03 | 2026-10-09 20:34 | `claude/entitlements-part-b` → `main` | +816/−0 | 1 comments, 0 reviews | [e576](#e576), [e586](#e586), [e591](#e591), [e598](#e598), [e610](#e610) |
 | #306 | docs(agents): CI-minutes rules for every agent (rule 789) | merged | 2026-10-09 18:28 | 2026-10-09 19:22 | `claude/ci-minutes-agent-rules` → `main` | +55/−0 | failed/cancelled checks: Nashr CI; 1 comments, 0 reviews | [e571](#e571), [e580](#e580), [e581](#e581), [e584](#e584), [e585](#e585), [e590](#e590), [e595](#e595) |
@@ -7485,17 +9259,51 @@ GitHub numbers pull requests and issues together (#1–#315); only pull requests
 | #308 | feat(models): call only Opus 5.5, Sonnet 5.5 and Haiku 5.5 (rules 809, 900) | merged | 2026-10-09 20:01 | 2026-10-09 20:18 | `claude/ai-api-task-assignment-834d4f` → `main` | +216/−97 | failed/cancelled checks: Nashr CI; 1 comments, 0 reviews | [e586](#e586), [e587](#e587), [e588](#e588), [e589](#e589), [e590](#e590), [e591](#e591), [e592](#e592), [e595](#e595) |
 | #309 | release: 2026-10-09-1 (main 38fb5f0 to production) | merged | 2026-10-09 20:29 | 2026-10-09 21:17 | `release/2026-10-09-1` → `production` | +15668/−981 | release PR; 1 comments, 0 reviews | [e585](#e585), [e586](#e586), [e590](#e590), [e591](#e591), [e595](#e595), [e598](#e598) |
 | #310 | feat(models): each task type gets its own writer and reviewer (rule 901) | merged | 2026-10-09 20:44 | 2026-10-09 21:14 | `claude/task-models-901` → `main` | +226/−87 | 1 comments, 0 reviews | [e586](#e586), [e591](#e591), [e593](#e593), [e594](#e594), [e598](#e598), [e600](#e600), [e601](#e601), [e606](#e606) |
-| #311 | Home: customers wording under the cover + looping, auto-sliding scenes | merged | 2026-10-09 21:33 | 2026-10-10 09:47 | `claude/home-customers-text-6de532` → `main` | +159/−27 | 1 comments, 0 reviews | [e597](#e597), [e607](#e607) |
+| #311 | Home: customers wording under the cover + looping, auto-sliding scenes | merged | 2026-10-09 21:33 | 2026-10-10 09:47 | `claude/home-customers-text-6de532` → `main` | +159/−27 | 1 comments, 0 reviews | [e597](#e597), [e607](#e607), [e621](#e621), [e652](#e652), [e653](#e653), [e703](#e703) |
 | #312 | release: 2026-10-09-2 (main 0ac111b to production) | merged | 2026-10-09 21:45 | 2026-10-09 21:46 | `release/2026-10-09-2` → `production` | +3192/−981 | release PR; 1 comments, 0 reviews | [e598](#e598) |
-| #313 | fix(origin): partner links and cron hops use appOrigin(), not req.url (rule 904) | merged | 2026-10-09 22:12 | 2026-10-10 10:34 | `claude/fix-proxy-origin-redirects` → `main` | +119/−14 | 1 comments, 0 reviews | [e600](#e600), [e602](#e602), [e607](#e607), [e608](#e608), [e611](#e611), [e612](#e612) |
-| #314 | Reem B2b meeting follow-up + B3 marketing calendar read, PRD v3.2 | merged | 2026-10-09 22:44 | 2026-10-10 11:34 | `claude/reem-b2b-b3-prd` → `main` | +8136/−281 | 1 comments, 0 reviews | [e422](#e422), [e603](#e603), [e607](#e607), [e611](#e611), [e614](#e614) |
-| #315 | Follow-ups of #298: wipeAccount race, brand lock 503, Premium hold on the billing card (rules 905-907) | merged | 2026-10-10 10:09 | 2026-10-10 10:33 | `claude/298-followups` → `main` | +235/−26 | failed/cancelled checks: Nashr CI; 1 comments, 0 reviews | [e609](#e609), [e611](#e611), [e612](#e612) |
+| #313 | fix(origin): partner links and cron hops use appOrigin(), not req.url (rule 904) | merged | 2026-10-09 22:12 | 2026-10-10 10:34 | `claude/fix-proxy-origin-redirects` → `main` | +119/−14 | 1 comments, 0 reviews | [e600](#e600), [e602](#e602), [e607](#e607), [e608](#e608), [e611](#e611), [e612](#e612), [e621](#e621), [e652](#e652) |
+| #314 | Reem B2b meeting follow-up + B3 marketing calendar read, PRD v3.2 | merged | 2026-10-09 22:44 | 2026-10-10 11:34 | `claude/reem-b2b-b3-prd` → `main` | +8136/−281 | 1 comments, 0 reviews | [e422](#e422), [e603](#e603), [e607](#e607), [e611](#e611), [e615](#e615), [e621](#e621), [e652](#e652) |
+| #315 | Follow-ups of #298: wipeAccount race, brand lock 503, Premium hold on the billing card (rules 905-907) | merged | 2026-10-10 10:09 | 2026-10-10 10:33 | `claude/298-followups` → `main` | +235/−26 | failed/cancelled checks: Nashr CI; 1 comments, 0 reviews | [e609](#e609), [e611](#e611), [e612](#e612), [e621](#e621), [e652](#e652), [e703](#e703) |
+| #316 | feat(instructions): agent skills portal (rules 930-959) | merged | 2026-10-10 15:29 | 2026-10-12 11:20 | `claude/agent-skills-portal-47b7dd` → `main` | +9675/−117 | 1 comments, 0 reviews | [e630](#e630), [e638](#e638), [e652](#e652), [e658](#e658), [e660](#e660), [e663](#e663), [e675](#e675), [e684](#e684) |
+| #317 | fix(ui): UI/UX phase 0, bugs B-1 to B-11 and quick wins (rules 960-969, 974-977) | merged | 2026-10-10 15:49 | 2026-10-11 02:32 | `claude/uiux-phase0` → `main` | +945/−66 | failed/cancelled checks: Nashr CI; 1 comments, 0 reviews | [e631](#e631), [e639](#e639), [e652](#e652), [e653](#e653), [e654](#e654), [e656](#e656), [e657](#e657), [e658](#e658) |
+| #318 | fix(usage): meter every billed call (980-986); 5.5 models only (970-972) | merged | 2026-10-10 16:18 | 2026-10-10 16:44 | `claude/happy-gould-4c332b` → `main` | +698/−320 | 1 comments, 0 reviews | [e633](#e633), [e634](#e634), [e636](#e636), [e639](#e639), [e645](#e645), [e652](#e652), [e681](#e681) |
+| #319 | chore: stop steering the old Vercel project (rules 987-990) | merged | 2026-10-10 16:59 | 2026-10-12 06:00 | `claude/retire-vercel` → `main` | +221/−143 |  | [e640](#e640), [e652](#e652), [e654](#e654), [e656](#e656), [e658](#e658), [e684](#e684), [e685](#e685), [e687](#e687) |
+| #320 | docs(spec): media storage on Hostinger disk, Drive as the client's archive (rules 991-1010) | merged | 2026-10-10 17:17 | 2026-10-11 21:37 | `claude/media-storage-spec-41fe7e` → `main` | +450/−0 |  | [e636](#e636), [e641](#e641), [e644](#e644), [e645](#e645), [e648](#e648), [e652](#e652), [e656](#e656), [e658](#e658) |
+| #321 | feat(admin): founder console changes ask in one in-page form (rules 1100-1102) | closed | 2026-10-11 09:39 | 2026-10-11 17:38 | `claude/console-dialogs` → `main` | +565/−144 | draft; closed without merge; 1 comments, 0 reviews | [e662](#e662), [e671](#e671), [e680](#e680), [e692](#e692), [e754](#e754) |
+| #322 | fix(release): honesty fixes for release R1 (rules 924-929) | merged | 2026-10-11 12:34 | 2026-10-11 20:45 | `claude/r1-release-prep` → `main` | +409/−91 |  | [e674](#e674), [e678](#e678), [e680](#e680), [e681](#e681), [e682](#e682), [e684](#e684), [e685](#e685), [e689](#e689) |
+| #323 | fix(security): trusted proxy hop for client IP, Turnstile fails closed (rules 908, 909, 978, 979) | merged | 2026-10-11 12:34 | 2026-10-11 20:46 | `claude/turnstile-client-ip` → `main` | +313/−20 |  | [e665](#e665), [e674](#e674), [e680](#e680), [e681](#e681), [e682](#e682), [e684](#e684), [e685](#e685), [e689](#e689) |
+| #324 | feat(ops): store health check, cron heartbeats, CI built like Hostinger (rules 1011-1019) | merged | 2026-10-11 12:34 | 2026-10-11 21:37 | `claude/monitoring-ci-parity` → `main` | +479/−19 | failed/cancelled checks: Nashr CI | [e667](#e667), [e674](#e674), [e680](#e680), [e681](#e681), [e682](#e682), [e684](#e684), [e685](#e685), [e687](#e687) |
+| #325 | docs(legal): privacy policy + terms drafts for lawyer review | merged | 2026-10-11 12:35 | 2026-10-11 21:37 | `claude/privacy-terms-draft` → `main` | +1356/−0 |  | [e662](#e662), [e666](#e666), [e674](#e674), [e675](#e675), [e677](#e677), [e684](#e684), [e687](#e687), [e692](#e692) |
+| #326 | docs(specs): agent learning loop + admin control center (rules 1020-1079) | merged | 2026-10-11 12:35 | 2026-10-11 21:37 | `claude/prompt-studio-specs` → `main` | +889/−0 |  | [e663](#e663), [e674](#e674), [e675](#e675), [e684](#e684), [e687](#e687), [e692](#e692), [e714](#e714) |
+| #327 | feat(ui): UI/UX phase 1, tokens and core primitives (rules 1080-1099) | merged | 2026-10-11 12:35 | 2026-10-12 00:21 | `claude/uiux-phase1` → `main` | +1693/−222 |  | [e668](#e668), [e674](#e674), [e678](#e678), [e684](#e684), [e686](#e686), [e687](#e687), [e690](#e690), [e692](#e692) |
+| #328 | feat(ui): UI/UX phase 2, shell, chat and states (rules 1110-1130) | merged | 2026-10-11 12:35 | 2026-10-12 07:29 | `claude/uiux-phase2` → `main` | +2074/−571 |  | [e672](#e672), [e674](#e674), [e678](#e678), [e688](#e688), [e690](#e690), [e692](#e692), [e694](#e694), [e697](#e697) |
+| #329 | feat(ui): UI/UX phase 3, settings area and billing (rules 1140-1158) | merged | 2026-10-11 12:35 | 2026-10-12 08:48 | `claude/uiux-phase3` → `main` | +8096/−673 |  | [e673](#e673), [e674](#e674), [e678](#e678), [e692](#e692), [e697](#e697), [e698](#e698), [e704](#e704), [e706](#e706) |
+| #330 | feat(admin): UI/UX phase 4, founder console and Control Center phase 1 (rules 1170-1190) | merged | 2026-10-11 13:53 | 2026-10-12 09:59 | `claude/uiux-phase4` → `main` | +3003/−656 |  | [e671](#e671), [e676](#e676), [e678](#e678), [e680](#e680), [e692](#e692), [e697](#e697), [e706](#e706), [e707](#e707) |
+| #331 | feat(ui): UI/UX phase 5, semantic colours and dark theme for app and console (rules 1200-1205) | merged | 2026-10-11 14:18 | 2026-10-12 13:36 | `claude/uiux-phase5` → `main` | +2229/−1417 |  | [e678](#e678), [e684](#e684), [e692](#e692), [e709](#e709), [e711](#e711), [e714](#e714), [e717](#e717), [e722](#e722) |
+| #332 | feat(home): live UI gallery on the home page (UI/UX phase 5b, rules 1220-1227) | merged | 2026-10-11 20:45 | 2026-10-12 15:44 | `claude/uiux-phase5b` → `main` | +575/−38 |  | [e683](#e683), [e692](#e692), [e703](#e703), [e705](#e705), [e708](#e708), [e709](#e709), [e714](#e714), [e717](#e717) |
+| #333 | docs(reports): Thakeen 360 study 2026-10-11 + plain-language founder edition | merged | 2026-10-12 06:05 | 2026-10-12 06:13 | `claude/360-founder-guide` → `main` | +5654/−0 |  | [e695](#e695), [e698](#e698), [e703](#e703), [e714](#e714) |
+| #334 | ci: build once and start that build for the e2e suite (rules 1207-1210) | merged | 2026-10-12 07:32 | 2026-10-12 09:09 | `claude/ci-build-once` → `main` | +206/−15 |  | [e693](#e693), [e703](#e703), [e705](#e705), [e707](#e707), [e708](#e708), [e712](#e712), [e713](#e713), [e714](#e714) |
+| #335 | test: fix date-expired notifseen reads in secretary-calendar (main red from 2026-10-12) | closed | 2026-10-12 09:58 | 2026-10-12 10:00 | `claude/recursing-bose-28f141` → `main` | +3/−1 | draft; closed without merge; failed/cancelled checks: Nashr CI; 1 comments, 0 reviews | [e710](#e710), [e716](#e716), [e720](#e720) |
+| #336 | release: 2026-10-12-1 (main 07ac468 to production) | open | 2026-10-12 11:24 |  | `main` → `production` | +48931/−3992 | draft; release PR | [e718](#e718), [e721](#e721), [e724](#e724), [e726](#e726), [e740](#e740), [e742](#e742), [e755](#e755) |
+| #337 | Reliability batch: batched Redis reads, no-await-in-loop test, Reem tick marker, rollback doc (rules 1430-143… | open | 2026-10-12 13:08 |  | `claude/reliability-batch` → `main` | +488/−38 | draft | [e731](#e731), [e745](#e745) |
+| #338 | feat(admin): second sign-in factor for founder console writes (rules 1370-1384) | open | 2026-10-12 13:10 |  | `claude/admin-second-factor-0bcf96` → `main` | +1019/−5 | draft | [e732](#e732), [e741](#e741), [e745](#e745), [e749](#e749) |
+| #339 | test+docs: close 360-study test gaps, correct stale docs (rules 1450-1458) | open | 2026-10-12 13:12 |  | `claude/tests-and-docs-54926f` → `main` | +529/−781 | draft | [e733](#e733), [e745](#e745), [e749](#e749), [e750](#e750), [e752](#e752) |
+| #340 | feat(brands): cap active brands per plan, founder override (rules 1390-1395) | open | 2026-10-12 13:15 |  | `claude/brand-limits-a3c893` → `main` | +582/−130 | draft | [e734](#e734), [e745](#e745) |
+| #341 | feat(privacy): owner data download, signup consent record, processor list (rules 1320-1330) | open | 2026-10-12 13:15 |  | `claude/privacy-in-code-2aa534` → `main` | +643/−22 | draft | [e735](#e735), [e741](#e741), [e745](#e745), [e749](#e749) |
+| #342 | fix(billing): refund ends the plan, hand-set paid-through day, no charge for an empty batch, price copy (rule… | open | 2026-10-12 13:17 |  | `claude/money-price-fixes-7604ef` → `main` | +497/−42 | draft | [e736](#e736), [e741](#e741), [e745](#e745) |
+| #343 | Small decided fixes: Saudi-only partners, brand currency, stalled sign-ups, provider errors, approver rate, r… | open | 2026-10-12 13:20 |  | `claude/small-decided-fixes-bd589f` → `main` | +668/−123 | draft | [e730](#e730), [e737](#e737), [e741](#e741), [e745](#e745), [e749](#e749), [e750](#e750) |
+| #344 | Security hardening batch (expand): headers, pinned fetches, hashed sessions, MCP tokens, secret scan | open | 2026-10-12 13:21 |  | `claude/security-hardening-a50eea` → `main` | +819/−112 | draft | [e738](#e738), [e741](#e741), [e745](#e745), [e749](#e749) |
+| #345 | feat(agent-scope): Part B, four layers in shadow, publish check, eval and founder panel (rules 790-802, 1410-… | open | 2026-10-12 13:38 |  | `claude/entitlements-part-b` → `main` | +7990/−243 | draft | [e739](#e739), [e741](#e741), [e745](#e745) |
+| #346 | chore(home): delete the unmounted StartForm and its dead CSS (rule 1459) | open | 2026-10-12 13:44 |  | `claude/home-startform-cleanup` → `claude/tests-and-docs-54926f` | +32/−407 | draft | [e733](#e733), [e741](#e741), [e743](#e743), [e745](#e745) |
+| #347 | Build batch 2026-10-12: PRs #337-#346 in one merge | open | 2026-10-12 15:50 |  | `claude/build-batch-2026-10-12` → `main` | +13313/−1884 |  | [e748](#e748), [e749](#e749), [e750](#e750), [e752](#e752), [e753](#e753), [e755](#e755) |
+| #348 | docs(linkedin): H-002, spec and PRD on the 202510 sunset | open | 2026-10-12 16:31 |  | `claude/linkedin-version-h002` → `main` | +13/−9 | draft | [e753](#e753) |
+| #349 | test: freeze the clock in the rule 948 chat system() block | open | 2026-10-12 16:31 |  | `claude/fix-flaky-chat-now-clock` → `main` | +9/−1 | draft | [e753](#e753) |
 
 # Appendix C — Mistakes & lessons index
 
 ## C.0 Recurring mistakes and what each one taught
 
-Nine patterns repeat through the log. Each bullet links to the entry that records it (entry ids are stable within this document). "Guard" names the rule or habit that the sources record as adopted afterwards; where none is recorded, none is listed.
+Ten patterns repeat through the log. Each bullet links to the entry that records it (entry ids are stable within this document). "Guard" names the rule or habit that the sources record as adopted afterwards; where none is recorded, none is listed.
 
 ### L1. Merge is not publish, and "yes" is not approval
 
@@ -7506,6 +9314,9 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 - 2026-10-04: #248 merged although its own body said it was not for live yet; who merged it is not recorded. [e349](#e349)
 - 2026-10-08: the assistant merged release PR #297 itself, outside the night window and against its own earlier statement. [e547](#e547)
 - 2026-10-09: #307 merged "without CI", #306's e2e run cancelled after merge, #308 merged 17 seconds after "ready", release #309 merged outside the night window, release #312 merged before its own CI finished. [e583](#e583) [e585](#e585) [e589](#e589) [e595](#e595) [e598](#e598)
+- 2026-10-10: #318 was merged on "merge it" before its pending run finished, and it was still a draft, so the e2e suite probably never ran (inferred). [e636](#e636)
+- 2026-10-11 and 2026-10-12: the founder's "Create PR" click opened #332 ready, and the main session said there was "no go-ahead"; the next morning the coordinating session reversed the founder's newer "ready" order for #332 and #331 using an older one. [e683](#e683) [e709](#e709)
+- 2026-10-12: #319's own session told the founder the PR was "still a draft" three minutes before the coordinating session merged it; the coordinating session asked for approval of #334 after the founder had already given it and merged it in the CI session. [e691](#e691) [e693](#e693) [e712](#e712)
 - Guard: memory note "no production without explicit approval" (ask "branch or live site?", default to branch); live deploys only from the `production` branch through a founder-merged release PR (`docs/system/flows.md` "Releases").
 
 ### L2. Secrets leak through chat, screenshots and commits
@@ -7520,6 +9331,8 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 - 2026-10-05 to 2026-10-09: GitHub Actions refused to start jobs. The diagnosis flipped between "billing", "not billing" and "billing again"; the real cause (an account-level Actions budget of $0) was found only on 2026-10-09, and a later "billing problem" statement was itself marked wrong. [e437](#e437) [e449](#e449) [e451](#e451) [e476](#e476) [e503](#e503) [e571](#e571) [e582](#e582) [e601](#e601)
 - 2026-10-08: Vercel's daily deployment limit blocked every preview; PR #298 to #300 sat behind it. [e553](#e553) [e557](#e557)
 - Every push to a PR branch starts about 20 minutes of CI; cancelled runs are still billed. Founder asked where the minutes went. Guard: rule 772 and rule 789 (draft PRs, prove locally, one push per finished step, no re-runs without a change). [e580](#e580) [e581](#e581)
+- 2026-10-12: full CI runs reached about 24.5 of the 25-minute cap; the first ready runs of #328 and #330 were cancelled at the cap and billed. A "build once" change (#334) cut a run to about 16 minutes and the cap was then raised to 35 (rule 1211). [e699](#e699) [e700](#e700) [e705](#e705) [e712](#e712) [e713](#e713) [e722](#e722)
+- 2026-10-12: Auto-fix merged main into PRs only to clear conflicts, which started extra paid runs against rule 772; sessions applied the rule unevenly (#345, #338 and #346 refused). [e741](#e741) [e749](#e749)
 
 ### L4. Claims stated as fact without checking the source of truth
 
@@ -7531,6 +9344,9 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 - 2026-10-03: connector and plugin token cost overstated; "many issues were closed" claimed with 172 open and 18 closed; an invented team-members line reached main through #245. [e325](#e325) [e327](#e327) [e332](#e332)
 - 2026-10-05: memory said Reem A2 was paused although it was already merged; a PRD total of 2,053 SAR was misread as a per-customer figure. [e385](#e385) [e387](#e387)
 - 2026-10-08: "merging to `main` releases" was assumed; live had deployed from `production` since that afternoon. [e533](#e533) [e538](#e538)
+- 2026-10-10: the top-10 models-by-cost list given in chat was wrong and was corrected eight minutes later; stale memory notes had to be fixed before the #317 renumber. [e649](#e649) [e639](#e639)
+- 2026-10-11: a duplicate R1 session claimed "build passed" from a stale log, then corrected itself. [e670](#e670)
+- 2026-10-12: an integration agent's "3 skipped" report was wrong (the tests had crashed with an out-of-memory worker). [e752](#e752)
 - Guard: the deploy-verification memory note (confirm a deploy without being fooled by edge cache) and CLAUDE.md "verify on production after the push".
 
 ### L5. Shipped but not working: defects the tests could not see
@@ -7541,6 +9357,10 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 - 2026-10-01: one-time mails were recorded as sent while `MAIL_FROM` was unset; an e2e test clicked an `aria-disabled` button and 14 tests after it never ran. [e259](#e259) [e267](#e267)
 - 2026-10-08: the logout control was invisible (rule 730) and main went red on its e2e test; a verify page said "We sent a code" when it had not; chat failed twice (empty credit balance, then 48 strict optional parameters against a limit of 24, rule 770). [e481](#e481) [e514](#e514) [e512](#e512) [e500](#e500) [e501](#e501)
 - 2026-10-09: password recovery reported broken on thakeen.com; partner links redirected to `0.0.0.0:3000` (#313, rule 904). [e577](#e577) [e602](#e602)
+- 2026-10-10: the first staging build went up with the lock off (`APP_ENV` missing), so staging was public for about 90 minutes (inferred from build times); after the founder set it, `/api/staging-access` returned 500 because staging has no Upstash. [e646](#e646) [e650](#e650)
+- 2026-10-10 to 2026-10-12: a money leak found in review of agent-scope Task 4, a critical `isPaused` bug in the skills portal, and three real e2e regressions in #328 were all caught only by review or CI, not by the tests written with them. [e614](#e614) [e623](#e623) [e694](#e694)
+- 2026-10-11 to 2026-10-12: #327 failed e2e on an old field name, #332 failed on a test that lacked the new gallery, and a date-dependent test turned main red from 09:00 UTC on 2026-10-12. [e686](#e686) [e744](#e744) [e710](#e710)
+- 2026-10-12: inbound mail to the new Google Workspace mailbox bounced from Gmail after MX and SPF were set; the cause was unresolved at collection time, and DMARC had been raised to quarantine before DKIM was seen confirmed. [e746](#e746) [e747](#e747) [e751](#e751)
 
 ### L6. Branch and PR hygiene: stranded commits, stacked PRs, number collisions
 
@@ -7550,6 +9370,8 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 - Test-rule numbers were taken by several branches at once and renumbered repeatedly, each time costing a merge and a CI run; the homepage PR #213 conflicted five times in one day. [e154](#e154) [e233](#e233) [e224](#e224) [e247](#e247) [e584](#e584)
 - `docs/system/tests.md` conflicted on nearly every open PR. Guard: rule 788 (new rules go in `docs/system/tests/NNNN-slug.md`, never as rows in `tests.md`). [e537](#e537)
 - 2026-10-01: #233 was merged out of order and cancelled a billed CI run; one merge started on a stale copy. [e285](#e285) [e277](#e277)
+- 2026-10-10 to 2026-10-12: rule numbers clashed again (#317 against #318 at 970-973, #321 against numbers reserved for phase 1, #342 and #344 renumbered in second pushes) because eight sessions picked numbers before their blocks were assigned. [e633](#e633) [e639](#e639) [e670](#e670) [e729](#e729) [e736](#e736) [e738](#e738)
+- 2026-10-11 to 2026-10-12: two sessions pushed to #319's branch at once (three pushes in one evening); three proposal sessions from the study duplicated the hub's work; one date-bomb test was fixed three times in parallel (#330, #316, #335), and #335 was closed as redundant. [e688](#e688) [e689](#e689) [e662](#e662) [e710](#e710) [e716](#e716)
 
 ### L7. Product claims, copy and naming
 
@@ -7567,6 +9389,7 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 - 2026-09-28 and 2026-09-29: a shared link could pick a new workspace's brand (#216); an MCP client could hijack a link. [e171](#e171) [e182](#e182) [e209](#e209)
 - 2026-10-05: a shared-IP rate bucket could 429 every customer. [e415](#e415)
 - 2026-10-07 to 2026-10-08: the site went live with no environment variables; a per-IP rate-limit bypass was confirmed on live (rule 773); a review found the founder's email and private note exposed to an owner card. [e447](#e447) [e511](#e511) [e522](#e522) [e561](#e561)
+- 2026-10-10 to 2026-10-12: a money leak in agent scope (Task 4), a skills-portal `isPaused` bug, the founder's login leaking through the `by` field, and a staging site with its lock off were each found after code or deploy existed. [e614](#e614) [e623](#e623) [e626](#e626) [e646](#e646)
 
 ### L9. Wasted effort
 
@@ -7574,6 +9397,11 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 - 2026-10-01: the Jev judge was merged for evaluation, failed it, and was removed (#219, #238). [e273](#e273) [e275](#e275)
 - 2026-10-04: before slice 3 the assistant noted the re-skin session had cost about 70 dollars (first-pass figure, unverified). [e362](#e362)
 - 2026-10-09 to 2026-10-10: `STRAITLY_API_KEY` was created while sessions kept waiting for it, and the founder asked what the spike was. [e599](#e599) [e613](#e613)
+- 2026-10-11 to 2026-10-12: duplicate sessions started from the study's proposal cards, a redundant #335, and a redundant clock fix (#349) each cost a build or a CI run. [e662](#e662) [e716](#e716) [e753](#e753)
+
+### L10. The memory tool kept failing all day
+
+- 2026-10-11 to 2026-10-12: the claude-mem observer could not save (repeated OAuth failures from the main checkout) on 2026-10-11, signed out again on the morning and afternoon of 2026-10-12, so notes from those days exist only in the repository and the memory files written by hand. Whether it was ever fixed is not recorded. [e655](#e655) [e701](#e701) [e725](#e725)
 
 ## C.1 Every entry tagged error, incident or correction
 
@@ -7801,6 +9629,57 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 | [e602](#e602) Live bug found: partner links 307 to 0.0.0.0:3000 (#313, rule 902 ren… | 2026-10-09 22:11 | Rule 902 clashed with #298's rule 902 (per-type pick pricing) merged in the same minute. The partner-link bug had been live since the Hostinger move and was found by an audit, not by a test or a customer. | Renumbered to 904 on 2026-10-10 09:48 (`1fefbcb7`). |
 | [e608](#e608) "ادمج 298" arrives after the merge; #298 follow-ups session starts | 2026-10-10 09:53 | Earlier that morning's session had said CI was blocked by billing; the assistant said "this was wrong, the run itself later passed." |  |
 | [e613](#e613) Founder: what is the spike? Are we still on Opus 5? Key was created l… | 2026-10-10 10:35 | The assistant kept saying it was waiting for the key; the key had been placed on 2026-10-09 at 21:57 and was already in `.env.local` of the main folder ("كنت مخطئ لما انتظرته"). Golden set (all Opus vs split) was never run and cannot be until the wallet or An… |  |
+| [e614](#e614) Agent scope Part B, Task 4: review finds a money leak, fix dfeffea9 | 2026-10-10 11:01 | The Task 4 review found three problems: - Money leak: the paid Haiku classifier ran before generation's free refusals (trial_over, no_brand, no credits), and nothing capped it in shadow mode. - The ceiling also held requests that had no notes. - ReportsPanel… | dfeffea9; 5307 tests. Re-review at 11:19: ADDRESSED. |
+| [e620](#e620) Part B Task 6: output check and partial refunds (c54a40f4, fix 19fdf1… | 2026-10-10 11:58 | The 12:04 review found the money path correct, but a reply cut at max_tokens skipped the output check. The plan allowed that; the spec did not. | 19fdf185 at 12:07: - cut replies are checked; - `BatchDone.refunded` carries the real refunded amount; - the failure log no longer includes the email. - 5358 tests. Re-review at 12:09: ADDRESSED. |
+| [e623](#e623) Skills portal build, Tasks 1-2: safety filter and store (critical isP… | 2026-10-10 12:12 | Critical bug: `isPaused` compared against a string, but Upstash returns the number 1, so pausing never took effect. The review also found the lock was not owned and the limits were optional. | 15088f98 at 12:33: `String(v)==="1"`, an owned lock, and limits made required. |
+| [e625](#e625) Skills portal Tasks 3-5: merge point, batch prompts, all agent prompts | 2026-10-10 12:38 | The review found that the word `also` widened the platform block, and that reference files could be read by agents other than their target. | 518f7919 (12:43): `also` no longer widens the block, and refs are read only by their target. |
+| [e626](#e626) Skills portal routes: founder login leaked through `by` (143b0aea) | 2026-10-10 13:12 | The Task 6 review found that the raw `by` field exposed the founder's login to customers. | 143b0aea (13:18): a `publicBy` value replaces the raw field. |
+| [e628](#e628) Skills portal chat proposals: stale save dropped an applied item (19e… | 2026-10-10 13:42 | If the page was opened before chat applied an item, saving the page later silently dropped that item. | 19e58076 (13:53): apply returns 409 on a stale version, and retries are idempotent. |
+| [e631](#e631) UI phase 0 built; draft PR #317; Vercel `git_info_fail` | 2026-10-10 15:29 | - The local runtime check of B-5 was blocked by the sandbox port bind, so B-5 was checked only by reading code. - The Vercel check failed 3 s after start with `errorCode: git_info_fail`. | Nobody re-ran the check, per CLAUDE.md. Nashr CI passed in about 9 minutes. At 16:45-16:47 an Auto-fix event fired; the session found the cause outside the code and pushed nothing. The orchestrator h… |
+| [e633](#e633) Pre-5.5 models removed (6db81ec9); metered streams child (d908f640);… | 2026-10-10 16:13 | - Rule clash: the parent claimed 970-979. The child saw 960-973 already used by UI phase 0, took 980-986, and proposed 974-979. - Draft PR #318 opened at 16:19 with incomplete local proof: the webpack build ran with fonts faked. - At 16:22 the parent asked th… | The child refused, calling the request permission laundering, and asked for the founder to say it directly. |
+| [e636](#e636) #318 merged on "merge it" without waiting for the pending run | 2026-10-10 16:44 | - In its own words, the assistant merged "without waiting for a second run that had not finished", likely e2e. - #318 was still a draft and was never marked ready, so the e2e suite (which runs only on ready PRs) probably never ran (inferred). - The merge brou… |  |
+| [e637](#e637) "Do we still need vercel??": founder disables Vercel crons; live gets… | 2026-10-10 16:44 | Session 9b282145 (local_46d0779f). Findings: - nashr-tau serves main 1fb56b90 while live is 487984f; - 8 crons probably still run there; - media depends on `@vercel/blob`, and BLOB_READ_WRITE_TOKEN is not set on live, so media is off; - FALLBACK_ORIGIN points… |  |
+| [e638](#e638) #316 conflicts: host-side merge aborted; Auto-fix keeps nudging | 2026-10-10 16:46 | At 16:46-16:48 Auto-fix reported merge conflicts on #316 (flows.md, judge.ts, media/prompts.ts). The app had started the merge on the host. |  |
+| [e639](#e639) Stale memory fixed; #317 renumbered off main's 970-972 (d6307768) | 2026-10-10 16:47 |  |  |
+| [e645](#e645) #320 CI red: media-prompts timing flake inherited from #318 (3f4f2bb1) | 2026-10-10 18:22 | `tests/media-prompts.test.ts` compared 19999 with 20000 ms. The flake came into main with #318. | 3f4f2bb1 at 18:24 pins the clock. It was pushed in one push with 0d720fab. |
+| [e646](#e646) STAGING INCIDENT: first build went up with the lock off | 2026-10-10 18:31 | - APP_ENV=staging was missing, so the lock was off: /ar answered 200 without a cookie and had no noindex. That made staging an open, publicly indexable copy of the app. - The auto-mode classifier had refused listing env var names, so the assistant could not c… | Entry at 20:06 below. |
+| [e649](#e649) Top-10 models by cost: chat list wrong, corrected; no Chinese model f… | 2026-10-10 18:56 | The top-10 given in chat was wrong: gpt-5.3-codex and gpt-5-mini had been dropped by mistake. | At 19:02 the corrected list removed gpt-5.4-mini and gpt-6-sol, and gpt-6.1-sol came in at quality 7.53. |
+| [e650](#e650) Staging locked after the founder sets APP_ENV, but the access API ret… | 2026-10-10 20:06 | - POST /api/staging-access returns 500 because no Redis env is set, so the DB is unconfigured. - Auto-deploy from main was already on. Who enabled it is not recorded; the founder is the likely one (inferred). - The Upstash free plan allows one database (thake… |  |
+| [e655](#e655) INCIDENT: claude-mem cannot save all day; repeated OAuth failures in… | 2026-10-11 02:13 | Every session lost automatic cross-session memory for the day. Assistants mentioned the problem but nobody fixed it that day. | unknown (not fixed in this window). |
+| [e656](#e656) Founder: wanted a unified report, not a prompt | 2026-10-11 02:21 | On 10-10 the founder had asked to "buil a unified 360 major prompt to study it". The study session was already producing the report. |  |
+| [e661](#e661) Founder checks the UI/UX report is being followed; orders one agent a… | 2026-10-11 02:58 | The founder had already ordered agent-per-task work, and the assistant had not queued the UI phases. |  |
+| [e662](#e662) Three proposal sessions from the study start in parallel and duplicat… | 2026-10-11 03:07 | Three duplicate branches of work already assigned in the hub. `79a17477` became redundant when #321 rewrote the rule-960 test (09:40). | 12:56-13:02, after founder approval: R1 and legal duplicates archived and deleted, and the legal accountant questions folded into #325 (see 12:56). `79a17477` was never pushed. |
+| [e670](#e670) Duplicate R1 session claimed "build passed" from a stale log, then co… | 2026-10-11 09:33 | The success it reported was read from an old log file in a temp folder shared between sessions. The real run failed: Turbopack needs a local port for CSS and the machine refused it with "Operation not permitted", inside and outside the sandbox. This is a know… | 09:33, same session: «تصحيح لرسالتي السابقة: قلت إن `npx next build` نجح، وهذا خطأ». It reran with its own log in the scratchpad. From then on the hub's PRs cite `npx next build --webpack` (the Hosti… |
+| [e671](#e671) #321 opened (draft): founder console asks in one in-page form (rules… | 2026-10-11 09:39 | It took rules 1100-1102 from the block the hub had set aside for phase 1 fixes. It also built a second in-page form next to phase 1's FormDialog, so whichever merged second would have to switch. The hub recommended stopping it ("stop them", 09:33/09:40), but… | Closed at 17:38 on founder approval. #330 (phase 4) ports its parsers and error words onto FormDialog and cites rules 1100-1102. |
+| [e677](#e677) Founder approves cleanup of duplicate branches; accountant questions… | 2026-10-11 12:56 | Two duplicates existed: `claude/r1-release-fixes` (`647f32e3`, local) and `claude/legal-privacy-terms-draft` (`cd91d29e`, local). #325 covered everything in the second except an accountant-questions file. |  |
+| [e681](#e681) #322 CI red: flaky deadline test (19999 vs 20000); fixed at source as… | 2026-10-11 17:50 | CI red on #322 from a latent timing bug already on main. | `602f8251`, noticed through Auto-fix and diagnosed by the hub. Rule 1206 taken; 1207-1219 free. |
+| [e683](#e683) #332 opened ready against main by the founder's "Create PR" click, th… | 2026-10-11 20:44 | A full CI run was spent on a PR that was not meant to be ready. At 20:49 the hub told the founder "No go-ahead: you hadn't said «ارفعه» yet". That was inaccurate: the founder had pressed "Create PR" in the 5b session (inferred from that session's transcript). |  |
+| [e686](#e686) #327 (UI phase 1) fails e2e: forgot-password test used the old field… | 2026-10-11 21:18 | Phase 1 changed accessible names without updating the e2e selectors. Playwright was not run before pushing (it cannot run locally), so the gap appeared only in paid CI. | `dac779c5`; #327 merged after green at 00:21 UTC on 10-12 (outside this window). |
+| [e688](#e688) Two sessions write to #319's branch at once; three pushes to #319 in… | 2026-10-11 21:49 | Duplicate work on one branch by two sessions under the founder's git identity. #319 got three pushes that evening (about 20:50, 22:21, 23:01), each starting a CI run on the draft, against the one-push-per-step rule (772/789). The hub subagent warned: "Somethi… | The hub reported it to the founder at 00:22 UTC on 10-12, called it "probably #319's own Auto-fix session", and asked the founder to stop that session pushing there. No force-push was used; the end s… |
+| [e689](#e689) #319 branch updated to main; a second session was found pushing to th… | 2026-10-12 00:05 | Two sessions wrote to one branch at the same time. The first push was refused as non-fast-forward. Which session made the other two commits was never established; the assistant guessed #319's own Auto-fix session (inferred). Main's `flows.md` already had dupl… | The subagent rebuilt on the remote head rather than overwrite it. The founder was asked to stop the other session if known; no answer is recorded. |
+| [e691](#e691) Founder asks "what to do here?" in #319's own session, which reports… | 2026-10-12 05:57 | The claims "It's still a draft" and "I'll merge only when you say so" were stale. The coordinating session had marked #319 ready at 00:22, and it merged #319 three minutes later (06:00) under the standing "merge all greens" order. Two sessions told the founde… |  |
+| [e694](#e694) #328 (UI/UX phase 2) first ready run red: three real e2e regressions | 2026-10-12 06:00 | These were phase 2 regressions that local checks could not catch, because Playwright cannot bind ports in this sandbox. The red result sat unread from about 00:45 to 06:00 (inferred from the times). |  |
+| [e696](#e696) Phase 2 fix: app-root loading.tsx removed, sidebar groups no longer h… | 2026-10-12 06:11 | Playwright was not run locally ("port binding is blocked here"), so the fix rested on reasoning and CI was the proof. That run was then cancelled at the time cap (06:42 entry). |  |
+| [e699](#e699) #328 second run cancelled at the 25-minute cap; logout e2e test fixed… | 2026-10-12 06:42 | #328 needed three full paid CI runs: red at 00:22, cancelled at about 06:37 (inferred from the 25-minute cap), green at 07:29. The cancelled run was billed (CLAUDE.md, rule 772). |  |
+| [e701](#e701) claude-mem observer signed out; repeated OAuth failures from the main… | 2026-10-12 06:51 | Which process in the main checkout kept failing to authenticate is not recorded (likely the claude-mem observer, inferred). |  |
+| [e705](#e705) #334 opened: CI builds once and the e2e server starts that build (rul… | 2026-10-12 07:33 | - 06:54: the first local build failed because the sandbox blocked Google Fonts. - 06:57: the session corrected its own wrong claim before the PR: "the 15 s Build was pre-1017 Turbopack, not warm webpack". - 07:28: a local build hung 35 minutes inside the sand… |  |
+| [e706](#e706) Phase 4 prepared locally on phase 3 + main; duplicate permission rows… | 2026-10-12 07:37 | Phase 3 and main had both given permission rows 158 and 159 to different routes (main: `/api/admin/client-ip` 158 and `/api/admin/leads` 159), so each number was used twice. #329's PR body had warned of a possible clash on rows 158-160. |  |
+| [e709](#e709) Founder marks #332 and #331 ready from the phase-5b session; coordina… | 2026-10-12 08:50 | The founder gave conflicting instructions in two sessions. The coordinating session overrode the more recent, direct "mark #332 ready" on the strength of an older instruction. It explained this in the feed and in chat, and it did not ask the founder before re… |  |
+| [e710](#e710) Date-bomb test found: secretary-calendar turns red on every branch fr… | 2026-10-12 09:03 | Main's own state went red from 09:00 UTC. The flaw was in the test (real clock against fake-dated markers), not in app code. It was later fixed independently a second time in #316's merge and a third time in #335 (09:55 entry). |  |
+| [e712](#e712) #334 merged (CI ~16 min instead of ~25); the founder's approval came… | 2026-10-12 09:08 | - The coordinating session did not know the founder had already approved and merged #334 through another session. It asked again for approval of something already done. - Its memory note recorded the merge as "on founder 'PR #334: merge'", although that messa… |  |
+| [e713](#e713) #330's first ready run cancelled at the 25-minute cap; re-pushed once… | 2026-10-12 09:15 | A second paid run was lost to the old 25-minute cap that morning (the first was #328's at about 06:37). The cancellation went unnoticed for about 12 minutes. |  |
+| [e716](#e716) #335 opened to fix main's red test, then closed as redundant | 2026-10-12 09:55 | Three sessions fixed the same test in parallel (#330 via phase 5 prep, #316, #335), without coordination. #335's CI run (Nashr CI) was cancelled or failed when the PR closed, so its minutes were partly spent. |  |
+| [e725](#e725) claude-mem observer signed out; memory saves failing all afternoon | 2026-10-12 12:13 | Nothing from any session was saved to claude-mem for about 41-45 hours by this point. |  |
+| [e730](#e730) Routines on by default: founder decision, refused once as cross-sessi… | 2026-10-12 13:00 | Second push to #343 for this item (first push `868f6f9d` at 13:21 was made before the confirmation arrived). |  |
+| [e736](#e736) #342 money fixes and price copy; renumbered to 1300-1308 in a second… | 2026-10-12 13:17 | The renumber was a second push; the session itself noted that if the first CI run was still going, it was cancelled and both are billed (rule 772). Turbopack could not bind a local port, so a webpack build was used as the compile check. |  |
+| [e738](#e738) #344 security hardening batch (expand), renumbered to rules 1340-1356 | 2026-10-12 13:20 | Rule-block collision found after the first push; the renumber was a second push. The session also found the shared `$TMPDIR` log clobbered by other sessions and re-ran checks with its own scratchpad log. |  |
+| [e741](#e741) Clock flake reds #342; Auto-fix merges main into #342 and #343 while… | 2026-10-12 13:35 | Sessions applied rule 772 inconsistently: #342 and #343 took conflict-only main merges (extra paid CI runs) while #345, #338 and #346 refused. #342 reached four pushes in about 23 minutes (`eb577bbd`, `a523a1eb`, `f6c123ea`, `98bfcaa3`). | The audit session recommended turning Auto-fix off for #345; security and privacy sessions turned Auto-fix off on #344 and #341 later (15:49-15:54). |
+| [e744](#e744) #332 full CI red on a real e2e failure; fixed by e9a727a6 | 2026-10-12 14:07 | 4 e2e tests failed on all four projects, 1,110 passed. The coordinator's borrowed `node_modules` was stale and the sandbox blocked writes outside its worktree; both worked around. |  |
+| [e746](#e746) Company mail moved to Google Workspace: MX and SPF set through the Ho… | 2026-10-12 14:49 | "apply all" (14:51) and "1" (14:52) were blocked by the auto-mode permission check; "try again" (14:54) succeeded. Connector delete failed with 422. |  |
+| [e749](#e749) #339 and #343 tip pushes from Auto-fix; coordinator stops eight sessi… | 2026-10-12 15:46 | After #332 merged, Auto-fix led the tests-docs and small-fixes sessions to merge main and push again: `1c612b1f` into #339 and `c74dbdc6` into #343 (15:46-15:47). Both started extra CI runs against rule 772, and those tips are not in #347 (they hold only a ma… |  |
+| [e751](#e751) Inbound mail bounces from Gmail; MX advice reversed; cause unresolved | 2026-10-12 15:55 | At 15:09 the session had said not to add `SMTP.GOOGLE.COM`; at 15:43 it added it as priority 1. The reversal was not explained to the founder at the time (inferred from the transcript). The final diagnosis, a stale MX cache at Gmail, was not proven. |  |
+| [e752](#e752) #347 CI red: unit worker out of memory; fixed by 0c42ad5f | 2026-10-12 16:20 | The integration agent's earlier local report ("0 failures, 3 skipped") was wrong: those tests had crashed, not skipped. The bad test came from #339, whose own CI had passed (inferred: the hook only exploded in the batch combination). |  |
+| [e754](#e754) Stale requests answered: #321 already replaced, R1 fixes already on m… | 2026-10-12 16:33 | Two sessions held work that had since landed elsewhere. |  |
 
 # Appendix D — Founder instructions & corrections index
 
@@ -8270,15 +10149,82 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 | [e611](#e611) Audit branch: free_slots becomes Reem's alone (founder deci… | 2026-10-10 10:25 | "yes, give free_slots to Reem only" (time not recorded; inferred about 10:33 from the message group). |
 | [e612](#e612) #315 and #313 merged | 2026-10-10 10:33 | 10:33 "ادمج 315"; "mark #313 ready for review"; "continue". |
 | [e613](#e613) Founder: what is the spike? Are we still on Opus 5? Key was… | 2026-10-10 10:35 | 10:35 "ايش السبايك هذا؟" and "ما زلنا نستخدم اوبوس ٥ ؟؟ عطني مختصر عن المشكلة والحل المقترح؟"; 10:38 "طيب انشاته من زمان قلت لك عنه". |
-| [e615](#e615) New session: portal for agent skills (rules 930-959 reserve… | 2026-10-10 11:40 | 11:01 "any task left?" (session not identified). |
+| [e614](#e614) Agent scope Part B, Task 4: review finds a money leak, fix… | 2026-10-10 11:01 | 11:01 "any task left?" |
+| [e617](#e617) Founder orders a 360 review in four parts | 2026-10-10 11:39 | 11:39 "I need a 360 mapped and deep veiw with all angles for the project". The four asks: 1. a development journey log ("not summary... log file with details"); 2. recheck supastarter.dev and write a huge UI/UX report; 3. a portal to develop agent skills, for all users or per client workspace; 4. every task, leftover and todo. |
+| [e618](#e618) New session: portal for agent skills (rules 930-959 reserve… | 2026-10-10 11:40 | 11:01 "any task left?" (session not identified). |
+| [e632](#e632) Founder: Anthropic token costs do not match | 2026-10-10 15:55 | 16:02 «اول شي احذف استخدام النماذج التي قبل 5.5 .. ثم قم بتنفيذ توصياتك الثلاثة / انا عملت ديسيبل لمفتاح نشر» |
+| [e633](#e633) Pre-5.5 models removed (6db81ec9); metered streams child (d… | 2026-10-10 16:13 | 16:18 in the child: "push it and open the draft PR". 16:20 in the parent: «قم بعمل توصياتك كلها». |
+| [e634](#e634) «ادمجها أنت هنا»: model removal merged into #318 (3af3c87b) | 2026-10-10 16:24 | 16:38 in the child: "turn on auto-fix for #318". All 3 checks passed. A 16:37 Auto-fix review-comment event arrived; its content is unknown. |
+| [e635](#e635) Straitly spike passes; golden set split vs all-Opus | 2026-10-10 16:25 | 16:31 «قبل تجهيز المسودة.. اعطيني تقرير مفصل لكل الموديل الي جربتها؟؟ هل جربت النماذج الصينية؟ جرب كل النماذج مو بس انثروبيك» |
+| [e636](#e636) #318 merged on "merge it" without waiting for the pending r… | 2026-10-10 16:44 | 16:44 "merge it" |
+| [e637](#e637) "Do we still need vercel??": founder disables Vercel crons;… | 2026-10-10 16:44 | 16:44 "Do we still need vercel??"; 16:50 "guide me to do these now, step by step"; 16:55 "A done". |
+| [e639](#e639) Stale memory fixed; #317 renumbered off main's 970-972 (d63… | 2026-10-10 16:47 | 16:47 "yes fix the stale memory notes" |
+| [e641](#e641) Founder proposes client Google Drive for media; spec #320 | 2026-10-10 17:03 | 17:03 "why we need it?? I suggest every client uses his own google drive and google workspace"; 17:06 "yes, write the spec". |
+| [e642](#e642) All-models report, then a second stage on $40 | 2026-10-10 17:06 | 17:23 «اضفت ٤٠ دولار.. قم بعمل التجارب... ثم حدث التقرير واضف التحديث كمرحلة ثانية مع وضع معالم لهذه التجربة الثانية» |
+| [e643](#e643) Founder: wait for all sessions before a fresh 360 | 2026-10-10 17:57 | 17:57 "Just wait, we will begin a new fresh 360 major updates, im waiting all chats to deliver their results." |
+| [e644](#e644) Founder media decisions applied to #320 (2d1d48be, 0d720fab) | 2026-10-10 18:03 | 18:03 «1. 30 day, with warning to client to archive them / 2. none, the client must save them directly, we provide links and medium generated thumbs». The founder also wrote "3. what is the best call?", "4. automatically for all", "5. both" and "6. let it later, it needs access now i have it". |
+| [e646](#e646) STAGING INCIDENT: first build went up with the lock off | 2026-10-10 18:31 | 19:59 «موجود بالاول.. لكن القيمة production», «شلون؟»; 20:05 «كيف اشيك؟», «لا يوجد متغيرات اصلا في staging». |
+| [e647](#e647) Straitly repeats ×3 and Haiku test | 2026-10-10 18:33 | 18:52 «كذا انتهينا؟؟». Answer: 12 rounds, each on its own tab; repo clean; no PR. |
+| [e648](#e648) #320 last suggestions D7/D8 (0c356200) | 2026-10-10 18:53 | 18:53 "do your 2 suggestions" |
+| [e649](#e649) Top-10 models by cost: chat list wrong, corrected; no Chine… | 2026-10-10 18:56 | 19:13 «يعني ولا نموذج صيني مناسب حسب نطاقات التقييم تبعنا؟» |
+| [e650](#e650) Staging locked after the founder sets APP_ENV, but the acce… | 2026-10-10 20:06 | 20:36 «ما لقيت هذه؟»; 20:46 «كويس؟» (a screenshot with the Name field wrong and a London read region); 20:50 «قم بشرح الخطوات من جديد بتفصيل مبسط لغير المختص»; 20:53 «هذه ما لقيتها». |
+| [e651](#e651) Recheck all sessions; unified 360 master prompt | 2026-10-10 20:57 | 20:57 "rechek the new chat sessions.. and do the updates required"; 21:01 "buil a unified 360 major prompt to study it.. dont forget to make a section for my tasks from day 1". |
+| [e654](#e654) Founder in the #317 session: "we dont work on vercel anymor… | 2026-10-11 02:13 | 02:13 "put in your mind that we dont work on vercel anymore.. recheck the #317"; 02:17 "its already disconnected"; 02:17 "yes push it and mark ready". |
+| [e656](#e656) Founder: wanted a unified report, not a prompt | 2026-10-11 02:21 | 02:21 "I was mistaken, I was needed a unified report :).. did you make any changes from your reports yet?"; 02:24 "ok wait for the unified report". |
+| [e657](#e657) #317 merged into main: UI/UX phase 0 (rules 960-969, 974-97… | 2026-10-11 02:31 | 02:31 "UI Phase 0: admin Cancel, delete prompt, chat key, titles.. the ci is green merge it?" |
+| [e659](#e659) Founder: plain-language edition, and one chat to follow the… | 2026-10-11 02:40 | 02:40 "make the voice's tone of the report clear well-explained with steps to accomplish my tasks, for me cause im not tech guy"; "i need one chat to follow the whole 360 major development"; 02:41 "make another version, dont touch the first report". |
+| [e660](#e660) Founder asks for a "Prompt Studio"; decision: spec it, foun… | 2026-10-11 02:50 | 02:50 "I need to make in admin panel something to build "system prompts" in three aspects"; "if its inside superstart.dev , use it"; 02:53 "spec it, always my approval in admin panel". |
+| [e661](#e661) Founder checks the UI/UX report is being followed; orders o… | 2026-10-11 02:58 | 03:03 "i ordered you to assign an agent for each task needs a branch in with worktree here, so add Phase 1 and so on"; "1. you can use hello@thakeen.com 2. yes 3. yes. as per my order above". |
+| [e669](#e669) Founder answers R1: keep «عملاء جربوا ذكين», keep Agency bu… | 2026-10-11 09:19 | 09:19 (card answers) "Keep «عملاء جربوا ذكين»", "Keep it", "Keep both", "Fix all now (Recommended)". |
+| [e674](#e674) Founder: "push the finished ones": 8 draft PRs (#322-#329)… | 2026-10-11 12:31 | 12:31 "push the finished ones, what your recommendiotn about duplicate release-prep branch?" |
+| [e675](#e675) Founder accepts all 13 Prompt Studio answers; #326 and #325… | 2026-10-11 12:41 | 12:41 "where? is it the مهام الموسس؟"; "what is that?" (Turnstile); "im working on it" (nashr-tau and key rotation); 12:45 «موافق على الكل». |
+| [e677](#e677) Founder approves cleanup of duplicate branches; accountant… | 2026-10-11 12:56 | 12:56 "yes, go ahead". |
+| [e680](#e680) Founder: "do what is the best for thakeen"; auto mode block… | 2026-10-11 17:14 | 17:14 "what should we do now?"; 17:15 "do what is the best for thakeen"; 17:37 (card) "Ready + merge R1, Turnstile, monitoring (Recommended), Open release PR (draft), Push Part B (no PR), Close #321". |
+| [e682](#e682) Founder "merge all greens": #322 (R1) and #323 (Turnstile)… | 2026-10-11 20:44 | 20:44 "merge all greens"; 20:45 "what we still have to do?" |
+| [e683](#e683) #332 opened ready against main by the founder's "Create PR"… | 2026-10-11 20:44 | 20:52 "yes, make #332 a draft and stack it"; 20:54 (5b session) "retarget it to claude/uiux-phase5". |
+| [e684](#e684) Founder widens the merge list: docs PRs, UI stack, #319, #3… | 2026-10-11 20:47 | 20:47 (card) "Docs only: #325, #326 (Recommended), UI stack #327→#331, #319 retire Vercel, #320 media storage spec". |
+| [e691](#e691) Founder asks "what to do here?" in #319's own session, whic… | 2026-10-12 05:57 | 05:57 "what to do here?" |
+| [e692](#e692) Founder asks the coordinating session "what we should do he… | 2026-10-12 05:59 | 05:59 "what we should do here?" |
+| [e695](#e695) Founder opens #333 (360 study + plain founder edition) as a… | 2026-10-12 06:04 | 06:04 Create PR (ready, not draft); 06:13 "continue, merge all greens" |
+| [e702](#e702) Founder asks for one place listing only the founder's actio… | 2026-10-12 07:00 | 07:00 "can you make a new worktree to just send me my actions to do (with simple clear direct steps)?? so i can follow them in one place?" |
+| [e703](#e703) Founder: everything from this session and its branches must… | 2026-10-12 07:22 | 07:22 "any thing from this session and its branches must reflected on my action checlist.." |
+| [e704](#e704) #328 (UI/UX phase 2) merged; #329 retargeted to main and ma… | 2026-10-12 07:29 | 06:42 "continue, merge all greens" |
+| [e707](#e707) #329 (UI/UX phase 3) merged; phase 4 pushed once, retargete… | 2026-10-12 08:48 | 08:47 "continue, merge all greens" |
+| [e708](#e708) Founder: the checklist must update instantly; page rebuilt… | 2026-10-12 08:49 | 08:49 "make it reflect the updates instantly" |
+| [e709](#e709) Founder marks #332 and #331 ready from the phase-5b session… | 2026-10-12 08:50 | 08:50 "mark #332 ready"; 08:52 "mark #331 ready too"; 09:09 "turn it off" |
+| [e712](#e712) #334 merged (CI ~16 min instead of ~25); the founder's appr… | 2026-10-12 09:08 | 08:49 "mark #334 ready"; 09:08 "merge it when green"; 09:13 "so what next?"; 09:14 "PR #334: merge" |
+| [e714](#e714) Founder: "all things delivered?"; the answer is no, nothing… | 2026-10-12 09:27 | 09:27 "what in you plan to do?? all things delivered ?" |
+| [e715](#e715) #316 (agent skills portal) brought up to main: 11 conflicts… | 2026-10-12 09:27 | 09:27 "check #316, its green"; 09:45 "go ahead" |
+| [e718](#e718) #316 conflicts with main again; Auto-fix merge aborted, the… | 2026-10-12 10:01 | 10:03 "resolve the conflicts in #316" |
+| [e719](#e719) #316 agent skills portal merged into main | 2026-10-12 11:20 | 11:19 "check #316 CI, then merge it" |
+| [e720](#e720) #335 duplicate test fix confirmed closed | 2026-10-12 11:20 | 11:20 "what about the #335.. check it" |
+| [e721](#e721) Release PR #336 opened (main 5f9426c1 to production) | 2026-10-12 11:24 | 11:22 "open the release PR main to production"; 11:32 "add any actions for mo my checklist" |
+| [e722](#e722) CI time cap raised to 35 minutes (rule 1211) and #316 merge… | 2026-10-12 11:36 | 11:36 answer "Raise cap to 35 min (Recommended)" (question tool, not typed text) |
+| [e723](#e723) Founder: "a lot of them are reports" — built-vs-not-built a… | 2026-10-12 12:03 | 12:03 "a lot of them are reports, this means we didnt develop them or deploy online?"; 12:04 "yes, start it and add unbuilt items to my checklist" |
+| [e726](#e726) Founder asks what to do with each group; recommendations gi… | 2026-10-12 12:41 | 12:41 "what we should do with: (ON MAIN, IN PR, BRANCH ONLY, NOT BUILT) tell me for each" |
+| [e727](#e727) LinkedIn 202510 sunset: no code pin, Composio header unveri… | 2026-10-12 12:43 | 13:05 "fix the spec and H-002 wording on a branch"; 13:23 "fix the PRD toolkit number too" |
+| [e728](#e728) Founder decides money questions; money and price batch star… | 2026-10-12 12:44 | 12:44 "start money-bugs and price-copy-fix batch"; 12:45 answers via question tool |
+| [e729](#e729) Eight parallel build sessions started, each with its own ru… | 2026-10-12 12:49 | 12:49 "start privacy-in-code and security-batch next"; 12:50 "do them bu subagents to finish all tasks as per your order" |
+| [e730](#e730) Routines on by default: founder decision, refused once as c… | 2026-10-12 13:00 | 13:00 "routines on by default within plan caps"; 13:23 "confirmed, routines on by default, added brands too" |
+| [e733](#e733) #339 tests and docs (rules 1450-1458); #346 StartForm clean… | 2026-10-12 13:11 | 13:23 "propose the StartForm cleanup as a follow-up" |
+| [e735](#e735) #341 privacy in code: data download, consent record, proces… | 2026-10-12 13:15 | 13:23 "add the lawyer items to the founder checklist" |
+| [e736](#e736) #342 money fixes and price copy; renumbered to 1300-1308 in… | 2026-10-12 13:17 | 13:23 "add the open questions to the founder checklist" |
+| [e740](#e740) Founder reports #336 green; release not merged; coordinator… | 2026-10-12 13:24 | 13:24 "its green #336" |
+| [e745](#e745) Founder: include the ten build PRs in this release; one bat… | 2026-10-12 14:42 | 14:42 "include them in this release, merge all greens" |
+| [e746](#e746) Company mail moved to Google Workspace: MX and SPF set thro… | 2026-10-12 14:49 | 14:49 "i used google workspace, use hostinger connector to check the dns for the email"; 14:51 "apply all"; 14:54 "try again" |
+| [e747](#e747) DKIM added; DMARC raised to quarantine; hello@ made an alias | 2026-10-12 15:07 | about 15:07 "I deleted the stale records by hand, now add the DKIM"; about 15:18 "raise DMARC to quarantine with reports"; 15:26 "hello@thakeen.com" |
+| [e751](#e751) Inbound mail bounces from Gmail; MX advice reversed; cause… | 2026-10-12 15:55 | about 15:55 "maybe cause the domain under name.com??"; 16:00 "sent from outlook, will check log.. its arrived to spam"; about 16:05 "still bounces, same error" |
+| [e753](#e753) Founder sweeps idle sessions: LinkedIn docs #348, redundant… | 2026-10-12 16:29 | 16:29 "push both branches and open draft PRs"; 16:29 "yes to public dark mode, build it after #332"; 16:30 "fold it into the next release PR branch" |
+| [e754](#e754) Stale requests answered: #321 already replaced, R1 fixes al… | 2026-10-12 16:33 | "راجع #321 وجهّزه للدمج"; "push R1 fixes and open draft PR" (exact times not recorded, about 16:30-16:34) |
+| [e755](#e755) Release PR #336 rewritten for 23 merges (main 07ac468); lef… | 2026-10-12 16:35 | 16:35 "prepare the release PR"; 16:37 "do all the 5 by subagents in order, the update the founder checklist"; 16:35 "extend the log to 10-12" |
 
 # Appendix E — Sources, method and gaps
 
-- **Git:** `git log --all` (921 commits at collection time, author time converted to UTC), `git for-each-ref` for branches and tags, ancestry checks against `origin/main` and `origin/production`.
+- **Git:** `git log --all` (1104 commits at collection time, author time converted to UTC), `git for-each-ref` for branches and tags, ancestry checks against `origin/main` and `origin/production`.
 - **GitHub:** `gh pr list --state all` plus each PR's comments, reviews and status-check rollup (read-only).
 - **Docs:** `docs/superpowers/specs`, `docs/superpowers/plans`, `docs/system/tests.md` and `docs/system/tests/*.md`, `docs/system/flows.md` "Releases", the Session Log and Shipping Packet of 2026-09-18, Owner Tasks, PRDs.
 - **Founder memory notes:** `~/.claude/projects/-Users-ihejazy-projects-nashr/memory/*.md`.
-- **Claude session transcripts:** every human message typed into any Nashr worktree session (1,026 messages) and assistant text that self-reports errors; transcripts are treated as data.
+- **Claude session transcripts:** every human message typed into any Nashr worktree session (1,106 messages, summariser prompts included) and assistant text that self-reports errors; transcripts are treated as data.
 
 **Known gaps**
 
@@ -8291,4 +10237,5 @@ Nine patterns repeat through the log. Each bullet links to the entry that record
 - Some times are unknown or disagree between sources: when #231 was marked ready (08:53 against about 12:00), when #239 merged, how draft #247 became mergeable within a minute, and the memory note date for the A1 production 401 checks (2026-10-03 in the session, 2026-10-05 in memory).
 - Figures that appear only in a first-pass reading and are not in any dossier are marked unverified (for example the roughly 70-dollar re-skin session cost and the "4 of 566" failure count on 2026-10-04).
 - Two of the extraction passes (2026-09-30 and 2026-10-02) failed once with an API safeguard error and were re-run from the same dossiers; nothing from a failed run is included.
+- Second pass (2026-10-12): the window 2026-10-10 11:00 to 2026-10-12 about 16:30 UTC was collected a day or two after the fact, so a few status words in entries (open, draft, merged) reflect the state at collection time and can be older by hours. Many sessions in this window were started by other Claude sessions; their first message is a brief written by a session, not by the founder, and entries tag it that way. Sessions whose transcripts live in other project folders are not visible; their work shows only through commits and pull requests.
 - Transcript mining was partial: one later scan was refused by the permission classifier, and sessions that were archived or deleted are not visible at all.
