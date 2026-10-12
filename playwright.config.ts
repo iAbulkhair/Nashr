@@ -62,7 +62,8 @@ export default defineConfig({
 
   // Against a deployed preview (`E2E_BASE_URL`) there is nothing to start.
   webServer: process.env.E2E_BASE_URL ? undefined : {
-    command: `npm run build && npx next start -p ${PORT}`,
+    // The same webpack build thakeen.com runs (`build:hostinger`, rule 1017), so the suite exercises what is deployed.
+    command: `npm run build:hostinger && npx next start -p ${PORT}`,
     // Marks this production build as a test so the memory store and the model mock stay on (rules 430-431).
     env: { APP_ENV: "test" },
     url: baseURL,

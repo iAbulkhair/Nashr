@@ -248,6 +248,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/media": "admin-console",
   "GET /api/admin/wishlist": "admin-console",
   "GET /api/admin/leads": "admin-console",
+  "GET /api/admin/client-ip": "admin-console",
   "GET /api/admin/log": "admin-console",
   "GET /api/admin/overview": "admin-console",
   "GET /api/admin/plan": "admin-console",

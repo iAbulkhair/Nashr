@@ -372,8 +372,8 @@ export function formatWhen(iso: string, allDay: boolean, lang: "ar" | "en", nowM
 export const zoneTimeLabel = (z: Zone, lang: "ar" | "en") => (lang === "ar" ? `بتوقيت ${ZONES[z].city.ar}` : `${ZONES[z].city.en} time`);
 
 /**
- * The UTC hour the daily cron runs (`vercel.json`: `0 5 * * *`): the morning brief, and the reminder sweep that stands
- * in for the QStash tick when it is not running. Pinned against vercel.json in tests/secretary-phase2.test.ts.
+ * The UTC hour the daily cron runs (`crons.json`: `0 5 * * *`): the morning brief, and the reminder sweep that stands
+ * in for the QStash tick when it is not running. Pinned against crons.json in tests/secretary-phase2.test.ts.
  */
 export const DAILY_CRON_UTC_HOUR = 5;
 /**

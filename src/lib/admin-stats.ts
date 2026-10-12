@@ -10,6 +10,7 @@ import { monthKey } from "./credits";
 import { MEDIA_MODELS, type MediaModelId, type MediaProviderId } from "./media-catalog";
 import { mk } from "./media/keys";
 import { topupRevenueSar } from "./topups";
+import { cronStatuses, type CronStatus } from "./cron-heartbeat";
 
 /**
  * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
@@ -26,6 +27,8 @@ export type Overview = {
   events: { date: string; counts: Record<string, number> }[];
   features: Record<string, number>;
   health: { errors7d: number; errorsToday: number; modelCalls: number; avgCostPerCallUsd: number | null };
+  /** The last finished run of each cron and whether it is late (src/lib/cron-heartbeat.ts, rule 1014); empty when the store could not be read. */
+  crons: CronStatus[];
   /**
    * This month's cost per model and per provider (`getUsage("_all")`, global counters, founder only): calls and USD per catalog
    * model ("other" for any id outside the catalog) and per provider, the requests the gateway failed that were re-sent to
@@ -118,7 +121,7 @@ export async function overview(): Promise<Overview> {
   const scopes = (await pmap(users, async (u) => (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id)), 6)).flat();
   const perScope = await pmap(scopes, async (scope) => (await listLite(scope, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0), 6);
   const creditsUsed = perScope.reduce((s, x) => s + x, 0);
-  const [total, render] = await Promise.all([getUsage("_all"), renderSpend()]);
+  const [total, render, crons] = await Promise.all([getUsage("_all"), renderSpend(), cronStatuses().catch((): CronStatus[] => [])]);
   // Renders are billed to us like model calls: a video can cost more than a month of text for the same account.
   const grossMargin = mrr > 0 ? Math.round(((mrr - (total.usd + render.usd) * SAR_PER_USD) / mrr) * 100) : null;
 
@@ -135,6 +138,7 @@ export async function overview(): Promise<Overview> {
     revenue: { mrrSar: mrr, topupSarMonth, planMix, arpuSar: paying ? Math.round(mrr / paying) : null, creditsUsedMonth: Math.round(creditsUsed), modelCostUsd: total.usd, grossMarginPct: grossMargin, renderCostUsd: render.usd, renderByProvider: render.byProvider, renderByModel: render.byModel },
     events,
     features,
+    crons,
     health: { errors7d, errorsToday, modelCalls: total.calls, avgCostPerCallUsd: total.calls ? Math.round((total.usd / total.calls) * 1000) / 1000 : null },
     modelUsage: { month: total.month, models: total.models, providers: total.providers, fallbacks: total.fallbacks, rejectedPicks: total.rejectedPicks },
     recent,
