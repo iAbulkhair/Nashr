@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 // Rule 661: Hostinger's shared hosting cannot run Turbopack's PostCSS worker process, so thakeen.com builds with webpack,
 // and webpack refuses any page without a root layout.
 describe("the Hostinger build (rule 661)", () => {
-  it("has a webpack build script, and the Vercel build stays as it is", () => {
+  it("has a webpack build script, and the default build (CI, local) stays as it is", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8"));
     expect(pkg.scripts["build:hostinger"]).toBe("next build --webpack");
     expect(pkg.scripts.build).toBe("next build");

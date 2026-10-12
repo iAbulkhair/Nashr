@@ -8,7 +8,7 @@ import LangToggle from "../LangToggle";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { Icon, type IconName } from "../app/Icons";
 
-const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", wishlist: "spark", log: "clock" };
+const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", skills: "strategy", wishlist: "spark", log: "clock" };
 const T = {
   ar: { title: "لوحة المؤسس", back: "العودة للتطبيق", endKey: "إنهاء جلسة المفتاح", menu: "القائمة" },
   en: { title: "Founder console", back: "Back to the app", endKey: "End key session", menu: "Menu" },

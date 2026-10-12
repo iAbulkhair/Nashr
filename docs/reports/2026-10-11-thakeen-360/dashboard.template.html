@@ -1,0 +1,238 @@
+<title>ذكين 360 · 2026-10-11</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a field ledger. Sticky tab rail, one filter bar, dense rows with a severity edge; summary first, detail on demand. */
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --sunk:#e8ecea; --fg:#14211d; --muted:#5a6964; --line:#d3dbd8;
+  --accent:#0d6b57; --accent-soft:#d6ece6; --sand:#b88a2e;
+  --p0:#b42318; --p0-soft:#fbe4e1; --p1:#a15c07; --p1-soft:#fcefd9; --p2:#475a55; --p2-soft:#e4eae8;
+  --ok:#1f7a45; --ok-soft:#dcf1e4;
+  --display:"Noto Kufi Arabic","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1715; --surface:#16211e; --sunk:#1c2925; --fg:#e4ece9; --muted:#97a8a2; --line:#2a3a35;
+  --accent:#4cc3a3; --accent-soft:#163a31; --sand:#d9ad55;
+  --p0:#ff8a7a; --p0-soft:#3a1b18; --p1:#f0b45a; --p1-soft:#3a2a12; --p2:#a9bab4; --p2-soft:#24312d;
+  --ok:#6fd39a; --ok-soft:#173326; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1715; --surface:#16211e; --sunk:#1c2925; --fg:#e4ece9; --muted:#97a8a2; --line:#2a3a35;
+  --accent:#4cc3a3; --accent-soft:#163a31; --sand:#d9ad55;
+  --p0:#ff8a7a; --p0-soft:#3a1b18; --p1:#f0b45a; --p1-soft:#3a2a12; --p2:#a9bab4; --p2-soft:#24312d;
+  --ok:#6fd39a; --ok-soft:#173326; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.6;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 48px}
+header.top{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;justify-content:space-between}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(1.5rem,3.4vw,2.2rem);margin:0;text-wrap:balance;letter-spacing:0}
+h1 small{font-family:var(--mono);font-weight:400;font-size:.8rem;color:var(--muted);margin-inline-start:8px}
+.sub{color:var(--muted);margin:4px 0 0;max-width:70ch}
+h2{font-family:var(--display);font-weight:600;font-size:1.15rem;margin:0 0 10px}
+h3{font-size:1rem;margin:0 0 6px}
+nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin-top:16px;padding-top:6px}
+nav.tabs button{font:inherit;font-weight:600;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:8px 12px;cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+nav.tabs button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.count{font-family:var(--mono);font-size:.75rem;background:var(--sunk);border-radius:9px;padding:1px 7px;margin-inline-start:4px}
+section.panel{padding-top:18px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.stats{display:flex;flex-wrap:wrap;gap:10px 22px;margin:14px 0 4px}
+.stat b{display:block;font-family:var(--mono);font-size:1.5rem;font-weight:500;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:.82rem}
+ol.top5,ul.top5{margin:0;padding-inline-start:20px;display:grid;gap:6px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px}
+.filters input,.filters select{font:inherit;font-size:.9rem;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:6px 8px;min-width:0;max-width:100%}
+.filters input[type=search]{flex:1 1 200px}
+.filters label{font-size:.85rem;color:var(--muted);display:flex;gap:6px;align-items:center}
+.shown{font-family:var(--mono);font-size:.8rem;color:var(--muted);margin-inline-start:auto}
+.list{display:grid;gap:8px}
+.row{background:var(--surface);border:1px solid var(--line);border-inline-start:4px solid var(--p2);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;min-width:0}
+.row.P0{border-inline-start-color:var(--p0)} .row.P1{border-inline-start-color:var(--p1)}
+.row.ticked{opacity:.55}
+.row.ticked .t{text-decoration:line-through}
+.row input[type=checkbox]{width:18px;height:18px;margin-top:3px;accent-color:var(--accent)}
+.row .t{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.row .meta{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.8rem}
+.row .body{grid-column:2;font-size:.9rem;color:var(--fg);min-width:0;overflow-wrap:anywhere}
+.row .body p{margin:2px 0}
+.row .body .k{color:var(--muted)}
+.row details{grid-column:2;font-size:.85rem}
+.row summary{cursor:pointer;color:var(--accent);width:max-content}
+.ev{font-family:var(--mono);font-size:.78rem;unicode-bidi:plaintext;color:var(--muted);overflow-wrap:anywhere}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:600;line-height:1.7;white-space:nowrap}
+.pill.P0{background:var(--p0-soft);color:var(--p0)} .pill.P1{background:var(--p1-soft);color:var(--p1)} .pill.P2{background:var(--p2-soft);color:var(--p2)}
+.pill.st-done{background:var(--ok-soft);color:var(--ok)} .pill.st-open{background:var(--accent-soft);color:var(--accent)}
+.pill.st-other{background:var(--sunk);color:var(--muted)}
+.pill.own{background:var(--sunk);color:var(--fg)}
+.pill.ver{background:transparent;border:1px solid var(--line);color:var(--muted)}
+.id{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:start;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.78rem;color:var(--muted);font-weight:600;background:var(--sunk)}
+tr:last-child td{border-bottom:0}
+.week{display:grid;gap:8px;margin-bottom:18px}
+.week h3{font-family:var(--display);font-weight:600;color:var(--accent)}
+.empty{color:var(--muted);padding:20px;text-align:center;border:1px dashed var(--line);border-radius:10px}
+.links a{color:var(--accent)}
+.note{font-size:.85rem;color:var(--muted)}
+.en{direction:ltr;unicode-bidi:isolate}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap" dir="rtl" lang="ar">
+  <header class="top">
+    <div>
+      <h1>ذكين 360 <small class="en">Thakeen · 2026-10-11</small></h1>
+      <p class="sub" id="lede"></p>
+    </div>
+    <p class="note" id="asof"></p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="أقسام الدراسة">
+    <button role="tab" id="tab-summary" aria-controls="p-summary" aria-selected="true">الملخص</button>
+    <button role="tab" id="tab-founder" aria-controls="p-founder" aria-selected="false">مهام المؤسس <span class="count" id="c-founder"></span></button>
+    <button role="tab" id="tab-claude" aria-controls="p-claude" aria-selected="false">مهام Claude <span class="count" id="c-claude"></span></button>
+    <button role="tab" id="tab-findings" aria-controls="p-findings" aria-selected="false">مسارات العمل <span class="count" id="c-findings"></span></button>
+    <button role="tab" id="tab-roadmap" aria-controls="p-roadmap" aria-selected="false">خارطة الطريق</button>
+    <button role="tab" id="tab-snapshot" aria-controls="p-snapshot" aria-selected="false">الحالة المؤكدة</button>
+  </nav>
+
+  <section class="panel" id="p-summary" role="tabpanel" aria-labelledby="tab-summary">
+    <div class="stats" id="stats"></div>
+    <div class="grid" style="margin-top:14px">
+      <div class="box"><h2>أهم 5 مهام لك</h2><ol class="top5" id="top-founder"></ol></div>
+      <div class="box"><h2>أهم 5 مهام لـ Claude</h2><ol class="top5" id="top-claude"></ol></div>
+    </div>
+    <div class="box" style="margin-top:14px"><h2>هذا الأسبوع (بترتيب الاعتماد)</h2><ol class="top5" id="this-week"></ol></div>
+    <div class="box" style="margin-top:14px"><h2>ما لم نتحقق منه</h2><ul id="unverified" class="top5"></ul></div>
+  </section>
+
+  <section class="panel" id="p-founder" role="tabpanel" aria-labelledby="tab-founder" hidden>
+    <div class="filters" data-for="founder"></div>
+    <div class="list" id="l-founder"></div>
+  </section>
+
+  <section class="panel" id="p-claude" role="tabpanel" aria-labelledby="tab-claude" hidden>
+    <div class="filters" data-for="claude"></div>
+    <div class="list" id="l-claude"></div>
+  </section>
+
+  <section class="panel" id="p-findings" role="tabpanel" aria-labelledby="tab-findings" hidden>
+    <div class="filters" data-for="findings"></div>
+    <div class="list" id="l-findings"></div>
+  </section>
+
+  <section class="panel" id="p-roadmap" role="tabpanel" aria-labelledby="tab-roadmap" hidden>
+    <div id="roadmap"></div>
+  </section>
+
+  <section class="panel" id="p-snapshot" role="tabpanel" aria-labelledby="tab-snapshot" hidden>
+    <div class="tbl"><table><thead><tr><th>البند</th><th>الحكم</th><th>الدليل</th></tr></thead><tbody id="snap"></tbody></table></div>
+    <p class="note links" id="links" style="margin-top:14px"></p>
+  </section>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const store = {
+  get(){ try { return JSON.parse(localStorage.getItem("t360-ticks") || "{}"); } catch(e){ return {}; } },
+  set(v){ try { localStorage.setItem("t360-ticks", JSON.stringify(v)); } catch(e){} }
+};
+let ticks = store.get();
+const OWN = {founder:"المؤسس", claude:"Claude", both:"الاثنان"};
+const STATE = {open:"مفتوح", done:"منجز", partly:"جزئي", obsolete:"لم يعد لازماً", stale:"قديم", unknown:"غير معروف"};
+const WS = DATA.workstreams || {};
+const stCls = s => s === "done" ? "st-done" : (s === "open" ? "st-open" : "st-other");
+
+function pills(it){
+  const out = [];
+  if (it.severity) out.push(`<span class="pill ${esc(it.severity)}">${esc(it.severity)}</span>`);
+  if (it.state) out.push(`<span class="pill ${stCls(it.state)}">${esc(STATE[it.state] || it.state)}</span>`);
+  if (it.owner && it.owner !== "claude") out.push(`<span class="pill own">${esc(OWN[it.owner] || it.owner)}</span>`);
+  if (it.workstream) out.push(`<span class="pill own">${esc(it.workstream)} · ${esc(WS[it.workstream] || "")}</span>`);
+  if (it.type) out.push(`<span class="pill own">${esc(it.type)}</span>`);
+  if (it.verified) out.push(`<span class="pill ver en">${esc(String(it.verified).split(":")[0])}</span>`);
+  if (it.date) out.push(`<span class="id en">${esc(it.date)}</span>`);
+  return `<span class="id en">${esc(it.id)}</span>` + out.join("");
+}
+function row(it){
+  const done = !!ticks[it.id];
+  const lines = (it.lines || []).filter(l => l[1]).map(([k,v,cls]) => `<p><span class="k">${esc(k)}:</span> <span class="${cls||""}">${esc(v)}</span></p>`).join("");
+  const ev = (it.evidence || []).length ? `<details><summary>الدليل</summary><div class="ev">${it.evidence.map(esc).join("<br>")}</div></details>` : "";
+  return `<article class="row ${esc(it.severity||"")} ${done?"ticked":""}" data-id="${esc(it.id)}">
+    <input type="checkbox" id="tick-${esc(it.id)}" ${done?"checked":""}>
+    <label class="t" for="tick-${esc(it.id)}">${esc(it.title)}</label>
+    <div class="meta">${pills(it)}</div>
+    <div class="body">${lines}</div>${ev}</article>`;
+}
+const LISTS = {
+  founder: DATA.founder.map(f => ({...f, owner: f.owner || "founder", lines:[["الخطوة التالية", f.next_ar],["لماذا / ماذا يعطّل", f.why],["المصدر", f.source, "ev"],["تاريخ الإنجاز", f.date_done, "en"]]})),
+  claude: DATA.claude.map(c => ({...c, owner:"claude", lines:[["الخطوة التالية", c.next],["القرار", c.disposition],["المصدر", c.source, "ev"]]})),
+  findings: DATA.findings.map(f => ({...f, lines:[["الأثر", f.impact],["الإجراء", f.next_action],["يعتمد على", (f.depends_on||[]).join(", "), "en"],["الجهد / التكلفة", [f.effort, f.cost_sar_or_usd].filter(x => x && x !== "unknown").join(" · "), "en"],["دُمج معه", (f.absorbed||[]).join(", "), "en"]]}))
+};
+const FILTERS = {founder:["severity","state","type"], claude:["severity","state"], findings:["workstream","owner","severity","state"]};
+const FLAB = {severity:"الأولوية", state:"الحالة", type:"النوع", owner:"المسؤول", workstream:"المسار"};
+function label(f, v){ return f==="owner" ? (OWN[v]||v) : f==="state" ? (STATE[v]||v) : f==="workstream" ? v+" · "+(WS[v]||"") : v; }
+function buildFilters(key){
+  const host = document.querySelector(`.filters[data-for="${key}"]`);
+  let html = `<input type="search" id="q-${key}" placeholder="بحث…" aria-label="بحث">`;
+  for (const f of FILTERS[key]){
+    const vals = [...new Set(LISTS[key].map(x => x[f]).filter(Boolean))].sort();
+    html += `<select id="f-${key}-${f}" aria-label="${FLAB[f]}"><option value="">${FLAB[f]}: الكل</option>${vals.map(v => `<option value="${esc(v)}">${esc(label(f, v))}</option>`).join("")}</select>`;
+  }
+  html += `<label><input type="checkbox" id="h-${key}"> إخفاء ما أنجزته</label><span class="shown" id="s-${key}"></span>`;
+  host.innerHTML = html;
+  host.addEventListener("input", () => render(key));
+}
+function render(key){
+  const q = ($(`#q-${key}`).value || "").trim().toLowerCase();
+  const hide = $(`#h-${key}`).checked;
+  const sel = Object.fromEntries(FILTERS[key].map(f => [f, $(`#f-${key}-${f}`).value]));
+  const items = LISTS[key].filter(it => {
+    if (hide && ticks[it.id]) return false;
+    for (const f in sel) if (sel[f] && it[f] !== sel[f]) return false;
+    if (q && !JSON.stringify(it).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  $(`#l-${key}`).innerHTML = items.length ? items.map(row).join("") : `<p class="empty">لا شيء يطابق هذه المرشحات.</p>`;
+  $(`#s-${key}`).textContent = `${items.length} / ${LISTS[key].length}`;
+}
+document.addEventListener("change", e => {
+  const r = e.target.closest(".row");
+  if (!r || e.target.type !== "checkbox") return;
+  const id = r.dataset.id;
+  if (e.target.checked) ticks[id] = new Date().toISOString().slice(0,10); else delete ticks[id];
+  store.set(ticks);
+  r.classList.toggle("ticked", e.target.checked);
+});
+const tabs = [...document.querySelectorAll('[role="tab"]')];
+function show(id){
+  tabs.forEach(t => { const on = t.id === "tab-"+id; t.setAttribute("aria-selected", on); document.getElementById(t.getAttribute("aria-controls")).hidden = !on; });
+  try { localStorage.setItem("t360-tab", id); } catch(e){}
+}
+tabs.forEach(t => t.addEventListener("click", () => show(t.id.slice(4))));
+
+$("#lede").textContent = DATA.lede;
+$("#asof").textContent = DATA.asof;
+$("#stats").innerHTML = DATA.stats.map(s => `<div class="stat"><b>${esc(s[0])}</b><span>${esc(s[1])}</span></div>`).join("");
+$("#top-founder").innerHTML = DATA.topFounder.map(x => `<li>${esc(x)}</li>`).join("");
+$("#top-claude").innerHTML = DATA.topClaude.map(x => `<li>${esc(x)}</li>`).join("");
+$("#this-week").innerHTML = DATA.thisWeek.map(x => `<li>${esc(x)}</li>`).join("");
+$("#unverified").innerHTML = DATA.unverified.map(x => `<li>${esc(x)}</li>`).join("");
+$("#snap").innerHTML = DATA.snapshot.map(s => `<tr><td>${esc(s[0])}</td><td>${esc(s[1])}</td><td class="ev">${esc(s[2])}</td></tr>`).join("");
+$("#links").innerHTML = DATA.links.map(l => `<a href="${esc(l[1])}" target="_blank" rel="noopener">${esc(l[0])}</a>`).join(" · ");
+$("#roadmap").innerHTML = DATA.roadmap.map(w => `<div class="week"><h3>${esc(w.title)}</h3><div class="tbl"><table><thead><tr><th>البند</th><th>المسؤول</th><th>يعتمد على</th><th>الدفعة</th></tr></thead><tbody>${w.items.map(i => `<tr><td>${esc(i[0])}</td><td>${esc(OWN[i[1]]||i[1])}</td><td class="ev">${esc(i[2]||"")}</td><td>${esc(i[3]||"")}</td></tr>`).join("")}</tbody></table></div></div>`).join("");
+for (const k of ["founder","claude","findings"]){ $(`#c-${k}`).textContent = LISTS[k].length; buildFilters(k); render(k); }
+let start = "summary";
+const h = (location.hash||"").slice(1);
+if (["summary","founder","claude","findings","roadmap","snapshot"].includes(h)) start = h;
+else { try { start = localStorage.getItem("t360-tab") || "summary"; } catch(e){} }
+show(start);
+</script>

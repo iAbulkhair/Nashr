@@ -105,7 +105,8 @@ describe("every generated task records which prompts made it (rule 229)", () => 
     expect((await generateRoute.POST(json("/api/generate", "POST", { type: "whatsapp" }))).status).toBe(200);
     const tasks = await Promise.all((await listLite(u.email)).map((l) => getTask(u.email, l.id)));
     expect(tasks.length).toBeGreaterThan(0);
-    for (const x of tasks) expect(x!.pb).toEqual(promptStamp("whatsapp", brand));
+    // A batch also records the instruction blocks it carried (rule 947): none, none for an account with no instructions.
+    for (const x of tasks) expect(x!.pb).toEqual(promptStamp("whatsapp", brand, { plat: "none", ins: "none" }));
 
     const saved = await saveExternalDraft((await getUser(u.email))!, { type: "social", channel: "instagram", title: "مسودة", body: "نص كتبه مساعد المالك" });
     if (!saved.ok) throw new Error(saved.reason);
@@ -207,7 +208,7 @@ describe("the golden set says when an agent's prompts changed (rule 230)", () =>
     expect(Object.keys(run!.playbooks!)).toEqual(expect.arrayContaining(["marketing", "sales", "finance", "gtm", "reporting", "executive", "product", "review", "code:social"]));
     for (const r of run!.results) {
       const c = GOLDEN_CASES.find((x) => x.id === r.id)!;
-      expect(r.pb).toEqual(stamps.promptStamp(c.type, GOLDEN_BRANDS[c.brand]));
+      expect(r.pb).toEqual(stamps.promptStamp(c.type, GOLDEN_BRANDS[c.brand], { plat: "none", ins: "none" }));
     }
     const golden = await import("@/app/api/admin/golden/route");
     const body = (await (await golden.GET(json("/api/admin/golden", "GET", undefined, { "x-admin-key": "test-admin-key-0123456789" }))).json()) as { hashes: Record<string, string>; latest: GoldenRun };

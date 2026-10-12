@@ -61,6 +61,8 @@ export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   linkedin_ads: "20260826_00",
   google_analytics: "20251017_00",
   google_search_console: "00000000_00",
+  googledocs: "20261008_00",
+  googlesheets: "20261001_00",
 };
 
 const CALL_TIMEOUT_MS = 20_000;

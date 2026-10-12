@@ -1,4 +1,4 @@
-import type { Lang } from "@/lib/i18n";
+import { SUPPORT_EMAIL, type Lang } from "@/lib/i18n";
 import { PRICES_INCLUDE_VAT, TOPUP_PACKS, TOPUP_VALID_DAYS, formatCount, topupPriceSar, topupsSold, type Plan } from "@/lib/pricing";
 import type { TopupView } from "@/lib/topups";
 import ReadOnlyNote from "./ReadOnlyNote";
@@ -44,7 +44,7 @@ export default function TopupCard({ lang, plan, owner, email, whatsapp, lots, to
   // A button only for the owner of a paid plan; WhatsApp when the support number is set, else an email to support.
   const href = (credits: number) => !owner || !sold ? null
     : whatsapp ? `https://wa.me/${whatsapp}?text=${encodeURIComponent(request(credits))}`
-      : `mailto:hello@nashr.ai?subject=${encodeURIComponent(request(credits))}`;
+      : `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(request(credits))}`;
   return (
     <section id="topup" className="mt-6 card scroll-mt-6" aria-labelledby="topup-title" data-topups="">
       <h2 id="topup-title" className="font-display text-lg font-bold">{ar ? "اشحن رصيدك" : "Top up credits"}</h2>

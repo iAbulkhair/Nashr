@@ -7,6 +7,8 @@ export type WFile = { name: string; content: string; updatedAt: string; by: "noo
 
 const SET = (e: string) => `files:${e}`;
 const KEY = (e: string, n: string) => `file:${e}:${n}`;
+/** The key of one workspace file, for a reader that fetches several in one `mget` (`agent-instructions.ts`). */
+export const fileKey = KEY;
 
 /**
  * Normalise a file name into something safe to put in a Redis key.

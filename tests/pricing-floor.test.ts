@@ -465,7 +465,7 @@ describe("chat keeps the floor per tier: the hold covers each model's own ceilin
  * (`systemPrompt`), not chat's, which carries the tool definitions and the chat rules on top: hence the larger figures.
  * On 2026-10-09 the live prefix was 63,029 to 71,575 characters on an empty workspace and 105,948 to 114,494 with
  * the memory at the cap. On 2026-10-10 Reem B2b and B3 made it 65,019 to 73,001 and 107,938 to 115,920: two help entries
- * every agent carries, and the free_slots tool in Reem's turn only (founder, 2026-10-10). At the cap a full thread keeps 2. The pinned figures use round sizes just above the live maxima (P_EMPTY, P_CAP, V), so
+ * every agent carries, and the free_slots tool in Reem's turn only (founder, 2026-10-10). At the cap a full thread keeps 2. On 2026-10-10 the propose_instruction tool and its one line in the chat rules (agent skills portal, rule 953) added about 600 characters to every agent after the tool text was trimmed: the live maxima are now under 74,000 and 116,575, so P_CAP went from 116,000 to 116,700 (a full thread still keeps 2 messages, with 4,004 tokens left for the answer instead of 4,062). The pinned figures use round sizes just above the live maxima (P_EMPTY, P_CAP, V), so
  * preferences, a longer brand, feedback or handoff notes, which the live prompt here leaves out, are what moves a real
  * account toward the cliff; a larger volatile block or a longer newest message moves the cliff itself lower.
  */
@@ -478,7 +478,7 @@ describe("what each chat model's ceiling leaves for the answer, from the real ch
   const per = CHAT_HISTORY_MAX_CHARS / CHAT_HISTORY_MAX_MSGS;
   const thread = Array.from({ length: CHAT_HISTORY_MAX_MSGS }, (_, i) => ({ role: (i % 2 ? "user" : "assistant") as "user" | "assistant", content: `${i}`.padEnd(per, "x") }));
   const newest = thread.slice(-1);
-  const P_EMPTY = 74_000, P_CAP = 116_000, V = 1_000;
+  const P_EMPTY = 74_000, P_CAP = 116_700, V = 1_000;
   const fit = (model: string, prefix: number, volatile = V, msgs = thread) => fitFirstCall(model, msgs, prefix, volatile);
   /** The largest prefix whose first call still gets CHAT_MIN_OUT with only the newest message: past it, LARGE_REPLY. */
   const cliff = (model: string) => {
@@ -550,8 +550,8 @@ describe("what each chat model's ceiling leaves for the answer, from the real ch
   it("pinned at P_CAP: Automatic and Opus 5.5 drop the oldest messages and still answer", () => {
     const row = (model: string) => { const f = fit(model, P_CAP); return [model, f.maxTokens, f.messages.length]; };
     expect(chatModels.map((m) => row(m.id))).toEqual([
-      ["claude-sonnet-5-5", 4062, 2],
-      ["claude-opus-5-5", 4062, 2],
+      ["claude-sonnet-5-5", 4004, 2],
+      ["claude-opus-5-5", 4004, 2],
     ]);
   });
 

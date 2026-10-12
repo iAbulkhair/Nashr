@@ -10,6 +10,7 @@ import { getUsage } from "./usage";
 import { CUSTOMER_FACING, brandRules, checkText } from "./brand-rules";
 import { modelState } from "./model";
 import { promptHashes, promptStamp, type PromptStamp } from "./prompt-stamp";
+import { instructionBlocks, loadLayers, type Layers } from "./agent-instructions";
 
 /**
  * Weekly golden set. A fixed list of cases (fictional brand + task type + owner
@@ -208,18 +209,25 @@ export function hardChecks(c: GoldenCase, brand: Brand, items: Generated[]): Che
 
 const trim = (i: Generated) => ({ ...i, body: i.body.length > 3000 ? `${i.body.slice(0, 3000)}\n… [+${i.body.length - 3000} chars]` : i.body });
 
-async function runCase(c: GoldenCase): Promise<GoldenResult> {
+/**
+ * The golden set measures Thakeen's own prompts, so it carries the platform layer and no workspace (`loadLayers(null, null)`).
+ * Its stamp records the platform hash: a founder instruction added between two runs reads as "prompt changed". `ins` is
+ * `none`, the set has no owner.
+ */
+const stampOf = (c: GoldenCase, layers: Layers) => ({ plat: instructionBlocks(layers, agentForTask(c.type).id).stamp.plat, ins: "none" });
+
+async function runCase(c: GoldenCase, layers: Layers): Promise<GoldenResult> {
   const t0 = Date.now();
   const brand = GOLDEN_BRANDS[c.brand];
-  const head = { id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: brand.name, delta: null, pb: promptStamp(c.type, brand) };
+  const head = { id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: brand.name, delta: null, pb: promptStamp(c.type, brand, stampOf(c, layers)) };
   let items: Generated[] = [];
   let stage = "generate";
   try {
     // No cross-agent review: it costs a model call per reviewer, writes notes only, and the golden set measures the
     // agents' own output with the reviewer and the judge. The prompts it measures are the same either way.
-    items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count, crossReview: false });
+    items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count, crossReview: false, layers });
     stage = "judge";
-    const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count, { notes: c.extra, stats: c.stats });
+    const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count, { notes: c.extra, stats: c.stats, layers });
     // An unjudged item is left out of the mean rather than counted as 0, and the gap is written into the notes so a
     // run where the judge answered for half the items does not read as a clean score.
     const q = verdicts.filter((x): x is Quality => !!x);
@@ -253,8 +261,8 @@ function promptChangeOf(mine: GoldenResult[], prev: GoldenRun | undefined): bool
   const was = new Map((prev?.results ?? []).flatMap((r) => (r.pb ? [[r.id, r.pb] as const] : [])));
   const pairs = mine.flatMap((r) => (!r.carried && r.pb && was.has(r.id) ? [[r.pb, was.get(r.id)!] as const] : []));
   if (!pairs.length) return null;
-  // The industry part is left out of a brand-less stamp, so it is compared only when both rows have one.
-  return pairs.some(([now, then]) => now.skills !== then.skills || now.review !== then.review || now.code !== then.code || (!!now.industry && !!then.industry && now.industry !== then.industry));
+  // The industry part is left out of a brand-less stamp, and `plat` of a row made before the platform layer existed, so each is compared only when both rows have one.
+  return pairs.some(([now, then]) => now.skills !== then.skills || now.review !== then.review || now.code !== then.code || (!!now.plat && !!then.plat && now.plat !== then.plat) || (!!now.industry && !!then.industry && now.industry !== then.industry));
 }
 
 /** Exported for tests: it decides what counts as a regression, and that decision is what the founder is alerted on. */
@@ -312,16 +320,18 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
     const queue = GOLDEN_CASES.filter((c) => (!opts.agent || agentForTask(c.type).id === opts.agent) && !done.some((r) => r.id === c.id));
     const usdBefore = (await getUsage(GOLDEN_EMAIL)).usd;
 
+    // Once per run: every case reads the same platform layer, so the run is measured against one version of it.
+    const layers = await loadLayers(null, null);
     const results: GoldenResult[] = [];
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
       while (next < queue.length) {
         const c = queue[next++];
         if (Date.now() - t0 > START_BUDGET_MS) {
-          results.push({ id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: GOLDEN_BRANDS[c.brand].name, ok: false, error: "skipped_time_budget", score: null, dims: null, notes: [], checks: [], items: [], ms: 0, delta: null, pb: promptStamp(c.type, GOLDEN_BRANDS[c.brand]) });
+          results.push({ id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: GOLDEN_BRANDS[c.brand].name, ok: false, error: "skipped_time_budget", score: null, dims: null, notes: [], checks: [], items: [], ms: 0, delta: null, pb: promptStamp(c.type, GOLDEN_BRANDS[c.brand], stampOf(c, layers)) });
           continue;
         }
-        results.push(await runCase(c));
+        results.push(await runCase(c, layers));
       }
     }));
 

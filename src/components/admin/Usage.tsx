@@ -23,7 +23,11 @@ export default function Usage({ lang, keySession }: SectionProps) {
           </section>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{O.health}</h2>
             <div className="mt-2 grid gap-3 sm:grid-cols-4 text-sm">{[[O.errors, ov.health.errors7d], ["errors today", ov.health.errorsToday], [O.calls, ov.health.modelCalls], ["avg $/call", ov.health.avgCostPerCallUsd ?? "—"]].map(([l, v]) => <div key={String(l)} className="rounded-lg bg-background-muted px-3 py-2"><p className="text-xs text-foreground-muted">{l}</p><p className="tnum font-semibold">{v}</p></div>)}</div>
-            <p className="mt-2 text-xs text-foreground-muted">Uptime, p95 latency and cron heartbeats: add Vercel Speed Insights + Better Stack (free tiers), see docs/Admin_Console_Benchmark.md.</p>
+            <p className="mt-2 text-xs text-foreground-muted">Uptime and p95 latency: an external monitor on /api/health?store=1 (docs/system/flows.md, monitoring).</p>
+          </section>
+          <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{O.crons}</h2>
+            <ul className="mt-2 grid gap-2 sm:grid-cols-4 text-sm">{(ov.crons ?? []).map((c) => <li key={c.job} className="flex flex-col rounded-lg bg-background-muted p-2"><span className="flex justify-between"><span dir="ltr">{c.job}</span><b className={c.status === "stale" ? "text-danger" : ""}>{c.status === "stale" ? O.cronStale : c.status === "waiting" ? O.cronWaiting : O.cronOk}</b></span><span className="tnum text-xs text-foreground-muted" dir="ltr">{c.lastRunAt ? c.lastRunAt.slice(0, 16).replace("T", " ") + " UTC" : "—"}</span></li>)}</ul>
+            <p className="mt-2 text-xs text-foreground-muted">{O.cronNote}</p>
           </section>
         </div>
   );

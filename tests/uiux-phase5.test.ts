@@ -286,7 +286,7 @@ describe("rule 1205: WCAG AA in both themes", () => {
     ["foreground-muted", "background", 4.5], ["foreground-muted", "surface", 4.5], ["foreground-muted", "background-muted", 4.5],
     ["foreground-subtle", "surface", 4.5], ["foreground-subtle", "background", 4.5],
     ["inverse-foreground", "inverse", 4.5], ["inverse-muted", "inverse", 4.5], ["primary-foreground", "primary", 4.5], ["accent-foreground", "accent", 4.5],
-    ["danger", "surface", 4.5], ["danger", "background", 4.5], ["danger-foreground", "danger", 4.5], ["danger", "danger-tint", 4.5],
+    ["danger", "surface", 4.5], ["danger", "background", 4.5], ["danger", "background-muted", 4.5], ["danger-foreground", "danger", 4.5], ["danger", "danger-tint", 4.5],
     ["success", "surface", 4.5], ["success-foreground", "success", 4.5], ["success", "success-tint", 4.5],
     ["warning", "surface", 4.5], ["warning-foreground", "warning", 4.5], ["warning", "warning-tint", 4.5],
     ["text-accent", "surface", 4.5], ["info", "surface", 4.5], ["foreground", "notice-bg", 4.5], ["foreground", "info-tint", 4.5],

@@ -54,6 +54,13 @@ export const MIN_ROLE = {
   "schedule.write": "admin",
   /** Approve and publish: publish route, task approve, chat `publish_item`. */
   publish: "admin",
+  /**
+   * Agent instructions of the brand workspace (agent skills portal, spec 10): save the draft, activate, discard, restore,
+   * apply or dismiss a proposal. They steer every agent's prompt and outlive the session, like `brand.write`. Reading is open to members.
+   */
+  "instructions.write": "admin",
+  /** Test an instruction against a sample task: it spends the account's credits. */
+  "instructions.test": "admin",
   /** Delete a core memory file. */
   "files.core.delete": "admin",
   /**

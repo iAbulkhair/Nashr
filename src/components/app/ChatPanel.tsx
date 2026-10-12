@@ -7,6 +7,7 @@ import type { ChatMsg, ChatItem } from "@/lib/chat";
 import type { HandoffItemStatus, HandoffView } from "@/lib/handoffs";
 import type { BrandProposal } from "@/lib/brand-proposals";
 import type { AwayProposal } from "@/lib/secretary-away";
+import type { InstructionProposalCard as InstructionProposalCardData } from "@/lib/instruction-proposals";
 import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
 import type { ChatStatus } from "@/lib/chat-allowance";
@@ -335,6 +336,51 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
 }
 
 /**
+ * A standing rule an agent proposed in chat (`propose_instruction`, src/lib/instruction-proposals.ts): nothing is in the
+ * agent instructions yet. The rule is the model's text, so it is shown as plain text (a React text node, never markup);
+ * Apply applies it as the owner's click (POST /api/instructions/proposals/{id}, `instructions.write`), Dismiss drops it.
+ */
+export function InstructionProposalCard({ p, t, lang, canWrite = true }: { p: InstructionProposalCardData; t: AppDict; lang: "ar" | "en"; /** `can(u, "instructions.write")`: a plain member sees the rule but cannot decide it */ canWrite?: boolean }) {
+  const C = t.instructionCard;
+  // A reloaded thread carries where the proposal stands now (history() reads it), so a decided card stays decided.
+  const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "gone" | "forbidden" | "busy" | "lockBusy" | "slow" | "full" | "many" | "plan" | "refused" | "error">(p.state === "applied" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
+  async function decide(decision: "apply" | "dismiss") {
+    setState("saving");
+    const r = await fetch(`/api/instructions/proposals/${p.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) }).catch(() => null);
+    if (!r) return setState("error");
+    if (r.ok) return setState(decision === "apply" ? "applied" : "dismissed");
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    // 409 carries the reason: another answer running (claim_busy) or the workspace lock taken (busy), a full list or plan (own messages), else a text today's rules refuse.
+    setState(r.status === 403 ? "forbidden" : r.status === 404 || r.status === 410 ? "gone" : r.status === 429 ? "slow" : j.error === "claim_busy" ? "busy" : j.error === "busy" ? "lockBusy" : j.error === "instructions_limit" ? "full" : j.error === "too_many" ? "many" : j.error === "per_agent_plan" ? "plan" : r.status === 409 ? "refused" : "error");
+  }
+  const who = p.agents === "all" ? C.forAll : C.forAgents.replace("{names}", p.agents.map((a) => t.agents[a].name).join(lang === "ar" ? "، " : ", "));
+  const done: Partial<Record<typeof state, string>> = { applied: C.applied, dismissed: C.dismissed, gone: C.gone, forbidden: t.team.errors.forbidden, busy: C.busy, lockBusy: C.lockBusy, many: C.many, slow: C.slow, full: C.full, plan: C.plan, refused: C.refused, error: C.error };
+  const closed = state === "applied" || state === "dismissed" || state === "gone";
+  return (
+    <article className="mt-3 overflow-hidden rounded-xl border border-lemon/40 bg-surface text-foreground">
+      <header className="flex items-center gap-2 border-b border-foreground/5 px-3 py-2 text-xs font-semibold">
+        <Icon name="shield" className="h-4 w-4 text-danger" />{canWrite ? C.title : C.titleMember}<span className="font-normal text-foreground-muted">· {who}</span>
+      </header>
+      <div className="grid gap-2 px-4 py-3 text-sm">
+        <p className="min-w-0 whitespace-pre-wrap break-words rounded-lg bg-foreground/5 p-2" dir="auto">{p.text}</p>
+        <p className="text-xs text-foreground-muted">{C.why}</p>
+      </div>
+      <footer className="flex flex-wrap items-center gap-2 border-t border-foreground/5 px-3 py-2 text-xs">
+        {done[state] && <span role="status" className={state === "applied" || state === "dismissed" ? "text-foreground" : "text-danger"}>{done[state]}</span>}
+        {state === "applied" && <Link href={`/${lang}/app/instructions`} className="underline">{C.review}</Link>}
+        {!closed && !canWrite && <span className="ms-auto text-foreground-muted">{t.inbox.waitAdmin}</span>}
+        {!closed && canWrite && (
+          <span className="ms-auto flex gap-1.5">
+            <button disabled={state === "saving"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{C.dismiss}</button>
+            <button disabled={state === "saving"} onClick={() => decide("apply")} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{C.apply}</button>
+          </span>
+        )}
+      </footer>
+    </article>
+  );
+}
+
+/**
  * An absence Reem proposed in chat (`contact_away`, src/lib/secretary-away.ts): nothing is on the away list yet. The
  * card shows the name as typed, the contact it matches on the open items, the last away day (or that the absence ends
  * now) and how many open items that contact owes; Save puts it on the list through the list's own checks, Dismiss drops
@@ -422,13 +468,14 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
     if (kind === "brand") out.add(lang === "ar" ? "حُدّث ملف العلامة" : "Brand file updated");
     else if (kind === "brandprop") out.add(lang === "ar" ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waits for your Save");
     else if (kind === "awayprop") out.add(lang === "ar" ? "غياب ينتظر حفظك" : "An absence waits for your Save");
+    else if (kind === "instrprop") out.add(lang === "ar" ? "قاعدة مقترحة تنتظر تطبيقك" : "A proposed rule waits for your Apply");
     else if (kind === "generated" || kind === "drafted") out.add(lang === "ar" ? `أُضيف ${n ?? ""} إلى صندوق الموافقات`.replace("  ", " ") : `${n ?? ""} added to approvals`.trim());
     else if (kind === "todo") out.add(lang === "ar" ? "حُدّثت قائمة مهامك" : "Your to-do list was updated");
   }
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canInstructions = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "instructions.write")`: a plain member sees a proposed instruction but cannot decide it */ canInstructions?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
@@ -711,7 +758,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           </div>
         )}
         {msgs.map((m, i) => (
-          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length)}>
+          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length)}>
             {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
             {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
             {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
@@ -719,6 +766,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             {m.handoff && <HandoffCard id={m.handoff.id} t={t} lang={lang} initial={handoffs?.[m.handoff.id]} canRun={canRun} canDecline={canDecline} canApprove={canApprove} onCredits={setCredits} />}
             {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
             {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
+            {m.instructionProposals && m.instructionProposals.length > 0 && <div className="mt-1">{m.instructionProposals.map((p) => <InstructionProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canInstructions} />)}</div>}
             {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-foreground-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
             {m.role === "assistant" && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
