@@ -247,25 +247,25 @@ export default function MediaControls({ task, lang, t, available, included, cred
       <div key={kind} className="grid gap-2">
         {models.length > 0 && sel && (
           <fieldset role="radiogroup" aria-describedby={hintId} className="grid gap-1.5">
-            <legend className="mb-1 text-xs font-semibold text-ink/70">{kind === "image" ? i.imageModel : i.videoModel}</legend>
+            <legend className="mb-1 text-xs font-semibold text-foreground-muted">{kind === "image" ? i.imageModel : i.videoModel}</legend>
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
               {models.map((m) => {
                 const off = why(m);
                 return (
-                  <label key={m.id} className={`flex items-start gap-2 rounded-lg border border-ink/15 bg-white p-2 text-xs has-checked:border-ink has-checked:bg-ink/5 ${off ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-                    <input type="radio" name={`${uid}-${kind}`} value={m.id} checked={sel.id === m.id} disabled={!!off} onChange={() => setPick((p) => ({ ...p, [kind]: m.id }))} className="mt-0.5 accent-ink" />
+                  <label key={m.id} className={`flex items-start gap-2 rounded-lg border border-border bg-surface p-2 text-xs has-checked:border-border-strong has-checked:bg-foreground/5 ${off ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+                    <input type="radio" name={`${uid}-${kind}`} value={m.id} checked={sel.id === m.id} disabled={!!off} onChange={() => setPick((p) => ({ ...p, [kind]: m.id }))} className="mt-0.5 accent-foreground" />
                     <span className="grid gap-0.5">
                       <span className="font-semibold">{m.label[lang]}</span>
-                      <span className="tnum text-muted">{m.credits} {plural(i.credits, m.credits)}</span>
+                      <span className="tnum text-foreground-muted">{m.credits} {plural(i.credits, m.credits)}</span>
                       {off && <span className="text-danger">{off}</span>}
                     </span>
                   </label>
                 );
               })}
             </div>
-            <p id={hintId} className="text-xs text-muted">
+            <p id={hintId} className="text-xs text-foreground-muted">
               {sel.hint[lang]}
-              {mediaImageFor(sel, task) && <span className="ms-1.5 inline-block rounded-full bg-ink/10 px-2 text-ink">{i.buildsOnImage}</span>}
+              {mediaImageFor(sel, task) && <span className="ms-1.5 inline-block rounded-full bg-foreground/10 px-2 text-foreground">{i.buildsOnImage}</span>}
               {sel.id === "vid-motion" && aspectFor("image", task.channel) === "square" && ` ${i.squareClip}`}
             </p>
           </fieldset>
@@ -282,13 +282,13 @@ export default function MediaControls({ task, lang, t, available, included, cred
             {rendering ? (kind === "image" ? i.imaging : i.videoing) : (has ? "↻ " : "") + (kind === "image" ? i.image : i.video)}
           </button>
         )}
-        {keeps && !rendering && !n && <p className="text-xs text-muted">{i.keepsImage}</p>}
-        {rendering && job && <p className="text-xs text-muted">{plural(i.charged, job.credits)}</p>}
-        {kind === "video" && jobId && <p className="text-xs text-muted">{i.videoSlow}</p>}
+        {keeps && !rendering && !n && <p className="text-xs text-foreground-muted">{i.keepsImage}</p>}
+        {rendering && job && <p className="text-xs text-foreground-muted">{plural(i.charged, job.credits)}</p>}
+        {kind === "video" && jobId && <p className="text-xs text-foreground-muted">{i.videoSlow}</p>}
         {n && (
           <p role="alert" className="text-xs text-danger">
             {n.text}
-            {n.billing && <> <Link href={`/${lang}/app/billing${n.topup ? "#topup" : ""}`} className="font-semibold underline">{n.topup ? i.topupLink : i.billingLink}</Link></>}
+            {n.billing && <> <Link href={`/${lang}/app/settings/billing${n.topup ? "#topup" : ""}`} className="font-semibold underline">{n.topup ? i.topupLink : i.billingLink}</Link></>}
           </p>
         )}
         {!rendering && !n && last && <p className="text-xs text-danger">{plural(i.mediaLastFailed, last.credits)} {errText(last.error)}</p>}
@@ -305,7 +305,7 @@ export default function MediaControls({ task, lang, t, available, included, cred
   const pausedText = made.length === 2 ? i.pausedNote : made[0] === "image" ? i.pausedNoteImage : made[0] === "video" ? i.pausedNoteVideo : null;
   return (
     <div className="grid w-full gap-4">
-      {paused && pausedText && <p className="text-xs text-muted">{pausedText}</p>}
+      {paused && pausedText && <p className="text-xs text-foreground-muted">{pausedText}</p>}
       {kinds.map(section)}
     </div>
   );

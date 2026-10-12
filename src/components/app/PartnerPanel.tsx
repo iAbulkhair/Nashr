@@ -54,54 +54,54 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
       setBusy(false);
     }
   }
-  const th = "p-2 text-start font-medium text-muted";
+  const th = "p-2 text-start font-medium text-foreground-muted";
   const td = "p-2";
   return (
     <div className="mx-auto grid max-w-3xl gap-5">
       <div>
         <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="partnerpanel-t1" />{S.title}</span></h1>
-        <p className="mt-2 text-ink/70">{S.sub}</p>
+        <p className="mt-2 text-foreground-muted">{S.sub}</p>
       </div>
 
       <div className="card grid gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs uppercase tracking-wide text-muted">{S.code}</p>
-          <code data-partner-code className="rounded bg-lilac px-3 py-1 font-mono text-lg font-bold" dir="ltr">{data.code}</code>
+          <p className="text-xs uppercase tracking-wide text-foreground-muted">{S.code}</p>
+          <code data-partner-code className="rounded bg-background-muted px-3 py-1 font-mono text-lg font-bold" dir="ltr">{data.code}</code>
           <CopyButton text={data.code} label={S.copy} done={S.copied} />
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted">{S.link}</p>
+          <p className="text-xs uppercase tracking-wide text-foreground-muted">{S.link}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <code className="flex-1 break-all rounded bg-lilac px-3 py-2 text-sm" dir="ltr">{link}</code>
+            <code className="flex-1 break-all rounded bg-background-muted px-3 py-2 text-sm" dir="ltr">{link}</code>
             <CopyButton text={link} label={S.copy} done={S.copied} />
           </div>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted">{S.shareTitle}</p>
-          <p className="mt-1 whitespace-pre-wrap rounded bg-lilac px-3 py-2 text-sm" dir="auto">{share}</p>
+          <p className="text-xs uppercase tracking-wide text-foreground-muted">{S.shareTitle}</p>
+          <p className="mt-1 whitespace-pre-wrap rounded bg-background-muted px-3 py-2 text-sm" dir="auto">{share}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <CopyButton text={share} label={S.copy} done={S.copied} />
             <a href={`https://wa.me/?text=${encodeURIComponent(share)}`} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">{S.shareWa}</a>
           </div>
         </div>
-        <p className="text-xs text-muted">{S.rules} <Link href={`/${lang}/affiliates/terms`} data-terms-link className="text-ink underline">{S.terms}</Link></p>
+        <p className="text-xs text-foreground-muted">{S.rules} <Link href={`/${lang}/affiliates/terms`} data-terms-link className="text-foreground underline">{S.terms}</Link></p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {([[S.stats.referrals, String(data.referrals.length)], [S.stats.pending, sarText(data.pending)], [S.stats.payable, sarText(data.payable)], [S.stats.paid, sarText(data.paid)]] as const).map(([l, v]) => (
-          <div key={l} className="card card-sm"><p className="text-xs text-muted">{l}</p><p className="tnum font-display text-2xl font-bold text-ink" dir="ltr">{v}</p></div>
+          <div key={l} className="card card-sm"><p className="text-xs text-foreground-muted">{l}</p><p className="tnum font-display text-2xl font-bold text-foreground" dir="ltr">{v}</p></div>
         ))}
       </div>
-      {data.pending > 0 && <p className="-mt-3 text-xs text-muted">{S.pendingNote}</p>}
+      {data.pending > 0 && <p className="-mt-3 text-xs text-foreground-muted">{S.pendingNote}</p>}
 
       <section className="card">
         <h2 className="font-display text-lg font-bold">{S.referrals}</h2>
-        {data.referrals.length === 0 ? <p className="mt-2 text-sm text-muted">{S.refsEmpty}</p> : (
+        {data.referrals.length === 0 ? <p className="mt-2 text-sm text-foreground-muted">{S.refsEmpty}</p> : (
           <div className="mt-2 overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr><th className={th}>{S.refCols.label}</th><th className={th}>{S.refCols.signedUp}</th><th className={th}>{S.refCols.status}</th><th className={th}>{S.refCols.months}</th></tr></thead>
               <tbody>{data.referrals.map((r) => (
-                <tr key={r.label} className="border-t border-ink/5"><td className={`${td} font-mono`} dir="ltr">{r.label}</td><td className={`${td} tnum`} dir="ltr">{r.signedUpOn}</td><td className={td}>{S.status[r.status]}</td><td className={`${td} tnum`}>{r.months}</td></tr>
+                <tr key={r.label} className="border-t border-foreground/5"><td className={`${td} font-mono`} dir="ltr">{r.label}</td><td className={`${td} tnum`} dir="ltr">{r.signedUpOn}</td><td className={td}>{S.status[r.status]}</td><td className={`${td} tnum`}>{r.months}</td></tr>
               ))}</tbody>
             </table>
           </div>
@@ -110,12 +110,12 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
 
       <section className="card">
         <h2 className="font-display text-lg font-bold">{S.ledger}</h2>
-        {data.commissions.length === 0 ? <p className="mt-2 text-sm text-muted">{S.ledgerEmpty}</p> : (
+        {data.commissions.length === 0 ? <p className="mt-2 text-sm text-foreground-muted">{S.ledgerEmpty}</p> : (
           <div className="mt-2 overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr><th className={th}>{S.ledgerCols.label}</th><th className={th}>{S.ledgerCols.date}</th><th className={th}>{S.ledgerCols.base}</th><th className={th}>{S.ledgerCols.sar}</th></tr></thead>
               <tbody>{data.commissions.map((c, i) => (
-                <tr key={`${c.label}-${c.paymentDate}-${i}`} className={`border-t border-ink/5 ${c.voided ? "text-muted line-through" : ""}`}><td className={`${td} font-mono`} dir="ltr">{c.label}</td><td className={`${td} tnum`} dir="ltr">{c.paymentDate}</td><td className={`${td} tnum`} dir="ltr">{sarText(c.baseSar)}</td><td className={`${td} tnum`} dir="ltr">{sarText(c.sar)}{c.voided ? ` (${S.voided})` : ""}</td></tr>
+                <tr key={`${c.label}-${c.paymentDate}-${i}`} className={`border-t border-foreground/5 ${c.voided ? "text-foreground-muted line-through" : ""}`}><td className={`${td} font-mono`} dir="ltr">{c.label}</td><td className={`${td} tnum`} dir="ltr">{c.paymentDate}</td><td className={`${td} tnum`} dir="ltr">{sarText(c.baseSar)}</td><td className={`${td} tnum`} dir="ltr">{sarText(c.sar)}{c.voided ? ` (${S.voided})` : ""}</td></tr>
               ))}</tbody>
             </table>
           </div>
@@ -124,12 +124,12 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
 
       <section className="card">
         <h2 className="font-display text-lg font-bold">{S.payouts}</h2>
-        {data.payouts.length === 0 ? <p className="mt-2 text-sm text-muted">{S.payoutsEmpty}</p> : (
+        {data.payouts.length === 0 ? <p className="mt-2 text-sm text-foreground-muted">{S.payoutsEmpty}</p> : (
           <div className="mt-2 overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr><th className={th}>{S.payoutCols.date}</th><th className={th}>{S.payoutCols.sar}</th><th className={th}>{S.payoutCols.vat}</th><th className={th}>{S.payoutCols.reference}</th></tr></thead>
               <tbody>{data.payouts.map((p, i) => (
-                <tr key={`${p.date}-${i}`} className={`border-t border-ink/5 ${p.voided ? "text-muted line-through" : ""}`}><td className={`${td} tnum`} dir="ltr">{p.date}</td><td className={`${td} tnum`} dir="ltr">{sarText(p.sar)}</td><td className={`${td} tnum`} dir="ltr">{p.vatSar ? sarText(p.vatSar) : "—"}</td><td className={td} dir="auto">{p.reference || "—"}{p.voided ? ` (${S.voided})` : ""}</td></tr>
+                <tr key={`${p.date}-${i}`} className={`border-t border-foreground/5 ${p.voided ? "text-foreground-muted line-through" : ""}`}><td className={`${td} tnum`} dir="ltr">{p.date}</td><td className={`${td} tnum`} dir="ltr">{sarText(p.sar)}</td><td className={`${td} tnum`} dir="ltr">{p.vatSar ? sarText(p.vatSar) : "—"}</td><td className={td} dir="auto">{p.reference || "—"}{p.voided ? ` (${S.voided})` : ""}</td></tr>
               ))}</tbody>
             </table>
           </div>
@@ -138,15 +138,15 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
 
       <section className="card">
         <h2 className="font-display text-lg font-bold">{S.bank}</h2>
-        <p className="mt-1 text-sm text-muted">{S.bankNote}</p>
-        <p data-tax-note className="mt-1 text-sm text-muted">{S.taxNote}</p>
+        <p className="mt-1 text-sm text-foreground-muted">{S.bankNote}</p>
+        <p data-tax-note className="mt-1 text-sm text-foreground-muted">{S.taxNote}</p>
         {bank && <p data-bank-masked className="mt-2 text-sm"><span dir="auto">{bank.holder}</span> · <span className="font-mono" dir="ltr">{bank.iban}</span>{bank.country ? <> · <span>{countries.find(([c]) => c === bank.country)?.[1] ?? bank.country}</span></> : null}{bank.taxNumber ? <> · <span className="font-mono" dir="ltr">{bank.taxNumber}</span></> : null}</p>}
         {bank && !bank.confirmed && <p data-bank-pending className="mt-1 text-xs text-danger">{S.bankPending}</p>}
         {bankEditable ? (
           <form onSubmit={saveBank} className="mt-3 grid gap-2 sm:max-w-md">
             <input value={holder} onChange={(e) => setHolder(e.target.value)} required maxLength={80} autoComplete="name" placeholder={S.holder} aria-label={S.holder} className="input" />
             <input value={iban} onChange={(e) => setIban(e.target.value)} required maxLength={42} autoComplete="off" dir="ltr" placeholder={S.iban} aria-label={S.iban} className="input font-mono" />
-            <label className="grid gap-1 text-sm"><span className="text-muted">{S.country}</span>
+            <label className="grid gap-1 text-sm"><span className="text-foreground-muted">{S.country}</span>
               <select value={country} onChange={(e) => setCountry(e.target.value)} required aria-label={S.country} className="input">
                 {countries.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
               </select>
@@ -154,10 +154,10 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
             <input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} maxLength={30} autoComplete="off" dir="ltr" placeholder={S.taxNumber} aria-label={S.taxNumber} className="input font-mono" />
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="vatRegistered" checked={vatRegistered} onChange={(e) => setVatRegistered(e.target.checked)} className="mt-1" /><span>{S.vatRegistered}</span></label>
             <button disabled={busy} className="btn btn-primary">{S.save}</button>
-            {msg && <p className="text-sm text-ink">{msg}</p>}
+            {msg && <p className="text-sm text-foreground">{msg}</p>}
             {err && <p role="alert" className="text-sm text-danger">{err}</p>}
           </form>
-        ) : <p className="mt-2 text-xs text-muted">{S.errors.forbidden}</p>}
+        ) : <p className="mt-2 text-xs text-foreground-muted">{S.errors.forbidden}</p>}
       </section>
     </div>
   );

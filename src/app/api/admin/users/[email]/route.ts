@@ -5,9 +5,11 @@ import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, 
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
 import { revokeFeeds } from "@/lib/feed-token";
+import { revokeCalendarLinks } from "@/lib/secretary-gcal";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
 import { chatStatus } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 import { entitlementView } from "@/lib/entitlements";
 import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { listConnections } from "@/lib/connectors/store";
@@ -15,12 +17,14 @@ import { listBrands, scopeFor } from "@/lib/brands";
 import { listConversations } from "@/lib/conversations";
 import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
-import { CAPS, db, pushCapped } from "@/lib/db";
+import { db } from "@/lib/db";
 import { listActivity } from "@/lib/activity";
 import { cookies } from "next/headers";
 import { forceRemoveMember, getMember, membersKey, onRoster } from "@/lib/team";
 import { unfinishedRefunds } from "@/lib/partners";
 import { sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
+import { TRIAL_EXTEND_MAX_DAYS, parseImpersonateMinutes } from "@/lib/admin-input";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +51,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     getUsage(u.email),
     // The chat allowance (a trial's for the whole trial, which the month's usage does not keep): the raw count
     // (`counted`), the messages continued on credits this month and the credits they were billed. Rule 316.
-    chatStatus(u),
+    chatStatus(u, route("chat").model),
     listConnections(u.email),
     Promise.all(scopes.map((s) => listConversations(s))).then((x) => x.flat().length),
     db.lrange(`referrals:${u.email}`, 0, 99).then((x) => x.length),
@@ -70,7 +74,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   });
 }
 
-type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember" | "resendVerification"; days?: number; lang?: "ar" | "en"; reason?: string };
+type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember" | "resendVerification"; days?: number; lang?: "ar" | "en"; reason?: string; minutes?: unknown };
 
 /** POST actions on one user. Every action is logged to admin:log with WHO did it: the founder's email, or "key". */
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
@@ -80,7 +84,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   const email = normalizeEmail(decodeURIComponent(raw)); // the same normalized key for lookup, locks and deletion
   const u = await getUser(email);
   const b = (await req.json().catch(() => ({}))) as Action;
-  const log = (what: string, extra: Record<string, unknown> = {}) => pushCapped("admin:log", JSON.stringify({ actor: who, email, what, reason: (b.reason ?? "").slice(0, 200) || undefined, ...extra, at: new Date().toISOString() }), CAPS.adminLog);
+  // Every action here asks a reason in the console, so the server asks it too (rule 1185).
+  const noReason = reasonRefused(b.reason);
+  if (noReason) return noReason;
+  const log = (what: string, extra: Record<string, unknown> = {}) => {
+    const { before, after, action, ...rest } = extra;
+    return adminAudit({ actor: who, section: "users", target: email, what, reason: b.reason, before, after, ...(typeof action === "string" ? { action } : {}), ...(Object.keys(rest).length ? { extra: rest } : {}) });
+  };
   if (!u) {
     // A member login: the one action is removing it (the owner's own removal, done by support), which frees the address.
     const m = await getMember(email);
@@ -94,12 +104,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   switch (b.action) {
     case "suspend":
     case "unsuspend": {
+      const was = !!u.suspended;
       const user = await withUserLock(email, async (x) => { x.suspended = b.action === "suspend"; await saveUser(x); return x; });
-      await log(b.action);
+      await log(b.action, { before: { suspended: was }, after: { suspended: !!user.suspended } });
       return NextResponse.json({ ok: true, suspended: !!user.suspended });
     }
     case "extendTrial": {
-      const days = Math.max(1, Math.min(90, Math.trunc(b.days ?? 7)));
+      const days = Math.max(1, Math.min(TRIAL_EXTEND_MAX_DAYS, Math.trunc(b.days ?? 7)));
       const prevTrial = String(u.trialEnds);
       const user = await withUserLock(email, async (x) => {
         const base = new Date(x.trialEnds).getTime() > Date.now() ? new Date(x.trialEnds) : new Date();
@@ -116,31 +127,40 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       await withUserLock(email, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
       // The owner's calendar feed and booking links and every member's, as every member's session just ended.
       const roster = await db.smembers(membersKey(email));
-      await Promise.all([revokeAllMcp(email), revokeFeeds([email, ...roster]), revokeBooks([email, ...roster])]);
+      await Promise.all([revokeAllMcp(email), revokeFeeds([email, ...roster]), revokeBooks([email, ...roster]), revokeCalendarLinks(email)]);
       await log("resetPassword");
       // Shown once to the admin; never stored in clear.
       return NextResponse.json({ ok: true, tempPassword: temp });
     }
     case "setLang": {
       if (b.lang !== "ar" && b.lang !== "en") return NextResponse.json({ ok: false, error: "bad_lang" }, { status: 400 });
+      const was = u.lang;
       await withUserLock(email, async (x) => { x.lang = b.lang!; await saveUser(x); });
+      await log(`setLang ${b.lang}`, { before: { lang: was }, after: { lang: b.lang } });
       return NextResponse.json({ ok: true });
     }
     case "impersonate": {
-      const jar = await cookies();
-      const mine = jar.get("nashr_session")?.value;
-      if (mine) jar.set("nashr_return", mine, await sessionCookie(60 * 60 * 2));
-      jar.set("nashr_impersonate", email, await sessionCookie(60 * 60 * 2));
-      // The session record carries the founder (`imp`): it resolves to actor kind "founder", which never passes the
-      // founder console and is refused account delete, password change, invites, role changes, MCP tokens and OAuth.
+      // The founder picks 15, 60 or 120 minutes in the console (rule 1177); a request without `minutes` keeps the old
+      // two hours. The session record, its cookie and the helper cookies all end at that moment.
+      const minutes = parseImpersonateMinutes(b.minutes);
+      if (!minutes) return NextResponse.json({ ok: false, error: "bad_minutes" }, { status: 400 });
+      const ttl = minutes * 60;
       // Opened with the console key: the session is tied to that key and key session, so "End key session" and a key
       // rotation end it too (rule 429).
       const bind = who === "key" ? await keyImpBinding() : null;
-      await createSession(email, 60 * 60 * 2, { imp: who, ...(bind ?? {}) });
-      // 2 hours at most; one opened from a key session also ends with it: after 15 minutes without a request on either
-      // side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
-      await log("impersonate", { expiresInMin: 120, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
-      return NextResponse.json({ ok: true, redirect: `/${u.lang}/app` });
+      // The audit row is written BEFORE the session exists (rule 1187): when the log cannot be written, no view of the
+      // account opens. `minutes` at most; one opened from a key session also ends with it: after 15 minutes without a
+      // request on either side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
+      await log("impersonate", { action: "impersonate.start", expiresInMin: minutes, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
+      const jar = await cookies();
+      const mine = jar.get("nashr_session")?.value;
+      if (mine) jar.set("nashr_return", mine, await sessionCookie(ttl));
+      jar.set("nashr_impersonate", email, await sessionCookie(ttl));
+      // The session record carries the founder (`imp`): it resolves to actor kind "founder", which never passes the
+      // founder console and is refused account delete, password change, invites, role changes, MCP tokens and OAuth.
+      await createSession(email, ttl, { imp: who, ...(bind ?? {}) });
+      // The redirect is built from a fixed list, never from the stored value as it is (rule 1188).
+      return NextResponse.json({ ok: true, redirect: `/${u.lang === "en" ? "en" : "ar"}/app` });
     }
     case "resendVerification": {
       // Rule 777: support mails a fresh code to the account's own address, through the same refusals as the owner's

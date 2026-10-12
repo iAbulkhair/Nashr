@@ -89,14 +89,14 @@ export default function LimitModal({ t, lang, owner = true, governs = true, topu
   // Chat turned off for the account (an allowance of 0): no page the owner can open fixes it, so only the OK button.
   const act = may && !(kind === "chat" && open.allowance === 0);
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="limit-title" className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={() => setOpen(null)}>
-      <div className="card w-full max-w-md border-ink p-8 text-center" onClick={(e) => e.stopPropagation()}>
-        <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border-[1.5px] border-ink bg-lemon font-display text-2xl font-bold text-ink" aria-hidden>ذ</span>
+    <div role="dialog" aria-modal="true" aria-labelledby="limit-title" className="fixed inset-0 z-[60] grid place-items-center bg-overlay p-4" onClick={() => setOpen(null)}>
+      <div className="card w-full max-w-md border-border-strong p-8 text-center" onClick={(e) => e.stopPropagation()}>
+        <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border-[1.5px] border-border-strong bg-lemon font-display text-2xl font-bold text-accent-foreground" aria-hidden>ذ</span>
         <h2 id="limit-title" className="mt-5 font-display text-2xl font-bold">{title}</h2>
         <p className="page-sub">{body}</p>
         <div className="mt-6 flex justify-center gap-3">
           <button id="limit-later" onClick={() => setOpen(null)} className={`btn ${act ? "btn-secondary" : "btn-primary"}`}>{act ? L.later : L.ok}</button>
-          {!act ? null : kind === "agent_cap" ? <Link href={`/${lang}/app/governance`} className="btn btn-primary">{L.governance}</Link> : <Link href={`/${lang}/app/billing${topup ? "#topup" : ""}`} className="btn btn-primary">{cta}</Link>}
+          {!act ? null : kind === "agent_cap" ? <Link href={`/${lang}/app/settings/governance`} className="btn btn-primary">{L.governance}</Link> : <Link href={`/${lang}/app/settings/billing${topup ? "#topup" : ""}`} className="btn btn-primary">{cta}</Link>}
         </div>
       </div>
     </div>

@@ -11,21 +11,13 @@ import { dateFormat } from "@/lib/dates";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
-
-/** `label` is the switch's accessible name (its row's title): a screen reader announces what it turns on, not "switch, off". */
-function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink" : "bg-ink/20"}`}>
-      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
-    </button>
-  );
-}
+import Switch from "@/components/ui/Switch";
 
 /** Declared at module scope: a component created during render is remounted on every keystroke and loses focus. */
 function Row({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
   return (
       <div className="flex items-start justify-between gap-6 card">
-        <div><h2 className="font-display font-medium">{title}</h2><p className="mt-1 text-sm text-muted">{sub}</p></div>
+        <div><h2 className="font-display font-medium">{title}</h2><p className="mt-1 text-sm text-foreground-muted">{sub}</p></div>
         <div className="shrink-0">{children}</div>
       </div>
   );
@@ -190,30 +182,30 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
   return (
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="governancepanel-t1" />{g.title}</span></h1>
-      <p className="mt-2 text-ink/70">{g.sub}</p>
+      <p className="mt-2 text-foreground-muted">{g.sub}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.owner} />}
       <fieldset disabled={readOnly} className="mt-6 grid min-w-0 gap-4">
         <div className="card">
           <h2 className="font-display font-medium">{g.autoApprove}</h2>
-          <p className="mt-1 text-sm text-muted">{g.autoApproveSub}</p>
+          <p className="mt-1 text-sm text-foreground-muted">{g.autoApproveSub}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {(Object.keys(TASK_COST) as TaskType[]).map((k) => {
               const on = !!gov.autoApprove[k];
-              return <button key={k} onClick={() => setGov({ ...gov, autoApprove: { ...gov.autoApprove, [k]: !on } })} className={`rounded-full border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${on ? "border-ink bg-ink text-lilac" : "border-ink/20"}`}>{t.generate.types[k].t}</button>;
+              return <button key={k} onClick={() => setGov({ ...gov, autoApprove: { ...gov.autoApprove, [k]: !on } })} className={`rounded-full border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${on ? "border-border-strong bg-inverse text-inverse-muted" : "border-border"}`}>{t.generate.types[k].t}</button>;
             })}
           </div>
         </div>
-        <Row title={g.reviewer} sub={g.reviewerSub}><Toggle label={g.reviewer} on={gov.reviewer} onChange={(v) => setGov({ ...gov, reviewer: v })} /></Row>
+        <Row title={g.reviewer} sub={g.reviewerSub}><Switch label={g.reviewer} checked={gov.reviewer} onChange={(v) => setGov({ ...gov, reviewer: v })} /></Row>
         {/* A record saved before the switch existed has no value: the server reads it as on, and so does the page. */}
-        <Row title={g.crossReview} sub={g.crossReviewSub}><Toggle label={g.crossReview} on={gov.crossReview !== false} onChange={(v) => setGov({ ...gov, crossReview: v })} /></Row>
-        <Row title={g.learning} sub={g.learningSub}><Toggle label={g.learning} on={gov.learning} onChange={(v) => setGov({ ...gov, learning: v })} /></Row>
-        <Row title={g.noEmDash} sub={g.noEmDashSub}><Toggle label={g.noEmDash} on={gov.noEmDash} onChange={(v) => setGov({ ...gov, noEmDash: v })} /></Row>
-        <Row title={g.weeklyCap} sub={g.weeklyCapSub}><input type="number" min={0} max={200} value={gov.weeklyCap} onChange={(e) => setGov({ ...gov, weeklyCap: Number(e.target.value) })} className="w-24 rounded border border-ink/15 px-2 py-1 text-sm" dir="ltr" /></Row>
-        <Row title={g.notify} sub={g.notifySub}><input type="number" min={0} max={1440} value={gov.notifyMinutes} onChange={(e) => setGov({ ...gov, notifyMinutes: Number(e.target.value) })} className="w-24 rounded border border-ink/15 px-2 py-1 text-sm" dir="ltr" /></Row>
+        <Row title={g.crossReview} sub={g.crossReviewSub}><Switch label={g.crossReview} checked={gov.crossReview !== false} onChange={(v) => setGov({ ...gov, crossReview: v })} /></Row>
+        <Row title={g.learning} sub={g.learningSub}><Switch label={g.learning} checked={gov.learning} onChange={(v) => setGov({ ...gov, learning: v })} /></Row>
+        <Row title={g.noEmDash} sub={g.noEmDashSub}><Switch label={g.noEmDash} checked={gov.noEmDash} onChange={(v) => setGov({ ...gov, noEmDash: v })} /></Row>
+        <Row title={g.weeklyCap} sub={g.weeklyCapSub}><input type="number" min={0} max={200} value={gov.weeklyCap} onChange={(e) => setGov({ ...gov, weeklyCap: Number(e.target.value) })} className="w-24 rounded border border-border px-2 py-1 text-sm" dir="ltr" /></Row>
+        <Row title={g.notify} sub={g.notifySub}><input type="number" min={0} max={1440} value={gov.notifyMinutes} onChange={(e) => setGov({ ...gov, notifyMinutes: Number(e.target.value) })} className="w-24 rounded border border-border px-2 py-1 text-sm" dir="ltr" /></Row>
         <div className="card">
           <h2 className="font-display font-medium">{g.agentCaps}</h2>
-          <p className="mt-1 text-sm text-muted">{g.agentCapsSub}</p>
-          <ul className="mt-3 divide-y divide-ink/10">
+          <p className="mt-1 text-sm text-foreground-muted">{g.agentCapsSub}</p>
+          <ul className="mt-3 divide-y divide-foreground/10">
             {CAPPED.map((id) => {
               const used = spend[id] ?? 0;
               const cap = gov.agentCaps?.[id];
@@ -222,8 +214,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
               return (
                 <li key={id} className="flex flex-wrap items-center justify-between gap-3 py-2">
                   <div>
-                    <p className="font-medium">{t.agents[id].name} <span className="text-sm font-normal text-muted">· {t.agents[id].role}</span></p>
-                    <p className="mt-0.5 flex items-center gap-2 text-xs text-muted">
+                    <p className="font-medium">{t.agents[id].name} <span className="text-sm font-normal text-foreground-muted">· {t.agents[id].role}</span></p>
+                    <p className="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
                       <span>{g.usedThisMonth.replace("{n}", String(used))}</span>
                       {ratio >= 1 ? <span className="badge badge-danger">{g.capReached}</span> : ratio >= 0.8 ? <span className="badge badge-accent">{g.capNear}</span> : null}
                     </p>
@@ -235,11 +227,11 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
           </ul>
         </div>
         {/* After the caps it depends on. Off for a record saved before the switch existed. Turning it on asks first. */}
-        <Row title={g.autoHandoff} sub={g.autoHandoffSub}><Toggle label={g.autoHandoff} on={gov.majedAutoHandoff === true} onChange={toggleAuto} disabled={!!restoring} /></Row>
+        <Row title={g.autoHandoff} sub={g.autoHandoffSub}><Switch label={g.autoHandoff} checked={gov.majedAutoHandoff === true} onChange={toggleAuto} disabled={!!restoring} /></Row>
         {!readOnly && (
           <div className="flex items-center gap-3">
             <button onClick={save} disabled={busy || !!restoring} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>
-            {msg && <span role="status" className="text-sm text-ink">{msg}</span>}
+            {msg && <span role="status" className="text-sm text-foreground">{msg}</span>}
             {err && <span role="alert" className="text-sm text-danger">{err}</span>}
           </div>
         )}
@@ -248,17 +240,17 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       {gov.majedAutoHandoff === true && queue.length > 0 && (
         <section className="card mt-4" aria-labelledby="gov-auto-queue">
           <h2 id="gov-auto-queue" className="font-display font-medium">{g.autoQueue}</h2>
-          <p className="mt-1 text-sm text-muted">{g.autoQueueSub}</p>
-          {queueMsg && <p role="status" className="mt-2 text-sm text-ink">{queueMsg}</p>}
+          <p className="mt-1 text-sm text-foreground-muted">{g.autoQueueSub}</p>
+          {queueMsg && <p role="status" className="mt-2 text-sm text-foreground">{queueMsg}</p>}
           {queueErr && <p role="alert" className="mt-2 text-sm text-danger">{queueErr}</p>}
-          <ul className="mt-3 divide-y divide-ink/10">
+          <ul className="mt-3 divide-y divide-foreground/10">
             {queue.map((q) => {
               const k = `${q.id}:${q.item}`;
               return (
                 <li key={k} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{fill(t.handoff.to, { agent: t.agents[q.agent].name, type: t.generate.types[q.type].t })}</p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-foreground-muted">
                       <span className="tnum">{fill(t.handoff.cost, { n: q.cost })}</span>
                       <time id={`gov-q-${k}`} dateTime={q.createdAt} suppressHydrationWarning>{when.format(new Date(q.createdAt))} UTC</time>
                       <Link href={`/${lang}/app/chat${q.conv ? `?conv=${q.conv}` : ""}`} className="underline">{g.autoQueueOpen}</Link>
@@ -274,28 +266,28 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       {/* Outside the fieldset: every role reads the history; only the owner gets Restore (the server checks it too). */}
       <section className="card mt-4" aria-labelledby="gov-history">
         <h2 id="gov-history" className="font-display font-medium">{g.history}</h2>
-        <p className="mt-1 text-sm text-muted">{g.historySub}</p>
-        {histMsg && <p role="status" className="mt-2 text-sm text-ink">{histMsg}</p>}
+        <p className="mt-1 text-sm text-foreground-muted">{g.historySub}</p>
+        {histMsg && <p role="status" className="mt-2 text-sm text-foreground">{histMsg}</p>}
         {histErr && <p role="alert" className="mt-2 text-sm text-danger">{histErr}</p>}
         {history.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">{g.historyEmpty}</p>
+          <p className="mt-3 text-sm text-foreground-muted">{g.historyEmpty}</p>
         ) : (
-          <ul className="mt-3 divide-y divide-ink/10">
+          <ul className="mt-3 divide-y divide-foreground/10">
             {history.map((r) => (
               <li key={r.id} className="py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm">
                     <time id={`gov-rev-${r.id}`} dateTime={r.at} suppressHydrationWarning>{when.format(new Date(r.at))} UTC</time>
-                    <span className="text-muted"> · </span>
+                    <span className="text-foreground-muted"> · </span>
                     <span dir="auto">{who(r.by)}</span>
                     {r.rollbackOf && <span className="ms-2 badge">{g.restoreOf}</span>}
                   </p>
                   {!readOnly && <button type="button" onClick={() => restore(r.id)} disabled={busy || !!restoring} aria-describedby={`gov-rev-${r.id}`} className="btn btn-secondary btn-xs">{restoring === r.id ? g.restoring : g.restore}</button>}
                 </div>
-                <ul className="mt-1 grid gap-0.5 text-xs text-ink/70">
+                <ul className="mt-1 grid gap-0.5 text-xs text-foreground-muted">
                   {r.changes.map((c) => (
                     <li key={c.path}>
-                      <span dir="auto">{label(c.path)}</span>: <bdi>{value(c.path, c.before)}</bdi> {g.arrow} <bdi className="font-medium text-ink">{value(c.path, c.after)}</bdi>
+                      <span dir="auto">{label(c.path)}</span>: <bdi>{value(c.path, c.before)}</bdi> {g.arrow} <bdi className="font-medium text-foreground">{value(c.path, c.after)}</bdi>
                     </li>
                   ))}
                 </ul>

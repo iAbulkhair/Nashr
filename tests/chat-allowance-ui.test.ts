@@ -145,7 +145,7 @@ describe("the messages-left line under the chat box (rule 315)", () => {
       const t = appDict[lang];
       const html = renderToStaticMarkup(createElement(ChatPanel, { ...base, t, lang, chat: status(S, 40) }));
       expect(html, lang).toContain(esc(chatLine(t, status(S, 40)).text));
-      expect(html, lang).toMatch(/class="tnum mt-2 text-xs text-ink\/70" dir="auto">/);
+      expect(html, lang).toMatch(/class="tnum mt-2 text-xs text-foreground-muted" dir="auto">/);
       const low = renderToStaticMarkup(createElement(ChatPanel, { ...base, t, lang, chat: status(S, S) }));
       expect(low, lang).toContain('class="tnum mt-2 text-xs font-semibold text-danger" dir="auto">');
       expect(renderToStaticMarkup(createElement(ChatPanel, { ...base, t, lang })), lang).not.toContain('class="tnum mt-2 text-xs');
@@ -197,7 +197,9 @@ describe("the messages-left line under the chat box (rule 315)", () => {
     // The chat page passes it in both branches (first run and the workspace thread).
     const page = readFileSync("src/app/[lang]/app/chat/page.tsx", "utf8");
     expect(page.match(/chat=\{chat\}/g)?.length).toBe(2);
-    expect(page).toContain("chatStatus(u)");
+    expect(page).toContain('chatStatus(u, route("chat").model)');
+    // The workspace thread shows the hold of the conversation's own model (its pick when route() accepts it).
+    expect(page).toContain("chatStatus(u, chatRouteFor(u, c).model)");
   });
 });
 
@@ -317,7 +319,8 @@ describe("the limit dialog's chat kinds (rule 315)", () => {
     const src = readFileSync("src/components/app/LimitModal.tsx", "utf8");
     expect(src).toContain('const cta = topup ? L.topup : (kind === "chat" && open.period !== "trial") || kind === "chat_credits" ? L.billing : L.plans;');
     // Out of credits on a paid plan, the same page at its top-up packs (rule 450, tests/topups.test.ts).
-    expect(src).toContain("<Link href={`/${lang}/app/billing${topup ? \"#topup\" : \"\"}`} className=\"btn btn-primary\">{cta}</Link>");
+    // Settings, Billing since UI/UX phase 3 (rule 1141); the old /app/billing redirects there for one release.
+    expect(src).toContain("<Link href={`/${lang}/app/settings/billing${topup ? \"#topup\" : \"\"}`} className=\"btn btn-primary\">{cta}</Link>");
   });
 });
 

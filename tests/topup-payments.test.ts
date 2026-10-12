@@ -12,7 +12,7 @@ import { addPaidTopup, approvePartner, paymentsView, recordPayment, voidPayment,
 import { lotsOf, monthlyCredits, parseTopup, creditSplit } from "@/lib/topups";
 import { appDict } from "@/lib/app-i18n";
 import { noCreditsText } from "@/components/app/LimitModal";
-import ProfilePanel from "@/components/app/ProfilePanel";
+import CreditUsageCard from "@/components/app/settings/CreditUsageCard";
 import { shortOfCredits } from "@/components/app/MediaControls";
 import { firstMonthPriceSar } from "@/lib/pricing";
 import * as topupsRoute from "@/app/api/admin/topups/route";
@@ -260,7 +260,7 @@ describe("voiding a pack voids its payment and the commission; a live pack's pay
     expect(src).toContain("if (j.ok || (r.status >= 400 && r.status < 500)) pendingTopup.current = null;");
     expect(src).toContain("key={`${sel.user.email}:${payTick}`}");
     expect(src).toContain("data-topup-pay-note");
-    const panel = readFileSync("src/components/app/PaymentsPanel.tsx", "utf8");
+    const panel = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     expect(panel).toContain("p.topup && view.livePacks?.includes(p.topup.lot)");
     expect(panel).toContain("data-topup-note");
     for (const lang of ["en", "ar"] as const) {
@@ -270,7 +270,8 @@ describe("voiding a pack voids its payment and the commission; a live pack's pay
   });
 });
 
-describe("the profile shows plan credits and top-up credits apart, with each pack's expiry (rule 456)", () => {
+// The credit card moved from the old profile page to Settings, Billing in UI/UX phase 3 (rule 1153), unchanged.
+describe("the credit card shows plan credits and top-up credits apart, with each pack's expiry (rule 456)", () => {
   it("creditSplit: the plan part is the rest of the balance, packs sorted by expiry, never more than the balance", () => {
     const soon = { credits: 300, left: 120, expiresAt: "2026-11-01T00:00:00.000Z" };
     const late = { credits: 1000, left: 1000, expiresAt: "2026-12-30T00:00:00.000Z" };
@@ -289,7 +290,7 @@ describe("the profile shows plan credits and top-up credits apart, with each pac
     brand: { name: "Roastery", website: "roastery.example", sitemap: "", products: "Beans", audience: "Locals", tone: "warm", valueProp: "", social: {} },
   });
   const render = (lang: "en" | "ar", topups?: { credits: number; left: number; expiresAt: string }[]) =>
-    renderToStaticMarkup(createElement(ProfilePanel, { t: appDict[lang], lang, initial: initial(topups) }));
+    renderToStaticMarkup(createElement(CreditUsageCard, { t: appDict[lang], lang, user: initial(topups).user, month: { usage: {}, images: 0, mediaCredits: 0, nextReset: "2026-11-01" }, allowance: 300 }));
 
   it("the credit card splits the balance and dates each pack, in both languages; without packs it shows the balance alone", () => {
     const packs = [{ credits: 1000, left: 1000, expiresAt: "2026-12-30T10:00:00.000Z" }, { credits: 300, left: 120, expiresAt: "2026-11-15T10:00:00.000Z" }];
@@ -367,8 +368,10 @@ describe("out of credits, the line fits the plan and the role (rule 457)", () =>
 
   it("the console's deal copy says a deal sets the month's plan credits and live packs are kept", async () => {
     const src = adminConsoleSrc();
-    expect(src).toContain("OK sets the month's plan credits to the deal's credits today (live top-up packs keep what is left in them)");
-    expect(src).toContain("«موافق» يجعل كريدت الخطة الشهري كريدت العقد اليوم (وتحتفظ باقات الشحن السارية بما بقي فيها)");
+    // Since rule 1176 the choice is the deal form's "apply now" box, not an OK/Cancel question.
+    expect(src).toContain("Apply now: the month's plan credits become the deal's credits today (live top-up packs keep what is left in them)");
+    expect(src).toContain("طبّقه الآن: يصبح كريدت الخطة الشهري كريدت العقد اليوم (وتحتفظ باقات الشحن السارية بما بقي فيها)");
+    expect(src).toContain('...(u.deal ? [{ name: "applyNow", label: UC.dealApplyNow, kind: "check" as const }] : []),');
     expect(src).not.toContain("OK sets the balance to the deal's credits");
     expect(src).toContain("the month's plan credits become the deal's credits; live top-up packs are kept");
   });
@@ -415,7 +418,7 @@ describe("a pack's payment date is the Riyadh day, as for every recorded payment
     expect(parseTopup(body("2026-10-02"), noon)).toEqual({ ok: false, error: "bad_date" });
     expect(parseTopup(body("2025-09-30"), noon)).toEqual({ ok: false, error: "bad_date" });
     const src = adminConsoleSrc();
-    expect(src, "the console's default date is today in Riyadh").toContain("prompt(S.promptTopupDate, ksaDay())");
+    expect(src, "the console's default date is today in Riyadh").toContain('{ name: "date", label: lab(S.promptTopupDate), kind: "date", initial: ksaDay(), ltr: true },');
   });
 
   it("a member account is never sold a pack, and the payment carries the account's plan", async () => {

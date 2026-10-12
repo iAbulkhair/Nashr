@@ -7,6 +7,7 @@ import { saveTask, type Task } from "@/lib/brand";
 import { AGENCY_MIN, CHAT_ALLOWANCE, MAX_CHAT_OVERRIDE, PLAN_CREDITS, PLAN_SEATS, chatAllowanceOf } from "@/lib/pricing";
 import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey, meter } from "@/lib/usage";
 import { reserveChatTurn } from "@/lib/chat-allowance";
+import { DEFAULTS } from "@/lib/models/route";
 
 import * as plan from "@/app/api/admin/plan/route";
 import * as exportRoute from "@/app/api/admin/export/route";
@@ -199,7 +200,7 @@ describe("credits the founder adds are finite and bounded", () => {
   it("1e999, a string or more than 100,000 either way is refused; a bounded number is added", async () => {
     const u = await account("pro");
     const before = (await getUser(u.email))!.credits;
-    const inf = await raw(`{"email":"${u.email}","addCredits":1e999}`);
+    const inf = await raw(`{"email":"${u.email}","addCredits":1e999,"reason":"test reason"}`);
     expect(inf.status).toBe(400);
     expect(await inf.json()).toEqual({ ok: false, error: "bad_credits" });
     for (const addCredits of ["30", 100_001, -100_001, true]) expect((await call(u.email, { addCredits })).status, String(addCredits)).toBe(400);
@@ -219,7 +220,7 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
       expect(res.status, JSON.stringify(chatAllowance)).toBe(400);
       expect(await res.json(), JSON.stringify(chatAllowance)).toEqual({ ok: false, error: "bad_chat" });
     }
-    const inf = await raw(`{"email":"${u.email}","chatAllowance":1e999}`);
+    const inf = await raw(`{"email":"${u.email}","chatAllowance":1e999,"reason":"test reason"}`);
     expect(inf.status).toBe(400);
     expect(await inf.json()).toEqual({ ok: false, error: "bad_chat" });
     // A bad override refuses the whole request, not only its own part.
@@ -250,7 +251,7 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     expect(stopped.chatAllowance).toBe(0);
     expect(chatAllowanceOf(stopped)).toBe(0);
     expect(await lastLog()).toMatchObject({ what: "chat:0", before: { chat: 2000 }, after: { chat: 0 } });
-    const gate = await reserveChatTurn(stopped);
+    const gate = await reserveChatTurn(stopped, DEFAULTS.chat);
     expect(gate.ok, "an override of 0 refuses the next message before the model").toBe(false);
     expect(gate).toMatchObject({ error: "chat_allowance" });
 
@@ -301,8 +302,8 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     await Promise.all([db.set(chatMsgKey(p.email), 5), db.set(chatOverKey(p.email), 1), db.set(chatCredKey(p.email), 4)]);
     // Two chat model calls of $0.03 each (claude-sonnet-5: 10,000 input and 1,000 output tokens).
     const usage = { input_tokens: 10_000, output_tokens: 1_000 };
-    await meter(p.email, "claude-sonnet-5", "chat", usage);
-    await meter(p.email, "claude-sonnet-5", "chat", usage);
+    await meter(p.email, "claude-sonnet-5-5", "chat", usage);
+    await meter(p.email, "claude-sonnet-5-5", "chat", usage);
     const t = await account("trial", "chat");
     await call(t.email, { chatAllowance: 20 });
     await db.set(chatTrialKey(t.email), 12);
@@ -343,8 +344,8 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     // 25 sent inside the plan's allowance, then 5 on credits billed 7 credits in all.
     await Promise.all([db.set(chatMsgKey(u.email), 25), db.set(chatOverKey(u.email), 5), db.set(chatCredKey(u.email), 7)]);
     const usage = { input_tokens: 10_000, output_tokens: 1_000 };
-    await meter(u.email, "claude-sonnet-5", "chat", usage);
-    await meter(u.email, "claude-sonnet-5", "chat", usage);
+    await meter(u.email, "claude-sonnet-5-5", "chat", usage);
+    await meter(u.email, "claude-sonnet-5-5", "chat", usage);
     expect((await call(u.email, { chatAllowance: 10 })).status).toBe(200);
 
     const rows = ((await (await plan.GET(json("/api/admin/plan", "GET", undefined, headers))).json()) as { users: Record<string, unknown>[] }).users;

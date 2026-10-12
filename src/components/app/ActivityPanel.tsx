@@ -83,6 +83,8 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
         case "onboard_charged": return [];
         case "onboard_refunded": return [n(a.credits, r.credits), a.refunded];
         case "external_draft": return [typeOf(r), r.note ?? ""];
+        case "instructions_changed": return [n(a.items, r.count), r.note ?? ""];
+        case "instructions_tested": return [typeOf(r), n(a.credits, r.credits)];
         case "gov_changed": case "gov_rollback": return [r.note ? fill(a.changed, { list: r.note }) : ""];
         // The reviewing agent is the row's agent; `outcome` is "flags:N", written in code.
         case "cross_reviewed": {
@@ -110,19 +112,19 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
   return (
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="activitypanel-t1" />{a.title}</span></h1>
-      <p className="mt-2 text-ink/70">{a.sub}</p>
+      <p className="mt-2 text-foreground-muted">{a.sub}</p>
       <div className="mt-6 grid gap-4">
         <div className="card flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm">
-            <span className="text-muted">{a.agent}</span>
-            <select value={agent} disabled={busy} onChange={(e) => void load({ agent: isAgentId(e.target.value) ? e.target.value : "", kind }, null)} className="rounded border border-ink/15 bg-white px-2 py-1">
+            <span className="text-foreground-muted">{a.agent}</span>
+            <select value={agent} disabled={busy} onChange={(e) => void load({ agent: isAgentId(e.target.value) ? e.target.value : "", kind }, null)} className="rounded border border-border bg-surface px-2 py-1">
               <option value="">{a.allAgents}</option>
               {AGENT_IDS.map((id) => <option key={id} value={id}>{t.agents[id].name}</option>)}
             </select>
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-muted">{a.kind}</span>
-            <select value={kind} disabled={busy} onChange={(e) => void load({ agent, kind: kinds.find((k) => k === e.target.value) ?? "" }, null)} className="rounded border border-ink/15 bg-white px-2 py-1">
+            <span className="text-foreground-muted">{a.kind}</span>
+            <select value={kind} disabled={busy} onChange={(e) => void load({ agent, kind: kinds.find((k) => k === e.target.value) ?? "" }, null)} className="rounded border border-border bg-surface px-2 py-1">
               <option value="">{a.allKinds}</option>
               {kinds.map((k) => <option key={k} value={k}>{a.kinds[k]}</option>)}
             </select>
@@ -132,18 +134,18 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
         <section className="card" aria-busy={busy}>
           {rows.length === 0 ? (
-            <p className="text-sm text-muted">{agent || kind ? a.emptyFiltered : a.empty}</p>
+            <p className="text-sm text-foreground-muted">{agent || kind ? a.emptyFiltered : a.empty}</p>
           ) : (
-            <ul className="divide-y divide-ink/10">
+            <ul className="divide-y divide-foreground/10">
               {rows.map((r, i) => (
                 <li key={`${r.at}-${i}`} className="py-3">
                   <p className="flex flex-wrap items-center gap-x-2 text-sm">
-                    <time dateTime={r.at} suppressHydrationWarning className="text-muted">{when.format(new Date(r.at))} UTC</time>
+                    <time dateTime={r.at} suppressHydrationWarning className="text-foreground-muted">{when.format(new Date(r.at))} UTC</time>
                     <span className="font-medium">{r.agent ? t.agents[r.agent].name : a.account}</span>
                     <span className="badge">{a.kinds[r.kind]}</span>
                   </p>
-                  {detail(r) && <p className="mt-1 text-sm text-ink/80" dir="auto">{detail(r)}</p>}
-                  <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+                  {detail(r) && <p className="mt-1 text-sm text-foreground-muted" dir="auto">{detail(r)}</p>}
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-foreground-muted">
                     <span>{a.via[r.via]}</span>
                     <span aria-hidden="true">·</span>
                     <span dir="auto">{who(r.by)}</span>

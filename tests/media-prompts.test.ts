@@ -14,7 +14,7 @@ import type { ImageModelId, VideoModelId } from "@/lib/media-catalog";
  */
 type Create = (body: Record<string, unknown>, opts: Record<string, unknown>) => Promise<unknown>;
 const sdk = { made: 0, calls: [] as { body: Record<string, unknown>; opts: Record<string, unknown> }[] };
-const reply = (text: string) => async () => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text }] });
+const reply = (text: string) => async () => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text }] });
 
 /** A fresh prompts module with Claude in `state` and a counting SDK whose `create` answers with `create`. */
 async function load(state: "on" | "paused", create: Create = reply("A model-written prompt")) {
@@ -24,7 +24,7 @@ async function load(state: "on" | "paused", create: Create = reply("A model-writ
   vi.doMock("@anthropic-ai/sdk", () => ({
     default: class {
       constructor() { sdk.made++; }
-      messages = { create: async (body: Record<string, unknown>, opts: Record<string, unknown>) => { sdk.calls.push({ body, opts }); return create(body, opts); } };
+      messages = { create: async (body: Record<string, unknown>, opts: Record<string, unknown>) => { sdk.calls.push({ body, opts }); return create(body, opts); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
     },
   }));
   return import("@/lib/media/prompts");
@@ -114,20 +114,34 @@ describe("while Claude is paused: the fixed templates", () => {
 
 describe("with Claude on", () => {
   it("one Haiku 5.5 call, 20 s and no retries, and the model's text is the prompt", async () => {
+    // A still clock: the deadline is built and then read a moment later, so a slow runner could see 19999.
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const p = await load("on");
     expect(await p.imagePrompt(brand(), task, "img-fast", "square", "o@test.example")).toBe("A model-written prompt");
     expect(sdk.calls).toHaveLength(1);
     const { body, opts } = sdk.calls[0];
-    expect(opts).toEqual({ timeout: 20000, maxRetries: 0 });
+    // A stream's timeout covers only the wait for its headers, so the signal (rule 980) bounds the whole reply.
+    expect(opts).toEqual({ timeout: 20000, maxRetries: 0, signal: expect.any(AbortSignal) });
     expect([body.model, body.max_tokens]).toEqual(["claude-haiku-5-5", 400]);
     expect(JSON.stringify(body.messages), "the post itself goes to the model").toContain("قهوة مختصة محمصة اليوم");
   });
 
+  it("rule 1206: the timeout equals the budget exactly, even when the clock ticks between reads", async () => {
+    const p = await load("on");
+    // 1 ms on every read: reading the clock twice for one deadline gave 19999 (CI run 38160469570).
+    let t = 1_800_000_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => t++);
+    await p.imagePrompt(brand(), task, "img-fast", "square");
+    await p.imagePrompt(brand(), task, "img-design", "square", undefined, 5000);
+    expect(sdk.calls.map((c) => c.opts.timeout)).toEqual([20000, 5000]);
+  });
+
   it("the timeout is the time left when that is shorter", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const p = await load("on");
     await p.imagePrompt(brand(), task, "img-design", "square", undefined, 5000);
     await p.videoPrompt(brand(), task, "vid-quick", false, undefined, 60_000);
-    expect(sdk.calls.map((c) => c.opts)).toEqual([{ timeout: 5000, maxRetries: 0 }, { timeout: 20000, maxRetries: 0 }]);
+    expect(sdk.calls.map((c) => c.opts)).toEqual([{ timeout: 5000, maxRetries: 0, signal: expect.any(AbortSignal) }, { timeout: 20000, maxRetries: 0, signal: expect.any(AbortSignal) }]);
   });
 
   it("the text style asks for an English headline and the video style for no speech", async () => {

@@ -16,7 +16,7 @@ const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const 
  * rule 249: it imports usage.ts (the store) and its estimates are our margins. `@/lib/entitlements` is here for rule 781: it
  * reads the store (`seatsUsed`, `chatStatus`) and the rate limits, so a client file may import its types only.
  */
-const SERVER_ONLY = ["@/lib/db", "@/lib/brand", "@/lib/auth", "@/lib/credits", "@/lib/usage", "@/lib/mcp", "@/lib/oauth", "@/lib/files", "@/lib/chat", "@/lib/noor", "@/lib/judge", "@/lib/golden", "@/lib/account", "@/lib/connectors/store", "@/lib/journey-load", "@/lib/perf-store", "@/lib/decisions", "@/lib/feedback", "@/lib/governance", "@/lib/notifications", "@/lib/routines", "@/lib/media/config", "@/lib/media/jobs", "@/lib/media/registry", "@/lib/media/start", "@/lib/media/fal", "@/lib/media/kie", "@/lib/media/higgsfield", "@/lib/media/blob", "@/lib/media/prompts", "@anthropic-ai/sdk", "@/lib/model", "@upstash/redis", "@/lib/wishlist", "@/lib/task-costs", "@/lib/secretary", "@/lib/secretary-calendar", "@/lib/secretary-away", "@/lib/generate-batch", "@/lib/actor", "@/lib/prompt-stamp", "@/lib/activity", "@/lib/handoffs", "@/lib/handoff-auto", "@/lib/chat-allowance", "@/lib/chat-budget", "@/lib/entitlements"];
+const SERVER_ONLY = ["@/lib/db", "@/lib/brand", "@/lib/auth", "@/lib/credits", "@/lib/usage", "@/lib/mcp", "@/lib/oauth", "@/lib/files", "@/lib/chat", "@/lib/noor", "@/lib/judge", "@/lib/golden", "@/lib/account", "@/lib/connectors/store", "@/lib/journey-load", "@/lib/perf-store", "@/lib/decisions", "@/lib/feedback", "@/lib/governance", "@/lib/notifications", "@/lib/routines", "@/lib/media/config", "@/lib/media/jobs", "@/lib/media/registry", "@/lib/media/start", "@/lib/media/fal", "@/lib/media/kie", "@/lib/media/higgsfield", "@/lib/media/blob", "@/lib/media/prompts", "@anthropic-ai/sdk", "@/lib/model", "@upstash/redis", "@/lib/wishlist", "@/lib/task-costs", "@/lib/secretary", "@/lib/secretary-calendar", "@/lib/secretary-away", "@/lib/generate-batch", "@/lib/actor", "@/lib/prompt-stamp", "@/lib/activity", "@/lib/handoffs", "@/lib/handoff-auto", "@/lib/chat-allowance", "@/lib/chat-budget", "@/lib/models/catalog", "@/lib/models/credits", "@/lib/models/route", "@/lib/models/overrides", "@/lib/entitlements", "@/lib/secretary-meetings", "@/lib/secretary-gcal", "@/lib/secretary-cal-link"];
 
 const clientFiles = () => walk("src").filter((p) => /^\s*["']use client["']/.test(readFileSync(p, "utf8")));
 
@@ -56,6 +56,22 @@ describe("the browser bundle stays free of server-only code", () => {
     const src = readFileSync("src/lib/pricing.ts", "utf8");
     const imports = src.split("\n").filter((l) => /^\s*(import|export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from)\s/.test(l) || /\brequire\(|\bimport\(/.test(l));
     expect(imports, "src/lib/pricing.ts must stay import-free: client components read prices from it").toEqual([]);
+  });
+
+  it("the tier table the model picker reads imports nothing at all (the catalog next to it holds our rates and stays server-only)", () => {
+    const src = readFileSync("src/lib/models/tiers.ts", "utf8");
+    const imports = src.split("\n").filter((l) => /^\s*(import|export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from)\s/.test(l) || /\brequire\(|\bimport\(/.test(l));
+    expect(imports, "src/lib/models/tiers.ts must stay import-free: client components read the multipliers from it").toEqual([]);
+  });
+
+  it("the model picker's helpers read only types from the tier file, and the picker component no server-only module (rates stay on the server)", () => {
+    const src = readFileSync("src/lib/model-picker.ts", "utf8");
+    const imports = src.split("\n").filter((l) => /^\s*(import|export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from)\s/.test(l) || /\brequire\(|\bimport\(/.test(l));
+    expect(imports, "src/lib/model-picker.ts is shared with the browser: types from ./models/tiers only").toEqual([`import type { Surface, Tier } from "./models/tiers";`]);
+    expect(clientFiles()).toContain("src/components/app/ModelPicker.tsx");
+    const picker = readFileSync("src/components/app/ModelPicker.tsx", "utf8");
+    const from = [...picker.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
+    expect(from.filter((s) => s.startsWith("@/lib/models/")), "the picker reads the catalog through GET /api/models, never by import").toEqual([]);
   });
 
   it("the media catalogue the inbox reads imports nothing at all", () => {

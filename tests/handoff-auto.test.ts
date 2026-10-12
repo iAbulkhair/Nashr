@@ -29,7 +29,7 @@ import { estimateBatch } from "@/lib/task-costs";
 import { maxCostPerCreditUsd } from "@/lib/pricing";
 import * as govRoute from "@/app/api/governance/route";
 import * as rollbackRoute from "@/app/api/governance/rollback/route";
-import GovPage from "@/app/[lang]/app/governance/page";
+import GovPage from "@/app/[lang]/app/settings/governance/page";
 import InboxPage from "@/app/[lang]/app/page";
 import ActivityPage from "@/app/[lang]/app/activity/page";
 import { HandoffCard } from "@/components/app/ChatPanel";
@@ -106,7 +106,7 @@ const rows = async (scope: string) => (await listActivity(scope, { limit: CAPS.a
 const statuses = async (scope: string, id: string) => (await getHandoff(scope, id))!.items.map((i) => i.status);
 
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[] };
-const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
+const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
 const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
 /**
  * The SDK, replaced and counted, with Claude "on" (or paused). `made` counts clients, so "no model call" is a number;
@@ -124,12 +124,13 @@ function sdk(o: { state?: "on" | "paused"; genFails?: boolean; hang?: { on: bool
       constructor() { seen.made++; }
       beta = { messages: { stream: (p: Params) => ({ finalMessage: async () => { seen.prompts.push(String(p.messages[0].content)); if (o.genFails) throw new Error("model down"); if (o.hang?.on) return new Promise<never>(() => {}); return reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])); } }) } };
       messages = {
-        stream: () => ({ finalMessage: async () => reply("تمام") }),
+        chat: () => ({ finalMessage: async () => reply("تمام") }),
         create: async (p: Params) => {
           const sys = typeof p.system === "string" ? p.system : p.system[0].text;
           if (sys.startsWith("You are the quality judge")) seen.judge.push(String(p.messages[0].content));
           return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([verdict]) : JSON.stringify([{ ok: true }]));
         },
+        stream(p: { tools?: unknown; tool_choice?: unknown; output_config?: { format?: unknown } }, o?: unknown) { return (p.tools && !p.tool_choice) || p.output_config?.format ? (this.chat as (...a: unknown[]) => unknown)(p, o) : { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));
@@ -287,7 +288,7 @@ describe("the Governance page shows the switch truly (rule 284)", () => {
     expect(ar.governance.autoHandoffSub).toContain(`${AUTO_HANDOFF_MAX_CREDITS} كريدت`);
     expect(ar.governance.autoHandoffSub).toContain("06:00");
     // The routines cron, where the auto-run runs, is daily at 06:00 UTC.
-    expect(JSON.parse(readFileSync("vercel.json", "utf8")).crons).toContainEqual({ path: "/api/cron/routines", schedule: "0 6 * * *" });
+    expect(JSON.parse(readFileSync("crons.json", "utf8")).crons).toContainEqual({ path: "/api/cron/routines", schedule: "0 6 * * *" });
     for (const k of ["autoHandoff", "autoHandoffSub", "autoHandoffConfirm", "autoHandoffNeedsCap", "autoHandoffConfirmNeeded"] as const) {
       expect(en.governance[k], k).toBeTruthy();
       expect(ar.governance[k], k).toBeTruthy();
@@ -744,7 +745,7 @@ describe("the chat reply, the card and the tool never say 'nothing runs' when th
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: () => ({ finalMessage: async () => { const t = turns.shift(); if (t instanceof Error) throw t; return { model: "claude-opus-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(t ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }; } }) };
+        messages = { stream: () => ({ finalMessage: async () => { const t = turns.shift(); if (t instanceof Error) throw t; return { model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(t ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }; } }) };
       },
     }));
     const { chat, history } = await import("@/lib/chat");

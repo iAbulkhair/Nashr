@@ -18,6 +18,7 @@ import { isAgentId } from "@/lib/agents";
 import AgentAvatar from "@/components/app/AgentAvatar";
 import Scribble from "@/components/Scribble";
 import { taskVersion } from "@/lib/task-version";
+import { CHANNEL_LIMITS } from "@/lib/channel-limits";
 
 const GUARD = {
   ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", heldPh: "فيه خانات لم تُعبّأ بعد (مثل [رقم] أو [date])، فلا يُعتمد ولا يُنشر حتى تضع القيمة الحقيقية مكانها أو تحذفها:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة ولا خانات فارغة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", rulePh: "قاعدة الخانات الفارغة", editBrand: "ملف العلامة" },
@@ -70,7 +71,8 @@ function Hit({ v }: { v: Violation }) {
   return <span dir="auto">{v.excerpt.slice(0, i)}<mark className="guard-hit text-inherit">{v.excerpt.slice(i, i + v.term.length)}</mark>{v.excerpt.slice(i + v.term.length)}</span>;
 }
 
-const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
+// One list with the chat's approval card (rule 1124).
+const CHAR_LIMITS = CHANNEL_LIMITS;
 
 /** A string from the dictionary with its {placeholders} filled. */
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
@@ -273,15 +275,15 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
 
   return (
     <div>
-      <div className="mb-4 flex gap-1 border-b border-ink/10 text-sm">
-        <Link href={`/${lang}/app/chat`} className="px-4 py-2 text-muted hover:text-ink">{i.tabChat}</Link>
-        <span className="border-b-2 border-ink px-4 py-2 font-semibold text-ink">{i.tabFeed} <span className="badge badge-accent ms-1">{t.nav.newBadge}</span></span>
+      <div className="mb-4 flex gap-1 border-b border-foreground/10 text-sm">
+        <Link href={`/${lang}/app/chat`} className="px-4 py-2 text-foreground-muted hover:text-foreground">{i.tabChat}</Link>
+        <span className="border-b-2 border-border-strong px-4 py-2 font-semibold text-foreground">{i.tabFeed} <span className="badge badge-accent ms-1">{t.nav.newBadge}</span></span>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="inbox-t1" />{i.title}</span></h1>
         <div className="flex gap-1 text-sm">
           {(["pending", "approved", "rejected", "all"] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-3 py-1 ${filter === f ? "bg-ink text-lilac" : "bg-lilac"}`}>
+            <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-3 py-1 ${filter === f ? "bg-inverse text-inverse-muted" : "bg-background-muted"}`}>
               {i[f]} {f !== "all" && <span className="font-mono text-xs">({view.filter((x) => x.status === f).length})</span>}
             </button>
           ))}
@@ -296,9 +298,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
         </div>
       )}
       {shown.length === 0 && (
-        <div className="mt-10 rounded-xl border border-dashed border-ink/20 p-10 text-center text-muted">
+        <div className="mt-10 rounded-xl border border-dashed border-border p-10 text-center text-foreground-muted">
           <p>{i.empty}</p>
-          <Link href={`/${lang}/app/generate`} className="mt-4 inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-ink">{i.regenerate}</Link>
+          <Link href={`/${lang}/app/generate`} className="mt-4 inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-accent-foreground">{i.regenerate}</Link>
         </div>
       )}
 
@@ -312,43 +314,43 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
           const isCollapsed = !!collapsed[x.id];
           return (
             <li key={x.id} className="grid gap-4">
-              {newDay && <p className="flex items-center gap-3 text-xs text-ink/70"><span className="flex-1 border-t-[1.5px] border-ink/30" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1" suppressHydrationWarning>{dayLabel(x.createdAt)}</span><span className="flex-1 border-t-[1.5px] border-ink/30" /></p>}
+              {newDay && <p className="flex items-center gap-3 text-xs text-foreground-muted"><span className="flex-1 border-t-[1.5px] border-foreground/30" /><span className="rounded-full border border-foreground/10 bg-surface px-3 py-1" suppressHydrationWarning>{dayLabel(x.createdAt)}</span><span className="flex-1 border-t-[1.5px] border-foreground/30" /></p>}
               <article className="card overflow-hidden p-0">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/5 px-4 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-foreground/5 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Icon name={channelIcon(x.channel)} className="h-4 w-4 shrink-0 text-ink" />
+                  <Icon name={channelIcon(x.channel)} className="h-4 w-4 shrink-0 text-foreground" />
                   <span className="font-semibold">{(t.channelNames as Record<string, string>)[x.channel] ?? x.channel}</span>
-                  <span className="text-sm text-ink/70" dir="auto">· {x.title}</span>
+                  <span className="text-sm text-foreground-muted" dir="auto">· {x.title}</span>
                 </div>
                 {/* Wraps whole pills onto a new line on a phone: a card can carry the guard, the judge, two reviewers, the
                     handoff chip and the status at once. The short pills never break inside; the long handoff chip may,
                     only when it alone is wider than the row. */}
                 <span className="flex flex-wrap items-center gap-2 text-xs">
-                  {guarded && <span title={hits.length ? G.held : G.ok} className={`flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 ${hits.length ? "bg-agent-sami/20 font-semibold text-danger" : "bg-ink/10 text-ink"}`}><Icon name="shield" className="h-3.5 w-3.5" />{hits.length ? G.held : G.ok}</span>}
-                  {x.quality && <span title={x.quality.notes} className={`tnum whitespace-nowrap rounded-full px-2 py-0.5 ${x.quality.score >= 85 ? "bg-ink/10 text-ink" : x.quality.score >= 70 ? "bg-lemon/20 text-ink" : "bg-agent-sami/20 text-danger"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
+                  {guarded && <span title={hits.length ? G.held : G.ok} className={`flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 ${hits.length ? "bg-agent-sami/20 font-semibold text-danger" : "bg-foreground/10 text-foreground"}`}><Icon name="shield" className="h-3.5 w-3.5" />{hits.length ? G.held : G.ok}</span>}
+                  {x.quality && <span title={x.quality.notes} className={`tnum whitespace-nowrap rounded-full px-2 py-0.5 ${x.quality.score >= 85 ? "bg-foreground/10 text-foreground" : x.quality.score >= 70 ? "bg-lemon/20 text-foreground" : "bg-agent-sami/20 text-danger"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
                   {verdictsOf(x).map((v) => {
                     const name = t.agents[v.by].name;
                     const n = noteCount(v.notes);
-                    return <span key={v.by} className={`whitespace-nowrap rounded-full px-2 py-0.5 ${v.verdict === "flag" ? "bg-lemon/20 font-semibold text-danger" : "bg-ink/10 text-ink"}`}>{v.verdict === "flag" ? (n === 1 ? fill(i.xNote, { name }) : fill(i.xNotes, { name, n })) : fill(i.xChecked, { name })}</span>;
+                    return <span key={v.by} className={`whitespace-nowrap rounded-full px-2 py-0.5 ${v.verdict === "flag" ? "bg-lemon/20 font-semibold text-danger" : "bg-foreground/10 text-foreground"}`}>{v.verdict === "flag" ? (n === 1 ? fill(i.xNote, { name }) : fill(i.xNotes, { name, n })) : fill(i.xChecked, { name })}</span>;
                   })}
-                  {x.source === "external" && <span title={i.externalHint} className="max-w-full rounded-full bg-ink/5 px-2 py-0.5 text-ink/70">{i.external}</span>}
+                  {x.source === "external" && <span title={i.externalHint} className="max-w-full rounded-full bg-foreground/5 px-2 py-0.5 text-foreground-muted">{i.external}</span>}
                   {/* Made by a run of one of Majed's handoffs (`Task.parent`, set in code): back to the conversation that proposed it.
                       `parent.auto`: his auto-run started it, not a login pressing Run. */}
                   {x.source === "handoff" && x.parent && (x.parent.conv && /^[a-f0-9]{6,16}$/.test(x.parent.conv)
-                    ? <Link href={`/${lang}/app/chat?conv=${x.parent.conv}`} className="max-w-full rounded-full bg-ink/10 px-2 py-0.5 text-ink underline-offset-2 hover:underline">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</Link>
-                    : <span className="max-w-full rounded-full bg-ink/10 px-2 py-0.5 text-ink">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</span>)}
+                    ? <Link href={`/${lang}/app/chat?conv=${x.parent.conv}`} className="max-w-full rounded-full bg-foreground/10 px-2 py-0.5 text-foreground underline-offset-2 hover:underline">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</Link>
+                    : <span className="max-w-full rounded-full bg-foreground/10 px-2 py-0.5 text-foreground">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</span>)}
                   <span className={`badge whitespace-nowrap ${x.status === "approved" ? "badge-primary" : x.status === "rejected" ? "badge-danger" : "badge-accent"}`}>{i[x.status]}</span>
                 </span>
               </div>
               <div className="px-4 pb-3">
               {x.published && x.published.length > 0 && (
-                <p className="mt-2 text-xs text-ink">{x.published.map((p, n) => (p.url ? <a key={`${p.url}${n}`} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a> : <span key={`${p.provider}${n}`} className="me-3">{i.published} {p.provider}</span>))}</p>
+                <p className="mt-2 text-xs text-foreground">{x.published.map((p, n) => (p.url ? <a key={`${p.url}${n}`} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a> : <span key={`${p.provider}${n}`} className="me-3">{i.published} {p.provider}</span>))}</p>
               )}
-              {wpNote?.id === x.id && <p role="status" className="mt-2 text-xs text-ink/80" dir="auto">{wpNote.kind === "image" ? W.image : W.cannotLive}</p>}
+              {wpNote?.id === x.id && <p role="status" className="mt-2 text-xs text-foreground-muted" dir="auto">{wpNote.kind === "image" ? W.image : W.cannotLive}</p>}
               {again?.id === x.id && (
                 <div role="alert" className="mt-3 rounded-lg border border-lemon/40 bg-lemon/10 p-3 text-sm">
-                  <p className="text-ink/80" dir="auto">{again.kind === "busy" ? A.busy : A[again.kind](again.provider)}{again.url && <> <a href={again.url} target="_blank" rel="noreferrer" className="underline">↗</a></>}</p>
-                  {again.provider === "wordpress" && (again.kind === "already" || again.kind === "unknown") && x.published?.some((p) => p.provider === "wordpress" && p.id) && <p className="mt-1 text-ink/70" dir="auto">{W.updates}</p>}
+                  <p className="text-foreground-muted" dir="auto">{again.kind === "busy" ? A.busy : A[again.kind](again.provider)}{again.url && <> <a href={again.url} target="_blank" rel="noreferrer" className="underline">↗</a></>}</p>
+                  {again.provider === "wordpress" && (again.kind === "already" || again.kind === "unknown") && x.published?.some((p) => p.provider === "wordpress" && p.id) && <p className="mt-1 text-foreground-muted" dir="auto">{W.updates}</p>}
                   {(again.kind === "already" || again.kind === "unknown") && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button disabled={publishing === x.id + again.provider} onClick={() => publish(x.id, again.provider, true)} className="btn btn-primary btn-xs">{A.again}</button>
@@ -360,12 +362,12 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               {hits.length > 0 && editing !== x.id && (
                 <div role="alert" className="mt-3 rounded-lg border border-danger bg-agent-sami/20 p-3 text-sm">
                   <p className="flex items-center gap-1.5 font-semibold text-danger"><Icon name="shield" className="h-4 w-4" />{G.held} · <span className="font-normal">{[hits.some((v) => v.kind === "banned") && G.rule, hits.some((v) => v.kind === "placeholder") && G.rulePh].filter(Boolean).join(" · ")}</span></p>
-                  {hits.some((v) => v.kind === "banned") && <p className="mt-1 text-ink/70">{G.heldBody}</p>}
-                  {hits.some((v) => v.kind === "placeholder") && <p className="mt-1 text-ink/70">{G.heldPh}</p>}
-                  <ul className="mt-1.5 grid gap-1">{hits.map((v) => <li key={v.ruleId} className="text-xs text-ink/80"><span className="font-semibold" dir="auto">«{v.term}»</span> · <Hit v={v} /></li>)}</ul>
+                  {hits.some((v) => v.kind === "banned") && <p className="mt-1 text-foreground-muted">{G.heldBody}</p>}
+                  {hits.some((v) => v.kind === "placeholder") && <p className="mt-1 text-foreground-muted">{G.heldPh}</p>}
+                  <ul className="mt-1.5 grid gap-1">{hits.map((v) => <li key={v.ruleId} className="text-xs text-foreground-muted"><span className="font-semibold" dir="auto">«{v.term}»</span> · <Hit v={v} /></li>)}</ul>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-primary btn-xs">{G.fix}</button>
-                    {hits.some((v) => v.kind === "banned") && <Link href={`/${lang}/app/onboarding`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
+                    {hits.some((v) => v.kind === "banned") && <Link href={`/${lang}/app/settings/brand`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
                   </div>
                 </div>
               )}
@@ -373,8 +375,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                 // Model-written notes: rendered as text, never as HTML, in the item's own language.
                 <div key={v.by} className="mt-3 rounded-lg border border-lemon/40 bg-lemon/10 p-3 text-sm">
                   <p className="font-semibold text-danger">{fill(i.xNotesTitle, { name: t.agents[v.by].name })}</p>
-                  <p className="mt-1 whitespace-pre-line break-words leading-relaxed text-ink/90" dir="auto">{v.notes}</p>
-                  <p className="mt-1.5 text-xs text-muted">{i.xNotesHint}</p>
+                  <p className="mt-1 whitespace-pre-line break-words leading-relaxed text-foreground" dir="auto">{v.notes}</p>
+                  <p className="mt-1.5 text-xs text-foreground-muted">{i.xNotesHint}</p>
                 </div>
               ))}
               {x.imageUrl && (
@@ -384,34 +386,34 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                       remotePatterns and paying to proxy images we already pay to generate and store. */}
                   {/* eslint-disable-next-line @next/next/no-img-element -- remote image host, not a local asset */}
                   <img loading="lazy" decoding="async" src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
-                  <div className="text-xs text-muted">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
+                  <div className="text-xs text-foreground-muted">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
                 </div>
               )}
               {x.videoUrl && (
                 <div className="mt-3 flex items-start gap-3">
                   {/* iOS Safari shows an empty box for preload="metadata" without a poster or a start offset. */}
-                  <video controls playsInline preload="metadata" poster={hasArtwork(x) ? x.imageUrl : undefined} src={`${x.videoUrl}#t=0.1`} className="h-48 rounded-lg bg-ink/5" />
-                  <div className="grid gap-1 text-xs text-muted">
+                  <video controls playsInline preload="metadata" poster={hasArtwork(x) ? x.imageUrl : undefined} src={`${x.videoUrl}#t=0.1`} className="h-48 rounded-lg bg-foreground/5" />
+                  <div className="grid gap-1 text-xs text-foreground-muted">
                     <span className="flex flex-wrap items-center gap-2">
                       <a href={saveLink(x.videoUrl)} target="_blank" rel="noreferrer" className="underline">{i.videoDownload}</a>
                       {canShare && !noShare[x.id] && <button disabled={saving === x.id} onClick={() => saveVideo(x)} className="btn btn-secondary btn-xs">{saving === x.id ? `${i.videoSave}…` : i.videoSave}</button>}
                     </span>
-                    {ready === x.id && <p role="status" className="text-ink">{i.videoReady}</p>}
-                    <p className="text-muted">{i.videoNoPublish}</p>
+                    {ready === x.id && <p role="status" className="text-foreground">{i.videoReady}</p>}
+                    <p className="text-foreground-muted">{i.videoNoPublish}</p>
                     {x.videoPrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.videoPrompt}</p>}
                   </div>
                 </div>
               )}
               {editing === x.id ? (
                 <div className="mt-3 grid gap-2">
-                  <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={10} className="w-full rounded-lg border border-ink/15 p-3 text-sm" />
+                  <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={10} className="w-full rounded-lg border border-border p-3 text-sm" />
                   {(() => {
                     const checking = isCustomerFacing(x.type);
                     const live = checking ? held({ ...x, editedBody: draft }) : [];
                     return (
                       <>
                         {checking && (
-                          <p aria-live="polite" className={`flex flex-wrap items-center gap-1.5 text-xs ${live.length ? "text-danger" : "text-ink"}`}>
+                          <p aria-live="polite" className={`flex flex-wrap items-center gap-1.5 text-xs ${live.length ? "text-danger" : "text-foreground"}`}>
                             <Icon name="shield" className="h-3.5 w-3.5" /><span className="font-semibold">{G.live}:</span>
                             {live.length ? live.map((v) => <span key={v.ruleId} className="guard-hit font-semibold" dir="auto">{v.term}</span>) : <span>{G.liveOk}</span>}
                           </p>
@@ -435,9 +437,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   })()}
                 </div>
               ) : (
-                <>{!isCollapsed && <div className="prose-nashr prose-compact mt-3 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(body) }} />}
+                <>{!isCollapsed && <div className="prose-nashr prose-compact mt-3 text-sm text-foreground" dir="auto" dangerouslySetInnerHTML={{ __html: render(body) }} />}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className={`tnum text-xs ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "font-semibold text-danger" : "text-muted"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</span>
+                  <span className={`tnum text-xs ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "font-semibold text-danger" : "text-foreground-muted"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</span>
                   <span className="ms-auto flex gap-1.5">
                     <button onClick={() => setCollapsed((p) => ({ ...p, [x.id]: !isCollapsed }))} className="btn btn-secondary btn-xs">{isCollapsed ? "▾ " + i.expand : "▴ " + i.collapse}</button>
                     <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="btn btn-secondary btn-xs">{copied === x.id ? i.copied : "⧉ " + i.copy}</button>
@@ -447,7 +449,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               )}
               {rejecting === x.id && (
                 <div className="mt-3 grid gap-2">
-                  <input value={why} onChange={(e) => setWhy(e.target.value)} placeholder={i.why} className="w-full rounded-lg border border-ink/15 p-2 text-sm" />
+                  <input value={why} onChange={(e) => setWhy(e.target.value)} placeholder={i.why} className="w-full rounded-lg border border-border p-2 text-sm" />
                   <div className="flex gap-2">
                     <button onClick={() => patch(x.id, { status: "rejected", note: why })} className="btn btn-danger-solid btn-pill">{i.reject}</button>
                     <button onClick={() => setRejecting(null)} className="btn btn-secondary btn-pill">{i.cancel}</button>
@@ -456,10 +458,10 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               )}
               </div>
               {editing !== x.id && rejecting !== x.id && (
-                <div className="flex flex-wrap items-center gap-2 border-t border-ink/5 bg-ground px-4 py-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2 border-t border-foreground/5 bg-background px-4 py-3 text-sm">
                   {failed?.id === x.id && <p role="alert" className="w-full text-sm text-danger">{failed.why === "forbidden" ? t.team.errors.forbidden : failed.why === "changed" ? CHANGED[lang] : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
                   {x.status !== "approved" && canPublish && <button disabled={hits.length > 0} title={hits.length ? G.held : undefined} onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
-                  {x.status === "pending" && !canPublish && <p className="w-full text-xs text-muted">{i.waitAdmin}</p>}
+                  {x.status === "pending" && !canPublish && <p className="w-full text-xs text-foreground-muted">{i.waitAdmin}</p>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
                   {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
                   {x.type === "board_deck" && (
@@ -468,12 +470,12 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   {/* Model pickers, image and video buttons, and the polling of a running render. It drops the local copy
                       for the reason given in publish() above; the refresh also re-renders the sidebar balance. */}
                   <MediaControls task={x} lang={lang} t={t} available={media} included={included} credits={credits} plan={plan ?? "trial"} paused={!!paused} owner={owner} onChanged={() => { forgetLocal(x.id); r.refresh(); }} />
-                  {x.channel === "instagram" && connected.includes("instagram") && !hasArtwork(x) && <p className="w-full text-xs text-muted">{i.igNeedsImage}</p>}
+                  {x.channel === "instagram" && connected.includes("instagram") && !hasArtwork(x) && <p className="w-full text-xs text-foreground-muted">{i.igNeedsImage}</p>}
                   {x.adCode && (
-                    <span title={G.codeHint} className="flex items-center gap-1 rounded-full border border-dashed border-ink/40 bg-white px-2 py-1 text-xs">
-                      <span className="text-muted">{G.code}</span>
-                      <span className="font-mono font-semibold text-ink" dir="ltr">{x.adCode}</span>
-                      <button onClick={async () => { await navigator.clipboard.writeText(x.adCode!); setCopied(x.adCode!); setTimeout(() => setCopied(null), 1500); }} aria-label={G.copyCode} className="rounded-full px-1 text-ink hover:bg-ink/10">{copied === x.adCode ? "✓" : <Icon name="copy" className="h-3.5 w-3.5" />}</button>
+                    <span title={G.codeHint} className="flex items-center gap-1 rounded-full border border-dashed border-foreground/40 bg-surface px-2 py-1 text-xs">
+                      <span className="text-foreground-muted">{G.code}</span>
+                      <span className="font-mono font-semibold text-foreground" dir="ltr">{x.adCode}</span>
+                      <button onClick={async () => { await navigator.clipboard.writeText(x.adCode!); setCopied(x.adCode!); setTimeout(() => setCopied(null), 1500); }} aria-label={G.copyCode} className="rounded-full px-1 text-foreground hover:bg-foreground/10">{copied === x.adCode ? "✓" : <Icon name="copy" className="h-3.5 w-3.5" />}</button>
                     </span>
                   )}
                   {(() => {
@@ -491,7 +493,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                         {list.includes("wordpress") && <button disabled={publishing === x.id + "wordpress" || pub.length > 0} onClick={() => setLiveAsk(x.id)} className="btn btn-secondary btn-pill">{W.live}</button>}
                         {liveAsk === x.id && (
                           <div role="alert" className="w-full rounded-lg border border-lemon/40 bg-lemon/10 p-3 text-sm">
-                            <p className="text-ink/80" dir="auto">{W.liveAsk}</p>
+                            <p className="text-foreground-muted" dir="auto">{W.liveAsk}</p>
                             <div className="mt-2 flex flex-wrap gap-2">
                               <button disabled={publishing === x.id + "wordpress"} onClick={() => publish(x.id, "wordpress", !!x.published?.some((p) => p.provider === "wordpress"), true)} className="btn btn-primary btn-xs">{W.liveYes}</button>
                               <button onClick={() => setLiveAsk(null)} className="btn btn-secondary btn-xs">{i.cancel}</button>
@@ -499,14 +501,14 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                           </div>
                         )}
                         {/* The reason in words, not only on hover: most owners use the inbox on a phone. */}
-                        {slotsOnly && list.length > 0 && <p className="w-full text-xs text-muted" dir="auto">{A.slots}</p>}
-                        {copyOnlyNote(x, connected) && <p className="w-full text-xs text-muted" dir="auto">{i.sallaArticle}</p>}
+                        {slotsOnly && list.length > 0 && <p className="w-full text-xs text-foreground-muted" dir="auto">{A.slots}</p>}
+                        {copyOnlyNote(x, connected) && <p className="w-full text-xs text-foreground-muted" dir="auto">{i.sallaArticle}</p>}
                       </>
                     );
                   })()}
-                  <label className="ms-auto flex items-center gap-1 text-xs text-muted">
+                  <label className="ms-auto flex items-center gap-1 text-xs text-foreground-muted">
                     {i.date}
-                    <input type="date" dir="ltr" defaultValue={x.scheduledFor ?? ""} onChange={(e) => patch(x.id, { scheduledFor: e.target.value || null })} className="rounded border border-ink/15 px-2 py-1 text-xs" />
+                    <input type="date" dir="ltr" defaultValue={x.scheduledFor ?? ""} onChange={(e) => patch(x.id, { scheduledFor: e.target.value || null })} className="rounded border border-border px-2 py-1 text-xs" />
                   </label>
                 </div>
               )}

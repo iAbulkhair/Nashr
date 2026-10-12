@@ -17,7 +17,10 @@
  * "الأحد" where WebKit's system CLDR gives "أحد", and that is data, not configuration. Anything formatted here and
  * rendered inside a client component therefore needs `suppressHydrationWarning` on the element that holds the text.
  * That attribute is scoped to one element's text, so it hides this unavoidable difference without hiding a real one.
+ *
+ * `timeZone` is for a full timestamp, a moment rather than a calendar day, shown in a named zone (rule 1092:
+ * `formatTime` in `format.ts` shows moments in the brand's zone). Every caller that leaves it out keeps UTC.
  */
-export function dateFormat(lang: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat(lang === "ar" ? "ar-u-nu-latn" : "en", { ...opts, timeZone: "UTC" });
+export function dateFormat(lang: string, opts: Intl.DateTimeFormatOptions, timeZone = "UTC"): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat(lang === "ar" ? "ar-u-nu-latn" : "en", { ...opts, timeZone });
 }

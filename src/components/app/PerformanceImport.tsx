@@ -41,7 +41,7 @@ const STR = {
   },
 } as const;
 
-const MEDAL = ["bg-lemon text-ink", "bg-lilac/75 text-ink", "bg-agent-sami/20 text-danger"];
+const MEDAL = ["bg-lemon text-accent-foreground", "bg-background-muted/75 text-foreground", "bg-agent-sami/20 text-danger"];
 
 const AD_NAMES: Record<string, string> = { meta_ads: "Meta Ads", snapchat: "Snapchat Ads", google_ads: "Google Ads", tiktok_ads: "TikTok Ads", linkedin_ads: "LinkedIn Ads" };
 
@@ -103,12 +103,12 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
 
   return (
     <section id="campaign-results" className="card mt-6 overflow-hidden p-0" aria-label={S.title}>
-      <header className="flex flex-wrap items-start gap-3 border-b border-ink/5 px-5 py-4">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-lemon"><Icon name="chart" className="h-5 w-5" /></span>
+      <header className="flex flex-wrap items-start gap-3 border-b border-foreground/5 px-5 py-4">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-inverse text-lemon"><Icon name="chart" className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-xl font-bold">{S.title}</h2>
-          <p className="mt-0.5 text-sm text-ink/70">{S.sub}</p>
-          <details className="mt-1 text-xs text-muted"><summary className="underline">{S.how}</summary><p className="mt-1">{S.howBody}</p></details>
+          <p className="mt-0.5 text-sm text-foreground-muted">{S.sub}</p>
+          <details className="mt-1 text-xs text-foreground-muted"><summary className="underline">{S.how}</summary><p className="mt-1">{S.howBody}</p></details>
         </div>
         {snap && canDelete && <button onClick={remove} className="btn btn-secondary btn-xs">{S.remove}</button>}
       </header>
@@ -117,30 +117,30 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
         {ads.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2">
             {ads.map((p) => <button key={p} disabled={busy} onClick={() => sync(p)} className="btn btn-primary btn-xs"><Icon name="chart" className="h-3.5 w-3.5" />{S.syncFrom(AD_NAMES[p] ?? p)}</button>)}
-            <span className="text-xs text-muted">{S.orUpload}</span>
+            <span className="text-xs text-foreground-muted">{S.orUpload}</span>
           </div>
         )}
         {!canImport && <ReadOnlyNote className="" text={S.readOnly} />}
         {canImport && <label
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); void pick(e.dataTransfer.files[0]); }}
-          className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 ${snap ? "py-3 text-sm" : "py-8"} text-center transition-colors ${drag ? "border-ink bg-lilac" : "border-ink/15 hover:border-ink hover:bg-ground"}`}
+          className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 ${snap ? "py-3 text-sm" : "py-8"} text-center transition-colors ${drag ? "border-border-strong bg-background-muted" : "border-border hover:border-border-strong hover:bg-background"}`}
         >
           <input ref={input} type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
-          {busy ? <><span className="h-2 w-2 animate-pulse rounded-full bg-lemon" />{S.reading}</> : <><Icon name="plus" className="h-4 w-4 text-ink" /><span className="font-semibold text-ink">{snap ? S.replace : S.drop}</span></>}
+          {busy ? <><span className="h-2 w-2 animate-pulse rounded-full bg-lemon" />{S.reading}</> : <><Icon name="plus" className="h-4 w-4 text-foreground" /><span className="font-semibold text-foreground">{snap ? S.replace : S.drop}</span></>}
         </label>}
         {err && <p role="alert" className="mt-2 text-sm text-danger">{err}</p>}
 
         {snap && m && (
           <div className={fresh ? "log-row" : ""}>
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
-              {snap.source && snap.source !== "csv" && <span className="flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 font-semibold text-lilac"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lemon" />{S.live}</span>}
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-foreground-muted">
+              {snap.source && snap.source !== "csv" && <span className="flex items-center gap-1 rounded-full bg-inverse px-2 py-0.5 font-semibold text-inverse-muted"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lemon" />{S.live}</span>}
               <span className="badge badge-primary">{snap.platform}</span>
               <span dir="ltr">{snap.file}</span>
               {snap.range && <span dir="ltr">{snap.range.from} → {snap.range.to}</span>}
               {fits.length > 1 && last && canImport && (
                 <label className="ms-auto flex items-center gap-1">{S.metric}
-                  <select value={snap.metric} disabled={busy} onChange={(e) => send(last.csv, last.file, e.target.value as MetricId)} className="rounded border border-ink/15 bg-white px-2 py-1">
+                  <select value={snap.metric} disabled={busy} onChange={(e) => send(last.csv, last.file, e.target.value as MetricId)} className="rounded border border-border bg-surface px-2 py-1">
                     {fits.map((id) => <option key={id} value={id}>{METRICS[id].label[lang]}</option>)}
                   </select>
                 </label>
@@ -148,21 +148,21 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[[S.rows, String(snap.rows)], [S.ranked, String(snap.ranked)], [`${S.overall} · ${m.label[lang]}`, snap.overall != null ? fmt(snap.metric, snap.overall, lang) : "—"], [S.spend, snap.totals.spend != null ? int(snap.totals.spend) : "—"]].map(([l, v]) => (
-                <div key={l} className="rounded-lg bg-lilac p-3"><p className="text-xs text-muted">{l}</p><p className="tnum font-display text-xl font-bold text-ink" dir="ltr">{v}</p></div>
+                <div key={l} className="rounded-lg bg-background-muted p-3"><p className="text-xs text-foreground-muted">{l}</p><p className="tnum font-display text-xl font-bold text-foreground" dir="ltr">{v}</p></div>
               ))}
             </div>
-            {snap.excluded > 0 && <p className="mt-1 text-xs text-muted">{S.excluded(snap.excluded)}</p>}
-            {snap.source && snap.source !== "csv" && <p className="mt-1 text-xs text-muted">{S.liveNote}</p>}
+            {snap.excluded > 0 && <p className="mt-1 text-xs text-foreground-muted">{S.excluded(snap.excluded)}</p>}
+            {snap.source && snap.source !== "csv" && <p className="mt-1 text-xs text-foreground-muted">{S.liveNote}</p>}
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div>
-                <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Icon name="trophy" className="h-4 w-4 text-ink" />{S.winners}</h3>
+                <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><Icon name="trophy" className="h-4 w-4 text-foreground" />{S.winners}</h3>
                 <ol className="mt-2 grid gap-1.5">
                   {snap.top.map((w, i) => (
-                    <li key={w.name + i} className="pop-in flex items-center gap-2 rounded-lg border border-ink/10 bg-white px-3 py-2 text-sm" style={{ animationDelay: `${i * 90}ms` }}>
+                    <li key={w.name + i} className="pop-in flex items-center gap-2 rounded-lg border border-foreground/10 bg-surface px-3 py-2 text-sm" style={{ animationDelay: `${i * 90}ms` }}>
                       <span className={`tnum grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${MEDAL[i]}`}>{i + 1}</span>
                       <span className="min-w-0 flex-1 truncate" dir="auto" title={w.name}>{w.name}</span>
-                      <span className="tnum shrink-0 font-semibold text-ink" dir="ltr">{fmt(snap.metric, w.value, lang)}</span>
+                      <span className="tnum shrink-0 font-semibold text-foreground" dir="ltr">{fmt(snap.metric, w.value, lang)}</span>
                     </li>
                   ))}
                 </ol>
@@ -184,10 +184,10 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
 
             {[...by("spread"), ...by("pattern"), ...by("group"), ...by("dead_spend")].length > 0 && (
               <div className="mt-4">
-                <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Icon name="spark" className="h-4 w-4 text-ink" />{S.patterns}</h3>
+                <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><Icon name="spark" className="h-4 w-4 text-foreground" />{S.patterns}</h3>
                 <ul className="mt-2 grid gap-1.5">
                   {[...by("spread"), ...by("pattern"), ...by("group"), ...by("dead_spend")].map((f, i) => (
-                    <li key={i} className={`flex flex-wrap items-start gap-2 rounded-lg px-3 py-2 text-sm ${f.kind === "dead_spend" ? "border border-danger bg-agent-sami/20" : "bg-ground"}`}>
+                    <li key={i} className={`flex flex-wrap items-start gap-2 rounded-lg px-3 py-2 text-sm ${f.kind === "dead_spend" ? "border border-danger bg-agent-sami/20" : "bg-background"}`}>
                       <span className="min-w-0 flex-1" dir="auto">{f.kind === "dead_spend" && <span className="font-semibold text-danger">{S.waste}: </span>}{f.text[lang]}</span>
                       <span className={`badge shrink-0 ${f.confidence === "medium" ? "badge-primary" : "badge-accent"}`}>{f.confidence === "medium" ? S.medium : S.low}</span>
                     </li>
@@ -196,17 +196,17 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
               </div>
             )}
 
-            <div className="mt-4 rounded-xl border border-ink/20 bg-ink/5 p-3">
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Icon name="seed" className="h-4 w-4" />{S.nashrTitle}</h3>
-              {!snap.nashr ? <p className="mt-1 text-xs text-muted">{S.nashrNone}</p> : (
+            <div className="mt-4 rounded-xl border border-border bg-foreground/5 p-3">
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><Icon name="seed" className="h-4 w-4" />{S.nashrTitle}</h3>
+              {!snap.nashr ? <p className="mt-1 text-xs text-foreground-muted">{S.nashrNone}</p> : (
                 <>
                   {snap.nashr.text ? (
                     <p className="mt-1 flex flex-wrap items-start gap-2 text-sm"><span className="min-w-0 flex-1" dir="auto">{snap.nashr.text[lang]}</span><span className={`badge shrink-0 ${snap.nashr.confidence === "medium" ? "badge-primary" : "badge-accent"}`}>{snap.nashr.confidence === "medium" ? S.medium : S.low}</span></p>
-                  ) : <p className="mt-1 text-xs text-muted">{S.nashrFew}</p>}
+                  ) : <p className="mt-1 text-xs text-foreground-muted">{S.nashrFew}</p>}
                   <ul className="mt-2 grid gap-1">
                     {snap.nashr.ads.map((a) => (
-                      <li key={a.code + a.name} className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-xs">
-                        <span className="font-mono font-semibold text-ink" dir="ltr">{a.code}</span>
+                      <li key={a.code + a.name} className="flex items-center gap-2 rounded-lg bg-surface px-3 py-1.5 text-xs">
+                        <span className="font-mono font-semibold text-foreground" dir="ltr">{a.code}</span>
                         <span className="min-w-0 flex-1 truncate" dir="auto" title={a.name}>{a.name}</span>
                         <span className="tnum shrink-0 font-semibold" dir="ltr">{a.value == null ? S.tooSmall : fmt(snap.metric, a.value, lang)}</span>
                       </li>
@@ -215,11 +215,11 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
                 </>
               )}
             </div>
-            <p className="mt-3 text-xs text-muted">{S.honest}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink/5 pt-3">
+            <p className="mt-3 text-xs text-foreground-muted">{S.honest}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-foreground/5 pt-3">
               <Link href={chat(S.variantsPrompt)} className="btn btn-accent btn-xs"><Icon name="spark" className="h-3.5 w-3.5" />{S.variants}</Link>
               <Link href={chat(S.planPrompt)} className="btn btn-secondary btn-xs"><Icon name="calendar" className="h-3.5 w-3.5" />{S.plan}</Link>
-              <span className="ms-auto flex items-center gap-1 text-xs text-ink"><Icon name="check" className="h-3.5 w-3.5" />{S.saved}</span>
+              <span className="ms-auto flex items-center gap-1 text-xs text-foreground"><Icon name="check" className="h-3.5 w-3.5" />{S.saved}</span>
             </div>
           </div>
         )}

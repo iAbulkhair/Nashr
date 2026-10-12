@@ -195,11 +195,12 @@ export const CHAT_TURN_MAX_USD = 0.14;
 
 /**
  * The most a message past the allowance can cost the owner, when they turned "continue on credits" on: the ceiling above
- * at the floor rate, rounded up (5 today). The balance must cover it before the turn (nothing is taken then); after the
+ * at the floor rate, rounded up (2 today). The balance must cover it before the turn (nothing is taken then); after the
  * reply the message is billed its metered cost at the floor rate, never more than this (src/lib/credits.ts
- * `settleChatOverflow`).
+ * `settleChatOverflow`). `ceilingUsd` is a chat model's own ceiling when it is not the default's (src/lib/models/credits.ts
+ * `chatHoldFor`: Opus 5's $0.28 gives 4); without it, the default chat model's.
  */
-export const chatOverflowHold = (maxCostUsd: number = maxCostPerCreditUsd()): number => Math.ceil(CHAT_TURN_MAX_USD / maxCostUsd);
+export const chatOverflowHold = (maxCostUsd: number = maxCostPerCreditUsd(), ceilingUsd: number = CHAT_TURN_MAX_USD): number => Math.ceil(ceilingUsd / maxCostUsd);
 
 // ---- Brands (rules 245-247) ----
 
@@ -253,3 +254,16 @@ export const FIRST_MONTH_DISCOUNT_PCT = 15;
  * so this is the amount the billing page quotes on WhatsApp (plus VAT) and the founder console expects.
  */
 export const firstMonthPriceSar = (plan: SelfServePlan): number => Math.round((PLAN_PRICE_SAR[plan] * (100 - FIRST_MONTH_DISCOUNT_PCT)) / 100);
+
+// ---- Meeting follow-up (Reem B2b, rules 604-606, src/lib/secretary-meeting.ts `proposeFromText`) ----
+
+/**
+ * Credits one transcript run costs: one extraction call over up to MEETING_TEXT_MAX characters. 1 while its estimate stays
+ * under `maxCostPerCreditUsd()` (tests/pricing-floor.test.ts, `meetingExtractUsd`); 2 if it ever does not. Typed notes
+ * (up to MEETING_NOTES_MAX characters) are free, limited to 20 a day.
+ */
+export const MEETING_TRANSCRIPT_COST = 1;
+/** The longest transcript, in characters (about 7,000 Arabic words). Longer is refused before anything is charged. */
+export const MEETING_TEXT_MAX = 40_000;
+/** The longest typed notes, in characters. */
+export const MEETING_NOTES_MAX = 4_000;

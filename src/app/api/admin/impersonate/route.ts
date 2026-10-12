@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { CAPS, db, pushCapped } from "@/lib/db";
+import { db } from "@/lib/db";
 import { sessionCookie, type Session } from "@/lib/auth";
+import { appOrigin } from "@/lib/origin";
 import { allow, clientIp, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW, retryLater } from "@/lib/rate";
+import { adminAudit } from "@/lib/admin-audit";
 
 /**
  * POST /api/admin/impersonate (stop): restore the founder's own session saved when impersonation started.
@@ -11,7 +13,8 @@ import { allow, clientIp, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW, retr
  * cookies and trusts none of their values. The founder audit log (`admin:log`) is written only when the session being
  * burned is a real impersonation session: its server record carries `imp` (the founder, written by the console), and
  * the entry names that founder and the record's own email. The `nashr_impersonate` cookie is a display hint and is
- * never logged, so a visitor who sets it cannot push rows into the capped log and wipe the real ones. Rules 540-542.
+ * never logged, so a visitor who sets it cannot push rows into the capped log and wipe the real ones. Rules 540-542. The redirect goes to `appOrigin()`, never
+ * `req.url`, which is the internal address behind the Hostinger proxy (rule 904).
  */
 export async function POST(req: Request) {
   if (!(await allow(`impstop:ip:${clientIp(req)}`, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW))) {
@@ -30,6 +33,6 @@ export async function POST(req: Request) {
   else jar.delete("nashr_session");
   jar.delete("nashr_return");
   jar.delete("nashr_impersonate");
-  if (imp) await pushCapped("admin:log", JSON.stringify({ actor: imp.imp, email: imp.email, what: "impersonate:stop", at: new Date().toISOString() }), CAPS.adminLog);
-  return NextResponse.redirect(new URL(`/${lang}/admin/users`, req.url), 303);
+  if (imp) await adminAudit({ actor: imp.imp as string, section: "users", action: "impersonate.stop", target: imp.email, what: "impersonate:stop" });
+  return NextResponse.redirect(new URL(`/${lang}/admin/users`, appOrigin()), 303);
 }

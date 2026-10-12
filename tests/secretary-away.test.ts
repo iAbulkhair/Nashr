@@ -801,7 +801,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const j = await r.json();
       expect(j.ok).toBe(true);
       expect(j.calendar).toBeNull();
-      expect(j.effective).toEqual({ country: "SA", zone: "Asia/Riyadh", weekend: [5, 6], defaultWeekend: [5, 6], weekStart: 0, ramadanHours: [{ from: "10:00", to: "15:00" }] });
+      expect(j.effective).toEqual({ country: "SA", zone: "Asia/Riyadh", weekend: [5, 6], defaultWeekend: [5, 6], weekStart: 0, ramadanHours: [{ from: "10:00", to: "15:00" }], workHours: { from: "09:00", to: "17:00" } });
       expect(j.upcoming.days.find((d: { day: string }) => d.day === "2026-09-23")).toEqual({ day: "2026-09-23", why: { kind: "holiday", name: { ar: "اليوم الوطني", en: "National Day" } } });
       expect(j.upcoming.days.map((d: { day: string }) => d.day)).toEqual([...j.upcoming.days.map((d: { day: string }) => d.day)].sort());
       expect(j.upcoming.ramadan.start).toMatch(/^2027-02-/);

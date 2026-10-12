@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { adminActor, getUser, normalizeEmail } from "@/lib/auth";
-import { CAPS, pushCapped } from "@/lib/db";
 import { addPaidTopup, refundPaidTopup, voidPaidTopup, type Payment, type PaidTopupError, type RefundTopupError } from "@/lib/partners";
 import { parseTopup, parseTopupRefund, topupCredits } from "@/lib/topups";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +72,9 @@ export async function POST(req: Request) {
   const email = typeof b.email === "string" ? normalizeEmail(b.email) : "";
   const reason = (typeof b.reason === "string" ? b.reason.slice(0, 200) : "") || undefined;
   if (b.action !== "add" && b.action !== "void" && b.action !== "refund") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
+  // Add, void, refund and finish all ask a reason in the console, so the server asks it too (rule 1185).
+  const noReason = reasonRefused(b.reason);
+  if (noReason) return noReason;
   const parsed = b.action === "add" ? parseTopup(b) : null;
   if (parsed && !parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: 400 });
   // "Finish refund" sends no credits, day or reference: they come from the pack's refund record (rule 465).
@@ -89,13 +92,13 @@ export async function POST(req: Request) {
       if (!done.ok) return NextResponse.json({ ok: false, error: done.error }, { status: STATUS[done.error] });
       const { lot, payment } = done;
       if (!done.already) {
-        await pushCapped("admin:log", JSON.stringify({
-          actor: who, email, what: `topup:+${lot.credits}${paymentText(payment)}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
+        await adminAudit({
+          actor: who, section: "billing", target: email, what: `topup:+${lot.credits}${paymentText(payment)}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
           before: { credits: done.before }, after: { credits: done.credits },
           // The pack as the console shows it, without the payment reference.
-          topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt },
-          reason, at: new Date().toISOString(),
-        }), CAPS.adminLog);
+          extra: { topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt } },
+          reason,
+        });
       }
       const fresh = await getUser(email);
       return NextResponse.json({ ok: true, lot, credits: done.credits, topupCredits: fresh ? topupCredits(fresh) : 0, payment, already: done.already });
@@ -107,15 +110,17 @@ export async function POST(req: Request) {
       const { lot, payment, refunded } = done;
       if (!done.already) {
         const after = payment?.commission?.sar ?? (payment ? 0 : undefined);
-        await pushCapped("admin:log", JSON.stringify({
-          actor: who, email,
+        await adminAudit({
+          actor: who, section: "billing", target: email,
           what: `topup_refund:${lot.credits} removed:${refunded.credits} sar:${refunded.sar}${payment ? ` payment:${payment.id}` : ""}${done.commissionBefore !== undefined && after !== undefined ? ` commission:${done.commissionBefore}->${after}` : ""}${done.completed ? " completed" : ""}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
           before: { credits: done.before }, after: { credits: done.credits },
           // The pack and the refund, without the payment's or the transfer's reference.
-          topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt },
-          refund: { credits: refunded.credits, sar: refunded.sar, on: lot.refund?.on },
-          reason, at: new Date().toISOString(),
-        }), CAPS.adminLog);
+          extra: {
+            topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt },
+            refund: { credits: refunded.credits, sar: refunded.sar, on: lot.refund?.on },
+          },
+          reason,
+        });
       }
       const fresh = await getUser(email);
       return NextResponse.json({ ok: true, lot, credits: done.credits, topupCredits: fresh ? topupCredits(fresh) : 0, refunded, payment, already: !!done.already, completed: !!done.completed });
@@ -123,12 +128,12 @@ export async function POST(req: Request) {
     const done = await voidPaidTopup(email, b.id as string, who, reason);
     if (!done.ok) return NextResponse.json({ ok: false, error: done.error }, { status: STATUS[done.error] });
     const { lot, payment } = done;
-    await pushCapped("admin:log", JSON.stringify({
-      actor: who, email, what: `topup_void:${lot.credits} removed:${done.removed}${payment ? ` payment:${payment.id} void` : ""}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
+    await adminAudit({
+      actor: who, section: "billing", target: email, what: `topup_void:${lot.credits} removed:${done.removed}${payment ? ` payment:${payment.id} void` : ""}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
       before: { credits: done.before }, after: { credits: done.credits },
-      topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt },
-      reason, at: new Date().toISOString(),
-    }), CAPS.adminLog);
+      extra: { topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt } },
+      reason,
+    });
     const fresh = await getUser(email);
     return NextResponse.json({ ok: true, lot, credits: done.credits, topupCredits: fresh ? topupCredits(fresh) : 0, removed: done.removed, payment });
   } catch (e) {

@@ -28,6 +28,8 @@ export const MIN_ROLE = {
   partner: "owner",
   /** The partner's bank details (PUT /api/partner): where commission is paid. Refused while impersonating. */
   "partner.bank": "owner",
+  /** Link, choose or unlink the one calendar Reem reads (Reem B3): start, callback and /api/secretary/calendar-link. */
+  "calendar.link": "owner",
   /** Account-level profile fields: phone, WhatsApp, account language, email preferences. */
   "profile.account": "owner",
   /** Invite an admin, or promote a member to admin. */
@@ -52,6 +54,13 @@ export const MIN_ROLE = {
   "schedule.write": "admin",
   /** Approve and publish: publish route, task approve, chat `publish_item`. */
   publish: "admin",
+  /**
+   * Agent instructions of the brand workspace (agent skills portal, spec 10): save the draft, activate, discard, restore,
+   * apply or dismiss a proposal. They steer every agent's prompt and outlive the session, like `brand.write`. Reading is open to members.
+   */
+  "instructions.write": "admin",
+  /** Test an instruction against a sample task: it spends the account's credits. */
+  "instructions.test": "admin",
   /** Delete a core memory file. */
   "files.core.delete": "admin",
   /**
@@ -105,6 +114,11 @@ export const MIN_ROLE = {
   "team.leave": "member",
   /** Change one's OWN password (the member record for members, the owner record for the owner). */
   "password.change": "member",
+  /**
+   * Sign one's OWN other browser sessions out (POST /api/account/sessions, rule 1150): the member record's stamp for a
+   * member, the account's for the owner. Refused while impersonating: it would end the customer's own sessions.
+   */
+  "sessions.revoke": "member",
   /** One's own display name and interface language. */
   "profile.self": "member",
 } as const satisfies Record<string, Role>;
@@ -116,6 +130,7 @@ export const ACTIONS = Object.keys(MIN_ROLE) as Action[];
 export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "account.delete",
   "password.change",
+  "sessions.revoke",
   "team.invite.member",
   "team.invite.admin",
   "team.invite.cancel",
@@ -128,6 +143,8 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "feed.manage",
   "booking.manage",
   "billing.pay",
+  // The declaration is the owner's own statement and the link outlives a support session (Reem B3, ruling R10).
+  "calendar.link",
 ]);
 
 const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };

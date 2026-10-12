@@ -154,6 +154,13 @@ export type AutoBlock = "off" | "not_majed" | "origin" | "requester" | "not_show
  * the dearest cold types are `unit_economics` and `decision_memo` at $0.0515. A change to a price, a credit count or a rate moves
  * the list with it. The estimate counts neither the lead brief nor the cross-agent review (docs/system/costs.md §3 and
  * §5 work those out by hand). Fails closed: a type the estimate cannot price is never started.
+ *
+ * Estimated on the generation default, not on the brand's pick: `autoBlock` is pure and its callers (the Governance list
+ * and the cron's run, src/lib/handoff-auto.ts) do not read the brand file. The batch itself runs on the pick when route()
+ * accepts it. That is safe because the default's check is the strictest: tests/pricing-floor.test.ts checks every
+ * catalog model customers may pick on every type it allows, cold, with no exemption (only the default has one, for the
+ * two types this check leaves out), and pins that every type passing here keeps the floor cold on every pick. A pick
+ * not allowed for a type falls back to the default, which is what this checks.
  */
 export function autoUnderFloor(type: TaskType): boolean {
   try {

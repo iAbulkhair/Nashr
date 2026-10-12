@@ -476,8 +476,8 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect((await getItem(u.email, it2.id))?.remindAt).toBe(it2.remindAt);
   });
 
-  it("vercel.json schedules the evening cron at 15:00 UTC; the QStash tick is not a Vercel cron", () => {
-    const crons = JSON.parse(readFileSync("vercel.json", "utf8")).crons as { path: string; schedule: string }[];
+  it("crons.json schedules the evening cron at 15:00 UTC; the QStash tick is not in the GET cron list", () => {
+    const crons = JSON.parse(readFileSync("crons.json", "utf8")).crons as { path: string; schedule: string }[];
     expect(crons).toContainEqual({ path: "/api/cron/evening", schedule: "0 15 * * *" });
     expect(crons.map((c) => c.path)).not.toContain("/api/cron/secretary");
   });
@@ -497,7 +497,7 @@ describe("timed reminders are promised only while the QStash tick runs (rule 299
     expect(page).toContain(fill(appDict.ar.todo.timedOff, { brief: "09:00" }));
     for (const lang of ["ar", "en"] as const) for (const k of ["remindBrief", "timedOff", "note"] as const) expect(appDict[lang].todo[k], `${lang}.${k}`).not.toContain("08:00");
     // The brief's hour is the daily cron's.
-    expect(JSON.parse(readFileSync("vercel.json", "utf8")).crons).toContainEqual({ path: "/api/cron/daily", schedule: `0 ${DAILY_CRON_UTC_HOUR} * * *` });
+    expect(JSON.parse(readFileSync("crons.json", "utf8")).crons).toContainEqual({ path: "/api/cron/daily", schedule: `0 ${DAILY_CRON_UTC_HOUR} * * *` });
   });
 
   it("the daily route sweeps again while a sweep hits its scope cap, and the sweep's time comes out of the batch's start budget", async () => {
@@ -1105,8 +1105,8 @@ describe("handoff notes: a blocked agent opens one item, similar notes join it, 
     expect(now.match(/<\/handoff_notes>/g)).toHaveLength(1);
     expect(now).toContain("\\u003c/handoff_notes>");
     expect(fixed).not.toContain("handoff_notes>");
-    // chat() hands the notes of this agent to its prompt (and, since rule 478, the brand's weekend after them).
-    expect(readFileSync("src/lib/chat.ts", "utf8")).toMatch(/handoffNotesFor\(email, agentId\)[\s\S]*system\(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock\(notes\), weekend\)/);
+    // chat() hands the notes of this agent to its prompt (and, since rule 478, the brand's weekend, and since rule 948 the instruction layers, after them).
+    expect(readFileSync("src/lib/chat.ts", "utf8")).toMatch(/handoffNotesFor\(email, agentId\)[\s\S]*system\(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock\(notes\), weekend, layers\)/);
     // The list keeps the last 30.
     await Promise.all(Array.from({ length: 25 }, (_, i) => runTool(u, "handoff_note", { to: "noor", kind: "note", body: `more ${i}` }, [], [], undefined, { agent: "sami", lang: "en" })));
     expect(await db.lrange(SEC_KEYS.notes(u.email), 0, -1)).toHaveLength(30);

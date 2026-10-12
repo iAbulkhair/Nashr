@@ -58,10 +58,10 @@ export default function InstallHint({ lang }: { lang: Lang }) {
   const ios = way === "ios";
   const title = ios ? c.iosTitle : c.promptTitle;
   return (
-    <section aria-label={title} className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border-[1.5px] border-ink bg-paper px-4 py-3 text-sm text-ink">
+    <section aria-label={title} className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border-[1.5px] border-border-strong bg-surface px-4 py-3 text-sm text-foreground">
       <div className="min-w-0">
         <p className="font-semibold">{title}</p>
-        <p className="mt-0.5 text-muted">{ios ? c.iosBody : c.promptBody}</p>
+        <p className="mt-0.5 text-foreground-muted">{ios ? c.iosBody : c.promptBody}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {!ios && <button type="button" onClick={install} className="btn btn-primary btn-pill">{c.install}</button>}

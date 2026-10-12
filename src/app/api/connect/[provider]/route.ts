@@ -21,6 +21,7 @@ import { selectPage } from "@/lib/connectors/meta";
 import { isAdProvider, selectAdAccount } from "@/lib/connectors/ads";
 import { syncAds } from "@/lib/perf-store";
 import { saveConnection } from "@/lib/connectors/store";
+import { getProvider } from "@/lib/connectors/registry";
 import { forbid, type Action } from "@/lib/roles";
 
 export const maxDuration = 120;
@@ -28,9 +29,11 @@ export const maxDuration = 120;
 export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const { provider } = await ctx.params;
+  // Reem's calendar providers are not connectors: they are linked and unlinked only through /api/secretary/calendar-link.
+  if (getProvider(provider)?.secretary) return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });
   const no = forbid(u, "connectors");
   if (no) return no;
-  const { provider } = await ctx.params;
   // A Composio connection is revoked at the platform first. If that fails the record stays, marked, so the owner can
   // try again: deleting it would leave a live grant Thakeen can no longer find.
   const c = await getConnection(sc(u), provider);
@@ -79,6 +82,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const { provider } = await ctx.params;
+  if (getProvider(provider)?.secretary) return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as { action?: string; pageId?: string; accountId?: string; org?: string; value?: string; kind?: string; id?: string };
   const need = Object.prototype.hasOwnProperty.call(ACTION_ROLE, String(b.action)) ? ACTION_ROLE[String(b.action)] : null;
   if (!need) return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });

@@ -1,7 +1,10 @@
 import { NextResponse, after } from "next/server";
+import { appOrigin } from "@/lib/origin";
 import { allow, clientIp, sameSecret, retryLater } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import { verifyQstash } from "@/lib/qstash";
 import { SWEEP_BUDGET_TICK_MS, sweepReminders } from "@/lib/secretary-remind";
+import { sweepCalendars } from "@/lib/secretary-gcal";
 import { zonesDue } from "@/lib/secretary-evening";
 
 export const maxDuration = 60;
@@ -38,9 +41,9 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
 }
 
 /**
- * Reem's tick: every 15 minutes from an Upstash QStash schedule (the Vercel project is on Hobby, whose crons run once a
- * day). It fires the reminders whose time has come (`sweepReminders`, which starts nothing new after
- * `SWEEP_BUDGET_TICK_MS`) and, when a zone's evening wrap time has just passed, starts the wrap for that zone's
+ * Reem's tick: every 15 minutes from an Upstash QStash schedule (chosen when the site ran on Vercel Hobby, whose crons ran
+ * once a day). It fires the reminders whose time has come (`sweepReminders`, which starts nothing new after
+ * `SWEEP_BUDGET_TICK_MS`), then syncs the linked calendars that are due (`sweepCalendars`, same deadline; `calendars` in the answer) and, when a zone's evening wrap time has just passed, starts the wrap for that zone's
  * workspaces (`/api/cron/evening?zones=…`, with the cron bearer; only when CRON_SECRET is set). Answers counts only.
  *
  * Who may call: QStash, proven by the `Upstash-Signature` JWT over the raw body (src/lib/qstash.ts: the current or next
@@ -63,15 +66,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   const now = Date.now();
-  const sweep = await sweepReminders(now, { fromQstash: byQstash, deadline: now + SWEEP_BUDGET_TICK_MS });
+  const deadline = now + SWEEP_BUDGET_TICK_MS;
+  const sweep = await sweepReminders(now, { fromQstash: byQstash, deadline });
+  // The linked calendars, with the same deadline: each due brand's next 7 days are read and kept (spec §7). A failure here never loses the reminders' answer.
+  const calendars = await sweepCalendars(now, deadline).catch((e) => {
+    console.error("cal sweep failed", e instanceof Error ? e.name : "error");
+    return { scopes: 0, synced: 0, lost: 0, retried: 0, deferred: 0 };
+  });
   // The evening pass: the zones whose wrap time (18:00, or 21:30 in Ramadan) fell within the last tick. The batch runs
-  // in its own invocation with the cron bearer, so it has the daily job's time budget and its resumable markers.
+  // in its own invocation with the cron bearer, so it has the daily job's time budget and its resumable markers. On
+  // `appOrigin()`, never `req.url`: behind the Hostinger proxy that is the internal address (rule 904).
   const zones = zonesDue(now);
   const secret = process.env.CRON_SECRET;
   if (zones.length && secret) {
-    const url = new URL(`/api/cron/evening?zones=${encodeURIComponent(zones.join(","))}`, req.url).toString();
+    const url = `${appOrigin()}/api/cron/evening?zones=${encodeURIComponent(zones.join(","))}`;
     const kick = () => fetch(url, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
     try { after(kick); } catch { void kick(); }
   }
-  return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, evening: zones.length && secret ? zones.length : 0 });
+  await recordCronRun("secretary");
+  return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, calendars, evening: zones.length && secret ? zones.length : 0 });
 }

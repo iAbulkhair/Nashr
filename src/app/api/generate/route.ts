@@ -5,6 +5,7 @@ import { isTaskType } from "@/lib/tasks";
 import { generateBatch } from "@/lib/generate-batch";
 import { ModelPaused, modelState } from "@/lib/model";
 import { deadlineFor } from "@/lib/media/keys";
+import { MODEL_UNAVAILABLE } from "@/lib/models/overrides";
 
 export const maxDuration = 300;
 
@@ -36,5 +37,8 @@ export async function POST(req: Request) {
     }
   }
   await track(u.email, "generate");
-  return NextResponse.json({ ok: true, created: r.tasks.length, credits: u.credits });
+  // The brand's model pick was not used (src/lib/models/overrides.ts): the batch ran on the automatic choice, and the
+  // owner reads why in the reply language (the request's x-lang, else the account's).
+  const lang = req.headers.get("x-lang") === "en" ? "en" : u.lang === "en" ? "en" : "ar";
+  return NextResponse.json({ ok: true, created: r.tasks.length, credits: u.credits, ...(r.modelRejected ? { notice: MODEL_UNAVAILABLE.generate[lang] } : {}) });
 }

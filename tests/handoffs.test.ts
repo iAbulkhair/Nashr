@@ -176,7 +176,7 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: (p: { tools: { name: string }[] }) => { seen.push({ tools: p.tools.map((t) => t.name) }); return { finalMessage: async () => ({ model: "claude-opus-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
+        messages = { stream: (p: { tools: { name: string }[] }) => { seen.push({ tools: p.tools.map((t) => t.name) }); return { finalMessage: async () => ({ model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
       },
     }));
     const { chat } = await import("@/lib/chat");
@@ -278,7 +278,7 @@ describe("Majed cannot produce other agents' work himself (rule 273)", () => {
 // ── Rule 274: the lead brief's framing, and prompts without one unchanged ─────────────────────────────────────────
 
 const JUDGE = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
-const reply = (text: string, extra: Record<string, unknown> = {}) => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 50 }, content: [{ type: "text", text }], ...extra });
+const reply = (text: string, extra: Record<string, unknown> = {}) => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 50 }, content: [{ type: "text", text }], ...extra });
 type Sent = { system: unknown; messages: { role: string; content: string }[]; model: string; max_tokens: number; thinking?: unknown; output_config?: unknown };
 const sha = (p: Sent) => createHash("sha256").update(JSON.stringify({ model: p.model, max_tokens: p.max_tokens, thinking: p.thinking, output_config: p.output_config, system: p.system, messages: p.messages })).digest("hex");
 /** What the same fixed batch sent at adb555e (step 3a with #227 and #228), before cross-review or handoffs existed, with the brand name renamed to Thakeen (the hashes of rule 270). */
@@ -310,7 +310,7 @@ async function fixedBatch(type: TaskType, lead?: { leadBrief?: string }) {
   vi.doMock("@anthropic-ai/sdk", () => ({
     default: class {
       static BadRequestError = class extends Error {};
-      beta = { messages: { stream: (p: Sent) => { gen.push(p); return { finalMessage: async () => ({ ...reply(JSON.stringify(items)), model: "claude-opus-5" }) }; } } };
+      beta = { messages: { stream: (p: Sent) => { gen.push(p); return { finalMessage: async () => ({ ...reply(JSON.stringify(items)), model: "claude-opus-5-5" }) }; } } };
       messages = {
         create: async (p: Sent) => {
           const sys = (p.system as { text: string }[])[0].text;
@@ -319,6 +319,7 @@ async function fixedBatch(type: TaskType, lead?: { leadBrief?: string }) {
           cross.push(p);
           return reply(JSON.stringify(items.map((_, i) => ({ id: i + 1, verdict: "flag", notes: ["a note"] }))));
         },
+        stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
       };
     },
   }));
@@ -485,7 +486,7 @@ describe("a run is one item through generateBatch, with its parent and the norma
       expect(t).toMatchObject({ type: "pricing_review", source: "handoff", parent: { handoff: id, item: 0, conv: CONV }, status: "pending" });
       // The owner's notes were never the brief: a handoff child keeps no `brief`, and its stamp is the type's own.
       expect(t.brief).toBeUndefined();
-      expect(t.pb).toEqual(promptStamp("pricing_review", brand));
+      expect(t.pb).toEqual(promptStamp("pricing_review", brand, { plat: "none", ins: "none" }));
     }
     const lite = await listLite(u.email);
     expect(lite.filter((l) => l.source === "handoff").map((l) => l.parent)).toEqual(tasks.map(() => ({ handoff: id, item: 0, conv: CONV })));
@@ -568,7 +569,7 @@ describe("a run is one item through generateBatch, with its parent and the norma
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        beta = { messages: { stream: () => ({ finalMessage: async () => ({ ...reply(JSON.stringify(batches.shift())), model: "claude-opus-5" }) }) } };
+        beta = { messages: { stream: () => ({ finalMessage: async () => ({ ...reply(JSON.stringify(batches.shift())), model: "claude-opus-5-5" }) }) } };
         messages = {
           create: async (p: Sent) => {
             const sys = (p.system as { text: string }[])[0].text;
@@ -576,6 +577,7 @@ describe("a run is one item through generateBatch, with its parent and the norma
             if (sys.startsWith("You are the quality reviewer")) return reply(JSON.stringify([{ ok: true }, { ok: true }, { ok: true }]));
             return reply(JSON.stringify([{ id: 1, verdict: "ok" }, { id: 2, verdict: "flag", notes: ["رقم بلا مصدر"] }, { id: 3, verdict: "ok" }]));
           },
+          stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; },
         };
       },
     }));
@@ -707,8 +709,8 @@ describe("refusals charge nothing and leave the item; a failed generation is ref
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        beta = { messages: { stream: () => ({ finalMessage: async () => { if (fail) throw new Error("upstream"); return { ...reply(JSON.stringify([{ channel: "finance", title: "t", body: "b [رقم]" }])), model: "claude-opus-5" }; } }) } };
-        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : sys.startsWith("You are the quality reviewer") ? JSON.stringify([{ ok: true }]) : "[]"); } };
+        beta = { messages: { stream: () => ({ finalMessage: async () => { if (fail) throw new Error("upstream"); return { ...reply(JSON.stringify([{ channel: "finance", title: "t", body: "b [رقم]" }])), model: "claude-opus-5-5" }; } }) } };
+        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : sys.startsWith("You are the quality reviewer") ? JSON.stringify([{ ok: true }]) : "[]"); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const route = await import("@/app/api/handoffs/[id]/run/route");
@@ -789,8 +791,8 @@ describe("depth 1, and no MCP surface (rule 280)", () => {
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        beta = { messages: { stream: () => ({ finalMessage: async () => ({ ...reply(JSON.stringify(sneaky)), model: "claude-opus-5" }) }) } };
-        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : sys.startsWith("You are the quality reviewer") ? JSON.stringify([{ ok: true }]) : "[]"); } };
+        beta = { messages: { stream: () => ({ finalMessage: async () => ({ ...reply(JSON.stringify(sneaky)), model: "claude-opus-5-5" }) }) } };
+        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : sys.startsWith("You are the quality reviewer") ? JSON.stringify([{ ok: true }]) : "[]"); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const lib = await import("@/lib/handoffs");
@@ -844,7 +846,7 @@ describe("the log, the card, the chip and the page (rule 281)", () => {
     const html = renderToStaticMarkup(createElement(HandoffCard, { id: view.id, t: en, lang: "en", initial: view }));
     expect(html).toContain(esc(fill(en.handoff.title, { name: en.agents.majed.name })));
     // Majed's "why" takes its direction from its own text: the label outside, the model's line isolated.
-    expect(html).toContain(`<p class="mt-1 text-xs text-ink/80"><span class="font-semibold">${en.handoff.why}:</span> <bdi dir="auto">${esc("<b>why</b>")}</bdi></p>`);
+    expect(html).toContain(`<p class="mt-1 text-xs text-foreground-muted"><span class="font-semibold">${en.handoff.why}:</span> <bdi dir="auto">${esc("<b>why</b>")}</bdi></p>`);
     expect(html).toContain(esc(fill(en.handoff.to, { agent: en.agents.razan.name, type: en.generate.types.pricing_review.t })));
     expect(html).toContain(esc("<script>alert(1)</script> راجعي الأسعار"));
     expect(html).not.toContain("<script>");
@@ -981,8 +983,8 @@ describe("the handoffs go with the account (rule 282)", () => {
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        beta = { messages: { stream: () => ({ finalMessage: async () => { started = true; await gate; return { ...reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])), model: "claude-opus-5" }; } }) } };
-        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : JSON.stringify([{ ok: true }])); } };
+        beta = { messages: { stream: () => ({ finalMessage: async () => { started = true; await gate; return { ...reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])), model: "claude-opus-5-5" }; } }) } };
+        messages = { create: async (p: Sent) => { const sys = (p.system as { text: string }[])[0].text; return reply(sys.startsWith("You are the quality judge") ? JSON.stringify([JUDGE]) : JSON.stringify([{ ok: true }])); }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const lib = await import("@/lib/handoffs");
@@ -1022,7 +1024,7 @@ describe("the handoffs go with the account (rule 282)", () => {
 // ── Rule 293: a chat card never offers Approve on an item another agent flagged ──────────────────────────────────
 
 describe("a chat card never offers Approve on an item another agent flagged (rule 293)", () => {
-  const V = (by: "razan" | "majed", verdict: "ok" | "flag", notes = ""): CrossVerdict => ({ by, verdict, notes, at: "2026-09-30T08:00:00.000Z", model: "claude-sonnet-5" });
+  const V = (by: "razan" | "majed", verdict: "ok" | "flag", notes = ""): CrossVerdict => ({ by, verdict, notes, at: "2026-09-30T08:00:00.000Z", model: "claude-sonnet-5-5" });
   const task = (id: string, extra: Partial<Task>): Task => ({ id, type: "gtm_plan", channel: "growth", title: `Plan ${id}`, body: "Phase 1", status: "pending", createdAt: new Date().toISOString(), lang: "en", ...extra });
 
   it("chatItemOf carries who flagged it and how many notes; an ok, no review or an outside draft carries none", () => {

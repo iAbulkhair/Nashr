@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { deleteConversation } from "./conversations";
 import { listFiles } from "./files";
 import { listBrands, scopeFor } from "./brands";
 import { pmap } from "./parallel";
@@ -17,6 +18,7 @@ import { revokeBook, revokeBooks } from "./booking-token";
 import { revokeFeed, revokeFeeds } from "./feed-token";
 import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
+import { revokeCalendarLinks } from "./secretary-gcal";
 import { handoffKeys } from "./handoffs";
 import { paymobAccountKeys } from "./billing";
 import { proposalKeys } from "./brand-proposals";
@@ -26,6 +28,8 @@ import { isComposio, revokeAll } from "./connectors/via-composio";
 import { AD_PROVIDERS } from "./connectors/ads";
 import { AD_STATS_SOURCES, ADSTATS_KEY } from "./ad-stats";
 import { XSTATS_KEY } from "./social-read/common";
+import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
+import { instructionProposalKeys } from "./instruction-proposals";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -60,8 +64,19 @@ export async function wipeAccount(email: string) {
   // member's (`members:{owner}`). A member added after this read is revoked by `wipeTeam` under `lock:team`. A failure
   // stops the wipe (a retry runs it again) rather than leaving a working link behind a half-wiped account.
   const logins = [e, ...(await db.smembers(membersKey(e)))];
-  await Promise.all([revokeFeeds(logins), revokeBooks(logins)]);
+  // The owner's linked marketing calendars (Reem B3), every brand's: only our side is dropped, the owner removes access at the provider.
+  await Promise.all([revokeFeeds(logins), revokeBooks(logins), revokeCalendarLinks(e)]);
   const scopes = (await listBrands(e)).map((b) => scopeFor(e, b.id));
+  // Each conversation goes through the writer lock first (`deleteConversation`: its record, its thread and its id in the
+  // index, under `convlock:{scope}:{id}`), before any third-party grant is revoked. A turn's touch, a rename or a pick that
+  // had read the record and not yet written it would otherwise put it back after the wipe, a record of a deleted account
+  // outside every index; under the lock it either finishes first and is deleted here, or finds no record and writes
+  // nothing. A lock not taken in time stops the wipe, as a failed link revocation does: the account is kept and a retry
+  // runs it again.
+  const earlyConvIds = await pmap(scopes, (s) => db.lrange(`convs:${s}`, 0, -1));
+  await pmap(scopes.flatMap((s, i) => earlyConvIds[i].map((id) => [s, id] as const)), async ([s, id]) => {
+    if ((await deleteConversation(s, id)) === "busy") throw new Error("account wipe: a conversation is being written, try again");
+  });
   // Platform grants held by Composio are revoked while the records that name them still exist. A failure is logged, not
   // fatal: the account must still be deleted, and the founder can revoke what is left from Composio's dashboard.
   await revokeComposio(scopes);
@@ -70,13 +85,15 @@ export async function wipeAccount(email: string) {
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals] = perScope[i];
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
-      ...convIds.flatMap((id) => [`conv:${s}:${id}`, `chat:${s}:${id}`]),
+      // Already deleted under their lock above; listed again for an id `deleteConversation` refuses (a malformed one) and
+      // for the lock key itself (10 s TTL, src/lib/conversations.ts).
+      ...convIds.flatMap((id) => [`conv:${s}:${id}`, `chat:${s}:${id}`, `convlock:${s}:${id}`]),
       ...conns.map((p) => `conn:${s}:${p}`), // encrypted third-party credentials
       ...months.map((m) => `tidx:${s}:${m}`),
       // The chat feedback log: per brand, and it holds the free-text reason the owner typed, so it must not outlive
@@ -86,6 +103,8 @@ export async function wipeAccount(email: string) {
       `decisions:${s}`,
       // The governance history (who changed which setting, with their email) and its save lock (10 s TTL).
       `govhist:${s}`, `govlock:${s}`,
+      // The agent instructions of this brand: its layer, revision history and write lock (src/lib/instructions-store.ts).
+      ...instructionKeys(s),
       // The activity log (titles, file names, member emails) and the routines' "nothing new" markers (8 or 35 days).
       activityKey(s), ...routineSkipKeys(s),
       // Reem's list: every item ever created and not yet purged (open, done and deleted), its indexes (the reminder index
@@ -100,6 +119,9 @@ export async function wipeAccount(email: string) {
       // claims and index, and the brand lock. The publish markers (`pubtry:`, `publock:`) are left to their TTL (3 days
       // at most): they hold a time or a lock, not account data, and finding them would take every item on every platform.
       ...proposals,
+      // Instructions an agent proposed from chat (7 days, the owner's own rule text), their outcomes and claims, the index
+      // and the day's proposal counter (src/lib/instruction-proposals.ts).
+      ...instrProposals,
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
@@ -177,6 +199,8 @@ export async function wipeAccount(email: string) {
   );
   // The account record goes first, then the team under its lock: an invite accepted while this runs either finished
   // before `wipeTeam` took `lock:team` (and its member is deleted there) or re-reads the owner after it and finds none.
+  // The founder feed of instruction changes holds this account's email: its rows leave with it (a busy lock stops the wipe, a retry runs it again).
+  await removeFeedRowsFor(e);
   await pmap(keys, (k) => db.del(k));
   // The global reminder index names every scope with a reminder: this account's leave it.
   await Promise.all(scopes.map((s) => forgetDueScope(s)));

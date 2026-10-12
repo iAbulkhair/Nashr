@@ -194,11 +194,11 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="verify-t1" />{S.title}</span></h1>
-      <p className="mt-2 text-ink/70">
-        {sentMail ? S.sentTo : S.yourEmail} <span dir="ltr" className="clip font-medium text-ink">{shown}</span>
+      <p className="mt-2 text-foreground-muted">
+        {sentMail ? S.sentTo : S.yourEmail} <span dir="ltr" className="clip font-medium text-foreground">{shown}</span>
       </p>
       {mailDown && (
-        <div role="status" className="mt-4 rounded-xl border border-ink/10 bg-ground p-4 text-sm">
+        <div role="status" className="mt-4 rounded-xl border border-foreground/10 bg-background p-4 text-sm">
           <p>{viaWhatsapp ? S.mailOff : S.mailOffHelp}</p>
           {whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm mt-3">{viaWhatsapp ? S.support : S.contact}</a>}
         </div>
@@ -219,7 +219,7 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
           className={`${input} text-center text-xl tracking-[0.4em]`}
         />
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
-        {info && <p role="status" className="text-sm text-ink/70">{info}</p>}
+        {info && <p role="status" className="text-sm text-foreground-muted">{info}</p>}
         <button disabled={busy} className="s-btn"><Scribble kind="pill" seed="verify-b1" fill="ink" shadow ring />{S.confirm}</button>
       </form>
       <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
@@ -227,7 +227,7 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
           {wait > 0 ? `${S.resend} ${waitLabel(wait, lang)}` : S.resend}
         </button>
         {canChangeEmail && !changing && (
-          <button type="button" onClick={() => { setChanging(true); setErr(""); }} className="text-ink underline">{S.changeLink}</button>
+          <button type="button" onClick={() => { setChanging(true); setErr(""); }} className="text-foreground underline">{S.changeLink}</button>
         )}
       </div>
       {canChangeEmail && changing && (
@@ -235,11 +235,11 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
           <input name="email" required autoFocus type="email" autoComplete="email" dir="ltr" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="name@company.com" aria-label={S.changeLabel} className={input} />
           <div className="flex flex-wrap items-center gap-3">
             <button disabled={moving} className="btn btn-secondary btn-sm">{S.changeSend}</button>
-            <button type="button" onClick={() => { setChanging(false); setErr(""); }} className="text-sm text-ink underline">{S.cancel}</button>
+            <button type="button" onClick={() => { setChanging(false); setErr(""); }} className="text-sm text-foreground underline">{S.cancel}</button>
           </div>
         </form>
       )}
-      <p className="mt-6 text-sm"><LogoutButton label={S.logout} lang={lang} className="text-sm text-ink/70 underline hover:text-ink" /></p>
+      <p className="mt-6 text-sm"><LogoutButton label={S.logout} lang={lang} className="text-sm text-foreground-muted underline hover:text-foreground" /></p>
     </div>
   );
 }

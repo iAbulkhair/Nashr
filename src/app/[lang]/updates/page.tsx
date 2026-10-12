@@ -24,8 +24,8 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   return pageMeta(lang, "/updates", { title: `${c.eyebrow} — ${dict[lang].brand}`, description: c.sub });
 }
 
-const TAG_CLASS: Record<ChangeTag, string> = { new: "badge badge-accent", improved: "badge badge-primary", fixed: "badge bg-ground" };
-const STATUS_CLASS: Record<WishStatus, string> = { planned: "badge bg-paper", in_progress: "badge badge-accent", shipped: "badge badge-primary" };
+const TAG_CLASS: Record<ChangeTag, string> = { new: "badge badge-accent", improved: "badge badge-primary", fixed: "badge bg-background" };
+const STATUS_CLASS: Record<WishStatus, string> = { planned: "badge bg-surface", in_progress: "badge badge-accent", shipped: "badge badge-primary" };
 
 /** Entries that share a date, newest date first (CHANGELOG is already newest first). */
 function byDate(entries: readonly ChangeEntry[]) {
@@ -60,32 +60,32 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               {c.title}
             </span>
           </h1>
-          <p className="mt-5 max-w-2xl text-lg text-muted">{c.sub}</p>
+          <p className="mt-5 max-w-2xl text-lg text-foreground-muted">{c.sub}</p>
         </section>
 
         {/* Section tabs: plain anchors, so both sections work without JavaScript. */}
-        <nav aria-label={c.eyebrow} className="border-y-[1.5px] border-ink">
+        <nav aria-label={c.eyebrow} className="border-y-[1.5px] border-border-strong">
           <div className="mx-auto flex max-w-4xl gap-3 overflow-x-auto px-4 py-3 sm:px-6">
             <a href="#whats-new" className="s-chip inline-flex items-center whitespace-nowrap"><Scribble kind="pill" seed="updates-tab-new" fill="paper" ring />{c.tabNew}</a>
-            <a href="#wishlist" className="s-chip inline-flex items-center whitespace-nowrap"><Scribble kind="pill" seed="updates-tab-wish" fill="paper" ring />{c.tabWish} <span className="tnum ms-1 text-muted" dir="ltr">{wishes.length}</span></a>
+            <a href="#wishlist" className="s-chip inline-flex items-center whitespace-nowrap"><Scribble kind="pill" seed="updates-tab-wish" fill="paper" ring />{c.tabWish} <span className="tnum ms-1 text-foreground-muted" dir="ltr">{wishes.length}</span></a>
           </div>
         </nav>
 
         <section id="whats-new" className="mx-auto max-w-4xl scroll-mt-20 px-4 py-14 sm:px-6">
           <h2 className="section-title">{c.newTitle}</h2>
-          <p className="mt-2 text-muted">{c.newSub}</p>
+          <p className="mt-2 text-foreground-muted">{c.newSub}</p>
           <ol className="mt-8 grid gap-8">
             {byDate(CHANGELOG).map((g) => (
               <li key={g.date} className="grid gap-3 sm:grid-cols-[10rem_1fr] sm:gap-6">
-                <h3 className="text-sm font-bold text-muted sm:pt-1"><time dateTime={g.date}>{fmt.format(new Date(`${g.date}T00:00:00Z`))}</time></h3>
-                <ul className="grid divide-y divide-ink/15 border-s-[1.5px] border-ink ps-4">
+                <h3 className="text-sm font-bold text-foreground-muted sm:pt-1"><time dateTime={g.date}>{fmt.format(new Date(`${g.date}T00:00:00Z`))}</time></h3>
+                <ul className="grid divide-y divide-foreground/15 border-s-[1.5px] border-border-strong ps-4">
                   {g.items.map((e) => (
                     <li key={e.title.en} className="py-3 first:pt-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={TAG_CLASS[e.tag]}>{c.tags[e.tag]}</span>
                         <h4 className="font-display text-base font-bold">{e.title[lang]}</h4>
                       </div>
-                      <p className="mt-1.5 text-sm text-muted">{e.desc[lang]}</p>
+                      <p className="mt-1.5 text-sm text-foreground-muted">{e.desc[lang]}</p>
                     </li>
                   ))}
                 </ul>
@@ -94,7 +94,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
           </ol>
         </section>
 
-        <section id="wishlist" className="scroll-mt-20 border-t-[1.5px] border-ink bg-lilac">
+        <section id="wishlist" className="scroll-mt-20 border-t-[1.5px] border-border-strong bg-background-muted">
           <div className="mx-auto max-w-4xl px-4 py-14 sm:px-6">
             <h2 className="section-title">{c.wishTitle}</h2>
             <p className="mt-2">{c.wishSub}</p>
@@ -104,13 +104,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
                 <Link href={loginHref} className="s-btn !min-h-10 !px-5 !text-base"><Scribble kind="pill" seed="updates-signin" fill="ink" shadow ring />{c.signIn}</Link>
               </p>
             )}
-            {wishes.length === 0 ? <p className="mt-6 text-sm text-muted">{c.empty}</p> : (
-              <ul className="mt-6 grid divide-y divide-ink/15 border-y-[1.5px] border-ink">
+            {wishes.length === 0 ? <p className="mt-6 text-sm text-foreground-muted">{c.empty}</p> : (
+              <ul className="mt-6 grid divide-y divide-foreground/15 border-y-[1.5px] border-border-strong">
                 {wishes.map((w) => (
                   <li key={w.id} className="flex items-center gap-4 py-3">
                     <div className="min-w-0 flex-1">
                       <h3 className="font-display text-base font-bold" dir="auto">{w.title[lang]}</h3>
-                      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+                      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-foreground-muted">
                         <span className={STATUS_CLASS[w.status]}>{c.statuses[w.status]}</span>
                         {w.area && <span>{c.areas[w.area]}</span>}
                       </p>
@@ -118,7 +118,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
                     {u ? (
                       <WishVote id={w.id} votes={w.votes} voted={w.voted} title={w.title[lang]} labels={voteLabels} loginHref={loginHref} />
                     ) : (
-                      <Link href={loginHref} aria-label={`${c.signIn}: ${w.title[lang]}`} className="flex min-w-16 shrink-0 flex-col items-center rounded-xl border-[1.5px] border-ink bg-paper px-3 py-1.5 text-sm font-bold hover:bg-lemon">
+                      <Link href={loginHref} aria-label={`${c.signIn}: ${w.title[lang]}`} className="flex min-w-16 shrink-0 flex-col items-center rounded-xl border-[1.5px] border-border-strong bg-surface px-3 py-1.5 text-sm font-bold hover:bg-lemon">
                         <svg viewBox="0 0 12 12" className="h-3 w-3" aria-hidden><path d="M2 8l4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                         <span className="tnum" dir="ltr">{w.votes}</span>
                         <span className="text-xs font-medium">{c.votesLabel}</span>
@@ -135,8 +135,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
                 <div className="s-card">
                   <Scribble kind="box" seed="updates-suggest" fill="paper" />
                   <h3 className="font-display text-lg font-bold">{c.suggestTitle}</h3>
-                  <p className="mt-1 text-sm text-muted">{c.suggestPrivate}</p>
-                  <Link href={loginHref} className="mt-3 inline-block font-bold text-ink underline">{c.signInSuggest}</Link>
+                  <p className="mt-1 text-sm text-foreground-muted">{c.suggestPrivate}</p>
+                  <Link href={loginHref} className="mt-3 inline-block font-bold text-foreground underline">{c.signInSuggest}</Link>
                 </div>
               )}
             </div>

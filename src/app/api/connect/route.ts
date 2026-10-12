@@ -10,7 +10,7 @@ export async function GET() {
   const conns = await listConnections(sc(u));
   return NextResponse.json({
     ok: true,
-    providers: PROVIDERS.map((p) => ({ id: p.id, name: p.name, kind: p.kind, capabilities: p.capabilities, available: isAvailable(p), keyFields: p.keyFields, docs: p.docs, needsShop: !!p.oauth?.needsShop, toolkits: routedViaComposio(p.id) ? PROVIDER_TOOLKITS[p.id] : undefined })),
+    providers: PROVIDERS.filter((p) => !p.secretary).map((p) => ({ id: p.id, name: p.name, kind: p.kind, capabilities: p.capabilities, available: isAvailable(p), keyFields: p.keyFields, docs: p.docs, needsShop: !!p.oauth?.needsShop, toolkits: routedViaComposio(p.id) ? PROVIDER_TOOLKITS[p.id] : undefined })),
     connections: conns,
   });
 }

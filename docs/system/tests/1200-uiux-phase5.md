@@ -1,0 +1,42 @@
+# Coverage: UI/UX phase 5, semantic colours and the dark theme (rules 1200-1229)
+
+Status on 2026-10-11 on branch `claude/uiux-phase5` (cut from `claude/uiux-phase4`, then merged with it after 95351a33). Source: `docs/reports/2026-10-10-supastarter-uiux-report.md` §5.2 (dark mode) and §8.1 (public pages stay light for now). Rules 1183-1190 belong to phase 4's security fixes. Phase 5 uses 1200-1219. Rules 1220-1229 are held for phase 5b, the marketing live UI gallery (plan below).
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 1200 | The codemod `scripts/semantic-colours.mjs` moved every raw palette utility in `src/**/*.tsx` onto a semantic role, using the same table as the lint (`semanticColour` in `eslint-rules/thakeen-ui.mjs`). It changed 1,625 classes in 127 files and is idempotent (`--check` finds 0). A few cases depend on context. An ink panel (`bg-ink` with paper or lilac text, padding or a card) becomes `bg-inverse`, while an ink dot or bar becomes `bg-foreground`. Ink text on a solid lemon, gold or agent fill becomes `text-accent-foreground`, but a tint such as `bg-lemon/20` is not a fixed fill. `ScribbleArt.tsx` keeps its own SVG class names. Existing tests that read class strings now read the new names: `admin-shell`, `chat-allowance-ui`, `handoffs`, `logout-visible` (rule 750), `reskin-app` (519), `reskin-marketing` (518), `usage-model` and `palette-clean` (513: the dark sheet may write hex values) | `tests/uiux-phase5.test.ts` (rule 1200: the mapping table, `--check` gives 0, a scan of `src/` for leftover raw tokens) | — |
+| 1201 | `thakeen-ui/no-raw-colour` is an **error** for `src/**/*.{ts,tsx}`, on its own line in `eslint.config.mjs` beside the four warnings (rules 1095-1098, unchanged). It catches raw palette utilities with any variant or opacity, in template strings too, plus arbitrary colours (`bg-[#…]`, `rgb(…)`, `var(--color-ink)`). The message names the role to use. The class names of SVG shapes are skipped. The lemon-on-ink warning now reads `bg-foreground` as the ink fill that `bg-ink` was | `tests/uiux-phase5.test.ts` (rule 1201: error level, the config line, the message, variants and arbitrary values, passes for the roles and SVG shapes, the lemon bar) | — |
+| 1202 | The roles in `globals.css` sit in a non-inline `@theme` block, so each utility reads `var(--color-…)` and the dark sheet can re-point it. Primitives, agent colours and fonts stay `inline`. `src/app/theme-dark.css` is one `:root[data-theme="dark"]` block with `color-scheme: dark`. It re-points only names the light theme already has, never a primitive, an agent colour or lemon. `tokens.css` stays the light sheet that `design-tokens.json` is checked against. Text on a solid bright fill is ink in both themes (a `:where(…)` rule at zero specificity). Scribble strokes and the component classes (switch, badges, skip link, prose, input, icon button) use the roles. Avatars on light agent colours use `text-accent-foreground` | `tests/uiux-phase5.test.ts` (rule 1202), `tests/design-tokens.test.ts`, `tests/uiux-phase0.test.ts` (`html { color-scheme: light }`, unchanged) | — |
+| 1203 | No flash: the root layout sends `data-theme="light"` with `suppressHydrationWarning` on `<html>`. An inline `<head>` script (`THEME_SCRIPT`) reads the cookie, `prefers-color-scheme` and the path, then sets `data-theme` before the body is parsed. This is Next's "Preventing flash before hydration" guide, cookie variant. The layout does not read `cookies()`, so pages stay statically prerendered. Dark applies only on `/{lang}/app/*` and `/{lang}/admin/*`; public pages stay light. `ThemeScope` sits in both branches of the app layout and both of the console's. It re-applies the theme after client navigation, a change of the device setting and a new choice, and sets light again when the layout unmounts | `tests/uiux-phase5.test.ts` (rule 1203: the layout source, the script run against a stub page for each choice, device and path, an error leaves light, the pure helpers agree with the script, the ThemeScope placements) | A browser check of a hard reload on `/ar/app` with the device in dark: no light frame (staging) |
+| 1204 | The choice is the viewer's, stored in the first-party cookie `nashr_theme` (`system`, `light` or `dark`; one year, `path=/`, lax, `Secure` on https, not httpOnly), like `nashr_lang`. No server code reads it: there is no route, no profile field and no stored shape, so nothing expands or contracts (rule 679 does not apply). `ThemeToggle` is a `radiogroup` of three radios (System, Light, Dark, in Arabic and English). The chosen one is `aria-checked` and the only one in the Tab order. The arrows follow `tabStep`, so they are mirrored in RTL. Targets are 44px on touch, and the server renders "system", so hydration never mismatches. The toggle appears in the app's account menu footer, in Settings > Account (an Appearance card with no Save) and in the console rail | `tests/uiux-phase5.test.ts` (rule 1204: cookie read and write, only `src/lib/theme.ts` names it, no API route imports it, static render in both languages, the placements) | A browser check that the choice holds across a reload and a language switch (staging) |
+| 1205 | WCAG AA in both themes, from the values in `tokens.css` and `theme-dark.css`, with translucent colours composited first. Every text pair is at least 4.5:1: foreground, muted and subtle text on background, surface, muted surfaces and popover; inverse on inverse; primary, accent and status foregrounds; status text on surface and on its tint, and danger text on the muted background (the console's stale cron); notice and info tints; button text on its fill and hover. Focus rings, the lemon ring on inverse, input borders and strong borders are at least 3:1. Each dark chart series is at least 3:1 on the card surface. The roles do not depend on direction, so RTL and LTR paint the same | `tests/uiux-phase5.test.ts` (rule 1205) | Contrast of real screens in both themes (axe on staging); the oauth consent page is outside the dark scope |
+
+Free in this range: 1206-1219.
+
+## Not verified here
+
+- How each screen looks in dark. No browser runs in this suite. Screens the founder should check on staging, in Arabic and English, in light and dark (with the account menu set to Dark, and to System with the device in dark):
+  - Home (`/app`) and the chat panel.
+  - Inbox and the approval cards.
+  - Tasks and To-do.
+  - Agents and an agent's page.
+  - Settings: Account (the Appearance card), Billing, Brand, Team, Notifications.
+  - Onboarding cards and the journey card.
+  - The sign-in, sign-up and verify screens.
+  - The console's Overview, Users with an account sheet, Log, Leads and Usage.
+  - The trial and impersonation banners, toasts, dialogs and sheets.
+  - The 360px phone width.
+- Inline `style` colours in the scribble art and in `oauth/authorize` (outside the dark scope) keep their light values.
+- When a client navigation goes from a public page into the app, `ThemeScope` applies the theme after the first paint, so one light frame can show. A full load has none.
+- If the CSP ever gains `script-src`, the head script needs a hash or a nonce.
+
+## Phase 5b plan: the marketing live UI gallery (rules 1220-1229)
+
+Items 1-4 and 6 are built on `claude/uiux-phase5b`: see `docs/system/tests/1220-uiux-phase5b.md`. Item 5 is still to come.
+
+1. The gallery copy goes in a new file, `src/lib/home-gallery.ts`, with Arabic and English. `src/lib/home.ts` stays as it is. The heading «عملاء جربوا ذكين.» and the sub-line «أمثلة توضيحية: …» / "Illustrative examples: …" stay exactly as on `claude/r1-release-prep` (PR #322).
+2. The explorer renders the real app components (Inbox card, approval card, chat bubble, a report tile) with fictional data that is labelled illustrative on screen. It shows no customer names, logos, testimonials, quotes, numbers or promised results.
+3. It never mentions the model or its maker. The public name is Thakeen / ذكين. Support is hello@thakeen.com.
+4. Tabs use the `Tabs` primitive (rule 1113), work by keyboard in RTL and LTR, are 44px on touch and respect reduced motion.
+5. The freshness chip and the hero call to action come next, then dark mode for the public pages once the gallery uses only the roles.
+6. Tests to write: a copy scan for banned claims, no model names, no edits to the `home.ts` lines, the illustrative label present, and a static render in both languages.

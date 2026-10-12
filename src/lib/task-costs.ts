@@ -11,25 +11,32 @@
  * Calibrated to docs/system/costs.md §3 (2026-09-27): the generation call is Opus with a cached workspace block, a
  * fresh brief and adaptive thinking; the reviewer and the judge are Sonnet. Since 2026-10-09 the calls are Opus 5.5,
  * Sonnet 5.5 and Haiku 5.5; since rule 901 the writer and the reviewer of each type come from TASK_MODELS
- * (task-models.ts), the rest from ESTIMATE_MODELS. The token counts were kept. The review and judge constants are fitted
- * to reproduce that table within $0.001; they were not measured. Replace them with the founder console's `byKind`
- * averages (generate / review / judge, src/lib/usage.ts `getUsage`) after a month of real traffic.
+ * (task-models.ts, through `automaticFor` in src/lib/models/route.ts), the rest from ESTIMATE_MODELS. The token counts
+ * were kept. The review and judge constants are fitted to reproduce that table within $0.001; they were not measured.
+ * Replace them with the founder console's `byKind` averages (generate / review / judge, src/lib/usage.ts `getUsage`)
+ * after a month of real traffic.
  */
 import { costUsd } from "./usage";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
-import { TASK_MODELS } from "./task-models";
+import { modelById } from "./models/catalog";
+import { DEFAULTS, automaticFor } from "./models/route";
 
 /**
- * The model each call outside the batch's writer and reviewer is priced at (those two are TASK_MODELS, per type).
- * tests/pricing-floor.test.ts checks these literals are the ones the code calls.
+ * The model each call outside the batch's writer and reviewer is priced at: what `route()` runs each purpose on by
+ * default (src/lib/models/route.ts `DEFAULTS`). The writer and the reviewer are per task type (`TASK_MODELS`, rule 901,
+ * read through `automaticFor`), so the estimates and the calls read one table. tests/pricing-floor.test.ts checks each
+ * call site asks `route()` for its purpose, and that no model the routing can pick for the judge costs more than the one
+ * priced here.
  */
 export const ESTIMATE_MODELS = {
   /** src/lib/judge.ts */
-  judge: "claude-sonnet-5-5",
+  judge: DEFAULTS.judge,
   /** src/lib/onboard.ts */
-  onboard: "claude-opus-5-5",
+  onboard: DEFAULTS.onboard,
   /** src/lib/media/prompts.ts: the prompt a render is made from */
-  mediaPrompt: "claude-haiku-5-5",
+  mediaPrompt: DEFAULTS.imagePrompt,
+  /** src/lib/secretary-meeting.ts `proposeFromText`: tasks from a meeting transcript (Reem B2b) */
+  meetingExtract: DEFAULTS.meeting,
 } as const;
 
 export type ItemSize = "short" | "medium" | "long";
@@ -62,6 +69,12 @@ export const ASSUME = {
   onboard: { in: 13500, out: 20000 },
   /** One media prompt: a Sonnet call capped at 400 output tokens (src/lib/media/prompts.ts). */
   mediaPrompt: { in: 500, out: 400 },
+  /**
+   * One transcript extraction (rule 605): the longest allowed text, MEETING_TEXT_MAX = 40,000 Arabic characters at about 2
+   * characters a token, plus the instruction and the tool schema; the answer is capped at 1,500 tokens. ESTIMATED, not
+   * measured: replace with the founder console's per-kind averages after the first production runs (docs/system/costs.md).
+   */
+  meetingExtract: { in: 20_500, out: 1_500 },
 } as const;
 
 export type BatchEstimate = {
@@ -80,23 +93,40 @@ export type BatchEstimate = {
 /**
  * One batch: the generation call (fresh input, the cached block read on a hit or written when cold, thinking plus the
  * items as output), the reviewer and the judge. `items` and `credits` default to TASK_COUNT and TASK_COST; `cache`
- * defaults to "hit" (an owner working in the app). Cron-driven types are checked "cold".
+ * defaults to "hit" (an owner working in the app). Cron-driven types are checked "cold". `model` is the generation
+ * call's model, priced at its catalog rate: left out or undefined, the type's automatic writer (`TASK_MODELS`, the same
+ * rule as `generateBatch`'s `model`); anything else must be exactly a catalog id (`bad_estimate_model`), or `costUsd`
+ * would price it as Opus without saying so. The reviewer (the type's, `TASK_MODELS`) and the judge keep their own models.
  */
-export function estimateBatch(type: TaskType, opts: { items?: number; credits?: number; cache?: "hit" | "cold" } = {}): BatchEstimate {
+export function estimateBatch(type: TaskType, opts: { items?: number; credits?: number; cache?: "hit" | "cold"; model?: string } = {}): BatchEstimate {
   const size = Object.prototype.hasOwnProperty.call(ITEM_SIZE, type) ? ITEM_SIZE[type] : undefined;
   const items = opts.items ?? TASK_COUNT[type];
   const credits = opts.credits ?? TASK_COST[type];
   if (!size || !Number.isInteger(items) || items < 1 || !Number.isFinite(credits) || credits <= 0) {
     throw new Error(`bad_estimate:${String(type)}:${String(items)}:${String(credits)}`);
   }
+  // Left out or undefined: the default, as `generateBatch`'s `model`; anything else must be exactly a catalog id.
+  const model = opts.model === undefined ? automaticFor("generate", type) : opts.model;
+  if (!modelById(model)) throw new Error(`bad_estimate_model:${String(model)}`);
   const itemsOut = items * ITEM_OUT_TOKENS[size];
   const outTokens = ASSUME.thinking + itemsOut;
   const cached = opts.cache === "cold" ? { cache_creation_input_tokens: ASSUME.cachedIn } : { cache_read_input_tokens: ASSUME.cachedIn };
-  const generateUsd = costUsd(TASK_MODELS[type].write, { input_tokens: ASSUME.freshIn, output_tokens: outTokens, ...cached });
-  const reviewUsd = costUsd(TASK_MODELS[type].review, { input_tokens: ASSUME.review.in + itemsOut, output_tokens: ASSUME.review.out + ASSUME.review.outShare * itemsOut });
+  const generateUsd = costUsd(model, { input_tokens: ASSUME.freshIn, output_tokens: outTokens, ...cached });
+  const reviewUsd = costUsd(automaticFor("review", type), { input_tokens: ASSUME.review.in + itemsOut, output_tokens: ASSUME.review.out + ASSUME.review.outShare * itemsOut });
   const judgeUsd = costUsd(ESTIMATE_MODELS.judge, { input_tokens: ASSUME.judge.in + itemsOut, output_tokens: ASSUME.judge.out + ASSUME.judge.outPerItem * items });
   const totalUsd = generateUsd + reviewUsd + judgeUsd;
   return { type, items, credits, outTokens, generateUsd, reviewUsd, judgeUsd, totalUsd, usdPerCredit: totalUsd / credits };
+}
+
+/**
+ * One batch of `type` generated on `model`, in USD, on a COLD cache (the dearest case: a cron run, or the first ask after
+ * the five-minute cache expired), at that model's catalog rate. On the default model it is exactly today's cold estimate.
+ * tests/pricing-floor.test.ts divides it by the credits the model is charged (`creditsFor`, src/lib/models/credits.ts)
+ * for every catalog model and every type it allows (rule 241 by tier). `undefined` is the default model; any other value
+ * that is not exactly a catalog id throws.
+ */
+export function estimateFor(type: TaskType, model: string): number {
+  return estimateBatch(type, { cache: "cold", model }).totalUsd;
 }
 
 /**
@@ -118,4 +148,9 @@ export function onboardEstimateUsd(): number {
 /** The Sonnet prompt a media render adds (≈ $0.005). Zero while Claude is paused; this is the upper case. */
 export function mediaPromptUsd(): number {
   return costUsd(ESTIMATE_MODELS.mediaPrompt, { input_tokens: ASSUME.mediaPrompt.in, output_tokens: ASSUME.mediaPrompt.out });
+}
+
+/** The most one transcript extraction costs (≈ $0.056): what MEETING_TRANSCRIPT_COST must cover at the floor. */
+export function meetingExtractUsd(): number {
+  return costUsd(ESTIMATE_MODELS.meetingExtract, { input_tokens: ASSUME.meetingExtract.in, output_tokens: ASSUME.meetingExtract.out });
 }

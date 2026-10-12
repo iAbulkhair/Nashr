@@ -1,3 +1,4 @@
+import { appScreenMeta } from "@/lib/screen-titles";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -7,6 +8,7 @@ import { AWAY_AHEAD_DAYS, awayListOf } from "@/lib/secretary-away";
 import { namesSharjah } from "@/lib/secretary-calendar";
 import { isAgentId } from "@/lib/agents";
 import { can } from "@/lib/roles";
+import { getProvider, isAvailable } from "@/lib/connectors/registry";
 import {
   AGENDA_BUCKETS, AUTO_CLOSE_RESULT, addDays, approvalsLine, briefClock, formatWhen, linkFactText, nextStepParts, noteText, partyKey, partyName, resultText, zoneDay, zoneLocalInput, zoneTimeLabel,
   type AgendaEntry, type SecItem,
@@ -17,6 +19,12 @@ import WorkingDaysPanel from "@/components/app/WorkingDaysPanel";
 import SeriesPanel, { type SeriesRow } from "@/components/app/SeriesPanel";
 
 export const dynamic = "force-dynamic";
+
+/** Whether a calendar provider's app keys are set (Reem B3): false shows «قريباً» in place of its button. */
+const calReady = (id: "gcal" | "mscal") => {
+  const p = getProvider(id);
+  return !!p && isAvailable(p);
+};
 
 /**
  * My to-dos (Reem's list) for the active brand, rendered on the server: every date of the list is formatted here in the
@@ -38,6 +46,8 @@ export const dynamic = "force-dynamic";
  * for the form. The brand file, `sec:cal` and `sec:away` are the records the agenda was read with
  * (`todoPage`), at the same instant: nothing is read twice.
  */
+export const generateMetadata = appScreenMeta("todo");
+
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams?: Promise<{ series?: string | string[] }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
@@ -116,6 +126,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     phone: it.owedBy !== "owner" ? (it.phone ?? null) : null,
     whatsapp: whatsapp(it),
     contact: e ? contactOf(it) : null,
+    // An open booking item whose start has passed (a booking's start is its due time): the follow-up panel opens from it.
+    meeting: it.source === "booking" && !it.completedAt && !it.deletedAt && !!it.dueAt && Date.parse(it.dueAt) <= now,
   });
   const sections: TodoSection[] = AGENDA_BUCKETS.filter((b) => agenda.buckets[b].length).map((b) => ({ bucket: b, title: T.buckets[b], rows: agenda.buckets[b].map((e) => row(e.item, e)) }));
   // The names the away form suggests: each contact on the open items once, however its name was typed (`partyKey`).
@@ -146,6 +158,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       lang={lang}
       inboxHref={`/${lang}/app`}
       away={{ entries: awayList, labels, canEdit: can(u, "todo.write"), today, last: addDays(today, AWAY_AHEAD_DAYS) }}
+      canLinkCalendar={can(u, "calendar.link")}
+      calProviders={{ gcal: calReady("gcal"), mscal: calReady("mscal") }}
     >
       <WorkingDaysPanel
         t={t}

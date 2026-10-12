@@ -16,13 +16,18 @@
  * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
  * no tool sends a message; YouTube's one write uploads a video whose privacyStatus is pinned to "private" in `fixed`.
  *
+ * Google Docs and Google Sheets are reference files only (rules 955-956, spec 2026-10-10 agent skills portal 8.3): two
+ * searches and two reads, `write: {}`, so no tool here creates, edits, shares or deletes a document or a sheet. What a
+ * read returns is untrusted text; src/lib/instruction-refs.ts stores it as a workspace file.
+ *
  * Not here on purpose: ad writes (money moves need their own spec, evaluation spec C-R1), comments and messages (untrusted
  * input with no feature to use it), Google Business Profile (Composio lists no toolkit for it), Calendly and Cal.com
  * (Reem B2 receives their webhooks directly, evaluation spec C-R4).
  */
 export type Toolkit =
   | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
-  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console";
+  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console"
+  | "googledocs" | "googlesheets";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
 /**
@@ -168,6 +173,19 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     read: { GOOGLE_SEARCH_CONSOLE_LIST_SITES: [], GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY: ["site_url", "start_date", "end_date", "dimensions", "row_limit"] },
     write: {},
   },
+  // ---------- read only: reference files for the agent instructions (src/lib/instruction-refs.ts) ----------
+  googledocs: {
+    provider: "google_workspace",
+    authEnv: "COMPOSIO_AUTH_GOOGLEDOCS",
+    read: { GOOGLEDOCS_SEARCH_DOCUMENTS: ["query", "max_results"], GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT: ["document_id", "include_tables"] },
+    write: {},
+  },
+  googlesheets: {
+    provider: "google_workspace",
+    authEnv: "COMPOSIO_AUTH_GOOGLESHEETS",
+    read: { GOOGLESHEETS_SEARCH_SPREADSHEETS: ["query", "max_results"], GOOGLESHEETS_VALUES_GET: ["spreadsheet_id", "range"] },
+    write: {},
+  },
 };
 
 /** Which toolkits each provider connects through, in the order the Integrations card offers them. */
@@ -184,6 +202,7 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   tiktok_ads: ["tiktok_ads"],
   linkedin_ads: ["linkedin_ads"],
   google: ["google_analytics", "google_search_console"],
+  google_workspace: ["googledocs", "googlesheets"],
 };
 
 export const isToolkit = (s: string): s is Toolkit => Object.prototype.hasOwnProperty.call(TOOLKITS, s);

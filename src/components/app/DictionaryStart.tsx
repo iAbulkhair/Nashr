@@ -45,8 +45,8 @@ function Say({ who, lang, text }: { who: HomeAgentId; lang: Lang; text: string }
   return (
     <div className="pop-in flex items-end gap-3">
       <Face who={who} />
-      <p className="min-w-0 rounded-2xl rounded-es-sm bg-lilac px-4 py-2.5 text-sm leading-relaxed">
-        <span className="block text-xs font-semibold text-ink">{NAME[who][lang]}</span>
+      <p className="min-w-0 rounded-2xl rounded-es-sm bg-background-muted px-4 py-2.5 text-sm leading-relaxed">
+        <span className="block text-xs font-semibold text-foreground">{NAME[who][lang]}</span>
         {text}
       </p>
     </div>
@@ -56,14 +56,14 @@ function Say({ who, lang, text }: { who: HomeAgentId; lang: Lang; text: string }
 /** A sample the agents prepared, always tagged «مثال»: pre-written, not generated for this owner. */
 function Sample({ who, lang, children }: { who: readonly HomeAgentId[]; lang: Lang; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-ink/10 bg-white p-4">
+    <div className="rounded-2xl border border-foreground/10 bg-surface p-4">
       <div className="mb-3 flex items-center gap-2">
         <span className="flex -space-x-2">
           {who.map((w) => (
             <Face key={w} who={w} />
           ))}
         </span>
-        <span className="text-sm font-semibold text-ink">{who.map((w) => NAME[w][lang]).join(" · ")}</span>
+        <span className="text-sm font-semibold text-foreground">{who.map((w) => NAME[w][lang]).join(" · ")}</span>
         <span className="badge badge-accent ms-auto">{DICT_COPY.example[lang]}</span>
       </div>
       {children}
@@ -113,8 +113,8 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             <legend className="mb-1.5 text-sm font-semibold">{DICT_COPY.sectorLabel[lang]}</legend>
             <div className="flex flex-wrap gap-2">
               {SECTORS.map((sector) => (
-                <label key={sector.id} className={`${pill} cursor-pointer border-ink/15 bg-white has-checked:border-ink has-checked:bg-ink/10 has-focus-visible:ring-2 has-focus-visible:ring-ink`}>
-                  <input type="radio" className="accent-ink" name={`${uid}-sector`} value={sector.id} checked={s.sector === sector.id} onChange={() => dispatch({ type: "sector", value: sector.id })} disabled={!ready} />
+                <label key={sector.id} className={`${pill} cursor-pointer border-border bg-surface has-checked:border-border-strong has-checked:bg-foreground/10 has-focus-visible:ring-2 has-focus-visible:ring-ring`}>
+                  <input type="radio" className="accent-foreground" name={`${uid}-sector`} value={sector.id} checked={s.sector === sector.id} onChange={() => dispatch({ type: "sector", value: sector.id })} disabled={!ready} />
                   {sector.name[lang]}
                 </label>
               ))}
@@ -131,7 +131,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             {WORDS.map((w) => {
               const on = s.words.includes(w.id);
               return (
-                <button key={w.id} type="button" aria-pressed={on} disabled={full && !on} onClick={() => dispatch({ type: "word", value: w.id })} className={`${pill} ${on ? "border-ink bg-ink text-white" : "border-ink/15 bg-white"} disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ink focus-visible:outline-none`}>
+                <button key={w.id} type="button" aria-pressed={on} disabled={full && !on} onClick={() => dispatch({ type: "word", value: w.id })} className={`${pill} ${on ? "border-border-strong bg-inverse text-inverse-foreground" : "border-border bg-surface"} disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none`}>
                   {on && <span aria-hidden="true">✓</span>}
                   {w.name[lang]}
                 </button>
@@ -139,7 +139,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             })}
           </div>
           <div className="grid gap-3" aria-live="polite">
-            <p className="tnum text-sm text-muted">{DICT_COPY.counter[lang].replace("{n}", num(s.words.length, lang))}</p>
+            <p className="tnum text-sm text-foreground-muted">{DICT_COPY.counter[lang].replace("{n}", num(s.words.length, lang))}</p>
             {lastWord && <Say key={lastWord.id} who={lastWord.react.who} lang={lang} text={lastWord.react.text[lang]} />}
           </div>
         </>
@@ -164,7 +164,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             <p className="text-sm leading-relaxed">{draft.post}</p>
           </Sample>
           <Sample who={["sami"]} lang={lang}>
-            <p className="rounded-2xl rounded-ss-sm bg-lilac px-3 py-2 text-sm leading-relaxed">{draft.whatsapp}</p>
+            <p className="rounded-2xl rounded-ss-sm bg-background-muted px-3 py-2 text-sm leading-relaxed">{draft.whatsapp}</p>
           </Sample>
         </div>
       );
@@ -176,7 +176,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
           <button type="button" className="btn btn-primary btn-lg min-w-40" aria-describedby={`${uid}-note`} onClick={() => dispatch({ type: "approve" })}>
             {DICT_COPY.approve[lang]}
           </button>
-          <p id={`${uid}-note`} className="text-sm text-muted">
+          <p id={`${uid}-note`} className="text-sm text-foreground-muted">
             {DICT_COPY.approveNote[lang]}
           </p>
         </div>
@@ -186,7 +186,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
       body = (
         <>
           <Say who={DICT_COPY.analysis.who} lang={lang} text={DICT_COPY.analysis.text[lang]} />
-          <p className="rounded-xl bg-ground px-4 py-3 text-sm text-ink/80">{DICT_COPY.measure[lang]}</p>
+          <p className="rounded-xl bg-background px-4 py-3 text-sm text-foreground-muted">{DICT_COPY.measure[lang]}</p>
         </>
       );
       break;
@@ -204,8 +204,8 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
           <h1 id={`${uid}-title`} className="page-title">
             {DICT_COPY.title[lang]}
           </h1>
-          <p className="mt-1 text-ink/70">{DICT_COPY.subtitle[lang]}</p>
-          <Link href={`/${lang}/app/onboarding`} className="mt-2 inline-block text-sm text-muted underline">
+          <p className="mt-1 text-foreground-muted">{DICT_COPY.subtitle[lang]}</p>
+          <Link href={`/${lang}/app/settings/brand`} className="mt-2 inline-block text-sm text-foreground-muted underline">
             {t.start.manual}
           </Link>
 
@@ -214,15 +214,15 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
               const state = n === s.step ? "current" : n < s.step ? "done" : "todo";
               return (
                 <li key={n} className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center" aria-current={state === "current" ? "step" : undefined}>
-                  <span className={`grid h-8 w-8 place-items-center rounded-full text-sm font-semibold ${state === "current" ? "bg-ink text-white" : state === "done" ? "bg-ink/15 text-ink" : "bg-lilac text-muted"}`}>{num(n, lang)}</span>
-                  <span className={`text-xs leading-tight ${state === "current" ? "font-semibold text-ink" : "sr-only text-muted sm:not-sr-only"}`}>{stepName(n, lang)}</span>
+                  <span className={`grid h-8 w-8 place-items-center rounded-full text-sm font-semibold ${state === "current" ? "bg-inverse text-inverse-foreground" : state === "done" ? "bg-foreground/15 text-foreground" : "bg-background-muted text-foreground-muted"}`}>{num(n, lang)}</span>
+                  <span className={`text-xs leading-tight ${state === "current" ? "font-semibold text-foreground" : "sr-only text-foreground-muted sm:not-sr-only"}`}>{stepName(n, lang)}</span>
                 </li>
               );
             })}
           </ol>
 
-          <h2 id={headingId} ref={heading} tabIndex={-1} className="mt-6 font-display text-lg font-bold text-ink focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ink">
-            <span className="tnum text-sm font-semibold text-muted">
+          <h2 id={headingId} ref={heading} tabIndex={-1} className="mt-6 font-display text-lg font-bold text-foreground focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring">
+            <span className="tnum text-sm font-semibold text-foreground-muted">
               {num(s.step, lang)}/{num(STEPS.length, lang)}
             </span>{" "}
             {stepName(s.step, lang)}

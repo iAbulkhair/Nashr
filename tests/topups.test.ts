@@ -15,7 +15,7 @@ import { refusalText } from "@/lib/chat-allowance";
 import { adminSignIn, jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as planRoute from "@/app/api/admin/plan/route";
-import BillingPage from "@/app/[lang]/app/billing/page";
+import BillingPage from "@/app/[lang]/app/settings/billing/page";
 import * as profileRoute from "@/app/api/profile/route";
 import { adminConsoleSrc } from "./helpers/admin-console";
 
@@ -473,7 +473,7 @@ describe("the billing page's 'Top up credits' section (rule 449)", () => {
     const email = await paid(300);
     await signIn(email);
     const en = await billing("en");
-    expect(en).toContain("mailto:hello@nashr.ai?subject=");
+    expect(en).toContain("mailto:hello@thakeen.com?subject=");
     expect(en).not.toContain("wa.me");
     const t = await newUser("trialbill");
     await signIn(t.email);
@@ -524,7 +524,7 @@ describe("out of credits, every message names the top-up (rule 450)", () => {
     for (const lang of ["ar", "en"] as const) expect(appDict[lang].inbox.topupLink, lang).toMatch(lang === "ar" ? /شحن الرصيد/ : /Top-ups/);
     const media = readFileSync("src/components/app/MediaControls.tsx", "utf8");
     expect(media).toContain("billing: true, topup: sold };");
-    expect(media).toContain('href={`/${lang}/app/billing${n.topup ? "#topup" : ""}`}');
+    expect(media).toContain('href={`/${lang}/app/settings/billing${n.topup ? "#topup" : ""}`}');
     const src = readFileSync("src/components/app/LimitModal.tsx", "utf8");
     expect(src).toContain('const topup = kind === "credits" && topups;');
     expect(readFileSync("src/app/[lang]/app/layout.tsx", "utf8")).toContain("topups={topupsSold(user.plan)}");

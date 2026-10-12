@@ -16,7 +16,7 @@
  *   can still send it (never after that notification was written: an email failure keeps it).
  * - One in-app notification; one email only when email is set up and the preference is "all". With more than one active
  *   brand, the title and the email's subject name the brand the wrap is about.
- * - When: 18:00 local; during Ramadan 21:30 local, after Taraweeh. The Vercel cron `/api/cron/evening` (15:00 UTC)
+ * - When: 18:00 local; during Ramadan 21:30 local, after Taraweeh. The daily cron `/api/cron/evening` (15:00 UTC)
  *   serves every workspace outside Ramadan; the QStash tick (`/api/cron/secretary`) starts it for the zones whose
  *   target time just passed, and in Ramadan it is the only path (without QStash, no wrap in Ramadan).
  * - Switched off with the follow-ups in Scheduled tasks (`followUps: false`).
@@ -29,6 +29,7 @@ import { listBrands, scopeFor } from "./brands";
 import { listDecisions } from "./decisions";
 import { getSchedule } from "./schedule";
 import { notifyItem } from "./notifications";
+import { emailAllowed, readPrefs } from "./notify-prefs";
 import { sendEmail } from "./notify";
 import { activeSeasons } from "./seasons";
 import { SEC_KEYS, agendaFor, listDone, listOpenItems } from "./secretary";
@@ -204,15 +205,15 @@ export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" 
   try {
     brand = await wrapBrand(user.email, scope);
     ({ title, body } = wrapText(w, user.lang, brand));
-    await notifyItem(user.email, user.lang, { kind: "todo", agent: "reem", title, body, href: `/${user.lang}/app/todo` });
+    await notifyItem(user.email, user.lang, { kind: "todo", agent: "reem", title, body, href: `/${user.lang}/app/todo` }, undefined, undefined, scope);
   } catch (e) {
     await db.del(marker).catch(() => {});
     throw e;
   }
   if (process.env.RESEND_API_KEY) {
-    const pref = ((await db.get<{ emails?: string }>(`profile:${scope}`)) ?? (await db.get<{ emails?: string }>(`profile:${user.email}`)) ?? {}).emails ?? "all";
     const subject = user.lang === "ar" ? `ملخص المساء — ${w.day}${brand ? ` — «${brand}»` : ""}` : `Evening wrap — ${w.day}${brand ? ` — “${brand}”` : ""}`;
-    if (pref === "all") await sendEmail(user.email, subject, `${title}\n\n${body}\n\n${appOrigin()}/${user.lang}/app/todo`, notice({ lang: user.lang, title, paragraphs: paragraphs(body), cta: { href: `${appOrigin()}/${user.lang}/app/todo`, label: COPY[user.lang].notice.todo } }));
+    // The evening wrap's own switch (rule 1147); the old levels read as before: only "all" sent it.
+    if (emailAllowed(await readPrefs(scope, user.email), "evening")) await sendEmail(user.email, subject, `${title}\n\n${body}\n\n${appOrigin()}/${user.lang}/app/todo`, notice({ lang: user.lang, title, paragraphs: paragraphs(body), cta: { href: `${appOrigin()}/${user.lang}/app/todo`, label: COPY[user.lang].notice.todo } }));
   }
   return "sent";
 }

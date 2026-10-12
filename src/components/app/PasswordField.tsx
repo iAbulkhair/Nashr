@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Lang } from "@/lib/i18n";
+import { useFieldProps } from "@/components/ui/Field";
 
 /**
  * The toggle's accessible name. One name for both states: `aria-pressed` says whether the password shows, so a screen
@@ -21,7 +22,9 @@ export const PASSWORD_TOGGLE = {
  * the form. On submit the password is hidden again before the form's own handler runs, so the browser never files it
  * with plain text fields in its autofill history.
  */
-export default function PasswordField({ lang, className = "input", ...input }: Omit<React.ComponentProps<"input">, "type"> & { lang: Lang }) {
+export default function PasswordField({ lang, className = "input control", ...own }: Omit<React.ComponentProps<"input">, "type"> & { lang: Lang }) {
+  // Inside a `Field` (rule 1084) the id, the hint and error ids and aria-invalid come from the field; alone, `own` as is.
+  const input = useFieldProps(own);
   const [shown, setShown] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -40,7 +43,7 @@ export default function PasswordField({ lang, className = "input", ...input }: O
           they were typed (on an Arabic page "Secret123!" would otherwise show as "!Secret123") while the field keeps the
           page's direction, so its `pe-10` and the button's `end-0` stay on the same side. */}
       <input {...input} type={shown ? "text" : "password"} spellCheck={false} autoCapitalize="none" autoCorrect="off" className={`${className} pe-10 [unicode-bidi:plaintext]`} />
-      <button type="button" onClick={() => setShown((s) => !s)} aria-pressed={shown} aria-label={PASSWORD_TOGGLE[lang]} className="absolute inset-y-0 end-0 grid w-10 place-items-center text-muted transition-colors hover:text-ink">
+      <button type="button" onClick={() => setShown((s) => !s)} aria-pressed={shown} aria-label={PASSWORD_TOGGLE[lang]} className="absolute inset-y-0 end-0 grid w-10 place-items-center text-foreground-muted transition-colors hover:text-foreground">
         {/* Drawn like the app's icon set (Icons.tsx): one stroke weight, currentColor. Struck through while the password shows. */}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
           <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />

@@ -5,6 +5,7 @@ import { AGENT_CAST, SCENES, SCENES_COPY, type Feature } from "@/lib/home";
 import { agentById } from "@/lib/agents";
 import { isTaskType } from "@/lib/tasks";
 import { PER_SLIDE } from "@/components/home/Stories";
+import { AUTO_MS, autoplays, wrapIndex } from "@/components/home/SceneTrack";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
@@ -55,12 +56,44 @@ describe("the scenes under the cover are illustrative and true to the product (r
   it("keeps Reem's lines free of what she does not do yet", () => {
     for (const s of SCENES.filter((x) => x.agent === "reem")) for (const p of NOT_YET) expect(`${s.line.ar} ${s.line.en}`).not.toMatch(p);
   });
-  it("says on the page, before the first scene, that these are illustrative examples", () => {
-    expect(SCENES_COPY.sub.ar).toMatch(/^أمثلة توضيحية/);
-    expect(SCENES_COPY.sub.en).toMatch(/^Illustrative examples/);
+  it("puts the line under the heading before the first scene; the line says the scenes are illustrative examples (rule 926)", () => {
+    expect(SCENES_COPY.h.ar).toBe("عملاء جربوا ذكين.");
+    expect(SCENES_COPY.h.en).toBe("How owners work with Thakeen.");
+    expect(SCENES_COPY.sub.ar).toBe("أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.");
+    expect(SCENES_COPY.sub.en).toBe("Illustrative examples: what they like, what they learned, and what they recommend.");
     const src = read("src/components/home/Stories.tsx");
     expect(src.indexOf("c.sub[lang]")).toBeGreaterThan(-1);
     expect(src.indexOf("c.sub[lang]")).toBeLessThan(src.indexOf("<SceneTrack"));
+  });
+  it("loops the slider: previous on the first slide lands on the last, next on the last lands on the first, no arrow is disabled", () => {
+    const n = Math.ceil(SCENES.length / PER_SLIDE);
+    expect(wrapIndex(-1, n)).toBe(n - 1);
+    expect(wrapIndex(n, n)).toBe(0);
+    expect(wrapIndex(0, n)).toBe(0);
+    expect(wrapIndex(n - 1, n)).toBe(n - 1);
+    expect(wrapIndex(3, 0)).toBe(0);
+    expect(read("src/components/home/SceneTrack.tsx")).not.toMatch(/disabled=/);
+  });
+  it("slides by itself only while nothing asks it to stay put (WCAG 2.2.2)", () => {
+    const on = { reduced: false, paused: false, held: false, over: false, focused: false, showing: true, n: 6 };
+    expect(autoplays(on)).toBe(true);
+    for (const k of ["reduced", "paused", "held", "over", "focused"] as const) expect(autoplays({ ...on, [k]: true }), k).toBe(false);
+    expect(autoplays({ ...on, showing: false })).toBe(false);
+    expect(autoplays({ ...on, n: 1 })).toBe(false);
+    expect(AUTO_MS).toBeGreaterThanOrEqual(5000);
+    expect(AUTO_MS).toBeLessThanOrEqual(10000);
+  });
+  it("gives the slider its own pause and play button, named in both languages, hidden for reduced motion", () => {
+    for (const l of ["ar", "en"] as const) {
+      expect(SCENES_COPY.pause[l].length, `pause ${l}`).toBeGreaterThan(0);
+      expect(SCENES_COPY.play[l].length, `play ${l}`).toBeGreaterThan(0);
+      expect(SCENES_COPY.pause[l]).not.toBe(SCENES_COPY.play[l]);
+    }
+    const track = read("src/components/home/SceneTrack.tsx");
+    expect(track).toMatch(/useMotionPaused/);
+    expect(track).toMatch(/aria-live=\{auto \? "off" : "polite"\}/);
+    expect(read("src/components/home/Stories.tsx")).toMatch(/pause=\{c\.pause\[lang\]\} play=\{c\.play\[lang\]\}/);
+    expect(read("src/components/home/home.module.css")).toMatch(/prefers-reduced-motion: reduce\) \{ \.autoBtn \{ display: none; \}/);
   });
   it("draws every face smiling, in an empty ring", () => {
     const person = read("src/components/home/Person.tsx");

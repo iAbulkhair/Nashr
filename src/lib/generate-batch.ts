@@ -23,6 +23,11 @@ import { TASK_COST, TASK_COUNT, isDraftType, type TaskType } from "./tasks";
 import { getGov, type Governance } from "./governance";
 import { missingData } from "./cart-recovery";
 import { modelState } from "./model";
+import { modelAllowsTask, modelById } from "./models/catalog";
+import { creditsFor } from "./models/credits";
+import { type Rejected } from "./models/route";
+import { generateRouteFor } from "./models/overrides";
+import { noteRejectedPick } from "./usage";
 import { memoryBlock } from "./files";
 import { statsFor } from "./stats";
 import { feedbackFor } from "./feedback";
@@ -32,6 +37,8 @@ import { warnAgentCap } from "./notifications";
 import { initialStatus } from "./brand-rules";
 import type { Grounding } from "./json";
 import { promptStamp } from "./prompt-stamp";
+import { entitlements } from "./entitlements";
+import { instructionBlocks, loadLayers } from "./agent-instructions";
 import { byOf, systemBy, type By } from "./actor";
 import { recordActivity, type Activity } from "./activity";
 
@@ -89,6 +96,28 @@ export type BatchOpts = {
    * here refunds the batch like a failed generation, so a charge is kept only with its tasks and its marker written.
    */
   commit?: (tasks: Task[]) => Promise<unknown>;
+  /**
+   * The model the batch runs on and is charged for (spec 2026-10-08-straitly-model-routing, sections 4 and 6): the batch
+   * costs its base credits times the model's tier multiplier (`creditsFor`, src/lib/models/credits.ts). Left out or
+   * `undefined`: resolved once here, after the brand file is read, by `generateRouteFor` (src/lib/models/overrides.ts):
+   * the brand's pick (`Brand.model`) when `route("generate")` accepts it for this type, else the automatic choice (today
+   * Opus 5, x1: today's price) and `BatchDone.modelRejected` says why, so the caller tells the owner. Anything passed here
+   * must be exactly a catalog id the routing may offer (`auto` or `pick`) that may run the type, or the batch throws
+   * (`unknown_model`, `model_not_offered`, `model_task_not_allowed`) before anything is read or charged; the routed model
+   * is held to the same checks after the brand read, still before the charge (a backstop: `route()` already refused
+   * a pick that would fail them, `task_not_allowed` included).
+   *
+   * The invariant: what the balance lost, the activity row's `credits` and `BatchDone.cost` are one number, the credits
+   * finally charged. A fresh charge charges the batch's price; a claim's hold (`once`) is reused only when it holds exactly
+   * that price, and one of another price is given back and the price charged in the same save (`chargeOnce`); a failure
+   * gives back what was charged (`refund` of that number, or `refundOnce` of the hold).
+   *
+   * One decision: the model resolved here is the one `generate()` is asked for (the requested model), the one
+   * `creditsFor` prices and the one the judge is told generated the batch (`judgeLater`). `generate()` asks for the
+   * server-side fallback only when the requested model is the automatic default (`DEFAULTS.generate`, src/lib/noor.ts):
+   * a pick is never answered by another model than the one it was priced at, and when it fails the batch is refunded.
+   */
+  model?: string;
 };
 
 /**
@@ -108,8 +137,12 @@ export type BatchRefusal =
   /** The charge was refunded (`credits` is the balance after it); the caller decides how to report `error`. */
   | { ok: false; reason: "failed"; error: unknown; credits: number };
 
-/** `receipt`: what the batch's charge was booked to (a reused hold's, for a batch that paid in an earlier run). */
-export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance };
+/**
+ * `receipt`: what the batch's charge was booked to (a reused hold's, for a batch that paid in an earlier run).
+ * `modelRejected`: the brand's pick was not used and why (the batch ran on the automatic choice); the caller tells the
+ * owner (`MODEL_UNAVAILABLE`, src/lib/models/overrides.ts). Absent when the pick ran, or there was none.
+ */
+export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected };
 export type BatchResult = BatchDone | BatchRefusal;
 
 /**
@@ -132,6 +165,8 @@ export type ItemContext = {
   createdAt: string;
   /** The handoff item the batch was run for (`Task.parent`). */
   parent?: TaskParent;
+  /** The hashes of the platform and owner instruction blocks the batch carried (`instructionBlocks(...).stamp`), recorded in `pb`; left out, the stamp has neither field. */
+  ins?: { plat: string; ins: string };
 };
 
 /**
@@ -153,7 +188,7 @@ export function taskFromItem(it: Generated, c: ItemContext): Task {
     id: randomBytes(8).toString("hex"), type: c.type, channel: it.channel, title: it.title, body: it.body,
     status: initialStatus(c.forcePending || flagged ? false : c.autoApprove, c.brand, draft),
     createdAt: c.createdAt, lang: c.brand.languages[0] ?? "ar", source: c.source, ...(c.brief ? { brief: c.brief } : {}),
-    pb: promptStamp(c.type, c.brand),
+    pb: promptStamp(c.type, c.brand, c.ins),
     ...(verdicts ? { crossReview: verdicts } : {}),
     ...(c.parent ? { parent: { handoff: c.parent.handoff, item: c.parent.item, ...(c.parent.conv ? { conv: c.parent.conv } : {}), ...(c.parent.auto === true ? { auto: true as const } : {}) } } : {}),
   };
@@ -179,6 +214,18 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // calls this; here it is an invariant, before any read or charge, so no caller can buy one item of a batch type at
   // its pro-rata price.
   if (opts.count !== undefined && !isDraftType(type)) throw new Error(`not_draft_type:${type}`);
+  // The model the batch runs on and is charged for must be exactly a catalog id the routing may offer, allowed to run the
+  // type (its `tasks`, set where the type misses the margin floor at the model's tier). Checked in code, never left to the
+  // routing: a caller's model before any read, the routed one after the brand read, both before the charge.
+  const usable = (id: string) => {
+    const entry = modelById(id);
+    if (!entry) throw new Error("unknown_model");
+    // Only a model the routing may offer, the set the margin-floor test covers (tests/pricing-floor.test.ts).
+    if (!entry.auto && !entry.pick) throw new Error(`model_not_offered:${entry.id}`);
+    if (!modelAllowsTask(entry, type)) throw new Error(`model_task_not_allowed:${entry.id}:${type}`);
+    return entry.id;
+  };
+  if (opts.model !== undefined) usable(opts.model);
   // A scheduled run records its own outcome (`recordRun`), so a refusal at its charge is one row there, not two.
   const scheduled = opts.via === "weekly" || opts.via === "routine";
   const refuse = async (r: BatchRefusal, row?: Activity): Promise<BatchRefusal> => {
@@ -190,12 +237,24 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // a tool called outside a turn keeps the backstop every path has, generate() throwing and the charge refunded.
   if (opts.via !== "chat" && modelState() === "paused") return refuse({ ok: false, reason: "paused" });
   // Governance before the charge: the owner's monthly cap for this agent is checked inside the ledger's lock.
-  const [brand, gov] = await Promise.all([opts.brand ?? getBrand(scope), opts.gov ?? getGov(scope)]);
+  // The instruction layers ride along (agent skills portal): read with the brand and governance, the plan's limits from the
+  // caller's own entitlements, the reference files only of the items that reach the owning agent.
+  const [brand, gov, layers] = await Promise.all([opts.brand ?? getBrand(scope), opts.gov ?? getGov(scope), loadLayers(scope, entitlements(user).instructions, "active", [agentForTask(opts.type).id])]);
   if (!brand) return refuse({ ok: false, reason: "no_brand" });
+  // Resolved once (one decision): the caller's model, or the brand's pick when route() accepts it for this type, else
+  // the automatic choice. `user` is the account's own record, so the China confirmation is the owner's stored one.
+  const routed = opts.model === undefined ? generateRouteFor(user, brand, type) : null;
+  const model = usable(routed ? routed.model : opts.model!);
+  const modelRejected = routed?.rejected;
+  // A refused pick is counted for the founder console (global, best effort: it never changes the batch).
+  if (modelRejected) await noteRejectedPick("generate", modelRejected);
   if (trialOver(user)) return refuse({ ok: false, reason: "trial_over" });
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });
-  const cost = opts.count ? countCost(type, opts.count) : TASK_COST[type];
+  const base = opts.count ? countCost(type, opts.count) : TASK_COST[type];
+  // The batch's price at its model's tier relative to the type's own writer (rule 902), computed once. It is what is charged: `charge`, or `chargeOnce`, which reuses a
+  // claim's hold only when it holds exactly this price and otherwise swaps it for this price in one save.
+  const cost = creditsFor(base, model, "generate", type);
   // The agent that owns the type, computed in code: never taken from the request or the model.
   const agent = agentForTask(type).id;
   // A paid account's monthly credits arrive before its first charge of the month, whichever job runs first (rule 332).
@@ -211,6 +270,9 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   if (!paid.ok) return refuse({ ok: false, reason: "no_credits", need: cost, credits: paid.credits }, await refused("no_credits"));
   user.credits = paid.credits;
   let receipt: BatchDone["receipt"];
+  // What this batch is paid with: its price, or a reused hold's credits (equal to it: `chargeOnce` swaps any other). The
+  // activity row and `BatchDone.cost` report this, so they always say what the balance lost.
+  const charged = "hold" in paid ? paid.hold.credits : cost;
   // A reused hold (a claim this batch paid in an earlier, killed run) was warned about by the run that took it.
   // The hold keeps the top-up receipt of the run that paid (`from`, rule 442), so the receipt names the same packs.
   if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month, ...(paid.hold.from ? { from: paid.hold.from } : {}) };
@@ -230,10 +292,12 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
     // A lead brief rides along only when there is one, so every other batch's prompts and judge grounding are unchanged.
     const lead = opts.leadBrief?.trim() ? { leadBrief: opts.leadBrief } : {};
     ground = { notes: opts.notes, memory, stats, ...lead };
-    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
+    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, model, layers, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
     createdAt = new Date().toISOString();
     const brief = opts.brief ?? briefOf(opts.notes);
-    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent }));
+    // One stamp for the batch: the blocks are the same for every item (they hash the layers, not the item).
+    const ins = instructionBlocks(layers, agent).stamp;
+    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent, ins }));
     // Together, not one round trip after another (Redis is HTTP per command). Every save settles before the guard
     // decides, so a refund below never races a save still landing.
     const saved = await Promise.allSettled(tasks.map((t) => saveTask(scope, t, true)));
@@ -254,9 +318,9 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
 
   // After the guard: the work is saved and paid for, so a failed log write must not refund it. The batch's one activity
   // row and, when other agents reviewed it, one row per reviewer.
-  const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: cost };
+  const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: charged };
   await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
-  judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via });
-  return { ok: true, tasks, credits: user.credits, receipt, cost, agent, gov };
+  judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model, layers });
+  return { ok: true, tasks, credits: user.credits, receipt, cost: charged, agent, gov, ...(modelRejected ? { modelRejected } : {}) };
 }

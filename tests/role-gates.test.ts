@@ -130,6 +130,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
   "PATCH /api/team/member": g("owner", "team.role"),
   "POST /api/billing/chat-overflow": g("owner", "billing"), // how the account's credits are spent once chat runs out
+  // The model picks (plan Task 6): a conversation's by any login, the active brand's by an admin, the China-hosting
+  // confirmation by the owner only. One handler serves all three, like PATCH /api/tasks/[id].
+  "PUT /api/models": g("owner", "conversations", "brand.write", "profile.account"),
   "POST /api/billing/checkout": g("owner", "billing.pay"), // online payment (Paymob), never while impersonating
   "POST /api/billing/renewal": g("owner", "billing.pay"), // the online subscription's renewal and saved card
 
@@ -137,6 +140,16 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // non-core files, which need no action of their own).
   "PUT /api/brand": g("admin", "brand.write"),
   "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
+  // Agent instructions of the brand workspace (agent skills portal, rule 949).
+  "PUT /api/instructions": g("admin", "instructions.write"),
+  "POST /api/instructions/activate": g("admin", "instructions.write"),
+  "POST /api/instructions/discard": g("admin", "instructions.write"),
+  "POST /api/instructions/restore": g("admin", "instructions.write"),
+  "POST /api/instructions/refs/search": g("admin", "instructions.write"),
+  "POST /api/instructions/refs/import": g("admin", "instructions.write"),
+  "POST /api/instructions/test": g("admin", "instructions.test"),
+  // Applying or dismissing an instruction an agent proposed in chat (rules 953-954): the owner's click is the only approval.
+  "POST /api/instructions/proposals/[id]": g("admin", "instructions.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
@@ -160,11 +173,18 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PATCH /api/secretary/[id]": g("admin", "todo.write", "todo.close"),
   // Reem's Working days (weekend, Ramadan hours, Eid sightings, holidays): a brand setting, so an admin saves it; every member reads it.
   "PUT /api/secretary/calendar": g("admin", "brand.write"),
+  // The one calendar Reem reads (Reem B3): the owner alone links, chooses and unlinks it, and reads its state.
+  "PUT /api/secretary/calendar-link": g("owner", "calendar.link"),
+  "DELETE /api/secretary/calendar-link": g("owner", "calendar.link"),
   // Keeping a series' history is a to-do write; stopping to keep it lets the daily job delete it, so it also needs todo.close (checked in code, a member gets 403).
   "PUT /api/secretary/series/[seriesId]/keep": g("admin", "todo.write", "todo.close"),
 
   // Every member of the account.
   "PATCH /api/account": g("member", "password.change"),
+  // Sign out other devices (rule 1150): the caller's own sessions only, never while impersonating.
+  "POST /api/account/sessions": g("member", "sessions.revoke"),
+  // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
+  "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "POST /api/team/leave": g("member", "team.leave"),
   "POST /api/chat": "member",
   "POST /api/chat/feedback": "member",
@@ -193,10 +213,17 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // One's own booking links (Reem B2a): the same, with their own action (rule 596).
   "POST /api/secretary/booking": g("member", "booking.manage"),
   "DELETE /api/secretary/booking": g("member", "booking.manage"),
+  // The follow-up after a meeting (Reem B2b, rules 600-603): discarding the proposals and approving some of them (the one path that makes items) are the same role as any Reem write.
+  "DELETE /api/secretary/meeting/[id]": g("member", "todo.write"),
+  "POST /api/secretary/meeting/[id]/approve": g("member", "todo.write"),
+  // Proposing from notes or a transcript (Task 10, rules 604-606) only writes the pending set; it spends the account's credits, so it is `todo.write` like the other Reem writes.
+  "POST /api/secretary/meeting/[id]/propose": g("member", "todo.write"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
   "POST /api/admin/wishlist": "admin-console",
+  "POST /api/admin/skills": "admin-console",
+  "PUT /api/admin/skills": "admin-console",
   "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
   "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
@@ -218,6 +245,8 @@ const READS: Record<string, Gate> = {
   "GET /p/[code]": "public",
   "GET /api/team": g("member", "team.view"),
   "GET /api/profile": g("member", "read"),
+  // The Paymob return page's poll (rule 1155): the caller's own last checkout and plan, owner only.
+  "GET /api/billing/status": g("owner", "billing"),
   "GET /api/activity": g("member", "read"),
   "GET /api/activity/export": g("member", "read"),
   "GET /api/handoffs/[id]": g("member", "read"),
@@ -236,7 +265,9 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/golden": "admin-console",
   "GET /api/admin/media": "admin-console",
   "GET /api/admin/wishlist": "admin-console",
+  "GET /api/admin/skills": "admin-console",
   "GET /api/admin/leads": "admin-console",
+  "GET /api/admin/client-ip": "admin-console",
   "GET /api/admin/log": "admin-console",
   "GET /api/admin/overview": "admin-console",
   "GET /api/admin/plan": "admin-console",
@@ -252,10 +283,14 @@ const READS: Record<string, Gate> = {
   "GET /api/brands": "member",
   "GET /api/brief": "member",
   "GET /api/chat": "member",
+  "GET /api/models": "member", // the picker: catalog ids, labels, tiers, multipliers; never a rate
   "GET /api/connect": "member",
   "GET /api/conversations": "member",
   "GET /api/files": "member",
   "GET /api/governance": "member",
+  "GET /api/instructions": "member",
+  "GET /api/instructions/refs": "member",
+  "GET /api/instructions/history": "member",
   "GET /api/notifications": "member",
   "GET /api/onboard/plan": "member",
   "GET /api/performance": "member",
@@ -266,9 +301,12 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/walk": g("member", "read"),
   "GET /api/secretary/away": g("member", "read"),
   "GET /api/secretary/calendar": g("member", "read"),
+  "GET /api/secretary/calendar-link": g("owner", "calendar.link"),
+  "GET /api/secretary/calendar-link/calendars": g("owner", "calendar.link"),
   "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
   "GET /api/secretary/feed": g("member", "read"),
   "GET /api/secretary/booking": g("member", "read"),
+  "GET /api/secretary/meeting/[id]": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
@@ -300,7 +338,11 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline"];
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
+  // Agent instructions (rules 930-959).
+  "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
+  // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
+  "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",
@@ -462,8 +504,9 @@ describe("request users never stand in for the acting login", () => {
 
 describe("the gates that live outside the route table", () => {
   it("the chat tools that change the brand, publish or import the catalog carry the route's own action", () => {
-    expect(CHAT_TOOL_ACTION).toEqual({ update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import" });
-    for (const a of Object.values(CHAT_TOOL_ACTION)) expect(MIN_ROLE[a]).toBe("admin");
+    expect(CHAT_TOOL_ACTION).toEqual({ update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import", propose_meeting_tasks: "todo.write" });
+    // The brand, publish and import tools are the owner's and an admin's; Reem's meeting follow-up (rule 607) is the to-do list's, open to every login.
+    for (const [t, a] of Object.entries(CHAT_TOOL_ACTION)) expect(MIN_ROLE[a], t).toBe(t === "propose_meeting_tasks" ? "member" : "admin");
   });
   it("every MCP tool is mapped to an action, and nothing else is", async () => {
     const listed = ((await (await mcpRoute.GET()).json()) as { tools: string[] }).tools;

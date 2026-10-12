@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { currentUser, saveUser, sc, type User } from "@/lib/auth";
 import { allowanceOf } from "@/lib/pricing";
-import { getBrand, IMAGE_COST, listLite, saveBrand, TASK_COST, TASK_COUNT, type Brand, type TaskType } from "@/lib/brand";
+import { getBrand, saveBrand, type Brand } from "@/lib/brand";
+import { monthUsage } from "@/lib/month-usage";
 import { withBrandLock } from "@/lib/brand-proposals";
 import { db } from "@/lib/db";
-import { listBrands, scopeFor } from "@/lib/brands";
-import { pmap } from "@/lib/parallel";
 import { withUserLock } from "@/lib/credits";
 import { can, forbid, type Action } from "@/lib/roles";
 import { saveMember, withMemberLock } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 import { openLots, topupBalance } from "@/lib/topups";
 
 export type EmailPrefs = "all" | "important" | "none";
@@ -54,36 +54,14 @@ export async function GET() {
   const no = forbid(u, "read");
   if (no) return no;
   const a = u.actor!;
-  const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
-  // Every brand this account owns, not just the one that happens to be active. Credits are charged against the
-  // ACCOUNT (`charge(u.email, ...)` everywhere), but usage was read from a single brand scope and then rendered
-  // directly beside the account balance: an agency running three brands saw "Credits used 10 / 2000" above "1970
-  // remaining", and the used figure changed when it switched brand while the balance did not. The admin route and
-  // wipeAccount already take this union; the profile was the outlier.
-  const scopes = (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id));
+  // This month's usage across every brand of the account (src/lib/month-usage.ts, shared with the billing page).
   // `chat`: the account's chat messages (src/lib/chat-allowance.ts), the same for every seat: `u.email` is the owner's.
-  const [lists, prefs, brand, chat] = await Promise.all([
-    pmap(scopes, (s) => listLite(s, monthStart)),
+  const [{ usage, images, mediaCredits, nextReset }, prefs, brand, chat] = await Promise.all([
+    monthUsage(u),
     a.kind === "member" ? Promise.resolve(null) : db.get<{ emails?: EmailPrefs }>(`profile:${sc(u)}`),
     getBrand(sc(u)),
-    chatStatus(u),
+    chatStatus(u, route("chat").model),
   ]);
-  const tasks = lists.flat();
-  const usage: Record<string, { count: number; credits: number }> = {};
-  for (const t of tasks) {
-    if (new Date(t.createdAt) < monthStart) continue;
-    const k = t.type; usage[k] ??= { count: 0, credits: 0 }; usage[k].count++;
-  }
-  // credits are per batch; convert item counts back to credits via items-per-batch
-  for (const k of Object.keys(usage)) { const t = k as TaskType; usage[k].credits = Math.round((usage[k].count / (TASK_COUNT[t] ?? 1)) * (TASK_COST[t] ?? 1)); }
-  // Renders: the items with an image or a video this month, and what their renders really charged (`mediaCredits`, what
-  // src/lib/media/jobs.ts kept after refunds: an image is 1 or 2 by model, a video 12 or 24), as the owner reports and the
-  // founder overview count it. Rows from before mediaCredits existed fall back to the one image credit.
-  const month = tasks.filter((t) => new Date(t.createdAt) >= monthStart);
-  const images = month.filter((t) => t.image || t.video).length;
-  const mediaCredits = Math.round(month.reduce((sum, t) => sum + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0));
-  const now = new Date();
-  const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
   const me = { name: a.name, email: a.email, lang: a.lang, role: a.role };
   const summary = pick(u, SUMMARY);
   // The owner (or a founder acting as the owner) gets the fields in `OWNER` and nothing else of the record (rule 787):

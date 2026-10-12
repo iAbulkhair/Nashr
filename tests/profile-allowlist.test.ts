@@ -59,9 +59,11 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     topups: [{ id: "a1b2c3d4e5f60787", credits: 300, left: 300, at: iso(-2), expiresAt: iso(88), paidSar: 287.5, paidOn: iso(-2).slice(0, 10), ref: "SECRET-BANK-REF", by: "founder-topup@test.example" }],
     billing: { provider: "paymob", plan: "business", status: "active", paidThrough: iso(10).slice(0, 10), anchor: 9, autoRenew: true, failures: 0, card: { brand: "visa", last4: "0787" }, pending: { ref: "SECRET-INTENT-REF", day: iso(0).slice(0, 10) }, txns: ["SECRET-TXN-1"] },
     teamSessionsAfter: iso(-1),
+    devicesAfter: iso(-1),
     emailVerifiedAt: u.emailVerifiedAt!,
     gatedSignup: true,
     emailMoves: { day: iso(0).slice(0, 10), n: 1 },
+    chinaHostingOk: true,
   };
   await saveUser(full);
   return full;

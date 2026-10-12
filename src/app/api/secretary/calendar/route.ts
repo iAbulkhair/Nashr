@@ -40,7 +40,7 @@ const viewOf = (stored: unknown, zone: Zone, now: number) => ({ ok: true, ...cal
 
 /** One short line for the audit: the settings as saved (weekdays, clock times, years and counts only). */
 const summary = (c: SecCalendar) =>
-  `weekend=${c.weekend === null ? "default" : `[${c.weekend}]`}; ramadanHours=${c.ramadanHours === null ? "default" : c.ramadanHours.map((w) => `${w.from}-${w.to}`).join(",") || "none"}; hijriFix=${Object.keys(c.hijriFix).join(",") || "none"}; holidays +${c.holidays.add.length} -${c.holidays.remove.length}`;
+  `weekend=${c.weekend === null ? "default" : `[${c.weekend}]`}; ramadanHours=${c.ramadanHours === null ? "default" : c.ramadanHours.map((w) => `${w.from}-${w.to}`).join(",") || "none"}; hijriFix=${Object.keys(c.hijriFix).join(",") || "none"}; holidays +${c.holidays.add.length} -${c.holidays.remove.length}${c.workHours ? `; workHours=${c.workHours.from}-${c.workHours.to}` : ""}`;
 
 export async function GET() {
   const u = await currentUser();

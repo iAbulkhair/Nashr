@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./tokens.css";
+@import "./theme-dark.css";
 @import "./scribble.css" layer(components);
 
 /*
@@ -16,7 +17,6 @@
   --color-lilac: var(--primitive-color-lilac);
   --color-lemon: var(--primitive-color-lemon);
   --color-gold: var(--primitive-color-gold);
-  --color-danger: var(--primitive-color-danger);
   --color-agent-noor: var(--primitive-color-agent-noor);
   --color-agent-sami: var(--primitive-color-agent-sami);
   --color-agent-razan: var(--primitive-color-agent-razan);
@@ -27,6 +27,8 @@
   --color-agent-reem: var(--primitive-color-agent-reem);
   --color-agent-you: var(--primitive-color-agent-you);
 
+  --radius-card: var(--primitive-radius-lg);
+
   /* Tailwind's white is D's paper, so `bg-white` and `text-white` stay on the palette. */
   --color-white: var(--primitive-color-paper);
 
@@ -35,9 +37,83 @@
   --font-mono: var(--font-plex-mono);
 }
 
+/*
+ * The theme-aware roles (rule 1202; phase 1's roles, rule 1080, plus the ones the phase 5 codemod writes): this block is
+ * NOT inline, so each utility reads its variable where it is used (`color: var(--color-foreground)`), and the dark block
+ * in theme-dark.css re-points the variable. tokens.css sets the same light values unlayered, so they win over these and
+ * light pages look as before. The palette names above (`bg-ink`, `text-muted`...) stay for brand art, but the
+ * `thakeen-ui/no-raw-colour` lint rule fails them in components (rule 1201).
+ */
+@theme {
+  --color-background: var(--primitive-color-ground);
+  --color-background-muted: var(--primitive-color-lilac);
+  --color-surface: var(--primitive-color-paper);
+  --color-surface-muted: var(--primitive-color-ground);
+  --color-popover: var(--primitive-color-paper);
+  --color-overlay: color-mix(in srgb, var(--primitive-color-ink) 45%, transparent);
+  --color-foreground: var(--primitive-color-ink);
+  --color-foreground-muted: var(--primitive-color-muted);
+  --color-foreground-subtle: color-mix(in srgb, var(--primitive-color-ink) 65%, transparent);
+  --color-border: color-mix(in srgb, var(--primitive-color-ink) 18%, transparent);
+  --color-border-input: color-mix(in srgb, var(--primitive-color-ink) 55%, transparent);
+  --color-border-strong: var(--primitive-color-ink);
+  --color-inverse: var(--primitive-color-ink);
+  --color-inverse-foreground: var(--primitive-color-paper);
+  --color-inverse-muted: var(--primitive-color-lilac);
+  --color-accent-foreground: var(--primitive-color-ink);
+  --color-primary: var(--primitive-color-ink);
+  --color-primary-foreground: var(--primitive-color-paper);
+  --color-ring: var(--primitive-color-ink);
+  --color-danger: var(--primitive-color-danger);
+  --color-danger-tint: color-mix(in srgb, var(--primitive-color-danger) 8%, transparent);
+  --color-success: var(--primitive-color-success);
+  --color-success-tint: color-mix(in srgb, var(--primitive-color-success) 10%, transparent);
+  --color-warning: var(--primitive-color-warning);
+  --color-warning-tint: var(--primitive-color-warning-tint);
+  --color-info: var(--primitive-color-ink);
+  --color-info-tint: var(--primitive-color-lilac);
+  --color-notice-bg: var(--primitive-color-lilac);
+  --color-notice-border: color-mix(in srgb, var(--primitive-color-ink) 30%, transparent);
+}
+
 html {
   scroll-behavior: smooth;
+  /* One light palette (rule 966): without this, a browser in dark mode drew form controls, scrollbars and autofill dark
+     on the light pages. */
+  color-scheme: light;
+  /* Rule 1132: an anchor or a focused field scrolled into view clears the phone's sticky header and the chat's sticky
+     composer instead of landing under them. */
+  scroll-padding-block: 4.5rem 6rem;
 }
+
+/*
+ * Chart series (rule 967): each line at least 3:1 on paper and on the ground (WCAG 1.4.11), from the palette's own
+ * colours. The agent fills (lemon, lilac, sami, dana) are 1.1-2.9:1 on white, so two are deepened toward ink. Each series
+ * also has its own dash, so the lines differ without colour (WCAG 1.4.1).
+ */
+:root {
+  --chart-1: var(--color-ink);
+  --chart-2: var(--color-agent-faris);
+  --chart-3: color-mix(in oklab, var(--color-agent-dana) 55%, var(--color-ink));
+  --chart-4: color-mix(in oklab, var(--color-agent-sami) 60%, var(--color-ink));
+  --chart-5: var(--color-muted);
+}
+
+/* Arabic reads with more room between lines and a 13px floor for small text (rule 1080). The primitives use these;
+   the global leading and the old classes stay as they were (expand only). */
+:lang(ar) { --leading-body: 1.7; --leading-title: 1.4; --text-xs-min: 0.8125rem; }
+
+/* The accent role on light ground is bold ink, never lemon text (rule 1080). */
+@utility text-accent { color: var(--color-text-accent); font-weight: 700; }
+
+/* "Skip to content" (rule 968): the first focusable thing on every page, shown only when focused. */
+.skip-link { position: absolute; inset-inline-start: 1rem; top: -100px; z-index: 100; padding: 0.5rem 1rem; border-radius: var(--primitive-radius-md); background: var(--color-inverse-surface); color: var(--color-inverse-foreground); font-weight: 700; }
+.skip-link:focus { top: 1rem; }
+#main:focus { outline: none; }
+
+/* Arabic has no capitals and its letters join (rule 969): spacing breaks the joins and uppercase does nothing, so
+   both are off for Arabic text, whatever class or utility set them. */
+:lang(ar) .eyebrow, :lang(ar) .section-title, :lang(ar) [class*="tracking-"], :lang(ar) [class*="uppercase"] { letter-spacing: 0; text-transform: none; }
 
 /* Browser surfaces carry the palette too */
 ::selection { background: var(--color-accent); color: var(--color-accent-foreground); }
@@ -50,6 +126,8 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-body), system-ui, sans-serif;
+  /* Rule 1132: the body's line height is the token, 1.5, and 1.7 for Arabic (:lang(ar) above). */
+  line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -82,8 +160,8 @@ body {
   .btn-accent { background: var(--color-accent); color: var(--color-accent-foreground); border-color: var(--color-ink); }
   .btn-accent:hover:not(:disabled) { background: var(--color-paper); }
   .btn-accent:active:not(:disabled) { background: var(--color-accent-active); }
-  .btn-secondary { background: transparent; color: var(--color-foreground); border-color: color-mix(in oklab, var(--color-ink) 25%, transparent); }
-  .btn-secondary:hover:not(:disabled) { border-color: var(--color-ink); }
+  .btn-secondary { background: transparent; color: var(--color-foreground); border-color: color-mix(in oklab, var(--color-foreground) 25%, transparent); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--color-border-strong); }
   .btn-secondary:active:not(:disabled) { background: var(--color-background-muted); }
   .btn-danger { background: transparent; color: var(--color-danger); border-color: color-mix(in oklab, var(--color-danger) 40%, transparent); }
   .btn-danger:hover:not(:disabled) { background: var(--color-danger); border-color: var(--color-danger); color: var(--color-danger-foreground); }
@@ -96,32 +174,94 @@ body {
   .btn-xs { border-radius: var(--primitive-radius-full); padding: 0.25rem 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; }
   .btn-lg { border-radius: var(--primitive-radius-full); padding: 0.75rem 1.5rem; font-size: var(--primitive-fontSize-base); }
 
+  /* Phase 1 additions (rules 1082-1083): a ghost button, three heights with a 44px main target, and the busy look. */
+  .btn-ghost { background: transparent; color: var(--color-foreground); border-color: transparent; }
+  .btn-ghost:hover:not(:disabled) { background: var(--color-background-muted); }
+  .btn-h-sm { min-height: 2.25rem; }
+  .btn-h-md { min-height: var(--hit-min); }
+  .btn-h-lg { min-height: 3rem; }
+  .btn[aria-busy="true"], .s-btn[aria-busy="true"] { cursor: progress; }
+  .btn-block { width: 100%; }
+
   /* Cards */
-  .card { background: var(--card-bg); border: var(--stroke-figure) solid var(--card-border); border-radius: var(--card-radius); padding: var(--card-padding); box-shadow: var(--card-shadow); }
+  /* Rule 1132: the card's corner is the semantic radius token (12px), the one the primitives use. */
+  .card { background: var(--card-bg); border: var(--stroke-figure) solid var(--card-border); border-radius: var(--radius-card); padding: var(--card-padding); box-shadow: var(--card-shadow); }
   .card-sm { padding: var(--primitive-spacing-4); }
   .card-inverse { background: var(--color-inverse-surface); color: var(--color-inverse-foreground); border-color: color-mix(in oklab, var(--color-inverse-foreground) 15%, transparent); }
   .card-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-lg); font-weight: 700; }
 
+  /* An icon-only button (rule 1117): 44px on touch screens, 32px under a mouse, never under the 24px floor. */
+  .icon-btn { display: inline-grid; place-items: center; flex: none; min-width: var(--hit-min); min-height: var(--hit-min); border-radius: var(--primitive-radius-full); color: var(--color-foreground-muted); background: transparent; }
+  @media (pointer: fine) { .icon-btn { min-width: 2rem; min-height: 2rem; } }
+  .icon-btn:hover { color: var(--color-foreground); background: var(--color-surface-muted); }
+  .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .icon-btn[aria-pressed="true"] { color: var(--color-inverse-foreground); background: var(--color-inverse-surface); }
+
+  /* Skeleton (rule 1115): a quiet block that breathes while a screen loads; still under reduced motion. */
+  .skeleton { border-radius: var(--primitive-radius-md); background: var(--color-surface-muted); animation: skeleton-breathe 1.6s ease-in-out infinite; }
+
+  /* Sheet (rule 1111): slides in from its edge; the inline sides follow the reading direction. */
+  .sheet[open] { animation: sheet-in var(--duration-fast, 160ms) var(--ease-out, ease-out); }
+  .sheet-start[open] { --sheet-from: -100%; }
+  .sheet-end[open] { --sheet-from: 100%; }
+  [dir="rtl"] .sheet-start[open] { --sheet-from: 100%; }
+  [dir="rtl"] .sheet-end[open] { --sheet-from: -100%; }
+  .sheet-bottom[open] { animation-name: sheet-up; }
+
   /* Inputs */
   .input { width: 100%; background: var(--input-bg); border: var(--stroke-figure) solid var(--input-border); border-radius: var(--input-radius); padding: var(--input-padding-y) var(--input-padding-x); font-size: var(--primitive-fontSize-sm); color: var(--color-foreground); transition: border-color var(--duration-fast) var(--ease-out); }
-  .input::placeholder { color: var(--color-muted); opacity: 1; }
-  .input:hover { border-color: color-mix(in oklab, var(--color-ink) 80%, transparent); }
-  .input:focus { outline: var(--stroke-focus) solid var(--input-focus-ring); outline-offset: 1px; border-color: var(--color-ink); }
+  .input::placeholder { color: var(--color-foreground-muted); opacity: 1; }
+  .input:hover { border-color: color-mix(in oklab, var(--color-foreground) 80%, transparent); }
+  .input:focus { outline: var(--stroke-focus) solid var(--input-focus-ring); outline-offset: 1px; border-color: var(--color-border-strong); }
   .input:disabled { opacity: 0.6; cursor: not-allowed; }
   .input[aria-invalid="true"] { border-color: var(--color-danger); }
+  /* The Field family's controls (rule 1084): a 44px target, and 16px text under 640px so iOS does not zoom the page on
+     focus. Added beside `.input`, so every other input keeps its size. */
+  .control { min-height: var(--hit-min); }
+  textarea.control { min-height: 6rem; line-height: var(--leading-body); }
+  @media (max-width: 639px) { .control { font-size: var(--primitive-fontSize-base); } }
+  .field-label { display: block; font-size: var(--primitive-fontSize-sm); font-weight: 600; color: var(--color-foreground); }
+  .field-hint { font-size: max(var(--primitive-fontSize-xs), var(--text-xs-min)); line-height: var(--leading-body); color: var(--color-foreground-muted); }
+  .field-error { font-size: var(--primitive-fontSize-sm); line-height: var(--leading-body); color: var(--color-danger); }
+
+  /* Switch (rule 1085): the track is 44 by 24 inside a 44px target. */
+  .switch { display: inline-flex; align-items: center; justify-content: center; min-width: var(--hit-min); min-height: var(--hit-min); flex: none; cursor: pointer; background: transparent; border: 0; padding: 0; }
+  .switch:disabled { cursor: not-allowed; opacity: 0.5; }
+  .switch-track { position: relative; display: inline-block; width: 2.75rem; height: 1.5rem; border-radius: var(--primitive-radius-full); border: var(--stroke-figure) solid var(--color-border-input); background: var(--color-surface-muted); transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); }
+  .switch-thumb { position: absolute; top: 50%; inset-inline-start: 0.1875rem; width: 1rem; height: 1rem; border-radius: var(--primitive-radius-full); background: var(--color-foreground-muted); transform: translateY(-50%); transition: inset-inline-start var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
+  .switch[aria-checked="true"] .switch-track { background: var(--color-primary); border-color: var(--color-primary); }
+  .switch[aria-checked="true"] .switch-thumb { inset-inline-start: 1.4375rem; background: var(--color-primary-foreground); }
+
+  /* Callout (rule 1087): a status box with text, never colour alone; the tone sets the tint and the border. */
+  .callout { display: flex; align-items: flex-start; gap: 0.5rem; border-radius: var(--primitive-radius-md); border: var(--stroke-figure) solid var(--color-border); padding: 0.75rem; font-size: var(--primitive-fontSize-sm); line-height: var(--leading-body); color: var(--color-foreground); text-align: start; }
+  .callout-info { background: var(--color-info-tint); border-color: var(--color-border); }
+  .callout-notice { background: var(--color-notice-bg); border-color: var(--color-notice-border); }
+  .callout-success { background: var(--color-success-tint); border-color: color-mix(in srgb, var(--color-success) 35%, transparent); }
+  .callout-success .callout-icon { color: var(--color-success); }
+  .callout-warning { background: var(--color-warning-tint); border-color: color-mix(in srgb, var(--color-warning) 35%, transparent); }
+  .callout-warning .callout-icon { color: var(--color-warning); }
+  .callout-danger { background: var(--color-danger-tint); border-color: color-mix(in srgb, var(--color-danger) 35%, transparent); }
+  .callout-danger .callout-icon, .callout-danger .callout-title { color: var(--color-danger); }
+  .callout-icon { flex: none; margin-top: 0.125rem; width: 1rem; height: 1rem; }
+  .callout-title { font-weight: 700; }
 
   /* Badges: a flat D fill with ink text */
-  .badge { display: inline-flex; align-items: center; border-radius: var(--primitive-radius-full); padding: 0.125rem 0.5rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; color: var(--color-ink); }
-  .badge-primary { background: var(--color-lilac); }
-  .badge-accent { background: var(--color-lemon); }
-  .badge-danger { background: var(--color-agent-sami); }
+  .badge { display: inline-flex; align-items: center; border-radius: var(--primitive-radius-full); padding: 0.125rem 0.5rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; color: var(--color-foreground); }
+  .badge-primary { background: var(--color-background-muted); }
+  .badge-accent { background: var(--color-lemon); color: var(--color-accent-foreground); }
+  .badge-danger { background: var(--color-agent-sami); color: var(--color-accent-foreground); }
+  /* Badge tones (rule 1086): tint fills with text in the tone's own 4.5:1 colour. No lemon on a light ground. */
+  .badge-neutral { background: var(--color-surface-muted); border: var(--stroke-fine) solid var(--color-border); }
+  .badge-success { background: var(--color-success-tint); color: var(--color-success); }
+  .badge-warning { background: var(--color-warning-tint); color: var(--color-warning); }
+  .badge-inverse { background: var(--color-inverse-surface); color: var(--color-inverse-foreground); }
 
   /* Typography */
   .page-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-3xl); font-weight: 700; line-height: 1.2; color: var(--color-primary); }
-  .page-sub { margin-top: 0.5rem; color: var(--color-muted); }
+  .page-sub { margin-top: 0.5rem; color: var(--color-foreground-muted); }
   .section-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-3xl); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
   @media (min-width: 640px) { .section-title { font-size: var(--primitive-fontSize-4xl); } }
-  .eyebrow { margin-bottom: 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: var(--color-muted); }
+  .eyebrow { margin-bottom: 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: var(--color-foreground-muted); }
   .eyebrow-accent { color: var(--color-accent); }
 
   /* Text clipping (single line with ellipsis) */
@@ -135,25 +275,39 @@ body {
 }
 
 /* Overnight log rows rise one by one on load */
+@keyframes skeleton-breathe { 50% { opacity: 0.55; } }
+@keyframes sheet-in { from { transform: translateX(var(--sheet-from, -100%)); } }
+@keyframes sheet-up { from { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) { .skeleton, .sheet[open] { animation: none; } }
+
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .log-row { animation: rise 0.5s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .log-row { animation: none; } html { scroll-behavior: auto; } }
 
 :focus-visible { outline: var(--stroke-focus) solid var(--color-ring); outline-offset: 2px; }
+/* Lemon is the focus ring on ink (rule 1081): an ink ring on an ink surface is invisible. Comes after the global ring so
+   it wins at equal specificity. */
+:where(.bg-ink, .card-inverse, [data-surface="inverse"]) :focus-visible { outline-color: var(--color-ring-inverse); }
+/* The codemod's inverse surfaces (rule 1200) carry the same lemon ring. */
+:where(.bg-inverse) :focus-visible { outline-color: var(--color-ring-inverse); }
+/* Text on a solid bright fill (lemon, gold, the light agent colours) is ink in both themes (rule 1202): these fills do not
+   change with the theme, so text that would otherwise inherit the dark theme's light foreground gets ink. Zero
+   specificity: an explicit text utility on the element still wins. Tints (`bg-lemon/20`) are not matched. */
+:where(.bg-lemon, .bg-gold, .bg-agent-noor, .bg-agent-sami, .bg-agent-razan, .bg-agent-dana, .bg-agent-layan, .bg-agent-reem, .bg-agent-you) { color: var(--color-accent-foreground); }
 
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
 
 /* Blog article typography */
-.prose-nashr h2 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.5rem; font-weight: 700; margin-top: 2.5rem; color: var(--color-ink); }
+.prose-nashr h2 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.5rem; font-weight: 700; margin-top: 2.5rem; color: var(--color-foreground); }
 .prose-nashr h3 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.2rem; font-weight: 700; margin-top: 1.75rem; }
-.prose-nashr p, .prose-nashr li { line-height: 1.8; margin-top: 0.75rem; color: var(--color-ink); }
+.prose-nashr p, .prose-nashr li { line-height: 1.8; margin-top: 0.75rem; color: var(--color-foreground); }
 .prose-nashr ul { list-style: disc; padding-inline-start: 1.5rem; }
 .prose-nashr ol { list-style: decimal; padding-inline-start: 1.5rem; }
-.prose-nashr a { color: var(--color-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.prose-nashr a { color: var(--color-foreground); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .prose-nashr table { width: 100%; margin-top: 1rem; border-collapse: collapse; font-size: 0.9rem; }
-.prose-nashr th { font-family: var(--font-display), var(--font-body), sans-serif; text-align: start; padding: 0.5rem 0.75rem; border-bottom: 1.5px solid var(--color-ink); }
-.prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-ink) 15%, transparent); padding: 0.5rem 0.75rem; }
+.prose-nashr th { font-family: var(--font-display), var(--font-body), sans-serif; text-align: start; padding: 0.5rem 0.75rem; border-bottom: 1.5px solid var(--color-border-strong); }
+.prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-foreground) 15%, transparent); padding: 0.5rem 0.75rem; }
 .prose-nashr strong { font-weight: 700; }
 
 /* Compact prose for inbox items and chat bubbles */

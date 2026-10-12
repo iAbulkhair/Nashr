@@ -1,0 +1,13 @@
+{
+  "$comment": "The schedule (UTC) of the GET cron routes, each called with the CRON_SECRET bearer. No host reads this file: thakeen.com runs these as hPanel cron jobs, entered by hand, and this list is what they must match (rule 989, docs/system/architecture.md 2.6). Reem's tick, POST /api/cron/secretary every 15 minutes, is not a GET cron and is described apart there. It was vercel.json, read by Vercel Cron, until 2026-10-10.",
+  "crons": [
+    { "path": "/api/cron/weekly", "schedule": "0 3 * * 0" },
+    { "path": "/api/cron/daily", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/golden", "schedule": "0 1 * * 6" },
+    { "path": "/api/cron/media", "schedule": "20 5 * * *" },
+    { "path": "/api/cron/routines", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/evening", "schedule": "0 15 * * *" },
+    { "path": "/api/cron/stores", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/stores", "schedule": "0 14 * * *" }
+  ]
+}

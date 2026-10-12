@@ -29,9 +29,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
     <>
       <Nav t={t} lang={lang} />
       <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <Link href={`/${lang}/tools`} className="text-sm font-bold text-ink underline">{lang === "ar" ? "← كل الأدوات" : "← All tools"}</Link>
+        <Link href={`/${lang}/tools`} className="text-sm font-bold text-foreground underline">{lang === "ar" ? "← كل الأدوات" : "← All tools"}</Link>
         <h1 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><Scribble kind="underline" seed="tool-h" />{x.h1[lang]}</span></h1>
-        <p className="mt-2 max-w-2xl text-muted">{x.desc[lang]}</p>
+        <p className="mt-2 max-w-2xl text-foreground-muted">{x.desc[lang]}</p>
         <div className="mt-8"><ToolForm tool={x} lang={lang} /></div>
         <section className="mt-16">
           <h2 className="font-display text-xl font-bold">{lang === "ar" ? "أدوات أخرى" : "More tools"}</h2>

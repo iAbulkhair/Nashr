@@ -120,7 +120,7 @@ describe("messages are counted per account, before the turn (rule 309)", () => {
   });
   it("parallel messages never pass the allowance", async () => {
     const u = await owner("starter", 245);
-    const gates = await Promise.all(Array.from({ length: 20 }, () => reserveChatTurn(u)));
+    const gates = await Promise.all(Array.from({ length: 20 }, () => reserveChatTurn(u, CHAT_MODEL)));
     expect(gates.filter((g) => g.ok)).toHaveLength(5);
     expect(await count(u)).toBe(250);
   });
@@ -215,7 +215,7 @@ describe("past the allowance: paused, or continued on credits when the owner say
   });
   it("nothing is held before the turn, so the turn's own tools can spend the whole balance", async () => {
     const u = await owner("starter", 250, { chatOverflow: true, credits: chatOverflowHold() });
-    const g = await reserveChatTurn(u);
+    const g = await reserveChatTurn(u, CHAT_MODEL);
     expect(g).toMatchObject({ ok: true, mode: "overflow", hold: chatOverflowHold() });
     expect((await getUser(u.email))!.credits).toBe(chatOverflowHold());
     if (g.ok) await settleChatTurn(u, g, null);
@@ -258,10 +258,10 @@ describe("past the allowance: paused, or continued on credits when the owner say
   });
   it("the gate refuses with the account's status when overflow is off", async () => {
     const u = await owner("business", 1300);
-    const g = await reserveChatTurn(u);
+    const g = await reserveChatTurn(u, CHAT_MODEL);
     expect(g).toMatchObject({ ok: false, error: "chat_allowance", status: { used: 1300, allowance: 1300, left: 0, counted: 1300 } });
-    expect(await chatStatus(u)).toMatchObject({ used: 1300, left: 0 });
-    const ok = await reserveChatTurn({ ...u, chatAllowance: 1301 });
+    expect(await chatStatus(u, CHAT_MODEL)).toMatchObject({ used: 1300, left: 0 });
+    const ok = await reserveChatTurn({ ...u, chatAllowance: 1301 }, CHAT_MODEL);
     expect(ok.ok).toBe(true);
     if (ok.ok) await settleChatTurn(u, ok, null);
     expect(await count(u)).toBe(1300);
@@ -325,12 +325,12 @@ describe("the hard per-message ceiling (rule 311)", () => {
     const j = await (await send()).json();
     expect(j.message).not.toHaveProperty("usd");
   });
-  it("chat runs on Sonnet 5.5 under a $0.14 ceiling: the same tokens a message had under $0.35 on Opus 5, and a 2-credit hold", () => {
+  it("chat runs on Sonnet 5.5 under a $0.14 ceiling: the same 14,000 output tokens a message had under $0.35 on Opus 5 ($25/M, removed by rule 970), and a 2-credit hold", () => {
     expect(CHAT_MODEL).toBe("claude-sonnet-5-5");
     expect(CHAT_TURN_MAX_USD).toBe(0.14);
     expect(chatOverflowHold()).toBe(2);
     const tokensUnder = (ceiling: number, model: string) => ceiling / costUsd(model, { output_tokens: 1 });
-    expect(tokensUnder(CHAT_TURN_MAX_USD, CHAT_MODEL)).toBeCloseTo(tokensUnder(0.35, "claude-opus-5"), 6);
+    expect(tokensUnder(CHAT_TURN_MAX_USD, CHAT_MODEL)).toBeCloseTo(0.35 / 25e-6, 6);
   });
   it("a turn the model refuses says so, never \"Done\", and is still metered", async () => {
     const u = await owner("starter");
@@ -342,10 +342,13 @@ describe("the hard per-message ceiling (rule 311)", () => {
     h.turns.push(() => ({ content: [], stop_reason: "refusal", model: CHAT_MODEL, usage: CHEAP }));
     expect((await chat(u, "مرة ثانية", undefined, "noor", { lang: "ar" })).content).toMatch(/^لم أستطع إكمال هذا الطلب/);
   });
-  it("the code passes the computed cap and the chat model, never a typed 8000", () => {
+  it("the code passes the computed cap and the turn's one model (the caller's, else route), never a typed 8000", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/chat.ts"), "utf8");
     expect(src).toContain("max_tokens: maxTokens");
-    expect(src).toContain("model: CHAT_MODEL");
+    // Resolved once per turn and used by the first-call fit, every later cap and every stream; CHAT_MODEL is only the export.
+    expect(src).toContain('const model = opts.model ?? route("chat").model;');
+    expect(src).toContain(".stream({ model, max_tokens: maxTokens");
+    expect(src.match(/\bCHAT_MODEL\b/g)).toHaveLength(1);
     expect(src).not.toMatch(/max_tokens: 8000/);
   });
 });

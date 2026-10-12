@@ -6,6 +6,7 @@ import "../globals.css";
 import { LANGS, dict, isLang } from "@/lib/i18n";
 import { appOrigin } from "@/lib/origin";
 import { SITE_DEFAULT } from "@/lib/page-meta";
+import { THEME_SCRIPT } from "@/lib/theme";
 
 // Thmanyah Serif Display («ثمانية للعناوين») for headings and large type; body text stays IBM Plex Sans Arabic.
 // The Thmanyah Font License (font.thmanyah.com/licenses) allows websites only as part of a packaged product: the files
@@ -55,8 +56,15 @@ export default async function RootLayout({ children, params }: { children: React
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const t = dict[lang];
+  // Theme before the first paint (rules 1203-1204): the server always sends light; the head script reads the viewer's
+  // `nashr_theme` cookie and the device setting and sets `data-theme` before the body is parsed, so a dark app screen never
+  // flashes light and the page stays statically prerendered (no cookies() here). suppressHydrationWarning covers only
+  // that one attribute on <html>.
   return (
-    <html lang={lang} dir={t.dir} translate="no" className={`${thmanyah.variable} ${plexArabic.variable} ${plexMono.variable}`}>
+    <html lang={lang} dir={t.dir} translate="no" data-theme="light" suppressHydrationWarning className={`${thmanyah.variable} ${plexArabic.variable} ${plexMono.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>{children}</body>
     </html>
   );

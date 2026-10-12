@@ -16,7 +16,7 @@ import { LEGAL } from "@/lib/legal";
 import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as profileRoute from "@/app/api/profile/route";
 import * as adminUser from "@/app/api/admin/users/[email]/route";
-import BillingPage from "@/app/[lang]/app/billing/page";
+import BillingPage from "@/app/[lang]/app/settings/billing/page";
 import { adminConsoleSrc } from "./helpers/admin-console";
 
 /**
@@ -362,7 +362,8 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
   it("the console shows the amount, sends the credits it showed and one request id through adminFetch; Payments shows the refund", () => {
     const src = adminConsoleSrc();
     expect(src).toContain('import { unusedRefundSar } from "@/lib/topups";');
-    expect(src).toContain("if (!confirm(S.confirmRefund(l.left, l.credits, sarText(unusedRefundSar(l))))) return;");
+    // Since rule 1176 the amount is the refund form's message, and the form also asks the day, the reference and a reason.
+    expect(src).toContain("message: S.confirmRefund(l.left, l.credits, sarText(unusedRefundSar(l))), destructive: true");
     expect(src).toContain('const ask = { email: u.email, action: "refund", id: l.id, credits: l.left, on: on.trim(), ref };');
     expect(src).toContain("if (pendingRefund.current?.key !== key) pendingRefund.current = { key, id: newRefundId() };");
     expect(src).toContain('await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ask, refundId: pendingRefund.current.id, reason }) });');
@@ -371,7 +372,7 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
     expect(src).toContain("data-topup-refund-note");
     expect(src).not.toMatch(/[^n]fetch\("\/api\/admin\/topups"/);
     for (const [lang, re] of [["en", /Refund unused[\s\S]*only when the customer asks, before the pack expires[\s\S]*excluding VAT/], ["ar", /استرداد غير المستخدم[\s\S]*فقط إذا طلبه العميل، وقبل انتهاء الباقة[\s\S]*دون الضريبة/]] as const) expect(src, lang).toMatch(re);
-    const panel = readFileSync("src/components/app/PaymentsPanel.tsx", "utf8");
+    const panel = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     expect(panel).toContain("data-payment-refund");
     expect(panel).toContain('refunded: "refunded in full"');
     expect(panel).toContain('refunded: "استُردت كاملة"');
@@ -465,7 +466,7 @@ describe("a refund that stopped halfway can be finished, and a pack's missing pa
     expect((await lotOf(email, l.id))!).toMatchObject({ left: 100 });
     expect((await lotOf(email, l.id))!.refund).toBeUndefined();
     const src = adminConsoleSrc();
-    expect(src).toContain('body: JSON.stringify({ email: u.email, action: "refund", id: l.id, finish: true })');
+    expect(src).toContain('body: JSON.stringify({ email: u.email, action: "refund", id: l.id, finish: true, reason })');
     expect(src).toContain("sel.unfinishedRefunds?.includes(l.id) && ");
     expect(src).toContain('finishRefund: "Finish refund"');
     expect(src).toContain('finishRefund: "إكمال الاسترداد"');

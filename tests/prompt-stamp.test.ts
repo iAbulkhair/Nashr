@@ -105,7 +105,8 @@ describe("every generated task records which prompts made it (rule 229)", () => 
     expect((await generateRoute.POST(json("/api/generate", "POST", { type: "whatsapp" }))).status).toBe(200);
     const tasks = await Promise.all((await listLite(u.email)).map((l) => getTask(u.email, l.id)));
     expect(tasks.length).toBeGreaterThan(0);
-    for (const x of tasks) expect(x!.pb).toEqual(promptStamp("whatsapp", brand));
+    // A batch also records the instruction blocks it carried (rule 947): none, none for an account with no instructions.
+    for (const x of tasks) expect(x!.pb).toEqual(promptStamp("whatsapp", brand, { plat: "none", ins: "none" }));
 
     const saved = await saveExternalDraft((await getUser(u.email))!, { type: "social", channel: "instagram", title: "مسودة", body: "نص كتبه مساعد المالك" });
     if (!saved.ok) throw new Error(saved.reason);
@@ -190,13 +191,13 @@ describe("the golden set says when an agent's prompts changed (rule 230)", () =>
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     claudeOn();
-    const reply = (text: string) => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
+    const reply = (text: string) => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
     const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
         beta = { messages: { stream: () => ({ finalMessage: async () => reply(JSON.stringify([{ channel: "instagram", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة والحكم عليه في المجموعة الذهبية" }])) }) } };
-        messages = { create: async (p: { system: { text: string }[] }) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])) };
+        messages = { create: async (p: { system: { text: string }[] }) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])), stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const { runGolden, GOLDEN_CASES, GOLDEN_BRANDS } = await import("@/lib/golden");
@@ -207,7 +208,7 @@ describe("the golden set says when an agent's prompts changed (rule 230)", () =>
     expect(Object.keys(run!.playbooks!)).toEqual(expect.arrayContaining(["marketing", "sales", "finance", "gtm", "reporting", "executive", "product", "review", "code:social"]));
     for (const r of run!.results) {
       const c = GOLDEN_CASES.find((x) => x.id === r.id)!;
-      expect(r.pb).toEqual(stamps.promptStamp(c.type, GOLDEN_BRANDS[c.brand]));
+      expect(r.pb).toEqual(stamps.promptStamp(c.type, GOLDEN_BRANDS[c.brand], { plat: "none", ins: "none" }));
     }
     const golden = await import("@/app/api/admin/golden/route");
     const body = (await (await golden.GET(json("/api/admin/golden", "GET", undefined, { "x-admin-key": "test-admin-key-0123456789" }))).json()) as { hashes: Record<string, string>; latest: GoldenRun };
@@ -220,13 +221,13 @@ describe("the golden set says when an agent's prompts changed (rule 230)", () =>
     vi.resetModules();
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
     claudeOn();
-    const reply = (text: string) => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
+    const reply = (text: string) => ({ model: "claude-sonnet-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
     const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
         beta = { messages: { stream: () => ({ finalMessage: async () => reply(JSON.stringify([{ channel: "instagram", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة والحكم عليه في المجموعة الذهبية" }])) }) } };
-        messages = { create: async (p: { system: { text: string }[] }) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])) };
+        messages = { create: async (p: { system: { text: string }[] }) => reply(JSON.stringify(p.system[0].text.startsWith("You are the quality judge") ? [verdict] : [{ ok: true }])), stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
       },
     }));
     const { runGolden, GOLDEN_CASES, GOLDEN_VERSION } = await import("@/lib/golden");

@@ -1,4 +1,4 @@
-import { meter } from "./usage";
+import { metered } from "./metered";
 import { MODEL_BUDGET, ModelPaused, anthropic, modelState, until } from "./model";
 import type { Brand } from "./brand";
 import { activeSeasons } from "./seasons";
@@ -6,6 +6,7 @@ import type { SiteSnapshot } from "./crawl";
 
 import type { PlanItem } from "./chat";
 import { asData } from "./json";
+import { route } from "./models/route";
 
 export type OnboardResult = { brand: Brand; files: { name: string; content: string }[]; /** three starter tasks the owner can add with one tap */ plan: PlanItem[]; /** an output goal Nashr controls (items shipped), never a results promise */ goal: string; /** closing chat message */ summary: string };
 
@@ -50,7 +51,7 @@ function mock(site: SiteSnapshot, lang: "ar" | "en"): OnboardResult {
   return {
     brand: { name, website: site.url, industry: "متجر إلكتروني", city: "الرياض", dialect: "saudi", languages: [lang, lang === "ar" ? "en" : "ar"], tone: "ودود، واضح", products: site.description || "(dev mock)", audience: "عملاء في السعودية", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram", "snapchat", "tiktok", "whatsapp"], updatedAt: new Date().toISOString() },
     files: [
-      { name: "brand.md", content: `# ${name}\n\n(DEV MOCK — set ANTHROPIC_API_KEY)\n\nSite: ${site.url}\nPlatform: ${site.platform}` },
+      { name: "brand.md", content: `# ${name}\n\n(DEV MOCK — no model key for the configured provider)\n\nSite: ${site.url}\nPlatform: ${site.platform}` },
       { name: "brand-guidelines.md", content: `# Brand guidelines\n\n(DEV MOCK)\n\nColours: ${(site.colors ?? []).join(", ") || "not detected"}\nFonts: ${(site.fonts ?? []).join(", ") || "not detected"}` },
       { name: "opportunities.md", content: "# Opportunities\n\n(DEV MOCK)" },
       { name: "market-research.md", content: "# Market research\n\n(DEV MOCK)" },
@@ -123,21 +124,22 @@ strategy_md: 90-day plan in 3 phases with concrete weekly cadence per channel, t
   };
 
   const user = onboardUserMessage(site, hints);
+  // One decision for the run: the three parts, and a part's retry, run on the same model.
+  const model = route("onboard").model;
 
   const run = async (name: PartName, attempt = 0): Promise<Record<string, unknown>> => {
     try {
-      const msg = await client.messages
+      // Onboarding is Noor's first-run work (it writes the brand file she opens with). Metered inside `metered`, so a part
+      // cut by the deadline, and the first try of a part that is retried, are counted for what the API billed (rule 980).
+      const msg = await metered(client.messages
         .stream({
-          model: "claude-opus-5-5",
+          model,
           max_tokens: PARTS[name].maxTokens,
           system: `${shared}${asks[name]}`,
           messages: [{ role: "user", content: user }],
           thinking: { type: "adaptive" },
           output_config: { effort: "medium", format: { type: "json_schema", schema: PARTS[name].schema } },
-        }, until(end, { cap: MODEL_BUDGET.ONBOARD_MS }))
-        .finalMessage();
-      // Onboarding is Noor's first-run work (it writes the brand file she opens with).
-      await meter(email, msg.model, "onboard", msg.usage, "noor");
+        }, until(end, { cap: MODEL_BUDGET.ONBOARD_MS })), { email, kind: "onboard", agent: "noor" });
       const out = JSON.parse(msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("")) as Record<string, unknown>;
       onPart?.(name);
       return out;

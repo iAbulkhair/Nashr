@@ -29,9 +29,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     <>
       <Nav t={t} lang={lang} />
       <main className="page-wrap" data-partner-terms>
-        <p className="eyebrow"><Link href={`/${lang}/affiliates`} className="font-bold text-ink hover:underline">{doc.back}</Link></p>
+        <p className="eyebrow"><Link href={`/${lang}/affiliates`} className="font-bold text-foreground hover:underline">{doc.back}</Link></p>
         <h1 className="mt-3 font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><Scribble kind="underline" seed="partner-terms-h" />{doc.title}</span></h1>
-        <p className="mt-2 text-sm text-muted" dir="auto">{doc.updated}</p>
+        <p className="mt-2 text-sm text-foreground-muted" dir="auto">{doc.updated}</p>
         <p className="mt-4 leading-relaxed">{doc.intro}</p>
         {doc.sections.map((s) => (
           <section key={s.id} id={s.id} className="mt-8">

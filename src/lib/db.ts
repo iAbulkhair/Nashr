@@ -46,6 +46,8 @@ type Store = {
   ttl(key: string): Promise<number>;
   /** EXPIRE NX: give a key a TTL only when it has none. Never touches the value or an expiry already set. */
   expireNx(key: string, ttlSeconds: number): Promise<void>;
+  /** EXPIRE: set a key's TTL, replacing any it had (a set that should vanish a while after its last add). A missing key stays missing. */
+  expire(key: string, ttlSeconds: number): Promise<void>;
   /** SET NX with TTL. True when this caller won the lock. */
   lock(key: string, ttlSeconds: number): Promise<boolean>;
   /**
@@ -181,6 +183,9 @@ function upstash(): Store | null {
     async expireNx(key, ttl) {
       await r.expire(key, ttl, "NX");
     },
+    async expire(key, ttl) {
+      await r.expire(key, ttl);
+    },
     async lock(key, ttl) {
       return (await r.set(key, "1", { nx: true, ex: ttl })) === "OK";
     },
@@ -228,7 +233,7 @@ function memory(): Store {
   const exp = (m.exp ??= new Map<string, number>());
   // Who holds each owned lock (`lockOwned`). Any other write to the key forgets its owner.
   const owners = (m.owners ??= new Map<string, string>());
-  const live = (key: string) => { const at = exp.get(key); if (at !== undefined && at <= Date.now()) { exp.delete(key); m.kv.delete(key); } };
+  const live = (key: string) => { const at = exp.get(key); if (at !== undefined && at <= Date.now()) { exp.delete(key); m.kv.delete(key); m.sets.delete(key); m.lists.delete(key); hashes.delete(key); zsets.delete(key); } };
   /**
    * Copy on the way in and on the way out, because Upstash does.
    *
@@ -288,6 +293,7 @@ function memory(): Store {
       hashes.get(key)?.delete(field);
     },
     async sadd(key, member) {
+      live(key);
       const s = m.sets.get(key) ?? new Set<string>();
       const isNew = s.has(member) ? 0 : 1;
       s.add(member);
@@ -295,9 +301,11 @@ function memory(): Store {
       return isNew;
     },
     async smembers(key) {
+      live(key);
       return [...(m.sets.get(key) ?? [])];
     },
     async sismember(key, member) {
+      live(key);
       return m.sets.get(key)?.has(member) ?? false;
     },
     async srem(key, member) {
@@ -352,6 +360,10 @@ function memory(): Store {
     async expireNx(key, ttl) {
       live(key);
       if (m.kv.has(key) && !exp.has(key)) exp.set(key, Date.now() + ttl * 1000);
+    },
+    async expire(key, ttl) {
+      live(key);
+      if (m.kv.has(key) || m.lists.has(key) || m.sets.has(key) || hashes.has(key) || zsets.has(key)) exp.set(key, Date.now() + ttl * 1000);
     },
     async lock(key, ttl) {
       const until = m.kv.get(key) as number | undefined;
@@ -478,4 +490,4 @@ export async function pushCapped(key: string, value: string, cap: number) {
   await Promise.all([db.lpush(key, value), db.ltrim(key, cap)]);
 }
 /** Caps for the lists above. Reads never look past these, so trimming loses nothing a page shows. */
-export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, govHistory: 100, activity: 2000, secDone: 200, secAudit: 500, handoffs: 200 } as const;
+export const CAPS = { chat: 400, adminLog: 5000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, govHistory: 100, activity: 2000, secDone: 200, secAudit: 500, handoffs: 200, skillsHistory: 100, skillsWsHistory: 50, skillsFeed: 500 } as const;

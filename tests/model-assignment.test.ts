@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 
 /**
  * Rules 809 and 900 (2026-10-09, founder: "use the last 3 models right now only"). The product calls only the three
@@ -9,6 +8,8 @@ import { join } from "node:path";
  * server-side refusal fallback, so a declined free-tool request comes back with no text: the route says it failed
  * instead of showing an empty result, and the use is not counted.
  *
+ * Every call asks `route(purpose)` for its model (src/lib/models/route.ts; tests/model-route-calls.test.ts forbids a model
+ * literal anywhere else), so this file checks what routing can return rather than scanning the call sites.
  * Rule 901 (the same day): each task type has its own writer and reviewer (TASK_MODELS in src/lib/task-models.ts). Opus
  * 5.5 writes what the owner decides from, what touches money, and the posts and ads; Sonnet 5.5 writes the rest. The
  * reviewer is Sonnet 5.5 for every type.
@@ -18,7 +19,7 @@ const sdk = vi.hoisted(() => ({ sent: [] as { model: string }[], streamed: [] as
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
     static BadRequestError = class extends Error {};
-    messages = { create: async (p: { model: string }) => { sdk.sent.push(p); return sdk.reply; } };
+    messages = { create: async (p: { model: string }) => { sdk.sent.push(p); return sdk.reply; }, stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
     beta = { messages: { stream: (p: { model: string }) => { sdk.streamed.push(p); return { finalMessage: async () => sdk.reply }; } } };
   },
 }));
@@ -33,31 +34,44 @@ import { CHAT_MODEL } from "@/lib/chat";
 import { hasRate } from "@/lib/usage";
 import { db } from "@/lib/db";
 import { TOOLS } from "@/lib/tools";
+import { DEFAULTS, route, type Purpose } from "@/lib/models/route";
+import { MODELS, autoModels, pickModels } from "@/lib/models/catalog";
+import { PRICED_AT } from "@/lib/models/tiers";
 import * as toolRoute from "@/app/api/tools/[tool]/route";
 import { json, settle } from "./helpers/session";
 
 const CURRENT = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
-const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(f) ? [p] : []; });
 const src = (p: string) => readFileSync(p, "utf8");
 
 beforeEach(() => { sdk.sent = []; sdk.streamed = []; sdk.reply = null; vi.stubEnv("ANTHROPIC_API_KEY", "test"); });
 afterEach(async () => { await settle(); vi.unstubAllEnvs(); });
 
 describe("only the three current models are called (rule 809)", () => {
-  it("every model id a call names in src is Opus 5.5, Sonnet 5.5 or Haiku 5.5", () => {
-    const named = walk("src").flatMap((f) => [...src(f).matchAll(/(?:model:\s*|_MODEL\s*=\s*)"(claude-[a-z0-9-]+)"/g)].map((m) => `${f}: ${m[1]}`));
-    expect(named.length).toBeGreaterThanOrEqual(4);
-    expect(named.filter((n) => !CURRENT.some((id) => n.endsWith(`: ${id}`)))).toEqual([]);
-    // The per-type writers and reviewers are named once, in task-models.ts.
+  it("every model routing can send is Opus 5.5, Sonnet 5.5 or Haiku 5.5: each default, each automatic or pickable entry, each judge", () => {
+    const current = (id: string) => (CURRENT as readonly string[]).includes(id);
+    for (const p of Object.keys(DEFAULTS) as Purpose[]) expect(current(route(p).model), p).toBe(true);
+    expect(autoModels().map((m) => m.id).filter((id) => !current(id))).toEqual([]);
+    expect(pickModels().map((m) => m.id).filter((id) => !current(id))).toEqual([]);
+    expect(Object.values(PRICED_AT).filter((id) => !current(id))).toEqual([]);
+    // The judge's alternative too, whatever model generated the batch.
+    for (const m of MODELS) expect(current(route("judge", { generatedBy: m.id }).model), m.id).toBe(true);
+    // A stored pick of a retired model is refused and the default runs.
+    for (const stored of ["claude-opus-5", "claude-sonnet-5"]) {
+      expect(route("chat", { stored }).model).toBe(DEFAULTS.chat);
+      expect(route("generate", { stored }).model).toBe(DEFAULTS.generate);
+    }
+    // Rule 901: each task type's writer and reviewer, as routing returns them with no pick, and the table's three names.
+    for (const t of TASK_TYPES) for (const p of ["generate", "review"] as const) expect(current(route(p, { task: t }).model), `${p} ${t}`).toBe(true);
     const constants = [...src("src/lib/task-models.ts").matchAll(/export const [A-Z]+ = "(claude-[a-z0-9-]+)";/g)].map((m) => m[1]);
     expect(constants).toEqual([...CURRENT]);
-    for (const [type, m] of Object.entries(TASK_MODELS)) for (const id of [m.write, m.review]) expect(CURRENT, type).toContain(id);
   });
 
   it("each job has its model: Sonnet 5.5 checks and talks, Haiku 5.5 does the short jobs, Opus 5.5 onboards", () => {
-    expect(ESTIMATE_MODELS).toEqual({ judge: "claude-sonnet-5-5", onboard: "claude-opus-5-5", mediaPrompt: "claude-haiku-5-5" });
+    expect(ESTIMATE_MODELS).toEqual({ judge: "claude-sonnet-5-5", onboard: "claude-opus-5-5", mediaPrompt: "claude-haiku-5-5", meetingExtract: "claude-sonnet-5-5" });
     expect(CHAT_MODEL).toBe("claude-sonnet-5-5");
-    expect(src("src/app/api/tools/[tool]/route.ts")).toContain('model: "claude-haiku-5-5"');
+    expect(route("tool").model).toBe("claude-haiku-5-5");
+    expect(route("imagePrompt").model).toBe("claude-haiku-5-5");
+    expect(src("src/app/api/tools/[tool]/route.ts")).toContain('model: route("tool").model');
   });
 
   it("all three have their own rate, so costUsd never prices one as Opus 5 by default", () => {

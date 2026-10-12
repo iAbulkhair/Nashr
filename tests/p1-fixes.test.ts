@@ -138,7 +138,7 @@ describe("deleting an account leaves nothing behind (P1: re-registering inherits
     await pushNotif(email, { kind: "weekly", agent: "noor", title: "t", body: "b", href: "" });
     await registerCode(email);
     await track(email, "generate");
-    await meter(email, "claude-opus-5", "generate", { input_tokens: 10, output_tokens: 10 });
+    await meter(email, "claude-opus-5-5", "generate", { input_tokens: 10, output_tokens: 10 });
     await markSent(email, "nudge1");
     await db.sadd(`shared:${email}`, "x");
 

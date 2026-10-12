@@ -1,7 +1,7 @@
 # What a request costs, and where the money goes
 
-Written 2026-09-20; sections 1, 3, 4.1 and 5 updated on 2026-10-02 when chat moved to Sonnet 5.5 under a $0.14 ceiling; sections 1, 3, 3.1, 4 and 5 updated on 2026-09-30 for pricing phase 1 (`src/lib/pricing.ts`, `src/lib/task-costs.ts`); sections 1, 3, 5 and 6 updated and section 4.1 added on 2026-10-01 for pricing phase 2 (the chat allowance, the owner's "continue on credits" switch, the $0.35 per-message ceiling and the history guard: `src/lib/chat-allowance.ts`, `src/lib/chat-budget.ts`), and again the same day after its review (no credits held before a message on credits: the balance is checked and the metered cost billed after the reply; the first call's thread shortened to fit; the founder console's cost per message over every message sent). Every number in the tables is arithmetic over two inputs: the list prices in `src/lib/usage.ts`
-(`RATES`) and the prompt sizes the code actually builds. Nothing here is a guess about Anthropic's billing; the guesses
+Written 2026-09-20; sections 1, 3, 4.1 and 5 updated on 2026-10-02 when chat moved to Sonnet 5.5 under a $0.14 ceiling; sections 1, 3, 3.1, 4 and 5 updated on 2026-09-30 for pricing phase 1 (`src/lib/pricing.ts`, `src/lib/task-costs.ts`); sections 1, 3, 5 and 6 updated and section 4.1 added on 2026-10-01 for pricing phase 2 (the chat allowance, the owner's "continue on credits" switch, the $0.35 per-message ceiling and the history guard: `src/lib/chat-allowance.ts`, `src/lib/chat-budget.ts`), and again the same day after its review (no credits held before a message on credits: the balance is checked and the metered cost billed after the reply; the first call's thread shortened to fit; the founder console's cost per message over every message sent). Every number in the tables is arithmetic over two inputs: the list prices in `src/lib/models/catalog.ts`
+(`MODELS[].rate`, the only rate table since 2026-10-10) and the prompt sizes the code actually builds. Nothing here is a guess about Anthropic's billing; the guesses
 are only in the *output* token counts, and those are marked as such. Real per-account numbers are metered and shown in
 the founder console — see "Where the real numbers live" at the end.
 
@@ -9,15 +9,29 @@ the founder console — see "Where the real numbers live" at the end.
 
 | Call | Model | Where | Charged to the customer |
 |---|---|---|---|
-| `generate` | per type since rule 901 (`TASK_MODELS` in `src/lib/task-models.ts`): `claude-opus-5-5` for social, ads, pricing_review, unit_economics, cash_forecast, gtm_plan, board_deck, strategy_review, okrs and decision_memo, `claude-sonnet-5-5` for the other 16 (`claude-opus-5` for all until 2026-10-09), `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
-| `review` | `claude-sonnet-5-5` for every type (`TASK_MODELS[type].review`; `claude-sonnet-5` until 2026-10-09), 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
-| `judge` | `claude-sonnet-5-5` (`claude-sonnet-5` until 2026-10-09), 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
-| `xreview` | `claude-sonnet-5-5` (`claude-sonnet-5` until 2026-10-09), 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off, in golden runs, and with less than 60 s of the caller's deadline left; one attempt of at most 45 s per call, no SDK retries. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
-| `chat` | `claude-sonnet-5-5` (`CHAT_MODEL`; `claude-opus-5` until 2026-10-02), effort medium, adaptive thinking, **up to 5 calls per turn** (tool loop); since 2026-10-01 each call's `max_tokens` is what is left of the **$0.14 per-message ceiling** (`CHAT_TURN_MAX_USD`; $0.35 on Opus until 2026-10-02) after the turn's cost so far and an upper estimate of the call's input, at most 8,000, and no call is made with less than 2,048 left (`CHAT_MIN_OUT`, `nextMaxTokens`, `src/lib/chat-budget.ts`); the input estimate counts 3 characters a token (`CHARS_PER_TOKEN_EST`, below the measured 3.3 so it stays high) and prices the cached prefix (the tools and system blocks 1-2) as a cache write on the first call and as a cache read on later ones; the thread is trimmed to the newest 16 messages within 24,000 characters (`trimHistory`), then shortened from its oldest end until the first call has at least 4,000 output tokens (`CHAT_FIRST_MIN_OUT`, `fitFirstCall`); a workspace too large even for the newest message alone gets no model call, a reply that says so, and is not counted | `src/lib/chat.ts` | **included** up to the plan's monthly chat messages (`CHAT_ALLOWANCE`: trial 30 for the whole trial, starter 250, pro 650, business 1,300; section 4.1). Past them chat pauses until the 1st (UTC), unless the owner of a paid plan turned "continue on credits" on: then a message goes ahead only when the balance is at least `chatOverflowHold()` = ceil($0.14 / $0.07104) = **2 credits**, nothing is taken before the turn, and after the reply it is billed its metered cost at the floor rate ($0.07104 a credit, section 4), at most 2 credits and at most what the balance still holds, the remainder under one credit carried to the next message (`settleChatOverflow`, `src/lib/credits.ts`); a failed message is not billed |
-| `onboard` | `claude-opus-5-5` (`claude-opus-5` until 2026-10-09) × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing** for the first brand (the default scope); **9 credits** for each added brand since 2026-09-30 (`ONBOARD_EXTRA_BRAND_COST`, `src/lib/pricing.ts`), charged to Noor in that brand's scope before the stream and refunded when the brand is not saved; once per workspace |
-| `image_prompt` | `claude-haiku-5-5` (`claude-sonnet-5` until 2026-10-09), 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
+| `generate` | per type since rule 901 (`TASK_MODELS` in `src/lib/task-models.ts`): `claude-opus-5-5` for social, ads, pricing_review, unit_economics, cash_forecast, gtm_plan, board_deck, strategy_review, okrs and decision_memo, `claude-sonnet-5-5` for the other 16 (`claude-opus-5` for all until 2026-10-09; `route("generate", { task })`), or, since 2026-10-08, the model the brand's pick routes to, priced relative to the type's writer (section 4.2, rule 902), `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
+| `review` | `claude-sonnet-5-5` for every type (`route("review", { task })`, `TASK_MODELS[type].review`; `claude-sonnet-5` until 2026-10-09), 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
+| `judge` | `claude-sonnet-5-5` (`route("judge")`; `claude-sonnet-5` until 2026-10-09; when a customer's pick of Sonnet 5.5 generated a type Opus 5.5 writes, the cheapest automatic model that costs no more, today Haiku 5.5; an Automatic batch Sonnet 5.5 writes keeps Sonnet 5.5, rule 903), 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
+| `xreview` | `claude-sonnet-5-5` (`route("xreview")`; `claude-sonnet-5` until 2026-10-09), 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off, in golden runs, and with less than 60 s of the caller's deadline left; one attempt of at most 45 s per call, no SDK retries. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
+| `chat` | the default `claude-sonnet-5-5` (`DEFAULTS.chat`, `CHAT_MODEL`; `claude-opus-5` until 2026-10-02) or, since 2026-10-08, the model the conversation's pick routes to (section 4.2), effort medium, adaptive thinking, **up to 5 calls per turn** (tool loop); since 2026-10-01 each call's `max_tokens` is what is left of the **per-message ceiling**, per model since 2026-10-08: `chatTurnMaxUsd(model)` = $0.14 (`CHAT_TURN_MAX_USD`) x the model's chat multiplier, so $0.14 on the Sonnets and $0.28 on Opus 5.5 ($0.35 on Opus until 2026-10-02), after the turn's cost so far and an upper estimate of the call's input, at most 8,000, and no call is made with less than 2,048 left (`CHAT_MIN_OUT`, `nextMaxTokens`, `src/lib/chat-budget.ts`); the input estimate counts 3 characters a token (`CHARS_PER_TOKEN_EST`, below the measured 3.3 so it stays high) and prices the cached prefix (the tools and system blocks 1-2) as a cache write on the first call and as a cache read on later ones; the thread is trimmed to the newest 16 messages within 24,000 characters (`trimHistory`), then shortened from its oldest end until the first call has at least 4,000 output tokens (`CHAT_FIRST_MIN_OUT`, `fitFirstCall`); a workspace too large even for the newest message alone gets no model call, a reply that says so, and is not counted | `src/lib/chat.ts` | **included** up to the plan's monthly chat messages (`CHAT_ALLOWANCE`: trial 30 for the whole trial, starter 250, pro 650, business 1,300; section 4.1); since 2026-10-08 a message counts `chatUnitsFor(model)` of them, 1 on the Sonnets and 2 on Opus 5.5 (section 4.2). Past them chat pauses until the 1st (UTC), unless the owner of a paid plan turned "continue on credits" on: then a message goes ahead only when the balance is at least its model's hold, `chatHoldFor(model)`: **2 credits** on the Sonnets (`chatOverflowHold()` = ceil($0.14 / $0.07104)) and 4 on Opus 5.5 (ceil($0.28 / $0.07104)); nothing is taken before the turn, and after the reply it is billed its metered cost at the floor rate ($0.07104 a credit, section 4), at most that hold and at most what the balance still holds, the remainder under one credit carried to the next message (`settleChatOverflow`, `src/lib/credits.ts`); a failed message is not billed |
+| `onboard` | `claude-opus-5-5` (`route("onboard")`; `claude-opus-5` until 2026-10-09) × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing** for the first brand (the default scope); **9 credits** for each added brand since 2026-09-30 (`ONBOARD_EXTRA_BRAND_COST`, `src/lib/pricing.ts`), charged to Noor in that brand's scope before the stream and refunded when the brand is not saved; once per workspace |
+| `image_prompt` | `claude-haiku-5-5` (`route("imagePrompt")`; `claude-sonnet-5` until 2026-10-09), 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
+| `tool` (Reem) | `claude-sonnet-5-5` (`route("meeting")` since 2026-10-10), 1,500, no thinking, a forced `propose_tasks` tool call, one retry, ends by the route's 45 s deadline | `src/lib/secretary-meeting.ts` `proposeFromText` (since 2026-10-05, Reem B2b): the tasks a meeting's notes or transcript state, stored as pending proposals. Metered as kind `tool`, agent `reem` | typed notes (up to 4,000 characters): **free**, 20 a day; a transcript (up to 40,000 characters): **1 credit** (`MEETING_TRANSCRIPT_COST`, `src/lib/pricing.ts`), charged to Reem in the brand's scope before the call under `chargeOnce`, refunded on a model failure, on no task and on a failed save. Size and cost in section 1.1 |
 
 Reem phase 3 B2a (2026-10-05, bookings in from Cal.com and Calendly) makes no model call and charges no credits: it is webhook handling, the owner's setup (Calendly's two API calls) and revocation only, so it adds no row above. A booking creates an open task through `createItem` as the rule, which spends no credits (it counts against the owner's `sec:create` allowance of 200 a day, and a link's own cap of 60 new items a day).
+
+## 1.1 Meeting extraction (Reem B2b, 2026-10-05)
+
+`proposeFromText` makes one call per notes or transcript run, priced in `src/lib/task-costs.ts` (`ASSUME.meetingExtract`, `meetingExtractUsd()`) from the table in `src/lib/usage.ts` (Sonnet 5.5: $2 in, $10 out per million tokens). **These figures are estimated; replace with the measured figure from the first production runs** (the founder console's `byKind` average for `tool` under Reem). No live call was made to measure them.
+
+| Part | Assumption | Tokens | USD |
+|---|---|---|---|
+| Input: a 40,000-character Arabic transcript (the longest allowed) | about 2 characters a token | 20,000 | $0.0400 |
+| Input: instruction and tool schema | | 500 | $0.0010 |
+| Output: at most ten short tasks | capped at `max_tokens` 1,500 | 1,500 | $0.0150 |
+| **One transcript run, worst case** | | 22,000 | **$0.0560** |
+
+Against the ceiling of one credit, `maxCostPerCreditUsd()` = $0.0710 (60% margin floor, Business plan, `src/lib/pricing.ts`): $0.056 is under it, so a transcript costs **1 credit** (`MEETING_TRANSCRIPT_COST` = 1); `tests/secretary-meeting.test.ts` (rule 605) fails the build if the estimate ever crosses the ceiling, and the rule then calls for 2. Typical runs are far smaller (a 20-minute meeting is a few thousand tokens). Typed notes (at most 4,000 characters, about 2,000 tokens in, about $0.006 a run) are free and limited to 20 a day per account, at most about $0.12 a day an account.
 
 ## 2. Prompt size, measured
 
@@ -142,7 +156,7 @@ The calls with no credit attached, or a fixed one:
 
 | Request | Cost | Note |
 |---|---|---|
-| One chat message | **$0.02 – $0.14** | $0.02 per model call on Sonnet 5.5 ($0.05 on Opus until 2026-10-02); a turn that uses tools runs up to five, and its chat model calls never cost more than $0.14 together (`CHAT_TURN_MAX_USD`, checked in code before each call; $0.35 on Opus from 2026-10-01 to 2026-10-02; before any ceiling five calls of 8,000 output tokens could pass $1). A `generate_content` or `draft_items` tool call adds a whole batch on top, charged in credits; it is outside the ceiling. Included in the plan's monthly messages; past them, if the owner chose, billed after the reply its metered cost at the floor rate, at most 2 credits (section 4.1). A refused turn (`stop_reason: "refusal"`) is billed by Anthropic like any call and the owner is told it could not be completed (rule 467). What a typical message costs is not measured yet: the $0.02 is one call's arithmetic, not a measurement |
+| One chat message | **$0.02 – $0.14** | $0.02 per model call on Sonnet 5.5 ($0.05 on Opus until 2026-10-02); a turn that uses tools runs up to five, and its chat model calls never cost more than $0.14 together (`CHAT_TURN_MAX_USD`, checked in code before each call; $0.35 on Opus from 2026-10-01 to 2026-10-02; before any ceiling five calls of 8,000 output tokens could pass $1). A `generate_content` or `draft_items` tool call adds a whole batch on top, charged in credits; it is outside the ceiling. Included in the plan's monthly messages; past them, if the owner chose, billed after the reply its metered cost at the floor rate, at most the model's hold (2 credits on Sonnet 5.5, 4 on Opus 5; sections 4.1 and 4.2). A refused turn (`stop_reason: "refusal"`) is billed by Anthropic like any call and the owner is told it could not be completed (rule 467). What a typical message costs is not measured yet: the $0.02 is one call's arithmetic, not a measurement |
 | One onboarding run | **≈ $0.57** (`onboardEstimateUsd`: 13,500 tokens in and 20,000 out on Opus, three calls between them) | free for the first brand; **9 credits** for each added brand, $0.64 at the ceiling, which the floor test checks covers the typical run. Each of the three parts retries once on failure (`src/lib/onboard.ts:127`), so a bad run can make up to six Opus calls, about twice the typical cost and up to roughly $1.8 when every part hits its `max_tokens`; 9 credits do not cover that case. Three runs per account per day |
 Images and video are charged in credits too; their cost per model is in section 3.1.
 
@@ -250,11 +264,90 @@ Written 2026-10-01 for pricing phase 2; rewritten on 2026-10-02 when chat moved 
 Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllowance`), against the deal's price.
 
 - **At the ceiling chat alone no longer costs more than the plan earns, but chat and credits together still can.** On Opus under $0.35 (until 2026-10-02) the last column was $87.50 / $227.50 / $455.00, 110% / 171% / 171% of revenue. Under $0.14 it is 44% / 68% / 68%. Add every credit at its dearest ($0.0716: $21.48 / $50.12 / $107.40) and an account that does both costs $56.48 (71%) on Starter, $141.12 (106%) on Pro and $289.40 (109%) on Business. The ceiling bounds one runaway turn; it is not a typical cost, and only abuse reaches it on every message (long, tool-heavy turns written to fill each reply). The burst limit (30 an hour and 150 a day on a paid plan since 2026-10-01) slows that down but does not stop it within a month: the monthly allowance remains the real monthly ceiling.
-- **Same work per message.** Every Sonnet 5.5 rate in `RATES` is Opus 5's ÷ 2.5, and so is the ceiling, so a message gets exactly the output tokens it had before (`tests/chat-allowance.test.ts` pins it), and `chatOverflowHold()` falls from 5 credits to 2.
+- **Same work per message on Sonnet 5.5 only.** Every Sonnet 5.5 rate in `RATES` is Opus 5's ÷ 2.5, and so is its $0.14 ceiling against the old $0.35 on Opus, so a Sonnet 5.5 message (Automatic) gets exactly the output tokens a message had before the switch (`tests/chat-allowance.test.ts` pins it), and `chatOverflowHold()` falls from 5 credits to 2. An Opus message picked since 2026-10-08 has a ceiling of $0.28 (x2 credits, 2 allowance units, a hold of 4). On Opus 5 that was $0.112 of Sonnet-priced room, 80% of Automatic's; since 2026-10-09 the pickable Opus is Opus 5.5, whose rates are exactly twice Sonnet 5.5's, so its $0.28 is **100%** of Automatic's room and an Opus message gets the same output tokens as an Automatic one. With the real chat prompt (`system()` and the tool definitions: on 2026-10-10 about 65,000 to 73,000 characters of cached prefix on an empty workspace and 107,900 to 115,900 with every core memory file at its 6,000-character budget, larger than section 2's batch prompt) and a full 24,000-character thread, the first call gets, on Automatic and on Opus 5.5 alike: at a 74,000-character prefix, 6,132 output tokens with all 16 messages; at 116,000, 4,062 with the newest 2 (72,000 and 115,000 until Reem B2b and B3 added two help entries to every agent on 2026-10-10; `free_slots` is offered in Reem's turn only). The cliff (newest message 1,500 characters, volatile block 1,000) is a 141,396-character prefix on both: past it the turn ends with LARGE_REPLY, no model call, the message given back to the allowance and no credit billed (rule 309). On Opus 5 the cliff was 107,796, which with every core memory file full put at least 6 of the 8 agents past it; that gap, and the pending decision about it, ended when Opus 5 stopped being pickable on 2026-10-09. `tests/pricing-floor.test.ts` ("what each chat model's ceiling leaves for the answer") pins the figures here and bounds the live prefix sizes.
 - **Not measured, not evaluated.** The spec made the switch wait for the golden eval and a Gulf-dialect chat check; the founder moved chat on 2026-10-02 without them. Quality is watched through the thumbs and the console's chat column; the Opus figures above are the way back (`CHAT_MODEL` and `CHAT_TURN_MAX_USD` together, never one without the other).
 - **Where it shows.** The founder console's per-account margin column (users tab, `marginPct`: the price against this month's model cost, chat included; red under 50%), and since 2026-10-01 the Chat column, whose tooltip gives the account's chat cost this month and per message (`usdPerMsg`, `chatUsdPerMessage` in `src/lib/admin-stats.ts`: the cost over every message sent, the raw count `ChatStatus.counted` plus the messages continued on credits, so an allowance lowered mid-month does not inflate it), and the credits the messages on credits were billed (`chatCredits`). A trial's cost per message reads low when the trial spans two months: the cost is this month's, the count the trial's.
 - **The spec's numbers now hold.** Spec section 5's margins counted chat at about $0.032 a message ($8.00 / $20.80 / $41.60 for full allowances), the fourth column above. On Opus at $0.08 the same allowances cost $20.00 / $52.00 / $104.00.
-- **Messages continued on credits keep the floor.** Nothing is taken before such a message: the gate only checks the balance is at least `chatOverflowHold()` (2 credits since 2026-10-02; 5 under the Opus ceiling), so the message's own tools (a batch it asks for) can spend the whole balance. After the reply it is billed its metered cost at $0.07104 a credit, so it keeps at least 60% margin on Business's credit (73% on Starter's, 63% on Pro's). The bill is at most 2 credits ($0.142 at that rate), which covers the $0.14 ceiling, so no message's model cost goes beyond what it can be billed; the remainder under one credit waits on the account (`User.chatCarryMicro`) for the next one. The one leak: a message whose tools emptied the balance is billed only what is left, and the rest of its cost (at most $0.14) is not billed; the next message is then refused until the balance holds 2 credits again. A failed message is not billed.
+- **Messages continued on credits keep the floor.** The hold and the ceiling are per model (`chatHoldFor(model)` and `chatTurnMaxUsd(model)`, section 4.2): 2 credits and $0.14 on the default chat model Sonnet 5.5, 4 credits and $0.28 on Opus 5.5 (the billing page's card names the 4 in its own line, `chatPremiumHold()`, rule 907; the other account-level cards show the default's 2); the figures below are Sonnet 5.5's. Nothing is taken before such a message: the gate only checks the balance is at least the model's hold (`chatOverflowHold()`, 2 credits since 2026-10-02; 5 under the old $0.35 Opus ceiling), so the message's own tools (a batch it asks for) can spend the whole balance. After the reply it is billed its metered cost at $0.07104 a credit, so it keeps at least 60% margin on Business's credit (73% on Starter's, 63% on Pro's). The bill is at most the hold, 2 credits ($0.142 at that rate; 4 credits, $0.284, on Opus 5.5), which covers the model's ceiling, so no message's model cost goes beyond what it can be billed; the remainder under one credit waits on the account (`User.chatCarryMicro`) for the next one. The one leak: a message whose tools emptied the balance is billed only what is left, and the rest of its cost (at most its model's ceiling) is not billed; the next message is then refused until the balance holds the hold again. A failed message is not billed.
+
+## 4.2 Credits by model tier (2026-10-08)
+
+Spec `docs/superpowers/specs/2026-10-08-straitly-model-routing-design.md` section 6, plan Task 4. Files:
+`src/lib/models/tiers.ts` (`TIER_MULTIPLIER`, `PRICED_AT`, import-free), `src/lib/models/credits.ts` (`tierMultiplier`,
+`creditsFor`, `chatTurnMaxUsd`, `chatHoldFor`, `chatPremiumHold`, `chatUnitsFor`, server only), `src/lib/task-costs.ts` (`estimateFor`), the `tasks`
+allow-lists in `src/lib/models/catalog.ts`, `TASK_MODELS` in `src/lib/task-models.ts` (rule 902). Tests:
+`tests/model-credits.test.ts` and the "rule 241 by tier" and "rule 313 by tier" blocks of `tests/pricing-floor.test.ts`.
+
+A task or a chat message costs its base credits times its model's tier multiplier **relative to the model it is priced
+at**, rounded up, at least 1. Chat is priced at its default (`PRICED_AT.chat`, Sonnet 5.5). Generation, since rule 902
+(2026-10-10, founder decision on PR #298: "x1 = today's price", with route() reading `TASK_MODELS`), is priced at the
+TYPE's own writer (`pricedAt("generate", type)` = `TASK_MODELS[type].write`, src/lib/models/credits.ts); `PRICED_AT.generate`
+(Opus 5.5) is left only for a caller that names no task. Automatic is the type's writer, so it is always x1 and no
+customer price moved:
+
+| Surface (priced at) | Opus 5.5 (premium) | Sonnet 5.5 (standard) | Haiku 5.5 (economy) |
+|---|---|---|---|
+| generate, a type Opus 5.5 writes (social, ads, pricing_review, unit_economics, cash_forecast, gtm_plan, board_deck, strategy_review, okrs, decision_memo) | x1 | x0.5 | x0.3 |
+| generate, a type Sonnet 5.5 writes (the other 16) | x2 | x1 | x0.6 |
+| chat (`claude-sonnet-5-5`) | x2 | x1 | x0.6 |
+
+`generateBatch` charges `creditsFor(base, model, "generate", type)` once and refunds that same value. A brand's pick covers
+every type, so GET /api/models sends the multiplier per type and model (`generateByTask`, worked out on the server; no
+rate reaches the browser) and the brand picker shows the range, e.g. "x1–2" for Opus 5.5.
+
+**The floor over the catalog (rule 241 by tier).** For every catalog model with `auto` or `pick` and every task type it
+allows, `estimateFor(type, model)` (one batch on a COLD cache, the dearest case, at the model's catalog rate; the reviewer
+and the judge as the type runs them) divided by the credits it is CHARGED (`creditsFor(TASK_COST[type], model, "generate", type)`)
+must stay at or under $0.07104. Figures on 2026-10-10, per charged credit:
+
+| Model | Dearest cold | Allow-list |
+|---|---|---|
+| `claude-opus-5-5` | `unit_economics`, `decision_memo` $0.0515 (x1, its own types); on a Sonnet type at x2, `article` $0.0386 at 4 credits | none: every type |
+| `claude-sonnet-5-5` | `article`, `pricing_review`, `unit_economics`, `cash_forecast`, `decision_memo` $0.0482; on an Opus type at x0.5, `social` $0.0239 at 5 credits | none: every type (until rule 902 it left out `article` and `followup_seq`, which missed the floor at x0.5 against Opus) |
+| `claude-haiku-5-5` | at most $0.0411 | empty: not pickable, it writes no task, only image prompts and the free tools |
+
+No type is above 95% of the ceiling on any model and there is no exemption: the old one (Opus on `article` cold) ended
+when rule 901 moved `article` to Sonnet. A model that misses the floor on a type gets that type left out of its `tasks`
+allow-list in `src/lib/models/catalog.ts`, never a lower floor. The test covers exactly the entries with `auto` or
+`pick`, and only those can be charged: `generateBatch` and `reserveChatTurn` refuse any other catalog entry
+(`model_not_offered`) before anything is charged or counted, and chat also refuses one without tools (`model_not_chat`).
+
+Chat drafts (`draft_items`, 1-3 items) on a model other than the type's writer keep the floor cold at every size (the
+dearest, a one-item Sonnet draft of `social` or `ads` at 1 credit, about $0.0598); on the writer, the figures are
+section 3's. The judge runs on Haiku 5.5 only for a customer's Sonnet 5.5 pick on a type Opus 5.5 writes (`judgeAlternative`, spec
+section 5); an Automatic batch of a Sonnet-written type keeps the Sonnet 5.5 judge (rule 903, founder decision
+2026-10-10), which is what the estimate prices.
+
+**Chat by tier (rule 313 by tier).** A message's ceiling is `chatTurnMaxUsd(model)` = $0.14 x its chat multiplier, and
+the overflow hold is the ceiling at the floor rate, rounded up:
+
+| Chat model | Ceiling per message | Overflow hold |
+|---|---|---|
+| Sonnet 5.5 (x1) | $0.14 | 2 credits |
+| Opus 5.5 (x2) | $0.28 | 4 credits |
+| an economy model (x0.6; Haiku 5.5 is not pickable) | $0.084 | 2 credits |
+
+**How a message on a dearer model counts against the allowance (coordinator ruling 2026-10-08, option a).** A message
+counts `chatUnitsFor(model)` = ceil(its chat multiplier) messages of the allowance: 1 on Sonnet 5.5 (as
+today), 2 on Opus 5.5, 1 on an economy model. Its ceiling stays its own (`chatTurnMaxUsd`), so each unit carries at most
+$0.14, the ceiling the allowances were priced at in section 4.1, whatever the owner picks:
+
+| Chat model | Units per message | Ceiling per unit | Full allowance at the ceiling, Starter / Pro / Business |
+|---|---|---|---|
+| Sonnet 5.5 | 1 | $0.14 | $35.00 (44%) / $91.00 (68%) / $182.00 (68%) |
+| Opus 5.5 | 2 | $0.14 | the same: 125 / 325 / 650 Opus messages, $35.00 / $91.00 / $182.00 |
+| an economy model | 1 | $0.084 | $21.00 (26%) / $54.60 (41%) / $109.20 (41%) |
+
+Counted at 1 per message, Opus 5.5 would have cost a full allowance $70.00 (88% of $79.73 net), $182.00 (137% of $133.07)
+and $364.00 (137% of $266.40); the "rule 313 by tier" block of `tests/pricing-floor.test.ts` pins both rows of
+percentages. The units are computed once per turn in `reserveChatTurn` and carried on the gate (`units`), so the reserve,
+the give-back of a failed turn and the overflow counter all move by the same number; a message whose units would pass
+what is left of the allowance is refused before any model call (or, with "continue on credits" on, goes wholly on
+credits, needing that model's hold: 4 credits on Opus 5.5). A multiplier that is not a finite number above 0 throws
+`chat_allowance_unpriced` before anything is counted. What the owner and the founder console read as "messages" (used,
+left, the console's cost per message) are these units from then on; the copy that explains that an Opus message counts
+2 belongs to the model picker's interface (plan Task 7). Since plan Task 6 a conversation's pick reaches the reserve
+(`chatRouteFor`), so a message on Opus 5.5 counts 2; with no pick every message still counts 1.
 
 ## 5. What bounds the spend today
 
@@ -276,8 +369,9 @@ Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllo
     1,300 a month), counted per account with INCRBY before the turn (`reserveChatTurn`, `src/lib/chat-allowance.ts`) and
     given back when the turn fails or costs nothing; when it is used up chat pauses (402 `chat_allowance`) until the 1st
     (UTC), unless the owner of a paid plan turned "continue on credits" on, and then each message is paid for (section
-    4.1: it needs at least 2 credits in the balance, nothing is taken before it, and after the reply it is billed its
-    metered cost at the floor rate, at most 2 credits; 402 `chat_credits` below 2);
+    4.1: it needs at least its model's hold in the balance, 2 credits on Sonnet 5.5 and 4 on Opus 5.5, nothing is taken
+    before it, and after the reply it is billed its metered cost at the floor rate, at most that hold; 402
+    `chat_credits` below it);
   - the per-message ceiling: the turn's chat model calls never cost more than $0.14 (`CHAT_TURN_MAX_USD`, $0.35 on Opus until 2026-10-02), because
     each call's `max_tokens` is what is left of it after the turn's cost so far and an upper estimate of the call's
     input (`nextMaxTokens`, `src/lib/chat-budget.ts`), and no call is made with less than 2,048 tokens left
@@ -407,7 +501,7 @@ Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllo
 
 ## 6. Where the real numbers live
 
-`meter()` (`src/lib/usage.ts`) records every call under `usage:{email}:{YYYY-MM}` — tokens in and out, call count,
+`meter()` (`src/lib/usage.ts`) records every call under `usage:{email}:{YYYY-MM}` (since 2026-10-10 also a call cut mid-stream and a server-side fallback's declined attempt: every call goes through `metered()` in `src/lib/metered.ts`, flows section 61, rules 980-986) — tokens in and out, call count,
 cost in micro-dollars, and since 2026-09-20 the same three numbers **per kind of call**. So the founder console shows,
 per account:
 
@@ -425,6 +519,20 @@ per account:
   since 2026-09-29, a cost-per-agent table (calls, average, total) from `usage:{email}:{YYYY-MM}:agent:{id}:*`.
   Generation, the reviewer and the judge count for the agent that owns the task type, a chat turn for the agent in
   the chat, an image prompt for the owner of the item, onboarding for Noor.
+
+- **Billing tab, per model and per provider** (since 2026-10-09, Task 8): `meter()` also increments, for the month and
+  GLOBALLY only (never per account), `usage:_all:{YYYY-MM}:model:{modelKey}:calls|usd_micro` and
+  `usage:_all:{YYYY-MM}:provider:{anthropic|straitly}:calls|usd_micro`. `modelKey` is the catalog id, or `other` for an id
+  outside it (a dated alias or a gateway form; priced as Opus, as before), so `other` is the tell that the catalog needs
+  an id. The provider is where the call is SENT (`effectiveProvider()` in `src/lib/model.ts`, the same decision
+  `anthropic()` makes): `straitly` only with `LLM_PROVIDER=straitly` and `STRAITLY_API_KEY`, else `anthropic`, so
+  `LLM_PROVIDER=straitly` with only `ANTHROPIC_API_KEY` counts under `anthropic`; a caller may state it. A request the
+  gateway failed and that was re-sent to Anthropic still counts under `straitly` (it was sent there first); how many is
+  the separate `provider:fallback` count. The USD in every row is at the catalog's list rates, the same as every other
+  figure here, not what a provider invoiced (the console says so). `getUsage("_all")` returns them and the console shows
+  calls, USD and USD per call per model, calls and USD per provider, the fallback count and the picks the router
+  refused (`pickreject`, by purpose and reason). Nothing is backfilled: months before this release read as zero, and the
+  per-model rows add up to the month's total only from the day the counters began. The rates and `costUsd` did not change.
 
 That makes section 3 checkable: compare the estimate against `byKind.generate.usd / byKind.generate.calls` for a real
 account and correct the assumptions here.

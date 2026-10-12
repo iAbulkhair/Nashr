@@ -12,7 +12,7 @@ import { join } from "node:path";
 type Opts = { signal?: AbortSignal; timeout?: number } | undefined;
 const sdk = vi.hoisted(() => ({ ctor: [] as unknown[], calls: [] as { kind: string; opts: Opts }[], mode: "hang" as "hang" | "ok" }));
 vi.mock("@anthropic-ai/sdk", () => {
-  const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
+  const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
   /** Never answers in "hang" mode: it only rejects when the call's abort signal fires, as the real SDK does. */
   const answer = (kind: string, opts: Opts, text: string) => {
     sdk.calls.push({ kind, opts });
@@ -26,8 +26,9 @@ vi.mock("@anthropic-ai/sdk", () => {
       constructor(o: unknown) { sdk.ctor.push(o); }
       beta = { messages: { stream: (_p: unknown, opts: Opts) => ({ finalMessage: () => answer("generate", opts, items) }) } };
       messages = {
-        stream: (_p: unknown, opts: Opts) => ({ finalMessage: () => answer("stream", opts, "أهلاً") }),
-        create: (_p: unknown, opts: Opts) => answer("create", opts, JSON.stringify([{ ok: true }])),
+        // Every model call is a stream since rule 980: a chat turn (tools) and onboarding (a JSON schema format) are
+        // "stream", as before; every other call is the one that was `create`, and keeps its name here.
+        stream: (p: { tools?: unknown; output_config?: { format?: unknown } }, opts: Opts) => ({ finalMessage: () => (p.tools || p.output_config?.format ? answer("stream", opts, "أهلاً") : answer("create", opts, JSON.stringify([{ ok: true }]))) }),
       };
     },
   };
@@ -70,6 +71,19 @@ describe("one factory makes every model client, with a timeout and a retry count
   it("no file in src makes a client any other way", () => {
     const direct = walk("src").filter((f) => /new\s+Anthropic\s*\(/.test(readFileSync(f, "utf8").replace(/^\s*\*.*$/gm, "")));
     expect(direct).toEqual([join("src", "lib", "model.ts")]);
+  });
+
+  it("provider switch: STRAITLY_API_KEY is read in src/lib/model.ts and nowhere else", () => {
+    // A read, not a mention: a message that names the variable is fine, `process.env.STRAITLY_API_KEY` is not.
+    const reads = (code: string) => /\benv\s*(\.\s*STRAITLY_API_KEY\b|\[\s*["'`]STRAITLY_API_KEY["'`]\s*\])/.test(code) || /\{[^}]*\bSTRAITLY_API_KEY\b[^}]*\}\s*=\s*(?:globalThis\.)?process\.env\b/.test(code);
+    // The scan itself must keep seeing what it exists to find.
+    expect(reads("const k = process.env.STRAITLY_API_KEY;")).toBe(true);
+    expect(reads('const k = process.env["STRAITLY_API_KEY"];')).toBe(true);
+    expect(reads("const { STRAITLY_API_KEY: k } = process.env;")).toBe(true);
+    expect(reads('const note = "STRAITLY_API_KEY is not set";')).toBe(false);
+    const code = (f: string) => readFileSync(f, "utf8").replace(/^\s*(\*|\/\/).*$/gm, "");
+    expect(reads(code(join("src", "lib", "model.ts"))), "model.ts is where it is read").toBe(true);
+    expect(walk("src").filter((f) => f !== join("src", "lib", "model.ts") && reads(code(f)))).toEqual([]);
   });
 
   it("every budget sits inside its route's maxDuration", () => {

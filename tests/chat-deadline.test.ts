@@ -89,9 +89,9 @@ describe("generate_image works to the chat request's own deadline", () => {
       () => {
         // The first model turn took 250 s (up to five Opus turns share the route's 300 s).
         vi.spyOn(Date, "now").mockImplementation(() => realNow() + 250_000);
-        return { model: "claude-opus-5", stop_reason: "tool_use", usage, content: [{ type: "tool_use", id: "tu1", name: "generate_image", input: { task_id: t.id } }] };
+        return { model: "claude-opus-5-5", stop_reason: "tool_use", usage, content: [{ type: "tool_use", id: "tu1", name: "generate_image", input: { task_id: t.id } }] };
       },
-      () => ({ model: "claude-opus-5", stop_reason: "end_turn", usage, content: [{ type: "text", text: "Done." }] }),
+      () => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage, content: [{ type: "text", text: "Done." }] }),
     ];
     await chat(u, "draw it", undefined, "noor", { lang: "en" });
     expect(vi.mocked(renderImage)).not.toHaveBeenCalled();
@@ -101,8 +101,8 @@ describe("generate_image works to the chat request's own deadline", () => {
     vi.mocked(Date.now).mockRestore();
     h.result = { ok: false, status: 429, error: "busy" };
     h.turns = [
-      () => ({ model: "claude-opus-5", stop_reason: "tool_use", usage, content: [{ type: "tool_use", id: "tu2", name: "generate_image", input: { task_id: t.id } }] }),
-      () => ({ model: "claude-opus-5", stop_reason: "end_turn", usage, content: [{ type: "text", text: "Done." }] }),
+      () => ({ model: "claude-opus-5-5", stop_reason: "tool_use", usage, content: [{ type: "tool_use", id: "tu2", name: "generate_image", input: { task_id: t.id } }] }),
+      () => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage, content: [{ type: "text", text: "Done." }] }),
     ];
     const deadline = deadlineFor(CHAT_MAX_DURATION_S, t0);
     await chat(u, "draw it", undefined, "noor", { lang: "en", deadline });

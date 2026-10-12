@@ -1,37 +1,76 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Notif } from "@/lib/notifications";
 import Scribble from "@/components/Scribble";
+import Button from "@/components/ui/Button";
+import { buttonClass } from "@/components/ui/button-class";
+import EmptyState from "@/components/ui/EmptyState";
+import { Time } from "@/components/ui/Time";
+import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { SETTINGS_COPY, settingsHref } from "@/lib/settings-nav";
 
-export default function NotificationsPanel({ t, initial }: { t: AppDict; initial: Notif[] }) {
+/**
+ * Every notification (rule 1123). Unread ones carry a dot, a bold title and the word "unread" for screen readers, and
+ * stay unread until the person presses "Mark all as read": the page used to mark everything read 1.5 seconds after it
+ * opened, so a glance cleared the bell before anything was read. The time is the brand's local date and time in Western
+ * digits (`Time`), not a sliced ISO string in UTC.
+ */
+export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; lang: "ar" | "en"; initial: Notif[] }) {
   const N = t.notifications;
+  const U = t.ux.notif;
+  const ws = useWorkspace();
   const [items, setItems] = useState(initial);
-  useEffect(() => {
-    if (!initial.some((n) => !n.read)) return;
-    const id = setTimeout(() => { fetch("/api/notifications", { method: "POST" }).then(() => setItems((p) => p.map((n) => ({ ...n, read: true })))); }, 1500);
-    return () => clearTimeout(id);
-  }, [initial]);
+  const [said, setSaid] = useState("");
+  const [failed, setFailed] = useState(false);
+  const unread = items.filter((n) => !n.read).length;
+  async function markAll() {
+    setFailed(false);
+    const r = await fetch("/api/notifications", { method: "POST" }).catch(() => null);
+    if (!r?.ok) { setFailed(true); return; }
+    setItems((p) => p.map((n) => ({ ...n, read: true })));
+    ws?.setUnread(0);
+    window.dispatchEvent(new Event(WORKSPACE_EVENTS.unread));
+    setSaid(U.marked);
+  }
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="notificationspanel-t1" />{N.title}</span></h1>
-      <p className="mt-2 text-ink/70">{N.sub}</p>
-      {items.length === 0 ? <p className="mt-6 rounded-xl border border-ink/10 bg-white p-6 text-sm text-muted">{N.empty}</p> : (
-        <ul className="mt-6 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="notificationspanel-t1" />{N.title}</span></h1>
+          <p className="mt-2 text-foreground-muted">{N.sub}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Rule 1144: what reaches the bell and the inbox is chosen in Settings, Notifications. */}
+          <Link href={settingsHref(lang, "notifications")} className={buttonClass({ variant: "ghost", size: "sm" })}>{SETTINGS_COPY[lang].prefsLink}</Link>
+          {unread > 0 && <Button variant="secondary" size="sm" onClick={markAll}>{U.markAll}</Button>}
+        </div>
+      </div>
+      <p role="status" className="sr-only">{said}</p>
+      {failed && <p role="alert" className="field-error mt-3">{U.failed}</p>}
+      {items.length === 0 ? <EmptyState className="mt-6" icon="bell" title={N.empty} /> : (
+        <ul className="mt-6 divide-y divide-border rounded-card border border-border bg-surface">
           {items.map((n) => (
-            <li key={n.id} className={`flex flex-wrap items-start justify-between gap-3 px-4 py-3 ${n.read ? "" : "bg-lemon/5"}`}>
-              <div className="min-w-0">
-                <p className="text-xs text-muted"><span className="rounded bg-ink/10 px-1.5 py-0.5 text-ink">{N.kinds[n.kind]}</span>{n.agent && <span className="ms-2">{t.agents[n.agent].name}</span>}<span className="ms-2 font-mono" dir="ltr">{n.at.slice(0, 16).replace("T", " ")}</span></p>
-                <p className="mt-1 font-medium" dir="auto">{n.title}</p>
-                <p className="whitespace-pre-line text-sm text-ink/70" dir="auto">{n.body}</p>
+            <li key={n.id} className={`flex flex-wrap items-start justify-between gap-3 px-4 py-3 ${n.read ? "" : "bg-surface-muted"}`}>
+              <div className="flex min-w-0 flex-1 gap-2.5">
+                <span aria-hidden className={`mt-2 h-2 w-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-foreground"}`} />
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground-muted">
+                    <span className="rounded bg-background-muted px-1.5 py-0.5 text-foreground">{N.kinds[n.kind]}</span>
+                    {n.agent && <span>{t.agents[n.agent].name}</span>}
+                    <Time value={n.at} lang={lang} style="datetime" className="tnum" />
+                  </p>
+                  <p className={`mt-1 ${n.read ? "font-medium" : "font-bold"}`} dir="auto">{n.title}{!n.read && <span className="sr-only"> ({U.unread})</span>}</p>
+                  <p className="whitespace-pre-line text-sm text-foreground-muted" dir="auto">{n.body}</p>
+                </div>
               </div>
-              <Link href={n.href} className="rounded-full border border-ink/40 px-3 py-1 text-xs text-ink hover:bg-ink hover:text-lilac">{N.open}</Link>
+              <Link href={n.href} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-border-input px-3 text-xs text-foreground hover:bg-inverse hover:text-inverse-muted pointer-fine:min-h-8">{N.open}</Link>
             </li>
           ))}
         </ul>
       )}
-      <p className="mt-4 text-xs text-muted">{N.note}</p>
+      <p className="mt-4 text-xs text-foreground-muted">{N.note}</p>
     </div>
   );
 }

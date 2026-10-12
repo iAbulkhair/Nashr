@@ -13,15 +13,17 @@ import { appOrigin } from "@/lib/origin";
 
 /**
  * GET /api/connect/{provider}/start?shop=xxx.myshopify.com&lang=ar → redirect to provider.
- * Admin and owner only (src/lib/roles.ts "connectors"): a connection is what the workspace publishes through.
+ * Admin and owner only (src/lib/roles.ts "connectors"): a connection is what the workspace publishes through. The calendar
+ * providers of Reem (`secretary`: gcal, mscal) need the owner ("calendar.link") instead.
  */
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const no = forbid(u, "connectors");
-  if (no) return no;
   const { provider } = await ctx.params;
   const p = getProvider(provider);
+  // The provider is resolved first because the gate depends on it: a calendar for Reem (`secretary`) is the owner's alone.
+  const no = forbid(u, p?.secretary ? "calendar.link" : "connectors");
+  if (no) return no;
   if (!p || p.kind !== "oauth") return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });
   if (!isAvailable(p)) return NextResponse.json({ ok: false, error: "provider_not_configured" }, { status: 503 });
   const url = new URL(req.url);

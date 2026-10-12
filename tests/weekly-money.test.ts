@@ -11,12 +11,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  */
 const h = vi.hoisted(() => ({ mode: "ok" as "ok" | "hang", failSaves: 0, items: 1 }));
 vi.mock("@anthropic-ai/sdk", () => {
-  const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
+  const reply = (text: string) => ({ model: "claude-opus-5-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
   return {
     default: class {
       static BadRequestError = class extends Error {};
       beta = { messages: { stream: () => ({ finalMessage: () => (h.mode === "hang" ? new Promise(() => {}) : Promise.resolve(reply(JSON.stringify(Array.from({ length: h.items }, (_, i) => ({ channel: "plan", title: `خطة الأسبوع ${i + 1}`, body: "سبعة أيام من المحتوى" })))))) }) } };
-      messages = { create: async () => reply(JSON.stringify([{ ok: true }])) };
+      messages = { create: async () => reply(JSON.stringify([{ ok: true }])), stream(p: unknown, o?: unknown) { return { finalMessage: async () => (this.create as (...a: unknown[]) => unknown)(p, o) }; } };
     },
   };
 });

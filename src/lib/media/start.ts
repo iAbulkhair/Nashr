@@ -7,6 +7,7 @@ import { sc, trialOver, type User } from "../auth";
 import { getTask, updateTask, type Brand, type Task } from "../brand";
 import { agentForTask, type AgentId } from "../agents";
 import { entitlements } from "../entitlements";
+import { loadLayers, type Layers } from "../agent-instructions";
 import { agentSpendFor } from "../credits";
 import { getGov } from "../governance";
 import { IMAGE_TYPES, VIDEO_TYPES } from "../tasks";
@@ -43,6 +44,12 @@ async function spendFor(u: User, t: Task): Promise<{ agent: AgentId; cap?: numbe
 }
 
 /**
+ * The instruction layers a render's prompt writer reads (agent skills portal, rule 948): the caller's own scope and plan
+ * limits, and the reference files only of the items that reach `media` or the agent who owns the item.
+ */
+const layersFor = (u: User, t: Task): Promise<Layers> => loadLayers(sc(u), entitlements(u).instructions, "active", ["media", agentForTask(t.type).id]);
+
+/**
  * The card shown when the default image model is unavailable: brand name on a coloured card, marked so it never passes
  * for artwork. It never replaces artwork: the owner paid for that image, and Instagram publishes only with it.
  */
@@ -77,7 +84,7 @@ export async function renderImage(u: User, t: Task, brand: Brand, requested: unk
   if (!ofKind(asked, "image")) return refuse(400, "bad_model");
   const model = asked as ImageModelId;
   if (!IMAGE_TYPES.includes(t.type)) return refuse(400, "wrong_type");
-  const [off, spend, by] = await Promise.all([offModels(), spendFor(u, t), opts.by ?? byOf(u)]);
+  const [off, spend, by, layers] = await Promise.all([offModels(), spendFor(u, t), opts.by ?? byOf(u), layersFor(u, t)]);
   // The placeholder costs nothing, so neither the balance nor the agent's cap stands in its way.
   if (!modelAvailable(model, off)) return model === DEFAULT_IMAGE_MODEL ? placeholder(u, t, brand) : refuse(409, "model_unavailable");
   const m = mediaModel(model);
@@ -85,7 +92,7 @@ export async function renderImage(u: User, t: Task, brand: Brand, requested: unk
   return startMedia({
     scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
     taskId: t.id, model, aspect, imageUrl: mediaImageFor(m, t), deadline: opts.deadline,
-    prompt: (ms) => imagePrompt(brand, t, model, aspect, u.email, ms),
+    prompt: (ms) => imagePrompt(brand, t, model, aspect, u.email, ms, layers),
     by, from: opts.from ?? "app",
   }, opts.deps ?? mediaDeps());
 }
@@ -98,7 +105,7 @@ export async function renderVideo(u: User, t: Task, brand: Brand, requested: unk
   if (!VIDEO_TYPES.includes(t.type)) return refuse(400, "wrong_type");
   // The models the plan includes (rule 781): a trial's three 12-credit models, or every one for a paid plan or a trial with a video grant.
   if (!entitlements(u).media.video.includes(model)) return refuse(402, "plan_required");
-  const [off, spend, by] = await Promise.all([offModels(), spendFor(u, t), opts.by ?? byOf(u)]);
+  const [off, spend, by, layers] = await Promise.all([offModels(), spendFor(u, t), opts.by ?? byOf(u), layersFor(u, t)]);
   if (!modelAvailable(model, off)) return refuse(409, "model_unavailable");
   const m = mediaModel(model);
   const imageUrl = mediaImageFor(m, t);
@@ -106,7 +113,7 @@ export async function renderVideo(u: User, t: Task, brand: Brand, requested: unk
   return startMedia({
     scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
     taskId: t.id, model, aspect: "portrait", imageUrl, deadline: opts.deadline,
-    prompt: (ms) => videoPrompt(brand, t, model, !!imageUrl, u.email, ms),
+    prompt: (ms) => videoPrompt(brand, t, model, !!imageUrl, u.email, ms, layers),
     by, from: opts.from ?? "app",
   }, opts.deps ?? mediaDeps());
 }

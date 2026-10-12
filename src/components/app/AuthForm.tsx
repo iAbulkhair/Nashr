@@ -13,8 +13,12 @@ import { Turnstile } from "./Turnstile";
 import { safeNext } from "@/lib/safe-next";
 import { readInviteToken as readFragmentToken, withoutFragment } from "./inviteToken";
 import Scribble from "@/components/Scribble";
+import Button from "@/components/ui/Button";
+import { buttonClass } from "@/components/ui/button-class";
+import Callout from "@/components/ui/Callout";
+import { Field, Input } from "@/components/ui/Field";
 
-const input = "input";
+// Every field has a visible label (rule 1090): a placeholder is an example and disappears as soon as someone types.
 
 const SU = {
   ar: { emailStep: "ابدأ مجاناً", cont: "متابعة", edit: "تعديل", rules: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل"], trial: `تجربة 3 أيام · ${PLAN_CREDITS.trial} كريدت · بدون بطاقة دفع`, legal1: "بالمتابعة أنت توافق على", terms: "الشروط", and: "و", privacy: "سياسة الخصوصية", nameOpt: "اسمك" },
@@ -71,28 +75,30 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t1" />{t.signup.title}</span></h1>
-      <p className="mt-2 text-ink/70">{t.signup.sub}</p>
+      <p className="mt-2 text-foreground-muted">{t.signup.sub}</p>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         {step === 1 ? (
-          <input name="email" required autoFocus type="email" autoComplete="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.signup.email} aria-label={t.signup.email} className={input} />
+          <Field label={t.signup.email}><Input name="email" required autoFocus type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
         ) : (
           <>
-            <p className="flex items-center justify-between gap-2 rounded-lg bg-lilac px-3 py-2 text-sm"><span dir="ltr" className="clip">{email}</span><button type="button" onClick={() => setStep(1)} className="text-xs text-ink underline">{S.edit}</button></p>
-            <input name="name" required autoFocus autoComplete="name" placeholder={S.nameOpt} aria-label={S.nameOpt} className={input} />
-            <PasswordField lang={lang} ref={pwRef} name="password" required autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t.signup.password} aria-label={t.signup.password} aria-describedby="signup-rules" className={input} />
-            <PasswordRules id="signup-rules" rules={S.rules} checks={checks} lang={lang} />
+            <p className="flex items-center justify-between gap-2 rounded-lg bg-background-muted px-3 py-2 text-sm"><span dir="ltr" className="clip">{email}</span><button type="button" onClick={() => setStep(1)} className="text-xs text-foreground underline">{S.edit}</button></p>
+            <Field label={S.nameOpt}><Input name="name" required autoFocus autoComplete="name" /></Field>
+            <Field label={t.signup.password}>
+              <PasswordField lang={lang} ref={pwRef} name="password" required autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-describedby="signup-rules" />
+              <PasswordRules id="signup-rules" rules={S.rules} checks={checks} lang={lang} />
+            </Field>
             {turnstileKey && <Turnstile siteKey={turnstileKey} onToken={setToken} resetKey={resetKey} lang={lang} />}
           </>
         )}
         {step === 2 && <PartnerCodeField lang={lang} />}
-        {err && <p role="alert" className="text-sm text-danger">{err}</p>}
-        <button disabled={busy} aria-disabled={step === 2 && !ready ? true : undefined} aria-describedby={step === 2 ? "signup-rules" : undefined} className="s-btn"><Scribble kind="pill" seed="authform-b1" fill="ink" shadow ring />{step === 1 ? S.cont : t.signup.submit}</button>
+        {err && <Callout tone="danger">{err}</Callout>}
+        <Button type="submit" variant="pill" seed="authform-b1" loading={busy} aria-disabled={step === 2 && !ready ? true : undefined} aria-describedby={step === 2 ? "signup-rules" : undefined}>{step === 1 ? S.cont : t.signup.submit}</Button>
       </form>
-      <p className="mt-3 text-center text-xs text-muted">{S.trial}</p>
-      <p className="mt-4 text-sm text-ink/70">
-        {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-ink underline">{t.signup.login}</Link>
+      <p className="mt-3 text-center text-xs text-foreground-muted">{S.trial}</p>
+      <p className="mt-4 text-sm text-foreground-muted">
+        {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-foreground underline">{t.signup.login}</Link>
       </p>
-      <p className="mt-2 text-xs text-muted">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
+      <p className="mt-2 text-xs text-foreground-muted">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
     </div>
   );
 }
@@ -127,22 +133,22 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{t.login.title}</span></h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
-        <input name="email" required type="email" dir="ltr" placeholder={t.login.email} className={input} />
-        <PasswordField lang={lang} name="password" required autoComplete="current-password" placeholder={t.login.password} className={input} />
-        {err && <p role="alert" className="text-sm text-danger">{err}</p>}
-        <button disabled={busy} className="s-btn"><Scribble kind="pill" seed="authform-b2" fill="ink" shadow ring />{t.login.submit}</button>
-        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
+        <Field label={t.login.email}><Input name="email" required type="email" autoComplete="username" /></Field>
+        <Field label={t.login.password}><PasswordField lang={lang} name="password" required autoComplete="current-password" /></Field>
+        {err && <Callout tone="danger">{err}</Callout>}
+        <Button type="submit" variant="pill" seed="authform-b2" loading={busy}>{t.login.submit}</Button>
+        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-foreground-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
       </form>
-      <p className="mt-4 text-sm text-ink/70">
-        {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-ink underline">{t.login.signup}</Link>
+      <p className="mt-4 text-sm text-foreground-muted">
+        {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-foreground underline">{t.login.signup}</Link>
       </p>
     </div>
   );
 }
 
 const PW = {
-  ar: { forgotTitle: "استرداد كلمة المرور", forgotSub: "اكتب بريد حسابك ونرسل لك رابطاً صالحاً لساعة واحدة.", send: "أرسل الرابط", sentMail: "إذا كان لهذا البريد حساب فسيصله رابط خلال دقائق. تفقد البريد غير المرغوب أيضاً.", noMail: "إرسال البريد غير مفعّل حالياً في ذكين، فلن يصلك رابط. تواصل مع الدعم ونعيد تعيين كلمة مرورك يدوياً.", support: "تواصل مع الدعم على واتساب", back: "رجوع لتسجيل الدخول", resetTitle: "كلمة مرور جديدة", save: "حفظ والدخول", bad_token: "الرابط غير صالح أو انتهت صلاحيته. اطلب رابطاً جديداً.", weak_password: "كلمة المرور لا تحقق الشروط.", slow_down: "محاولات كثيرة. حاول بعد ربع ساعة.", suspended: "الحساب موقوف. تواصل مع الدعم.", bad_email: "بريد غير صحيح" },
-  en: { forgotTitle: "Reset your password", forgotSub: "Enter your account email and we send a link valid for one hour.", send: "Send the link", sentMail: "If this email has an account, a link arrives within minutes. Check spam too.", noMail: "Email delivery is not enabled on Thakeen yet, so no link can reach you. Contact support and we reset your password manually.", support: "Contact support on WhatsApp", back: "Back to log in", resetTitle: "New password", save: "Save and log in", bad_token: "This link is invalid or expired. Request a new one.", weak_password: "The password does not meet the rules.", slow_down: "Too many attempts. Try again in 15 minutes.", suspended: "This account is suspended. Contact support.", bad_email: "Invalid email" },
+  ar: { forgotTitle: "استرداد كلمة المرور", forgotSub: "اكتب بريد حسابك ونرسل لك رابطاً صالحاً لساعة واحدة.", send: "أرسل الرابط", sentMail: "إذا كان لهذا البريد حساب فسيصله رابط خلال دقائق. تفقد البريد غير المرغوب أيضاً.", noMail: "إرسال البريد غير مفعّل حالياً في ذكين، فلن يصلك رابط. تواصل مع الدعم ونعيد تعيين كلمة مرورك يدوياً.", support: "تواصل مع الدعم على واتساب", back: "رجوع لتسجيل الدخول", resetTitle: "كلمة مرور جديدة", save: "حفظ والدخول", bad_token: "الرابط غير صالح أو انتهت صلاحيته. اطلب رابطاً جديداً.", weak_password: "كلمة المرور لا تحقق الشروط.", slow_down: "محاولات كثيرة. حاول بعد ربع ساعة.", suspended: "الحساب موقوف. تواصل مع الدعم.", bad_email: "بريد غير صحيح", email: "البريد الإلكتروني" },
+  en: { forgotTitle: "Reset your password", forgotSub: "Enter your account email and we send a link valid for one hour.", send: "Send the link", sentMail: "If this email has an account, a link arrives within minutes. Check spam too.", noMail: "Email delivery is not enabled on Thakeen yet, so no link can reach you. Contact support and we reset your password manually.", support: "Contact support on WhatsApp", back: "Back to log in", resetTitle: "New password", save: "Save and log in", bad_token: "This link is invalid or expired. Request a new one.", weak_password: "The password does not meet the rules.", slow_down: "Too many attempts. Try again in 15 minutes.", suspended: "This account is suspended. Contact support.", bad_email: "Invalid email", email: "Email" },
 } as const;
 
 export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang; whatsapp: string | null; turnstileKey?: string | null }) {
@@ -173,21 +179,21 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t3" />{S.forgotTitle}</span></h1>
-      <p className="mt-2 text-ink/70">{S.forgotSub}</p>
+      <p className="mt-2 text-foreground-muted">{S.forgotSub}</p>
       {state === "sent" || state === "nomail" ? (
-        <div role="status" className="mt-6 rounded-xl border border-ink/10 bg-ground p-4 text-sm">
+        <Callout tone={state === "sent" ? "success" : "warning"} className="mt-6">
           <p>{state === "sent" ? S.sentMail : S.noMail}</p>
-          {state === "nomail" && whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm mt-3">{S.support}</a>}
-        </div>
+          {state === "nomail" && whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer" className={buttonClass({ size: "md", className: "mt-3" })}>{S.support}</a>}
+        </Callout>
       ) : (
         <form onSubmit={onSubmit} className="mt-6 grid gap-3">
-          <input name="email" required autoFocus type="email" autoComplete="email" dir="ltr" placeholder="name@company.com" aria-label={S.forgotTitle} className={input} />
+          <Field label={S.email}><Input name="email" required autoFocus type="email" autoComplete="email" placeholder="name@company.com" /></Field>
           {turnstileKey && <Turnstile siteKey={turnstileKey} onToken={setToken} resetKey={resetKey} lang={lang} />}
-          {err && <p role="alert" className="text-sm text-danger">{err}</p>}
-          <button disabled={state === "busy"} className="s-btn"><Scribble kind="pill" seed="authform-b3" fill="ink" shadow ring />{S.send}</button>
+          {err && <Callout tone="danger">{err}</Callout>}
+          <Button type="submit" variant="pill" seed="authform-b3" loading={state === "busy"}>{S.send}</Button>
         </form>
       )}
-      <p className="mt-4 text-sm"><Link href={`/${lang}/app/login`} className="text-ink underline">{S.back}</Link></p>
+      <p className="mt-4 text-sm"><Link href={`/${lang}/app/login`} className="text-foreground underline">{S.back}</Link></p>
     </div>
   );
 }
@@ -233,10 +239,12 @@ export function ResetForm({ lang }: { lang: Lang }) {
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t4" />{S.resetTitle}</span></h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
-        <PasswordField lang={lang} ref={pwRef} name="password" required autoFocus autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-label={S.resetTitle} aria-describedby="reset-rules" className={input} />
-        <PasswordRules id="reset-rules" rules={rules} checks={checks} lang={lang} />
-        {err && <p role="alert" className="text-sm text-danger">{err} {err === S.bad_token && <Link href={`/${lang}/app/forgot`} className="underline">{S.forgotTitle}</Link>}</p>}
-        <button disabled={busy} aria-disabled={!ready ? true : undefined} aria-describedby="reset-rules" className="s-btn"><Scribble kind="pill" seed="authform-b4" fill="ink" shadow ring />{S.save}</button>
+        <Field label={S.resetTitle}>
+          <PasswordField lang={lang} ref={pwRef} name="password" required autoFocus autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-describedby="reset-rules" />
+          <PasswordRules id="reset-rules" rules={rules} checks={checks} lang={lang} />
+        </Field>
+        {err && <Callout tone="danger">{err} {err === S.bad_token && <Link href={`/${lang}/app/forgot`} className="underline">{S.forgotTitle}</Link>}</Callout>}
+        <Button type="submit" variant="pill" seed="authform-b4" loading={busy} aria-disabled={!ready ? true : undefined} aria-describedby="reset-rules">{S.save}</Button>
       </form>
     </div>
   );

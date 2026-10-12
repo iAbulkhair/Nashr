@@ -181,15 +181,15 @@ describe("journey: what a batch costs the business", () => {
   it("records tokens and money per kind of call, so the cost of one request type per account is a read", async () => {
     const u = await newUser("cost");
     const { meter } = await import("@/lib/usage");
-    await meter(u.email, "claude-opus-5", "generate", { input_tokens: 1200, output_tokens: 4700, cache_read_input_tokens: 7500 });
-    await meter(u.email, "claude-sonnet-5", "review", { input_tokens: 4100, output_tokens: 1800 });
-    await meter(u.email, "claude-sonnet-5", "judge", { input_tokens: 4400, output_tokens: 1500 });
+    await meter(u.email, "claude-opus-5-5", "generate", { input_tokens: 1200, output_tokens: 4700, cache_read_input_tokens: 7500 });
+    await meter(u.email, "claude-sonnet-5-5", "review", { input_tokens: 4100, output_tokens: 1800 });
+    await meter(u.email, "claude-sonnet-5-5", "judge", { input_tokens: 4400, output_tokens: 1500 });
 
     const usage = await getUsage(u.email);
     expect(usage.calls).toBe(3);
     expect(Object.keys(usage.byKind).sort()).toEqual(["generate", "judge", "review"]);
-    // Opus output at $25/M is what a batch actually costs; the two Sonnet passes together are a fraction of it.
-    expect(usage.byKind.generate.usd).toBeCloseTo(1200 * 5e-6 + 4700 * 25e-6 + 7500 * 0.5e-6, 4);
+    // Opus 5.5 output at $20/M is what a batch actually costs; the two Sonnet passes together are a fraction of it.
+    expect(usage.byKind.generate.usd).toBeCloseTo(1200 * 4e-6 + 4700 * 20e-6 + 7500 * 0.2e-6, 4);
     expect(usage.byKind.review.usd).toBeCloseTo(4100 * 2e-6 + 1800 * 10e-6, 4);
     expect(usage.byKind.generate.usd).toBeGreaterThan(usage.byKind.review.usd + usage.byKind.judge.usd);
     expect(usage.usd).toBeCloseTo(usage.byKind.generate.usd + usage.byKind.review.usd + usage.byKind.judge.usd, 2);

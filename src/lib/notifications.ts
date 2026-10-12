@@ -10,6 +10,7 @@ import { SEC_ALERTS_PER_DAY, SEC_KEYS, agendaFor, backFingerprint, overdueAlertF
 import { compareItems, daysBetween, overdueAlerts, partyKey, partyName, zoneDay, type AwayMap, type OverdueAlert, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 import { appOrigin } from "./origin";
+import { inAppAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -87,19 +88,30 @@ export const withBrand = (title: string, tag: string) => (tag ? `${title} — ${
 /** The 80% warning's fingerprint: one per brand scope, agent and month. */
 export const agentCapFingerprint = (scope: string, agent: AgentId, month: string) => `agentcap80:${scope}:${agent}:${month}`;
 
-export type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number };
+/** `scope`: the brand the entry is about, whose notification preferences apply (the account's when left out). */
+export type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number; scope?: string };
 /**
  * Claim each fingerprint with SET NX and its TTL, all in one round; only what this caller claimed is pushed, in one
  * write of the bell under the account's bell lock (`withBellLock`). A marker read then written let two overlapping runs
  * (a chain hop and a catch-up) both notify. Answers per entry, in order: the notification pushed, or null when its
  * fingerprint was already claimed. When the bell write fails, the fingerprints this call claimed are released before
  * the error goes on, so a retry can still deliver: a claimed fingerprint with no entry would silence it for good.
+ *
+ * Notification preferences (rule 1146): an entry whose kind the person switched off in Settings, Notifications for its
+ * brand (`Push.scope`, else the account) is claimed and answered like any other, so a caller that emails only what it
+ * pushed still decides the email by its own preference, but it is not written to the bell. The preferences are read in
+ * the same round as the claims. A caller that already read them for every scope it pushes (the reminder sweep, once per
+ * account) passes them as `known`, and no read is made (rule 1190); a scope missing from `known` reads them all as before.
  */
-export async function pushNotifs(email: string, entries: Push[]): Promise<(Notif | null)[]> {
-  const won = await Promise.all(entries.map((e) => (e.fingerprint ? db.setNx(seenKey(email, e.fingerprint), 1, (e.ttlDays ?? 3) * 86400) : true)));
+export async function pushNotifs(email: string, entries: Push[], known?: Map<string, NotifyPrefs>): Promise<(Notif | null)[]> {
+  const scopes = entries.map((e) => e.scope ?? email);
+  const [won, prefs] = await Promise.all([
+    Promise.all(entries.map((e) => (e.fingerprint ? db.setNx(seenKey(email, e.fingerprint), 1, (e.ttlDays ?? 3) * 86400) : true))),
+    known && scopes.every((s) => known.has(s)) ? known : readPrefsMany(scopes, email),
+  ]);
   const at = new Date().toISOString();
   const aligned: (Notif | null)[] = entries.map((e, i) => (won[i] ? { id: randomBytes(5).toString("hex"), at, ...e.n } : null));
-  const items = aligned.filter((x): x is Notif => !!x);
+  const items = aligned.filter((x, i): x is Notif => !!x && inAppAllowed(prefs.get(entries[i].scope ?? email)!, x.kind));
   if (!items.length) return aligned;
   try {
     await withBellLock(email, async () => {
@@ -118,8 +130,8 @@ async function pushMany(email: string, entries: Push[]): Promise<Notif[]> {
 }
 
 /** Push one follow-up. `fingerprint` + `ttlDays` suppress repeats of the same situation, claimed atomically. */
-export async function pushNotif(email: string, n: Omit<Notif, "id" | "at">, fingerprint?: string, ttlDays = 3): Promise<Notif | null> {
-  return (await pushMany(email, [{ n, fingerprint, ttlDays }]))[0] ?? null;
+export async function pushNotif(email: string, n: Omit<Notif, "id" | "at">, fingerprint?: string, ttlDays = 3, scope?: string): Promise<Notif | null> {
+  return (await pushMany(email, [{ n, fingerprint, ttlDays, ...(scope ? { scope } : {}) }]))[0] ?? null;
 }
 
 
@@ -133,7 +145,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
   const out: Notif[] = [];
-  const add = async (n: Omit<Notif, "id" | "at">, fp: string, ttl = 3) => { const x = await pushNotif(user.email, n, fp, ttl); if (x) out.push(x); };
+  const add = async (n: Omit<Notif, "id" | "at">, fp: string, ttl = 3) => { const x = await pushNotif(user.email, n, fp, ttl, scope); if (x) out.push(x); };
   // Due items and old approvals belong to this brand: its fingerprint and, on a multi-brand account, its name (#15).
   const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published);
   const stale = tasks.filter((t) => t.status === "pending" && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
@@ -262,8 +274,8 @@ export function notifEmailText(user: User, items: Notif[]) {
 }
 
 /** Helper for other modules (weekly cron, judge). */
-export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string }, fp?: string, ttl?: number) {
-  return pushNotif(email, { ...n, href: n.href.startsWith("/") ? n.href : `/${lang}/app/${n.href}` }, fp, ttl);
+export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string }, fp?: string, ttl?: number, scope?: string) {
+  return pushNotif(email, { ...n, href: n.href.startsWith("/") ? n.href : `/${lang}/app/${n.href}` }, fp, ttl, scope);
 }
 
 /**

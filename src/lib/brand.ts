@@ -32,6 +32,13 @@ export type Brand = {
    * 2026-09-29.
    */
   timeZone?: string;
+  /**
+   * The model every content batch of this brand runs on and is priced for, when it passes `route("generate")` for the
+   * batch's type (src/lib/models/overrides.ts); absent: automatic. Set and cleared only by PUT /api/models (admin or
+   * owner); every other brand writer keeps it as it is, and PUT /api/brand never takes it from the request. A catalog id
+   * as stored: validated again at every batch, never trusted. Absent on brands saved before 2026-10-08.
+   */
+  model?: string;
 };
 
 // The task catalogue lives in ./tasks, which imports nothing: client components read the costs from there instead of
@@ -106,10 +113,19 @@ export type Task = {
   brief?: string;
   /**
    * Which prompts made this item (src/lib/prompt-stamp.ts): 12-hex hashes of the owning agent's playbook, review.md, the
-   * industry playbook (`id:hash`) and the prompts written in code; "none" for a playbook that did not load. Set on every
+   * industry playbook (`id:hash`) and the prompts written in code; "none" for a playbook that did not load. `plat` and
+   * `ins` are the hashes of the platform instruction block and of the owner's instruction block the batch carried
+   * (src/lib/agent-instructions.ts, `none` when empty); tasks from before the instruction layers lack them. Set on every
    * generated batch (`taskFromItem`); absent on older tasks and on MCP `save_draft` drafts, which no Nashr prompt wrote.
    */
-  pb?: { skills: string; review: string; industry?: string; code: string };
+  pb?: {
+    skills: string;
+    review: string;
+    industry?: string;
+    code: string;
+    plat?: string;
+    ins?: string;
+  };
   /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
   /**

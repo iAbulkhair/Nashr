@@ -7,7 +7,8 @@ import { PASSWORD_TOGGLE } from "@/components/app/PasswordField";
 import { appDict } from "@/lib/app-i18n";
 
 const read = (f: string) => readFileSync(f, "utf8");
-const app = (name: string) => read(`src/components/app/${name}.tsx`);
+// WishlistPanel moved to the founder console's folder (rule 1181); the others are app panels.
+const app = (name: string) => read(name === "WishlistPanel" ? "src/components/admin/WishlistPanel.tsx" : `src/components/app/${name}.tsx`);
 const count = (src: string, re: RegExp) => src.match(re)?.length ?? 0;
 // A call to the browser's confirm: `confirm(` or `window.confirm(`, not `askConfirm(`, `.confirm(` on another object
 // or a `confirm:` key in a dictionary.
@@ -23,7 +24,7 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
     for (const [name, asks] of Object.entries(PANELS)) {
       const src = app(name);
       expect(src, name).not.toMatch(NATIVE_CONFIRM);
-      expect(src, name).toContain('import { useConfirm } from "./ConfirmDialog";');
+      expect(src, name).toContain(name === "WishlistPanel" ? 'import { useConfirm } from "../app/ConfirmDialog";' : 'import { useConfirm } from "./ConfirmDialog";');
       expect(src, name).toContain("const [ask, confirmDialog] = useConfirm();");
       expect(count(src, /\bask\(\{/g), name).toBe(asks);
       expect(count(src, /\{confirmDialog\}/g), `${name} renders the dialog once`).toBe(1);
@@ -79,20 +80,21 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
     // One dialog at a time (confirmGate): a second question while one is open resolves false at once. A restore that
     // needs the auto-run question must not find the switch's question already open.
     const gov = app("GovernancePanel");
-    expect(gov).toMatch(/<Toggle label=\{g\.autoHandoff\} on=\{gov\.majedAutoHandoff === true\} onChange=\{toggleAuto\} disabled=\{!!restoring\} \/>/);
-    expect(gov).toMatch(/role="switch"[^>]*disabled=\{disabled\}/);
+    expect(gov).toMatch(/<Switch label=\{g\.autoHandoff\} checked=\{gov\.majedAutoHandoff === true\} onChange=\{toggleAuto\} disabled=\{!!restoring\} \/>/);
+    // The switch is the shared primitive now (rule 1085); it passes `disabled` to its button.
+    expect(read("src/components/ui/Switch.tsx")).toMatch(/role="switch"[^>]*disabled=\{disabled\}/);
   });
 });
 
 describe("rule 696: the sign-up, login, reset, join and profile change-password inputs are PasswordFields with a show toggle that never submits", () => {
-  // Six fields: sign-up, login and reset in AuthForm, the invite form in JoinForm, current and new in ProfilePanel.
-  // Account deletion in ProfilePanel still asks for the password with the browser's prompt(), which shows it in clear
-  // text. That is an open item recorded in docs/system/tests.md, outside this rule.
+  // Seven fields: sign-up, login and reset in AuthForm, the invite form in JoinForm, and in Settings, Security (rule 1150,
+  // where the old profile page's two moved) the current and new password and the password that confirms "sign out other
+  // devices". Account deletion asks in its own masked dialog (rule 964).
   it("the forms use PasswordField and no bare password input remains", () => {
-    for (const [name, n] of [["AuthForm", 3], ["JoinForm", 1], ["ProfilePanel", 2]] as const) {
+    for (const [name, n] of [["AuthForm", 3], ["JoinForm", 1], ["settings/SecuritySettings", 3]] as const) {
       const src = app(name);
       expect(src, name).not.toContain('type="password"');
-      expect(src, name).toContain('import PasswordField from "./PasswordField";');
+      expect(src, name).toMatch(/import PasswordField from "\.\.?\/PasswordField";/);
       expect(count(src, /<PasswordField lang=\{lang\} /g), name).toBe(n);
     }
   });
@@ -106,9 +108,11 @@ describe("rule 696: the sign-up, login, reset, join and profile change-password 
     const reset = auth.slice(auth.indexOf("export function ResetForm"));
     expect(reset).toMatch(/<PasswordField lang=\{lang\} ref=\{pwRef\}[^\n]*autoFocus autoComplete="new-password" value=\{pw\}[^\n]*aria-describedby="reset-rules"/);
     expect(app("JoinForm")).toMatch(/<PasswordField lang=\{lang\} ref=\{pwRef\}[^\n]*autoComplete="new-password" value=\{pw\}[^\n]*aria-describedby="join-rules"/);
-    const profile = app("ProfilePanel");
-    expect(profile).toMatch(/<PasswordField [^\n]*name="currentPassword" autoComplete="current-password" required/);
-    expect(profile).toMatch(/<PasswordField [^\n]*name="newPassword" autoComplete="new-password" required minLength=\{8\}/);
+    const security = app("settings/SecuritySettings");
+    expect(security).toMatch(/<PasswordField [^\n]*name="currentPassword" autoComplete="current-password"/);
+    // The new password shows the sign-up rules live, from the same checks (rule 1150).
+    expect(security).toMatch(/<PasswordField [^\n]*name="newPassword" autoComplete="new-password" value=\{pw\}[^\n]*aria-describedby="settings-pw-rules"/);
+    expect(security).toMatch(/<PasswordRules id="settings-pw-rules" rules=\{rules\} checks=\{checks\}/);
   });
 
   it("the toggle is a button that never submits, says whether the password shows, and is named in both languages", () => {
@@ -139,7 +143,8 @@ describe("rule 696: the sign-up, login, reset, join and profile change-password 
 });
 
 describe("rule 697: the confirm dialog is a native modal <dialog> that answers once; Escape or Go back answer no and a click outside it does nothing", () => {
-  const src = app("ConfirmDialog");
+  // Moved into src/components/ui in phase 2 (rule 1110); the app path re-exports it.
+  const src = read("src/components/ui/ConfirmDialog.tsx");
 
   it("opens a native dialog with showModal, named and described for screen readers", () => {
     expect(src).toContain("<dialog");
@@ -211,7 +216,7 @@ describe("rule 697: the confirm dialog is a native modal <dialog> that answers o
 
   it("the new components use logical direction classes only", () => {
     for (const name of ["ConfirmDialog", "PasswordField"]) {
-      const classes = (app(name).match(/className=(?:"[^"]*"|\{`[^`]*`\})/g) ?? []).join(" ");
+      const classes = ((name === "ConfirmDialog" ? read("src/components/ui/ConfirmDialog.tsx") : app(name)).match(/className=(?:"[^"]*"|\{`[^`]*`\})/g) ?? []).join(" ");
       expect(classes, name).not.toBe("");
       expect(classes, name).not.toMatch(PHYSICAL);
     }

@@ -40,11 +40,15 @@ export function industryStamp(brand: Pick<Brand, "industry">): string {
   return industryHashes.get(id)!;
 }
 
-/** The stamp for one batch of `type`. `industry` is left out when the brand's industry is not known. */
-export function promptStamp(type: TaskType, brand?: Partial<Pick<Brand, "industry">>): PromptStamp {
+/**
+ * The stamp for one batch of `type`. `industry` is left out when the brand's industry is not known. `ins` is the hash of
+ * the platform and the owner's instruction blocks the batch carried (`instructionBlocks(...).stamp`, `none` when empty);
+ * a caller that loaded no layers leaves it out, and so does any task made before they existed.
+ */
+export function promptStamp(type: TaskType, brand?: Partial<Pick<Brand, "industry">>, ins?: { plat: string; ins: string }): PromptStamp {
   const agent = agentForTask(type);
   const industry = typeof brand?.industry === "string" ? industryStamp({ industry: brand.industry }) : undefined;
-  return { skills: agent.skills ? skillsHash(agent) : "none", review: playbookHash("review"), ...(industry ? { industry } : {}), code: codeHash(type) };
+  return { skills: agent.skills ? skillsHash(agent) : "none", review: playbookHash("review"), ...(industry ? { industry } : {}), code: codeHash(type), ...(ins ? { plat: ins.plat, ins: ins.ins } : {}) };
 }
 
 /** Every agent playbook's hash and review.md's, by file name, plus `code:<type>` for each of `types`: a golden run's versions. */
