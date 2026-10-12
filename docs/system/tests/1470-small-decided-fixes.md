@@ -1,6 +1,6 @@
-# Coverage: small decided fixes (rules 1470-1485)
+# Coverage: small decided fixes (rules 1470-1486)
 
-Status on 2026-10-12, branch `claude/small-decided-fixes-bd589f` (draft PR). The founder decided these items earlier and asked on 2026-10-12 for every recommended fix to be built. They come from the 360 study (A-009, D-019) and the leftovers audit (L048, L057, L081, L085, L086, L087, L091). Flows section 64. Rules 1486-1499 are held for this change and not used.
+Status on 2026-10-12, branch `claude/small-decided-fixes-bd589f` (draft PR). The founder decided these items earlier and asked on 2026-10-12 for every recommended fix to be built. They come from the 360 study (A-009, D-019) and the leftovers audit (L048, L057, L081, L085, L086, L087, L091). Flows section 64. Rules 1487-1499 are held for this change and not used. Rule 1486 (routines on by default) was added on the founder's decision of 2026-10-12, confirmed in the session that built it.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
@@ -20,16 +20,16 @@ Status on 2026-10-12, branch `claude/small-decided-fixes-bd589f` (draft PR). The
 | 1483 | `workspaceLarge(trimmed, fit)` is true when the fit left history out or gave the first call less than `CHAT_FIRST_MIN_OUT` | `tests/small-decided-fixes.test.ts` (rules 1483-1484 block) | — |
 | 1484 | A chat reply carries `large: true` when the workspace was large (not on the no-answer cliff, not out of time); the chat shows a quiet hint with a link to the files page | `tests/small-decided-fixes.test.ts` (source check) | A rendered ChatPanel message with `large` |
 | 1485 | The upstream pins in `docs/upstreams.json` point at the reviewed commits (agency-agents f99f6aa, paperclip 88b7bbb) | `tests/small-decided-fixes.test.ts` (rule 1485 block) | — |
+| 1486 | Routines are on by default for every brand, added brands included: `routineOn(schedule, id)` is false only for a stored `false` (the owner's switch); `dueRoutines`, `runRoutine` and the Scheduled tasks switch read it; the trial, gate, weekly cap, agent cap and credit checks before any charge are unchanged; copy in both languages | `tests/routines.test.ts` (rule 111 block: default on, added brand on, the owner's off kept, the checks still in the runner; the `owner` helper stores off for the routines a test does not name) | — |
 
 ## Notes
 
-- Release step: expand only (rule 679). `Application.country` and `ChatMsg.large` are new optional fields; old code ignores them and new code reads records without them. No conversion script. No environment variable added.
+- Release step: expand only (rule 679). `Application.country` and `ChatMsg.large` are new optional fields, and rule 1486 only changes how a missing routine switch is read; old code ignores them and new code reads records without them. No conversion script. No environment variable added.
 - Upstream review (L091): agency-agents has nothing to adopt. Paperclip has two ideas worth a later look, not built: a budget reserve where usage without a known price is blocked by default, and mentions read as context rather than as an assignment.
 - Existing partner applications and bank details from outside Saudi Arabia are not touched; they stay readable and payable as before. Only new applications and new bank details are checked.
 - Media providers still report a spent balance as `media_failed` and trip the breaker; rule 1476 classifies a media `ProviderError` but the media routes were not changed.
 
 ## Not pinned
 
-- The routines default (A-011, L052) was left out: it waits on the founder.
 - D-019's full-workspace golden case costs model credits and needs a golden run; only the hint is pinned.
 - That a real Anthropic or gateway error has these shapes is read off the SDK's types, not a live call.

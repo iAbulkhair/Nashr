@@ -111,7 +111,7 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
           <h2 className="font-display text-lg font-medium">{k.routines}</h2>
           <p className="mt-1 text-sm text-muted">{k.routinesSub}</p>
           <ul className="mt-3 divide-y divide-ink/10">
-            {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] === true} saving={!!saving} onToggle={toggleRoutine} readOnly={readOnly} />)}
+            {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] !== false /* on unless the owner switched it off, as `routineOn` in routines.ts (rule 1486) */} saving={!!saving} onToggle={toggleRoutine} readOnly={readOnly} />)}
           </ul>
         </div>
       </div>
