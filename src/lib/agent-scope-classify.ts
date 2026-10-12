@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { agentById, type AgentId } from "./agents";
 import { MODEL_BUDGET, anthropic, modelState, until } from "./model";
 import { route } from "./models/route";
-import { meter } from "./usage";
+import { metered } from "./metered";
 import { VERDICTS, isVerdict, type Verdict } from "./agent-scope-verdicts";
 
 /**
@@ -128,9 +128,10 @@ function warnFailure(e: unknown): void {
  * - `unknown_verdict`: the answer holds no tool call, or its verdict is not one of the six words.
  *
  * One attempt, no retry, no thinking (a forced tool choice does not allow it), nothing cached: a short prompt that must
- * answer in 3 s. The cost goes to the GLOBAL counters only (`meter(undefined, ...)`): no owner is charged for the check, and
+ * answer in 3 s. The cost goes to the GLOBAL counters only (`metered` with no email): no owner is charged for the check, and
  * the founder's monthly total includes it. It is metered to `o.meterAgent`, else the agent that was checked. A call that
- * answered is metered even when its verdict is unknown; one that failed returned no usage. A call that failed leaves one
+ * answered is metered even when its verdict is unknown; one that failed is metered for what its stream had received
+ * (rule 980), nothing when it failed before the first event. A call that failed leaves one
  * `console.warn` line with the error's class and status (`warnFailure`), never its message.
  */
 export async function classify(input: ClassifyInput, o: { deadline?: number; meterAgent?: AgentId } = {}): Promise<Classified> {
@@ -140,7 +141,9 @@ export async function classify(input: ClassifyInput, o: { deadline?: number; met
     if (o.deadline !== undefined && !(o.deadline - now >= MIN_LEFT_MS)) return { ok: false, error: "timeout" };
     const model = agentScopeModel();
     const client = anthropic({ timeoutMs: MODEL_BUDGET.AGENT_SCOPE_MS, maxRetries: 0 });
-    const res = await client.messages.create(
+    // A stream metered by `metered` (rule 980: no `messages.create` in src, and only metered.ts waits for the message), so a
+    // check cut by its 3 s is metered for what was billed. Priced as the reply's model, like every other call site.
+    const res = await metered(client.messages.stream(
       {
         model,
         max_tokens: MAX_TOKENS,
@@ -150,9 +153,7 @@ export async function classify(input: ClassifyInput, o: { deadline?: number; met
         tool_choice: { type: "tool", name: "verdict" },
       },
       until(o.deadline ?? now + MODEL_BUDGET.AGENT_SCOPE_MS, { cap: MODEL_BUDGET.AGENT_SCOPE_MS, now }),
-    );
-    // The model we asked for, priced as that model: a dated alias in `res.model` would be priced as the default (Opus).
-    await meter(undefined, model, "agent_scope", res.usage, o.meterAgent ?? input.agent);
+    ), { email: undefined, kind: "agent_scope", agent: o.meterAgent ?? input.agent, requested: model });
     const use = Array.isArray(res.content) ? res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use") : undefined;
     const answer = use?.input !== null && typeof use?.input === "object" ? (use.input as Record<string, unknown>) : {};
     if (!isVerdict(answer.verdict)) return { ok: false, error: "unknown_verdict" };

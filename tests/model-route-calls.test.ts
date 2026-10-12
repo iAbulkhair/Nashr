@@ -45,9 +45,11 @@ vi.mock("@anthropic-ai/sdk", () => {
       };
       messages = {
         // Every model call is a stream since rule 980. "stream" here is the chat turn (tools) and onboarding (a JSON schema
-        // format), as before; every other call is answered by `create`, the call those sites made before.
-        stream(p: { model: string; system: unknown; tools?: unknown; output_config?: { format?: unknown } }) {
-          return p.tools || p.output_config?.format ? this.chat(p) : { finalMessage: () => this.create(p) };
+        // format), as before; every other call is answered by `create`, the call those sites made before. The agent-scope
+        // classifier forces its `verdict` tool and was a `create` call too (it streams since the 2026-10-12 build batch).
+        stream(p: { model: string; system: unknown; tools?: unknown; tool_choice?: { name?: string }; output_config?: { format?: unknown } }) {
+          const chatTurn = (p.tools && p.tool_choice?.name !== "verdict") || p.output_config?.format;
+          return chatTurn ? this.chat(p) : { finalMessage: () => this.create(p) };
         },
         chat: (p: { model: string; system: unknown }) => ({
           finalMessage: async () => {

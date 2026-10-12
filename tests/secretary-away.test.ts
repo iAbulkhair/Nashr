@@ -347,7 +347,9 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: (p: { system: { text: string }[] }) => { sent.push(p); return { finalMessage: async () => ({ model: "m", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: "تمام" }] }) }; } };
+// The agent-scope classifier streams since the 2026-10-12 build batch (rule 980) and forces its `verdict` tool. It gets
+        // no answer here, as when it called the `create` this mock never had, so the scripted turns stay the chat's.
+        messages = { stream: (p: { system: { text: string }[] } & { tool_choice?: { name?: string } }) => { if (p.tool_choice?.name === "verdict") throw new Error("no classifier in this test"); sent.push(p); return { finalMessage: async () => ({ model: "m", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: "تمام" }] }) }; } };
       },
     }));
     try {
@@ -1315,7 +1317,9 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: (p: (typeof sent)[number]) => { sent.push(JSON.parse(JSON.stringify(p))); return { finalMessage: async () => ({ model: "m", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
+// The agent-scope classifier streams since the 2026-10-12 build batch (rule 980) and forces its `verdict` tool. It gets
+        // no answer here, as when it called the `create` this mock never had, so the scripted turns stay the chat's.
+        messages = { stream: (p: (typeof sent)[number] & { tool_choice?: { name?: string } }) => { if (p.tool_choice?.name === "verdict") throw new Error("no classifier in this test"); sent.push(JSON.parse(JSON.stringify(p))); return { finalMessage: async () => ({ model: "m", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
       },
     }));
     try {

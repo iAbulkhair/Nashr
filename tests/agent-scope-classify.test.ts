@@ -33,6 +33,10 @@ vi.mock("@anthropic-ai/sdk", () => ({
         if (sdk.hang) await new Promise((_, reject) => opts?.signal?.addEventListener("abort", () => reject(new APIUserAbortError())));
         return sdk.reply;
       },
+      // Since the 2026-10-12 build batch the classifier streams (rule 980): the stream's message is what `create` answers.
+      stream(params: Record<string, unknown>, opts: Sent["opts"]) {
+        return { finalMessage: () => this.create(params, opts) };
+      },
     };
   },
 }));

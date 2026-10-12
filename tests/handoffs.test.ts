@@ -178,7 +178,9 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: (p: { tools: { name: string }[] }) => { seen.push({ tools: p.tools.map((t) => t.name) }); return { finalMessage: async () => ({ model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
+        // The agent-scope classifier streams too since the 2026-10-12 build batch (rule 980); it forces its `verdict` tool. It
+        // gets no answer here, as when it called the `create` this mock never had, so the scripted turns stay the chat's.
+        messages = { stream: (p: { tools: { name: string }[]; tool_choice?: { name?: string } }) => { if (p.tool_choice?.name === "verdict") throw new Error("no classifier in this test"); seen.push({ tools: p.tools.map((t) => t.name) }); return { finalMessage: async () => ({ model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
       },
     }));
     const { chat } = await import("@/lib/chat");
