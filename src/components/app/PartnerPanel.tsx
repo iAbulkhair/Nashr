@@ -21,7 +21,7 @@ function CopyButton({ text, label, done }: { text: string; label: string; done: 
 /**
  * The partner page body (rules 399, 411-413). Everything shown comes from `partnerDashboard`: no customer name or email
  * (each referral is a stable label), the IBAN masked. The bank form posts to PUT /api/partner, owner only: any country's
- * IBAN, the country the partner lives in (the options come from the server, `countryOptions`), an optional VAT or tax
+ * IBAN, the country the partner lives in (the options come from the server, `countryOptions` filtered to `PARTNER_COUNTRIES`, rule 1471), an optional VAT or tax
  * registration number and a separate "I am VAT-registered" box (a tax number alone flags nothing for the founder). The
  * page links the programme terms.
  */

@@ -69,3 +69,12 @@ export function zoneOf(brand: { timeZone?: unknown; city?: unknown; dialect?: un
   if (brand.dialect === "kuwaiti") return "Asia/Kuwait";
   return DEFAULT_ZONE;
 }
+
+/** The money of each zone's country (ISO 4217): one zone is one country, so its currency is the brand market's. */
+export const ZONE_CURRENCY: Record<Zone, string> = { "Asia/Riyadh": "SAR", "Asia/Kuwait": "KWD", "Asia/Qatar": "QAR", "Asia/Bahrain": "BHD", "Asia/Dubai": "AED", "Asia/Muscat": "OMR" };
+/**
+ * The currency a brand's task specs name (rule 1472): its market's, from the zone the brand is kept in (`zoneOf`: the
+ * stored zone, else the one its city or dialect names), so a Dubai brand gets AED and a Kuwaiti one KWD. A brand whose
+ * market is not known falls back to Riyadh, so SAR stays the default.
+ */
+export const currencyOf = (brand: Parameters<typeof zoneOf>[0]): string => ZONE_CURRENCY[zoneOf(brand)];

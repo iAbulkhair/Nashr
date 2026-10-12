@@ -51,7 +51,7 @@ describe("rule 354: the Leads tab lists sales leads newest first, with an unread
     expect((await support.POST(json("/api/support", "POST", { email: `q-${tag}@co.example`, message: "How do I reset?", type: "question" }, from()))).status).toBe(200);
     await new Promise((r) => setTimeout(r, 5));
     // `consent: true`: an application without the terms box is refused since the partner programme (rule 414, PR #236).
-    expect((await affiliates.POST(json("/api/affiliates", "POST", { name: "Fahad", email: `aff-${tag}@co.example`, phone: "+966 50 000 0000", channel: "YouTube", audience: "10k", consent: true }, from()))).status).toBe(200);
+    expect((await affiliates.POST(json("/api/affiliates", "POST", { name: "Fahad", email: `aff-${tag}@co.example`, phone: "+966 50 000 0000", channel: "YouTube", audience: "10k", consent: true, country: "SA" }, from()))).status).toBe(200);
     await new Promise((r) => setTimeout(r, 5));
     expect((await support.POST(json("/api/support", "POST", { email: `early-${tag}@co.example`, message: contact("Noura", "Bakery", "Interested"), type: "early-adopter", page: "/customers" }, from()))).status).toBe(200);
 

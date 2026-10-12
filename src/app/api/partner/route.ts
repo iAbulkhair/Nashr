@@ -7,7 +7,7 @@ import { saveBank } from "@/lib/partners";
 /**
  * PUT /api/partner {holder, iban, country, taxNumber?, vatRegistered?}: the partner's own payout details, where commission
  * is paid (rules 399, 411). The owner only ("partner.bank", refused while a founder impersonates), throttled per account,
- * and only for an approved partner. Partners may live in any country: the IBAN is checked for its country's length (when
+ * and only for an approved partner. Partners must live in Saudi Arabia for now (rule 1471, `country_closed`): the IBAN is checked for its country's length (when
  * known) and checksum, `country` is the partner's country of residence, `taxNumber` an optional VAT or tax registration
  * number and `vatRegistered` the partner's own answer that they are VAT-registered (only `true` counts, and it needs the
  * number: vat_number_required). The answer carries the IBAN masked, and none of it is ever logged.

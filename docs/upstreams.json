@@ -3,8 +3,8 @@
   "upstreams": [
     {
       "repo": "msitarzewski/agency-agents",
-      "sha": "68f01534ef30805ed3764f2d302ad03fe443707a",
-      "date": "2026-09-28T12:03:44Z",
+      "sha": "f99f6aa910a442b0197b768ce0ea7751e35e2060",
+      "date": "2026-10-07T16:45:46Z",
       "why": "Structure of the seven agent playbooks in content/skills (step 1, 2026-09-29). Its files state invented statistics as fact: borrow structure only.",
       "paths": [
         "marketing/marketing-email-strategist.md",
@@ -58,8 +58,8 @@
     },
     {
       "repo": "paperclipai/paperclip",
-      "sha": "53aad90b9e83dc147707797bf224bec12600b171",
-      "date": "2026-09-29T02:15:33Z",
+      "sha": "88b7bbb5e248e9dde5aa7671b080f8508ef1865e",
+      "date": "2026-10-12T12:29:15Z",
       "why": "Agent-team mechanisms: goal ancestry, review stages, routines, budgets, decision snapshots (steps 1-3). Different stack: ideas only, never code.",
       "paths": [
         "ROADMAP.md",

@@ -285,9 +285,10 @@ const sha = (p: Sent) => createHash("sha256").update(JSON.stringify({ model: p.m
 // 2026-10-09: every hash below changed only by the model id (Opus 5 to Opus 5.5, Sonnet 5 to Sonnet 5.5). Hashed with the
 // ids mapped back to the old ones, the previous values came out unchanged, so the prompt bytes are the same.
 // Rule 572 deliberately changed the generation prompt (the brand file fenced in <brand_file>, `brandFileBlock` in src/lib/noor.ts): the `gen` hashes are the fenced prompt's, the same values as BEFORE in tests/cross-review.test.ts.
+// 2026-10-12 (rule 1473): the `gen` hashes changed deliberately, the task spec and Razan's persona now name the brand's currency.
 const BEFORE: Record<string, { gen: string; review: string; judge: string }> = {
-  pricing_review: { gen: "59acef725d127ffdfec6a2f6d755717b66ed4a5695e47165cb33592b2428ccd6", review: "dd00dab0de7730d79b7b94f881bbeb4bf8d7dfb80739f05ce3aaa96a0b9aae35", judge: "8abb968d5e83f823acfcdffcee7bebaee7e344bca18df835ee430cdede4aa6b3" },
-  gtm_plan: { gen: "7d13eb4a488b344e849287e5b69db2927a493efedcd9d817871d2fa5a95660d4", review: "796294f59d2818bc8870c0ac2aabe504c6360fba7561b345b3b51f0875068850", judge: "fb3065c7f4a3fc14cf3e7c1ced0374cf82548e90b5acf4cef8ae9b7613404301" },
+  pricing_review: { gen: "76ff259b1227d52855a00708341dd288bc4dfead9d296fc13ac4dc8fa9445318", review: "dd00dab0de7730d79b7b94f881bbeb4bf8d7dfb80739f05ce3aaa96a0b9aae35", judge: "8abb968d5e83f823acfcdffcee7bebaee7e344bca18df835ee430cdede4aa6b3" },
+  gtm_plan: { gen: "5d16165e9aaa42d03688946065aaa727517c64fba2a19c0fac5290d4aaed89fa", review: "796294f59d2818bc8870c0ac2aabe504c6360fba7561b345b3b51f0875068850", judge: "fb3065c7f4a3fc14cf3e7c1ced0374cf82548e90b5acf4cef8ae9b7613404301" },
 };
 
 /**

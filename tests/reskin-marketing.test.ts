@@ -191,7 +191,7 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       expect(h).toMatch(TITLE_SCRIBBLE("h1"));
       expect(count(h, 'class="s-card')).toBe(5);
       const f = html(AffiliateForm, { lang });
-      expect(count(f, 'class="s-input')).toBe(5);
+      expect(count(f, 'class="s-input')).toBe(6); // name, email, phone, country (rule 1470), channel, audience
       expect(f).toContain("data-terms-consent");
       expect(f).toMatch(/<button[^>]*class="s-btn/);
       expect(f).not.toMatch(/class="input/);

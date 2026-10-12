@@ -14,6 +14,7 @@ import {
   PARTNER_TERMS_VERSION, earlyOfferLastDay, ksaDay, maskIban, normalizeCode, optionalTax, parsePartnerCookie, payoutProblem, referralStatus, suggestCode,
   taxFlags, taxNumberOf, taxTotals, validAmount, validCountry, validDay, validIban,
   type Attribution, type Bank, type Commission, type LedgerRow, type NotCounted, type Payout, type ReferralStatus,
+  PARTNER_COUNTRIES,
 } from "./partner-rules";
 
 /**
@@ -67,7 +68,7 @@ export type Payment = {
  * A public application. `consentAt` and `termsVersion`: when the applicant agreed to the programme terms and which
  * version (`PARTNER_TERMS_VERSION`, rule 414); missing on applications sent before consent was asked.
  */
-export type Application = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: "ar" | "en"; at: string; consentAt?: string; termsVersion?: string };
+export type Application = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: "ar" | "en"; at: string; consentAt?: string; termsVersion?: string; /** Where the applicant lives (rule 1470); absent before 2026-10-12. */ country?: string };
 export type Decision = { status: "approved" | "rejected"; code?: string; at: string; by: string };
 
 const partnerKey = (email: string) => `partner:${email}`;
@@ -620,7 +621,7 @@ export async function listApplications(): Promise<(Omit<Application, "consentAt"
       const id = applicationId(a);
       return [{
         id, name: a.name ?? "", email: a.email ?? "", phone: a.phone ?? "", channel: a.channel ?? "", audience: a.audience ?? "", lang: a.lang === "en" ? "en" as const : "ar" as const, at: a.at ?? "",
-        consentAt: a.consentAt ?? null, termsVersion: a.termsVersion ?? null,
+        consentAt: a.consentAt ?? null, termsVersion: a.termsVersion ?? null, ...(typeof a.country === "string" ? { country: a.country } : {}),
         decision: decisions[id] ?? null, suggested: suggestCode(a.name ?? "", a.email ?? ""),
       }];
     } catch {
@@ -827,7 +828,7 @@ export async function partnerDashboard(email: string, now: number = Date.now()) 
   };
 }
 
-export type BankError = "not_partner" | "bad_holder" | "bad_iban" | "bad_country" | "bad_tax_number" | "vat_number_required";
+export type BankError = "not_partner" | "bad_holder" | "bad_iban" | "bad_country" | "country_closed" | "bad_tax_number" | "vat_number_required";
 export type BankInput = { holder?: unknown; iban?: unknown; country?: unknown; taxNumber?: unknown; vatRegistered?: unknown };
 /**
  * The partner's own payout details (rule 411): account holder, any country's valid IBAN, the country the partner lives
@@ -842,6 +843,8 @@ export async function saveBank(email: string, input: BankInput): Promise<{ ok: t
   if (!iban) return { ok: false, error: "bad_iban" };
   const country = validCountry(input.country);
   if (!country) return { ok: false, error: "bad_country" };
+  // Saudi Arabia only for now (rule 1471), like the application.
+  if (!PARTNER_COUNTRIES.includes(country)) return { ok: false, error: "country_closed" };
   const taxNumber = taxNumberOf(input.taxNumber);
   if (taxNumber === "bad") return { ok: false, error: "bad_tax_number" };
   const vatRegistered = input.vatRegistered === true;

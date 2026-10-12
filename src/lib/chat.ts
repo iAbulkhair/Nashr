@@ -3,7 +3,7 @@ import { skillsBlock } from "./skills";
 import { asData, fenceMemory } from "./json";
 import { costUsd } from "./usage";
 import { metered } from "./metered";
-import { CHAT_MAX_CALLS, estTokens, fitFirstCall, inputEstimateUsd, nextMaxTokens, trimHistory, type InputEst } from "./chat-budget";
+import { CHAT_MAX_CALLS, estTokens, fitFirstCall, inputEstimateUsd, nextMaxTokens, trimHistory, workspaceLarge, type InputEst } from "./chat-budget";
 import { MODEL_BUDGET, ModelPaused, PAUSED_REPLY, anthropic, modelState, until } from "./model";
 import type Anthropic from "@anthropic-ai/sdk";
 import { CAPS, db, pushCapped } from "./db";
@@ -54,7 +54,7 @@ import { MODEL_UNAVAILABLE, MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
  * read the notes instead of offering Approve.
  */
 export type ChatItem = { id: string; type: TaskType; channel: string; title: string; body: string; status: string; xflag?: { by: AgentId; n: number }[] };
-export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[]; /** workspace files written during this turn, rendered as collapsible cards (first-run onboarding) */ files?: { name: string; content: string }[]; /** starter plan proposed at the end of onboarding */ plan?: PlanItem[]; /** a handoff Majed proposed during this turn (src/lib/handoffs.ts), rendered as a card with Run buttons */ handoff?: { id: string }; /** brand changes proposed during this turn, waiting for the owner's Save (src/lib/brand-proposals.ts) */ proposals?: BrandProposal[]; /** absences Reem proposed during this turn (contact_away), waiting for a person's Save (src/lib/secretary-away.ts) */ awayProposals?: AwayProposal[]; /** instructions an agent proposed during this turn (propose_instruction), waiting for the owner's Apply (src/lib/instruction-proposals.ts); absent on older messages */ instructionProposals?: InstructionProposalCard[] };
+export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[]; /** workspace files written during this turn, rendered as collapsible cards (first-run onboarding) */ files?: { name: string; content: string }[]; /** starter plan proposed at the end of onboarding */ plan?: PlanItem[]; /** a handoff Majed proposed during this turn (src/lib/handoffs.ts), rendered as a card with Run buttons */ handoff?: { id: string }; /** brand changes proposed during this turn, waiting for the owner's Save (src/lib/brand-proposals.ts) */ proposals?: BrandProposal[]; /** absences Reem proposed during this turn (contact_away), waiting for a person's Save (src/lib/secretary-away.ts) */ awayProposals?: AwayProposal[]; /** instructions an agent proposed during this turn (propose_instruction), waiting for the owner's Apply (src/lib/instruction-proposals.ts); absent on older messages */ instructionProposals?: InstructionProposalCard[]; /** the workspace was large for this turn (`workspaceLarge`, rule 1484): the app shows a quiet hint under the reply; absent before 2026-10-12 */ large?: true };
 export type PlanItem = { title: string; type: TaskType; brief: string; added?: boolean };
 
 const key = (email: string, conv?: string) => (conv && conv !== "default" ? `chat:${email}:${conv}` : `chat:${email}`);
@@ -453,7 +453,9 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
   // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
   // and output, plus the tool results added since.
-  const fit = fitFirstCall(model, trimHistory(thread), JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
+  const trimmed = trimHistory(thread);
+  const fit = fitFirstCall(model, trimmed, JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
+  const large = workspaceLarge(trimmed.length, fit);
   const messages: Anthropic.MessageParam[] = fit.messages;
   if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
   let spent = 0;
@@ -522,7 +524,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // cut off at its cap, or the ceiling left no room for another call. What the tools made is on the reply's cards and in
   // the inbox either way, and a limit a tool hit still raises its dialog.
   const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
-  const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
+  const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
   await deliver(email, m, conv);
   return withLimit(m, actions, spent);
 }

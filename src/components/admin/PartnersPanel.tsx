@@ -4,7 +4,7 @@ import { adminFetch } from "@/lib/admin-fetch";
 import { useAdminForm } from "./AdminForm";
 import { NEW_TERMS_FROM, PAYOUT_MIN_SAR, codeProblem, countryName, ksaDay, normalizeCode, sarText, taxField, type Bank, type Commission, type Payout } from "@/lib/partner-rules";
 
-type App = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: string; at: string; consentAt: string | null; termsVersion: string | null; suggested: string; decision: { status: "approved" | "rejected"; code?: string; at: string; by: string } | null };
+type App = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: string; at: string; consentAt: string | null; termsVersion: string | null; country?: string; suggested: string; decision: { status: "approved" | "rejected"; code?: string; at: string; by: string } | null };
 type PartnerRow = {
   email: string; name: string; code: string; approvedAt: string; bank: Bank | null; bankConfirmed: boolean; accountAfterApproval: boolean; hasAccount: boolean;
   terms: { at: string; version: string; via: "application" | "founder"; by?: string } | null;
@@ -90,7 +90,7 @@ function AppRow({ a, L, onAct }: { a: App; L: L; onAct: Act }) {
   const consented = !!(a.consentAt && a.termsVersion);
   return (
     <tr className="border-t border-ink/5 align-top">
-      <td className="p-1"><p>{a.name}</p><p className="text-muted" dir="ltr">{a.email}</p><p className="text-muted" dir="ltr">{a.phone}</p></td>
+      <td className="p-1"><p>{a.name}</p><p className="text-muted" dir="ltr">{a.email}</p><p className="text-muted" dir="ltr">{a.phone}{a.country ? ` · ${a.country}` : ""}</p></td>
       <td className="p-1"><p>{a.channel}</p><p className="text-muted">{a.audience}</p></td>
       <td className="tnum p-1" dir="ltr">
         {a.at.slice(0, 10)}
