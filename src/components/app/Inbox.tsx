@@ -148,13 +148,15 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
     const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, version, ...(repeat ? { again: true } : {}), ...(live ? { live: true } : {}) }) }).catch(() => null);
     setPublishing(null);
     // No answer, or the platform's time limit (a 5xx with no reason): the post may be live, so the owner checks first.
-    if (!res || (res.status >= 500 && res.status !== 502)) { setAgain({ id, provider, kind: "unknown" }); forgetLocal(id); r.refresh(); return; }
+    // Except the agent-scope check that could not run (rule 1410, 503 `agent_scope_unavailable`): it answered before any send.
+    const scopeDown = res?.status === 503 && ((await res.clone().json().catch(() => ({}))) as { error?: string }).error === "agent_scope_unavailable";
+    if (!res || (res.status >= 500 && res.status !== 502 && !scopeDown)) { setAgain({ id, provider, kind: "unknown" }); forgetLocal(id); r.refresh(); return; }
     if (res.ok) {
       milestone("publish");
       const done = (await res.json().catch(() => ({}))) as { result?: { notes?: string[] } };
       if (done.result?.notes?.includes("image_failed")) setWpNote({ id, kind: "image" });
     } else {
-      const j = (await res.json().catch(() => ({}))) as { error?: string; violations?: Violation[]; url?: string };
+      const j = (await res.json().catch(() => ({}))) as { error?: string; violations?: Violation[]; url?: string; message?: string };
       if (j.error === "brand_violation" && j.violations) setRefused((p) => ({ ...p, [id]: j.violations! }));
       // Changed since the card was shown: nothing went out. The refresh below brings the current version.
       else if (j.error === "changed") setFailed({ id, why: "changed" });
@@ -162,6 +164,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
       // owner is asked, never a silent second post (src/lib/publish-once.ts).
       else if (j.error === "already_published" || j.error === "publish_unknown" || j.error === "publish_busy" || j.error === "duplicate_post" || j.error === "earlier_live") setAgain({ id, provider, kind: j.error === "already_published" ? "already" : j.error === "publish_unknown" ? "unknown" : j.error === "duplicate_post" ? "duplicate" : j.error === "earlier_live" ? "earlier" : "busy", url: j.url });
       else if (j.error === "wordpress_cannot_publish_live") setWpNote({ id, kind: "cannotLive" });
+      // Held by the agent-scope check (rule 1410): nothing went out; the server's message says why, in the item's language.
+      else if ((j.error === "agent_scope_held" || j.error === "agent_scope_unavailable") && j.message) alert(j.message);
       else alert(res.status === 403 ? t.team.errors.forbidden : i.publishFail);
     }
     // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server

@@ -107,6 +107,12 @@ export type Task = {
   published?: { provider: string; url: string; status: "draft" | "published"; at: string; id?: string }[];
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;
+  /**
+   * The founder let this exact text through the publish check (rule 1411, `POST /api/admin/agent-scope/release`): `hash` is
+   * `itemHash` of the item when released, so any later edit is checked again. Set only by that route. Rule 679 expand: new
+   * and optional; older code ignores it.
+   */
+  agentScopeRelease?: { hash: string; by: string; at: string };
   /** Put in the ad's name so its results can be matched back to this item (src/lib/ad-codes.ts). */
   adCode?: string;
   /** What the agent was asked for this batch: the owner's notes or brief, first 500 characters (`briefOf`). */

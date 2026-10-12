@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { CAPS, db, pushCapped } from "./db";
 import { listBrands } from "./brands";
-import { getBrand, type Brand } from "./brand";
+import { getBrand, type Brand, type Task } from "./brand";
 import { GENERATE_NOTES_READ } from "./notes-read";
 import { classify, type Classified } from "./agent-scope-classify";
 import { VERDICTS, isVerdict, type Verdict } from "./agent-scope-verdicts";
 import { agentScopeCeiling, agentScopeGenRefusal, countAgentScopeRefusal } from "./rate";
 import { agentById, agentForTask, type AgentId } from "./agents";
-import type { User } from "./auth";
+import { sc, type User } from "./auth";
 import type { TaskType } from "./tasks";
 
 /**
@@ -232,6 +232,33 @@ export async function scopeCheck(layer: "input" | "output", mode: AgentScopeMode
   if (mode !== "enforce") return { block: false };
   if (layer === "input") await countAgentScopeRefusal(ctx.user).catch((e) => console.error("agent scope refusal count failed", e instanceof Error ? e.name : "error"));
   return { block: true, verdict: verdict.verdict, reply: agentScopeRefusalText(verdict.verdict, ctx.lang, { brand: ctx.brand.name, otherBrands: ctx.otherBrands, classified: verdict.brand }) };
+}
+
+/**
+ * The publish check (rule 1410; spec section 6, R8): both doors that send an item to a platform, `POST /api/publish/[id]`
+ * (`where: "publish"`) and chat `publish_item` (`"chat_publish"`), ask this after their own gates and before `publishOnce`.
+ * The version check inside `publishOnce` (the route) or the approval check (chat) holds the text that goes out to the text
+ * checked here.
+ *
+ * - `output` off: nothing is asked.
+ * - A founder release (`Task.agentScopeRelease`, rule 1411) whose hash is the item's current `itemHash`: passes with no call.
+ *   An edit after the release changes the hash, so the edited text is checked again.
+ * - Otherwise the item's title and text are checked as agent output, with the owning agent of the type, the brand's name and
+ *   sector and the account's other brand names (one `Promise.all`; a store error on the names reads `[]`). The check FAILS
+ *   CLOSED in `enforce`: a classifier error holds the item with `agentScopeRetryText`. In shadow an error is logged and the
+ *   send goes ahead. The classifier's `paused` answer (model paused or mocked) passes: the items were checked when made.
+ */
+export async function publishScopeCheck(u: User, t: Task, where: "publish" | "chat_publish", lang: Lang, modes: AgentScopeModes, deadline?: number): Promise<ScopeDecision> {
+  if (modes.output === "off") return { block: false };
+  if (t.agentScopeRelease?.hash === itemHash(t)) return { block: false };
+  const [brand, otherBrands] = await Promise.all([
+    getBrand(sc(u)),
+    otherBrandNames(u).catch((e): string[] => {
+      console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+      return [];
+    }),
+  ]);
+  return scopeCheck("output", modes.output, itemText(t), { user: u, agent: agentForTask(t.type).id, where, lang, brand: { name: brand?.name ?? "", industry: brand?.industry ?? "" }, otherBrands, itemId: t.id, deadline }, { failClosed: true });
 }
 
 export { GENERATE_NOTES_READ };

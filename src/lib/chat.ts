@@ -40,7 +40,7 @@ import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoItems, chatIte
 import { getGov } from "./governance";
 import { DEFAULTS, route, type Rejected } from "./models/route";
 import { MODEL_UNAVAILABLE, MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
-import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandNames, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx } from "./agent-scope";
+import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandNames, publishScopeCheck, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx } from "./agent-scope";
 
 /**
  * An inbox item as a chat card shows it. `xflag`: the other agents that flagged it in the cross-agent review, each with
@@ -838,6 +838,10 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const brandNow = await getBrand(email);
       const held = gateTask(brandNow, t, { publish: true, provider });
       if (held.length) return `Not published. ${explain(held)} Tell the owner what to fix and where; do not work around the rule.`;
+      // The agent-scope publish check (rule 1410), last before the send. The approval check under the lock below holds the
+      // text: an approved, reviewed item is not edited without leaving approved. Enforce holds a refusal and an error.
+      const scopeHeld = await publishScopeCheck(user, t, "chat_publish", ctx.lang ?? (t.lang === "en" ? "en" : "ar"), ctx.modes ?? (await readAgentScopeModes()), deadline);
+      if (scopeHeld.block) return `Not sent: ${scopeHeld.reply}`;
       // The same checks again on the copy that is sent, under the publish lock.
       const r = await publishOnce(email, t.id, provider, {
         check: (cur) => {
