@@ -334,6 +334,10 @@ describe("chat system() with layers (rule 948)", () => {
   });
 
   it("rule 948: no layers, NO_LAYERS or nothing that applies leaves all three blocks as they were", async () => {
+    // The NOW line names the minute: five prompts built across a minute boundary differed only there (CI, 2026-10-12).
+    // Only Date is frozen, so the store's timers run as usual; the file's afterEach restores the real clock.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-12T13:27:30Z"));
     const before = await sys(brand, undefined);
     none(before.join("\n"), "THAKEEN STANDARDS", "OWNER INSTRUCTIONS", "<owner_instructions>", LINE);
     for (const l of [NO_LAYERS, layers([], []), layers([], WS, { paused: true }), layers([], WS, { limits: null })]) expect(await sys(brand, l)).toEqual(before);
