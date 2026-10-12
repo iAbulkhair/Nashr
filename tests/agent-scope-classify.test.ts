@@ -134,14 +134,10 @@ describe("rule 791: the classifier call", () => {
   it("Haiku is priced as Haiku, not as the Opus default", () => {
     const model = agentScopeModel();
     expect(hasRate(model)).toBe(true);
-    // The row of the old rate table in usage.ts (the catalog has the same numbers and is asked first), read, not copied here.
-    const row = /"claude-haiku-5-5": \{ in: ([\d.]+), out: ([\d.]+)/.exec(readFileSync("src/lib/usage.ts", "utf8"));
-    expect(row).not.toBeNull();
-    const inOut = Number(row![1]) + Number(row![2]);
-    expect(costUsd(model, { input_tokens: 1e6, output_tokens: 1e6 })).toBeCloseTo(inOut, 9);
+    // The catalog is the only rate table since rule 970 (2026-10-10: the old table in usage.ts was removed), read, not copied here.
     const catalog = modelById(model)!.rate;
-    expect(catalog.in + catalog.out).toBeCloseTo(inOut, 9);
-    // Opus 5 is the price of an unknown id: the classifier must be far below it.
+    expect(costUsd(model, { input_tokens: 1e6, output_tokens: 1e6 })).toBeCloseTo(catalog.in + catalog.out, 9);
+    // An unknown id is priced at the highest catalog rate (rule 970): the classifier must be far below it.
     expect(costUsd(model, { input_tokens: 1e6, output_tokens: 1e6 })).toBeLessThan(costUsd("not-a-model", { input_tokens: 1e6, output_tokens: 1e6 }) / 10);
   });
 

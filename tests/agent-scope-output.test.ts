@@ -32,8 +32,10 @@ vi.mock("@anthropic-ai/sdk", () => ({
     static BadRequestError = class extends Error {};
     beta = { messages: { stream: () => ({ finalMessage: async () => { sdk.gens++; return sdk.msg("claude-opus-5", [{ type: "text", text: JSON.stringify(sdk.items) }]); } }) } };
     messages = {
-      stream: (p: { model: string }) => ({
+      // Since rule 980 (2026-10-10) the reviewer and the judge stream too: a call without tools is answered as `create` is.
+      stream: (p: { model: string; tools?: unknown[]; system: string | { text: string }[] }) => ({
         finalMessage: async () => {
+          if (!p.tools) return this.messages.create(p);
           sdk.streams++;
           sdk.onStream?.();
           const next = sdk.chat.shift() ?? [{ type: "text", text: "أهلاً" }];

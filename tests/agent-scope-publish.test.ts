@@ -187,7 +187,9 @@ describe("rule 1411: the founder's release", () => {
   });
   it("a brand outside the account's list is 400; a missing account or item 404; a bad body 400", async () => {
     const u = await owner("asr3");
-    const added = (await addBrand((await getUser(u.email))!, "Second")) as { id: string };
+    // A second brand needs a plan with room for it since the brand caps (rule 1391: trial and Starter hold one).
+    const added = (await addBrand({ ...(await getUser(u.email))!, plan: "pro" }, "Second")) as { id: string };
+    expect(added.id).toBeTruthy();
     await saveTask(u.email, task("r3", "pending"), true);
     await adminSignIn();
     expect((await releaseCall({ email: u.email, brandId: "nope", itemId: "r3" })).status).toBe(400);
