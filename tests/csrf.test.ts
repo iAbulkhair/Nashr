@@ -18,6 +18,8 @@ import { config, proxy } from "@/proxy";
  */
 
 const SITE = "https://thakeen.com";
+/** A public host that is neither SITE nor the fallback origin. */
+const OTHER = "https://other-site.example";
 
 /** A request as the browser sends it to production: TLS ended at the edge, the public host in Host and X-Forwarded-*. */
 const req = (path: string, init: { method?: string; headers?: Record<string, string>; base?: string } = {}) =>
@@ -114,16 +116,17 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   it("Sec-Fetch-Site same-origin decides alone: it passes when the server sees neither its public host nor APP_ORIGIN", () => {
     // Hostinger with no APP_ORIGIN, behind a proxy that rewrites Host and sends no X-Forwarded-Host: comparing Origin
     // here would refuse every login. A browser never pairs same-origin with a foreign Origin; a forged pair has no cookie.
+    // The fallback origin is the live site (rule 987), so the public host here is another one: a host with no APP_ORIGIN.
     vi.stubEnv("APP_ORIGIN", "");
-    expect(appOrigin()).not.toBe(SITE);
-    const r = new NextRequest("http://127.0.0.1:3000/api/auth/login", { method: "POST", headers: { host: "127.0.0.1:3000", ...SAME }, body: "{}" });
+    expect(appOrigin()).not.toBe(OTHER);
+    const r = new NextRequest("http://127.0.0.1:3000/api/auth/login", { method: "POST", headers: { host: "127.0.0.1:3000", "sec-fetch-site": "same-origin", origin: OTHER }, body: "{}" });
     expect(crossSiteRefusal(r)).toBeNull();
   });
 
   it("without Sec-Fetch-Site, an Origin that matches X-Forwarded-Host passes with no APP_ORIGIN (Hostinger behind its proxy)", () => {
     vi.stubEnv("APP_ORIGIN", "");
-    expect(appOrigin()).not.toBe(SITE);
-    const r = req("/api/auth/login", { base: "http://localhost:3000", headers: { host: "localhost:3000", "x-forwarded-host": "thakeen.com", "x-forwarded-proto": "https", origin: SITE } });
+    expect(appOrigin()).not.toBe(OTHER);
+    const r = req("/api/auth/login", { base: "http://localhost:3000", headers: { host: "localhost:3000", "x-forwarded-host": "other-site.example", "x-forwarded-proto": "https", origin: OTHER } });
     expect(crossSiteRefusal(r)).toBeNull();
   });
 

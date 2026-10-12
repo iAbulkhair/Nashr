@@ -80,7 +80,7 @@ React components over the classes above, restyled to our tokens and RTL (not sha
 | `Menu` | `Menu.tsx` (rule 1112) | Menu button pattern: `aria-haspopup="menu"`, `role="menu"` / `menuitem`, arrows wrap (`menuIndex`), Home/End, Escape returns focus, a `footer` outside the menu role for forms. The rail's account menu, the chat's specialists |
 | `Tabs`, `TabPanel` | `Tabs.tsx` (rule 1113) | Tablist with automatic activation; the arrow moves the way it points in RTL (`tabStep`); 44px tabs on touch. The calendar's week, month and agenda |
 | `PageHeader` | `PageHeader.tsx` (rule 1114) | Server-rendered title row: h1 with a `ScribbleStatic` underline drawn in the page's direction, a sub line, actions at the inline end |
-| `Skeleton`, `SkeletonText`, `LoadingRegion` | `Skeleton.tsx` (rule 1115) | Shapes hidden from screen readers inside one polite `aria-busy` status. `src/components/app/RouteLoading.tsx` builds the `loading.tsx` screens from them |
+| `Skeleton`, `SkeletonText`, `LoadingRegion` | `Skeleton.tsx` (rule 1115) | Shapes hidden from screen readers inside one polite `aria-busy` status. `src/components/app/RouteLoading.tsx` builds the `loading.tsx` screens from them. A `loading.tsx` is a Suspense boundary, and a `redirect()` behind one is a client-side meta refresh, not a 307: never put one above a page that redirects (none at the app root); such a page redirects first, then can wrap its body in `<Suspense fallback={<RouteLoading />}>` |
 | `EmptyState`, `ErrorState` | `EmptyState.tsx`, `ErrorState.tsx` (rule 1116) | Nothing yet: one line and one action, plain content. Failed: an alert with a busy Try again |
 | `CopyButton` | `CopyButton.tsx` (rule 1117) | Copies and says so in a polite status; `iconOnly` is a 44px named icon button |
 

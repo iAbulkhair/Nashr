@@ -5,6 +5,12 @@ import { MEDIA_MODELS } from "./media-catalog";
 export type Lang = "ar" | "en";
 export const LANGS: Lang[] = ["ar", "en"];
 
+/**
+ * The support address the product shows (founder decision 2026-10-11, rule 924). Every mailto and every mention of it
+ * reads this constant; the old code-name domain's address is gone from src/ (tests/release-honesty.test.ts).
+ */
+export const SUPPORT_EMAIL = "hello@thakeen.com";
+
 export function isLang(v: string): v is Lang {
   return v === "ar" || v === "en";
 }
@@ -141,7 +147,6 @@ export type Dict = {
   calendar: { eyebrow: string; title: string; sub: string; items: { when: string; name: string; play: string }[] };
   pricing: { eyebrow: string; title: string; sub: string; trial: string; annual: string; plans: PlanCard[]; creditsTitle: string; credits: { action: string; cost: string }[] };
   faq: { eyebrow: string; title: string; items: { q: string; a: string }[] };
-  waitlist: { title: string; sub: string; email: string; company: string; industry: string; industries: string[]; submit: string; ok: string; err: string };
   footer: { tagline: string; rights: string; links: { label: string; href: string }[] };
 };
 
@@ -249,10 +254,10 @@ export const dict: Record<Lang, Dict> = {
       trial: `تجربة 3 أيام مجاناً: ${PLAN_CREDITS.trial} كريدت و${chatMessagesText("ar", CHAT_ALLOWANCE.trial)} — بدون بطاقة`,
       annual: "ادفع سنوياً ووفّر شهرين (قريباً)",
       plans: [
-        { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, tagline: "للتاجر الفرد والمبدع", features: [`علامات بلا حد، ${seatsText("ar", PLAN_SEATS.starter)}`, `${chatMessagesText("ar", CHAT_ALLOWANCE.starter)} مع الفريق شهرياً`, "منشورات سوشال (الصور قريباً)", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
-        { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", `${chatMessagesText("ar", CHAT_ALLOWANCE.pro)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`, "ضبط الإعلانات تلقائياً ضمن حدودك (قريباً)", "حملات واتساب + استرجاع السلات (قريباً)", "تدقيق إعلانات أسبوعي وكشف الهدر (قريباً)"], cta: "ابدأ مجاناً" },
-        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً — يتجدد كل شهر ولا يترحّل`, tagline: "للفرق والشركات الأكبر", features: ["كل ما في الاحتراف", `${chatMessagesText("ar", CHAT_ALLOWANCE.business)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`, "تقارير بعلامتك للعملاء (قريباً)", "ضبط الإعلانات كل ساعتين (قريباً)"], cta: "ابدأ مجاناً" },
-        { id: "agency", name: "الوكالات", price: "تواصل معنا", period: "فوترة سنوية", credits: `رصيد مخصص، من ${formatCount(AGENCY_MIN.credits)} كريدت شهرياً`, tagline: "للوكالات والمجموعات الكبيرة", features: ["الوكلاء المتخصصون كلهم", "رسائل محادثة شهرية حسب الاتفاق", "استضافة البيانات داخل السعودية (قريباً)", "ربط CRM ومستودع البيانات (قريباً)", "تدريب نموذج على صوت علامتك (قريباً)", "مدير نجاح مخصص", "SLA ساعة واحدة (قريباً)", "عدد مقاعد حسب فريقك"], cta: "تواصل معنا" },
+        { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, tagline: "للتاجر الفرد والمبدع", features: [`علامات بلا حد، ${seatsText("ar", PLAN_SEATS.starter)}`, `${chatMessagesText("ar", CHAT_ALLOWANCE.starter)} مع الفريق شهرياً`, "منشورات سوشال", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
+        { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", `${chatMessagesText("ar", CHAT_ALLOWANCE.pro)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`], cta: "ابدأ مجاناً" },
+        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً — يتجدد كل شهر ولا يترحّل`, tagline: "للفرق والشركات الأكبر", features: ["كل ما في الاحتراف", `${chatMessagesText("ar", CHAT_ALLOWANCE.business)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`], cta: "ابدأ مجاناً" },
+        { id: "agency", name: "الوكالات", price: "تواصل معنا", period: "فوترة سنوية", credits: `رصيد مخصص، من ${formatCount(AGENCY_MIN.credits)} كريدت شهرياً`, tagline: "للوكالات والمجموعات الكبيرة", features: ["الوكلاء المتخصصون كلهم", "رسائل محادثة شهرية حسب الاتفاق", "مدير نجاح مخصص", "عدد مقاعد حسب فريقك"], cta: "تواصل معنا" },
       ],
       creditsTitle: "كم تكلّف كل مهمة؟",
       credits: creditRows("ar"),
@@ -271,17 +276,6 @@ export const dict: Record<Lang, Dict> = {
         { q: "أقدر ألغي؟", a: "نعم. تجربة 3 أيام بدون بطاقة، وبعدها تختار خطتك من صفحة الاشتراك. ولتغيير خطتك أو إلغائها، تواصل معنا." },
         { q: "من هم بقية الفريق؟", a: "سامي للمبيعات، رزان للمالية والتسعير، فارس للنمو، دانة للتقارير والعروض، ماجد المستشار التنفيذي، ليان للمنتج والاحتفاظ، وريم السكرتيرة لمتابعة تسويق علامتك. كلهم في الدردشة نفسها ومن ملف العلامة نفسه." },
       ],
-    },
-    waitlist: {
-      title: "احجز مكانك في الإطلاق.",
-      sub: "أول 100 علامة تحصل على شهرين مجاناً على خطة الاحتراف ودعم إعداد شخصي.",
-      email: "بريدك الإلكتروني",
-      company: "اسم النشاط أو الموقع",
-      industry: "القطاع",
-      industries: ["متجر إلكتروني", "عقار", "قانوني", "شركة ناشئة", "عيادة", "مطعم", "وكالة", "أخرى"],
-      submit: "احجز مكاني",
-      ok: "تم! وصلتنا بياناتك.",
-      err: "لم يتم الإرسال. جرّب مرة أخرى أو راسلنا على hello@nashr.ai",
     },
     footer: {
       tagline: "وكيلة تسويق مبنية للخليج.",
@@ -401,10 +395,10 @@ export const dict: Record<Lang, Dict> = {
       trial: `3-day free trial: ${PLAN_CREDITS.trial} credits and ${chatMessagesText("en", CHAT_ALLOWANCE.trial)} — no card`,
       annual: "Pay yearly, get two months free (coming soon)",
       plans: [
-        { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, tagline: "For solo sellers and creators", features: [`Unlimited brands, ${seatsText("en", PLAN_SEATS.starter)}`, `${chatMessagesText("en", CHAT_ALLOWANCE.starter)} a month with the team`, "Social posts (images coming soon)", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
-        { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", `${chatMessagesText("en", CHAT_ALLOWANCE.pro)} a month with the team`, `${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`, "Auto ad optimization within your guardrails (coming soon)", "WhatsApp campaigns + cart recovery (coming soon)", "Weekly ad audit and waste detection (coming soon)"], cta: "Start free" },
-        { id: "business", name: "Business", price: String(P.business), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.business)} credits / month, reset monthly`, tagline: "For bigger teams and businesses", features: ["Everything in Pro", `${chatMessagesText("en", CHAT_ALLOWANCE.business)} a month with the team`, `${seatsText("en", PLAN_SEATS.business)} including the owner`, "White-label client reports (coming soon)", "Ad optimization every 2 hours (coming soon)"], cta: "Start free" },
-        { id: "agency", name: "Agency", price: "Contact us", period: "annual billing", credits: `Custom credits, from ${formatCount(AGENCY_MIN.credits)} a month`, tagline: "For agencies and large groups", features: ["All specialist agents", "Custom monthly chat messages", "Data hosted inside Saudi Arabia (coming soon)", "CRM and data warehouse connections (coming soon)", "Model trained on your brand voice (coming soon)", "Dedicated success manager", "1-hour SLA (coming soon)", "Seats sized to your team"], cta: "Contact us" },
+        { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, tagline: "For solo sellers and creators", features: [`Unlimited brands, ${seatsText("en", PLAN_SEATS.starter)}`, `${chatMessagesText("en", CHAT_ALLOWANCE.starter)} a month with the team`, "Social posts", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
+        { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", `${chatMessagesText("en", CHAT_ALLOWANCE.pro)} a month with the team`, `${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`], cta: "Start free" },
+        { id: "business", name: "Business", price: String(P.business), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.business)} credits / month, reset monthly`, tagline: "For bigger teams and businesses", features: ["Everything in Pro", `${chatMessagesText("en", CHAT_ALLOWANCE.business)} a month with the team`, `${seatsText("en", PLAN_SEATS.business)} including the owner`], cta: "Start free" },
+        { id: "agency", name: "Agency", price: "Contact us", period: "annual billing", credits: `Custom credits, from ${formatCount(AGENCY_MIN.credits)} a month`, tagline: "For agencies and large groups", features: ["All specialist agents", "Custom monthly chat messages", "Dedicated success manager", "Seats sized to your team"], cta: "Contact us" },
       ],
       creditsTitle: "What does each task cost?",
       credits: creditRows("en"),
@@ -423,17 +417,6 @@ export const dict: Record<Lang, Dict> = {
         { q: "Can I cancel anytime?", a: "Yes. 3-day trial with no card. Upgrade from Subscription; to change or cancel your plan, contact us." },
         { q: "Who else is on the team?", a: "Sami for sales, Razan for finance and pricing, Faris for growth, Dana for reports and decks, Majed the executive advisor, Layan for product and retention, and Reem the secretary for your brand's marketing to-dos and follow-ups. All in the same chat, from the same brand file." },
       ],
-    },
-    waitlist: {
-      title: "Reserve your spot for launch.",
-      sub: "The first 100 brands get two months free on Pro and personal onboarding.",
-      email: "Your email",
-      company: "Business name or website",
-      industry: "Industry",
-      industries: ["E-commerce", "Real estate", "Legal", "Startup", "Clinic", "Restaurant", "Agency", "Other"],
-      submit: "Reserve my spot",
-      ok: "Done. We received your details.",
-      err: "Didn't send. Try again or email hello@nashr.ai",
     },
     footer: {
       tagline: "A marketing agent built for the Gulf.",

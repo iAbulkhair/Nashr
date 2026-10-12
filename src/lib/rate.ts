@@ -46,15 +46,58 @@ export function retryLater(body: Record<string, unknown> | string | null, window
  *  - On Vercel (`onVercel()`, `VERCEL=1`): Vercel overwrites `x-vercel-forwarded-for` and `x-real-ip` with the client's
  *    address, so they are read first.
  *  - Anywhere else (live Hostinger since 2026-10-07): those two pass through from the client, as
- *    `x-vercel-forwarded-for` did on thakeen.com on 2026-10-08, and are ignored. Only the LAST `x-forwarded-for` hop is
- *    read: the one the proxy nearest the app appended, or the socket address `next start` fills in when no proxy sent
- *    the header. Unverified on Hostinger: if its CDN (hcdn) is that nearest proxy's client, the hop is the CDN's edge
- *    and callers behind one edge share a bucket. flows.md section 51 item 7 is the staging check.
+ *    `x-vercel-forwarded-for` did on thakeen.com on 2026-10-08, and are ignored. Only `x-forwarded-for` is read, and
+ *    only the hop the nearest trusted proxy appended: counted from the right, `trustedProxyHops()` entries in (rule
+ *    979). The default 1 is the LAST hop: the one the proxy nearest the app appended, or the socket address
+ *    `next start` fills in when no proxy sent the header. Unverified on Hostinger: if its CDN (hcdn) appends the client
+ *    and a second proxy then appends the CDN's edge, the last hop is the edge and callers behind one edge share a
+ *    bucket; `TRUSTED_PROXY_HOPS=2` then reads the client. `GET /api/admin/client-ip` (rule 908) shows the founder the
+ *    list the app receives, and flows.md section 51 item 7 is the check. A list shorter than the hop count (a request
+ *    that skipped the outer proxy) reads its first entry, which a trusted proxy wrote.
  * No address at all: the one shared "unknown" bucket, so a missing header throttles everyone rather than no one.
  */
 export const clientIp = (req: Request) =>
   (onVercel() ? (req.headers.get("x-vercel-forwarded-for") ?? req.headers.get("x-real-ip") ?? "").split(",")[0].trim() : "") ||
-  (req.headers.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "unknown";
+  trustedHop(forwardedFor(req), trustedProxyHops()) || "unknown";
+
+/** Most proxies `TRUSTED_PROXY_HOPS` may name. More is a typo, and reading far to the left reads what a client wrote. */
+export const MAX_PROXY_HOPS = 3;
+
+/**
+ * How many proxies in front of the app append to `x-forwarded-for` (rule 979): `TRUSTED_PROXY_HOPS`, a whole number
+ * from 1 to `MAX_PROXY_HOPS`, read at call time. Unset or anything else is 1, today's behaviour, so a typo never moves
+ * the bucket further left, towards the entries a client writes.
+ */
+export function trustedProxyHops(): number {
+  const raw = (process.env.TRUSTED_PROXY_HOPS ?? "").trim();
+  return /^[1-9]$/.test(raw) && Number(raw) <= MAX_PROXY_HOPS ? Number(raw) : 1;
+}
+
+/** The `x-forwarded-for` entries in order, each trimmed (empty entries kept, so a trailing comma stays an empty hop). */
+const forwardedFor = (req: Request) => (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim());
+
+/** The entry `hops` from the right; a shorter list gives its first entry. */
+const trustedHop = (list: string[], hops: number) => list[Math.max(0, list.length - hops)];
+
+/**
+ * What the app receives as the caller's address, for the founder only (`GET /api/admin/client-ip`, rule 908): the
+ * `x-forwarded-for` list in order, the single-value headers some proxies set, the hop count in force and the bucket
+ * `clientIp` picks. Read here so this file stays the only one naming an address header (rule 773). Values are the
+ * caller's own request, nothing stored.
+ */
+export function clientIpReport(req: Request) {
+  const one = (name: string) => req.headers.get(name);
+  return {
+    forwardedFor: req.headers.get("x-forwarded-for") === null ? [] : forwardedFor(req),
+    realIp: one("x-real-ip"),
+    vercelForwardedFor: one("x-vercel-forwarded-for"),
+    cfConnectingIp: one("cf-connecting-ip"),
+    trueClientIp: one("true-client-ip"),
+    onVercel: onVercel(),
+    trustedProxyHops: trustedProxyHops(),
+    bucket: clientIp(req),
+  };
+}
 
 /**
  * Chat turns per account, in a short window (the owner's email: members, brands and connected apps share the account's

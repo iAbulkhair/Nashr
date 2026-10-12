@@ -287,9 +287,9 @@ test.describe("forgot password", () => {
   test("answers the same way whether or not the address has an account", async ({ page }) => {
     const message = async (email: string) => {
       await open(page, "/en/app/forgot");
-      // The field's accessible name is the page title rather than "Email" (see D15); select it by what it actually
-      // announces so the test states the real, defective contract instead of the one we wish existed.
-      await fillWhenReady(page.getByRole("textbox", { name: "Reset your password" }), email);
+      // D15 is fixed: the field announces its own visible label, "Email" (rule 1090), instead of the page title it
+      // used to borrow. Selected by that label, so the test fails again if the field ever loses it.
+      await fillWhenReady(page.getByRole("textbox", { name: "Email", exact: true }), email);
       await page.getByRole("button", { name: "Send the link" }).click();
       // Read the banner itself, not the page: a `main, body` locator matches two elements and dies on strict mode.
       // Either wording is accepted here; the assertion below is that BOTH addresses are answered with the same one.
