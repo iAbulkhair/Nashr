@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { adminActor, normalizeEmail, saveUser } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { activeCount, listBrands } from "@/lib/brands";
@@ -18,6 +19,9 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const b = (await req.json().catch(() => ({}))) as { email?: unknown; brandCap?: unknown; reason?: unknown };
   const noReason = reasonRefused(b.reason);
   if (noReason) return noReason;

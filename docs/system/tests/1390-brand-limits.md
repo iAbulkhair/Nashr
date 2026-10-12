@@ -20,3 +20,4 @@ Stored shape (rule 679): one optional field, `User.brandCap`. Expand only: old c
 - Overlap with the money-price-batch session: `src/lib/pricing.ts` (new constants only), `src/app/api/admin/plan/route.ts` (two fields in the rows), `src/components/admin/Users.tsx` (one column and one form), the plan cards in `src/lib/i18n.ts`.
 - Not in this change: `entitlements.ts` and the `PlanIncludesCard` do not list brands yet (the entitlements Part B branch touches them); the brand id in the URL (spec Part C).
 - Founder actions: set each Agency account's number in the console (Users, Brands column) once its contract says it; until then Agency accounts get 10. After release, accounts above their plan's number keep their brands and cannot add one.
+- 2026-10-12 build batch: `POST /api/admin/brand-cap` calls `secondFactorRefusal(req, who)` right after `adminActor` (rule 1376 from the second factor change, pinned by the route scan in `tests/admin-2fa.test.ts`).
