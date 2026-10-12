@@ -140,6 +140,16 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // non-core files, which need no action of their own).
   "PUT /api/brand": g("admin", "brand.write"),
   "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
+  // Agent instructions of the brand workspace (agent skills portal, rule 949).
+  "PUT /api/instructions": g("admin", "instructions.write"),
+  "POST /api/instructions/activate": g("admin", "instructions.write"),
+  "POST /api/instructions/discard": g("admin", "instructions.write"),
+  "POST /api/instructions/restore": g("admin", "instructions.write"),
+  "POST /api/instructions/refs/search": g("admin", "instructions.write"),
+  "POST /api/instructions/refs/import": g("admin", "instructions.write"),
+  "POST /api/instructions/test": g("admin", "instructions.test"),
+  // Applying or dismissing an instruction an agent proposed in chat (rules 953-954): the owner's click is the only approval.
+  "POST /api/instructions/proposals/[id]": g("admin", "instructions.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
@@ -212,6 +222,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
   "POST /api/admin/wishlist": "admin-console",
+  "POST /api/admin/skills": "admin-console",
+  "PUT /api/admin/skills": "admin-console",
   "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
   "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
@@ -253,6 +265,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/golden": "admin-console",
   "GET /api/admin/media": "admin-console",
   "GET /api/admin/wishlist": "admin-console",
+  "GET /api/admin/skills": "admin-console",
   "GET /api/admin/leads": "admin-console",
   "GET /api/admin/client-ip": "admin-console",
   "GET /api/admin/log": "admin-console",
@@ -275,6 +288,9 @@ const READS: Record<string, Gate> = {
   "GET /api/conversations": "member",
   "GET /api/files": "member",
   "GET /api/governance": "member",
+  "GET /api/instructions": "member",
+  "GET /api/instructions/refs": "member",
+  "GET /api/instructions/history": "member",
   "GET /api/notifications": "member",
   "GET /api/onboard/plan": "member",
   "GET /api/performance": "member",
@@ -323,6 +339,8 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * writes a log or record a script could churn. The list may only grow.
  */
 const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
+  // Agent instructions (rules 930-959).
+  "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */

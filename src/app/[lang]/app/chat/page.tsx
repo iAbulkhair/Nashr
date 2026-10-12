@@ -55,7 +55,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
       <div className="grid min-h-0 flex-1">
         {/* The same key as the default thread below, so the panel keeps its state when onboarding ends and the page
             re-renders with the brand file (rule 962). */}
-        <ChatPanel key="default" t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} chat={chat} canConfirmChina={canConfirmChina} />
+        <ChatPanel key="default" t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} chat={chat} canConfirmChina={canConfirmChina} canInstructions={can(u, "instructions.write")} />
       </div>
     );
   }
@@ -91,7 +91,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
       {/* Keyed by the thread (rule 962): the sidebar's links to another conversation or specialist are client navigations
           to this same page, and without a key React keeps the panel's state, so the old thread stayed on screen and the
           next message went to the old conversation. A new key mounts a fresh panel on the new thread's messages. */}
-      <ChatPanel key={conv ?? agentParam ?? "default"} t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} chat={chat} canConfirmChina={canConfirmChina} active={active ? { id: active.id, model: active.model } : null} />
+      <ChatPanel key={conv ?? agentParam ?? "default"} t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canInstructions={can(u, "instructions.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} chat={chat} canConfirmChina={canConfirmChina} active={active ? { id: active.id, model: active.model } : null} />
       <div className="hidden overflow-y-auto xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
     </div>
   );

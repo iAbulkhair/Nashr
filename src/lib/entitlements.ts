@@ -4,6 +4,7 @@ import { billingLocked } from "./billing-state";
 import { chatStatus, type ChatStatus } from "./chat-allowance";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS, type VideoModelId } from "./media-catalog";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "./pricing";
+import { INSTRUCTION_CHARS, INSTRUCTION_PLAN, type InstructionLimits } from "./instructions-safety";
 import { chatCaps } from "./rate";
 import { route } from "./models/route";
 import { seatsUsed } from "./team";
@@ -39,6 +40,8 @@ export type Entitlements = {
   /** The video models the plan includes. Whether each is switched on is a separate check (src/lib/media/config.ts). */
   media: { video: readonly VideoModelId[] };
   agents: readonly AgentId[];
+  /** Customer instructions per brand workspace (agent skills portal, spec 9, rule 935). */
+  instructions: InstructionLimits;
 };
 
 /** The part of the user record `entitlements` reads, so a caller may pass a full `User` or a hand-built fixture. */
@@ -121,6 +124,7 @@ export function entitlements(u: EntUser, now: number = Date.now()): Entitlements
     chat: { monthly: chatAllowanceOf(u), hour: caps.hour, day: caps.day },
     media: { video: u.plan === "trial" && !grantActive(u.grants?.video, now) ? TRIAL_VIDEO_MODELS : ALL_VIDEO_MODELS },
     agents: AGENT_IDS,
+    instructions: { ...INSTRUCTION_PLAN[u.plan], chars: INSTRUCTION_CHARS },
   };
 }
 
