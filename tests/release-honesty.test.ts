@@ -22,7 +22,7 @@ describe("rule 924: the support address is hello@thakeen.com, in one constant", 
   });
 
   it("is read from the constant by the billing page and the top-up card, never typed there", () => {
-    for (const f of ["src/app/[lang]/app/billing/page.tsx", "src/components/app/TopupCard.tsx"]) {
+    for (const f of ["src/app/[lang]/app/settings/billing/page.tsx", "src/components/app/TopupCard.tsx"]) {
       const src = read(f);
       expect(src, f).toMatch(/mailto:\$\{SUPPORT_EMAIL\}/);
       expect(src, f).not.toMatch(/hello@/);

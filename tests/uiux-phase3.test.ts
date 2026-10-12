@@ -104,6 +104,19 @@ describe("rule 1141: the old routes redirect for one release; the rail and the a
     // The feed stays where the bell's "see all" goes.
     expect(proxy(new NextRequest("https://thakeen.test/en/app/notifications")).status).not.toBe(307);
   });
+  it("no loading.tsx wraps a settings page that redirects a signed-in user (the phase 2 fix, rule 1115)", () => {
+    // A loading.tsx above a page puts it inside a Suspense boundary, and a redirect() there is streamed as a 200 meta
+    // refresh instead of a 307. The old paths redirect in the proxy, so none of that applies to them. Inside the area:
+    // no loading.tsx on the frame or the index (it would wrap every section), and a section with one redirects only the
+    // signed-out visitor, which the app layout above the boundary already sends to login.
+    expect(existsSync("src/app/[lang]/app/settings/loading.tsx")).toBe(false);
+    for (const s of SETTINGS_SECTIONS) {
+      if (!existsSync(`src/app/[lang]/app/settings/${s}/loading.tsx`)) continue;
+      const redirects = read(`src/app/[lang]/app/settings/${s}/page.tsx`).match(/redirect\([^;]*\)/g) ?? [];
+      for (const r of redirects) expect(r, s).toBe("redirect(`/${lang}/app/login`)");
+    }
+    expect(existsSync("src/app/[lang]/app/settings/billing/loading.tsx")).toBe(true);
+  });
   it("the rail has one Settings row in place of members, integrations and governance; the menu links into settings", () => {
     const html = renderToStaticMarkup(h(Sidebar, { t: appDict.en, lang: "en", user: { name: "Sara", email: "s@test.example", role: "owner", credits: 10, plan: "pro" }, show: { owner: true, refer: true, mcp: true } }));
     expect(html).toContain('href="/en/app/settings"');
