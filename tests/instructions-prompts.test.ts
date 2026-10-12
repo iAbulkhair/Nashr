@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { newUser } from "./helpers/session";
 import { db } from "@/lib/db";
 import { writeFile } from "@/lib/files";
@@ -297,6 +297,12 @@ const none = (text: string, ...tokens: string[]) => tokens.forEach((t) => expect
 const FOLLOWS = "An item that follows an owner instruction is not marked down for it.";
 
 describe("chat system() with layers (rule 948)", () => {
+  // The chat's NOW block reads the clock: frozen so two builds in one test never straddle a minute boundary.
+  // Only Date is faked; the Redis stub and dynamic imports keep real timers. The file's afterEach restores them.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-12T13:24:59.900Z"));
+  });
   const sys = async (brand: Brand | null, l: Layers | undefined, agent: "noor" | "razan" = "noor") => {
     const { system } = await import("@/lib/chat");
     const u = await newUser("ip-chat");
@@ -336,6 +342,7 @@ describe("chat system() with layers (rule 948)", () => {
   it("rule 948: no layers, NO_LAYERS or nothing that applies leaves all three blocks as they were", async () => {
     const before = await sys(brand, undefined);
     none(before.join("\n"), "THAKEEN STANDARDS", "OWNER INSTRUCTIONS", "<owner_instructions>", LINE);
+    only(before[2], "NOW (Riyadh, UTC+3)", "4:24 PM"); // the frozen clock, not the real one
     for (const l of [NO_LAYERS, layers([], []), layers([], WS, { paused: true }), layers([], WS, { limits: null })]) expect(await sys(brand, l)).toEqual(before);
   });
 });
