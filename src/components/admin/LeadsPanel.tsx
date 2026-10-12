@@ -69,34 +69,34 @@ export default function LeadsPanel({ lang }: { lang: "ar" | "en" }) {
   return (
     <section className="card card-sm" data-testid="leads-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-semibold text-ink">{L.title}</h2>
+        <h2 className="font-display text-lg font-semibold text-foreground">{L.title}</h2>
         <div className="flex flex-wrap gap-2 text-sm">
-          <button type="button" onClick={() => go(false, 0)} aria-pressed={!all} className={`rounded-full px-3 py-1 ${!all ? "bg-ink text-lilac" : "bg-lilac"}`}>{L.sales}</button>
-          <button type="button" onClick={() => go(true, 0)} aria-pressed={all} className={`rounded-full px-3 py-1 ${all ? "bg-ink text-lilac" : "bg-lilac"}`}>{L.all}</button>
+          <button type="button" onClick={() => go(false, 0)} aria-pressed={!all} className={`rounded-full px-3 py-1 ${!all ? "bg-inverse text-inverse-muted" : "bg-background-muted"}`}>{L.sales}</button>
+          <button type="button" onClick={() => go(true, 0)} aria-pressed={all} className={`rounded-full px-3 py-1 ${all ? "bg-inverse text-inverse-muted" : "bg-background-muted"}`}>{L.all}</button>
           <button type="button" onClick={() => window.open(`/api/admin/leads?format=csv${all ? "&all=1" : ""}`, "_blank")} className="btn btn-secondary btn-xs">{L.export}</button>
         </div>
       </div>
-      <p className="mt-1 text-xs text-muted">{L.note}</p>
+      <p className="mt-1 text-xs text-foreground-muted">{L.note}</p>
       {page && !page.mail.ready && <p role="alert" className="mt-3 rounded-lg bg-agent-sami/20 px-3 py-2 text-sm text-danger">{L.mailOff}</p>}
       {page && page.mail.ready && !page.mail.forwardTo && <p role="alert" className="mt-3 rounded-lg bg-agent-sami/20 px-3 py-2 text-sm text-danger">{L.noForward}</p>}
       {err && <p className="mt-3 text-sm text-danger">{err}</p>}
-      {!page && !err ? <p className="mt-3 text-sm text-muted">{L.loading}</p> : page && page.leads.length === 0 ? <p className="mt-3 text-sm text-muted">{L.none}</p> : page && (
+      {!page && !err ? <p className="mt-3 text-sm text-foreground-muted">{L.loading}</p> : page && page.leads.length === 0 ? <p className="mt-3 text-sm text-foreground-muted">{L.none}</p> : page && (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-lilac text-start text-xs uppercase tracking-wide text-muted">
+            <thead className="bg-background-muted text-start text-xs uppercase tracking-wide text-foreground-muted">
               <tr><th className="p-2 text-start">{L.when}</th><th className="text-start">{L.type}</th><th className="text-start">{L.who}</th><th className="text-start">{L.message}</th><th className="text-start">{L.contact}</th></tr>
             </thead>
             <tbody>
               {page.leads.map((l, i) => {
                 const fresh = l.kind !== "support" && (!page.seenAt || l.at > page.seenAt);
                 return (
-                  <tr key={`${l.at}-${i}`} className="border-t border-ink/5 align-top">
-                    <td className="whitespace-nowrap p-2 font-mono text-xs" dir="ltr">{at(l.at)}{fresh && <span className="ms-2 rounded bg-lemon px-1.5 font-sans text-[10px] font-semibold text-ink">{L.isNew}</span>}</td>
-                    <td className="whitespace-nowrap text-xs">{L.kinds[l.kind]}{l.kind === "support" && <span className="text-muted"> · {l.type}</span>}</td>
-                    <td className="text-xs" dir="auto">{l.name || "—"}{l.company && <div className="text-muted">{l.company}</div>}</td>
-                    <td className="max-w-md text-xs" dir="auto"><p className="line-clamp-4 whitespace-pre-wrap break-words">{l.message}</p>{l.page && <p className="mt-1 font-mono text-[10px] text-muted" dir="ltr">{l.page} · {l.lang}</p>}</td>
+                  <tr key={`${l.at}-${i}`} className="border-t border-foreground/5 align-top">
+                    <td className="whitespace-nowrap p-2 font-mono text-xs" dir="ltr">{at(l.at)}{fresh && <span className="ms-2 rounded bg-lemon px-1.5 font-sans text-[10px] font-semibold text-accent-foreground">{L.isNew}</span>}</td>
+                    <td className="whitespace-nowrap text-xs">{L.kinds[l.kind]}{l.kind === "support" && <span className="text-foreground-muted"> · {l.type}</span>}</td>
+                    <td className="text-xs" dir="auto">{l.name || "—"}{l.company && <div className="text-foreground-muted">{l.company}</div>}</td>
+                    <td className="max-w-md text-xs" dir="auto"><p className="line-clamp-4 whitespace-pre-wrap break-words">{l.message}</p>{l.page && <p className="mt-1 font-mono text-[10px] text-foreground-muted" dir="ltr">{l.page} · {l.lang}</p>}</td>
                     <td className="text-xs" dir="ltr">
-                      {l.email && <a href={`mailto:${l.email}`} className="text-ink underline">{l.email}</a>}
+                      {l.email && <a href={`mailto:${l.email}`} className="text-foreground underline">{l.email}</a>}
                       {l.phone && <div><a href={`https://wa.me/${l.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="underline">{l.phone}</a></div>}
                     </td>
                   </tr>
@@ -104,7 +104,7 @@ export default function LeadsPanel({ lang }: { lang: "ar" | "en" }) {
               })}
             </tbody>
           </table>
-          <div className="mt-3 flex items-center gap-2 text-xs text-muted">
+          <div className="mt-3 flex items-center gap-2 text-xs text-foreground-muted">
             <button type="button" disabled={offset === 0} onClick={() => go(all, Math.max(0, offset - PAGE))} className="btn btn-secondary btn-xs">{L.prev}</button>
             <span className="tnum">{offset + 1}–{Math.min(offset + PAGE, page.total)} {L.of} {page.total}</span>
             <button type="button" disabled={offset + PAGE >= page.total} onClick={() => go(all, offset + PAGE)} className="btn btn-secondary btn-xs">{L.next}</button>

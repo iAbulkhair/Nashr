@@ -6,10 +6,11 @@ const read = (p: string) => readFileSync(p, "utf8");
 // Rule 750: the way out can be seen and found. The sidebar's button was lilac on paper (#efe7f7 on white), so the
 // founder could not find it on 2026-10-08; the profile page now carries a second one.
 describe("log out is visible (rule 750)", () => {
-  it("the button's default colour is ink, never a lilac tint", () => {
+  it("the button's default colour is ink (the foreground role since rule 1200), never a lilac tint", () => {
     const src = read("src/components/app/LogoutButton.tsx");
     expect(src).not.toMatch(/text-lilac/);
-    expect(src).toMatch(/className = "[^"]*\btext-ink\b[^"]*"/);
+    expect(src).not.toMatch(/text-inverse-muted/);
+    expect(src).toMatch(/className = "[^"]*\btext-foreground\b[^"]*"/);
   });
 
   it("the settings danger zone offers log out (it moved there from the old profile page, rule 1149)", () => {

@@ -50,14 +50,14 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
       <p role="status" className="sr-only">{said}</p>
       {failed && <p role="alert" className="field-error mt-3">{U.failed}</p>}
       {items.length === 0 ? <EmptyState className="mt-6" icon="bell" title={N.empty} /> : (
-        <ul className="mt-6 divide-y divide-border rounded-card border border-border bg-paper">
+        <ul className="mt-6 divide-y divide-border rounded-card border border-border bg-surface">
           {items.map((n) => (
             <li key={n.id} className={`flex flex-wrap items-start justify-between gap-3 px-4 py-3 ${n.read ? "" : "bg-surface-muted"}`}>
               <div className="flex min-w-0 flex-1 gap-2.5">
-                <span aria-hidden className={`mt-2 h-2 w-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-ink"}`} />
+                <span aria-hidden className={`mt-2 h-2 w-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-foreground"}`} />
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground-muted">
-                    <span className="rounded bg-lilac px-1.5 py-0.5 text-ink">{N.kinds[n.kind]}</span>
+                    <span className="rounded bg-background-muted px-1.5 py-0.5 text-foreground">{N.kinds[n.kind]}</span>
                     {n.agent && <span>{t.agents[n.agent].name}</span>}
                     <Time value={n.at} lang={lang} style="datetime" className="tnum" />
                   </p>
@@ -65,7 +65,7 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
                   <p className="whitespace-pre-line text-sm text-foreground-muted" dir="auto">{n.body}</p>
                 </div>
               </div>
-              <Link href={n.href} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-border-input px-3 text-xs text-ink hover:bg-ink hover:text-lilac pointer-fine:min-h-8">{N.open}</Link>
+              <Link href={n.href} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-border-input px-3 text-xs text-foreground hover:bg-inverse hover:text-inverse-muted pointer-fine:min-h-8">{N.open}</Link>
             </li>
           ))}
         </ul>

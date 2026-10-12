@@ -19,17 +19,17 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
     <main className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-6 px-6 py-20 text-center">
       <div className="grid gap-2">
         <h1 className="font-display text-3xl font-bold">صار خطأ غير متوقع</h1>
-        <p className="text-muted">جرّب مرة أخرى. إذا تكرر، تواصل معنا وسنصلحه.</p>
+        <p className="text-foreground-muted">جرّب مرة أخرى. إذا تكرر، تواصل معنا وسنصلحه.</p>
       </div>
       <div className="grid gap-2" dir="ltr">
         <h2 className="font-display text-xl font-bold">Something went wrong</h2>
-        <p className="text-muted">Try again. If it keeps happening, contact us and we will fix it.</p>
+        <p className="text-foreground-muted">Try again. If it keeps happening, contact us and we will fix it.</p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-3">
         <button onClick={reset} className="s-btn"><Scribble kind="pill" seed="error-retry" fill="ink" shadow ring />إعادة المحاولة · Try again</button>
         <Link href="/ar" className="s-btn s-btn--ghost"><Scribble kind="pill" seed="error-home" fill="lemon" ring />الرئيسية · Home</Link>
       </div>
-      {error.digest && <p className="font-mono text-xs text-muted" dir="ltr">ref: {error.digest}</p>}
+      {error.digest && <p className="font-mono text-xs text-foreground-muted" dir="ltr">ref: {error.digest}</p>}
     </main>
   );
 }

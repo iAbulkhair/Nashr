@@ -24,16 +24,16 @@ export default function PaymentHistory({ lang, rows, planName }: { lang: Lang; r
   return (
     <section className="mt-6 card" aria-labelledby="payment-history-title" data-payment-history="">
       <h2 id="payment-history-title" className="font-display text-lg font-bold">{T.title}</h2>
-      <p className="mt-1 text-sm text-muted">{T.sub}</p>
-      {rows.length === 0 ? <p className="mt-3 text-sm text-muted">{T.empty}</p> : (
+      <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
+      {rows.length === 0 ? <p className="mt-3 text-sm text-foreground-muted">{T.empty}</p> : (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted"><tr>
+            <thead className="text-xs text-foreground-muted"><tr>
               <th scope="col" className="py-1 text-start">{T.date}</th><th scope="col" className="text-start">{T.item}</th><th scope="col" className="text-end">{T.amount}</th><th scope="col" className="text-start ps-4">{T.state}</th>
             </tr></thead>
             <tbody>
               {rows.map((p) => (
-                <tr key={p.id} className="border-t border-ink/5" data-payment-state={p.state}>
+                <tr key={p.id} className="border-t border-foreground/5" data-payment-state={p.state}>
                   <td className="py-2 font-mono tnum" dir="ltr">{p.date}</td>
                   <td>{p.topupCredits !== null ? T.topup(formatCount(p.topupCredits)) : T.plan(planName(p.plan))}</td>
                   <td className="text-end font-mono tnum" dir="ltr">{formatCount(p.amountSar)}</td>

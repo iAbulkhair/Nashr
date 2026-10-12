@@ -38,25 +38,25 @@ export default function PlanIncludesCard({ view, lang }: { view: Pick<Entitlemen
   return (
     <section className="mt-6 card" aria-labelledby="plan-includes-title" data-plan-includes="">
       <h2 id="plan-includes-title" className="font-display text-lg font-bold">{t.title}</h2>
-      <p className="mt-1 text-sm text-muted" data-plan-scope="">{t.scope}</p>
+      <p className="mt-1 text-sm text-foreground-muted" data-plan-scope="">{t.scope}</p>
       <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         {rows.map((r) => (
           <div key={r.key} data-plan-row={r.key}>
-            <dt className="text-muted">{r.label}</dt>
+            <dt className="text-foreground-muted">{r.label}</dt>
             <dd className="font-mono text-lg" dir="ltr">{r.value}</dd>
           </div>
         ))}
       </dl>
-      <div className="mt-4 border-t border-ink/10 pt-4 text-sm">
-        <p className="text-muted">{t.video}</p>
+      <div className="mt-4 border-t border-foreground/10 pt-4 text-sm">
+        <p className="text-foreground-muted">{t.video}</p>
         <ul className="mt-1 flex flex-wrap gap-1.5" data-plan-row="video">
-          {ent.media.video.map((id) => <li key={id} className="rounded-full bg-lilac px-2.5 py-0.5 text-xs">{mediaModel(id).label[lang]}</li>)}
+          {ent.media.video.map((id) => <li key={id} className="rounded-full bg-background-muted px-2.5 py-0.5 text-xs">{mediaModel(id).label[lang]}</li>)}
         </ul>
       </div>
       <div className="mt-4 text-sm">
-        <p className="text-muted">{t.agents} <span className="font-mono" dir="ltr">{formatCount(ent.agents.length)}</span></p>
+        <p className="text-foreground-muted">{t.agents} <span className="font-mono" dir="ltr">{formatCount(ent.agents.length)}</span></p>
         <ul className="mt-1 flex flex-wrap gap-1.5" data-plan-row="agents">
-          {ent.agents.map((id) => <li key={id} className="rounded-full bg-lilac px-2.5 py-0.5 text-xs">{agentById(id).name[lang]}</li>)}
+          {ent.agents.map((id) => <li key={id} className="rounded-full bg-background-muted px-2.5 py-0.5 text-xs">{agentById(id).name[lang]}</li>)}
         </ul>
       </div>
     </section>

@@ -75,13 +75,13 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t1" />{t.signup.title}</span></h1>
-      <p className="mt-2 text-ink/70">{t.signup.sub}</p>
+      <p className="mt-2 text-foreground-muted">{t.signup.sub}</p>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         {step === 1 ? (
           <Field label={t.signup.email}><Input name="email" required autoFocus type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
         ) : (
           <>
-            <p className="flex items-center justify-between gap-2 rounded-lg bg-lilac px-3 py-2 text-sm"><span dir="ltr" className="clip">{email}</span><button type="button" onClick={() => setStep(1)} className="text-xs text-ink underline">{S.edit}</button></p>
+            <p className="flex items-center justify-between gap-2 rounded-lg bg-background-muted px-3 py-2 text-sm"><span dir="ltr" className="clip">{email}</span><button type="button" onClick={() => setStep(1)} className="text-xs text-foreground underline">{S.edit}</button></p>
             <Field label={S.nameOpt}><Input name="name" required autoFocus autoComplete="name" /></Field>
             <Field label={t.signup.password}>
               <PasswordField lang={lang} ref={pwRef} name="password" required autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-describedby="signup-rules" />
@@ -94,11 +94,11 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
         {err && <Callout tone="danger">{err}</Callout>}
         <Button type="submit" variant="pill" seed="authform-b1" loading={busy} aria-disabled={step === 2 && !ready ? true : undefined} aria-describedby={step === 2 ? "signup-rules" : undefined}>{step === 1 ? S.cont : t.signup.submit}</Button>
       </form>
-      <p className="mt-3 text-center text-xs text-muted">{S.trial}</p>
-      <p className="mt-4 text-sm text-ink/70">
-        {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-ink underline">{t.signup.login}</Link>
+      <p className="mt-3 text-center text-xs text-foreground-muted">{S.trial}</p>
+      <p className="mt-4 text-sm text-foreground-muted">
+        {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-foreground underline">{t.signup.login}</Link>
       </p>
-      <p className="mt-2 text-xs text-muted">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
+      <p className="mt-2 text-xs text-foreground-muted">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
     </div>
   );
 }
@@ -137,10 +137,10 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
         <Field label={t.login.password}><PasswordField lang={lang} name="password" required autoComplete="current-password" /></Field>
         {err && <Callout tone="danger">{err}</Callout>}
         <Button type="submit" variant="pill" seed="authform-b2" loading={busy}>{t.login.submit}</Button>
-        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
+        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-foreground-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
       </form>
-      <p className="mt-4 text-sm text-ink/70">
-        {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-ink underline">{t.login.signup}</Link>
+      <p className="mt-4 text-sm text-foreground-muted">
+        {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-foreground underline">{t.login.signup}</Link>
       </p>
     </div>
   );
@@ -179,7 +179,7 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t3" />{S.forgotTitle}</span></h1>
-      <p className="mt-2 text-ink/70">{S.forgotSub}</p>
+      <p className="mt-2 text-foreground-muted">{S.forgotSub}</p>
       {state === "sent" || state === "nomail" ? (
         <Callout tone={state === "sent" ? "success" : "warning"} className="mt-6">
           <p>{state === "sent" ? S.sentMail : S.noMail}</p>
@@ -193,7 +193,7 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
           <Button type="submit" variant="pill" seed="authform-b3" loading={state === "busy"}>{S.send}</Button>
         </form>
       )}
-      <p className="mt-4 text-sm"><Link href={`/${lang}/app/login`} className="text-ink underline">{S.back}</Link></p>
+      <p className="mt-4 text-sm"><Link href={`/${lang}/app/login`} className="text-foreground underline">{S.back}</Link></p>
     </div>
   );
 }

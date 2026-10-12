@@ -83,7 +83,7 @@ export function PaymobPayButton({ lang, kind, plan, credits, label, className }:
   }
   return (
     <div className="mt-4 grid gap-1">
-      <button type="button" onClick={pay} disabled={busy} data-paymob-pay={kind} className={className ?? "rounded-full bg-ink px-4 py-2 text-center text-sm font-semibold text-lilac"}>{busy ? S.busy : label ?? S.pay}</button>
+      <button type="button" onClick={pay} disabled={busy} data-paymob-pay={kind} className={className ?? "rounded-full bg-inverse px-4 py-2 text-center text-sm font-semibold text-inverse-muted"}>{busy ? S.busy : label ?? S.pay}</button>
       {err && <p role="alert" className="text-xs text-danger">{err}</p>}
     </div>
   );
@@ -130,22 +130,22 @@ export function PaymobPlanCard({ lang, billing }: { lang: Lang; billing: Billing
     <section className="mt-6 card text-sm" data-paymob-plan={b.status} aria-labelledby="paymob-plan-title">
       <h2 id="paymob-plan-title" className="font-display text-lg font-bold">{S.title}</h2>
       <dl className="mt-3 grid gap-3 sm:grid-cols-4">
-        <div><dt className="text-muted">{S.title}</dt><dd className={b.status === "active" ? "font-medium" : "font-medium text-danger"}>{S[b.status]}</dd></div>
-        <div><dt className="text-muted">{S.paidThrough}</dt><dd className="font-mono" dir="ltr">{b.paidThrough}</dd></div>
-        <div><dt className="text-muted">{S.card}</dt><dd>{b.card ? <span dir="ltr">{b.card.brand} •••• {b.card.last4}</span> : S.noCard}</dd></div>
-        <div><dt className="text-muted">{S.auto}</dt><dd>{b.autoRenew ? S.on : S.off}</dd></div>
+        <div><dt className="text-foreground-muted">{S.title}</dt><dd className={b.status === "active" ? "font-medium" : "font-medium text-danger"}>{S[b.status]}</dd></div>
+        <div><dt className="text-foreground-muted">{S.paidThrough}</dt><dd className="font-mono" dir="ltr">{b.paidThrough}</dd></div>
+        <div><dt className="text-foreground-muted">{S.card}</dt><dd>{b.card ? <span dir="ltr">{b.card.brand} •••• {b.card.last4}</span> : S.noCard}</dd></div>
+        <div><dt className="text-foreground-muted">{S.auto}</dt><dd>{b.autoRenew ? S.on : S.off}</dd></div>
       </dl>
       {b.status === "locked" && <p className="mt-3 text-danger" data-paymob-locked="">{S.lockedNote}</p>}
       {b.status === "past_due" && <p className="mt-3 text-danger">{S.pastDueNote}{b.graceUntil && <> ({S.grace} <span className="font-mono" dir="ltr">{b.graceUntil}</span>)</>}</p>}
-      {b.status === "active" && !b.autoRenew && <p className="mt-3 text-muted">{S.cancelNote}</p>}
+      {b.status === "active" && !b.autoRenew && <p className="mt-3 text-foreground-muted">{S.cancelNote}</p>}
       {b.status !== "active" && <PaymobPayButton lang={lang} kind="plan" plan={b.plan} label={S.renew} />}
       <div className="mt-4 flex flex-wrap gap-2">
         {b.autoRenew ? (
-          <button type="button" disabled={busy} onClick={() => act("cancel")} className="min-h-[var(--hit-min)] rounded-full border border-ink/20 px-4 py-2" data-paymob-action="cancel">{S.cancel}</button>
+          <button type="button" disabled={busy} onClick={() => act("cancel")} className="min-h-[var(--hit-min)] rounded-full border border-border px-4 py-2" data-paymob-action="cancel">{S.cancel}</button>
         ) : b.card ? (
-          <button type="button" disabled={busy} onClick={() => act("resume")} className="min-h-[var(--hit-min)] rounded-full border border-ink/20 px-4 py-2" data-paymob-action="resume">{S.resume}</button>
+          <button type="button" disabled={busy} onClick={() => act("resume")} className="min-h-[var(--hit-min)] rounded-full border border-border px-4 py-2" data-paymob-action="resume">{S.resume}</button>
         ) : null}
-        {b.card && <button type="button" disabled={busy} onClick={() => act("remove_card")} className="min-h-[var(--hit-min)] rounded-full border border-ink/20 px-4 py-2" data-paymob-action="remove_card">{S.remove}</button>}
+        {b.card && <button type="button" disabled={busy} onClick={() => act("remove_card")} className="min-h-[var(--hit-min)] rounded-full border border-border px-4 py-2" data-paymob-action="remove_card">{S.remove}</button>}
       </div>
       {err && <p role="alert" className="mt-2 text-sm text-danger">{err}</p>}
       {confirmDialog}

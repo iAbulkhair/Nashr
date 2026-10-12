@@ -93,19 +93,19 @@ export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCo
 
       {mode === "site" ? (
         <form onSubmit={onSite} className="grid gap-3">
-          {initialUrl && <p role="note" className="rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm text-ink/80">{S.review}</p>}
+          {initialUrl && <p role="note" className="rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm text-foreground-muted">{S.review}</p>}
           <label className="relative block">
-            <span className="pointer-events-none absolute inset-y-0 start-3 grid place-items-center text-muted"><Icon name="plug" className="h-4 w-4" /></span>
+            <span className="pointer-events-none absolute inset-y-0 start-3 grid place-items-center text-foreground-muted"><Icon name="plug" className="h-4 w-4" /></span>
             <input name="url" required dir="ltr" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={s.url} aria-label={s.url} aria-describedby={hint} className="input py-3 ps-9 text-base" />
           </label>
-          <p id={hint} className="text-xs text-muted">{S.linkHint}</p>
+          <p id={hint} className="text-xs text-foreground-muted">{S.linkHint}</p>
           {setupCost > 0 ? (
-            <p role="note" className="rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm text-ink/80">
+            <p role="note" className="rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm text-foreground-muted">
               {setupPaid ? fill(s.setupPaid, setupCost, credits) : short ? fill(s.noCredits, setupCost, credits) : fill(s.setupCost, setupCost, credits)}
               {short && <> <button type="button" onClick={() => raiseLimit("credits")} className="underline">{t.limit.plans}</button></>}
             </p>
           ) : (
-            <p className="text-xs text-muted">{s.setupFree}</p>
+            <p className="text-xs text-foreground-muted">{s.setupFree}</p>
           )}
           {err && <p role="alert" className="text-sm text-danger">{err}</p>}
           <button disabled={busy || !ready} className="btn btn-accent btn-lg">{busy ? "…" : <><Icon name="spark" className="h-4 w-4" />{s.go}</>}</button>

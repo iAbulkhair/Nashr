@@ -114,7 +114,7 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
       {(phase === "none" || phase === "invalid") && (
         <>
           <p role="alert" className="mt-6 rounded-lg border border-danger bg-agent-sami/20 p-3 text-sm">{phase === "none" ? J.noToken : err || J.errors.invalid}</p>
-          <p className="mt-4 text-sm text-ink/70">{J.have} <Link href={`/${lang}/app/login`} className="font-medium text-ink underline">{J.login}</Link></p>
+          <p className="mt-4 text-sm text-foreground-muted">{J.have} <Link href={`/${lang}/app/login`} className="font-medium text-foreground underline">{J.login}</Link></p>
         </>
       )}
 
@@ -122,12 +122,12 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
         <>
           <div className="mt-6 card card-sm">
             <p>{parts(J.invited, { inviter: <b dir="auto">{preview.inviter}</b>, team: <b dir="auto">{preview.team}</b>, role: <b>{t.team.roles[preview.role]}</b> })}</p>
-            <p className="mt-1 text-xs text-muted">{t.team.roleHelp[preview.role]}</p>
-            <p className="mt-1 text-xs text-muted">{J.expires} <span className="font-mono" dir="ltr">{preview.expiresAt.slice(0, 10)}</span></p>
+            <p className="mt-1 text-xs text-foreground-muted">{t.team.roleHelp[preview.role]}</p>
+            <p className="mt-1 text-xs text-foreground-muted">{J.expires} <span className="font-mono" dir="ltr">{preview.expiresAt.slice(0, 10)}</span></p>
           </div>
           <form onSubmit={onSubmit} className="mt-4 grid gap-3">
             <label className="grid gap-1 text-sm">
-              <span className="text-ink/70">{J.email}</span>
+              <span className="text-foreground-muted">{J.email}</span>
               {/* Read-only: the invite fixes the address. Named "username" so a password manager saves the right pair. */}
               <input type="email" name="email" autoComplete="username" value={preview.email} readOnly className="input" dir="ltr" />
             </label>
@@ -137,8 +137,8 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
             {err && <p role="alert" className="text-sm text-danger">{err}</p>}
             <button disabled={busy} aria-disabled={!ok ? true : undefined} aria-describedby="join-rules" className="s-btn"><Scribble kind="pill" seed="joinform-b1" fill="ink" shadow ring />{busy ? J.joining : J.submit}</button>
           </form>
-          <p className="mt-3 text-xs text-muted">{parts(J.note, { team: <span dir="auto">{preview.team}</span> })}</p>
-          <p className="mt-2 text-xs text-muted">{J.legal1} <Link href={`/${lang}/terms`} className="underline">{J.terms}</Link> {J.and} <Link href={`/${lang}/privacy`} className="underline">{J.privacy}</Link>.</p>
+          <p className="mt-3 text-xs text-foreground-muted">{parts(J.note, { team: <span dir="auto">{preview.team}</span> })}</p>
+          <p className="mt-2 text-xs text-foreground-muted">{J.legal1} <Link href={`/${lang}/terms`} className="underline">{J.terms}</Link> {J.and} <Link href={`/${lang}/privacy`} className="underline">{J.privacy}</Link>.</p>
         </>
       )}
     </div>

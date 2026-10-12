@@ -14,9 +14,9 @@ const STR = {
   ar: { title: "المجموعة الذهبية · أسبوعياً", note: "حالات ثابتة على علامات وهمية تمر بخط الإنتاج الحقيقي (الوكيل ← المراجع ← الحَكَم) كل سبت 4:00 فجراً بتوقيت الرياض. الدرجات تُقارن بالتشغيل السابق من نفس الإصدار. الحَكَم نموذج لغوي: أي تغيّر أقل من ±5 ضجيج. الفحوص كود حتمي وليست رأي الحَكَم.", run: "شغّل الآن", running: "قيد التشغيل… حتى 5 دقائق، أبقِ الصفحة مفتوحة", resume: "أكمل الحالات الناقصة", none: "لا يوجد تشغيل بعد. الأول يوم السبت، أو شغّله الآن.", noKey: "لا يوجد هنا مفتاح نموذج للمزوّد المضبوط (ANTHROPIC_API_KEY، ومع LLM_PROVIDER=straitly أحد STRAITLY_API_KEY أو ANTHROPIC_API_KEY)، فلا يمكن التشغيل.", paused: "Claude متوقف في الكود (src/lib/model.ts)، فلا يمكن التشغيل.", overall: "المتوسط العام", cost: "تكلفة النماذج $", alerts: "تنبيهات", noAlerts: "لا تراجع.", agent: "الوكيل / الحالة", score: "الدرجة", delta: "Δ", checks: "الفحوص", secs: "ثوانٍ", history: "السجل", partial: "جزئي", complete: "مكتمل", show: "الناتج", hide: "إخفاء", busy: "تشغيل آخر قيد التنفيذ.", failed: "فشل التشغيل", carried: "منقول من تشغيل", promptChanged: "تغيّرت التعليمات", promptChangedTip: "دليل هذا الوكيل أو review.md أو شخصيته وقواعده أو مواصفة المهمة أو فحوص المراجع أو معايير الحَكَم أو دليل القطاع تغيّر عمّا قاس به التشغيل السابق الحالات نفسها، فقد يكون تغيّر الدرجة من التعليمات." },
 } as const;
 
-const tone = (n: number | null) => (n === null ? "text-muted" : n < 70 ? "text-danger font-semibold" : "");
+const tone = (n: number | null) => (n === null ? "text-foreground-muted" : n < 70 ? "text-danger font-semibold" : "");
 const fmtDelta = (d: number | null) => (d === null ? "—" : d > 0 ? `+${d}` : String(d));
-const deltaTone = (d: number | null) => (d === null || Math.abs(d) < 5 ? "text-muted" : d < 0 ? "text-danger font-semibold" : "text-ink font-semibold");
+const deltaTone = (d: number | null) => (d === null || Math.abs(d) < 5 ? "text-foreground-muted" : d < 0 ? "text-danger font-semibold" : "text-foreground font-semibold");
 
 export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
   const S = STR[lang];
@@ -45,42 +45,42 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
   return (
     <section className="card card-sm mt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-lg font-semibold text-ink">{S.title}{data ? ` · v${data.version} · ${data.cases}` : ""}</h2>
+        <h2 className="font-display text-lg font-semibold text-foreground">{S.title}{data ? ` · v${data.version} · ${data.cases}` : ""}</h2>
         <div className="flex gap-2">
           {latest?.status === "partial" && <button type="button" disabled={busy} onClick={() => run(true)} className="btn btn-secondary btn-xs">{S.resume}</button>}
           <button type="button" disabled={busy || data?.modelKey === false || !!data?.paused} onClick={() => run(false)} className="btn btn-primary btn-xs">{busy ? S.running : S.run}</button>
         </div>
       </div>
-      <p className="text-xs text-muted">{S.note}</p>
+      <p className="text-xs text-foreground-muted">{S.note}</p>
       {msg && <p role="alert" className="mt-2 text-sm text-danger">{msg}</p>}
       {data?.modelKey === false && <p className="mt-2 text-sm text-danger">{S.noKey}</p>}
       {data?.modelKey !== false && data?.paused && <p className="mt-2 text-sm text-danger">{S.paused}</p>}
-      {data && !latest && <p className="mt-3 text-sm text-muted">{S.none}</p>}
+      {data && !latest && <p className="mt-3 text-sm text-foreground-muted">{S.none}</p>}
 
       {latest && (
         <>
           <p className="mt-3 text-sm">
             <span className="font-mono tabular-nums">{latest.startedAt.slice(0, 16).replace("T", " ")}</span> · {latest.trigger} · {latest.status === "partial" ? <span className="badge badge-danger">{S.partial}</span> : <span className="badge badge-primary">{S.complete}</span>} · {S.overall}: <span className={`font-mono tabular-nums ${tone(latest.overall)}`}>{latest.overall ?? "—"}</span> · {S.cost}: <span className="font-mono tabular-nums">{latest.usd.toFixed(2)}</span>
           </p>
-          <div className="mt-2 rounded-lg bg-lilac p-3 text-xs">
+          <div className="mt-2 rounded-lg bg-background-muted p-3 text-xs">
             <p className="font-semibold">{S.alerts} ({latest.regressions.length})</p>
-            {latest.regressions.length === 0 ? <p className="text-muted">{S.noAlerts}</p> : <ul className="mt-1 list-disc ps-5 text-danger">{latest.regressions.map((r, i) => <li key={i} dir="auto">{r}</li>)}</ul>}
+            {latest.regressions.length === 0 ? <p className="text-foreground-muted">{S.noAlerts}</p> : <ul className="mt-1 list-disc ps-5 text-danger">{latest.regressions.map((r, i) => <li key={i} dir="auto">{r}</li>)}</ul>}
           </div>
           <div className="overflow-x-auto">
             <table className="mt-3 w-full text-sm">
-              <thead className="bg-lilac text-start text-xs uppercase tracking-wide text-muted"><tr><th className="p-2 text-start">{S.agent}</th><th className="text-start">{S.score}</th><th className="text-start">{S.delta}</th><th className="text-start">{S.checks}</th><th className="text-start">{S.secs}</th><th></th></tr></thead>
+              <thead className="bg-background-muted text-start text-xs uppercase tracking-wide text-foreground-muted"><tr><th className="p-2 text-start">{S.agent}</th><th className="text-start">{S.score}</th><th className="text-start">{S.delta}</th><th className="text-start">{S.checks}</th><th className="text-start">{S.secs}</th><th></th></tr></thead>
               <tbody>
                 {latest.agents.map((a) => (
                   <Fragment key={a.agent}>
-                    <tr className="border-t border-ink/10 bg-ground/60 font-medium">
+                    <tr className="border-t border-foreground/10 bg-background/60 font-medium">
                       <td className="p-2">{a.agent}{a.promptChanged && <span className="ms-2 badge badge-accent" title={S.promptChangedTip}>{S.promptChanged}</span>}</td><td className={`font-mono tabular-nums ${tone(a.score)}`}>{a.score ?? "—"}</td><td className={`font-mono tabular-nums ${deltaTone(a.delta)}`}><bdi dir="ltr">{fmtDelta(a.delta)}</bdi></td><td className={`font-mono tabular-nums ${a.failedChecks ? "text-danger" : ""}`}>{a.failedChecks ? `${a.failedChecks} ✗` : a.checksRun ? "✓" : "—"}</td><td></td><td></td>
                     </tr>
                     {latest.results.filter((r) => r.agent === a.agent).map((r) => {
                       const failed = r.checks.filter((c) => !c.pass);
                       return (
                         <Fragment key={r.id}>
-                          <tr className="border-t border-ink/5 text-ink/70">
-                            <td className="p-2 ps-6 font-mono text-xs">{r.id}{r.carried && <span className="ms-2 badge text-muted" dir="auto">{S.carried} <bdi dir="ltr">{r.carried.slice(0, 10)}</bdi></span>}</td>
+                          <tr className="border-t border-foreground/5 text-foreground-muted">
+                            <td className="p-2 ps-6 font-mono text-xs">{r.id}{r.carried && <span className="ms-2 badge text-foreground-muted" dir="auto">{S.carried} <bdi dir="ltr">{r.carried.slice(0, 10)}</bdi></span>}</td>
                             <td className={`font-mono tabular-nums ${tone(r.score)}`}>{r.ok ? r.score ?? "—" : <span className="text-danger">{r.error}</span>}</td>
                             <td className={`font-mono tabular-nums ${deltaTone(r.delta)}`}><bdi dir="ltr">{fmtDelta(r.delta)}</bdi></td>
                             <td className={`text-xs ${failed.length ? "text-danger" : ""}`} dir="auto">{r.checks.length === 0 ? "—" : failed.length ? failed.map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ""}`).join(" · ") : `${r.checks.length}/${r.checks.length} ✓`}</td>
@@ -88,10 +88,10 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
                             <td>{r.items.length > 0 && <button type="button" aria-expanded={openId === r.id} onClick={() => setOpenId(openId === r.id ? null : r.id)} className="btn btn-secondary btn-xs">{openId === r.id ? S.hide : S.show}</button>}</td>
                           </tr>
                           {openId === r.id && (
-                            <tr><td colSpan={6} className="bg-white p-3">
-                              {r.dims && <p className="font-mono text-xs text-muted">{Object.entries(r.dims).map(([k, v]) => `${k} ${v}`).join(" · ")}</p>}
-                              {r.notes.length > 0 && <p className="mt-1 text-xs text-ink/70" dir="auto">{r.notes.join(" · ")}</p>}
-                              {r.items.map((it, i) => <pre key={i} dir="auto" className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-ink/10 p-2 text-xs"><b>{it.channel} · {it.title}</b>{"\n"}{it.body}</pre>)}
+                            <tr><td colSpan={6} className="bg-surface p-3">
+                              {r.dims && <p className="font-mono text-xs text-foreground-muted">{Object.entries(r.dims).map(([k, v]) => `${k} ${v}`).join(" · ")}</p>}
+                              {r.notes.length > 0 && <p className="mt-1 text-xs text-foreground-muted" dir="auto">{r.notes.join(" · ")}</p>}
+                              {r.items.map((it, i) => <pre key={i} dir="auto" className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-foreground/10 p-2 text-xs"><b>{it.channel} · {it.title}</b>{"\n"}{it.body}</pre>)}
                             </td></tr>
                           )}
                         </Fragment>
@@ -106,7 +106,7 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
       )}
 
       {data && data.history.length > 1 && (
-        <p className="mt-3 text-xs text-muted">{S.history}: {data.history.map((h) => `${h.startedAt.slice(0, 10)} v${h.version} ${h.overall ?? "—"}${h.status === "partial" ? "*" : ""} ($${h.usd.toFixed(2)})`).join(" · ")}</p>
+        <p className="mt-3 text-xs text-foreground-muted">{S.history}: {data.history.map((h) => `${h.startedAt.slice(0, 10)} v${h.version} ${h.overall ?? "—"}${h.status === "partial" ? "*" : ""} ($${h.usd.toFixed(2)})`).join(" · ")}</p>
       )}
     </section>
   );

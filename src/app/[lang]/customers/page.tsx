@@ -33,7 +33,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               {s.title}
             </span>
           </h1>
-          <p className="mt-5 max-w-2xl text-lg text-muted">{s.sub}</p>
+          <p className="mt-5 max-w-2xl text-lg text-foreground-muted">{s.sub}</p>
         </section>
         <section className="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
           <h2 className="font-display text-2xl font-bold">{s.whoTitle}</h2>
@@ -42,12 +42,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               <Link key={p.slug} href={`/${lang}/for/${p.slug}`} className="s-card block" data-boil>
                 <Scribble kind="box" seed={`customers-${p.slug}`} fill="paper" boil />
                 <h3 className="font-display text-lg font-bold">{p.name}</h3>
-                <p className="mt-1 text-sm text-muted">{p.headline}</p>
+                <p className="mt-1 text-sm text-foreground-muted">{p.headline}</p>
               </Link>
             ))}
           </div>
         </section>
-        <section className="border-y-[1.5px] border-ink bg-lilac">
+        <section className="border-y-[1.5px] border-border-strong bg-background-muted">
           <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2">
             <div>
               <h2 className="font-display text-2xl font-bold">{s.honestTitle}</h2>

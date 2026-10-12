@@ -91,9 +91,9 @@ export default function EntitlementsTable({ view, lang, deal }: { view: Entitlem
     {
       key: "video", label: t.video, plan: models(base.media.video),
       override: g ? (
-        <span className={g.expired ? "text-muted opacity-60" : ""} data-testid="video-grant" data-expired={g.expired ? "true" : "false"}>
+        <span className={g.expired ? "text-foreground-muted opacity-60" : ""} data-testid="video-grant" data-expired={g.expired ? "true" : "false"}>
           {t.all} {t.until} <Ltr>{g.until}</Ltr> · {t.by} <Ltr>{g.by}</Ltr>{g.note ? ` · ${g.note}` : ""}
-          {g.expired && <span className="ms-1 rounded bg-ink/10 px-1 font-semibold">{t.expired}</span>}
+          {g.expired && <span className="ms-1 rounded bg-foreground/10 px-1 font-semibold">{t.expired}</span>}
         </span>
       ) : DASH,
       effective: models(ent.media.video), used: DASH, resets: DASH,
@@ -103,18 +103,18 @@ export default function EntitlementsTable({ view, lang, deal }: { view: Entitlem
   ];
 
   return (
-    <div className="rounded border border-ink/10 p-2" data-testid="entitlements">
-      <p className="text-muted">{t.title}</p>
+    <div className="rounded border border-foreground/10 p-2" data-testid="entitlements">
+      <p className="text-foreground-muted">{t.title}</p>
       <div className="overflow-x-auto">
         <table className="mt-1 w-full text-start font-mono text-xs">
           <thead>
-            <tr className="text-muted">
+            <tr className="text-foreground-muted">
               {[t.dimension, t.plan, t.override, t.effective, t.used, t.resets].map((h) => <th key={h} className="p-1 text-start font-normal">{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.key} className="border-t border-ink/5 align-top" data-row={r.key}>
+              <tr key={r.key} className="border-t border-foreground/5 align-top" data-row={r.key}>
                 <td className="p-1 font-sans">{r.label}</td>
                 <td className="p-1">{r.plan}</td>
                 <td className="p-1">{r.override}</td>

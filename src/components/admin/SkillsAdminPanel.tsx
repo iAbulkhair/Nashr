@@ -120,7 +120,7 @@ const S = {
 
 /** Model or customer text through the safe renderer (it escapes HTML): the same `render` the approval inbox shows a draft with. */
 function Body({ md }: { md: string }) {
-  return <div className="prose-nashr prose-compact mt-2 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(md) }} />;
+  return <div className="prose-nashr prose-compact mt-2 text-sm text-foreground" dir="auto" dangerouslySetInnerHTML={{ __html: render(md) }} />;
 }
 
 /** One instruction as a comparison or a workspace view shows it: plain text, and what else differs. */
@@ -130,7 +130,7 @@ function ItemLine({ t, i }: { t: ReturnType<typeof dictOf>; i: Instruction }) {
   return (
     <p className="text-sm">
       <bdi>{i.text}</bdi>
-      {meta && <span className="text-xs text-muted"> · {meta}</span>}
+      {meta && <span className="text-xs text-foreground-muted"> · {meta}</span>}
     </p>
   );
 }
@@ -351,9 +351,9 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
   }
   const testHint = !hasDraft ? I.testNeedsDraft : dirty ? I.testNeedsSaved : "";
   const col = (label: string, it: TestItem) => (
-    <section className="min-w-0 rounded-xl border-[1.5px] border-ink/20 p-3">
+    <section className="min-w-0 rounded-xl border-[1.5px] border-border p-3">
       <h3 className="text-sm font-semibold">{label}</h3>
-      <p className="mt-1 text-xs text-muted"><bdi>{it.channel}</bdi></p>
+      <p className="mt-1 text-xs text-foreground-muted"><bdi>{it.channel}</bdi></p>
       <p className="mt-1 font-medium" dir="auto">{it.title}</p>
       <Body md={it.body} />
     </section>
@@ -363,11 +363,11 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
   return (
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title">{A.title}</h1>
-      <p className="mt-2 text-ink/70">{A.sub}</p>
+      <p className="mt-2 text-foreground-muted">{A.sub}</p>
 
       <section className="card mt-6" aria-labelledby="sk-pause">
         <h2 id="sk-pause" className="font-display font-medium">{A.pauseTitle}</h2>
-        <p role="status" className={`mt-2 rounded-lg border px-3 py-2 text-sm ${paused ? "border-danger/40 bg-danger/10" : "border-ink/15"}`}>{paused ? A.pausedNow : A.runningNow}</p>
+        <p role="status" className={`mt-2 rounded-lg border px-3 py-2 text-sm ${paused ? "border-danger/40 bg-danger/10" : "border-border"}`}>{paused ? A.pausedNow : A.runningNow}</p>
         <div className="mt-3">
           <button type="button" onClick={() => void togglePause()} disabled={locked} className={`btn btn-sm ${paused ? "btn-primary" : "btn-danger"}`}>{paused ? A.resume : A.pause}</button>
         </div>
@@ -377,10 +377,10 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
       <section className="card mt-4" aria-labelledby="sk-edit">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="sk-edit" className="font-display font-medium">{A.editorTitle}</h2>
-          <p className="text-sm text-muted">{layer.active.v > 0 ? fill(A.activeNow, { v: layer.active.v, n: activeOn }) : A.noneActive}</p>
+          <p className="text-sm text-foreground-muted">{layer.active.v > 0 ? fill(A.activeNow, { v: layer.active.v, n: activeOn }) : A.noneActive}</p>
         </div>
-        <p className="mt-1 text-sm text-muted">{A.editorSub}</p>
-        <p className="mt-1 text-xs text-muted">{A.reviewerNote}</p>
+        <p className="mt-1 text-sm text-foreground-muted">{A.editorSub}</p>
+        <p className="mt-1 text-xs text-foreground-muted">{A.reviewerNote}</p>
         {draftDiffers && !dirty && <p role="status" className="mt-2 rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm">{fill(A.draftBanner, { v: layer.active.v })}</p>}
         <div className="mt-4 min-w-0">
           <InstructionEditor t={t} items={rows} onChange={(r) => { setRows(r); setRowErrors({}); }} maxChars={PLATFORM_CHARS} targets={[...PLATFORM_TARGETS]} perAgent refsOn={false} files={[]} allowLock readOnly={false} errors={rowErrors} />
@@ -388,9 +388,9 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
             <button type="button" onClick={() => void save()} disabled={locked || !dirty} className="btn btn-secondary btn-sm">{busy === "save" ? I.saving : I.saveDraft}</button>
             <button type="button" onClick={() => void activate()} disabled={locked || (!dirty && !hasDraft)} className="btn btn-primary btn-sm">{busy === "activate" ? I.activating : I.activate}</button>
             <button type="button" onClick={() => void discard()} disabled={locked || !hasDraft} className="btn btn-danger btn-sm">{busy === "discard" ? I.discarding : I.discard}</button>
-            {dirty && <span className="text-sm text-muted">{I.unsaved}</span>}
+            {dirty && <span className="text-sm text-foreground-muted">{I.unsaved}</span>}
           </div>
-          {msg && <p role="status" className="mt-2 text-sm text-ink">{msg}</p>}
+          {msg && <p role="status" className="mt-2 text-sm text-foreground">{msg}</p>}
           {err && (
             <p role="alert" className="mt-2 text-sm text-danger">
               {err}
@@ -402,33 +402,33 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
 
       <section className="card mt-4" aria-labelledby="sk-test">
         <h2 id="sk-test" className="font-display font-medium">{A.testTitle}</h2>
-        <p className="mt-1 text-sm text-muted">{A.testSub}</p>
+        <p className="mt-1 text-sm text-foreground-muted">{A.testSub}</p>
         {testOptions.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">{A.testNone}</p>
+          <p className="mt-3 text-sm text-foreground-muted">{A.testNone}</p>
         ) : (
           <div className="mt-3 grid gap-3">
             <div className="flex flex-wrap gap-3">
               <label className="grid gap-1 text-sm">
-                <span className="text-muted">{I.testAgent}</span>
-                <select value={agent} onChange={(e) => { const a = e.target.value; if (isAgentId(a)) { setAgent(a); setType(testOptions.find((o) => o.agent === a)?.type ?? ""); } }} className="rounded border border-ink/15 bg-white px-2 py-1">
+                <span className="text-foreground-muted">{I.testAgent}</span>
+                <select value={agent} onChange={(e) => { const a = e.target.value; if (isAgentId(a)) { setAgent(a); setType(testOptions.find((o) => o.agent === a)?.type ?? ""); } }} className="rounded border border-border bg-surface px-2 py-1">
                   {agentsOffered.map((a) => <option key={a} value={a}>{t.agents[a].name}</option>)}
                 </select>
               </label>
               <label className="grid gap-1 text-sm">
-                <span className="text-muted">{I.testType}</span>
-                <select value={type} onChange={(e) => { const v = testOptions.find((o) => o.agent === agent && o.type === e.target.value); if (v) setType(v.type); }} className="rounded border border-ink/15 bg-white px-2 py-1">
+                <span className="text-foreground-muted">{I.testType}</span>
+                <select value={type} onChange={(e) => { const v = testOptions.find((o) => o.agent === agent && o.type === e.target.value); if (v) setType(v.type); }} className="rounded border border-border bg-surface px-2 py-1">
                   {testOptions.filter((o) => o.agent === agent).map((o) => <option key={o.type} value={o.type}>{t.generate.types[o.type].t}</option>)}
                 </select>
               </label>
             </div>
             <label className="grid gap-1 text-sm">
-              <span className="text-muted">{I.testBrief}</span>
+              <span className="text-foreground-muted">{I.testBrief}</span>
               <textarea className="input" rows={2} dir="auto" maxLength={TEST_BRIEF_CHARS} value={brief} placeholder={I.testBriefHint} onChange={(e) => setBrief(e.target.value)} />
-              <span className="tnum text-xs text-muted" dir="ltr">{fill(I.counter, { n: brief.length, max: TEST_BRIEF_CHARS })}</span>
+              <span className="tnum text-xs text-foreground-muted" dir="ltr">{fill(I.counter, { n: brief.length, max: TEST_BRIEF_CHARS })}</span>
             </label>
             <div className="flex flex-wrap items-center gap-3">
               <button type="button" onClick={() => void runTest()} disabled={locked || !option || !!testHint} className="btn btn-primary btn-sm">{busy === "test" ? A.testing : A.testButton}</button>
-              {testHint && <span className="text-sm text-muted">{testHint}</span>}
+              {testHint && <span className="text-sm text-foreground-muted">{testHint}</span>}
             </div>
           </div>
         )}
@@ -436,29 +436,29 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
         {result && (
           <div className="mt-4">
             <div className="grid gap-3 md:grid-cols-2">{col(I.before, result.before)}{col(I.after, result.after)}</div>
-            <p className="mt-2 text-xs text-muted">{result.sample && <bdi>{fill(A.testSample, { name: result.sample })}</bdi>} {A.testNoCharge}</p>
+            <p className="mt-2 text-xs text-foreground-muted">{result.sample && <bdi>{fill(A.testSample, { name: result.sample })}</bdi>} {A.testNoCharge}</p>
           </div>
         )}
       </section>
 
       <section className="card mt-4" aria-labelledby="sk-history">
         <h2 id="sk-history" className="font-display font-medium">{A.historyTitle}</h2>
-        <p className="mt-1 text-sm text-muted">{A.historySub}</p>
-        {restoreBlocked(dirty) && <p className="mt-2 text-sm text-muted">{I.restoreNeedsSaved}</p>}
-        {histMsg && <p role="status" className="mt-2 text-sm text-ink">{histMsg}</p>}
+        <p className="mt-1 text-sm text-foreground-muted">{A.historySub}</p>
+        {restoreBlocked(dirty) && <p className="mt-2 text-sm text-foreground-muted">{I.restoreNeedsSaved}</p>}
+        {histMsg && <p role="status" className="mt-2 text-sm text-foreground">{histMsg}</p>}
         {histErr && <p role="alert" className="mt-2 text-sm text-danger">{histErr}</p>}
         {history.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">{I.historyEmpty}</p>
+          <p className="mt-3 text-sm text-foreground-muted">{I.historyEmpty}</p>
         ) : (
-          <ul className="mt-3 divide-y divide-ink/10">
+          <ul className="mt-3 divide-y divide-foreground/10">
             {history.map((r) => (
               <li key={r.id} className="py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm">
                     <strong id={`sk-rev-${r.id}`}>{fill(I.version, { v: r.v })}</strong>
-                    <span className="text-muted"> · </span>
+                    <span className="text-foreground-muted"> · </span>
                     <time dateTime={r.at} suppressHydrationWarning>{when.format(new Date(r.at))} UTC</time>
-                    <span className="text-muted"> · </span>
+                    <span className="text-foreground-muted"> · </span>
                     <span dir="auto">{who(r.by)}</span>
                     {r.rollbackOf && <span className="ms-2 badge">{I.restoreBadge}</span>}
                   </p>
@@ -467,23 +467,23 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
                     <button type="button" onClick={() => void restore(r)} disabled={locked || restoreBlocked(dirty)} aria-describedby={`sk-rev-${r.id}`} className="btn btn-secondary btn-xs">{restoring === r.id ? I.restoring : I.restore}</button>
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-ink/70"><span className="tnum">{fill(I.on, { n: r.count })}</span> · {fill(I.changes, { a: r.added, r: r.removed, c: r.changed })}</p>
+                <p className="mt-1 text-xs text-foreground-muted"><span className="tnum">{fill(I.on, { n: r.count })}</span> · {fill(I.changes, { a: r.added, r: r.removed, c: r.changed })}</p>
                 {cmp?.id === r.id && cmp.diff && (
-                  <div className="mt-2 rounded-lg border border-ink/15 p-3">
+                  <div className="mt-2 rounded-lg border border-border p-3">
                     <h3 className="text-sm font-semibold">{I.compareTitle}</h3>
                     {cmp.diff.added.length + cmp.diff.removed.length + cmp.diff.changed.length === 0 ? (
-                      <p className="mt-1 text-sm text-muted">{I.noDiff}</p>
+                      <p className="mt-1 text-sm text-foreground-muted">{I.noDiff}</p>
                     ) : (
                       <div className="mt-1 grid gap-2">
-                        {cmp.diff.added.length > 0 && <div><p className="text-xs font-semibold text-muted">{I.diffAdded}</p>{cmp.diff.added.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
-                        {cmp.diff.removed.length > 0 && <div><p className="text-xs font-semibold text-muted">{I.diffRemoved}</p>{cmp.diff.removed.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
+                        {cmp.diff.added.length > 0 && <div><p className="text-xs font-semibold text-foreground-muted">{I.diffAdded}</p>{cmp.diff.added.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
+                        {cmp.diff.removed.length > 0 && <div><p className="text-xs font-semibold text-foreground-muted">{I.diffRemoved}</p>{cmp.diff.removed.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
                         {cmp.diff.changed.length > 0 && (
                           <div>
-                            <p className="text-xs font-semibold text-muted">{I.diffChanged}</p>
+                            <p className="text-xs font-semibold text-foreground-muted">{I.diffChanged}</p>
                             {cmp.diff.changed.map((c) => (
                               <div key={c.after.id} className="mt-1 grid gap-1 md:grid-cols-2">
-                                <div><p className="text-xs text-muted">{I.then}</p><ItemLine t={t} i={c.before} /></div>
-                                <div><p className="text-xs text-muted">{I.now}</p><ItemLine t={t} i={c.after} /></div>
+                                <div><p className="text-xs text-foreground-muted">{I.then}</p><ItemLine t={t} i={c.before} /></div>
+                                <div><p className="text-xs text-foreground-muted">{I.now}</p><ItemLine t={t} i={c.after} /></div>
                               </div>
                             ))}
                           </div>
@@ -503,33 +503,33 @@ export default function SkillsAdminPanel({ lang, keySession, initial, testOption
           <h2 id="sk-feed" className="font-display font-medium">{A.feedTitle}</h2>
           <button type="button" onClick={() => void refreshFeed()} disabled={locked} className="btn btn-secondary btn-xs">{busy === "refresh" ? A.refreshing : A.refresh}</button>
         </div>
-        <p className="mt-1 text-sm text-muted">{A.feedSub}</p>
+        <p className="mt-1 text-sm text-foreground-muted">{A.feedSub}</p>
         {feedErr && <p role="alert" className="mt-2 text-sm text-danger">{feedErr}</p>}
         {feed.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">{A.feedEmpty}</p>
+          <p className="mt-3 text-sm text-foreground-muted">{A.feedEmpty}</p>
         ) : (
-          <ul className="mt-3 divide-y divide-ink/10">
+          <ul className="mt-3 divide-y divide-foreground/10">
             {feed.map((r) => (
               <li key={`${r.scope}:${r.at}:${r.action}:${r.v}`} className="py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="min-w-0 text-sm">
                     <bdi>{r.email}</bdi>
-                    {r.brand && <span className="text-xs text-muted"> · {A.feedBrand} <bdi>{r.brand}</bdi></span>}
-                    <span className="text-muted"> · </span>
+                    {r.brand && <span className="text-xs text-foreground-muted"> · {A.feedBrand} <bdi>{r.brand}</bdi></span>}
+                    <span className="text-foreground-muted"> · </span>
                     {A.feedActions[r.action]}
-                    <span className="text-muted"> · </span>
+                    <span className="text-foreground-muted"> · </span>
                     <span className="tnum">{fill(I.version, { v: r.v })}</span>
-                    <span className="text-muted"> · </span>
+                    <span className="text-foreground-muted"> · </span>
                     <span className="tnum">{fill(I.on, { n: r.count })}</span>
-                    <span className="text-muted"> · </span>
+                    <span className="text-foreground-muted"> · </span>
                     <time dateTime={r.at} suppressHydrationWarning>{when.format(new Date(r.at))} UTC</time>
                   </p>
                   <button type="button" onClick={() => void openWorkspace(r)} disabled={locked} aria-expanded={view?.scope === r.scope} className="btn btn-secondary btn-xs">{view?.scope === r.scope ? A.close : busy === "open" ? A.opening : A.open}</button>
                 </div>
                 {view?.scope === r.scope && (
-                  <div className="mt-2 rounded-lg border border-ink/15 p-3">
+                  <div className="mt-2 rounded-lg border border-border p-3">
                     <h3 className="text-sm font-semibold">{fill(A.workspaceTitle, { who: r.email + (r.brand ? ` · ${r.brand}` : "") })}</h3>
-                    {view.items.length === 0 ? <p className="mt-1 text-sm text-muted">{A.workspaceEmpty}</p> : <div className="mt-1 grid gap-1">{view.items.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
+                    {view.items.length === 0 ? <p className="mt-1 text-sm text-foreground-muted">{A.workspaceEmpty}</p> : <div className="mt-1 grid gap-1">{view.items.map((i) => <ItemLine key={i.id} t={t} i={i} />)}</div>}
                   </div>
                 )}
               </li>

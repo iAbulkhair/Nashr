@@ -34,7 +34,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               {s.title}
             </span>
           </h1>
-          <p className="mt-5 max-w-2xl text-lg text-muted">{s.sub}</p>
+          <p className="mt-5 max-w-2xl text-lg text-foreground-muted">{s.sub}</p>
           <div className="mt-8"><UrlStart t={t} lang={lang} /></div>
         </section>
         <section className="mx-auto grid max-w-6xl gap-x-6 gap-y-8 px-4 pb-20 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
@@ -43,10 +43,10 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               <Scribble kind="box" seed={`agents-${a.id}`} fill="paper" boil />
               <div className="flex items-center gap-3">
                 <Face who={a.id} seed={`agents-face-${a.id}`} />
-                <div><h2 className="font-display text-xl font-bold">{a.name[lang]}</h2><p className="text-sm text-muted">{a.role[lang]}</p></div>
+                <div><h2 className="font-display text-xl font-bold">{a.name[lang]}</h2><p className="text-sm text-foreground-muted">{a.role[lang]}</p></div>
               </div>
               <p className="mt-3 font-medium">{AGENT_PAGES[lang][a.id].tagline}</p>
-              <p className="mt-1 text-sm text-muted">{AGENT_PAGES[lang][a.id].intro}</p>
+              <p className="mt-1 text-sm text-foreground-muted">{AGENT_PAGES[lang][a.id].intro}</p>
             </Link>
           ))}
         </section>

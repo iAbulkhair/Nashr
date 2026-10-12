@@ -22,7 +22,7 @@ export default function Faq({ t }: { t: Dict }) {
 /** The question list itself, shared by the sector, comparison and definition pages. */
 export function QaList({ items, className = "" }: { items: readonly { q: string; a: string }[]; className?: string }) {
   return (
-    <div className={`divide-y divide-ink/15 border-y-[1.5px] border-ink ${className}`}>
+    <div className={`divide-y divide-foreground/15 border-y-[1.5px] border-border-strong ${className}`}>
       {items.map((f) => (
         <details key={f.q} className="group py-4">
           <summary className="flex cursor-pointer items-center justify-between gap-4 font-display text-lg font-bold">
@@ -31,7 +31,7 @@ export function QaList({ items, className = "" }: { items: readonly { q: string;
               +
             </span>
           </summary>
-          <p className="mt-3 leading-relaxed text-muted">{f.a}</p>
+          <p className="mt-3 leading-relaxed text-foreground-muted">{f.a}</p>
         </details>
       ))}
     </div>

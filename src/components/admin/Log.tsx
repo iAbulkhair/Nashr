@@ -86,13 +86,13 @@ export default function Log({ lang, keySession }: SectionProps) {
   const sectionName = (s?: string) => (s && s in L.sections ? L.sections[s as keyof typeof L.sections] : s ?? "");
   return (
     <section className="card card-sm grid gap-4" aria-labelledby="log-title" aria-busy={busy || undefined}>
-      <h2 id="log-title" className="text-sm font-semibold text-ink">{L.title}</h2>
+      <h2 id="log-title" className="text-sm font-semibold text-foreground">{L.title}</h2>
       <form
         aria-label={L.filters}
         className="flex flex-wrap items-end gap-3"
         onSubmit={(e) => { e.preventDefault(); go(draft); }}
       >
-        <label className="grid gap-1 text-xs text-muted">
+        <label className="grid gap-1 text-xs text-foreground-muted">
           <span>{L.section}</span>
           <Select value={draft.section} onChange={(e) => { const f = { ...draft, section: e.target.value }; setDraft(f); go(f); }}>
             <option value="">{L.anySection}</option>
@@ -100,7 +100,7 @@ export default function Log({ lang, keySession }: SectionProps) {
           </Select>
         </label>
         {TEXT_FILTERS.map((k) => (
-          <label key={k} className="grid min-w-0 flex-1 basis-40 gap-1 text-xs text-muted">
+          <label key={k} className="grid min-w-0 flex-1 basis-40 gap-1 text-xs text-foreground-muted">
             <span>{L[k]}</span>
             <Input value={draft[k]} maxLength={120} dir={k === "action" ? "auto" : "ltr"} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} />
           </label>
@@ -108,13 +108,13 @@ export default function Log({ lang, keySession }: SectionProps) {
         <Button type="submit" variant="secondary">{L.apply}</Button>
         <Button variant="ghost" onClick={() => { const f = { section: "", actor: "", action: "", target: "" }; setDraft(f); go(f); }}>{L.clear}</Button>
       </form>
-      {scanned > 0 && <p className="text-xs text-muted">{L.scanned(scanned)}</p>}
+      {scanned > 0 && <p className="text-xs text-foreground-muted">{L.scanned(scanned)}</p>}
       {failed && <p role="alert" className="text-sm text-danger">{L.failed}</p>}
-      {rows === null ? <p className="text-sm text-muted">{L.loading}</p> : rows.length === 0 ? <p className="text-sm text-muted">{L.empty}</p> : (
+      {rows === null ? <p className="text-sm text-foreground-muted">{L.loading}</p> : rows.length === 0 ? <p className="text-sm text-foreground-muted">{L.empty}</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <caption className="sr-only">{L.title}</caption>
-            <thead className="text-muted">
+            <thead className="text-foreground-muted">
               <tr>
                 <th scope="col" className="p-1 text-start">{L.when}</th>
                 <th scope="col" className="p-1 text-start">{L.actor}</th>
@@ -132,7 +132,7 @@ export default function Log({ lang, keySession }: SectionProps) {
                     <td className="whitespace-nowrap p-1"><Time value={l.at} lang={lang} style="datetime" /></td>
                     <td className="p-1">
                       <bdi dir="ltr">{l.actor ?? "—"}</bdi>
-                      {l.imp && <span className="block text-muted">{L.viaAccount} <bdi dir="ltr">{l.imp}</bdi></span>}
+                      {l.imp && <span className="block text-foreground-muted">{L.viaAccount} <bdi dir="ltr">{l.imp}</bdi></span>}
                     </td>
                     <td className="p-1">
                       <span className="flex flex-wrap items-center gap-1">
@@ -140,7 +140,7 @@ export default function Log({ lang, keySession }: SectionProps) {
                         <span className="font-mono" dir="ltr">{l.action}</span>
                         {l.legacy && <Badge tone="neutral">{L.legacy}</Badge>}
                       </span>
-                      {l.what && l.what !== l.action && <span className="block text-muted" dir="auto">{l.what}</span>}
+                      {l.what && l.what !== l.action && <span className="block text-foreground-muted" dir="auto">{l.what}</span>}
                     </td>
                     <td className="p-1"><bdi dir="ltr">{l.target ?? ""}</bdi></td>
                     <td className="p-1">
@@ -148,7 +148,7 @@ export default function Log({ lang, keySession }: SectionProps) {
                         <ul className="grid gap-0.5 font-mono" dir="ltr">
                           {diff.map((d) => (
                             <li key={d.key || "value"} className="break-words">
-                              {d.key && <span className="text-muted">{d.key}: </span>}
+                              {d.key && <span className="text-foreground-muted">{d.key}: </span>}
                               <span className="line-through decoration-1">{d.before || "∅"}</span>
                               <span aria-hidden> → </span><span className="sr-only"> {L.to} </span>
                               <span>{d.after || "∅"}</span>

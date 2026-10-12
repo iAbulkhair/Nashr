@@ -86,21 +86,21 @@ function RepeatFields({ T, value, onChange, none, id }: { T: AppDict["todo"]; va
   const on = value.every;
   return (
     <>
-      <label className="text-xs text-ink/70">{R.every}
+      <label className="text-xs text-foreground-muted">{R.every}
         <select value={on} onChange={(e) => set({ every: e.target.value as RuleForm["every"] })} className="input mt-1" id={`${id}-every`}>
           {none && <option value="">{R.none}</option>}
           {EVERY.map((e) => <option key={e} value={e}>{R.units[e]}</option>)}
         </select>
       </label>
       {on && on !== "workday" && (
-        <label className="text-xs text-ink/70">{R.interval}
+        <label className="text-xs text-foreground-muted">{R.interval}
           <input type="number" inputMode="numeric" min={1} step={1} value={value.interval} onChange={(e) => set({ interval: e.target.value })} dir="ltr" className="input mt-1" />
         </label>
       )}
       {on === "week" && (
-        <fieldset className="text-xs text-ink/70 sm:col-span-2">
+        <fieldset className="text-xs text-foreground-muted sm:col-span-2">
           <legend>{R.weekdays}</legend>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-ink">
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-foreground">
             {T.cal.weekdays.map((name, d) => (
               <label key={d} className="flex items-center gap-2">
                 <input type="checkbox" name={`${id}-weekday`} checked={value.weekdays.includes(d)} onChange={(e) => set({ weekdays: e.target.checked ? [...value.weekdays, d] : value.weekdays.filter((x) => x !== d) })} />{name}
@@ -110,25 +110,25 @@ function RepeatFields({ T, value, onChange, none, id }: { T: AppDict["todo"]; va
         </fieldset>
       )}
       {(on === "month" || on === "hmonth") && (
-        <div className="text-xs text-ink/70 sm:col-span-2">
+        <div className="text-xs text-foreground-muted sm:col-span-2">
           <label className="block">{R.monthDay}
             <input type="number" inputMode="numeric" min={1} step={1} value={value.monthDay} disabled={value.last} onChange={(e) => set({ monthDay: e.target.value })} dir="ltr" className="input mt-1" />
           </label>
-          <label className="mt-2 flex items-center gap-2 text-sm text-ink"><input type="checkbox" name={`${id}-last`} checked={value.last} onChange={(e) => set({ last: e.target.checked })} />{R.lastDay}</label>
+          <label className="mt-2 flex items-center gap-2 text-sm text-foreground"><input type="checkbox" name={`${id}-last`} checked={value.last} onChange={(e) => set({ last: e.target.checked })} />{R.lastDay}</label>
         </div>
       )}
       {on && (
         <>
-          <label className="text-xs text-ink/70">{R.until}
+          <label className="text-xs text-foreground-muted">{R.until}
             <input type="date" value={value.until} onChange={(e) => set({ until: e.target.value })} dir="ltr" className="input mt-1" />
           </label>
-          <label className="text-xs text-ink/70">{R.count}
+          <label className="text-xs text-foreground-muted">{R.count}
             <input type="number" inputMode="numeric" min={1} step={1} value={value.count} onChange={(e) => set({ count: e.target.value })} dir="ltr" className="input mt-1" />
           </label>
-          <label className="text-xs text-ink/70 sm:col-span-2">{R.remindBefore}
+          <label className="text-xs text-foreground-muted sm:col-span-2">{R.remindBefore}
             <input type="number" inputMode="numeric" min={0} step={1} value={value.remindBefore} onChange={(e) => set({ remindBefore: e.target.value })} dir="ltr" className="input mt-1" />
           </label>
-          <p className="text-xs text-muted sm:col-span-2">{R.note}</p>
+          <p className="text-xs text-foreground-muted sm:col-span-2">{R.note}</p>
         </>
       )}
     </>
@@ -277,30 +277,30 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="font-medium" dir="auto">{row.title}</p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-muted">
             <span className={bucket === "overdue" ? "font-semibold text-danger" : ""}>{row.due ?? T.noDue}</span>
             {row.who && <span dir="auto">{row.who}</span>}
             {row.repeat && <span className="badge badge-primary" dir="auto">{row.repeat}</span>}
             {row.badges.map((b) => <span key={b} className={`badge ${b === T.badges.critical ? "badge-danger" : "badge-primary"}`}>{b}</span>)}
           </p>
-          {row.description && <p className="mt-1 whitespace-pre-line text-sm text-ink/70" dir="auto">{row.description}</p>}
-          {row.chase && <p className="mt-1 text-xs text-muted" dir="auto">{row.chase}</p>}
-          {row.remind && bucket !== "done" && bucket !== "deleted" && <p className="mt-1 text-xs text-ink" dir="auto">{row.remind}</p>}
+          {row.description && <p className="mt-1 whitespace-pre-line text-sm text-foreground-muted" dir="auto">{row.description}</p>}
+          {row.chase && <p className="mt-1 text-xs text-foreground-muted" dir="auto">{row.chase}</p>}
+          {row.remind && bucket !== "done" && bucket !== "deleted" && <p className="mt-1 text-xs text-foreground" dir="auto">{row.remind}</p>}
           {row.proposed && (
             <div className="mt-1 space-y-1 text-sm">
-              <p className="text-ink/80" dir="auto">{row.proposed.claim} <span className="text-xs text-muted">({T.claimNote})</span></p>
-              <p className={row.fact ? "text-ink" : "text-muted"} dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact || T.nothingChecked}</p>
+              <p className="text-foreground-muted" dir="auto">{row.proposed.claim} <span className="text-xs text-foreground-muted">({T.claimNote})</span></p>
+              <p className={row.fact ? "text-foreground" : "text-foreground-muted"} dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact || T.nothingChecked}</p>
             </div>
           )}
-          {!row.proposed && row.fact && bucket === "done" && <p className="mt-1 text-xs text-ink" dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact}</p>}
+          {!row.proposed && row.fact && bucket === "done" && <p className="mt-1 text-xs text-foreground" dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact}</p>}
           {row.notes.length > 0 && (
-            <ul className="mt-1 space-y-0.5 text-xs text-muted" aria-label={T.notes}>
+            <ul className="mt-1 space-y-0.5 text-xs text-foreground-muted" aria-label={T.notes}>
               {row.notes.map((n, i) => <li key={i} dir="auto">{n}</li>)}
             </ul>
           )}
-          {row.result && bucket === "done" && <p className="mt-1 text-sm text-ink/70" dir="auto"><span className="text-muted">{T.result}: </span>{row.result}</p>}
-          {row.closedBy && bucket === "done" && <p className="mt-1 text-xs text-muted" dir="auto">{row.closedBy}</p>}
-          {row.next && bucket !== "confirm" && <p className="mt-1 text-xs text-ink"><span className="text-muted">{T.next}: </span>{row.next}</p>}
+          {row.result && bucket === "done" && <p className="mt-1 text-sm text-foreground-muted" dir="auto"><span className="text-foreground-muted">{T.result}: </span>{row.result}</p>}
+          {row.closedBy && bucket === "done" && <p className="mt-1 text-xs text-foreground-muted" dir="auto">{row.closedBy}</p>}
+          {row.next && bucket !== "confirm" && <p className="mt-1 text-xs text-foreground"><span className="text-foreground-muted">{T.next}: </span>{row.next}</p>}
         </div>
         {bucket === "confirm" ? (canClose && (
           <div className="flex flex-wrap gap-2">
@@ -335,7 +335,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       {row.reason && bucket !== "done" && bucket !== "deleted" && <p className="mt-2 text-xs text-danger" dir="auto">{row.reason}</p>}
       {panel?.id === row.id && panel.kind === "done" && (
         <form onSubmit={(e) => { e.preventDefault(); if (result.trim()) void act(row, { action: "complete", result }); else setError({ id: row.id, text: T.errors.result_required }); }} className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="min-w-0 flex-1 text-xs text-ink/70">{T.doneLabel}
+          <label className="min-w-0 flex-1 text-xs text-foreground-muted">{T.doneLabel}
             <input value={result} onChange={(e) => setResult(e.target.value)} placeholder={T.donePh} maxLength={1000} required dir="auto" className="input mt-1" autoFocus />
           </label>
           <button disabled={!!busy} className="btn btn-primary btn-sm">{T.doneSave}</button>
@@ -352,18 +352,18 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       )}
       {panel?.id === row.id && panel.kind === "remind" && (
         <form onSubmit={(e) => { e.preventDefault(); void act(row, { remindAt: when || null }); }} className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="min-w-0 flex-1 text-xs text-ink/70">{T.remindLabel.replace("{zone}", zoneLabel)}
+          <label className="min-w-0 flex-1 text-xs text-foreground-muted">{T.remindLabel.replace("{zone}", zoneLabel)}
             <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} dir="ltr" className="input mt-1" />
           </label>
           <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
           {row.remind && <button type="button" disabled={!!busy} onClick={() => act(row, { remindAt: null })} className="btn btn-secondary btn-sm">{T.remindClear}</button>}
           <button type="button" onClick={() => setPanel(null)} className="btn btn-secondary btn-sm">{T.cancel}</button>
-          <p className="w-full text-xs text-muted">{timedText}</p>
+          <p className="w-full text-xs text-foreground-muted">{timedText}</p>
         </form>
       )}
       {panel?.id === row.id && panel.kind === "phone" && (
         <form onSubmit={(e) => { e.preventDefault(); void act(row, { phone: phone.trim() || null }); }} className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="min-w-0 flex-1 text-xs text-ink/70">{T.phone}
+          <label className="min-w-0 flex-1 text-xs text-foreground-muted">{T.phone}
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={T.add.phonePh} maxLength={40} dir="ltr" className="input mt-1" />
           </label>
           <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
@@ -372,12 +372,12 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       )}
       {panel?.id === row.id && panel.kind === "reschedule" && (
         <form onSubmit={(e) => { e.preventDefault(); void act(row, { action: "reschedule", dueAt: when || null }); }} className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="min-w-0 flex-1 text-xs text-ink/70">{T.add.due.replace("{zone}", zoneLabel)}
+          <label className="min-w-0 flex-1 text-xs text-foreground-muted">{T.add.due.replace("{zone}", zoneLabel)}
             <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} dir="ltr" className="input mt-1" />
           </label>
           <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
           <button type="button" onClick={() => setPanel(null)} className="btn btn-secondary btn-sm">{T.cancel}</button>
-          {row.repeat && <p className="w-full text-xs text-muted">{R.rescheduleNote}</p>}
+          {row.repeat && <p className="w-full text-xs text-foreground-muted">{R.rescheduleNote}</p>}
         </form>
       )}
       {panel?.id === row.id && panel.kind === "repeat" && (
@@ -412,22 +412,22 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <section aria-labelledby="todo-walk" className="card">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 id="todo-walk" className="card-title">{T.walk.start}</h2>
-              {walk.card && <span className="tnum text-xs text-muted">{T.walk.left.replace("{n}", String(walk.left))}</span>}
+              {walk.card && <span className="tnum text-xs text-foreground-muted">{T.walk.left.replace("{n}", String(walk.left))}</span>}
             </div>
             {walk.card ? (
               <div className="mt-3">
                 <p className="font-medium" dir="auto">{walk.card.title}</p>
-                <p className="mt-1 text-xs text-muted" dir="auto">{walk.card.line}</p>
+                <p className="mt-1 text-xs text-foreground-muted" dir="auto">{walk.card.line}</p>
                 {walk.card.claim && (
                   <div className="mt-2 space-y-1 text-sm">
-                    <p className="text-ink/80" dir="auto">{walk.card.claim.by}: «{walk.card.claim.text}» <span className="text-xs text-muted">({T.claimNote})</span></p>
-                    <p className={walk.card.fact ? "text-ink" : "text-muted"} dir="auto"><span className="font-semibold">{T.checked}</span> {walk.card.fact || T.nothingChecked}</p>
+                    <p className="text-foreground-muted" dir="auto">{walk.card.claim.by}: «{walk.card.claim.text}» <span className="text-xs text-foreground-muted">({T.claimNote})</span></p>
+                    <p className={walk.card.fact ? "text-foreground" : "text-foreground-muted"} dir="auto"><span className="font-semibold">{T.checked}</span> {walk.card.fact || T.nothingChecked}</p>
                   </div>
                 )}
-                {walk.card.excerpt && <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-line rounded-lg bg-ink/5 px-3 py-2 text-sm text-ink/80" dir="auto">{walk.card.excerpt}</p>}
+                {walk.card.excerpt && <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-line rounded-lg bg-foreground/5 px-3 py-2 text-sm text-foreground-muted" dir="auto">{walk.card.excerpt}</p>}
                 {walk.card.held && <p className="mt-2 text-sm text-danger" dir="auto"><span className="font-semibold">{T.walk.held}</span> {walk.card.held}</p>}
                 {walkResult !== null && (
-                  <label className="mt-3 block text-xs text-ink/70">{T.doneLabel}
+                  <label className="mt-3 block text-xs text-foreground-muted">{T.doneLabel}
                     <input value={walkResult} onChange={(e) => setWalkResult(e.target.value)} placeholder={T.donePh} maxLength={1000} dir="auto" className="input mt-1" autoFocus />
                   </label>
                 )}
@@ -440,7 +440,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
                 </div>
               </div>
             ) : (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-foreground-muted">
                 <span>{T.walk.empty}</span>
                 <button onClick={() => setWalk(null)} className="btn btn-secondary btn-xs">{T.walk.close}</button>
               </div>
@@ -450,45 +450,45 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
         )}
       </div>
       {undo && (
-        <div role="status" className="fixed inset-x-4 bottom-4 z-30 mx-auto flex max-w-md flex-wrap items-center justify-between gap-2 rounded-xl border-[1.5px] border-ink bg-white px-4 py-2 text-sm">
+        <div role="status" className="fixed inset-x-4 bottom-4 z-30 mx-auto flex max-w-md flex-wrap items-center justify-between gap-2 rounded-xl border-[1.5px] border-border-strong bg-surface px-4 py-2 text-sm">
           <span>{T.removed}</span>
           <button onClick={async () => { const id = undo; setUndo(null); await send(id, { action: "restore" }); }} className="btn btn-secondary btn-xs">{T.undo}</button>
         </div>
       )}
 
-      {empty ? <p className="mt-6 card text-sm text-muted">{T.empty}</p> : allClear && <p className="mt-6 text-sm text-muted">{T.allClear}</p>}
+      {empty ? <p className="mt-6 card text-sm text-foreground-muted">{T.empty}</p> : allClear && <p className="mt-6 text-sm text-foreground-muted">{T.allClear}</p>}
       {sections.map((s) => (
         <section key={s.bucket} className="mt-6" aria-labelledby={`todo-${s.bucket}`}>
-          <h2 id={`todo-${s.bucket}`} className={`font-display text-lg font-semibold ${s.bucket === "overdue" ? "text-danger" : "text-ink"}`}>{s.title} <span className="tnum text-sm font-normal text-muted" dir="ltr">({s.rows.length})</span></h2>
-          <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">{s.rows.map((r) => item(r, s.bucket))}</ul>
+          <h2 id={`todo-${s.bucket}`} className={`font-display text-lg font-semibold ${s.bucket === "overdue" ? "text-danger" : "text-foreground"}`}>{s.title} <span className="tnum text-sm font-normal text-foreground-muted" dir="ltr">({s.rows.length})</span></h2>
+          <ul className="mt-2 divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-surface">{s.rows.map((r) => item(r, s.bucket))}</ul>
         </section>
       ))}
-      {snoozed > 0 && <p className="mt-4 text-xs text-muted">{T.snoozed} <span className="tnum" dir="ltr">{snoozed}</span></p>}
+      {snoozed > 0 && <p className="mt-4 text-xs text-foreground-muted">{T.snoozed} <span className="tnum" dir="ltr">{snoozed}</span></p>}
 
       <form onSubmit={add} className="card mt-8">
         <h2 className="card-title">{T.add.title}</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-xs text-ink/70 sm:col-span-2">{T.add.what}
+          <label className="text-xs text-foreground-muted sm:col-span-2">{T.add.what}
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={T.add.whatPh} maxLength={200} required dir="auto" className="input mt-1" />
           </label>
-          <label className="text-xs text-ink/70">{T.add.due.replace("{zone}", zoneLabel)}
+          <label className="text-xs text-foreground-muted">{T.add.due.replace("{zone}", zoneLabel)}
             <input type="datetime-local" value={form.dueAt} onChange={(e) => setForm({ ...form, dueAt: e.target.value })} dir="ltr" className="input mt-1" />
           </label>
-          <fieldset className="text-xs text-ink/70">
+          <fieldset className="text-xs text-foreground-muted">
             <legend>{T.add.direction}</legend>
-            <div className="mt-2 flex flex-wrap gap-4 text-sm text-ink">
+            <div className="mt-2 flex flex-wrap gap-4 text-sm text-foreground">
               <label className="flex items-center gap-2"><input type="radio" name="direction" checked={form.direction === "i_owe"} onChange={() => setForm({ ...form, direction: "i_owe" })} />{T.add.iOwe}</label>
               <label className="flex items-center gap-2"><input type="radio" name="direction" checked={form.direction === "they_owe"} onChange={() => setForm({ ...form, direction: "they_owe" })} />{T.add.theyOwe}</label>
             </div>
           </fieldset>
-          <label className="text-xs text-ink/70 sm:col-span-2">{form.direction === "they_owe" ? T.add.owedBy : T.add.owedTo}
+          <label className="text-xs text-foreground-muted sm:col-span-2">{form.direction === "they_owe" ? T.add.owedBy : T.add.owedTo}
             <input value={form.party} onChange={(e) => setForm({ ...form, party: e.target.value })} placeholder={T.add.owedByPh} maxLength={80} required={form.direction === "they_owe"} dir="auto" className="input mt-1" />
           </label>
-          <label className="text-xs text-ink/70">{T.add.remind.replace("{zone}", zoneLabel)}
+          <label className="text-xs text-foreground-muted">{T.add.remind.replace("{zone}", zoneLabel)}
             <input type="datetime-local" value={form.remindAt} onChange={(e) => setForm({ ...form, remindAt: e.target.value })} dir="ltr" className="input mt-1" />
           </label>
           {form.direction === "they_owe" && (
-            <label className="text-xs text-ink/70">{T.add.phone}
+            <label className="text-xs text-foreground-muted">{T.add.phone}
               <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder={T.add.phonePh} maxLength={40} dir="ltr" className="input mt-1" />
             </label>
           )}
@@ -496,7 +496,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <RepeatFields T={T} value={form.repeat} onChange={(repeat) => setForm({ ...form, repeat })} none id="rule-new" />
         </div>
-        <p className="mt-2 text-xs text-muted">{timedText}</p>
+        <p className="mt-2 text-xs text-foreground-muted">{timedText}</p>
         {error?.id === "new" && <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p>}
         <button disabled={!!busy || !form.title.trim()} className="btn btn-primary btn-sm mt-4">{busy === "new" ? T.add.saving : T.add.save}</button>
       </form>
@@ -511,18 +511,18 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
 
       {done.length > 0 && (
         <section className="mt-8" aria-labelledby="todo-done">
-          <h2 id="todo-done" className="font-display text-lg font-semibold text-ink">{T.recentDone}</h2>
-          <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">{done.map((r) => item(r, "done"))}</ul>
+          <h2 id="todo-done" className="font-display text-lg font-semibold text-foreground">{T.recentDone}</h2>
+          <ul className="mt-2 divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-surface">{done.map((r) => item(r, "done"))}</ul>
         </section>
       )}
       {deleted.length > 0 && (
         <section className="mt-8" aria-labelledby="todo-deleted">
-          <h2 id="todo-deleted" className="font-display text-lg font-semibold text-ink/70">{T.deletedTitle}</h2>
-          <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">{deleted.map((r) => item(r, "deleted"))}</ul>
+          <h2 id="todo-deleted" className="font-display text-lg font-semibold text-foreground-muted">{T.deletedTitle}</h2>
+          <ul className="mt-2 divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-surface">{deleted.map((r) => item(r, "deleted"))}</ul>
         </section>
       )}
       {children}
-      <p className="mt-6 text-xs text-muted">{T.note.replace("{brief}", () => briefAt)}</p>
+      <p className="mt-6 text-xs text-foreground-muted">{T.note.replace("{brief}", () => briefAt)}</p>
     </div>
   );
 }

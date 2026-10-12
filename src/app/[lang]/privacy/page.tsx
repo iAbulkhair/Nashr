@@ -26,7 +26,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <Nav t={t} lang={lang} />
       <main className="page-wrap">
         <h1 className="font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><Scribble kind="underline" seed="privacy-h" />{doc.title}</span></h1>
-        <p className="mt-2 text-sm text-muted">{doc.updated}</p>
+        <p className="mt-2 text-sm text-foreground-muted">{doc.updated}</p>
         {doc.sections.map((s) => (
           <section key={s.h} className="mt-8">
             <h2 className="font-display text-xl font-bold">{s.h}</h2>

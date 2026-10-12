@@ -94,10 +94,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <div className="mx-auto grid w-full max-w-4xl gap-0">
       <PageHeader lang={lang} title={t.billing.title} seed="billing-t1" />
       <dl className="mt-4 grid gap-3 card text-sm sm:grid-cols-2 lg:grid-cols-4" data-billing-summary="">
-        <div><dt className="text-muted">{t.billing.current}</dt><dd className="font-display text-lg font-medium">{t.billing.plans[u.plan]}</dd></div>
-        <div><dt className="text-muted">{t.billing.credits}</dt><dd className="font-mono text-lg tnum" dir="ltr">{formatCount(u.credits)}</dd>{fromTopups > 0 && <dd className="text-xs text-muted" data-topup-share="">{lang === "ar" ? `منها ${formatCount(fromTopups)} من باقات الشحن` : `incl. ${formatCount(fromTopups)} from top-ups`}</dd>}</div>
-        <div><dt className="text-muted">{t.billing.seats}</dt><dd className="font-mono text-lg tnum" dir="ltr"><Link href={settingsHref(lang, "members")} className="hover:underline">{used} / {seatLimit(u)}</Link></dd></div>
-        <div><dt className="text-muted">{nextLabel}</dt><dd className="font-mono text-lg tnum" dir="ltr" data-billing-next="">{nextDate}</dd></div>
+        <div><dt className="text-foreground-muted">{t.billing.current}</dt><dd className="font-display text-lg font-medium">{t.billing.plans[u.plan]}</dd></div>
+        <div><dt className="text-foreground-muted">{t.billing.credits}</dt><dd className="font-mono text-lg tnum" dir="ltr">{formatCount(u.credits)}</dd>{fromTopups > 0 && <dd className="text-xs text-foreground-muted" data-topup-share="">{lang === "ar" ? `منها ${formatCount(fromTopups)} من باقات الشحن` : `incl. ${formatCount(fromTopups)} from top-ups`}</dd>}</div>
+        <div><dt className="text-foreground-muted">{t.billing.seats}</dt><dd className="font-mono text-lg tnum" dir="ltr"><Link href={settingsHref(lang, "members")} className="hover:underline">{used} / {seatLimit(u)}</Link></dd></div>
+        <div><dt className="text-foreground-muted">{nextLabel}</dt><dd className="font-mono text-lg tnum" dir="ltr" data-billing-next="">{nextDate}</dd></div>
       </dl>
       {!owner && <ReadOnlyNote className="mt-4" text={t.billing.ownerOnly} />}
       {returned && online && <PaymobReturnStatus lang={lang} />}
@@ -107,18 +107,18 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <CreditUsageCard t={t} lang={lang} user={{ plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, topups: openLots(u).map(topupBalance) }} month={month} allowance={allowanceOf(u)} chat={chat} chatBar={false} />
       <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} payOnline={online} />
       {owner && u.plan === "trial" && (
-        <div className="mt-6 rounded-2xl bg-ink p-6 text-lilac">
+        <div className="mt-6 rounded-2xl bg-inverse p-6 text-inverse-muted">
           <p className="eyebrow eyebrow-accent">{lang === "ar" ? "ماذا يحدث عند التفعيل" : "What happens when you activate"}</p>
           <h2 className="mt-2 font-display text-2xl font-bold">{lang === "ar" ? "رصيد شهري تطلب به ما تحتاج: 10 منشورات في الدفعة، مقالات SEO، 3 رسائل واتساب، 5 نسخ إعلانية — بلهجتك، بانتظار موافقتك." : "Monthly credits for what you need: 10 posts per batch, SEO articles, 3 WhatsApp messages, 5 ad variants — in your dialect, waiting for your approval."}</h2>
-          <p className="mt-2 text-sm text-lilac/75">{lang === "ar" ? "خطة أسبوعية كل أحد، ملخص كل صباح، وتتعلم من كل تعديل. ألغِ في أي وقت." : "A weekly plan every Sunday, a brief every morning, and she learns from every edit. Cancel anytime."}</p>
+          <p className="mt-2 text-sm text-inverse-muted/75">{lang === "ar" ? "خطة أسبوعية كل أحد، ملخص كل صباح، وتتعلم من كل تعديل. ألغِ في أي وقت." : "A weekly plan every Sunday, a brief every morning, and she learns from every edit. Cancel anytime."}</p>
         </div>
       )}
       {offer && <OfferBanner lang={lang} kind={offer.kind} code={u.referredBy?.code} until={offerUntil} />}
       {owner && u.plan === "trial" && !u.referredBy && !u.firstPaidOn && <PartnerCodeForm lang={lang} />}
       <h2 className="mt-8 font-display text-xl font-bold">{ar ? "الخطط" : "Plans"}</h2>
       {/* The VAT note (rule 1154): the prices below are before VAT, as on the pricing page. */}
-      <p className="mt-1 text-sm text-muted" data-vat-note="">{m.sub}</p>
-      {owner && <p className="mt-2 text-ink/70">{t.billing.sub}</p>}
+      <p className="mt-1 text-sm text-foreground-muted" data-vat-note="">{m.sub}</p>
+      {owner && <p className="mt-2 text-foreground-muted">{t.billing.sub}</p>}
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {SELF_SERVE_PLANS.map((k) => {
           const plan = card(k);
@@ -127,16 +127,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           return (
             <PlanCard key={k} lang={lang} id={k} name={plan.name} price={plan.price} period={plan.period} credits={plan.credits} features={plan.features.slice(0, 4)}
               current={u.plan === k} highlight={"highlight" in plan && !!plan.highlight}
-              offerLine={offer ? <p data-offer-price className="text-sm font-semibold text-ink">{O.card(firstMonthPriceSar(k), PLAN_PRICE_SAR[k])}</p> : undefined}>
+              offerLine={offer ? <p data-offer-price className="text-sm font-semibold text-foreground">{O.card(firstMonthPriceSar(k), PLAN_PRICE_SAR[k])}</p> : undefined}>
               {!owner ? null : online ? (
                 // The same plan already active is renewed from the subscription card above, not bought again here.
                 sub?.status === "active" && sub.plan === k ? null : <PaymobPayButton lang={lang} kind="plan" plan={k} label={offer ? O.activate : t.billing.pay} />
               ) : href ? (
-                <a href={href} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-[var(--hit-min)] items-center justify-center rounded-full bg-ink px-4 py-2 text-center text-sm font-semibold text-lilac">{offer ? O.activate : links[k] ? t.billing.pay : t.billing.contact}</a>
+                <a href={href} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-[var(--hit-min)] items-center justify-center rounded-full bg-inverse px-4 py-2 text-center text-sm font-semibold text-inverse-muted">{offer ? O.activate : links[k] ? t.billing.pay : t.billing.contact}</a>
               ) : (
-                <a href={`mailto:${SUPPORT_EMAIL}`} className="mt-4 inline-flex min-h-[var(--hit-min)] items-center justify-center rounded-full border border-ink/20 px-4 py-2 text-center text-sm">{offer ? `${O.noWa} ` : ""}{SUPPORT_EMAIL}</a>
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="mt-4 inline-flex min-h-[var(--hit-min)] items-center justify-center rounded-full border border-border px-4 py-2 text-center text-sm">{offer ? `${O.noWa} ` : ""}{SUPPORT_EMAIL}</a>
               )}
-              {offer && !online && links[k] && <a href={links[k]} target="_blank" rel="noreferrer" className="mt-2 text-center text-xs text-muted underline">{O.fullPrice}</a>}
+              {offer && !online && links[k] && <a href={links[k]} target="_blank" rel="noreferrer" className="mt-2 text-center text-xs text-foreground-muted underline">{O.fullPrice}</a>}
             </PlanCard>
           );
         })}
@@ -144,7 +144,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <PlanCard lang={lang} id="agency" name={agency.name} price={agency.price} period={agency.period} credits={agency.credits}
             features={agency.features.filter((f) => !/coming soon|قريباً/.test(f)).slice(0, 4)} current={u.plan === "agency"}>
             {/* Contact only, and only for the owner: the WhatsApp thread carries the account email. */}
-            {owner && <a href={wa ?? `/${lang}/enterprise#contact`} target={wa ? "_blank" : undefined} rel={wa ? "noreferrer" : undefined} className="mt-4 inline-flex min-h-[var(--hit-min)] items-center justify-center rounded-full border border-ink/20 px-4 py-2 text-center text-sm">{agency.cta}</a>}
+            {owner && <a href={wa ?? `/${lang}/enterprise#contact`} target={wa ? "_blank" : undefined} rel={wa ? "noreferrer" : undefined} className="mt-4 inline-flex min-h-[var(--hit-min)] items-center justify-center rounded-full border border-border px-4 py-2 text-center text-sm">{agency.cta}</a>}
           </PlanCard>
         )}
       </div>

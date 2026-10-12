@@ -80,7 +80,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
   return (
     <div className="mx-auto w-full max-w-2xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="brandform-t1" />{o.title}</span></h1>
-      <p className="mt-2 text-ink/70">{o.sub}</p>
+      <p className="mt-2 text-foreground-muted">{o.sub}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
       <form onSubmit={onSubmit} className="mt-6">
         <fieldset disabled={readOnly} className="grid min-w-0 gap-4">
@@ -106,7 +106,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
             </Field>
             <fieldset className="flex items-center gap-4 text-sm">
               <legend className="sr-only">{o.languages}</legend>
-              <span className="text-muted">{o.languages}:</span>
+              <span className="text-foreground-muted">{o.languages}:</span>
               {(["ar", "en"] as const).map((l) => (
                 <label key={l} className="flex items-center gap-1.5">
                   <input type="checkbox" checked={langs.includes(l)} onChange={() => toggle(langs, setLangs, l)} /> {o[l]}
@@ -124,17 +124,17 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
           </div>
           {/* No terms yet is a heads-up, not an error: the notice pair (rule 1080), where it was lemon on a light ground. */}
           <section id="guard" aria-labelledby="guard-title" className={`rounded-xl border-[1.5px] p-4 ${terms.length ? "border-border bg-surface-muted" : "border-notice-border bg-notice-bg"}`}>
-            <p id="guard-title" className="flex items-center gap-2 font-display font-bold text-ink"><Icon name="shield" className="h-5 w-5" />{G.title}<Badge tone={terms.length ? "info" : "warning"} className="ms-auto">{terms.length ? G.count(terms.length) : G.none}</Badge></p>
-            <p className="mt-1 text-xs text-ink/70">{G.body}</p>
+            <p id="guard-title" className="flex items-center gap-2 font-display font-bold text-foreground"><Icon name="shield" className="h-5 w-5" />{G.title}<Badge tone={terms.length ? "info" : "warning"} className="ms-auto">{terms.length ? G.count(terms.length) : G.none}</Badge></p>
+            <p className="mt-1 text-xs text-foreground-muted">{G.body}</p>
             <Field label={o.banned} className="mt-3"><Input name="banned" value={banned} onChange={(e) => setBanned(e.target.value)} /></Field>
-            {terms.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5">{terms.map((w) => <li key={w} className="pop-in flex items-center gap-1 rounded-full bg-ink px-2.5 py-0.5 text-xs text-lilac" dir="auto"><Icon name="lock" className="h-3 w-3 text-lemon" />{w}</li>)}</ul>}
-            <p className="mt-3 text-xs text-muted">{G.examples}</p>
-            <div className="mt-1 flex flex-wrap gap-1.5">{G.ex.filter((w) => !terms.some((x) => x.toLowerCase() === w.toLowerCase())).map((w) => <button type="button" key={w} onClick={() => addTerm(w)} className="min-h-8 rounded-full border border-dashed border-ink/40 px-3 py-1 text-xs text-ink hover:bg-ink hover:text-lilac" dir="auto">+ {w}</button>)}</div>
+            {terms.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5">{terms.map((w) => <li key={w} className="pop-in flex items-center gap-1 rounded-full bg-inverse px-2.5 py-0.5 text-xs text-inverse-muted" dir="auto"><Icon name="lock" className="h-3 w-3 text-lemon" />{w}</li>)}</ul>}
+            <p className="mt-3 text-xs text-foreground-muted">{G.examples}</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">{G.ex.filter((w) => !terms.some((x) => x.toLowerCase() === w.toLowerCase())).map((w) => <button type="button" key={w} onClick={() => addTerm(w)} className="min-h-8 rounded-full border border-dashed border-foreground/40 px-3 py-1 text-xs text-foreground hover:bg-inverse hover:text-inverse-muted" dir="auto">+ {w}</button>)}</div>
           </section>
           <fieldset className="flex flex-wrap items-center gap-2 text-sm">
-            <legend className="mb-1 w-full text-muted">{o.channels}</legend>
+            <legend className="mb-1 w-full text-foreground-muted">{o.channels}</legend>
             {CHANNELS.map((c) => (
-              <button type="button" key={c} aria-pressed={channels.includes(c)} onClick={() => toggle(channels, setChannels, c)} className={`min-h-9 rounded-full border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-60 ${channels.includes(c) ? "border-ink bg-ink text-lilac" : "border-ink/20 bg-white"}`}>
+              <button type="button" key={c} aria-pressed={channels.includes(c)} onClick={() => toggle(channels, setChannels, c)} className={`min-h-9 rounded-full border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-60 ${channels.includes(c) ? "border-border-strong bg-inverse text-inverse-muted" : "border-border bg-surface"}`}>
                 {c}
               </button>
             ))}

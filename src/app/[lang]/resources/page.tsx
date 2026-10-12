@@ -34,19 +34,19 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               {s.title}
             </span>
           </h1>
-          <p className="mt-5 max-w-2xl text-lg text-muted">{s.sub}</p>
+          <p className="mt-5 max-w-2xl text-lg text-foreground-muted">{s.sub}</p>
         </section>
         <section className="mx-auto grid max-w-6xl gap-x-6 gap-y-8 px-4 pb-16 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
           {s.cards.map((c) => (
             <Link key={c.href} href={`/${lang}${c.href}`} className="s-card block" data-boil>
               <Scribble kind="box" seed={`resources-${c.href}`} fill="paper" boil />
               <h2 className="font-display text-lg font-bold">{c.t}</h2>
-              <p className="mt-1 text-sm text-muted">{c.d}</p>
+              <p className="mt-1 text-sm text-foreground-muted">{c.d}</p>
             </Link>
           ))}
         </section>
         {posts.length > 0 && (
-          <section className="border-y-[1.5px] border-ink bg-lilac">
+          <section className="border-y-[1.5px] border-border-strong bg-background-muted">
             <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
               <h2 className="font-display text-2xl font-bold">{s.cards[0].t}</h2>
               <div className="mt-6 grid gap-x-6 gap-y-8 sm:grid-cols-3">
@@ -54,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
                   <Link key={p.slug} href={`/${lang}/blog/${p.slug}`} className="s-card block" data-boil>
                     <Scribble kind="box" seed={`resources-post-${p.slug}`} fill="paper" boil />
                     <h3 className="font-display font-bold">{p.title}</h3>
-                    <p className="mt-1 text-sm text-muted">{p.desc}</p>
+                    <p className="mt-1 text-sm text-foreground-muted">{p.desc}</p>
                   </Link>
                 ))}
               </div>

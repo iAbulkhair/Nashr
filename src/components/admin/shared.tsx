@@ -149,7 +149,7 @@ export function PlanTiles({ lang, users, total, counts }: { lang: Lang; users?: 
   return (
     <div className="grid gap-3 sm:grid-cols-4">
       {[[S.users, n(c?.users)], [S.paying, n(c?.paying)], [S.today, n(c?.today)], [S.trial, n(c?.trial)], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, n(c?.suspended)]].map(([l, v]) => (
-        <div key={String(l)} className="card card-sm"><p className="text-xs text-muted">{l}</p><p className="font-display text-2xl font-bold text-ink">{v}</p></div>
+        <div key={String(l)} className="card card-sm"><p className="text-xs text-foreground-muted">{l}</p><p className="font-display text-2xl font-bold text-foreground">{v}</p></div>
       ))}
     </div>
   );
