@@ -200,7 +200,7 @@ describe("credits the founder adds are finite and bounded", () => {
   it("1e999, a string or more than 100,000 either way is refused; a bounded number is added", async () => {
     const u = await account("pro");
     const before = (await getUser(u.email))!.credits;
-    const inf = await raw(`{"email":"${u.email}","addCredits":1e999}`);
+    const inf = await raw(`{"email":"${u.email}","addCredits":1e999,"reason":"test reason"}`);
     expect(inf.status).toBe(400);
     expect(await inf.json()).toEqual({ ok: false, error: "bad_credits" });
     for (const addCredits of ["30", 100_001, -100_001, true]) expect((await call(u.email, { addCredits })).status, String(addCredits)).toBe(400);
@@ -220,7 +220,7 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
       expect(res.status, JSON.stringify(chatAllowance)).toBe(400);
       expect(await res.json(), JSON.stringify(chatAllowance)).toEqual({ ok: false, error: "bad_chat" });
     }
-    const inf = await raw(`{"email":"${u.email}","chatAllowance":1e999}`);
+    const inf = await raw(`{"email":"${u.email}","chatAllowance":1e999,"reason":"test reason"}`);
     expect(inf.status).toBe(400);
     expect(await inf.json()).toEqual({ ok: false, error: "bad_chat" });
     // A bad override refuses the whole request, not only its own part.

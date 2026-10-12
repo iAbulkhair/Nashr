@@ -857,7 +857,7 @@ describe("rule 405: payouts record once, can be voided, and go only to bank deta
 
   it("applications sent before the new terms are marked for the founder", () => {
     expect(NEW_TERMS_FROM).toBe("2026-10-01");
-    const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    const src = readFileSync("src/components/admin/PartnersPanel.tsx", "utf8");
     expect(src).toContain("a.at.slice(0, 10) < NEW_TERMS_FROM");
     expect(src).toContain("15% of each payment for the first 4 months, 30 days, SAR 200 minimum");
   });
@@ -873,7 +873,7 @@ describe("rule 406: programme days are Riyadh days", () => {
   });
 
   it("the console's default dates are Riyadh's today", () => {
-    for (const f of ["src/components/app/PaymentsPanel.tsx", "src/components/app/PartnersPanel.tsx"]) {
+    for (const f of ["src/components/admin/PaymentsPanel.tsx", "src/components/admin/PartnersPanel.tsx"]) {
       const src = readFileSync(f, "utf8");
       expect(src, f).toContain("ksaDay()");
       expect(src, f).not.toContain("new Date().toISOString().slice(0, 10)");
@@ -1203,9 +1203,9 @@ describe("rule 412: Thakeen bears the taxes: payouts record VAT on top and withh
   });
 
   it("the console shows the flags and the optional tax fields, and codes no tax rate", () => {
-    const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    const src = readFileSync("src/components/admin/PartnersPanel.tsx", "utf8");
     for (const t of ["VAT-registered: add VAT on payout", "Outside Saudi Arabia: withholding tax may apply — ask your accountant", "data-payout-vat", "data-payout-wht", "data-tax-totals"]) expect(src, t).toContain(t);
-    for (const f of ["src/lib/partner-rules.ts", "src/lib/partners.ts", "src/components/app/PartnersPanel.tsx"]) {
+    for (const f of ["src/lib/partner-rules.ts", "src/lib/partners.ts", "src/components/admin/PartnersPanel.tsx"]) {
       expect(readFileSync(f, "utf8"), f).not.toMatch(/VAT_RATE|WHT_RATE|vatRate|whtRate|\* ?0\.15|\* ?0\.05/);
     }
   });
@@ -1279,7 +1279,7 @@ describe("rule 414: an application needs consent to the terms, and records when 
     const email = `old-${randomBytes(4).toString("hex")}@test.example`;
     await db.lpush(APPLICATIONS, JSON.stringify({ id: `app_${randomBytes(8).toString("hex")}`, name: "Old", email, phone: "", channel: "", audience: "", lang: "en", at: "2026-09-20T10:00:00.000Z" }));
     expect((await apps()).find((a) => a.email === email)).toMatchObject({ consentAt: null, termsVersion: null });
-    const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    const src = readFileSync("src/components/admin/PartnersPanel.tsx", "utf8");
     expect(src).toContain("data-consent");
     expect(src).toContain("data-no-consent");
   });
@@ -1352,7 +1352,7 @@ describe("rule 415: no partner without a recorded agreement to the terms, carrie
       db.set(`partnercode:${c}`, email), db.sadd("partners:all", email),
     ]);
     expect((await row(email))!.terms).toBeNull();
-    const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    const src = readFileSync("src/components/admin/PartnersPanel.tsx", "utf8");
     for (const t of ["data-partner-no-consent", "data-partner-consent", "data-out-of-band", "consentOutOfBand"]) expect(src, t).toContain(t);
   });
 });
@@ -1414,7 +1414,7 @@ describe("rule 417: a tax amount typed wrong on the payout form is refused, neve
     expect(await body(payout({ vatSar: taxField("1,500") }))).toMatchObject({ ok: false, error: "bad_vat" });
     expect(await body(payout({ whtSar: taxField("12,5") }))).toMatchObject({ ok: false, error: "bad_wht" });
     expect((await ledger(a.user.email)).filter((r) => r.kind === "payout")).toHaveLength(0);
-    const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    const src = readFileSync("src/components/admin/PartnersPanel.tsx", "utf8");
     expect(src).toContain("vatSar: taxField(vat), whtSar: taxField(wht)");
   });
 });
@@ -1422,21 +1422,21 @@ describe("rule 417: a tax amount typed wrong on the payout form is refused, neve
 describe("rule 418: the Partners tab and the Payments panel make their admin calls through adminFetch, next to the Leads tab", () => {
   it("no direct fetch in either panel, both admin APIs through adminFetch, and the console keeps both new tabs", () => {
     for (const f of ["PartnersPanel", "PaymentsPanel"]) {
-      const src = readFileSync(`src/components/app/${f}.tsx`, "utf8");
+      const src = readFileSync(`src/components/admin/${f}.tsx`, "utf8"); // moved from components/app (rule 1181)
       expect(src, `${f}: a direct fetch would leave an empty panel when the key session ends (rule 436)`).not.toMatch(/(?<![A-Za-z])fetch\(/);
       expect(src, f).toContain('import { adminFetch } from "@/lib/admin-fetch";');
     }
-    const partners = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    const partners = readFileSync("src/components/admin/PartnersPanel.tsx", "utf8");
     expect(partners).toContain('adminFetch("/api/admin/partners").then(');
     expect(partners).toContain('adminFetch("/api/admin/partners", { method: "POST"');
-    const payments = readFileSync("src/components/app/PaymentsPanel.tsx", "utf8");
+    const payments = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     expect(payments).toContain("adminFetch(`/api/admin/payments/${who}`).then(");
     expect(payments).toContain("adminFetch(`/api/admin/payments/${who}`, { method: \"POST\"");
     // The sections moved to their own pages under /{lang}/admin on 2026-10-09 (rule 871): src/lib/admin-gate.ts lists them.
     expect(readFileSync("src/lib/admin-gate.ts", "utf8")).toMatch(/ADMIN_SECTIONS = \[[^\]]*"leads"[^\]]*"partners"[^\]]*\] as const/);
     expect(readFileSync("src/app/[lang]/admin/partners/page.tsx", "utf8")).toContain("<PartnersPanel lang={lang} />");
     expect(readFileSync("src/app/[lang]/admin/leads/page.tsx", "utf8")).toContain("<LeadsPanel lang={lang} />");
-    expect(readFileSync("src/components/app/LeadsPanel.tsx", "utf8")).toContain("window.dispatchEvent(new Event(ADMIN_LEADS_SEEN))");
+    expect(readFileSync("src/components/admin/LeadsPanel.tsx", "utf8")).toContain("window.dispatchEvent(new Event(ADMIN_LEADS_SEEN))");
     // The section labels moved next to ADMIN_SECTIONS (rule 961), so page titles on the server read the same names.
     expect(readFileSync("src/lib/admin-gate.ts", "utf8")).toMatch(/partners: "Partners"/);
     expect(readFileSync("src/lib/admin-gate.ts", "utf8")).toMatch(/partners: "الشركاء"/);

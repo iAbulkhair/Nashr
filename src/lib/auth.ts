@@ -29,6 +29,12 @@ export type Actor = {
   role: Role;
   /** The founder email (or "key" for the console key) behind an impersonation session. Only for kind "founder". */
   impersonating?: string;
+  /**
+   * Kind "founder" only (rule 1177): when the impersonation began and when it ends, epoch ms, for the console banner's
+   * countdown. `until` is the session's own `exp`, or `at` + 2 hours for a session written before 2026-10-11.
+   */
+  since?: number;
+  until?: number;
 };
 
 /**
@@ -61,6 +67,12 @@ export type User = {
   suspended?: boolean;
   /** ISO time of the last password change: every session issued before it is dead (src/lib/auth.ts `currentUser`). */
   sessionsAfter?: string;
+  /**
+   * ISO time of the owner's last "sign out other devices" (rule 1170): browser sessions issued before it are dead, and
+   * nothing else is. Unlike `sessionsAfter` it never ends the calendar feed or booking links (`loginHolds` does not read
+   * it), MCP tokens or connected apps. Optional, added 2026-10-11 (expand): a record without it signs nothing out.
+   */
+  devicesAfter?: string;
   /**
    * Credits charged this UTC calendar month per brand scope and agent (`charge` in src/lib/credits.ts, under the same
    * lock and in the same save as the balance). A record whose `month` is not the current one counts as empty.
@@ -256,7 +268,14 @@ export async function verifyPassword(u: User, password: string) {
  * `member:{email}` on every request. Sessions written before 2026-09-18 are a bare email with no issue time, which counts
  * as "issued at 0".
  */
-export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string };
+/**
+ * A stored session. `exp` (epoch ms, since 2026-10-11, rule 1177) is the end of an impersonation the founder chose in the
+ * console (15, 60 or 120 minutes); the record's TTL ends at the same moment. Optional (expand): a session without it
+ * reads as before, and an impersonation without it shows `at` + 2 hours, the TTL every one had until then.
+ */
+export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string; exp?: number };
+/** The impersonation length every session had before the founder could choose it (2 hours). */
+export const IMPERSONATION_LEGACY_MS = 2 * 60 * 60 * 1000;
 type SessionRec = string | Session;
 const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
 /** True when a session issued at `at` predates the revocation stamp `iso`. */
@@ -306,10 +325,33 @@ export async function sessionCookie(maxAge: number) {
  */
 export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string } = {}) {
   const token = randomBytes(32).toString("hex");
-  const rec: Session = opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: Date.now() };
+  const now = Date.now();
+  // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
+  const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: now };
   await db.set(`session:${token}`, rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
+}
+
+/**
+ * Give this device a fresh session for `email`, then run `revoke(stamp)`, then drop the old session record (rule 1171).
+ * The new session is written first and issued at or after `stamp`, so a revocation stamped `stamp` never ends it, and
+ * a failure at any step leaves the device signed in: before `revoke` the old session still holds, after it the new one
+ * does. When `revoke` answers false (nothing was revoked) the new session is removed and the old cookie put back.
+ */
+export async function rotateSession(email: string, revoke: (stamp: string) => Promise<boolean>): Promise<boolean> {
+  const jar = await cookies();
+  const old = jar.get(COOKIE)?.value;
+  const stamp = new Date().toISOString();
+  await createSession(email);
+  const fresh = jar.get(COOKIE)?.value;
+  if (!(await revoke(stamp))) {
+    if (fresh && fresh !== old) await db.del(`session:${fresh}`);
+    if (old) jar.set(COOKIE, old, await sessionCookie(SESSION_TTL));
+    return false;
+  }
+  if (old && old !== fresh) await db.del(`session:${old}`).catch(() => {});
+  return true;
 }
 
 export async function destroySession() {
@@ -365,6 +407,7 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   if (u) {
     if (u.suspended) return null;
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
+    if (issuedBefore(s.at, u.devicesAfter)) return null; // issued before the owner's last "sign out other devices" (rule 1170)
     // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
     // `currentUserUnverified`. A founder impersonation passes (support must reach the account). A member login (below)
     // is gated by its owner's state too (rule 767).
@@ -372,14 +415,17 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
     u.brandId = brandId;
     u.scope = scopeFor(u.email, brandId);
     const base = { email: u.email, name: u.name, lang: u.lang, role: "owner" as const };
-    u.actor = s.imp ? { ...base, kind: "founder", impersonating: s.imp } : { ...base, kind: "owner" };
+    if (s.imp && typeof s.exp === "number" && Date.now() >= s.exp) return null; // the founder's chosen length is over (rule 1177)
+    u.actor = s.imp
+      ? { ...base, kind: "founder", impersonating: s.imp, since: s.at, until: typeof s.exp === "number" ? s.exp : s.at + IMPERSONATION_LEGACY_MS }
+      : { ...base, kind: "owner" };
     return u;
   }
   // Member login. Impersonation sessions are only ever issued for owner accounts.
   if (!m || s.imp || m.disabled) return null;
   if (m.role !== "admin" && m.role !== "member") return null;
   if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === email) return null;
-  if (issuedBefore(s.at, m.sessionsAfter)) return null;
+  if (issuedBefore(s.at, m.sessionsAfter) || issuedBefore(s.at, m.devicesAfter)) return null;
   // The roster entry too, in the same round: removal deletes both under `lock:member`, and a record that outlived its
   // entry anyway (restored by a racing write, left by a deleted account) is off the owner's Members page, so it must
   // not sign in either.

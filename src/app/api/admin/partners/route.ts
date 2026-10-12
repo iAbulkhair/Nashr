@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
-import { CAPS, pushCapped } from "@/lib/db";
 import { approvePartner, confirmBank, listApplications, listPartners, recordPayout, rejectApplication, voidPayout } from "@/lib/partners";
+import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const log = (email: string, what: string) => pushCapped("admin:log", JSON.stringify({ actor: who, email, what, at: new Date().toISOString() }), CAPS.adminLog);
+  const log = (email: string, what: string, reason?: string) => adminAudit({ actor: who, section: "partners", target: email, what, reason });
   if (b.action === "approve") {
     const res = await approvePartner({ email: b.email, name: b.name, code: b.code, appId: b.appId, consentOutOfBand: b.consentOutOfBand }, who);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "already_partner" || res.error === "code_taken" || res.error === "member_login" ? 409 : 400 });
@@ -58,10 +58,13 @@ export async function POST(req: Request) {
     return NextResponse.json(res);
   }
   if (b.action === "void_payout") {
+    // The void form asks a reason (rule 1185). Approve, reject, payout and bank confirm have no reason form yet.
+    const noReason = reasonRefused(b.reason);
+    if (noReason) return noReason;
     const email = typeof b.email === "string" ? b.email : "";
     const res = await voidPayout(email, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: 404 });
-    await pushCapped("admin:log", JSON.stringify({ actor: who, email, what: `partner:payout ${res.payout.id} void sar:${res.payout.sar}`, reason: res.payout.voidReason, at: new Date().toISOString() }), CAPS.adminLog);
+    await log(email, `partner:payout ${res.payout.id} void sar:${res.payout.sar}`, res.payout.voidReason);
     return NextResponse.json(res);
   }
   if (b.action === "confirm_bank") {

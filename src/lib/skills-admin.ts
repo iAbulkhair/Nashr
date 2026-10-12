@@ -1,5 +1,5 @@
 import type { By } from "./actor";
-import { CAPS, pushCapped } from "./db";
+import { adminAudit } from "./admin-audit";
 import { summarizeRevision, type HistoryRow } from "./instructions-diff";
 import { publicLayer, publicRevision } from "./instructions-http";
 import { PLATFORM_CHARS } from "./instructions-safety";
@@ -60,11 +60,12 @@ export const founderBy = (who: string): By => ({ kind: "founder", ...(who !== "k
 export const snap = (l: Layer) => ({ v: l.active.v, on: l.active.items.filter((i) => i.on).length, draft: l.draft ? l.draft.items.length : null });
 
 /**
- * One founder write in `admin:log`, in the entry shape the other admin routes use (`actor` is the key session or the
- * founder's email, `email` the object of the row, which the console's log table shows in its user column).
+ * One founder write in the audit log, through `adminAudit`, its only writer (rule 1172). `actor` is the key session or
+ * the founder's email; the target "platform-skills" is also the legacy `email` the console's log table shows. The
+ * section is "quality": the platform layer changes how every agent writes.
  */
 export const logSkills = (actor: string, action: string, before: unknown, after: unknown) =>
-  pushCapped("admin:log", JSON.stringify({ actor, email: "platform-skills", what: `skills.${action}`, before, after, at: new Date().toISOString() }), CAPS.adminLog);
+  adminAudit({ actor, section: "quality", what: `skills.${action}`, action: `skills.${action}`, target: "platform-skills", before, after });
 
 /** What the console's test offers: the types a draft can be written for, each with its owning agent (Reem owns none). The same pairs the route accepts. */
 export type AdminTestOption = { agent: AgentId; type: TaskType };

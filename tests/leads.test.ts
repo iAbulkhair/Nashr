@@ -105,7 +105,7 @@ describe("rule 354: the Leads tab lists sales leads newest first, with an unread
   });
 
   it("the console sends the newest lead it showed, not the server's clock", () => {
-    const panel = readFileSync("src/components/app/LeadsPanel.tsx", "utf8");
+    const panel = readFileSync("src/components/admin/LeadsPanel.tsx", "utf8");
     expect(panel).toMatch(/action: "seen", until/);
   });
 

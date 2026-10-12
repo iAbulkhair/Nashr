@@ -13,12 +13,14 @@ const CLOSE = { ar: "إغلاق", en: "Close" } as const;
  * inside and ended outside does not. The page behind does not scroll while it is open. The close button is 44px and last
  * in the order, so focus starts on the first link, not on close.
  */
-export default function Sheet({ lang, label, onClose, side = "start", className = "", children }: {
+export default function Sheet({ lang, label, onClose, side = "start", size = "sm", className = "", children }: {
   lang: Lang;
   /** The sheet's accessible name ("Menu"). */
   label: string;
   onClose: () => void;
   side?: "start" | "end" | "bottom";
+  /** "lg" (rule 1180): a detail panel, up to 48rem wide and never wider than the screen less a 1rem gutter. */
+  size?: "sm" | "lg";
   className?: string;
   children: React.ReactNode;
 }) {
@@ -39,7 +41,7 @@ export default function Sheet({ lang, label, onClose, side = "start", className 
   }, []);
   const place = side === "bottom"
     ? "mx-0 mb-0 mt-auto max-h-[85dvh] w-full max-w-none rounded-t-2xl border-t-[1.5px] pb-[env(safe-area-inset-bottom)]"
-    : `my-0 h-dvh max-h-none w-[min(20rem,calc(100%-3rem))] max-w-none ${side === "start" ? "ms-0 me-auto border-e-[1.5px]" : "ms-auto me-0 border-s-[1.5px]"}`;
+    : `my-0 h-dvh max-h-none ${size === "lg" ? "w-[min(48rem,calc(100%-1rem))]" : "w-[min(20rem,calc(100%-3rem))]"} max-w-none ${side === "start" ? "ms-0 me-auto border-e-[1.5px]" : "ms-auto me-0 border-s-[1.5px]"}`;
   return (
     <dialog
       ref={ref}

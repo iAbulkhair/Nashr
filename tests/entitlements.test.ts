@@ -13,7 +13,7 @@ import { AGENT_IDS } from "@/lib/agents";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "@/lib/pricing";
 import { chatCaps } from "@/lib/rate";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS } from "@/lib/media-catalog";
-import EntitlementsTable, { videoGrantRequest } from "@/components/app/EntitlementsTable";
+import EntitlementsTable, { videoGrantRequest } from "@/components/admin/EntitlementsTable";
 import type { Billing } from "@/lib/billing-state";
 import { adminConsoleSrc } from "./helpers/admin-console";
 

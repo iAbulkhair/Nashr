@@ -2,7 +2,7 @@ import { adminScreenMeta } from "@/lib/screen-titles";
 import { notFound } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { requireAdmin } from "@/lib/admin-gate-server";
-import PartnersPanel from "@/components/app/PartnersPanel";
+import PartnersPanel from "@/components/admin/PartnersPanel";
 import { EndedGate, EndedNotice } from "@/components/admin/shared";
 
 export const dynamic = "force-dynamic";

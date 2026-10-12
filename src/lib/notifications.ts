@@ -10,7 +10,7 @@ import { SEC_ALERTS_PER_DAY, SEC_KEYS, agendaFor, backFingerprint, overdueAlertF
 import { compareItems, daysBetween, overdueAlerts, partyKey, partyName, zoneDay, type AwayMap, type OverdueAlert, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 import { appOrigin } from "./origin";
-import { inAppAllowed, readPrefsMany } from "./notify-prefs";
+import { inAppAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -100,12 +100,14 @@ export type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?
  * Notification preferences (rule 1146): an entry whose kind the person switched off in Settings, Notifications for its
  * brand (`Push.scope`, else the account) is claimed and answered like any other, so a caller that emails only what it
  * pushed still decides the email by its own preference, but it is not written to the bell. The preferences are read in
- * the same round as the claims.
+ * the same round as the claims. A caller that already read them for every scope it pushes (the reminder sweep, once per
+ * account) passes them as `known`, and no read is made (rule 1190); a scope missing from `known` reads them all as before.
  */
-export async function pushNotifs(email: string, entries: Push[]): Promise<(Notif | null)[]> {
+export async function pushNotifs(email: string, entries: Push[], known?: Map<string, NotifyPrefs>): Promise<(Notif | null)[]> {
+  const scopes = entries.map((e) => e.scope ?? email);
   const [won, prefs] = await Promise.all([
     Promise.all(entries.map((e) => (e.fingerprint ? db.setNx(seenKey(email, e.fingerprint), 1, (e.ttlDays ?? 3) * 86400) : true))),
-    readPrefsMany(entries.map((e) => e.scope ?? email), email),
+    known && scopes.every((s) => known.has(s)) ? known : readPrefsMany(scopes, email),
   ]);
   const at = new Date().toISOString();
   const aligned: (Notif | null)[] = entries.map((e, i) => (won[i] ? { id: randomBytes(5).toString("hex"), at, ...e.n } : null));

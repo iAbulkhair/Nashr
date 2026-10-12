@@ -103,6 +103,14 @@ export async function newMember(owner: User, role: "admin" | "member" = "member"
   return { email, password };
 }
 
+/**
+ * The founder write routes that ask a reason (rule 1185). The console always sends one, so a test body without a
+ * `reason` key gets this one; a test that checks the refusal sends `reason` itself (an empty string, or too short).
+ */
+const REASON_ROUTES = /^\/api\/admin\/(users\/[^/?]+|plan|topups|payments\/[^/?]+|partners)(\?|$)/;
+export const TEST_REASON = "test reason";
+const withTestReason = (url: string, method: string, body: unknown) =>
+  method === "POST" && REASON_ROUTES.test(url) && body && typeof body === "object" && !Array.isArray(body) && !("reason" in body) ? { ...body, reason: TEST_REASON } : body;
 export const json = (url: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
-  new Request(`https://nashr.test${url}`, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+  new Request(`https://nashr.test${url}`, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(withTestReason(url, method, body)) });
 export const params = <T extends Record<string, string>>(p: T) => ({ params: Promise.resolve(p) });

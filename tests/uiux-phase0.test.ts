@@ -18,16 +18,21 @@ const NATIVE = (name: string) => new RegExp(`(?<![\\w$.\`])(?:window\\.)?${name}
 describe("rule 960: founder console prompts stop on Cancel, the trial days are checked, the temporary password is shown once", () => {
   const users = read("src/components/admin/Users.tsx");
 
-  it("never turns a cancelled reason into an empty one", () => {
-    expect(users).not.toMatch(/prompt\(O\.reason, ""\) \?\? ""/);
-    expect(users).toMatch(/const askReason = \(\): string \| null => prompt\(O\.reason, ""\);/);
+  // Rule 1176 (UI/UX phase 4) replaced the prompts: every change opens its form (`useAdminForm`), Cancel and Escape
+  // answer null and send nothing, and the reason is required (3 to 200 characters) before the request goes.
+  it("never turns a cancelled reason into an empty one: no prompt is left, each change awaits its form", () => {
+    expect(users).not.toMatch(NATIVE("prompt"));
+    expect(users).not.toMatch(/askReason/);
+    expect(users).toContain("const [askForm, formDialog] = useAdminForm(lang);");
+    expect(users).toContain("{formDialog}");
   });
 
-  it("stops each of the nine changes that ask a reason when it is cancelled", () => {
-    // plan, seats, chat, deal, credits, top-up, void, refund: return on null; member removal: act only when not null.
-    expect(count(users, /const reason = askReason\(\);\n\s*if \(reason === null\) return;/g)).toBe(8);
-    expect(users).toMatch(/const reason = askReason\(\); if \(reason !== null\) void act\(/);
-    expect(count(users, /askReason\(\)/g)).toBe(9);
+  it("stops each change that asks a reason when it is cancelled", () => {
+    // plan, seats, chat, video grant, deal, credits, top-up, void, refund, finish refund, and every users-route action
+    // through `act` (member removal included): each awaits its form and returns on null before any request.
+    expect(count(users, /= await askForm\(/g)).toBe(11);
+    expect(count(users, /if \(!v\) return( null)?;/g)).toBe(11);
+    expect(users).toMatch(/const v = await askForm\(actionSpec\(email, action, extra\)\);\n\s*if \(!v\) return null;\n\s*return send\(email, action, \{ \.\.\.extra, \.\.\.v \}\);/);
   });
 
   it("extends a trial only by a whole number of days from 1 to 90", () => {
@@ -38,7 +43,8 @@ describe("rule 960: founder console prompts stop on Cancel, the trial days are c
     expect(parseTrialDays(" 14 ")).toBe(14);
     expect(parseTrialDays("90")).toBe(90);
     expect(users).not.toMatch(/Number\(prompt\(S\.promptDays/);
-    expect(users).toMatch(/onClick=\{\(\) => extendTrial\(sel\.user\.email\)\}/);
+    expect(users).toMatch(/parse: \(v\) => \{ const days = parseTrialDays\(v\.days\); return days === null \? \{ ok: false, error: "bad_days" \}/);
+    expect(read("src/components/admin/UserSheet.tsx")).toMatch(/onClick=\{\(\) => extendTrial\(sel\.user\.email\)\}/);
     expect(read("src/app/api/admin/users/[email]/route.ts")).toMatch(/Math\.min\(TRIAL_EXTEND_MAX_DAYS,/);
   });
 
