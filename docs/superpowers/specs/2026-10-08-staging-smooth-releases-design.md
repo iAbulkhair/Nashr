@@ -1,5 +1,7 @@
 # Staging and smooth releases: staging.thakeen.com and a `production` branch
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built: #282 merged (2026-10-08) and the live site deploys from the `production` branch (`docs/system/architecture.md` section 6). Whether staging.thakeen.com answers as designed is unverified from the repository (the 2026-10-11 study found it answering 404).
+
 Status: draft for the founder's review, 2026-10-08. Approach A of three (B: Vercel previews as staging; C: a VPS with blue-green switching), chosen by the founder the same day. C stays possible later; nothing here blocks it.
 
 ## 1. Goal and what the founder decided

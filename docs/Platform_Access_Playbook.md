@@ -1,5 +1,7 @@
 # Nashr — Platform Access Playbook
 
+> **Dated record (banner added 2026-10-12).** Written when the site ran on Vercel at `nashr-tau.vercel.app`. Since 2026-10-08 thakeen.com runs on Hostinger from the `production` branch, and the Vercel project is retired (`docs/system/architecture.md` section 6, rules 987-990). Read hosts, callback URLs and "Vercel" steps below as history; whether each platform app already has its `thakeen.com` callback is unverified here. Current state: `docs/system/*`.
+
 How to get Nashr (Noor) connected to every platform. Each entry: what Noor will do, where you register, what to fill, what to send me, expected wait. Ordered by **impact for Gulf customers ÷ time to get**.
 
 Rules that apply everywhere:

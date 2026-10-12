@@ -1,5 +1,7 @@
 # Thakeen Homepage Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** the homepage shipped (prototype D since rule 516; the later scenes #296, #311); the Dictionary step this plan creates was later unmounted and its component deleted (rule 253's row in `docs/system/tests.md`). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the homepage with the approved Thakeen experience: the owner's question storm, seven hand-drawn agents (value → name → rotating questions), team banter, the قاموس ذكين game, then truths, pricing, FAQ.

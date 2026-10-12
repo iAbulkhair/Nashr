@@ -1,5 +1,7 @@
 # Platform registration packs — copy, paste, submit
 
+> **Dated record (banner added 2026-10-12).** Written when the site ran on Vercel at `nashr-tau.vercel.app`. Since 2026-10-08 thakeen.com runs on Hostinger from the `production` branch, and the Vercel project is retired (`docs/system/architecture.md` section 6, rules 987-990). Read hosts, callback URLs and "Vercel" steps below as history; whether each platform app already has its `thakeen.com` callback is unverified here. Current state: `docs/system/*`.
+
 Written 2026-09-27 for the owner. One section per platform: which steps come first, what to type into each field,
 and where the keys go. Everything here is registered on the temporary address `https://nashr-tau.vercel.app` (owner
 decision, 2026-09-27); after `nashr.ai` is bought, add the same callback on the new domain to every app.

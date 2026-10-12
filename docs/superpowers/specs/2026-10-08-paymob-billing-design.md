@@ -1,5 +1,7 @@
 # Paymob KSA billing (design, 2026-10-08)
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged as #279 (2026-10-08, in `production`), off until the founder adds the Paymob variables (`docs/system/variables.md` section 4a); a live test payment: unverified.
+
 Status: built on branch `claude/quizzical-galileo-5b3662`, **test mode only, off until the founder adds the variables**. Nothing merged, deployed or configured. Rules 700-729 in `docs/system/tests.md`.
 
 ## 1. Why and what

@@ -1,5 +1,7 @@
 # supastarter adoption: what we port, what we skip (2026-10-08)
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** phase 1 merged as #283 (2026-10-08, in `production`); later phases: unverified.
+
 The founder bought supastarter (Solo licence) on 2026-10-08. The private upstream is cloned read-only at
 `~/projects/supastarter` (HEAD 7862e42, 2026-10-08), outside this repository. **No supastarter file is committed here
 as a whole.** We read it as reference and write our own code on Redis under our rules (`sc(u)`, `safeFetch`,

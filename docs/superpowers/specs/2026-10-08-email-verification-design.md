@@ -1,5 +1,7 @@
 # Email verification (hard gate) — design
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built and merged as #286 (2026-10-08, in `production`); this spec's "awaiting the founder's review" line is history.
+
 Date: 2026-10-08. Status: approved in conversation, written spec awaiting the founder's review.
 Follow-up (separate spec, not this one): WhatsApp phone verification, after email.
 
