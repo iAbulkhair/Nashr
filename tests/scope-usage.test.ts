@@ -10,10 +10,16 @@ import { join } from "node:path";
 const READERS = ["getBrand", "saveBrand", "listFiles", "readFile", "writeFile", "getGov", "saveGov", "getSchedule", "saveSchedule", "listConnections", "getConnection", "saveConnection", "listTasks", "listLite", "listLiteDays", "getTask", "saveTask", "history", "kpis", "scopeMetrics", "listConversations", "latestBrief", "pendingCount", "memoryBlock", "listPreferences", "listPreferencesFor", "feedbackFor", "listDecisions", "routineLastRuns", "agendaFor", "todoPage", "listOpenItems", "listDone", "listDeleted", "getItem", "changeItem", "purgeExpired", "listGovHistory", "saveGovAs", "rollbackGov", "listActivity", "recordActivity", "getHandoff", "getHandoffs", "createHandoff", "handoffView", "handoffViews", "declineHandoff", "markShown", "handoffKeys", "recentHandoffs", "autoQueue", "liveConversations"];
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(f) ? [p] : []; });
 
-const customerFiles = () => walk("src/app").filter((p) => !p.includes("/api/admin/") && !p.includes("/api/cron/"));
+/**
+ * Pages and routes, and since rule 1272 (360 study C-016) the helpers in `src/lib` they call: a helper that reads with
+ * the bare email defeats the route's `sc(u)` just as well. The founder console's own helpers (`src/lib/admin-*`) look
+ * at accounts from outside, like the admin routes, and comment lines are prose.
+ */
+const customerFiles = () => [...walk("src/app"), ...walk("src/lib")].filter((p) => !p.includes("/api/admin/") && !p.includes("/api/cron/") && !/src\/lib\/admin-[\w-]+\.ts$/.test(p));
+const code = (line: string) => !/^\s*(\/\/|\*|\/\*)/.test(line);
 /** An identity rather than a workspace: the acting login, a member record, an owner record, a login helper. */
 const WHO = String.raw`(?:[\w.]*actor[!?]?\.email|(?:owner|member|m|login)\.email|login\(\w+\))`;
-const offending = (re: RegExp) => customerFiles().flatMap((p) => readFileSync(p, "utf8").split("\n").map((line, i) => (re.test(line) ? `${p}:${i + 1}` : "")).filter(Boolean));
+const offending = (re: RegExp) => customerFiles().flatMap((p) => readFileSync(p, "utf8").split("\n").map((line, i) => (code(line) && re.test(line) ? `${p}:${i + 1}` : "")).filter(Boolean));
 
 describe("workspace readers take the active scope", () => {
   it("no page or customer API route passes the bare account email to a workspace reader", () => {
@@ -28,6 +34,12 @@ describe("workspace readers take the active scope", () => {
    */
   it("no page or customer API route passes the acting login's or a member's email to a workspace reader", () => {
     expect(offending(new RegExp(`\\b(${READERS.join("|")})\\(${WHO}`))).toEqual([]);
+  });
+  it("the scan covers the src/lib helpers, not only pages and routes (rule 1272)", () => {
+    const files = customerFiles();
+    expect(files.some((p) => p.startsWith("src/lib/"))).toBe(true);
+    expect(files).toContain("src/lib/tasks.ts");
+    expect(files.some((p) => /src\/lib\/admin-/.test(p))).toBe(false);
   });
   it("the check itself catches the shapes it is meant to", () => {
     const re = new RegExp(`\\b(${READERS.join("|")})\\(${WHO}`);

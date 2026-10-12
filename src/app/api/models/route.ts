@@ -24,7 +24,7 @@ import { TASK_COST, type TaskType } from "@/lib/tasks";
  * `modelAllowsTask`; `multipliers.generate` stays the multiplier on a type Opus 5.5 writes, for a page loaded before
  * this key existed), the messages of the chat allowance one message on it
  * counts (`chatUnitsFor`), and whether the owner confirmed China-hosted models. Any signed-in login; it reads only what
- * `currentUser()` reads to resolve the session (the `session:{token}` record behind the cookie; for a founder
+ * `currentUser()` reads to resolve the session (the `session:h:{sha256(token)}` record behind the cookie, rule 1265; for a founder
  * impersonation opened with the console key, `keyImpLive`'s liveness check of that key's console session,
  * `adminsession:{as}`; the login's user and member records and active brand id; for a member, the owner's user record,
  * brand list and roster entry too) and writes nothing of its own (`currentUser()` renews such a console session at most

@@ -258,6 +258,8 @@ describe("rule 1177: an impersonation lasts 15, 60 or 120 minutes and ends on ti
     const legacy = await currentUser();
     expect(legacy?.actor?.until).toBe(legacy!.actor!.since! + IMPERSONATION_LEGACY_MS);
     const users = await import("@/app/api/admin/users/[email]/route");
+    // The founder's own browser, not the impersonation above: a second impersonation from inside one is refused (rule 1270).
+    signOut();
     await adminSignIn();
     await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", minutes: 15 }), { params: Promise.resolve({ email: encodeURIComponent(c.email) }) });
     expect((await currentUser())?.email).toBe(c.email);

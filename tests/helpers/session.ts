@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { vi } from "vitest";
-import { createUser, getUser, saveUser, type User } from "@/lib/auth";
+import { createUser, getUser, saveUser, sessionKey, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createMember } from "@/lib/team";
 
@@ -18,7 +18,7 @@ export async function signIn(email: string, opts: { imp?: string } = {}) {
   const token = randomBytes(32).toString("hex");
   // A key impersonation is tied to the current key as the console writes it (rule 429); WAITLIST_ADMIN_KEY must be set.
   const bind = opts.imp === "key" ? await (await import("@/lib/auth")).keyImpBinding() : null;
-  await db.set(`session:${token}`, opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(bind ?? {}) } : { email, at: Date.now() }, 3600);
+  await db.set(sessionKey(token), opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(bind ?? {}) } : { email, at: Date.now() }, 3600);
   g.__testJar.clear();
   g.__testJar.set("nashr_session", token);
   return token;
@@ -34,7 +34,7 @@ export async function signIn(email: string, opts: { imp?: string } = {}) {
 export async function supportAccess(email: string, founder = "support-founder@test.example") {
   vi.stubEnv("ADMIN_EMAILS", founder);
   const token = randomBytes(32).toString("hex");
-  await db.set(`session:${token}`, { email: founder, at: Date.now() }, 3600);
+  await db.set(sessionKey(token), { email: founder, at: Date.now() }, 3600);
   g.__testJar.set("nashr_return", token);
   g.__testJar.set("nashr_impersonate", email);
   return token;

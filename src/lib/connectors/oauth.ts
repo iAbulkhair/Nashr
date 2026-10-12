@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "crypto";
+import { providerTimeout } from "../fetch-timeout";
 import type { Provider } from "./registry";
 import { appOrigin } from "../origin";
 
@@ -30,6 +31,16 @@ export function authorizeUrl(p: Provider, state: string, opts: { shop?: string; 
   return u.toString();
 }
 
+/** " invalid_grant" when the body is an RFC 6749 error answer with a plain code, else "" (never the description). */
+export function oauthErrorCode(text: string): string {
+  try {
+    const code = (JSON.parse(text) as { error?: unknown }).error;
+    return typeof code === "string" && /^[a-z_]{1,40}$/.test(code) ? ` ${code}` : "";
+  } catch {
+    return "";
+  }
+}
+
 /** POST to the provider's token URL with the client authentication each provider expects, and flatten the answer. */
 async function tokenRequest(p: Provider, body: URLSearchParams, shop?: string): Promise<Record<string, string>> {
   const o = p.oauth!;
@@ -40,9 +51,12 @@ async function tokenRequest(p: Provider, body: URLSearchParams, shop?: string): 
   if (o.tokenAuth === "basic") headers.Authorization = "Basic " + Buffer.from(`${id}:${secret}`).toString("base64");
   else if (p.id === "tiktok") { body.set("client_key", id); body.set("client_secret", secret); }
   else { body.set("client_id", id); body.set("client_secret", secret); }
-  const res = await fetch(url, { method: "POST", headers, body });
+  const res = await fetch(url, { method: "POST", headers, body, signal: providerTimeout() });
   const text = await res.text();
-  if (!res.ok) throw new Error(`${p.id} token ${res.status}: ${text.slice(0, 200)}`);
+  // The provider, the status and the OAuth error code only (rule 1274): the rest of a refused exchange's body is the
+  // provider's own text, which reaches the logs and can echo what was sent. The code (RFC 6749 §5.2, such as
+  // `invalid_grant`) is a fixed word, and the calendar sync reads it to tell a lost link from a passing failure.
+  if (!res.ok) throw new Error(`${p.id} token ${res.status}${oauthErrorCode(text)}`);
   const j = JSON.parse(text) as Record<string, unknown>;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(j)) if (v != null && typeof v !== "object") out[k] = String(v);

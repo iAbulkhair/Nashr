@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { providerTimeout } from "../fetch-timeout";
 import { clean } from "../perf-import";
 import { DAY_MS, EMPTY_TOTALS, count, dateOf, day, handle } from "../social-read/common";
 import type { PlatformPart, SocialPost } from "../social-stats";
@@ -17,7 +18,7 @@ export async function postToX(c: Connection, text: string): Promise<{ url: strin
   return { id: j.data.id, url: `https://x.com/i/status/${j.data.id}` };
 }
 export async function xMe(c: Connection) {
-  const r = await fetch("https://api.x.com/2/users/me", { headers: { Authorization: `Bearer ${c.data.access_token}` } });
+  const r = await fetch("https://api.x.com/2/users/me", { headers: { Authorization: `Bearer ${c.data.access_token}` }, signal: providerTimeout() });
   if (!r.ok) return null;
   const j = (await r.json()) as { data: { username: string; name: string } };
   return j.data;

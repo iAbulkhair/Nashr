@@ -1,4 +1,5 @@
 import { createHmac } from "crypto";
+import { providerTimeout } from "../fetch-timeout";
 import type { Connection } from "./store";
 import { sameSecret } from "../rate";
 
@@ -51,6 +52,7 @@ export async function shopifyGql<T>(c: Connection, query: string, variables: Rec
       method: "POST",
       headers: { "X-Shopify-Access-Token": c.data.access_token, "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ query, variables }),
+      signal: providerTimeout(),
     });
     if (r.status === 403 && opts.orders) throw new Error(ORDERS_ACCESS_DENIED);
     if (!r.ok) throw new Error(`shopify ${r.status}`);

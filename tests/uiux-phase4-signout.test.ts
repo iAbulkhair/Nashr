@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser } from "@/lib/auth";
+import { currentUser, getUser, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { loginHolds } from "@/lib/secretary-feed";
 import { getMember } from "@/lib/team";
@@ -120,8 +120,8 @@ describe("rule 1171: the new session is written before the old ones end", () => 
     expect((await post("abc12345")).status).toBe(200);
     const now = jar().get("nashr_session")!;
     expect(now).not.toBe(mine);
-    expect(await db.get(`session:${mine}`)).toBeNull();
-    expect(await db.get(`session:${now}`)).toBeTruthy();
+    expect(await sessionRecord(mine)).toBeNull();
+    expect(await sessionRecord(now)).toBeTruthy();
   });
 
   it("rotateSession writes the new session before calling revoke", () => {
@@ -129,6 +129,6 @@ describe("rule 1171: the new session is written before the old ones end", () => 
     const body = src.slice(src.indexOf("export async function rotateSession"), src.indexOf("export async function destroySession"));
     expect(body.indexOf("await createSession(email)")).toBeGreaterThan(-1);
     expect(body.indexOf("await createSession(email)")).toBeLessThan(body.indexOf("await revoke(stamp)"));
-    expect(body.indexOf("await revoke(stamp)")).toBeLessThan(body.lastIndexOf("db.del(`session:${old}`)"));
+    expect(body.indexOf("await revoke(stamp)")).toBeLessThan(body.lastIndexOf("await dropSession(old)"));
   });
 });

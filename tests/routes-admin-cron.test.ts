@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, json, markVerified, newUser, params, settle, signIn, signOut } from "./helpers/session";
-import { createUser, currentUser, getUser, type User } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { createUser, currentUser, getUser, sessionRecord, type User } from "@/lib/auth";
 
 import * as overview from "@/app/api/admin/overview/route";
 import * as plan from "@/app/api/admin/plan/route";
@@ -91,7 +90,7 @@ describe("impersonation (rule 12)", () => {
     // The temporary session dies on its own after two hours.
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
     vi.setSystemTime(Date.now() + 2 * 3600e3 + 1000);
-    expect(await db.get(`session:${temp}`)).toBeNull();
+    expect(await sessionRecord(temp)).toBeNull();
     vi.useRealTimers();
 
     // A fresh impersonation, then the founder returns.
@@ -101,7 +100,7 @@ describe("impersonation (rule 12)", () => {
     const form = new FormData(); form.set("lang", "ar");
     const back = await impersonate.POST(new Request("https://nashr.test/api/admin/impersonate", { method: "POST", body: form }));
     expect(back.status).toBe(303);
-    expect(await db.get(`session:${temp2}`)).toBeNull();
+    expect(await sessionRecord(temp2)).toBeNull();
     expect(jar().get("nashr_session")).toBe(mine);
     expect(jar().has("nashr_return")).toBe(false);
     expect(jar().has("nashr_impersonate")).toBe(false);
