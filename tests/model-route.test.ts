@@ -22,8 +22,8 @@ const HAIKU = "claude-haiku-5-5";
 const RETIRED = ["claude-opus-5", "claude-sonnet-5"] as const;
 /** Haiku 5.5 off automatic routing, so a test-only entry can be the judge's alternative. */
 const noHaiku = (m: ModelEntry): ModelEntry => (m.id === HAIKU ? { ...m, auto: false } : m);
-const PURPOSES = ["chat", "generate", "review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting"] as const satisfies readonly Purpose[];
-const FIXED = ["review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting"] as const satisfies readonly Purpose[];
+const PURPOSES = ["chat", "generate", "review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting", "agentScope"] as const satisfies readonly Purpose[];
+const FIXED = ["review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting", "agentScope"] as const satisfies readonly Purpose[];
 
 /** A test-only catalog entry. The real catalog holds the Claude models; the mocked ones below add to or change them. */
 const entry = (o: Partial<ModelEntry> & { id: string }): ModelEntry => ({
@@ -68,6 +68,7 @@ describe("the defaults are the three current models, one per purpose (rules 809 
       tool: HAIKU,
       // Reem B2b's meeting tasks: Sonnet 5.5, as the call site used before it asked route() (2026-10-10).
       meeting: SONNET,
+      agentScope: HAIKU,
     });
     expect(Object.isFrozen(DEFAULTS)).toBe(true);
     expect(Object.keys(DEFAULTS).sort()).toEqual([...PURPOSES].sort());
@@ -120,13 +121,13 @@ describe("the defaults are the three current models, one per purpose (rules 809 
     }
   });
 
-  it("a purpose that is not one of the eight throws rather than guessing a model (prototype names included)", () => {
+  it("a purpose that is not one of the ten throws rather than guessing a model (prototype names included)", () => {
     for (const p of ["constructor", "__proto__", "toString", "hasOwnProperty", "", "Chat"]) expect(() => route(p as Purpose), p).toThrow(/unknown_purpose/);
   });
 });
 
 describe("a purpose outside OVERRIDABLE ignores ctx.stored", () => {
-  it("review, xreview, judge, onboard, imagePrompt and tool return the default even for a valid stored pick", () => {
+  it("review, xreview, judge, onboard, imagePrompt, tool, meeting and agentScope return the default even for a valid stored pick", () => {
     for (const p of FIXED) {
       for (const stored of [OPUS, SONNET, HAIKU, ...RETIRED, "claude-unknown-9", "constructor", 5, null]) {
         expect(route(p, { stored, confirmedChina: true }), `${p} ${String(stored)}`).toEqual({ model: DEFAULTS[p], overridden: false });

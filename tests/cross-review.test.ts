@@ -642,8 +642,10 @@ async function fixedBatch(type: TaskType, crossReview: boolean) {
     const noor = await import("@/lib/noor");
     const { scoreItems, JUDGE_RUBRIC } = await import("@/lib/judge");
     const { reviewBlock } = await import("@/lib/skills");
+    // Rule 797: the generation prompt ends with the scope paragraph unless `agentScope` is false. This test pins that the cross-review leaves the
+    // prompt as it was before it existed, so it generates without the paragraph (the paragraph is pinned in tests/agent-scope-roles.test.ts).
     const ctx = { notes: "compare with Ramadan", memory: "--- brand.md ---\nhello", stats: "WORKSPACE DATA\norders: 12" };
-    const out = await noor.generate(type, brand, ["no emojis"], ctx.notes, { memory: ctx.memory, stats: ctx.stats, meter: "probe@test.example", ...(crossReview ? {} : { crossReview: false }) });
+    const out = await noor.generate(type, brand, ["no emojis"], ctx.notes, { memory: ctx.memory, stats: ctx.stats, meter: "probe@test.example", agentScope: false, ...(crossReview ? {} : { crossReview: false }) });
     await scoreItems("probe@test.example", brand, type, out, undefined, ctx);
     return {
       gen: gen.map(sha), review: review.map(sha), judge: judge.map(sha), cross: cross.length, verdicts: out.filter((i) => i.crossReview?.length).length,
@@ -651,7 +653,7 @@ async function fixedBatch(type: TaskType, crossReview: boolean) {
       crossSystem: Object.fromEntries(cross.map((p) => [(p.system as { text: string }[])[0].text.startsWith("You are Razan") ? "razan" : "majed", createHash("sha256").update(JSON.stringify(p.system)).digest("hex")])),
       // The strings the prompt builders make, compared with what was sent.
       built: {
-        gen: JSON.stringify(gen[0].system) === JSON.stringify(noor.systemPrompt(brand, ["no emojis"], agentForTask(type), ctx.memory)),
+        gen: JSON.stringify(gen[0].system) === JSON.stringify(noor.systemPrompt(brand, ["no emojis"], agentForTask(type), ctx.memory, undefined, undefined, false)),
         review: (review[0].system as { text: string }[])[0].text === noor.reviewerPrompt(type),
         judge: (judge[0].system as { text: string }[])[0].text === `${JUDGE_RUBRIC}${reviewBlock()}`,
       },

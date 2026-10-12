@@ -403,7 +403,7 @@ describe("the owner is told unused top-up credits can be refunded; a refunded pa
     expect(terms("en")).toContain("Credits are non-refundable and non-transferable, except that unused top-up credits can be refunded on request before they expire.");
     expect(terms("ar")).toContain("إلا أن كريدت باقات الشحن غير المستخدم يمكن استرداده عند الطلب قبل انتهاء صلاحيته");
     expect(LEGAL.en.terms.updated).toBe("Last updated: 2026-10-02");
-    // The privacy policy changed on its own since, with the processor list and the export (rules 1320-1330).
+    // The privacy policy changed on its own since, with the processor list and the export (rules 1320-1330) and the agent scope log (rule 1415).
     expect(LEGAL.en.privacy.updated).toBe("Last updated: 2026-10-12");
   });
 

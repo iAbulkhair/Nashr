@@ -12,7 +12,7 @@ import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { formatCount } from "@/lib/pricing";
-import { AGENTS, type AgentId } from "@/lib/agents";
+import { AGENTS, isAgentId, type AgentId } from "@/lib/agents";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
 import { Icon } from "./Icons";
@@ -769,6 +769,9 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
               {m.instructionProposals && m.instructionProposals.length > 0 && <div className="mt-1">{m.instructionProposals.map((p) => <InstructionProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canInstructions} />)}</div>}
               {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-foreground-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
+              {m.role === "assistant" && m.switchTo && isAgentId(m.switchTo) && m.switchTo !== agent && (
+                <button onClick={() => pick(m.switchTo!)} className="btn btn-secondary btn-xs mt-1.5">{t.chat.switchTo.replace("{name}", A[m.switchTo].name)}</button>
+              )}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
                   {/* Rule 1126: each answer can be copied; the last one (or an error) can be asked again. */}

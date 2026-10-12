@@ -117,6 +117,11 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/users/[email]": "admin-console",
   // Credit top-ups, activated by hand while there is no payment gateway (rules 446-447): the founder only.
   "POST /api/admin/topups": "admin-console",
+  // Agent scope (rule 1411): the founder releases one held item.
+  "POST /api/admin/agent-scope/release": "admin-console",
+  // Agent scope (rule 1412): the switches and the paid test set.
+  "POST /api/admin/agent-scope/modes": "admin-console",
+  "POST /api/admin/agent-scope/eval": "admin-console",
 
   // Owner only.
   "PUT /api/governance": g("owner", "governance.write"),
@@ -265,6 +270,7 @@ const READS: Record<string, Gate> = {
   "GET /api/cron/evening": "cron",
   "GET /api/cron/stores": "cron",
 
+  "GET /api/admin/agent-scope": "admin-console",
   "GET /api/admin/evals": "admin-console",
   "GET /api/admin/export": "admin-console",
   "GET /api/admin/2fa": "admin-console",
