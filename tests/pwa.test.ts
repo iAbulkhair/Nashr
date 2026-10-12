@@ -128,7 +128,7 @@ describe("rule 683: no service worker, so nothing on the device caches a signed-
     const layout = readFileSync("src/app/[lang]/app/layout.tsx", "utf8");
     expect(layout).toMatch(/await headers\(\)/);
     expect(layout).toMatch(/await currentUser\(\)/);
-    for (const f of ["next.config.ts", "vercel.json"]) expect(readFileSync(f, "utf8"), f).not.toMatch(/cache-control|s-maxage|stale-while-revalidate/i);
+    expect(readFileSync("next.config.ts", "utf8")).not.toMatch(/cache-control|s-maxage|stale-while-revalidate/i);
   });
 });
 

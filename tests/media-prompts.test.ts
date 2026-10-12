@@ -114,6 +114,8 @@ describe("while Claude is paused: the fixed templates", () => {
 
 describe("with Claude on", () => {
   it("one Haiku 5.5 call, 20 s and no retries, and the model's text is the prompt", async () => {
+    // A still clock: the deadline is built and then read a moment later, so a slow runner could see 19999.
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const p = await load("on");
     expect(await p.imagePrompt(brand(), task, "img-fast", "square", "o@test.example")).toBe("A model-written prompt");
     expect(sdk.calls).toHaveLength(1);
@@ -124,7 +126,18 @@ describe("with Claude on", () => {
     expect(JSON.stringify(body.messages), "the post itself goes to the model").toContain("قهوة مختصة محمصة اليوم");
   });
 
+  it("rule 1206: the timeout equals the budget exactly, even when the clock ticks between reads", async () => {
+    const p = await load("on");
+    // 1 ms on every read: reading the clock twice for one deadline gave 19999 (CI run 38160469570).
+    let t = 1_800_000_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => t++);
+    await p.imagePrompt(brand(), task, "img-fast", "square");
+    await p.imagePrompt(brand(), task, "img-design", "square", undefined, 5000);
+    expect(sdk.calls.map((c) => c.opts.timeout)).toEqual([20000, 5000]);
+  });
+
   it("the timeout is the time left when that is shorter", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const p = await load("on");
     await p.imagePrompt(brand(), task, "img-design", "square", undefined, 5000);
     await p.videoPrompt(brand(), task, "vid-quick", false, undefined, 60_000);

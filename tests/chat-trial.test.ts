@@ -79,7 +79,7 @@ describe("an ended trial gets no chat turn and no model call (rule 330)", () => 
     const u = await expired("ct-mcp");
     const r = await askNoor(u.email);
     expect(r.isError).toBe(true);
-    expect(r.content[0].text).toContain("https://nashr-tau.vercel.app/ar/app/billing");
+    expect(r.content[0].text).toContain("https://thakeen.com/ar/app/billing");
     expect(sdk.made).toBe(0);
     expect(await history(u.email)).toEqual([]);
     expect(await db.get(`rate:chat:h:${u.email}`), "no ceiling was used up").toBeNull();

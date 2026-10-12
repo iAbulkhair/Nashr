@@ -1,15 +1,11 @@
 name: CI
 
 # Build, type-check, lint and unit tests on every pull request; the end-to-end suite on pull requests that are ready
-# for review; unit tests alone on a push to main (the Scope step below says what each run checks).
-# Vercel still makes a production deployment of every commit on main, and its Deployment Check (Vercel project
-# Settings > Build and Deployment > Deployment Checks, provider GitHub, "Nashr CI", on since 2026-09-18) waits for this
-# job on that commit. The live site is Hostinger, from the `production` branch, through a release pull request that
-# runs the full pull request check; the push to main runs only what that Vercel check needs.
-# Once the Deployment Check is removed in Vercel, the `push` trigger can go too.
+# for review (the Scope step below says what each run checks). Pull requests only (rule 988, 2026-10-10): a merge into
+# main was checked in full as its pull request, and the live site is Hostinger, from the `production` branch, through a
+# release pull request that runs this same check. The push run on main existed only for the old Vercel project's
+# Deployment Check, which waited for "Nashr CI" on main's commits; Vercel no longer builds the site.
 on:
-  push:
-    branches: [main]
   pull_request:
     # ready_for_review: marking a draft ready starts the full suite (see the Scope step).
     types: [opened, synchronize, reopened, ready_for_review]
@@ -23,7 +19,7 @@ permissions:
 
 jobs:
   check:
-    # Vercel Deployment Checks identify a check by this job name. Renaming it means re-selecting it in Vercel.
+    # Pull requests report the check under this name; a required check or ruleset names it, so keep it stable.
     name: Nashr CI
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -33,35 +29,33 @@ jobs:
           # Full history, so the Scope step can diff the pull request against its base.
           fetch-depth: 0
       # What this run checks, to keep inside the plan's Actions minutes (a full run is about 20 minutes, 12 of them the
-      # end-to-end suite). A push to main runs the unit tests alone: the same commit was checked in full as its pull
-      # request, and the run exists so the "Nashr CI" check Vercel waits for reports on main. A draft PR skips the
-      # end-to-end suite: it runs once the PR is marked ready for review and on every push after that, and GitHub
-      # cannot merge a draft, so every PR gets that run first. A PR that touches only docs/, .archify/ or a top-level
-      # .md file runs the unit tests alone (they read the docs). The job itself always runs and always reports
-      # "Nashr CI": a workflow skipped by `paths`/`paths-ignore` would never report it.
+      # end-to-end suite). A draft PR skips the end-to-end suite: it runs once the PR is marked ready for review and on
+      # every push after that, and GitHub cannot merge a draft, so every PR gets that run first. A PR that touches only
+      # docs/, .archify/ or a top-level .md file runs the unit tests alone (they read the docs). The job itself always
+      # runs and always reports "Nashr CI": a workflow skipped by `paths`/`paths-ignore` would never report it.
       - name: Scope
         id: scope
         env:
-          EVENT: ${{ github.event_name }}
           DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           build=false; e2e=false
-          if [ "$EVENT" = pull_request ]; then
-            # A pull_request run checks out GitHub's merge commit: its first parent is the base, so HEAD^1..HEAD is the PR.
-            changed=$(git diff --name-only HEAD^1 HEAD 2>/dev/null) || changed=""
-            if [ -z "$changed" ] || printf '%s\n' "$changed" | grep -qvE '^(docs/|\.archify/)|^[^/]+\.md$'; then build=true; fi
-            if [ "$build" = true ] && [ "$DRAFT" != true ]; then e2e=true; fi
-            printf '%s\n' "$changed" | head -40
-          fi
+          # A pull_request run checks out GitHub's merge commit: its first parent is the base, so HEAD^1..HEAD is the PR.
+          changed=$(git diff --name-only HEAD^1 HEAD 2>/dev/null) || changed=""
+          if [ -z "$changed" ] || printf '%s\n' "$changed" | grep -qvE '^(docs/|\.archify/)|^[^/]+\.md$'; then build=true; fi
+          if [ "$build" = true ] && [ "$DRAFT" != true ]; then e2e=true; fi
+          printf '%s\n' "$changed" | head -40
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
           echo "build=$build e2e=$e2e"
+      # Node 22 and the webpack build, the same as thakeen.com's Hostinger build (docs/system/architecture.md, "Build":
+      # Node 22, `npm run build:hostinger`). CI built with Turbopack on Node 24, so a webpack-only or Node 22-only failure
+      # showed up only when the release pull request was merged and Hostinger built (rule 1017).
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
       - run: npm ci
-      # Next's build cache (Turbopack's persistent cache is on for `next build` since 16.3). A cache saved by a pull
+      # Next's build cache (webpack's under `.next/cache`, as on Hostinger). A cache saved by a pull
       # request is readable only by later runs of that pull request, so the first run of a PR builds cold and every
       # push after it starts warm. The key moves with the lockfile and the sources; restore-keys falls back to the
       # newest cache for the same lockfile.
@@ -76,10 +70,10 @@ jobs:
       # Must run BEFORE the type-check. tsconfig includes `.next/types/**` and `next-env.d.ts`, and .gitignore ignores
       # both, so in a fresh checkout they do not exist and `tsc --noEmit` checks a strictly smaller program than a
       # developer's local run — every one of Next's generated route-signature validators is skipped. A renamed route
-      # segment merged green and left main undeployable until someone opened the Vercel dashboard.
+      # segment merged green and left main unbuildable, which only the host's failed deploy showed.
       - name: Build
         if: steps.scope.outputs.build == 'true'
-        run: npx next build
+        run: npm run build:hostinger
       - name: Type-check
         if: steps.scope.outputs.build == 'true'
         run: npx tsc --noEmit -p .
@@ -88,12 +82,11 @@ jobs:
         run: npx eslint
       - name: Unit tests
         run: npx vitest run
-      # Playwright's browsers, keyed on the installed Playwright version. A push to main restores them too, and on a
-      # miss downloads them without the system packages (about 30 seconds, once per Playwright version), so the cache
-      # is saved under main, where every pull request can read it; a cache saved by a pull request serves only that PR.
+      # Playwright's browsers, keyed on the installed Playwright version. A cache saved by a pull request serves only
+      # that PR, so a PR's first end-to-end run downloads them (about 30 seconds) and its later runs restore them.
       - name: Playwright version
         id: playwright
-        if: steps.scope.outputs.e2e == 'true' || github.event_name == 'push'
+        if: steps.scope.outputs.e2e == 'true'
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -109,9 +102,6 @@ jobs:
       - name: Install Playwright system dependencies
         if: steps.scope.outputs.e2e == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium webkit
-      - name: Seed Playwright cache
-        if: github.event_name == 'push' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium webkit
       - name: End-to-end tests
         if: steps.scope.outputs.e2e == 'true'
         run: npx playwright test

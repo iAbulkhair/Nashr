@@ -3,16 +3,17 @@
  * and on the MCP settings page, the connector OAuth callback's return link, robots, sitemap, share metadata, the
  * crawler's user agent and referral links.
  *
- * `APP_ORIGIN` when it is set; otherwise the current production host. That host appears nowhere else in `src/`
- * (tests/origin.test.ts fails the build if it does), so moving to the owned domain is one environment change, not a hunt
- * through a dozen copies of the literal. A value with a trailing slash is trimmed, and an empty value counts as unset:
+ * `APP_ORIGIN` when it is set; otherwise the live site, `https://thakeen.com` (2026-10-10, rule 987; it was the old
+ * Vercel host until the site moved to Hostinger, and tests/origin.test.ts fails if any file under `src/` names a
+ * `vercel` dot `app` host again). The fallback is this one constant, so a domain move stays one environment change,
+ * not a hunt through a dozen copies of the literal. A value with a trailing slash is trimmed, and an empty value counts as unset:
  * both used to produce links such as `https://host//ar/app` or `/ar/app` with no host at all.
  *
  * The value is also checked. `metadataBase` in the `[lang]` layout parses it on every page, so a value that is not an
  * absolute http(s) origin (`thakeen.com` with no scheme, a typo, a path) would turn every page into a 500. Such a value
  * is ignored with one warning that names the variable, never its value, and the fallback is used until it is fixed.
  */
-export const FALLBACK_ORIGIN = "https://nashr-tau.vercel.app";
+export const FALLBACK_ORIGIN = "https://thakeen.com";
 
 let warned = false;
 

@@ -485,9 +485,11 @@ export type SceneKind = "like" | "tip" | "idea";
 export type Scene = { role: L; line: L; kind: SceneKind; agent: HomeAgentId; look: Look } & ({ task: TaskType; feature?: never } | { feature: Feature; task?: never });
 
 export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; prev: L; next: L; slide: L; pause: L; play: L } = {
+  // Rule 926: the line under the heading marks the scenes as illustrative examples in both languages. The Arabic heading
+  // «عملاء جربوا ذكين.» is kept by founder decision 2026-10-11. Rule 775: the scenes stay role-only illustrations, not
+  // reviews: no names, no digits.
   h: { ar: "عملاء جربوا ذكين.", en: "How owners work with Thakeen." },
-  sub: { ar: "وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", en: "What they like, what they learned, and what they recommend." },
-  // Rule 775: the scenes stay role-only illustrations, not reviews: no names, no digits. Neither language opens with «أمثلة توضيحية» / "Illustrative examples" any more (founder's wording, 2026-10-10).
+  sub: { ar: "أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", en: "Illustrative examples: what they like, what they learned, and what they recommend." },
   kinds: {
     like: { ar: "يعجبني", en: "What I like" },
     tip: { ar: "نصيحة", en: "Tip" },

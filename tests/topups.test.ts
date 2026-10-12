@@ -473,7 +473,7 @@ describe("the billing page's 'Top up credits' section (rule 449)", () => {
     const email = await paid(300);
     await signIn(email);
     const en = await billing("en");
-    expect(en).toContain("mailto:hello@nashr.ai?subject=");
+    expect(en).toContain("mailto:hello@thakeen.com?subject=");
     expect(en).not.toContain("wa.me");
     const t = await newUser("trialbill");
     await signIn(t.email);
