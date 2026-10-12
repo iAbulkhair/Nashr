@@ -48,8 +48,8 @@ async function snapshotAgo(scope: string, hours: number) {
 }
 
 describe("two cron entries and a bearer-only route (rule 623)", () => {
-  it("vercel.json runs the stores job twice a day, each entry once a day", () => {
-    const crons = (JSON.parse(readFileSync("vercel.json", "utf8")) as { crons: { path: string; schedule: string }[] }).crons.filter((c) => c.path === "/api/cron/stores");
+  it("crons.json runs the stores job twice a day, each entry once a day", () => {
+    const crons = (JSON.parse(readFileSync("crons.json", "utf8")) as { crons: { path: string; schedule: string }[] }).crons.filter((c) => c.path === "/api/cron/stores");
     expect(crons).toHaveLength(2);
     const hours = crons.map((c) => {
       const f = c.schedule.split(" ");

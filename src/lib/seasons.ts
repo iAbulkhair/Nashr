@@ -9,7 +9,7 @@ const HIJRI_FORMATTERS = new Map<Zone, Intl.DateTimeFormat>();
 /**
  * The Umm al-Qura date of an instant on the wall clock of `zone`: year, month (1 Muharram … 12 Dhu al-Hijjah) and day.
  * The zone is named on the formatter, never left to the process: without `timeZone` the date is the server's (UTC on
- * Vercel), so for the first three hours of a Riyadh day (four in Dubai) the brand would be told it is still yesterday,
+ * the host), so for the first three hours of a Riyadh day (four in Dubai) the brand would be told it is still yesterday,
  * and the first day of Ramadan would start that much late. The Hijri day turns at the brand's local midnight, like
  * `zoneDay`. Server only (tests/date-locale.test.ts allows this file as the one formatter outside `dates.ts`).
  */

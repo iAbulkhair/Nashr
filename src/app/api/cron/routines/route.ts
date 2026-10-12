@@ -5,6 +5,7 @@ import { dueRoutines, runRoutine, type RoutineId } from "@/lib/routines";
 import { AUTO_HANDOFF_CRON_ID, autoRunHandoff, dueHandoffs } from "@/lib/handoff-auto";
 import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 import { deadlineFor } from "@/lib/media/keys";
 
 export const maxDuration = 300;
@@ -44,5 +45,6 @@ export async function GET(req: Request) {
     run: (x) => (x.kind === "routine" ? runRoutine(x.user, x.id, deadline) : autoRunHandoff(x.user, x.id, x.item, deadline)),
     concurrency: 4, startBudgetMs: 160_000, markerTtlSeconds: 2 * 86400, req,
   });
+  await recordCronRun("routines");
   return NextResponse.json({ ok: true, ...report });
 }

@@ -16,7 +16,7 @@
  *   can still send it (never after that notification was written: an email failure keeps it).
  * - One in-app notification; one email only when email is set up and the preference is "all". With more than one active
  *   brand, the title and the email's subject name the brand the wrap is about.
- * - When: 18:00 local; during Ramadan 21:30 local, after Taraweeh. The Vercel cron `/api/cron/evening` (15:00 UTC)
+ * - When: 18:00 local; during Ramadan 21:30 local, after Taraweeh. The daily cron `/api/cron/evening` (15:00 UTC)
  *   serves every workspace outside Ramadan; the QStash tick (`/api/cron/secretary`) starts it for the zones whose
  *   target time just passed, and in Ramadan it is the only path (without QStash, no wrap in Ramadan).
  * - Switched off with the follow-ups in Scheduled tasks (`followUps: false`).
