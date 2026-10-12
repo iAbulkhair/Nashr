@@ -79,7 +79,7 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
 
   it("unit tests run on every run; build, type-check and lint follow Scope's build; the e2e suite follows Scope's e2e", () => {
     expect(step("Unit tests")).not.toMatch(/\bif:/);
-    for (const s of ["Build", "Type-check", "Lint", "Cache Next build"]) expect(step(s), s).toMatch(/if: steps\.scope\.outputs\.build == 'true'/);
+    for (const s of ["Build", "Type-check", "Lint", "Restore Next build cache", "Save Next build cache"]) expect(step(s), s).toMatch(/if: steps\.scope\.outputs\.build == 'true'/);
     expect(step("End-to-end tests")).toMatch(/if: steps\.scope\.outputs\.e2e == 'true'\n/);
     expect(step("Upload Playwright report")).toMatch(/if: failure\(\) && steps\.scope\.outputs\.e2e == 'true'/);
   });
@@ -96,8 +96,9 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
   });
 
   it("Next's build cache is restored before the build, keyed on the lockfile and the sources", () => {
-    const c = cacheStep("Cache Next build");
-    expect(yml.indexOf("- name: Cache Next build")).toBeLessThan(yml.indexOf("- name: Build\n"));
+    const c = step("Restore Next build cache");
+    expect(c).toMatch(/uses: actions\/cache\/restore@v4/);
+    expect(yml.indexOf("- name: Restore Next build cache")).toBeLessThan(yml.indexOf("- name: Build\n"));
     expect(c).toMatch(/path: \$\{\{ github\.workspace \}\}\/\.next\/cache\n/);
     expect(c).toMatch(/key: nextjs-\$\{\{ runner\.os \}\}-\$\{\{ hashFiles\('package-lock\.json'\) \}\}-\$\{\{ hashFiles\('src\/\*\*'/);
     expect(c).toMatch(/restore-keys: \|\n\s+nextjs-\$\{\{ runner\.os \}\}-\$\{\{ hashFiles\('package-lock\.json'\) \}\}-\n/);

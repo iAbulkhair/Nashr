@@ -55,25 +55,37 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Next's build cache (webpack's under `.next/cache`, as on Hostinger). A cache saved by a pull
-      # request is readable only by later runs of that pull request, so the first run of a PR builds cold and every
-      # push after it starts warm. The key moves with the lockfile and the sources; restore-keys falls back to the
-      # newest cache for the same lockfile.
-      - name: Cache Next build
+      # Next's build cache (webpack's under `.next/cache`, as on Hostinger). A cache saved by a pull request is readable
+      # only by later runs of that pull request (and a base branch's cache by all of them, but main runs no CI, rule 988),
+      # so the first run of a PR builds cold and every push after it starts warm. The key moves with the lockfile and
+      # the sources; restore-keys falls back to the newest cache for the same lockfile, then to any. Restored here and
+      # saved right after the Build step (rule 1208), not in a post-job step: that one runs only when the whole job
+      # passes, so a red or cancelled end-to-end suite used to throw the build cache away and the next push built cold.
+      - name: Restore Next build cache
+        id: next-cache
         if: steps.scope.outputs.build == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.next/cache
           key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'content/**', 'public/**', 'next.config.ts', 'tsconfig.json', 'postcss.config.mjs') }}
           restore-keys: |
             nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nextjs-${{ runner.os }}-
       # Must run BEFORE the type-check. tsconfig includes `.next/types/**` and `next-env.d.ts`, and .gitignore ignores
       # both, so in a fresh checkout they do not exist and `tsc --noEmit` checks a strictly smaller program than a
       # developer's local run — every one of Next's generated route-signature validators is skipped. A renamed route
       # segment merged green and left main unbuildable, which only the host's failed deploy showed.
+      # It is also the run's only build: made without APP_ENV, as thakeen.com's is, and the end-to-end server starts this
+      # same `.next` with APP_ENV=test at runtime instead of building again (rule 1207, `e2e/web-server.ts`).
       - name: Build
         if: steps.scope.outputs.build == 'true'
         run: npm run build:hostinger
+      - name: Save Next build cache
+        if: steps.scope.outputs.build == 'true' && steps.next-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.next/cache
+          key: ${{ steps.next-cache.outputs.cache-primary-key }}
       - name: Type-check
         if: steps.scope.outputs.build == 'true'
         run: npx tsc --noEmit -p .
