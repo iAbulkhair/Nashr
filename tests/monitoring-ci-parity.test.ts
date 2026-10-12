@@ -244,8 +244,9 @@ describe("rule 1017: CI builds the way Hostinger builds", () => {
     expect(step("Build")).toMatch(/run: npm run build:hostinger\n?$/);
     expect(step("Build")).toMatch(/if: steps\.scope\.outputs\.build == 'true'/);
   });
-  it("the end-to-end server is built the same way", () => {
-    expect(readFileSync("playwright.config.ts", "utf8")).toMatch(/command: `npm run build:hostinger && npx next start/);
+  it("the end-to-end server is built the same way (rule 1207: in CI it starts the Build step's build)", () => {
+    expect(readFileSync("playwright.config.ts", "utf8")).toMatch(/command: webServerCommand\(PORT, \{ ci: isCI, prebuilt: hasBuild\(\) \}\)/);
+    expect(readFileSync("e2e/web-server.ts", "utf8")).toMatch(/`npm run build:hostinger && \$\{start\}`/);
   });
   it("adds no job and no matrix: one job, and the steps are the ones that were there", () => {
     const jobs = yml.slice(yml.indexOf("\njobs:\n"));
