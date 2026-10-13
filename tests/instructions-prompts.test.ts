@@ -348,7 +348,7 @@ describe("chat system() with layers (rule 948)", () => {
     vi.setSystemTime(new Date("2026-10-12T13:27:30Z"));
     const before = await sys(brand, undefined);
     none(before.join("\n"), "THAKEEN STANDARDS", "OWNER INSTRUCTIONS", "<owner_instructions>", LINE);
-    only(before[2], "NOW (Riyadh, UTC+3)", "4:24 PM"); // the frozen clock, not the real one
+    only(before[2], "NOW (Riyadh, UTC+3)", "4:27 PM"); // the frozen clock, not the real one
     for (const l of [NO_LAYERS, layers([], []), layers([], WS, { paused: true }), layers([], WS, { limits: null })]) expect(await sys(brand, l)).toEqual(before);
   });
 });
