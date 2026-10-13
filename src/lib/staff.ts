@@ -247,3 +247,67 @@ export function recoveryIndex(rc: readonly string[] | undefined, code: string): 
   rc.forEach((x, i) => { if (sameSecret(x, h) && found < 0) found = i; });
   return found;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The sign-in lock (rule 1644)
+
+/** Failed sign-ins for one address within the window that lock it, and how long the lock lasts (seconds). */
+export const STAFF_LOCK_AFTER = 10;
+export const STAFF_LOCK_WINDOW = 15 * 60;
+/** Failures are counted here, never in `admin:log`, so a flood cannot push real audit rows out of the capped list. */
+export const staffFailKey = (email: string) => `stafffail:${sha(email)}`;
+
+/** True while the address is locked. */
+export async function staffLocked(email: string): Promise<boolean> {
+  const n = Number(await db.get<number>(staffFailKey(email)));
+  return Number.isFinite(n) && n >= STAFF_LOCK_AFTER;
+}
+
+/**
+ * Count one failed sign-in for the address. True exactly when this failure locks it (the 10th in the window): the
+ * lock then lasts the full window from now, and the caller writes the one `staff.locked` row.
+ */
+export async function countStaffFailure(email: string): Promise<boolean> {
+  const k = staffFailKey(email);
+  const n = await db.incrby(k, 1);
+  if (n === STAFF_LOCK_AFTER) {
+    await db.expire(k, STAFF_LOCK_WINDOW);
+    return true;
+  }
+  await db.expireNx(k, STAFF_LOCK_WINDOW).catch(() => {});
+  return false;
+}
+
+export const clearStaffFailures = (email: string) => db.del(staffFailKey(email));
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Setup and reset codes (rules 1639, 1640, 1643)
+
+/** A setup code works once, for 30 minutes, and only for the address it was issued for. */
+export const SETUP_TTL = 30 * 60;
+export type SetupKind = "setup" | "reset";
+export type SetupRec = { email: string; by: string; at: string; kind: SetupKind };
+export const setupKey = (code: string) => `staffsetup:${sha(`nashr-staff-setup:${cleanCode(code)}`)}`;
+
+/**
+ * Issue a single-use setup (or reset) code for `email`: 20 base32 characters in groups of five, shown once on screen and
+ * handed over in person. Only its hash is stored. Never mailed, never put in a URL (rule 1643).
+ */
+export async function issueSetupCode(email: string, by: string, kind: SetupKind): Promise<string> {
+  const code = newRecoveryCode();
+  await db.set(setupKey(code), { email, by, at: new Date().toISOString(), kind } satisfies SetupRec, SETUP_TTL);
+  return code;
+}
+
+/** The setup record a code names, without spending it; null for an unknown, expired or malformed code. */
+export async function peekSetupCode(code: unknown): Promise<SetupRec | null> {
+  if (!looksLikeStaffCode(code)) return null;
+  const r = await db.get<SetupRec>(setupKey(code));
+  return r && typeof r.email === "string" && (r.kind === "setup" || r.kind === "reset") ? r : null;
+}
+
+/** Spend a setup code (atomic GETDEL): the record, or null when it is gone or was spent by a racing request. */
+export async function takeSetupCode(code: string): Promise<SetupRec | null> {
+  const r = await db.getdel<SetupRec>(setupKey(code));
+  return r && typeof r.email === "string" && (r.kind === "setup" || r.kind === "reset") ? r : null;
+}

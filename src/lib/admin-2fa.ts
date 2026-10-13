@@ -85,23 +85,32 @@ export async function secondFactorStatus(): Promise<{ enrolled: boolean; at: str
   return isEnrolment(rec) ? { enrolled: true, at: rec.at } : { enrolled: false, at: null };
 }
 
-/** The cookie that makes `who` the console actor, hashed: what a step-up is tied to. Null for a header-key call. */
-async function baseOf(who: string): Promise<string | null> {
+/**
+ * The cookie that makes `who` the console actor, hashed: what a step-up is tied to. Null for a header-key call. For a
+ * staff actor (rule 1636) the caller passes the staff session cookie's value, and the record's `who` is
+ * `staff:{email}`, so a staff step-up never serves the founder's customer session of the same address, nor the reverse.
+ */
+async function baseOf(who: string, staffCookie?: string | null): Promise<string | null> {
+  if (staffCookie !== undefined) return staffCookie ? sha(`nashr-admin-2fa-base:staff:${staffCookie}`) : null;
   const v = (await cookies()).get(who === "key" ? ADMIN_COOKIE : "nashr_session")?.value;
   return v ? sha(`nashr-admin-2fa-base:${v}`) : null;
 }
+const stepWho = (who: string, staffCookie?: string | null) => (staffCookie !== undefined ? `staff:${who}` : who);
 
 const stepInTime = (s: StepUp, now: number) =>
   typeof s.at === "number" && typeof s.seen === "number" && now - s.at < STEP_UP_MAX * 1000 && now - s.seen < STEP_UP_IDLE * 1000;
 
-/** True while this browser holds a live step-up for this actor and the session it was opened in. Renews it. */
-export async function stepUpLive(who: string): Promise<boolean> {
+/**
+ * True while this browser holds a live step-up for this actor and the session it was opened in. Renews it. A staff
+ * actor passes its session cookie's value as `staffCookie`.
+ */
+export async function stepUpLive(who: string, staffCookie?: string | null): Promise<boolean> {
   const id = (await cookies()).get(ADMIN_2FA_COOKIE)?.value;
   if (!id || !/^[0-9a-f]{64}$/.test(id)) return false;
   const k = stepKey(id);
-  const [rec, base] = await Promise.all([db.get<StepUp>(k), baseOf(who)]);
+  const [rec, base] = await Promise.all([db.get<StepUp>(k), baseOf(who, staffCookie)]);
   if (!rec || typeof rec.who !== "string" || typeof rec.base !== "string" || !base) return false;
-  if (rec.who !== who || !sameSecret(rec.base, base)) return false;
+  if (rec.who !== stepWho(who, staffCookie) || !sameSecret(rec.base, base)) return false;
   const now = Date.now();
   if (!stepInTime(rec, now)) return false;
   const ttl = Math.max(0, Math.min(STEP_UP_IDLE, Math.floor((rec.at + STEP_UP_MAX * 1000 - now) / 1000)));
@@ -111,13 +120,16 @@ export async function stepUpLive(who: string): Promise<boolean> {
   return true;
 }
 
-/** Open a step-up for `who` in this browser. False for a call with no session cookie (the key header alone). */
-async function openStepUp(who: string): Promise<boolean> {
-  const base = await baseOf(who);
+/**
+ * Open a step-up for `who` in this browser. False for a call with no session cookie (the key header alone). A staff
+ * actor passes its session cookie's value (sign-in, enrolment and the code prompt open one, rule 1636).
+ */
+export async function openStepUp(who: string, staffCookie?: string | null): Promise<boolean> {
+  const base = await baseOf(who, staffCookie);
   if (!base) return false;
   const id = randomBytes(32).toString("hex");
   const now = Date.now();
-  await db.set(stepKey(id), { who, base, at: now, seen: now } satisfies StepUp, STEP_UP_IDLE);
+  await db.set(stepKey(id), { who: stepWho(who, staffCookie), base, at: now, seen: now } satisfies StepUp, STEP_UP_IDLE);
   (await cookies()).set(ADMIN_2FA_COOKIE, id, await sessionCookie(STEP_UP_MAX));
   return true;
 }
