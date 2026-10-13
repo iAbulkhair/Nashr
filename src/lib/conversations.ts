@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { db } from "./db";
+import { db, mgetChunked } from "./db";
 import { pmap } from "./parallel";
 import type { ChatMsg } from "./chat";
 import type { AgentId } from "./agents";
@@ -82,8 +82,8 @@ export async function setConversationModel(scope: string, id: unknown, model: st
 
 export async function listConversations(scope: string): Promise<Conversation[]> {
   const ids = await db.lrange(`convs:${scope}`, 0, 99);
-  // Up to 100 conversations: read together instead of one round trip after another (the sidebar asks on every navigation).
-  const out = (await pmap(ids, (id) => db.get<Conversation>(`conv:${scope}:${id}`))).filter((c): c is Conversation => !!c);
+  // Up to 100 conversations in one MGET (rule 1430), not one command each: the sidebar asks on every navigation.
+  const out = (await mgetChunked<Conversation>(ids.map((id) => `conv:${scope}:${id}`))).filter((c): c is Conversation => !!c);
   return out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 export async function createConversation(scope: string, title: string, agent: AgentId = "noor"): Promise<Conversation> {
@@ -158,9 +158,11 @@ export async function searchConversations(scope: string, q: string) {
   const hits: { conversationId: string; title: string; snippet: string; at: string }[] = [];
   const convs = await listConversations(scope);
   const threads: [string, string][] = [["default", `chat:${scope}`], ...convs.map((c): [string, string] => [c.id, `chat:${scope}:${c.id}`])];
-  for (const [id, key] of threads) {
-    const rows = await db.lrange(key, 0, 199);
-    for (const r of rows) {
+  // Every thread read together, 8 at a time (rule 1431): one awaited LRANGE per thread made a search on 100 threads 101
+  // round trips in a row.
+  const pages = await pmap(threads, ([, key]) => db.lrange(key, 0, 199), 8);
+  for (const [t, [id]] of threads.entries()) {
+    for (const r of pages[t]) {
       const m = JSON.parse(r) as ChatMsg;
       const i = m.content.toLowerCase().indexOf(needle);
       if (i >= 0) hits.push({ conversationId: id, title: convs.find((c) => c.id === id)?.title ?? (id === "default" ? "Getting started" : id), snippet: m.content.slice(Math.max(0, i - 60), i + 100), at: m.at });

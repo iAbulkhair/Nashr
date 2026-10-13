@@ -347,7 +347,9 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: (p: { system: { text: string }[] }) => { sent.push(p); return { finalMessage: async () => ({ model: "m", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: "تمام" }] }) }; } };
+// The agent-scope classifier streams since the 2026-10-12 build batch (rule 980) and forces its `verdict` tool. It gets
+        // no answer here, as when it called the `create` this mock never had, so the scripted turns stay the chat's.
+        messages = { stream: (p: { system: { text: string }[] } & { tool_choice?: { name?: string } }) => { if (p.tool_choice?.name === "verdict") throw new Error("no classifier in this test"); sent.push(p); return { finalMessage: async () => ({ model: "m", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: "تمام" }] }) }; } };
       },
     }));
     try {
@@ -1315,7 +1317,9 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: (p: (typeof sent)[number]) => { sent.push(JSON.parse(JSON.stringify(p))); return { finalMessage: async () => ({ model: "m", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
+// The agent-scope classifier streams since the 2026-10-12 build batch (rule 980) and forces its `verdict` tool. It gets
+        // no answer here, as when it called the `create` this mock never had, so the scripted turns stay the chat's.
+        messages = { stream: (p: (typeof sent)[number] & { tool_choice?: { name?: string } }) => { if (p.tool_choice?.name === "verdict") throw new Error("no classifier in this test"); sent.push(JSON.parse(JSON.stringify(p))); return { finalMessage: async () => ({ model: "m", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
       },
     }));
     try {
@@ -1334,9 +1338,13 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       expect(results.slice(0, 5).every((r) => r.content.startsWith("Proposed, not saved"))).toBe(true);
       expect(results[5].content).toBe("Not done: one reply carries at most 5 away cards. Nothing more was saved.");
       // Stored with the reply, so a reload shows the same five cards; five proposals in the index; nothing on the away list.
-      expect((await history(u.email)).at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
-      expect((await propIds(u.email)).sort()).toEqual(m.awayProposals!.map((p) => p.id).sort());
-      expect(await awayKeys(u.email)).toEqual([]);
+      // Read at the turn's own time: the cards live 7 days from NOW, so on the real clock they read "expired" from
+      // 2026-10-13 09:00 UTC on (the test failed on the release pull request #355).
+      await at(NOW, async () => {
+        expect((await history(u.email)).at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
+        expect((await propIds(u.email)).sort()).toEqual(m.awayProposals!.map((p) => p.id).sort());
+        expect(await awayKeys(u.email)).toEqual([]);
+      });
     } finally {
       vi.doUnmock("@anthropic-ai/sdk");
       vi.doUnmock("@/lib/model");
@@ -1360,8 +1368,13 @@ describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for
       ];
       for (const [name, user, ctx] of cases) {
         const r = await contactAway(user, { name: "Sara", until: "2026-10-09" }, ctx);
-        expect(r.text, name).toMatch(/^Not done: /);
-        expect(r.text, name).toContain("Nothing was saved");
+        // Rule 799: another agent's turn was never offered the tool, so it reads "Unknown tool." before the tool's own refusal;
+        // a turn with no agent, over MCP and for a token still read that refusal.
+        if (ctx.agent !== undefined && ctx.agent !== "reem") expect(r.text, name).toBe("Unknown tool.");
+        else {
+          expect(r.text, name).toMatch(/^Not done: /);
+          expect(r.text, name).toContain("Nothing was saved");
+        }
         expect(r.awayProposed, name).toEqual([]);
         expect(r.actions, name).toEqual([]);
       }

@@ -69,8 +69,8 @@ export default function SceneTrack({
   const reduced = useSyncExternalStore(watchReduced, () => window.matchMedia(REDUCED).matches, () => true);
   const slides = Children.toArray(children);
   const n = slides.length;
-  // Digits by hand, not Intl: the server and the browser carry different number data for Arabic (see src/lib/dates.ts).
-  const num = (i: number) => (lang === "ar" ? String(i + 1).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]) : String(i + 1));
+  // Western digits in both languages (rule 1584), written by hand so the server and the browser always agree.
+  const num = (i: number) => String(i + 1);
 
   useEffect(() => {
     const el = ref.current;

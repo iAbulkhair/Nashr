@@ -1,5 +1,7 @@
 # Social platform analytics in the agents' reports (design, 2026-10-08)
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged as #300 (2026-10-09, in `production`); dormant until the `COMPOSIO_*` variables are set.
+
 Branch `claude/social-analytics-reports` (cut from `main` at d1a8f3f, after PR #281). Rules 730-749, flows §50,
 permissions route rows from 154 (agreed with the staging and Paymob sessions on 2026-10-08). Builds on
 `2026-10-08-social-results-via-composio-design.md` (the Instagram and LinkedIn readers).
@@ -402,8 +404,12 @@ open with `rel="noopener noreferrer"`.
    config and put its id in `COMPOSIO_AUTH_LINKEDIN_ADS` (named in variables.md).
 5. **Google Business Profile.** If the company manages a profile verified for 60+ days with a website: file the GBP API
    access form with the Google Cloud project number. Quota stays at 0 until Google approves; no code before that.
-6. **LinkedIn version, urgent (by 15 Oct 2026).** Run the LinkedIn org-access check on Preview (Owner_Tasks §هـ2, PR #284)
-   and ask Composio which `Linkedin-Version` the pinned toolkit sends: version 202510 sunsets on 15 Oct 2026.
+6. **LinkedIn version, before enabling LinkedIn.** Run the LinkedIn org-access check on Preview (Owner_Tasks §هـ2, PR #284)
+   and ask Composio support which `Linkedin-Version` toolkits `20260924_00` (linkedin) and `20260826_00` (linkedin_ads)
+   send: version 202510 sunsets on 15 Oct 2026 (LinkedIn's official versioning page, checked 2026-10-12). Our code sends
+   no `Linkedin-Version` header and calls no LinkedIn endpoint; `TOOLKIT_VERSION` pins a Composio snapshot, not a
+   LinkedIn version. Only if a toolkit still sends 202510, move its pin to the newer Composio snapshot Composio names
+   and re-check the allowlisted argument names. Nothing to change while Composio is dormant.
 7. **X developer account.** Fund pay-per-use credits and set a spending limit in the X Developer Console. No new
    environment variable.
 8. **Preview.** Scope Preview `APP_ORIGIN` to this branch for the B0 probe and the X field check.

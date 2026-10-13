@@ -1,99 +1,71 @@
 ---
-title_ar: أفضل 8 وكلاء تسويق بالذكاء الاصطناعي للخليج 2026 — معيار مُعلن
-title_en: The 8 Best AI Marketing Agents for the Gulf in 2026 — a published rubric
+title_ar: 8 خيارات لوكلاء تسويق بالذكاء الاصطناعي في الخليج 2026: أيها يناسبك؟
+title_en: 8 AI marketing agent options for the Gulf in 2026: which one fits you?
 date: 2026-09-17
-desc_ar: قيّمنا 8 أدوات على 6 معايير موزونة: التنفيذ المستقل، العربية واللهجات، القنوات الخليجية، الالتزام، التحكم البشري، السعر. ذكين يبني إحداها — والمعيار كامل أمامك.
-desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic and dialects, Gulf channels, compliance, human control, price. Thakeen builds one of them — the full rubric is here.
+desc_ar: نقارن 8 خيارات بستة معايير: التنفيذ، العربية واللهجات، القنوات الخليجية، الالتزام، التحكم البشري، والسعر. ذكين يبني أحدها، لذلك نعرض رأينا بلا درجات ولا ترتيب، ونترك الاختبار لك.
+desc_en: We compare 8 options on six criteria: execution, Arabic and dialects, Gulf channels, compliance, human control and price. Thakeen builds one of them, so this is our opinion with no scores and no ranking, and the test is yours.
 ---
 ## الإفصاح
 
-ذكين يبني نور، إحدى الأدوات المقيّمة. لذلك ننشر المعيار كاملاً، ونعرض درجة كل معيار حتى يمكن إعادة حساب أي مجموع، ونسمّي الفائزين في فئات لا نتفوق فيها. راسلنا لتصحيح أي رقم.
+ذكين يبني نور، وهي أحد الخيارات في هذه المقالة. لذلك ما تقرؤه هنا **رأينا نحن**، لا تقييماً محايداً: لا نعطي درجات، ولا نرتّب الأدوات، ولا نضع أنفسنا في المقدمة. الأدوات مرتبة أبجدياً بالإنجليزية، والوكالة في آخر القائمة لأنها مرجع لا منتج. راسلنا على hello@thakeen.com إذا وجدت معلومة غير دقيقة.
 
-## المعيار
+## المعايير التي ننظر إليها
 
-| المعيار | الوزن |
-|---|---|
-| التنفيذ المستقل (ينتج وينشر لا يقترح فقط) | 25% |
-| العربية واللهجات الخليجية | 20% |
-| القنوات الخليجية (سناب، واتساب، سلة/زد) | 20% |
-| الالتزام (صحة، عقار، قانون) | 10% |
-| التحكم البشري (موافقة، حوكمة) | 15% |
-| السعر/القيمة | 10% |
+- **التنفيذ:** هل تنتج الأداة وتنشر، أم تقترح فقط؟
+- **العربية واللهجات الخليجية:** هل تكتب بلهجة جمهورك أم بفصحى مترجمة؟
+- **القنوات الخليجية:** سناب، واتساب، سلة وزد.
+- **الالتزام:** ضوابط الإعلان في الصحة والعقار والقانون.
+- **التحكم البشري:** موافقة قبل النشر، وحوكمة واضحة.
+- **السعر:** ما تدفعه مقابل ما تحصل عليه.
 
-## النتائج
+## أين يتميز كل خيار، برأينا
 
-| # | الأداة | التنفيذ | العربية | القنوات | الالتزام | التحكم | السعر | المجموع |
-|---|---|---|---|---|---|---|---|---|
-| 1 | نور (ذكين) | 3 | 5 | 1 | 4 | 5 | 3 | **3.40** |
-| 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
-| 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
-| 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
-| 5 | Okara AI CMO | 3 | 1 | 1 | 2 | 3 | 3 | 2.10 |
-| 6 | Jasper | 2 | 2 | 1 | 1 | 3 | 3 | 1.95 |
-| 7 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
-| — | وكالة محلية (مرجع، ليست منتجاً) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
-
-**فائزو الفئات:** التنفيذ الأوسع: Enrich Labs (100+ تكامل غربي). القنوات الخليجية بين الأدوات: Hootsuite/Buffer (والوكالة المحلية تغطيها أفضل). السعر: ChatGPT. الجودة الإبداعية القصوى: الوكالة المحلية.
-
-## ملاحظات لكل أداة
-
-**نور (ذكين):** لهجات، تقويم هجري، مراجِع ثانٍ للالتزام، وخطة أسبوعية تلقائية. الضعف: النشر بضغطة منك دائماً، اليوم إلى Telegram أو كمسودة في WordPress؛ لا نشر بعد على سناب أو واتساب أو سلة، والانتشار جديد.
-**Enrich Labs:** تنفيذ قوي للسوق الأمريكي. بلا قنوات خليجية.
-**Jasper:** أداة كتابة، لا وكيل خليجي.
-**ChatGPT:** مساعد عام، لا وكيل تسويق.
-**Hootsuite/Buffer:** جدولة لما تكتبه أنت.
-**Sintra / Okara:** وكلاء عامون بالإنجليزي.
-**الوكالة المحلية:** أعلى جودة إبداعية وأعلى سعر وأبطأ.
+| الخيار | أين يتميز | ما ينقصه للسوق الخليجي |
+|---|---|---|
+| ChatGPT | مساعد عام مرن وسعره في متناول الجميع | لا ينفّذ ولا ينشر، وأنت من يزوّده بسياق علامتك كل مرة |
+| Enrich Labs (Helena) | أوسع تنفيذ وتكاملات غربية كثيرة | لا قنوات خليجية، ولا لهجات |
+| Hootsuite / Buffer | جدولة موثوقة لما تكتبه أنت | لا يكتب ولا يخطط |
+| Jasper | كتابة قوية بالإنجليزية | ليس وكيلاً للخليج |
+| نور (ذكين) | لهجات خليجية، تقويم هجري، مراجِع ثانٍ للالتزام، وخطة أسبوعية تلقائية | النشر اليوم إلى Telegram أو كمسودة في WordPress فقط؛ لا نشر بعد على سناب أو واتساب، وربط سلة وزد مخطط له بعد اعتماد التطبيقين، والمنتج جديد |
+| Okara AI CMO | وكيل تسويق عام | بالإنجليزية، بلا قنوات خليجية |
+| Sintra | مجموعة مساعدين عامة | بالإنجليزية، بلا قنوات خليجية |
+| وكالة محلية (مرجع، ليست منتجاً) | أعلى جودة إبداعية، وتعرف السوق | الأعلى سعراً والأبطأ تسليماً |
 
 ## كيف تختار
 
-اختبر أداة واحدة على قناة واحدة لأسبوعين. قِس: كم عنصراً اعتمدته بلا تعديل؟ إذا اعتمدت أغلبها بلا تعديل بعد الأسبوع الثاني، أنت في المكان الصحيح.
+لا تعتمد على رأينا ولا على رأي غيرنا. اختبر أداة واحدة على قناة واحدة لمدة أسبوعين، وقِس شيئاً واحداً: كم عنصراً اعتمدته بلا تعديل؟ إذا كانت أغلب العناصر تُعتمد بلا تعديل بعد الأسبوع الثاني، فأنت في المكان الصحيح.
 
 [جرّب نور مجاناً](/ar/app/signup)
 
 ---EN---
 ## Disclosure
 
-Thakeen builds Noor, one of the tools scored here. So we publish the full rubric, show every per-criterion score so any total can be recomputed, and name category winners where we don't lead. Email us to correct any number.
+Thakeen builds Noor, one of the options in this article. So what you read here is **our own opinion**, not a neutral review: we give no scores, we do not rank the tools, and we do not put ourselves first. Tools are listed alphabetically, and the agency comes last because it is a reference, not a product. Email us at hello@thakeen.com if you find anything inaccurate.
 
-## Rubric
+## The criteria we look at
 
-| Criterion | Weight |
-|---|---|
-| Autonomous execution (produces and publishes, not just suggests) | 25% |
-| Arabic and Gulf dialects | 20% |
-| Gulf channels (Snap, WhatsApp, Salla/Zid) | 20% |
-| Compliance (health, real estate, legal) | 10% |
-| Human control (approval, governance) | 15% |
-| Price/value | 10% |
+- **Execution:** does it produce and publish, or only suggest?
+- **Arabic and Gulf dialects:** does it write in your audience's dialect, or in translated MSA?
+- **Gulf channels:** Snapchat, WhatsApp, Salla and Zid.
+- **Compliance:** advertising rules for health, real estate and legal.
+- **Human control:** approval before publishing, and clear governance.
+- **Price:** what you pay for what you get.
 
-## Results
+## Where each option stands out, in our opinion
 
-| # | Tool | Exec | Arabic | Channels | Compliance | Control | Price | Score |
-|---|---|---|---|---|---|---|---|---|
-| 1 | Noor (Thakeen) | 3 | 5 | 1 | 4 | 5 | 3 | **3.40** |
-| 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
-| 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
-| 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
-| 5 | Okara AI CMO | 3 | 1 | 1 | 2 | 3 | 3 | 2.10 |
-| 6 | Jasper | 2 | 2 | 1 | 1 | 3 | 3 | 1.95 |
-| 7 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
-| — | Local agency (reference, not a product) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
-
-**Category winners:** broadest execution: Enrich Labs (100+ Western integrations). Gulf channels among tools: Hootsuite/Buffer (a local agency covers them best). Price: ChatGPT. Peak creative quality: a local agency.
-
-## Notes per tool
-
-**Noor (Thakeen):** dialects, Hijri calendar, second reviewer for compliance, an automatic weekly plan. Weak spots: publishing is always your click, today to Telegram or as a WordPress draft; no publishing to Snap, WhatsApp or Salla yet, and adoption is new.
-**Enrich Labs:** strong execution for the US market. No Gulf channels.
-**Jasper:** a writing tool, not a Gulf agent.
-**ChatGPT:** a general assistant, not a marketing agent.
-**Hootsuite/Buffer:** scheduling for what you write.
-**Sintra / Okara:** general English agents.
-**Local agency:** highest creative quality, highest price, slowest.
+| Option | Where it stands out | What it lacks for the Gulf |
+|---|---|---|
+| ChatGPT | A flexible general assistant at an accessible price | Does not execute or publish; you supply the brand context every time |
+| Enrich Labs (Helena) | The broadest execution and many Western integrations | No Gulf channels, no dialects |
+| Hootsuite / Buffer | Reliable scheduling for what you write | Does not write or plan |
+| Jasper | Strong English writing | Not a Gulf agent |
+| Noor (Thakeen) | Gulf dialects, Hijri calendar, a second reviewer for compliance, an automatic weekly plan | Publishing today goes to Telegram or a WordPress draft only; no Snapchat or WhatsApp publishing yet, the Salla and Zid link is planned once both apps are approved, and the product is new |
+| Okara AI CMO | A general marketing agent | English, no Gulf channels |
+| Sintra | A set of general assistants | English, no Gulf channels |
+| Local agency (reference, not a product) | The highest creative quality, and knows the market | The highest price and the slowest turnaround |
 
 ## How to choose
 
-Test one tool on one channel for two weeks. Measure: how many items did you approve without editing? If most were approved without edits by week two, you're in the right place.
+Don't rely on our opinion or anyone else's. Test one tool on one channel for two weeks, and measure one thing: how many items did you approve without editing? If most items are approved without edits by week two, you're in the right place.
 
 [Try Noor free](/en/app/signup)

@@ -10,6 +10,10 @@ import { test as base, expect, type ConsoleMessage, type Locator, type Page, typ
 const IGNORED_CONSOLE = [
   // An aborted navigation logs this while Next is still streaming the RSC payload; nothing is wrong.
   /Failed to fetch RSC payload/i,
+  // Safari's note on the report-only CSP (rule 1341): it reports only to the console by design, so it names no
+  // `report-to`. Only this exact note is ignored; a real violation still fails. Drop it when the policy gets a report
+  // endpoint or moves into the enforced header.
+  /^The Content Security Policy '.*' was delivered in report-only mode, but does not specify a 'report-to'; the policy will have no effect\./,
 ];
 
 export type Failures = { console: string[]; http: string[] };

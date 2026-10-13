@@ -17,9 +17,8 @@ const NAME = Object.fromEntries(AGENT_CAST.map((a) => [a.id, a.name])) as Record
 /** The rail's names: the homepage game's for steps 1-5; here 6 joins analysis and measurement, and 7 is the launch. */
 const stepName = (n: Step, lang: Lang) => (n === 6 ? START_COPY.steps6 : n === 7 ? START_COPY.steps7 : DICT_COPY.steps[n])[lang];
 
-const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";
-/** Arabic-Indic digits on the Arabic page, Western digits on the English one. */
-const num = (n: number, lang: Lang) => (lang === "ar" ? String(n).replace(/\d/g, (d) => AR_DIGITS[Number(d)]) : String(n));
+/** Western digits on both pages (rule 1584). */
+const num = (n: number) => String(n);
 
 const noSubscribe = () => () => {};
 /**
@@ -139,7 +138,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             })}
           </div>
           <div className="grid gap-3" aria-live="polite">
-            <p className="tnum text-sm text-foreground-muted">{DICT_COPY.counter[lang].replace("{n}", num(s.words.length, lang))}</p>
+            <p className="tnum text-sm text-foreground-muted">{DICT_COPY.counter[lang].replace("{n}", num(s.words.length))}</p>
             {lastWord && <Say key={lastWord.id} who={lastWord.react.who} lang={lang} text={lastWord.react.text[lang]} />}
           </div>
         </>
@@ -214,7 +213,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
               const state = n === s.step ? "current" : n < s.step ? "done" : "todo";
               return (
                 <li key={n} className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center" aria-current={state === "current" ? "step" : undefined}>
-                  <span className={`grid h-8 w-8 place-items-center rounded-full text-sm font-semibold ${state === "current" ? "bg-inverse text-inverse-foreground" : state === "done" ? "bg-foreground/15 text-foreground" : "bg-background-muted text-foreground-muted"}`}>{num(n, lang)}</span>
+                  <span className={`grid h-8 w-8 place-items-center rounded-full text-sm font-semibold ${state === "current" ? "bg-inverse text-inverse-foreground" : state === "done" ? "bg-foreground/15 text-foreground" : "bg-background-muted text-foreground-muted"}`}>{num(n)}</span>
                   <span className={`text-xs leading-tight ${state === "current" ? "font-semibold text-foreground" : "sr-only text-foreground-muted sm:not-sr-only"}`}>{stepName(n, lang)}</span>
                 </li>
               );
@@ -223,7 +222,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
 
           <h2 id={headingId} ref={heading} tabIndex={-1} className="mt-6 font-display text-lg font-bold text-foreground focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring">
             <span className="tnum text-sm font-semibold text-foreground-muted">
-              {num(s.step, lang)}/{num(STEPS.length, lang)}
+              {num(s.step)}/{num(STEPS.length)}
             </span>{" "}
             {stepName(s.step, lang)}
           </h2>

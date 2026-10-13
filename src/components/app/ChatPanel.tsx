@@ -8,13 +8,15 @@ import type { HandoffItemStatus, HandoffView } from "@/lib/handoffs";
 import type { BrandProposal } from "@/lib/brand-proposals";
 import type { AwayProposal } from "@/lib/secretary-away";
 import type { InstructionProposalCard as InstructionProposalCardData } from "@/lib/instruction-proposals";
+import type { SpendProposalCard as SpendProposalCardData } from "@/lib/spend-proposals";
 import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { formatCount } from "@/lib/pricing";
-import { AGENTS, type AgentId } from "@/lib/agents";
+import { AGENTS, isAgentId, type AgentId } from "@/lib/agents";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
+import { modelErrorCause, modelErrorText } from "@/lib/provider-errors";
 import { Icon } from "./Icons";
 import ApprovalCard from "./ApprovalCard";
 import CopyButton from "@/components/ui/CopyButton";
@@ -460,6 +462,81 @@ export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; 
   );
 }
 
+/**
+ * Paid work the owner's message did not ask for in words (rule 1511, src/lib/spend-proposals.ts): nothing ran and nothing
+ * was charged. The card shows what would run and its estimated price; Run is the owner's approval (POST
+ * /api/chat/spend/{id}, rule 1512), Dismiss drops it. The brief is the model's text, so it is shown as plain text (a React
+ * text node, never markup). A refusal (credits, the trial, an agent's cap) raises the app's own limit dialog and leaves the
+ * card open.
+ */
+export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p: SpendProposalCardData; t: AppDict; lang: "ar" | "en"; /** `can(u, "generate")` */ canRun?: boolean; onCredits?: (n: number) => void }) {
+  const ar = lang === "ar";
+  const [state, setState] = useState<"open" | "running" | "ran" | "dismissed" | "gone" | "busy" | "slow" | "forbidden" | "paused" | "failed" | "error">(p.state === "ran" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
+  const [made, setMade] = useState<number | null>(null);
+  async function decide(decision: "run" | "dismiss") {
+    setState("running");
+    const r = await fetch(`/api/chat/spend/${p.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) }).catch(() => null);
+    if (!r) return setState("error");
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; credits?: number; items?: unknown[] };
+    if (typeof j.credits === "number") onCredits?.(j.credits);
+    if (r.ok) {
+      if (decision === "dismiss") return setState("dismissed");
+      if (Array.isArray(j.items)) setMade(j.items.length);
+      window.dispatchEvent(new Event("nashr:pending-changed"));
+      return setState("ran");
+    }
+    if (r.status === 403) return setState("forbidden");
+    if (r.status === 404 || r.status === 410) return setState("gone");
+    if (r.status === 429) return setState("slow");
+    if (j.error === "claim_busy") return setState("busy");
+    if (j.error === "model_paused" || j.error === "too_late") return setState("paused");
+    // Credits, the trial or an agent's cap: the app's own limit dialog, as for any batch. The card stays open.
+    if (limitFromError(j.error)) return setState("open");
+    setState(r.status === 502 || j.error === "generation_failed" ? "failed" : "error");
+  }
+  const type = t.generate.types[p.type]?.t ?? p.type;
+  const what = p.kind === "image" ? (ar ? `صورة للعنصر «${p.title ?? ""}»` : `An image for "${p.title ?? ""}"`) : p.kind === "draft" ? (ar ? `${p.count ?? 1} من ${type}` : `${p.count ?? 1} × ${type}`) : type;
+  const done: Partial<Record<typeof state, string>> = {
+    ran: p.kind === "image" ? (ar ? "بدأ الرسم، وتظهر الصورة على العنصر في صندوق الموافقات." : "Drawing started; the image appears on the item in your approvals.") : made != null ? (ar ? `أُضيف ${made} إلى صندوق الموافقات.` : `${made} added to your approvals.`) : (ar ? "نُفّذ، والنتيجة في صندوق الموافقات." : "Done; the result is in your approvals."),
+    dismissed: ar ? "تُجوهل. لم يُخصم أي كريدت." : "Dismissed. No credits were used.",
+    gone: ar ? "حُسمت هذه البطاقة من قبل أو انتهت مدتها (24 ساعة)." : "This card was already decided or has expired (24 hours).",
+    busy: ar ? "يُنفَّذ هذا الطلب الآن من نافذة أخرى." : "This request is already running from another window.",
+    slow: ar ? "طلبات كثيرة في هذه الساعة. حاول بعد قليل." : "Too many runs this hour. Try again shortly.",
+    forbidden: t.team.errors.forbidden,
+    paused: ar ? "التوليد متوقف مؤقتاً. لم يُخصم أي كريدت، حاول لاحقاً." : "Generation is paused for now. No credits were used; try again later.",
+    failed: ar ? "تعذّر التنفيذ، وأُعيدت الكريدتات. حاول مرة أخرى." : "It could not be done, and the credits were returned. Try again.",
+    error: ar ? "لم يُنفَّذ. حاول مرة أخرى." : "Not done. Try again.",
+  };
+  const closed = state === "ran" || state === "dismissed" || state === "gone";
+  return (
+    <article className="mt-3 overflow-hidden rounded-xl border border-border-input bg-surface text-foreground" data-spend-card>
+      <header className="flex items-center gap-2 border-b border-foreground/5 px-3 py-2 text-xs font-semibold">
+        <Icon name="spark" className="h-4 w-4 text-foreground" />
+        {ar ? "عمل مدفوع ينتظر موافقتك" : "Paid work waiting for your Run"}
+      </header>
+      <dl className="grid gap-1.5 px-4 py-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-3">
+        <dt className="text-xs text-foreground-muted">{ar ? "المطلوب" : "What"}</dt>
+        <dd className="min-w-0 break-words" dir="auto">{what}</dd>
+        {p.brief && <><dt className="text-xs text-foreground-muted">{ar ? "التفاصيل" : "Brief"}</dt><dd className="min-w-0 whitespace-pre-wrap break-words" dir="auto">{p.brief.slice(0, 400)}</dd></>}
+        <dt className="text-xs text-foreground-muted">{ar ? "التكلفة التقديرية" : "Estimated cost"}</dt>
+        <dd className="tnum min-w-0" dir="auto">{ar ? `${p.credits} كريدت` : `${p.credits} credit${p.credits === 1 ? "" : "s"}`}</dd>
+      </dl>
+      <p className="px-4 pb-2 text-xs text-foreground-muted">{ar ? "لم يُنفَّذ شيء ولم يُخصم أي كريدت لأن رسالتك لم تطلب هذا صراحةً. اضغط «نفّذ» إن كنت تريده." : "Nothing ran and no credits were used, because your message did not ask for this in words. Press Run if you want it."}</p>
+      <footer className="flex flex-wrap items-center gap-2 border-t border-foreground/5 px-3 py-2 text-xs">
+        {done[state] && (state === "ran" || state === "dismissed" ? <span role="status" className="text-foreground">{done[state]}</span> : <span role="alert" className="text-danger">{done[state]}</span>)}
+        {state === "ran" && <Link href={`/${lang}/app`} className="underline">{ar ? "افتح صندوق الموافقات" : "Open approvals"}</Link>}
+        {!closed && !canRun && <span className="ms-auto text-foreground-muted">{ar ? "لا تملك صلاحية تنفيذ هذا العمل." : "You don't have permission to run this."}</span>}
+        {!closed && canRun && (
+          <span className="ms-auto flex gap-1.5">
+            <button disabled={state === "running"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{ar ? "تجاهل" : "Dismiss"}</button>
+            <button disabled={state === "running"} onClick={() => decide("run")} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{state === "running" ? (ar ? "يُنفَّذ…" : "Running…") : (ar ? "نفّذ" : "Run")}</button>
+          </span>
+        )}
+      </footer>
+    </article>
+  );
+}
+
 /** Owner-readable labels for tool actions; internal tags that mean nothing to the owner are dropped. */
 function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[] {
   const out = new Set<string>();
@@ -469,6 +546,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
     else if (kind === "brandprop") out.add(lang === "ar" ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waits for your Save");
     else if (kind === "awayprop") out.add(lang === "ar" ? "غياب ينتظر حفظك" : "An absence waits for your Save");
     else if (kind === "instrprop") out.add(lang === "ar" ? "قاعدة مقترحة تنتظر تطبيقك" : "A proposed rule waits for your Apply");
+    else if (kind === "spendprop") out.add(lang === "ar" ? "عمل مدفوع ينتظر موافقتك" : "Paid work waits for your Run");
     else if (kind === "generated" || kind === "drafted") out.add(lang === "ar" ? `أُضيف ${n ?? ""} إلى صندوق الموافقات`.replace("  ", " ") : `${n ?? ""} added to approvals`.trim());
     else if (kind === "todo") out.add(lang === "ar" ? "حُدّثت قائمة مهامك" : "Your to-do list was updated");
   }
@@ -548,7 +626,8 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       setBusy(true); setSteps([]);
       const S = t.start;
       const fill = (text: string, n: number, have: number) => text.split("{n}").join(String(n)).split("{credits}").join(String(have));
-      const fail = (code?: string, ev?: { refunded?: number; credits?: number }) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: code === "charge" ? S.notCharged : code === "refunded" ? fill(S.refunded, ev?.refunded ?? 0, ev?.credits ?? 0) : code === "saved" ? S.partial : code === "daily" ? (lang === "ar" ? "وصلت إلى حد إعداد العلامات لهذا اليوم. هذه المحاولة لم تخصم شيئاً، والإعداد المدفوع مسبقاً يبقى محسوباً لك. حاول غداً." : "You reached today's brand setup limit. This try charged nothing, and a setup already paid for stays paid. Try again tomorrow.") : code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : code === "paused" ? (lang === "ar" ? "تجهيز المساحة متوقف مؤقتاً، ولم يُحفظ شيء. حدّث الصفحة لاحقاً للمحاولة مرة أخرى." : "Workspace setup is paused for now and nothing was saved. Refresh later to try again.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.") }]);
+      // A provider fault (rule 1477) says why first, then what happened to the credits.
+      const fail = (code?: string, ev?: { refunded?: number; credits?: number; error?: string }) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: (modelErrorCause(lang, ev?.error) ? `${modelErrorCause(lang, ev?.error)} ` : "") + (code === "charge" ? S.notCharged : code === "refunded" ? fill(S.refunded, ev?.refunded ?? 0, ev?.credits ?? 0) : code === "saved" ? S.partial : code === "daily" ? (lang === "ar" ? "وصلت إلى حد إعداد العلامات لهذا اليوم. هذه المحاولة لم تخصم شيئاً، والإعداد المدفوع مسبقاً يبقى محسوباً لك. حاول غداً." : "You reached today's brand setup limit. This try charged nothing, and a setup already paid for stays paid. Try again tomorrow.") : code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : code === "paused" ? (lang === "ar" ? "تجهيز المساحة متوقف مؤقتاً، ولم يُحفظ شيء. حدّث الصفحة لاحقاً للمحاولة مرة أخرى." : "Workspace setup is paused for now and nothing was saved. Refresh later to try again.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.")) }]);
       try {
         const res = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: onboardUrl }) });
         if (res.status === 409) return fail("busy");
@@ -617,7 +696,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     const done = (j: Answer) => {
       if (j.chat) setChatNow(j.chat);
       if (j.message) { setMsgs((p) => [...p, j.message!]); if (typeof j.credits === "number") setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); if (j.limit === "credits" || j.limit === "trial" || j.limit === "agent_cap") raiseLimit(j.limit); }
-      else setMsgs((p) => [...p, { role: "assistant", content: `⚠︎ ${j.error === "network" ? (lang === "ar" ? "انقطع الاتصال. حاول مرة أخرى." : "Connection lost. Try again.") : (lang === "ar" ? "تعذّر الرد. حاول مرة أخرى." : "Could not reply. Try again.")}`, at: new Date().toISOString(), agent: "noor" }]);
+      else setMsgs((p) => [...p, { role: "assistant", content: `⚠︎ ${j.error === "network" ? (lang === "ar" ? "انقطع الاتصال. حاول مرة أخرى." : "Connection lost. Try again.") : modelErrorText(lang, j.error) ?? (lang === "ar" ? "تعذّر الرد. حاول مرة أخرى." : "Could not reply. Try again.")}`, at: new Date().toISOString(), agent: "noor" }]);
     };
     /** Refused before anything was saved or counted: out of the thread, back in the box, and the reason shown. */
     const unsend = (why: "chat" | "chat_credits" | "slow_down", j: Answer) => {
@@ -758,16 +837,21 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           </div>
         )}
         {msgs.map((m, i) => (
-          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length)}>
+          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length || m.spendProposals?.length)}>
             {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
             {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
             {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
-            {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
+            {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(`${lang === "ar" ? "ابدأ" : "Start"}: ${prompt}`)} />}
             {m.handoff && <HandoffCard id={m.handoff.id} t={t} lang={lang} initial={handoffs?.[m.handoff.id]} canRun={canRun} canDecline={canDecline} canApprove={canApprove} onCredits={setCredits} />}
             {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
             {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
             {m.instructionProposals && m.instructionProposals.length > 0 && <div className="mt-1">{m.instructionProposals.map((p) => <InstructionProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canInstructions} />)}</div>}
+            {m.spendProposals && m.spendProposals.length > 0 && <div className="mt-1">{m.spendProposals.map((p) => <SpendProposalCard key={p.id} p={p} t={t} lang={lang} canRun={canRun} onCredits={setCredits} />)}</div>}
             {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-foreground-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
+            {m.role === "assistant" && m.switchTo && isAgentId(m.switchTo) && m.switchTo !== agent && (
+              <button onClick={() => pick(m.switchTo!)} className="btn btn-secondary btn-xs mt-1.5">{t.chat.switchTo.replace("{name}", A[m.switchTo].name)}</button>
+            )}
+            {m.role === "assistant" && m.large && <p className="mt-1 text-xs text-foreground-muted" data-workspace-large>{lang === "ar" ? "ملفات مساحة العمل كبيرة، فكان لهذا الرد مساحة أقل: ربما تركتُ رسائل سابقة من المحادثة أو اختصرتُ الجواب. " : "Your workspace files are large, so this reply had less room: I may have left out earlier messages or kept the answer short. "}<Link href={`/${lang}/app/files`} className="underline">{lang === "ar" ? "اختصر ملفاتك الطويلة" : "Shorten your long files"}</Link>{lang === "ar" ? " أو ابدأ محادثة جديدة." : " or start a new conversation."}</p>}
             {m.role === "assistant" && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
                 {/* Rule 1126: each answer can be copied; the last one (or an error) can be asked again. */}

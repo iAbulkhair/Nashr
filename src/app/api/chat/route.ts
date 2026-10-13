@@ -10,6 +10,8 @@ import { deadlineFor } from "@/lib/media/keys";
 import { chatStatus, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { chatRouteFor } from "@/lib/models/overrides";
 import { noteRejectedPick } from "@/lib/usage";
+import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
+import { customerModelError } from "@/lib/provider-fault-note";
 
 export const maxDuration = 300;
 
@@ -30,7 +32,9 @@ export async function GET(req: Request) {
  * Refused before anything is saved, counted or streamed, always as JSON: 403 `agent_not_included` (an agent the plan does not
  * include, rule 782), 402 `trial_over` (an ended trial, rule 330: limit
  * "trial", which raises the subscription dialog, and a `message` the chat shows), 429 `slow_down` with `retry` "hour" or
- * "day" and a `message` (rule 331), and a message past the plan's chat allowance: 402 {error:"chat_allowance"} (paused)
+ * "day" and a `message` (rule 331), the same 429 `slow_down` when the agent-scope input gate is in enforce and the brand
+ * scope has used its ceiling of refused messages (rule 795, `agentScopePreflight`: no classifier call; its `message` says
+ * so), and a message past the plan's chat allowance: 402 {error:"chat_allowance"} (paused)
  * or {error:"chat_credits"} (continue-on-credits is on but the balance is below the most a message can cost), with
  * `chat` and `credits`.
  */
@@ -54,7 +58,11 @@ export async function POST(req: Request) {
   // The short-window ceiling next (a burst never touches the month's count, rule 331), then the plan's monthly
   // allowance, all before chat() saves the owner's message (src/lib/chat-allowance.ts).
   // The conversation's record is read with the ceiling, under the caller's own scope: its `model` is the owner's pick.
-  const [slow, record] = await Promise.all([chatRefusal(u), b.conv && b.conv !== "default" ? getConversation(sc(u), b.conv) : null]);
+  // The agent-scope modes and the brand scope's ceiling of refused messages are read in the same round (rule 795); a spent
+  // ceiling (only in enforce) is answered first, before the allowance is touched and without a classifier call. The
+  // burst ceiling has counted this request by then.
+  const [slow, record, pre] = await Promise.all([chatRefusal(u), b.conv && b.conv !== "default" ? getConversation(sc(u), b.conv) : null, agentScopePreflight(u)]);
+  if (pre.slow) return retryLater({ ok: false, error: "slow_down", retry: pre.slow, message: { role: "assistant", content: agentScopeSlowText(lang), at: new Date().toISOString(), agent } }, WINDOW[pre.slow]);
   if (slow) return retryLater({ ok: false, error: "slow_down", retry: slow, message: refused(slow, chatCaps(u)[slow]) }, WINDOW[slow]);
   // The turn's one model, resolved once: the conversation's pick when route() accepts it, else automatic, and then the
   // reply says so (`modelRejected`). The messages are reserved for it and chat() runs on the gate's copy of it.
@@ -67,14 +75,15 @@ export async function POST(req: Request) {
 
   if (!b.stream) {
     try {
-      const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, modelRejected }));
+      const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected }));
       await track(u.email, "chat");
       if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
       return NextResponse.json({ ok: true, message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
     } catch (e) {
       console.error("chat failed", e);
       await track(u.email, "error");
-      return NextResponse.json({ ok: false, error: "chat_failed" }, { status: 502 });
+      // A provider rate limit, overload or spent balance gets its own message (rule 1477), never the provider's text.
+      return NextResponse.json({ ok: false, error: (await customerModelError(e, "chat")) ?? "chat_failed" }, { status: 502 });
     }
   }
 
@@ -85,14 +94,14 @@ export async function POST(req: Request) {
       // Mobile carriers and proxies drop connections that stay silent for 30-60 s, and a batch takes longer than that.
       const beat = setInterval(() => { try { controller.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
-        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, modelRejected, onStatus: (s) => send({ type: "status", text: s }) }));
+        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, onStatus: (s) => send({ type: "status", text: s }) }));
         await track(u.email, "chat");
         if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
         send({ type: "message", message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
       } catch (e) {
         console.error("chat failed", e);
         await track(u.email, "error");
-        send({ type: "error", error: "chat_failed" });
+        send({ type: "error", error: (await customerModelError(e, "chat")) ?? "chat_failed" });
       } finally {
         clearInterval(beat);
         try { controller.close(); } catch { /* already closed */ }

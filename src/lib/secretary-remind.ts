@@ -188,9 +188,12 @@ async function sweepAccount(email: string, scopes: string[], now: number, deadli
 /**
  * Fire every reminder due at `now`: up to `SWEEP_SCOPES` scopes, grouped by account, eight accounts at a time, each
  * isolated from the others' failures. Nothing new starts after `deadline` (default: `SWEEP_BUDGET_TICK_MS` from now).
- * `fromQstash` records the tick that makes `timedReminders()` true; the daily fallback does not.
+ * `tick` records the tick that makes `timedReminders()` true; the daily fallback does not. Every authenticated call of
+ * the tick route passes it (rule 1432): on thakeen.com the 15-minute tick is an hPanel cron with the cron bearer, not
+ * QStash, and a marker written only for QStash was never written, so owners were told "next morning" for a reminder the
+ * tick fired on time.
  */
-export async function sweepReminders(now = Date.now(), opts: { fromQstash?: boolean; deadline?: number } = {}): Promise<SweepReport> {
+export async function sweepReminders(now = Date.now(), opts: { tick?: boolean; deadline?: number } = {}): Promise<SweepReport> {
   const deadline = opts.deadline ?? Date.now() + SWEEP_BUDGET_TICK_MS;
   const scopes = (await db.zrangeByScore(SEC_KEYS.dueScopes, now, SWEEP_SCOPES)).map((m) => m.member).filter((s) => s.length > 0 && s.length <= 320);
   const byAccount = new Map<string, string[]>();
@@ -203,6 +206,6 @@ export async function sweepReminders(now = Date.now(), opts: { fromQstash?: bool
       return { ...zero(), failed: 1 };
     });
   }, SWEEP_CONCURRENCY);
-  if (opts.fromQstash) await db.set(SEC_KEYS.tick, now, TICK_TTL_S);
+  if (opts.tick) await db.set(SEC_KEYS.tick, now, TICK_TTL_S);
   return { scopes: scopes.length, ...rows.reduce((a, r) => addTo(a, r), zero()) };
 }

@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { sessionCookie, type Session } from "@/lib/auth";
+import { dropSession, sessionCookie, sessionRecord } from "@/lib/auth";
 import { appOrigin } from "@/lib/origin";
 import { allow, clientIp, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW, retryLater } from "@/lib/rate";
 import { adminAudit } from "@/lib/admin-audit";
@@ -26,10 +25,11 @@ export async function POST(req: Request) {
   const who = jar.get("nashr_impersonate")?.value;
   // Burn the impersonated session so it cannot be reused after the founder returns. Its record names the founder (`imp`).
   const temp = jar.get("nashr_session")?.value;
-  const rec = temp && temp !== back ? await db.get<string | Session>(`session:${temp}`) : null;
+  // Hashed key first, then the raw key of a session written before rule 1345 (src/lib/auth.ts `sessionRecord`).
+  const rec = temp && temp !== back ? await sessionRecord(temp) : null;
   const imp = rec && typeof rec === "object" && typeof rec.imp === "string" && rec.imp ? rec : null;
-  if (temp && temp !== back && (imp || who)) await db.del(`session:${temp}`);
-  if (back && (await db.get(`session:${back}`))) jar.set("nashr_session", back, await sessionCookie(60 * 60 * 24 * 30));
+  if (temp && temp !== back && (imp || who)) await dropSession(temp);
+  if (back && (await sessionRecord(back))) jar.set("nashr_session", back, await sessionCookie(60 * 60 * 24 * 30));
   else jar.delete("nashr_session");
   jar.delete("nashr_return");
   jar.delete("nashr_impersonate");

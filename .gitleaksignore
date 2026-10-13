@@ -1,0 +1,5 @@
+# Findings the CI "Secret scan" (rule 1355) must skip: commit:file:rule:line fingerprints of made-up values already in
+# history. gitleaks scans every commit of a pull request, so a fake value fixed in a later commit still fails the run.
+# Only fake values belong here; a real value is rotated, never listed.
+# A made-up "sk_live" sentinel in the integrations test (PR #353, replaced by KEYPREFIX in the next commit).
+c7dcd13e18d8672daf08d4c31bc06764056f11e0:tests/margin-integrations.test.ts:stripe-access-token:222

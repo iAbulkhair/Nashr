@@ -17,7 +17,8 @@ import { saveGov } from "@/lib/governance";
 import { wipeAccount } from "@/lib/account";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { promptStamp } from "@/lib/prompt-stamp";
-import { CHAT_TOOL_NAMES, PROPOSE_HANDOFF_TOOL, leadRefusal, push, runTool, toolsFor, type ToolCtx } from "@/lib/chat";
+import { CHAT_TOOL_NAMES, PROPOSE_HANDOFF_TOOL, push, runTool, toolsFor, type ToolCtx } from "@/lib/chat";
+import { roleOwner, roleRefusalText } from "@/lib/agent-scope";
 import { HANDOFF_BRIEF_MAX, HANDOFF_OWNER_MSG_MAX, HANDOFF_RUN_LOCK_S, HANDOFF_TYPES, chatItemOf, createHandoff, declineHandoff, getHandoff, handoffKeys, handoffView, parseProposal, runHandoffItem, runItemLocked, type HandoffView } from "@/lib/handoffs";
 import { HANDOFF_RUNS_PER_HOUR } from "@/lib/rate";
 import { LEAD_BRIEF_LABEL, asData, groundingBlocks, leadBriefBlock } from "@/lib/json";
@@ -145,7 +146,8 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
     const u = await owner("ho-refuse");
     for (const agent of ["noor", "razan", "reem", undefined] as const) {
       const r = await propose(u, TWO, { agent });
-      expect(r.text, String(agent)).toContain("only Majed, the lead, proposes handoffs");
+      // Rule 799: a turn with an agent that was not offered the tool reads "Unknown tool."; a turn with no agent reads the tool's own refusal.
+      expect(r.text, String(agent)).toContain(agent ? "Unknown tool." : "only Majed, the lead, proposes handoffs");
       expect(r.id).toBeUndefined();
     }
     const tok = await propose(u, TWO, { by: { kind: "token", email: u.email } });
@@ -176,7 +178,9 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: (p: { tools: { name: string }[] }) => { seen.push({ tools: p.tools.map((t) => t.name) }); return { finalMessage: async () => ({ model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
+        // The agent-scope classifier streams too since the 2026-10-12 build batch (rule 980); it forces its `verdict` tool. It
+        // gets no answer here, as when it called the `create` this mock never had, so the scripted turns stay the chat's.
+        messages = { stream: (p: { tools: { name: string }[]; tool_choice?: { name?: string } }) => { if (p.tool_choice?.name === "verdict") throw new Error("no classifier in this test"); seen.push({ tools: p.tools.map((t) => t.name) }); return { finalMessage: async () => ({ model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
       },
     }));
     const { chat } = await import("@/lib/chat");
@@ -252,6 +256,7 @@ describe("Majed cannot produce other agents' work himself (rule 273)", () => {
     const before = await credits(u.email);
     const made: Task[] = [];
     const gen = await runTool(u, "generate_content", { type: "pricing_review", notes: "n" }, [], made, undefined, { agent: "majed", by: ownerBy(u) });
+    expect(gen).toBe(roleRefusalText("majed", "pricing_review"));
     expect(gen).toContain("pricing_review is Razan's work");
     expect(gen).toContain("propose it with propose_handoff");
     expect(gen).toContain("no credits were used");
@@ -269,9 +274,12 @@ describe("Majed cannot produce other agents' work himself (rule 273)", () => {
     expect(own).toMatch(/^Created 1 decision_memo item/);
     const noor = await runTool(u, "generate_content", { type: "pricing_review" }, [], [], undefined, { agent: "noor", by: ownerBy(u) });
     expect(noor).toMatch(/^Created 1 pricing_review item/);
-    expect(leadRefusal(undefined, "pricing_review")).toBeNull();
-    for (const t of TASK_TYPES) expect(leadRefusal("majed", t) === null, t).toBe(agentForTask(t).id === "majed");
-    for (const t of TASK_TYPES) expect(leadRefusal("sami", t), t).toBeNull();
+    // Rule 798 replaced `leadRefusal` with the role layer: no agent names no owner, and Majed's own types name none either.
+    expect(roleOwner(undefined, "pricing_review")).toBeNull();
+    for (const t of TASK_TYPES) expect(roleOwner("majed", t) === null, t).toBe(agentForTask(t).id === "majed");
+    // Every other agent still runs any type while the founder's role layer is in its default shadow mode (it logs, it does not refuse).
+    const sami = await runTool(u, "generate_content", { type: "decision_memo" }, [], [], undefined, { agent: "sami", by: ownerBy(u) });
+    expect(sami).toMatch(/^Created 1 decision_memo item/);
   });
 });
 
@@ -285,9 +293,10 @@ const sha = (p: Sent) => createHash("sha256").update(JSON.stringify({ model: p.m
 // 2026-10-09: every hash below changed only by the model id (Opus 5 to Opus 5.5, Sonnet 5 to Sonnet 5.5). Hashed with the
 // ids mapped back to the old ones, the previous values came out unchanged, so the prompt bytes are the same.
 // Rule 572 deliberately changed the generation prompt (the brand file fenced in <brand_file>, `brandFileBlock` in src/lib/noor.ts): the `gen` hashes are the fenced prompt's, the same values as BEFORE in tests/cross-review.test.ts.
+// 2026-10-12 (rule 1473): the `gen` hashes changed deliberately, the task spec and Razan's persona now name the brand's currency.
 const BEFORE: Record<string, { gen: string; review: string; judge: string }> = {
-  pricing_review: { gen: "59acef725d127ffdfec6a2f6d755717b66ed4a5695e47165cb33592b2428ccd6", review: "dd00dab0de7730d79b7b94f881bbeb4bf8d7dfb80739f05ce3aaa96a0b9aae35", judge: "8abb968d5e83f823acfcdffcee7bebaee7e344bca18df835ee430cdede4aa6b3" },
-  gtm_plan: { gen: "7d13eb4a488b344e849287e5b69db2927a493efedcd9d817871d2fa5a95660d4", review: "796294f59d2818bc8870c0ac2aabe504c6360fba7561b345b3b51f0875068850", judge: "fb3065c7f4a3fc14cf3e7c1ced0374cf82548e90b5acf4cef8ae9b7613404301" },
+  pricing_review: { gen: "76ff259b1227d52855a00708341dd288bc4dfead9d296fc13ac4dc8fa9445318", review: "dd00dab0de7730d79b7b94f881bbeb4bf8d7dfb80739f05ce3aaa96a0b9aae35", judge: "8abb968d5e83f823acfcdffcee7bebaee7e344bca18df835ee430cdede4aa6b3" },
+  gtm_plan: { gen: "5d16165e9aaa42d03688946065aaa727517c64fba2a19c0fac5290d4aaed89fa", review: "796294f59d2818bc8870c0ac2aabe504c6360fba7561b345b3b51f0875068850", judge: "fb3065c7f4a3fc14cf3e7c1ced0374cf82548e90b5acf4cef8ae9b7613404301" },
 };
 
 /**
@@ -326,8 +335,9 @@ async function fixedBatch(type: TaskType, lead?: { leadBrief?: string }) {
   try {
     const noor = await import("@/lib/noor");
     const { scoreItems } = await import("@/lib/judge");
+    // Rule 797: the generation prompt ends with the scope paragraph unless `agentScope` is false; this test pins the prompt as it was before handoffs, so it generates without it.
     const ctx = { notes: "compare with Ramadan", memory: "--- brand.md ---\nhello", stats: "WORKSPACE DATA\norders: 12" };
-    const out = await noor.generate(type, brand, ["no emojis"], ctx.notes, { memory: ctx.memory, stats: ctx.stats, meter: "probe@test.example", ...(lead ?? {}) });
+    const out = await noor.generate(type, brand, ["no emojis"], ctx.notes, { memory: ctx.memory, stats: ctx.stats, meter: "probe@test.example", agentScope: false, ...(lead ?? {}) });
     await scoreItems("probe@test.example", brand, type, out, undefined, { ...ctx, ...(lead ?? {}) });
     return { gen, review, judge, cross };
   } finally {

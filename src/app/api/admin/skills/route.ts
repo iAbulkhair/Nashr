@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminActor } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { agentForTask, isAgentId } from "@/lib/agents";
 import { NO_LAYERS, type Layers } from "@/lib/agent-instructions";
 import { diffSets, summarizeRevision } from "@/lib/instructions-diff";
@@ -66,6 +67,9 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   const who = await adminActor(req);
   if (who === null) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const b = (await req.json().catch(() => null)) as { items?: unknown; base?: unknown } | null;
   if (!b || typeof b !== "object" || !Array.isArray(b.items)) return bad("bad_items");
   // The console page always has the edit counter it loaded, and there is no older page for this route, so a save without one is refused instead of skipping the stale check.
@@ -80,6 +84,9 @@ export async function PUT(req: Request) {
 export async function POST(req: Request) {
   const who = await adminActor(req);
   if (who === null) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b || typeof b !== "object" || Array.isArray(b)) return bad("bad_body");
   const by = founderBy(who);

@@ -18,6 +18,7 @@ import { onboardCost } from "@/lib/pricing";
 import { recordActivity, type Activity } from "@/lib/activity";
 import { byOf } from "@/lib/actor";
 import { deadlineFor } from "@/lib/media/keys";
+import { customerModelError } from "@/lib/provider-fault-note";
 
 export const maxDuration = 300;
 /**
@@ -201,7 +202,8 @@ export async function POST(req: Request) {
           // The brand file was saved, so the owner has the brand they paid for: the charge stands and the hold goes.
           await settleOnboard(u.email, scope).catch((err) => console.error("onboard hold drop failed", err instanceof Error ? err.name : "error"));
         }
-        send({ type: "error", error: e instanceof Error ? e.message.slice(0, 160) : "failed", ...(refunded ? { refunded: refunded.refunded, credits: refunded.credits } : {}), ...(brandSaved ? { saved: true } : {}) });
+        // A fixed code, never the error's own text (rule 1477): a provider fault is `model_busy` or `model_unavailable`.
+        send({ type: "error", error: (await customerModelError(e, "onboard")) ?? "failed", ...(refunded ? { refunded: refunded.refunded, credits: refunded.credits } : {}), ...(brandSaved ? { saved: true } : {}) });
       } finally {
         clearInterval(beat);
         await release();

@@ -1,5 +1,7 @@
 # Meta (Facebook Page and Instagram) through Composio: customers connect and publish without Thakeen's own Meta app
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built and merged as #272 (2026-10-08, in `production`); dormant until the `COMPOSIO_*` variables and app approvals exist (`docs/system/variables.md` section 5a).
+
 Status: draft for the founder's review, 2026-10-05. This is the **first build** that `2026-10-05-composio-evaluation-design.md` (the evaluation spec) names ("Instagram first, Facebook follows"). It inherits that spec's rules (its section 4) and does not repeat them; where this spec adds or narrows one, it says so. Nothing here reaches a real customer until section 8's gate is met.
 
 ## 1. Goal and what the founder decided

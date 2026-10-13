@@ -5,6 +5,9 @@ import type { AgentId } from "./agents";
 import { allowanceOf, topupsSold, type Plan } from "./pricing";
 import { addMonthly, newLot, returnCredits, setMonthly, spendCredits, MAX_LIVE_TOPUPS, type Receipt, type TopupLot, type TopupRequest } from "./topups";
 import { billingLocked } from "./billing-state";
+import { handPlanEnded } from "./hand-plan";
+import { ksaDay } from "./partner-rules";
+import { adminAudit } from "./admin-audit";
 
 /**
  * Credit ledger. Every balance change goes through a per-user lock so two
@@ -472,14 +475,28 @@ export const monthKey = (d = new Date()) => d.toISOString().slice(0, 7);
  * month's plan credits are reset: top-up packs keep what is left in them (`setMonthly`, rule 443).
  */
 export async function renewIfDue(email: string): Promise<boolean> {
-  return withUserLock(email, async (u) => {
-    if (!renewalDue(u)) return false;
+  const hand = await withUserLock(email, async (u) => {
+    if (!renewalDue(u)) return null;
+    const before = Number(u.credits) || 0;
     // Only the month's plan credits: live top-up packs keep what is left in them (rule 443).
     setMonthly(u, allowanceOf(u));
     u.renewedAt = monthKey();
     await saveUser(u);
-    return true;
+    // A Paymob subscription's month has its payment record; a plan set by hand has none, so its grant is written below.
+    return u.billing ? false : { plan: u.plan, before, after: u.credits, month: u.renewedAt, paidThrough: u.handPlan?.paidThrough ?? null };
   });
+  if (hand === null) return false;
+  // Every month of credits a hand-set plan receives leaves a row in the founder's log (rule 1304, 360 study G-012): who
+  // granted (the system, for the founder's plan), the plan, the balance before and after, and the paid-through day (none
+  // for a plan set before paid-through days existed). After the save: a failed log write never undoes the month.
+  if (hand) {
+    await adminAudit({
+      actor: "system", section: "billing", action: "hand_refill", target: email,
+      what: `hand_refill plan:${hand.plan} month:${hand.month} credits:${hand.after} paid_through:${hand.paidThrough ?? "none"}`,
+      before: { credits: hand.before }, after: { credits: hand.after, paidThrough: hand.paidThrough },
+    }).catch((e) => console.error("hand refill log", e instanceof Error ? e.name : "error"));
+  }
+  return true;
 }
 
 /**
@@ -487,5 +504,8 @@ export async function renewIfDue(email: string): Promise<boolean> {
  * is not in the current UTC month. A copy read before the lock may only skip the lock: `renewedAt` only moves forward,
  * so a copy that says "not due" is never wrong, and one that says "due" is checked again under the lock. A Paymob
  * subscription locked for an unpaid renewal gets no new month (rule 712): paying again gives it the month's credits.
+ * A plan set by hand gets no new month after its paid-through day (Riyadh, `handPlanEnded`, rule 1303); one set before
+ * paid-through days existed has none and refills as before (the expand step of rule 679).
  */
-export const renewalDue = (u: Pick<User, "plan" | "renewedAt" | "createdAt" | "billing">, month = monthKey()) => u.plan !== "trial" && !billingLocked(u.billing) && (u.renewedAt ?? u.createdAt.slice(0, 7)) !== month;
+export const renewalDue = (u: Pick<User, "plan" | "renewedAt" | "createdAt" | "billing" | "handPlan">, month = monthKey(), today = ksaDay()) =>
+  u.plan !== "trial" && !billingLocked(u.billing) && !handPlanEnded(u, today) && (u.renewedAt ?? u.createdAt.slice(0, 7)) !== month;

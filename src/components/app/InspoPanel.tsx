@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Inspo } from "@/lib/inspo";
+import { nextArrow } from "@/lib/format";
 import type { Lang } from "@/lib/i18n";
 import { Icon, channelIcon } from "./Icons";
 import type { ChatStatus } from "@/lib/chat-allowance";
@@ -72,7 +73,7 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
             <p className="mt-1 text-xs text-foreground-muted">{i.brand}</p>
             <p className="mt-3 text-sm text-foreground-muted"><span className="font-semibold">{p.why}:</span> {i.why}</p>
             <p className="mt-2 rounded bg-background-muted p-2 text-sm" dir="auto"><span className="text-xs text-foreground-muted">{p.sample}: </span>{i.sample}</p>
-            <button disabled={busy === i.id} onClick={() => use(i)} className="mt-auto pt-4 text-start text-sm font-semibold text-foreground disabled:opacity-50">{busy === i.id ? "…" : p.use + " →"}</button>
+            <button disabled={busy === i.id} onClick={() => use(i)} className="mt-auto pt-4 text-start text-sm font-semibold text-foreground disabled:opacity-50">{busy === i.id ? "…" : `${p.use} ${nextArrow(lang)}`}</button>
           </article>
         ))}
       </div>

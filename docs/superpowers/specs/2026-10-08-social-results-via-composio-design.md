@@ -1,5 +1,7 @@
 # Social post results through Composio (Instagram + LinkedIn page) — design
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged as #281 (2026-10-08, in `production`; the first Composio build is #272); dormant until the `COMPOSIO_*` variables are set.
+
 > **Rule numbers:** renumbered 661-671 → 663-673 when this branch met main on 2026-10-08 (main had taken 661 and 662 for the Hostinger build and the dependency floor). Read every rule number below as two higher.
 
 Date: 2026-10-08. Branch: `claude/composio-api-install-1d5bfc` (PR #272). Status: draft for founder review.

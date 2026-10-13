@@ -20,6 +20,8 @@ export type TeamView = {
   seats: { used: number; limit: number };
   members: Row[];
   invites: PendingRow[];
+  /** Owner and admin only (rule 1480): each person's decisions over the last 30 days, keyed by email. */
+  approvals?: Record<string, { approved: number; rejected: number; edited: number; rate: number | null }>;
 };
 type Result = { ok: boolean; status: number; j: Record<string, unknown> };
 
@@ -179,6 +181,10 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
                       <p className="clip text-xs text-foreground-muted" dir="ltr">{m.email}</p>
                       {m.acceptedAt && <p className="text-xs text-foreground-muted">{T.joined} <span className="font-mono" dir="ltr">{day(m.acceptedAt)}</span></p>}
                       {m.disabled && <p className="text-xs text-foreground-muted">{T.disabledHelp}</p>}
+                      {view.approvals?.[m.email] && (() => {
+                        const s = view.approvals[m.email];
+                        return <p className="text-xs text-foreground-muted" data-approvals>{lang === "ar" ? `آخر 30 يوماً: وافق على ${s.approved}، رفض ${s.rejected}، عدّل ${s.edited}${s.rate === null ? "" : ` · نسبة الموافقة ${s.rate}%`}` : `Last 30 days: approved ${s.approved}, rejected ${s.rejected}, edited ${s.edited}${s.rate === null ? "" : ` · approval rate ${s.rate}%`}`}</p>;
+                      })()}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

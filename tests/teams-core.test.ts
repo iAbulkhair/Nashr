@@ -224,6 +224,7 @@ describe("roles table", () => {
     const table: [Action, Record<keyof typeof kinds, boolean>][] = [
       ["billing", { owner: true, token: true, founder: true, admin: false, member: false }],
       ["account.delete", { owner: true, token: true, founder: false, admin: false, member: false }],
+      ["account.export", { owner: true, token: true, founder: false, admin: false, member: false }],
       ["governance.write", { owner: true, token: true, founder: true, admin: false, member: false }],
       ["mcp.token", { owner: true, token: true, founder: false, admin: false, member: false }],
       ["team.invite.admin", { owner: true, token: true, founder: false, admin: false, member: false }],

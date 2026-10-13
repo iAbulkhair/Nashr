@@ -197,6 +197,8 @@ describe("an added brand's setup is Noor's charge in that brand: its charge, a r
     const m = await load({ state: "mock" });
     const [onboard, brands] = await Promise.all([import("@/app/api/onboard/route"), import("@/app/api/brands/route")]);
     const u = await owner(prefix);
+    // Room for a second brand on any plan: the founder brand cap (rule 1393).
+    await saveUser({ ...(await getUser(u.email))!, brandCap: 2 });
     await signIn(u.email);
     const res = await brands.POST(json("/api/brands", "POST", { action: "add", name: "Second" }));
     const scope = scopeFor(u.email, ((await res.json()) as { brand: { id: string } }).brand.id);

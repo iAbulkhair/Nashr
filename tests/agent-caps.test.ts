@@ -32,6 +32,7 @@ import { TASK_COST, type TaskType } from "@/lib/tasks";
 import type { SiteSnapshot } from "@/lib/crawl";
 import * as generateRoute from "@/app/api/generate/route";
 import * as imageRoute from "@/app/api/tasks/[id]/image/route";
+import * as videoRoute from "@/app/api/tasks/[id]/video/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 import * as govRoute from "@/app/api/governance/route";
 
@@ -166,6 +167,36 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     expect(await card.json()).toMatchObject({ ok: true, provider: "placeholder", credits: 49 });
     expect(await credits(u.email)).toBe(49);
     expect(await spend(u.email)).toEqual({ noor: 1 });
+  });
+
+  it("the video route stops at the agent's cap before the balance, the trial's one clip or a provider is touched, then charges the item's owner under it", async () => {
+    resetMediaCounters();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mediaEnv({ kie: true, blob: true, models: "all" });
+    const kie = fakeAdapter("kie", { submit: () => ({ state: "pending", providerTaskId: "kie-cap-video" }) });
+    g.deps = fakeDeps({ kie });
+    const u = await owner("cap-vid");
+    expect(u.plan).toBe("trial");
+    await Promise.all(["clip", "clip2"].map((id) => saveTask(u.email, task(id, "social"), true)));
+    const clip = (id: string) => videoRoute.POST(json(`/api/tasks/${id}/video`, "POST", { model: "vid-quick" }), params({ id }));
+
+    // vid-quick costs 12: a cap of 11 refuses it, and the answer names the agent, what it spent and the cap.
+    await saveGov(u.email, { agentCaps: { noor: 11, razan: 0 } });
+    const stopped = await clip("clip");
+    expect(stopped.status).toBe(402);
+    expect(await stopped.json()).toEqual({ ok: false, error: "agent_cap", agent: "noor", spent: 0, cap: 11 });
+    expect(await credits(u.email)).toBe(50);
+    expect(await spend(u.email)).toEqual({});
+    expect(kie.submits, "a capped clip reached the provider").toHaveLength(0);
+
+    // The refusal burned nothing: the trial's one clip is still there, and it starts under a cap that fits it.
+    await saveGov(u.email, { agentCaps: { noor: 12 } });
+    const ok = await clip("clip2");
+    expect(ok.status).toBe(202);
+    expect(await credits(u.email)).toBe(38);
+    expect(await spend(u.email)).toEqual({ noor: 12 });
+    expect(kie.submits).toHaveLength(1);
+    await settle();
   });
 
   it("MCP generate_content returns a tool error at the cap and charges nothing", async () => {

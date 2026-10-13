@@ -111,7 +111,7 @@ export const AGENT_CAST: AgentMember[] = [
   {
     id: "faris",
     name: { ar: "فارس", en: "Faris" },
-    value: { ar: "خطة نمو ٩٠ يوم، وتجارب صغيرة قبل الصرف الكبير.", en: "A 90-day growth plan, small tests before big spending." },
+    value: { ar: "خطة نمو 90 يوم، وتجارب صغيرة قبل الصرف الكبير.", en: "A 90-day growth plan, small tests before big spending." },
     color: "var(--color-agent-faris)",
     questions: [
       { ar: "وين نكبر بعدها؟", en: "Where do we grow next?", task: "gtm_plan" },
@@ -308,7 +308,7 @@ export const DAY: {
   word: { cap: L; stamp: L; end: L };
 } = {
   morning: {
-    cap: { ar: "٧:٥٨ الصبح.", en: "7:58 a.m." },
+    cap: { ar: "7:58 الصبح.", en: "7:58 a.m." },
     clouds: [firstQuestion("noor"), firstQuestion("razan"), firstQuestion("layan")],
     note: { ar: "رسالة جديدة", en: "New message" },
     msg: { ar: "«كم السعر؟»", en: "“How much?”" },
@@ -355,7 +355,7 @@ export const STEPS: { title: L; body: L; aside: L; who?: CastId; paused?: L }[] 
   {
     title: { ar: "خطة", en: "Plan" },
     body: {
-      ar: "كل أحد الصبح تكتب نور خطة أسبوعك على مواسم الخليج، وتنتظرك في صندوقك. وفارس وماجد يكتبون خطة ٩٠ يوم لما تطلب.",
+      ar: "كل أحد الصبح تكتب نور خطة أسبوعك على مواسم الخليج، وتنتظرك في صندوقك. وفارس وماجد يكتبون خطة 90 يوم لما تطلب.",
       en: "Every Sunday morning Noor writes your week’s plan around Gulf seasons, and it waits in your inbox. Faris and Majed write a 90-day plan when you ask.",
     },
     aside: { ar: "كل أحد الصبح، خطة أسبوعك تنتظرك.", en: "Every Sunday morning, your week’s plan is waiting." },
@@ -447,7 +447,7 @@ export const TRUTHS: { title: L; body: L }[] = [
   {
     title: { ar: "يشتغل على جدول", en: "It runs on a schedule" },
     body: {
-      ar: "خطة أسبوعية صباح كل أحد، وموجز يومي الساعة ٨ الصبح.",
+      ar: "خطة أسبوعية صباح كل أحد، وموجز يومي الساعة 8 الصبح.",
       en: "A weekly plan every Sunday morning and a brief every day at 08:00.",
     },
   },

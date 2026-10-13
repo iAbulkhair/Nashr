@@ -239,6 +239,7 @@ export function until(deadline: number, o: { cap?: number; now?: number } = {}):
  * - ONBOARD: each of the three onboarding parts; a failed part is tried again only with ONBOARD_RETRY_MIN_MS left.
  * - JUDGE: each attempt of the judge (runs after the response, charges nothing; one retry).
  * - TOOL: each attempt of a free tool; both attempts end by the route's deadline (maxDuration 60, `deadlineFor`).
+ * - AGENT_SCOPE: each check of the agent-scope classifier (rule 790): one attempt, no retry; a failure is logged and the layer's own failure rule applies.
  */
 export const MODEL_BUDGET = {
   GEN_MS: 240_000,
@@ -251,4 +252,5 @@ export const MODEL_BUDGET = {
   ONBOARD_RETRY_MIN_MS: 60_000,
   JUDGE_MS: 90_000,
   TOOL_MS: 45_000,
+  AGENT_SCOPE_MS: 3_000,
 } as const;

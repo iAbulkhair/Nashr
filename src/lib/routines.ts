@@ -5,7 +5,7 @@ import { TASK_COUNT, getBrand, isAutonomous, listLite, type Brand, type TaskLite
 import { BATCH_RUN_MIN_MS, generateBatch } from "./generate-batch";
 import { modelState } from "./model";
 import { getGov } from "./governance";
-import { getSchedule, weekStartUtc } from "./schedule";
+import { getSchedule, weekStartUtc, type Schedule } from "./schedule";
 import { listDecisions } from "./decisions";
 import { getSalesSnapshot } from "./store-sales";
 import { missingData } from "./cart-recovery";
@@ -18,7 +18,9 @@ import { actSkipKey, recordRun } from "./activity";
 import { systemBy } from "./actor";
 
 /**
- * Routines: recurring work for agents other than Noor's Sunday plan, each OFF until the owner turns it on for a brand.
+ * Routines: recurring work for agents other than Noor's Sunday plan, each ON by default for every brand, added brands
+ * included (rule 1486, the founder's decision of 2026-10-12, "on by default within plan caps"; before it they were off
+ * until turned on). A routine the owner switched off stays off: only the owner's switch ever stores a `false`.
  *
  * Only agents with real input data have one; the rest get a routine when they have a data source. A routine never runs
  * on nothing: its gate checks, in code, that the input it needs is there (activity, a store sync, decisions), and
@@ -104,6 +106,13 @@ export const ROUTINE_IDS = ROUTINES.map((r) => r.id);
 /** Membership test for an id from a request body. Not `in`, which walks the prototype chain. */
 export const isRoutineId = (v: unknown): v is RoutineId => typeof v === "string" && (ROUTINE_IDS as string[]).includes(v);
 
+/**
+ * Is this routine on for the brand (rule 1486)? On unless the owner switched it off: a missing switch (never touched,
+ * every account before 2026-10-12 included) is on, a stored `false` is off. The caps are not loosened by it: every run
+ * still passes the trial, the gate, the weekly cap, the agent's monthly cap and the credits in code before any charge.
+ */
+export const routineOn = (s: Pick<Schedule, "routines">, id: RoutineId): boolean => s.routines?.[id] !== false;
+
 /** What the Scheduled tasks page shows per routine; the page renders it on the server. */
 export type RoutineView = { id: RoutineId; agent: AgentId; type: TaskType; cadence: Cadence; last?: string };
 
@@ -166,7 +175,7 @@ export async function dueRoutines(users: User[], now: Date = new Date()): Promis
   const groups = await pmap(users, async (u) => {
     const scope = u.scope ?? u.email;
     const sched = await getSchedule(scope);
-    const on = ROUTINES.filter((r) => sched.routines?.[r.id] === true);
+    const on = ROUTINES.filter((r) => routineOn(sched, r.id));
     if (!on.length) return [];
     const last = await Promise.all(on.map((r) => db.get<string>(lastKey(scope, r.id))));
     return on.filter((r, i) => !ranThisPeriod(r.cadence, last[i], now)).map((r) => ({ user: u, id: r.id }));
@@ -176,7 +185,7 @@ export async function dueRoutines(users: User[], now: Date = new Date()): Promis
 
 /** The owner-notes line of a routine's batch; the judge is given the same text the agent was. */
 const routineNote = (r: Routine) =>
-  `This is an automatic ${r.cadence} routine the owner turned on in Scheduled tasks; nobody wrote notes for this batch. Build it only on the data blocks and memory files given.`;
+  `This is an automatic ${r.cadence} routine that is on in Scheduled tasks; nobody wrote notes for this batch. Build it only on the data blocks and memory files given.`;
 
 /**
  * One routine for one brand scope. Only "retry:paused", "retry:locked" and "retry:late" start with "retry": they leave
@@ -195,7 +204,7 @@ export async function runRoutine(user: User, id: RoutineId, deadline?: number): 
   const scope = user.scope ?? user.email;
   const [brand, sched, last] = await Promise.all([getBrand(scope), getSchedule(scope), db.get<string>(lastKey(scope, id))]);
   if (!brand) return "no_brand";
-  if (!sched.routines?.[id]) return "off";
+  if (!routineOn(sched, id)) return "off";
   if (ranThisPeriod(r.cadence, last)) return "already_this_period";
   // Before any charge. Without a key the output would be placeholders, which must never be charged for.
   const state = modelState();
@@ -289,7 +298,7 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine, d
     kind: "pending",
     agent: r.agent,
     title: ar ? `${label} من ${name} في صندوق الموافقة` : `${label} from ${name} is in your inbox`,
-    body: ar ? `${created.length} عنصر من مهمة دورية فعّلتها. راجعه واعتمد ما يناسبك.` : `${created.length} item(s) from a routine you turned on. Review them and approve what fits.`,
+    body: ar ? `${created.length} عنصر من مهمة دورية مفعّلة في المهام المجدولة. راجعه واعتمد ما يناسبك.` : `${created.length} item(s) from a routine that is on in Scheduled tasks. Review them and approve what fits.`,
     href: "",
   }, runFingerprint(scope, r.id, periodOf(r.cadence)), periodDays(r.cadence));
   return `ok:${created.length}`;

@@ -1,5 +1,7 @@
 # Install Thakeen to the home screen (PWA, phase 1) — design
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged as #280 (2026-10-08, in `production`); no longer a draft PR.
+
 Status: built on branch `claude/laughing-elion-9449f8`, draft PR, not merged, not deployed. Asked for on 2026-10-08 after the founder's question about app-store apps; the recommendation was: before launch make the web app installable, store apps (Expo) later, no in-app purchasing. Rules 681-684, `tests/pwa.test.ts`.
 
 ## 1. What phase 1 is

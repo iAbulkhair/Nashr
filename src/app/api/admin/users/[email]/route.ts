@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
+import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
 import { revokeFeeds } from "@/lib/feed-token";
@@ -80,6 +81,9 @@ type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const { email: raw } = await ctx.params;
   const email = normalizeEmail(decodeURIComponent(raw)); // the same normalized key for lookup, locks and deletion
   const u = await getUser(email);
@@ -145,6 +149,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const minutes = parseImpersonateMinutes(b.minutes);
       if (!minutes) return NextResponse.json({ ok: false, error: "bad_minutes" }, { status: 400 });
       const ttl = minutes * 60;
+      // One view at a time (rule 1350, C-015). While this browser already shows a customer's account, its `nashr_session`
+      // is that impersonation: a second one would save it as `nashr_return`, and "Stop" would hand the founder the first
+      // customer's session instead of their own. Refused before the audit row, so a refused start logs nothing.
+      const jar = await cookies();
+      const mine = jar.get("nashr_session")?.value;
+      const current = mine ? await sessionRecord(mine) : null;
+      if (current && typeof current === "object" && current.imp) return NextResponse.json({ ok: false, error: "impersonation_active" }, { status: 409 });
       // Opened with the console key: the session is tied to that key and key session, so "End key session" and a key
       // rotation end it too (rule 429).
       const bind = who === "key" ? await keyImpBinding() : null;
@@ -152,8 +163,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       // account opens. `minutes` at most; one opened from a key session also ends with it: after 15 minutes without a
       // request on either side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
       await log("impersonate", { action: "impersonate.start", expiresInMin: minutes, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
-      const jar = await cookies();
-      const mine = jar.get("nashr_session")?.value;
       if (mine) jar.set("nashr_return", mine, await sessionCookie(ttl));
       jar.set("nashr_impersonate", email, await sessionCookie(ttl));
       // The session record carries the founder (`imp`): it resolves to actor kind "founder", which never passes the

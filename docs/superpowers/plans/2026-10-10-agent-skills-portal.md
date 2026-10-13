@@ -1,5 +1,7 @@
 # Agent Skills Portal Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged to `main` as #316 (2026-10-12), in `production` since release #336 (2026-10-12). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Platform (founder), workspace (customer) and per-agent instructions merged into every agent prompt in one place, behind a code safety layer, with drafts, history, rollback, a paid test, chat proposals and Google Docs/Sheets reference files.

@@ -9,7 +9,7 @@ import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance"
 import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
-import { generateBatch } from "@/lib/generate-batch";
+import { generateBatch, withheldNote } from "@/lib/generate-batch";
 import { NO_CREDITS_HINT } from "@/lib/topups";
 import { listFiles, readFile } from "@/lib/files";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, isCustomerFacing } from "@/lib/brand-rules";
@@ -20,6 +20,7 @@ import { deadlineFor } from "@/lib/media/keys";
 import { appOrigin } from "@/lib/origin";
 import { route } from "@/lib/models/route";
 import { MODEL_UNAVAILABLE_NOTE } from "@/lib/models/overrides";
+import { AgentScopeRefused, agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 
 export const maxDuration = 300;
 
@@ -28,9 +29,11 @@ export const maxDuration = 300;
  * Connect from Claude Desktop / Claude Code / any MCP client:
  *   URL: {APP_ORIGIN}/api/mcp (src/lib/origin.ts `appOrigin()`)   Header: Authorization: Bearer nashr_...
  */
+/** Layer 1 for the clients (rule 797): the one sentence about what Thakeen's team will and will not do, in the two tool descriptions that start work. */
+const SCOPE_SENTENCE = "Scope: only marketing, sales, growth, finance and analytics work for this account's brands; anything else is refused.";
 const TOOLS = [
-  { name: "ask_noor", description: "Talk to Noor, the Gulf marketing agent for this account. She knows the brand, products, seasons and inbox, and can create content, update the brand file, and read/write workspace files. Over MCP she never publishes and never rewrites core memory files, and a change to the offers or removing a banned word waits for the owner's Save in the app.", inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } },
-  { name: "generate_content", description: "Create items in the approval inbox. Marketing (Noor): weekly_plan | social (10 posts) | article | whatsapp (3) | ads (5) | gbp (3) | cart_recovery (5, needs a synced Salla or Shopify store). Sales (Sami): sales_script | lead_qualifier | followup_seq. Finance (Razan): pricing_review | unit_economics | cash_forecast. Growth (Faris): gtm_plan | growth_experiments | retention_play. Reports (Dana): weekly_report | board_deck | dashboard_spec. Executive (Majed): strategy_review | okrs | decision_memo. Product (Layan): prd | roadmap | feedback_synthesis | onboarding_flow. Deducts credits.", inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string" } }, required: ["type"] } },
+  { name: "ask_noor", description: `Talk to Noor, the Gulf marketing agent for this account. She knows the brand, products, seasons and inbox, and can create content, update the brand file, and read/write workspace files. Over MCP she never publishes and never rewrites core memory files, and a change to the offers or removing a banned word waits for the owner's Save in the app. ${SCOPE_SENTENCE}`, inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } },
+  { name: "generate_content", description: `Create items in the approval inbox. Marketing (Noor): weekly_plan | social (10 posts) | article | whatsapp (3) | ads (5) | gbp (3) | cart_recovery (5, needs a synced Salla or Shopify store). Sales (Sami): sales_script | lead_qualifier | followup_seq. Finance (Razan): pricing_review | unit_economics | cash_forecast. Growth (Faris): gtm_plan | growth_experiments | retention_play. Reports (Dana): weekly_report | board_deck | dashboard_spec. Executive (Majed): strategy_review | okrs | decision_memo. Product (Layan): prd | roadmap | feedback_synthesis | onboarding_flow. Deducts credits. ${SCOPE_SENTENCE}`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string" } }, required: ["type"] } },
   { name: "list_inbox", description: "List inbox items with status.", inputSchema: { type: "object", properties: { status: { type: "string", enum: ["pending", "approved", "rejected", "all"] } } } },
   { name: "read_file", description: "Read a workspace file (brand.md, products.md, strategy.md, market-research.md, preferences.md).", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
   { name: "list_files", description: "List workspace files.", inputSchema: { type: "object", properties: {} } },
@@ -39,7 +42,7 @@ const TOOLS = [
   // Reem's to-do tools: free, no model call, the bearer's active brand only; none of them completes, deletes, restores
   // or reopens, and none reads or writes a contact's phone number. handoff_note is chat only.
   ...SEC_TOOL_DEFS.map((d) => ({ name: d.name, description: d.description, inputSchema: d.schema })),
-  { name: "save_draft", description: `Save one draft you wrote into the owner's Thakeen approvals inbox as a pending item, for the owner to approve, edit or reject. Nothing is published and nothing is approved automatically. The brand rules are checked in code on save: a draft with a banned word is kept but held, and the answer names the rule, so run check_brand first and fix it. One item per call. Free, no credits, no model call; limited to ${DRAFTS_PER_HOUR} drafts an hour per account.`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST), description: "Thakeen item type, e.g. social, article, whatsapp, ads, gbp." }, channel: { type: "string", description: "Optional short channel name: instagram, snapchat, tiktok, x, whatsapp, blog, meta… Defaults to the type." }, title: { type: "string", description: `Optional short title (up to ${DRAFT_LIMITS.title} characters). Defaults to the first line of the body.` }, body: { type: "string", description: `The draft text, ready to use (up to ${DRAFT_LIMITS.body} characters).` }, notes: { type: "string", description: `Optional note for the owner: what this draft is for (up to ${DRAFT_LIMITS.notes} characters).` }, lang: { type: "string", enum: ["ar", "en"], description: "Optional language of the draft. Defaults to the brand's first language." } }, required: ["type", "body"] } },
+  { name: "save_draft", description: `Save one draft you wrote into the owner's Thakeen approvals inbox as a pending item, for the owner to approve, edit or reject. Nothing is published and nothing is approved automatically. The brand rules are checked in code on save: a draft with a banned word is kept but held, and the answer names the rule, so run check_brand first and fix it. One item per call. Free, no credits; a short check (Thakeen's cost, not the owner's) refuses a draft outside the team's marketing work, and nothing is saved then. Limited to ${DRAFTS_PER_HOUR} drafts an hour per account.`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST), description: "Thakeen item type, e.g. social, article, whatsapp, ads, gbp." }, channel: { type: "string", description: "Optional short channel name: instagram, snapchat, tiktok, x, whatsapp, blog, meta… Defaults to the type." }, title: { type: "string", description: `Optional short title (up to ${DRAFT_LIMITS.title} characters). Defaults to the first line of the body.` }, body: { type: "string", description: `The draft text, ready to use (up to ${DRAFT_LIMITS.body} characters).` }, notes: { type: "string", description: `Optional note for the owner: what this draft is for (up to ${DRAFT_LIMITS.notes} characters).` }, lang: { type: "string", enum: ["ar", "en"], description: "Optional language of the draft. Defaults to the brand's first language." } }, required: ["type", "body"] } },
 ];
 
 // The role each tool needs is MCP_TOOL_ACTION in src/lib/mcp.ts; a tool missing from it is refused.
@@ -92,7 +95,10 @@ export async function POST(req: Request) {
         // cheaper way to spend the same models. Answered as a tool error, like MCP generate_content's trial_over: a
         // JSON-RPC client reads the result, not an HTTP status. The link is absolute: it is read outside the app.
         if (trialOver(user)) return ok(id, { ...text(chatRefusedText("trial", user.lang, { origin: appOrigin() })), isError: true });
-        const slow = await chatRefusal(user);
+        // The agent-scope modes and the brand scope's ceiling of refused messages, in the same round as the burst ceiling
+        // and answered first (rule 795, as the web chat): no classifier call and no message reserved.
+        const [slow, pre] = await Promise.all([chatRefusal(user), agentScopePreflight(user)]);
+        if (pre.slow) return ok(id, { ...text(agentScopeSlowText(user.lang)), isError: true });
         if (slow) return ok(id, { ...text(chatRefusedText(slow, user.lang, { cap: chatCaps(user)[slow] })), isError: true });
         // The same monthly allowance too, shared with the app (src/lib/chat-allowance.ts), before chat() saves the message.
         // The turn's one model: reserved here, and chat() runs on the gate's copy of it.
@@ -101,7 +107,7 @@ export async function POST(req: Request) {
         // A connected app is talking: its activity rows say so (`tokenBy`), not "owner". As "mcp": the words come from
         // another assistant, so publishing and core-memory writes are refused in runTool, and a change to the offers or a
         // banned-word removal waits for the owner's Save in the app.
-        const { message: m, chat: status, charged } = await runChatTurn(user, gate, () => chat(user, message, undefined, "noor", { by: tokenBy(user), via: "mcp", deadline, model: gate.model }));
+        const { message: m, chat: status, charged } = await runChatTurn(user, gate, () => chat(user, message, undefined, "noor", { by: tokenBy(user), via: "mcp", deadline, model: gate.model, agentScope: pre.modes }));
         const low = gate.mode === "overflow"
           ? `\n\n[chat: this month's ${status.allowance} messages are used; this message continued on credits and was billed ${charged} credit${charged === 1 ? "" : "s"}]`
           : status.left <= Math.ceil(status.allowance / 10) ? `\n\n[chat: ${status.left} of ${status.allowance} messages left ${status.period === "trial" ? "in the trial" : "this month"}]` : "";
@@ -110,8 +116,15 @@ export async function POST(req: Request) {
       case "generate_content": {
         if (!isTaskType(args.type)) return ok(id, { ...text("Unknown type."), isError: true });
         const type = args.type;
+        const lang = user.lang === "en" ? "en" : "ar";
+        const notes = String(args.notes ?? "");
+        // The agent-scope modes and the brand scope's ceiling of refused requests (rule 795), read once. The notes' gate (rule 796)
+        // runs inside `generateBatch`, after its free refusals and before the charge, and answers as a tool error like the other
+        // refusals below. `notes` is the string the batch is given, so what the gate reads is what the generator reads. A spent
+        // ceiling holds only a request that has notes.
+        const pre = await agentScopePreflight(user);
         // The request's own deadline bounds the batch's cross-agent review (notes only, skipped when too little is left).
-        const r = await generateBatch(user, user.scope ?? user.email, { type, notes: String(args.notes ?? ""), source: "chat", via: "mcp", by: tokenBy(user), deadline });
+        const r = await generateBatch(user, user.scope ?? user.email, { type, notes, source: "chat", via: "mcp", by: tokenBy(user), deadline, agentScope: pre.modes, notesGate: { notes, mode: pre.modes.input, where: "mcp_generate", lang, slow: pre.slow } });
         // A tool error, like insufficient credits: a JSON-RPC client reads the result, not an HTTP status.
         if (!r.ok) {
           switch (r.reason) {
@@ -121,12 +134,17 @@ export async function POST(req: Request) {
             case "missing_data": return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
             case "agent_cap": return ok(id, { ...text(`${agentById(r.agent).name.en} reached the monthly credit cap the owner set in Governance (${r.spent} of ${r.cap} credits this month). No credits were used. The owner can raise the cap on the Governance page or wait for next month.`), isError: true });
             case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}. ${NO_CREDITS_HINT}`), isError: true });
-            // Refunded already; answered as a tool error by the catch below.
-            case "failed": throw r.error;
+            case "agent_scope": return ok(id, { ...text(r.message), isError: true });
+            case "agent_scope_slow": return ok(id, { ...text(agentScopeSlowText(lang)), isError: true });
+            // Every item was outside what the team works on (rule 801): refunded, nothing saved, the refusal as a tool error.
+            case "failed":
+              if (r.error instanceof AgentScopeRefused) return ok(id, { ...text(r.error.reply), isError: true });
+              // Refunded already; answered as a tool error by the catch below.
+              throw r.error;
           }
         }
         // The brand's model pick was not used (src/lib/models/overrides.ts): the connected assistant relays it to the owner.
-        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n") + (r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : "")));
+        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.${withheldNote(r)}\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n") + (r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : "")));
       }
       case "list_inbox": {
         const status = String(args.status ?? "pending");
@@ -173,6 +191,8 @@ export async function POST(req: Request) {
         const parsed = parseDraft(args);
         if (!parsed.ok) return ok(id, { ...text(parsed.error), isError: true });
         const saved = await saveExternalDraft(user, parsed.draft);
+        // Outside what the team works on (rule 802, output check in enforce): nothing was saved.
+        if (!saved.ok && saved.reason === "agent_scope") return ok(id, { ...text(saved.reply), isError: true });
         if (!saved.ok && saved.reason === "rate") return ok(id, { ...text(`Too many drafts saved in a short time (the limit is ${DRAFTS_PER_HOUR} an hour). Nothing was saved. Wait and try again, or let the owner review what is already in the inbox.`), isError: true });
         if (!saved.ok) return ok(id, { ...text("No brand file yet. Run onboarding in the app first. Nothing was saved."), isError: true });
         return ok(id, text(JSON.stringify(draftReport(saved.task, saved.violations), null, 2)));

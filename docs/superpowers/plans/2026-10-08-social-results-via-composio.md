@@ -1,5 +1,7 @@
 # Social post results through Composio — Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built and merged as #281 (in `production`). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **Rule numbers:** renumbered 661-671 → 663-673 when this branch met main on 2026-10-08 (main had taken 661 and 662 for the Hostinger build and the dependency floor). Read every rule number below as two higher.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

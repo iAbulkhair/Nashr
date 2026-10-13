@@ -1,4 +1,6 @@
 import type { Connection } from "./store";
+import { CHANNEL_LIMITS } from "../channel-limits";
+import { cutKeepingDisclaimer } from "../regulated";
 import { composioRead, composioRevoke, composioStageFile, composioWrite } from "./composio";
 import { PROVIDER_TOOLKITS, type Toolkit } from "./composio-catalog";
 import { plain } from "./meta";
@@ -73,7 +75,7 @@ export async function postToInstagramVia(scope: string, c: Connection, text: str
 export async function postToXVia(scope: string, c: Connection, text: string): Promise<{ url: string; id: string }> {
   let r: unknown;
   try {
-    r = await composioWrite(scope, "twitter", "TWITTER_CREATION_OF_A_POST", { text: text.slice(0, 280) }, account(c, "twitter"));
+    r = await composioWrite(scope, "twitter", "TWITTER_CREATION_OF_A_POST", { text: cutKeepingDisclaimer(text, CHANNEL_LIMITS.x) }, account(c, "twitter"));
   } catch (e) {
     // A repeated post is a refusal of this text, not of the token (x.ts).
     if (e instanceof Error && /duplicate/i.test(e.message)) throw new Error("x_duplicate");

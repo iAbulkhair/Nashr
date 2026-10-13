@@ -1,5 +1,7 @@
 # Meta (Facebook Page and Instagram) through Composio Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built and merged as #272 (in `production`). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A customer connects a Facebook Page and an Instagram professional account through Composio's managed Meta OAuth and Thakeen publishes to them, with the direct Meta code untouched and everything off unless `COMPOSIO_PROVIDERS` contains `meta`.

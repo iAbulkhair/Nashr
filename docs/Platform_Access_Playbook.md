@@ -1,5 +1,7 @@
 # Nashr — Platform Access Playbook
 
+> **Dated record (banner added 2026-10-12).** Written when the site ran on Vercel at `nashr-tau.vercel.app`. Since 2026-10-08 thakeen.com runs on Hostinger from the `production` branch, and the Vercel project is retired (`docs/system/architecture.md` section 6, rules 987-990). Read hosts, callback URLs and "Vercel" steps below as history; whether each platform app already has its `thakeen.com` callback is unverified here. Current state: `docs/system/*`.
+
 How to get Nashr (Noor) connected to every platform. Each entry: what Noor will do, where you register, what to fill, what to send me, expected wait. Ordered by **impact for Gulf customers ÷ time to get**.
 
 Rules that apply everywhere:
@@ -68,6 +70,7 @@ Rules that apply everywhere:
 **Send me:** `ZID_CLIENT_ID`, `ZID_CLIENT_SECRET` in Vercel env.
 
 ### 7. Payments — Moyasar or Tap (pick one) — 3–10 days
+> **Superseded (2026-10-13):** the founder chose Paymob KSA on 2026-10-08. The integration is built and merged (#279) and stays off until the `PAYMOB_*` variables are set (`docs/system/variables.md` section 4a). Moyasar and Tap are fallbacks only if Paymob does not answer in writing on recurring billing. The steps below are the old plan.
 **Noor will:** nothing; this is Nashr's own subscription checkout (mada, Apple Pay, cards, STC Pay).
 - **Moyasar:** https://moyasar.com → Sign up → upload CR, IBAN letter, ID → approval → Dashboard → API keys. **Send me:** `MOYASAR_SECRET_KEY`, `MOYASAR_PUBLISHABLE_KEY`.
 - **Tap:** https://www.tap.company → Sign up → same docs → dashboard → API keys. **Send me:** `TAP_SECRET_KEY`, `TAP_PUBLIC_KEY`.
@@ -143,7 +146,7 @@ GOOGLE    client id+secret ✔ / consent screen submitted
 META      app id+secret ✔ / business verification status / portfolio id
 SALLA     client id+secret+webhook secret ✔ / demo store
 ZID       client id+secret ✔
-PAYMENTS  moyasar or tap keys ✔  (or PAY_LINK_STARTER/PRO/BUSINESS set)
+PAYMENTS  Paymob KSA keys (PAYMOB_*) ✔  (2026-10-13: Moyasar or Tap only as fallback; PAY_LINK_* only until Paymob is on)
 SNAP      client id+secret ✔ / marketing API approval status
 TIKTOK    client key+secret ✔ / domain verification file sent
 LINKEDIN  client id+secret ✔

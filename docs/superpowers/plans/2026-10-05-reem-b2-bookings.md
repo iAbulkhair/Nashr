@@ -1,5 +1,7 @@
 # Reem phase 3 B2: bookings in (B2a) and the follow-up after the meeting (B2b) Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** B2a merged as #262 (in `production`); B2b is on `main` through #314 and in `production` since release #336 (2026-10-12). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A Calendly or Cal.com booking becomes one dated item on the owner's Reem list (B2a); after the meeting the owner gives the outcome, Reem proposes tasks, the owner approves them, and each lands on the Thakeen agent whose job it is (B2b).

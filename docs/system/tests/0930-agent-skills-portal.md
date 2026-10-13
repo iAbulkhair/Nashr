@@ -34,3 +34,4 @@ Status on 2026-10-10 on branch `claude/agent-skills-portal-47b7dd` (agent skills
 - Rule 946 belongs to the batch prompt placement (ledger ruling R2); rules 942-945 are the render layer.
 - Not pinned on purpose: that Composio's real response shapes for Google Docs and Sheets match the parsers (needs the founder's Google login on the Preview), and the live quality of a test's before and after (needs the golden set, which has never been run).
 - Known gaps are listed in flows section 60 item 12 (a)-(f); none has a test because none is a rule yet.
+- 2026-10-12: the `chat system() with layers (rule 948)` block freezes `Date` (`vi.useFakeTimers({ toFake: ["Date"] })` + `vi.setSystemTime`) before each test. Its "no layers ... leaves all three blocks as they were" test builds the chat prompt twice and compares them, and the NOW line reads the clock, so a run that crossed a minute boundary failed (4:24 PM vs 4:25 PM). Test-only; no rule changes.
