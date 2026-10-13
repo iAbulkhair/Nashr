@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MEDIA_MODELS, MEDIA_MODEL_IDS, aspectFor, hasArtwork, isMediaModelId, isOurBlobUrl, mediaImageFor, mediaModel, plural,
+  MEDIA_MODELS, MEDIA_MODEL_IDS, aspectFor, hasArtwork, isMediaModelId, isOurMediaUrl, isOurOutgoingMediaUrl, mediaImageFor, ourMediaName, mediaModel, plural,
   type MediaModelId,
 } from "@/lib/media-catalog";
 import { appDict } from "@/lib/app-i18n";
@@ -182,8 +182,13 @@ describe("guards", () => {
     expect(hasArtwork({ imageUrl: OUR, imageProvider: "constructor" })).toBe(false);
   });
 
-  it("isOurBlobUrl: only https on a public Blob host, without credentials", () => {
-    expect(isOurBlobUrl(OUR)).toBe(true);
+  it("isOurMediaUrl (rule 1759): our disk store on our own hosts, or a legacy public Blob copy, without credentials", () => {
+    const NAME = "0123456789abcdef0123456789abcdef";
+    expect(isOurMediaUrl(OUR), "legacy Blob copy during the expand release").toBe(true);
+    for (const u of [`https://thakeen.com/m/${NAME}.jpg`, `https://staging.thakeen.com/m/${NAME}.mp4`]) {
+      expect(isOurMediaUrl(u), u).toBe(true);
+      expect(ourMediaName(u), u).toBe(u.slice(-36));
+    }
     for (const u of [
       "http://abc.public.blob.vercel-storage.com/media/x.jpg",
       "https://v3.fal.media/files/x.jpg",
@@ -191,11 +196,41 @@ describe("guards", () => {
       "https://evil.example/.public.blob.vercel-storage.com",
       "https://user:pw@abc.public.blob.vercel-storage.com/media/x.jpg",
       "https://user@abc.public.blob.vercel-storage.com/media/x.jpg",
+      `http://thakeen.com/m/${NAME}.jpg`,
+      `https://thakeen.com.evil.example/m/${NAME}.jpg`,
+      `https://evil.thakeen.com/m/${NAME}.jpg`,
+      `https://thakeen.com:8443/m/${NAME}.jpg`,
+      `https://u:p@thakeen.com/m/${NAME}.jpg`,
+      `https://thakeen.com/m/${NAME.toUpperCase()}.jpg`,
+      `https://thakeen.com/m/${NAME}.png`,
+      `https://thakeen.com/m/${NAME}.jpg?x=1`,
+      `https://thakeen.com/m/${NAME}.jpg#a`,
+      `https://thakeen.com/m/../${NAME}.jpg`,
+      `https://thakeen.com/x/m/${NAME}.jpg`,
+      `https://thakeen.com/m/${NAME.slice(1)}.jpg`,
+      "https://drive.google.com/uc?id=abc",
+      "https://lh3.googleusercontent.com/abc",
+      "https://www.dropbox.com/s/abc/x.jpg",
+      "https://onedrive.live.com/download?cid=1",
       undefined,
       "",
       "not a url",
       "javascript:alert(1)//.public.blob.vercel-storage.com",
-    ]) expect(isOurBlobUrl(u), String(u)).toBe(false);
+    ]) {
+      expect(isOurMediaUrl(u), String(u)).toBe(false);
+      expect(ourMediaName(u), String(u)).toBeNull();
+    }
+  });
+
+  it("isOurOutgoingMediaUrl (rule 1755): the stored form, or a disk URL with exactly exp and sig", () => {
+    const base = `https://thakeen.com/m/${"a".repeat(32)}.jpg`;
+    expect(isOurOutgoingMediaUrl(base)).toBe(true);
+    expect(isOurOutgoingMediaUrl(OUR)).toBe(true);
+    expect(isOurOutgoingMediaUrl(`${base}?exp=1&sig=x`)).toBe(true);
+    expect(isOurOutgoingMediaUrl(`${base}?sig=x&exp=1`)).toBe(true);
+    for (const u of [`${base}?exp=1`, `${base}?exp=1&sig=x&download=1`, `${base}?exp=1&sig=x#f`, `https://evil.example/m/${"a".repeat(32)}.jpg?exp=1&sig=x`, `${OUR}?exp=1&sig=x`, undefined]) {
+      expect(isOurOutgoingMediaUrl(u), String(u)).toBe(false);
+    }
   });
 });
 
@@ -245,14 +280,14 @@ describe("which models this deployment offers (spec A21, A22)", () => {
   });
 
   it("a configured provider is not offered until the founder lists its models", () => {
-    mediaEnv({ kie: true, blob: true });
+    mediaEnv({ kie: true, store: true });
     expect(availableModels()).toEqual([]);
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     expect(availableModels()).toEqual(KIE);
     expect(availableModels("image")).toEqual(["img-balanced", "img-premium", "img-text"]);
-    mediaEnv({ kie: true, blob: true, models: "img-balanced" });
+    mediaEnv({ kie: true, store: true, models: "img-balanced" });
     expect(availableModels()).toEqual(["img-balanced"]);
-    mediaEnv({ kie: true, blob: true, models: " img-balanced , not-a-model,constructor" });
+    mediaEnv({ kie: true, store: true, models: " img-balanced , not-a-model,constructor" });
     expect(availableModels(), "unknown ids in the variable are ignored").toEqual(["img-balanced"]);
   });
 
@@ -262,22 +297,22 @@ describe("which models this deployment offers (spec A21, A22)", () => {
   });
 
   it("Higgsfield needs both the key id and the secret", () => {
-    mediaEnv({ higgsfield: true, blob: true, models: "all" });
+    mediaEnv({ higgsfield: true, store: true, models: "all" });
     expect(availableModels()).toEqual(HF);
     vi.stubEnv("HIGGSFIELD_API_KEY_SECRET", "");
     expect(availableModels()).toEqual([]);
-    mediaEnv({ higgsfield: true, blob: true, models: "all" });
+    mediaEnv({ higgsfield: true, store: true, models: "all" });
     vi.stubEnv("HIGGSFIELD_API_KEY_ID", "");
     expect(availableModels()).toEqual([]);
   });
 
   it("everything configured and listed offers the whole catalogue", () => {
-    mediaEnv({ fal: true, kie: true, higgsfield: true, blob: true, models: "all" });
+    mediaEnv({ fal: true, kie: true, higgsfield: true, store: true, models: "all" });
     expect(availableModels()).toEqual(MEDIA_MODEL_IDS);
   });
 
   it("a model the breaker switched off is withheld until its time runs out", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const now = Date.now();
     await db.set(mk.off(), { "img-balanced": { until: now + 60_000, reason: "store_failed" } } satisfies OffMap);
     expect(availableModels(undefined, await offModels())).toEqual(KIE.filter((id) => id !== "img-balanced"));
@@ -333,11 +368,13 @@ describe("the shared media test helpers", () => {
     expect([kie.submits.length, kie.statusCalls, kie.cancels]).toEqual([1, 1, 1]);
   });
 
-  it("fakeDeps stores on our Blob host and fails the first N copies when asked", async () => {
+  it("fakeDeps stores on our disk-store URL and fails the first N copies when asked", async () => {
     const deps = fakeDeps({}, { storeFails: 1 });
-    await expect(deps.store("https://x.example/a.png", "image", 0)).rejects.toThrow("store_put_failed");
-    const s = await deps.store("https://x.example/a.png", "image", 0);
-    expect(isOurBlobUrl(s.url)).toBe(true);
+    const owner = { scope: "a@x.example", taskId: "t1" };
+    await expect(deps.store("https://x.example/a.png", "image", 0, owner)).rejects.toThrow("store_put_failed");
+    const s = await deps.store("https://x.example/a.png", "image", 0, owner);
+    expect(isOurMediaUrl(s.url)).toBe(true);
+    expect(deps.stored[0].owner).toEqual(owner);
     expect(deps.stored).toHaveLength(1);
     expect(() => deps.adapter("kie")).toThrow("no fake adapter for kie");
   });

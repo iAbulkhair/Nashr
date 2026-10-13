@@ -125,7 +125,7 @@ describe("rules 1345-1346: session tokens are stored hashed (expand step)", () =
   it("a new session is written under the token's SHA-256, never the token", async () => {
     const u = await newUser("hs1");
     await createSession(u.email);
-    const token = jar().get("nashr_session")!;
+    const token = jar().get("thakeen_session")!;
     expect(sessionKey(token)).toBe(`session:h:${createHash("sha256").update(token).digest("hex")}`);
     expect(await db.get(sessionKey(token))).toMatchObject({ email: u.email });
     expect(await db.get(`session:${token}`)).toBeNull();
@@ -136,7 +136,7 @@ describe("rules 1345-1346: session tokens are stored hashed (expand step)", () =
     const legacy = randomBytes(32).toString("hex");
     await db.set(`session:${legacy}`, { email: u.email, at: Date.now() }, 3600);
     signOut();
-    jar().set("nashr_session", legacy);
+    jar().set("thakeen_session", legacy);
     expect((await currentUser())?.email).toBe(u.email);
   });
   it("only a 64-hex token may read a raw key, so a cookie set to a stored key's name reads nothing", async () => {
@@ -146,7 +146,7 @@ describe("rules 1345-1346: session tokens are stored hashed (expand step)", () =
     expect(sessionKeys(hashed)).toEqual([sessionKey(hashed)]);
     expect(await sessionRecord(hashed)).toBeNull();
     signOut();
-    jar().set("nashr_session", hashed);
+    jar().set("thakeen_session", hashed);
     expect(await currentUser()).toBeNull();
     expect(sessionKeys("a".repeat(64))).toEqual([sessionKey("a".repeat(64)), `session:${"a".repeat(64)}`]);
   });
@@ -214,15 +214,15 @@ describe("rule 1350: one impersonation at a time", () => {
     const b = await newUser("imp1b");
     const users = await import("@/app/api/admin/users/[email]/route");
     await signIn(a.email, { imp: "key" });
-    const temp = jar().get("nashr_session");
+    const temp = jar().get("thakeen_session");
     await adminSignIn();
     const before = (await db.lrange("admin:log", 0, -1)).length;
     const res = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", minutes: 15, reason: "ticket 1" }), { params: Promise.resolve({ email: encodeURIComponent(b.email) }) });
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ error: "impersonation_active" });
     expect((await db.lrange("admin:log", 0, -1)).length).toBe(before);
-    expect(jar().get("nashr_session")).toBe(temp);
-    expect(jar().get("nashr_return")).toBeUndefined();
+    expect(jar().get("thakeen_session")).toBe(temp);
+    expect(jar().get("thakeen_return")).toBeUndefined();
   });
   it("the founder's own session may start one", async () => {
     const b = await newUser("imp2b");

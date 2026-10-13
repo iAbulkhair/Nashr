@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
-import { grantHoldsAccess, revokeAllGrants, tokenHash } from "./oauth";
+import { BEARER, TOKEN_PREFIX, grantHoldsAccess, revokeAllGrants, tokenHash } from "./oauth";
 import { emailVerified, getUser, type User } from "./auth";
 import type { Action } from "./roles";
 
@@ -15,13 +15,13 @@ import type { Action } from "./roles";
 export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "chat", generate_content: "generate", list_inbox: "read", read_file: "read", list_files: "read", get_brand_rules: "read", check_brand: "read", save_draft: "drafts", agenda_get: "read", agenda_next: "read", free_slots: "read", todo_create: "todo.write", todo_update: "todo.write", todo_propose_done: "todo.write" };
 
 /**
- * Personal MCP tokens: `Authorization: Bearer nashr_...` → user. Stored only as a hash (src/lib/oauth.ts `tokenHash`):
+ * Personal MCP tokens: `Authorization: Bearer thakeen_...` (or an older `nashr_...`) → user. Stored only as a hash (src/lib/oauth.ts `tokenHash`):
  * `mcptoken:<hash>` → email, and `mcptoken-of:<email>` → that hash. The token itself is returned once, at creation, and
  * can never be read back. A token minted before hashing lives under `mcptoken:<raw>` and `mcptoken-of:<email>` → raw
  * until its first use moves it (`userFromBearer`).
  */
 export async function createMcpToken(email: string) {
-  const token = "nashr_" + randomBytes(24).toString("base64url");
+  const token = TOKEN_PREFIX + randomBytes(24).toString("base64url");
   const h = tokenHash(token);
   await Promise.all([db.set(`mcptoken:${h}`, email), db.set(`mcptoken-of:${email}`, h)]);
   return token;
@@ -60,7 +60,7 @@ async function bearerRecord(raw: string): Promise<{ email: string; grant?: strin
 
 export async function userFromBearer(req: Request): Promise<User | null> {
   const h = req.headers.get("authorization") ?? "";
-  const m = h.match(/^Bearer\s+(nashr_[A-Za-z0-9_.-]+)$/);
+  const m = h.match(BEARER);
   if (!m) return null;
   const rec = await bearerRecord(m[1]);
   if (!rec) return null;

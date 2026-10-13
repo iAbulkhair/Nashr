@@ -10,6 +10,8 @@ import { settleTopups, type Receipt, type TopupLot } from "./topups";
 import { billingLocked, type Billing } from "./billing-state";
 import { signupConsent, type Consent } from "./consent";
 import type { HandPlan } from "./hand-plan";
+import type { FoundingSeat, PriceLock } from "./founding";
+import { SESSION_COOKIE, dropCookie, dropLegacyCookie, namesOf, readCookie } from "./cookie-names";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -171,6 +173,23 @@ export type User = {
    * Paymob refund that ends the plan, and a change to the trial. Absent on plans set before 2026-10-12 (no end).
    */
   handPlan?: HandPlan;
+  /**
+   * A founding seat (src/lib/founding.ts, rules 1700-1719): claimed by the Paymob callback for a first plan payment that
+   * asked for the founding offer, or granted by the founder console. Kept with `endedAt` once ended, so it is never
+   * claimed again automatically. Optional, added 2026-10-13 (expand, rule 679): older code ignores it and keeps it.
+   */
+  founding?: FoundingSeat;
+  /**
+   * The price lock (src/lib/founding.ts): the plan's ex-VAT price at the first payment and the first Riyadh day it no
+   * longer applies. The Paymob renewal charges it while it applies (never above the list price). Optional, expand step.
+   */
+  priceLock?: PriceLock;
+  /**
+   * The founder lifted the fair-use pause for one UTC month (src/lib/fair-use.ts, rules 1720-1739). A lift for another
+   * month is ignored, so the pause can come back next month by itself. Written only by POST /api/admin/fair-use under
+   * `withUserLock`. Absent on every account until a founder lifts one (expand only: older code ignores it).
+   */
+  fairUseLift?: { month: string; at: string; by: string };
   /** Runtime only: `getUser` settled the stored packs (one expired); the next locked save writes them. Never persisted. */
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
@@ -199,7 +218,8 @@ export type User = {
 export const sc = (u: User) => u.scope ?? u.email;
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
-const COOKIE = "nashr_session";
+// `thakeen_session`, read with the old `nashr_session` as a fallback during the rename (rule 1810, src/lib/cookie-names.ts).
+const COOKIE = SESSION_COOKIE;
 
 /** Whole days left in a trial (0 when it has ended). Server-side: the clock is read per request here, never inside a component. */
 /**
@@ -385,6 +405,7 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   await db.set(sessionKey(token), rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
+  dropLegacyCookie(jar, COOKIE);
 }
 
 /**
@@ -395,7 +416,7 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
  */
 export async function rotateSession(email: string, revoke: (stamp: string) => Promise<boolean>): Promise<boolean> {
   const jar = await cookies();
-  const old = jar.get(COOKIE)?.value;
+  const old = readCookie(jar, COOKIE);
   const stamp = new Date().toISOString();
   await createSession(email);
   const fresh = jar.get(COOKIE)?.value;
@@ -410,9 +431,10 @@ export async function rotateSession(email: string, revoke: (stamp: string) => Pr
 
 export async function destroySession() {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
-  if (token) await dropSession(token);
-  jar.delete(COOKIE);
+  // Both names (rule 1811): a browser may still hold an old `nashr_session` beside the new one; both records go.
+  const tokens = [...new Set(namesOf(COOKIE).map((n) => jar.get(n)?.value).filter((v): v is string => !!v))];
+  await Promise.all(tokens.map((t) => dropSession(t)));
+  dropCookie(jar, COOKIE);
 }
 
 /** An owner is verified when the address was proved with an emailed code (`User.emailVerifiedAt`). */
@@ -421,7 +443,7 @@ export const emailVerified = (u: Pick<User, "emailVerifiedAt">): boolean => !!u.
 /** The session behind the cookie, or null (no cookie, expired, a key impersonation whose key changed). */
 async function readSession(): Promise<Session | null> {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
+  const token = readCookie(jar, COOKIE);
   if (!token) return null;
   const s = sessionOf(await sessionRecord(token));
   if (!s) return null;

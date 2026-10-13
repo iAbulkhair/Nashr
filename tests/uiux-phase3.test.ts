@@ -268,7 +268,7 @@ describe("rule 1150: sign out other devices", () => {
     const other = await signIn(u.email);
     await signIn(u.email);
     expect((await post("wrong-pass")).status).toBe(401);
-    jar().set("nashr_session", other);
+    jar().set("thakeen_session", other);
     expect((await currentUser())?.email).toBe(u.email);
   });
   it("the owner's other sessions end, a legacy bare-string one included; this device stays, with a new session", async () => {
@@ -279,10 +279,10 @@ describe("rule 1150: sign out other devices", () => {
     const other = await signIn(u.email);
     const mine = await signIn(u.email);
     expect((await post("abc12345")).status).toBe(200);
-    const now = jar().get("nashr_session")!;
+    const now = jar().get("thakeen_session")!;
     expect(now).not.toBe(mine);
     expect((await currentUser())?.email).toBe(u.email);
-    for (const t of [other, mine, legacy]) { jar().set("nashr_session", t); expect(await currentUser(), t.slice(0, 6)).toBeNull(); }
+    for (const t of [other, mine, legacy]) { jar().set("thakeen_session", t); expect(await currentUser(), t.slice(0, 6)).toBeNull(); }
   });
   it("a member's sign-out ends the member's other sessions only, never the owner's", async () => {
     const owner = await newUser("so");
@@ -292,9 +292,9 @@ describe("rule 1150: sign out other devices", () => {
     await signIn(m.email);
     expect((await post(m.password)).status).toBe(200);
     expect((await currentUser())?.actor?.email).toBe(m.email);
-    jar().set("nashr_session", memberOther);
+    jar().set("thakeen_session", memberOther);
     expect(await currentUser()).toBeNull();
-    jar().set("nashr_session", ownerSession);
+    jar().set("thakeen_session", ownerSession);
     expect((await currentUser())?.email).toBe(owner.email);
   });
   it("a member cannot use the owner's password; a founder viewing the account is refused", async () => {

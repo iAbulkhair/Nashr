@@ -62,7 +62,7 @@ export default async function RootLayout({ children, params }: { children: React
   if (!isLang(lang)) notFound();
   const t = dict[lang];
   // Theme before the first paint (rules 1203-1204, 1214): the server always sends light; the head script reads the viewer's
-  // `nashr_theme` cookie and the device setting and sets `data-theme` before the body is parsed, so a dark page never
+  // `thakeen_theme` cookie (or the old `nashr_theme`) and the device setting and sets `data-theme` before the body is parsed, so a dark page never
   // flashes light and the page stays statically prerendered (no cookies() here). suppressHydrationWarning covers only
   // that one attribute on <html>. One `ThemeScope` here serves every page in the language, public, app and console.
   return (

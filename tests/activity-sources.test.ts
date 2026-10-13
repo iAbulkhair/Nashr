@@ -352,7 +352,7 @@ describe("a render is recorded at its start and its end, under the job's own sco
   afterAll(() => net.restore());
   beforeEach(() => {
     resetMediaCounters();
-    mediaEnv({ fal: true, kie: true, higgsfield: true, blob: true, models: "all" });
+    mediaEnv({ fal: true, kie: true, higgsfield: true, store: true, models: "all" });
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 

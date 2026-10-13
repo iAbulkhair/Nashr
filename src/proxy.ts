@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";
-import { STAGING_COOKIE, STAGING_OPEN_PATHS, hasAccess } from "@/lib/staging-access";
+import { STAGING_COOKIE, hasAccess, stagingOpen } from "@/lib/staging-access";
 import { legacySettingsPath } from "@/lib/settings-nav";
+import { LANG_COOKIE, readCookie } from "@/lib/cookie-names";
 
 type Lang = "ar" | "en";
 
@@ -14,7 +15,7 @@ const APP_PATH = /^\/[^/]+\/app(\/|$)/;
 const CONSOLE_PATH = /^\/(ar|en)\/admin(\/|$)|^\/api\/admin\/staff(\/|$)/;
 
 function pickLang(req: NextRequest): Lang {
-  const c = req.cookies.get("nashr_lang")?.value;
+  const c = readCookie(req.cookies, LANG_COOKIE);
   if (c === "ar" || c === "en") return c;
   const al = (req.headers.get("accept-language") || "").toLowerCase();
   // Arabic is the default; only send English to browsers that prefer it and do not list Arabic first.
@@ -27,9 +28,9 @@ export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const staging = isStaging();
 
-  // Staging lock (rules 674, 677): without the access cookie every path but the four open ones is a bare 404, and
-  // with no STAGING_ACCESS_KEY nobody gets in. The proxy sees every path, so this runs before anything else.
-  if (staging && !STAGING_OPEN_PATHS.has(pathname) && !hasAccess(req.cookies.get(STAGING_COOKIE)?.value)) {
+  // Staging lock (rules 674, 677): without the access cookie every path but the four open ones and `/m/` (rule 1760) is
+  // a bare 404, and with no STAGING_ACCESS_KEY nobody gets in. The proxy sees every path, so this runs before anything else.
+  if (staging && !stagingOpen(pathname) && !hasAccess(req.cookies.get(STAGING_COOKIE)?.value)) {
     return new NextResponse(null, { status: 404, headers: { "x-robots-tag": NOINDEX } });
   }
 

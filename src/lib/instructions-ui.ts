@@ -44,6 +44,7 @@ const ERROR_KEY = {
   brief_too_long: "brief_too_long",
   no_brand: "no_brand",
   trial_over: "trial_over",
+  fair_use: "fair_use",
   model_paused: "model_unavailable",
   paused: "paused",
   no_change: "no_change",

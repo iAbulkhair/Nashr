@@ -142,7 +142,7 @@ describe("starting a render", () => {
 
   it("1c. a placeholder asked for while another image style finishes on the item lands under that image, never over it", async () => {
     // img-fast switched off by the breaker, so a model-less request is the placeholder; a kie image runs on the same item.
-    mediaEnv({ fal: true, kie: true, blob: true, models: "all" });
+    mediaEnv({ fal: true, kie: true, store: true, models: "all" });
     await db.set(mk.off(), { "img-fast": { until: Date.now() + 3600_000, reason: "store_failed" } });
     const deps = useDeps({ kie: kieFake(done) });
     const u = await paid();
@@ -199,7 +199,7 @@ describe("starting a render", () => {
   });
 
   it("2. an unknown or wrong-kind model, and an item that takes no media, are 400 and charge nothing", async () => {
-    mediaEnv({ fal: true, kie: true, higgsfield: true, blob: true, models: "all" });
+    mediaEnv({ fal: true, kie: true, higgsfield: true, store: true, models: "all" });
     const fal = fakeAdapter("fal"), kie = kieFake();
     useDeps({ fal, kie, higgsfield: fakeAdapter("higgsfield") });
     const u = await paid();
@@ -228,14 +228,14 @@ describe("starting a render", () => {
     const u = await paid();
     const t = await taskFor(u);
 
-    mediaEnv({ kie: true, blob: true });
+    mediaEnv({ kie: true, store: true });
     expect((await start("image", u, t, { model: "img-balanced" })).body.error, "not in MEDIA_MODELS_ON").toBe("model_unavailable");
     mediaEnv({ kie: true, models: "all" });
     const noBlob = await start("image", u, t, { model: "img-balanced" });
     expect([noBlob.status, noBlob.body.error], "no Blob store").toEqual([409, "model_unavailable"]);
     expect(await balance(u)).toBe(50);
 
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const r = await start("image", u, t, { model: "img-balanced" });
     expect(r.status).toBe(202);
     const job = jobOf(r);
@@ -256,7 +256,7 @@ describe("starting a render", () => {
   });
 
   it("the image route with fal answers 200 with the finished job and our copy", async () => {
-    mediaEnv({ fal: true, blob: true });
+    mediaEnv({ fal: true, store: true });
     const fal = fakeAdapter("fal");
     const deps = useDeps({ fal });
     const u = await owner();
@@ -270,7 +270,7 @@ describe("starting a render", () => {
   });
 
   it("4. two clicks at once start one render and charge once; a later click gets the running job", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const u = await paid();
@@ -289,7 +289,7 @@ describe("starting a render", () => {
   });
 
   it("7. video: a first frame only from a portrait image of ours, Photo to motion needs one, and the paused prompt still renders", async () => {
-    mediaEnv({ kie: true, higgsfield: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, higgsfield: true, store: true, models: "all" });
     const kie = kieFake(), hf = fakeAdapter("higgsfield");
     useDeps({ kie, higgsfield: hf });
     const u = await paid();
@@ -320,7 +320,7 @@ describe("starting a render", () => {
   });
 
   it("7b. a paid plan starts the premium video (M1)", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const u = await paid();
@@ -334,7 +334,7 @@ describe("starting a render", () => {
   });
 
   it("a start that throws after the charge answers with its durable job, which a poll later settles and refunds", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const u = await paid();
@@ -363,7 +363,7 @@ describe("starting a render", () => {
   });
 
   it("a start that throws before the charge answers media_pending, never that credits were returned", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const u = await paid();
@@ -393,7 +393,7 @@ describe("starting a render", () => {
   });
 
   it("12. a model the breaker switched off is refused before any charge and left out of the inbox list", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     await db.set(mk.off(), { "img-balanced": { until: Date.now() + 3600_000, reason: "store_failed" } });
@@ -408,7 +408,7 @@ describe("starting a render", () => {
   });
 
   it("13. a trial keeps one 12-credit video", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const u = await owner();
@@ -433,7 +433,7 @@ describe("starting a render", () => {
   }
 
   it("13b. a founder video grant opens every model to a trial, still one clip", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const g = await grantedTrial(3);
@@ -447,7 +447,7 @@ describe("starting a render", () => {
   });
 
   it("13c. an expired grant changes nothing", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const g = await grantedTrial(-1);
@@ -461,7 +461,7 @@ describe("starting a render", () => {
 
 describe("polling a render", () => {
   it("5. another account's job is a 404 with no provider call; a malformed id is a 404; no session is a 401", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const A = await paid(), B = await paid();
@@ -476,7 +476,7 @@ describe("polling a render", () => {
   });
 
   it("6. a poll that sees the render fail answers the restored balance", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     useDeps({ kie: kieFake(() => ({ state: "failed", reason: "provider_failed" })) });
     const u = await paid();
     const t = await taskFor(u);
@@ -491,7 +491,7 @@ describe("polling a render", () => {
   });
 
   it("14. a poll runs the opportunistic sweep behind its lock: a stale job of another account is refunded, once per 5 minutes", async () => {
-    mediaEnv({ fal: true, kie: true, blob: true, models: "all" });
+    mediaEnv({ fal: true, kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ fal: fakeAdapter("fal"), kie });
     const A = await paid(), B = await paid();
@@ -521,14 +521,14 @@ describe("polling a render", () => {
 
 describe("provider callbacks", () => {
   it("8. a hint is checked, throttled and capped, and moves only the job it names, from the provider's own answer", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake(() => done());
     const deps = useDeps({ kie });
     expect(await hook("evil", { taskId: "kie123456" }, 1)).toBe(404);
     expect(await hook("fal", { taskId: "kie123456" }, 2)).toBe(404);
-    mediaEnv({ blob: true, models: "all" });
+    mediaEnv({ store: true, models: "all" });
     expect(await hook("kie", { taskId: "kie123456" }, 3), "kie not configured").toBe(404);
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
 
     expect(await hook("kie", { taskId: "kieunknown999" }, 4), "no oracle for an unknown id").toBe(200);
     await settle();
@@ -558,7 +558,7 @@ describe("provider callbacks", () => {
   });
 
   it("8b. the per-IP limit refuses the 241st hint in a minute from one address, not from another", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     useDeps({ kie: kieFake() });
     // One after another: allow() is a fixed window whose first hit sets the expiry.
     for (let i = 0; i < 240; i++) expect(await hook("kie", { taskId: "kieunknown999" }, 10)).toBe(200);
@@ -567,7 +567,7 @@ describe("provider callbacks", () => {
   });
 
   it("8c. five hints for one job in a row cost one status call", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = kieFake();
     useDeps({ kie });
     const u = await paid();
@@ -580,7 +580,7 @@ describe("provider callbacks", () => {
   });
 
   it("9. with the HMAC key set, kie hints must be signed and fresh", async () => {
-    mediaEnv({ kie: true, blob: true, hmac: true, models: "all" });
+    mediaEnv({ kie: true, store: true, hmac: true, models: "all" });
     const kie = kieFake(() => done());
     useDeps({ kie });
     const u = await paid();
@@ -599,12 +599,12 @@ describe("provider callbacks", () => {
     await settle();
     expect((await getJob(u.email, job.id))!.state).toBe("done");
 
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     expect(await hook("kie", { taskId: "kieunknown999" }, 34), "without the key an unsigned hint is a hint").toBe(200);
   });
 
   it("a Higgsfield hint finds its job by request_id", async () => {
-    mediaEnv({ higgsfield: true, blob: true, models: "all" });
+    mediaEnv({ higgsfield: true, store: true, models: "all" });
     const hf = fakeAdapter("higgsfield", { status: () => ({ state: "done", urls: ["https://cdn.higgsfield.example/out.jpg"] }) });
     useDeps({ higgsfield: hf });
     const u = await paid();
@@ -620,7 +620,7 @@ describe("provider callbacks", () => {
 
 describe("the cron sweep", () => {
   it("10. needs the bearer, then fails and refunds a render past its max age", async () => {
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     const kie = kieFake();
     useDeps({ kie });
@@ -643,7 +643,7 @@ describe("the cron sweep", () => {
 
 describe("the chat tool", () => {
   it("11. generate_image renders the default model, or the placeholder with nothing charged", async () => {
-    mediaEnv({ fal: true, blob: true });
+    mediaEnv({ fal: true, store: true });
     const fal = fakeAdapter("fal");
     useDeps({ fal });
     const u = await owner();

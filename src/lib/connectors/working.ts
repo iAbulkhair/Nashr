@@ -27,5 +27,7 @@ export const READS_SITE: readonly string[] = ["google"];
 export const READS_SOCIAL: readonly string[] = ["meta", "linkedin", "youtube", "tiktok", "x"];
 /** Google Docs and Sheets, read as reference files for the agent instructions (src/lib/instruction-refs.ts, rules 955-956). */
 export const READS_REFERENCES: readonly string[] = ["google_workspace"];
+/** The customer's cloud drives: files imported into the workspace, finished media exported (src/lib/cloud-drives.ts, rules 1775-1789). */
+export const DRIVES: readonly string[] = ["google_drive", "dropbox", "onedrive"];
 export const READS_METRICS: readonly string[] = ["salla", "shopify", "woocommerce", "zid", ...READS_ADS, ...READS_SITE, ...READS_SOCIAL];
 export const isWorking = (id: string) => WORKING_PROVIDERS.includes(id);

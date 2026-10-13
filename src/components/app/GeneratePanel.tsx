@@ -45,7 +45,7 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
         setMsg(refused);
         return;
       }
-      const map: Record<string, string> = { no_credits: noCreditsText(g, owner, topups), trial_over: g.trialOver, no_brand: g.noBrand, no_cart_data: g.noCartData, model_paused: g.paused, agent_cap: t.limit.agentCapTitle };
+      const map: Record<string, string> = { no_credits: noCreditsText(g, owner, topups), trial_over: g.trialOver, no_brand: g.noBrand, no_cart_data: g.noCartData, model_paused: g.paused, agent_cap: t.limit.agentCapTitle, fair_use: t.limit.fairUseTitle };
       setMsg((j.error && map[j.error]) || modelErrorText(lang, j.error) || g.failed);
     } catch {
       setMsg(g.failed);

@@ -75,16 +75,60 @@ export const aspectFor = (kind: MediaKind, channel: string): Aspect => (kind ===
 export const ARTWORK_PROVIDERS: readonly string[] = ["fal", "kie", "higgsfield"];
 /** The one test for "this item has a generated image": Instagram, the Facebook photo post and the inbox hint all use it. */
 export const hasArtwork = (t: { imageUrl?: string; imageProvider?: string }): boolean => !!t.imageUrl && ARTWORK_PROVIDERS.includes(t.imageProvider ?? "");
-/** Our own Vercel Blob store (public access). Only these URLs are ever handed to a provider as a reference image. */
-export function isOurBlobUrl(url: string | undefined): boolean {
+/**
+ * Our media store on Hostinger's disk (rules 1750-1759): the only hosts whose `/m/{name}` URLs we write, one per
+ * deployment. Kept here, import-free, because the inbox imports this module.
+ */
+export const MEDIA_HOSTS: readonly string[] = ["thakeen.com", "staging.thakeen.com"];
+/** A stored file's name: 128 random bits in hex and the extension. No tenant, task or date in it (rule 1751). */
+export const MEDIA_NAME = /^[a-f0-9]{32}\.(jpg|mp4)$/;
+const STORE_PATH = /^\/m\/([a-f0-9]{32}\.(?:jpg|mp4))$/;
+
+/** The file name of a URL in our disk store, as stored on a task (https, exact host, no port, query or hash), or null. */
+export function ourMediaName(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || u.username || u.password || u.port || u.search || u.hash || !MEDIA_HOSTS.includes(u.hostname)) return null;
+    return STORE_PATH.exec(u.pathname)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rule 1759: a file we keep. The disk store (private, served by `/m/{name}`), or, during the expand step (rule 679), an
+ * old Vercel Blob copy written before the move. Only these URLs are ever handed to a provider as a reference image, to
+ * Composio as a staged file or to YouTube; no Google, Dropbox or Microsoft host passes, so a linked drive is never a
+ * publish source. The contract release drops the Blob host once the scan finds none (docs/system/flows.md).
+ */
+export function isOurMediaUrl(url: string | undefined): boolean {
+  if (ourMediaName(url)) return true;
   if (!url) return false;
   try {
     const u = new URL(url);
-    return u.protocol === "https:" && !u.username && !u.password && u.hostname.endsWith(".public.blob.vercel-storage.com");
+    return u.protocol === "https:" && !u.username && !u.password && !u.search && !u.hash && u.hostname.endsWith(".public.blob.vercel-storage.com");
   } catch {
     return false;
   }
 }
+/**
+ * The same test for a URL on its way out (rule 1755): our stored URL as it is, or a disk-store URL carrying exactly the
+ * `exp` and `sig` of a share link. The signature itself is checked only by the `/m/` route.
+ */
+export function isOurOutgoingMediaUrl(url: string | undefined): boolean {
+  if (isOurMediaUrl(url)) return true;
+  try {
+    const u = new URL(url ?? "");
+    const keys = [...u.searchParams.keys()].sort().join(",");
+    if (keys !== "exp,sig") return false;
+    u.search = "";
+    return !!ourMediaName(u.href);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The image a render of `m` sends to the provider, or undefined. Only our own copy of a real generated image (spec A9).
  * Video takes it as a first frame only when it is portrait: Kling 2.5 image-to-video and Hailuo have no aspect field and
@@ -92,7 +136,7 @@ export function isOurBlobUrl(url: string | undefined): boolean {
  * needs the image whatever its shape, and the inbox says the clip keeps it.
  */
 export function mediaImageFor(m: MediaModel, t: { imageUrl?: string; imageProvider?: string; channel: string }): string | undefined {
-  const img = m.usesImage && hasArtwork(t) && isOurBlobUrl(t.imageUrl) ? t.imageUrl : undefined;
+  const img = m.usesImage && hasArtwork(t) && isOurMediaUrl(t.imageUrl) ? t.imageUrl : undefined;
   if (!img || m.kind === "image" || m.needsImage) return img;
   return aspectFor("image", t.channel) === "portrait" ? img : undefined;
 }

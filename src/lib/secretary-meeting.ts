@@ -53,6 +53,7 @@ import { pmap } from "./parallel";
 import { sc, trialOver, type User } from "./auth";
 import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "./agents";
 import { chargeOnce, refundOnce, renewIfDue, renewalDue } from "./credits";
+import { fairUseGate } from "./fair-use";
 import { getGov } from "./governance";
 import { asData } from "./json";
 import { MODEL_BUDGET, anthropic, modelState, until } from "./model";
@@ -306,7 +307,7 @@ export async function approveMeeting(user: Pick<User, "email" | "scope">, itemId
 
 // ---- Proposing from notes or a transcript (rules 604-606) ----
 
-export type ProposeError = "too_long" | "no_credits" | "trial_over" | "agent_cap" | "no_tasks" | "model_failed" | "too_many" | SecFail["error"];
+export type ProposeError = "too_long" | "no_credits" | "trial_over" | "fair_use" | "agent_cap" | "no_tasks" | "model_failed" | "too_many" | SecFail["error"];
 /** `agent`, `spent` and `cap` come with `agent_cap`: the owner's monthly cap for Reem and what she has spent of it. */
 export type ProposeResult = { ok: true; proposals: Proposal[] } | { ok: false; error: ProposeError; agent?: AgentId; spent?: number; cap?: number };
 /** Typed notes a day, per account: the notes are free, so this is what bounds them (a transcript is bounded by its price). */
@@ -384,6 +385,8 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
   const runKey = SEC_KEYS.mrun(scope, itemId);
   const paid = kind === "transcript";
   let claim = "";
+  // The fair-use stop (rule 1725): notes and transcript alike, before the model reads either and before any charge.
+  if (await fairUseGate(user)) return { ok: false, error: "fair_use" };
   if (!paid) {
     if (!(await allow(`meet:notes:${user.email}`, MEET_NOTES_PER_DAY, 86400))) return { ok: false, error: "too_many" };
   } else {

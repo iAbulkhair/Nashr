@@ -185,11 +185,11 @@ describe("rule 1203: the theme is set before the first paint (every page in the 
     expect(runHead("", "/ar/app", true)).toBe("dark");
     expect(runHead("", "/en/app/tasks", false)).toBe("light");
     expect(runHead("a=1; nashr_theme=dark; b=2", "/en/admin/users", false)).toBe("dark");
-    expect(runHead("nashr_theme=light", "/ar/app", true)).toBe("light");
+    expect(runHead("thakeen_theme=light", "/ar/app", true)).toBe("light");
     expect(runHead("nashr_theme=system", "/ar/app/settings/account", true)).toBe("dark");
     // Rule 1214: public pages follow the choice too; light stays the default for a light device with no choice.
     for (const p of ["/ar", "/en/pricing", "/ar/blog/x", "/en/apps", "/ar/administer"]) {
-      expect(runHead("nashr_theme=dark", p, false), p).toBe("dark");
+      expect(runHead("thakeen_theme=dark", p, false), p).toBe("dark");
       expect(runHead("", p, false), p).toBe("light");
       expect(runHead("nashr_theme=light", p, true), p).toBe("light");
     }
@@ -231,19 +231,24 @@ describe("rule 1203: the theme is set before the first paint (every page in the 
 describe("rule 1204: the viewer's choice is a cookie on this browser, set from the toggle", () => {
   it("reads only the three words and writes a year-long, site-wide, lax cookie, Secure on https", () => {
     expect(readThemePref(undefined)).toBe("system");
+    expect(readThemePref("thakeen_theme=dark")).toBe("dark");
+    // Expand release (rule 1812): the old name still reads, and the new one wins when both are present.
     expect(readThemePref("nashr_theme=dark")).toBe("dark");
+    expect(readThemePref("nashr_theme=dark; thakeen_theme=light")).toBe("light");
+    expect(readThemePref("x_thakeen_theme=dark")).toBe("system");
     expect(readThemePref("x_nashr_theme=dark")).toBe("system");
     expect(readThemePref("nashr_theme=dark%3Bx")).toBe("system");
     expect(isThemePref("light")).toBe(true);
     expect(isThemePref("auto")).toBe(false);
-    expect(themeCookie("dark", true)).toBe("nashr_theme=dark; path=/; max-age=31536000; samesite=lax; secure");
-    expect(themeCookie("system", false)).toBe("nashr_theme=system; path=/; max-age=31536000; samesite=lax");
+    expect(themeCookie("dark", true)).toBe("thakeen_theme=dark; path=/; max-age=31536000; samesite=lax; secure");
+    expect(themeCookie("system", false)).toBe("thakeen_theme=system; path=/; max-age=31536000; samesite=lax");
   });
 
   it("no server code reads or stores it: no route, no profile field, no stored shape", () => {
     const files = (readdirSync("src", { recursive: true }) as string[]).filter((f) => /\.(?:ts|tsx)$/.test(f)).map((f) => join("src", f));
-    const users = files.filter((f) => code(f).includes("nashr_theme") || /THEME_COOKIE/.test(code(f)));
-    expect(users.sort()).toEqual([join("src", "lib", "theme.ts")]);
+    // cookie-names.ts only names it (rule 1810); theme.ts is the one reader, and only the browser runs it.
+    const users = files.filter((f) => /(?:nashr|thakeen)_theme|THEME_COOKIE/.test(code(f)));
+    expect(users.sort()).toEqual([join("src", "lib", "cookie-names.ts"), join("src", "lib", "theme.ts")]);
     for (const f of files.filter((x) => x.startsWith(join("src", "app", "api")))) expect(read(f), f).not.toMatch(/@\/lib\/theme/);
   });
 

@@ -168,7 +168,8 @@ async function main() {
       if (!email || !password) return "SMOKE_EMAIL or SMOKE_PASSWORD missing";
       const r = await call("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
       if (r.status !== 200) return `got ${r.status}`;
-      session = cookiePair(r, "nashr_session");
+      // `thakeen_session` since rule 1810; the old name while a server still runs the code before that release.
+      session = cookiePair(r, "thakeen_session") || cookiePair(r, "nashr_session");
       if (!session) return "200 but no session cookie";
     });
     await check("GET /ar/app is 200 with that session (or /ar/app/start while it has no brand)", async () => {

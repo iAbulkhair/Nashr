@@ -1,6 +1,6 @@
 /**
  * Light, dark or the device's choice (rules 1203-1205, UI/UX report §5.2). The choice is the viewer's, kept in the
- * first-party cookie `nashr_theme` on this browser (like `nashr_lang`): no account field, nothing stored on the server,
+ * first-party cookie `thakeen_theme` on this browser (like `thakeen_lang`; the old `nashr_theme` is still read, rule 1810): no account field, nothing stored on the server,
  * so no stored shape changes. Pure helpers: the head script in src/app/[lang]/layout.tsx is built from the same
  * constants, and `ThemeScope` / `ThemeToggle` (client) call these.
  *
@@ -8,7 +8,9 @@
  * stay light" from rules 1203 and 1227). Light stays the default for a viewer who never chose and whose device is light
  * (report §8.1: our buyer reads the site on a phone in daylight). Outside /{lang} (the OAuth consent page) stays light.
  */
-export const THEME_COOKIE = "nashr_theme";
+import { LEGACY, THEME_COOKIE, expireLegacyLine } from "./cookie-names";
+
+export { THEME_COOKIE };
 export const THEME_PREFS = ["system", "light", "dark"] as const;
 export type ThemePref = (typeof THEME_PREFS)[number];
 export type Theme = "light" | "dark";
@@ -17,10 +19,16 @@ export const THEME_EVENT = "nashr-theme";
 
 export const isThemePref = (v: unknown): v is ThemePref => typeof v === "string" && (THEME_PREFS as readonly string[]).includes(v);
 
-const COOKIE_RE = /(?:^|;\s*)nashr_theme=(system|light|dark)(?:;|$)/;
+const cookieRe = (name: string) => new RegExp(`(?:^|;\\s*)${name}=(system|light|dark)(?:;|$)`);
+/** The new name first, then the old one (rule 1810): a choice made before the rename is kept. */
+const COOKIE_RES = [cookieRe(THEME_COOKIE), cookieRe(LEGACY[THEME_COOKIE])] as const;
 /** The choice in a `document.cookie` string; "system" when there is none or it is not one of the three. */
 export function readThemePref(cookie: string | null | undefined): ThemePref {
-  return (COOKIE_RE.exec(cookie ?? "")?.[1] as ThemePref | undefined) ?? "system";
+  for (const re of COOKIE_RES) {
+    const m = re.exec(cookie ?? "")?.[1] as ThemePref | undefined;
+    if (m) return m;
+  }
+  return "system";
 }
 
 /** The paths that follow the choice: every page in either language, public pages, the app and the console (rule 1214). */
@@ -36,13 +44,15 @@ export function resolveTheme(pref: ThemePref, systemDark: boolean, path: string)
 export function themeCookie(pref: ThemePref, secure: boolean): string {
   return `${THEME_COOKIE}=${pref}; path=/; max-age=31536000; samesite=lax${secure ? "; secure" : ""}`;
 }
+/** The line that removes the old `nashr_theme` once the new cookie is written (rule 1810). */
+export const legacyThemeExpiry = (): string => expireLegacyLine(THEME_COOKIE) ?? "";
 
 /**
  * Runs in <head> before the body is parsed, so the first paint already has the right theme (Next's guide "Preventing
  * flash before hydration", themes, cookie variant: the page stays statically prerendered). Reads only the cookie,
  * `matchMedia` and the path; any error leaves the light default.
  */
-export const THEME_SCRIPT = `(function(){try{var d=document.documentElement,m=${COOKIE_RE.toString()}.exec(document.cookie),p=m?m[1]:"system",s=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;d.setAttribute("data-theme",${THEMED_PATH.toString()}.test(location.pathname)&&(p==="dark"||(p==="system"&&s))?"dark":"light")}catch(e){}})()`;
+export const THEME_SCRIPT = `(function(){try{var d=document.documentElement,c=document.cookie,m=${COOKIE_RES[0].toString()}.exec(c)||${COOKIE_RES[1].toString()}.exec(c),p=m?m[1]:"system",s=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;d.setAttribute("data-theme",${THEMED_PATH.toString()}.test(location.pathname)&&(p==="dark"||(p==="system"&&s))?"dark":"light")}catch(e){}})()`;
 
 /** Applies a theme to the page (client only). */
 export function applyTheme(theme: Theme, root: { setAttribute(n: string, v: string): void } = document.documentElement) {

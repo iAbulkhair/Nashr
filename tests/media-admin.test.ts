@@ -3,12 +3,8 @@ import { readFileSync } from "node:fs";
 import { json, markVerified, newUser, signIn, signOut } from "./helpers/session";
 import { MEDIA_ENV, mediaEnv, noNetwork, resetMediaCounters } from "./helpers/media";
 
-const blob = vi.hoisted(() => ({
-  put: vi.fn<(pathname: string, body: unknown, opts: Record<string, unknown>) => Promise<{ url: string }>>(),
-  del: vi.fn<(url: string, opts: Record<string, unknown>) => Promise<void>>(),
-}));
-vi.mock("@vercel/blob", () => blob);
-
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import * as media from "@/app/api/admin/media/route";
 import { createUser, saveUser, type User } from "@/lib/auth";
 import { db, pushCapped } from "@/lib/db";
@@ -26,7 +22,6 @@ import { appDict } from "@/lib/app-i18n";
  * owner's own reports.
  */
 const FOUNDER = "founder-media@test.example";
-const STORE = "https://s1.public.blob.vercel-storage.com/";
 let customer: User;
 let net: ReturnType<typeof noNetwork>;
 
@@ -56,8 +51,6 @@ beforeAll(async () => {
 beforeEach(() => {
   calls = [];
   resetMediaCounters();
-  blob.put.mockReset().mockImplementation(async (pathname) => ({ url: STORE + pathname }));
-  blob.del.mockReset().mockResolvedValue(undefined);
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
   vi.stubEnv("WAITLIST_ADMIN_KEY", "");
   vi.stubEnv("APP_ORIGIN", "");
@@ -77,7 +70,6 @@ describe("GET /api/admin/media: who may call it", () => {
     await signIn(customer.email);
     expect((await get()).status).toBe(401);
     expect(net.hosts).toEqual([]);
-    expect(blob.put).not.toHaveBeenCalled();
   });
 
   it("answers the founder with the configuration flags; nothing configured means no request anywhere", async () => {
@@ -85,33 +77,32 @@ describe("GET /api/admin/media: who may call it", () => {
     const { status, text } = await get();
     expect(status).toBe(200);
     const j = JSON.parse(text);
-    expect(j.configured).toEqual({ fal: false, kie: false, higgsfield: false, blob: false, webhooks: false });
+    expect(j.configured).toEqual({ fal: false, kie: false, higgsfield: false, store: false, webhooks: false });
     expect(j.modelsOn).toEqual(["img-fast"]);
     expect(j.available).toEqual([]);
-    expect(j).toMatchObject({ blob: "error:no_blob", kie: null, higgsfield: null, open: { fal: 0, kie: 0, higgsfield: 0 }, off: {}, recent: [] });
+    expect(j).toMatchObject({ store: { status: "error:no_store", survivedBuilds: null }, kie: null, higgsfield: null, open: { fal: 0, kie: 0, higgsfield: 0 }, off: {}, recent: [] });
     expect(net.hosts).toEqual([]);
-    expect(blob.put).not.toHaveBeenCalled();
   });
 });
 
 describe("GET /api/admin/media: the provider check", () => {
-  it("reports the kie balance, each Higgsfield estimate, the Blob probe and the models switched on, and no variable value", async () => {
-    mediaEnv({ fal: true, kie: true, hmac: true, higgsfield: true, blob: true, models: "img-balanced" });
+  it("reports the kie balance, each Higgsfield estimate, the disk store probe and the models switched on, and no variable value", async () => {
+    mediaEnv({ fal: true, kie: true, hmac: true, higgsfield: true, store: true, models: "img-balanced" });
     vi.stubEnv("APP_ORIGIN", "https://app.example.com");
     providers();
     await signIn(FOUNDER);
     const { status, text } = await get();
     expect(status).toBe(200);
     const j = JSON.parse(text);
-    expect(j.configured).toEqual({ fal: true, kie: true, higgsfield: true, blob: true, webhooks: true });
+    expect(j.configured).toEqual({ fal: true, kie: true, higgsfield: true, store: true, webhooks: true });
     expect(j.modelsOn).toEqual(["img-fast", "img-balanced"]);
     expect(j.available).toEqual(["img-fast", "img-balanced"]);
-    expect(j.blob).toBe("ok");
+    expect(j.store).toMatchObject({ status: "ok", survivedBuilds: 0, usage: { bytes: 0, files: 0 }, limits: { maxBytes: 10 * 1024 ** 3, maxFiles: 50_000, maxFileBytes: 100 * 1024 ** 2 } });
     expect(j.kie).toEqual({ balanceCredits: 1234.5 });
     expect(j.higgsfield).toEqual({ "img-lifestyle": 0.094, "img-design": 0.094, "vid-cinematic": 0.094, "vid-motion": "error:422", "vid-cinematic:text": 0.094 });
-    // The probe wrote one tiny file and deleted it again.
-    expect(blob.put).toHaveBeenCalledTimes(1);
-    expect(blob.del).toHaveBeenCalledWith(STORE + blob.put.mock.calls[0][0], expect.anything());
+    // The probe wrote one tiny file and deleted it again (rule 1762); the folder's path is never in the answer.
+    expect(await fs.readdir(path.join(process.env.MEDIA_DIR!, ".tmp"))).toEqual([]);
+    expect(text).not.toContain(process.env.MEDIA_DIR!);
     // Only the two fixed provider hosts, and the keys travelled in headers, not in a URL.
     expect(new Set(calls.map((c) => c.url.host))).toEqual(new Set(["api.kie.ai", "api.higgsfield.ai"]));
     const values = Object.values(MEDIA_ENV).flat().map((n) => `test-${n.toLowerCase()}`);
@@ -121,24 +112,27 @@ describe("GET /api/admin/media: the provider check", () => {
     }
   });
 
-  it("names a Blob store that refuses the write, and an adapter check that throws, with fixed codes", async () => {
-    mediaEnv({ kie: true, higgsfield: true, blob: true });
+  it("names a disk store that refuses the write, and an adapter check that throws, with fixed codes", async () => {
+    mediaEnv({ kie: true, higgsfield: true, store: true });
     providers();
-    blob.put.mockRejectedValueOnce(new Error("BlobAccessError: token rejected for store xyz"));
+    // A plain file where the .tmp folder belongs: the probe cannot write.
+    await fs.mkdir(process.env.MEDIA_DIR!, { recursive: true });
+    await fs.writeFile(path.join(process.env.MEDIA_DIR!, ".tmp"), "x");
     vi.spyOn(higgsfieldAdapter, "check").mockRejectedValueOnce(new Error("socket hang up at 10.0.0.1"));
     await signIn(FOUNDER);
     const { text } = await get();
     const j = JSON.parse(text);
-    expect(j.blob).toBe("error:put_failed");
+    expect(j.store.status).toBe("error:write_failed");
     expect(j.higgsfield).toEqual({ error: "unreachable" });
     expect(j.kie).toEqual({ balanceCredits: 1234.5 });
     expect(j.configured.webhooks).toBe(false);
-    expect(text).not.toContain("token rejected");
+    expect(text).not.toContain("EEXIST");
+    expect(text).not.toContain("ENOTDIR");
     expect(text).not.toContain("10.0.0.1");
   });
 
   it("lists the switched-off models (not the expired ones), the open jobs and the last renders without any account data", async () => {
-    mediaEnv({ kie: true, blob: true, models: "img-balanced,vid-quick" });
+    mediaEnv({ kie: true, store: true, models: "img-balanced,vid-quick" });
     providers();
     const until = Date.now() + 3600_000;
     await db.set(mk.off(), { "vid-quick": { until, reason: "timeout" }, "img-balanced": { until: Date.now() - 1000, reason: "old" } });
@@ -205,7 +199,7 @@ describe("render spend in the founder overview", () => {
   it("credits used this month count what renders kept (mediaCredits), not one credit per image", async () => {
     const u = await newUser("mediacred");
     const before = (await overview()).revenue.creditsUsedMonth;
-    await saveTask(u.email, task("v", { mediaCredits: 24, videoUrl: `${STORE}media/v.mp4`, imageUrl: `${STORE}media/i.jpg`, imageProvider: "kie" }), true);
+    await saveTask(u.email, task("v", { mediaCredits: 24, videoUrl: `https://thakeen.com/m/${"b".repeat(32)}.mp4`, imageUrl: `https://thakeen.com/m/${"c".repeat(32)}.jpg`, imageProvider: "kie" }), true);
     const after = (await overview()).revenue.creditsUsedMonth;
     expect(after - before).toBe(Math.round(TASK_COST.social / TASK_COUNT.social + 24));
   });
@@ -218,7 +212,7 @@ describe("owner reports: videos and render credits", () => {
   it("kpis count mediaCredits and videos, fall back to one credit for a legacy image, and statsText names videos", async () => {
     const s = (await newUser("mediakpi")).email;
     await Promise.all([
-      saveTask(s, task("video", { mediaCredits: 24, videoUrl: `${STORE}media/v.mp4`, imageUrl: `${STORE}media/i.jpg`, imageProvider: "kie" }), true),
+      saveTask(s, task("video", { mediaCredits: 24, videoUrl: `https://thakeen.com/m/${"b".repeat(32)}.mp4`, imageUrl: `https://thakeen.com/m/${"c".repeat(32)}.jpg`, imageProvider: "kie" }), true),
       saveTask(s, task("legacy", { imageUrl: "https://v3.fal.media/files/x.jpg", imageProvider: "fal" }), true),
       saveTask(s, task("refunded", { mediaCredits: 0, imageUrl: "https://placehold.example/x.png", imageProvider: "placeholder" }), true),
       saveTask(s, task("plain"), true),

@@ -8,7 +8,14 @@ test.describe("language routing", () => {
     expect(new URL(page.url()).pathname).toBe("/en");
   });
 
-  test("the nashr_lang cookie wins over Accept-Language", async ({ page, context }) => {
+  test("the thakeen_lang cookie wins over Accept-Language", async ({ page, context }) => {
+    await context.addCookies([{ name: "thakeen_lang", value: "ar", url: "http://localhost" }]);
+    await open(page, "/");
+    expect(new URL(page.url()).pathname).toBe("/ar");
+  });
+
+  // Expand release of the cookie rename (rule 1810): a browser that still holds only the old name keeps its language.
+  test("the old nashr_lang cookie still wins over Accept-Language", async ({ page, context }) => {
     await context.addCookies([{ name: "nashr_lang", value: "ar", url: "http://localhost" }]);
     await open(page, "/");
     expect(new URL(page.url()).pathname).toBe("/ar");

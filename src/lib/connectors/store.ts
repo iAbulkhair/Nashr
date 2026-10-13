@@ -13,7 +13,7 @@ export type Connection = {
 };
 
 /** Holds the OAuth state in the browser that started a connect flow; the callback requires it (see start/route.ts). */
-export const OAUTH_COOKIE = "nashr_oauth";
+export { OAUTH_COOKIE } from "../cookie-names";
 
 /** Production must use its own CONNECT_SECRET: reusing the admin key would let one leaked secret decrypt every tenant's platform credentials. */
 export function connectSecret(): string {

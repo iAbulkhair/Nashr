@@ -325,9 +325,11 @@ describe("media processors are disclosed honestly", () => {
     expect(trained.en).not.toMatch(/^No\b/);
     expect(trained.ar).not.toMatch(/^لا\./);
     const deletion = answer("How do I delete my account?");
-    for (const lang of LANGS) expect(deletion[lang], lang).toContain("Vercel Blob");
-    expect(deletion.en).toContain("None of these is removed by this step");
-    expect(deletion.ar).toContain("ولا يُحذف أي منها بهذه الخطوة");
+    // Rule 1764: our private copies on Hostinger go with the account (rule 1761); older Blob copies do not, and it says so.
+    for (const lang of LANGS) expect(deletion[lang], lang).toContain("Hostinger");
+    expect(deletion.en).toContain("Our private copies of your generated images and videos on Hostinger are deleted with it; older copies on Vercel Blob are not removed by this step.");
+    expect(deletion.ar).toContain("وتُحذف معه نسخنا الخاصة من الصور والفيديو المولَّدة على Hostinger، أما النسخ الأقدم على Vercel Blob فلا تُحذف بهذه الخطوة.");
+    for (const lang of LANGS) expect(privacy(lang), lang).not.toMatch(/public addresses|عناوين عامة/);
   });
 
   it("no help, legal or in-app string claims Arabic lettering inside images works", () => {

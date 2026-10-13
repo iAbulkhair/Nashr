@@ -102,6 +102,13 @@ export const MIN_ROLE = {
   tools: "member",
   support: "member",
   "integrations.request": "member",
+  /**
+   * The workspace's media library (rules 1781-1785): import a file from a connected cloud drive, upload an image from the
+   * device, delete a library file. Like generating an image, any member may.
+   */
+  "library.write": "member",
+  /** Save one of the workspace's own images or clips to its connected cloud drive (rule 1782). Refused while impersonating. */
+  "library.export": "member",
   /** Reem's list: add, update, snooze, reschedule, note, record a follow-up (POST /api/secretary, PATCH, the tools). */
   "todo.write": "member",
   /** One's own private calendar feed link (src/lib/feed-token.ts): create, renew, revoke, status. Refused while impersonating. */
@@ -133,6 +140,8 @@ export const ACTIONS = Object.keys(MIN_ROLE) as Action[];
 /** Refused while a founder impersonates an account, whatever the role: nothing that outlives the two-hour session. */
 export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "account.delete",
+  // A founder viewing an account never sends its files out of Thakeen, even to the customer's own drive (rule 1782).
+  "library.export",
   // A founder viewing an account never downloads its whole data (rule 1320).
   "account.export",
   "password.change",

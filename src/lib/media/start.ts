@@ -22,6 +22,7 @@ import { retryAfter } from "../rate";
 import { mediaDeps } from "./registry";
 import type { MediaDeps, StartError, StartResult } from "./types";
 import { byOf, type By } from "../actor";
+import { fairUseGate } from "../fair-use";
 
 /** The default image model with no provider behind it: the old placeholder card, and nothing charged (spec A1, 4.4 G). */
 export type ImageOutcome = StartResult | { ok: true; placeholder: true; task: Task; credits: number };
@@ -80,6 +81,9 @@ async function placeholder(u: User, t: Task, brand: Brand): Promise<ImageOutcome
 
 export async function renderImage(u: User, t: Task, brand: Brand, requested: unknown, opts: Opts): Promise<ImageOutcome> {
   if (trialOver(u)) return refuse(402, "trial_over");
+  // The fair-use stop (rule 1724): before the prompt writer, the provider and the charge. The free placeholder too: the
+  // owner reads one reason, not a card that looks like a render.
+  if (await fairUseGate(u)) return refuse(402, "fair_use");
   const asked = requested == null || requested === "" ? DEFAULT_IMAGE_MODEL : requested;
   if (!ofKind(asked, "image")) return refuse(400, "bad_model");
   const model = asked as ImageModelId;
@@ -99,6 +103,7 @@ export async function renderImage(u: User, t: Task, brand: Brand, requested: unk
 
 export async function renderVideo(u: User, t: Task, brand: Brand, requested: unknown, opts: Opts): Promise<StartResult> {
   if (trialOver(u)) return refuse(402, "trial_over");
+  if (await fairUseGate(u)) return refuse(402, "fair_use");
   // No default: a video costs 12 or 24 credits, so the owner names the model every time.
   if (!ofKind(requested, "video")) return refuse(400, "bad_model");
   const model = requested as VideoModelId;

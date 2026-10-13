@@ -86,9 +86,9 @@ describe("impersonation (rule 12)", () => {
     const mine = await signIn(founder.email);
     const res = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", reason: "test" }), params({ email: encodeURIComponent(customer.email) }));
     expect(res.status).toBe(200);
-    const temp = jar().get("nashr_session")!;
+    const temp = jar().get("thakeen_session")!;
     expect(temp).not.toBe(mine);
-    expect(jar().get("nashr_return")).toBe(mine);
+    expect(jar().get("thakeen_return")).toBe(mine);
     expect((await currentUser())!.email).toBe(customer.email);
 
     // The temporary session dies on its own after two hours.
@@ -98,16 +98,16 @@ describe("impersonation (rule 12)", () => {
     vi.useRealTimers();
 
     // A fresh impersonation, then the founder returns.
-    jar().clear(); jar().set("nashr_session", mine);
+    jar().clear(); jar().set("thakeen_session", mine);
     await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate" }), params({ email: encodeURIComponent(customer.email) }));
-    const temp2 = jar().get("nashr_session")!;
+    const temp2 = jar().get("thakeen_session")!;
     const form = new FormData(); form.set("lang", "ar");
     const back = await impersonate.POST(new Request("https://nashr.test/api/admin/impersonate", { method: "POST", body: form }));
     expect(back.status).toBe(303);
     expect(await sessionRecord(temp2)).toBeNull();
-    expect(jar().get("nashr_session")).toBe(mine);
-    expect(jar().has("nashr_return")).toBe(false);
-    expect(jar().has("nashr_impersonate")).toBe(false);
+    expect(jar().get("thakeen_session")).toBe(mine);
+    expect(jar().has("thakeen_return")).toBe(false);
+    expect(jar().has("thakeen_impersonate")).toBe(false);
     expect((await currentUser())!.email).toBe(founder.email);
   });
 });

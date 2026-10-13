@@ -28,7 +28,7 @@ afterAll(() => {
 });
 beforeEach(() => {
   resetMediaCounters();
-  mediaEnv({ fal: true, kie: true, higgsfield: true, blob: true, models: "all" });
+  mediaEnv({ fal: true, kie: true, higgsfield: true, store: true, models: "all" });
   vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -110,7 +110,7 @@ describe("starting a render: charge, submit, deliver", () => {
   it("fal without a Blob store keeps the fal URL; with one whose copy fails it still delivers the fal URL and refunds nothing", async () => {
     const u = await owner();
     const t = await taskFor(u);
-    const noBlob = fakeDeps({ fal: fakeAdapter("fal") }, { blob: false });
+    const noBlob = fakeDeps({ fal: fakeAdapter("fal") }, { store: false });
     started(await startMedia(input(u, t, "img-fast"), noBlob));
     expect(noBlob.stored).toEqual([]);
     expect((await getTask(u.email, t.id))!.imageUrl).toBe("https://v3.fal.media/files/test.jpg");
@@ -138,11 +138,11 @@ describe("starting a render: charge, submit, deliver", () => {
     expect(await flightFree(u, t)).toBe(true);
   });
 
-  it("a kie or Higgsfield model without a working Blob store is refused before anything moves", async () => {
+  it("a kie or Higgsfield model without a working disk store (or with a full one, rule 1753) is refused before anything moves", async () => {
     const u = await owner();
     const t = await taskFor(u);
     const kie = fakeAdapter("kie");
-    const r = await startMedia(input(u, t, "img-balanced"), fakeDeps({ kie }, { blob: false }));
+    const r = await startMedia(input(u, t, "img-balanced"), fakeDeps({ kie }, { store: false }));
     expect(r).toMatchObject({ ok: false, status: 409, error: "model_unavailable" });
     expect(kie.submits).toHaveLength(0);
     expect(await balance(u)).toBe(50);
@@ -574,6 +574,17 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     expect(await balance(u)).toBe(49);
     expect(await counter(spend("img-balanced", "usd_micro"))).toBe(2 * 40_000);
     expect(await counter(spend("img-balanced", "failed"))).toBe(1);
+  });
+
+  it("a full disk store (rule 1753) fails the job at once, refunded, with no retry", async () => {
+    const u = await owner();
+    const c = clockAt();
+    const kie = fakeAdapter("kie", { status: () => done(8) });
+    const full = fakeDeps({ kie }, { storeFails: true, storeError: "full", now: c.now });
+    const job = started(await startMedia(input(u, await taskFor(u), "img-balanced", { deadline: c.t + 100_000 }), full));
+    const failed = await advance(job, full, sweep(c.t + 100_000));
+    expect(failed).toMatchObject({ state: "failed", error: "store_failed", refunded: true });
+    expect(await balance(u)).toBe(50);
   });
 
   it("a refund that throws once releases the marker and leaves the job open; the next advance refunds exactly once", async () => {

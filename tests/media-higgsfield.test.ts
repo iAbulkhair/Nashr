@@ -42,7 +42,7 @@ const bodyOf = (c: Call) => JSON.parse(String(c.init.body)) as Record<string, un
 
 beforeEach(() => {
   calls = [];
-  mediaEnv({ higgsfield: true, blob: true, models: "all" });
+  mediaEnv({ higgsfield: true, store: true, models: "all" });
   vi.stubEnv("APP_ORIGIN", "");
 });
 afterEach(() => { globalThis.fetch = real; vi.unstubAllEnvs(); vi.useRealTimers(); });
@@ -132,7 +132,7 @@ describe("the request", () => {
         await expect(higgsfieldAdapter.check!(new AbortController().signal)).rejects.toMatchObject({ code: "unavailable" });
         await expect(higgsfieldAdapter.cancel!({ providerTaskId: RID, model: "img-lifestyle" })).resolves.toBeUndefined();
       }
-      mediaEnv({ higgsfield: true, blob: true, models: "all" });
+      mediaEnv({ higgsfield: true, store: true, models: "all" });
       await expect(submit(input({ model: "vid-motion", aspect: "portrait" }))).rejects.toMatchObject({ code: "rejected", message: "provider_rejected" });
       for (const model of ["img-fast", "img-balanced", "vid-quick", "toString", "__proto__"] as MediaModelId[]) {
         await expect(submit(input({ model })), model).rejects.toMatchObject({ code: "rejected" });

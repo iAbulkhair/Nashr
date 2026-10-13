@@ -165,13 +165,13 @@ export async function listActivity(scope: string, q: ActivityQuery = {}): Promis
 }
 
 /** Outcomes of a scheduled run worth a row every time, and the two the daily cron would otherwise repeat every day. */
-const SKIPPED = new Set(["cap_reached", "agent_cap", "no_credits", "trial_over", "attempts_exhausted", "error"]);
+const SKIPPED = new Set(["cap_reached", "agent_cap", "no_credits", "trial_over", "fair_use", "attempts_exhausted", "error"]);
 const NOTHING_NEW = new Set(["idle", "no_data"]);
 export type ScheduledRun = { id: string; agent: AgentId; type: TaskType; via: "weekly" | "routine"; by: By; period: string; ttlS: number };
 
 /**
  * The outcome of a routine or of the Sunday plan: `routine_ran` for "ok:N", `routine_skipped` for a cap, the credits,
- * the trial, spent attempts or an error, and for "idle" or "no_data" once per routine and period (a SET NX marker with
+ * the trial, the fair-use stop (rule 1723), spent attempts or an error, and for "idle" or "no_data" once per routine and period (a SET NX marker with
  * the period's lifetime). Nothing for "off", "already_this_period", "retry:*" or anything else. Never throws.
  */
 export async function recordRun(scope: string, run: ScheduledRun, outcome: string): Promise<void> {

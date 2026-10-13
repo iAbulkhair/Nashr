@@ -4,6 +4,8 @@
  * then removed from the address bar (`withoutFragment`), and posted in a JSON body to /api/team/accept. Never a query
  * string (CLAUDE.md: secrets are never accepted in URLs).
  */
+import { INVITE_TOKEN_KEY, readStored, removeStored, writeStored } from "@/lib/cookie-names";
+
 const TOKEN = /^[a-f0-9]{64}$/i;
 
 /** The token from `location.hash`, lower-cased, or "" when the fragment carries none or a malformed one. */
@@ -22,7 +24,6 @@ export const withoutFragment = (loc: { pathname: string; search: string }) => `$
  * Forgotten after a successful accept and after the server calls the token invalid. Storage can be blocked (private
  * windows, site data off): every call is wrapped, and the page works without it, as before.
  */
-const STORE_KEY = "nashr_invite_token";
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const store = (): Store | null => {
   try {
@@ -33,7 +34,7 @@ const store = (): Store | null => {
 };
 export function rememberInviteToken(token: string, s: Store | null = store()) {
   try {
-    if (TOKEN.test(token)) s?.setItem(STORE_KEY, token.toLowerCase());
+    if (TOKEN.test(token)) writeStored(s, INVITE_TOKEN_KEY, token.toLowerCase());
   } catch {
     // Storage refused: the fragment was the only copy, as before.
   }
@@ -41,7 +42,7 @@ export function rememberInviteToken(token: string, s: Store | null = store()) {
 /** The remembered token, or "" when there is none, it is malformed, or storage is unavailable. */
 export function recallInviteToken(s: Store | null = store()): string {
   try {
-    const t = s?.getItem(STORE_KEY) ?? "";
+    const t = readStored(s, INVITE_TOKEN_KEY) ?? "";
     return TOKEN.test(t) ? t.toLowerCase() : "";
   } catch {
     return "";
@@ -49,7 +50,7 @@ export function recallInviteToken(s: Store | null = store()): string {
 }
 export function forgetInviteToken(s: Store | null = store()) {
   try {
-    s?.removeItem(STORE_KEY);
+    removeStored(s, INVITE_TOKEN_KEY);
   } catch {
     // Nothing to forget.
   }

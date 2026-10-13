@@ -13,7 +13,7 @@ setup("authenticate and seed the owner", async ({ request, context }) => {
   await signUpOrLogIn(request, OWNER);
 
   const state = await request.storageState();
-  expect(state.cookies.some((c) => c.name === "nashr_session"), "signup/login must set the session cookie").toBe(true);
+  expect(state.cookies.some((c) => c.name === "thakeen_session"), "signup/login must set the session cookie").toBe(true);
 
   const brand = await request.put("/api/brand", { data: SEEDED_BRAND });
   expect(brand.ok(), `seeding the brand failed: ${brand.status()} ${await brand.text()}`).toBe(true);
