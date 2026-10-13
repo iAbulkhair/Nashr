@@ -3,7 +3,7 @@ import { AGENTS } from "@/lib/agents";
 import { AGENT_PAGES, SITE } from "@/lib/site";
 import { TOOLS } from "@/lib/tools";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
-import { VS_PAGES } from "@/lib/pages-vs";
+import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { listPosts } from "@/lib/blog";
 import { LEGAL } from "@/lib/legal";
 import { PARTNER_TERMS } from "@/lib/partner-terms";
@@ -68,7 +68,7 @@ function sections(lang: Lang): Section[] {
         ...s.resources.cards.map((c) => ({ path: c.href, name: c.t, note: c.d })),
       ],
     },
-    { title: s.resources.compare, links: VS_PAGES[lang].map((v) => ({ path: `/vs/${v.slug}`, name: v.title, note: v.tldr })) },
+    { title: s.resources.compare, links: [{ path: "/compare", name: COMPARE_PAGE[lang].title, note: COMPARE_PAGE[lang].desc }] },
     { title: t.nav.tools, links: TOOLS.map((x) => ({ path: `/tools/${x.slug}`, name: x.name[lang], note: x.desc[lang] })) },
     { title: t.nav.blog, links: listPosts(lang).map((p) => ({ path: `/blog/${p.slug}`, name: p.title, note: p.desc })) },
   ];

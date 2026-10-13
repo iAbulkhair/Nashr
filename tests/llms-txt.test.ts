@@ -13,7 +13,7 @@ import { AGENTS } from "@/lib/agents";
 import { AGENT_PAGES, SITE } from "@/lib/site";
 import { TOOLS } from "@/lib/tools";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
-import { VS_PAGES } from "@/lib/pages-vs";
+import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { listPosts } from "@/lib/blog";
 import { LEGAL } from "@/lib/legal";
 import { PARTNER_TERMS } from "@/lib/partner-terms";
@@ -50,7 +50,7 @@ const COPY = (() => {
       Object.values(v).forEach(walk);
     }
   };
-  walk([dict, SITE, SITE_DEFAULT, AGENTS, AGENT_PAGES, INDUSTRY_PAGES, VS_PAGES, TOOLS, LEGAL, PARTNER_TERMS, listPosts("ar"), listPosts("en")]);
+  walk([dict, SITE, SITE_DEFAULT, AGENTS, AGENT_PAGES, INDUSTRY_PAGES, COMPARE_PAGE, TOOLS, LEGAL, PARTNER_TERMS, listPosts("ar"), listPosts("en")]);
   out.delete("");
   return out;
 })();

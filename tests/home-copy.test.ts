@@ -180,8 +180,8 @@ describe("the D homepage copy is true (rule 514)", () => {
 });
 
 describe("the public FAQ, enterprise page and help centre name no AI assistant by brand (rule 514, founder 2026-10-04)", () => {
-  // ChatGPT stays: it is the competitor the comparison pages answer. Claude is the assistant the product runs on, and
-  // the founder asked that public copy not name it.
+  // Claude is the assistant the product runs on, and the founder asked that public copy not name it. Competitors are not
+  // named either since 2026-10-13 (rule 1740, tests/compare-generic.test.ts).
   it("the site FAQ, the enterprise copy and the help topics never say Claude", async () => {
     const { SITE } = await import("@/lib/site");
     const { HELP } = await import("@/lib/help");
@@ -190,9 +190,9 @@ describe("the public FAQ, enterprise page and help centre name no AI assistant b
   });
 
   it("the comparison and sector pages never say Claude either", async () => {
-    const { VS_PAGES } = await import("@/lib/pages-vs");
+    const { COMPARE_PAGE } = await import("@/lib/pages-compare");
     const { INDUSTRY_PAGES } = await import("@/lib/pages-industry");
-    expect(JSON.stringify([VS_PAGES, INDUSTRY_PAGES])).not.toMatch(/Claude|Anthropic/i);
+    expect(JSON.stringify([COMPARE_PAGE, INDUSTRY_PAGES])).not.toMatch(/Claude|Anthropic/i);
   });
 
   it("the public wishlist and the definition page's ask links never say Claude", async () => {

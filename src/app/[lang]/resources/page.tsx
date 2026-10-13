@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { dict, isLang } from "@/lib/i18n";
-import { VS_PAGES } from "@/lib/pages-vs";
+import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { listPosts } from "@/lib/blog";
 import { SITE } from "@/lib/site";
 import Nav from "@/components/Nav";
@@ -63,7 +63,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
         )}
         <section id="compare" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-14 sm:px-6">
           <h2 className="font-display text-2xl font-bold">{s.compare}</h2>
-          <ul className="mt-5 flex flex-wrap gap-3">{VS_PAGES[lang].map((v) => <li key={v.slug} className="max-w-full"><Link href={`/${lang}/vs/${v.slug}`} className="s-chip inline-flex max-w-full items-center text-start"><Scribble kind="pill" seed={`resources-vs-${v.slug}`} fill="paper" ring />{v.title}</Link></li>)}</ul>
+          <ul className="mt-5 flex flex-wrap gap-3"><li className="max-w-full"><Link href={`/${lang}/compare`} className="s-chip inline-flex max-w-full items-center text-start"><Scribble kind="pill" seed="resources-compare" fill="paper" ring />{COMPARE_PAGE[lang].title}</Link></li></ul>
         </section>
         <FinalCta t={t} lang={lang} />
       </main>

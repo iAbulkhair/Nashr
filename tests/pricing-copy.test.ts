@@ -6,7 +6,7 @@ import { CREDIT_TABLE_TYPES, brandsText, chatMessagesText, creditCost, dict, sea
 import { appDict } from "@/lib/app-i18n";
 import { HELP } from "@/lib/help";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
-import { VS_PAGES } from "@/lib/pages-vs";
+import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { SITE } from "@/lib/site";
 import { CHANGELOG } from "@/lib/changelog";
 import { MEDIA_MODELS } from "@/lib/media-catalog";
@@ -236,14 +236,12 @@ describe("the other pages read the same tables (rule 248)", () => {
     }
   });
 
-  it("comparison pages: our price is the Starter price, the range is Starter to Business, the trial credits are the table's", () => {
+  it("comparison page: our price is the Starter price, the range is Starter to Business, the trial credits are the table's", () => {
     for (const lang of LANGS) {
-      const rows = VS_PAGES[lang].flatMap((p) => p.rows);
-      const priced = rows.filter((r) => /^(Price|السعر)$/.test(r.dim));
-      expect(priced.length, lang).toBe(4);
-      for (const r of priced) expect(r.us, lang).toContain(String(P.starter));
+      const rows = COMPARE_PAGE[lang].groups.flatMap((g) => g.rows);
+      expect(rows.find((r) => /^(Cost|التكلفة)$/.test(r.dim))!.us, lang).toContain(String(P.starter));
       expect(rows.find((r) => /^(Monthly cost|التكلفة الشهرية)$/.test(r.dim))!.us, lang).toContain(`${P.starter}–${P.business}`);
-      expect(rows.find((r) => /^(Trial|التجربة)$/.test(r.dim))!.us, lang).toContain(String(PLAN_CREDITS.trial));
+      expect(COMPARE_PAGE[lang].faq.at(-1)!.a, lang).toContain(String(PLAN_CREDITS.trial));
     }
   });
 
@@ -310,7 +308,7 @@ describe("the other pages read the same tables (rule 248)", () => {
 
   it("no copy module types a current price or allowance: they all come from the table", () => {
     const FILES = [
-      "src/lib/i18n.ts", "src/lib/app-i18n.ts", "src/lib/help.ts", "src/lib/site.ts", "src/lib/pages-industry.ts", "src/lib/pages-vs.ts",
+      "src/lib/i18n.ts", "src/lib/app-i18n.ts", "src/lib/help.ts", "src/lib/site.ts", "src/lib/pages-industry.ts", "src/lib/pages-compare.ts",
       "src/lib/lifecycle.ts", "src/lib/changelog.ts", "src/components/Pricing.tsx", "src/app/[lang]/app/settings/billing/page.tsx",
       "src/app/[lang]/ai-marketing-agent/page.tsx", "src/components/app/BrandsPanel.tsx", "src/components/app/StartLaunch.tsx", "src/components/app/DictionaryStart.tsx",
       "src/components/app/TasksPanel.tsx", "src/components/app/settings/CreditUsageCard.tsx", "src/components/admin/shared.tsx", "src/components/admin/Users.tsx",

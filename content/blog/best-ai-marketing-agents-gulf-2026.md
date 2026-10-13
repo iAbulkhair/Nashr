@@ -1,13 +1,13 @@
 ---
-title_ar: 8 خيارات لوكلاء تسويق بالذكاء الاصطناعي في الخليج 2026: أيها يناسبك؟
-title_en: 8 AI marketing agent options for the Gulf in 2026: which one fits you?
+title_ar: التسويق بالذكاء الاصطناعي في الخليج 2026: أي نوع من الخيارات يناسبك؟
+title_en: AI marketing in the Gulf in 2026: which kind of option fits you?
 date: 2026-09-17
-desc_ar: نقارن 8 خيارات بستة معايير: التنفيذ، العربية واللهجات، القنوات الخليجية، الالتزام، التحكم البشري، والسعر. ذكين يبني أحدها، لذلك نعرض رأينا بلا درجات ولا ترتيب، ونترك الاختبار لك.
-desc_en: We compare 8 options on six criteria: execution, Arabic and dialects, Gulf channels, compliance, human control and price. Thakeen builds one of them, so this is our opinion with no scores and no ranking, and the test is yours.
+desc_ar: نقارن أنواع الخيارات لا أسماءها، بستة معايير: التنفيذ، العربية واللهجات، القنوات الخليجية، الالتزام، التحكم البشري، والسعر. ذكين يبني أحدها، لذلك نعرض رأينا بلا درجات ولا ترتيب، ونترك الاختبار لك.
+desc_en: We compare kinds of option, not names, on six criteria: execution, Arabic and dialects, Gulf channels, compliance, human control and price. Thakeen builds one of them, so this is our opinion with no scores and no ranking, and the test is yours.
 ---
 ## الإفصاح
 
-ذكين يبني نور، وهي أحد الخيارات في هذه المقالة. لذلك ما تقرؤه هنا **رأينا نحن**، لا تقييماً محايداً: لا نعطي درجات، ولا نرتّب الأدوات، ولا نضع أنفسنا في المقدمة. الأدوات مرتبة أبجدياً بالإنجليزية، والوكالة في آخر القائمة لأنها مرجع لا منتج. راسلنا على hello@thakeen.com إذا وجدت معلومة غير دقيقة.
+ذكين يبني نور، وهي أحد الخيارات في هذه المقالة. لذلك ما تقرؤه هنا **رأينا نحن**، لا تقييماً محايداً: لا نعطي درجات، ولا نرتّب الأدوات، ولا نضع أنفسنا في المقدمة. نذكر أنواعاً لا أسماء، والأدوات داخل النوع الواحد تختلف، فتحقّق من الأداة التي تفكر بها بنفسك. المستقل والوكالة في آخر القائمة لأنهما مرجع لا منتج. راسلنا على hello@thakeen.com إذا وجدت معلومة غير دقيقة.
 
 ## المعايير التي ننظر إليها
 
@@ -18,29 +18,28 @@ desc_en: We compare 8 options on six criteria: execution, Arabic and dialects, G
 - **التحكم البشري:** موافقة قبل النشر، وحوكمة واضحة.
 - **السعر:** ما تدفعه مقابل ما تحصل عليه.
 
-## أين يتميز كل خيار، برأينا
+## أين يتميز كل نوع، برأينا
 
 | الخيار | أين يتميز | ما ينقصه للسوق الخليجي |
 |---|---|---|
-| ChatGPT | مساعد عام مرن وسعره في متناول الجميع | لا ينفّذ ولا ينشر، وأنت من يزوّده بسياق علامتك كل مرة |
-| Enrich Labs (Helena) | أوسع تنفيذ وتكاملات غربية كثيرة | لا قنوات خليجية، ولا لهجات |
-| Hootsuite / Buffer | جدولة موثوقة لما تكتبه أنت | لا يكتب ولا يخطط |
-| Jasper | كتابة قوية بالإنجليزية | ليس وكيلاً للخليج |
+| أدوات المحادثة العامة بالذكاء الاصطناعي | مرنة لكل شيء وفي متناول الجميع | لا تنفّذ ولا تنشر، وأنت من يزوّدها بسياق علامتك كل مرة |
+| مساعدات الكتابة العالمية | كتابة قوية بالإنجليزية | ليست مبنية للهجات الخليج ولا لمواسمه |
+| أدوات الجدولة | جدولة موثوقة لما تكتبه أنت | لا تكتب ولا تخطط |
+| وكلاء التسويق العالميون | تنفيذ واسع وتكاملات غربية كثيرة | مبنية حول القنوات الغربية، وبلا لهجات خليجية في الغالب |
 | نور (ذكين) | لهجات خليجية، تقويم هجري، مراجِع ثانٍ للالتزام، وخطة أسبوعية تلقائية | النشر اليوم إلى Telegram أو كمسودة في WordPress فقط؛ لا نشر بعد على سناب أو واتساب، وربط سلة وزد مخطط له بعد اعتماد التطبيقين، والمنتج جديد |
-| Okara AI CMO | وكيل تسويق عام | بالإنجليزية، بلا قنوات خليجية |
-| Sintra | مجموعة مساعدين عامة | بالإنجليزية، بلا قنوات خليجية |
-| وكالة محلية (مرجع، ليست منتجاً) | أعلى جودة إبداعية، وتعرف السوق | الأعلى سعراً والأبطأ تسليماً |
+| مستقل (مرجع، ليس منتجاً) | حس بشري وعلاقة مباشرة | وقته محدود، وتبدأ من جديد إذا تغيّر |
+| وكالة محلية (مرجع، ليست منتجاً) | أعلى جودة إبداعية، وتعرف السوق | التكلفة الأعلى عادةً، والتسليم حسب جدولها |
 
 ## كيف تختار
 
-لا تعتمد على رأينا ولا على رأي غيرنا. اختبر أداة واحدة على قناة واحدة لمدة أسبوعين، وقِس شيئاً واحداً: كم عنصراً اعتمدته بلا تعديل؟ إذا كانت أغلب العناصر تُعتمد بلا تعديل بعد الأسبوع الثاني، فأنت في المكان الصحيح.
+لا تعتمد على رأينا ولا على رأي غيرنا. اختبر خياراً واحداً على قناة واحدة لمدة أسبوعين، وقِس شيئاً واحداً: كم عنصراً اعتمدته بلا تعديل؟ إذا كانت أغلب العناصر تُعتمد بلا تعديل بعد الأسبوع الثاني، فأنت في المكان الصحيح.
 
-[جرّب نور مجاناً](/ar/app/signup)
+للتفصيل: [ذكين مقارنةً بالبدائل](/ar/compare). أو [جرّب نور مجاناً](/ar/app/signup).
 
 ---EN---
 ## Disclosure
 
-Thakeen builds Noor, one of the options in this article. So what you read here is **our own opinion**, not a neutral review: we give no scores, we do not rank the tools, and we do not put ourselves first. Tools are listed alphabetically, and the agency comes last because it is a reference, not a product. Email us at hello@thakeen.com if you find anything inaccurate.
+Thakeen builds Noor, one of the options in this article. So what you read here is **our own opinion**, not a neutral review: we give no scores, we do not rank the tools, and we do not put ourselves first. We name kinds, not products, and tools within one kind differ, so check the one you have in mind yourself. The freelancer and the agency come last because they are a reference, not a product. Email us at hello@thakeen.com if you find anything inaccurate.
 
 ## The criteria we look at
 
@@ -51,21 +50,20 @@ Thakeen builds Noor, one of the options in this article. So what you read here i
 - **Human control:** approval before publishing, and clear governance.
 - **Price:** what you pay for what you get.
 
-## Where each option stands out, in our opinion
+## Where each kind stands out, in our opinion
 
 | Option | Where it stands out | What it lacks for the Gulf |
 |---|---|---|
-| ChatGPT | A flexible general assistant at an accessible price | Does not execute or publish; you supply the brand context every time |
-| Enrich Labs (Helena) | The broadest execution and many Western integrations | No Gulf channels, no dialects |
-| Hootsuite / Buffer | Reliable scheduling for what you write | Does not write or plan |
-| Jasper | Strong English writing | Not a Gulf agent |
+| General AI chat tools | Flexible for everything and within everyone's reach | Do not execute or publish; you supply the brand context every time |
+| Global writing assistants | Strong English writing | Not built for Gulf dialects or seasons |
+| Scheduling tools | Reliable scheduling for what you write | Do not write or plan |
+| Global marketing agents | Broad execution and many Western integrations | Built around Western channels, mostly without Gulf dialects |
 | Noor (Thakeen) | Gulf dialects, Hijri calendar, a second reviewer for compliance, an automatic weekly plan | Publishing today goes to Telegram or a WordPress draft only; no Snapchat or WhatsApp publishing yet, the Salla and Zid link is planned once both apps are approved, and the product is new |
-| Okara AI CMO | A general marketing agent | English, no Gulf channels |
-| Sintra | A set of general assistants | English, no Gulf channels |
-| Local agency (reference, not a product) | The highest creative quality, and knows the market | The highest price and the slowest turnaround |
+| Freelancer (reference, not a product) | A human touch and a direct relationship | Limited time, and you start again if they change |
+| Local agency (reference, not a product) | The highest creative quality, and knows the market | Usually the highest cost, and delivery on its own schedule |
 
 ## How to choose
 
-Don't rely on our opinion or anyone else's. Test one tool on one channel for two weeks, and measure one thing: how many items did you approve without editing? If most items are approved without edits by week two, you're in the right place.
+Don't rely on our opinion or anyone else's. Test one option on one channel for two weeks, and measure one thing: how many items did you approve without editing? If most items are approved without edits by week two, you're in the right place.
 
-[Try Noor free](/en/app/signup)
+In more detail: [Thakeen compared with the alternatives](/en/compare). Or [try Noor free](/en/app/signup).

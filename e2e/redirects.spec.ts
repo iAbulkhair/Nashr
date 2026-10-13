@@ -52,8 +52,23 @@ test.describe("unauthenticated access to the app", () => {
   }
 });
 
+// The comparison pages that named competitors are gone (rule 1742): each old address answers 308 to the comparison by
+// kind, in its own language, so a saved link or a search result never lands on a 404.
+test.describe("retired comparison addresses", () => {
+  const RETIRED = ["/vs/enrich-labs", "/vs/chatgpt", "/vs/jasper", "/vs/agency", "/vs/hootsuite", "/vs/not-a-competitor", "/blog/nashr-vs-enrich-labs"];
+  for (const lang of LANGS) {
+    for (const path of RETIRED) {
+      test(`/${lang}${path} answers 308 to /${lang}/compare`, async ({ request }) => {
+        const res = await request.get(`/${lang}${path}`, { maxRedirects: 0 });
+        expect(res.status()).toBe(308);
+        expect(new URL(res.headers()["location"], "http://localhost").pathname).toBe(`/${lang}/compare`);
+      });
+    }
+  }
+});
+
 test.describe("not found", () => {
-  const MISSING = ["/ar/nope", "/en/nope", "/ar/tools/not-a-tool", "/ar/blog/not-a-post", "/ar/for/not-an-industry", "/ar/vs/not-a-competitor", "/ar/agents/not-an-agent"];
+  const MISSING = ["/ar/nope", "/en/nope", "/ar/tools/not-a-tool", "/ar/blog/not-a-post", "/ar/for/not-an-industry", "/ar/agents/not-an-agent"];
   for (const path of MISSING) {
     test(`${path} answers 404`, async ({ page }) => {
       const res = await open(page, path);

@@ -16,7 +16,7 @@ import { dict } from "@/lib/i18n";
 import { AGENT_PAGES, SITE } from "@/lib/site";
 import { TOOLS } from "@/lib/tools";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
-import { VS_PAGES } from "@/lib/pages-vs";
+import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { listPosts } from "@/lib/blog";
 import { SITE_DEFAULT } from "@/lib/page-meta";
 import { ACCOUNT_EXPORTS_PER_DAY, ACCOUNT_EXPORTS_PER_HOUR, EXPORT_FORMAT, SECRETISH, connectionView, type AccountExport } from "@/lib/privacy-export";
@@ -277,7 +277,7 @@ describe("rule 1328: the privacy and help text point at the self-serve export; v
   });
 
   it("no infrastructure vendor is named in the marketing site's copy (founder default: privacy and help only)", () => {
-    const copy = strings([dict, SITE, SITE_DEFAULT, AGENT_PAGES, INDUSTRY_PAGES, VS_PAGES, TOOLS, listPosts("ar"), listPosts("en")]).join("\n");
+    const copy = strings([dict, SITE, SITE_DEFAULT, AGENT_PAGES, INDUSTRY_PAGES, COMPARE_PAGE, TOOLS, listPosts("ar"), listPosts("en")]).join("\n");
     for (const name of ["Hostinger", "Upstash", "Straitly", "Composio", "Higgsfield", "kie.ai", "Vercel", "Resend"]) expect(copy, name).not.toContain(name);
   });
 });
