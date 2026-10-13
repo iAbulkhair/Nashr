@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
+import { idleInTime, renewIdle, type IdleLimits } from "./idle-session";
 import type { AgentId } from "./agents";
 import type { Member } from "./team";
 import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
@@ -557,14 +558,10 @@ export const ADMIN_SESSION_RENEW = 60;
 type AdminSession = { kp: string; at: number; seen?: number };
 const adminKeyPrint = (key: string) => createHash("sha256").update(`nashr-admin-key:${key}`).digest("hex");
 const adminSessionKey = (id: string) => `adminsession:${createHash("sha256").update(id).digest("hex")}`;
-/** Seconds the record may live from `now`: the idle window, cut short by the absolute cap. 0 when it is over. */
-const adminSessionTtl = (rec: AdminSession, now: number) =>
-  Math.max(0, Math.min(ADMIN_SESSION_IDLE, Math.floor((rec.at + ADMIN_SESSION_MAX * 1000 - now) / 1000)));
+/** The key session's limits, kept by the shared idle-session logic (src/lib/idle-session.ts) the staff session uses too. */
+const ADMIN_LIMITS: IdleLimits = { idle: ADMIN_SESSION_IDLE, max: ADMIN_SESSION_MAX, renew: ADMIN_SESSION_RENEW };
 /** Both limits checked in code, whatever TTL the record was stored with. */
-const adminSessionInTime = (rec: AdminSession, now: number) =>
-  typeof rec.at === "number" &&
-  now - rec.at < ADMIN_SESSION_MAX * 1000 &&
-  now - (typeof rec.seen === "number" ? rec.seen : rec.at) < ADMIN_SESSION_IDLE * 1000;
+const adminSessionInTime = (rec: AdminSession, now: number) => idleInTime(rec, now, ADMIN_LIMITS);
 
 /** Open a key session for the current key and set its cookie. The caller has already checked the key. */
 export async function createAdminSession(): Promise<void> {
@@ -606,11 +603,7 @@ export async function adminKeySession(): Promise<boolean> {
  * fails the request it rode on.
  */
 async function renewAdminSession(k: string, rec: AdminSession, now: number): Promise<void> {
-  const last = typeof rec.seen === "number" ? rec.seen : rec.at;
-  const ttl = adminSessionTtl(rec, now);
-  if (now - last >= ADMIN_SESSION_RENEW * 1000 && ttl > 0) {
-    await db.setXx(k, { kp: rec.kp, at: rec.at, seen: now } satisfies AdminSession, ttl).catch(() => false);
-  }
+  await renewIdle(k, { kp: rec.kp, at: rec.at, ...(typeof rec.seen === "number" ? { seen: rec.seen } : {}) } satisfies AdminSession, now, ADMIN_LIMITS);
 }
 
 /**
