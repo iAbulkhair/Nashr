@@ -12,7 +12,7 @@ import { listNotifs } from "@/lib/notifications";
 import { monthKey } from "@/lib/credits";
 import { SAR_PER_USD } from "@/lib/pricing";
 import { mediaCostKey, meterRender, usageMonthKeys } from "@/lib/usage";
-import { MARGIN_ALERT_PCT, MARGIN_LAST_KEY, accountMargins, alertText, marginAlertedKey, marginDayKey, marginPct, runMarginAlert, underFloor } from "@/lib/margin";
+import { MARGIN_ALERT_PCT, MARGIN_DAY_TTL_S, MARGIN_LAST_KEY, accountMargins, alertText, marginAlertedKey, marginDayKey, marginPct, runMarginAlert, underFloor } from "@/lib/margin";
 import { INTEGRATIONS, gatesOf, integrationNames, integrationsView, statusOf } from "@/lib/integration-status";
 import { ADMIN_LABEL, ADMIN_SECTIONS } from "@/lib/admin-gate";
 import { PROVIDERS } from "@/lib/connectors/registry";
@@ -124,6 +124,14 @@ describe("the daily run (rules 1534-1539)", () => {
     const last = await db.get<Record<string, unknown>>(MARGIN_LAST_KEY);
     expect(last).toMatchObject({ day: "2031-05-10", under: r1.under, alerted: r1.alerted });
     expect(JSON.stringify(last)).not.toContain("@");
+    // The day's rows (with emails) live 8 days, the per-account marker 2 days, the counts until the next run (rules 1535, 1538).
+    expect(MARGIN_DAY_TTL_S).toBe(8 * 86400);
+    const [dayTtl, markerTtl, lastTtl] = await Promise.all([db.ttl(marginDayKey("2031-05-10")), db.ttl(marginAlertedKey("2031-05-10", low.email)), db.ttl(MARGIN_LAST_KEY)]);
+    expect(dayTtl).toBeGreaterThan(8 * 86400 - 60);
+    expect(dayTtl).toBeLessThanOrEqual(8 * 86400);
+    expect(markerTtl).toBeGreaterThan(2 * 86400 - 60);
+    expect(markerTtl).toBeLessThanOrEqual(2 * 86400);
+    expect(lastTtl).toBe(-1);
 
     const bell1 = (await listNotifs(founder.email)).filter((n) => n.href.endsWith("/admin/usage#margin"));
     expect(bell1).toHaveLength(1);
