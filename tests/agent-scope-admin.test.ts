@@ -11,6 +11,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
  *   result. The classifier is mocked: no test here calls the paid model.
  * - 1413: `GET /api/admin/agent-scope` (founder only) answers the modes, the last eval, the day's log and the month's
  *   classifier counters; a bad `day` reads today. The Quality section renders the panel.
+ * - 1500-1503 (docs/system/tests/1500-agent-scope-toggles.md): the modes route asks a reason (400 `reason_short` /
+ *   `reason_long`, checked after the 401 and the modes) and writes it into the audit row; the panel saves only through the
+ *   reason form, names every value and hint in both languages, and uses no browser prompt or confirm.
  */
 const st = vi.hoisted(() => ({ state: "on" as "on" | "paused" | "mock", calls: 0, answer: null as null | ((text: string) => string) }));
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => st.state }));
@@ -32,6 +35,7 @@ import { AGENT_SCOPE_MAX_WRONG, AGENT_SCOPE_MIN_RECALL, AGENT_SCOPE_SET, scoreAg
 import * as overview from "@/app/api/admin/agent-scope/route";
 import * as modesRoute from "@/app/api/admin/agent-scope/modes/route";
 import * as evalRoute from "@/app/api/admin/agent-scope/eval/route";
+import { AGENT_SCOPE_PANEL_COPY } from "@/components/admin/AgentScopePanel";
 
 const KEY = "agent-scope-admin-key-0123456789";
 beforeAll(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); });
@@ -43,7 +47,9 @@ beforeEach(async () => {
   await Promise.all([db.del(AGENT_SCOPE_KEYS.modes), db.del(AGENT_SCOPE_KEYS.evalLast), db.del(AGENT_SCOPE_KEYS.evalLock)]);
 });
 
-const setModes = (body: unknown) => modesRoute.POST(json("/api/admin/agent-scope/modes", "POST", body));
+const REASON = "two weeks of shadow read";
+/** A modes change with the console's reason, unless the body is not an object (then it is sent as it is). */
+const setModes = (body: unknown) => modesRoute.POST(json("/api/admin/agent-scope/modes", "POST", body && typeof body === "object" && !("reason" in body) ? { ...body, reason: REASON } : body));
 const runEval = () => evalRoute.POST(json("/api/admin/agent-scope/eval", "POST", {}));
 const getPanel = (q = "") => overview.GET(json(`/api/admin/agent-scope${q}`, "GET"));
 const passed = (model = agentScopeModel()): AgentScopeEval => ({ at: new Date().toISOString(), model, total: 200, errors: 0, recall: 0.97, wrongRefusals: 0.01, passed: true, byVerdict: Object.fromEntries(VERDICTS.map((v) => [v, { n: 1, caught: 1, exact: 1 }])) as AgentScopeEval["byVerdict"] });
@@ -136,13 +142,72 @@ describe("rule 1412: modes route", () => {
     expect(await r.json()).toEqual({ ok: true, modes: { prompt: "on", input: "enforce", role: "shadow", output: "enforce" } });
     expect(await readAgentScopeModes()).toEqual({ prompt: "on", input: "enforce", role: "shadow", output: "enforce" });
     const row = JSON.parse((await db.lrange("admin:log", 0, 0))[0]);
-    expect(row).toMatchObject({ actor: "key", what: "agent_scope_modes", before: AGENT_SCOPE_DEFAULT_MODES, after: { input: "enforce", output: "enforce" } });
+    expect(row).toMatchObject({ actor: "key", what: "agent_scope_modes", before: AGENT_SCOPE_DEFAULT_MODES, after: { input: "enforce", output: "enforce" }, reason: REASON });
   });
   it("role may go to enforce, and any layer back to shadow or off, without an eval", async () => {
     await adminSignIn();
     expect((await setModes({ role: "enforce" })).status).toBe(200);
     expect((await setModes({ prompt: "off", input: "off", output: "shadow" })).status).toBe(200);
     expect(await readAgentScopeModes()).toEqual({ prompt: "off", input: "off", role: "enforce", output: "shadow" });
+  });
+});
+
+describe("rules 1500-1501: the modes route asks a reason", () => {
+  it("401 before the reason; a missing, short or long reason is 400 and writes nothing", async () => {
+    expect((await setModes({ role: "enforce", reason: "" })).status).toBe(401);
+    await adminSignIn();
+    const logBefore = (await db.lrange("admin:log", 0, -1)).length;
+    for (const [reason, error] of [[undefined, "reason_short"], ["", "reason_short"], ["  ab \n", "reason_short"], [42, "reason_short"], ["x".repeat(201), "reason_long"]] as const) {
+      const body: Record<string, unknown> = { role: "enforce", reason };
+      if (reason === undefined) delete body.reason;
+      const r = await modesRoute.POST(json("/api/admin/agent-scope/modes", "POST", body));
+      expect(r.status, String(reason)).toBe(400);
+      expect(await r.json(), String(reason)).toEqual({ ok: false, error });
+    }
+    // A bad mode is answered before the reason, as before.
+    expect(await (await modesRoute.POST(json("/api/admin/agent-scope/modes", "POST", { role: "loud" }))).json()).toEqual({ ok: false, error: "bad_mode" });
+    expect(await readAgentScopeModes()).toEqual(AGENT_SCOPE_DEFAULT_MODES);
+    expect((await db.lrange("admin:log", 0, -1)).length).toBe(logBefore);
+  });
+  it("a valid reason saves the change and goes into the audit row, trimmed to one line", async () => {
+    await adminSignIn();
+    const r = await setModes({ role: "enforce", reason: "  roles look right\nin the log  " });
+    expect(r.status).toBe(200);
+    expect(await readAgentScopeModes()).toEqual({ ...AGENT_SCOPE_DEFAULT_MODES, role: "enforce" });
+    const row = JSON.parse((await db.lrange("admin:log", 0, 0))[0]);
+    expect(row).toMatchObject({ actor: "key", section: "quality", what: "agent_scope_modes", before: { role: "shadow" }, after: { role: "enforce" }, reason: "roles look right in the log" });
+  });
+  it("the reason does not open the eval gate: enforce on input still needs a passed eval", async () => {
+    await adminSignIn();
+    const r = await setModes({ input: "enforce" });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ ok: false, error: "eval_not_passed" });
+  });
+});
+
+describe("rules 1502-1503: the panel's switches", () => {
+  const panel = readFileSync("src/components/admin/AgentScopePanel.tsx", "utf8");
+  it("every stored value has a label and every layer a hint per value, in Arabic and English; stored values unchanged", () => {
+    const want = { prompt: ["on", "off"], input: ["off", "shadow", "enforce"], role: ["off", "shadow", "enforce"], output: ["off", "shadow", "enforce"] };
+    for (const lang of ["ar", "en"] as const) {
+      const S = AGENT_SCOPE_PANEL_COPY[lang];
+      for (const [k, vals] of Object.entries(want)) for (const v of vals) {
+        expect(S.values[v], `${lang} ${v}`).toBeTruthy();
+        expect(S.hints[k as keyof typeof want]?.[v], `${lang} ${k}.${v}`).toBeTruthy();
+      }
+      expect(S.errs.reason_short, lang).toBeTruthy();
+      expect(S.errs.reason_long, lang).toBeTruthy();
+    }
+    expect(AGENT_SCOPE_PANEL_COPY.ar.values).toMatchObject({ on: "مفعّلة", off: "متوقفة", shadow: "مراقبة فقط", enforce: "ترفض فعلاً" });
+    expect(panel).toContain('prompt: ["on", "off"], input: ["off", "shadow", "enforce"], role: ["off", "shadow", "enforce"], output: ["off", "shadow", "enforce"]');
+  });
+  it("a pick opens the reason form and posts only its answer; no browser prompt or confirm; defaults untouched", () => {
+    expect(panel).toContain("useAdminForm(lang)");
+    expect(panel).toContain("{formDialog}");
+    expect(panel).toMatch(/onChange=\{\(e\) => void change\(k, e\.target\.value\)\}/);
+    expect(panel).toMatch(/if \(v\) await post\("\/api\/admin\/agent-scope\/modes", v\)/);
+    expect(panel).not.toMatch(/\b(window\.)?(prompt|confirm)\(/);
+    expect(AGENT_SCOPE_DEFAULT_MODES).toEqual({ prompt: "on", input: "shadow", role: "shadow", output: "shadow" });
   });
 });
 
