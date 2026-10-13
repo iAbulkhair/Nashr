@@ -276,6 +276,10 @@ const READS: Record<string, Gate> = {
   "GET /api/activity/export": g("member", "read"),
   "GET /api/handoffs/[id]": g("member", "read"),
   "GET /api/media/[jobId]": "member",
+  // Our media files (rules 1754-1758): a signed-in member of the workspace that holds the file, or a short signed link
+  // minted at hand-off; both checked inside, everything else is the same 404. Rate limited per IP first, so "public".
+  "GET /m/[name]": "public",
+  "HEAD /m/[name]": "public",
 
   "GET /api/cron/daily": "cron",
   "GET /api/cron/weekly": "cron",

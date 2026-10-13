@@ -71,10 +71,11 @@ export type Overview = {
 };
 /** GET /api/admin/media. A check value that is a string is an error code; a provider not configured is null. */
 export type MediaCheck = {
-  configured: { fal: boolean; kie: boolean; higgsfield: boolean; blob: boolean; webhooks: boolean };
+  configured: { fal: boolean; kie: boolean; higgsfield: boolean; store: boolean; webhooks: boolean };
   modelsOn: string[];
   available: string[];
-  blob: string;
+  /** The disk store probe (rule 1762): status code, builds survived, usage against the ceilings. No tenant data. */
+  store: { status: string; survivedBuilds: number | null; usage: { bytes: number; files: number }; limits: { maxBytes: number; maxFiles: number; maxFileBytes: number }; freeBytes: number | null };
   kie: Record<string, number | string> | null;
   higgsfield: Record<string, number | string> | null;
   open: Record<string, number>;

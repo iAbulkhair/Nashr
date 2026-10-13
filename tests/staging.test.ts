@@ -60,6 +60,20 @@ describe("the staging lock (rules 674, 677)", () => {
       const r = proxy(req(p)); expect(r.status, p).not.toBe(404); expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     }
   });
+  it("rule 1760: /m/ passes the lock without a cookie (the route checks its own session or signature); look-alikes stay locked", async () => {
+    vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key);
+    const { proxy } = await import("@/proxy");
+    const { stagingOpen } = await import("@/lib/staging-access");
+    const file = `/m/${"a".repeat(32)}.jpg`;
+    expect(stagingOpen(file)).toBe(true);
+    const r = proxy(req(file));
+    expect(r.status).not.toBe(404);
+    expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    for (const p of ["/m", "/mx/a.jpg", "/M/a.jpg", "/ar/m/a.jpg", "/api/m/a.jpg"]) {
+      expect(stagingOpen(p), p).toBe(false);
+      expect(proxy(req(p)).status, p).toBe(404);
+    }
+  });
   it("valid cookie passes with noindex; a wrong cookie or a missing key stays locked", async () => {
     vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key);
     const { proxy } = await import("@/proxy");

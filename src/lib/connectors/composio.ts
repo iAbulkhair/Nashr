@@ -4,7 +4,8 @@ import { allow } from "../rate";
 import { appOrigin } from "../origin";
 import { connectSecret } from "./store";
 import { PROVIDER_TOOLKITS, TOOLKITS, type Toolkit } from "./composio-catalog";
-import { isOurBlobUrl } from "../media-catalog";
+import { isOurMediaUrl } from "../media-catalog";
+import { shareUrl } from "../media/share";
 
 /**
  * The only file that talks to Composio (docs/superpowers/specs/2026-10-05-meta-via-composio-design.md, section 3).
@@ -170,19 +171,19 @@ export const composioWrite = (scope: string, toolkit: Toolkit, slug: string, arg
 const STAGE_TIMEOUT_MS = 30_000;
 
 /**
- * Stage a file with Composio for a write tool that takes one (YouTube's upload). Only our own Vercel Blob copy is ever
- * handed over (isOurBlobUrl), so Composio fetches nothing a request or a model chose. Nothing is posted yet: a failure
+ * Stage a file with Composio for a write tool that takes one (YouTube's upload). Only our own copy is ever handed over
+ * (isOurMediaUrl), as a short signed link minted here (rule 1755), so Composio fetches nothing a request or a model chose. Nothing is posted yet: a failure
  * here is a refusal (`composio_stage_failed`), never "may have posted".
  */
 export async function composioStageFile(scope: string, toolkit: Toolkit, slug: string, url: string): Promise<StagedFile> {
   if (!Object.prototype.hasOwnProperty.call(TOOLKITS[toolkit]?.write ?? {}, slug)) throw new Error("composio_tool_not_allowed");
-  if (!isOurBlobUrl(url)) throw new Error("composio_file_not_allowed");
+  if (!isOurMediaUrl(url)) throw new Error("composio_file_not_allowed");
   const c = await getClient();
   await count(scope);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const f = await Promise.race([
-      c.files.upload({ file: url, toolSlug: slug, toolkitSlug: toolkit }),
+      c.files.upload({ file: shareUrl(url), toolSlug: slug, toolkitSlug: toolkit }),
       new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error("timeout")), STAGE_TIMEOUT_MS); }),
     ]);
     if (!f?.s3key || !f.name || !f.mimetype) throw new Error("no_key");

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";
-import { STAGING_COOKIE, STAGING_OPEN_PATHS, hasAccess } from "@/lib/staging-access";
+import { STAGING_COOKIE, hasAccess, stagingOpen } from "@/lib/staging-access";
 import { legacySettingsPath } from "@/lib/settings-nav";
 import { LANG_COOKIE, readCookie } from "@/lib/cookie-names";
 
@@ -28,9 +28,9 @@ export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const staging = isStaging();
 
-  // Staging lock (rules 674, 677): without the access cookie every path but the four open ones is a bare 404, and
-  // with no STAGING_ACCESS_KEY nobody gets in. The proxy sees every path, so this runs before anything else.
-  if (staging && !STAGING_OPEN_PATHS.has(pathname) && !hasAccess(req.cookies.get(STAGING_COOKIE)?.value)) {
+  // Staging lock (rules 674, 677): without the access cookie every path but the four open ones and `/m/` (rule 1760) is
+  // a bare 404, and with no STAGING_ACCESS_KEY nobody gets in. The proxy sees every path, so this runs before anything else.
+  if (staging && !stagingOpen(pathname) && !hasAccess(req.cookies.get(STAGING_COOKIE)?.value)) {
     return new NextResponse(null, { status: 404, headers: { "x-robots-tag": NOINDEX } });
   }
 

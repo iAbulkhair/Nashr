@@ -1,12 +1,20 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { vi } from "vitest";
 import type { MediaKind, MediaProviderId } from "@/lib/media-catalog";
-import { StoreError, type MediaAdapter, type MediaDeps, type StatusResult, type StoredMedia, type SubmitInput, type SubmitResult } from "@/lib/media/types";
+import { StoreError, type StoreErrorCode, type MediaAdapter, type MediaDeps, type StatusResult, type StoredMedia, type SubmitInput, type SubmitResult } from "@/lib/media/types";
 
-/** Every variable that switches a media provider, the Blob store or a model on. Tests set ALL of them, never FAL_KEY alone. */
-export const MEDIA_ENV = { fal: ["FAL_KEY"], kie: ["KIE_API_KEY"], hmac: ["KIE_WEBHOOK_HMAC_KEY"], higgsfield: ["HIGGSFIELD_API_KEY_ID", "HIGGSFIELD_API_KEY_SECRET"], blob: ["BLOB_READ_WRITE_TOKEN"] } as const;
+/** Every variable that switches a media provider, the disk store or a model on. Tests set ALL of them, never FAL_KEY alone. */
+export const MEDIA_ENV = { fal: ["FAL_KEY"], kie: ["KIE_API_KEY"], hmac: ["KIE_WEBHOOK_HMAC_KEY"], higgsfield: ["HIGGSFIELD_API_KEY_ID", "HIGGSFIELD_API_KEY_SECRET"], store: ["MEDIA_DIR"] } as const;
+/** A fresh absolute directory outside the project for MEDIA_DIR (rule 1750 refuses a relative one or one under cwd). */
+export const tempMediaDir = () => mkdtempSync(path.join(tmpdir(), "thakeen-media-"));
 /** `models: "all"` lists every catalogue id in MEDIA_MODELS_ON; a string is used as is; absent means unset (img-fast only). */
 export function mediaEnv(on: Partial<Record<keyof typeof MEDIA_ENV, boolean>> & { models?: "all" | string } = {}) {
-  for (const [group, names] of Object.entries(MEDIA_ENV)) for (const n of names) vi.stubEnv(n, on[group as keyof typeof MEDIA_ENV] ? `test-${n.toLowerCase()}` : "");
+  for (const [group, names] of Object.entries(MEDIA_ENV)) {
+    const set = on[group as keyof typeof MEDIA_ENV];
+    for (const n of names) vi.stubEnv(n, !set ? "" : n === "MEDIA_DIR" ? tempMediaDir() : `test-${n.toLowerCase()}`);
+  }
   vi.stubEnv("MEDIA_MODELS_ON", on.models === "all" ? "img-balanced,img-premium,img-text,img-lifestyle,img-design,vid-quick,vid-sound,vid-premium,vid-cinematic,vid-motion" : on.models ?? "");
 }
 
@@ -18,7 +26,7 @@ export function mediaEnv(on: Partial<Record<keyof typeof MEDIA_ENV, boolean>> & 
 export function resetMediaCounters() {
   const mem = (globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; exp?: Map<string, number> } }).__nashrMem;
   if (!mem) return;
-  const global = /^(rate:kie:create|rate:mhook:|rate:mfail:|media:off|msweep|mhfclean|mjobs:recent|render:_all:)/;
+  const global = /^(rate:kie:create|rate:mhook:|rate:mfail:|rate:mfile:|media:off|msweep|mhfclean|mjobs:recent|render:_all:|mfiles:bytes$|mfiles:count$)/;
   for (const k of [...mem.kv.keys()]) if (global.test(k)) { mem.kv.delete(k); mem.exp?.delete(k); }
   for (const k of [...mem.lists.keys()]) if (global.test(k)) mem.lists.delete(k);
   for (const k of [...mem.sets.keys()]) if (k.startsWith("mjobs:open:")) mem.sets.delete(k);
@@ -64,19 +72,19 @@ export function fakeAdapter(id: MediaProviderId, script: FakeScript = {}) {
 }
 
 /** MediaDeps over fakes. `stored` records every copy the engine asked for; `storeFails` fails the first N copies (true = all). */
-export function fakeDeps(adapters: Partial<Record<MediaProviderId, MediaAdapter>> = {}, opts: { blob?: boolean; storeFails?: boolean | number; now?: () => number } = {}) {
-  const stored: { source: string; kind: MediaKind; url: string; deadline: number }[] = [];
+export function fakeDeps(adapters: Partial<Record<MediaProviderId, MediaAdapter>> = {}, opts: { store?: boolean; storeFails?: boolean | number; storeError?: StoreErrorCode; now?: () => number } = {}) {
+  const stored: { source: string; kind: MediaKind; url: string; deadline: number; owner: { scope: string; taskId: string } }[] = [];
   let failures = 0;
   const deps: MediaDeps & { stored: typeof stored } = {
     stored,
     adapter: (p) => { const a = adapters[p]; if (!a) throw new Error(`no fake adapter for ${p}`); return a; },
-    async store(source, kind, deadline): Promise<StoredMedia> {
-      if (opts.storeFails === true || (typeof opts.storeFails === "number" && failures < opts.storeFails)) { failures++; throw new StoreError("put_failed"); }
-      const url = `https://test.public.blob.vercel-storage.com/media/${String(stored.length + 1).padStart(32, "0")}.${kind === "image" ? "jpg" : "mp4"}`;
-      stored.push({ source, kind, url, deadline });
+    async store(source, kind, deadline, owner): Promise<StoredMedia> {
+      if (opts.storeFails === true || (typeof opts.storeFails === "number" && failures < opts.storeFails)) { failures++; throw new StoreError(opts.storeError ?? "put_failed"); }
+      const url = `https://thakeen.com/m/${String(stored.length + 1).padStart(32, "0")}.${kind === "image" ? "jpg" : "mp4"}`;
+      stored.push({ source, kind, url, deadline, owner });
       return { url, bytes: 1, contentType: kind === "image" ? "image/jpeg" : "video/mp4" };
     },
-    blobReady: () => opts.blob ?? true,
+    storeReady: () => opts.store ?? true,
     now: opts.now,
   };
   return deps;
