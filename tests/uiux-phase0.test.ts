@@ -28,10 +28,10 @@ describe("rule 960: founder console prompts stop on Cancel, the trial days are c
   });
 
   it("stops each change that asks a reason when it is cancelled", () => {
-    // plan, seats, chat, video grant, deal, credits, top-up, void, refund, finish refund, and every users-route action
-    // through `act` (member removal included): each awaits its form and returns on null before any request.
-    expect(count(users, /= await askForm\(/g)).toBe(11);
-    expect(count(users, /if \(!v\) return( null)?;/g)).toBe(11);
+    // plan, seats, brand cap (rule 1393), chat, video grant, deal, credits, top-up, void, refund, finish refund, and every
+    // users-route action through `act` (member removal included): each awaits its form and returns on null before any request.
+    expect(count(users, /= await askForm\(/g)).toBe(12);
+    expect(count(users, /if \(!v\) return( null)?;/g)).toBe(12);
     expect(users).toMatch(/const v = await askForm\(actionSpec\(email, action, extra\)\);\n\s*if \(!v\) return null;\n\s*return send\(email, action, \{ \.\.\.extra, \.\.\.v \}\);/);
   });
 
@@ -64,9 +64,10 @@ describe("rule 961: every app and founder console screen has its own title", () 
 
   // 44 since UI/UX phase 3 (rule 1140): the profile page left, the settings index and its account, security,
   // notifications and danger sections came; a settings section's title comes from `settingsScreenMeta`. 46 with the
-  // agent instructions page and the console's skills section (rules 957-958).
-  it("finds all 46 pages and each exports generateMetadata from the shared helper", () => {
-    expect(pages.length).toBe(46);
+  // agent instructions page and the console's skills section (rules 957-958). 47 with the console's Integrations
+  // section (rule 1540).
+  it("finds all 47 pages and each exports generateMetadata from the shared helper", () => {
+    expect(pages.length).toBe(47);
     for (const p of pages) expect(read(p), p).toMatch(/export const generateMetadata = (?:app|admin|settings)ScreenMeta\("[a-z]+"\);/);
   });
 

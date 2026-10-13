@@ -21,8 +21,12 @@ const thmanyah = localFont({
   variable: "--font-thmanyah",
   display: "swap",
 });
-const plexArabic = IBM_Plex_Sans_Arabic({ subsets: ["latin", "arabic"], weight: ["400", "500", "600"], variable: "--font-plex-arabic" });
-const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono" });
+// Body text (rule 1585): 700 is loaded because `font-bold` and the CSS `font-weight: 700` rules are used across the site;
+// without it the browser drew a synthetic bold from 600. Preloads (rule 1586) are only what the first screen needs:
+// `subsets` names what is preloaded, not what is served, so the Latin faces still arrive through their unicode-range
+// when a page uses them, and the mono face (codes and figures, none on the home page) is not preloaded at all.
+const plexArabic = IBM_Plex_Sans_Arabic({ subsets: ["arabic"], weight: ["400", "500", "600", "700"], variable: "--font-plex-arabic" });
+const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono", preload: false });
 
 export function generateStaticParams() {
   return LANGS.map((lang) => ({ lang }));

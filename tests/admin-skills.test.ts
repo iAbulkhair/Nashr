@@ -272,7 +272,7 @@ describe("rule 958: the feed, and a workspace opened read-only", () => {
   it("rule 958: the feed shows the brand's name where the account has one, the id when it is gone, and reads each account's brands once", async () => {
     const u = await newUser("skw-brands");
     const user = (await getUser(u.email))!;
-    const b = await addBrand(user, "Second Roastery");
+    const b = await addBrand({ ...user, brandCap: 2 }, "Second Roastery");
     if ("error" in b) throw new Error(b.error);
     const gone = scopeFor(u.email, "ghost1");
     for (const scope of [scopeFor(u.email, b.id), gone, u.email]) {

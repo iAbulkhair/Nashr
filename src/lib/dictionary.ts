@@ -301,7 +301,7 @@ export const DICT_COPY: {
   sectorLabel: { ar: "وش تبيع؟", en: "What do you sell?" },
   next: { ar: "التالي", en: "Next" },
   back: { ar: "رجوع", en: "Back" },
-  counter: { ar: "اخترت {n} من ٥", en: "{n} of 5 picked" },
+  counter: { ar: "اخترت {n} من 5", en: "{n} of 5 picked" },
 };
 
 /**

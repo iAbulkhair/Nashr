@@ -105,15 +105,23 @@ const ROUTE_ROLES: Record<string, Gate> = {
 
   "POST /api/admin/login": "admin-console",
   "DELETE /api/admin/login": "admin-console",
+  // The founder console second factor (rules 1370-1384): enrolment and the code prompt, founder or console key only.
+  "POST /api/admin/2fa": "admin-console",
   "POST /api/admin/golden": "admin-console",
   "POST /api/admin/impersonate": "admin-console",
   "POST /api/admin/plan": "admin-console",
+  "POST /api/admin/brand-cap": "admin-console",
   // Partner programme (rules 390-402): approvals, payouts, recorded payments and voids.
   "POST /api/admin/partners": "admin-console",
   "POST /api/admin/payments/[email]": "admin-console",
   "POST /api/admin/users/[email]": "admin-console",
   // Credit top-ups, activated by hand while there is no payment gateway (rules 446-447): the founder only.
   "POST /api/admin/topups": "admin-console",
+  // Agent scope (rule 1411): the founder releases one held item.
+  "POST /api/admin/agent-scope/release": "admin-console",
+  // Agent scope (rule 1412): the switches and the paid test set.
+  "POST /api/admin/agent-scope/modes": "admin-console",
+  "POST /api/admin/agent-scope/eval": "admin-console",
 
   // Owner only.
   "PUT /api/governance": g("owner", "governance.write"),
@@ -221,6 +229,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
+  // Run on a chat spend card (rule 1512): it spends credits like a generation (a render also checks `images`, also member).
+  "POST /api/chat/spend/[id]": g("member", "generate"),
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/admin/skills": "admin-console",
   "PUT /api/admin/skills": "admin-console",
@@ -245,6 +255,8 @@ const READS: Record<string, Gate> = {
   "GET /p/[code]": "public",
   "GET /api/team": g("member", "team.view"),
   "GET /api/profile": g("member", "read"),
+  // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
+  "GET /api/account/export": g("owner", "account.export"),
   // The Paymob return page's poll (rule 1155): the caller's own last checkout and plan, owner only.
   "GET /api/billing/status": g("owner", "billing"),
   "GET /api/activity": g("member", "read"),
@@ -260,12 +272,15 @@ const READS: Record<string, Gate> = {
   "GET /api/cron/evening": "cron",
   "GET /api/cron/stores": "cron",
 
+  "GET /api/admin/agent-scope": "admin-console",
   "GET /api/admin/evals": "admin-console",
   "GET /api/admin/export": "admin-console",
+  "GET /api/admin/2fa": "admin-console",
   "GET /api/admin/golden": "admin-console",
   "GET /api/admin/media": "admin-console",
   "GET /api/admin/wishlist": "admin-console",
   "GET /api/admin/skills": "admin-console",
+  "GET /api/admin/integrations": "admin-console",
   "GET /api/admin/leads": "admin-console",
   "GET /api/admin/client-ip": "admin-console",
   "GET /api/admin/log": "admin-console",
@@ -342,7 +357,9 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/r
   // Agent instructions (rules 930-959).
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
-  "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status"];
+  "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
+  // Chat spend cards (rule 1512): each Run is a paid batch or render.
+  "POST /api/chat/spend/[id]"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",

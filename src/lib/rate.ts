@@ -156,11 +156,11 @@ export async function draftAllowed(email: string): Promise<boolean> {
 }
 
 /**
- * Brands added per account (POST /api/brands add). Brands are unlimited on every plan (src/lib/pricing.ts), so nothing
- * else bounds how many an account creates, and every active brand fans out into each cron (the daily brief, the
- * routines, and the Sunday plan once the owner switches it on). These buckets are the only bound, and they are a rate,
- * never a cap: an agency can keep adding brands every hour. Well above a real agency's onboarding pace, and the
- * onboarding itself stays at three a day per account (src/app/api/onboard/route.ts). Rule 245, tests/brand-guardrails.test.ts.
+ * Brands added per account (POST /api/brands add). Active brands are capped per plan (src/lib/pricing.ts `brandCapFor`,
+ * rules 1390-1391), but archiving and adding again would get round a count alone, and every active brand fans out into
+ * each cron (the daily brief, the routines, and the Sunday plan once the owner switches it on). So adds are also bounded
+ * by these buckets, a rate checked before the cap. Well above a real agency's onboarding pace, and the onboarding itself
+ * stays at three a day per account (src/app/api/onboard/route.ts). Rule 245, tests/brand-guardrails.test.ts.
  */
 export const BRANDS_PER_HOUR = 10;
 export const BRANDS_PER_DAY = 30;
@@ -174,6 +174,57 @@ export async function brandAddRefusal(email: string): Promise<"hour" | "day" | n
   if (!(await allow(`brandadd:h:${email}`, BRANDS_PER_HOUR, WINDOW.hour))) return "hour";
   if (!(await allow(`brandadd:d:${email}`, BRANDS_PER_DAY, WINDOW.day))) return "day";
   return null;
+}
+
+/**
+ * Enforced agent-scope refusals per brand scope (rule 795; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md
+ * section 4.2). A message the input gate refuses makes no main model call and is given back to the chat allowance, so it
+ * is free for the owner; these buckets are what bounds it, and what bounds the classifier calls a looping client could
+ * cause. The scope is `u.scope ?? u.email` (what `sc(u)` returns; `sc` is not imported here, that would be a cycle), so
+ * each brand has its own ceiling. Only enforced input refusals count (`scopeCheck` in src/lib/agent-scope.ts): shadow never.
+ */
+export const AGENT_SCOPE_REFUSALS_PER_HOUR = 20;
+export const AGENT_SCOPE_REFUSALS_PER_DAY = 60;
+const agentScopeOf = (u: Pick<User, "scope" | "email">) => u.scope ?? u.email;
+const count = (v: unknown) => Number(v ?? 0);
+/**
+ * Null when the brand scope may still be refused, else which window is spent, so the owner is told "in an hour" or
+ * "tomorrow". Reads both counters in one `Promise.all` and never adds to them (`allow` would count every attempt, and only
+ * refusals may count). A count at or above its limit refuses. The hour is checked first; when it refuses and the day is
+ * spent too, the day is named, being the longer wait (as `chatRefusal`, rule 331). A count that does not read as a
+ * number refuses nothing.
+ */
+export async function agentScopeCeiling(u: Pick<User, "scope" | "email">): Promise<"hour" | "day" | null> {
+  const s = agentScopeOf(u);
+  const [hour, day] = await Promise.all([db.get<number | string>(`rate:agent-scope:h:${s}`), db.get<number | string>(`rate:agent-scope:d:${s}`)]);
+  const daySpent = count(day) >= AGENT_SCOPE_REFUSALS_PER_DAY;
+  if (count(hour) >= AGENT_SCOPE_REFUSALS_PER_HOUR) return daySpent ? "day" : "hour";
+  return daySpent ? "day" : null;
+}
+/** Count one enforced refusal in both windows (`allow` prefixes `rate:`, so the keys are the ones `agentScopeCeiling` reads). */
+export async function countAgentScopeRefusal(u: Pick<User, "scope" | "email">): Promise<void> {
+  const s = agentScopeOf(u);
+  await Promise.all([allow(`agent-scope:h:${s}`, AGENT_SCOPE_REFUSALS_PER_HOUR, WINDOW.hour), allow(`agent-scope:d:${s}`, AGENT_SCOPE_REFUSALS_PER_DAY, WINDOW.day)]);
+}
+
+/**
+ * The classifier calls the input gate on generation notes may cost a brand scope (rule 796; `checkGenerationNotes` in
+ * src/lib/agent-scope.ts). The gate sits after the free refusals of `generateBatch`, but a request that cannot be charged
+ * (no credits, an agent at its cap) still reaches it, and in shadow nothing else bounds the calls. Each call the classifier would
+ * make is counted in both windows (`allow` adds one per attempt, so the count is of asks, whatever the answer) under the same
+ * scope key as the refusal ceiling. Over a window: shadow skips the classifier (no log, the batch goes on) and enforce answers
+ * `slow_down`, naming the window.
+ */
+export const AGENT_SCOPE_GEN_CHECKS_PER_HOUR = 60;
+export const AGENT_SCOPE_GEN_CHECKS_PER_DAY = 200;
+/**
+ * Count one classifier ask for this brand scope and say whether it is over: null while both windows allow it, else the window
+ * to wait for, the day when both are spent (the longer wait, as `agentScopeCeiling`). Both counters in one `Promise.all`.
+ */
+export async function agentScopeGenRefusal(u: Pick<User, "scope" | "email">): Promise<"hour" | "day" | null> {
+  const s = agentScopeOf(u);
+  const [hour, day] = await Promise.all([allow(`agent-scope-gen:h:${s}`, AGENT_SCOPE_GEN_CHECKS_PER_HOUR, WINDOW.hour), allow(`agent-scope-gen:d:${s}`, AGENT_SCOPE_GEN_CHECKS_PER_DAY, WINDOW.day)]);
+  return !day ? "day" : !hour ? "hour" : null;
 }
 
 /**
@@ -215,6 +266,13 @@ export const HANDOFF_RUNS_PER_HOUR = 60;
 export const HANDOFF_DECLINES_PER_HOUR = 120;
 
 /**
+ * Run and Dismiss on the chat's spend cards, per workspace (`POST /api/chat/spend/[id]`, rule 1512). A run is a paid batch
+ * or render, bounded too by the credits and the agent caps; a chat reply carries at most two cards, so an owner stays far
+ * below this. Same ceiling as Majed's handoff runs.
+ */
+export const SPEND_RUNS_PER_HOUR = 60;
+
+/**
  * Thumbs on agent replies, per account (`POST /api/chat/feedback`). Each one is a write to the brand's capped feedback
  * log, which the agents' prompts read back, so a script must not churn it; an owner rating replies stays far below this
  * (chat itself is at most `chatCaps(u).hour` turns, 30 on a paid plan).
@@ -244,3 +302,10 @@ export const ADMIN_SKILL_TESTS_PER_HOUR = 30;
 /** Constant-time string comparison for secrets. It lives in secret.ts, which has no store behind it, so the proxy can use
  * it; this re-export keeps every existing import working. */
 export { sameSecret } from "./secret";
+
+/**
+ * Integration requests and votes, per login (`POST /api/integrations`). Each one is a row in the capped request log
+ * the founder reads, so a script must not be able to flood it and push the real requests out; a person asking for a
+ * few connectors stays far below this. Rule 1353.
+ */
+export const INTEGRATION_REQUESTS_PER_HOUR = 30;

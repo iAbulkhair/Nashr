@@ -61,7 +61,7 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
           <form onSubmit={submit} className="s-card grid grid-cols-[minmax(0,1fr)] gap-4">
             <Scribble kind="box" seed="help-form" fill="paper" />
             <h2 className="font-display text-xl font-bold">{ar ? "أرسل طلب دعم" : "Send a support request"}</h2>
-            <span className="s-input"><Scribble kind="box" seed="help-email" fill="paper" ring /><input name="email" required type="email" dir="ltr" placeholder="Email" aria-label="Email" /></span>
+            <span className="s-input"><Scribble kind="box" seed="help-email" fill="paper" ring /><input name="email" required type="email" dir="ltr" placeholder={ar ? "بريدك الإلكتروني" : "Email"} aria-label={ar ? "بريدك الإلكتروني" : "Email"} /></span>
             <span className="s-input"><Scribble kind="box" seed="help-type" fill="paper" ring /><select name="type" aria-label={ar ? "النوع" : "Type"}><option value="question">{ar ? "سؤال" : "Question"}</option><option value="bug">{ar ? "مشكلة" : "Bug"}</option><option value="billing">{ar ? "فوترة" : "Billing"}</option><option value="feature">{ar ? "اقتراح ميزة" : "Feature request"}</option></select></span>
             <span className="s-input"><Scribble kind="box" seed="help-message" fill="paper" ring /><textarea name="message" required rows={4} placeholder={ar ? "اكتب ما حدث بالتفصيل…" : "Describe what happened…"} aria-label={ar ? "الرسالة" : "Message"} /></span>
             <button disabled={sent === "busy"} className="s-btn justify-self-start"><Scribble kind="pill" seed="help-send" fill="ink" shadow ring />{ar ? "أرسل" : "Send"}</button>

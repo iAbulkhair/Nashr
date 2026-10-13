@@ -58,7 +58,7 @@ function scope(files: string[], how: { draft: boolean }) {
 /** A cached step's `with:` block must name `path` and `key`; returns that step's text. */
 const cacheStep = (name: string) => {
   const s = step(name);
-  expect(s, name).toMatch(/uses: actions\/cache@v4/);
+  expect(s, name).toMatch(/uses: actions\/cache@[0-9a-f]{40} # v4\.\d+\.\d+/);
   return s;
 };
 
@@ -97,7 +97,7 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
 
   it("Next's build cache is restored before the build, keyed on the lockfile and the sources", () => {
     const c = step("Restore Next build cache");
-    expect(c).toMatch(/uses: actions\/cache\/restore@v4/);
+    expect(c).toMatch(/uses: actions\/cache\/restore@[0-9a-f]{40} # v4\.\d+\.\d+/);
     expect(yml.indexOf("- name: Restore Next build cache")).toBeLessThan(yml.indexOf("- name: Build\n"));
     expect(c).toMatch(/path: \$\{\{ github\.workspace \}\}\/\.next\/cache\n/);
     expect(c).toMatch(/key: nextjs-\$\{\{ runner\.os \}\}-\$\{\{ hashFiles\('package-lock\.json'\) \}\}-\$\{\{ hashFiles\('src\/\*\*'/);

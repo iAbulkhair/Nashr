@@ -1,5 +1,7 @@
 # Brand Limits per Plan (part B) Implementation Plan
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** built after 2026-10-12: merged to `main` as #340 (rules 1390-1395, `docs/system/tests/1390-brand-limits.md`) inside the #347 batch, not in `production` yet (checked 2026-10-13). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cap active brands per plan (trial 1, starter 1, pro 2, business 5, agency founder-set, default 10), replacing rule 245 "brands are unlimited".

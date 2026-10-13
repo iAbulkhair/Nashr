@@ -1,4 +1,4 @@
-import { CAPS, db, pushCapped } from "./db";
+import { CAPS, db, mgetChunked, pushCapped } from "./db";
 import { pmap } from "./parallel";
 import { editPctOf } from "./similarity";
 import { hasAdCode, newAdCode } from "./ad-codes";
@@ -107,6 +107,12 @@ export type Task = {
   published?: { provider: string; url: string; status: "draft" | "published"; at: string; id?: string }[];
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;
+  /**
+   * The founder let this exact text through the publish check (rule 1411, `POST /api/admin/agent-scope/release`): `hash` is
+   * `itemHash` of the item when released, so any later edit is checked again. Set only by that route. Rule 679 expand: new
+   * and optional; older code ignores it.
+   */
+  agentScopeRelease?: { hash: string; by: string; at: string };
   /** Put in the ad's name so its results can be matched back to this item (src/lib/ad-codes.ts). */
   adCode?: string;
   /** What the agent was asked for this batch: the owner's notes or brief, first 500 characters (`briefOf`). */
@@ -197,8 +203,8 @@ export async function listTasks(email: string): Promise<Task[]> {
   // keys and make the optimistic overlay in Inbox.tsx apply to both copies of the same card.
   const seen = new Set(head);
   const tail = pending.filter((id) => !seen.has(id));
-  // Parallel reads: 200 sequential round trips made every page that lists tasks slow.
-  const rows = await pmap([...head, ...tail], (id) => db.get<Task>(`task:${email}:${id}`));
+  // Chunked MGET (rule 1430): two requests for the newest 200, where one GET per task cost 200 billed commands a page view.
+  const rows = await mgetChunked<Task>([...head, ...tail].map((id) => `task:${email}:${id}`));
   const tailRows = rows.slice(head.length);
 
   // A pending id whose task record is gone is counted by the badge and dropped here — the same disagreement in
@@ -313,7 +319,7 @@ export async function adCodeIndex(email: string): Promise<Record<string, string>
 /** Rebuild the light index from the stored tasks (first use on an existing workspace, and the weekly reconcile). */
 export async function rebuildIndex(email: string): Promise<TaskLite[]> {
   const ids = await db.lrange(`tasks:${email}`, 0, -1);
-  const rows = (await pmap(ids, (id) => db.get<Task>(`task:${email}:${id}`))).filter((t): t is Task => !!t);
+  const rows = (await mgetChunked<Task>(ids.map((id) => `task:${email}:${id}`))).filter((t): t is Task => !!t);
   const lite = rows.map(liteOf);
   await pmap(lite, (l) => db.hset(`tidx:${email}:${monthOf(l.createdAt)}`, l.id, l));
   await Promise.all([...new Set(lite.map((l) => monthOf(l.createdAt)))].map((m) => db.sadd(`tidxm:${email}`, m)));

@@ -15,9 +15,16 @@ describe("the homepage is D, without the game (rule 516)", () => {
   });
   it("mounts neither the dictionary game nor the old story and truths", () => {
     for (const gone of ["Dictionary", "Story", "Truths"]) expect(page).not.toMatch(new RegExp(`import ${gone}\\b`));
-    // The game is unmounted, not deleted (it still uses StartForm); the old sections are deleted.
-    for (const f of ["Dictionary", "StartForm"]) expect(existsSync(join(process.cwd(), `src/components/home/${f}.tsx`)), f).toBe(true);
-    for (const f of ["Story", "Truths", "QuestionFlip", "Figure"]) expect(existsSync(join(process.cwd(), `src/components/home/${f}.tsx`)), f).toBe(false);
+    // The game component and the start form are deleted (2026-10-12, nothing imported them; the first-login game is `DictionaryStart` in the app).
+    for (const f of ["Dictionary", "StartForm", "Story", "Truths", "QuestionFlip", "Figure"]) expect(existsSync(join(process.cwd(), `src/components/home/${f}.tsx`)), f).toBe(false);
+  });
+  it("keeps no CSS for the deleted game and start form, and keeps the face circle the app's game uses (rule 1459)", () => {
+    const css = read("src/components/home/home.module.css").replace(/\/\*[\s\S]*?\*\//g, "");
+    const dead = ["start", "startInput", "startButton", "dict", "dictTitle", "dictSub", "dictPanel", "dictStep", "dictBody", "dictNav", "dictBack", "dictNext", "dictCta", "dictCtaLine", "dictLive", "dictCount", "dictInput", "dictLabel", "rail", "railStep", "railNum", "railName", "sectors", "sectorList", "sector", "words", "word", "tick", "counter", "say", "bubble", "sayName", "samples", "sample", "sampleHead", "sampleFaces", "sampleWho", "exampleTag", "planList", "post", "chat", "approveBox", "approve", "approveNote", "preview"];
+    for (const c of dead) expect(css, c).not.toMatch(new RegExp(`\\.${c}(?![\\w-])`));
+    expect(css).not.toContain("dictPop");
+    // The face circle the app's first-login game reads as `cast.face` stays.
+    expect(css).toMatch(/\n\.face \{/);
   });
   it("gives each section the id the homepage nav points at", () => {
     const ids: [string, string][] = [["Cover", "team"], ["Rules", "rules"], ["Day", "day"], ["Steps", "steps"], ["Plans", "price"], ["HomeFaq", "faq"]];

@@ -10,6 +10,8 @@ import { reserveChatTurn } from "@/lib/chat-allowance";
 import { DEFAULTS } from "@/lib/models/route";
 
 import * as plan from "@/app/api/admin/plan/route";
+import { defaultPaidThrough } from "@/lib/hand-plan";
+import { ksaDay } from "@/lib/partner-rules";
 import * as exportRoute from "@/app/api/admin/export/route";
 import * as profileRoute from "@/app/api/profile/route";
 import * as adminUser from "@/app/api/admin/users/[email]/route";
@@ -32,6 +34,8 @@ const headers = {};
 const call = (email: string, body: Record<string, unknown>) => plan.POST(json("/api/admin/plan", "POST", { email, ...body }, headers));
 /** A body sent as raw text, for what JSON.stringify cannot write (1e999 parses to Infinity). */
 const raw = (text: string) => plan.POST(new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: text }));
+/** A paid plan set by hand without a day gets one month from today, named in the log (rule 1302). */
+const PAID = ` paid_through:${defaultPaidThrough(ksaDay())}`;
 const logLength = async () => (await db.lrange("admin:log", 0, -1)).length;
 const lastLog = async () => JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { what: string; before: { deal: string; seats: number; chat: number }; after: { deal: string; credits: number; seats: number; chat: number }; actor: string; reason?: string };
 async function account(p: Plan, prefix = "deal"): Promise<User> {
@@ -97,7 +101,7 @@ describe("an Agency deal is checked in code (rule 244)", () => {
     expect(x.plan).toBe("agency");
     expect(x.credits).toBe(3000);
     expect(x.renewedAt).toBe(monthKey());
-    expect(await lastLog()).toMatchObject({ what: "plan:agency deal:3000@1998", before: { deal: "none" }, after: { deal: "3000@1998", credits: 3000 } });
+    expect(await lastLog()).toMatchObject({ what: `plan:agency deal:3000@1998${PAID}`, before: { deal: "none" }, after: { deal: "3000@1998", credits: 3000 } });
   });
 
   it("a deal on any other plan is refused, and so is a plan change away from Agency that carries one", async () => {
@@ -128,7 +132,7 @@ describe("an Agency deal is checked in code (rule 244)", () => {
     expect(x.credits).toBe(PLAN_CREDITS.pro);
     expect(x.seats, "the deal's seats went with the deal").toBeUndefined();
     expect(seatLimit(x), "Pro's seats, not the deal's 20").toBe(PLAN_SEATS.pro);
-    expect(await lastLog()).toMatchObject({ what: "plan:pro deal:none seats:plan", before: { deal: "3003@2000", seats: 20 }, after: { deal: "none", seats: PLAN_SEATS.pro } });
+    expect(await lastLog()).toMatchObject({ what: `plan:pro deal:none seats:plan${PAID}`, before: { deal: "3003@2000", seats: 20 }, after: { deal: "none", seats: PLAN_SEATS.pro } });
     expect((await call(u.email, { plan: "agency" })).status).toBe(200);
     const back = (await getUser(u.email))!;
     expect(back.credits, "Agency without a deal is Business's allowance").toBe(PLAN_CREDITS.business);
@@ -140,7 +144,7 @@ describe("an Agency deal is checked in code (rule 244)", () => {
     await call(u.email, { deal: { credits: 3003, priceSar: 2000 }, seats: 20 });
     expect((await call(u.email, { plan: "business", seats: 9 })).status).toBe(200);
     expect(seatLimit((await getUser(u.email))!)).toBe(9);
-    expect((await lastLog()).what).toBe("plan:business deal:none seats:9");
+    expect((await lastLog()).what).toBe(`plan:business deal:none seats:9${PAID}`);
   });
 
   it("deal null clears it and its seats, and the change is logged", async () => {
@@ -275,13 +279,13 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     const x = (await getUser(a.email))!;
     expect(x.chatAllowance, "the deal's chat messages went with the deal").toBeUndefined();
     expect(chatAllowanceOf(x)).toBe(CHAT_ALLOWANCE.pro);
-    expect(await lastLog()).toMatchObject({ what: "plan:pro deal:none seats:plan chat:plan", before: { chat: 4000 }, after: { chat: CHAT_ALLOWANCE.pro } });
+    expect(await lastLog()).toMatchObject({ what: `plan:pro deal:none seats:plan chat:plan${PAID}`, before: { chat: 4000 }, after: { chat: CHAT_ALLOWANCE.pro } });
 
     const b = await account("agency", "chat");
     await call(b.email, { deal: { credits: 3003, priceSar: 2000 }, chatAllowance: 4000 });
     expect((await call(b.email, { plan: "business", chatAllowance: 3000 })).status).toBe(200);
     expect((await getUser(b.email))!.chatAllowance, "a plan change that sets it keeps what it sets").toBe(3000);
-    expect((await lastLog()).what).toBe("plan:business deal:none chat:3000");
+    expect((await lastLog()).what).toBe(`plan:business deal:none chat:3000${PAID}`);
 
     const c = await account("agency", "chat");
     await call(c.email, { deal: { credits: 1500, priceSar: 1200 }, chatAllowance: 2500 });

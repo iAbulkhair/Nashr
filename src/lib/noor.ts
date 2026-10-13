@@ -8,11 +8,13 @@ import { MODEL_BUDGET, ModelPaused, anthropic, modelState, until } from "./model
 import type { Brand, CrossVerdict, TaskType } from "./brand";
 import { pickPlaybook } from "./playbooks";
 import { activeSeasons } from "./seasons";
-import { zoneOf } from "./zones";
+import { currencyOf, zoneOf } from "./zones";
 import { capDiscounts } from "./cart-recovery";
 import { feedbackBlock } from "./feedback";
 import { NO_LAYERS, instructionBlocks, type Layers } from "./agent-instructions";
 import { automaticFor, route } from "./models/route";
+import { GENERATE_NOTES_READ } from "./notes-read";
+import { AGENT_SCOPE_PARAGRAPH } from "./agent-scope";
 
 /** One generated item. `crossReview` is added by the cross-agent review and never changes the other three fields. */
 export type Generated = { channel: string; title: string; body: string; crossReview?: CrossVerdict[] };
@@ -39,18 +41,18 @@ const SPECS: Record<TaskType, string> = {
   social: "10 social media posts ready to publish. Mix: 4 Instagram captions (with 5-8 Arabic+English hashtags), 3 Snapchat story scripts (short, spoken tone), 2 TikTok video scripts (hook, 3 beats, CTA, ≤30s), 1 X post. Each body must be complete and copy-paste ready. channel = instagram | snapchat | tiktok | x.",
   article: "One SEO article of 1,200-1,600 words in the brand's primary language, targeting a keyword a competitor is likely missing. Include: title, meta description (≤155 chars), H2/H3 structure in Markdown, FAQ section with 3 questions, internal CTA. channel = 'blog'.",
   whatsapp: "3 WhatsApp Business messages: (1) abandoned-cart or lead follow-up, (2) seasonal offer announcement, (3) post-purchase thank-you with review request. Each ≤ 700 characters, template-friendly (use {{1}} placeholders for name/order), respectful tone, one clear CTA, opt-out line. channel = 'whatsapp'.",
-  ads: "5 paid ad copies: 2 Snapchat (headline ≤34 chars + primary text ≤ 3 lines + CTA), 2 Meta/Instagram (primary text, headline ≤40 chars, description), 1 TikTok (spoken script ≤15s). Each with a target audience note and a suggested daily budget in SAR. channel = snapchat | meta | tiktok.",
+  ads: "5 paid ad copies: 2 Snapchat (headline ≤34 chars + primary text ≤ 3 lines + CTA), 2 Meta/Instagram (primary text, headline ≤40 chars, description), 1 TikTok (spoken script ≤15s). Each with a target audience note and a suggested daily budget in {CURRENCY}. channel = snapchat | meta | tiktok.",
   cart_recovery: "Five items that win back shoppers who left products in their carts, built ONLY on the CART DATA block. Items 1-3: one WhatsApp Business recovery sequence sent about 1 hour, 24 hours and 72 hours after the cart was left, each under 500 characters, template-friendly with {{1}} for the shopper's name and {{2}} for the cart link (never write a real link), naming the products most often left from CART DATA where natural, one clear CTA, a respectful tone, and an opt-out line on the third. Items 4-5: one Instagram caption and one Snapchat story script featuring the products most often left in carts, each answering the likely hesitation (price, size, delivery, returns, authenticity) with facts from the brand file only. No discount, free shipping, gift or deadline unless it is in the brand file's current offers; otherwise leave it out or write [رقم]. Never mention cart counts, cart values, or that shopper data was read. These are drafts the owner pastes into the store's own abandoned-cart automation; Thakeen never messages shoppers. channel = 'whatsapp' | 'instagram' | 'snapchat'.",
   gbp: "3 Google Business Profile posts (≤ 300 chars each): 1 offer, 1 update, 1 event/seasonal. Include CTA type (Call / Book / Order / Learn more). channel = 'gbp'.",
   sales_script: "Three sales assets for this brand: (1) a discovery call script: opening, 8 questions grouped by stage (situation, pain, impact, decision), and a closing next step, under 500 words; (2) a WhatsApp first-contact script with 3 variants (inbound lead, referral, warm intro), each under 500 characters; (3) an objection-handling sheet as a Markdown table with the 8 most likely objections in this industry: objection, root cause, response, proof to show. channel = 'sales'.",
   lead_qualifier: "One lead qualification card for this brand's ideal customer: ICP definition, 10 qualifying questions in the owner's language, a 0-100 scoring rubric (fit, intent, budget, timing, authority) with bands and the next action per band, and disqualifiers. Ready to paste into a CRM note. channel = 'sales'.",
   followup_seq: "Seven follow-up messages forming one cadence for a lead who went quiet after a quote or visit. Touches on day 0, 1, 3, 6, 10, 15, 21. Five WhatsApp messages under 400 characters, one email, one call script. Each with its intent in the title, one CTA, respectful tone, opt-out line on the last touch. channel = 'whatsapp' | 'email' | 'call'.",
-  pricing_review: "One pricing review memo: current pricing summary (use [رقم] where unknown), three packaging options (good, better, best) with SAR price points and a VAT-inclusive note, anchoring and psychological price logic, discount policy, what to test first, and risks. Every assumption labeled. channel = 'finance'.",
+  pricing_review: "One pricing review memo: current pricing summary (use [رقم] where unknown), three packaging options (good, better, best) with {CURRENCY} price points and a VAT-inclusive note, anchoring and psychological price logic, discount policy, what to test first, and risks. Every assumption labeled. channel = 'finance'.",
   unit_economics: "One unit-economics worksheet as a Markdown table with the formulas explained: price, COGS, gross margin, CAC by channel, LTV, LTV:CAC, payback period, break-even units. Fill known numbers from the brand file, mark every assumption, add industry benchmark ranges and the three levers that move the result most. channel = 'finance'.",
   cash_forecast: "One 90-day cash-flow forecast template for this brand: a 13-week Markdown table with inflow and outflow categories, VAT payment timing, seasonality notes for the upcoming Gulf seasons, best/base/worst scenario summary, and cash triggers with the action for each. Placeholders for unknown figures. channel = 'finance'.",
   gtm_plan: "One 90-day go-to-market plan: positioning statement, ICP, message hierarchy, three phases with goals, channel sequencing for this industry, weekly milestones, budget split as percentages, KPIs with target placeholders, and an owner per workstream. channel = 'growth'.",
-  growth_experiments: "Five growth experiment cards, ordered by ICE score. Each: hypothesis, channel, ICE (impact, confidence, ease, 1-10 each), setup steps, metric and success threshold, duration, cost estimate in SAR as a placeholder. channel = 'growth'.",
-  retention_play: "Three retention plays ready to implement: (1) activation and onboarding sequence for new customers, (2) churn-prevention play with early-warning signals and interventions, (3) referral or loyalty program with mechanics and rewards in SAR. channel = 'growth'.",
+  growth_experiments: "Five growth experiment cards, ordered by ICE score. Each: hypothesis, channel, ICE (impact, confidence, ease, 1-10 each), setup steps, metric and success threshold, duration, cost estimate in {CURRENCY} as a placeholder. channel = 'growth'.",
+  retention_play: "Three retention plays ready to implement: (1) activation and onboarding sequence for new customers, (2) churn-prevention play with early-warning signals and interventions, (3) referral or loyalty program with mechanics and rewards in {CURRENCY}. channel = 'growth'.",
   weekly_report: "One weekly performance report built ONLY from the WORKSPACE DATA, the STORE DATA when present, the site, social and ad data when present, and owner notes provided: headline (what changed and why), 6-8 KPI lines each with its prior-period comparison where the data holds one, content output and approval rate, published items, wins, misses, and next week's three actions. Never invent numbers; where data is missing write [رقم] and say what to track. " + reportData("at the end of the report") + " channel = 'report'.",
   board_deck: "One board or investor deck outline of 10-12 slides. Format strictly: a line '## Slide N: Title', then 3-5 bullet lines starting with '- ', then one line starting with 'Notes:' holding speaker notes. Cover: executive summary, market and customer, offer, traction (from WORKSPACE DATA and STORE DATA when present, and the site, social and ad data), marketing engine, sales pipeline, unit economics, financial snapshot, next-quarter plan, asks. Numbers only from the data provided or as [رقم] placeholders. " + reportData("on the last slide") + " channel = 'deck'.",
   strategy_review: "One 90-day strategy review as a one-page document: situation in 5 lines (from the brand file, the data provided and owner notes), the 3 bets to make, the kill list (what to stop), resource allocation as percentages, risks with mitigations, the 10 questions the owner must answer this quarter, and the decision deadline. Placeholders for unknown figures. " + reportData("at the end of the document") + " channel = 'strategy'.",
@@ -74,7 +76,7 @@ export function fixedPrompt(agent: Agent, skills?: string) {
 RULES
 - Never invent prices, discounts, certifications, or medical/legal/financial claims that are not in the brand file. If a number is needed, write [رقم] / [number] as a placeholder.
 - Respect Gulf cultural norms and Saudi advertising rules: no alcohol, gambling, or indecent content; healthcare and legal content must be educational, not guarantees; real-estate content must leave room for the license number.
-- Currency: use the currency of the brand's city / market (SAR Saudi Arabia, AED UAE, KWD Kuwait, QAR Qatar, BHD Bahrain, OMR Oman). Where a task says SAR, substitute the local currency; VAT notes follow that country's rate.
+- Currency: use the currency of the brand's city / market (SAR Saudi Arabia, AED UAE, KWD Kuwait, QAR Qatar, BHD Bahrain, OMR Oman); the task names it. VAT notes follow that country's rate.
 - Use Hijri/Gregorian season awareness; today's date and the live calendar are given under TODAY.
 - Emojis: light, tasteful, max 2 per post unless the tone says otherwise.
 - Every item must be complete and ready to paste. No meta commentary.
@@ -124,18 +126,23 @@ export const OWNER_WINS = "When an explicit owner instruction and a learned pref
 
 /**
  * The generation prompt as three blocks, ordered for prompt caching (a hit needs an identical prefix):
- * 1. static per agent: persona, rules, skills playbook, output format. Shared by every workspace and every day.
+ * 1. static per agent: persona, rules, skills playbook, output format, and the scope paragraph (Layer 1, rule 797) unless `agentScope`
+ *    is false, then the platform instruction layer (`layers`) when there is one. Shared by every workspace and every day.
  * 2. per workspace: brand file, industry playbook, memory files.
  * 3. volatile: today's date, the live Gulf calendar, preferences learned from the owner's edits, and the recent feedback
  *    on this agent's own work (`feedbackFor`), which moves with every decision and so must never sit in a cached block.
  * Before this split the brand file and the date came first, so the cache was written on every call and never read.
  */
-export function systemPrompt(brand: Brand, prefs: string[], agent: Agent, memory?: string, feedback?: string, layers: Layers = NO_LAYERS) {
+export function systemPrompt(brand: Brand, prefs: string[], agent: Agent, memory?: string, feedback?: string, layers: Layers = NO_LAYERS, agentScope?: boolean) {
   // The instruction layers (agent skills portal, spec 5.2): the platform text joins the static block, so two workspaces with
   // the same platform layer still share block 1; the workspace text joins block 2 between the industry playbook and the
   // workspace files. Both are empty strings with no layers, and then every block is what it was before they existed.
   const blocks = instructionBlocks(layers, agent.id);
-  const fixed = blocks.platform ? `${fixedPrompt(agent)}\n\n${blocks.platform}` : fixedPrompt(agent);
+  // Layer 1 (rule 797): the scope paragraph follows the agent's own text in the cached fixed block, unless the founder's
+  // prompt switch is off (`false`). Added here and not in `fixedPrompt`, which prompt-stamp hashes: the stamp tracks the
+  // agent's own text, not the scope. The platform text comes after both, as in chat's `system()` (src/lib/chat.ts).
+  const own = agentScope === false ? fixedPrompt(agent) : `${fixedPrompt(agent)}\n\n${AGENT_SCOPE_PARAGRAPH}`;
+  const fixed = blocks.platform ? `${own}\n\n${blocks.platform}` : own;
   const owner = blocks.workspace ? `\n\n${blocks.workspace}\n\n${OWNER_WINS}` : "";
   const workspace = `${brandFileBlock(brand)}
 
@@ -155,8 +162,12 @@ ${prefs.length ? prefs.map((p) => "- " + p).join("\n") : "- none yet"}${recent ?
   ];
 }
 
-/** The spec text an agent was given for a task type (used by the judge). */
-export const taskSpec = (type: TaskType) => SPECS[type];
+/**
+ * The spec text an agent is given for a task type, with the brand's currency where the spec names money (rule 1473):
+ * `currencyOf` (src/lib/zones.ts), so a Dubai brand's ads carry budgets in AED. The batch, its cross review and the
+ * judge read it from here; without a brand (the prompt stamp) it is SAR, the default.
+ */
+export const taskSpec = (type: TaskType, brand?: Parameters<typeof currencyOf>[0]) => SPECS[type].replaceAll("{CURRENCY}", currencyOf(brand));
 
 /** The industry playbook text a brand's batches are given (the general one when none matches its industry). */
 export function playbookBlock(brand: Pick<Brand, "industry">) {
@@ -203,7 +214,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number; /** the model that writes the batch: the one the caller priced (`generateBatch` resolves it once and passes it here); left out, `route("generate")` */ model?: string; /** the instruction layers for this batch (`loadLayers`): the platform and the workspace text in the generation prompt, and the reviewer and the cross-review read the same object (`critique`, `crossReview`); left out, none. The judge is not called from here: `generateBatch` hands it the same object in `JudgeContext.layers` */ layers?: Layers };
+export type GenOptions = { /** the scope paragraph in the cached fixed block (rule 797): on unless false; `generateBatch` passes the founder's `prompt` switch */ agentScope?: boolean; /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number; /** the model that writes the batch: the one the caller priced (`generateBatch` resolves it once and passes it here); left out, `route("generate")` */ model?: string; /** the instruction layers for this batch (`loadLayers`): the platform and the workspace text in the generation prompt, and the reviewer and the cross-review read the same object (`critique`, `crossReview`); left out, none. The judge is not called from here: `generateBatch` hands it the same object in `JudgeContext.layers` */ layers?: Layers };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
@@ -224,13 +235,13 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   // A lead brief (a handoff item) is its own labelled data block after the owner's notes, and only when there is one:
   // a batch without it sends exactly the message it sent before handoffs existed.
   const lead = leadBriefBlock(opts.leadBrief);
-  const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
+  const userMsg = `TASK: ${taskSpec(type, brand)}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, GENERATE_NOTES_READ)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
 
   // The caller's resolved model (`generateBatch` always passes one); left out, routing for the type (TASK_MODELS, rule 901).
   const params = {
     model: opts.model ?? route("generate", { task: type }).model,
     max_tokens: 16000,
-    system: systemPrompt(brand, prefs, agent, opts.memory, opts.feedback, opts.layers),
+    system: systemPrompt(brand, prefs, agent, opts.memory, opts.feedback, opts.layers, opts.agentScope),
     messages: [{ role: "user" as const, content: userMsg }],
     thinking: { type: "adaptive" as const },
     output_config: { effort: "medium" as const },
@@ -265,6 +276,10 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
     }
   }
   let items = parseItems(text);
+  // A reply with no usable item (an empty array, or no element with a string body) is a failure, not an empty success
+  // (rule 1306, issue #79): every charging caller refunds on a throw (`generateBatch`, the instruction test), so an empty
+  // batch is never paid for. Thrown before the reviewer, so nothing more is spent on it.
+  if (!items.length) throw new Error("empty_generation");
   // The grounding the reviewer, the cross-reviewers and (through generateBatch) the judge read; `leadBrief` only when set.
   const ground: Grounding = { notes: extra, memory: opts.memory, stats: opts.stats, ...(opts.leadBrief ? { leadBrief: opts.leadBrief } : {}) };
   if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, deadline, ...ground, layers: opts.layers });
@@ -472,7 +487,7 @@ Return ONLY a JSON array with one element per item in <items>: {"id": <the item'
 function crossReviewMessage(type: TaskType, brand: Brand, items: Generated[], ctx: Grounding & { layers?: Layers }): string {
   const author = agentForTask(type);
   const brandFile = { name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, ...(brand.valueProp ? { valueProp: brand.valueProp.slice(0, 400) } : {}) };
-  return `AUTHOR: ${author.name.en}, ${author.role.en}\n\nTASK SPEC\n${SPECS[type]}\n\n<brand_file>\n${asData(brandFile)}\n</brand_file>${ownerForReview(ctx.layers, author.id)}${groundingBlocks(ctx)}\n\n<items>\n${asData(items.map((it, i) => ({ id: i + 1, channel: it.channel, title: it.title, body: it.body.slice(0, CROSS_BODY_CHARS) })))}\n</items>`;
+  return `AUTHOR: ${author.name.en}, ${author.role.en}\n\nTASK SPEC\n${taskSpec(type, brand)}\n\n<brand_file>\n${asData(brandFile)}\n</brand_file>${ownerForReview(ctx.layers, author.id)}${groundingBlocks(ctx)}\n\n<items>\n${asData(items.map((it, i) => ({ id: i + 1, channel: it.channel, title: it.title, body: it.body.slice(0, CROSS_BODY_CHARS) })))}\n</items>`;
 }
 
 // Control and bidi-override characters carry nothing a reader needs and can hide or reorder text on the owner's screen.

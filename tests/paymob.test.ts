@@ -452,6 +452,69 @@ describe("the founder (rules 717, 718)", () => {
   });
 });
 
+describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
+  const refund = (email: string, b: Record<string, unknown>) => adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", { action: "refund", ...b }), params({ email: encodeURIComponent(email) }));
+  const logRows = async (email: string, action: string) => (await db.lrange("admin:log", 0, 100)).map(String).filter((l) => l.includes(email) && l.includes(`"action":"${action}"`));
+  it("a refunded plan payment ends the plan at once: ended trial, no subscription, plan credits 0, packs kept, logged; a retry changes nothing (rule 1300)", async () => {
+    const u = await owner();
+    const { obj } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    await payAndConfirm({ kind: "topup", credits: 300 });
+    expect((await getUser(u.email))!.credits).toBe(600);
+    jar().clear();
+    await adminSignIn();
+    const id = paymentIdFor(obj.id);
+    const r = await refund(u.email, { id, reason: "asked" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, planEnded: true });
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("trial");
+    expect(trialOver(after)).toBe(true);
+    expect(after.billing).toBeUndefined();
+    expect(after.handPlan).toBeUndefined();
+    expect(after.credits).toBe(300);
+    expect(lotsOf(after)).toHaveLength(1);
+    expect(renewalDue({ ...after, renewedAt: "2000-01" })).toBe(false);
+    const log = await logRows(u.email, "refund_plan_ended");
+    expect(log).toHaveLength(1);
+    expect(JSON.parse(log[0])).toMatchObject({ section: "billing", before: { plan: "starter", credits: 600, autoRenew: false, paidThrough: addMonths(today(), 1) }, after: { plan: "trial", credits: 300, autoRenew: false, paidThrough: null } });
+    const again = await refund(u.email, { id });
+    expect(await again.json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: false });
+    expect((await getUser(u.email))!.credits).toBe(300);
+    expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
+  });
+  it("a pack's refund leaves the plan alone (rule 1300)", async () => {
+    const u = await owner();
+    await payAndConfirm({ kind: "plan", plan: "starter" });
+    const { obj } = await payAndConfirm({ kind: "topup", credits: 300 });
+    jar().clear();
+    await adminSignIn();
+    const r = await refund(u.email, { id: paymentIdFor(obj.id) });
+    expect(await r.json()).toMatchObject({ ok: true, planEnded: false });
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("starter");
+    expect(after.billing).toMatchObject({ status: "active" });
+  });
+  it("a refund or partial refund made in Paymob's dashboard arrives as a refunded or child transaction and changes nothing (rule 1301)", async () => {
+    const u = await owner();
+    const { it: intent } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    const before = (await getUser(u.email))!;
+    for (const x of [{ refunded: true }, { parent: true, amount: Math.floor(intent.amount / 2) }]) {
+      const r = await hook(txnObj({ amount: intent.amount, orderId: intent.orderId, ref: intent.ref, ...x }));
+      expect(await r.json()).toMatchObject({ result: "ignored" });
+    }
+    const after = (await getUser(u.email))!;
+    expect([after.plan, after.credits, after.billing?.paidThrough]).toEqual([before.plan, before.credits, before.billing?.paidThrough]);
+  });
+  it("a Paymob plan payment removes a paid-through day set by hand: the subscription's own day governs (rule 1305)", async () => {
+    const u = await owner();
+    await saveUser({ ...(await getUser(u.email))!, plan: "pro", handPlan: { paidThrough: addDays(today(), 5), by: "key", at: new Date().toISOString() } });
+    await payAndConfirm({ kind: "plan", plan: "starter" });
+    const after = (await getUser(u.email))!;
+    expect(after.handPlan).toBeUndefined();
+    expect(after.billing).toMatchObject({ paidThrough: addMonths(today(), 1) });
+  });
+});
+
 describe("leaving (rule 719)", () => {
   it("deleting the account deletes the saved card token", async () => {
     const u = await subscribed();

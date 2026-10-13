@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { adminKeySession, currentUser, isAdminCookie, isFounderActor } from "@/lib/auth";
 import AdminNav from "@/components/admin/AdminNav";
+import SecondFactor from "@/components/admin/SecondFactor";
+import { secondFactorStatus } from "@/lib/admin-2fa";
 import { SKIP_TO_CONTENT } from "@/lib/screen-titles";
 
 export const dynamic = "force-dynamic";
@@ -19,13 +21,17 @@ export default async function AdminLayout({ children, params }: { children: Reac
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   if (!(await isAdminCookie())) return <div className="min-h-dvh bg-background"><a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a><main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-10 sm:px-6">{children}</main></div>;
-  const [keySession, user] = await Promise.all([adminKeySession(), currentUser()]);
+  const [keySession, user, sf] = await Promise.all([adminKeySession(), currentUser(), secondFactorStatus()]);
   return (
     <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
       {/* Rule 968: past the console's links straight to the section. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
       <AdminNav lang={lang} keySession={keySession} founder={isFounderActor(user)} />
-      <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+      <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        {/* Rules 1377-1379: the second factor's banner or status line, and the code prompt every console write can open. */}
+        <SecondFactor lang={lang} enrolled={sf.enrolled} />
+        {children}
+      </main>
     </div>
   );
 }

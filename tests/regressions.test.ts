@@ -188,6 +188,24 @@ describe("an ended trial cannot buy an image", () => {
     expect((await getUser(u.email))!.credits, "a refused request must not have charged").toBe(50);
   });
 
+  it("the video route refuses with the same 402, before the model, the plan or the provider are looked at", async () => {
+    const u = await expired();
+    await saveBrand(u.email, brand());
+    const { saveTask } = await import("@/lib/brand");
+    await saveTask(u.email, { id: "vid1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
+
+    const videoRoute = await import("@/app/api/tasks/[id]/video/route");
+    // A model the route would otherwise answer plan_required or bad_model for: the trial check is the first line.
+    for (const model of ["vid-quick", "vid-premium", "not-a-model", undefined]) {
+      const res = await videoRoute.POST(json("/api/tasks/vid1/video", "POST", { model }), params({ id: "vid1" }));
+      expect(res.status, String(model)).toBe(402);
+      expect((await res.json()).error, String(model)).toBe("trial_over");
+    }
+
+    const { getUser } = await import("@/lib/auth");
+    expect((await getUser(u.email))!.credits, "a refused request must not have charged").toBe(50);
+  });
+
   it("the chat's generate_image tool refuses too, and says why", async () => {
     const u = await expired();
     await saveBrand(u.email, brand());

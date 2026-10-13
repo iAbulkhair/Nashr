@@ -12,6 +12,7 @@
  */
 import type { Brand } from "./brand";
 import type { TaskType } from "./tasks";
+import { isRegulated } from "./regulated";
 
 export type BrandRule = { id: string; kind: "banned"; term: string };
 /** `placeholder`: an unfilled slot such as [رقم] or {{1}} (placeholderHits below), held like a banned word. */
@@ -192,9 +193,13 @@ export function gateTask(brand: Pick<Brand, "banned"> | null | undefined, t: Che
   return isCustomerFacing(t.type) ? [...checkText(brandRules(brand), textOf(t)), ...placeholderViolations(t, !!opts.publish, opts.provider)] : [];
 }
 
-/** Auto-approval never skips the gate: an item that breaks a rule waits in the inbox with the rule named. */
-export function initialStatus(autoApprove: boolean | undefined, brand: Pick<Brand, "banned"> | null | undefined, t: Checkable): "approved" | "pending" {
-  return autoApprove && gateTask(brand, t).length === 0 ? "approved" : "pending";
+/**
+ * Auto-approval never skips the gate: an item that breaks a rule waits in the inbox with the rule named. And a brand in a
+ * regulated sector (health, pharmacy, real estate, law, finance: src/lib/regulated.ts, rule 1521) is never auto-approved,
+ * whatever governance says: every item waits for a person. `industry` is optional so a caller without it keeps its answer.
+ */
+export function initialStatus(autoApprove: boolean | undefined, brand: (Pick<Brand, "banned"> & { industry?: unknown }) | null | undefined, t: Checkable): "approved" | "pending" {
+  return autoApprove && !isRegulated(brand) && gateTask(brand, t).length === 0 ? "approved" : "pending";
 }
 
 /** One line for an agent, a tool result or an error message: which rule fired and on what. */

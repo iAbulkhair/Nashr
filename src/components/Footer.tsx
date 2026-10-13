@@ -28,10 +28,11 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
             <p className="font-display text-xl font-bold text-foreground"><Wordmark lang={lang} name={t.brand} /></p>
             <p className="mt-1 text-sm">{t.footer.tagline}</p>
           </div>
+          {/* Each link is at least 24px tall (rule 1587, WCAG 2.5.8): 20px of text plus 4px between rows read the same as before. */}
           {cols.map((c) => (
             <nav key={c.title} aria-label={c.title}>
               <p className="text-sm font-semibold text-foreground">{c.title}</p>
-              <ul className="mt-3 space-y-2 text-sm">{c.links.map((l) => <li key={l.href}><Link href={l.href} className="text-foreground hover:underline">{l.label}</Link></li>)}</ul>
+              <ul className="mt-3 space-y-1 text-sm">{c.links.map((l) => <li key={l.href}><Link href={l.href} className="inline-flex min-h-6 items-center text-foreground hover:underline">{l.label}</Link></li>)}</ul>
             </nav>
           ))}
         </div>

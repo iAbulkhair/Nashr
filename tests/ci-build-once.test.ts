@@ -58,8 +58,8 @@ describe("rule 1208: the Next build cache is saved right after the build, so a r
     const restore = step("Restore Next build cache");
     const save = step("Save Next build cache");
     expect(restore).toMatch(/id: next-cache\n/);
-    expect(restore).toMatch(/uses: actions\/cache\/restore@v4\n/);
-    expect(save).toMatch(/uses: actions\/cache\/save@v4\n/);
+    expect(restore).toMatch(/uses: actions\/cache\/restore@[0-9a-f]{40} # v4\.\d+\.\d+\n/);
+    expect(save).toMatch(/uses: actions\/cache\/save@[0-9a-f]{40} # v4\.\d+\.\d+\n/);
     expect(save).toMatch(/if: steps\.scope\.outputs\.build == 'true' && steps\.next-cache\.outputs\.cache-hit != 'true'\n/);
     expect(save).toMatch(/path: \$\{\{ github\.workspace \}\}\/\.next\/cache\n/);
     expect(save).toMatch(/key: \$\{\{ steps\.next-cache\.outputs\.cache-primary-key \}\}/);
@@ -71,7 +71,7 @@ describe("rule 1208: the Next build cache is saved right after the build, so a r
 
   it("no combined actions/cache step holds .next/cache any more (its post-job save is skipped when the job fails)", () => {
     expect(yml).not.toMatch(/- name: Cache Next build\n/);
-    const combined = yml.split("\n      - ").filter((s) => /uses: actions\/cache@v4/.test(s));
+    const combined = yml.split("\n      - ").filter((s) => /uses: actions\/cache@[0-9a-f]{40} # v4\.\d+\.\d+/.test(s));
     for (const s of combined) expect(s).not.toMatch(/\.next\/cache/);
   });
 

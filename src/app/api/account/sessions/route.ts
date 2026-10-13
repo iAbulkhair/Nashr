@@ -13,7 +13,7 @@ const SIGN_OUT_OTHERS_PER_HOUR = 10;
  * POST /api/account/sessions {password} (rules 1150, 1170-1171): sign out every OTHER browser session of the acting
  * login, and keep this one. It stamps `devicesAfter` (the member record for a member, the account for the owner; a
  * member's sign-out never touches the owner's sessions or the other members'), a stamp only `resolveSession` reads.
- * Sessions are not listed: the store keeps them as unindexed `session:{token}` keys, so the list waits for a later phase.
+ * Sessions are not listed: the store keeps them as unindexed `session:h:{sha256(token)}` keys (rule 1345), so the list waits for a later phase.
  *
  * What stays: MCP tokens, connected apps, the calendar feed and booking links. They follow `sessionsAfter` (`loginHolds`
  * in src/lib/secretary-feed.ts), which only a password change or reset moves; this route never moves it (rule 1170).

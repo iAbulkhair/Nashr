@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
 import { adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan, type User } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { matchUser, pageOf, parseUserQuery, sortUsers, tileCounts, userFacets } from "@/lib/admin-users";
 import { db } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
-import { getUsage } from "@/lib/usage";
+import { getUsage, mediaCostKey } from "@/lib/usage";
+import { marginPct, revenueSarOf } from "@/lib/margin";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
 import { enforceSeats } from "@/lib/team";
-import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
+import { MAX_SEAT_OVERRIDE, allowanceOf, brandCapFor, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 import { parseVideoGrant } from "@/lib/entitlements";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
+import { defaultPaidThrough, parsePaidThrough } from "@/lib/hand-plan";
+import { ksaDay } from "@/lib/partner-rules";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -46,15 +50,23 @@ const videoLabel = (g: Grant<"all"> | undefined) => (g ? `all@${g.until}` : "pla
 //            ahead, `note` at most 200 characters on one line; anything else is 400 bad_grant, decided before the account
 //            is read). Only `until` and `note` are read from the body: the value, the actor and the time are set here. A
 //            plan change keeps the grant; only null removes it (rule 783, tests/entitlements-grant.test.ts).
+//      paidThrough: the Riyadh day (YYYY-MM-DD) a plan set by hand is paid through (rules 1302-1305, src/lib/hand-plan.ts):
+//            from today to 400 days ahead, else 400 bad_paid_through. With a paid plan it is stored in `User.handPlan`
+//            (left out: one calendar month from today); the monthly refill stops after it. Alone, it moves the day of
+//            the current hand-set plan (400 paid_through_needs_plan on a trial, 409 paid_through_paymob on an online
+//            subscription, whose own day governs); null removes it (the refill has no end, as before 2026-10-12). A
+//            change to the trial removes it. Each monthly refill of a hand-set plan writes a `hand_refill` row to the
+//            founder log (src/lib/credits.ts `renewIfDue`).
 //      A plan or seat change fits the team to the new limit at once (src/lib/team.ts `enforceSeats`): the newest
 //      members over it are paused, never deleted. Every change is logged in admin:log with the deal before and after.
 //      Rules 243-244 and 316, tests/admin-deal.test.ts.
 /** One account's row: its record with this month's usage and chat. Two reads per account (usage and chat). */
 async function rowOf(u: User) {
-  const [usage, chat] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model)]);
+  const [usage, chat, mediaMicro] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model), db.get<number>(mediaCostKey(u.email)).catch(() => 0)]);
   // The list price, or an Agency account's deal price (Business's without a deal).
   const priceSar = priceOf(u);
-  const costSar = usage.usd * SAR_PER_USD;
+  // Rule 1532: the same margin as the daily alert (src/lib/margin.ts): model cost plus this month's render cost.
+  const mediaUsd = Math.max(0, Number(mediaMicro ?? 0) || 0) / 1e6;
   // `chatStatus`, not the month counter alone: a trial's messages are counted once for the whole trial.
   const chatUsd = usage.byKind.chat?.usd ?? 0;
   return ({
@@ -65,12 +77,16 @@ async function rowOf(u: User) {
     // Rule 776: when the owner proved the address (null: not yet, so the account reads as signed out until they do).
     emailVerifiedAt: u.emailVerifiedAt ?? null,
     seats: seatLimit(u), seatsOverride: u.seats ?? null,
+    // Rule 1393: the active-brand cap and the founder override (POST /api/admin/brand-cap sets it).
+    brandCap: brandCapFor(u), brandCapOverride: u.brandCap ?? null,
     deal: u.deal ?? null, allowance: allowanceOf(u),
     videoGrant: u.grants?.video ?? null,
+    // The hand-set plan's paid-through day (null: none, or the plan is paid online and `billing` has its own).
+    paidThrough: u.handPlan?.paidThrough ?? null,
     tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls, byKind: usage.byKind,
     priceSar,
     // A trial has no list price, so a margin would be meaningless rather than negative.
-    marginPct: priceSar > 0 ? Math.round(((priceSar - costSar) / priceSar) * 100) : null,
+    marginPct: marginPct(revenueSarOf(u), usage.usd + mediaUsd), mediaUsd,
     // `chatUsed` is the RAW count (`counted`), not the owner's clamped `used`: after the allowance was lowered
     // mid-period it can pass `chatAllowance`, and the console shows that as it is.
     chatUsed: chat.counted, chatAllowance: chat.allowance, chatLeft: chat.left, chatPeriod: chat.period,
@@ -110,7 +126,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { email?: string; plan?: Plan; deal?: unknown; addCredits?: unknown; seats?: number | null; chatAllowance?: unknown; videoGrant?: unknown; reason?: string };
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
+  const b = (await req.json().catch(() => ({}))) as { email?: string; plan?: Plan; deal?: unknown; addCredits?: unknown; seats?: number | null; chatAllowance?: unknown; videoGrant?: unknown; paidThrough?: unknown; reason?: string };
   // Every plan change asks a reason in the console, so the server asks it too (rule 1185).
   const noReason = reasonRefused(b.reason);
   if (noReason) return noReason;
@@ -151,10 +170,20 @@ export async function POST(req: Request) {
     if (!g.ok) return NextResponse.json({ ok: false, error: "bad_grant" }, { status: 400 });
     grant = g;
   }
+  // The hand-set plan's paid-through day: null removes it; anything else must be a real day from today to 400 days ahead.
+  const today = ksaDay();
+  const paidGiven = b.paidThrough !== undefined;
+  const clearPaid = b.paidThrough === null;
+  let paidDay: string | null = null;
+  if (paidGiven && !clearPaid) {
+    const d = parsePaidThrough(b.paidThrough, today);
+    if (!d.ok) return NextResponse.json({ ok: false, error: "bad_paid_through" }, { status: 400 });
+    paidDay = d.day;
+  }
   const planGiven = isPlan(b.plan);
   const prev = email ? await getUser(email) : null;
   if (!prev) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  const before = { plan: String(prev.plan), credits: Number(prev.credits), seats: seatLimit(prev), chat: chatAllowanceOf(prev), deal: dealLabel(prev.deal), video: videoLabel(prev.grants?.video) };
+  const before = { plan: String(prev.plan), credits: Number(prev.credits), seats: seatLimit(prev), chat: chatAllowanceOf(prev), deal: dealLabel(prev.deal), video: videoLabel(prev.grants?.video), paidThrough: prev.handPlan?.paidThrough ?? null };
   let seatsReset = false;
   let chatReset = false;
   let billingEnded = false;
@@ -162,6 +191,9 @@ export async function POST(req: Request) {
     const plan = planGiven ? (b.plan as Plan) : u.plan;
     // Decided on the record as it is under the lock, before anything changes: a refused request writes nothing.
     if (deal && plan !== "agency") return "deal_needs_agency" as const;
+    // A paid-through day alone belongs to a hand-set paid plan: not to a trial, not to an online subscription.
+    if (paidGiven && !planGiven && plan === "trial") return "paid_through_needs_plan" as const;
+    if (paidGiven && !planGiven && u.billing) return "paid_through_paymob" as const;
     // The contract ends when the account leaves Agency or the deal is cleared. Its seats end with it: they live in the
     // seat override (decision 6), which `seatLimit` honours on every plan, so leaving it would keep a deal's 20 seats on
     // a Pro plan. A request that sets `seats` itself says what the new number is.
@@ -179,6 +211,13 @@ export async function POST(req: Request) {
       // A plan set by hand makes the account hand-managed: the online subscription (src/lib/billing.ts, rule 717) stops
       // renewing, and a renewal lock on it ends here. The saved card stays until the owner removes it or the account goes.
       if (u.billing) { delete u.billing; billingEnded = true; }
+      // The plan's paid-through day (rule 1302): the trial has none; a paid plan gets the one sent, or one month from
+      // today, unless the request clears it (no end, the old behaviour).
+      if (u.plan === "trial" || clearPaid) delete u.handPlan;
+      else u.handPlan = { paidThrough: paidDay ?? defaultPaidThrough(today), by: who, at: new Date().toISOString() };
+    } else if (paidGiven) {
+      if (clearPaid) delete u.handPlan;
+      else u.handPlan = { paidThrough: paidDay!, by: who, at: new Date().toISOString() };
     }
     if (addGiven) addMonthly(u, add);
     if (clearSeats) delete u.seats;
@@ -192,7 +231,8 @@ export async function POST(req: Request) {
     await saveUser(u);
     return u;
   });
-  if (done === "deal_needs_agency") return NextResponse.json({ ok: false, error: "deal_needs_agency" }, { status: 400 });
+  if (done === "deal_needs_agency" || done === "paid_through_needs_plan") return NextResponse.json({ ok: false, error: done }, { status: 400 });
+  if (done === "paid_through_paymob") return NextResponse.json({ ok: false, error: done }, { status: 409 });
   const user = done;
   // Every change to the seat limit, up or down, refits the team: paused members come back oldest-first when it grows.
   const team = planGiven || seatsGiven || seatsReset ? await enforceSeats(user.email) : null;
@@ -206,8 +246,9 @@ export async function POST(req: Request) {
     chatGiven ? `chat:${clearChat ? "plan" : b.chatAllowance}` : chatReset ? "chat:plan" : "",
     billingEnded ? "billing:manual" : "",
     grantGiven ? `video:${grant ? `all@${grant.until}` : "plan"}` : "",
+    (user.handPlan?.paidThrough ?? null) !== before.paidThrough ? `paid_through:${user.handPlan?.paidThrough ?? "none"}` : "",
   ].filter(Boolean).join(" ") || "none";
   const teamChange = team && (team.disabled.length || team.enabled.length || team.cancelled.length) ? { disabled: team.disabled, enabled: team.enabled, cancelledInvites: team.cancelled.length } : undefined;
-  await adminAudit({ actor: who, section: "users", action: "plan", target: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video) }, reason: b.reason, ...(teamChange ? { extra: { team: teamChange } } : {}) });
-  return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user), chatAllowance: chatAllowanceOf(user), chatOverride: user.chatAllowance ?? null, videoGrant: user.grants?.video ?? null }, ...(team ? { team } : {}) });
+  await adminAudit({ actor: who, section: "users", action: "plan", target: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video), paidThrough: user.handPlan?.paidThrough ?? null }, reason: b.reason, ...(teamChange ? { extra: { team: teamChange } } : {}) });
+  return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user), chatAllowance: chatAllowanceOf(user), chatOverride: user.chatAllowance ?? null, videoGrant: user.grants?.video ?? null, paidThrough: user.handPlan?.paidThrough ?? null }, ...(team ? { team } : {}) });
 }

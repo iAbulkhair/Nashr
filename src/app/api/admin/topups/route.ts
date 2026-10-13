@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminActor, getUser, normalizeEmail } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { addPaidTopup, refundPaidTopup, voidPaidTopup, type Payment, type PaidTopupError, type RefundTopupError } from "@/lib/partners";
 import { parseTopup, parseTopupRefund, topupCredits } from "@/lib/topups";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
@@ -68,6 +69,9 @@ const paymentText = (p: Payment | null) =>
 export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const b = (await req.json().catch(() => ({}))) as { email?: unknown; action?: unknown; id?: unknown; reason?: unknown; paymentId?: unknown; refundId?: unknown; finish?: unknown };
   const email = typeof b.email === "string" ? normalizeEmail(b.email) : "";
   const reason = (typeof b.reason === "string" ? b.reason.slice(0, 200) : "") || undefined;

@@ -1,7 +1,33 @@
 import { execSync } from "node:child_process";
 import type { NextConfig } from "next";
 
-// The CSP sets no default-src, script-src, frame-src or connect-src, so the Cloudflare Turnstile widget on signup and
+// The full policy the app should end up enforcing, sent REPORT-ONLY for now (rule 1341, 360 study C-006/F-019): the
+// browser logs what it would block in the console and blocks nothing, so customers see no change. The enforced header
+// below stays as it was. Allowed beyond 'self':
+//  - Cloudflare Turnstile: its script, iframe and calls (https://challenges.cloudflare.com, rule 428).
+//  - 'unsafe-inline' scripts and styles: Next writes inline bootstrap scripts and style tags, and a nonce would make
+//    every page render per request. The JSON-LD blocks are data, not script.
+//  - Images and video from any https host: rendered replies and catalogue images name outside hosts; media plays from
+//    blob: and the storage host. The inbox downloads a finished video from Vercel Blob to share it.
+// Moving a directive into the enforced header means checking the console on every page first, Turnstile on.
+const CSP_REPORT_ONLY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self' https://challenges.cloudflare.com https://*.public.blob.vercel-storage.com",
+  "frame-src https://challenges.cloudflare.com",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join("; ");
+
+// The enforced CSP sets no default-src, script-src, frame-src or connect-src, so the Cloudflare Turnstile widget on signup and
 // forgot-password (script and iframe from https://challenges.cloudflare.com, src/components/app/Turnstile.tsx) loads.
 // Adding any of those directives means allowing that origin too: rule 428, tests/launch-security.test.ts.
 const SECURITY_HEADERS = [
@@ -11,6 +37,7 @@ const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Content-Security-Policy-Report-Only", value: CSP_REPORT_ONLY },
 ];
 
 // The commit this build was made from: BUILD_COMMIT when the host sets it, else the checkout's HEAD, else "unknown". A
@@ -25,6 +52,8 @@ const buildCommit = () => {
 };
 
 const nextConfig: NextConfig = {
+  // No `X-Powered-By: Next.js` on any answer (rule 1340, 360 study F-019): it names the framework to a scanner for nothing.
+  poweredByHeader: false,
   // Inlined into the server bundle at build time (process.env.BUILD_COMMIT and BUILD_TIME, read as written, never
   // destructured). Neither is a secret. BUILD_TIME alone tells two builds apart when the commit is unknown.
   env: { BUILD_COMMIT: buildCommit(), BUILD_TIME: new Date().toISOString() },

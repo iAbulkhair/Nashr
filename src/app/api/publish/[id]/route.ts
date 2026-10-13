@@ -12,10 +12,13 @@ import { recordActivity } from "@/lib/activity";
 import { agentForTask } from "@/lib/agents";
 import { forbid } from "@/lib/roles";
 import { taskVersion } from "@/lib/task-version";
+import { publishScopeCheck, readAgentScopeModes } from "@/lib/agent-scope";
+import { deadlineFor } from "@/lib/media/keys";
 
 export const maxDuration = 60;
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   // Publishing is irreversible and approves the item: admin and owner only (src/lib/roles.ts "publish").
@@ -35,7 +38,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // The owner's click is the approval here, but a rejected item stays unpublished and the target must fit the item type.
   if (t.status === "rejected") return NextResponse.json({ ok: false, error: "rejected_item" }, { status: 409 });
   // Who publishes, from the session (never the body), for the decision record and the activity row below.
-  const [connections, brand, by] = await Promise.all([listConnections(sc(u)), getBrand(sc(u)), byOf(u)]);
+  const [connections, brand, by, modes] = await Promise.all([listConnections(sc(u)), getBrand(sc(u)), byOf(u), readAgentScopeModes()]);
   // Publishing approves the item, so it passes the same brand gate as the approve button, plus the publish-only part:
   // no placeholder goes out, not even a WhatsApp {{1}}, except a template's own {{n}} sent to Meta's review (src/lib/brand-rules.ts).
   const violations = gateTask(brand, t, { publish: true, provider: b.provider });
@@ -44,6 +47,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (b.live === true && b.provider !== "wordpress") return NextResponse.json({ ok: false, error: "live_unsupported" }, { status: 400 });
   const connected = connectedTargets(connections);
   if (!targetsFor(t, connected).includes(b.provider)) return NextResponse.json({ ok: false, error: "wrong_target" }, { status: 400 });
+  // The agent-scope publish check (rule 1410), last before the send: in enforce a refusal holds the item (409, the owner
+  // can edit it and try again, or the founder releases it) and a check that failed holds it too (503, fails closed). The
+  // version compared under the publish lock below ties the text sent to the text checked here.
+  const held = await publishScopeCheck(u, t, "publish", t.lang === "en" ? "en" : "ar", modes, deadline);
+  if (held.block) return NextResponse.json({ ok: false, error: held.verdict === "error" ? "agent_scope_unavailable" : "agent_scope_held", message: held.reply }, { status: held.verdict === "error" ? 503 : 409 });
   // One publish per item and platform; a second one, or one after a result nobody saw, needs the owner's "again". The
   // two checks that read the item run again on the copy that is sent, under the publish lock.
   const r = await publishOnce(sc(u), id, b.provider, {

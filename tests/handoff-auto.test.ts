@@ -745,7 +745,9 @@ describe("the chat reply, the card and the tool never say 'nothing runs' when th
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         static BadRequestError = class extends Error {};
-        messages = { stream: () => ({ finalMessage: async () => { const t = turns.shift(); if (t instanceof Error) throw t; return { model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(t ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }; } }) };
+// The agent-scope classifier streams since the 2026-10-12 build batch (rule 980) and forces its `verdict` tool. It gets
+        // no answer here, as when it called the `create` this mock never had, so the scripted turns stay the chat's.
+        messages = { stream: (p?: { tool_choice?: { name?: string } }) => (p?.tool_choice?.name === "verdict" ? { finalMessage: async () => { throw new Error("no classifier in this test"); } } : { finalMessage: async () => { const t = turns.shift(); if (t instanceof Error) throw t; return { model: "claude-opus-5-5", usage: { input_tokens: 1, output_tokens: 1 }, ...(t ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }; } }) };
       },
     }));
     const { chat, history } = await import("@/lib/chat");

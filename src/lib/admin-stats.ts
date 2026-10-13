@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { getUser, type AgencyDeal, type Plan } from "./auth";
+import { getUser, type AgencyDeal, type Plan, type User } from "./auth";
 import { SAR_PER_USD, allowanceOf, chatAllowanceOf, priceOf, seatLimit } from "./pricing";
 import { getBrand, listLite, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
 import { getUsage, type ModelUsage } from "./usage";
@@ -11,6 +11,7 @@ import { MEDIA_MODELS, type MediaModelId, type MediaProviderId } from "./media-c
 import { mk } from "./media/keys";
 import { topupRevenueSar } from "./topups";
 import { cronStatuses, type CronStatus } from "./cron-heartbeat";
+import { marginView, type MarginView } from "./margin";
 
 /**
  * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
@@ -36,7 +37,33 @@ export type Overview = {
    */
   modelUsage: { month: string; models: Record<string, ModelUsage>; providers: Record<string, ModelUsage>; fallbacks: number; rejectedPicks: Record<string, number> };
   recent: { email: string; name: string; plan: string; credits: number; createdAt: string; lastActive: string | null; activated: boolean; events: Record<string, number> }[];
+  /** Sign-ups that never finished onboarding (rules 1474, 1475): how many, and the newest `STALLED_MAX` of them. */
+  stalled: { total: number; rows: Stalled[] };
+  /**
+   * Rule 1533: this month's paying accounts under the margin floor (src/lib/margin.ts), live, lowest first, and the last
+   * daily alert run's counts. Null when the counters could not be read (the rest of the overview still answers).
+   */
+  margin: MarginView | null;
 };
+
+/**
+ * A sign-up that stopped before onboarding (rule 1474): the account is at least `STALLED_AFTER_H` hours old, not suspended,
+ * and has no brand file. `reason`: `email_unverified` when the address was never proved (the owner may never have seen
+ * the code), else `no_brand` (verified, then stopped). Team members are not in `users:all`, so they never show here.
+ */
+export type Stalled = { email: string; name: string; phone: string; plan: string; createdAt: string; reason: "email_unverified" | "no_brand" };
+export const STALLED_AFTER_H = 24;
+export const STALLED_MAX = 50;
+/** Pure: the stalled sign-ups among `users`, newest first, at most `STALLED_MAX` rows, and how many there are in all. */
+export function stalledSignups(users: Pick<User, "email" | "name" | "phone" | "plan" | "createdAt" | "suspended" | "emailVerifiedAt">[], hasBrand: (email: string) => boolean, now: number): { total: number; rows: Stalled[] } {
+  const all = users
+    .filter((u) => !u.suspended && !hasBrand(u.email) && now - new Date(u.createdAt).getTime() >= STALLED_AFTER_H * 36e5)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return {
+    total: all.length,
+    rows: all.slice(0, STALLED_MAX).map((u) => ({ email: u.email, name: u.name, phone: u.phone, plan: u.plan, createdAt: u.createdAt, reason: u.emailVerifiedAt ? "no_brand" : "email_unverified" })),
+  };
+}
 
 /** What renders cost us in a month (spec 4.9). Provider and month totals are sums of the per-model counters. */
 export type RenderSpend = {
@@ -121,7 +148,7 @@ export async function overview(): Promise<Overview> {
   const scopes = (await pmap(users, async (u) => (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id)), 6)).flat();
   const perScope = await pmap(scopes, async (scope) => (await listLite(scope, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0), 6);
   const creditsUsed = perScope.reduce((s, x) => s + x, 0);
-  const [total, render, crons] = await Promise.all([getUsage("_all"), renderSpend(), cronStatuses().catch((): CronStatus[] => [])]);
+  const [total, render, crons, margin] = await Promise.all([getUsage("_all"), renderSpend(), cronStatuses().catch((): CronStatus[] => []), marginView(users).catch(() => null)]);
   // Renders are billed to us like model calls: a video can cost more than a month of text for the same account.
   const grossMargin = mrr > 0 ? Math.round(((mrr - (total.usd + render.usd) * SAR_PER_USD) / mrr) * 100) : null;
 
@@ -131,6 +158,8 @@ export async function overview(): Promise<Overview> {
   }, 8);
 
   return {
+    stalled: stalledSignups(users, (e) => brands.get(e) ?? false, now),
+    margin,
     generatedAt: new Date().toISOString(),
     users: { total: users.length, new1d: users.filter((u) => ageDays(u.createdAt) <= 1).length, new7d: users.filter((u) => ageDays(u.createdAt) <= 7).length, new30d: recentUsers.length, activated, activationRate: users.length ? Math.round((activated / users.length) * 100) : null, paying, trialActive, trialExpired, suspended: users.filter((u) => u.suspended).length },
     engagement: { dau, wau, mau, stickiness: mau ? Math.round((dau / mau) * 100) : null, retention7: cohort.length ? Math.round((retained / cohort.length) * 100) : null },

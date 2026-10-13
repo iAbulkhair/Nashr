@@ -1,5 +1,7 @@
 # Admin shell, brand limits per plan, brand in the URL — design
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** Part A (the admin shell) merged as #304 (2026-10-10, in `production`). Part B (brand limits per plan) was built after that date: merged to `main` as #340 (rules 1390-1395, `docs/system/tests/1390-brand-limits.md`), part of the #347 batch, not in `production` yet (checked 2026-10-13). Part C (the brand id in the URL) is not built; "Spec only, no code" below is true of C only.
+
 Status: design approved in conversation on 2026-10-09 (founder: «صحيحة»). Spec only, no code. Branch `claude/admin-panel-brand-management-7d1abe`. Rules 870-899 reserved for this work (870-879 part A, 880-884 part B, 885-899 part C); check `docs/system/tests.md` after other merges.
 
 Three pull requests, in this order, each on its own branch, none merged or released without the founder's word:

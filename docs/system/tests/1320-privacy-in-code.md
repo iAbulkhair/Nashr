@@ -1,0 +1,28 @@
+# Coverage: the owner's own data download, the consent record, the processor list (rules 1320-1330)
+
+Status on 2026-10-12 on branch `claude/privacy-in-code-2aa534` (draft PR). From the 360 study items C-002, D-005 and E-014 and the leftovers L045 and L099. The batch of 2026-10-12 split the numbers by branch: money and price fixes 1300-1319, this change 1320-1339, security hardening 1340-1369, the others 1370 and up. This change uses 1320-1330; 1331-1339 stay free. Flows section 65 (renumbered from 64 in the 2026-10-12 build batch: the admin second factor took 64).
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 1320 | `GET /api/account/export` answers 401 without a session and 403 to a team admin, a member and a founder impersonating (`account.export` is owner only and in `IMPERSONATION_BLOCKED`); the owner gets 200 | `tests/privacy-in-code.test.ts` (rule 1320 block), `tests/role-gates.test.ts` (READS row), `tests/teams-core.test.ts` (role table row) | — |
+| 1321 | The export holds only the signed-in account's data: two seeded owners never see each other's brands, tasks, files, threads or connections; the handler takes no request; every brand of the account is exported under its own scope and the one `sc(u)` names is marked `active` | `tests/privacy-in-code.test.ts` (rule 1321 block) | — |
+| 1322 | No password hash, connection credential (`enc`), MCP token or credential-looking meta key leaves in the file (`SECRETISH`, `connectionView`) | `tests/privacy-in-code.test.ts` (rule 1322 block) | — |
+| 1323 | Three downloads an hour and ten a day per owner (`accountexport:h:` and `accountexport:d:`), then 429 `slow_down` with `Retry-After`; the route calls `allow()` before reading anything | `tests/privacy-in-code.test.ts` (rule 1323 block) | — |
+| 1324 | The file is `thakeen-export/1` JSON sent as an attachment with `no-store`; it holds the account, consent, plan and credits, every task (past the inbox's 200), files, conversations with messages and connections; records are read with `db.mget` and no `await db.` sits in a loop | `tests/privacy-in-code.test.ts` (rule 1324 block) | — |
+| 1325 | Signup writes `User.consent` with the terms and privacy versions from code, the time, the language and `via: "signup_notice"`; the request cannot choose the versions or the time; the versions equal each document's "last updated" day | `tests/privacy-in-code.test.ts` (rules 1325-1326 block) | — |
+| 1326 | Expand (rule 679): an account without the field reads `{ recorded: false }` and its export carries no made-up consent date; the field survives an unrelated `saveUser` | `tests/privacy-in-code.test.ts` (rules 1325-1326 block) | — |
+| 1327 | The privacy policy names every processor the code calls, in Arabic and English (Hostinger, Upstash, Anthropic only in the allowed "Anthropic for text" phrase, Straitly as off by default, fal.ai, kie.ai, Higgsfield, Vercel Blob, Resend, Composio, Cloudflare Turnstile, Paymob); "Vercel" appears only as "Vercel Blob"; the environment variable behind each service is named in `variables.md`; `architecture.md` says the app is deployed on Hostinger | `tests/privacy-in-code.test.ts` (rule 1327 block), `tests/content-claims.test.ts` (processor list) | — |
+| 1328 | The privacy text points at Settings, Danger zone for the download and no longer says "To request an export"; it says the consent is recorded; the help answers "How do I get a copy of my data?" (3 an hour) and "Who processes my data?" (every processor but the model maker, rule 514, and a pointer to the policy); both new answers are `chat: false` so the chat prompt, which carries the other English answers, stays under its pinned size (`tests/pricing-floor.test.ts`), and the delete answer it carries names the download; none of Hostinger, Upstash, Straitly, Composio, Higgsfield, kie.ai, Vercel or Resend appears in the marketing copy (dictionary, site copy, agent, industry, comparison and tool pages, blog posts) | `tests/privacy-in-code.test.ts` (rule 1328 block), `tests/topup-refunds.test.ts` (privacy date) | — |
+| 1329 | Settings, Danger zone offers the download link to an owner who may export, a note to a founder viewing the account and nothing to a member, in both languages | `tests/privacy-in-code.test.ts` (rule 1329 block, source checks) | A rendered check of the card per actor |
+| 1330 | `flows.md` and `permissions.md` name `GET /api/account/export`, and `permissions.md` names `account.export` | `tests/privacy-in-code.test.ts` (rule 1330 block) | — |
+
+## Notes
+
+- Release step: expand (rule 679). `User.consent` is a new optional field; no code requires it, and no conversion script exists or is needed (an old account has nothing to convert). No environment variable is added.
+- The processor list was checked against the code and `variables.md` on 2026-10-12. Unverified (no access to the production environment): whether production sets `BLOB_READ_WRITE_TOKEN`, the Turnstile keys, the media provider keys and `MEDIA_MODELS_ON`, `COMPOSIO_*` and `LLM_PROVIDER`; where each vendor stores the data; where Straitly runs. The policy words the conditional services as "when switched on".
+- The lawyer drafts of #325 are not published. Waiting on the lawyer: the controller's legal name and address, the cross-border transfer statement, the breach-notification commitment, whether signup needs an explicit consent checkbox and its wording, and what happens to public generated media after an account is deleted.
+
+## Not pinned
+
+- That the browser saves the file under the `Content-Disposition` name is the browser's behaviour, not a unit test.
+- Member logins' own records and the team roster are not in the export (the owner's account data is); a later change can add them.

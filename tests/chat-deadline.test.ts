@@ -18,7 +18,9 @@ vi.mock("@/lib/media/start", async (orig) => ({
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
     messages = {
-      stream: (args: { messages: { role: string; content: unknown }[] }) => ({
+      // The agent-scope classifier streams since the 2026-10-12 build batch (rule 980) and forces its `verdict` tool. It gets
+      // no answer here, as when it called the `create` this mock never had, so the scripted turns stay the chat's.
+      stream: (args: { messages: { role: string; content: unknown }[] }) => ((args as { tool_choice?: { name?: string } }).tool_choice?.name === "verdict" ? { finalMessage: async () => { throw new Error("no classifier in this test"); } } : {
         finalMessage: async () => {
           h.seen.push(structuredClone(args));
           const next = h.turns.shift();

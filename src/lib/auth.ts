@@ -7,10 +7,12 @@ import type { Member } from "./team";
 import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
 import { settleTopups, type Receipt, type TopupLot } from "./topups";
 import { billingLocked, type Billing } from "./billing-state";
+import { signupConsent, type Consent } from "./consent";
+import type { HandPlan } from "./hand-plan";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
-export { PLANS, PLAN_CREDITS, PLAN_SEATS, isPlan, seatLimit } from "./pricing";
+export { PLANS, PLAN_CREDITS, PLAN_SEATS, brandCapFor, isPlan, seatLimit } from "./pricing";
 export type { AgencyDeal, Plan } from "./pricing";
 
 /** Who may do what inside an account (src/lib/roles.ts). The owner role belongs to the `user:` record only. */
@@ -84,6 +86,12 @@ export type User = {
    */
   seats?: number;
   /**
+   * Founder-console override of the plan's active-brand count (`PLAN_BRANDS` in src/lib/pricing.ts, `brandCapFor`), a
+   * whole number from 1 to 200. Written only by POST /api/admin/brand-cap under `withUserLock`. Optional and new
+   * (rule 679 expand, rule 1393): older code ignores it, and a record without it reads as the plan's number.
+   */
+  brandCap?: number;
+  /**
    * The Agency contract: monthly credits and price (src/lib/pricing.ts `allowanceOf`, `priceOf`). Written only by the
    * founder console (POST /api/admin/plan, under `withUserLock`), never taken from any other request, and cleared when
    * the account leaves Agency. A deal below the Business rate is ignored. Its seats are in `seats`.
@@ -156,6 +164,12 @@ export type User = {
    * Written only by src/lib/billing.ts under `withUserLock`. Absent for accounts activated by hand.
    */
   billing?: Billing;
+  /**
+   * A plan set by hand and the Riyadh day it is paid through (src/lib/hand-plan.ts, rules 1302-1305): the monthly refill
+   * stops after that day. Written only by POST /api/admin/plan under `withUserLock`; removed by a Paymob plan payment, a
+   * Paymob refund that ends the plan, and a change to the trial. Absent on plans set before 2026-10-12 (no end).
+   */
+  handPlan?: HandPlan;
   /** Runtime only: `getUser` settled the stored packs (one expired); the next locked save writes them. Never persisted. */
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
@@ -170,6 +184,11 @@ export type User = {
   gatedSignup?: true;
   /** Change-email budget carried across address moves (3 per account per UTC day): the day (YYYY-MM-DD) and moves made on it. */
   emailMoves?: { day: string; n: number };
+  /**
+   * The terms and privacy versions the owner agreed to at signup, and when (src/lib/consent.ts, rule 1325). Optional,
+   * added 2026-10-12 (expand, rule 679): older accounts have none and read through `consentOf` as not recorded.
+   */
+  consent?: Consent;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;
@@ -253,6 +272,8 @@ export async function createUser(input: { email: string; name: string; phone: st
     // session issued before this account existed: a re-registered address never inherits an old login.
     sessionsAfter: now.toISOString(),
     gatedSignup: true,
+    // What the signup notice under the form named, from the versions in code (rule 1325).
+    consent: signupConsent(input.lang, now),
   };
   await saveUser(u);
   return u;
@@ -278,6 +299,31 @@ export type Session = { email: string; at: number; imp?: string; kp?: string; as
 export const IMPERSONATION_LEGACY_MS = 2 * 60 * 60 * 1000;
 type SessionRec = string | Session;
 const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
+/**
+ * Where a session record lives (rule 1345, expand step of rule 679, started 2026-10-12). New records are stored under
+ * the SHA-256 (hex) of the cookie's token, `session:h:{sha256}`, so a read of the store (a leaked dump, a support query,
+ * a log of keys) yields nothing that signs anyone in. Records written before this release live under the raw token,
+ * `session:{token}`: they are still read (`sessionKeys`, raw last) and deleted with the hashed one, so nobody is signed
+ * out by the release, and they end on their own within 30 days (`SESSION_TTL`). The contract step (a later release,
+ * once every raw record has expired) drops the raw read and delete.
+ *
+ * The raw key is tried only for a token of the shape `createSession` mints (64 hex characters): a cookie set to
+ * `h:{hash}` must never read the hashed record through the raw path, or a leaked hash would sign in after all.
+ */
+export const sessionKey = (token: string) => `session:h:${createHash("sha256").update(token).digest("hex")}`;
+const RAW_TOKEN = /^[0-9a-f]{64}$/;
+/** Every key a cookie's session may live under: the hashed one first, then the raw one written before rule 1345. */
+export const sessionKeys = (token: string) => (RAW_TOKEN.test(token) ? [sessionKey(token), `session:${token}`] : [sessionKey(token)]);
+/** Read the record behind a cookie token: hashed first, then the raw key of a session written before rule 1345. */
+export async function sessionRecord(token: string): Promise<SessionRec | null> {
+  const [hashed, raw] = await Promise.all(sessionKeys(token).map((k) => db.get<SessionRec>(k)));
+  return hashed ?? raw ?? null;
+}
+/** Delete a cookie token's session record under both keys. */
+export async function dropSession(token: string): Promise<void> {
+  await Promise.all(sessionKeys(token).map((k) => db.del(k)));
+}
+
 /** True when a session issued at `at` predates the revocation stamp `iso`. */
 const issuedBefore = (at: number, iso?: string) => !!iso && at < new Date(iso).getTime();
 
@@ -328,7 +374,8 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   const now = Date.now();
   // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
   const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: now };
-  await db.set(`session:${token}`, rec satisfies SessionRec, ttlSeconds);
+  // Hashed key only (rule 1345): the raw token is in the cookie and nowhere else.
+  await db.set(sessionKey(token), rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
 }
@@ -346,18 +393,18 @@ export async function rotateSession(email: string, revoke: (stamp: string) => Pr
   await createSession(email);
   const fresh = jar.get(COOKIE)?.value;
   if (!(await revoke(stamp))) {
-    if (fresh && fresh !== old) await db.del(`session:${fresh}`);
+    if (fresh && fresh !== old) await dropSession(fresh);
     if (old) jar.set(COOKIE, old, await sessionCookie(SESSION_TTL));
     return false;
   }
-  if (old && old !== fresh) await db.del(`session:${old}`).catch(() => {});
+  if (old && old !== fresh) await dropSession(old).catch(() => {});
   return true;
 }
 
 export async function destroySession() {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
-  if (token) await db.del(`session:${token}`);
+  if (token) await dropSession(token);
   jar.delete(COOKIE);
 }
 
@@ -369,7 +416,7 @@ async function readSession(): Promise<Session | null> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
-  const s = sessionOf(await db.get<SessionRec>(`session:${token}`));
+  const s = sessionOf(await sessionRecord(token));
   if (!s) return null;
   if (s.imp === "key" && !(await keyImpLive(s))) return null;
   return s;

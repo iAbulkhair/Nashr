@@ -44,6 +44,16 @@ export const PLAN_CREDITS: Readonly<Record<FixedPlan, number>> = { trial: 50, st
 export const PLAN_SEATS: Readonly<Record<FixedPlan, number>> = { trial: 3, starter: 1, pro: 3, business: 7 };
 /** Upper bound of a founder seat override: it only guards against a typo. */
 export const MAX_SEAT_OVERRIDE = 500;
+/**
+ * Active brands per plan, the default brand included (founder decision 2026-10-09, spec
+ * docs/superpowers/specs/2026-10-09-admin-shell-and-brand-workspaces-design.md part B, rules 1390-1394). Archived brands
+ * do not count. Agency starts at AGENCY_BRANDS and the founder sets the number per account (`User.brandCap`).
+ */
+export const PLAN_BRANDS: Readonly<Record<FixedPlan, number>> = { trial: 1, starter: 1, pro: 2, business: 5 };
+export const AGENCY_BRANDS = 10;
+/** Bounds of a founder brand override (`User.brandCap`): a whole number from 1 to 200. */
+export const MAX_BRAND_CAP = 200;
+export const isBrandCap = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= MAX_BRAND_CAP;
 
 /**
  * An Agency contract. Written only by POST /api/admin/plan (the founder console) under `withUserLock`, never taken from
@@ -120,6 +130,17 @@ export function seatLimit(u: { plan: Plan; seats?: number }): number {
   if (typeof u.seats === "number" && Number.isFinite(u.seats) && u.seats >= 1) return Math.floor(u.seats);
   if (isAgency(u.plan)) return PLAN_SEATS.business;
   return isFixedPlan(u.plan) ? PLAN_SEATS[u.plan] : 1;
+}
+
+/**
+ * How many brands the account may have active (rule 1390): the founder override when it is a valid cap (1-200), then
+ * Agency → AGENCY_BRANDS; a fixed plan → PLAN_BRANDS[plan]; anything else → 1. A stored override out of range is
+ * ignored, never trusted.
+ */
+export function brandCapFor(u: { plan: Plan; brandCap?: number }): number {
+  if (isBrandCap(u.brandCap)) return u.brandCap;
+  if (isAgency(u.plan)) return AGENCY_BRANDS;
+  return isFixedPlan(u.plan) ? PLAN_BRANDS[u.plan] : 1;
 }
 
 // ---- The margin floor (rule 241, tests/pricing-floor.test.ts) ----

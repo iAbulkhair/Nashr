@@ -213,7 +213,7 @@ const FEATURES: { id: string; test: (s: string) => boolean; label: { ar: string;
   { id: "number", test: (s) => /[0-9٠-٩]/.test(s), label: { ar: "يحتوي رقماً أو سعراً", en: "contain a number or price" } },
   { id: "question", test: (s) => /[?؟]/.test(s), label: { ar: "يطرح سؤالاً", en: "ask a question" } },
   { id: "arabic", test: (s) => (s.match(/[؀-ۿ]/g) ?? []).length > (s.match(/[A-Za-z]/g) ?? []).length, label: { ar: "مكتوب بالعربية", en: "are written in Arabic" } },
-  { id: "short", test: (s) => s.length > 0 && s.length <= 60, label: { ar: "قصير (٦٠ حرفاً أو أقل)", en: "are short (60 characters or fewer)" } },
+  { id: "short", test: (s) => s.length > 0 && s.length <= 60, label: { ar: "قصير (60 حرفاً أو أقل)", en: "are short (60 characters or fewer)" } },
 ];
 
 export function analyze(rows: Row[], file: string, platform: string, range: PerfSnapshot["range"], metric?: MetricId, at = new Date().toISOString(), codes: Record<string, string> = {}): PerfSnapshot {

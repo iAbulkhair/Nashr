@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { approvePartner, confirmBank, listApplications, listPartners, recordPayout, rejectApplication, voidPayout } from "@/lib/partners";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 
@@ -36,6 +37,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Rule 1376: once a second factor is enrolled, a founder write needs a live step-up or a code (src/lib/admin-2fa.ts).
+  const no2fa = await secondFactorRefusal(req, who);
+  if (no2fa) return no2fa;
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const log = (email: string, what: string, reason?: string) => adminAudit({ actor: who, section: "partners", target: email, what, reason });
   if (b.action === "approve") {

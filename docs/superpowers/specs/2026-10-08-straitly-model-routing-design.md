@@ -1,5 +1,7 @@
 # Model catalog, routing and Straitly gateway: design
 
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged to `main` as #298 (2026-10-10; follow-ups #315), default off (`LLM_PROVIDER` unset keeps today's behaviour), in `production` since release #336 (2026-10-12).
+
 Date: 2026-10-08. Status: draft for owner review. Branch: `claude/thakeen-ai-models-integration-b3855c`.
 
 ## 1. Goal

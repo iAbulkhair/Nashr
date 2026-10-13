@@ -40,7 +40,7 @@ export const PLAYBOOKS: Playbook[] = [
 - Channels: LinkedIn (founder voice, build-in-public, hiring), X (product updates, industry takes), Instagram for consumer apps only.
 - Weekly cadence: 1 founder story, 1 product update/changelog, 1 customer proof, 1 insight/opinion, 1 hiring or culture post.
 - Launch sequence: waitlist → beta cohort → public launch on Product Hunt/local communities (Monsha'at, Misk, Flat6Labs networks) → case studies.
-- Growth experiments: every ad batch = 3 hooks × 2 audiences, SAR 50–100/day per cell, kill at <1% CTR.
+- Growth experiments: every ad batch = 3 hooks × 2 audiences, SAR 50–100/day per cell (or the same in the brand's currency), kill at <1% CTR.
 - Tone: confident, specific numbers, no buzzwords ("ثورة", "الأول من نوعه") unless proven.`,
   },
   {
