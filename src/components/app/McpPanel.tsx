@@ -28,7 +28,7 @@ export default function McpPanel({ lang, origin, draftsPerHour, canToken = true,
   }
   async function revoke() { await fetch("/api/mcp/token", { method: "DELETE" }); setToken(""); setExists(false); }
   const url = `${origin}/api/mcp`;
-  const tok = token || "nashr_…";
+  const tok = token || "thakeen_…";
   return (
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="mcppanel-t1" />{ar ? "نور داخل Claude و ChatGPT (MCP)" : "Noor inside Claude and ChatGPT (MCP)"}</span></h1>

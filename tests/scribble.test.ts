@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { scribble, type ScribbleKind } from "@/lib/scribble";
 import Scribble from "@/components/Scribble";
+import { tightPath } from "@/components/ScribbleArt";
 
 /**
  * Rule 512. The hand-drawn pen of prototype D (`scribble.js`), ported to a typed module: the same seed always draws the
@@ -93,8 +94,9 @@ describe("Arabic speech tails point the right way before any script runs (rule 5
   it("the Arabic Rules panel is drawn right to left on the server", async () => {
     const { default: Rules } = await import("@/components/home/Rules");
     const html = renderToString(createElement(Rules, { lang: "ar" }));
-    const rtl = scribble("bubble", 240, 80, "rb00", { tail: "start", rtl: true }).cap;
-    const ltr = scribble("bubble", 240, 80, "rb00", { tail: "start", rtl: false }).cap;
+    // The page carries the shortest exact spelling of each path (rule 1803).
+    const rtl = tightPath(scribble("bubble", 240, 80, "rb00", { tail: "start", rtl: true }).cap!);
+    const ltr = tightPath(scribble("bubble", 240, 80, "rb00", { tail: "start", rtl: false }).cap!);
     expect(rtl).not.toBe(ltr);
     expect(html).toContain(`d="${rtl}"`);
     expect(renderToString(createElement(Rules, { lang: "en" }))).toContain(`d="${ltr}"`);

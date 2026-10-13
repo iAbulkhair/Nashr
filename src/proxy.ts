@@ -3,6 +3,7 @@ import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";
 import { STAGING_COOKIE, STAGING_OPEN_PATHS, hasAccess } from "@/lib/staging-access";
 import { legacySettingsPath } from "@/lib/settings-nav";
+import { LANG_COOKIE, readCookie } from "@/lib/cookie-names";
 
 type Lang = "ar" | "en";
 
@@ -11,7 +12,7 @@ const NOINDEX = "noindex, nofollow";
 const APP_PATH = /^\/[^/]+\/app(\/|$)/;
 
 function pickLang(req: NextRequest): Lang {
-  const c = req.cookies.get("nashr_lang")?.value;
+  const c = readCookie(req.cookies, LANG_COOKIE);
   if (c === "ar" || c === "en") return c;
   const al = (req.headers.get("accept-language") || "").toLowerCase();
   // Arabic is the default; only send English to browsers that prefer it and do not list Arabic first.

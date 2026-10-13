@@ -128,7 +128,7 @@ describe("login and the verification gate", () => {
     const res = await logIn(u.email);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, verify: true });
-    expect(jar().get("nashr_session")).toBeTruthy();
+    expect(jar().get("thakeen_session")).toBeTruthy();
     expect(await currentUser()).toBeNull();
     expect((await currentUserUnverified())!.email).toBe(u.email);
   });
@@ -148,7 +148,7 @@ describe("login and the verification gate", () => {
     const res = await logIn(m.email, m.password);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ ok: false, error: "owner_unverified" });
-    expect(jar().get("nashr_session")).toBeUndefined();
+    expect(jar().get("thakeen_session")).toBeUndefined();
   });
 
   it("a member of a verified owner signs in as before", async () => {
@@ -224,6 +224,6 @@ describe("password reset and the verification gate", () => {
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ ok: false, error: "owner_unverified" });
     expect((await getUser(owner.email))!.emailVerifiedAt).toBeUndefined();
-    expect(jar().get("nashr_session")).toBeUndefined();
+    expect(jar().get("thakeen_session")).toBeUndefined();
   });
 });

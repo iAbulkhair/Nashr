@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useSyncExternalStore } from "react";
 import type { Lang } from "@/lib/i18n";
-import { THEME_COPY, THEME_EVENT, THEME_PREFS, readThemePref, themeCookie, type ThemePref } from "@/lib/theme";
+import { THEME_COPY, THEME_EVENT, THEME_PREFS, legacyThemeExpiry, readThemePref, themeCookie, type ThemePref } from "@/lib/theme";
 import { tabStep } from "@/components/ui/Tabs";
 
 function subscribe(cb: () => void) {
@@ -14,6 +14,7 @@ const serverSnapshot = (): ThemePref => "system";
 /** Saves the choice on this browser and tells `ThemeScope` to repaint (rule 1204). */
 export function chooseTheme(pref: ThemePref) {
   document.cookie = themeCookie(pref, location.protocol === "https:");
+  document.cookie = legacyThemeExpiry();
   window.dispatchEvent(new Event(THEME_EVENT));
 }
 

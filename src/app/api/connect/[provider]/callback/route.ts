@@ -7,6 +7,7 @@ import { sameSecret } from "@/lib/rate";
 import { getProvider } from "@/lib/connectors/registry";
 import { exchangeCode } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, getConnection, saveConnection, takeState, type Connection } from "@/lib/connectors/store";
+import { dropCookie, readCookie } from "@/lib/cookie-names";
 import { composioDiscard, composioVerify } from "@/lib/connectors/composio";
 import { isToolkit, PROVIDER_TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
@@ -32,8 +33,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   const state = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code");
   const jar = await cookies();
-  const bound = jar.get(OAUTH_COOKIE)?.value;
-  jar.delete(OAUTH_COOKIE);
+  // New name first, then a flow started before the rename (rule 1810); both are cleared.
+  const bound = readCookie(jar, OAUTH_COOKIE);
+  dropCookie(jar, OAUTH_COOKIE);
   const st = await takeState(state);
   const lang = st?.lang === "en" ? "en" : "ar";
   const p = getProvider(provider);

@@ -95,7 +95,7 @@ describe("who acted is worked out in code (rule 225)", () => {
     const t = (id: string): Task => ({ id, type: "social", channel: "instagram", title: id, body: "قهوة اليوم من محمصتنا في الرياض", status: "pending", createdAt: new Date().toISOString(), lang: "ar" });
     await Promise.all([saveTask(u.email, t("own"), true), saveTask(u.email, t("imp"), true)]);
     // The owner's own impersonation cookie, set by hand, changes nothing: still the owner.
-    jar().set("nashr_impersonate", u.email);
+    jar().set("thakeen_impersonate", u.email);
     await taskRoute.PATCH(await vjson("/api/tasks/own", "PATCH", { status: "approved", by: { kind: "system", job: "cron" } }), params({ id: "own" }));
     await settle();
 

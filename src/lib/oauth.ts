@@ -85,10 +85,14 @@ export async function getClient(id: string) {
 /**
  * Tokens and codes are stored under the SHA-256 (hex) of their value, never the value itself: a read of the database (a
  * leaked dump, a support query, a log of keys) yields nothing that authenticates. Keys keep their prefixes
- * (`mcptoken:<hash>`, `oauthrefresh:<hash>`, `oauthcode:<hash>`); a raw token always starts with `nashr_`, so the two
+ * (`mcptoken:<hash>`, `oauthrefresh:<hash>`, `oauthcode:<hash>`); a raw token always starts with `thakeen_` (minted since rule 1813) or `nashr_` (before), so the two
  * forms never collide. Values minted before this change live under the raw key: they are found there once and moved.
  */
 export const tokenHash = (t: string) => createHash("sha256").update(t).digest("hex");
+/** The prefix of every token minted now (rule 1813). `BEARER` also accepts the old `nashr_`, so no connected client is cut off. */
+export const TOKEN_PREFIX = "thakeen_";
+export const BEARER = /^Bearer\s+((?:thakeen|nashr)_[A-Za-z0-9_.-]+)$/;
+// Only tokens minted before hashing were ever stored raw, and all of them start with `nashr_`.
 const isRaw = (t: string) => t.startsWith("nashr_");
 
 type CodeRec = { client_id: string; redirect_uri: string; challenge: string; email: string; scope: string };
@@ -141,8 +145,9 @@ export async function grantHoldsAccess(email: string, grant: string, hash: strin
  * grant lists them.
  */
 async function mint(email: string, client_id: string, scope: string, prev: Grant | null) {
-  const access = "nashr_" + randomBytes(24).toString("base64url");
-  const refresh = "nashr_r_" + randomBytes(24).toString("base64url");
+  // `thakeen_` since rule 1813; tokens minted as `nashr_` keep working (they are looked up by hash, whatever the prefix).
+  const access = TOKEN_PREFIX + randomBytes(24).toString("base64url");
+  const refresh = TOKEN_PREFIX + "r_" + randomBytes(24).toString("base64url");
   const id = prev?.id ?? randomBytes(8).toString("hex");
   const client = await getClient(client_id);
   const now = new Date().toISOString();

@@ -4,13 +4,14 @@
  * shell (src/components/app/InstallHint.tsx) all read from here. There is no service worker: nothing is cached on the
  * device, so a signed-in page is only ever what the server sends (rule 683). Push is phase 2.
  */
+import { INSTALL_DISMISS_KEY, readStored, writeStored } from "./cookie-names";
 
 /** Public name per the official-name decision: Arabic first, English second. */
 export const PWA_NAME = "ذكين | Thakeen";
 export const PWA_SHORT_NAME = "ذكين";
 
 /**
- * `/app` is answered by src/proxy.ts with a 307 to `/{lang}/app` (cookie `nashr_lang`, then Accept-Language, default
+ * `/app` is answered by src/proxy.ts with a 307 to `/{lang}/app` (cookie `thakeen_lang` or the old `nashr_lang`, then Accept-Language, default
  * Arabic), so one manifest opens the app in the language the person uses. The app layout sends anyone signed out to login.
  */
 export const PWA_START = "/app";
@@ -55,18 +56,18 @@ export function installWay(ua: string, opts: { standalone: boolean; hasPrompt: b
   return opts.hasPrompt ? "prompt" : "none";
 }
 
-/** localStorage key; the value is the dismissal time in ms. */
-export const INSTALL_DISMISS_KEY = "nashr_install_hint_dismissed";
+/** localStorage key; the value is the dismissal time in ms. `thakeen_`, with the old `nashr_` key still read (rule 1812). */
+export { INSTALL_DISMISS_KEY };
 
-type Store = Pick<Storage, "getItem" | "setItem">;
+type Store = Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>;
 
 /** Storage that throws (private mode, blocked site data) counts as not dismissed: the hint shows, nothing breaks. */
 export function hintDismissed(store: Store | undefined): boolean {
-  try { return !!store?.getItem(INSTALL_DISMISS_KEY); } catch { return false; }
+  try { return !!readStored(store, INSTALL_DISMISS_KEY); } catch { return false; }
 }
 
 export function dismissHint(store: Store | undefined, now: number = Date.now()): void {
-  try { store?.setItem(INSTALL_DISMISS_KEY, String(now)); } catch { /* private window: the hint comes back next visit */ }
+  try { writeStored(store, INSTALL_DISMISS_KEY, String(now)); } catch { /* private window: the hint comes back next visit */ }
 }
 
 /** The hint's words. Steps and what installing does, nothing more: no speed, offline or notification promises. */

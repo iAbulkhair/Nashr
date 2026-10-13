@@ -6,6 +6,7 @@ import { ADMIN_COOKIE, sessionCookie } from "./auth";
 import { allow, clientIp, giveBack, retryLater, sameSecret } from "./rate";
 import { connectSecret } from "./connectors/store";
 import { looksLikeRecovery, newRecoveryCode, newTotpSecret, otpauthUri, recoveryHash, totpMatch } from "./totp";
+import { SESSION_COOKIE, readCookie } from "./cookie-names";
 
 /**
  * The founder console's second factor (360 study C-004, leftovers L055, rules 1370-1389, docs/system/flows.md "Founder
@@ -22,7 +23,7 @@ import { looksLikeRecovery, newRecoveryCode, newTotpSecret, otpauthUri, recovery
  *
  * A step-up is a server record `admin2fa:step:{sha256(id)}` behind the `nashr_admin_2fa` cookie (a random id). It is
  * tied to the actor ("key" or the founder's email) and to a hash of the cookie that made them the actor (`nashr_admin`
- * for the key, `nashr_session` for a founder), so ending the key session or signing out ends it too, and a copied 2FA
+ * for the key, the session cookie for a founder), so ending the key session or signing out ends it too, and a copied 2FA
  * cookie is useless without the session it was opened in. It ends after 30 idle minutes and 12 hours at most.
  *
  * Codes are rate limited per IP and for the whole console (`allow`), a right code hands its hit back, and every
@@ -87,7 +88,9 @@ export async function secondFactorStatus(): Promise<{ enrolled: boolean; at: str
 
 /** The cookie that makes `who` the console actor, hashed: what a step-up is tied to. Null for a header-key call. */
 async function baseOf(who: string): Promise<string | null> {
-  const v = (await cookies()).get(who === "key" ? ADMIN_COOKIE : "nashr_session")?.value;
+  const jar = await cookies();
+  // The founder's session cookie under its new name or the old one (rule 1810), the same token `currentUser` reads.
+  const v = who === "key" ? jar.get(ADMIN_COOKIE)?.value : readCookie(jar, SESSION_COOKIE);
   return v ? sha(`nashr-admin-2fa-base:${v}`) : null;
 }
 

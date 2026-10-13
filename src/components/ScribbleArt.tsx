@@ -1,4 +1,4 @@
-import { scribble, scribbleRing, type ScribbleKind, type ScribbleOpts } from "@/lib/scribble";
+import { scribble, scribbleRing, type ScribbleArt, type ScribbleKind, type ScribbleOpts } from "@/lib/scribble";
 
 /**
  * The drawing both scribbles share: the client `Scribble`, which measures its parent and redraws, and the server
@@ -38,15 +38,31 @@ const BRIGHT = /^(lemon|gold|agent-(noor|sami|razan|dana|layan|reem|you))$/;
 const BEHIND: ReadonlySet<ScribbleKind> = new Set(["box", "pill", "stamp", "bubble", "cloud"]);
 export const brightBehind = (kind: ScribbleKind, paint: string) => BRIGHT.test(paint) && BEHIND.has(kind);
 
+/**
+ * Path data in its shortest exact spelling (rule 1803): no space before a minus sign and no zero before a decimal point,
+ * which SVG reads as the same numbers. The home page draws about 1,750 scribble paths, so the page gets lighter and
+ * not one point moves. `scribble.ts` keeps its readable output; only what goes into the page is shortened.
+ */
+export const tightPath = (d: string): string => d.replace(/ -/g, "-").replace(/(^|[^\d.])0\./g, "$1.");
+const tightArt = (a: ScribbleArt): ScribbleArt => ({
+  ...a,
+  d: tightPath(a.d),
+  fill: a.fill && tightPath(a.fill),
+  cap: a.cap && tightPath(a.cap),
+  capFill: a.capFill && tightPath(a.capFill),
+  ink: a.ink && tightPath(a.ink),
+  ghost: a.ghost && tightPath(a.ghost),
+});
+
 /** The `<svg>` for one look at one size and direction. `svgRef` is the client scribble's handle on it. */
 export function ScribbleSvg({ look, w, h, rtl, svgRef }: { look: ScribbleLook; w: number; h: number; rtl: boolean; svgRef?: React.Ref<SVGSVGElement> }) {
   const { kind, seed, fill, shadow, boil, ring, tail, tailAt, heavy } = look;
   const opts: ScribbleOpts = { tail, tailAt, heavy, rtl };
-  const art = scribble(kind, w, h, seed, opts);
-  const alt = scribble(kind, w, h, seed + "~", opts);
+  const art = tightArt(scribble(kind, w, h, seed, opts));
+  const alt = tightArt(scribble(kind, w, h, seed + "~", opts));
   const paint = fill ?? DEFAULT_FILL[kind] ?? "none";
   const ghost = alt.d || alt.ghost;
-  const rings = ring ? scribbleRing(seed, kind, w, h) : null;
+  const rings = ring ? scribbleRing(seed, kind, w, h).map(tightPath) : null;
   return (
     <svg
       ref={svgRef}
@@ -54,7 +70,6 @@ export function ScribbleSvg({ look, w, h, rtl, svgRef }: { look: ScribbleLook; w
       viewBox={`-4 -4 ${w + 8} ${h + 8}`}
       preserveAspectRatio="none"
       aria-hidden="true"
-      focusable="false"
       style={paint === "none" ? undefined : ({ "--s-fill": colour(paint) } as React.CSSProperties)}
       data-bright={brightBehind(kind, paint) ? "" : undefined}
     >
@@ -65,7 +80,7 @@ export function ScribbleSvg({ look, w, h, rtl, svgRef }: { look: ScribbleLook; w
       {art.d && <path className="main" d={art.d} pathLength={1} />}
       {art.capFill && <path className="cap" d={art.capFill} />}
       {art.cap && <path className="main" d={art.cap} pathLength={1} />}
-      {boil && art.d && <path className="boil" d={scribble(kind, w, h, seed + "*", opts).d} />}
+      {boil && art.d && <path className="boil" d={tightPath(scribble(kind, w, h, seed + "*", opts).d)} />}
       {rings && (
         <>
           <path className="ring ring-paper" d={rings[0]} pathLength={1} />

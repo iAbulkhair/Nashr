@@ -5,6 +5,7 @@ import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, 
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
+import { IMPERSONATE_COOKIE, RETURN_COOKIE, SESSION_COOKIE, readCookie } from "@/lib/cookie-names";
 import { revokeFeeds } from "@/lib/feed-token";
 import { revokeCalendarLinks } from "@/lib/secretary-gcal";
 import { getBrand, listTasks } from "@/lib/brand";
@@ -149,11 +150,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const minutes = parseImpersonateMinutes(b.minutes);
       if (!minutes) return NextResponse.json({ ok: false, error: "bad_minutes" }, { status: 400 });
       const ttl = minutes * 60;
-      // One view at a time (rule 1350, C-015). While this browser already shows a customer's account, its `nashr_session`
-      // is that impersonation: a second one would save it as `nashr_return`, and "Stop" would hand the founder the first
+      // One view at a time (rule 1350, C-015). While this browser already shows a customer's account, its `thakeen_session`
+      // is that impersonation: a second one would save it as `thakeen_return`, and "Stop" would hand the founder the first
       // customer's session instead of their own. Refused before the audit row, so a refused start logs nothing.
       const jar = await cookies();
-      const mine = jar.get("nashr_session")?.value;
+      const mine = readCookie(jar, SESSION_COOKIE);
       const current = mine ? await sessionRecord(mine) : null;
       if (current && typeof current === "object" && current.imp) return NextResponse.json({ ok: false, error: "impersonation_active" }, { status: 409 });
       // Opened with the console key: the session is tied to that key and key session, so "End key session" and a key
@@ -163,8 +164,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       // account opens. `minutes` at most; one opened from a key session also ends with it: after 15 minutes without a
       // request on either side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
       await log("impersonate", { action: "impersonate.start", expiresInMin: minutes, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
-      if (mine) jar.set("nashr_return", mine, await sessionCookie(ttl));
-      jar.set("nashr_impersonate", email, await sessionCookie(ttl));
+      if (mine) jar.set(RETURN_COOKIE, mine, await sessionCookie(ttl));
+      jar.set(IMPERSONATE_COOKIE, email, await sessionCookie(ttl));
       // The session record carries the founder (`imp`): it resolves to actor kind "founder", which never passes the
       // founder console and is refused account delete, password change, invites, role changes, MCP tokens and OAuth.
       await createSession(email, ttl, { imp: who, ...(bind ?? {}) });

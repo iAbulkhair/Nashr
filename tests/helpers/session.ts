@@ -20,13 +20,13 @@ export async function signIn(email: string, opts: { imp?: string } = {}) {
   const bind = opts.imp === "key" ? await (await import("@/lib/auth")).keyImpBinding() : null;
   await db.set(sessionKey(token), opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(bind ?? {}) } : { email, at: Date.now() }, 3600);
   g.__testJar.clear();
-  g.__testJar.set("nashr_session", token);
+  g.__testJar.set("thakeen_session", token);
   return token;
 }
 /**
  * The cookies the console's Impersonate action leaves next to the impersonation session: the founder's own live session
- * saved in `nashr_return`, and `nashr_impersonate` naming the account. Only these helper cookies are added, so the
- * caller's `nashr_session` stays. Stubs ADMIN_EMAILS to `founder` (vi.unstubAllEnvs undoes it).
+ * saved in `thakeen_return`, and `thakeen_impersonate` naming the account. Only these helper cookies are added, so the
+ * caller's `thakeen_session` stays. Stubs ADMIN_EMAILS to `founder` (vi.unstubAllEnvs undoes it).
  *
  * Attribution never reads them (src/lib/actor.ts `byOf` reads the session's `actor` only): tests use this to prove the
  * cookies alone make nobody support. A real support session is `signIn(email, { imp: founder })`.
@@ -35,8 +35,8 @@ export async function supportAccess(email: string, founder = "support-founder@te
   vi.stubEnv("ADMIN_EMAILS", founder);
   const token = randomBytes(32).toString("hex");
   await db.set(sessionKey(token), { email: founder, at: Date.now() }, 3600);
-  g.__testJar.set("nashr_return", token);
-  g.__testJar.set("nashr_impersonate", email);
+  g.__testJar.set("thakeen_return", token);
+  g.__testJar.set("thakeen_impersonate", email);
   return token;
 }
 /**
