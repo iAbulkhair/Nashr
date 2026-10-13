@@ -5,17 +5,20 @@ import { ADMIN_2FA_EVENT, adminFetch, type SecondFactorAsk } from "@/lib/admin-f
 import { FormDialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
+import QrCode from "@/components/admin/QrCode";
 
 type Lang = "ar" | "en";
 
-/** Every word the second factor shows (rules 1377-1379). */
+/** Every word the second factor shows (rules 1377-1379; the QR words, rule 1622). */
 export const SF = {
   ar: {
     banner: "لوحة المؤسس محمية بالمفتاح أو كلمة المرور فقط. فعّل التحقق بخطوتين برمز من تطبيق المصادقة قبل الإطلاق.",
     setUp: "إعداد التحقق بخطوتين",
     on: "التحقق بخطوتين مفعّل لكل تغيير في اللوحة.",
     replace: "استبدال تطبيق المصادقة",
-    step1: "أضف هذا المفتاح في تطبيق المصادقة (Google Authenticator أو 1Password أو Authy) يدويًا، أو افتح الرابط من الهاتف:",
+    step1: "امسح الرمز بتطبيق المصادقة، أو أضف المفتاح يدويًا. يعمل مع Google Authenticator و1Password وAuthy.",
+    qrLabel: "رمز QR لإعداد التحقق بخطوتين في تطبيق المصادقة",
+    manual: "أو أدخل هذا المفتاح يدويًا، أو افتح الرابط من الهاتف:",
     openApp: "فتح في تطبيق المصادقة",
     code: "الرمز من التطبيق (6 أرقام)",
     confirm: "تأكيد وتفعيل",
@@ -40,7 +43,9 @@ export const SF = {
     setUp: "Set up two-step verification",
     on: "Two-step verification is on for every console change.",
     replace: "Replace the authenticator app",
-    step1: "Add this key to your authenticator app (Google Authenticator, 1Password or Authy) by hand, or open the link on your phone:",
+    step1: "Scan the code with your authenticator app, or add the key by hand. Works with Google Authenticator, 1Password and Authy.",
+    qrLabel: "QR code to set up two-step verification in your authenticator app",
+    manual: "Or enter this key by hand, or open the link on your phone:",
     openApp: "Open in the authenticator app",
     code: "Code from the app (6 digits)",
     confirm: "Confirm and turn on",
@@ -146,6 +151,8 @@ export default function SecondFactor({ lang, enrolled }: { lang: Lang; enrolled:
       {setup && !recovery && (
         <FormDialog lang={lang} title={S.setUp} submitLabel={S.confirm} cancelLabel={S.cancel} busyLabel={S.busy} onSubmit={confirmSetup} onClose={() => setSetup(null)}>
           <p className="text-sm">{S.step1}</p>
+          <QrCode value={setup.uri} label={S.qrLabel} />
+          <p className="text-sm text-foreground-muted">{S.manual}</p>
           <p dir="ltr" className="select-all rounded-lg bg-background-muted/60 px-3 py-2 text-center font-mono text-sm tracking-wider">{groups(setup.secret)}</p>
           <p><a className="text-sm underline" href={setup.uri}>{S.openApp}</a></p>
           <Field label={S.code}><Input name="code" inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} pattern="\d{6}" required /></Field>

@@ -86,9 +86,10 @@ describe("authenticator codes are RFC 6238 without a dependency (rule 1370)", ()
     for (const bad of ["", "12345", "1234567", "abcdef", "12 34 5"]) expect(totpMatch(s, bad, T0)).toBeNull();
     expect(otpauthUri(s, "founder console")).toMatch(new RegExp(`^otpauth://totp/Thakeen%3Afounder%20console\\?secret=${s}&issuer=Thakeen&algorithm=SHA1&digits=6&period=30$`));
   });
-  it("package.json gains no TOTP or QR dependency", () => {
+  it("package.json gains no TOTP dependency; its one QR dependency is uqr, which draws the setup code (rule 1624)", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies: Record<string, string> };
-    expect(Object.keys(pkg.dependencies).filter((d) => /otp|qr|speakeasy|authenticator/i.test(d))).toEqual([]);
+    expect(Object.keys(pkg.dependencies).filter((d) => /otp|speakeasy|authenticator/i.test(d))).toEqual([]);
+    expect(Object.keys(pkg.dependencies).filter((d) => /qr/i.test(d))).toEqual(["uqr"]);
   });
 });
 
