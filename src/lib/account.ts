@@ -30,6 +30,7 @@ import { AD_STATS_SOURCES, ADSTATS_KEY } from "./ad-stats";
 import { XSTATS_KEY } from "./social-read/common";
 import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
 import { instructionProposalKeys } from "./instruction-proposals";
+import { spendProposalKeys } from "./spend-proposals";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -85,9 +86,9 @@ export async function wipeAccount(email: string) {
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals] = perScope[i];
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
@@ -122,6 +123,8 @@ export async function wipeAccount(email: string) {
       // Instructions an agent proposed from chat (7 days, the owner's own rule text), their outcomes and claims, the index
       // and the day's proposal counter (src/lib/instruction-proposals.ts).
       ...instrProposals,
+      // Paid work waiting on a chat card (rule 1511): the proposal, its outcome and claim, and the index.
+      ...spendProposals,
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),

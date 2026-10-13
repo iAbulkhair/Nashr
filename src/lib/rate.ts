@@ -266,6 +266,13 @@ export const HANDOFF_RUNS_PER_HOUR = 60;
 export const HANDOFF_DECLINES_PER_HOUR = 120;
 
 /**
+ * Run and Dismiss on the chat's spend cards, per workspace (`POST /api/chat/spend/[id]`, rule 1512). A run is a paid batch
+ * or render, bounded too by the credits and the agent caps; a chat reply carries at most two cards, so an owner stays far
+ * below this. Same ceiling as Majed's handoff runs.
+ */
+export const SPEND_RUNS_PER_HOUR = 60;
+
+/**
  * Thumbs on agent replies, per account (`POST /api/chat/feedback`). Each one is a write to the brand's capped feedback
  * log, which the agents' prompts read back, so a script must not churn it; an owner rating replies stays far below this
  * (chat itself is at most `chatCaps(u).hour` turns, 30 on a paid plan).
