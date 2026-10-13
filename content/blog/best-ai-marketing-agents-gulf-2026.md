@@ -7,7 +7,7 @@ desc_en: We compare 8 options on six criteria: execution, Arabic and dialects, G
 ---
 ## الإفصاح
 
-ذكين يبني نور، وهي أحد الخيارات في هذه المقالة. لذلك ما تقرؤه هنا **رأينا نحن**، لا تقييماً محايداً: لا نعطي درجات، ولا نرتّب الأدوات، ولا نضع أنفسنا في المقدمة. الأدوات مرتبة أبجدياً بالإنجليزية، والوكالة في آخر القائمة لأنها مرجع لا منتج. راسلنا إذا وجدت معلومة غير دقيقة.
+ذكين يبني نور، وهي أحد الخيارات في هذه المقالة. لذلك ما تقرؤه هنا **رأينا نحن**، لا تقييماً محايداً: لا نعطي درجات، ولا نرتّب الأدوات، ولا نضع أنفسنا في المقدمة. الأدوات مرتبة أبجدياً بالإنجليزية، والوكالة في آخر القائمة لأنها مرجع لا منتج. راسلنا على hello@thakeen.com إذا وجدت معلومة غير دقيقة.
 
 ## المعايير التي ننظر إليها
 
@@ -40,7 +40,7 @@ desc_en: We compare 8 options on six criteria: execution, Arabic and dialects, G
 ---EN---
 ## Disclosure
 
-Thakeen builds Noor, one of the options in this article. So what you read here is **our own opinion**, not a neutral review: we give no scores, we do not rank the tools, and we do not put ourselves first. Tools are listed alphabetically, and the agency comes last because it is a reference, not a product. Email us if you find anything inaccurate.
+Thakeen builds Noor, one of the options in this article. So what you read here is **our own opinion**, not a neutral review: we give no scores, we do not rank the tools, and we do not put ourselves first. Tools are listed alphabetically, and the agency comes last because it is a reference, not a product. Email us at hello@thakeen.com if you find anything inaccurate.
 
 ## The criteria we look at
 

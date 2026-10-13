@@ -37,6 +37,11 @@ describe("rule 1581: the agents comparison is labelled opinion with no score and
     expect(en).toContain("we give no scores, we do not rank the tools");
   });
 
+  it("the corrections line gives the support address, in both languages", () => {
+    expect(ar).toContain("راسلنا على hello@thakeen.com");
+    expect(en).toContain("Email us at hello@thakeen.com");
+  });
+
   it("does not put Noor first: the tools are in alphabetical order and the agency reference comes last", () => {
     for (const text of [ar, en]) {
       const names = tableRows(text).slice(1).map((r) => r[0]);

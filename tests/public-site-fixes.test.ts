@@ -11,7 +11,7 @@ import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { LANGS } from "@/lib/i18n";
 
 /**
- * Public-site fixes of 2026-10-13 (rules 1580-1590, docs/system/tests/1580-public-site-fixes.md): the comparison pages
+ * Public-site fixes of 2026-10-13 (rules 1580-1589, docs/system/tests/1580-public-site-fixes.md): the comparison pages
  * date and source every competitor price, call the Salla and Zid links planned and name no model; the UI writes Western
  * digits everywhere, loads a real Arabic bold, preloads less, mirrors text arrows in Arabic and keeps footer links 24px tall.
  */
