@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminActor } from "@/lib/auth";
+import { adminActor, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import { AGENT_SCOPE_KEYS, readAgentScopeModes, type AgentScopeModes } from "@/lib/agent-scope";
@@ -47,6 +47,6 @@ export async function POST(req: Request) {
   const enforcing = (["input", "output"] as const).some((k) => body[k] === "enforce");
   if (enforcing && !(last?.passed === true && last.model === agentScopeModel())) return NextResponse.json({ ok: false, error: "eval_not_passed" }, { status: 409 });
   await db.set(AGENT_SCOPE_KEYS.modes, after);
-  await adminAudit({ actor: who, section: "quality", action: "agent_scope_modes", what: "agent_scope_modes", before, after, reason: body.reason });
+  await adminAudit({ actor: who, via: viaOf(req), section: "quality", action: "agent_scope_modes", what: "agent_scope_modes", before, after, reason: body.reason });
   return NextResponse.json({ ok: true, modes: after });
 }

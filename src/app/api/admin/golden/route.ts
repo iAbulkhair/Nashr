@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminActor, isAdmin } from "@/lib/auth";
+import { adminActor, isAdmin, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { isAgentId } from "@/lib/agents";
 import { playbook } from "@/lib/skills";
@@ -31,6 +31,6 @@ export async function POST(req: Request) {
   const run = await runGolden("manual", { agent: isAgentId(b.agent) ? b.agent : undefined, resume: !!b.resume });
   const state = modelState();
   if (!run) return NextResponse.json({ ok: false, error: state === "on" ? "already_running" : state === "paused" ? "model_paused" : "no_model_key" }, { status: 409 });
-  await adminAudit({ actor: who, section: "quality", target: "golden-set", what: `golden:run${b.agent ? `:${b.agent}` : ""}${b.resume ? ":resume" : ""}`, after: { id: run.id, status: run.status, overall: run.overall, usd: run.usd } });
+  await adminAudit({ actor: who, via: viaOf(req), section: "quality", target: "golden-set", what: `golden:run${b.agent ? `:${b.agent}` : ""}${b.resume ? ":resume" : ""}`, after: { id: run.id, status: run.status, overall: run.overall, usd: run.usd } });
   return NextResponse.json({ ok: true, run });
 }

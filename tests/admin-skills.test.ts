@@ -255,7 +255,8 @@ describe("rule 958: the platform layer is written like the customer's, with the 
   it("rule 958: an unknown action is 400 and a body that is not an object is 400, with nothing logged", async () => {
     expect((await post({ action: "delete-everything" })).body).toMatchObject({ ok: false, error: "unknown_action" });
     expect((await route.POST(json("/api/admin/skills", "POST", [1])).then(call)).status).toBe(400);
-    expect((await route.POST(new Request("https://nashr.test/api/admin/skills", { method: "POST", body: "{" })).then(call)).status).toBe(400);
+    // JSON that does not parse is 400 (a body that is not JSON at all is 415 since rule 1647, tests/launch-security.test.ts).
+    expect((await route.POST(new Request("https://nashr.test/api/admin/skills", { method: "POST", headers: { "content-type": "application/json" }, body: "{" })).then(call)).status).toBe(400);
     expect(await log()).toEqual([]);
   });
 });
@@ -480,10 +481,10 @@ describe("rule 958: the console section, its link and its page", () => {
     expect(html).toContain("Agent skills");
   });
 
-  it("rule 958: the page is a 404 without the gate and renders the panel with a key session", async () => {
+  it("rule 958: the page redirects to the staff sign-in without the gate (rule 1652) and renders the panel with a key session", async () => {
     const Page = (await import("@/app/[lang]/admin/skills/page")).default as (p: { params: Promise<{ lang: string }> }) => Promise<React.ReactElement>;
     signOut();
-    await expect(Page({ params: Promise.resolve({ lang: "en" }) })).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+    await expect(Page({ params: Promise.resolve({ lang: "en" }) })).rejects.toMatchObject({ digest: expect.stringMatching(/^NEXT_REDIRECT;[a-z]+;\/en\/admin\/login\?next=%2Fen%2Fadmin%2Fskills;/) });
     await adminSignIn();
     await expect(Page({ params: Promise.resolve({ lang: "xx" }) })).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
     const el = await Page({ params: Promise.resolve({ lang: "en" }) });

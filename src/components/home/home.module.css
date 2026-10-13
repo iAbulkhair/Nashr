@@ -355,7 +355,10 @@
 }
 .offer { font-size: clamp(18px, 2.2vw, 23px); font-weight: 600; max-width: 46rem; text-wrap: balance; }
 /* The offer, the call to action, the trial line and the freshness chip, one column (rules 1228, 1229). */
-.lead { display: grid; gap: 14px; justify-items: start; min-width: 0; }
+/* One column that never grows past the panel: with an auto track, the signup input's own default width (it varies with
+   the font, so it showed on Linux and not on a Mac) made the track wider than the page at 360px, in both directions. */
+.lead { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; justify-items: start; min-width: 0; }
+.lead > * { min-width: 0; }
 .lead > form { width: 100%; }
 .trialLine { font-size: var(--t-s); color: var(--color-foreground-muted); }
 /* The closing call before the footer (rule 1600): a drawn panel, centred, holding the cover's form and trial line. */

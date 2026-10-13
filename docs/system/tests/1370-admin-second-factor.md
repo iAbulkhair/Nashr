@@ -4,7 +4,7 @@ Status on 2026-10-12 on branch `claude/admin-second-factor-0bcf96` (draft PR). 3
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
-| 1370 | Authenticator codes are RFC 6238 over RFC 4226 (HMAC-SHA1, 6 digits, 30-second steps, one step either side) written on `crypto` in `src/lib/totp.ts`; only six digits are read; package.json gains no TOTP or QR dependency | `tests/admin-2fa.test.ts` (rule 1370 block: the RFC vectors, the window, the otpauth URI, the dependency scan) | — |
+| 1370 | Authenticator codes are RFC 6238 over RFC 4226 (HMAC-SHA1, 6 digits, 30-second steps, one step either side) written on `crypto` in `src/lib/totp.ts`; only six digits are read; package.json gains no TOTP dependency (its one QR dependency, `uqr`, came with rule 1624) | `tests/admin-2fa.test.ts` (rule 1370 block: the RFC vectors, the window, the otpauth URI, the dependency scan) | — |
 | 1371 | The authenticator secret is stored only sealed with AES-256-GCM under SHA-256 of `"nashr-admin-2fa:" + CONNECT_SECRET`; another `CONNECT_SECRET` or a damaged blob opens nothing (the gate refuses, never opens); the enrolment record never holds the secret | `tests/admin-2fa.test.ts` (rules 1371-1372 block) | — |
 | 1372 | One recovery code, 100 bits in four groups of five, shown once by `confirm` and stored only as a SHA-256; dashes, spaces and case are ignored when it is typed | `tests/admin-2fa.test.ts` (rules 1371-1372 block) | — |
 | 1373 | Until an enrolment exists nothing is enforced: every founder write works on the key or the founder sign-in alone, and a started but unconfirmed setup changes nothing and lapses after 15 minutes | `tests/admin-2fa.test.ts` (rule 1373 block) | — |

@@ -31,6 +31,12 @@ export type AuditRow = {
   actor: string;
   /** Set when the founder acted from inside an impersonated account. */
   imp?: string;
+  /**
+   * How the actor reached the console (rule 1638): a staff session, the key session, the `x-admin-key` header, or the
+   * founder's customer session (expand only, rule 1649). Optional and new (rule 679): old rows have none, old readers
+   * ignore it.
+   */
+  via?: AuditVia;
   section?: AuditSection;
   action?: string;
   target?: string;
@@ -44,8 +50,14 @@ export type AuditRow = {
   [extra: string]: unknown;
 };
 
+/** How an actor reached the console (rule 1638). */
+export type AuditVia = "staff" | "key" | "header" | "founder-session";
+export const AUDIT_VIAS: readonly AuditVia[] = ["staff", "key", "header", "founder-session"];
+
 export type AuditInput = {
   actor: string;
+  /** How the actor reached the console; `viaOf(req)` in src/lib/auth.ts answers it for a console request. */
+  via?: AuditVia | null;
   section: AuditSection;
   /** The legacy one-line summary. */
   what: string;
@@ -98,7 +110,7 @@ export function redact(v: unknown, depth = 0): unknown {
 }
 
 /** The fields `adminAudit` sets itself: an `extra` field of the same name is dropped, never spread over them (rule 1184). */
-const RESERVED = new Set(["id", "at", "actor", "imp", "section", "action", "target", "email", "what", "before", "after", "reason", "legacy"]);
+const RESERVED = new Set(["id", "at", "actor", "imp", "via", "section", "action", "target", "email", "what", "before", "after", "reason", "legacy"]);
 
 /** `extra` without the reserved names, redacted like the rest of the row. */
 function extraOf(extra: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -118,6 +130,7 @@ export function auditRow(i: AuditInput, now = new Date()): AuditRow {
     at: now.toISOString(),
     actor: String(i.actor).slice(0, 200),
     ...(i.imp ? { imp: i.imp } : {}),
+    ...(i.via && AUDIT_VIAS.includes(i.via) ? { via: i.via } : {}),
     section: i.section,
     action,
     ...(i.target ? { target: i.target, email: i.target } : {}),

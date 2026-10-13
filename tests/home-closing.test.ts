@@ -67,4 +67,12 @@ describe("rule 1600: the home page ends with the cover's call to action before t
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|oklch\(|--color-(ink|paper|lemon|lilac|ground|gold)\b/i);
     expect(css).not.toMatch(/\b(left|right)\s*:|margin-(left|right)|padding-(left|right)|text-align:\s*(left|right)/);
   });
+
+  it("keeps the cover's and the closing call's column inside the panel at phone width (the 360px overflow seen in CI)", () => {
+    // An auto track took the signup input's default width as its minimum, and that width depends on the font: the column
+    // grew past a 360px page on Linux while a Mac hid it. A fixed minmax(0, 1fr) column cannot grow, whatever the font.
+    const lead = HOME_CSS.match(/\n\.lead \{[^}]*\}/)?.[0] ?? "";
+    expect(lead).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(HOME_CSS).toMatch(/\n\.lead > \* \{ min-width: 0; \}/);
+  });
 });

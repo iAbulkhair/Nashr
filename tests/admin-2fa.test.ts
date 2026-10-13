@@ -86,9 +86,10 @@ describe("authenticator codes are RFC 6238 without a dependency (rule 1370)", ()
     for (const bad of ["", "12345", "1234567", "abcdef", "12 34 5"]) expect(totpMatch(s, bad, T0)).toBeNull();
     expect(otpauthUri(s, "founder console")).toMatch(new RegExp(`^otpauth://totp/Thakeen%3Afounder%20console\\?secret=${s}&issuer=Thakeen&algorithm=SHA1&digits=6&period=30$`));
   });
-  it("package.json gains no TOTP or QR dependency", () => {
+  it("package.json gains no TOTP dependency; its one QR dependency is uqr, which draws the setup code (rule 1624)", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies: Record<string, string> };
-    expect(Object.keys(pkg.dependencies).filter((d) => /otp|qr|speakeasy|authenticator/i.test(d))).toEqual([]);
+    expect(Object.keys(pkg.dependencies).filter((d) => /otp|speakeasy|authenticator/i.test(d))).toEqual([]);
+    expect(Object.keys(pkg.dependencies).filter((d) => /qr/i.test(d))).toEqual(["uqr"]);
   });
 });
 
@@ -189,11 +190,12 @@ describe("after enrolment every founder write needs the second factor (rule 1376
     for (const r of res) expect([r.status, (await r.json()).error]).toEqual([403, "second_factor"]);
     expect((await getUser(customer.email))!.credits).toBe(customer.credits);
   });
-  it("every POST, PUT, PATCH and DELETE under /api/admin calls the gate, except the key form, impersonation stop, the 2FA route and marking leads seen", () => {
+  it("every POST, PUT, PATCH and DELETE under /api/admin calls the gate, except the key form, impersonation stop, the 2FA route and the staff sign-in steps", () => {
     const files: string[] = [];
     const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f === "route.ts") files.push(p); } };
     walk("src/app/api/admin");
-    const exempt = ["login", "impersonate", "2fa", "leads"].map((s) => join("src/app/api/admin", s, "route.ts"));
+    // The staff sign-in steps open a session, so no actor exists yet, and staff/me changes only the caller's own credentials with a fresh code; they run the console write check themselves (rule 1647).
+    const exempt = ["login", "impersonate", "2fa", "staff/login", "staff/login/code", "staff/login/enrol", "staff/setup", "staff/me"].map((s) => join("src/app/api/admin", s, "route.ts"));
     for (const f of files) {
       const src = readFileSync(f, "utf8");
       const writes = (src.match(/export (?:async )?function (POST|PUT|PATCH|DELETE)\b/g) ?? []).length;
@@ -357,7 +359,8 @@ describe("audit and the console's banner (rules 1383, 1384)", () => {
   });
   it("the console layout renders the banner, setup and prompt on every page behind the gate", () => {
     const layout = readFileSync("src/app/[lang]/admin/layout.tsx", "utf8");
-    expect(layout).toContain("<SecondFactor lang={lang} enrolled={sf.enrolled} />");
+    // A staff session counts as enrolled: it has its own authenticator (rule 1632), so only the prompt shows.
+    expect(layout).toContain("<SecondFactor lang={lang} enrolled={!!who.staff || sf.enrolled} staff={!!who.staff} />");
     expect(layout).toContain("secondFactorStatus()");
     const sf = readFileSync("src/components/admin/SecondFactor.tsx", "utf8");
     expect(sf).toContain("ADMIN_2FA_EVENT");
