@@ -2,7 +2,7 @@
 // 1212-1216, the founder's yes on 2026-10-12, replacing "public pages stay light"), and the home cover gets its call to
 // action and freshness chip (rules 1228, 1229). Source-reading checks and static renders.
 import { describe, expect, it, vi } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CHANGELOG, type ChangeEntry } from "@/lib/changelog";
@@ -55,19 +55,11 @@ describe("rule 1212: scribble fills named after the palette paint the role with 
 
 describe("rule 1213: the home styles use the roles, except the drawn figures", () => {
   it("uses no palette primitive in a mounted block, except ink and paper on the drawn figures and the dark tag", () => {
-    // Dictionary.tsx and StartForm.tsx are not mounted; PR #346 deletes them and their styles, so their blocks are skipped.
-    const used = (files: string[]) => new Set(files.flatMap((f) => [...read(f).matchAll(/styles\.([A-Za-z]\w*)/g)].map((m) => m[1])));
-    const dir = "src/components/home";
-    const all = readdirSync(dir).filter((f) => f.endsWith(".tsx")).map((f) => `${dir}/${f}`);
-    const deadFiles = [`${dir}/Dictionary.tsx`, `${dir}/StartForm.tsx`];
-    const live = used(all.filter((f) => !deadFiles.includes(f)));
-    const deadOnly = [...used(deadFiles)].filter((c) => !live.has(c));
+    // Every block is checked: PR #346 deleted the unmounted Dictionary.tsx and StartForm.tsx and their styles.
     const css = HOME_CSS.replace(/\/\*[\s\S]*?\*\//g, "");
     let checked = 0;
     for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       const sel = m[1].trim();
-      const classes = [...sel.matchAll(/\.([A-Za-z]\w*)/g)].map((c) => c[1]);
-      if (classes.some((c) => deadOnly.includes(c))) continue;
       checked++;
       expect(m[2], sel).not.toMatch(/var\(--color-(ground|muted|lilac)\)/);
       if (/var\(--color-(ink|paper)\)/.test(m[2])) expect(sel).toMatch(/^\.doodle\b|^\.who\[data-dark\]/);
