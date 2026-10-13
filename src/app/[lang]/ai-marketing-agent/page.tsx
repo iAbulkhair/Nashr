@@ -84,7 +84,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
         <p className="mt-3 leading-relaxed">{c.gulf}</p>
         <h2 className="mt-12 font-display text-2xl font-bold">{lang === "ar" ? "الأسئلة الشائعة" : "FAQ"}</h2>
         <QaList items={c.faq.map(([q, a]) => ({ q, a }))} className="mt-4" />
-        <p className="mt-10 text-sm text-foreground-muted">{lang === "ar" ? "اقرأ أيضاً:" : "Read next:"} <Link href={`/${lang}/blog/best-ai-marketing-agents-gulf-2026`} className="font-bold text-foreground underline">{lang === "ar" ? "معيار أفضل وكلاء التسويق للخليج" : "The Gulf AI marketing agent benchmark"}</Link> · <Link href={`/${lang}/vs/chatgpt`} className="font-bold text-foreground underline">{lang === "ar" ? "نور مقابل ChatGPT" : "Noor vs ChatGPT"}</Link> · <Link href={`/${lang}/blog/replace-your-agency-with-ai`} className="font-bold text-foreground underline">{lang === "ar" ? "استبدل وكالتك" : "Replace your agency"}</Link></p>
+        <p className="mt-10 text-sm text-foreground-muted">{lang === "ar" ? "اقرأ أيضاً:" : "Read next:"} <Link href={`/${lang}/blog/best-ai-marketing-agents-gulf-2026`} className="font-bold text-foreground underline">{lang === "ar" ? "خيارات وكلاء التسويق في الخليج" : "AI marketing agent options for the Gulf"}</Link> · <Link href={`/${lang}/vs/chatgpt`} className="font-bold text-foreground underline">{lang === "ar" ? "نور مقابل ChatGPT" : "Noor vs ChatGPT"}</Link> · <Link href={`/${lang}/blog/replace-your-agency-with-ai`} className="font-bold text-foreground underline">{lang === "ar" ? "استبدل وكالتك" : "Replace your agency"}</Link></p>
       </main>
       <FinalCta t={t} lang={lang} />
       <Footer t={t} />

@@ -1,5 +1,6 @@
 import Scribble from "@/components/Scribble";
 import { CAST, SECTIONS, STEP7_LINK, STEPS } from "@/lib/home";
+import { formatNumber } from "@/lib/format";
 import type { Lang } from "@/lib/i18n";
 import { CLAUDE_PAUSED } from "@/lib/model";
 import { Float } from "./Decor";
@@ -16,7 +17,6 @@ const APPROVAL = 4;
  */
 export default function Steps({ lang }: { lang: Lang }) {
   const s = SECTIONS.steps;
-  const num = new Intl.NumberFormat(lang === "ar" ? "ar-u-nu-arab" : "en");
   return (
     <section className={styles.sec} id="steps" aria-labelledby="t-steps">
       <Float kind="plane" />
@@ -68,7 +68,7 @@ export default function Steps({ lang }: { lang: Lang }) {
               <Scribble kind="box" seed={`st${i}`} fill="paper" />
               <h3 className={styles.cap}>
                 <Scribble kind="box" seed={`st${i}h`} fill={approval ? "lemon" : "lilac"} />
-                <span className={styles.num}>{num.format(i + 1)}</span>
+                <span className={styles.num}>{formatNumber(i + 1, lang)}</span>
                 {st.title[lang]}
               </h3>
               {approval ? (

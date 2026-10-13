@@ -10,6 +10,7 @@ import { scopeRefusalText } from "@/lib/scope-refusal";
 import { modelErrorText } from "@/lib/provider-errors";
 import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
+import { nextArrow } from "@/lib/format";
 import type { Lang } from "@/lib/i18n";
 import { kpiDelta } from "@/lib/kpi-delta";
 import { PLATFORM_METRICS, reportSources, socialRead, type SiteChoices } from "@/lib/report-sources";
@@ -108,7 +109,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <div className="mb-5 rounded-xl border border-border bg-surface p-4 text-sm" data-testid="sources-banner">
           <p>{sources.banner === "some" ? <><b>{R.warnSomeTitle}</b> {R.warnSomeBody}</> : <><b>{R.warnTitle}</b> {R.warnBody}</>}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {sources.missing.map((key) => <Link key={key} href={`/${lang}/app/settings/connections`} className="btn btn-secondary btn-xs">{R.sources[key]} · {key === "store" ? R.connectStore : R.connectNow} →</Link>)}
+            {sources.missing.map((key) => <Link key={key} href={`/${lang}/app/settings/connections`} className="btn btn-secondary btn-xs">{R.sources[key]} · {key === "store" ? R.connectStore : R.connectNow} {nextArrow(lang)}</Link>)}
           </div>
         </div>
       )}

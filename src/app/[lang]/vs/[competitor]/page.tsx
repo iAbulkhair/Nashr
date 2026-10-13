@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { dict, isLang, LANGS } from "@/lib/i18n";
 import { VS_PAGES, VS_SLUGS } from "@/lib/pages-vs";
+import VsThem from "@/components/VsThem";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
@@ -47,7 +48,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
         <div className="mt-10 overflow-x-auto border-y-[1.5px] border-border-strong">
           <table className="w-full text-sm">
             <thead><tr className="border-b-[1.5px] border-border-strong"><th className="p-3 text-start"></th><th className="p-3 text-start font-display">{p.competitor}</th><th className="p-3 text-start font-display">{us}</th></tr></thead>
-            <tbody className="divide-y divide-foreground/15">{p.rows.map((r) => <tr key={r.dim}><td className="p-3 font-bold">{r.dim}</td><td className="p-3 text-foreground-muted">{r.them}</td><td className="p-3 font-bold">{r.us}</td></tr>)}</tbody>
+            <tbody className="divide-y divide-foreground/15">{p.rows.map((r) => <tr key={r.dim}><td className="p-3 font-bold">{r.dim}</td><td className="p-3 text-foreground-muted"><VsThem row={r} lang={lang} /></td><td className="p-3 font-bold">{r.us}</td></tr>)}</tbody>
           </table>
         </div>
         <div className="mt-10 grid gap-6 sm:grid-cols-2">
