@@ -12,6 +12,7 @@ import { clearOnboard, confirmedAnswers, confirmedOnboard, heldOnboard, onboardU
 import { answersHint, answersToBrand } from "@/lib/dictionary";
 import { forbid } from "@/lib/roles";
 import { agentSpendFor, capOf, chargeOnboard, refundOnboard, settleOnboard, type OnboardCharge } from "@/lib/credits";
+import { fairUseGate } from "@/lib/fair-use";
 import { getGov } from "@/lib/governance";
 import { warnAgentCap } from "@/lib/notifications";
 import { onboardCost } from "@/lib/pricing";
@@ -34,7 +35,7 @@ const T = {
 } as const;
 
 /** A refusal to pay, as JSON and before any stream: ChatPanel reads the status and the body's `error`. */
-const owe = (error: "no_credits" | "trial_over" | "agent_cap", need: number, credits: number, extra: Record<string, unknown> = {}) =>
+const owe = (error: "no_credits" | "trial_over" | "agent_cap" | "fair_use", need: number, credits: number, extra: Record<string, unknown> = {}) =>
   Response.json({ ok: false, error, need, credits, ...extra }, { status: 402 });
 
 type PayRefusal = Exclude<OnboardCharge, { ok: true }>;
@@ -115,6 +116,8 @@ export async function POST(req: Request) {
   if (confirmed !== url) return new Response("unconfirmed", { status: 403 });
   // Before the daily allowance and the lock, so a paused run costs the owner none of their three tries.
   if (modelState() === "paused") return new Response("paused", { status: 503 });
+  // The fair-use stop (rule 1725), for the same reason and before any model call: 402 like a refusal to pay, nothing charged.
+  if (await fairUseGate(u)) return owe("fair_use", cost, Number.isFinite(u.credits) ? u.credits : 0);
   // An added brand that cannot be paid for is refused here, for the same reason. A run already paid for is not asked again.
   if (cost > 0 && !marker) {
     const refusal = cannotPay(u, cost, scope, gov?.agentCaps.noor);

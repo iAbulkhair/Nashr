@@ -36,6 +36,7 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
     if (res && (res.status === 402 || res.status === 429)) {
       const j = (await res.json().catch(() => ({}))) as { error?: string; message?: { content?: string }; chat?: ChatStatus };
       setBusy("");
+      // `fair_use` (rule 1727) goes through `limitFromError` below, like an ended trial.
       if (j.error === "chat_allowance" || j.error === "chat_credits") raiseLimit(j.error === "chat_allowance" ? "chat" : "chat_credits", { period: j.chat?.period, hold: j.chat?.overflow.hold, allowance: j.chat?.allowance });
       else if (!limitFromError(j.error) && typeof j.message?.content === "string") setRefusal(j.message.content);
       return;

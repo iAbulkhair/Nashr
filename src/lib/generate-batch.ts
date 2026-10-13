@@ -17,6 +17,7 @@
 import { randomBytes } from "crypto";
 import { trialOver, type User } from "./auth";
 import { charge, chargeOnce, refund, refundOnce, renewIfDue, renewalDue, type SpendRef } from "./credits";
+import { fairUseGate } from "./fair-use";
 import { agentForTask, type AgentId } from "./agents";
 import { briefOf, dropTasks, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
 import { TASK_COST, TASK_COUNT, isDraftType, type TaskType } from "./tasks";
@@ -149,6 +150,8 @@ export type BatchRefusal =
   | { ok: false; reason: "paused" }
   | { ok: false; reason: "no_brand" }
   | { ok: false; reason: "trial_over" }
+  /** The fair-use stop (src/lib/fair-use.ts, rule 1723): the account's cost this month reached what it paid; `resumes` is YYYY-MM-DD. */
+  | { ok: false; reason: "fair_use"; resumes: string }
   | { ok: false; reason: "missing_data"; missing: string }
   | { ok: false; reason: "agent_cap"; agent: AgentId; spent: number; cap: number; credits: number }
   | { ok: false; reason: "no_credits"; need: number; credits: number }
@@ -308,6 +311,10 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // A refused pick is counted for the founder console (global, best effort: it never changes the batch).
   if (modelRejected) await noteRejectedPick("generate", modelRejected);
   if (trialOver(user)) return refuse({ ok: false, reason: "trial_over" });
+  // The fair-use stop (rule 1723): before the data check, the input gate's classifier and the charge, so a paused account
+  // makes no model call and is charged nothing.
+  const stop = await fairUseGate(user);
+  if (stop) return refuse({ ok: false, reason: "fair_use", resumes: stop.resumes });
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });
   // The names of the account's other brands, for the classifier and the refusal copy: read at most once per batch, shared by the

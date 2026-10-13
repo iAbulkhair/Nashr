@@ -18,7 +18,7 @@ const OWNER_KEYS = ["createdAt", "credits", "deal", "email", "lang", "name", "ph
 /** A member's `user`: its own name, email, language and role, and the account summary every seat shares. */
 const MEMBER_KEYS = ["createdAt", "credits", "email", "lang", "name", "plan", "renewedAt", "role", "topups", "trialEnds"];
 /** Strings stored in fields the customer must never be sent. None may appear anywhere in the answer. */
-const SECRETS = ["founder-seat@test.example", "founder-lock@test.example", "founder-deal@test.example", "founder-grant@test.example", "SECRET-GRANT-NOTE", "SECRET-BANK-REF", "founder-topup@test.example", "SECRET-INTENT-REF", "SECRET-TXN", "partner-owner@test.example", "SECRET-PARTNER-REF", "pay_7870000000000000", "founder-hand@test.example"];
+const SECRETS = ["founder-fairuse@test.example", "founder-seat@test.example", "founder-lock@test.example", "founder-deal@test.example", "founder-grant@test.example", "SECRET-GRANT-NOTE", "SECRET-BANK-REF", "founder-topup@test.example", "SECRET-INTENT-REF", "SECRET-TXN", "partner-owner@test.example", "SECRET-PARTNER-REF", "pay_7870000000000000", "founder-hand@test.example"];
 
 const DAY = 86400_000;
 const iso = (days: number) => new Date(Date.now() + days * DAY).toISOString();
@@ -71,6 +71,8 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     // The founding seat and the price lock (rules 1700-1719): not profile fields; the owner reads them in the data download.
     founding: { at: iso(-20), by: "founder-seat@test.example", paymentId: "pay_7870000000000001" },
     priceLock: { plan: "business", baseHalalas: 99900, from: iso(-20).slice(0, 10), until: iso(340).slice(0, 10), months: 12, founding: true, at: iso(-20), by: "founder-lock@test.example", paidHalalas: 114885, paymentId: "pay_7870000000000001" },
+    // The founder's fair-use lift (rule 1731): a founder field, never sent to the customer.
+    fairUseLift: { month, at: iso(-1), by: "founder-fairuse@test.example" },
   };
   await saveUser(full);
   return full;

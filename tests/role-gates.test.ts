@@ -121,6 +121,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/impersonate": "admin-console",
   "POST /api/admin/plan": "admin-console",
   "POST /api/admin/brand-cap": "admin-console",
+  // The fair-use stop (rule 1730): the founder lifts or re-applies one account's pause for this month.
+  "POST /api/admin/fair-use": "admin-console",
   // Partner programme (rules 390-402): approvals, payouts, recorded payments and voids.
   "POST /api/admin/partners": "admin-console",
   "POST /api/admin/payments/[email]": "admin-console",

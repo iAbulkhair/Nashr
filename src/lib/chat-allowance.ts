@@ -6,6 +6,7 @@ import { chatHoldFor, chatUnitsFor } from "./models/credits";
 import { modelById } from "./models/catalog";
 import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey } from "./usage";
 import type { ChatTurn } from "./chat";
+import { fairUseGate, fairUseText, type FairUseRefusal } from "./fair-use";
 
 /**
  * The chat allowance (pricing phase 2, rules 308-310): every owner message (one turn, however many model calls it takes)
@@ -45,6 +46,8 @@ export type ChatStatus = {
 };
 
 type Refusal = { ok: false; error: "chat_allowance" | "chat_credits"; status: ChatStatus; credits: number; need?: number };
+/** The fair-use stop (src/lib/fair-use.ts, rule 1722): the account's cost this month reached what it paid. */
+type FairUseStop = { ok: false; error: FairUseRefusal["error"]; fairUse: FairUseRefusal; status: ChatStatus; credits: number };
 /**
  * `units`: the messages this turn counts (`chatUnitsFor(model)`), on `key`; `model`: the catalog id they were computed
  * for. The caller must run the turn on that same model, or the count and the ceiling would price another model: the chat
@@ -52,7 +55,7 @@ type Refusal = { ok: false; error: "chat_allowance" | "chat_credits"; status: Ch
  * with it and hand `gate.model` to `chat()` (tests/model-route-calls.test.ts, tests/model-override.test.ts).
  */
 type Reserved = { ok: true; key: string; units: number; model: string; status: ChatStatus };
-export type ChatGate = (Reserved & { mode: "included" }) | (Reserved & { mode: "overflow"; hold: number }) | Refusal;
+export type ChatGate = (Reserved & { mode: "included" }) | (Reserved & { mode: "overflow"; hold: number }) | Refusal | FairUseStop;
 export type ChatReserved = Extract<ChatGate, { ok: true }>;
 
 const counterKey = (u: Pick<User, "email" | "plan">) => (u.plan === "trial" ? chatTrialKey(u.email) : chatMsgKey(u.email));
@@ -105,6 +108,10 @@ export async function reserveChatTurn(u: User, model: string): Promise<ChatGate>
   if (!entry.caps.tools) throw new Error(`model_not_chat:${entry.id}`);
   const units = chatUnitsFor(entry.id);
   const hold = chatHoldFor(entry.id);
+  // The fair-use stop (rule 1722), before anything is counted: a paused account counts no message and spends no credit,
+  // included or on credits. The trial is not gated here (its 30 messages are its limit).
+  const stop = await fairUseGate(u);
+  if (stop) return { ok: false, error: stop.error, fairUse: stop, status: await chatStatus(u, model), credits: Math.max(0, num(u.credits)) };
   const key = counterKey(u);
   const allowance = chatAllowanceOf(u);
   const n = await db.incrby(key, units);
@@ -167,7 +174,8 @@ export async function runChatTurn(u: User, gate: ChatReserved, run: () => Promis
 }
 
 /** The plain sentence an MCP client (and the model relaying it) gets for a refused message. */
-export function refusalText(r: Refusal): string {
+export function refusalText(r: Refusal | FairUseStop): string {
+  if (r.error === "fair_use") return fairUseText();
   const s = r.status;
   const when = s.period === "trial" ? "for the trial" : "this month (it renews on the 1st, UTC)";
   if (r.error === "chat_credits") return `Chat paused: this account used its ${s.allowance} chat messages ${when}, and continuing on credits needs at least ${r.need ?? s.overflow.hold} credits in the balance (the most one message can cost); the account has ${r.credits}. Nothing was sent. The owner can top up credits (packs used after the month's plan credits) or upgrade the plan from the Subscription page in the app.`;

@@ -49,6 +49,7 @@ import { DEFAULTS, route, type Rejected } from "./models/route";
 import { MODEL_UNAVAILABLE, MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
 import { spendIntent } from "./spend-intent";
 import { isRegulated } from "./regulated";
+import { fairUseText } from "./fair-use";
 import { SPEND_CARDS_PER_REPLY, proposeSpend, spendCard, spendProposalStates, type SpendProposal, type SpendProposalCard } from "./spend-proposals";
 import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandNames, itemHash, publishScopeCheck, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx } from "./agent-scope";
 
@@ -395,7 +396,7 @@ export const CHAT_RENDER_MIN_MS = 60_000;
  */
 export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string; modelRejected?: Rejected; agentScope?: AgentScopeModes };
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
-export type ChatLimit = "credits" | "trial" | "agent_cap";
+export type ChatLimit = "credits" | "trial" | "agent_cap" | "fair_use";
 
 /**
  * Why a chat turn was refused before any model call (rules 330-331): an ended trial, or the hourly or daily ceiling of
@@ -720,6 +721,8 @@ function batchRefused(r: BatchRefusal, actions: string[], lowCredits: (need: num
   switch (r.reason) {
     case "no_brand": return "No brand file yet. Ask the owner to run onboarding.";
     case "trial_over": actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page.";
+    // The fair-use stop (rule 1723): nothing was made or charged; the app raises its dialog.
+    case "fair_use": actions.push("limit:fair_use"); return fairUseText();
     case "missing_data": return "No abandoned-cart data yet, so nothing was created and no credits were used. Tell the owner to connect Salla or Shopify on the Integrations page and press Sync on the Reports page, then ask again.";
     case "agent_cap": actions.push("limit:agent_cap"); return capReached(r);
     case "no_credits": actions.push("limit:credits"); return lowCredits(r.need, r.credits);
@@ -1071,6 +1074,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
         if (r.credits != null) user.credits = r.credits;
         switch (r.error) {
           case "trial_over": actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page.";
+          case "fair_use": actions.push("limit:fair_use"); return fairUseText();
           case "no_credits": actions.push("limit:credits"); return `Insufficient credits for an image. ${NO_CREDITS_HINT}`;
           case "agent_cap": actions.push("limit:agent_cap"); return capReached({ agent: r.agent ?? agentForTask(t.type).id, spent: r.spent ?? 0, cap: r.cap ?? 0 });
           case "wrong_type": return `Images are only for these item types: ${IMAGE_TYPES.join(", ")}.`;

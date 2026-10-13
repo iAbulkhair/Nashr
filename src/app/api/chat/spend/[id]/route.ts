@@ -92,6 +92,7 @@ function refusal(r: Extract<SpendRun, { ok: false }>): [number, Record<string, u
         case "paused": return [503, { error: "model_paused" }];
         case "no_brand": return [400, { error: "no_brand" }];
         case "trial_over": return [402, { error: "trial_over" }];
+        case "fair_use": return [402, { error: "fair_use", resumes: x.resumes }];
         case "missing_data": return [409, { error: "missing_data", missing: x.missing }];
         case "agent_cap": return [402, { error: "agent_cap", agent: x.agent, spent: x.spent, cap: x.cap }];
         case "no_credits": return [402, { error: "no_credits", need: x.need, have: x.credits }];

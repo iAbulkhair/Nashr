@@ -61,7 +61,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     // Shown as text in the status line, never as HTML.
     const refused = scopeRefusalText(j);
     if (refused) { setMsg(refused); return; }
-    const map: Record<string, string> = { no_credits: noCreditsText(t.generate, owner, topups), trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle };
+    const map: Record<string, string> = { no_credits: noCreditsText(t.generate, owner, topups), trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle, fair_use: t.limit.fairUseTitle };
     setMsg(map[j.error] ?? modelErrorText(lang, j.error) ?? t.generate.failed);
   }
 

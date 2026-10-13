@@ -38,6 +38,8 @@ export async function POST(req: Request) {
       case "paused": return NextResponse.json({ ok: false, error: "model_paused" }, { status: 503 });
       case "no_brand": return NextResponse.json({ ok: false, error: "no_brand" }, { status: 400 });
       case "trial_over": return NextResponse.json({ ok: false, error: "trial_over" }, { status: 402 });
+      // The fair-use stop (rule 1723): nothing was charged or generated.
+      case "fair_use": return NextResponse.json({ ok: false, error: "fair_use", resumes: r.resumes }, { status: 402 });
       case "missing_data": return NextResponse.json({ ok: false, error: r.missing }, { status: 409 });
       case "agent_cap": return NextResponse.json({ ok: false, error: "agent_cap", agent: r.agent, spent: r.spent, cap: r.cap }, { status: 402 });
       case "no_credits": return NextResponse.json({ ok: false, error: "no_credits", need: r.need, have: r.credits }, { status: 402 });
