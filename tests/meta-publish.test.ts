@@ -59,7 +59,7 @@ const metaConn = (over: Partial<Connection> = {}): Connection => ({
   data: { access_token: "long-user", page_token: "page-tok-2", pages: JSON.stringify(PAGES.map((p) => ({ id: p.id, name: p.name, token: p.access_token, igId: p.instagram_business_account?.id, ig: p.instagram_business_account?.username }))) },
   meta: { pageId: "p2", igId: "ig2", account: "متجر الورد · @ward.sa" }, ...over,
 });
-/** Our own Blob copies (src/lib/media/blob.ts): where kie and Higgsfield results live once stored. */
+/** Our own old Blob copies (legacy during the expand release, rule 679): handed over as they are, already public. */
 const BLOB_IMG = `https://s1.public.blob.vercel-storage.com/media/${"a1".repeat(16)}.jpg`;
 const BLOB_CLIP = `https://s1.public.blob.vercel-storage.com/media/${"b2".repeat(16)}.mp4`;
 const post = (over: Partial<Task> = {}): Task => ({ id: `t${Math.random().toString(16).slice(2, 10)}`, type: "social", channel: "instagram", title: "t", body: "## عود ملكي\n**جديد** في المتجر", status: "approved", createdAt: new Date().toISOString(), lang: "ar", imageUrl: "https://v3.fal.media/files/abc.jpg", imageProvider: "fal", ...over });
@@ -207,6 +207,21 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
     await saveTask(u.email, hf, true);
     expect((await (await publish(hf.id, "facebook")).json()).result.url).toBe("https://www.facebook.com/p2_222");
     expect(calls.find((k) => k.url.endsWith("/p2/photos"))!.body.get("url")).toBe(BLOB_IMG);
+  });
+
+  it("hands Meta a short signed link to a disk-store image, and the task keeps the plain URL (rule 1755)", async () => {
+    fakeGraph();
+    const u = await connectedUser("metadisk");
+    const plain = `https://thakeen.com/m/${"c3".repeat(16)}.jpg`;
+    const t = post({ imageUrl: plain, imageProvider: "kie", imageModel: "img-premium" });
+    await saveTask(u.email, t, true);
+    expect((await (await publish(t.id, "instagram")).json()).result).toMatchObject({ status: "published" });
+    const sent = new URL(calls.find((k) => k.url.endsWith("/ig2/media"))!.body.get("image_url")!);
+    expect(sent.origin + sent.pathname).toBe(plain);
+    expect([...sent.searchParams.keys()].sort()).toEqual(["exp", "sig"]);
+    const { shareValid } = await import("@/lib/media/share");
+    expect(shareValid(`${"c3".repeat(16)}.jpg`, sent.searchParams.get("exp"), sent.searchParams.get("sig"))).toBe(true);
+    expect((await getTask(u.email, t.id))?.imageUrl).toBe(plain);
   });
 
   it("posts a clip-only item to the Page as text, never with the clip or a placeholder", async () => {

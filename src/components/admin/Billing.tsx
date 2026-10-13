@@ -10,10 +10,11 @@ function MediaReport({ m, O }: { m: MediaCheck; O: Record<string, string> }) {
   const check = (r: Record<string, number | string> | null, num: (n: number) => string) =>
     r === null ? <span className="text-foreground-muted">not configured</span> : Object.entries(r).map(([k, v], i) => <Fragment key={k}>{i > 0 && " · "}{k} {typeof v === "number" ? num(v) : mark(false, v)}</Fragment>);
   const offRows = Object.entries(m.off);
+  const gib = (n: number) => `${(n / 1024 ** 3).toFixed(2)} GiB`;
   return (
     <div className="mt-3 grid gap-1.5 font-mono text-xs" dir="ltr" data-testid="media-check">
-      <p>{(["fal", "kie", "higgsfield", "blob", "webhooks"] as const).map((k, i) => <Fragment key={k}>{i > 0 && " · "}{mark(m.configured[k], `${k}: ${m.configured[k] ? "on" : "off"}`)}</Fragment>)}</p>
-      <p>blob probe: {mark(m.blob === "ok", m.blob)}</p>
+      <p>{(["fal", "kie", "higgsfield", "store", "webhooks"] as const).map((k, i) => <Fragment key={k}>{i > 0 && " · "}{mark(m.configured[k], `${k}: ${m.configured[k] ? "on" : "off"}`)}</Fragment>)}</p>
+      <p>store probe: {mark(m.store.status === "ok", m.store.status)} · builds survived {m.store.survivedBuilds ?? "—"} · {gib(m.store.usage.bytes)} / {gib(m.store.limits.maxBytes)} · files {m.store.usage.files} / {m.store.limits.maxFiles} · free {m.store.freeBytes === null ? "—" : gib(m.store.freeBytes)}</p>
       <p>models on: {m.modelsOn.join(", ")}</p>
       <p>offered now: {m.available.join(", ") || "—"}</p>
       <p>kie: {check(m.kie, (n) => `${n} credits`)} <span className="text-foreground-muted">(used this month: {m.spend.kieCredits})</span></p>

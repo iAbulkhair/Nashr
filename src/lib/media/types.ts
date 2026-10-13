@@ -38,7 +38,7 @@ export class ProviderError extends Error {
 }
 
 export type StoredMedia = { url: string; bytes: number; contentType: "image/jpeg" | "video/mp4" };
-export type StoreErrorCode = "not_https" | "fetch_failed" | "too_large" | "not_media" | "convert_failed" | "put_failed" | "no_blob" | "no_time";
+export type StoreErrorCode = "not_https" | "fetch_failed" | "too_large" | "not_media" | "convert_failed" | "put_failed" | "no_store" | "full" | "no_time";
 export class StoreError extends Error {
   constructor(readonly code: StoreErrorCode) {
     super(`store_${code}`);
@@ -66,7 +66,7 @@ export type MediaJob = {
   provider: MediaProviderId;
   credits: number;
   prompt: string;
-  /** Reference image sent to the provider (our Blob URL), if any. */
+  /** Reference image sent to the provider (our stored URL, signed only at the send), if any. */
   imageUrl?: string;
   providerTaskId?: string;
   state: MediaJobState;
@@ -98,9 +98,13 @@ export type PublicJob = { id: string; kind: MediaKind; model: MediaModelId; cred
 /** Providers and storage, injected so the engine runs in tests with scripted fakes and no network. */
 export type MediaDeps = {
   adapter(p: MediaProviderId): MediaAdapter;
-  /** Copy a provider result to our store; every timeout inside is bounded by `deadline` (epoch ms). */
-  store(sourceUrl: string, kind: MediaKind, deadline: number): Promise<StoredMedia>;
-  blobReady(): boolean;
+  /**
+   * Copy a provider result to our store, indexed under the job's own scope and task (never a request's); every timeout
+   * inside is bounded by `deadline` (epoch ms).
+   */
+  store(sourceUrl: string, kind: MediaKind, deadline: number, owner: { scope: string; taskId: string }): Promise<StoredMedia>;
+  /** The store is set up and has room for one more file of `kind` (rule 1753): checked before anyone is charged. */
+  storeReady(kind: MediaKind): boolean | Promise<boolean>;
   now?(): number;
 };
 

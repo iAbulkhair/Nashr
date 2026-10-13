@@ -3,15 +3,15 @@ import { isAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { renderSpend } from "@/lib/admin-stats";
 import type { MediaProviderId } from "@/lib/media-catalog";
-import { availableModels, blobConfigured, callbackUrl, modelsSwitchedOn, offModels, providerConfigured } from "@/lib/media/config";
+import { availableModels, callbackUrl, modelsSwitchedOn, offModels, providerConfigured, storeConfigured } from "@/lib/media/config";
 import { abortAfter, mk } from "@/lib/media/keys";
 import { kieAdapter } from "@/lib/media/kie";
 import { higgsfieldAdapter } from "@/lib/media/higgsfield";
-import { probeBlob } from "@/lib/media/blob";
+import { probeStore } from "@/lib/media/store";
 
 /**
- * Founder console "Check media providers" (spec A15, 4.9): configuration flags, the Blob probe (write, check, delete a
- * tiny file), the kie balance, Higgsfield's /estimate per model, the switched-off models, this month's spend and the last
+ * Founder console "Check media providers" (spec A15, 4.9): configuration flags, the disk store probe (write, read back,
+ * delete a tiny file; the sentinel's count of builds survived; usage against the ceilings, rule 1762), the kie balance, Higgsfield's /estimate per model, the switched-off models, this month's spend and the last
  * 50 renders. Flags only: no variable value is ever in the answer (the ids of the models switched on are not secret).
  */
 export const dynamic = "force-dynamic";
@@ -37,10 +37,10 @@ function recentRow(raw: string): Recent | null {
 
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
-  const [kie, higgsfield, blob, openSizes, spend, off, recent] = await Promise.all([
+  const [kie, higgsfield, store, openSizes, spend, off, recent] = await Promise.all([
     providerConfigured("kie") ? kieAdapter.check!(abortAfter(CHECK_MS)).catch(unreachable) : null,
     providerConfigured("higgsfield") ? higgsfieldAdapter.check!(abortAfter(CHECK_MS)).catch(unreachable) : null,
-    probeBlob(abortAfter(CHECK_MS)).catch(() => "error:unreachable"),
+    probeStore(),
     Promise.all(PROVIDERS.map((p) => db.smembers(mk.open(p)).then((m) => m.length))),
     renderSpend(),
     offModels(),
@@ -48,10 +48,10 @@ export async function GET(req: Request) {
   ]);
   return NextResponse.json({
     ok: true,
-    configured: { fal: providerConfigured("fal"), kie: providerConfigured("kie"), higgsfield: providerConfigured("higgsfield"), blob: blobConfigured(), webhooks: !!callbackUrl("kie") },
+    configured: { fal: providerConfigured("fal"), kie: providerConfigured("kie"), higgsfield: providerConfigured("higgsfield"), store: storeConfigured(), webhooks: !!callbackUrl("kie") },
     modelsOn: [...modelsSwitchedOn()],
     available: availableModels(undefined, off),
-    blob,
+    store,
     kie,
     higgsfield,
     open: Object.fromEntries(PROVIDERS.map((p, i) => [p, openSizes[i]])) as Record<MediaProviderId, number>,

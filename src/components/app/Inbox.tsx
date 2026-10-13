@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Task } from "@/lib/brand";
-import { hasArtwork, isOurBlobUrl, type MediaModelId, type VideoModelId } from "@/lib/media-catalog";
+import { hasArtwork, isOurMediaUrl, type MediaModelId, type VideoModelId } from "@/lib/media-catalog";
 import MediaControls from "./MediaControls";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
@@ -88,7 +88,7 @@ const verdictsOf = (x: Pick<Task, "source" | "crossReview">) => (x.source === "e
 const noSubscribe = () => () => {};
 const shareSheet = () => typeof navigator.canShare === "function";
 /** Our Blob store answers ?download=1 with an attachment header, so the link saves the clip instead of playing it. */
-const saveLink = (url: string) => (isOurBlobUrl(url) ? `${url}?download=1` : url);
+const saveLink = (url: string) => (isOurMediaUrl(url) ? `${url}?download=1` : url);
 
 /**
  * `canPublish` is `can(u, "publish")` from the page (approve and publish are admin and owner). Without it the inbox offers

@@ -31,6 +31,7 @@ import { XSTATS_KEY } from "./social-read/common";
 import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
 import { instructionProposalKeys } from "./instruction-proposals";
 import { spendProposalKeys } from "./spend-proposals";
+import { forgetScopeMedia } from "./media/store";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -157,6 +158,9 @@ export async function wipeAccount(email: string) {
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });
+  // Our media copies on disk (rule 1761): every file of every brand, its index entries and the space they held. A disk
+  // error stops the wipe (a retry runs it again), so the account is never gone while its pictures and clips remain.
+  keys.push(...(await forgetScopeMedia(scopes)));
   // Named one-time email markers, their in-flight claims and their repair flags: the names are only knowable from the
   // index `sendOnce()` keeps (src/lib/notify.ts).
   const onceNames = await db.smembers(ONCE_INDEX(e));
