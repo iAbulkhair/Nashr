@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminActor } from "@/lib/auth";
+import { adminActor, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { agentForTask, isAgentId } from "@/lib/agents";
 import { NO_LAYERS, type Layers } from "@/lib/agent-instructions";
@@ -77,7 +77,7 @@ export async function PUT(req: Request) {
   const before = snap(await getLayer(PLATFORM));
   const r = await saveDraft(PLATFORM, b.items as Draft[], founderBy(who), { platform: true, base: b.base });
   if (!r.ok) return refused(r);
-  await logSkills(who, "save", before, snap(r.layer));
+  await logSkills(who, "save", before, snap(r.layer), viaOf(req));
   return NextResponse.json({ ok: true, layer: publicLayer(r.layer), base: editBase(r.layer) });
 }
 
@@ -95,32 +95,32 @@ export async function POST(req: Request) {
       const before = snap(await getLayer(PLATFORM));
       const r = await activate(PLATFORM, by, { platform: true });
       if (!r.ok) return refused(r);
-      await logSkills(who, "activate", before, snap(r.layer));
+      await logSkills(who, "activate", before, snap(r.layer), viaOf(req));
       return NextResponse.json({ ok: true, layer: publicLayer(r.layer), base: editBase(r.layer), revision: summarizeRevision(publicRevision(r.revision)) });
     }
     case "discard": {
       const before = snap(await getLayer(PLATFORM));
       const r = await discardDraft(PLATFORM, by);
       if (!r.ok) return refused(r);
-      await logSkills(who, "discard", before, snap(r.layer));
+      await logSkills(who, "discard", before, snap(r.layer), viaOf(req));
       return NextResponse.json({ ok: true, layer: publicLayer(r.layer), base: editBase(r.layer) });
     }
     case "restore": {
       const before = snap(await getLayer(PLATFORM));
       const r = await restore(PLATFORM, typeof b.revisionId === "string" ? b.revisionId : "", by, { platform: true });
       if (!r.ok) return refused(r);
-      await logSkills(who, "restore", before, snap(r.layer));
+      await logSkills(who, "restore", before, snap(r.layer), viaOf(req));
       return NextResponse.json({ ok: true, layer: publicLayer(r.layer), base: editBase(r.layer), revision: summarizeRevision(publicRevision(r.revision)) });
     }
     case "pause": {
       if (typeof b.on !== "boolean") return bad("bad_request");
       const was = await isPaused();
       await setPaused(b.on);
-      await logSkills(who, "pause", { paused: was }, { paused: b.on });
+      await logSkills(who, "pause", { paused: was }, { paused: b.on }, viaOf(req));
       return NextResponse.json({ ok: true, paused: b.on });
     }
     case "test":
-      return runTest(b, who);
+      return runTest(b, who, viaOf(req));
     default:
       return bad("unknown_action");
   }
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
  * cross-review off, no inbox, no learning, metered under `ADMIN_TEST_LABEL`. No credit is taken from anyone: nothing here
  * imports `charge`. A throw answers 502 with a fixed code; the model's own message is logged by name only.
  */
-async function runTest(b: Record<string, unknown>, who: string) {
+async function runTest(b: Record<string, unknown>, who: string, via: ReturnType<typeof viaOf>) {
   // Taken first: the generations end by it.
   const deadline = deadlineFor(maxDuration);
   const { agent, type } = b;
@@ -156,7 +156,7 @@ async function runTest(b: Record<string, unknown>, who: string) {
   try {
     const [before, after] = await Promise.all([one(layer.active), one(layer.draft)]);
     if (!before[0] || !after[0]) throw new Error("empty_generation");
-    await logSkills(who, "test", { v: layer.active.v }, { agent, type });
+    await logSkills(who, "test", { v: layer.active.v }, { agent, type }, via);
     return NextResponse.json({ ok: true, before: before[0], after: after[0], spent: 0, sample: SAMPLE_BRAND.name });
   } catch (error) {
     console.error("admin skills test failed", error instanceof Error ? error.name : "error");

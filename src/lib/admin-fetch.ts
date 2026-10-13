@@ -50,5 +50,8 @@ export const ADMIN_ENDED = {
   },
 } as const;
 
-/** Where the founder goes to get back in: the key form (shown only with `?login=1`) or the normal sign-in page. */
-export const adminEndedHref = (lang: "ar" | "en", keySession: boolean) => (keySession ? `/${lang}/admin?login=1` : `/${lang}/app/login`);
+/**
+ * Where the founder goes to get back in: the key form (shown only with `?login=1`) for a key session, otherwise the
+ * staff sign-in page (rule 1652; before it, the customer sign-in page).
+ */
+export const adminEndedHref = (lang: "ar" | "en", keySession: boolean) => (keySession ? `/${lang}/admin?login=1` : `/${lang}/admin/login`);

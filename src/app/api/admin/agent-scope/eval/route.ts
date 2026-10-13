@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminActor } from "@/lib/auth";
+import { adminActor, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { adminAudit } from "@/lib/admin-audit";
 import { AGENT_SCOPE_KEYS } from "@/lib/agent-scope";
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     const result = await runAgentScopeEval();
     await Promise.all([
       db.set(AGENT_SCOPE_KEYS.evalLast, result),
-      adminAudit({ actor: who, section: "quality", action: "agent_scope_eval", what: "agent_scope_eval", after: { model: result.model, total: result.total, errors: result.errors, recall: result.recall, wrongRefusals: result.wrongRefusals, passed: result.passed } }),
+      adminAudit({ actor: who, via: viaOf(req), section: "quality", action: "agent_scope_eval", what: "agent_scope_eval", after: { model: result.model, total: result.total, errors: result.errors, recall: result.recall, wrongRefusals: result.wrongRefusals, passed: result.passed } }),
     ]);
     return NextResponse.json({ ok: true, eval: result });
   } finally {

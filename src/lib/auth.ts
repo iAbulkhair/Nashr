@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
+import { idleInTime, renewIdle, type IdleLimits } from "./idle-session";
 import type { AgentId } from "./agents";
 import type { Member } from "./team";
 import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
@@ -293,8 +294,10 @@ export async function verifyPassword(u: User, password: string) {
  * A stored session. `exp` (epoch ms, since 2026-10-11, rule 1177) is the end of an impersonation the founder chose in the
  * console (15, 60 or 120 minutes); the record's TTL ends at the same moment. Optional (expand): a session without it
  * reads as before, and an impersonation without it shows `at` + 2 hours, the TTL every one had until then.
+ * `ss` (rule 1648, new and optional: old code ignores it) is the hash of the staff session an impersonation was opened
+ * from: the customer view lives only as long as that staff session, and a request through it renews it.
  */
-export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string; exp?: number };
+export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string; exp?: number; ss?: string };
 /** The impersonation length every session had before the founder could choose it (2 hours). */
 export const IMPERSONATION_LEGACY_MS = 2 * 60 * 60 * 1000;
 type SessionRec = string | Session;
@@ -357,11 +360,15 @@ export function revokeTeamSessions(u: User) {
  * that mistake to fail — loudly and locally, never by quietly dropping the flag on live traffic.
  */
 export async function sessionCookie(maxAge: number) {
+  return { httpOnly: true, sameSite: "lax", secure: !(await loopbackHttp()), path: "/", maxAge } as const;
+}
+
+/** Plain http to the loopback interface (local development): the one case a cookie may go without Secure. */
+export async function loopbackHttp(): Promise<boolean> {
   const h = await headers();
   const host = (h.get("host") ?? "").toLowerCase();
   const plainHttp = (h.get("x-forwarded-proto") ?? "http") === "http";
-  const loopback = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
-  return { httpOnly: true, sameSite: "lax", secure: !(plainHttp && loopback), path: "/", maxAge } as const;
+  return plainHttp && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
 }
 
 /**
@@ -369,11 +376,11 @@ export async function sessionCookie(maxAge: number) {
  * `imp` marks a founder impersonation session (admin console only): it resolves to actor kind "founder". One opened
  * with the console key also carries `kp` and `as` from `keyImpBinding` (rule 429).
  */
-export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string } = {}) {
+export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string; ss?: string } = {}) {
   const token = randomBytes(32).toString("hex");
   const now = Date.now();
   // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
-  const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: now };
+  const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}), ...(opts.ss ? { ss: opts.ss } : {}) } : { email, at: now };
   // Hashed key only (rule 1345): the raw token is in the cookie and nowhere else.
   await db.set(sessionKey(token), rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
@@ -419,6 +426,7 @@ async function readSession(): Promise<Session | null> {
   const s = sessionOf(await sessionRecord(token));
   if (!s) return null;
   if (s.imp === "key" && !(await keyImpLive(s))) return null;
+  if (s.imp && s.ss !== undefined && !(await staffImpLive(s))) return null;
   return s;
 }
 
@@ -557,17 +565,13 @@ export const ADMIN_SESSION_RENEW = 60;
 type AdminSession = { kp: string; at: number; seen?: number };
 const adminKeyPrint = (key: string) => createHash("sha256").update(`nashr-admin-key:${key}`).digest("hex");
 const adminSessionKey = (id: string) => `adminsession:${createHash("sha256").update(id).digest("hex")}`;
-/** Seconds the record may live from `now`: the idle window, cut short by the absolute cap. 0 when it is over. */
-const adminSessionTtl = (rec: AdminSession, now: number) =>
-  Math.max(0, Math.min(ADMIN_SESSION_IDLE, Math.floor((rec.at + ADMIN_SESSION_MAX * 1000 - now) / 1000)));
+/** The key session's limits, kept by the shared idle-session logic (src/lib/idle-session.ts) the staff session uses too. */
+const ADMIN_LIMITS: IdleLimits = { idle: ADMIN_SESSION_IDLE, max: ADMIN_SESSION_MAX, renew: ADMIN_SESSION_RENEW };
 /** Both limits checked in code, whatever TTL the record was stored with. */
-const adminSessionInTime = (rec: AdminSession, now: number) =>
-  typeof rec.at === "number" &&
-  now - rec.at < ADMIN_SESSION_MAX * 1000 &&
-  now - (typeof rec.seen === "number" ? rec.seen : rec.at) < ADMIN_SESSION_IDLE * 1000;
+const adminSessionInTime = (rec: AdminSession, now: number) => idleInTime(rec, now, ADMIN_LIMITS);
 
 /** Open a key session for the current key and set its cookie. The caller has already checked the key. */
-export async function createAdminSession(): Promise<void> {
+export async function createAdminSession(): Promise<string> {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (!key) throw new Error("WAITLIST_ADMIN_KEY is not set");
   const id = randomBytes(32).toString("hex");
@@ -575,6 +579,7 @@ export async function createAdminSession(): Promise<void> {
   await db.set(adminSessionKey(id), { kp: adminKeyPrint(key), at: now, seen: now } satisfies AdminSession, ADMIN_SESSION_IDLE);
   const jar = await cookies();
   jar.set(ADMIN_COOKIE, id, await sessionCookie(ADMIN_SESSION_MAX));
+  return id;
 }
 
 /**
@@ -606,11 +611,7 @@ export async function adminKeySession(): Promise<boolean> {
  * fails the request it rode on.
  */
 async function renewAdminSession(k: string, rec: AdminSession, now: number): Promise<void> {
-  const last = typeof rec.seen === "number" ? rec.seen : rec.at;
-  const ttl = adminSessionTtl(rec, now);
-  if (now - last >= ADMIN_SESSION_RENEW * 1000 && ttl > 0) {
-    await db.setXx(k, { kp: rec.kp, at: rec.at, seen: now } satisfies AdminSession, ttl).catch(() => false);
-  }
+  await renewIdle(k, { kp: rec.kp, at: rec.at, ...(typeof rec.seen === "number" ? { seen: rec.seen } : {}) } satisfies AdminSession, now, ADMIN_LIMITS);
 }
 
 /**
@@ -652,6 +653,16 @@ async function keyImpLive(s: Session): Promise<boolean> {
   return true;
 }
 
+/**
+ * A customer view opened from a staff session (rule 1648): live only while that staff session is, for the same person.
+ * Checking it renews the staff session, so working in the customer view keeps it from going idle.
+ */
+async function staffImpLive(s: Session): Promise<boolean> {
+  if (typeof s.ss !== "string" || typeof s.imp !== "string") return false;
+  const { staffSessionLive } = await import("./staff-session");
+  return staffSessionLive(s.ss, s.imp);
+}
+
 /** Log the key session out: the server record goes, so the same cookie value never works again. */
 export async function destroyAdminSession(): Promise<void> {
   const jar = await cookies();
@@ -661,9 +672,45 @@ export async function destroyAdminSession(): Promise<void> {
 }
 
 /**
- * Who is acting in the founder console: "key" for the admin key (the x-admin-key header or a key session cookie, never
- * the URL: query strings end up in logs and history), the founder's email for a founder's own session, null for anyone
- * else. `admin:log` records it.
+ * How the console actor of a request was resolved (rule 1638): a staff session, the key session, the `x-admin-key`
+ * header, or the founder's customer session (expand only, rule 1649). Runtime only, never stored.
+ */
+export type ConsoleVia = "staff" | "key" | "header" | "founder-session";
+/** `role` and `staffCookie` for a staff actor only: what the write gate's role check and the staff step-up read. */
+export type ActorInfo = { who: string; via: ConsoleVia; role?: string; staffCookie?: string; fresh?: boolean };
+const actors = new WeakMap<Request, ActorInfo>();
+/** What `adminActor` found for this request, or null when it was not called or found nobody. */
+export const actorInfo = (req: Request): ActorInfo | null => actors.get(req) ?? null;
+/** The `via` of this request's console actor, for `adminAudit`. */
+export const viaOf = (req: Request): ConsoleVia | null => actors.get(req)?.via ?? null;
+/**
+ * The write gate accepted a code typed for THIS request (`x-admin-otp`): the request already carries a fresh code, which
+ * is what staff management, the customer-path switch and own credential changes need (rule 1636). The code's step is
+ * burned by then, so the route must not ask for it a second time.
+ */
+export function markFreshCode(req: Request): void {
+  const i = actors.get(req);
+  if (i) i.fresh = true;
+}
+
+/**
+ * Whether the founder's own customer session still opens the console: an expand-only path (rule 1649) that a staff
+ * owner can switch off at runtime (rule 1650, `staff:config.customerPathOff`) and the contract release removes.
+ */
+async function founderSessionConsole(): Promise<{ email: string } | null> {
+  const { customerPathOff } = await import("./staff");
+  const [off, u] = await Promise.all([customerPathOff(), currentUser()]);
+  return !off && isFounderActor(u) ? { email: u!.actor!.email } : null;
+}
+
+/**
+ * Who is acting in the founder console, in this order: "key" for the `x-admin-key` header (scripts, never the URL:
+ * query strings end up in logs and history); the staff email for a live staff session (rules 1630-1636); "key" for a
+ * key session; the founder's email for a founder's own customer session while that path is open (rule 1649); null for
+ * anyone else. The signature stays a string, so the callers do not change; the details for the request (how, the
+ * staff role, the staff cookie) are kept in a WeakMap that `secondFactorRefusal` and `adminAudit` callers read
+ * (`actorInfo`, `viaOf`). No MCP token, OAuth grant or agent tool is ever a console actor (rule 1653): only these
+ * cookies and the header are read.
  */
 export async function adminActor(req: Request): Promise<string | null> {
   const key = process.env.WAITLIST_ADMIN_KEY;
@@ -673,21 +720,45 @@ export async function adminActor(req: Request): Promise<string | null> {
     if (given !== null) {
       // Key guesses sent as a header are throttled like the login form.
       if (!(await allow(`adminhdr:${clientIp(req)}`, 30, 900))) return null;
-      if (sameSecret(given, key)) return "key";
+      if (sameSecret(given, key)) {
+        actors.set(req, { who: "key", via: "header" });
+        return "key";
+      }
     }
-    if (await adminKeySession()) return "key";
   }
-  const u = await currentUser();
-  return isFounderActor(u) ? u!.actor!.email : null;
+  const { readStaffSession } = await import("./staff-session");
+  const staff = await readStaffSession();
+  if (staff) {
+    actors.set(req, { who: staff.email, via: "staff", role: staff.staff.role, staffCookie: staff.cookie });
+    return staff.email;
+  }
+  if (key && (await adminKeySession())) {
+    actors.set(req, { who: "key", via: "key" });
+    return "key";
+  }
+  const founder = await founderSessionConsole();
+  if (founder) {
+    actors.set(req, { who: founder.email, via: "founder-session" });
+    return founder.email;
+  }
+  return null;
 }
 
-/** API access: admin key (header or key session) or a founder signed in as themselves (`adminActor`). */
+/** API access: the header key, a staff session, a key session, or the founder's own session (`adminActor`). */
 export async function isAdmin(req: Request) {
   return (await adminActor(req)) !== null;
 }
 
-/** Page access: a key session or a founder signed in as themselves (`isFounderActor`). */
+/** Who holds the console in this browser (pages): a staff session, a key session, the founder's customer session. */
+export type ConsoleIdentity = { staff: { email: string; name: string; role: string } | null; keySession: boolean; founder: boolean };
+export async function consoleIdentity(): Promise<ConsoleIdentity> {
+  const { readStaffSession } = await import("./staff-session");
+  const [s, keySession, founder] = await Promise.all([readStaffSession(), adminKeySession(), founderSessionConsole()]);
+  return { staff: s ? { email: s.email, name: s.staff.name, role: s.staff.role } : null, keySession, founder: !!founder };
+}
+
+/** Page access: a staff session, a key session, or the founder's own session while that path is open. */
 export async function isAdminCookie() {
-  if (await adminKeySession()) return true;
-  return isFounderActor(await currentUser());
+  const id = await consoleIdentity();
+  return !!id.staff || id.keySession || id.founder;
 }

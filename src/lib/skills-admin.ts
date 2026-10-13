@@ -1,4 +1,5 @@
 import type { By } from "./actor";
+import type { AuditVia } from "./admin-audit";
 import { adminAudit } from "./admin-audit";
 import { summarizeRevision, type HistoryRow } from "./instructions-diff";
 import { publicLayer, publicRevision } from "./instructions-http";
@@ -64,8 +65,8 @@ export const snap = (l: Layer) => ({ v: l.active.v, on: l.active.items.filter((i
  * the founder's email; the target "platform-skills" is also the legacy `email` the console's log table shows. The
  * section is "quality": the platform layer changes how every agent writes.
  */
-export const logSkills = (actor: string, action: string, before: unknown, after: unknown) =>
-  adminAudit({ actor, section: "quality", what: `skills.${action}`, action: `skills.${action}`, target: "platform-skills", before, after });
+export const logSkills = (actor: string, action: string, before: unknown, after: unknown, via?: AuditVia | null) =>
+  adminAudit({ actor, via, section: "quality", what: `skills.${action}`, action: `skills.${action}`, target: "platform-skills", before, after });
 
 /** What the console's test offers: the types a draft can be written for, each with its owning agent (Reem owns none). The same pairs the route accepts. */
 export type AdminTestOption = { agent: AgentId; type: TaskType };

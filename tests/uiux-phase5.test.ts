@@ -173,7 +173,7 @@ function runHead(cookie: string, path: string, systemDark: boolean, throws = fal
   return attrs["data-theme"];
 }
 
-describe("rule 1203: the theme is set before the first paint, only on the signed-in screens", () => {
+describe("rule 1203: the theme is set before the first paint (every page in the language since rule 1214)", () => {
   it("the root layout sends light, runs the head script and lets only that attribute differ at hydration", () => {
     const layout = read("src/app/[lang]/layout.tsx");
     expect(layout).toMatch(/<html lang=\{lang\} dir=\{t\.dir\} translate="no" data-theme="light" suppressHydrationWarning /);
@@ -187,8 +187,14 @@ describe("rule 1203: the theme is set before the first paint, only on the signed
     expect(runHead("a=1; nashr_theme=dark; b=2", "/en/admin/users", false)).toBe("dark");
     expect(runHead("nashr_theme=light", "/ar/app", true)).toBe("light");
     expect(runHead("nashr_theme=system", "/ar/app/settings/account", true)).toBe("dark");
-    // Public pages stay light whatever the choice (report §8.1).
-    for (const p of ["/ar", "/en/pricing", "/ar/blog/x", "/en/apps", "/ar/administer"]) expect(runHead("nashr_theme=dark", p, true), p).toBe("light");
+    // Rule 1214: public pages follow the choice too; light stays the default for a light device with no choice.
+    for (const p of ["/ar", "/en/pricing", "/ar/blog/x", "/en/apps", "/ar/administer"]) {
+      expect(runHead("nashr_theme=dark", p, false), p).toBe("dark");
+      expect(runHead("", p, false), p).toBe("light");
+      expect(runHead("nashr_theme=light", p, true), p).toBe("light");
+    }
+    // Outside the language segment (the OAuth consent page) stays light.
+    for (const p of ["/oauth/authorize", "/", "/arx", "/fr/app"]) expect(runHead("nashr_theme=dark", p, true), p).toBe("light");
     // A made-up value is "system"; an error leaves the light default.
     expect(runHead("nashr_theme=purple", "/ar/app", false)).toBe("light");
     expect(runHead("nashr_theme=purple", "/ar/app", true)).toBe("dark");
@@ -201,18 +207,24 @@ describe("rule 1203: the theme is set before the first paint, only on the signed
     }
     expect(THEMED_PATH.test("/ar/app")).toBe(true);
     expect(THEMED_PATH.test("/en/admin/log")).toBe(true);
-    expect(THEMED_PATH.test("/ar/apps")).toBe(false);
+    expect(THEMED_PATH.test("/ar/apps")).toBe(true);
+    expect(THEMED_PATH.test("/en")).toBe(true);
+    expect(THEMED_PATH.test("/oauth/authorize")).toBe(false);
+    expect(THEMED_PATH.test("/arabic")).toBe(false);
   });
 
-  it("ThemeScope re-applies after client navigation, device changes and a new choice, and puts light back on the way out", () => {
+  it("ThemeScope re-applies after device changes and a new choice, and puts light back on the way out", () => {
     const scope = read("src/components/ThemeScope.tsx");
     expect(scope).toMatch(/^"use client";/);
     expect(scope).toMatch(/addEventListener\?\.\("change", sync\)/);
     expect(scope).toMatch(/window\.addEventListener\(THEME_EVENT, sync\)/);
     expect(scope).toMatch(/applyTheme\("light"\);\n\s*\};/);
-    // Both branches of the app layout (signed in and the sign-in screens) and both of the console's.
-    expect(read("src/app/[lang]/app/layout.tsx").match(/<ThemeScope \/>/g)).toHaveLength(2);
-    expect(read("src/app/[lang]/admin/layout.tsx").match(/<ThemeScope \/>/g)).toHaveLength(2);
+    // Rule 1214: one ThemeScope in the language layout serves every page; the app and the console no longer mount one,
+    // so leaving the app for a public page keeps the viewer's theme.
+    expect(read("src/app/[lang]/layout.tsx").match(/<ThemeScope \/>/g)).toHaveLength(1);
+    expect(read("src/app/[lang]/layout.tsx")).toMatch(/<body>\s*<ThemeScope \/>\s*\{children\}\s*<\/body>/);
+    expect(read("src/app/[lang]/app/layout.tsx")).not.toMatch(/ThemeScope/);
+    expect(read("src/app/[lang]/admin/layout.tsx")).not.toMatch(/ThemeScope/);
   });
 });
 

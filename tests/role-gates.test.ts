@@ -105,6 +105,16 @@ const ROUTE_ROLES: Record<string, Gate> = {
 
   "POST /api/admin/login": "admin-console",
   "DELETE /api/admin/login": "admin-console",
+  // Staff identity (rules 1630-1654): the sign-in steps are public and rate limited; the rest is the console.
+  "POST /api/admin/staff/login": "public",
+  "DELETE /api/admin/staff/login": "admin-console",
+  "POST /api/admin/staff/login/code": "public",
+  "POST /api/admin/staff/login/enrol": "public",
+  "POST /api/admin/staff/setup": "public",
+  "POST /api/admin/staff/bootstrap": "admin-console",
+  "POST /api/admin/staff": "admin-console",
+  "POST /api/admin/staff/me": "admin-console",
+  "POST /api/admin/staff/config": "admin-console",
   // The founder console second factor (rules 1370-1384): enrolment and the code prompt, founder or console key only.
   "POST /api/admin/2fa": "admin-console",
   "POST /api/admin/golden": "admin-console",
@@ -276,6 +286,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/evals": "admin-console",
   "GET /api/admin/export": "admin-console",
   "GET /api/admin/2fa": "admin-console",
+  "GET /api/admin/staff": "admin-console",
   "GET /api/admin/golden": "admin-console",
   "GET /api/admin/media": "admin-console",
   "GET /api/admin/wishlist": "admin-console",
@@ -365,6 +376,8 @@ const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",
   "DELETE /api/admin/login": "ends the caller's own key session: deletes the server record and the cookie",
   "POST /api/admin/impersonate": "stop: burns the impersonation session and restores the caller's own saved one",
+  "DELETE /api/admin/staff/login": "staff sign-out: deletes the caller's own staff session record and both staff cookies",
+  "POST /api/admin/staff/me": "the caller's own staff credentials only, read from the caller's staff session, with a fresh code from the caller's own authenticator",
 };
 
 const APP = join("src", "app");

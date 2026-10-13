@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
-import { adminActor, normalizeEmail, saveUser } from "@/lib/auth";
+import { adminActor, normalizeEmail, saveUser, viaOf } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { activeCount, listBrands } from "@/lib/brands";
 import { brandCapFor, isBrandCap } from "@/lib/pricing";
@@ -44,6 +44,6 @@ export async function POST(req: Request) {
     throw e;
   }
   const active = activeCount(await listBrands(email));
-  await adminAudit({ actor: who, section: "users", action: "brand_cap", target: email, what: `brand_cap ${email} ${done.before.cap}→${done.after.cap}`, before: done.before, after: done.after, reason: b.reason });
+  await adminAudit({ actor: who, via: viaOf(req), section: "users", action: "brand_cap", target: email, what: `brand_cap ${email} ${done.before.cap}→${done.after.cap}`, before: done.before, after: done.after, reason: b.reason });
   return NextResponse.json({ ok: true, user: { email, brandCap: done.after.cap, brandCapOverride: done.after.override, activeBrands: active } });
 }

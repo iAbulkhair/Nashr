@@ -47,8 +47,11 @@ const PAGES: Record<AdminSection, () => Promise<{ default: unknown }>> = {
 const pageFor = async (s: AdminSection): Promise<Page> => (await PAGES[s]()).default as Page;
 
 describe("the founder console has its own shell (rules 870-872)", () => {
-  it("every /{lang}/admin page is a 404 without the gate (rule 870)", async () => {
-    for (const s of ADMIN_SECTIONS) await expect((await pageFor(s))({ params: P("en"), searchParams: Q({}) }), s).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  it("every /{lang}/admin page redirects to the staff sign-in page without the gate, keeping the page as next (rules 870, 1652)", async () => {
+    for (const s of ADMIN_SECTIONS) {
+      const next = encodeURIComponent(adminHref("en", s)).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await expect((await pageFor(s))({ params: P("en"), searchParams: Q({}) }), s).rejects.toMatchObject({ digest: expect.stringMatching(new RegExp(`^NEXT_REDIRECT;[a-z]+;/en/admin/login\\?next=${next};`)) });
+    }
   });
 
   it("with a key session the layout renders the founder shell and never the customer Sidebar (rule 871)", async () => {
@@ -91,7 +94,7 @@ describe("the founder console has its own shell (rules 870-872)", () => {
   it("the ended link and the impersonation return point into /{lang}/admin (rule 872)", async () => {
     const { adminEndedHref } = await import("@/lib/admin-fetch");
     expect(adminEndedHref("ar", true)).toBe("/ar/admin?login=1");
-    expect(adminEndedHref("ar", false)).toBe("/ar/app/login");
+    expect(adminEndedHref("ar", false)).toBe("/ar/admin/login");
     const { readFileSync } = await import("node:fs");
     expect(readFileSync("src/app/api/admin/impersonate/route.ts", "utf8")).toContain("`/${lang}/admin/users`");
   });
@@ -134,10 +137,10 @@ describe("one component per console section (rule 874)", () => {
     }
   });
 
-  it("a signed-in customer who is not a founder gets a 404 on every section (rule 870)", async () => {
+  it("a signed-in customer who is not a founder is sent to the staff sign-in page on every section (rules 870, 1652)", async () => {
     const u = await newUser("not-founder");
     await signIn(u.email);
-    for (const s of ADMIN_SECTIONS) await expect((await pageFor(s))({ params: P("en"), searchParams: Q({}) }), s).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+    for (const s of ADMIN_SECTIONS) await expect((await pageFor(s))({ params: P("en"), searchParams: Q({}) }), s).rejects.toMatchObject({ digest: expect.stringMatching(/^NEXT_REDIRECT;[a-z]+;\/en\/admin\/login\?next=/) });
   });
 
   it("a key session that ended mid-use shows the ended notice on the next section, not a 404 (rule 870, final review)", async () => {
@@ -161,5 +164,79 @@ describe("one component per console section (rule 874)", () => {
 
   it("Usage and Billing read only the overview, never the user list, the evals or the log (rule 874)", () => {
     for (const f of ["Usage", "Billing"]) expect(readFileSync(`src/components/admin/${f}.tsx`, "utf8"), f).not.toMatch(/\/api\/admin\/(plan|evals|log)/);
+  });
+});
+
+describe("staff identity banners in the shell (rules 1645, 1649)", () => {
+  const render = async (lang: "ar" | "en") => renderToStaticMarkup(await AdminLayout({ children: createElement("p", null, "child"), params: Promise.resolve({ lang }) }));
+
+  it("a key session shows the break-glass banner, in Arabic and English", async () => {
+    await adminSignIn();
+    expect(await render("ar")).toContain("جلسة طوارئ بالمفتاح، ادخل بحساب الموظف");
+    expect(await render("en")).toContain("Break-glass key session: sign in with your staff login");
+  });
+
+  it("the founder's customer session shows the move banner; a staff session shows neither", async () => {
+    const f = await newUser("banner-founder");
+    vi.stubEnv("ADMIN_EMAILS", f.email);
+    await signIn(f.email);
+    expect(await render("ar")).toContain("انقل دخولك إلى حساب الموظف");
+    expect(await render("en")).toContain("Move to your staff login");
+    signOut();
+    const { enrolledStaff } = await import("./helpers/staff");
+    const { openStaffSession } = await import("@/lib/staff-session");
+    const { staff } = await enrolledStaff();
+    await openStaffSession(staff.email);
+    const html = await render("en");
+    expect(html).toContain("child");
+    expect(html).not.toContain("Break-glass key session");
+    expect(html).not.toContain("Move to your staff login");
+  });
+});
+
+describe("staff pages: every word in Arabic and English (rules 1631, 1638, 1652)", () => {
+  it("the word lists have the same keys and the Arabic list is Arabic", async () => {
+    const { SW } = await import("@/lib/staff-words");
+    const keys = (o: object): string[] => Object.entries(o).flatMap(([k, v]) => (typeof v === "object" ? keys(v).map((x) => `${k}.${x}`) : [k])).sort();
+    expect(keys(SW.ar)).toEqual(keys(SW.en));
+    const flat = (o: object): string[] => Object.values(o).flatMap((v) => (typeof v === "object" ? flat(v) : [v as string]));
+    for (const w of flat(SW.ar)) expect(w, w).toMatch(/[؀-ۿ]/);
+    for (const w of flat(SW.en)) expect(w, w).not.toMatch(/[؀-ۿ]/);
+  });
+
+  it("the sign-in, setup, staff and account components render in both languages", async () => {
+    const StaffSignIn = (await import("@/components/admin/StaffSignIn")).default;
+    const StaffAdmin = (await import("@/components/admin/StaffAdmin")).default;
+    const StaffAccount = (await import("@/components/admin/StaffAccount")).default;
+    const { SW } = await import("@/lib/staff-words");
+    for (const lang of ["ar", "en"] as const) {
+      const S = SW[lang];
+      const sign = renderToStaticMarkup(createElement(StaffSignIn, { lang }));
+      expect(sign).toContain(S.signInTitle);
+      expect(sign).toContain(`href="/${lang}/admin/login/setup"`);
+      expect(sign).toContain(`href="/${lang}/admin?login=1"`);
+      expect(sign).toMatch(/autocomplete="current-password"/i);
+      const setup = renderToStaticMarkup(createElement(StaffSignIn, { lang, mode: "setup" }));
+      expect(setup).toContain(S.setupTitle);
+      expect(setup).toContain('name="setupCode"');
+      expect(renderToStaticMarkup(createElement(StaffAdmin, { lang, me: "a@staff.example", keySession: false, pathOff: false }))).toContain(S.pathClose);
+      const keyView = renderToStaticMarkup(createElement(StaffAdmin, { lang, me: null, keySession: true, pathOff: false }));
+      expect(keyView).toContain(S.keyStaffNote);
+      expect(keyView).not.toContain(S.add);
+      expect(renderToStaticMarkup(createElement(StaffAccount, { lang, email: "a@staff.example", name: "A", recoveryLeft: 8 }))).toContain(S.signOut);
+    }
+  });
+
+  it("the sidebar shows Staff and My account to a staff owner, and Staff only to a key session", async () => {
+    const AdminNav = (await import("@/components/admin/AdminNav")).default;
+    const owner = renderToStaticMarkup(createElement(AdminNav, { lang: "en", keySession: false, founder: false, staff: { role: "owner" } }));
+    expect(owner).toContain('href="/en/admin/staff"');
+    expect(owner).toContain('href="/en/admin/account"');
+    expect(owner).toContain("Sign out");
+    const support = renderToStaticMarkup(createElement(AdminNav, { lang: "en", keySession: false, founder: false, staff: { role: "support" } }));
+    expect(support).not.toContain('href="/en/admin/staff"');
+    const key = renderToStaticMarkup(createElement(AdminNav, { lang: "ar", keySession: true, founder: false }));
+    expect(key).toContain('href="/ar/admin/staff"');
+    expect(key).not.toContain('href="/ar/admin/account"');
   });
 });

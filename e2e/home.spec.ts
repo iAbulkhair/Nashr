@@ -9,8 +9,9 @@ import { CLAUDE_PAUSED } from "../src/lib/model";
  * doodles and seams move only without reduced motion and stop with the page's pause button.
  */
 
-// The gallery (rule 1220) sits after your day and has no nav link: its copy stays out of src/lib/home.ts.
-const SECTIONS = HOME_NAV.map((n) => n.href.slice(1)).flatMap((id) => (id === "day" ? [id, "gallery"] : [id]));
+// The gallery (rule 1220) sits after your day and has no nav link: its copy stays out of src/lib/home.ts. The closing
+// call (rule 1600, `#start`) is the last block of <main> and has no nav link either: the cover already carries the call.
+const SECTIONS = [...HOME_NAV.map((n) => n.href.slice(1)).flatMap((id) => (id === "day" ? [id, "gallery"] : [id])), "start"];
 
 for (const lang of LANGS) {
   test.describe(`home · ${lang}`, () => {
@@ -112,6 +113,11 @@ test.describe("the lineup", () => {
     test.skip(isMobile, "hover");
     await open(page, "/en");
     const places = page.getByTestId("lineup").locator("li");
+    // The cover's call to action (rule 1228) pushes the team down, so at 900px high it sits partly below the fold. Hover
+    // scrolls such a figure into view, and every viewport-relative rect then moves with the page, not with a layout
+    // shift. Bring the whole lineup into view first (the page scrolls smoothly, so ask for an instant jump) so the page does
+    // not scroll between the two measurements.
+    await page.getByTestId("lineup").evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
     const rects = () => places.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
     const before = await rects();
     await page.getByTestId("lineup").locator('[data-id="faris"]').hover();

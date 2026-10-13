@@ -20,7 +20,6 @@ import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
 import { SKIP_TO_CONTENT } from "@/lib/screen-titles";
 import { ToastProvider } from "@/components/ui/Toast";
-import ThemeScope from "@/components/ThemeScope";
 
 /**
  * Paths reachable without a session. `/join` accepts a team invite (the token is in the URL fragment). `/verify` is the
@@ -50,8 +49,6 @@ export default async function AppLayout({ children, params }: { children: React.
     // Rule 1088: one toast region for every screen under the app, signed in or not.
     return (
       <ToastProvider lang={lang}>
-      {/* Rule 1203: the viewer's theme, also on the sign-in screens. */}
-      <ThemeScope />
       <div className="min-h-screen bg-background">
         <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
         <header className="border-b-[1.5px] border-border-strong bg-background text-foreground">
@@ -78,7 +75,6 @@ export default async function AppLayout({ children, params }: { children: React.
   return (
     <ToastProvider lang={lang}>
     <WorkspaceProvider initial={{ credits: user.credits, unread, pending: toApprove }}>
-    <ThemeScope />
     <div className="flex min-h-dvh flex-col bg-background lg:h-dvh lg:flex-row lg:overflow-hidden">
       {/* Rule 968: past the sidebar's links straight to the screen. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>

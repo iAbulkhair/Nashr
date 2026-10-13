@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { adminSignIn, jar, json, signIn, signOut } from "./helpers/session";
 import { createHash } from "node:crypto";
 import { adminEmails, ADMIN_SESSION_IDLE, ADMIN_SESSION_MAX, ADMIN_SESSION_RENEW, createUser, isAdmin, isAdminCookie, isFounder, sessionRecord } from "@/lib/auth";
@@ -326,7 +326,7 @@ describe("the console says when its session ended and links back in (rule 436)",
       expect(ADMIN_ENDED[lang].key).toMatch(/12/);
       expect(ADMIN_ENDED[lang].founder.length).toBeGreaterThan(10);
       expect(adminEndedHref(lang, true)).toBe(`/${lang}/admin?login=1`);
-      expect(adminEndedHref(lang, false)).toBe(`/${lang}/app/login`);
+      expect(adminEndedHref(lang, false)).toBe(`/${lang}/admin/login`);
     }
     expect(ADMIN_ENDED.ar.key).toMatch(/[\u0600-\u06FF]/);
     expect(ADMIN_ENDED.en.key).not.toMatch(/[\u0600-\u06FF]/);
@@ -769,5 +769,241 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", (
     const { TURNSTILE_SCRIPT_URL, TURNSTILE_VERIFY_URL } = await import("@/lib/turnstile");
     expect(readFileSync("src/components/app/Turnstile.tsx", "utf8")).toContain(`"${TURNSTILE_SCRIPT_URL}"`);
     expect(TURNSTILE_VERIFY_URL).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
+  });
+});
+
+describe("staff identity: the console write check and the expand path (rules 1647, 1649)", () => {
+  beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
+
+  it("1647: a console write refuses a foreign Origin, Sec-Fetch-Site cross-site, and a body that is not JSON", async () => {
+    const plan = await import("@/app/api/admin/plan/route");
+    const login = await import("@/app/api/admin/staff/login/route");
+    const { newUser } = await import("./helpers/session");
+    const u = await newUser("origin");
+    await adminSignIn();
+    const post = (headers: Record<string, string>, body: string = JSON.stringify({ email: u.email, addCredits: 1, reason: "test reason" })) =>
+      plan.POST(new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": "application/json", ...ip(), ...headers }, body }));
+    expect(await (await post({ origin: "https://evil.example" })).json()).toEqual({ ok: false, error: "cross_site" });
+    expect((await post({ origin: "null" })).status).toBe(403);
+    expect((await post({ "sec-fetch-site": "cross-site" })).status).toBe(403);
+    expect((await post({ "sec-fetch-site": "same-site" })).status).toBe(403); // a sibling host (staging) is not this site
+    expect((await post({ "sec-fetch-site": "same-origin", origin: "https://evil.example" })).status).toBe(403);
+    expect((await post({ "content-type": "text/plain" })).status).toBe(415);
+    expect((await post({ "content-type": "application/x-www-form-urlencoded" }, "email=x")).status).toBe(415);
+    expect((await post({ "sec-fetch-site": "same-origin", origin: "https://nashr.test", "x-forwarded-host": "nashr.test" })).status).toBe(200);
+    expect((await post({})).status).toBe(200); // a script: neither header
+    // The public sign-in steps run the same check.
+    const r = await login.POST(new Request("https://nashr.test/api/admin/staff/login", { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example", ...ip() }, body: "{}" }));
+    expect(r.status).toBe(403);
+    expect(readFileSync("src/lib/admin-2fa.ts", "utf8")).toMatch(/const info = actorInfo\(req\);\n(?: {2}\/\/.*\n)? {2}const foreign = consoleWriteRefusal\(req, info\?\.via === "header" && info\.who === who\);\n {2}if \(foreign\) return foreign;/);
+  });
+
+  it("1647: a script on the x-admin-key header skips the Origin and JSON rules, never Sec-Fetch-Site cross-site", async () => {
+    const plan = await import("@/app/api/admin/plan/route");
+    const { newUser } = await import("./helpers/session");
+    const u = await newUser("script-origin");
+    const post = (headers: Record<string, string>, body: string, type = "application/json") =>
+      plan.POST(new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": type, "x-admin-key": KEY, ...ip(), ...headers }, body }));
+    const body = JSON.stringify({ email: u.email, addCredits: 1, reason: "script reason" });
+    expect((await post({ origin: "https://tools.example" }, body)).status).toBe(200);
+    expect((await post({}, body, "text/plain")).status).not.toBe(415);
+    expect((await post({ "sec-fetch-site": "cross-site" }, body)).status).toBe(403);
+    // A browser session gets no such pass: the same request on the key session cookie is refused.
+    await adminSignIn();
+    expect((await plan.POST(new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": "application/json", origin: "https://tools.example", ...ip() }, body }))).status).toBe(403);
+    const { consoleWriteRefusal } = await import("@/lib/console-origin");
+    const formReq = new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": "text/plain", origin: "https://tools.example" }, body: "x" });
+    expect(consoleWriteRefusal(formReq)?.status).toBe(403);
+    expect(consoleWriteRefusal(formReq, true)).toBeNull();
+  });
+
+  it("1647: the console 2FA route (verify and confirm included) and marking leads seen run the write check", async () => {
+    const twofa = await import("@/app/api/admin/2fa/route");
+    const leads = await import("@/app/api/admin/leads/route");
+    await adminSignIn();
+    for (const action of ["verify", "confirm", "start"]) {
+      const r = await twofa.POST(new Request("https://nashr.test/api/admin/2fa", { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example", ...ip() }, body: JSON.stringify({ action, code: "123456" }) }));
+      expect(r.status, action).toBe(403);
+      expect(await r.json()).toEqual({ ok: false, error: "cross_site" });
+    }
+    const t = await twofa.POST(new Request("https://nashr.test/api/admin/2fa", { method: "POST", headers: { "content-type": "text/plain", ...ip() }, body: JSON.stringify({ action: "verify", code: "123456" }) }));
+    expect(t.status).toBe(415);
+    const l = await leads.POST(new Request("https://nashr.test/api/admin/leads", { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example", ...ip() }, body: JSON.stringify({ action: "seen" }) }));
+    expect(l.status).toBe(403);
+    expect((await leads.POST(json("/api/admin/leads", "POST", { action: "seen" }, ip()))).status).toBe(200);
+    const src = readFileSync("src/app/api/admin/leads/route.ts", "utf8");
+    expect(src.slice(src.indexOf("export async function POST"))).toMatch(/const who = await adminActor\(req\);[\s\S]*?const gate = await secondFactorRefusal\(req, who\);/);
+  });
+
+  it("1649: the founder's customer session still opens the console in the expand release, with via founder-session", async () => {
+    const { newUser } = await import("./helpers/session");
+    const { adminActor, viaOf } = await import("@/lib/auth");
+    const plan = await import("@/app/api/admin/plan/route");
+    const founder = await newUser("expand-founder");
+    const target = await newUser("expand-target");
+    vi.stubEnv("ADMIN_EMAILS", founder.email);
+    await signIn(founder.email);
+    const req = json("/api/admin/overview", "GET");
+    expect(await adminActor(req)).toBe(founder.email);
+    expect(viaOf(req)).toBe("founder-session");
+    expect(await isAdminCookie()).toBe(true);
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, ip()))).status).toBe(200);
+    const row = JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { actor: string; via?: string };
+    expect(row).toMatchObject({ actor: founder.email, via: "founder-session" });
+    // The key session's rows say so too.
+    signOut();
+    await adminSignIn();
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, ip()))).status).toBe(200);
+    expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0])).toMatchObject({ actor: "key", via: "key" });
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, { ...ip(), "x-admin-key": KEY }))).status).toBe(200);
+    expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0])).toMatchObject({ actor: "key", via: "header" });
+  });
+});
+
+describe("closing the customer path at runtime (rule 1650)", () => {
+  beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
+  afterEach(async () => { await db.del("staff:config"); });
+
+  it("refused for the key, the header and the founder session; a staff owner with a fresh code switches it off, and then the founder session is no console actor", async () => {
+    const { newUser } = await import("./helpers/session");
+    const { adminActor } = await import("@/lib/auth");
+    const config = await import("@/app/api/admin/staff/config/route");
+    const { hashStaffPassword } = await import("@/lib/staff");
+    const { enrolledStaff, staffSignIn, codeAt } = await import("./helpers/staff");
+    const body = { customerPathOff: true, reason: "move to the staff login" };
+    const call = (b: Record<string, unknown>, h: Record<string, string> = {}) => config.POST(json("/api/admin/staff/config", "POST", b, { ...ip(), ...h }));
+    const founder = await newUser("switch-founder");
+    vi.stubEnv("ADMIN_EMAILS", founder.email);
+    await signIn(founder.email);
+    expect(await (await call(body)).json()).toEqual({ ok: false, error: "staff_owner_only" });
+    signOut();
+    await adminSignIn();
+    expect((await call(body)).status).toBe(403);
+    signOut();
+    expect((await call(body, { "x-admin-key": KEY })).status).toBe(403);
+    // A staff owner: a reason and a fresh code (the sign-in step-up is not enough).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const t = Date.now() + 5 * 60 * 60_000;
+    vi.setSystemTime(t);
+    const pw = "the owner's long phrase";
+    const { staff, secret } = await enrolledStaff({ passHash: await hashStaffPassword(pw) });
+    await staffSignIn(staff.email, pw, secret);
+    expect(await (await call(body)).json()).toEqual({ ok: false, error: "fresh_code" });
+    expect(await (await call({ customerPathOff: true })).json()).toEqual({ ok: false, error: "reason_short" });
+    expect(await (await call({ ...body, customerPathOff: false })).json()).toEqual({ ok: false, error: "off_only" });
+    vi.setSystemTime(t + 31_000);
+    expect((await call({ ...body, code: codeAt(secret) })).status).toBe(200);
+    vi.useRealTimers();
+    const row = JSON.parse((await db.lrange("admin:log", 0, 0))[0]);
+    expect(row).toMatchObject({ actor: staff.email, via: "staff", action: "console.customerPathOff", reason: "move to the staff login" });
+    // From now on the founder's customer session opens nothing; the key path is still there.
+    signOut();
+    await signIn(founder.email);
+    expect(await adminActor(json("/api/admin/overview", "GET"))).toBeNull();
+    expect(await isAdminCookie()).toBe(false);
+    signOut();
+    await adminSignIn();
+    expect(await adminActor(json("/api/admin/overview", "GET"))).toBe("key");
+  });
+});
+
+describe("the key form is break-glass; the header is for scripts (rules 1645, 1646)", () => {
+  beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
+  afterEach(async () => { vi.useRealTimers(); await db.del("admin:2fa"); });
+
+  it("1645: once the console code is enrolled the key form needs it in the same submit; a wrong or missing code looks like a wrong key; every sign-in is logged", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    let t = Date.now() + 9 * 60 * 60_000;
+    vi.setSystemTime(t);
+    const { ADMIN_2FA_COOKIE } = await import("@/lib/admin-2fa");
+    const twoFa = await import("@/app/api/admin/2fa/route");
+    const { codeAt } = await import("./helpers/staff");
+    const login = (body: Record<string, unknown>) => adminLogin.POST(json("/api/admin/login", "POST", body, ip()));
+    // Nothing enrolled: the key alone, logged with factor none.
+    expect((await login({ key: KEY })).status).toBe(200);
+    expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0])).toMatchObject({ actor: "key", via: "key", action: "key.login", factor: "none" });
+    const s = await (await twoFa.POST(json("/api/admin/2fa", "POST", { action: "start" }, ip()))).json();
+    expect((await (await twoFa.POST(json("/api/admin/2fa", "POST", { action: "confirm", code: codeAt(s.secret) }, ip()))).json()).ok).toBe(true);
+    signOut();
+    // Enrolled: the key alone, or with a wrong code, is the same 401 as a wrong key, and opens nothing.
+    expect(await (await login({ key: KEY })).json()).toEqual({ ok: false });
+    expect((await login({ key: KEY, code: "000000" })).status).toBe(401);
+    expect((await login({ key: "wrong", code: codeAt(s.secret) })).status).toBe(401);
+    expect(jar().get("nashr_admin")).toBeUndefined();
+    t += 31_000;
+    vi.setSystemTime(t);
+    const ok = await login({ key: KEY, code: codeAt(s.secret) });
+    expect(ok.status).toBe(200);
+    expect(jar().get("nashr_admin")).toMatch(/^[0-9a-f]{64}$/);
+    // The code typed at the form is a step-up for the new key session: a write goes through without another prompt.
+    expect(jar().get(ADMIN_2FA_COOKIE)).toMatch(/^[0-9a-f]{64}$/);
+    const { newUser } = await import("./helpers/session");
+    const plan = await import("@/app/api/admin/plan/route");
+    const target = await newUser("breakglass");
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, ip()))).status).toBe(200);
+    expect((await db.lrange("admin:log", 0, 5)).map((r) => JSON.parse(r)).find((r: { action?: string }) => r.action === "key.login")).toMatchObject({ factor: "totp" });
+    const src = readFileSync("src/components/app/AdminLogin.tsx", "utf8");
+    expect(src).toContain("دخول الطوارئ بالمفتاح");
+    expect(src).toContain("Break-glass key sign-in");
+    expect(src).toMatch(/name="code"/);
+  });
+
+  it("1646: the header key never opens a browser session, and its writes need x-admin-otp once enrolled", async () => {
+    const { adminActor, viaOf } = await import("@/lib/auth");
+    const req = json("/api/admin/overview", "GET", undefined, { "x-admin-key": KEY, ...ip() });
+    expect(await adminActor(req)).toBe("key");
+    expect(viaOf(req)).toBe("header");
+    expect(jar().get("nashr_admin")).toBeUndefined();
+    expect(jar().get("__Host-thakeen_staff")).toBeUndefined();
+    // Enrolled: a header write without x-admin-otp is asked for the code.
+    await adminSignIn();
+    const twoFa = await import("@/app/api/admin/2fa/route");
+    const { codeAt } = await import("./helpers/staff");
+    const s = await (await twoFa.POST(json("/api/admin/2fa", "POST", { action: "start" }, ip()))).json();
+    await twoFa.POST(json("/api/admin/2fa", "POST", { action: "confirm", code: codeAt(s.secret, Date.now() + 30_000) }, ip()));
+    signOut();
+    const { newUser } = await import("./helpers/session");
+    const plan = await import("@/app/api/admin/plan/route");
+    const target = await newUser("header-write");
+    expect(await (await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, { "x-admin-key": KEY, ...ip() }))).json()).toEqual({ ok: false, error: "second_factor" });
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, { "x-admin-key": KEY, "x-admin-otp": codeAt(s.secret, Date.now() - 30_000), ...ip() }))).status).toBe(200);
+    expect(jar().get("nashr_admin")).toBeUndefined();
+  });
+});
+
+describe("staff pages are noindex and no-store; no token or agent is a staff actor (rule 1653)", () => {
+  it("the proxy marks every console page and staff route noindex and no-store, and nothing else", async () => {
+    const { NextRequest } = await import("next/server");
+    const { proxy } = await import("@/proxy");
+    for (const p of ["/en/admin", "/ar/admin/login", "/ar/admin/login/setup", "/en/admin/staff", "/en/admin/account", "/api/admin/staff/login"]) {
+      const res = proxy(new NextRequest(`https://thakeen.test${p}`));
+      expect(res.headers.get("x-robots-tag"), p).toBe("noindex, nofollow");
+      expect(res.headers.get("cache-control"), p).toBe("no-store");
+    }
+    for (const p of ["/en/app", "/ar", "/en/administrator", "/api/admin/overview"]) {
+      expect(proxy(new NextRequest(`https://thakeen.test${p}`)).headers.get("cache-control"), p).toBeNull();
+    }
+    const { staffScreenMeta } = await import("@/lib/screen-titles");
+    for (const [page, key] of [["login/page.tsx", "login"], ["login/setup/page.tsx", "setup"], ["staff/page.tsx", "staff"], ["account/page.tsx", "account"]] as const) {
+      expect(readFileSync(`src/app/[lang]/admin/${page}`, "utf8"), page).toContain(`export const generateMetadata = staffScreenMeta("${key}");`);
+      for (const lang of ["ar", "en", "fr"]) expect((await staffScreenMeta(key)({ params: Promise.resolve({ lang }) })).robots, `${page} ${lang}`).toEqual({ index: false, follow: false });
+    }
+  });
+
+  it("adminActor reads the key header and cookies only: a bearer or MCP token is never a console actor", async () => {
+    const { adminActor } = await import("@/lib/auth");
+    signOut();
+    const req = new Request("https://nashr.test/api/admin/overview", { headers: { authorization: "Bearer mcp_0123456789abcdef0123456789abcdef", "x-mcp-token": "mcp_0123456789abcdef" } });
+    expect(await adminActor(req)).toBeNull();
+    const src = readFileSync("src/lib/auth.ts", "utf8");
+    const body = src.slice(src.indexOf("export async function adminActor"), src.indexOf("export async function isAdmin("));
+    expect(body).not.toMatch(/authorization|bearer|mcp|oauth/i);
+    const staffSrc = readFileSync("src/lib/staff-session.ts", "utf8");
+    expect(staffSrc).not.toMatch(/authorization|bearer/i);
+    // The MCP server, the OAuth grant and the agent tools never call the console's actor or session readers.
+    for (const f of ["src/lib/mcp.ts", "src/lib/oauth.ts", "src/lib/agents.ts", "src/app/api/mcp/route.ts"]) {
+      if (!existsSync(f)) continue;
+      expect(readFileSync(f, "utf8"), f).not.toMatch(/adminActor|readStaffSession|consoleIdentity|isAdmin\(/);
+    }
   });
 });

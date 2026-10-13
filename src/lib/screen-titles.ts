@@ -3,6 +3,7 @@ import { ADMIN_LABEL, type AdminSection } from "./admin-gate";
 import { appDict } from "./app-i18n";
 import { dict, isLang, type Lang } from "./i18n";
 import { SETTINGS_COPY, type SettingsSection } from "./settings-nav";
+import { SW } from "./staff-words";
 
 /**
  * Every app and founder-console screen's own `<title>` (rule 961, WCAG 2.4.2): «الشاشة · ذكين» / "Screen · Thakeen".
@@ -64,6 +65,19 @@ export const settingsScreenMeta = (section: SettingsSection) => async ({ params 
 export const adminScreenMeta = (section: AdminSection) => async ({ params }: LangParams): Promise<Metadata> => {
   const { lang } = await params;
   return isLang(lang) ? { title: screenTitle(lang, ADMIN_LABEL[lang][section]) } : {};
+};
+
+/** The staff pages under /{lang}/admin (rules 1631, 1638): sign-in, setup, staff list, own account. */
+export type StaffScreen = "login" | "setup" | "staff" | "account";
+const STAFF_SCREEN_WORD = { login: "signInTitle", setup: "setupTitle", staff: "staffTitle", account: "accountTitle" } as const;
+
+/**
+ * `export const generateMetadata = staffScreenMeta("login");` in a staff page: its title, and never indexed (rule
+ * 1653; the console layout says the same, and src/proxy.ts adds `x-robots-tag` and `Cache-Control: no-store`).
+ */
+export const staffScreenMeta = (screen: StaffScreen) => async ({ params }: LangParams): Promise<Metadata> => {
+  const { lang } = await params;
+  return { robots: { index: false, follow: false }, ...(isLang(lang) ? { title: screenTitle(lang, SW[lang][STAFF_SCREEN_WORD[screen]]) } : {}) };
 };
 
 /** The skip link's words (rule 968): the first focusable thing in the app and console shells, to `<main id="main">`. */

@@ -9,6 +9,9 @@ type Lang = "ar" | "en";
 const NOINDEX = "noindex, nofollow";
 // `/ar/app`, `/en/app/tasks`: the paths whose layout reads the `x-pathname` header.
 const APP_PATH = /^\/[^/]+\/app(\/|$)/;
+// The founder console's pages and the staff routes (rule 1653): never indexed and never stored by a browser or a cache,
+// so a sign-in step, a setup code or a recovery code is never kept on disk or behind a back button.
+const CONSOLE_PATH = /^\/(ar|en)\/admin(\/|$)|^\/api\/admin\/staff(\/|$)/;
 
 function pickLang(req: NextRequest): Lang {
   const c = req.cookies.get("nashr_lang")?.value;
@@ -59,7 +62,8 @@ export function proxy(req: NextRequest) {
     res = NextResponse.next();
   }
 
-  if (staging) res.headers.set("x-robots-tag", NOINDEX);
+  if (staging || CONSOLE_PATH.test(pathname)) res.headers.set("x-robots-tag", NOINDEX);
+  if (CONSOLE_PATH.test(pathname)) res.headers.set("Cache-Control", "no-store");
   return res;
 }
 

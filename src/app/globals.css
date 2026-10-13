@@ -78,8 +78,8 @@
 
 html {
   scroll-behavior: smooth;
-  /* One light palette (rule 966): without this, a browser in dark mode drew form controls, scrollbars and autofill dark
-     on the light pages. */
+  /* Light unless the page is themed dark (rule 966): without this, a browser in dark mode drew form controls,
+     scrollbars and autofill dark on a light page. theme-dark.css sets `color-scheme: dark` with the dark theme. */
   color-scheme: light;
   /* Rule 1132: an anchor or a focused field scrolled into view clears the phone's sticky header and the chat's sticky
      composer instead of landing under them. */

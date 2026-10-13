@@ -21,9 +21,22 @@ export type ScribbleLook = {
 
 export const SCRIBBLE_SIZE: Partial<Record<ScribbleKind, [number, number]>> = { box: [240, 64], pill: [160, 48], underline: [120, 10], cloud: [280, 120], bubble: [240, 80] };
 const DEFAULT_FILL: Partial<Record<ScribbleKind, string>> = { bubble: "surface", cloud: "surface", tape: "color-mix(in oklab, var(--color-lemon) 85%, transparent)", puddle: "agent-noor", swash: "agent-noor" };
-// Semantic fills (surface, background, foreground) follow the theme (rule 1202); the palette names stay for brand art.
+// Semantic fills (surface, background, foreground) follow the theme (rule 1202). The five palette names that have a role
+// with the same light value paint that role, so they follow the theme too and the light page is unchanged (rule 1212):
+// paper is the surface, ground the background, lilac the muted background, muted the muted text, and ink the primary
+// fill that a solid `s-btn` and the cover's title box sit on. Lemon, gold and the agents' colours stay as they are.
+const ROLE: Record<string, string> = { paper: "surface", ground: "background", lilac: "background-muted", muted: "foreground-muted", ink: "primary" };
 const TOKEN = /^(paper|ink|ground|lemon|lilac|gold|muted|surface|background|background-muted|foreground|agent-[a-z]+)$/;
-const colour = (fill: string) => (TOKEN.test(fill) ? `var(--color-${fill})` : fill);
+export const scribbleColour = (fill: string) => (TOKEN.test(fill) ? `var(--color-${ROLE[fill] ?? fill})` : fill);
+const colour = scribbleColour;
+/**
+ * A fill that stays bright in both themes (lemon, gold and the light agent colours, the set globals.css gives ink text)
+ * and lies wholly behind its text marks the svg `data-bright`, so scribble.css paints that text ink in both themes
+ * (rule 1216). A swash, puddle or tape lies only partly behind its text, so it is never marked.
+ */
+const BRIGHT = /^(lemon|gold|agent-(noor|sami|razan|dana|layan|reem|you))$/;
+const BEHIND: ReadonlySet<ScribbleKind> = new Set(["box", "pill", "stamp", "bubble", "cloud"]);
+export const brightBehind = (kind: ScribbleKind, paint: string) => BRIGHT.test(paint) && BEHIND.has(kind);
 
 /** The `<svg>` for one look at one size and direction. `svgRef` is the client scribble's handle on it. */
 export function ScribbleSvg({ look, w, h, rtl, svgRef }: { look: ScribbleLook; w: number; h: number; rtl: boolean; svgRef?: React.Ref<SVGSVGElement> }) {
@@ -43,6 +56,7 @@ export function ScribbleSvg({ look, w, h, rtl, svgRef }: { look: ScribbleLook; w
       aria-hidden="true"
       focusable="false"
       style={paint === "none" ? undefined : ({ "--s-fill": colour(paint) } as React.CSSProperties)}
+      data-bright={brightBehind(kind, paint) ? "" : undefined}
     >
       {shadow && alt.fill && <path className="shadow" d={alt.fill} />}
       {paint !== "none" && art.fill && <path className={art.still ? "fill at" : "fill"} d={art.fill} />}

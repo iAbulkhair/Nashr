@@ -20,6 +20,8 @@ const REVIEWED: Record<string, string> = {
   "src/lib/connectors/fresh.ts getFreshConnection": "lock retry while another request refreshes the token",
   "src/lib/conversations.ts withConversationLock": "lock retry",
   "src/lib/credits.ts withUserLock": "lock retry",
+  "src/lib/staff.ts withStaffLock": "lock retry",
+  "src/lib/staff-admin.ts withNamedLock": "lock retry",
   "src/lib/feed-token.ts revokeFeed": "lock retry",
   "src/lib/governance.ts saveGovAs": "lock retry",
   "src/lib/handoffs.ts withShortLock": "lock retry",

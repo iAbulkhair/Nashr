@@ -4,8 +4,9 @@
  * so no stored shape changes. Pure helpers: the head script in src/app/[lang]/layout.tsx is built from the same
  * constants, and `ThemeScope` / `ThemeToggle` (client) call these.
  *
- * Scope: dark applies only on the signed-in screens, /{lang}/app/* and /{lang}/admin/*. Public pages stay light this
- * phase (report §8.1: our buyer reads the site on a phone in daylight); the codemod already moved them onto the roles.
+ * Scope: every page under /{lang}, public pages too (rule 1214, the founder's yes on 2026-10-12; it replaces "public pages
+ * stay light" from rules 1203 and 1227). Light stays the default for a viewer who never chose and whose device is light
+ * (report §8.1: our buyer reads the site on a phone in daylight). Outside /{lang} (the OAuth consent page) stays light.
  */
 export const THEME_COOKIE = "nashr_theme";
 export const THEME_PREFS = ["system", "light", "dark"] as const;
@@ -22,8 +23,8 @@ export function readThemePref(cookie: string | null | undefined): ThemePref {
   return (COOKIE_RE.exec(cookie ?? "")?.[1] as ThemePref | undefined) ?? "system";
 }
 
-/** The paths that follow the choice: the app and the founder console, in either language. */
-export const THEMED_PATH = /^\/(?:ar|en)\/(?:app|admin)(?:\/|$)/;
+/** The paths that follow the choice: every page in either language, public pages, the app and the console (rule 1214). */
+export const THEMED_PATH = /^\/(?:ar|en)(?:\/|$)/;
 
 /** The theme to paint. */
 export function resolveTheme(pref: ThemePref, systemDark: boolean, path: string): Theme {
