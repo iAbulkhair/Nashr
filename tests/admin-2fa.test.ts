@@ -359,7 +359,8 @@ describe("audit and the console's banner (rules 1383, 1384)", () => {
   });
   it("the console layout renders the banner, setup and prompt on every page behind the gate", () => {
     const layout = readFileSync("src/app/[lang]/admin/layout.tsx", "utf8");
-    expect(layout).toContain("<SecondFactor lang={lang} enrolled={sf.enrolled} />");
+    // A staff session counts as enrolled: it has its own authenticator (rule 1632), so only the prompt shows.
+    expect(layout).toContain("<SecondFactor lang={lang} enrolled={!!who.staff || sf.enrolled} staff={!!who.staff} />");
     expect(layout).toContain("secondFactorStatus()");
     const sf = readFileSync("src/components/admin/SecondFactor.tsx", "utf8");
     expect(sf).toContain("ADMIN_2FA_EVENT");

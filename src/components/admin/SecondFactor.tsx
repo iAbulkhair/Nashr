@@ -76,9 +76,10 @@ export function sfError(lang: Lang, error: unknown): string {
 /**
  * The founder console's second factor on every console page (rules 1377-1379): the banner and setup while nothing is
  * enrolled, a status line with "replace" once it is, and the code prompt that `adminFetch` opens when a write answers
- * 403 `second_factor` (the write is then sent again by itself).
+ * 403 `second_factor` (the write is then sent again by itself). With `staff` (a staff session, rule 1636) only the prompt
+ * renders: the code it asks for is the person's own authenticator code.
  */
-export default function SecondFactor({ lang, enrolled }: { lang: Lang; enrolled: boolean }) {
+export default function SecondFactor({ lang, enrolled, staff = false }: { lang: Lang; enrolled: boolean; staff?: boolean }) {
   const S = SF[lang];
   const router = useRouter();
   const [setup, setSetup] = useState<{ secret: string; uri: string } | null>(null);
@@ -134,7 +135,8 @@ export default function SecondFactor({ lang, enrolled }: { lang: Lang; enrolled:
 
   return (
     <>
-      {!enrolled ? (
+      {/* A staff session has its own authenticator (rule 1632): no console setup or replace here, only the prompt. */}
+      {staff ? null : !enrolled ? (
         <div role="status" className="card mb-4 grid gap-2 text-sm">
           <p>{S.banner}</p>
           <p><Button size="sm" onClick={() => void start()}>{S.setUp}</Button></p>

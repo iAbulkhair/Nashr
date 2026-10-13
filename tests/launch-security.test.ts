@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { adminSignIn, jar, json, signIn, signOut } from "./helpers/session";
 import { createHash } from "node:crypto";
 import { adminEmails, ADMIN_SESSION_IDLE, ADMIN_SESSION_MAX, ADMIN_SESSION_RENEW, createUser, isAdmin, isAdminCookie, isFounder, sessionRecord } from "@/lib/auth";
@@ -326,7 +326,7 @@ describe("the console says when its session ended and links back in (rule 436)",
       expect(ADMIN_ENDED[lang].key).toMatch(/12/);
       expect(ADMIN_ENDED[lang].founder.length).toBeGreaterThan(10);
       expect(adminEndedHref(lang, true)).toBe(`/${lang}/admin?login=1`);
-      expect(adminEndedHref(lang, false)).toBe(`/${lang}/app/login`);
+      expect(adminEndedHref(lang, false)).toBe(`/${lang}/admin/login`);
     }
     expect(ADMIN_ENDED.ar.key).toMatch(/[\u0600-\u06FF]/);
     expect(ADMIN_ENDED.en.key).not.toMatch(/[\u0600-\u06FF]/);
@@ -931,5 +931,42 @@ describe("the key form is break-glass; the header is for scripts (rules 1645, 16
     expect(await (await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, { "x-admin-key": KEY, ...ip() }))).json()).toEqual({ ok: false, error: "second_factor" });
     expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, { "x-admin-key": KEY, "x-admin-otp": codeAt(s.secret, Date.now() - 30_000), ...ip() }))).status).toBe(200);
     expect(jar().get("nashr_admin")).toBeUndefined();
+  });
+});
+
+describe("staff pages are noindex and no-store; no token or agent is a staff actor (rule 1653)", () => {
+  it("the proxy marks every console page and staff route noindex and no-store, and nothing else", async () => {
+    const { NextRequest } = await import("next/server");
+    const { proxy } = await import("@/proxy");
+    for (const p of ["/en/admin", "/ar/admin/login", "/ar/admin/login/setup", "/en/admin/staff", "/en/admin/account", "/api/admin/staff/login"]) {
+      const res = proxy(new NextRequest(`https://thakeen.test${p}`));
+      expect(res.headers.get("x-robots-tag"), p).toBe("noindex, nofollow");
+      expect(res.headers.get("cache-control"), p).toBe("no-store");
+    }
+    for (const p of ["/en/app", "/ar", "/en/administrator", "/api/admin/overview"]) {
+      expect(proxy(new NextRequest(`https://thakeen.test${p}`)).headers.get("cache-control"), p).toBeNull();
+    }
+    const { staffScreenMeta } = await import("@/lib/screen-titles");
+    for (const [page, key] of [["login/page.tsx", "login"], ["login/setup/page.tsx", "setup"], ["staff/page.tsx", "staff"], ["account/page.tsx", "account"]] as const) {
+      expect(readFileSync(`src/app/[lang]/admin/${page}`, "utf8"), page).toContain(`export const generateMetadata = staffScreenMeta("${key}");`);
+      for (const lang of ["ar", "en", "fr"]) expect((await staffScreenMeta(key)({ params: Promise.resolve({ lang }) })).robots, `${page} ${lang}`).toEqual({ index: false, follow: false });
+    }
+  });
+
+  it("adminActor reads the key header and cookies only: a bearer or MCP token is never a console actor", async () => {
+    const { adminActor } = await import("@/lib/auth");
+    signOut();
+    const req = new Request("https://nashr.test/api/admin/overview", { headers: { authorization: "Bearer mcp_0123456789abcdef0123456789abcdef", "x-mcp-token": "mcp_0123456789abcdef" } });
+    expect(await adminActor(req)).toBeNull();
+    const src = readFileSync("src/lib/auth.ts", "utf8");
+    const body = src.slice(src.indexOf("export async function adminActor"), src.indexOf("export async function isAdmin("));
+    expect(body).not.toMatch(/authorization|bearer|mcp|oauth/i);
+    const staffSrc = readFileSync("src/lib/staff-session.ts", "utf8");
+    expect(staffSrc).not.toMatch(/authorization|bearer/i);
+    // The MCP server, the OAuth grant and the agent tools never call the console's actor or session readers.
+    for (const f of ["src/lib/mcp.ts", "src/lib/oauth.ts", "src/lib/agents.ts", "src/app/api/mcp/route.ts"]) {
+      if (!existsSync(f)) continue;
+      expect(readFileSync(f, "utf8"), f).not.toMatch(/adminActor|readStaffSession|consoleIdentity|isAdmin\(/);
+    }
   });
 });

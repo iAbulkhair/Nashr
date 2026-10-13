@@ -481,10 +481,10 @@ describe("rule 958: the console section, its link and its page", () => {
     expect(html).toContain("Agent skills");
   });
 
-  it("rule 958: the page is a 404 without the gate and renders the panel with a key session", async () => {
+  it("rule 958: the page redirects to the staff sign-in without the gate (rule 1652) and renders the panel with a key session", async () => {
     const Page = (await import("@/app/[lang]/admin/skills/page")).default as (p: { params: Promise<{ lang: string }> }) => Promise<React.ReactElement>;
     signOut();
-    await expect(Page({ params: Promise.resolve({ lang: "en" }) })).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+    await expect(Page({ params: Promise.resolve({ lang: "en" }) })).rejects.toMatchObject({ digest: expect.stringMatching(/^NEXT_REDIRECT;[a-z]+;\/en\/admin\/login\?next=%2Fen%2Fadmin%2Fskills;/) });
     await adminSignIn();
     await expect(Page({ params: Promise.resolve({ lang: "xx" }) })).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
     const el = await Page({ params: Promise.resolve({ lang: "en" }) });

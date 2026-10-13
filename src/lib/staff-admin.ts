@@ -87,7 +87,6 @@ export async function lastOwner(email: string): Promise<boolean> {
 /** A display name: trimmed, control characters removed, 1 to 80 characters; null otherwise. */
 export function cleanName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
-  // eslint-disable-next-line no-control-regex
   const n = raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
   return n.length >= 1 && n.length <= 80 ? n : null;
 }

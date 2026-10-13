@@ -30,12 +30,12 @@ export default async function AdminLayout({ children, params }: { children: Reac
     <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
       {/* Rule 968: past the console's links straight to the section. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
-      <AdminNav lang={lang} keySession={keySession} founder={who.founder} />
+      <AdminNav lang={lang} keySession={keySession} founder={!who.staff && who.founder} staff={who.staff} />
       <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
         {/* Rules 1377-1379: the second factor's banner or status line, and the code prompt every console write can open. */}
         {/* Rules 1639, 1645, 1649: break-glass key session, the expand-only customer path, the first staff login. */}
         <ConsoleBanners lang={lang} keySession={keySession} founder={!who.staff && who.founder} staff={!!who.staff} ownerExists={owner} consoleCode={sf.enrolled} />
-        <SecondFactor lang={lang} enrolled={sf.enrolled} />
+        <SecondFactor lang={lang} enrolled={!!who.staff || sf.enrolled} staff={!!who.staff} />
         {children}
       </main>
     </div>

@@ -218,3 +218,48 @@ describe("a customer view opened from a staff session ends with it (rule 1648)",
     expect((await currentUser())?.email).toBe(customer.email);
   });
 });
+
+describe("signed-out console pages redirect to the staff sign-in page (rule 1652)", () => {
+  const P = (l: string) => Promise.resolve({ lang: l });
+  const Q = (o: Record<string, string>) => Promise.resolve(o);
+  const redirectTo = (path: string) => ({ digest: expect.stringMatching(new RegExp(`^NEXT_REDIRECT;[a-z]+;${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")};`)) });
+
+  it("adminLoginHref keeps only a same-site console path as next, through safeNext", async () => {
+    const { adminLoginHref } = await import("@/lib/admin-gate-server");
+    expect(adminLoginHref("en", "/en/admin/users")).toBe("/en/admin/login?next=%2Fen%2Fadmin%2Fusers");
+    expect(adminLoginHref("ar", "/ar/admin")).toBe("/ar/admin/login?next=%2Far%2Fadmin");
+    for (const bad of ["//evil.example/en/admin", "/\\evil.example", "https://evil.example/en/admin", "/en/app/settings", "/ar/admin/users", "/en/\tadmin"]) {
+      expect(adminLoginHref("en", bad), bad).toBe("/en/admin/login");
+    }
+  });
+
+  it("the gate redirects with next; the staff and account pages too", async () => {
+    const staffPage = (await import("@/app/[lang]/admin/staff/page")).default;
+    const accountPage = (await import("@/app/[lang]/admin/account/page")).default;
+    await expect(staffPage({ params: P("en") })).rejects.toMatchObject(redirectTo("/en/admin/login?next=%2Fen%2Fadmin%2Fstaff"));
+    await expect(accountPage({ params: P("ar") })).rejects.toMatchObject(redirectTo("/ar/admin/login?next=%2Far%2Fadmin%2Faccount"));
+  });
+
+  it("the sign-in page is public; with a staff session it goes on to next, never off the console", async () => {
+    const login = (await import("@/app/[lang]/admin/login/page")).default;
+    const el = (await login({ params: P("en"), searchParams: Q({ next: "/en/admin/users" }) })) as { props: { lang: string; next: string } };
+    expect(el.props).toMatchObject({ lang: "en", next: "/en/admin/users" });
+    const off = (await login({ params: P("en"), searchParams: Q({ next: "//evil.example" }) })) as { props: { next: string } };
+    expect(off.props.next).toBe("");
+    const { staff } = await enrolledStaff();
+    await openStaffSession(staff.email);
+    await expect(login({ params: P("en"), searchParams: Q({ next: "/en/admin/users" }) })).rejects.toMatchObject(redirectTo("/en/admin/users"));
+    await expect(login({ params: P("en"), searchParams: Q({ next: "/en/app/settings" }) })).rejects.toMatchObject(redirectTo("/en/admin"));
+    await expect(login({ params: P("en"), searchParams: Q({ next: "/en/admin/login" }) })).rejects.toMatchObject(redirectTo("/en/admin"));
+    // With the staff session the gate opens: the account page renders, it does not redirect.
+    const accountPage = (await import("@/app/[lang]/admin/account/page")).default;
+    const acc = (await accountPage({ params: P("en") })) as { props: { email: string } };
+    expect(acc.props.email).toBe(staff.email);
+  });
+
+  it("the setup page never reads the code from the URL (rule 1643)", () => {
+    const src = readFileSync("src/app/[lang]/admin/login/setup/page.tsx", "utf8");
+    expect(src).not.toMatch(/searchParams/);
+    expect(readFileSync("src/components/admin/StaffSignIn.tsx", "utf8")).not.toMatch(/useSearchParams|location\.(search|href)/);
+  });
+});
