@@ -199,9 +199,10 @@ export async function checkCode(req: Request, code: unknown): Promise<CodeResult
  * request again.
  */
 export async function secondFactorRefusal(req: Request, who: string): Promise<NextResponse | null> {
-  const foreign = consoleWriteRefusal(req);
-  if (foreign) return foreign;
   const info = actorInfo(req);
+  // A script on the `x-admin-key` header skips the Origin and JSON rules (rule 1647): it carries the key, not a cookie.
+  const foreign = consoleWriteRefusal(req, info?.via === "header" && info.who === who);
+  if (foreign) return foreign;
   const otp = req.headers.get("x-admin-otp");
   if (info?.via === "staff" && info.who === who) {
     if (!canWrite(info.role)) return NextResponse.json({ ok: false, error: "read_only" }, { status: 403 });

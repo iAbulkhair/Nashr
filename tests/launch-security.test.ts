@@ -795,7 +795,44 @@ describe("staff identity: the console write check and the expand path (rules 164
     // The public sign-in steps run the same check.
     const r = await login.POST(new Request("https://nashr.test/api/admin/staff/login", { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example", ...ip() }, body: "{}" }));
     expect(r.status).toBe(403);
-    expect(readFileSync("src/lib/admin-2fa.ts", "utf8")).toMatch(/const foreign = consoleWriteRefusal\(req\);\n {2}if \(foreign\) return foreign;/);
+    expect(readFileSync("src/lib/admin-2fa.ts", "utf8")).toMatch(/const info = actorInfo\(req\);\n(?: {2}\/\/.*\n)? {2}const foreign = consoleWriteRefusal\(req, info\?\.via === "header" && info\.who === who\);\n {2}if \(foreign\) return foreign;/);
+  });
+
+  it("1647: a script on the x-admin-key header skips the Origin and JSON rules, never Sec-Fetch-Site cross-site", async () => {
+    const plan = await import("@/app/api/admin/plan/route");
+    const { newUser } = await import("./helpers/session");
+    const u = await newUser("script-origin");
+    const post = (headers: Record<string, string>, body: string, type = "application/json") =>
+      plan.POST(new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": type, "x-admin-key": KEY, ...ip(), ...headers }, body }));
+    const body = JSON.stringify({ email: u.email, addCredits: 1, reason: "script reason" });
+    expect((await post({ origin: "https://tools.example" }, body)).status).toBe(200);
+    expect((await post({}, body, "text/plain")).status).not.toBe(415);
+    expect((await post({ "sec-fetch-site": "cross-site" }, body)).status).toBe(403);
+    // A browser session gets no such pass: the same request on the key session cookie is refused.
+    await adminSignIn();
+    expect((await plan.POST(new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": "application/json", origin: "https://tools.example", ...ip() }, body }))).status).toBe(403);
+    const { consoleWriteRefusal } = await import("@/lib/console-origin");
+    const formReq = new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": "text/plain", origin: "https://tools.example" }, body: "x" });
+    expect(consoleWriteRefusal(formReq)?.status).toBe(403);
+    expect(consoleWriteRefusal(formReq, true)).toBeNull();
+  });
+
+  it("1647: the console 2FA route (verify and confirm included) and marking leads seen run the write check", async () => {
+    const twofa = await import("@/app/api/admin/2fa/route");
+    const leads = await import("@/app/api/admin/leads/route");
+    await adminSignIn();
+    for (const action of ["verify", "confirm", "start"]) {
+      const r = await twofa.POST(new Request("https://nashr.test/api/admin/2fa", { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example", ...ip() }, body: JSON.stringify({ action, code: "123456" }) }));
+      expect(r.status, action).toBe(403);
+      expect(await r.json()).toEqual({ ok: false, error: "cross_site" });
+    }
+    const t = await twofa.POST(new Request("https://nashr.test/api/admin/2fa", { method: "POST", headers: { "content-type": "text/plain", ...ip() }, body: JSON.stringify({ action: "verify", code: "123456" }) }));
+    expect(t.status).toBe(415);
+    const l = await leads.POST(new Request("https://nashr.test/api/admin/leads", { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example", ...ip() }, body: JSON.stringify({ action: "seen" }) }));
+    expect(l.status).toBe(403);
+    expect((await leads.POST(json("/api/admin/leads", "POST", { action: "seen" }, ip()))).status).toBe(200);
+    const src = readFileSync("src/app/api/admin/leads/route.ts", "utf8");
+    expect(src.slice(src.indexOf("export async function POST"))).toMatch(/const who = await adminActor\(req\);[\s\S]*?const gate = await secondFactorRefusal\(req, who\);/);
   });
 
   it("1649: the founder's customer session still opens the console in the expand release, with via founder-session", async () => {

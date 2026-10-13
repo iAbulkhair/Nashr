@@ -45,7 +45,7 @@ describe("staff records are their own type (rule 1630)", () => {
 });
 
 describe("staff passwords (rule 1641)", () => {
-  it("12-128 characters, not common, bcrypt cost 12", async () => {
+  it("12 characters to 72 bytes, not common, bcrypt cost 12", async () => {
     const e = staffAddress();
     expect(await passwordRefusal(e, "short-pass1")).toBe("password_short");
     expect(await passwordRefusal(e, "x".repeat(129))).toBe("password_long");
@@ -178,9 +178,18 @@ describe("no staff session without a code (rule 1632)", () => {
     expect(await (await staffCode(code)).json()).toEqual({ ok: false, error: "bad_code" });
     expect((await logRows()).some((r) => r.action === "staff.signin" && r.target === staff.email && r.via === "staff")).toBe(true);
   });
-  it("the first sign-in must enrol: start, confirm with a code, 8 recovery codes, then a session", async () => {
+  it("the first sign-in must enrol, and only after a setup code: the password alone never enrols an authenticator", async () => {
     const s = await makeStaff({ passHash: (pwHash ||= await hashStaffPassword(PW)) });
-    expect(await (await staffLogin(s.email, PW)).json()).toEqual({ ok: true, next: "enrol" });
+    // A record with a password but no authenticator: the password alone opens nothing (no pre-auth step, no enrolment).
+    const alone = await staffLogin(s.email, PW);
+    expect(alone.status).toBe(401);
+    expect(await alone.json()).toEqual({ ok: false, error: "invalid" });
+    expect(jar().has(STAFF_PRE_COOKIE)).toBe(false);
+    expect((await staffEnrol({ action: "start" })).status).toBe(401);
+    expect(await db.get(staffFailKey(s.email))).toBeNull(); // a right password is not a failure
+    // A setup (or reset) code is the way in: it opens the enrol step.
+    const setup = await issueSetupCode(s.email, "key", "setup");
+    expect(await (await staffSetup({ email: s.email, code: setup, password: PW })).json()).toEqual({ ok: true, next: "enrol" });
     expect((await staffCode("123456")).status).toBe(401); // no authenticator: the code step is not open
     const st = await (await staffEnrol({ action: "start" })).json();
     expect(st.uri).toMatch(/^otpauth:\/\/totp\//);
@@ -350,14 +359,18 @@ describe("bootstrap: the first staff login (rule 1639)", () => {
     const row = (await logRows()).find((r) => r.action === "staff.bootstrap" && r.target === email)!;
     expect(row).toMatchObject({ actor: "key", via: "key" });
     expect(JSON.stringify(await db.lrange("admin:log", 0, 50))).not.toContain(code);
-    // Once an owner exists: 409 for everyone, the key included.
+    // The same address again: 409, its record exists.
     tick();
-    expect(await (await post(bootstrapRoute(), "/api/admin/staff/bootstrap", { ...body, email: staffAddress() }, { "x-admin-otp": codeAt(consoleSecret) })).json()).toEqual({ ok: false, error: "exists" });
-    expect((await post(bootstrapRoute(), "/api/admin/staff/bootstrap", body, { "x-admin-key": KEY })).status).toBe(409);
+    expect(await (await post(bootstrapRoute(), "/api/admin/staff/bootstrap", body, { "x-admin-otp": codeAt(consoleSecret) })).json()).toEqual({ ok: false, error: "exists" });
     // The code is typed into the setup form once.
     const pw = "a long founder phrase 2026";
     expect(await (await staffSetup({ email, code, password: pw })).json()).toEqual({ ok: true, next: "enrol" });
     expect((await staffSetup({ email, code, password: pw })).status).toBe(401);
+    // Once the owner is ACTIVE (password and authenticator, rule 1659): 409 for everyone, the key included.
+    await saveStaff({ ...(await readStaff(email))!, totp: { ...sealStaffSecret(newTotpSecret()), at: new Date().toISOString() } });
+    tick();
+    expect(await (await post(bootstrapRoute(), "/api/admin/staff/bootstrap", { ...body, email: staffAddress() }, { "x-admin-otp": codeAt(consoleSecret) })).json()).toEqual({ ok: false, error: "exists" });
+    expect((await post(bootstrapRoute(), "/api/admin/staff/bootstrap", body, { "x-admin-key": KEY })).status).toBe(409);
   });
 });
 
@@ -414,18 +427,20 @@ describe("staff management needs an owner and a fresh code (rules 1636, 1638, 16
     expect(list.staff.find((s: { email: string }) => s.email === owner.email)).toMatchObject({ role: "owner", enrolled: true, passwordSet: true });
   });
 
-  it("the key session may only list and reset (with the console code once enrolled); the header and the founder session manage nothing", async () => {
+  it("the key session may only list, reset and enable; the header and the founder session manage nothing (break-glass details in tests/staff-hardening.test.ts)", async () => {
     const tick = clock();
     try {
+      await db.del(STAFF_INDEX);
       const target = await makeStaff({ passHash: DUMMY_HASH });
       await adminSignIn();
       expect((await (await staffRoute()).GET(json("/api/admin/staff", "GET"))).status).toBe(200);
       expect(await (await post(staffRoute(), "/api/admin/staff", { action: "create", email: staffAddress(), name: "X", role: "owner", reason: R })).json()).toEqual({ ok: false, error: "staff_owner_only" });
       expect(await (await post(staffRoute(), "/api/admin/staff", { action: "disable", email: target.email, reason: R })).json()).toEqual({ ok: false, error: "staff_owner_only" });
+      expect(await (await post(staffRoute(), "/api/admin/staff", { action: "role", email: target.email, role: "owner", reason: R })).json()).toEqual({ ok: false, error: "staff_owner_only" });
       const consoleSecret = await enrolConsoleCode();
       tick();
       // A live console step-up is not a fresh code: the reset asks for one.
-      expect(await (await post(staffRoute(), "/api/admin/staff", { action: "reset", email: target.email, reason: R })).json()).toEqual({ ok: false, error: "fresh_code" });
+      expect(await (await post(staffRoute(), "/api/admin/staff", { action: "reset", email: target.email, reason: R })).json()).toEqual({ ok: false, error: "console_code_required" });
       const reset = await post(staffRoute(), "/api/admin/staff", { action: "reset", email: target.email, reason: R, code: codeAt(consoleSecret) });
       expect(reset.status).toBe(200);
       expect((await logRows()).find((r) => r.action === "staff.reset" && r.target === target.email)).toMatchObject({ actor: "key", via: "key" });
@@ -442,13 +457,17 @@ describe("staff management needs an owner and a fresh code (rules 1636, 1638, 16
     }
   });
 
-  it("lastOwner: the only enabled owner is the last one", async () => {
+  it("lastOwner: the only ACTIVE owner (enabled, password, authenticator) is the last one (rule 1659)", async () => {
     await db.del(STAFF_INDEX);
-    const a = await makeStaff();
+    const { staff: a } = await enrolledStaff();
     expect(await lastOwner(a.email)).toBe(true);
-    const b = await makeStaff();
+    const { staff: b } = await enrolledStaff();
     expect(await lastOwner(a.email)).toBe(false);
     await saveStaff({ ...b, disabled: true });
+    expect(await lastOwner(a.email)).toBe(true);
+    // An owner who never finished setup, or whose credentials a reset cleared, does not count either.
+    await makeStaff({ passHash: DUMMY_HASH });
+    await makeStaff();
     expect(await lastOwner(a.email)).toBe(true);
   });
 });

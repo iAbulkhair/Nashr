@@ -188,8 +188,8 @@ Phase 1 adds none. It uses `CONNECT_SECRET` and `CONNECT_SECRET_PREVIOUS` (seali
 | Rule | Statement |
 |---|---|
 | 1630 | Staff are `staff:{email}` records, never a customer `User`; a customer session is never a staff actor. |
-| 1631 | Staff sign-in: one generic refusal, dummy-hash timing for unknown addresses, rate limits per IP and per address. |
-| 1632 | No staff session without an authenticator code; the first sign-in must enrol; no skip. |
+| 1631 | Staff sign-in: one generic refusal, dummy-hash timing for unknown addresses, rate limits per IP and per address. A password alone never enrols an authenticator: a record without one signs in only through a setup or reset code (security review 2026-10-13, L2). |
+| 1632 | No staff session without an authenticator code; the first sign-in must enrol, and only after a setup or reset code; no skip. |
 | 1633 | Staff cookie `__Host-thakeen_staff`: random id, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, no `Domain`; a dev name on loopback http only. |
 | 1634 | Staff session record under a hash of the id; 15 min idle, 12 h absolute, renewed at most once a minute with `SET XX`; sign-out deletes it. |
 | 1635 | `sessionsAfter` ends every session and step-up of a staff member at password reset, authenticator reset, disable and role change. |
@@ -198,13 +198,13 @@ Phase 1 adds none. It uses `CONNECT_SECRET` and `CONNECT_SECRET_PREVIOUS` (seali
 | 1638 | Audit rows name the staff email and carry `via`; the listed events are written; no secret in any row. |
 | 1639 | Bootstrap only from a key session (plus the console code when enrolled), only while no owner exists; the setup code is shown once, single use, 30 minutes. |
 | 1640 | New staff only by an owner with a fresh code, through a single-use setup code typed into a form, never in a URL. |
-| 1641 | Staff password 12-128 characters, not on the common list, not equal to the customer password of the same address; bcrypt cost 12. |
+| 1641 | Staff password 12 characters to 72 UTF-8 bytes (bcrypt reads no further; a longer password is refused with `password_long`, and a typed value over 72 bytes never matches), not on the common list, not equal to the customer password of the same address; bcrypt cost 12. |
 | 1642 | 8 single-use recovery codes stored hashed; spending one needs the password and forces a new authenticator. |
-| 1643 | No email in any staff recovery path; a lost password goes through an owner or the break-glass key session. |
-| 1644 | 10 failures per address in 15 minutes lock it for 15 minutes; failures are counted outside `admin:log`; one `staff.locked` row per lock. |
+| 1643 | No email to the staff member in any recovery path; a lost password goes through an owner or the break-glass key session. A reset clears the password, the authenticator and the recovery codes at once and ends every session, inside the record's lock, before the code is shown; nobody resets their own login. The key session resets or enables a login only when `admin:2fa` is enrolled AND a fresh console code comes with the request (`console_code_required`), and only while no other active owner exists (`owner_active`); every such reset or enable mails every `ADMIN_EMAILS` address (action, login and time only, never a code or the reason; skipped when mail is not set up). |
+| 1644 | 10 failures per address in 15 minutes lock it for 15 minutes; failures are counted outside `admin:log`; one `staff.locked` row per lock, written after the answer. The lock blocks password-only attempts: the right password together with a right authenticator code in the same request still signs in (code tries limited per address and per IP), and any wrong part is the same 401. The own-password check (`staff/me`) is refused while locked, counts toward the lock, and has its own IP limit. |
 | 1645 | The browser key form needs a console code once `admin:2fa` is enrolled; every key sign-in is logged; break-glass banner. |
 | 1646 | `x-admin-key` stays for scripts, rate limited, with `x-admin-otp` for writes once enrolled; it never opens a browser session. |
-| 1647 | Console writes refuse a foreign `Origin` or `Sec-Fetch-Site: cross-site`, and non-JSON bodies. |
+| 1647 | Console writes refuse a foreign `Origin` or `Sec-Fetch-Site: cross-site`, and non-JSON bodies; this includes every `/api/admin/2fa` action and marking leads seen. A script on the `x-admin-key` header (no cookie) skips the `Origin` and JSON parts, never the `Sec-Fetch-Site: cross-site` refusal. |
 | 1648 | A customer view opened from a staff session carries `ss` and ends with that staff session. |
 | 1649 | Expand: the `ADMIN_EMAILS` customer-session path still works, with a banner and `via: "founder-session"`. |
 | 1650 | A staff owner with a fresh code can switch the customer-session path off at runtime; refused for key and customer actors. |
@@ -216,7 +216,7 @@ Phase 1 adds none. It uses `CONNECT_SECRET` and `CONNECT_SECRET_PREVIOUS` (seali
 | 1656 | Phase 2: passkeys (WebAuthn) as a staff factor, relying party = the admin host; a passkey replaces the authenticator code at sign-in. |
 | 1657 | Phase 2: the console answers only on `ADMIN_ORIGIN`; its cookies are host-only there; console writes pin `Origin` to it. |
 | 1658 | Phase 2: once the admin host is live, `/{lang}/admin` and `/api/admin/*` on the customer host answer 404 (scripts move to the admin host). |
-| 1659 | Spare, held for this work. |
+| 1659 | An active owner is an enabled owner with a password and an authenticator. Only active owners count for "an owner exists" (bootstrap) and for the last-owner check; disable, enable, role change, reset and bootstrap decide and write under one `lock:staff:owners`. |
 
 ### Tests to pin (`tests/`)
 

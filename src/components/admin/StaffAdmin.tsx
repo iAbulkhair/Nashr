@@ -91,7 +91,8 @@ export default function StaffAdmin({ lang, me, keySession, pathOff }: { lang: La
                   <td className="p-3 text-xs" dir="auto" suppressHydrationWarning>{date(s.lastSignInAt)}</td>
                   <td className="p-3">
                     <div className="flex flex-wrap justify-end gap-1">
-                      {!s.disabled && <Button size="sm" variant="secondary" onClick={() => setAct({ kind: "reset", who: s })}>{S.reset}</Button>}
+                      {!s.disabled && !self && <Button size="sm" variant="secondary" onClick={() => setAct({ kind: "reset", who: s })}>{S.reset}</Button>}
+                      {keySession && s.disabled && <Button size="sm" variant="secondary" onClick={() => setAct({ kind: "enable", who: s })}>{S.enable}</Button>}
                       {!keySession && !self && (s.disabled
                         ? <Button size="sm" variant="secondary" onClick={() => setAct({ kind: "enable", who: s })}>{S.enable}</Button>
                         : <Button size="sm" variant="secondary" onClick={() => setAct({ kind: "disable", who: s })}>{S.disable}</Button>)}

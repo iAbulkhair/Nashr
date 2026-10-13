@@ -33,6 +33,8 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [afterRecovery, setAfterRecovery] = useState(false);
+  // After a refused password, offer the code field too: a locked address opens only with the password and a code together.
+  const [withCode, setWithCode] = useState(false);
   const [enrol, setEnrol] = useState<{ secret: string; uri: string } | null>(null);
   const [codes, setCodes] = useState<string[]>([]);
   const home = safeNext(next).startsWith(`/${lang}/admin`) ? safeNext(next) : `/${lang}/admin`;
@@ -71,8 +73,10 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
     setBusy(true);
     try {
       if (stage === "password") {
-        const { status, j } = await send("/api/admin/staff/login", { email: v("email"), password: v("password") });
-        if (j.ok) go(j.next); else refused(status, j);
+        const code = v("lockedCode").replace(/\s+/g, "");
+        const { status, j } = await send("/api/admin/staff/login", { email: v("email"), password: v("password"), ...(code ? { code } : {}) });
+        if (j.ok) go(j.next);
+        else { refused(status, j); if (j.error === "invalid") setWithCode(true); }
       } else if (stage === "setup") {
         const { status, j } = await send("/api/admin/staff/setup", { email: v("email"), code: v("setupCode").trim(), password: v("password") });
         if (j.ok) go(j.next); else refused(status, j);
@@ -128,11 +132,14 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
             <Field label={S.email}><Input name="email" type="email" autoComplete="username" dir="ltr" required /></Field>
           )}
           {stage === "password" && <Field label={S.password}><Input name="password" type="password" autoComplete="current-password" dir="ltr" required /></Field>}
+          {stage === "password" && withCode && (
+            <Field label={S.lockedCode} hint={S.lockedNote}><Input name="lockedCode" inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={8} /></Field>
+          )}
           {stage === "setup" && (
             <>
               <Field label={S.setupCode}><Input name="setupCode" autoComplete="one-time-code" dir="ltr" maxLength={40} required /></Field>
-              <Field label={S.newPassword} hint={S.passwordHint}><Input name="password" type="password" autoComplete="new-password" dir="ltr" minLength={12} maxLength={128} required /></Field>
-              <Field label={S.repeat}><Input name="repeat" type="password" autoComplete="new-password" dir="ltr" maxLength={128} required /></Field>
+              <Field label={S.newPassword} hint={S.passwordHint}><Input name="password" type="password" autoComplete="new-password" dir="ltr" minLength={12} maxLength={72} required /></Field>
+              <Field label={S.repeat}><Input name="repeat" type="password" autoComplete="new-password" dir="ltr" maxLength={72} required /></Field>
             </>
           )}
           {(stage === "code" || stage === "enrol") && (

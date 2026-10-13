@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "@/lib/auth";
+import { adminActor, isAdmin } from "@/lib/auth";
+import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { mailReady } from "@/lib/notify";
 import { LEADS_SCAN, leadsCsv, listLeads, markLeadsSeen } from "@/lib/leads";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Founder console, Leads tab (#134). Founder or admin key only (`isAdmin`).
+ * Founder console, Leads tab (#134). Founder or admin key only (`isAdmin` to read; POST goes through `adminActor` and the
+ * console write gate `secondFactorRefusal`).
  *
  * GET ?all=1&offset=0&limit=50  enterprise, early-adopter and affiliate leads newest first (all=1 adds every other
  *                               support ticket), the unread count, and whether email can reach the founder at all.
@@ -33,8 +35,12 @@ export async function GET(req: Request) {
   );
 }
 
+/** Marking leads seen is a console write: the console actor, then the write gate (rules 1636, 1647). */
 export async function POST(req: Request) {
-  if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
+  const who = await adminActor(req);
+  if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  const gate = await secondFactorRefusal(req, who);
+  if (gate) return gate;
   const b = (await req.json().catch(() => ({}))) as { action?: unknown; until?: unknown };
   if (b.action !== "seen") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   if (b.until !== undefined && (typeof b.until !== "string" || b.until.length > 40 || !Number.isFinite(Date.parse(b.until)))) {

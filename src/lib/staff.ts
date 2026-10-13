@@ -82,10 +82,25 @@ export async function listStaff(): Promise<Staff[]> {
   return recs.filter(isStaff);
 }
 
-/** Whether any owner record exists (bootstrap answers 409 once one does, rule 1639). */
+/**
+ * An owner who can actually manage staff: enabled, with a password and an enrolled authenticator. A disabled owner, or
+ * one who never finished setup (or whose credentials a reset cleared), does not count, so a record that can never sign
+ * in neither blocks bootstrap nor counts as "another owner" (rules 1639, 1643, 1659).
+ */
+export const activeOwner = (s: Staff): boolean => s.role === "owner" && !s.disabled && !!s.passHash && !!s.totp;
+
+/** Whether an active owner exists (bootstrap answers 409 once one does, rule 1639). */
 export async function ownerExists(): Promise<boolean> {
-  return (await listStaff()).some((s) => s.role === "owner");
+  return (await listStaff()).some(activeOwner);
 }
+
+/** Whether an active owner other than `email` exists (the key session's reset and enable need none, rule 1643). */
+export async function otherActiveOwner(email: string): Promise<boolean> {
+  return (await listStaff()).some((s) => activeOwner(s) && s.email !== email);
+}
+
+/** The lock every change to who can manage staff runs under: last-owner checks, disable, enable, role, reset (rule 1659). */
+export const OWNERS_LOCK = "lock:staff:owners";
 
 export async function staffConfig(): Promise<StaffConfig> {
   const c = await db.get<StaffConfig>(STAFF_CONFIG);
@@ -127,7 +142,12 @@ export async function withStaffLock<T>(email: string, fn: (s: Staff | null) => P
 /** bcrypt cost for staff passwords. The customer accounts use the same KDF (bcryptjs) at cost 10. */
 export const STAFF_BCRYPT_COST = 12;
 export const STAFF_PASSWORD_MIN = 12;
-export const STAFF_PASSWORD_MAX = 128;
+/**
+ * At most 72 bytes in UTF-8: bcrypt reads only the first 72 bytes, so a longer password would be cut without a word and
+ * any text after byte 72 would not matter (rule 1641). 72 Latin letters, about 36 Arabic ones.
+ */
+export const STAFF_PASSWORD_MAX = 72;
+export const passwordBytes = (pw: string) => Buffer.byteLength(pw, "utf8");
 /**
  * A bcrypt hash at cost 12 of a random value nobody knows. An unknown address is compared against it, so a sign-in for
  * an address with no staff record costs the same time as one for a real record (rule 1631).
@@ -147,13 +167,13 @@ export const COMMON_PASSWORDS: ReadonlySet<string> = new Set([
 export type PasswordRefusal = "password_short" | "password_long" | "password_common" | "password_customer";
 
 /**
- * Why a new staff password is refused, or null: 12 to 128 characters, not on the common list, and not the customer
+ * Why a new staff password is refused, or null: 12 characters to 72 bytes, not on the common list, and not the customer
  * password of the same address (one bcrypt compare against the owner or member login, when there is one). No
  * composition rules.
  */
 export async function passwordRefusal(email: string, pw: unknown): Promise<PasswordRefusal | null> {
   if (typeof pw !== "string" || pw.length < STAFF_PASSWORD_MIN) return "password_short";
-  if (pw.length > STAFF_PASSWORD_MAX) return "password_long";
+  if (passwordBytes(pw) > STAFF_PASSWORD_MAX) return "password_long";
   if (COMMON_PASSWORDS.has(pw.toLowerCase())) return "password_common";
   const login = await getLogin(email);
   const customerHash = login?.kind === "owner" ? login.user.passHash : login?.kind === "member" ? login.member.passHash : "";
@@ -168,7 +188,7 @@ export const hashStaffPassword = (pw: string) => bcrypt.hash(pw, STAFF_BCRYPT_CO
  * hash when the record is missing or has no password yet, so the time never tells a staff address apart (rule 1631).
  */
 export async function staffPasswordMatches(s: Staff | null, pw: unknown): Promise<boolean> {
-  const typed = typeof pw === "string" && pw.length <= STAFF_PASSWORD_MAX ? pw : "";
+  const typed = typeof pw === "string" && passwordBytes(pw) <= STAFF_PASSWORD_MAX ? pw : "";
   const hash = s && s.passHash ? s.passHash : DUMMY_HASH;
   const ok = await bcrypt.compare(typed, hash);
   return ok && !!s && !!s.passHash && typed.length > 0;

@@ -67,8 +67,8 @@ export default function StaffAccount({ lang, email, name, recoveryLeft }: { lang
       {open === "password" && (
         <FormDialog lang={lang} title={S.changePassword} submitLabel={S.go} cancelLabel={S.cancel} busyLabel={S.busy} onSubmit={change} onClose={() => setOpen(null)}>
           <Field label={S.current}><Input name="current" type="password" autoComplete="current-password" dir="ltr" required /></Field>
-          <Field label={S.newPassword} hint={S.passwordHint}><Input name="password" type="password" autoComplete="new-password" dir="ltr" minLength={12} maxLength={128} required /></Field>
-          <Field label={S.repeat}><Input name="repeat" type="password" autoComplete="new-password" dir="ltr" maxLength={128} required /></Field>
+          <Field label={S.newPassword} hint={S.passwordHint}><Input name="password" type="password" autoComplete="new-password" dir="ltr" minLength={12} maxLength={72} required /></Field>
+          <Field label={S.repeat}><Input name="repeat" type="password" autoComplete="new-password" dir="ltr" maxLength={72} required /></Field>
           <Field label={S.freshCode}><Input name="code" inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} required /></Field>
         </FormDialog>
       )}

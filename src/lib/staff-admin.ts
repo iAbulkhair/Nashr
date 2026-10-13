@@ -3,7 +3,7 @@ import { db } from "./db";
 import { actorInfo, type ActorInfo } from "./auth";
 import { checkCode, secondFactorStatus } from "./admin-2fa";
 import { checkStaffCode } from "./staff-code";
-import { getStaff, listStaff, type Staff } from "./staff";
+import { activeOwner, getStaff, listStaff, type Staff } from "./staff";
 
 /**
  * What the staff management routes share (rules 1636-1640, 1650): the fresh-code check, who may do what, the view of a
@@ -26,13 +26,15 @@ export const isStaffOwner = (i: ActorInfo | null): boolean => !!i && i.via === "
 
 /**
  * A FRESH code for this request (rule 1636, the "sudo" pattern): never a live step-up. A staff actor types a code from
- * their own authenticator; the key session types the console code when `admin:2fa` is enrolled (with nothing enrolled
- * the key session rests on the key alone, today's level, and the console banner recommends enrolling). The code is
- * `body.code` or `x-admin-otp`; when the write gate already accepted `x-admin-otp` for this request, that was it.
- * Six digits only: a recovery code is spent at sign-in, never as a side effect of a management action.
- * Null to go on; 403 `fresh_code` without a code; the code check's own 400 or 429 otherwise.
+ * their own authenticator; the key session types the console code, and with no console code enrolled (`admin:2fa`) the
+ * key session changes no staff login at all: 403 `console_code_required` (rule 1643), so the key alone never takes one
+ * over. The code is `body.code` or `x-admin-otp`; when the write gate already accepted `x-admin-otp` for this request,
+ * that was it. Six digits only: a recovery code is spent at sign-in, never as a side effect of a management action.
+ * Null to go on; 403 `fresh_code` (staff) or `console_code_required` (key) without a code; the code check's own 400 or
+ * 429 otherwise.
  */
 export async function freshCodeRefusal(req: Request, info: ActorInfo, bodyCode: unknown): Promise<NextResponse | null> {
+  if (info.via === "key" && !(await secondFactorStatus()).enrolled) return no("console_code_required", 403);
   if (info.fresh) return null;
   const raw = typeof bodyCode === "string" && bodyCode ? bodyCode : req.headers.get("x-admin-otp");
   const code = typeof raw === "string" ? raw.replace(/\s+/g, "") : null;
@@ -44,8 +46,7 @@ export async function freshCodeRefusal(req: Request, info: ActorInfo, bodyCode: 
     return r.ok ? null : r.res;
   }
   if (info.via === "key") {
-    if (!(await secondFactorStatus()).enrolled) return null;
-    if (!code || !/^\d{6}$/.test(code)) return no("fresh_code", 403);
+    if (!code || !/^\d{6}$/.test(code)) return no("console_code_required", 403);
     const r = await checkCode(req, code);
     return r.ok ? null : r.res;
   }
@@ -78,9 +79,13 @@ export const staffView = (s: Staff): StaffView => ({
   lastSignInAt: s.lastSignInAt ?? null,
 });
 
-/** Whether `email` is the only enabled owner left (disabling it or changing its role would leave nobody to manage staff). */
+/**
+ * Whether `email` is the only active owner left (enabled, password set, authenticator enrolled: `activeOwner`), so that
+ * disabling it or changing its role would leave nobody able to manage staff. Run it under `OWNERS_LOCK`
+ * together with the write it guards (rule 1659).
+ */
 export async function lastOwner(email: string): Promise<boolean> {
-  const owners = (await listStaff()).filter((s) => s.role === "owner" && !s.disabled);
+  const owners = (await listStaff()).filter(activeOwner);
   return owners.length === 1 && owners[0].email === email;
 }
 

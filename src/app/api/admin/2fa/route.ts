@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { actorInfo, adminActor, viaOf } from "@/lib/auth";
 import { adminAudit } from "@/lib/admin-audit";
+import { consoleWriteRefusal } from "@/lib/console-origin";
 import { confirmEnrolment, secondFactorRefusal, secondFactorStatus, startEnrolment, stepUpLive, verifyAndStepUp } from "@/lib/admin-2fa";
 
 /**
@@ -31,6 +32,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
+  // Every action here, `verify` and `confirm` included, runs the console write check in the route itself (rule 1647).
+  const foreign = consoleWriteRefusal(req, viaOf(req) === "header");
+  if (foreign) return foreign;
   const b = (await req.json().catch(() => ({}))) as { action?: unknown; code?: unknown };
   if ((b.action === "start" || b.action === "confirm") && actorInfo(req)?.via === "staff") {
     return NextResponse.json({ ok: false, error: "staff_own_factor" }, { status: 403 });
