@@ -1,6 +1,6 @@
 # Thakeen / Nashr — Development Log
 
-**Period:** 2026-09-17 (first commit) to 2026-10-12 (collection ended 2026-10-12 about 16:30 UTC). **Repository:** `iAbulkhair/Nashr`. **Times are UTC** unless a source gave none (then the time is the earliest commit/message in the cluster).
+**Period:** 2026-09-17 (first commit) to 2026-10-13 (entries end 2026-10-13 07:37 UTC; git state read at about 07:55 UTC). **Repository:** `iAbulkhair/Nashr`. **Times are UTC** unless a source gave none (then the time is the earliest commit/message in the cluster).
 
 This is a log, not a summary. Every entry says what was known, what was decided and why, what was done (commits, PRs, branches), what went wrong, how it was corrected, and what the founder said. Where the sources do not record a reason or a time, the entry says `unknown` or `reason not recorded` instead of guessing.
 
@@ -13,7 +13,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 
 ## Scale
 
-- 755 log entries over 20 calendar days with activity; 1104 commits (`git log --all`, collected in two passes: 2026-10-10 for the period up to 11:40 UTC and 2026-10-12 about 16:30 UTC for the rest; later commits are not in the log), 157 pull requests (140 merged, 3 closed unmerged), 290 branches (remote and local-only), 161 Claude sessions on this machine at the first collection (2026-10-10; not recounted in the second pass).
+- 773 log entries over 21 calendar days with activity; 1120 commits (`git log --all`, collected in three passes: 2026-10-10 for the period up to 11:40 UTC, 2026-10-12 about 16:30 UTC and 2026-10-13 about 07:40 UTC for the rest; later commits are not in the log), 159 pull requests (149 merged, 6 closed unmerged), 298 branches (remote and local-only), 161 Claude sessions on this machine at the first collection (2026-10-10; not recounted in later passes).
 
 ## Contents
 
@@ -37,7 +37,8 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 - [2026-10-09](#2026-10-09) — 38 entries. A day of parallel sessions colliding: GitHub Actions refused every job until an account-level budget was found and fixed, then ten PRs, two release PRs (#309,…
 - [2026-10-10](#2026-10-10) — 47 entries. Morning of merge and cleanup: #298 landed after a green run, #311, #315, #313 and #314 followed, the Straitly spike hit an empty wallet, and agent-scope Part B…
 - [2026-10-11](#2026-10-11) — 36 entries. The 360 study landed and the founder turned one chat (session abedc961, worktree thakeen-arabic-word-search-1c99ad) into a dispatcher. Subagents on separate br…
-- [2026-10-12](#2026-10-12) — 67 entries. Morning (00:00-11:00 UTC): the coordinating session worked through the UI/UX stack and merged #327, #319, #333, #328, #329, #334 and #330 into main (none of it…
+- [2026-10-12](#2026-10-12) — 77 entries. Morning (00:00-11:00 UTC): the coordinating session worked through the UI/UX stack and merged #327, #319, #333, #328, #329, #334 and #330 into main (none of it…
+- [2026-10-13](#2026-10-13) — 8 entries. The founder got a status report, asked what agent-scope "shadow" means and for a switch per control (PR #351), filled a startup-program form, then ordered all…
 
 ---
 
@@ -113,7 +114,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 
 - **Type:** error, action, founder
 - **Context / Thinking:** The assistant listed two critical blockers (storage; `ANTHROPIC_API_KEY`) plus optional `SUPPORT_WHATSAPP` and payment links. The founder said "do all and send me permission", so the assistant pushed interactive prompts into the founder's Terminal tabs (secrets are never typed in chat).
-- **Decision:** Secrets are entered by the founder in his own terminal with `vercel env add NAME production`; the assistant never handles values.
+- **Decision:** Secrets are entered by the founder in their own terminal with `vercel env add NAME production`; the assistant never handles values.
 - **Action:** Assistant removed and re-prompted the key; the founder supplied a WhatsApp support number (set as `SUPPORT_WHATSAPP`); `WAITLIST_ADMIN_KEY` already set.
 - **Errors & mistakes:** 09:20 "The Anthropic key got saved **empty** (you chose 'Leave as is')". 09:28 the browser pane was logged out of Vercel, so the assistant could not accept Upstash terms; the `y/N` prompt in the "Upstash KV install" tab sat unanswered. Production ran in-memory ("users vanish between requests").
 - **Founder:** 09:17 "do all and send me permission"; 09:25 "done"
@@ -413,7 +414,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 ### 19:28 UTC — Founder can sign up; assistant explains which keys are dormant (e036)
 
 - **Type:** founder, planning, docs
-- **Context / Thinking:** The founder said he would sign up with a new email on Enrich himself and asked "what is that?" about the list of dormant keys.
+- **Context / Thinking:** The founder said they would sign up with a new email on Enrich themselves and asked "what is that?" about the list of dormant keys.
 - **Decision:** The assistant cannot create accounts; it asked the founder to run Helena prompts 3-5 (what tools and model did you use; set a weekly Sunday summary task; what do you know about my brand and how do you learn from edits). It listed the keys that switch dormant features on: `RESEND_API_KEY` (+ `WAITLIST_TO`), `FAL_KEY`, `PAY_LINK_STARTER/PRO/AGENCY`, platform OAuth keys, domain + `APP_ORIGIN`.
 - **Founder:** 19:28 "1. i need to signup with new email.. if you would, i wll do it / 2. what is that?"
 - **Outcome / state:** The paste of prompts 3-5 never arrived on day 0 (still open in Owner_Tasks_AR).
@@ -5932,7 +5933,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 - **Context / Thinking:** Actions had not run since 2026-10-05. Earlier that day (before this window) the assistant had first called it billing, then said "You're right. I was wrong to call it billing" and blamed a 2026-10-05 outage, then returned to billing at 13:52. A founder screenshot showed 2,000 of 3,000 minutes used and $0 billable.
 - **Decision:** Test the block with an empty commit on #279 rather than assume.
 - **Action:** `aa8f0e1d` (15:48) ci: start a fresh run after the Actions billing fix. Both runs ended `startup_failure` with the same message. At 16:00 the founder sent a billing screenshot; assistant could not read payment pages (token lacks the `user` scope, API 404).
-- **Errors & mistakes:** The assistant stated at 15:49 "No, CI is not green" and again blamed billing; later memory (2026-10-10) records that the billing claim was wrong and billing was never the CI blocker, and the founder said there was no billing issue. At 16:03 the assistant explained the $17 as two repo budgets ($12 Actions + $5 Actions Linux), "a monthly ceiling, not a deposit" (founder had said he deposited it). What actually lifted the block is not recorded.
+- **Errors & mistakes:** The assistant stated at 15:49 "No, CI is not green" and again blamed billing; later memory (2026-10-10) records that the billing claim was wrong and billing was never the CI blocker, and the founder said there was no billing issue. At 16:03 the assistant explained the $17 as two repo budgets ($12 Actions + $5 Actions Linux), "a monthly ceiling, not a deposit" (the founder had said the deposit was made). What actually lifted the block is not recorded.
 - **Correction:** At 16:01 the assistant found the first real run since the block at 15:54Z on `claude/busy-wilbur-a2b0f4` (workflow CI, job "Nashr CI", 8 steps) and declared the block lifted; it merged main into #279 and #287 and pushed (16:04).
 - **Founder:** 16:01 "and I already deposite 17USD" (earlier same day: "its not a billing issue,").
 - **Outcome / state:** Real "Nashr CI" runs from 15:54Z; held Vercel production deploys unblock only once main is green (it was red, see 16:37).
@@ -7995,7 +7996,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 
 <a id="2026-10-12"></a>
 ## 2026-10-12
-> Morning (00:00-11:00 UTC): the coordinating session worked through the UI/UX stack and merged #327, #319, #333, #328, #329, #334 and #330 into main (none of it live). Along the way it hit e2e regressions, two CI runs cancelled at the 25-minute cap, a date-dependent test that turned main red at 09:00 UTC, and sessions disagreeing over who controls the stack. The founder got one live action-checklist page. The founder learned that most report findings were never built, ordered ten build batches (#337-#346) from the 360 study, then folded them with the UI stack into one batch PR (#347) for the release, while a separate session moved company mail to Google Workspace and fought an inbound bounce.
+> Morning (00:00-11:00 UTC): the coordinating session worked through the UI/UX stack and merged #327, #319, #333, #328, #329, #334 and #330 into main (none of it live). Along the way it hit e2e regressions, two CI runs cancelled at the 25-minute cap, a date-dependent test that turned main red at 09:00 UTC, and sessions disagreeing over who controls the stack. The founder got one live action-checklist page. The founder learned that most report findings were never built, ordered ten build batches (#337-#346) from the 360 study, then folded them with the UI stack into one batch PR (#347) for the release, while a separate session moved company mail to Google Workspace and fought an inbound bounce. Release #336 went live outside the night window on the founder's "release now", the build batch #347 turned green after a Safari-only e2e fix and merged into main, and staging was found running but unusable for lack of a database.
 
 <a id="e689"></a>
 ### 00:05 UTC — #319 branch updated to main; a second session was found pushing to the same branch (e689)
@@ -8836,11 +8837,214 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 - **Founder:** 16:35 "prepare the release PR"; 16:37 "do all the 5 by subagents in order, the update the founder checklist"; 16:35 "extend the log to 10-12"
 - **Outcome / state:** #336 draft, not merged; production still `487984f4`; #347 CI re-running.
 
+<a id="e756"></a>
+### 16:40 UTC — Summariser sign-in errors continue; claude-mem still signed out (e756)
+
+- **Type:** incident, error
+- **Context / Thinking:** Follows the 12:13 entry above. The main repo directory (`main`) kept logging the same reply from claude-mem summariser runs: "Failed to authenticate: OAuth session expired and could not be refreshed". In this slice it appears at 16:40, 16:46 (twice), 16:47, 16:51, 16:55 and 16:58 (one more at 16:30-16:31, just before the slice). Working sessions kept opening their replies with the warning that claude-mem reported "the observer as signed out" (staging session 16:31: "about 45 hours").
+- **Decision:** The fix stays with the founder (`/login` in Claude Code); sessions only repeat the warning. Reason no session could fix it: not recorded.
+- **Action:** none in code.
+- **Errors & mistakes:** Nothing from any session saved to claude-mem through the whole slice. The same error was logged again at 2026-10-13 06:42, and the coordinator repeated the `/login` request at 06:33, 06:44 and 07:35 on 10-13.
+- **Founder:** none recorded on this topic.
+- **Outcome / state:** Unresolved at 07:38 UTC on 2026-10-13.
+
+<a id="e757"></a>
+### 16:48 UTC — Public dark mode, cover call to action and freshness chip committed on a local branch (rules 1212-1216, 1228-1229) (e757)
+
+- **Type:** design, rule, branch
+- **Context / Thinking:** The founder had said yes to public dark mode after #332 at 16:29 and "fold it into the next release PR branch" at 16:30 (see the 16:29 entry of the earlier slice). Session `happy-gould-4c332b` cut `claude/uiux-phase5b-rest` from main `07ac4684` after #332 merged.
+- **Decision:** Every page under `/{lang}` follows the theme; light stays the default; the OAuth consent page stays light. This replaces "public pages stay light" in rules 1203 and 1227. Hero call to action reuses the existing signup form (`UrlStart`) with the real 3-day trial line and no price. Freshness chip reads the newest `CHANGELOG` date, so no date is hand-typed.
+- **Action:** `e8774b74` (22 files, +408/-89): rule 1214 one `ThemeScope` in the language layout; 1215 theme switch in the footer; 1212 scribble fills mapped to colour roles; 1213 home styles on roles; 1216 text on bright fills stays ink; 1228 cover CTA; 1229 freshness chip (copy in `src/lib/home-hero.ts`). Coverage `docs/system/tests/1212-public-dark-hero.md`, `tests/uiux-phase5b-rest.test.ts` (22 tests). Local `npm run check` 6,602 tests, 0 lint errors; `npx next build --webpack` passed (318 pages); local browser check in dark and light at 375 px.
+- **Errors & mistakes:** During the browser check the lemon swash made lilac text unreadable in dark, and the new hero `.trial` class collided with the plans `.trial` class (light text on lemon); both fixed before the commit (`.trialLine`, plus a guard test).
+- **Founder:** none in this slice; the session waited for the founder's word to open a draft PR.
+- **Outcome / state:** `e8774b74` exists only on the local branch `claude/uiux-phase5b-rest` at 07:38 UTC on 10-13 (no remote ref contains it). It is not in #336, #347 or #352, so it did not reach the release the founder named (inferred from git).
+
+<a id="e758"></a>
+### 16:59 UTC — Build sessions decline Auto-fix pushes after the batch took over (e758)
+
+- **Type:** ci, correction
+- **Context / Thinking:** The desktop app's "Auto-fix pull requests" kept sending merge-conflict events for the original build PRs whose content already sat in batch PR #347. The coordinating session had asked for no more pushes to them. At 16:32 (just before this slice) session `heuristic-snyder` also declined to fold its clock fix into #347, because `f6c123ea` already carried it and a push would cancel #347's running CI.
+- **Decision:** Each session aborted the Auto-fix merge and pushed nothing, citing the coordinator's request and CLAUDE.md rule 772 (a conflict alone waits until just before merge, and that rule overrides Auto-fix).
+- **Action:** `admin-second-factor-0bcf96` refused on #338 at 16:59 and 18:02; `tests-and-docs-54926f` left #346 alone at 17:20 and refused on #339 at 18:10 (branch stays at `1c612b1f`); `small-decided-fixes-bd589f` refused on #343 at 18:10, noting #343 was already closed and its work merged through #347.
+- **Errors & mistakes:** None new; the events kept arriving because Auto-fix stayed on for #338, #339 and #343. Each session asked the founder to turn Auto-fix off in the PR bar.
+- **Founder:** none recorded.
+- **Outcome / state:** No extra paid CI runs from these events in this slice.
+
+<a id="e759"></a>
+### 17:04 UTC — Leftovers audit refreshed (109 items), draft PR #350, and the claim that #347 was red (e759)
+
+- **Type:** research, docs, ci
+- **Context / Thinking:** At 16:37 the founder asked the leftovers-audit session (`leftovers-audit-360-341a20`) to do five steps by subagents and then update the founder checklist. Steps 2 (release PR) and 3 (push Part B) were moot: #336 already existed and Part B was already #345.
+- **Decision:** Re-verify all 100 earlier items in four parallel shards (46 founder items, 54 Claude items in three shards), then put the report alone on a clean branch from main as a draft PR, not marked ready (draft runs unit tests only).
+- **Action:** Local `99aa1a9c` (17:04, refresh against main `07ac4684`: 9 new, 58 changed, 1 closed, plus founder action pack: 25 entries, 110 steps). Clean branch `claude/leftovers-audit-report`: `a0f53ad2` (17:07, `docs/reports/2026-10-10-leftovers-360.md`, +1219), draft PR #350 opened 17:08; `npm run check` 236 files, 6,577 tests locally. Checklist artifact republished as version 3 with a "Founder actions" tab (24 ordered steps, about 548 minutes). Counts: 109 items, 12 P0 (9 founder, 3 Claude).
+- **Errors & mistakes:** The report said "#347 is red ... 101 failed, all mobile-safari" (new item L109) and that the fix "belongs on the #344 branch". By 17:10 the coordinator had pushed the fix to the batch branch instead (see next entry), and #347 turned green, so the red claim went stale within about 30 minutes. The audit also said the old Vercel project answered 503 DEPLOYMENT_PAUSED with the cause unverified, and that the live `/p/` redirect bug remained until #336 merged.
+- **Founder:** 16:37 "do all the 5 by subagents in order, the update the founder checklist"
+- **Outcome / state:** #350 draft at `a0f53ad2`, carrying the L109 "red" text.
+
+<a id="e760"></a>
+### 17:10 UTC — #347 red a second time: 101 Safari e2e tests on one console note; fixed by 75d3a9ac (rule 1341) (e760)
+
+- **Type:** ci, error, correction, security
+- **Context / Thinking:** Follows the 16:20 entry of the earlier slice (out-of-memory fix `0c42ad5f`). CI run 38277099644 on #347: unit tests now passed, but 101 mobile-safari e2e tests failed, all on one console message: Safari logs that a `Content-Security-Policy-Report-Only` without `report-to` has no effect. #344 ships the CSP as report-only by design (rule 1341); Chromium logged nothing; the e2e fixture counts any console error as a failure.
+- **Decision:** The coordinator (worktree `thakeen-arabic-word-search-1c99ad`) made the fixture ignore that exact Safari note only, so any real CSP violation still fails, and pushed once to the batch branch rather than to #344.
+- **Action:** `75d3a9ac` on `claude/build-batch-2026-10-12`: `e2e/fixtures/app.ts` (+4), `docs/system/tests/1340-security-hardening.md`. One push; new CI run of about 24 minutes.
+- **Errors & mistakes:** #344's own CI missed this because draft PRs skip the e2e suite. The fix could not be run locally (no local e2e), so CI was the proof. Safari still ignores the header until it gets a reporting address or becomes the enforced header (later change, not scheduled). #344's own branch (`5f0cb3bb`) does not carry the fixture change.
+- **Founder:** none recorded at this time.
+- **Outcome / state:** CI run 38282497400 on `75d3a9ac` passed; #347 CLEAN (reported 17:37).
+
+<a id="e761"></a>
+### 17:35 UTC — Founder asks to fix the #347 e2e failure on #344; already fixed; audit item L109 closed (e761)
+
+- **Type:** founder, correction, docs
+- **Context / Thinking:** The founder acted on the 17:08 audit report, which had placed the fix on the #344 branch.
+- **Decision:** The leftovers session pushed nothing: the fix was already on the batch branch and #347 was green; a copy on #344 would duplicate it and cost a CI run (rule 772). It offered to cherry-pick the fixture onto #344 only if the founder still wanted it.
+- **Action:** Local `ed303f05` (17:36, L109 closed, "#347 e2e green after 75d3a9ac"); checklist republished as version 4.
+- **Errors & mistakes:** The session corrected its own "red" claim. `ed303f05` was not pushed, so draft PR #350 still carried the old "L109 red" text; the session said it would fold the correction into #350's next push. #350 was later merged into batch #352 at `a0f53ad2`, without `ed303f05` (inferred from git: only the local branch `claude/leftovers-audit-360-341a20` contains it).
+- **Founder:** 17:35 "fix the #347 e2e failure on the #344 branch"
+- **Outcome / state:** L109 closed in the local report only.
+
+<a id="e762"></a>
+### 17:37 UTC — Release PR #336 merged into production outside the 22:00-00:40 UTC window (e762)
+
+- **Type:** merge, deploy, founder, decision, ci
+- **Context / Thinking:** At 16:36 the staging session (`staging-zero-downtime-updates-f99ead`) gave two options: A (recommended) merge #336 now at `07ac4684`, with #347 in the next release; B merge #347 first, then update the description and run CI again. It also said "The merge itself is yours ... between 22:00 and 00:40 UTC" (flows §52). Live showed no Turnstile site key, so the two Turnstile keys were not both set.
+- **Decision:** The founder chose A and "release now". The session checked that #336's head was still `07ac4684` and that the same tree (`793dfa61`) had already passed the full suite with e2e on #332 (20 minutes, green), then marked #336 ready and merged it. It cancelled the repeat CI run that marking ready started, to save about 20 paid minutes.
+- **Action:** PR #336 (main to production, 23 merges, +48931/-3992) merged at 17:37:33 UTC as `dff95f25` with a merge commit. Check status on the PR: "Nashr CI: CANCELLED" (the cancelled repeat run).
+- **Errors & mistakes:** Merged outside the release window (the PR body allowed this "unless you decide otherwise"; the founder's "release now" was that decision). The session wrote "I merged at 17:37 UTC", while flows §52 and its own 16:36 message say the founder merges; GitHub shows the founder's login on the merge, and sessions use that same login, so the merge actor cannot be told apart. On 10-13 at 06:33 the coordinator told the founder "You merged release #336", which contradicts the staging session's account. No staging proof (staging did not answer).
+- **Founder:** 17:35 "go with A, release now"
+- **Outcome / state:** `production` at `dff95f25`; #347 not in this release.
+
+<a id="e763"></a>
+### 17:40 UTC — Live checks pass; tag live-2026-10-12-1 (e763)
+
+- **Type:** deploy, action
+- **Context / Thinking:** A background check polled `/api/health` every 30 seconds until it showed the release commit.
+- **Decision:** Run the release checklist checks on live before tagging; stop and ask before any revert if signup or forgot-password returned 503.
+- **Action:** Live showed `dff95f25` at 17:40. `scripts/smoke.mjs` 6/6. Forgot-password for an unknown address returned 200, not 503, so the Turnstile pair was safe. `/p/<code>` now redirects to `https://thakeen.com/ar/app/signup` (the old `0.0.0.0:3000` bug fixed live). Old billing route redirects to `/ar/app/settings/billing`; new app pages send signed-out visitors to login; `/ar/admin` signed out returns a plain 404 by design. Home page shows the illustrative-examples line and the gallery in both languages, no model name. Tag `live-2026-10-12-1` pushed (report at 17:43).
+- **Errors & mistakes:** Not checked because they need a login: the dark theme in the app and console (never checked visually before), a chat answer, and Cancel in the founder console. Staging still did not answer.
+- **Founder:** none recorded at this step; at about 18:07 the session thanked the founder "for checking dark mode on live" (the founder's own words are not recorded in text).
+- **Outcome / state:** Live has all 23 PRs: UI/UX phases 0-5b (#317, #327-#332), the `/p/` fix (#313), the skills portal (#316) and model routing (#298, switched off). Public pages stay light on live.
+
+<a id="e764"></a>
+### 18:08 UTC — #347 build batch merged into main; #339, #343 and #346 closed as shipped (e764)
+
+- **Type:** merge, founder, ci
+- **Context / Thinking:** #347's full CI (about 24 minutes) had passed on `75d3a9ac`, and it was built on the current main.
+- **Decision:** The founder asked for the merge. The staging session merged it, then closed the three source PRs GitHub did not mark merged, because each one's only commit outside main was a merge of the old main `07ac4684`.
+- **Action:** PR #347 (+13317/-1884) merged at 18:08:24 UTC as `4c0264b4`. GitHub marked #337, #338, #340, #341, #342, #344 and #345 merged. #339, #343 and #346 closed at 18:10 with the comment "Shipped in #347 (merged to main as 4c0264b4)".
+- **Errors & mistakes:** The merge again shows the founder's login; the session says it merged, and the merge actor cannot be told apart. The coordinator later (06:33 on 10-13) told the founder "You merged batch #347". Cost note raised at merge time: agent scope (#345) starts in shadow, so once live every chat turn makes one paid Haiku check billed to Thakeen.
+- **Founder:** 18:07 "merge #347"
+- **Outcome / state:** origin/main `4c0264b4` with the ten build PRs (expand step only: optional fields and new keys). Not live; live still runs `dff95f25`.
+
+<a id="e765"></a>
+### 18:11 UTC — Staging found running but without a database; founder steps written into the checklist (e765)
+
+- **Type:** founder, incident, deploy, planning
+- **Context / Thinking:** staging.thakeen.com looked down in every earlier check, so no release had a staging step.
+- **Decision:** The staging session diagnosed it and left the fix with the founder, because the missing values are secrets only the founder can enter in hPanel.
+- **Action:** Findings (18:13): staging is built and rebuilds from main (last build `4c0264b4` at 18:10); the staging lock answers 404 on every path, `/api/health` included, until the access code is entered; the access page loads (200), but entering the code returns 500 because staging has only `APP_ENV` and `STAGING_ACCESS_KEY` and no Redis. Founder steps: add `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (new empty database), a separate low-limit `ANTHROPIC_API_KEY`, new `CRON_SECRET`, `CONNECT_SECRET`, `WAITLIST_ADMIN_KEY`, `APP_ORIGIN`, `ADMIN_EMAILS`; leave `RESEND_API_KEY`, `MAIL_FROM`, `TURNSTILE_*`, Paymob and `COMPOSIO_*` unset; `.smoke.local` with `STAGING_ACCESS_CODE` and `SMOKE_CRON_SECRET`. At 18:14 the checklist session (`loving-greider-66b8f3`) updated the existing job `jobs/staging-env` to version 2 instead of adding a row: `UPSTASH_REDIS_REST_*` names replace the old `KV_REST_API_*`, and the old instruction to set `RESEND_API_KEY` and `MAIL_FROM` on staging was dropped.
+- **Errors & mistakes:** After the founder's "staging done" (18:16), Hostinger still listed only the two old variables, entering a code still returned 500, and no `.smoke.local` existed. Likely causes given: variables not saved, saved on thakeen.com instead, or put in a `.env` file Hostinger does not read. Live still had its same 11 variables.
+- **Founder:** 18:11 "fix staging"; 18:16 "staging done"
+- **Outcome / state:** Staging unusable at end of day; still listed as a founder action on 10-13.
+
+
+<a id="2026-10-13"></a>
+## 2026-10-13
+> The founder got a status report, asked what agent-scope "shadow" means and for a switch per control (PR #351), filled a startup-program form, then ordered all pending work done by subagents, which produced batch PR #352 and six helper branches.
+
+<a id="e766"></a>
+### 06:32 UTC — Morning report: what is live, what is on main, what only the founder can do (e766)
+
+- **Type:** founder, planning
+- **Context / Thinking:** The coordinator (worktree `thakeen-arabic-word-search-1c99ad`) summarised the state after the evening's merges.
+- **Decision:** Recommended: answer «shadow on» or «shadow off», then «go», so it merges #349 and #350 into main and opens the next release PR as a draft for the founder to merge.
+- **Action:** Report at 06:33: release #336 live (`/ar` and `/en` load, home gallery shows); batch #347 on main, not live; #339, #343, #346 closed but their code is in #347. Founder-only items: the shadow decision, staging secrets (staging "shows a 404 page"), a visual review of live in both languages, both themes, desktop and phone, plus older items (Turnstile pair, test the hello@ mailbox, rotate `WAITLIST_ADMIN_KEY`, delete the old nashr-tau Vercel project, set `TRUSTED_PROXY_HOPS`, lawyer and accountant). About 110 unbuilt items in 24 checklist jobs; cleanup of finished sessions and two worktrees waits for a yes.
+- **Errors & mistakes:** The report says "You merged release #336" and "You merged batch #347"; the staging session's own messages say it merged both. GitHub shows the founder's login on both merges and sessions use that login, so who merged cannot be told apart.
+- **Founder:** 06:32 "what next in all chat and branches here"
+- **Outcome / state:** Waiting on the founder's shadow answer and «go».
+
+<a id="e767"></a>
+### 06:39 UTC — Founder asks what "shadow" means; checklist item moved to Later (e767)
+
+- **Type:** founder, decision
+- **Context / Thinking:** Agent scope (#345, on main, not live) checks the owner's request, the agent's role and the finished content with a small paid model (Haiku). Each check can be off, shadow (runs and records, blocks nothing) or enforce (blocks, refunds held items).
+- **Decision:** Coordinator's recommendation: keep shadow (the default) and read the console log after two weeks of real use before enforcing; or set all three to off to spend nothing before launch. It said the choice does not block the release because the console panel can change it after go-live.
+- **Action:** Checklist item updated and moved to "Later".
+- **Errors & mistakes:** At 06:33 the same session had said it needed the shadow answer "before the next release"; at 06:39 it said the answer does not block the release.
+- **Founder:** 06:39 "what do you mean by shadow??"
+- **Outcome / state:** Only «go» requested from the founder.
+
+<a id="e768"></a>
+### 06:40 UTC — Claude startup program form answers written to the 50-500 character limit (e768)
+
+- **Type:** founder, docs
+- **Context / Thinking:** In session `anthropic-token-cost-calculation-3ec086` the founder shared a screenshot of the form.
+- **Decision:** Answers drawn from the repo and memory notes, with no invented customers or numbers; the AI-spend percentage left to the founder to pick from real bills (text on Anthropic; images and video on kie.ai and Higgsfield).
+- **Action:** First answers at 06:40 (three support areas: production credits, Arabic quality and Sonnet/Haiku routing guidance, MENA visibility; a product description). Rewritten at 06:44 to about 420 and 440 characters.
+- **Errors & mistakes:** The first answers did not respect the form's 50-500 character limit; the founder had to state it. The 06:44 counts were approximate, not measured.
+- **Founder:** 06:40 "Im applying to Claude startup program, fill these fields with thakeen informations"; 06:43 "Please write between 50 and 500 characters. for both"
+- **Outcome / state:** Paste-ready text given; submission is the founder's.
+
+<a id="e769"></a>
+### 06:42 UTC — Founder: keep shadow on, one switch per control in the console (e769)
+
+- **Type:** founder, decision
+- **Context / Thinking:** The coordinator checked and found the switches already existed with #345 (rule 1412): Console › Quality › Agent scope, scope paragraph on/off and three selects off/shadow/enforce, all defaulting to shadow, each save behind the second factor and logged; input and output cannot go to enforce until the eval passes.
+- **Decision:** The coordinator offered an optional card to add Arabic labels and a reason form before saving, like the rest of the console; the founder started it.
+- **Action:** Session "Agent scope toggles: Arabic labels + confirm with reason" running by 06:47.
+- **Errors & mistakes:** none recorded.
+- **Founder:** 06:42 "keep shadow on, but make a toggle for each control so i can modify it in admin panel"; 06:47 "start the card"
+- **Outcome / state:** Defaults unchanged (shadow).
+
+<a id="e770"></a>
+### 06:54 UTC — PR #351: agent-scope switches ask a reason, Arabic and English labels (rules 1500-1503) (e770)
+
+- **Type:** action, rule, security
+- **Context / Thinking:** The card ran in the reused worktree `money-price-fixes-7604ef`, on a branch from origin/main `4c0264b4`.
+- **Decision:** Bring the switches in line with the console's rules for a founder change; keep stored values and `AGENT_SCOPE_DEFAULT_MODES` (prompt on, others shadow).
+- **Action:** `85a38c39` on `claude/agent-scope-toggles` (6 files, +155/-19), one push, draft PR #351. `POST /api/admin/agent-scope/modes` requires `reason` (3-200 chars; 400 `reason_short` / `reason_long` via `reasonRefused`, rule 1185), checked after `adminActor`, `secondFactorRefusal` and `bad_mode`, before any read; the reason goes into `admin:log` through `adminAudit`. `AgentScopePanel`: labels «مفعّلة» On, «متوقفة» Off, «مراقبة فقط» Watch only, «ترفض فعلاً» Refuse; a hint under each select; a pick opens the reason form (`useAdminForm`, rule 1176) showing from -> to; Cancel or Escape restores the select; no browser prompt. Docs: `permissions.md` row 182, `flows.md` §54 item 7, `docs/system/tests/1500-agent-scope-toggles.md` (1504-1509 free). Local: typegen, tsc, lint 0 errors, 255 files / 7,013 tests, `npx next build --webpack`, semantic-colours check all passed. Release step: none.
+- **Errors & mistakes:** No test opens the panel and clicks through the reason form; only code and server are tested (stated in the PR notes and by the coordinator's diff review at 06:55).
+- **Founder:** none beyond 06:42 and 06:47.
+- **Outcome / state:** Draft #351, not merged, not live.
+
+<a id="e771"></a>
+### 07:30 UTC — Founder: do every pending task with subagents; six helpers started (e771)
+
+- **Type:** founder, planning, decision
+- **Context / Thinking:** Waiting work: drafts #348-#351, about 110 unbuilt items in checklist jobs, report files kept only on the laptop, and founder-key-dependent work (media storage, Composio, Paymob).
+- **Decision:** The coordinator said it would make every decision itself without waiting. Work that needs the founder's keys is prepared only and built after the founder's «تم»; the founder's own tasks are expected this week (the founder's message saying so is not in this slice's sources). Decisions taken for the founder, listed on the checklist so they can be overturned: comparison pages keep competitor names with a date and source for each price; Western digits everywhere; build order for 8 unbuilt features (HTML email layout, magic-link sign-in, Google sign-in, phone push, WhatsApp number check, guidance sessions with a health score, diagram page, founding-20 run by hand until Paymob is on); brand id in the URL (Part C) after this batch. Merging the release PR stays the founder's.
+- **Action:** Six helpers on their own branches: small batch of #348-#351; AI safety in code (strongest model, high effort: chat starts paid generation only on the owner's own message; clinic, real estate, law, finance and pharmacy brands never auto-approve and carry a disclaimer); founder console (strongest model, high effort: daily alert when an account's margin drops under 50%, integrations page judged by key names only); public site fixes (comparison price dates, Salla/Zid worded as planned, Western digits, Arabic font, footer links, lighter home page); docs (save laptop-only reports, apply the cleaned Owner_Tasks file, fix stale docs, short plans for the 8 features); read-only live check. Checklist: 9 jobs marked done (on main from #347), the rest "Claude building". Journey-log session asked to add 11-13 Oct. Archiving held until the docs helper copies the laptop-only reports (07:34).
+- **Errors & mistakes:** The coordinator took product decisions (comparison names, digits, feature order) on the founder's behalf; they are recorded on the checklist for review. The per-helper model choices other than the two "strongest model" helpers are not recorded.
+- **Founder:** 07:30 "do your all pending tasks, planned, waited and all of them, use subagent (choose the model and effort based on the type of task to deliver the best outputs)"
+- **Outcome / state:** Six helpers running at 07:35.
+
+<a id="e772"></a>
+### 07:34 UTC — Batch branch merges #348-#351; docs branch saves the supastarter benchmark and journey log (e772)
+
+- **Type:** branch, merge, docs
+- **Context / Thinking:** Rule 772: fold the finished drafts into one branch so CI runs once.
+- **Decision:** Branch `claude/batch-2026-10-13a` from origin/main `4c0264b4`, real `--no-ff` merges in order #348, #349, #350, #351, no rebase or squash.
+- **Action:** Merges `09caf054` (`claude/linkedin-version-h002`, #348), `4702c5e0` (`claude/fix-flaky-chat-now-clock`, #349), `22d3d282` (`claude/leftovers-audit-report`, #350 at `a0f53ad2`), `e511bbd4` (`claude/agent-scope-toggles`, #351); no conflicts. The docs helper put three commits on `claude/docs-2026-10-13` from `4c0264b4`: `035ec3ca` and `2abc5467` (same patches as the journey-log commits `a2134d6f` and `cd3f9e69`), and `ea882f86` "supastarter UI/UX benchmark and adoption plan" (`docs/reports/2026-10-10-supastarter-uiux-report.md`, +604; same patch as `d2b23bcd` of 2026-10-10, which existed only on a local branch). The report merges six audits into an Arabic summary, scorecard, 16 bugs with file:line (admin Cancel applies changes, delete password in a native prompt, chat stale thread), token proposal, component inventory and six phases. Recommendations only, no product code.
+- **Errors & mistakes:** #350 entered the batch with the stale "L109 red" text, because the correction `ed303f05` was never pushed (inferred from git).
+- **Founder:** none beyond 07:30.
+- **Outcome / state:** `claude/docs-2026-10-13` was pushed later (remote head `4d1f46f6`, 07:47, after this slice); no PR for it in this slice.
+
+<a id="e773"></a>
+### 07:37 UTC — PR #352 opened (not a draft) with the batch; 4c5fe127 fixes the rule 948 clock assertion (e773)
+
+- **Type:** ci, error, correction, merge
+- **Context / Thinking:** After the merges, `tests/instructions-prompts.test.ts` (rule 948) failed: #349 adds a `Date` freeze at 13:24:59.9Z in `beforeEach` and asserts "4:24 PM", while the test already freezes 13:27:30Z (main's `f6c123ea`), so the NOW line reads 4:27 PM.
+- **Decision:** Fix the expected value in its own commit; push once; open the PR without waiting for CI. The coordinator plans to merge it into main when checks pass.
+- **Action:** `4c5fe127` (one line: expect "4:27 PM"). PR #352 "batch: #348 #349 #350 #351 (2026-10-13)" opened at 07:37:50 UTC from `claude/batch-2026-10-13a` (head `4c5fe127`), after `gh pr list --head` showed none. Local: typegen and tsc pass, lint 0 errors (151 warnings), vitest 255 files / 7,013 tests after the fix, semantic-colours 0 changes.
+- **Errors & mistakes:** #349's new assertion clashed with the clock freeze already on main; #349 was redundant, as found at 16:32 on 10-12 (see the 16:59 entry). The helper did not check whether #349 passes alone. The `npx next build --webpack` exit code was swallowed by a pipe, so a passing build was not confirmed locally (CLAUDE.md asks for it before push). #352 was opened as ready, not as a draft (CLAUDE.md: "open it as a draft"), so the full e2e suite starts at once; reason not recorded.
+- **Founder:** none recorded.
+- **Outcome / state:** #352 open with CI running at 07:38 UTC (end of collection); #348-#351 still open drafts; main at `4c0264b4`; production at `dff95f25`.
+
 ---
 
 # Appendix A — Branch ledger
 
-"Opened" is the PR creation time when a PR exists, else the first commit unique to the branch, else the branch tip time (marked *tip*). "Fate" combines PR state and git ancestry at 2026-10-12 about 16:30 UTC. A branch with no commits beyond main is a session branch (a Claude worktree) or was merged and kept. `Kind` says whether the branch is on the remote or local only.
+"Opened" is the PR creation time when a PR exists, else the first commit unique to the branch, else the branch tip time (marked *tip*). "Fate" combines PR state and git ancestry at 2026-10-13 about 07:55 UTC (branches created after the last entry at 07:37 UTC, such as `claude/public-site-fixes`, appear here without an entry). A branch with no commits beyond main is a session branch (a Claude worktree) or was merged and kept. `Kind` says whether the branch is on the remote or local only.
 
 | Branch | Kind | Purpose (PR title or first own commit) | Opened (UTC) | Last commit | Fate |
 |---|---|---|---|---|---|
@@ -8973,7 +9177,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 | `claude/wordpress-publish` | remote | feat(wordpress): featured image, update in place, live publish on per-item confirmation | 2026-10-05 15:11 | 2026-10-05 15:09 | PR #266 merged 2026-10-05 15:42; contained in production |
 | `claude/stores-scheduled-sync` | remote | feat(stores): WooCommerce sales snapshot and scheduled store sync twice a day | 2026-10-05 15:21 | 2026-10-05 15:46 | PR #267 merged 2026-10-05 16:07; contained in production |
 | `claude/salla-articles` | remote | feat(salla): remove publish_article, show a copy-ready note for articles | 2026-10-05 15:34 | 2026-10-05 16:07 | PR #268 merged 2026-10-05 16:25; contained in production |
-| `claude/reem-b2b-meeting-followup` | local-only | feat(reem): B2b propose_meeting_tasks chat tool | 2026-10-05 16:22 *tip* | 2026-10-05 16:22 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/reem-b2b-meeting-followup` | local-only | feat(reem): B2b propose_meeting_tasks chat tool | 2026-10-05 16:22 *tip* | 2026-10-05 16:22 | no commits beyond main (session branch or already merged); contained in production |
 | `claude/admiring-feistel-a6d52e` | local-only | Merge pull request #268 from iAbulkhair/claude/salla-articles | 2026-10-05 16:25 *tip* | 2026-10-05 16:25 | no commits beyond main (session branch or already merged); contained in production |
 | `claude/reem-tasks-composio-status-1798c1` | local-only | Merge pull request #268 from iAbulkhair/claude/salla-articles | 2026-10-05 16:25 *tip* | 2026-10-05 16:25 | no commits beyond main (session branch or already merged); contained in production |
 | `claude/wipe-store-ad-snapshots` | remote | fix(account): delete store and ad snapshots when an account is wiped | 2026-10-05 18:14 | 2026-10-05 18:13 | PR #269 merged 2026-10-05 18:50; contained in production |
@@ -9019,7 +9223,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 | `release/2026-10-08-1` | remote | release: 2026-10-08 #1 — email verification, Paymob (off), chat stream fix | 2026-10-08 19:07 | 2026-10-08 18:58 | PR #297 merged 2026-10-08 19:35; contained in production |
 | `claude/entitlements-agent-scope-spec` | local-only | docs(plan): entitlements Part A implementation plan | 2026-10-08 19:29 *tip* | 2026-10-08 19:29 | no commits beyond main (session branch or already merged); contained in production |
 | `claude/entitlements-part-a` | remote | feat(entitlements): one record of what each account includes (Part A, rules 780-784) | 2026-10-08 20:34 | 2026-10-08 21:27 | PR #299 merged 2026-10-09 09:37; contained in production |
-| `claude/thakeen-ai-models-integration-b3855c` | remote | feat(models): catalog, tiered credits, routing and per-customer model overrides (Straitly) | 2026-10-08 20:34 | 2026-10-09 22:18 | PR #298 merged 2026-10-10 09:36; contained in main |
+| `claude/thakeen-ai-models-integration-b3855c` | remote | feat(models): catalog, tiered credits, routing and per-customer model overrides (Straitly) | 2026-10-08 20:34 | 2026-10-09 22:18 | PR #298 merged 2026-10-10 09:36; contained in production |
 | `claude/social-analytics-reports` | remote | Social platform analytics in Dana's reports (rules 730-749) | 2026-10-08 20:37 | 2026-10-09 01:13 | PR #300 merged 2026-10-09 10:11; contained in production |
 | `claude/admin-dashboard-cf15bd` | local-only | Merge pull request #299 from iAbulkhair/claude/entitlements-part-a | 2026-10-09 09:37 *tip* | 2026-10-09 09:37 | no commits beyond main (session branch or already merged); contained in production |
 | `claude/sweet-mirzakhani-911c2a` | local-only | Merge pull request #299 from iAbulkhair/claude/entitlements-part-a | 2026-10-09 09:37 *tip* | 2026-10-09 09:37 | no commits beyond main (session branch or already merged); contained in production |
@@ -9030,7 +9234,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 | `claude/wishlist-feature-launch-7c7b2d` | local-only | Merge pull request #300 from iAbulkhair/claude/social-analytics-reports | 2026-10-09 10:11 *tip* | 2026-10-09 10:11 | no commits beyond main (session branch or already merged); contained in production |
 | `claude/admin-panel-brand-management-7d1abe` | remote | docs(spec): admin shell, brand limits per plan, brand in the URL | 2026-10-09 11:31 | 2026-10-09 11:43 | PR #303 merged 2026-10-09 21:09; contained in production |
 | `claude/admin-shell` | remote | Admin console in its own shell at /{lang}/admin (870-874) | 2026-10-09 12:13 | 2026-10-09 20:40 | PR #304 merged 2026-10-09 21:09; contained in production |
-| `claude/entitlements-part-b` | remote | docs(plan): agent scope Part B implementation plan (rules 790-808) | 2026-10-09 15:03 | 2026-10-12 13:38 | PR #305 merged 2026-10-09 20:34; PR #345 open; 14 commit(s) ahead of main after PR |
+| `claude/entitlements-part-b` | remote | docs(plan): agent scope Part B implementation plan (rules 790-808) | 2026-10-09 15:03 | 2026-10-12 13:38 | PR #305 merged 2026-10-09 20:34; PR #345 merged 2026-10-12 18:08; contained in main |
 | `claude/ci-minutes-agent-rules` | remote | docs(agents): CI-minutes rules for every agent (rule 789) | 2026-10-09 18:28 | 2026-10-09 19:11 | PR #306 merged 2026-10-09 19:22; contained in production |
 | `claude/ci-minutes-cache` | remote | ci: cut Actions minutes and split the coverage map (rules 772, 788) | 2026-10-09 18:32 | 2026-10-09 18:31 | PR #307 merged 2026-10-09 19:09; contained in production |
 | `claude/ci-checks-merge-flow-a8faea` | local-only | Merge pull request #307 from iAbulkhair/claude/ci-minutes-cache | 2026-10-09 19:09 *tip* | 2026-10-09 19:09 | no commits beyond main (session branch or already merged); contained in production |
@@ -9039,101 +9243,109 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 | `release/2026-10-09-1` | remote | release: 2026-10-09-1 (main 38fb5f0 to production) | 2026-10-09 20:29 | 2026-10-09 20:18 | PR #309 merged 2026-10-09 21:17; contained in production |
 | `claude/task-models-901` | remote | feat(models): each task type gets its own writer and reviewer (rule 901) | 2026-10-09 20:44 | 2026-10-09 20:44 | PR #310 merged 2026-10-09 21:14; contained in production |
 | `claude/modest-jennings-298e1b` | local-only | Merge pull request #310 from iAbulkhair/claude/task-models-901 | 2026-10-09 21:14 *tip* | 2026-10-09 21:14 | no commits beyond main (session branch or already merged); contained in production |
-| `claude/home-customers-text-6de532` | remote | Home: customers wording under the cover + looping, auto-sliding scenes | 2026-10-09 21:33 | 2026-10-09 22:01 | PR #311 merged 2026-10-10 09:47; contained in main |
+| `claude/home-customers-text-6de532` | remote | Home: customers wording under the cover + looping, auto-sliding scenes | 2026-10-09 21:33 | 2026-10-09 22:01 | PR #311 merged 2026-10-10 09:47; contained in production |
 | `release/2026-10-09-2` | remote | release: 2026-10-09-2 (main 0ac111b to production) | 2026-10-09 21:45 | 2026-10-09 21:14 | PR #312 merged 2026-10-09 21:46; contained in production |
-| `claude/fix-proxy-origin-redirects` | remote | fix(origin): partner links and cron hops use appOrigin(), not req.url (rule 904) | 2026-10-09 22:12 | 2026-10-10 09:48 | PR #313 merged 2026-10-10 10:34; contained in main |
-| `claude/298-reconcile-main` | local-only | feat(models): Automatic batches keep the Sonnet judge (rule 903) | 2026-10-09 22:18 *tip* | 2026-10-09 22:18 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/reem-b2b-b3-prd` | remote | Reem B2b meeting follow-up + B3 marketing calendar read, PRD v3.2 | 2026-10-09 22:44 | 2026-10-10 10:39 | PR #314 merged 2026-10-10 11:34; contained in main |
-| `claude/298-followups` | remote | Follow-ups of #298: wipeAccount race, brand lock 503, Premium hold on the billing card (rules 905-9… | 2026-10-10 10:09 | 2026-10-10 10:05 | PR #315 merged 2026-10-10 10:33; contained in main |
-| `claude/audit-undeployed-tasks-a86e78` | local-only | Merge remote-tracking branch 'origin/main' into claude/audit-undeployed-tasks-a86e78 | 2026-10-10 10:39 *tip* | 2026-10-10 10:39 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/nice-cray-981386` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/project-360-review-log-cbc7b2` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/vercel-necessity-review-6a1a3b` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/xenodochial-galileo-4d712e` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/leftovers-audit-360-341a20` | local-only | docs(reports): leftovers 360 audit, 2026-10-10 | 2026-10-10 12:01 | 2026-10-10 21:06 | UNMERGED: 2 commit(s) ahead of main, no PR |
+| `claude/fix-proxy-origin-redirects` | remote | fix(origin): partner links and cron hops use appOrigin(), not req.url (rule 904) | 2026-10-09 22:12 | 2026-10-10 09:48 | PR #313 merged 2026-10-10 10:34; contained in production |
+| `claude/298-reconcile-main` | local-only | feat(models): Automatic batches keep the Sonnet judge (rule 903) | 2026-10-09 22:18 *tip* | 2026-10-09 22:18 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/reem-b2b-b3-prd` | remote | Reem B2b meeting follow-up + B3 marketing calendar read, PRD v3.2 | 2026-10-09 22:44 | 2026-10-10 10:39 | PR #314 merged 2026-10-10 11:34; contained in production |
+| `claude/298-followups` | remote | Follow-ups of #298: wipeAccount race, brand lock 503, Premium hold on the billing card (rules 905-9… | 2026-10-10 10:09 | 2026-10-10 10:05 | PR #315 merged 2026-10-10 10:33; contained in production |
+| `claude/audit-undeployed-tasks-a86e78` | local-only | Merge remote-tracking branch 'origin/main' into claude/audit-undeployed-tasks-a86e78 | 2026-10-10 10:39 *tip* | 2026-10-10 10:39 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/nice-cray-981386` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/project-360-review-log-cbc7b2` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/vercel-necessity-review-6a1a3b` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/xenodochial-galileo-4d712e` | local-only | Merge pull request #314 from iAbulkhair/claude/reem-b2b-b3-prd | 2026-10-10 11:34 *tip* | 2026-10-10 11:34 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/leftovers-audit-360-341a20` | local-only | docs(reports): leftovers 360 audit, 2026-10-10 | 2026-10-10 12:01 | 2026-10-12 17:36 | UNMERGED: 4 commit(s) ahead of main, no PR |
 | `claude/supastarter-uiux-report-fca589` | local-only | docs(reports): supastarter UI/UX benchmark and adoption plan | 2026-10-10 12:11 | 2026-10-10 12:11 | UNMERGED: 1 commit(s) ahead of main, no PR |
-| `claude/journey-log-0111b9` | local-only | docs(journey): add development log 2026-09-17 to 2026-10-10 | 2026-10-10 12:29 | 2026-10-10 12:29 | UNMERGED: 1 commit(s) ahead of main, no PR |
-| `claude/agent-skills-portal-47b7dd` | remote | feat(instructions): agent skills portal (rules 930-959) | 2026-10-10 15:29 | 2026-10-12 10:07 | PR #316 merged 2026-10-12 11:20; contained in main |
-| `claude/uiux-phase0` | remote | fix(ui): UI/UX phase 0, bugs B-1 to B-11 and quick wins (rules 960-969, 974-977) | 2026-10-10 15:49 | 2026-10-10 16:49 | PR #317 merged 2026-10-11 02:32; contained in main |
-| `claude/happy-gould-4c332b` | remote | fix(usage): meter every billed call (980-986); 5.5 models only (970-972) | 2026-10-10 16:18 | 2026-10-10 16:26 | PR #318 merged 2026-10-10 16:44; contained in main |
-| `claude/anthropic-token-cost-calculation-3ec086` | local-only | Merge claude/happy-gould-4c332b (metering, rules 980-986) with the pre-5.5 removal (rules 970-972) | 2026-10-10 16:26 *tip* | 2026-10-10 16:26 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/strange-kilby-e46c6b` | local-only | Merge pull request #318 from iAbulkhair/claude/happy-gould-4c332b | 2026-10-10 16:44 *tip* | 2026-10-10 16:44 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/retire-vercel` | remote | chore: stop steering the old Vercel project (rules 987-990) | 2026-10-10 16:59 | 2026-10-11 23:01 | PR #319 merged 2026-10-12 06:00; contained in main |
+| `claude/journey-log-0111b9` | local-only | docs(journey): add development log 2026-09-17 to 2026-10-10 | 2026-10-10 12:29 | 2026-10-12 16:57 | UNMERGED: 2 commit(s) ahead of main, no PR |
+| `claude/agent-skills-portal-47b7dd` | remote | feat(instructions): agent skills portal (rules 930-959) | 2026-10-10 15:29 | 2026-10-12 10:07 | PR #316 merged 2026-10-12 11:20; contained in production |
+| `claude/uiux-phase0` | remote | fix(ui): UI/UX phase 0, bugs B-1 to B-11 and quick wins (rules 960-969, 974-977) | 2026-10-10 15:49 | 2026-10-10 16:49 | PR #317 merged 2026-10-11 02:32; contained in production |
+| `claude/happy-gould-4c332b` | remote | fix(usage): meter every billed call (980-986); 5.5 models only (970-972) | 2026-10-10 16:18 | 2026-10-10 16:26 | PR #318 merged 2026-10-10 16:44; contained in production |
+| `claude/anthropic-token-cost-calculation-3ec086` | local-only | Merge claude/happy-gould-4c332b (metering, rules 980-986) with the pre-5.5 removal (rules 970-972) | 2026-10-10 16:26 *tip* | 2026-10-10 16:26 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/strange-kilby-e46c6b` | local-only | Merge pull request #318 from iAbulkhair/claude/happy-gould-4c332b | 2026-10-10 16:44 *tip* | 2026-10-10 16:44 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/retire-vercel` | remote | chore: stop steering the old Vercel project (rules 987-990) | 2026-10-10 16:59 | 2026-10-11 23:01 | PR #319 merged 2026-10-12 06:00; contained in production |
 | `retire-merge` | local-only | chore: stop steering the old Vercel project (rules 987-990) | 2026-10-10 16:59 | 2026-10-11 22:08 | UNMERGED: 2 commit(s) ahead of main, no PR |
-| `claude/media-storage-spec-41fe7e` | remote | docs(spec): media storage on Hostinger disk, Drive as the client's archive (rules 991-1010) | 2026-10-10 17:17 | 2026-10-10 18:56 | PR #320 merged 2026-10-11 21:37; contained in main |
-| `claude/360-study-2026-10-11` | local-only | docs(reports): Thakeen 360 study 2026-10-11 (read-only) | 2026-10-11 02:31 *tip* | 2026-10-11 02:31 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/busy-wozniak-b9a270` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/competent-matsumoto-ba65ca` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/cool-antonelli-82c36a` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/laughing-poitras-87cde9` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/loving-greider-66b8f3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a0ab6fed7a0b27a9b` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a1337ded774a41a4c` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a2cb5eed482c70972` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a40873f0755c8caa3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a42435cdf0cb5cc65` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a523fa1882d547569` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a55bc79c5f1723345` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a60ae3b167492aed3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a8686f65c5649a63f` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-ac9376c2c0b6810f4` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/uiux-phase0-cancel-pin` | local-only | test(admin): pin Cancel on every founder console prompt and confirm (rule 960) | 2026-10-11 03:13 | 2026-10-11 03:13 | UNMERGED: 1 commit(s) ahead of main, no PR |
+| `claude/media-storage-spec-41fe7e` | remote | docs(spec): media storage on Hostinger disk, Drive as the client's archive (rules 991-1010) | 2026-10-10 17:17 | 2026-10-10 18:56 | PR #320 merged 2026-10-11 21:37; contained in production |
+| `claude/360-study-2026-10-11` | local-only | docs(reports): Thakeen 360 study 2026-10-11 (read-only) | 2026-10-11 02:31 *tip* | 2026-10-11 02:31 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/busy-wozniak-b9a270` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/competent-matsumoto-ba65ca` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/cool-antonelli-82c36a` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/laughing-poitras-87cde9` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/loving-greider-66b8f3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a0ab6fed7a0b27a9b` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a1337ded774a41a4c` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a2cb5eed482c70972` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a40873f0755c8caa3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a42435cdf0cb5cc65` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a523fa1882d547569` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a55bc79c5f1723345` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a60ae3b167492aed3` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a8686f65c5649a63f` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-ac9376c2c0b6810f4` | local-only | Merge pull request #317 from iAbulkhair/claude/uiux-phase0 | 2026-10-11 02:32 *tip* | 2026-10-11 02:32 | no commits beyond main (session branch or already merged); contained in production |
 | `monitoring-ci-parity-merge` | local-only | feat(ops): store health check, cron heartbeats, CI built like Hostinger (rules 1011-1019) | 2026-10-11 03:24 | 2026-10-11 20:47 | UNMERGED: 1 commit(s) ahead of main, no PR |
 | `claude/console-dialogs` | remote | feat(admin): founder console changes ask in one in-page form (rules 1100-1102) | 2026-10-11 09:39 | 2026-10-11 09:39 | PR #321 closed 2026-10-11 17:38; 1 commit(s) ahead of main after PR |
-| `claude/monitoring-ci-parity` | remote | feat(ops): store health check, cron heartbeats, CI built like Hostinger (rules 1011-1019) | 2026-10-11 12:34 | 2026-10-11 20:48 | PR #324 merged 2026-10-11 21:37; contained in main |
-| `claude/r1-release-prep` | remote | fix(release): honesty fixes for release R1 (rules 924-929) | 2026-10-11 12:34 | 2026-10-11 18:12 | PR #322 merged 2026-10-11 20:45; contained in main |
-| `claude/turnstile-client-ip` | remote | fix(security): trusted proxy hop for client IP, Turnstile fails closed (rules 908, 909, 978, 979) | 2026-10-11 12:34 | 2026-10-11 03:22 | PR #323 merged 2026-10-11 20:46; contained in main |
-| `claude/privacy-terms-draft` | remote | docs(legal): privacy policy + terms drafts for lawyer review | 2026-10-11 12:35 | 2026-10-11 13:01 | PR #325 merged 2026-10-11 21:37; contained in main |
-| `claude/prompt-studio-specs` | remote | docs(specs): agent learning loop + admin control center (rules 1020-1079) | 2026-10-11 12:35 | 2026-10-11 12:47 | PR #326 merged 2026-10-11 21:37; contained in main |
-| `claude/uiux-phase1` | remote | feat(ui): UI/UX phase 1, tokens and core primitives (rules 1080-1099) | 2026-10-11 12:35 | 2026-10-11 21:49 | PR #327 merged 2026-10-12 00:21; contained in main |
-| `claude/uiux-phase2` | remote | feat(ui): UI/UX phase 2, shell, chat and states (rules 1110-1130) | 2026-10-11 12:35 | 2026-10-12 06:48 | PR #328 merged 2026-10-12 07:29; contained in main |
-| `claude/uiux-phase3` | remote | feat(ui): UI/UX phase 3, settings area and billing (rules 1140-1158) | 2026-10-11 12:35 | 2026-10-12 06:49 | PR #329 merged 2026-10-12 08:48; contained in main |
-| `claude/uiux-phase4` | remote | feat(admin): UI/UX phase 4, founder console and Control Center phase 1 (rules 1170-1190) | 2026-10-11 13:53 | 2026-10-12 09:27 | PR #330 merged 2026-10-12 09:59; contained in main |
-| `claude/uiux-phase5` | remote | feat(ui): UI/UX phase 5, semantic colours and dark theme for app and console (rules 1200-1205) | 2026-10-11 14:18 | 2026-10-12 11:50 | PR #331 merged 2026-10-12 13:36; contained in main |
-| `claude/uiux-phase5b` | remote | feat(home): live UI gallery on the home page (UI/UX phase 5b, rules 1220-1227) | 2026-10-11 20:45 | 2026-10-12 14:47 | PR #332 merged 2026-10-12 15:44; contained in main |
-| `worktree-agent-a0818c92a49a505f9` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a0b94983f1cd1569c` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-aaaa33f21a65e9b2b` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in main |
-| `monitoring-merge` | local-only | Merge main into claude/monitoring-ci-parity (after #322, #323) | 2026-10-11 20:48 *tip* | 2026-10-11 20:48 | no commits beyond main (session branch or already merged); contained in main |
-| `phase1-e2e-fix` | local-only | test(e2e): select auth fields by their visible label (phase 1, rule 1090) | 2026-10-11 21:49 *tip* | 2026-10-11 21:49 | no commits beyond main (session branch or already merged); contained in main |
-| `retire-merge2` | local-only | docs(architecture): the heartbeat paragraph names crons.json (rule 989) | 2026-10-11 23:01 *tip* | 2026-10-11 23:01 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a13a868b91856c992` | local-only | Merge pull request #327 from iAbulkhair/claude/uiux-phase1 | 2026-10-12 00:21 *tip* | 2026-10-12 00:21 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a529b6ab25fd87e23` | local-only | Merge pull request #319 from iAbulkhair/claude/retire-vercel | 2026-10-12 06:00 *tip* | 2026-10-12 06:00 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/360-founder-guide` | remote | docs(reports): Thakeen 360 study 2026-10-11 + plain-language founder edition | 2026-10-12 06:05 | 2026-10-11 03:11 | PR #333 merged 2026-10-12 06:13; contained in main |
-| `claude/founder-actions-669be5` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/peaceful-curran-0ce2ed` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a1f7595c0bec5e7e3` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in main |
-| `phase2-e2e-fix` | local-only | test(e2e): log out from the account menu's footer, not from inside role=menu (rule 1112) | 2026-10-12 06:48 *tip* | 2026-10-12 06:48 | no commits beyond main (session branch or already merged); contained in main |
-| `phase3-update` | local-only | Merge origin/claude/uiux-phase2 (adecc1d8) into claude/uiux-phase3 | 2026-10-12 06:49 *tip* | 2026-10-12 06:49 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/ci-build-once` | remote | ci: build once and start that build for the e2e suite (rules 1207-1210) | 2026-10-12 07:32 | 2026-10-12 07:32 | PR #334 merged 2026-10-12 09:09; contained in main |
-| `worktree-agent-a3ac8040aa9756697` | local-only | Merge pull request #329 from iAbulkhair/claude/uiux-phase3 | 2026-10-12 08:48 *tip* | 2026-10-12 08:48 | no commits beyond main (session branch or already merged); contained in main |
-| `prep-phase4` | local-only | test(secretary): read alert markers on the frozen clock (rules 479, 480) | 2026-10-12 09:27 *tip* | 2026-10-12 09:27 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/monitoring-ci-parity` | remote | feat(ops): store health check, cron heartbeats, CI built like Hostinger (rules 1011-1019) | 2026-10-11 12:34 | 2026-10-11 20:48 | PR #324 merged 2026-10-11 21:37; contained in production |
+| `claude/r1-release-prep` | remote | fix(release): honesty fixes for release R1 (rules 924-929) | 2026-10-11 12:34 | 2026-10-11 18:12 | PR #322 merged 2026-10-11 20:45; contained in production |
+| `claude/turnstile-client-ip` | remote | fix(security): trusted proxy hop for client IP, Turnstile fails closed (rules 908, 909, 978, 979) | 2026-10-11 12:34 | 2026-10-11 03:22 | PR #323 merged 2026-10-11 20:46; contained in production |
+| `claude/privacy-terms-draft` | remote | docs(legal): privacy policy + terms drafts for lawyer review | 2026-10-11 12:35 | 2026-10-11 13:01 | PR #325 merged 2026-10-11 21:37; contained in production |
+| `claude/prompt-studio-specs` | remote | docs(specs): agent learning loop + admin control center (rules 1020-1079) | 2026-10-11 12:35 | 2026-10-11 12:47 | PR #326 merged 2026-10-11 21:37; contained in production |
+| `claude/uiux-phase1` | remote | feat(ui): UI/UX phase 1, tokens and core primitives (rules 1080-1099) | 2026-10-11 12:35 | 2026-10-11 21:49 | PR #327 merged 2026-10-12 00:21; contained in production |
+| `claude/uiux-phase2` | remote | feat(ui): UI/UX phase 2, shell, chat and states (rules 1110-1130) | 2026-10-11 12:35 | 2026-10-12 06:48 | PR #328 merged 2026-10-12 07:29; contained in production |
+| `claude/uiux-phase3` | remote | feat(ui): UI/UX phase 3, settings area and billing (rules 1140-1158) | 2026-10-11 12:35 | 2026-10-12 06:49 | PR #329 merged 2026-10-12 08:48; contained in production |
+| `claude/uiux-phase4` | remote | feat(admin): UI/UX phase 4, founder console and Control Center phase 1 (rules 1170-1190) | 2026-10-11 13:53 | 2026-10-12 09:27 | PR #330 merged 2026-10-12 09:59; contained in production |
+| `claude/uiux-phase5` | remote | feat(ui): UI/UX phase 5, semantic colours and dark theme for app and console (rules 1200-1205) | 2026-10-11 14:18 | 2026-10-12 11:50 | PR #331 merged 2026-10-12 13:36; contained in production |
+| `claude/uiux-phase5b` | remote | feat(home): live UI gallery on the home page (UI/UX phase 5b, rules 1220-1227) | 2026-10-11 20:45 | 2026-10-12 14:47 | PR #332 merged 2026-10-12 15:44; contained in production |
+| `worktree-agent-a0818c92a49a505f9` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a0b94983f1cd1569c` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-aaaa33f21a65e9b2b` | local-only | Merge pull request #323 from iAbulkhair/claude/turnstile-client-ip | 2026-10-11 20:46 *tip* | 2026-10-11 20:46 | no commits beyond main (session branch or already merged); contained in production |
+| `monitoring-merge` | local-only | Merge main into claude/monitoring-ci-parity (after #322, #323) | 2026-10-11 20:48 *tip* | 2026-10-11 20:48 | no commits beyond main (session branch or already merged); contained in production |
+| `phase1-e2e-fix` | local-only | test(e2e): select auth fields by their visible label (phase 1, rule 1090) | 2026-10-11 21:49 *tip* | 2026-10-11 21:49 | no commits beyond main (session branch or already merged); contained in production |
+| `retire-merge2` | local-only | docs(architecture): the heartbeat paragraph names crons.json (rule 989) | 2026-10-11 23:01 *tip* | 2026-10-11 23:01 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a13a868b91856c992` | local-only | Merge pull request #327 from iAbulkhair/claude/uiux-phase1 | 2026-10-12 00:21 *tip* | 2026-10-12 00:21 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a529b6ab25fd87e23` | local-only | Merge pull request #319 from iAbulkhair/claude/retire-vercel | 2026-10-12 06:00 *tip* | 2026-10-12 06:00 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/360-founder-guide` | remote | docs(reports): Thakeen 360 study 2026-10-11 + plain-language founder edition | 2026-10-12 06:05 | 2026-10-11 03:11 | PR #333 merged 2026-10-12 06:13; contained in production |
+| `claude/founder-actions-669be5` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/peaceful-curran-0ce2ed` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a1f7595c0bec5e7e3` | local-only | Merge pull request #333 from iAbulkhair/claude/360-founder-guide | 2026-10-12 06:13 *tip* | 2026-10-12 06:13 | no commits beyond main (session branch or already merged); contained in production |
+| `phase2-e2e-fix` | local-only | test(e2e): log out from the account menu's footer, not from inside role=menu (rule 1112) | 2026-10-12 06:48 *tip* | 2026-10-12 06:48 | no commits beyond main (session branch or already merged); contained in production |
+| `phase3-update` | local-only | Merge origin/claude/uiux-phase2 (adecc1d8) into claude/uiux-phase3 | 2026-10-12 06:49 *tip* | 2026-10-12 06:49 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/ci-build-once` | remote | ci: build once and start that build for the e2e suite (rules 1207-1210) | 2026-10-12 07:32 | 2026-10-12 07:32 | PR #334 merged 2026-10-12 09:09; contained in production |
+| `worktree-agent-a3ac8040aa9756697` | local-only | Merge pull request #329 from iAbulkhair/claude/uiux-phase3 | 2026-10-12 08:48 *tip* | 2026-10-12 08:48 | no commits beyond main (session branch or already merged); contained in production |
+| `prep-phase4` | local-only | test(secretary): read alert markers on the frozen clock (rules 479, 480) | 2026-10-12 09:27 *tip* | 2026-10-12 09:27 | no commits beyond main (session branch or already merged); contained in production |
 | `claude/recursing-bose-28f141` | remote | test: fix date-expired notifseen reads in secretary-calendar (main red from 2026-10-12) | 2026-10-12 09:58 | 2026-10-12 09:58 | PR #335 closed 2026-10-12 10:00; 1 commit(s) ahead of main after PR |
-| `claude/intelligent-aryabhata-353f6e` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/optimistic-proskuriakova-16b9f4` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/reliability-batch-fe3f2e` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/report-gap-check-119af7` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in main |
-| `prep-phase5` | local-only | Merge origin/main (agent skills portal #316) into UI/UX phase 5; raise CI cap to 35 minutes (rule 1… | 2026-10-12 11:50 *tip* | 2026-10-12 11:50 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/reliability-batch` | remote | Reliability batch: batched Redis reads, no-await-in-loop test, Reem tick marker, rollback doc (rule… | 2026-10-12 13:08 | 2026-10-12 13:07 | PR #337 open; 1 commit(s) ahead of main after PR |
-| `claude/admin-second-factor-0bcf96` | remote | feat(admin): second sign-in factor for founder console writes (rules 1370-1384) | 2026-10-12 13:10 | 2026-10-12 13:10 | PR #338 open; 1 commit(s) ahead of main after PR |
-| `claude/tests-and-docs-54926f` | remote | test+docs: close 360-study test gaps, correct stale docs (rules 1450-1458) | 2026-10-12 13:12 | 2026-10-12 15:46 | PR #339 open; 3 commit(s) ahead of main after PR |
-| `claude/brand-limits-a3c893` | remote | feat(brands): cap active brands per plan, founder override (rules 1390-1395) | 2026-10-12 13:15 | 2026-10-12 13:14 | PR #340 open; 1 commit(s) ahead of main after PR |
-| `claude/privacy-in-code-2aa534` | remote | feat(privacy): owner data download, signup consent record, processor list (rules 1320-1330) | 2026-10-12 13:15 | 2026-10-12 13:15 | PR #341 open; 1 commit(s) ahead of main after PR |
-| `claude/money-price-fixes-7604ef` | remote | fix(billing): refund ends the plan, hand-set paid-through day, no charge for an empty batch, price… | 2026-10-12 13:17 | 2026-10-12 13:39 | PR #342 open; 4 commit(s) ahead of main after PR |
-| `claude/small-decided-fixes-bd589f` | remote | Small decided fixes: Saudi-only partners, brand currency, stalled sign-ups, provider errors, approv… | 2026-10-12 13:20 | 2026-10-12 15:47 | PR #343 open; 4 commit(s) ahead of main after PR |
-| `claude/security-hardening-a50eea` | remote | Security hardening batch (expand): headers, pinned fetches, hashed sessions, MCP tokens, secret scan | 2026-10-12 13:21 | 2026-10-12 13:23 | PR #344 open; 2 commit(s) ahead of main after PR |
-| `claude/google-workspace-dns-email-bde458` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/heuristic-snyder-789657` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/quirky-perlman-30ae7b` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-a23b4a4fa7598ccf5` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
-| `worktree-agent-aded0f8c6b3a82ce9` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in main |
-| `prep-phase5b` | local-only | Merge origin/main into UI/UX phase 5b (live UI gallery, rules 1220-1227) | 2026-10-12 13:42 *tip* | 2026-10-12 13:42 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/home-startform-cleanup` | remote | chore(home): delete the unmounted StartForm and its dead CSS (rule 1459) | 2026-10-12 13:44 | 2026-10-12 13:44 | PR #346 open; 3 commit(s) ahead of main after PR |
-| `fix-5b-e2e` | local-only | test(e2e): home sections include the gallery after your day (rule 1220) | 2026-10-12 14:47 *tip* | 2026-10-12 14:47 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/uiux-phase5b-rest` | local-only | Merge pull request #332 from iAbulkhair/claude/uiux-phase5b | 2026-10-12 15:44 *tip* | 2026-10-12 15:44 | no commits beyond main (session branch or already merged); contained in main |
-| `claude/build-batch-2026-10-12` | remote | Build batch 2026-10-12: PRs #337-#346 in one merge | 2026-10-12 15:50 | 2026-10-12 16:23 | PR #347 open; 47 commit(s) ahead of main after PR |
+| `claude/intelligent-aryabhata-353f6e` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/optimistic-proskuriakova-16b9f4` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/reliability-batch-fe3f2e` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/report-gap-check-119af7` | local-only | Merge pull request #316 from iAbulkhair/claude/agent-skills-portal-47b7dd | 2026-10-12 11:20 *tip* | 2026-10-12 11:20 | no commits beyond main (session branch or already merged); contained in production |
+| `prep-phase5` | local-only | Merge origin/main (agent skills portal #316) into UI/UX phase 5; raise CI cap to 35 minutes (rule 1… | 2026-10-12 11:50 *tip* | 2026-10-12 11:50 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/batch-2026-10-13a` | remote | docs(linkedin): correct H-002 and spec on the 202510 sunset | 2026-10-12 13:08 | 2026-10-13 07:37 | UNMERGED: 10 commit(s) ahead of main, no PR |
+| `claude/reliability-batch` | remote | Reliability batch: batched Redis reads, no-await-in-loop test, Reem tick marker, rollback doc (rule… | 2026-10-12 13:08 | 2026-10-12 13:07 | PR #337 merged 2026-10-12 18:08; contained in main |
+| `claude/admin-second-factor-0bcf96` | remote | feat(admin): second sign-in factor for founder console writes (rules 1370-1384) | 2026-10-12 13:10 | 2026-10-12 13:10 | PR #338 merged 2026-10-12 18:08; contained in main |
+| `claude/tests-and-docs-54926f` | remote | test+docs: close 360-study test gaps, correct stale docs (rules 1450-1458) | 2026-10-12 13:12 | 2026-10-12 15:46 | PR #339 closed 2026-10-12 18:10; 1 commit(s) ahead of main after PR |
+| `claude/brand-limits-a3c893` | remote | feat(brands): cap active brands per plan, founder override (rules 1390-1395) | 2026-10-12 13:15 | 2026-10-12 13:14 | PR #340 merged 2026-10-12 18:08; contained in main |
+| `claude/privacy-in-code-2aa534` | remote | feat(privacy): owner data download, signup consent record, processor list (rules 1320-1330) | 2026-10-12 13:15 | 2026-10-12 13:15 | PR #341 merged 2026-10-12 18:08; contained in main |
+| `claude/money-price-fixes-7604ef` | remote | fix(billing): refund ends the plan, hand-set paid-through day, no charge for an empty batch, price… | 2026-10-12 13:17 | 2026-10-12 13:39 | PR #342 merged 2026-10-12 18:08; contained in main |
+| `claude/small-decided-fixes-bd589f` | remote | Small decided fixes: Saudi-only partners, brand currency, stalled sign-ups, provider errors, approv… | 2026-10-12 13:20 | 2026-10-12 15:47 | PR #343 closed 2026-10-12 18:10; 1 commit(s) ahead of main after PR |
+| `claude/security-hardening-a50eea` | remote | Security hardening batch (expand): headers, pinned fetches, hashed sessions, MCP tokens, secret scan | 2026-10-12 13:21 | 2026-10-12 13:23 | PR #344 merged 2026-10-12 18:08; contained in main |
+| `claude/google-workspace-dns-email-bde458` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/heuristic-snyder-789657` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/quirky-perlman-30ae7b` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-a23b4a4fa7598ccf5` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in production |
+| `worktree-agent-aded0f8c6b3a82ce9` | local-only | Merge pull request #331 from iAbulkhair/claude/uiux-phase5 | 2026-10-12 13:36 *tip* | 2026-10-12 13:36 | no commits beyond main (session branch or already merged); contained in production |
+| `prep-phase5b` | local-only | Merge origin/main into UI/UX phase 5b (live UI gallery, rules 1220-1227) | 2026-10-12 13:42 *tip* | 2026-10-12 13:42 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/home-startform-cleanup` | remote | chore(home): delete the unmounted StartForm and its dead CSS (rule 1459) | 2026-10-12 13:44 | 2026-10-12 13:44 | PR #346 closed 2026-10-12 18:10; contained in main |
+| `fix-5b-e2e` | local-only | test(e2e): home sections include the gallery after your day (rule 1220) | 2026-10-12 14:47 *tip* | 2026-10-12 14:47 | no commits beyond main (session branch or already merged); contained in production |
+| `claude/build-batch-2026-10-12` | remote | Build batch 2026-10-12: PRs #337-#346 in one merge | 2026-10-12 15:50 | 2026-10-12 17:10 | PR #347 merged 2026-10-12 18:08; contained in main |
 | `claude/fix-flaky-chat-now-clock` | remote | test: freeze the clock in the rule 948 chat system() block | 2026-10-12 16:31 | 2026-10-12 13:42 | PR #349 open; 1 commit(s) ahead of main after PR |
 | `claude/linkedin-version-h002` | remote | docs(linkedin): H-002, spec and PRD on the 202510 sunset | 2026-10-12 16:31 | 2026-10-12 13:25 | PR #348 open; 2 commit(s) ahead of main after PR |
+| `claude/uiux-phase5b-rest` | local-only | feat(home): public dark mode, cover call to action and freshness chip (rules 1212-1216, 1228-1229) | 2026-10-12 16:48 | 2026-10-12 16:48 | UNMERGED: 1 commit(s) ahead of main, no PR |
+| `claude/leftovers-audit-report` | remote | docs(reports): leftovers 360 audit, refreshed 2026-10-12 (109 items) | 2026-10-12 17:08 | 2026-10-12 17:07 | PR #350 open; 1 commit(s) ahead of main after PR |
+| `claude/ai-safety-gates` | local-only | Merge pull request #347 from iAbulkhair/claude/build-batch-2026-10-12 | 2026-10-12 18:08 *tip* | 2026-10-12 18:08 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/console-margin-integrations` | local-only | Merge pull request #347 from iAbulkhair/claude/build-batch-2026-10-12 | 2026-10-12 18:08 *tip* | 2026-10-12 18:08 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/laughing-perlman-0221bf` | local-only | Merge pull request #347 from iAbulkhair/claude/build-batch-2026-10-12 | 2026-10-12 18:08 *tip* | 2026-10-12 18:08 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/startup-program-application-900e78` | local-only | Merge pull request #347 from iAbulkhair/claude/build-batch-2026-10-12 | 2026-10-12 18:08 *tip* | 2026-10-12 18:08 | no commits beyond main (session branch or already merged); contained in main |
+| `claude/agent-scope-toggles` | remote | feat(admin): agent-scope switches ask a reason, Arabic + English labels (rules 1500-1503) | 2026-10-13 06:54 | 2026-10-13 06:54 | PR #351 open; 1 commit(s) ahead of main after PR |
+| `claude/docs-2026-10-13` | remote | docs(journey): add development log 2026-09-17 to 2026-10-10 | 2026-10-13 07:34 | 2026-10-13 07:47 | UNMERGED: 4 commit(s) ahead of main, no PR |
+| `claude/public-site-fixes` | remote | fix(public-site): dated competitor prices, unscored agents article, Western digits, UI leftovers (r… | 2026-10-13 07:51 | 2026-10-13 07:51 | UNMERGED: 1 commit(s) ahead of main, no PR |
 
 # Appendix B — PR ledger
 
@@ -9284,20 +9496,22 @@ GitHub numbers pull requests and issues together (#1–#315); only pull requests
 | #333 | docs(reports): Thakeen 360 study 2026-10-11 + plain-language founder edition | merged | 2026-10-12 06:05 | 2026-10-12 06:13 | `claude/360-founder-guide` → `main` | +5654/−0 |  | [e695](#e695), [e698](#e698), [e703](#e703), [e714](#e714) |
 | #334 | ci: build once and start that build for the e2e suite (rules 1207-1210) | merged | 2026-10-12 07:32 | 2026-10-12 09:09 | `claude/ci-build-once` → `main` | +206/−15 |  | [e693](#e693), [e703](#e703), [e705](#e705), [e707](#e707), [e708](#e708), [e712](#e712), [e713](#e713), [e714](#e714) |
 | #335 | test: fix date-expired notifseen reads in secretary-calendar (main red from 2026-10-12) | closed | 2026-10-12 09:58 | 2026-10-12 10:00 | `claude/recursing-bose-28f141` → `main` | +3/−1 | draft; closed without merge; failed/cancelled checks: Nashr CI; 1 comments, 0 reviews | [e710](#e710), [e716](#e716), [e720](#e720) |
-| #336 | release: 2026-10-12-1 (main 07ac468 to production) | open | 2026-10-12 11:24 |  | `main` → `production` | +48931/−3992 | draft; release PR | [e718](#e718), [e721](#e721), [e724](#e724), [e726](#e726), [e740](#e740), [e742](#e742), [e755](#e755) |
-| #337 | Reliability batch: batched Redis reads, no-await-in-loop test, Reem tick marker, rollback doc (rules 1430-143… | open | 2026-10-12 13:08 |  | `claude/reliability-batch` → `main` | +488/−38 | draft | [e731](#e731), [e745](#e745) |
-| #338 | feat(admin): second sign-in factor for founder console writes (rules 1370-1384) | open | 2026-10-12 13:10 |  | `claude/admin-second-factor-0bcf96` → `main` | +1019/−5 | draft | [e732](#e732), [e741](#e741), [e745](#e745), [e749](#e749) |
-| #339 | test+docs: close 360-study test gaps, correct stale docs (rules 1450-1458) | open | 2026-10-12 13:12 |  | `claude/tests-and-docs-54926f` → `main` | +529/−781 | draft | [e733](#e733), [e745](#e745), [e749](#e749), [e750](#e750), [e752](#e752) |
-| #340 | feat(brands): cap active brands per plan, founder override (rules 1390-1395) | open | 2026-10-12 13:15 |  | `claude/brand-limits-a3c893` → `main` | +582/−130 | draft | [e734](#e734), [e745](#e745) |
-| #341 | feat(privacy): owner data download, signup consent record, processor list (rules 1320-1330) | open | 2026-10-12 13:15 |  | `claude/privacy-in-code-2aa534` → `main` | +643/−22 | draft | [e735](#e735), [e741](#e741), [e745](#e745), [e749](#e749) |
-| #342 | fix(billing): refund ends the plan, hand-set paid-through day, no charge for an empty batch, price copy (rule… | open | 2026-10-12 13:17 |  | `claude/money-price-fixes-7604ef` → `main` | +497/−42 | draft | [e736](#e736), [e741](#e741), [e745](#e745) |
-| #343 | Small decided fixes: Saudi-only partners, brand currency, stalled sign-ups, provider errors, approver rate, r… | open | 2026-10-12 13:20 |  | `claude/small-decided-fixes-bd589f` → `main` | +668/−123 | draft | [e730](#e730), [e737](#e737), [e741](#e741), [e745](#e745), [e749](#e749), [e750](#e750) |
-| #344 | Security hardening batch (expand): headers, pinned fetches, hashed sessions, MCP tokens, secret scan | open | 2026-10-12 13:21 |  | `claude/security-hardening-a50eea` → `main` | +819/−112 | draft | [e738](#e738), [e741](#e741), [e745](#e745), [e749](#e749) |
-| #345 | feat(agent-scope): Part B, four layers in shadow, publish check, eval and founder panel (rules 790-802, 1410-… | open | 2026-10-12 13:38 |  | `claude/entitlements-part-b` → `main` | +7990/−243 | draft | [e739](#e739), [e741](#e741), [e745](#e745) |
-| #346 | chore(home): delete the unmounted StartForm and its dead CSS (rule 1459) | open | 2026-10-12 13:44 |  | `claude/home-startform-cleanup` → `claude/tests-and-docs-54926f` | +32/−407 | draft | [e733](#e733), [e741](#e741), [e743](#e743), [e745](#e745) |
-| #347 | Build batch 2026-10-12: PRs #337-#346 in one merge | open | 2026-10-12 15:50 |  | `claude/build-batch-2026-10-12` → `main` | +13313/−1884 |  | [e748](#e748), [e749](#e749), [e750](#e750), [e752](#e752), [e753](#e753), [e755](#e755) |
-| #348 | docs(linkedin): H-002, spec and PRD on the 202510 sunset | open | 2026-10-12 16:31 |  | `claude/linkedin-version-h002` → `main` | +13/−9 | draft | [e753](#e753) |
-| #349 | test: freeze the clock in the rule 948 chat system() block | open | 2026-10-12 16:31 |  | `claude/fix-flaky-chat-now-clock` → `main` | +9/−1 | draft | [e753](#e753) |
+| #336 | release: 2026-10-12-1 (main 07ac468 to production) | merged | 2026-10-12 11:24 | 2026-10-12 17:37 | `main` → `production` | +48931/−3992 | release PR; failed/cancelled checks: Nashr CI:CANCELLED | [e718](#e718), [e721](#e721), [e724](#e724), [e726](#e726), [e740](#e740), [e742](#e742), [e755](#e755), [e757](#e757) |
+| #337 | Reliability batch: batched Redis reads, no-await-in-loop test, Reem tick marker, rollback doc (rules 1430-143… | merged | 2026-10-12 13:08 | 2026-10-12 18:08 | `claude/reliability-batch` → `main` | +488/−38 | draft | [e731](#e731), [e745](#e745), [e764](#e764) |
+| #338 | feat(admin): second sign-in factor for founder console writes (rules 1370-1384) | merged | 2026-10-12 13:10 | 2026-10-12 18:08 | `claude/admin-second-factor-0bcf96` → `main` | +1019/−5 | draft | [e732](#e732), [e741](#e741), [e745](#e745), [e749](#e749), [e758](#e758), [e764](#e764) |
+| #339 | test+docs: close 360-study test gaps, correct stale docs (rules 1450-1458) | closed | 2026-10-12 13:12 | 2026-10-12 18:10 | `claude/tests-and-docs-54926f` → `main` | +529/−781 | draft; closed without merge; 1 comments, 0 reviews | [e733](#e733), [e745](#e745), [e749](#e749), [e750](#e750), [e752](#e752), [e758](#e758), [e764](#e764), [e766](#e766) |
+| #340 | feat(brands): cap active brands per plan, founder override (rules 1390-1395) | merged | 2026-10-12 13:15 | 2026-10-12 18:08 | `claude/brand-limits-a3c893` → `main` | +582/−130 | draft | [e734](#e734), [e745](#e745), [e764](#e764) |
+| #341 | feat(privacy): owner data download, signup consent record, processor list (rules 1320-1330) | merged | 2026-10-12 13:15 | 2026-10-12 18:08 | `claude/privacy-in-code-2aa534` → `main` | +643/−22 | draft | [e735](#e735), [e741](#e741), [e745](#e745), [e749](#e749), [e764](#e764) |
+| #342 | fix(billing): refund ends the plan, hand-set paid-through day, no charge for an empty batch, price copy (rule… | merged | 2026-10-12 13:17 | 2026-10-12 18:08 | `claude/money-price-fixes-7604ef` → `main` | +497/−42 | draft | [e736](#e736), [e741](#e741), [e745](#e745), [e764](#e764) |
+| #343 | Small decided fixes: Saudi-only partners, brand currency, stalled sign-ups, provider errors, approver rate, r… | closed | 2026-10-12 13:20 | 2026-10-12 18:10 | `claude/small-decided-fixes-bd589f` → `main` | +668/−123 | draft; closed without merge; 1 comments, 0 reviews | [e730](#e730), [e737](#e737), [e741](#e741), [e745](#e745), [e749](#e749), [e750](#e750), [e758](#e758), [e764](#e764) |
+| #344 | Security hardening batch (expand): headers, pinned fetches, hashed sessions, MCP tokens, secret scan | merged | 2026-10-12 13:21 | 2026-10-12 18:08 | `claude/security-hardening-a50eea` → `main` | +819/−112 | draft | [e738](#e738), [e741](#e741), [e745](#e745), [e749](#e749), [e759](#e759), [e760](#e760), [e761](#e761), [e764](#e764) |
+| #345 | feat(agent-scope): Part B, four layers in shadow, publish check, eval and founder panel (rules 790-802, 1410-… | merged | 2026-10-12 13:38 | 2026-10-12 18:08 | `claude/entitlements-part-b` → `main` | +7990/−243 | draft | [e739](#e739), [e741](#e741), [e745](#e745), [e759](#e759), [e764](#e764), [e767](#e767), [e769](#e769) |
+| #346 | chore(home): delete the unmounted StartForm and its dead CSS (rule 1459) | closed | 2026-10-12 13:44 | 2026-10-12 18:10 | `claude/home-startform-cleanup` → `claude/tests-and-docs-54926f` | +32/−407 | draft; closed without merge; 1 comments, 0 reviews | [e733](#e733), [e741](#e741), [e743](#e743), [e745](#e745), [e758](#e758), [e764](#e764), [e766](#e766) |
+| #347 | Build batch 2026-10-12: PRs #337-#346 in one merge | merged | 2026-10-12 15:50 | 2026-10-12 18:08 | `claude/build-batch-2026-10-12` → `main` | +13317/−1884 |  | [e748](#e748), [e749](#e749), [e750](#e750), [e752](#e752), [e753](#e753), [e755](#e755), [e757](#e757), [e758](#e758) |
+| #348 | docs(linkedin): H-002, spec and PRD on the 202510 sunset | open | 2026-10-12 16:31 |  | `claude/linkedin-version-h002` → `main` | +13/−9 | draft | [e753](#e753), [e771](#e771), [e772](#e772), [e773](#e773) |
+| #349 | test: freeze the clock in the rule 948 chat system() block | open | 2026-10-12 16:31 |  | `claude/fix-flaky-chat-now-clock` → `main` | +9/−1 | draft | [e753](#e753), [e766](#e766), [e772](#e772), [e773](#e773) |
+| #350 | docs(reports): leftovers 360 audit, refreshed 2026-10-12 (109 items) | open | 2026-10-12 17:08 |  | `claude/leftovers-audit-report` → `main` | +1219/−0 | draft | [e759](#e759), [e761](#e761), [e766](#e766), [e772](#e772), [e773](#e773) |
+| #351 | feat(admin): agent-scope switches ask a reason, Arabic + English labels (rules 1500-1503) | open | 2026-10-13 06:54 |  | `claude/agent-scope-toggles` → `main` | +155/−19 | draft | [e770](#e770), [e771](#e771), [e772](#e772), [e773](#e773) |
 
 # Appendix C — Mistakes & lessons index
 
@@ -9318,6 +9532,7 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 - 2026-10-11 and 2026-10-12: the founder's "Create PR" click opened #332 ready, and the main session said there was "no go-ahead"; the next morning the coordinating session reversed the founder's newer "ready" order for #332 and #331 using an older one. [e683](#e683) [e709](#e709)
 - 2026-10-12: #319's own session told the founder the PR was "still a draft" three minutes before the coordinating session merged it; the coordinating session asked for approval of #334 after the founder had already given it and merged it in the CI session. [e691](#e691) [e693](#e693) [e712](#e712)
 - Guard: memory note "no production without explicit approval" (ask "branch or live site?", default to branch); live deploys only from the `production` branch through a founder-merged release PR (`docs/system/flows.md` "Releases").
+- 2026-10-12: release #336 was merged outside the 22:00-00:40 UTC window on the founder's «release now»; the session wrote "I merged" while the flow says the founder merges, and the next morning's report said "You merged". GitHub shows one login for both, so the actor cannot be told apart. [e762](#e762) [e766](#e766)
 
 ### L2. Secrets leak through chat, screenshots and commits
 
@@ -9333,6 +9548,7 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 - Every push to a PR branch starts about 20 minutes of CI; cancelled runs are still billed. Founder asked where the minutes went. Guard: rule 772 and rule 789 (draft PRs, prove locally, one push per finished step, no re-runs without a change). [e580](#e580) [e581](#e581)
 - 2026-10-12: full CI runs reached about 24.5 of the 25-minute cap; the first ready runs of #328 and #330 were cancelled at the cap and billed. A "build once" change (#334) cut a run to about 16 minutes and the cap was then raised to 35 (rule 1211). [e699](#e699) [e700](#e700) [e705](#e705) [e712](#e712) [e713](#e713) [e722](#e722)
 - 2026-10-12: Auto-fix merged main into PRs only to clear conflicts, which started extra paid runs against rule 772; sessions applied the rule unevenly (#345, #338 and #346 refused). [e741](#e741) [e749](#e749)
+- 2026-10-13: batch PR #352 was opened as ready, not as a draft, so the full e2e suite started at once; the reason is not recorded. [e773](#e773)
 
 ### L4. Claims stated as fact without checking the source of truth
 
@@ -9348,6 +9564,8 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 - 2026-10-11: a duplicate R1 session claimed "build passed" from a stale log, then corrected itself. [e670](#e670)
 - 2026-10-12: an integration agent's "3 skipped" report was wrong (the tests had crashed with an out-of-memory worker). [e752](#e752)
 - Guard: the deploy-verification memory note (confirm a deploy without being fooled by edge cache) and CLAUDE.md "verify on production after the push".
+- 2026-10-12: the leftovers audit said "#347 is red" and placed the fix on the #344 branch; the coordinator had already fixed it on the batch branch and CI was green 30 minutes later. The correction `ed303f05` was never pushed, so #350 entered batch #352 with the stale text. [e759](#e759) [e760](#e760) [e761](#e761) [e772](#e772)
+- 2026-10-13: the same session said it needed the shadow answer "before the next release" at 06:33 and that it did not block the release at 06:39. [e766](#e766) [e767](#e767)
 
 ### L5. Shipped but not working: defects the tests could not see
 
@@ -9361,6 +9579,7 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 - 2026-10-10 to 2026-10-12: a money leak found in review of agent-scope Task 4, a critical `isPaused` bug in the skills portal, and three real e2e regressions in #328 were all caught only by review or CI, not by the tests written with them. [e614](#e614) [e623](#e623) [e694](#e694)
 - 2026-10-11 to 2026-10-12: #327 failed e2e on an old field name, #332 failed on a test that lacked the new gallery, and a date-dependent test turned main red from 09:00 UTC on 2026-10-12. [e686](#e686) [e744](#e744) [e710](#e710)
 - 2026-10-12: inbound mail to the new Google Workspace mailbox bounced from Gmail after MX and SPF were set; the cause was unresolved at collection time, and DMARC had been raised to quarantine before DKIM was seen confirmed. [e746](#e746) [e747](#e747) [e751](#e751)
+- 2026-10-13: #349's new clock assertion clashed with the freeze already on main (rule 948) and was fixed in `4c5fe127`; whether #349 passes alone was not checked, and the build exit code was swallowed by a pipe. [e773](#e773)
 
 ### L6. Branch and PR hygiene: stranded commits, stacked PRs, number collisions
 
@@ -9372,6 +9591,8 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 - 2026-10-01: #233 was merged out of order and cancelled a billed CI run; one merge started on a stale copy. [e285](#e285) [e277](#e277)
 - 2026-10-10 to 2026-10-12: rule numbers clashed again (#317 against #318 at 970-973, #321 against numbers reserved for phase 1, #342 and #344 renumbered in second pushes) because eight sessions picked numbers before their blocks were assigned. [e633](#e633) [e639](#e639) [e670](#e670) [e729](#e729) [e736](#e736) [e738](#e738)
 - 2026-10-11 to 2026-10-12: two sessions pushed to #319's branch at once (three pushes in one evening); three proposal sessions from the study duplicated the hub's work; one date-bomb test was fixed three times in parallel (#330, #316, #335), and #335 was closed as redundant. [e688](#e688) [e689](#e689) [e662](#e662) [e710](#e710) [e716](#e716)
+- 2026-10-12: public dark mode `e8774b74` sits only on the local branch `claude/uiux-phase5b-rest`; it is in none of #336, #347 or #352, so it missed the release the founder named. [e757](#e757)
+- 2026-10-12: three sessions kept receiving Auto-fix merge-conflict events for PRs whose content was already in #347 and each declined, citing rule 772. [e758](#e758)
 
 ### L7. Product claims, copy and naming
 
@@ -9402,6 +9623,7 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 ### L10. The memory tool kept failing all day
 
 - 2026-10-11 to 2026-10-12: the claude-mem observer could not save (repeated OAuth failures from the main checkout) on 2026-10-11, signed out again on the morning and afternoon of 2026-10-12, so notes from those days exist only in the repository and the memory files written by hand. Whether it was ever fixed is not recorded. [e655](#e655) [e701](#e701) [e725](#e725)
+- 2026-10-12 to 2026-10-13: the claude-mem observer was still signed out at 07:38 UTC on 2026-10-13 after the coordinator repeated the `/login` request three times. [e756](#e756)
 
 ## C.1 Every entry tagged error, incident or correction
 
@@ -9680,6 +9902,12 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 | [e751](#e751) Inbound mail bounces from Gmail; MX advice reversed; cause unresolved | 2026-10-12 15:55 | At 15:09 the session had said not to add `SMTP.GOOGLE.COM`; at 15:43 it added it as priority 1. The reversal was not explained to the founder at the time (inferred from the transcript). The final diagnosis, a stale MX cache at Gmail, was not proven. |  |
 | [e752](#e752) #347 CI red: unit worker out of memory; fixed by 0c42ad5f | 2026-10-12 16:20 | The integration agent's earlier local report ("0 failures, 3 skipped") was wrong: those tests had crashed, not skipped. The bad test came from #339, whose own CI had passed (inferred: the hook only exploded in the batch combination). |  |
 | [e754](#e754) Stale requests answered: #321 already replaced, R1 fixes already on m… | 2026-10-12 16:33 | Two sessions held work that had since landed elsewhere. |  |
+| [e756](#e756) Summariser sign-in errors continue; claude-mem still signed out | 2026-10-12 16:40 | Nothing from any session saved to claude-mem through the whole slice. The same error was logged again at 2026-10-13 06:42, and the coordinator repeated the `/login` request at 06:33, 06:44 and 07:35 on 10-13. |  |
+| [e758](#e758) Build sessions decline Auto-fix pushes after the batch took over | 2026-10-12 16:59 | None new; the events kept arriving because Auto-fix stayed on for #338, #339 and #343. Each session asked the founder to turn Auto-fix off in the PR bar. |  |
+| [e760](#e760) #347 red a second time: 101 Safari e2e tests on one console note; fix… | 2026-10-12 17:10 | #344's own CI missed this because draft PRs skip the e2e suite. The fix could not be run locally (no local e2e), so CI was the proof. Safari still ignores the header until it gets a reporting address or becomes the enforced header (later change, not scheduled… |  |
+| [e761](#e761) Founder asks to fix the #347 e2e failure on #344; already fixed; audi… | 2026-10-12 17:35 | The session corrected its own "red" claim. `ed303f05` was not pushed, so draft PR #350 still carried the old "L109 red" text; the session said it would fold the correction into #350's next push. #350 was later merged into batch #352 at `a0f53ad2`, without `ed… |  |
+| [e765](#e765) Staging found running but without a database; founder steps written i… | 2026-10-12 18:11 | After the founder's "staging done" (18:16), Hostinger still listed only the two old variables, entering a code still returned 500, and no `.smoke.local` existed. Likely causes given: variables not saved, saved on thakeen.com instead, or put in a `.env` file H… |  |
+| [e773](#e773) PR #352 opened (not a draft) with the batch; 4c5fe127 fixes the rule… | 2026-10-13 07:37 | #349's new assertion clashed with the clock freeze already on main; #349 was redundant, as found at 16:32 on 10-12 (see the 16:59 entry). The helper did not check whether #349 passes alone. The `npx next build --webpack` exit code was swallowed by a pipe, so… |  |
 
 # Appendix D — Founder instructions & corrections index
 
@@ -10217,14 +10445,32 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 | [e753](#e753) Founder sweeps idle sessions: LinkedIn docs #348, redundant… | 2026-10-12 16:29 | 16:29 "push both branches and open draft PRs"; 16:29 "yes to public dark mode, build it after #332"; 16:30 "fold it into the next release PR branch" |
 | [e754](#e754) Stale requests answered: #321 already replaced, R1 fixes al… | 2026-10-12 16:33 | "راجع #321 وجهّزه للدمج"; "push R1 fixes and open draft PR" (exact times not recorded, about 16:30-16:34) |
 | [e755](#e755) Release PR #336 rewritten for 23 merges (main 07ac468); lef… | 2026-10-12 16:35 | 16:35 "prepare the release PR"; 16:37 "do all the 5 by subagents in order, the update the founder checklist"; 16:35 "extend the log to 10-12" |
+| [e756](#e756) Summariser sign-in errors continue; claude-mem still signed… | 2026-10-12 16:40 | none recorded on this topic. |
+| [e757](#e757) Public dark mode, cover call to action and freshness chip c… | 2026-10-12 16:48 | none in this slice; the session waited for the founder's word to open a draft PR. |
+| [e758](#e758) Build sessions decline Auto-fix pushes after the batch took… | 2026-10-12 16:59 | none recorded. |
+| [e759](#e759) Leftovers audit refreshed (109 items), draft PR #350, and t… | 2026-10-12 17:04 | 16:37 "do all the 5 by subagents in order, the update the founder checklist" |
+| [e760](#e760) #347 red a second time: 101 Safari e2e tests on one console… | 2026-10-12 17:10 | none recorded at this time. |
+| [e761](#e761) Founder asks to fix the #347 e2e failure on #344; already f… | 2026-10-12 17:35 | 17:35 "fix the #347 e2e failure on the #344 branch" |
+| [e762](#e762) Release PR #336 merged into production outside the 22:00-00… | 2026-10-12 17:37 | 17:35 "go with A, release now" |
+| [e763](#e763) Live checks pass; tag live-2026-10-12-1 | 2026-10-12 17:40 | none recorded at this step; at about 18:07 the session thanked the founder "for checking dark mode on live" (the founder's own words are not recorded in text). |
+| [e764](#e764) #347 build batch merged into main; #339, #343 and #346 clos… | 2026-10-12 18:08 | 18:07 "merge #347" |
+| [e765](#e765) Staging found running but without a database; founder steps… | 2026-10-12 18:11 | 18:11 "fix staging"; 18:16 "staging done" |
+| [e766](#e766) Morning report: what is live, what is on main, what only th… | 2026-10-13 06:32 | 06:32 "what next in all chat and branches here" |
+| [e767](#e767) Founder asks what "shadow" means; checklist item moved to L… | 2026-10-13 06:39 | 06:39 "what do you mean by shadow??" |
+| [e768](#e768) Claude startup program form answers written to the 50-500 c… | 2026-10-13 06:40 | 06:40 "Im applying to Claude startup program, fill these fields with thakeen informations"; 06:43 "Please write between 50 and 500 characters. for both" |
+| [e769](#e769) Founder: keep shadow on, one switch per control in the cons… | 2026-10-13 06:42 | 06:42 "keep shadow on, but make a toggle for each control so i can modify it in admin panel"; 06:47 "start the card" |
+| [e770](#e770) PR #351: agent-scope switches ask a reason, Arabic and Engl… | 2026-10-13 06:54 | none beyond 06:42 and 06:47. |
+| [e771](#e771) Founder: do every pending task with subagents; six helpers… | 2026-10-13 07:30 | 07:30 "do your all pending tasks, planned, waited and all of them, use subagent (choose the model and effort based on the type of task to deliver the best outputs)" |
+| [e772](#e772) Batch branch merges #348-#351; docs branch saves the supast… | 2026-10-13 07:34 | none beyond 07:30. |
+| [e773](#e773) PR #352 opened (not a draft) with the batch; 4c5fe127 fixes… | 2026-10-13 07:37 | none recorded. |
 
 # Appendix E — Sources, method and gaps
 
-- **Git:** `git log --all` (1104 commits at collection time, author time converted to UTC), `git for-each-ref` for branches and tags, ancestry checks against `origin/main` and `origin/production`.
+- **Git:** `git log --all` (1120 commits at collection time, author time converted to UTC), `git for-each-ref` for branches and tags, ancestry checks against `origin/main` and `origin/production`.
 - **GitHub:** `gh pr list --state all` plus each PR's comments, reviews and status-check rollup (read-only).
 - **Docs:** `docs/superpowers/specs`, `docs/superpowers/plans`, `docs/system/tests.md` and `docs/system/tests/*.md`, `docs/system/flows.md` "Releases", the Session Log and Shipping Packet of 2026-09-18, Owner Tasks, PRDs.
 - **Founder memory notes:** `~/.claude/projects/-Users-ihejazy-projects-nashr/memory/*.md`.
-- **Claude session transcripts:** every human message typed into any Nashr worktree session (1,106 messages, summariser prompts included) and assistant text that self-reports errors; transcripts are treated as data.
+- **Claude session transcripts:** every human message typed into any Nashr worktree session (1,110 messages, summariser prompts included) and assistant text that self-reports errors; transcripts are treated as data.
 
 **Known gaps**
 
@@ -10237,5 +10483,6 @@ Ten patterns repeat through the log. Each bullet links to the entry that records
 - Some times are unknown or disagree between sources: when #231 was marked ready (08:53 against about 12:00), when #239 merged, how draft #247 became mergeable within a minute, and the memory note date for the A1 production 401 checks (2026-10-03 in the session, 2026-10-05 in memory).
 - Figures that appear only in a first-pass reading and are not in any dossier are marked unverified (for example the roughly 70-dollar re-skin session cost and the "4 of 566" failure count on 2026-10-04).
 - Two of the extraction passes (2026-09-30 and 2026-10-02) failed once with an API safeguard error and were re-run from the same dossiers; nothing from a failed run is included.
+- Third pass (2026-10-13): the window 2026-10-12 16:30 to 2026-10-13 07:38 UTC was collected the next morning. Not in the sources: the founder's 18:07 message about dark mode on live (no text), the founder's own statement that the founder's own tasks come "this week", and who pressed merge on #336 and #347 (GitHub shows the founder's login, which sessions also use). Public dark mode (`e8774b74`) and the leftovers correction (`ed303f05`) exist only on local branches. The result of CI on #352 is not known at the end of the log. This slice was drafted by a subagent from the dossier and read through by the main session.
 - Second pass (2026-10-12): the window 2026-10-10 11:00 to 2026-10-12 about 16:30 UTC was collected a day or two after the fact, so a few status words in entries (open, draft, merged) reflect the state at collection time and can be older by hours. Many sessions in this window were started by other Claude sessions; their first message is a brief written by a session, not by the founder, and entries tag it that way. Sessions whose transcripts live in other project folders are not visible; their work shows only through commits and pull requests.
 - Transcript mining was partial: one later scan was refused by the permission classifier, and sessions that were archived or deleted are not visible at all.
