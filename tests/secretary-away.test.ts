@@ -1338,8 +1338,11 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       expect(results.slice(0, 5).every((r) => r.content.startsWith("Proposed, not saved"))).toBe(true);
       expect(results[5].content).toBe("Not done: one reply carries at most 5 away cards. Nothing more was saved.");
       // Stored with the reply, so a reload shows the same five cards; five proposals in the index; nothing on the away list.
-      expect((await history(u.email)).at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
-      expect((await propIds(u.email)).sort()).toEqual(m.awayProposals!.map((p) => p.id).sort());
+      // Read back at the turn's own time: the cards were stored at NOW with a 7-day lifetime, so a read at the real clock
+      // would see them expired from 2026-10-13 09:00 UTC on (the release CI of 2026-10-13 failed on exactly that).
+      const [reloaded, ids] = await at(NOW, async () => [await history(u.email), await propIds(u.email)] as const);
+      expect(reloaded.at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
+      expect([...ids].sort()).toEqual(m.awayProposals!.map((p) => p.id).sort());
       expect(await awayKeys(u.email)).toEqual([]);
     } finally {
       vi.doUnmock("@anthropic-ai/sdk");
