@@ -12,6 +12,7 @@ import { invoiceForPayment } from "./invoice";
 import { GRACE_DAYS, addDays, addMonths, billingLocked, paymobRenewalDue, type Billing } from "./billing-state";
 import { PaymobError, TOKEN_HMAC_FIELDS, TXN_HMAC_FIELDS, checkoutUrl, createIntention, parseTxn, payWithToken, paymobConfig, refundTxn, verifyHmac, type PaymobConfig, type Txn } from "./paymob";
 import { adminAudit } from "./admin-audit";
+import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
@@ -58,6 +59,13 @@ export type PayIntent = {
   currency: "SAR";
   /** The 15% first-month price was used (a plan's first payment only). */
   offer: boolean;
+  /**
+   * The checkout asked for the founding offer and it was open then (rule 1702; src/lib/founding.ts `foundingOfferOpen`).
+   * The seat itself is claimed only when the payment is applied. Optional (expand): intents without it are ordinary.
+   */
+  founding?: boolean;
+  /** A renewal charged at the account's price lock (rule 1706): the ex-VAT halalas used instead of the list price. */
+  lockedBaseHalalas?: number;
   createdAt: string;
   by: string;
   orderId?: number;
@@ -71,8 +79,11 @@ type TxnRecord = { ref: string; email: string; kind: IntentKind; amountCents: nu
 const vatOf = (baseHalalas: number) => (PAYMOB_CHARGES_VAT ? Math.round(baseHalalas * VAT_RATE) : 0);
 const isSelfServe = (v: unknown): v is SelfServePlan => typeof v === "string" && (SELF_SERVE_PLANS as readonly string[]).includes(v);
 
-/** The price of a plan month, a renewal or a pack, from the pricing table only. Null for anything not on sale online. */
-export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unknown }, offer = false): { baseHalalas: number; vatHalalas: number; amountCents: number } | null {
+/**
+ * The price of a plan month, a renewal or a pack, from the pricing table only. Null for anything not on sale online. A
+ * renewal under a price lock passes the locked ex-VAT halalas (rule 1706): the lower of it and the list price is charged.
+ */
+export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unknown }, offer = false, lockedBaseHalalas?: number): { baseHalalas: number; vatHalalas: number; amountCents: number } | null {
   let sar: number;
   if (kind === "topup") {
     if (!isTopupPack(item.credits)) return null;
@@ -81,7 +92,9 @@ export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unk
     if (!isSelfServe(item.plan)) return null;
     sar = offer && kind === "plan" ? firstMonthPriceSar(item.plan) : PLAN_PRICE_SAR[item.plan];
   }
-  const baseHalalas = Math.round(sar * 100);
+  const list = Math.round(sar * 100);
+  const locked = kind === "renewal" && Number.isSafeInteger(lockedBaseHalalas) && lockedBaseHalalas! > 0 ? lockedBaseHalalas! : null;
+  const baseHalalas = locked === null ? list : Math.min(locked, list);
   const vatHalalas = vatOf(baseHalalas);
   return { baseHalalas, vatHalalas, amountCents: baseHalalas + vatHalalas };
 }
@@ -120,12 +133,14 @@ export async function startCheckout(owner: Pick<User, "email">, body: unknown, l
   const phone = normalizePhone(acc.phone ?? "");
   if (!/^\+\d{8,15}$/.test(phone)) return { ok: false, error: "need_phone" };
   const offer = kind === "plan" && !!openOffer(acc);
+  // The founding offer (rule 1702): the body only asks; the sale, a free seat and an account that never paid online decide.
+  const founding = kind === "plan" && b.founding === true && (await foundingOfferOpen(acc));
   const item = kind === "plan" ? { plan: b.plan } : { credits: b.credits };
   const price = priceFor(kind, item, offer)!;
   const ref = newRef();
   const intent: PayIntent = {
     ref, email: acc.email, kind, ...(kind === "plan" ? { plan: b.plan as SelfServePlan } : { credits: b.credits as number }),
-    ...price, currency: "SAR", offer, createdAt: new Date().toISOString(), by: acc.email, status: "open",
+    ...price, currency: "SAR", offer, ...(founding ? { founding: true } : {}), createdAt: new Date().toISOString(), by: acc.email, status: "open",
   };
   await Promise.all([db.set(intentKey(ref), intent, DAYS_400), db.set(lastCheckoutKey(acc.email), ref, LAST_TTL)]);
   const label = kind === "plan" ? `Thakeen ${intent.plan} plan, 1 month` : `Thakeen ${intent.credits} credits top-up`;
@@ -167,6 +182,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   const plan = intent.plan!;
   const card = await db.get<SavedCard>(cardKey(intent.email));
   const id = String(txnId);
+  let claim: ClaimOutcome | null = null;
   const step = await withUserLock(intent.email, async (u): Promise<"already" | "changed" | "same" | "no_billing"> => {
     const b = u.billing;
     if (b?.txns?.includes(id)) return "already";
@@ -179,6 +195,8 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
       await saveUser(u);
       return "same";
     }
+    // The account's first online subscription: the founding seat (when asked) and the price lock (rules 1703-1705).
+    if (!b) claim = await claimOnPayment(u, { founding: !!intent.founding, plan, paidHalalas: intent.amountCents, paymentId, day: today });
     const changed = u.plan !== plan || billingLocked(b);
     u.plan = plan;
     delete u.deal;
@@ -200,6 +218,8 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     return changed ? "changed" : "same";
   });
   if (step === "no_billing") return { ok: false, error: "no_billing" };
+  const c = claim as ClaimOutcome | null;
+  if (c && (c.seat || c.lock)) await log(intent.email, `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
   if (step === "changed") await enforceSeats(intent.email);
   const rec = await recordPayment(intent.email, { id: paymentId, amountSar: baseSar, plan, date: today, reference: `paymob:${txnId}` }, "paymob");
   if (!rec.ok) return { ok: false, error: rec.error };
@@ -224,7 +244,7 @@ export async function applyTransaction(cfg: PaymobConfig, t: Txn): Promise<Callb
   if (!(await db.lock(txLockKey(t.id), 60))) return { status: 503, result: "busy" };
   try {
     if (await db.get(doneKey(t.id))) return ok("already");
-    const expected = priceFor(intent.kind, intent, intent.offer);
+    const expected = priceFor(intent.kind, intent, intent.offer, intent.lockedBaseHalalas);
     const mismatch = !expected || expected.amountCents !== intent.amountCents || t.amountCents !== intent.amountCents || t.currency !== "SAR"
       || (intent.orderId !== undefined && t.orderId !== intent.orderId) || (t.isLive !== null && t.isLive !== cfg.live);
     if (mismatch) {
@@ -355,9 +375,11 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
 
 /** MIT on the Moto integration: a renewal intent at the plan's full price, then the saved card (spec 4.2). */
 async function chargeSavedCard(cfg: PaymobConfig, u: User, b: Billing, card: SavedCard, today: string): Promise<"paid" | "pending" | "declined"> {
-  const price = priceFor("renewal", { plan: b.plan })!;
+  // The period being paid starts at `paidThrough`: a lock that covers it prices the renewal (rule 1706).
+  const locked = lockedBaseHalalas(u, b.plan, b.paidThrough);
+  const price = priceFor("renewal", { plan: b.plan }, false, locked ?? undefined)!;
   const ref = newRef();
-  const intent: PayIntent = { ref, email: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, createdAt: new Date().toISOString(), by: "cron", status: "open" };
+  const intent: PayIntent = { ref, email: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open" };
   await db.set(intentKey(ref), intent, DAYS_400);
   let paymentKey: string | null = null;
   let orderId = 0;
@@ -518,6 +540,8 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string): Pr
   const change = await withUserLock(email, async (u) => {
     if (!u.billing && trialOver(u)) return null;
     const before = { plan: String(u.plan), credits: Number(u.credits) || 0, autoRenew: u.billing?.autoRenew ?? false, paidThrough: u.billing?.paidThrough ?? u.handPlan?.paidThrough ?? null };
+    // The founding seat and the price lock end with the plan (rule 1708): the refunded account is no longer a paying one.
+    const founding = endOnRefund(u, by, now.getTime());
     u.plan = "trial";
     // A second in the past: `trialOver` compares strictly, so a read in the same millisecond still sees it ended.
     u.trialEnds = new Date(now.getTime() - 1000).toISOString();
@@ -526,10 +550,10 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string): Pr
     delete u.deal;
     setMonthly(u, 0);
     await saveUser(u);
-    return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null } };
+    return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding };
   });
   if (!change) return false;
-  await enforceSeats(email);
-  await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}`, before: change.before, after: change.after });
+  await Promise.all([enforceSeats(email), change.founding ? freePlaces(email) : null]);
+  await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
   return true;
 }

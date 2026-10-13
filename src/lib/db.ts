@@ -39,6 +39,12 @@ type Store = {
   zcard(key: string): Promise<number>;
   /** ZSCORE: the member's score, or null when it is not in the set. */
   zscore(key: string, member: string): Promise<number | null>;
+  /**
+   * Add `member` only while the set holds fewer than `max` members, in one server-side step (a Lua script), so two
+   * writers can never take the last place together (rule 1700, founding seats). "exists" when the member was already
+   * in: its score is left alone, so a retried claim keeps its place. Otherwise the set's size after the add, or "full".
+   */
+  zaddCapped(key: string, score: number, member: string, max: number): Promise<number | "exists" | "full">;
   zrangeWithScores(key: string): Promise<{ member: string; score: number }[]>;
   /** Members with a score <= `max`, lowest score first (then member), at most `limit` (ZRANGE BYSCORE LIMIT). */
   zrangeByScore(key: string, max: number, limit: number): Promise<{ member: string; score: number }[]>;
@@ -86,6 +92,9 @@ const lockToken = () => `lk_${randomBytes(12).toString("hex")}`;
 const UNLOCK_OWNED = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end return 0`;
 /** Compare-and-set on the server, keeping the TTL. */
 const REPLACE_IF = `if redis.call("get", KEYS[1]) == ARGV[1] then redis.call("set", KEYS[1], ARGV[2], "KEEPTTL") return 1 end return 0`;
+/** Capped add on the server: -1 when the member is in, 0 when the set is full, else the size after the add. */
+const ZADD_CAPPED = `if redis.call("zscore", KEYS[1], ARGV[2]) then return -1 end local n = redis.call("zcard", KEYS[1]) if n >= tonumber(ARGV[3]) then return 0 end redis.call("zadd", KEYS[1], ARGV[1], ARGV[2]) return n + 1`;
+const cappedAnswer = (n: number): number | "exists" | "full" => (n === -1 ? "exists" : n === 0 ? "full" : n);
 
 function upstash(): Store | null {
   const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
@@ -160,6 +169,9 @@ function upstash(): Store | null {
     async zscore(key, member) {
       const v = await r.zscore(key, member);
       return v === null || v === undefined ? null : Number(v);
+    },
+    async zaddCapped(key, score, member, max) {
+      return cappedAnswer(Number(await r.eval(ZADD_CAPPED, [key], [String(score), member, String(max)])));
     },
     async zrangeWithScores(key) {
       // [member, score, member, score, ...]. Members are stringified: the client parses anything that looks like JSON.
@@ -333,6 +345,14 @@ function memory(): Store {
     },
     async zscore(key, member) {
       return zsets.get(key)?.get(member) ?? null;
+    },
+    async zaddCapped(key, score, member, max) {
+      const z = zsets.get(key) ?? new Map<string, number>();
+      if (z.has(member)) return cappedAnswer(-1);
+      if (z.size >= max) return cappedAnswer(0);
+      z.set(member, score);
+      zsets.set(key, z);
+      return cappedAnswer(z.size);
     },
     async zrangeWithScores(key) {
       // Redis order: by score, then by member (binary), for equal scores.
