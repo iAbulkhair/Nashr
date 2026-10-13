@@ -25,7 +25,7 @@ export const maxDuration = 60;
  */
 const MAX_BODY = 256_000;
 const unauthorized = () => NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-const STATUS: Record<string, number> = { bad_request: 400, no_credits: 402, trial_over: 402, agent_cap: 402, too_long: 413, no_tasks: 422, too_many: 429, model_failed: 502, busy: 503, lock_timeout: 503, not_found: 404 };
+const STATUS: Record<string, number> = { bad_request: 400, no_credits: 402, trial_over: 402, fair_use: 402, agent_cap: 402, too_long: 413, no_tasks: 422, too_many: 429, model_failed: 502, busy: 503, lock_timeout: 503, not_found: 404 };
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const deadline = deadlineFor(maxDuration);

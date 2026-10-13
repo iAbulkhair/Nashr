@@ -1,5 +1,5 @@
 import type { Task } from "../brand";
-import { hasArtwork, isOurBlobUrl } from "../media-catalog";
+import { hasArtwork, isOurMediaUrl } from "../media-catalog";
 
 /**
  * Where an inbox item can be published, from the stored connections alone. Its only runtime import is ../media-catalog,
@@ -44,7 +44,7 @@ export function targetsFor(task: Task, connected: string[]): string[] {
   // generated clip a private YouTube video (only our own Blob copy, the one file Composio is ever handed).
   if (task.channel === "whatsapp" && connected.includes("whatsapp")) out.push("whatsapp");
   if (task.channel === "email") for (const p of ["brevo", "klaviyo"]) if (connected.includes(p)) out.push(p);
-  if (task.type === "social" && isOurBlobUrl(task.videoUrl) && connected.includes("youtube")) out.push("youtube");
+  if (task.type === "social" && isOurMediaUrl(task.videoUrl) && connected.includes("youtube")) out.push("youtube");
   return out;
 }
 

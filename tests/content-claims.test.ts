@@ -9,7 +9,8 @@ import { MEDIA_MODELS, TRIAL_VIDEO_MODELS, mediaModel, type MediaKind } from "@/
  * Rule 1581 (replaces the rubric arithmetic check of rule 64): the "AI marketing agents for the Gulf" article is written by
  * the vendor of one of the tools it covers, so it carries no score, no total and no rank. It used to rank Noor first on
  * Thakeen's own weighted score; the founder's decision of 2026-10-13 was to drop the numbers and label the comparison
- * plainly as our own opinion.
+ * plainly as our own opinion. The same day the founder chose to name no competitor (rule 1744): the rows are kinds of
+ * option, the tools before Noor and the two human references (a freelancer, an agency) last.
  */
 const RUBRIC = "content/blog/best-ai-marketing-agents-gulf-2026.md";
 
@@ -42,13 +43,13 @@ describe("rule 1581: the agents comparison is labelled opinion with no score and
     expect(en).toContain("Email us at hello@thakeen.com");
   });
 
-  it("does not put Noor first: the tools are in alphabetical order and the agency reference comes last", () => {
+  it("does not put Noor first: the kinds of tool come before her, and the freelancer and agency references come last", () => {
     for (const text of [ar, en]) {
       const names = tableRows(text).slice(1).map((r) => r[0]);
-      expect(names[0]).not.toMatch(/نور|Noor/);
-      const products = names.slice(0, -1).map((n) => n.replace(/^نور \(ذكين\)$/, "Noor (Thakeen)"));
-      expect(products).toEqual([...products].sort((a, b) => a.localeCompare(b, "en")));
-      expect(names.at(-1)).toMatch(/وكالة|agency/i);
+      const noor = names.findIndex((n) => /نور|Noor/.test(n));
+      expect(noor).toBeGreaterThan(0);
+      expect(names.slice(-2).map((n) => /مستقل|Freelancer/.test(n) || /وكالة|agency/i.test(n))).toEqual([true, true]);
+      expect(noor).toBe(names.length - 3);
     }
   });
 });
@@ -324,9 +325,11 @@ describe("media processors are disclosed honestly", () => {
     expect(trained.en).not.toMatch(/^No\b/);
     expect(trained.ar).not.toMatch(/^لا\./);
     const deletion = answer("How do I delete my account?");
-    for (const lang of LANGS) expect(deletion[lang], lang).toContain("Vercel Blob");
-    expect(deletion.en).toContain("None of these is removed by this step");
-    expect(deletion.ar).toContain("ولا يُحذف أي منها بهذه الخطوة");
+    // Rule 1764: our private copies on Hostinger go with the account (rule 1761); older Blob copies do not, and it says so.
+    for (const lang of LANGS) expect(deletion[lang], lang).toContain("Hostinger");
+    expect(deletion.en).toContain("Our private copies of your generated images and videos on Hostinger are deleted with it; older copies on Vercel Blob are not removed by this step.");
+    expect(deletion.ar).toContain("وتُحذف معه نسخنا الخاصة من الصور والفيديو المولَّدة على Hostinger، أما النسخ الأقدم على Vercel Blob فلا تُحذف بهذه الخطوة.");
+    for (const lang of LANGS) expect(privacy(lang), lang).not.toMatch(/public addresses|عناوين عامة/);
   });
 
   it("no help, legal or in-app string claims Arabic lettering inside images works", () => {

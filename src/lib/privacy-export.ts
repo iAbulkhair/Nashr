@@ -8,6 +8,7 @@ import { listBrands, scopeFor } from "./brands";
 import { consentOf, type ConsentView } from "./consent";
 import { CAPS, db } from "./db";
 import { pmap } from "./parallel";
+import { foundingView } from "./founding";
 
 /**
  * The owner's own copy of their data (PDPL access and portability; rules 1320-1324): GET /api/account/export.
@@ -56,6 +57,8 @@ export type AccountExport = {
     seats?: number;
     topups: { credits: number; left: number; at: string; expiresAt: string }[];
     subscription?: { plan: string; status: string; paidThrough: string; autoRenew: boolean; card?: { brand: string; last4: string } };
+    /** The founding seat and the price lock, when the account has either (rule 1712). */
+    founding?: ReturnType<typeof foundingView>;
   };
   partner?: { referredAt: string; via: "link" | "code" };
   brands: ExportBrand[];
@@ -130,6 +133,7 @@ export async function buildExport(u: User, now = new Date()): Promise<AccountExp
       ...(u.renewedAt ? { renewedAt: u.renewedAt } : {}),
       ...(u.seats !== undefined ? { seats: u.seats } : {}),
       topups: (u.topups ?? []).map((t) => ({ credits: t.credits, left: t.left, at: t.at, expiresAt: t.expiresAt })),
+      ...(u.founding || u.priceLock ? { founding: foundingView(u) } : {}),
       ...(u.billing ? { subscription: { plan: u.billing.plan, status: u.billing.status, paidThrough: u.billing.paidThrough, autoRenew: u.billing.autoRenew, ...(u.billing.card ? { card: { brand: u.billing.card.brand, last4: u.billing.card.last4 } } : {}) } } : {}),
     },
     ...(u.referredBy ? { partner: { referredAt: u.referredBy.at, via: u.referredBy.via } } : {}),

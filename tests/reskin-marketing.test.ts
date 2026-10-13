@@ -12,13 +12,13 @@ import AgentPage from "@/app/[lang]/agents/[agent]/page";
 import { AGENTS } from "@/lib/agents";
 import { existsSync } from "node:fs";
 import IndustryPage from "@/app/[lang]/for/[industry]/page";
-import VsPage from "@/app/[lang]/vs/[competitor]/page";
+import ComparePage from "@/app/[lang]/compare/page";
 import AgentDefinitionPage from "@/app/[lang]/ai-marketing-agent/page";
 import CustomersPage from "@/app/[lang]/customers/page";
 import EnterprisePage from "@/app/[lang]/enterprise/page";
 import ContactForm from "@/components/ContactForm";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
-import { VS_PAGES } from "@/lib/pages-vs";
+import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { SITE } from "@/lib/site";
 import { readFileSync } from "node:fs";
 import { TOOLS } from "@/lib/tools";
@@ -105,11 +105,10 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       expect(h).toMatch(new RegExp(`<a[^>]*class="s-btn[^"]*"[^>]*href="/${lang}/app/signup"|<a[^>]*href="/${lang}/app/signup"[^>]*class="s-btn`));
     });
 
-    it(`a comparison page · ${lang}: the short answer and both choices in scribbled cards`, async () => {
-      const p = VS_PAGES[lang][0];
-      const h = renderToStaticMarkup(await VsPage({ params: Promise.resolve({ lang, competitor: p.slug }) }));
+    it(`the comparison page · ${lang}: the disclosure and both choices of every kind in scribbled cards`, async () => {
+      const h = renderToStaticMarkup(await ComparePage({ params: Promise.resolve({ lang }) }));
       expect(h).toMatch(TITLE_SCRIBBLE("h1"));
-      expect(count(h, 'class="s-card')).toBe(3);
+      expect(count(h, 'class="s-card')).toBe(1 + 2 * COMPARE_PAGE[lang].groups.length);
     });
 
     it(`the definition page · ${lang}: the definition in a scribbled card, the ask-an-AI links as pills`, async () => {
@@ -181,7 +180,7 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       const h = renderToStaticMarkup(await ResourcesPage({ params: Promise.resolve({ lang }) }));
       expect(h).toMatch(TITLE_SCRIBBLE("h1"));
       expect(count(h, 'class="s-card')).toBe(SITE[lang].resources.cards.length + Math.min(3, listPosts(lang).length));
-      expect(count(h, 'class="s-chip')).toBe(VS_PAGES[lang].length);
+      expect(count(h, 'class="s-chip')).toBe(1);
     });
   }
 

@@ -33,7 +33,7 @@ const sent = (i = 0) => JSON.parse(String(calls[i].init.body));
 
 beforeEach(() => {
   calls = [];
-  mediaEnv({ kie: true, blob: true, models: "all" });
+  mediaEnv({ kie: true, store: true, models: "all" });
   vi.stubEnv("APP_ORIGIN", "");
 });
 afterEach(() => { globalThis.fetch = real; vi.unstubAllEnvs(); vi.restoreAllMocks(); });

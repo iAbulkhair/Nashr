@@ -67,6 +67,15 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
+  // The comparison pages that named competitors are gone (rules 1740-1742, founder's decision of 2026-10-13): every old
+  // `/vs/...` address and the blog post about one vendor answer 308 to the comparison by kind, so links and search results
+  // land on a page instead of a 404. Next answers these before the proxy runs.
+  async redirects() {
+    return [
+      { source: "/:lang(ar|en)/vs/:slug*", destination: "/:lang/compare", permanent: true },
+      { source: "/:lang(ar|en)/blog/nashr-vs-enrich-labs", destination: "/:lang/compare", permanent: true },
+    ];
+  },
   async rewrites() {
     return [
       { source: "/.well-known/oauth-authorization-server", destination: "/api/oauth/meta" },

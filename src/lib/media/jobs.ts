@@ -1,7 +1,7 @@
 /**
  * The media job engine: charge, submit, poll, copy, refund, for every provider (spec 4.3 and 4.4).
  *
- * Providers and storage arrive as `MediaDeps` (spec A6), so this module imports no adapter and no Blob code: tests drive
+ * Providers and storage arrive as `MediaDeps` (spec A6), so this module imports no adapter and no store code: tests drive
  * every transition with scripted fakes, and ./registry wires the real ones. What every change here must keep:
  * - nothing is charged before the balance pre-check, the flight lock, the limits and the provider throttle have passed,
  *   and every refusal before the job is durable releases the flight lock (spec A24);
@@ -134,7 +134,7 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
     return r;
   };
   // 1-2. Refusals that cost nothing and move no counter. The agent's monthly cap before the balance, as the ledger checks them.
-  if (m.provider !== "fal" && !deps.blobReady()) return { ok: false, status: 409, error: "model_unavailable" };
+  if (m.provider !== "fal" && !(await deps.storeReady(m.kind))) return { ok: false, status: 409, error: "model_unavailable" };
   const cap = capOf(input.cap), spent = input.spent ?? 0;
   if (cap !== undefined && spent + m.credits > cap) return refused("cap_reached", { ok: false, status: 402, error: "agent_cap", agent: input.agent, spent, cap }, `${spent}/${cap}`);
   if (input.balance < m.credits) return refused("no_credits", { ok: false, status: 402, error: "no_credits", need: m.credits, have: input.balance });
@@ -450,13 +450,16 @@ async function finalizeLocked(job: MediaJob, urls: string[], providerCredits: nu
 
   let url = results[0];
   try {
-    if (deps.blobReady()) url = (await deps.store(results[0], cur.kind, ctx.deadline)).url;
-    else if (cur.provider !== "fal") throw new StoreError("no_blob");
+    if (await deps.storeReady(cur.kind)) url = (await deps.store(results[0], cur.kind, ctx.deadline, { scope: cur.scope, taskId: cur.taskId })).url;
+    else if (cur.provider !== "fal") throw new StoreError("full");
   } catch (e) {
     console.error("media store failed", cur.model, codeOf(e));
-    // fal keeps its own URL, exactly as before the Blob store existed (spec A25). kie and Higgsfield delete results
-    // after 1 to 14 days, so theirs must be copied: retry from resultUrls without another status call.
+    // fal keeps its own URL, exactly as before the store existed (spec A25). kie and Higgsfield delete results
+    // after 1 to 14 days, so theirs must be copied: retry from resultUrls without another status call. A full or
+    // missing store fails at once (rule 1753): no retry can make room, and the refund runs now.
     if (cur.provider !== "fal") {
+      const code = e instanceof StoreError ? e.code : undefined;
+      if (code === "full" || code === "no_store") return failLocked(cur, "store_failed", deps, { ...ctx, providerCredits: pc });
       const tries = (cur.storeTries ?? 0) + 1;
       if (tries >= STORE_TRIES || ageOf(cur, now()) > MEDIA_MAX_AGE_MS[cur.kind]) return failLocked(cur, "store_failed", deps, { ...ctx, providerCredits: pc });
       const next: MediaJob = { ...cur, state: "running", resultUrls: results, storeTries: tries, ...credited, updatedAt: iso(now()) };

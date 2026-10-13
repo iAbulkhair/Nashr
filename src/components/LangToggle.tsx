@@ -1,11 +1,13 @@
 "use client";
 import { usePathname, useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
+import { LANG_COOKIE, expireLegacyLine } from "@/lib/cookie-names";
 
-const COOKIE = "nashr_lang";
-
+/** Writes `thakeen_lang` and removes the old `nashr_lang` (rule 1810); src/proxy.ts reads the new name first. */
 function remember(to: Lang) {
-  document.cookie = `${COOKIE}=${to}; path=/; max-age=31536000; samesite=lax`;
+  document.cookie = `${LANG_COOKIE}=${to}; path=/; max-age=31536000; samesite=lax`;
+  const old = expireLegacyLine(LANG_COOKIE);
+  if (old) document.cookie = old;
 }
 
 /** Swap the /ar ↔ /en prefix but keep the rest of the path. */
@@ -37,7 +39,9 @@ export default function LangToggle({ lang, size = "md" }: { lang: Lang; size?: "
       lang={to}
       onClick={(e) => go(to, e)}
       aria-current={to === lang ? "true" : undefined}
-      aria-label={title}
+      // The visible word is the name (WCAG 2.5.3, found by the axe check, rule 1801): a voice user says what they see.
+      // The full language name is a hover hint only.
+      title={title}
       className={`rounded-full font-semibold transition ${pad} ${to === lang ? on : off}`}
     >
       {label}

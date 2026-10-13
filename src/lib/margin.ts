@@ -34,7 +34,11 @@ export const MARGIN_DAY_TTL_S = 8 * 86400;
 /** The per-account "already alerted today" marker: two days, so a run just after midnight UTC cannot repeat yesterday's. */
 const ALERTED_TTL_S = 2 * 86400;
 
-export type MarginRow = { email: string; name: string; plan: string; revenueSar: number; modelUsd: number; mediaUsd: number; costSar: number; marginPct: number };
+export type MarginRow = {
+  email: string; name: string; plan: string; revenueSar: number; modelUsd: number; mediaUsd: number; costSar: number; marginPct: number;
+  /** The fair-use stop's mark (src/lib/fair-use.ts `markFairUse`, rule 1733): set on the console's view only. */
+  fairUse?: "paused" | "lifted" | null;
+};
 /** The last daily run, as `margin:last` keeps it: counts only, no account. */
 export type MarginRun = { day: string; at: string; month: string; checked: number; under: number; alerted: number };
 /** What the console's Margin section shows (GET /api/admin/overview `margin`). */

@@ -3,7 +3,6 @@ import type { Dict, Lang } from "@/lib/i18n";
 import { AGENTS } from "@/lib/agents";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { SITE } from "@/lib/site";
-import { VS_PAGES } from "@/lib/pages-vs";
 import LangToggle from "./LangToggle";
 import ThemeToggle from "./ui/ThemeToggle";
 import Scribble from "./Scribble";
@@ -17,7 +16,7 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
     { title: f.agents, links: AGENTS.map((a) => ({ href: `/${lang}/agents/${a.id}`, label: `${a.name[lang]} · ${a.role[lang]}` })) },
     { title: f.industries, links: INDUSTRY_PAGES[lang].map((p) => ({ href: `/${lang}/for/${p.slug}`, label: p.name })) },
     { title: f.resources, links: s.resources.cards.map((c) => ({ href: `/${lang}${c.href}`, label: c.t })) },
-    { title: f.company, links: [{ href: `/${lang}/customers`, label: s.menu.customers }, { href: `/${lang}/enterprise`, label: s.menu.enterprise }, { href: `/${lang}/pricing`, label: s.menu.pricing }, ...(VS_PAGES[lang][0] ? [{ href: `/${lang}/resources#compare`, label: s.resources.compare }] : []), { href: `/${lang}/privacy`, label: lang === "ar" ? "الخصوصية" : "Privacy" }, { href: `/${lang}/terms`, label: lang === "ar" ? "الشروط" : "Terms" }] },
+    { title: f.company, links: [{ href: `/${lang}/customers`, label: s.menu.customers }, { href: `/${lang}/enterprise`, label: s.menu.enterprise }, { href: `/${lang}/pricing`, label: s.menu.pricing }, { href: `/${lang}/compare`, label: s.resources.compare }, { href: `/${lang}/privacy`, label: lang === "ar" ? "الخصوصية" : "Privacy" }, { href: `/${lang}/terms`, label: lang === "ar" ? "الشروط" : "Terms" }] },
   ];
   return (
     <footer className="bg-background text-foreground-muted">

@@ -255,7 +255,7 @@ describe("the founder console's key session (rules 420-424, 429, 435)", () => {
       const u = await currentUser();
       expect(u?.email).toBe(customer.email);
       expect(u?.actor).toMatchObject({ kind: "founder", impersonating: "key" });
-      return jar().get("nashr_session")!;
+      return jar().get("thakeen_session")!;
     };
 
     // Opened from a key session, then "End key session": the customer session stops working too.
@@ -285,7 +285,7 @@ describe("the founder console's key session (rules 420-424, 429, 435)", () => {
     vi.stubEnv("WAITLIST_ADMIN_KEY", KEY);
     await db.set("session:" + "c".repeat(64), { email: customer.email, at: Date.now(), imp: "key" }, 600);
     signOut();
-    jar().set("nashr_session", "c".repeat(64));
+    jar().set("thakeen_session", "c".repeat(64));
     expect(await currentUser()).toBeNull();
   });
 
@@ -666,7 +666,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", (
     expect([bad.status, ((await bad.json()) as { error: string }).error]).toEqual([400, "captcha_failed"]);
     expect(await getUser(a)).toBeNull();
     expect(await getUser(b)).toBeNull();
-    expect(jar().has("nashr_session")).toBe(false);
+    expect(jar().has("thakeen_session")).toBe(false);
   });
 
   it("426: a passed check creates the account; the verify call goes to Cloudflare's fixed URL as a form with secret, token and IP", async () => {

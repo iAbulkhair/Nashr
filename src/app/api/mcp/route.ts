@@ -6,6 +6,7 @@ import { chat, chatRefusedText } from "@/lib/chat";
 import { trialOver } from "@/lib/auth";
 import { entitlements } from "@/lib/entitlements";
 import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
+import { fairUseText } from "@/lib/fair-use";
 import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
@@ -27,7 +28,7 @@ export const maxDuration = 300;
 /**
  * Nashr MCP — Streamable HTTP (JSON responses), JSON-RPC 2.0.
  * Connect from Claude Desktop / Claude Code / any MCP client:
- *   URL: {APP_ORIGIN}/api/mcp (src/lib/origin.ts `appOrigin()`)   Header: Authorization: Bearer nashr_...
+ *   URL: {APP_ORIGIN}/api/mcp (src/lib/origin.ts `appOrigin()`)   Header: Authorization: Bearer thakeen_...
  */
 /** Layer 1 for the clients (rule 797): the one sentence about what Thakeen's team will and will not do, in the two tool descriptions that start work. */
 const SCOPE_SENTENCE = "Scope: only marketing, sales, growth, finance and analytics work for this account's brands; anything else is refused.";
@@ -131,6 +132,7 @@ export async function POST(req: Request) {
             case "paused": return ok(id, { ...text("Content generation is paused for now. No credits were used."), isError: true });
             case "no_brand": return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
             case "trial_over": return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
+            case "fair_use": return ok(id, { ...text(fairUseText()), isError: true });
             case "missing_data": return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
             case "agent_cap": return ok(id, { ...text(`${agentById(r.agent).name.en} reached the monthly credit cap the owner set in Governance (${r.spent} of ${r.cap} credits this month). No credits were used. The owner can raise the cap on the Governance page or wait for next month.`), isError: true });
             case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}. ${NO_CREDITS_HINT}`), isError: true });

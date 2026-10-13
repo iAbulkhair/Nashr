@@ -29,6 +29,18 @@ export function useMotionPaused(): boolean {
   return useSyncExternalStore(subscribe, () => paused, () => false);
 }
 
+const REDUCED = "(prefers-reduced-motion: reduce)";
+const watchReduced = (onChange: () => void) => {
+  const mq = window.matchMedia(REDUCED);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+};
+
+/** True while the visitor asks for less motion. True on the server, so the first paint agrees with it; the real answer arrives with hydration. */
+export function useReducedMotion(): boolean {
+  return useSyncExternalStore(watchReduced, () => window.matchMedia(REDUCED).matches, () => true);
+}
+
 /**
  * True while the element is on screen (at least `threshold` of it) and the tab is showing. `initial` is the answer
  * before the first observation arrives, on the server and in the first client render alike, so the two agree.

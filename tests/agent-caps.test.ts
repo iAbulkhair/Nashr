@@ -172,7 +172,7 @@ describe("every charging path enforces the agent's cap before charging (rules 10
   it("the video route stops at the agent's cap before the balance, the trial's one clip or a provider is touched, then charges the item's owner under it", async () => {
     resetMediaCounters();
     vi.spyOn(console, "error").mockImplementation(() => {});
-    mediaEnv({ kie: true, blob: true, models: "all" });
+    mediaEnv({ kie: true, store: true, models: "all" });
     const kie = fakeAdapter("kie", { submit: () => ({ state: "pending", providerTaskId: "kie-cap-video" }) });
     g.deps = fakeDeps({ kie });
     const u = await owner("cap-vid");

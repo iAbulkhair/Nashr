@@ -12,6 +12,7 @@ import { mk } from "./media/keys";
 import { topupRevenueSar } from "./topups";
 import { cronStatuses, type CronStatus } from "./cron-heartbeat";
 import { marginView, type MarginView } from "./margin";
+import { markFairUse } from "./fair-use";
 
 /**
  * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
@@ -148,7 +149,7 @@ export async function overview(): Promise<Overview> {
   const scopes = (await pmap(users, async (u) => (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id)), 6)).flat();
   const perScope = await pmap(scopes, async (scope) => (await listLite(scope, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0), 6);
   const creditsUsed = perScope.reduce((s, x) => s + x, 0);
-  const [total, render, crons, margin] = await Promise.all([getUsage("_all"), renderSpend(), cronStatuses().catch((): CronStatus[] => []), marginView(users).catch(() => null)]);
+  const [total, render, crons, margin] = await Promise.all([getUsage("_all"), renderSpend(), cronStatuses().catch((): CronStatus[] => []), marginView(users).then((v) => ({ ...v, under: markFairUse(v.under, users, v.month) })).catch(() => null)]);
   // Renders are billed to us like model calls: a video can cost more than a month of text for the same account.
   const grossMargin = mrr > 0 ? Math.round(((mrr - (total.usd + render.usd) * SAR_PER_USD) / mrr) * 100) : null;
 

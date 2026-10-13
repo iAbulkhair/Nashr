@@ -28,10 +28,10 @@ describe("sessions end when the password changes", () => {
     const res = await account.PATCH(json("/api/account", "PATCH", { currentPassword: "abc12345", newPassword: "newpass123" }));
     expect(res.status).toBe(200);
     expect((await currentUser())!.email).toBe(u.email); // this device: fresh session
-    expect(jar().get("nashr_session")).not.toBe(mine);
-    jar().set("nashr_session", stolen);
+    expect(jar().get("thakeen_session")).not.toBe(mine);
+    jar().set("thakeen_session", stolen);
     expect(await currentUser()).toBeNull();
-    jar().set("nashr_session", mine);
+    jar().set("thakeen_session", mine);
     expect(await currentUser()).toBeNull();
   });
   it("a wrong current password changes nothing and revokes nothing", async () => {
@@ -39,7 +39,7 @@ describe("sessions end when the password changes", () => {
     const other = await signIn(u.email);
     await signIn(u.email);
     expect((await account.PATCH(json("/api/account", "PATCH", { currentPassword: "nope12345", newPassword: "newpass123" }))).status).toBe(401);
-    jar().set("nashr_session", other);
+    jar().set("thakeen_session", other);
     expect((await currentUser())!.email).toBe(u.email);
   });
   it("a reset kills old sessions, legacy ones without an issue time included, and every MCP token", async () => {
@@ -50,7 +50,7 @@ describe("sessions end when the password changes", () => {
     // (createUser now sets one, so a re-registered address never inherits an old session).
     await saveUser({ ...(await getUser(u.email))!, sessionsAfter: undefined });
     await db.set(`session:${legacy}`, u.email); // the format written before 2026-09-18
-    jar().set("nashr_session", legacy);
+    jar().set("thakeen_session", legacy);
     expect((await currentUser())!.email).toBe(u.email); // legacy sessions keep working until a password change
     const personal = await createMcpToken(u.email);
     const client = await registerClient({ redirect_uris: ["https://claude.example/cb"], client_name: "Claude" });
@@ -65,7 +65,7 @@ describe("sessions end when the password changes", () => {
     expect((await reset.POST(json("/api/auth/reset", "POST", { token, password: "fresh12345" }, ip()))).status).toBe(200);
     expect((await currentUser())!.email).toBe(u.email); // the session the reset created
 
-    for (const t of [old, legacy]) { jar().set("nashr_session", t); expect(await currentUser()).toBeNull(); }
+    for (const t of [old, legacy]) { jar().set("thakeen_session", t); expect(await currentUser()).toBeNull(); }
     expect(await userFromBearer(bearer(personal))).toBeNull();
     expect(await userFromBearer(bearer(oauth.access_token))).toBeNull();
     expect(await rotateRefresh(oauth.refresh_token, client.client_id)).toBeNull();
@@ -171,7 +171,7 @@ describe("createSession", () => {
     const u = await newUser("sess");
     signOut();
     await createSession(u.email);
-    const rec = (await sessionRecord(jar().get("nashr_session")!)) as { email: string; at: number } | null;
+    const rec = (await sessionRecord(jar().get("thakeen_session")!)) as { email: string; at: number } | null;
     expect(rec!.email).toBe(u.email);
     expect(rec!.at).toBeGreaterThan(Date.now() - 5000);
   });

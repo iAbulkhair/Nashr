@@ -86,7 +86,7 @@ describe("rule 362: every public page with metadata names itself in both languag
     ["/help", () => import("@/app/[lang]/help/page")],
     ["/updates", () => import("@/app/[lang]/updates/page")],
     ["/ai-marketing-agent", () => import("@/app/[lang]/ai-marketing-agent/page")],
-    ["/vs/chatgpt", () => import("@/app/[lang]/vs/[competitor]/page"), { competitor: "chatgpt" }],
+    ["/compare", () => import("@/app/[lang]/compare/page")],
     ["/for/ecommerce", () => import("@/app/[lang]/for/[industry]/page"), { industry: "ecommerce" }],
   ];
   for (const [path, load, extra] of pages) {

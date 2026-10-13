@@ -18,7 +18,7 @@ const CLEAN: string[] = (readdirSync("src", { recursive: true }) as string[])
  * the document and cannot load the stylesheet, so it writes D's values out (reskin-marketing pins them); the crawler and
  * the media store handle colours found in customers' sites and files, which are data, not the product's palette.
  */
-const HEX_OK = new Set(["src/app/tokens.css", "src/app/theme-dark.css", "src/app/global-error.tsx", "src/lib/crawl.ts", "src/lib/media/blob.ts"]);
+const HEX_OK = new Set(["src/app/tokens.css", "src/app/theme-dark.css", "src/app/global-error.tsx", "src/lib/crawl.ts", "src/lib/media/store.ts"]);
 
 /**
  * An old palette name used as a colour: a utility (`text-oasis`, `hover:bg-salt-dim/40`), a CSS variable

@@ -5,6 +5,7 @@ import { getLogin, getUser, normalizeEmail, saveUser, sessionCookie, validEmail,
 import { addTopup, voidTopup, withUserLock } from "./credits";
 import { lotsOf, refundUnused, type RefundRequest, type RefundUnusedError, type TopupLot, type TopupRefund, type TopupRequest } from "./topups";
 import { pmap } from "./parallel";
+import { dropCookie, readCookie } from "./cookie-names";
 import { onRoster } from "./team";
 import { rewardReferrer } from "./referral";
 import { lifecyclePlan } from "./lifecycle";
@@ -130,7 +131,7 @@ export async function partnerByCode(raw: unknown): Promise<Partner | null> {
 export const partnerCookie = () => sessionCookie(PARTNER_COOKIE_DAYS * 86400);
 /** The valid code in the visitor's partner cookie and the time of the click that set it, or null. */
 export async function cookieRef(): Promise<{ code: string; clickMs?: number } | null> {
-  return parsePartnerCookie((await cookies()).get(PARTNER_COOKIE)?.value);
+  return parsePartnerCookie(readCookie(await cookies(), PARTNER_COOKIE));
 }
 
 /** `at`: when the account was attributed, the link's click time when the code came from a partner link. */
@@ -182,7 +183,7 @@ export async function afterSignup(email: string, found: SignupPartner): Promise<
     if (done) await db.sadd(refsKey(found!.partner.email), e);
   }
   const jar = await cookies();
-  if (jar.get(PARTNER_COOKIE)) jar.delete(PARTNER_COOKIE);
+  if (readCookie(jar, PARTNER_COOKIE)) dropCookie(jar, PARTNER_COOKIE);
   return done;
 }
 

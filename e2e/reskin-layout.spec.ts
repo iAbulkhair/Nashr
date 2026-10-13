@@ -7,7 +7,7 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 /** Paths after the language prefix. Each re-skin task adds the pages it moves. */
-export const PAGES: string[] = ["", "/pricing", "/app/login", "/agents", "/agents/faris", "/for/ecommerce", "/vs/chatgpt", "/ai-marketing-agent", "/customers", "/enterprise", "/tools", "/tools/hook-generator", "/blog", "/blog/ramadan-marketing-guide-2026", "/help", "/resources", "/updates", "/affiliates", "/affiliates/terms", "/privacy", "/terms", "/not-a-page", "/app/signup", "/app/forgot", "/app/reset", "/app/join"];
+export const PAGES: string[] = ["", "/pricing", "/app/login", "/agents", "/agents/faris", "/for/ecommerce", "/compare", "/ai-marketing-agent", "/customers", "/enterprise", "/tools", "/tools/hook-generator", "/blog", "/blog/ramadan-marketing-guide-2026", "/help", "/resources", "/updates", "/affiliates", "/affiliates/terms", "/privacy", "/terms", "/not-a-page", "/app/signup", "/app/forgot", "/app/reset", "/app/join"];
 /**
  * Signed-in app paths, opened as the seeded owner (`e2e/auth.setup.ts`). Local runs only: against a deployed preview
  * there is no throwaway account to sign in with, and the preview's store is not ours to fill.

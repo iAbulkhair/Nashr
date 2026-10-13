@@ -16,7 +16,7 @@ import { dict } from "@/lib/i18n";
 import { AGENT_PAGES, SITE } from "@/lib/site";
 import { TOOLS } from "@/lib/tools";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
-import { VS_PAGES } from "@/lib/pages-vs";
+import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { listPosts } from "@/lib/blog";
 import { SITE_DEFAULT } from "@/lib/page-meta";
 import { ACCOUNT_EXPORTS_PER_DAY, ACCOUNT_EXPORTS_PER_HOUR, EXPORT_FORMAT, SECRETISH, connectionView, type AccountExport } from "@/lib/privacy-export";
@@ -277,7 +277,7 @@ describe("rule 1328: the privacy and help text point at the self-serve export; v
   });
 
   it("no infrastructure vendor is named in the marketing site's copy (founder default: privacy and help only)", () => {
-    const copy = strings([dict, SITE, SITE_DEFAULT, AGENT_PAGES, INDUSTRY_PAGES, VS_PAGES, TOOLS, listPosts("ar"), listPosts("en")]).join("\n");
+    const copy = strings([dict, SITE, SITE_DEFAULT, AGENT_PAGES, INDUSTRY_PAGES, COMPARE_PAGE, TOOLS, listPosts("ar"), listPosts("en")]).join("\n");
     for (const name of ["Hostinger", "Upstash", "Straitly", "Composio", "Higgsfield", "kie.ai", "Vercel", "Resend"]) expect(copy, name).not.toContain(name);
   });
 });
@@ -285,9 +285,10 @@ describe("rule 1328: the privacy and help text point at the self-serve export; v
 describe("rule 1328: the chat prompt keeps its size; the delete answer it carries names the download", () => {
   it("the two new answers stay out of the chat prompt, which still learns of the download from the delete answer", () => {
     const flagged = HELP.flatMap((t) => t.items).filter((i) => i.chat === false).map((i) => i.q.en).sort();
-    expect(flagged).toEqual(["How do I get a copy of my data?", "Who processes my data?"]);
+    // The cloud drives answer (2026-10-13, rule 1789) is help-page only too: the chat prompt has no room for it (rule 313).
+    expect(flagged).toEqual(["How do I add images and files from my device, Google Drive, Dropbox, OneDrive or iCloud?", "How do I get a copy of my data?", "Who processes my data?"]);
     // helpTopics keeps the flag, and the chat prompt drops flagged items (src/lib/chat.ts).
-    expect(helpTopics("https://x.example").flatMap((t) => t.items).filter((i) => i.chat === false)).toHaveLength(2);
+    expect(helpTopics("https://x.example").flatMap((t) => t.items).filter((i) => i.chat === false)).toHaveLength(3);
     expect(readFileSync("src/lib/chat.ts", "utf8")).toContain("t.items.filter((i) => i.chat !== false).map((i) => `- ${i.q.en} → ${i.a.en}`)");
     expect(helpAnswer("How do I delete my account?").en).toContain("In Settings, Danger zone: “Download my data” gives you a copy");
   });

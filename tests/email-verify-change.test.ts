@@ -159,7 +159,7 @@ describe("change a mistyped signup email", () => {
     // The cookie resolves to the new address; the old session token is dead; a code went to the new address only.
     expect((await currentUserUnverified())!.email).toBe(to);
     expect(await sessionRecord(token)).toBeNull();
-    jar().set("nashr_session", token);
+    jar().set("thakeen_session", token);
     expect(await currentUserUnverified()).toBeNull();
     expect(mails).toHaveLength(1);
     expect(mails[0].to).toBe(to);
@@ -303,7 +303,7 @@ describe("change a mistyped signup email", () => {
     await signIn(old.email);
     expect((await move(to)).status).toBe(200);
     expect((await currentUserUnverified())!.email).toBe(to);
-    jar().set("nashr_session", stale);
+    jar().set("thakeen_session", stale);
     expect(await currentUserUnverified()).toBeNull();
   });
 
@@ -319,7 +319,7 @@ describe("change a mistyped signup email", () => {
     expect((await move(to)).status).toBe(200);
     expect(Date.parse((await getUser(to))!.sessionsAfter!)).toBeGreaterThan(Date.parse(old.sessionsAfter!));
     expect((await currentUserUnverified())!.email).toBe(to);
-    jar().set("nashr_session", stale);
+    jar().set("thakeen_session", stale);
     expect(await currentUserUnverified()).toBeNull();
   });
 

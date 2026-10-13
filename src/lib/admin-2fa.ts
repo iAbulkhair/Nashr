@@ -9,6 +9,7 @@ import { checkStaffCode } from "./staff-code";
 import { allow, clientIp, giveBack, retryLater, sameSecret } from "./rate";
 import { connectSecret } from "./connectors/store";
 import { looksLikeRecovery, newRecoveryCode, newTotpSecret, otpauthUri, recoveryHash, totpMatch } from "./totp";
+import { SESSION_COOKIE, readCookie } from "./cookie-names";
 
 /**
  * The founder console's second factor (360 study C-004, leftovers L055, rules 1370-1389, docs/system/flows.md "Founder
@@ -25,7 +26,7 @@ import { looksLikeRecovery, newRecoveryCode, newTotpSecret, otpauthUri, recovery
  *
  * A step-up is a server record `admin2fa:step:{sha256(id)}` behind the `nashr_admin_2fa` cookie (a random id). It is
  * tied to the actor ("key" or the founder's email) and to a hash of the cookie that made them the actor (`nashr_admin`
- * for the key, `nashr_session` for a founder), so ending the key session or signing out ends it too, and a copied 2FA
+ * for the key, the session cookie for a founder), so ending the key session or signing out ends it too, and a copied 2FA
  * cookie is useless without the session it was opened in. It ends after 30 idle minutes and 12 hours at most.
  *
  * Codes are rate limited per IP and for the whole console (`allow`), a right code hands its hit back, and every
@@ -95,7 +96,8 @@ export async function secondFactorStatus(): Promise<{ enrolled: boolean; at: str
  */
 async function baseOf(who: string, staffCookie?: string | null, keyCookie?: string): Promise<string | null> {
   if (staffCookie !== undefined) return staffCookie ? sha(`nashr-admin-2fa-base:staff:${staffCookie}`) : null;
-  const v = who === "key" && keyCookie ? keyCookie : (await cookies()).get(who === "key" ? ADMIN_COOKIE : "nashr_session")?.value;
+  // The founder's session cookie under its new name or the old one (rule 1810), the same token `currentUser` reads.
+  const v = who === "key" && keyCookie ? keyCookie : who === "key" ? (await cookies()).get(ADMIN_COOKIE)?.value : readCookie(await cookies(), SESSION_COOKIE);
   return v ? sha(`nashr-admin-2fa-base:${v}`) : null;
 }
 const stepWho = (who: string, staffCookie?: string | null) => (staffCookie !== undefined ? `staff:${who}` : who);

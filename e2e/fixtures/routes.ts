@@ -40,7 +40,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/agents/noor", unique: { en: "Noor", ar: "نور" }, ownTitle: true },
   { path: "/tools/hook-generator", unique: { en: "Hook Generator", ar: "مولّد هوكات" }, ownTitle: true },
   { path: "/for/ecommerce", unique: { en: "store", ar: "متجرك يحتاج محتوى" }, ownTitle: true },
-  { path: "/vs/chatgpt", unique: { en: "ChatGPT", ar: "ChatGPT" }, ownTitle: true },
+  { path: "/compare", unique: { en: "Thakeen compared with the alternatives", ar: "ذكين مقارنةً بالبدائل" }, ownTitle: true },
   { path: "/blog/ramadan-marketing-guide-2026", unique: { en: "Ramadan Marketing", ar: "تسويق رمضان" }, ownTitle: true },
 ];
 

@@ -111,6 +111,10 @@ export const PROVIDERS: Provider[] = [
   { id: "whatsapp", name: "WhatsApp Business (templates)", kind: "oauth", capabilities: ["messaging"] },
   { id: "youtube", name: "YouTube (private uploads)", kind: "oauth", capabilities: ["publish_post"] },
   { id: "google_workspace", name: "Google Docs and Sheets (reference files)", kind: "oauth", capabilities: [] },
+  // The customer's cloud drives (rules 1775-1789): import brand files and media, export finished media. Composio only.
+  { id: "google_drive", name: "Google Drive", kind: "oauth", capabilities: [] },
+  { id: "dropbox", name: "Dropbox", kind: "oauth", capabilities: [] },
+  { id: "onedrive", name: "OneDrive", kind: "oauth", capabilities: [] },
 ];
 
 /** The two calendar providers Reem can read (flagged `secretary` in PROVIDERS). */
@@ -121,7 +125,7 @@ export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;
 }
 /** Providers with no direct publishing code: they connect through Composio or not at all. */
-const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "whatsapp", "youtube", "google_workspace"];
+const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "whatsapp", "youtube", "google_workspace", "google_drive", "dropbox", "onedrive"];
 
 /** The provider connects through Composio (COMPOSIO_PROVIDERS names it and the key is set), not its own OAuth app. */
 export const routedViaComposio = (id: string) => composioEnabled(id);

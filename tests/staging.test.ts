@@ -60,6 +60,20 @@ describe("the staging lock (rules 674, 677)", () => {
       const r = proxy(req(p)); expect(r.status, p).not.toBe(404); expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     }
   });
+  it("rule 1760: /m/ passes the lock without a cookie (the route checks its own session or signature); look-alikes stay locked", async () => {
+    vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key);
+    const { proxy } = await import("@/proxy");
+    const { stagingOpen } = await import("@/lib/staging-access");
+    const file = `/m/${"a".repeat(32)}.jpg`;
+    expect(stagingOpen(file)).toBe(true);
+    const r = proxy(req(file));
+    expect(r.status).not.toBe(404);
+    expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    for (const p of ["/m", "/mx/a.jpg", "/M/a.jpg", "/ar/m/a.jpg", "/api/m/a.jpg"]) {
+      expect(stagingOpen(p), p).toBe(false);
+      expect(proxy(req(p)).status, p).toBe(404);
+    }
+  });
   it("valid cookie passes with noindex; a wrong cookie or a missing key stays locked", async () => {
     vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key);
     const { proxy } = await import("@/proxy");
@@ -76,10 +90,10 @@ describe("the staging lock (rules 674, 677)", () => {
     // require(). Comments are not stripped on purpose: a comment that looks like an import fails, the safe direction.
     const specs = (src: string) =>
       [...new Set([...src.matchAll(/\b(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]))].sort();
-    // A closed list: proxy -> {csrf, deploy-env, staging-access}; csrf -> origin; staging-access -> {secret, deploy-env};
+    // A closed list: proxy -> {cookie-names, csrf, deploy-env, staging-access}; cookie-names -> nothing; csrf -> origin; staging-access -> {secret, deploy-env};
     // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
-      "src/proxy.ts": ["@/lib/csrf", "@/lib/deploy-env", "@/lib/settings-nav", "@/lib/staging-access", "next/server"],
+      "src/proxy.ts": ["@/lib/cookie-names", "@/lib/csrf", "@/lib/deploy-env", "@/lib/settings-nav", "@/lib/staging-access", "next/server"],
       // The settings redirect map (rule 1141): plain data; its one import is a type, erased at build (pinned below).
       "src/lib/settings-nav.ts": ["./i18n"],
       "src/lib/csrf.ts": ["@/lib/origin", "next/server"],
@@ -87,6 +101,8 @@ describe("the staging lock (rules 674, 677)", () => {
       "src/lib/staging-access.ts": ["@/lib/deploy-env", "@/lib/secret", "node:crypto"],
       "src/lib/deploy-env.ts": [],
       "src/lib/secret.ts": ["crypto"],
+      // Cookie names and jar helpers (rules 1810-1813): import-free, so the language cookie read adds nothing behind it.
+      "src/lib/cookie-names.ts": [],
     };
     for (const [f, ok] of Object.entries(allowed))
       expect(specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)), f).toEqual([]);

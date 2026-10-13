@@ -51,7 +51,7 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
 
     // 1. Sign up. The response sets a session cookie, so every later step is this account.
     expect((await signupRoute.POST(json("/api/auth/signup", "POST", { email, name: "Roastery", password: "coffee123", lang: "ar" }))).status).toBe(200);
-    expect(jar().get("nashr_session")).toBeTruthy();
+    expect(jar().get("thakeen_session")).toBeTruthy();
     expect((await getUser(email))!.credits).toBe(50);
     // Signup leaves the account unverified, so its session reads as signed out until the address is proved (rule 751).
     await markVerified(email);
@@ -165,7 +165,7 @@ describe("journey: losing and regaining control of an account", () => {
 
     // The old cookie is dead…
     signOut();
-    jar().set("nashr_session", stolenSession);
+    jar().set("thakeen_session", stolenSession);
     expect((await tasksRoute.GET(json("/api/tasks", "GET"))).status).toBe(401);
     // …and so is the bearer token that was created with the old password.
     expect((await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, stolenToken))).status).toBe(401);

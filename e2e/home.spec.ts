@@ -6,7 +6,8 @@ import { CLAUDE_PAUSED } from "../src/lib/model";
 /**
  * The homepage is prototype D (rule 516): the cover with the team, the house rules, your day, the seven steps, the
  * plans and the questions, in that order, each reachable from the nav. The lineup is the one interactive part; the
- * doodles and seams move only without reduced motion and stop with the page's pause button.
+ * doodles, seams and the lineup's own turns (rule 1832) move only without reduced motion and stop with the page's pause
+ * button.
  */
 
 // The gallery (rule 1220) sits after your day and has no nav link: its copy stays out of src/lib/home.ts. The closing
@@ -56,6 +57,15 @@ for (const lang of LANGS) {
       for (const s of STEPS.filter((st) => st.paused)) {
         await expect(page.locator("#steps").getByText(s.paused![lang], { exact: true })).toHaveCount(CLAUDE_PAUSED ? 1 : 0);
       }
+    });
+
+    test("puts the call to action under the team (rule 1830)", async ({ page }) => {
+      await open(page, `/${lang}`);
+      const team = await page.locator('[data-testid="lineup"] [data-id="you"]').boundingBox();
+      const form = await page.locator(`#team form[action="/${lang}/app/signup"]`).boundingBox();
+      const h1 = await page.locator("h1").boundingBox();
+      expect(h1!.y).toBeLessThan(team!.y);
+      expect(form!.y).toBeGreaterThan(team!.y + team!.height);
     });
 
     test("never scrolls sideways", async ({ page }) => {
@@ -155,12 +165,48 @@ test.describe("the lineup", () => {
   });
 });
 
+test.describe("the lineup's own turns (rules 1832-1834)", () => {
+  test("the figures take turns thinking on their own, one at a time, silently", async ({ page }) => {
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    await lineup.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+    const turn = lineup.locator("[data-turn]");
+    await expect(turn).toHaveCount(1, { timeout: 8000 });
+    await expect(lineup.locator(".s-cloud")).toHaveAttribute("data-on", "");
+    await expect(lineup.locator('[aria-live="polite"]')).toHaveText("");
+    const first = await turn.getAttribute("data-id");
+    await expect.poll(() => lineup.locator("[data-turn]").getAttribute("data-id"), { timeout: 12000 }).not.toBe(first);
+    await expect(lineup.locator("[data-turn]")).toHaveCount(1);
+    await expect(lineup.locator('[aria-live="polite"]')).toHaveText("");
+  });
+
+  test("the pause button stops the turns", async ({ page }) => {
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    await lineup.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(lineup.locator("[data-turn]")).toHaveCount(1, { timeout: 8000 });
+    await lineup.locator("button:not([data-id])").first().click();
+    await expect(lineup.locator("[data-turn]")).toHaveCount(0);
+    await expect(lineup.locator(".s-cloud")).not.toHaveAttribute("data-on", "");
+    await page.waitForTimeout(6000);
+    await expect(lineup.locator("[data-turn]")).toHaveCount(0);
+  });
+});
+
 test.describe("home with reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
   test("nothing moves", async ({ page }) => {
     await open(page, "/en");
     await page.waitForLoadState("load");
     expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  });
+  test("the figures do not take turns on their own", async ({ page }) => {
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    await lineup.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+    await page.waitForTimeout(6000);
+    await expect(lineup.locator("[data-turn]")).toHaveCount(0);
+    await expect(lineup.locator(".s-cloud")).not.toHaveAttribute("data-on", "");
   });
 });
 

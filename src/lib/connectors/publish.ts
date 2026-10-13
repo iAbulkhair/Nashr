@@ -7,7 +7,8 @@ import { draftBrevoCampaign, draftKlaviyoTemplate, postTelegram } from "./keyed"
 import { postToFacebook, postToInstagram } from "./meta";
 import { isComposio, postToFacebookVia, postToInstagramVia, postToLinkedInVia, postToTikTokVia, postToXVia, submitWhatsAppTemplateVia, uploadToYouTubeVia } from "./via-composio";
 import { CONNECTION_OF } from "./targets";
-import { hasArtwork, isOurBlobUrl } from "../media-catalog";
+import { hasArtwork, isOurMediaUrl } from "../media-catalog";
+import { shareUrl } from "../media/share";
 import { render } from "../md";
 
 /** `notes`: things the owner should know about a publish that went out (WordPress: `image_failed`, the draft has no featured image). */
@@ -46,11 +47,13 @@ async function publishWith(email: string, task: Task, provider: string, opts: Pu
   if (!c) throw new Error("not_connected");
   const body = task.editedBody ?? task.body;
   const { title, rest } = splitTitle(body, task.title);
+  // Rule 1755: the image leaves as a short signed link, minted now for this one publish; the task keeps the plain URL.
+  const art = hasArtwork(task) ? shareUrl(task.imageUrl!) : undefined;
   switch (provider) {
     case "wordpress": {
       // The post this item went to before, from the item's own record (never from a request): updated in place on "publish again".
       const before = opts.again ? [...(task.published ?? [])].reverse().find((p) => p.provider === "wordpress" && p.id) : undefined;
-      const r = await publishWordPress(c, { title, body: rest, status: opts.live ? "publish" : "draft", imageUrl: hasArtwork(task) ? task.imageUrl : undefined, updateId: before?.id });
+      const r = await publishWordPress(c, { title, body: rest, status: opts.live ? "publish" : "draft", imageUrl: art, updateId: before?.id });
       return { ...r, id: String(r.id), provider };
     }
     case "shopify": {
@@ -66,14 +69,13 @@ async function publishWith(email: string, task: Task, provider: string, opts: Pu
       return { ...r, provider, status: "published" };
     }
     case "facebook": {
-      const image = hasArtwork(task) ? task.imageUrl : undefined;
-      const r = isComposio(c) ? await postToFacebookVia(email, c, body, image) : await postToFacebook(c, body, image);
+      const r = isComposio(c) ? await postToFacebookVia(email, c, body, art) : await postToFacebook(c, body, art);
       return { ...r, provider, status: "published" };
     }
     case "instagram": {
       // targetsFor already requires a generated image; checked again here because this is the call that posts.
-      if (!hasArtwork(task)) throw new Error("instagram_needs_image");
-      const r = isComposio(c) ? await postToInstagramVia(email, c, body, task.imageUrl!) : await postToInstagram(c, body, task.imageUrl!);
+      if (!art) throw new Error("instagram_needs_image");
+      const r = isComposio(c) ? await postToInstagramVia(email, c, body, art) : await postToInstagram(c, body, art);
       return { ...r, provider, status: "published" };
     }
     // LinkedIn and TikTok publish only through Composio: Thakeen has no direct publishing code for them.
@@ -84,9 +86,9 @@ async function publishWith(email: string, task: Task, provider: string, opts: Pu
     }
     case "tiktok": {
       if (!isComposio(c)) throw new Error("unsupported_provider");
-      if (!hasArtwork(task)) throw new Error("tiktok_needs_image");
+      if (!art) throw new Error("tiktok_needs_image");
       // The image lands in the owner's TikTok inbox; they finish the post in the app.
-      const r = await postToTikTokVia(email, c, body, task.imageUrl!);
+      const r = await postToTikTokVia(email, c, body, art);
       return { ...r, provider, status: "draft" };
     }
     // Drafts only from here: nothing reaches a customer or the public until the owner acts in that platform.
@@ -99,7 +101,8 @@ async function publishWith(email: string, task: Task, provider: string, opts: Pu
     case "youtube": {
       // A private upload; the owner makes it public in YouTube Studio.
       if (!isComposio(c)) throw new Error("unsupported_provider");
-      if (!isOurBlobUrl(task.videoUrl)) throw new Error("youtube_needs_video");
+      // Staged by composioStageFile, which signs it (rule 1755).
+      if (!isOurMediaUrl(task.videoUrl)) throw new Error("youtube_needs_video");
       const r = await uploadToYouTubeVia(email, c, task.title, body, task.videoUrl!);
       return { ...r, provider, status: "draft" };
     }

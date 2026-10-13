@@ -909,8 +909,8 @@ describe("rule 408: the privacy policy covers the partner cookie, the partner's 
   it("in Arabic and English", () => {
     const en = JSON.stringify(LEGAL.en.privacy);
     const ar = JSON.stringify(LEGAL.ar.privacy);
-    for (const t of ["nashr_partner", "30 days", "pseudonymous label", "IBAN", "Only the founder sees them in full", "deleted with your account"]) expect(en, t).toContain(t);
-    for (const t of ["nashr_partner", "30 يوماً", "رمزاً مستعاراً", "الآيبان", "يراهما المؤسس وحده كاملين", "يُحذفان مع حسابك"]) expect(ar, t).toContain(t);
+    for (const t of ["thakeen_partner", "30 days", "pseudonymous label", "IBAN", "Only the founder sees them in full", "deleted with your account"]) expect(en, t).toContain(t);
+    for (const t of ["thakeen_partner", "30 يوماً", "رمزاً مستعاراً", "الآيبان", "يراهما المؤسس وحده كاملين", "يُحذفان مع حسابك"]) expect(ar, t).toContain(t);
     // Since rules 411-414: the country, the tax number, the taxes paid with each transfer and the terms consent.
     for (const t of ["the country you live in", "your tax number", "withholding tax", "agreed to the partner programme terms"]) expect(en, t).toContain(t);
     for (const t of ["دولة إقامتك", "رقمك الضريبي", "ضريبة الاستقطاع", "موافقتك على شروط برنامج الشركاء"]) expect(ar, t).toContain(t);

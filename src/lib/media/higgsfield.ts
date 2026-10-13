@@ -5,7 +5,7 @@
  * bill twice. Nothing here retries.
  */
 import { randomInt } from "crypto";
-import { isOurBlobUrl } from "../media-catalog";
+import { isOurOutgoingMediaUrl } from "../media-catalog";
 import { callbackUrl } from "./config";
 import { PROVIDER_TASK_ID, abortAfter } from "./keys";
 import { ProviderError, type MediaAdapter, type ProviderCheck, type SubmitInput } from "./types";
@@ -96,8 +96,8 @@ async function httpError(r: Response): Promise<ProviderError> {
 const https = (u: unknown): u is string => typeof u === "string" && u.startsWith("https://");
 
 function spec(i: SubmitInput): HfSpec {
-  // Spec A9: only our own Blob copy of a generated image ever leaves the building as a reference.
-  if (!Object.hasOwn(HF_MODELS, i.model) || (i.imageUrl !== undefined && !isOurBlobUrl(i.imageUrl))) throw new ProviderError("rejected");
+  // Spec A9: only our own copy of a generated image ever leaves the building as a reference (signed at the send, rule 1755).
+  if (!Object.hasOwn(HF_MODELS, i.model) || (i.imageUrl !== undefined && !isOurOutgoingMediaUrl(i.imageUrl))) throw new ProviderError("rejected");
   return HF_MODELS[i.model as HfModelId];
 }
 

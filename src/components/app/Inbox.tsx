@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Task } from "@/lib/brand";
-import { hasArtwork, isOurBlobUrl, type MediaModelId, type VideoModelId } from "@/lib/media-catalog";
+import { hasArtwork, isOurMediaUrl, type MediaModelId, type VideoModelId } from "@/lib/media-catalog";
 import MediaControls from "./MediaControls";
+import DriveExport from "./DriveExport";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
 import type { Lang } from "@/lib/i18n";
@@ -88,7 +89,7 @@ const verdictsOf = (x: Pick<Task, "source" | "crossReview">) => (x.source === "e
 const noSubscribe = () => () => {};
 const shareSheet = () => typeof navigator.canShare === "function";
 /** Our Blob store answers ?download=1 with an attachment header, so the link saves the clip instead of playing it. */
-const saveLink = (url: string) => (isOurBlobUrl(url) ? `${url}?download=1` : url);
+const saveLink = (url: string) => (isOurMediaUrl(url) ? `${url}?download=1` : url);
 
 /**
  * `canPublish` is `can(u, "publish")` from the page (approve and publish are admin and owner). Without it the inbox offers
@@ -390,7 +391,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                       remotePatterns and paying to proxy images we already pay to generate and store. */}
                   {/* eslint-disable-next-line @next/next/no-img-element -- remote image host, not a local asset */}
                   <img loading="lazy" decoding="async" src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
-                  <div className="text-xs text-foreground-muted">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
+                  <div className="text-xs text-foreground-muted">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{isOurMediaUrl(x.imageUrl) && <DriveExport t={t} url={x.imageUrl} />}{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
                 </div>
               )}
               {x.videoUrl && (
@@ -402,6 +403,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                       <a href={saveLink(x.videoUrl)} target="_blank" rel="noreferrer" className="underline">{i.videoDownload}</a>
                       {canShare && !noShare[x.id] && <button disabled={saving === x.id} onClick={() => saveVideo(x)} className="btn btn-secondary btn-xs">{saving === x.id ? `${i.videoSave}…` : i.videoSave}</button>}
                     </span>
+                    {isOurMediaUrl(x.videoUrl) && <DriveExport t={t} url={x.videoUrl} />}
                     {ready === x.id && <p role="status" className="text-foreground">{i.videoReady}</p>}
                     <p className="text-foreground-muted">{i.videoNoPublish}</p>
                     {x.videoPrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.videoPrompt}</p>}
