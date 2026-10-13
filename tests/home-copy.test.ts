@@ -146,8 +146,9 @@ describe("the D homepage copy is true (rule 514)", () => {
   });
   it("has no number but a clock time, the masthead's issue and the 90-day plan", () => {
     const clock = [DAY.morning.cap.ar, DAY.morning.cap.en, HERO.issue.en];
-    for (const s of dCopy().filter((s) => !clock.includes(s))) expect(s.replace(/٩٠|90/g, ""), s).not.toMatch(/[0-9٠-٩]/);
-    expect(DAY.morning.cap.ar).toBe("٧:٥٨ الصبح.");
+    for (const s of dCopy().filter((s) => !clock.includes(s))) expect(s.replace(/90/g, ""), s).not.toMatch(/[0-9٠-٩]/);
+    // Western digits on the Arabic page too (rule 1584).
+    expect(DAY.morning.cap.ar).toBe("7:58 الصبح.");
   });
   it("promises nothing NOT_YET lists", () => {
     for (const s of dCopy()) expect(promises(s), s).toEqual([]);

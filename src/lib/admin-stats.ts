@@ -11,6 +11,7 @@ import { MEDIA_MODELS, type MediaModelId, type MediaProviderId } from "./media-c
 import { mk } from "./media/keys";
 import { topupRevenueSar } from "./topups";
 import { cronStatuses, type CronStatus } from "./cron-heartbeat";
+import { marginView, type MarginView } from "./margin";
 
 /**
  * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
@@ -38,6 +39,11 @@ export type Overview = {
   recent: { email: string; name: string; plan: string; credits: number; createdAt: string; lastActive: string | null; activated: boolean; events: Record<string, number> }[];
   /** Sign-ups that never finished onboarding (rules 1474, 1475): how many, and the newest `STALLED_MAX` of them. */
   stalled: { total: number; rows: Stalled[] };
+  /**
+   * Rule 1533: this month's paying accounts under the margin floor (src/lib/margin.ts), live, lowest first, and the last
+   * daily alert run's counts. Null when the counters could not be read (the rest of the overview still answers).
+   */
+  margin: MarginView | null;
 };
 
 /**
@@ -142,7 +148,7 @@ export async function overview(): Promise<Overview> {
   const scopes = (await pmap(users, async (u) => (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id)), 6)).flat();
   const perScope = await pmap(scopes, async (scope) => (await listLite(scope, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0), 6);
   const creditsUsed = perScope.reduce((s, x) => s + x, 0);
-  const [total, render, crons] = await Promise.all([getUsage("_all"), renderSpend(), cronStatuses().catch((): CronStatus[] => [])]);
+  const [total, render, crons, margin] = await Promise.all([getUsage("_all"), renderSpend(), cronStatuses().catch((): CronStatus[] => []), marginView(users).catch(() => null)]);
   // Renders are billed to us like model calls: a video can cost more than a month of text for the same account.
   const grossMargin = mrr > 0 ? Math.round(((mrr - (total.usd + render.usd) * SAR_PER_USD) / mrr) * 100) : null;
 
@@ -153,6 +159,7 @@ export async function overview(): Promise<Overview> {
 
   return {
     stalled: stalledSignups(users, (e) => brands.get(e) ?? false, now),
+    margin,
     generatedAt: new Date().toISOString(),
     users: { total: users.length, new1d: users.filter((u) => ageDays(u.createdAt) <= 1).length, new7d: users.filter((u) => ageDays(u.createdAt) <= 7).length, new30d: recentUsers.length, activated, activationRate: users.length ? Math.round((activated / users.length) * 100) : null, paying, trialActive, trialExpired, suspended: users.filter((u) => u.suspended).length },
     engagement: { dau, wau, mau, stickiness: mau ? Math.round((dau / mau) * 100) : null, retention7: cohort.length ? Math.round((retained / cohort.length) * 100) : null },

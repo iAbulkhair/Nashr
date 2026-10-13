@@ -75,3 +75,10 @@ export function plural(lang: FormatLang, n: number, forms: PluralForms): string 
   const rule = new Intl.PluralRules(lang === "ar" ? "ar" : "en").select(n);
   return (forms[rule] ?? forms.other).replaceAll("#", formatNumber(n, lang));
 }
+
+/**
+ * Text arrows that follow the reading direction (rule 1588): "next" points the way the line reads, "back" points to its
+ * start. On an Arabic page that is ← for next and → for back; a bare → in Arabic text points backwards.
+ */
+export const nextArrow = (lang: FormatLang): string => (lang === "ar" ? "←" : "→");
+export const backArrow = (lang: FormatLang): string => (lang === "ar" ? "→" : "←");

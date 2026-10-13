@@ -49,7 +49,7 @@ export default function McpPanel({ lang, origin, draftsPerHour, canToken = true,
       </div>}
       {canGrants && <div className="mt-6 rounded-xl border border-foreground/30 bg-surface p-5">
         <h2 className="font-display text-xl font-bold">{ar ? "الطريقة الأسهل: OAuth (بدون رمز)" : "Easiest: OAuth (no token)"}</h2>
-        <p className="mt-1 text-sm text-foreground-muted">{ar ? "في Claude (الويب/سطح المكتب) → Settings → Connectors → Add custom connector → الصق الرابط. سيفتح صفحة تسجيل دخول ذكين ثم «Allow»." : "In Claude (web/desktop) → Settings → Connectors → Add custom connector → paste the URL. It opens Thakeen login, then “Allow”."}</p>
+        <p className="mt-1 text-sm text-foreground-muted">{ar ? "في Claude (الويب أو سطح المكتب) افتح Settings → Connectors → Add custom connector، ثم الصق الرابط. سيفتح صفحة تسجيل دخول ذكين ثم «Allow»." : "In Claude (web/desktop) → Settings → Connectors → Add custom connector → paste the URL. It opens Thakeen login, then “Allow”."}</p>
         <code className="mt-2 block break-all rounded bg-background-muted p-3 text-sm" dir="ltr">{url}</code>
         <p className="mt-4 text-xs uppercase tracking-wide text-foreground-muted">{ar ? "التطبيقات المتصلة" : "Connected apps"}</p>
         {grants.length === 0 ? <p className="mt-1 text-sm text-foreground-muted">{ar ? "لا يوجد تطبيق متصل عبر OAuth." : "No app is connected through OAuth."}</p> : (

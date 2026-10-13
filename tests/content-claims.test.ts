@@ -6,51 +6,49 @@ import { HELP } from "@/lib/help";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS, mediaModel, type MediaKind } from "@/lib/media-catalog";
 
 /**
- * The published comparison page names six real competitors and stakes its credibility on the rubric being checkable:
- * "we publish the full rubric… email us to correct any number". Four of its eight totals did not match the weights it
- * publishes three lines above, and the rank column contradicted its own scores in seven of eight rows — with the
- * vendor's own row being one of the arithmetically correct ones. This recomputes it.
+ * Rule 1581 (replaces the rubric arithmetic check of rule 64): the "AI marketing agents for the Gulf" article is written by
+ * the vendor of one of the tools it covers, so it carries no score, no total and no rank. It used to rank Noor first on
+ * Thakeen's own weighted score; the founder's decision of 2026-10-13 was to drop the numbers and label the comparison
+ * plainly as our own opinion.
  */
 const RUBRIC = "content/blog/best-ai-marketing-agents-gulf-2026.md";
-/** Exec, Arabic, Channels, Compliance, Control, Price — the weights the article itself publishes. */
-const WEIGHTS = [0.25, 0.2, 0.2, 0.1, 0.15, 0.1];
 
-type Row = { rank: string; tool: string; scores: number[]; total: number };
+describe("rule 1581: the agents comparison is labelled opinion with no score and no ranking", () => {
+  const raw = readFileSync(RUBRIC, "utf8");
+  const [ar, en] = raw.split(/\n---EN---\n/);
+  const tableRows = (text: string) => text.split("\n").filter((l) => l.startsWith("|") && !/^\|\s*-/.test(l)).map((l) => l.split("|").slice(1, -1).map((c) => c.trim()));
 
-function rubricRows(): Row[] {
-  const rows: Row[] = [];
-  for (const line of readFileSync(RUBRIC, "utf8").split("\n")) {
-    if (!line.startsWith("|")) continue;
-    const cells = line.split("|").slice(1, -1).map((c) => c.trim());
-    if (cells.length !== 9) continue;
-    const scores = cells.slice(2, 8).map(Number);
-    const total = Number(cells[8].replace(/\*/g, ""));
-    if (scores.some((n) => !Number.isFinite(n)) || !Number.isFinite(total)) continue;
-    rows.push({ rank: cells[0], tool: cells[1], scores, total });
-  }
-  return rows;
-}
-
-describe("the published competitor rubric is arithmetically true", () => {
-  it("finds both language tables, so an empty result cannot pass by accident", () => {
-    expect(rubricRows().length).toBe(16);
+  it("has a table in both languages, so the checks below cannot pass on an empty file", () => {
+    expect(tableRows(ar).length).toBeGreaterThan(5);
+    expect(tableRows(en).length).toBeGreaterThan(5);
   });
 
-  it("every published total equals weight x score", () => {
-    const wrong = rubricRows()
-      .map((r) => ({ tool: r.tool, published: r.total, computed: Math.round(r.scores.reduce((s, v, i) => s + v * WEIGHTS[i], 0) * 100) / 100 }))
-      .filter((r) => Math.abs(r.published - r.computed) > 0.005);
-    expect(wrong, `rows whose total does not match the published weights: ${JSON.stringify(wrong)}`).toEqual([]);
+  it("no cell is a number: no scores, totals, weights or rank column", () => {
+    for (const row of [...tableRows(ar), ...tableRows(en)]) for (const cell of row) expect(cell.replace(/\*/g, ""), cell).not.toMatch(/^[\d.,%#٪]+$/);
+    expect(raw).not.toMatch(/\d+(\.\d+)?\s*%|\b\d\.\d\d\b/);
+    expect(raw).not.toMatch(/^\|\s*#\s*\|/m);
+    expect(raw).not.toMatch(/المجموع|الوزن|\bScore\b|\bWeight\b|أفضل \d|\bThe \d+ Best\b/);
   });
 
-  it("the rank column does not contradict the scores", () => {
-    // Rows carrying a number are the ranked products; the agency row is a reference and is marked with a dash.
-    for (const table of [rubricRows().slice(0, 8), rubricRows().slice(8)]) {
-      const ranked = table.filter((r) => /^\d+$/.test(r.rank));
-      expect(ranked.length).toBeGreaterThan(0);
-      const byRank = [...ranked].sort((a, b) => Number(a.rank) - Number(b.rank)).map((r) => r.total);
-      const byScore = [...ranked].map((r) => r.total).sort((a, b) => b - a);
-      expect(byRank, "the # column must be ordered by the published score").toEqual(byScore);
+  it("says plainly that it is our own opinion, in both languages", () => {
+    expect(ar).toContain("رأينا نحن");
+    expect(ar).toContain("لا نعطي درجات، ولا نرتّب الأدوات");
+    expect(en).toContain("our own opinion");
+    expect(en).toContain("we give no scores, we do not rank the tools");
+  });
+
+  it("the corrections line gives the support address, in both languages", () => {
+    expect(ar).toContain("راسلنا على hello@thakeen.com");
+    expect(en).toContain("Email us at hello@thakeen.com");
+  });
+
+  it("does not put Noor first: the tools are in alphabetical order and the agency reference comes last", () => {
+    for (const text of [ar, en]) {
+      const names = tableRows(text).slice(1).map((r) => r[0]);
+      expect(names[0]).not.toMatch(/نور|Noor/);
+      const products = names.slice(0, -1).map((n) => n.replace(/^نور \(ذكين\)$/, "Noor (Thakeen)"));
+      expect(products).toEqual([...products].sort((a, b) => a.localeCompare(b, "en")));
+      expect(names.at(-1)).toMatch(/وكالة|agency/i);
     }
   });
 });

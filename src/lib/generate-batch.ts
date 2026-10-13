@@ -34,7 +34,8 @@ import { feedbackFor } from "./feedback";
 import { generate, type Generated } from "./noor";
 import { judgeLater } from "./judge";
 import { warnAgentCap } from "./notifications";
-import { initialStatus } from "./brand-rules";
+import { initialStatus, isCustomerFacing } from "./brand-rules";
+import { regulatedSector, withDisclaimer } from "./regulated";
 import type { Grounding } from "./json";
 import { promptStamp } from "./prompt-stamp";
 import { entitlements } from "./entitlements";
@@ -218,11 +219,14 @@ export type ItemContext = {
  * An `external` item (MCP `save_draft`) is never cross-reviewed: no Nashr agent wrote it, so it keeps no verdicts.
  */
 export function taskFromItem(it: Generated, c: ItemContext): Task {
-  const draft = { type: c.type, channel: it.channel, title: it.title, body: it.body };
+  // A regulated brand's customer-facing item ends with its sector's plain disclaimer line (rule 1522), before the gate reads it.
+  const sector = isCustomerFacing(c.type) ? regulatedSector(c.brand.industry) : null;
+  const body = sector ? withDisclaimer(it.body, sector) : it.body;
+  const draft = { type: c.type, channel: it.channel, title: it.title, body };
   const verdicts = c.source !== "external" && it.crossReview?.length ? it.crossReview : undefined;
   const flagged = !!verdicts?.some((v) => v.verdict === "flag");
   return {
-    id: randomBytes(8).toString("hex"), type: c.type, channel: it.channel, title: it.title, body: it.body,
+    id: randomBytes(8).toString("hex"), type: c.type, channel: it.channel, title: it.title, body,
     status: initialStatus(c.forcePending || flagged ? false : c.autoApprove, c.brand, draft),
     createdAt: c.createdAt, lang: c.brand.languages[0] ?? "ar", source: c.source, ...(c.brief ? { brief: c.brief } : {}),
     pb: promptStamp(c.type, c.brand, c.ins),

@@ -104,6 +104,7 @@ const ALLOWED: Record<string, { n: number; why: string }> = {
   "src/lib/credits.ts": { n: 1, why: "billing: `renewalDue`, a monthly renewal runs for a paid plan and never for a trial" },
   "src/lib/entitlements.ts": { n: 4, why: "home: the one place that decides what a plan includes (inactive trial, end day, trial video list, reset day)" },
   "src/lib/lifecycle.ts": { n: 1, why: "copy: the trial-deadline and win-back emails are for an account still on trial" },
+  "src/lib/margin.ts": { n: 1, why: "stats: the founder's margin alert measures paying accounts only; a trial earns no plan revenue (rule 1530), and nothing is decided for the account" },
   "src/lib/media/jobs.ts": { n: 1, why: "ACCESS: a trial keeps one video (the `trial_video_used` lock, spec A29); a founder video grant opens the models, not a second clip" },
   "src/lib/notifications.ts": { n: 1, why: "display: the bell's alert that a trial ends within 24 hours" },
   "src/lib/partners.ts": { n: 2, why: "billing: only an unpaid trial can claim a partner code, and the last-day offer is owed to an unpaid trial (offer eligibility, not product access)" },

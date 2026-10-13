@@ -22,6 +22,7 @@ import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type
 import { appOrigin } from "@/lib/origin";
 import { paymobConfig } from "@/lib/paymob";
 import { renewPaymob } from "@/lib/billing";
+import { runMarginAlert } from "@/lib/margin";
 
 export const maxDuration = 300;
 
@@ -187,8 +188,12 @@ export async function GET(req: Request) {
   if (!sameSecret(bearer, process.env.CRON_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
   const routeStart = Date.now();
   let reminders: SweepReport | { error: string } | null = null;
+  let margin: Awaited<ReturnType<typeof runMarginAlert>> | null = null;
   if (!Number(new URL(req.url).searchParams.get("chain") ?? 0)) {
     try { reminders = await sweepDaily(routeStart); } catch (e) { reminders = { error: e instanceof Error ? e.name : "error" }; }
+    // Rule 1534: the founder's margin alert, once a day on the first hop (no cron schedule of its own). Read-only for
+    // customers; it never throws, and its time comes out of the batch's start budget like the sweep's.
+    margin = await runMarginAlert();
   }
   const roster = await dailyRoster();
   const items: DailyItem[] = [...roster.users.map((user) => ({ user })), ...roster.idle.map((idle) => ({ idle }))];
@@ -205,5 +210,5 @@ export async function GET(req: Request) {
   }
   await recordCronRun("daily");
   const count = (word: string) => Object.values(report.results).filter((r) => r.split("+").some((x) => x.startsWith(word))).length;
-  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: mailReady(), reminders });
+  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: mailReady(), reminders, margin });
 }

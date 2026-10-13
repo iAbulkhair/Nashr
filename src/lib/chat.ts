@@ -11,7 +11,7 @@ import { sc, trialOver, type User } from "./auth";
 import { getBrand, listPreferencesFor, listLite, type Brand, type Task } from "./brand";
 import { feedbackBlock, feedbackFor } from "./feedback";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType, type TaskType } from "./tasks";
-import { generateBatch, withheldNote, type BatchRefusal } from "./generate-batch";
+import { countCost, generateBatch, withheldNote, type BatchRefusal } from "./generate-batch";
 import { CORE_FILES, FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, safeName, writeFile } from "./files";
 import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
@@ -47,6 +47,9 @@ import { entitlements } from "./entitlements";
 import { INSTRUCTION_CHARS } from "./instructions-safety";
 import { DEFAULTS, route, type Rejected } from "./models/route";
 import { MODEL_UNAVAILABLE, MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
+import { spendIntent } from "./spend-intent";
+import { isRegulated } from "./regulated";
+import { SPEND_CARDS_PER_REPLY, proposeSpend, spendCard, spendProposalStates, type SpendProposal, type SpendProposalCard } from "./spend-proposals";
 import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandNames, itemHash, publishScopeCheck, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx } from "./agent-scope";
 
 /**
@@ -55,7 +58,7 @@ import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandName
  * read the notes instead of offering Approve.
  */
 export type ChatItem = { id: string; type: TaskType; channel: string; title: string; body: string; status: string; xflag?: { by: AgentId; n: number }[] };
-export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[]; /** workspace files written during this turn, rendered as collapsible cards (first-run onboarding) */ files?: { name: string; content: string }[]; /** starter plan proposed at the end of onboarding */ plan?: PlanItem[]; /** a handoff Majed proposed during this turn (src/lib/handoffs.ts), rendered as a card with Run buttons */ handoff?: { id: string }; /** brand changes proposed during this turn, waiting for the owner's Save (src/lib/brand-proposals.ts) */ proposals?: BrandProposal[]; /** absences Reem proposed during this turn (contact_away), waiting for a person's Save (src/lib/secretary-away.ts) */ awayProposals?: AwayProposal[]; /** instructions an agent proposed during this turn (propose_instruction), waiting for the owner's Apply (src/lib/instruction-proposals.ts); absent on older messages */ instructionProposals?: InstructionProposalCard[]; /** the agent whose work the owner asked for, when this agent's role refusal sent it elsewhere (rule 798): the reply shows a button that switches to them. Expand-only (rule 679): old messages have none. */ switchTo?: AgentId; /** the workspace was large for this turn (`workspaceLarge`, rule 1484): the app shows a quiet hint under the reply; absent before 2026-10-12 */ large?: true };
+export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[]; /** workspace files written during this turn, rendered as collapsible cards (first-run onboarding) */ files?: { name: string; content: string }[]; /** starter plan proposed at the end of onboarding */ plan?: PlanItem[]; /** a handoff Majed proposed during this turn (src/lib/handoffs.ts), rendered as a card with Run buttons */ handoff?: { id: string }; /** brand changes proposed during this turn, waiting for the owner's Save (src/lib/brand-proposals.ts) */ proposals?: BrandProposal[]; /** absences Reem proposed during this turn (contact_away), waiting for a person's Save (src/lib/secretary-away.ts) */ awayProposals?: AwayProposal[]; /** instructions an agent proposed during this turn (propose_instruction), waiting for the owner's Apply (src/lib/instruction-proposals.ts); absent on older messages */ instructionProposals?: InstructionProposalCard[]; /** the agent whose work the owner asked for, when this agent's role refusal sent it elsewhere (rule 798): the reply shows a button that switches to them. Expand-only (rule 679): old messages have none. */ switchTo?: AgentId; /** the workspace was large for this turn (`workspaceLarge`, rule 1484): the app shows a quiet hint under the reply; absent before 2026-10-12 */ large?: true; /** paid work the owner's message did not ask for in words, waiting for the owner's Run (src/lib/spend-proposals.ts, rule 1511). Expand-only (rule 679): absent on older messages. */ spendProposals?: SpendProposalCard[] };
 export type PlanItem = { title: string; type: TaskType; brief: string; added?: boolean };
 
 const key = (email: string, conv?: string) => (conv && conv !== "default" ? `chat:${email}:${conv}` : `chat:${email}`);
@@ -67,12 +70,14 @@ export async function history(email: string, conv?: string): Promise<ChatMsg[]> 
   const ids = msgs.flatMap((m) => m.proposals?.map((p) => p.id) ?? []);
   const awayIds = msgs.flatMap((m) => m.awayProposals?.map((p) => p.id) ?? []);
   const instrIds = msgs.flatMap((m) => m.instructionProposals?.map((p) => p.id) ?? []);
-  if (ids.length || awayIds.length || instrIds.length) {
-    const [states, away, instr]: [Record<string, BrandProposal["state"]>, Record<string, AwayProposal["state"]>, Record<string, InstructionProposalCard["state"]>] = await Promise.all([ids.length ? proposalStates(email, ids) : {}, awayIds.length ? awayProposalStates(email, awayIds) : {}, instrIds.length ? instructionProposalStates(email, instrIds) : {}]);
+  const spendIds = msgs.flatMap((m) => m.spendProposals?.map((p) => p.id) ?? []);
+  if (ids.length || awayIds.length || instrIds.length || spendIds.length) {
+    const [states, away, instr, spend]: [Record<string, BrandProposal["state"]>, Record<string, AwayProposal["state"]>, Record<string, InstructionProposalCard["state"]>, Record<string, SpendProposalCard["state"]>] = await Promise.all([ids.length ? proposalStates(email, ids) : {}, awayIds.length ? awayProposalStates(email, awayIds) : {}, instrIds.length ? instructionProposalStates(email, instrIds) : {}, spendIds.length ? spendProposalStates(email, spendIds) : {}]);
     for (const m of msgs) {
       for (const p of m.proposals ?? []) p.state = states[p.id] ?? "expired";
       for (const p of m.awayProposals ?? []) p.state = away[p.id] ?? "expired";
       for (const p of m.instructionProposals ?? []) p.state = instr[p.id] ?? "expired";
+      for (const p of m.spendProposals ?? []) p.state = spend[p.id] ?? "expired";
     }
   }
   return msgs;
@@ -438,6 +443,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   const proposed: BrandProposal[] = [];
   const awayProposed: AwayProposal[] = [];
   const instructionProposed: InstructionProposal[] = [];
+  const spendProposed: SpendProposal[] = [];
   const via = opts.via ?? "app";
 
   const state = modelState();
@@ -546,7 +552,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
             shown = out.block ? out.reply : said;
           } else late.push(check);
         }
-        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed), agent: agentId };
+        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed), agent: agentId };
         await deliver(email, m, conv);
         return withLimit(m, actions, spent);
       }
@@ -556,7 +562,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
         let isError = false;
         opts.onStatus?.(statusFor(u.name, lang, agentName));
         try {
-          out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, ownerMsg: text, conv, modes: scopeModes });
+          out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, spendProposed, ownerMsg: text, conv, modes: scopeModes });
         } catch (e) {
           isError = true;
           out = e instanceof Error ? e.message : "tool_failed";
@@ -581,7 +587,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       } else late.push(check);
     }
     const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? cut : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
-    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
+    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
     await deliver(email, m, conv);
     return withLimit(m, actions, spent);
   } finally {
@@ -593,9 +599,9 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
 const cleanName = (v: unknown) => (typeof v === "string" ? cleanLine(v).slice(0, 80) : "");
 /** The text blocks of a model response, joined. */
 const textOf = (content: Anthropic.ContentBlock[]) => content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
-/** What every reply of a turn carries: its actions (without the `limit:*` tags), the items made, the handoff card, the switch card, brand proposals, away proposals and instruction proposals (as cards: without who proposed). */
-export function turnParts(actions: string[], made: Task[], proposed: BrandProposal[], awayProposed: AwayProposal[] = [], instructionProposed: InstructionProposal[] = []): Pick<ChatMsg, "actions" | "items" | "handoff" | "switchTo" | "proposals" | "awayProposals" | "instructionProposals"> {
-  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...switchOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, BRAND_CARDS_PER_REPLY) } : {}), ...(awayProposed.length ? { awayProposals: awayProposed.slice(0, AWAY_CARDS_PER_REPLY) } : {}), ...(instructionProposed.length ? { instructionProposals: instructionProposed.slice(0, INSTRUCTION_CARDS_PER_REPLY).map(proposalCard) } : {}) };
+/** What every reply of a turn carries: its actions (without the `limit:*` tags), the items made, the handoff card, the switch card, brand proposals, away proposals, instruction proposals and spend proposals (as cards: without who proposed). */
+export function turnParts(actions: string[], made: Task[], proposed: BrandProposal[], awayProposed: AwayProposal[] = [], instructionProposed: InstructionProposal[] = [], spendProposed: SpendProposal[] = []): Pick<ChatMsg, "actions" | "items" | "handoff" | "switchTo" | "proposals" | "awayProposals" | "instructionProposals" | "spendProposals"> {
+  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...switchOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, BRAND_CARDS_PER_REPLY) } : {}), ...(awayProposed.length ? { awayProposals: awayProposed.slice(0, AWAY_CARDS_PER_REPLY) } : {}), ...(instructionProposed.length ? { instructionProposals: instructionProposed.slice(0, INSTRUCTION_CARDS_PER_REPLY).map(proposalCard) } : {}), ...(spendProposed.length ? { spendProposals: spendProposed.slice(0, SPEND_CARDS_PER_REPLY).map(spendCard) } : {}) };
 }
 /** After the reply is saved: the first limit a tool hit (the app raises its dialog) and the turn's model cost, neither saved. */
 function withLimit(m: ChatTurn, actions: string[], spent: number): ChatTurn {
@@ -680,6 +686,25 @@ async function roleGate(user: User, ctx: ToolCtx, type: TaskType, notes: string,
 /** The turn's modes for the batch, when the turn has them: `generateBatch` then reads none of its own (the prompt flag, rule 797). */
 const scopeOf = (ctx: ToolCtx): { agentScope?: AgentScopeModes } => (ctx.modes ? { agentScope: ctx.modes } : {});
 
+/**
+ * The spend gate (rules 1510-1511): a tool that spends credits runs straight away only when the owner's own latest message
+ * asked for paid work in words (`spendIntent`, src/lib/spend-intent.ts). That message is `ctx.ownerMsg`, the text chat()
+ * saved for this turn: never a tool result, a file, a crawled page or the model's words, all of which reach the model.
+ * Otherwise nothing runs and nothing is charged: in the app the spend is stored as a card the owner runs with one tap
+ * (src/lib/spend-proposals.ts), at most `SPEND_CARDS_PER_REPLY` a reply; over MCP, where no card can be shown, it is
+ * refused. A call outside a chat turn (no `ownerMsg`: tests, the onboarding run) keeps its answer. Null: run the tool.
+ */
+async function spendGate(user: User, ctx: ToolCtx, actions: string[], p: Omit<SpendProposal, "id" | "at" | "by">): Promise<string | null> {
+  if (ctx.ownerMsg === undefined || spendIntent(ctx.ownerMsg, p.kind === "image" ? "image" : "content")) return null;
+  const what = p.kind === "image" ? `an image for "${p.title ?? ""}"` : p.kind === "draft" ? `${p.count ?? 1} ${p.type} draft(s)` : `a ${p.type} batch`;
+  if (ctx.via === "mcp" || !ctx.spendProposed) return `Not done: this would spend about ${creditWord(p.credits)} on ${what}, and the person's latest message did not ask for paid work in words. Nothing was created and no credits were used. Politely ask them, in their language, to say plainly what to make (for example "write 3 posts about the new menu"), then call again.`;
+  if (ctx.spendProposed.length >= SPEND_CARDS_PER_REPLY) return `Not done: this reply already carries ${SPEND_CARDS_PER_REPLY} cards waiting for the owner's Run. Nothing was created and no credits were used. Do not propose more paid work in this reply.`;
+  const prop = await proposeSpend(sc(user), { ...p, by: ctx.by ?? byOf(user) });
+  ctx.spendProposed.push(prop);
+  actions.push(`spendprop:${prop.id}`);
+  return `Not started: the owner's latest message did not ask for paid work in words, so nothing ran and no credits were used. A card under your reply offers ${what} for about ${creditWord(p.credits)}; the owner runs it with one tap, or dismisses it. Tell the owner politely, in their language and in one sentence, that the card is waiting for their Run, and do not call a paid tool again for this in this reply.`;
+}
+
 /** The tool result when an agent's monthly cap stops a charge: a plain sentence for the model to relay. */
 function capReached(r: { agent: AgentId; spent: number; cap: number }): string {
   return `Not done: ${agentById(r.agent).name.en} reached the monthly credit cap the owner set for this agent in Governance (${r.spent} of ${r.cap} credits this month), so nothing was created and no credits were used. Tell the owner plainly: they can raise the cap on the Governance page or wait for next month. Chat itself is not counted.`;
@@ -720,7 +745,7 @@ export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "br
  * proposal (`proposed`) and an away proposal (`awayProposed`, Reem's contact_away) are collected for the turn's reply
  * cards, and, for a handoff (src/lib/handoffs.ts), the turn's own message (`ownerMsg`) and its conversation (`conv`).
  */
-export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[]; awayProposed?: AwayProposal[]; instructionProposed?: InstructionProposal[]; ownerMsg?: string; conv?: string; /** the founder's agent-scope modes for this turn (the preflight's copy): the role layer and the prompt flag for the batch */ modes?: AgentScopeModes };
+export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[]; awayProposed?: AwayProposal[]; instructionProposed?: InstructionProposal[]; /** paid work proposed on a card this turn because the owner's message did not ask for it (rule 1511) */ spendProposed?: SpendProposal[]; ownerMsg?: string; conv?: string; /** the founder's agent-scope modes for this turn (the preflight's copy): the role layer and the prompt flag for the batch */ modes?: AgentScopeModes };
 /** Brand-change cards one reply carries at most: update_brand refuses a further proposal rather than save one with no card. */
 const BRAND_CARDS_PER_REPLY = 5;
 /** Away cards one reply carries at most: the turn's further contact_away calls are refused, not dropped from view. */
@@ -776,14 +801,18 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const type = input.type;
       const wrong = await roleGate(user, ctx, type, String(input.notes ?? ""), actions);
       if (wrong) return wrong;
+      const held = await spendGate(user, ctx, actions, { kind: "batch", type, brief: String(input.notes ?? ""), credits: TASK_COST[type], ...(ctx.agent ? { agent: ctx.agent } : {}) });
+      if (held) return held;
       const r = await generateBatch(user, email, { type, notes: String(input.notes ?? ""), source: "chat", via: "chat", by: ctx.by, deadline, ...scopeOf(ctx) });
       if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}. Tell the owner plainly. ${NO_CREDITS_HINT}`);
       const created = r.tasks;
       made.push(...created);
       actions.push(`generated:${type}:${created.length}`);
       const inline = created.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
-      const held = r.gov.autoApprove[type] ? created.filter((t) => t.status === "pending").length : 0;
-      const auto = r.gov.autoApprove[type] ? (held ? ` (auto-approve is on, but ${held} item(s) broke a brand rule and wait for the owner in the inbox)` : " (auto-approved per governance)") : "";
+      const waiting = r.gov.autoApprove[type] ? created.filter((t) => t.status === "pending").length : 0;
+      // A regulated brand is never auto-approved (rule 1521): every item waits for a person, whatever governance says.
+      const regulated = r.gov.autoApprove[type] && created.length > 0 && waiting === created.length && isRegulated(await getBrand(email));
+      const auto = !r.gov.autoApprove[type] ? "" : regulated ? " (auto-approve is off for regulated sectors such as health, pharmacy, real estate, law and finance: every item waits for the owner in the inbox)" : waiting ? ` (auto-approve is on, but ${waiting} item(s) broke a brand rule and wait for the owner in the inbox)` : " (auto-approved per governance)";
       return `Created ${created.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}.${withheldNote(r)} Titles: ${created.map((i) => i.title).join(" | ")}${inline}${r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : ""}`;
     }
     case "draft_items": {
@@ -794,6 +823,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const wrong = await roleGate(user, ctx, type, String(input.brief ?? ""), actions);
       if (wrong) return wrong;
       const count = Math.max(1, Math.min(3, Number(input.count) || 1));
+      const held = await spendGate(user, ctx, actions, { kind: "draft", type, count, brief: String(input.brief ?? ""), credits: countCost(type, count), ...(ctx.agent ? { agent: ctx.agent } : {}) });
+      if (held) return held;
       const r = await generateBatch(user, email, { type, notes: String(input.brief ?? ""), count, source: "chat", via: "chat", by: ctx.by, deadline, ...scopeOf(ctx) });
       if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}. ${NO_CREDITS_HINT}`);
       const created = r.tasks;
@@ -1019,6 +1050,9 @@ export async function runTool(user: User, name: string, input: Record<string, un
     case "generate_image": {
       const [brand, t] = await Promise.all([getBrand(email), getTask(email, String(input.task_id))]);
       if (!brand || !t) return "Item not found.";
+      if (!IMAGE_TYPES.includes(t.type)) return `Images are only for these item types: ${IMAGE_TYPES.join(", ")}.`;
+      const held = await spendGate(user, ctx, actions, { kind: "image", type: t.type, taskId: t.id, title: t.title.slice(0, 120), brief: "", credits: CHAT_IMAGE_CREDITS, ...(ctx.agent ? { agent: ctx.agent } : {}) });
+      if (held) return held;
       // The default model only (spec A2): the model never chooses how much of the owner's money a render costs. The
       // engine charges before the render, to the agent that owns the item and under the owner's monthly cap for that
       // agent, and refunds exactly once when it fails. It works to the chat request's own deadline (spec A23), so a

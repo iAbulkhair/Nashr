@@ -1,6 +1,6 @@
 # Reem phase 3 B3: reading the brand's marketing calendar (Google and Outlook)
 
-> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** the code (`src/app/api/secretary/calendar-link`, `src/lib/secretary-cal-proof.ts`) is on `main` through #314 (2026-10-10) and not in `production`; it cannot link a calendar until the `GOOGLE_*` and `MICROSOFT_*` application credentials exist (`docs/system/variables.md` section 5).
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** the code (`src/app/api/secretary/calendar-link`, `src/lib/secretary-cal-proof.ts`) is on `main` through #314 (2026-10-10) and in `production` since release #336 (2026-10-12); it cannot link a calendar until the `GOOGLE_*` and `MICROSOFT_*` application credentials exist (`docs/system/variables.md` section 5).
 
 Status: draft for the founder's review, 2026-10-05. Part B of phase 3. B1 (the ICS feed, merged as #255) gives Reem's items to a calendar; B2 (Calendly and Cal.com bookings, PR #256) takes bookings in as items; B3 reads one calendar so Reem knows when the owner is in a marketing meeting. Depends on Reem's role (PR #257, rules 609-611) being merged first: B3's copy and refusals assume it.
 

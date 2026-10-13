@@ -11,6 +11,8 @@ import type { ChatStatus } from "@/lib/chat-allowance";
 // runtime; the video grant is checked by the server, which answers 400 bad_grant (rule 784, tests/entitlements-scan.test.ts).
 import type { EntitlementView } from "@/lib/entitlements";
 import { tileCounts, type TileCounts } from "@/lib/admin-users";
+// Type only: margin.ts is server code (Redis, notifications); the type is erased from the bundle (rule 249).
+import type { MarginView } from "@/lib/margin";
 
 /**
  * What the founder console's sections share (rule 874): the copy (`STR`, `OV`), the shapes the admin APIs answer, the
@@ -64,6 +66,8 @@ export type Overview = {
   recent: { email: string; name: string; plan: string; credits: number; createdAt: string; lastActive: string | null; activated: boolean; events: Record<string, number> }[];
   /** Sign-ups that never finished onboarding (rules 1474, 1475). Absent from an older server's answer. */
   stalled?: { total: number; rows: { email: string; name: string; phone: string; plan: string; createdAt: string; reason: "email_unverified" | "no_brand" }[] };
+  /** Paying accounts under the margin floor this month and the last daily alert run (rule 1533). Absent from an older server, null when unread. */
+  margin?: MarginView | null;
 };
 /** GET /api/admin/media. A check value that is a string is an error code; a provider not configured is null. */
 export type MediaCheck = {

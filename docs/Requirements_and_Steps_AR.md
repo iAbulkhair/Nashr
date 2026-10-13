@@ -60,7 +60,7 @@
 | A1 | مفتاح Resend | resend.com → API Keys → Create | `RESEND_API_KEY` + `WAITLIST_TO=بريدك` (لتذاكر الدعم وطلبات الشركاء) | الملخص اليومي بالإيميل، تسلسل التجربة، تنبيه المسجّل غير المفعّل، تذاكر الدعم |
 | A2 | مفتاح fal.ai (اختياري) | fal.ai → Keys → Add key + رصيد $10 | `FAL_KEY` | صور حقيقية للمنشورات (0.003$ للصورة) |
 | A2b | الصور الإضافية والفيديو (اختياري، 29 سبتمبر 2026) | Vercel → Storage → Blob بوصول عام؛ kie.ai/api-key مع حدود كريدت بالساعة واليوم والإجمالي؛ console.higgsfield.ai مع إيقاف الشحن التلقائي أو وضع سقف له | `BLOB_READ_WRITE_TOKEN` (يضيفه Vercel)، `KIE_API_KEY`، `KIE_WEBHOOK_HMAC_KEY` (اختياري)، `HIGGSFIELD_API_KEY_ID`، `HIGGSFIELD_API_KEY_SECRET`، ثم `MEDIA_MODELS_ON` بعد فحص لوحة المؤسس | أنواع صور إضافية (1 أو 2 كريدت) وفيديو (12 أو 24 كريدت). الخطوات الثماني في `Owner_Tasks_AR.md` القسم ج2 |
-| A3 | روابط الدفع | لوحة Moyasar/Tap/PayTabs → Payment link ×3 بمبالغ 299 و499 و999 ريالاً | `PAY_LINK_STARTER` `PAY_LINK_PRO` `PAY_LINK_BUSINESS` (الوكالات بلا رابط: تواصل وعقد؛ `PAY_LINK_AGENCY` لم يعد يُقرأ) | أزرار «اشترك الآن» بدل واتساب |
+| A3 | روابط الدفع | لوحة Moyasar/Tap/PayTabs (2026-10-13: المختار Paymob KSA؛ روابط الدفع مؤقتة حتى تعمل المفاتيح) → Payment link ×3 بمبالغ 299 و499 و999 ريالاً | `PAY_LINK_STARTER` `PAY_LINK_PRO` `PAY_LINK_BUSINESS` (الوكالات بلا رابط: تواصل وعقد؛ `PAY_LINK_AGENCY` لم يعد يُقرأ) | أزرار «اشترك الآن» بدل واتساب |
 | A4 | اختبار Telegram | @BotFather → /newbot → أضف البوت أدمن في قناتك | التكاملات → Telegram → اربط → انشر منشوراً من صندوق الموافقة | أول نشر تلقائي حقيقي |
 | A5 | اختبار Claude Connector | claude.ai → Settings → Connectors → Add custom connector → `https://nashr-tau.vercel.app/api/mcp` → Allow | اكتب في Claude: «اسأل نور: ما الذي بانتظار موافقتي؟» | التأكد من OAuth مع عميل خارجي |
 | A6 | نطاق | اشترِ `nashr.ai` أو `nashr.sa` → `vercel domains add nashr.ai` | ثم `vercel env add APP_ORIGIN production` = `https://nashr.ai` | روابط نظيفة في الإيميلات وOAuth |
@@ -80,7 +80,7 @@
 | C1 | **Meta Business Verification** | business.facebook.com → Security Center → Start verification (السجل التجاري، الهاتف، الموقع) ثم developers.facebook.com → Create app (Business) → WhatsApp + Instagram + Login + Marketing API → App Review | 2–10 أيام توثيق + 1–4 أسابيع مراجعة | `META_APP_ID` `META_APP_SECRET` |
 | C2 | **سلة Partners** | salla.partners → Register → My Apps → Create (Public) → Redirect `/api/connect/salla/callback` | 1–3 أسابيع | `SALLA_CLIENT_ID` `SALLA_CLIENT_SECRET` `SALLA_WEBHOOK_SECRET` |
 | C3 | **زد Partners** | partners.zid.sa → Apply → Create app → Redirect `/api/connect/zid/callback` | 1–3 أسابيع | `ZID_CLIENT_ID` `ZID_CLIENT_SECRET` |
-| C4 | Moyasar أو Tap (حساب تاجر) | moyasar.com / tap.company → السجل التجاري + الآيبان | 3–10 أيام | `MOYASAR_SECRET_KEY` أو `TAP_SECRET_KEY` |
+| C4 | Moyasar أو Tap (حساب تاجر؛ 2026-10-13: المختار Paymob KSA، المفاتيح `PAYMOB_*`) | moyasar.com / tap.company → السجل التجاري + الآيبان | 3–10 أيام | `MOYASAR_SECRET_KEY` أو `TAP_SECRET_KEY` |
 | C5 | Snapchat Marketing API | business.snapchat.com → حساب أعمال → developers.snap.com → OAuth app → Redirect `/api/connect/snapchat/callback` | 2–8 أسابيع | `SNAP_CLIENT_ID` `SNAP_CLIENT_SECRET` |
 | C6 | TikTok for Developers | developers.tiktok.com → App → Login Kit + Content Posting → Redirect `/api/connect/tiktok/callback` + ملف توثيق النطاق (أرسله لي) | 1–4 أسابيع | `TIKTOK_CLIENT_KEY` `TIKTOK_CLIENT_SECRET` |
 | C7 | LinkedIn | أنشئ صفحة Nashr → linkedin.com/developers → App → Share on LinkedIn + Community Management → Redirect `/api/connect/linkedin/callback` | 1–2 أسبوع | `LINKEDIN_CLIENT_ID` `LINKEDIN_CLIENT_SECRET` |
@@ -162,7 +162,7 @@ cd ~/projects/nashr && npm install && npm run dev
 - **نظرة عامة**: المستخدمون، الجدد (7 أيام)، المفعّلون (ملف علامة)، DAU/WAU/MAU، الالتصاق، احتفاظ 7 أيام، الإيراد الشهري المتكرر (تقدير من الخطط)، الكريدت المستهلك، تكلفة النماذج، الأخطاء؛ رسم الأحداث اليومية (14 يوماً)، مسار التحويل (تسجيل → تفعيل → أول دفعة → أول اعتماد → دفع)، وأحدث المستخدمين.
 - **المستخدمون**: بحث، الجدول (الخطة، الكريدت، التوكنز، التكلفة)، بطاقة المستخدم مع الإجراءات (تغيير الخطة، إضافة كريدت، تمديد التجربة، تعليق/رفع التعليق، إعادة تعيين كلمة المرور، تغيير اللغة، الدخول كالمستخدم، حذف). كل تغيير خطة أو كريدت يطلب سبباً ويُسجَّل مع قبل/بعد.
 - **الاستخدام**: النشاط، استخدام المزايا، جدول الأحداث يومياً، صحة المنصة (أخطاء، استدعاءات النماذج، متوسط التكلفة لكل استدعاء).
-- **الفوترة**: توزيع الخطط، MRR، ARPU، هامش الربح، تصدير CSV. الفواتير تظهر بعد ربط Moyasar أو Tap؛ الفواتير الضريبية (ZATCA) يجب أن تولّدها نشر بنفسها.
+- **الفوترة**: توزيع الخطط، MRR، ARPU، هامش الربح، تصدير CSV. الفواتير تظهر بعد ربط مزوّد الدفع (Paymob KSA منذ 2026-10-08؛ كان Moyasar أو Tap)؛ الفواتير الضريبية (ZATCA) يجب أن تولّدها نشر بنفسها.
 - **الجودة**: تقييمات الوكلاء (الحكم، الاعتماد، التعديل، النشر، الإبهام).
 - **سجل الإجراءات**: كل إجراء للمؤسس مع الفاعل والمستخدم والسبب وقبل/بعد.
 
