@@ -1,5 +1,7 @@
 # Store connectors: Salla, Zid, WooCommerce, WordPress
 
+> **Status update (2026-10-13, from `git log origin/main`):** the store connectors are built and merged: scheduled sync #267, Salla articles #268, WordPress publish #266 (all in `production`); the spec itself (#260) stays as the design record. The status line below is the state when the document was written.
+
 Status: draft for the founder's review, 2026-10-05. Built in Thakeen's own code, not through a connection platform: no platform listed by Unified, Nango or Composio covers Salla and Zid (Unified lists both as beta with partial objects), and the code for them already exists (`src/lib/connectors/salla.ts`, `zid.ts`, `woocommerce.ts`, `wordpress.ts`). The social, ads and calendar evaluation is a separate spec (`2026-10-05-composio-evaluation-design.md`) and shares no files with this one.
 
 ## 1. Goal and what the founder decided

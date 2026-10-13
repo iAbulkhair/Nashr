@@ -168,7 +168,7 @@ $0.08 a message) and at the $0.35 ceiling, where a full Starter allowance costs 
 
 1. Accountant: "+ VAT" display in Saudi Arabia; VAT registration or reverse charge for each other GCC country.
 2. Payment provider that takes SAR, AED, KWD, QAR, BHD and OMR with local cards (mada, KNET, Benefit). Tap appears to
-   cover more of the GCC than Moyasar; verify before choosing.
+   cover more of the GCC than Moyasar; verify before choosing. (2026-10-13: decided, Paymob KSA on 2026-10-08, `docs/superpowers/specs/2026-10-08-paymob-billing-design.md`; the GCC currencies question stays with the accountant.)
 3. Sonnet chat eval (golden set + Gulf-dialect check).
 4. UAE price research, same method as Saudi.
 

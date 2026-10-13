@@ -198,7 +198,7 @@ Write each period into privacy §8.
 **L-20 Billing items the terms depend on.**
 - VAT and ZATCA: `PRICES_INCLUDE_VAT` (`src/lib/pricing.ts:133`), `invoiceForPayment` returns null (`src/lib/invoice.ts:23`) (C-003, G-003).
 - Trial length: 3 days in `src/lib/auth.ts:237`, 7 in the PRD and deck (G-010). One number goes into terms §5.
-- Refund of a subscription payment leaves plan, paid-through date and saved card active (G-005, `src/lib/billing.ts` `refundPaymobPayment`). Align it with terms §7.
+- Refund of a subscription payment leaves plan, paid-through date and saved card active (G-005, `src/lib/billing.ts` `refundPaymobPayment`). Align it with terms §7. (2026-10-13: fixed on `main` in #342, rules 1300-1308: a console refund ends the plan; in the #347 batch, not in `production` yet. Terms §7 still needs the lawyer.)
 - Recurring charge consent text on the Paymob checkout (terms §6.6).
 
 **L-21 Security claims stay true.**

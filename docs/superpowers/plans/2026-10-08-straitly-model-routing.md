@@ -1,6 +1,6 @@
 # Model catalog, routing and Straitly gateway Implementation Plan
 
-> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged to `main` as #298 (2026-10-10), default off, not in `production` yet. The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged to `main` as #298 (2026-10-10), default off, in `production` since release #336 (2026-10-12). The `- [ ]` boxes below were never ticked as steps ran: they are the task list, not open work; the spec's status update and `docs/system/tests/` say what shipped.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -1,6 +1,6 @@
 # Entitlements and agent scope: one "what may happen" layer
 
-> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** Part A merged as #299 and Part B as #305 (both in `production`).
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** Part A merged as #299 and Part B as #305 (both in `production`). The agent-scope work of this spec (the classifier, the four layers, rules 790-802 and 1410-1415) merged as #345 on 2026-10-12 and is in the #347 batch on `main`, not in `production` yet (checked 2026-10-13).
 
 Status: approved by the founder on 2026-10-08 ("go with your recommend"), including the recommendations in section 13. Refreshed the same day against main after the Paymob billing merge (#279). No code yet. Nothing here reaches the live site without the founder's explicit approval.
 
