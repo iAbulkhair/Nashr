@@ -114,6 +114,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Partner programme (rules 390-402): approvals, payouts, recorded payments and voids.
   "POST /api/admin/partners": "admin-console",
   "POST /api/admin/payments/[email]": "admin-console",
+  "POST /api/admin/founding": "admin-console", // second factor, reason, audit (rule 1710)
   "POST /api/admin/users/[email]": "admin-console",
   // Credit top-ups, activated by hand while there is no payment gateway (rules 446-447): the founder only.
   "POST /api/admin/topups": "admin-console",
@@ -275,6 +276,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/agent-scope": "admin-console",
   "GET /api/admin/evals": "admin-console",
   "GET /api/admin/export": "admin-console",
+  "GET /api/admin/founding": "admin-console",
   "GET /api/admin/2fa": "admin-console",
   "GET /api/admin/golden": "admin-console",
   "GET /api/admin/media": "admin-console",
@@ -328,6 +330,7 @@ const READS: Record<string, Gate> = {
   "GET /api/oauth/meta": "public-read",
   "GET /api/oauth/resource": "public-read",
   "GET /llms.txt": "public-read", // site copy for language models, static at build time (rule 698)
+  "GET /api/founding/seats": "public-read", // seats left only, closed while payment is off; rate limited per IP (rule 1711)
   "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
   "GET /api/staging-access": "public-read", // a bare 404, so the door shows nothing off staging (rule 675)
   "HEAD /api/staging-access": "public-read",

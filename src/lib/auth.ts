@@ -9,6 +9,7 @@ import { settleTopups, type Receipt, type TopupLot } from "./topups";
 import { billingLocked, type Billing } from "./billing-state";
 import { signupConsent, type Consent } from "./consent";
 import type { HandPlan } from "./hand-plan";
+import type { FoundingSeat, PriceLock } from "./founding";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -170,6 +171,17 @@ export type User = {
    * Paymob refund that ends the plan, and a change to the trial. Absent on plans set before 2026-10-12 (no end).
    */
   handPlan?: HandPlan;
+  /**
+   * A founding seat (src/lib/founding.ts, rules 1700-1719): claimed by the Paymob callback for a first plan payment that
+   * asked for the founding offer, or granted by the founder console. Kept with `endedAt` once ended, so it is never
+   * claimed again automatically. Optional, added 2026-10-13 (expand, rule 679): older code ignores it and keeps it.
+   */
+  founding?: FoundingSeat;
+  /**
+   * The price lock (src/lib/founding.ts): the plan's ex-VAT price at the first payment and the first Riyadh day it no
+   * longer applies. The Paymob renewal charges it while it applies (never above the list price). Optional, expand step.
+   */
+  priceLock?: PriceLock;
   /** Runtime only: `getUser` settled the stored packs (one expired); the next locked save writes them. Never persisted. */
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */

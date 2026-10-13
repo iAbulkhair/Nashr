@@ -1,6 +1,7 @@
 "use client";
 import { Fragment, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
+import FoundingPanel from "./FoundingPanel";
 import { EndedNotice, OV, STR, useAdminEnded, useOverview, type MediaCheck, type SectionProps } from "./shared";
 
 /** The provider check as plain text: green when working, red when not (a false flag, webhooks off, a Blob probe that is not ok). */
@@ -104,6 +105,7 @@ export default function Billing({ lang, keySession }: SectionProps) {
             <ul className="mt-2 flex flex-wrap gap-2 text-sm">{Object.entries(ov.revenue.planMix).map(([k, v]) => <li key={k} className="rounded-full bg-background-muted px-3 py-1">{k}: <b className="tnum">{v}</b></li>)}</ul>
             <button type="button" onClick={() => window.open("/api/admin/export", "_blank")} className="btn btn-secondary btn-sm mt-3">{O.export}</button>
           </section>
+          <FoundingPanel lang={lang} />
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{O.invoices}</h2><p className="mt-2 text-sm text-foreground-muted">{O.invoicesNote}</p></section>
         </div>
   );

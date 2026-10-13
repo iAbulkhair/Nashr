@@ -1,6 +1,6 @@
 # Founding 20: seat counter, 12-month price lock, 7-day refund
 
-Status: proposed, not built. Written 2026-10-13 against `main` at `4c0264b4`. Build order: 8 of 8, after Paymob is switched on (the `PAYMOB_*` keys are not set). Rule numbers are assigned when it is built. Source of the decisions: `docs/PRD-Thakeen.md` sections 11.2 and 11.3 (founder, 2026-10-05).
+Status: built on a branch 2026-10-13 (rules 1700-1712, `docs/system/tests/1700-founding-offer.md`, `docs/system/flows.md` section 72), off until Paymob is on; not on main. Deviations from this spec are listed in that tests file. Original status: proposed, not built. Written 2026-10-13 against `main` at `4c0264b4`. Build order: 8 of 8, after Paymob is switched on (the `PAYMOB_*` keys are not set). Source of the decisions: `docs/PRD-Thakeen.md` sections 11.2 and 11.3 (founder, 2026-10-05).
 
 ## ملخص
 

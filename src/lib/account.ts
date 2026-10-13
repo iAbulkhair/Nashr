@@ -21,6 +21,7 @@ import { forgetDueScope, secretaryKeys } from "./secretary";
 import { revokeCalendarLinks } from "./secretary-gcal";
 import { handoffKeys } from "./handoffs";
 import { paymobAccountKeys } from "./billing";
+import { freePlaces } from "./founding";
 import { proposalKeys } from "./brand-proposals";
 import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
 import { getConnection } from "./connectors/store";
@@ -165,6 +166,8 @@ export async function wipeAccount(email: string) {
   // The saved Paymob card token (src/lib/billing.ts): it charges the card, so it never outlives the account. The intents,
   // transaction records and done markers stay to their TTL: they hold no card data, and the founder may still refund.
   keys.push(...paymobAccountKeys(e));
+  // A founding seat and a price-lock place (src/lib/founding.ts, rule 1712): the account's email leaves both counted sets.
+  await freePlaces(e);
 
   const token = await db.get<string>(`mcptoken-of:${e}`);
   if (token) keys.push(`mcptoken:${token}`);
