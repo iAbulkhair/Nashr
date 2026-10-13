@@ -79,11 +79,13 @@ export function chatLine(t: AppDict, s: ChatStatus, credits?: number): { text: s
 
 /**
  * A message POST /api/chat refused before saving anything: 402 `chat_allowance` (paused) or `chat_credits` (continuing on
- * credits, the balance below `overflow.hold`, the least a message on credits needs), 429 `slow_down` (the hourly or daily
+ * credits, the balance below `overflow.hold`, the least a message on credits needs), 402 `fair_use` (the fair-use stop,
+ * rule 1727), 429 `slow_down` (the hourly or daily
  * burst limit). Null for anything else, which keeps the old path (an error bubble, or the recovery when no answer came).
  */
-export function refusalOf(status: number, error: unknown): "chat" | "chat_credits" | "slow_down" | null {
+export function refusalOf(status: number, error: unknown): "chat" | "chat_credits" | "fair_use" | "slow_down" | null {
   if (status === 402 && error === "chat_allowance") return "chat";
+  if (status === 402 && error === "fair_use") return "fair_use";
   if (status === 402 && error === "chat_credits") return "chat_credits";
   if (status === 429 && error === "slow_down") return "slow_down";
   return null;
@@ -695,11 +697,11 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     type Answer = { ok?: boolean; message?: ChatMsg; credits?: number; limit?: string | null; error?: string; chat?: ChatStatus };
     const done = (j: Answer) => {
       if (j.chat) setChatNow(j.chat);
-      if (j.message) { setMsgs((p) => [...p, j.message!]); if (typeof j.credits === "number") setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); if (j.limit === "credits" || j.limit === "trial" || j.limit === "agent_cap") raiseLimit(j.limit); }
+      if (j.message) { setMsgs((p) => [...p, j.message!]); if (typeof j.credits === "number") setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); if (j.limit === "credits" || j.limit === "trial" || j.limit === "agent_cap" || j.limit === "fair_use") raiseLimit(j.limit); }
       else setMsgs((p) => [...p, { role: "assistant", content: `⚠︎ ${j.error === "network" ? (lang === "ar" ? "انقطع الاتصال. حاول مرة أخرى." : "Connection lost. Try again.") : modelErrorText(lang, j.error) ?? (lang === "ar" ? "تعذّر الرد. حاول مرة أخرى." : "Could not reply. Try again.")}`, at: new Date().toISOString(), agent: "noor" }]);
     };
     /** Refused before anything was saved or counted: out of the thread, back in the box, and the reason shown. */
-    const unsend = (why: "chat" | "chat_credits" | "slow_down", j: Answer) => {
+    const unsend = (why: "chat" | "chat_credits" | "fair_use" | "slow_down", j: Answer) => {
       setMsgs((p) => p.filter((x) => x !== mine));
       setText((cur) => cur || m);
       if (j.chat) setChatNow(j.chat);

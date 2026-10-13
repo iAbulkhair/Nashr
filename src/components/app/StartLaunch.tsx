@@ -66,7 +66,7 @@ export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCo
     if (res?.status === 402) {
       const j = (await res.json().catch(() => ({}))) as { error?: string; need?: number; credits?: number };
       limitFromError(j.error);
-      setErr(j.error === "no_credits" ? fill(s.noCredits, j.need ?? setupCost, j.credits ?? credits) : j.error === "trial_over" ? t.generate.trialOver : s.notCharged);
+      setErr(j.error === "no_credits" ? fill(s.noCredits, j.need ?? setupCost, j.credits ?? credits) : j.error === "trial_over" ? t.generate.trialOver : j.error === "fair_use" ? t.limit.fairUseTitle : s.notCharged);
       return;
     }
     setErr(s.steps.error);

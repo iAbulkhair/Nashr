@@ -135,7 +135,9 @@ export type StartInput = {
 };
 export type StartError =
   | "trial_over" | "bad_model" | "wrong_type" | "plan_required" | "trial_video_used" | "model_unavailable" | "needs_image"
-  | "in_progress" | "busy" | "one_open" | "too_many" | "no_credits" | "agent_cap" | "nsfw" | "media_failed";
+  | "in_progress" | "busy" | "one_open" | "too_many" | "no_credits" | "agent_cap" | "nsfw" | "media_failed"
+  /** The fair-use stop (src/lib/fair-use.ts, rule 1724): 402, nothing charged, no provider call. */
+  | "fair_use";
 export type StartResult =
   | { ok: true; job: MediaJob; task: Task | null; credits: number }
   | {

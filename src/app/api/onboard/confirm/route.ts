@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fairUseGate } from "@/lib/fair-use";
 import { currentUser, sc, trialOver } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { confirmAnswers, confirmOnboard, heldOnboard, onboardUrl } from "@/lib/onboard-confirm";
@@ -37,6 +38,8 @@ export async function POST(req: Request) {
   const marker = cost > 0 ? heldOnboard(u, scope) : null;
   const brand = await getBrand(scope);
   if (brand) return NextResponse.json({ ok: false, error: "already_onboarded" }, { status: 409 });
+  // The fair-use stop (rule 1725): the start page shows the pause before anything is confirmed. Nothing is charged here.
+  if (await fairUseGate(u)) return NextResponse.json({ ok: false, error: "fair_use", need: cost, credits: Number.isFinite(u.credits) ? u.credits : 0 }, { status: 402 });
   if (cost > 0 && !marker) {
     const credits = Number.isFinite(u.credits) ? u.credits : 0;
     if (trialOver(u)) return NextResponse.json({ ok: false, error: "trial_over", need: cost, credits }, { status: 402 });

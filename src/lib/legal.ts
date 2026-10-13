@@ -5,8 +5,11 @@ type Doc = { title: string; updated: string; sections: { h: string; p: string[] 
  * self-serve export (rules 1320-1330), and it names the agent scope log (rule 1415).
  */
 const updated = "2026-10-12";
-/** The terms changed on their own on 2026-10-02: unused top-up credits can be refunded before they expire (rule 460). */
-const termsUpdated = "2026-10-02";
+/**
+ * The terms changed on their own on 2026-10-02: unused top-up credits can be refunded before they expire (rule 460); and
+ * on 2026-10-13: usage may pause past the plan's fair-use limit (rule 1736, src/lib/fair-use.ts).
+ */
+const termsUpdated = "2026-10-13";
 /**
  * The versions a signup accepts (src/lib/consent.ts, rule 1325): each document's own "last updated" day. A change to a
  * document's text moves its day, so a stored consent always names the text that was on the page.
@@ -33,7 +36,7 @@ export const LEGAL: Record<"ar" | "en", { privacy: Doc; terms: Doc }> = {
       sections: [
         { h: "الخدمة", p: ["ذكين يقدّم وكيلة تسويق بالذكاء الاصطناعي (نور) تنشئ محتوى وخططاً ورسائل، وتنشر على المنصات التي تربطها أنت، وفق موافقتك أو إعدادات الحوكمة."] },
         { h: "مسؤوليتك", p: ["أنت المسؤول عن مراجعة المحتوى قبل نشره، وعن التزامه بأنظمة الإعلان في بلدك (مثل ضوابط وزارة الصحة، هيئة العقار، نظام مكافحة الغش التجاري).", "لا تستخدم الخدمة لمحتوى مخالف أو مضلل أو ينتهك حقوق الغير.", "الحسابات المرتبطة تخضع لشروط منصاتها."] },
-        { h: "الاشتراك والكريدت", p: ["الأسعار بالريال السعودي غير شاملة الضريبة. الكريدت يُخصم عند كل توليد وفق الجدول المعلن. الكريدت غير مسترد ولا يُحوَّل، إلا أن كريدت باقات الشحن غير المستخدم يمكن استرداده عند الطلب قبل انتهاء صلاحيته. يمكن الإلغاء في أي وقت ويستمر الوصول حتى نهاية الفترة المدفوعة."] },
+        { h: "الاشتراك والكريدت", p: ["الأسعار بالريال السعودي غير شاملة الضريبة. الكريدت يُخصم عند كل توليد وفق الجدول المعلن. الكريدت غير مسترد ولا يُحوَّل، إلا أن كريدت باقات الشحن غير المستخدم يمكن استرداده عند الطلب قبل انتهاء صلاحيته. قد يتوقف الاستخدام مؤقتاً إذا تجاوز استخدام الحساب الشهري حد الاستخدام العادل لباقته. يمكن الإلغاء في أي وقت ويستمر الوصول حتى نهاية الفترة المدفوعة."] },
         { h: "الذكاء الاصطناعي", p: ["المحتوى المولَّد قد يحتوي أخطاء. نور مُوجَّهة بألا تخترع أسعاراً أو ادعاءات، لكن التحقق النهائي مسؤوليتك."] },
         { h: "الملكية", p: ["المحتوى الذي تنشئه نور لحسابك ملك لك. منصة ذكين وبرمجياتها ملك للشركة."] },
         { h: "التغييرات والقانون", p: ["قد نحدّث هذه الشروط ونخطرك. تخضع للأنظمة المعمول بها في المملكة العربية السعودية."] },
@@ -58,7 +61,7 @@ export const LEGAL: Record<"ar" | "en", { privacy: Doc; terms: Doc }> = {
       sections: [
         { h: "The service", p: ["Thakeen provides an AI marketing agent (Noor) that creates content, plans and messages and publishes to platforms you connect, subject to your approval or governance settings."] },
         { h: "Your responsibilities", p: ["You review content before publishing and ensure it complies with advertising rules in your country (e.g. MOH, REGA, anti-fraud regulations).", "No unlawful, misleading, or infringing content.", "Connected accounts remain subject to their platforms' terms."] },
-        { h: "Subscription and credits", p: ["Prices are in SAR excluding VAT. Credits are deducted per generation as published. Credits are non-refundable and non-transferable, except that unused top-up credits can be refunded on request before they expire. Cancel anytime; access continues to the end of the paid period."] },
+        { h: "Subscription and credits", p: ["Prices are in SAR excluding VAT. Credits are deducted per generation as published. Credits are non-refundable and non-transferable, except that unused top-up credits can be refunded on request before they expire. Usage may pause when an account's monthly usage exceeds its plan's fair-use limit. Cancel anytime; access continues to the end of the paid period."] },
         { h: "AI output", p: ["Generated content may contain errors. Noor is instructed not to invent prices or claims, but final verification is your responsibility."] },
         { h: "Ownership", p: ["Content Noor creates for your account is yours. The Thakeen platform and software belong to the company."] },
         { h: "Changes and law", p: ["We may update these terms and will notify you. Governed by the laws of the Kingdom of Saudi Arabia."] },

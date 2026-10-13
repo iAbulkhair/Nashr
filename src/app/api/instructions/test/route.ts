@@ -7,6 +7,7 @@ import { getBrand, listPreferencesFor } from "@/lib/brand";
 import { byOf } from "@/lib/actor";
 import { recordActivity, type Activity } from "@/lib/activity";
 import { charge, refund, renewIfDue, renewalDue } from "@/lib/credits";
+import { fairUseGate } from "@/lib/fair-use";
 import { db } from "@/lib/db";
 import { entitlements } from "@/lib/entitlements";
 import { memoryBlock } from "@/lib/files";
@@ -103,6 +104,8 @@ export async function POST(req: Request) {
   const [brand, gov] = await Promise.all([getBrand(scope), getGov(scope)]);
   if (!brand) return bad("no_brand");
   if (trialOver(u)) return bad("trial_over", 402);
+  // The fair-use stop (rule 1725): before the claim, the charge and both generations.
+  if (await fairUseGate(u)) return bad("fair_use", 402);
   // The model `generateBatch` would use for this brand and type, resolved once for both generations and the price. The
   // customer page asks the same function for the price on its button (`testPrice`), so the two cannot disagree.
   const quote = testQuote(u, brand, type);

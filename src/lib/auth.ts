@@ -170,6 +170,12 @@ export type User = {
    * Paymob refund that ends the plan, and a change to the trial. Absent on plans set before 2026-10-12 (no end).
    */
   handPlan?: HandPlan;
+  /**
+   * The founder lifted the fair-use pause for one UTC month (src/lib/fair-use.ts, rules 1720-1739). A lift for another
+   * month is ignored, so the pause can come back next month by itself. Written only by POST /api/admin/fair-use under
+   * `withUserLock`. Absent on every account until a founder lifts one (expand only: older code ignores it).
+   */
+  fairUseLift?: { month: string; at: string; by: string };
   /** Runtime only: `getUser` settled the stored packs (one expired); the next locked save writes them. Never persisted. */
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */

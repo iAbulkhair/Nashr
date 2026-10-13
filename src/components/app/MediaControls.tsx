@@ -223,7 +223,7 @@ export default function MediaControls({ task, lang, t, available, included, cred
     if (e === "model_unavailable" && !m) return say(kind, { text: i.keepsImage });
     // The modal's text ("you've used this month's credits") is true only at a zero balance. An agent at the monthly cap
     // the owner set in Governance gets the same dialog /api/generate raises, which points to Governance, not billing.
-    if (e === "trial_over" || e === "agent_cap" || (e === "no_credits" && !(typeof j.have === "number" && j.have > 0))) { limitFromError(e); return; }
+    if (e === "trial_over" || e === "agent_cap" || e === "fair_use" || (e === "no_credits" && !(typeof j.have === "number" && j.have > 0))) { limitFromError(e); return; }
     if (e === "no_credits") return say(kind, shortOfCredits(i, { need: j.need ?? m?.credits, have: j.have, plan, owner }));
     say(kind, { text: errText(e) ?? fail(kind), billing: e === "plan_required" || e === "trial_video_used" });
   }
