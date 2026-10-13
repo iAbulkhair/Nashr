@@ -36,6 +36,7 @@ describe("rule 1414: where the agent-scope gates sit", () => {
       "src/lib/routines.ts": { n: 1, why: "code notes (routineNote), no owner text (R5)" },
       "src/lib/schedule.ts": { n: 1, why: "code notes (WEEKLY_NOTE), no owner text (R5)" },
       "src/lib/handoffs.ts": { n: 1, why: "Majed's lead brief, model text checked by the output gate on the items (R5)" },
+      "src/lib/spend-proposals.ts": { n: 1, why: "the owner's Run on a chat spend card (rule 1512): the stored brief is the chat tool's own input from a turn whose owner text passed the chat input gate (rule 794)" },
     };
     const found = Object.fromEntries(filesUnder("src").flatMap((f) => {
       const n = (read(f).match(/\bgenerateBatch\(/g) ?? []).length - (f === "src/lib/generate-batch.ts" ? (read(f).match(/function generateBatch\(/g) ?? []).length : 0);

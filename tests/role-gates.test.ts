@@ -229,6 +229,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
+  // Run on a chat spend card (rule 1512): it spends credits like a generation (a render also checks `images`, also member).
+  "POST /api/chat/spend/[id]": g("member", "generate"),
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/admin/skills": "admin-console",
   "PUT /api/admin/skills": "admin-console",
@@ -355,7 +357,9 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/r
   // Agent instructions (rules 930-959).
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
-  "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status"];
+  "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
+  // Chat spend cards (rule 1512): each Run is a paid batch or render.
+  "POST /api/chat/spend/[id]"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",
