@@ -19,7 +19,7 @@ import sharp from "sharp";
 import { db } from "../db";
 import { pmap } from "../parallel";
 import { safeFetch } from "../safe-fetch";
-import { MEDIA_NAME, isOurMediaUrl, type MediaKind } from "../media-catalog";
+import { MEDIA_NAME, isOurMediaUrl, ourMediaName, type MediaKind } from "../media-catalog";
 import { mediaDir, mediaOrigin, storeConfigured, storeLimits } from "./config";
 import { abortAfter, budget } from "./keys";
 import { StoreError, type StoredMedia } from "./types";
@@ -65,8 +65,7 @@ export async function toJpeg(input: Buffer): Promise<Buffer> {
  * The body, read with a running total so a file with no or a false Content-Length still stops at the cap. Exported for
  * the one-time move of old Blob copies (scripts/media-blob-move.ts, rule 1763), which must read through the same checks.
  */
-export async function download(url: string, kind: MediaKind, ms: number): Promise<Buffer> {
-  const cap = SOURCE_CAP_BYTES[kind];
+export async function download(url: string, kind: MediaKind, ms: number, cap = SOURCE_CAP_BYTES[kind]): Promise<Buffer> {
   let res: Response;
   try {
     // https on every hop, not only the first: a redirect to http would let anyone on that leg swap the file.
@@ -102,8 +101,14 @@ export async function download(url: string, kind: MediaKind, ms: number): Promis
   return Buffer.concat(chunks, total);
 }
 
-/** One file's index entry (rule 1752). `taskId` and `kind` say what it is; no prompt, title or URL. */
-export type MediaEntry = { taskId: string; kind: MediaKind; bytes: number; at: string };
+/**
+ * One file's index entry (rule 1752). `taskId` and `kind` say what it is; no prompt, title or URL. A file in the
+ * workspace's library (rule 1781: imported from a cloud drive or uploaded from the device) has an empty `taskId` and
+ * says where it came from in `source`. Expand step (rule 679): an entry without `source` is a task's file, as before.
+ */
+export type LibrarySource = "upload" | "google_drive" | "dropbox" | "onedrive";
+export type MediaEntry = { taskId: string; kind: MediaKind; bytes: number; at: string; source?: LibrarySource };
+export type MediaOwner = { scope: string; taskId: string; source?: LibrarySource };
 export const MEDIA_KEYS = {
   /** One file of one workspace: what `/m/{name}` checks for a signed-in member. */
   entry: (scope: string, name: string) => `mfile:${scope}:${name}`,
@@ -176,7 +181,7 @@ export async function copyToStore(sourceUrl: string, kind: MediaKind, deadline: 
  * and task. Every writer of the store goes through here, so the size cap, the quota guard and the write order (rule
  * 1752) hold for all of them.
  */
-export async function writeToStore(body: Buffer, kind: MediaKind, owner: { scope: string; taskId: string }): Promise<StoredMedia> {
+export async function writeToStore(body: Buffer, kind: MediaKind, owner: MediaOwner): Promise<StoredMedia> {
   const dir = mediaDir();
   if (!dir) throw new StoreError("no_store");
   const contentType = kind === "image" ? "image/jpeg" : "video/mp4";
@@ -187,7 +192,7 @@ export async function writeToStore(body: Buffer, kind: MediaKind, owner: { scope
   const final = mediaPath(name, dir)!;
   const tmpDir = path.join(dir, ".tmp");
   const tmp = path.join(tmpDir, `${name}.part`);
-  const entry: MediaEntry = { taskId: owner.taskId, kind, bytes: body.length, at: new Date().toISOString() };
+  const entry: MediaEntry = { taskId: owner.taskId, kind, bytes: body.length, at: new Date().toISOString(), ...(owner.source ? { source: owner.source } : {}) };
   await Promise.all([db.set(MEDIA_KEYS.entry(owner.scope, name), entry), db.sadd(MEDIA_KEYS.names(owner.scope), name)]);
   try {
     await Promise.all([ensureDir(tmpDir), ensureDir(path.dirname(final))]);
@@ -212,6 +217,47 @@ export async function writeToStore(body: Buffer, kind: MediaKind, owner: { scope
   const url = `${mediaOrigin()}/m/${name}`;
   if (!isOurMediaUrl(url)) throw new StoreError("put_failed");
   return { url, bytes: body.length, contentType };
+}
+
+/** The index entry of `name` in this workspace, or null: the one check before a file is handed on (rule 1782). */
+export async function mediaEntryOf(scope: string, url: string | undefined): Promise<(MediaEntry & { name: string }) | null> {
+  const name = ourMediaName(url);
+  if (!name) return null;
+  const e = await db.get<MediaEntry>(MEDIA_KEYS.entry(scope, name));
+  return e ? { ...e, name } : null;
+}
+
+/** How many files one workspace's library may hold (rule 1781), whatever the store's room. */
+export const LIBRARY_MAX = 300;
+export type LibraryItem = { name: string; url: string; kind: MediaKind; bytes: number; at: string; source: LibrarySource };
+
+/** The workspace's library, newest first: its index entries with no task. Two calls, whatever its size. */
+export async function listLibrary(scope: string): Promise<LibraryItem[]> {
+  const names = (await db.smembers(MEDIA_KEYS.names(scope))).filter((n) => MEDIA_NAME.test(n));
+  if (!names.length) return [];
+  const entries = await db.mget<MediaEntry>(names.map((n) => MEDIA_KEYS.entry(scope, n)));
+  const origin = mediaOrigin();
+  return names
+    .map((name, i) => ({ name, e: entries[i] }))
+    .filter((x): x is { name: string; e: MediaEntry } => !!x.e && !x.e.taskId && !!x.e.source)
+    .map(({ name, e }) => ({ name, url: `${origin}/m/${name}`, kind: e.kind, bytes: e.bytes, at: e.at, source: e.source! }))
+    .sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/**
+ * Delete one library file of this workspace (rule 1784): only an entry with no task, so a post's image is never pulled
+ * from under it. The index goes first, so a failed unlink leaves a file nobody is served, never a served file with no
+ * index. Returns false when the workspace has no such library file.
+ */
+export async function deleteLibraryFile(scope: string, name: string): Promise<boolean> {
+  if (!MEDIA_NAME.test(name)) return false;
+  const e = await db.get<MediaEntry>(MEDIA_KEYS.entry(scope, name));
+  if (!e || e.taskId || !e.source) return false;
+  await Promise.all([db.del(MEDIA_KEYS.entry(scope, name)), db.srem(MEDIA_KEYS.names(scope), name)]);
+  const file = mediaPath(name);
+  if (file) await fs.unlink(file).catch(() => {});
+  await Promise.all([db.incrby(MEDIA_KEYS.bytes(), -(Number(e.bytes) || 0)), db.incrby(MEDIA_KEYS.count(), -1)]);
+  return true;
 }
 
 /**

@@ -45,7 +45,8 @@ export type StagedFile = { name: string; mimetype: string; s3key: string };
  * (ComposioToolVersionRequiredError, before any request), and fetches the tool at the pinned version before any
  * platform call (ComposioToolNotFoundError when it is missing there), so a pin also keeps the argument names in
  * composio-catalog.ts matching the schema they were checked against. "00000000_00" is the only version Composio lists
- * for an unversioned toolkit. Every toolkit must have one: the type has no optional keys.
+ * for an unversioned toolkit. Every toolkit must have one: the type has no optional keys. googledrive, dropbox and
+ * one_drive (rule 1775) are pinned to the `version` `composio tools info` reported for each allowlisted tool on 2026-10-13.
  */
 export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   facebook: "20261008_00",
@@ -64,6 +65,9 @@ export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   google_search_console: "00000000_00",
   googledocs: "20261008_00",
   googlesheets: "20261001_00",
+  googledrive: "20261001_00",
+  dropbox: "20261001_00",
+  one_drive: "20261013_00",
 };
 
 const CALL_TIMEOUT_MS = 20_000;

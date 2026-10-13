@@ -20,6 +20,13 @@
  * searches and two reads, `write: {}`, so no tool here creates, edits, shares or deletes a document or a sheet. What a
  * read returns is untrusted text; src/lib/instruction-refs.ts stores it as a workspace file.
  *
+ * Google Drive, Dropbox and OneDrive are the customer's own cloud drives (rules 1775-1776, src/lib/cloud-drives.ts): one
+ * search, one download and one or two uploads each. Nothing here lists, moves, shares, deletes or edits a file in the
+ * drive, and no upload takes a URL for Composio to fetch (OneDrive's `source_url` is left out): the only file handed over
+ * is our own copy, staged by composioStageFile. Dropbox and OneDrive uploads are pinned in `fixed` to add a new file and
+ * rename on a clash, so an export never overwrites the customer's file; OneDrive's land in "/Thakeen". What a download
+ * returns is untrusted: cloud-drives.ts checks its size, its magic bytes or its UTF-8 before anything keeps it.
+ *
  * Not here on purpose: ad writes (money moves need their own spec, evaluation spec C-R1), comments and messages (untrusted
  * input with no feature to use it), Google Business Profile (Composio lists no toolkit for it), Calendly and Cal.com
  * (Reem B2 receives their webhooks directly, evaluation spec C-R4).
@@ -27,7 +34,7 @@
 export type Toolkit =
   | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
   | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console"
-  | "googledocs" | "googlesheets";
+  | "googledocs" | "googlesheets" | "googledrive" | "dropbox" | "one_drive";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
 /**
@@ -186,6 +193,29 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     read: { GOOGLESHEETS_SEARCH_SPREADSHEETS: ["query", "max_results"], GOOGLESHEETS_VALUES_GET: ["spreadsheet_id", "range"] },
     write: {},
   },
+  // ---------- the customer's cloud drives: import into Thakeen, export finished media (src/lib/cloud-drives.ts) ----------
+  // Argument names read with `composio tools info` on 2026-10-13 (rule 1775). Google's plain upload takes at most 5 MB,
+  // so a video goes through the resumable one.
+  googledrive: {
+    provider: "google_drive",
+    authEnv: "COMPOSIO_AUTH_GOOGLEDRIVE",
+    read: { GOOGLEDRIVE_FIND_FILE: ["q", "pageSize"], GOOGLEDRIVE_DOWNLOAD_FILE: ["fileId"] },
+    write: { GOOGLEDRIVE_UPLOAD_FILE: ["file_to_upload"], GOOGLEDRIVE_RESUMABLE_UPLOAD: ["file_to_upload"] },
+  },
+  dropbox: {
+    provider: "dropbox",
+    authEnv: "COMPOSIO_AUTH_DROPBOX",
+    read: { DROPBOX_SEARCH_FILE_OR_FOLDER: ["query", "options"], DROPBOX_READ_FILE: ["path"] },
+    write: { DROPBOX_UPLOAD_FILE: ["path", "content", "mode", "autorename"] },
+    fixed: { DROPBOX_UPLOAD_FILE: { mode: "add", autorename: true } },
+  },
+  one_drive: {
+    provider: "onedrive",
+    authEnv: "COMPOSIO_AUTH_ONEDRIVE",
+    read: { ONE_DRIVE_SEARCH_ITEMS: ["q", "top"], ONE_DRIVE_DOWNLOAD_FILE: ["item_id", "file_name"] },
+    write: { ONE_DRIVE_ONEDRIVE_UPLOAD_FILE: ["file", "folder", "conflict_behavior"] },
+    fixed: { ONE_DRIVE_ONEDRIVE_UPLOAD_FILE: { folder: "/Thakeen", conflict_behavior: "rename" } },
+  },
 };
 
 /** Which toolkits each provider connects through, in the order the Integrations card offers them. */
@@ -203,6 +233,9 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   linkedin_ads: ["linkedin_ads"],
   google: ["google_analytics", "google_search_console"],
   google_workspace: ["googledocs", "googlesheets"],
+  google_drive: ["googledrive"],
+  dropbox: ["dropbox"],
+  onedrive: ["one_drive"],
 };
 
 export const isToolkit = (s: string): s is Toolkit => Object.prototype.hasOwnProperty.call(TOOLKITS, s);

@@ -285,9 +285,10 @@ describe("rule 1328: the privacy and help text point at the self-serve export; v
 describe("rule 1328: the chat prompt keeps its size; the delete answer it carries names the download", () => {
   it("the two new answers stay out of the chat prompt, which still learns of the download from the delete answer", () => {
     const flagged = HELP.flatMap((t) => t.items).filter((i) => i.chat === false).map((i) => i.q.en).sort();
-    expect(flagged).toEqual(["How do I get a copy of my data?", "Who processes my data?"]);
+    // The cloud drives answer (2026-10-13, rule 1789) is help-page only too: the chat prompt has no room for it (rule 313).
+    expect(flagged).toEqual(["How do I add images and files from my device, Google Drive, Dropbox, OneDrive or iCloud?", "How do I get a copy of my data?", "Who processes my data?"]);
     // helpTopics keeps the flag, and the chat prompt drops flagged items (src/lib/chat.ts).
-    expect(helpTopics("https://x.example").flatMap((t) => t.items).filter((i) => i.chat === false)).toHaveLength(2);
+    expect(helpTopics("https://x.example").flatMap((t) => t.items).filter((i) => i.chat === false)).toHaveLength(3);
     expect(readFileSync("src/lib/chat.ts", "utf8")).toContain("t.items.filter((i) => i.chat !== false).map((i) => `- ${i.q.en} → ${i.a.en}`)");
     expect(helpAnswer("How do I delete my account?").en).toContain("In Settings, Danger zone: “Download my data” gives you a copy");
   });

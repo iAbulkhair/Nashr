@@ -221,6 +221,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/wishlist/suggest": "member",
   "POST /api/wishlist/vote": "member",
   "POST /api/secretary": g("member", "todo.write"),
+  // Cloud drives and the media library (rules 1781-1785): any member, export never while impersonating.
+  "POST /api/drives": g("member", "library.write", "library.export"),
+  "DELETE /api/drives": g("member", "library.write"),
+  "POST /api/media/upload": g("member", "library.write"),
   // Reem's "Walk me through": skipping a card is a change to the list's state; the card's own buttons call gated routes.
   "POST /api/secretary/walk": g("member", "todo.write"),
   // Reem's away list: any member marks a contact away and ends it (the owner and the agents are refused in code).
@@ -321,6 +325,7 @@ const READS: Record<string, Gate> = {
   "GET /api/connect": "member",
   "GET /api/conversations": "member",
   "GET /api/files": "member",
+  "GET /api/drives": "member",
   "GET /api/governance": "member",
   "GET /api/instructions": "member",
   "GET /api/instructions/refs": "member",
@@ -379,7 +384,9 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/r
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // Chat spend cards (rule 1512): each Run is a paid batch or render.
-  "POST /api/chat/spend/[id]"];
+  "POST /api/chat/spend/[id]",
+  // Cloud drives and the media library (rule 1785): every write has its own hourly bucket per workspace.
+  "POST /api/drives", "DELETE /api/drives", "POST /api/media/upload"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",

@@ -317,6 +317,10 @@ export async function connectViaComposio(scope: string, provider: string, toolki
   if (toolkit === "googledocs") meta.docs = "1";
   if (toolkit === "googlesheets") meta.sheets = "1";
   if (provider === "google_workspace") meta.account = "Google Docs and Sheets";
+  // Cloud drives (rule 1777): no call at connect time either; the files are searched only when the owner asks.
+  if (provider === "google_drive") meta.account = "Google Drive";
+  if (provider === "dropbox") meta.account = "Dropbox";
+  if (provider === "onedrive") meta.account = "OneDrive";
   // A reconnected toolkit leaves its old Composio account behind; it is revoked, quietly, after the new one is in hand.
   if (before && before !== accountId) await composioRevoke(scope, before).catch(() => console.error("composio revoke of replaced account failed"));
   return { ...base, meta, expiresAt: undefined };
