@@ -227,11 +227,11 @@ describe("Integrations: presence only (rules 1540-1544)", () => {
 
   it("the same answer for any value: an empty value is unset, and no value, length or prefix is in the answer (rule 1542)", () => {
     const names = integrationNames();
-    const a = Object.fromEntries(names.map((n) => [n, `SENTINEL-${n}-sk_live_0123456789`]));
+    const a = Object.fromEntries(names.map((n) => [n, `SENTINEL-${n}-KEYPREFIX_0123456789abcdef`]));
     const b = Object.fromEntries(names.map((n) => [n, "x"]));
     const va = integrationsView(a, false), vb = integrationsView(b, false);
     expect(JSON.stringify(va)).toEqual(JSON.stringify(vb));
-    expect(JSON.stringify(va)).not.toMatch(/SENTINEL|sk_live|0123456789/);
+    expect(JSON.stringify(va)).not.toMatch(/SENTINEL|KEYPREFIX|0123456789/);
     expect(va.every((i) => i.status === "on")).toBe(true);
     const empty = integrationsView(Object.fromEntries(names.map((n) => [n, ""])), false);
     expect(empty.every((i) => i.status === "off")).toBe(true);
