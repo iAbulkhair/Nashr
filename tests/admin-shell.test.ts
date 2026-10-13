@@ -163,3 +163,30 @@ describe("one component per console section (rule 874)", () => {
     for (const f of ["Usage", "Billing"]) expect(readFileSync(`src/components/admin/${f}.tsx`, "utf8"), f).not.toMatch(/\/api\/admin\/(plan|evals|log)/);
   });
 });
+
+describe("staff identity banners in the shell (rules 1645, 1649)", () => {
+  const render = async (lang: "ar" | "en") => renderToStaticMarkup(await AdminLayout({ children: createElement("p", null, "child"), params: Promise.resolve({ lang }) }));
+
+  it("a key session shows the break-glass banner, in Arabic and English", async () => {
+    await adminSignIn();
+    expect(await render("ar")).toContain("جلسة طوارئ بالمفتاح، ادخل بحساب الموظف");
+    expect(await render("en")).toContain("Break-glass key session: sign in with your staff login");
+  });
+
+  it("the founder's customer session shows the move banner; a staff session shows neither", async () => {
+    const f = await newUser("banner-founder");
+    vi.stubEnv("ADMIN_EMAILS", f.email);
+    await signIn(f.email);
+    expect(await render("ar")).toContain("انقل دخولك إلى حساب الموظف");
+    expect(await render("en")).toContain("Move to your staff login");
+    signOut();
+    const { enrolledStaff } = await import("./helpers/staff");
+    const { openStaffSession } = await import("@/lib/staff-session");
+    const { staff } = await enrolledStaff();
+    await openStaffSession(staff.email);
+    const html = await render("en");
+    expect(html).toContain("child");
+    expect(html).not.toContain("Break-glass key session");
+    expect(html).not.toContain("Move to your staff login");
+  });
+});

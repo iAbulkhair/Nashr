@@ -93,9 +93,9 @@ export async function secondFactorStatus(): Promise<{ enrolled: boolean; at: str
  * staff actor (rule 1636) the caller passes the staff session cookie's value, and the record's `who` is
  * `staff:{email}`, so a staff step-up never serves the founder's customer session of the same address, nor the reverse.
  */
-async function baseOf(who: string, staffCookie?: string | null): Promise<string | null> {
+async function baseOf(who: string, staffCookie?: string | null, keyCookie?: string): Promise<string | null> {
   if (staffCookie !== undefined) return staffCookie ? sha(`nashr-admin-2fa-base:staff:${staffCookie}`) : null;
-  const v = (await cookies()).get(who === "key" ? ADMIN_COOKIE : "nashr_session")?.value;
+  const v = who === "key" && keyCookie ? keyCookie : (await cookies()).get(who === "key" ? ADMIN_COOKIE : "nashr_session")?.value;
   return v ? sha(`nashr-admin-2fa-base:${v}`) : null;
 }
 const stepWho = (who: string, staffCookie?: string | null) => (staffCookie !== undefined ? `staff:${who}` : who);
@@ -125,10 +125,11 @@ export async function stepUpLive(who: string, staffCookie?: string | null): Prom
 
 /**
  * Open a step-up for `who` in this browser. False for a call with no session cookie (the key header alone). A staff
- * actor passes its session cookie's value (sign-in, enrolment and the code prompt open one, rule 1636).
+ * actor passes its session cookie's value (sign-in, enrolment and the code prompt open one, rule 1636). The key form
+ * passes the id of the key session it has just opened as `keyCookie` (rule 1645): the cookie is not on the request yet.
  */
-export async function openStepUp(who: string, staffCookie?: string | null): Promise<boolean> {
-  const base = await baseOf(who, staffCookie);
+export async function openStepUp(who: string, staffCookie?: string | null, keyCookie?: string): Promise<boolean> {
+  const base = await baseOf(who, staffCookie, keyCookie);
   if (!base) return false;
   const id = randomBytes(32).toString("hex");
   const now = Date.now();

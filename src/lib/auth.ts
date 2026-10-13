@@ -568,7 +568,7 @@ const ADMIN_LIMITS: IdleLimits = { idle: ADMIN_SESSION_IDLE, max: ADMIN_SESSION_
 const adminSessionInTime = (rec: AdminSession, now: number) => idleInTime(rec, now, ADMIN_LIMITS);
 
 /** Open a key session for the current key and set its cookie. The caller has already checked the key. */
-export async function createAdminSession(): Promise<void> {
+export async function createAdminSession(): Promise<string> {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (!key) throw new Error("WAITLIST_ADMIN_KEY is not set");
   const id = randomBytes(32).toString("hex");
@@ -576,6 +576,7 @@ export async function createAdminSession(): Promise<void> {
   await db.set(adminSessionKey(id), { kp: adminKeyPrint(key), at: now, seen: now } satisfies AdminSession, ADMIN_SESSION_IDLE);
   const jar = await cookies();
   jar.set(ADMIN_COOKIE, id, await sessionCookie(ADMIN_SESSION_MAX));
+  return id;
 }
 
 /**

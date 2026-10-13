@@ -869,3 +869,67 @@ describe("closing the customer path at runtime (rule 1650)", () => {
     expect(await adminActor(json("/api/admin/overview", "GET"))).toBe("key");
   });
 });
+
+describe("the key form is break-glass; the header is for scripts (rules 1645, 1646)", () => {
+  beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
+  afterEach(async () => { vi.useRealTimers(); await db.del("admin:2fa"); });
+
+  it("1645: once the console code is enrolled the key form needs it in the same submit; a wrong or missing code looks like a wrong key; every sign-in is logged", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    let t = Date.now() + 9 * 60 * 60_000;
+    vi.setSystemTime(t);
+    const { ADMIN_2FA_COOKIE } = await import("@/lib/admin-2fa");
+    const twoFa = await import("@/app/api/admin/2fa/route");
+    const { codeAt } = await import("./helpers/staff");
+    const login = (body: Record<string, unknown>) => adminLogin.POST(json("/api/admin/login", "POST", body, ip()));
+    // Nothing enrolled: the key alone, logged with factor none.
+    expect((await login({ key: KEY })).status).toBe(200);
+    expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0])).toMatchObject({ actor: "key", via: "key", action: "key.login", factor: "none" });
+    const s = await (await twoFa.POST(json("/api/admin/2fa", "POST", { action: "start" }, ip()))).json();
+    expect((await (await twoFa.POST(json("/api/admin/2fa", "POST", { action: "confirm", code: codeAt(s.secret) }, ip()))).json()).ok).toBe(true);
+    signOut();
+    // Enrolled: the key alone, or with a wrong code, is the same 401 as a wrong key, and opens nothing.
+    expect(await (await login({ key: KEY })).json()).toEqual({ ok: false });
+    expect((await login({ key: KEY, code: "000000" })).status).toBe(401);
+    expect((await login({ key: "wrong", code: codeAt(s.secret) })).status).toBe(401);
+    expect(jar().get("nashr_admin")).toBeUndefined();
+    t += 31_000;
+    vi.setSystemTime(t);
+    const ok = await login({ key: KEY, code: codeAt(s.secret) });
+    expect(ok.status).toBe(200);
+    expect(jar().get("nashr_admin")).toMatch(/^[0-9a-f]{64}$/);
+    // The code typed at the form is a step-up for the new key session: a write goes through without another prompt.
+    expect(jar().get(ADMIN_2FA_COOKIE)).toMatch(/^[0-9a-f]{64}$/);
+    const { newUser } = await import("./helpers/session");
+    const plan = await import("@/app/api/admin/plan/route");
+    const target = await newUser("breakglass");
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, ip()))).status).toBe(200);
+    expect((await db.lrange("admin:log", 0, 5)).map((r) => JSON.parse(r)).find((r: { action?: string }) => r.action === "key.login")).toMatchObject({ factor: "totp" });
+    const src = readFileSync("src/components/app/AdminLogin.tsx", "utf8");
+    expect(src).toContain("دخول الطوارئ بالمفتاح");
+    expect(src).toContain("Break-glass key sign-in");
+    expect(src).toMatch(/name="code"/);
+  });
+
+  it("1646: the header key never opens a browser session, and its writes need x-admin-otp once enrolled", async () => {
+    const { adminActor, viaOf } = await import("@/lib/auth");
+    const req = json("/api/admin/overview", "GET", undefined, { "x-admin-key": KEY, ...ip() });
+    expect(await adminActor(req)).toBe("key");
+    expect(viaOf(req)).toBe("header");
+    expect(jar().get("nashr_admin")).toBeUndefined();
+    expect(jar().get("__Host-thakeen_staff")).toBeUndefined();
+    // Enrolled: a header write without x-admin-otp is asked for the code.
+    await adminSignIn();
+    const twoFa = await import("@/app/api/admin/2fa/route");
+    const { codeAt } = await import("./helpers/staff");
+    const s = await (await twoFa.POST(json("/api/admin/2fa", "POST", { action: "start" }, ip()))).json();
+    await twoFa.POST(json("/api/admin/2fa", "POST", { action: "confirm", code: codeAt(s.secret, Date.now() + 30_000) }, ip()));
+    signOut();
+    const { newUser } = await import("./helpers/session");
+    const plan = await import("@/app/api/admin/plan/route");
+    const target = await newUser("header-write");
+    expect(await (await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, { "x-admin-key": KEY, ...ip() }))).json()).toEqual({ ok: false, error: "second_factor" });
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, { "x-admin-key": KEY, "x-admin-otp": codeAt(s.secret, Date.now() - 30_000), ...ip() }))).status).toBe(200);
+    expect(jar().get("nashr_admin")).toBeUndefined();
+  });
+});
