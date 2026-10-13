@@ -15,9 +15,9 @@ import styles from "./home.module.css";
  * offer with its lemon swash, a hint pointing down at the team, and the team itself. The hint has a mouse and a touch
  * wording; CSS shows the one the device can do.
  *
- * Under the offer (rules 1228, 1229): the call to action, the site's signup form with an optional link to the owner's
- * site, then the trial line from the pricing copy, then the freshness chip, the newest date in the updates feed linking
- * to the updates page.
+ * Under the team (rules 1228, 1229, 1830): the call to action, the site's signup form with an optional link to the
+ * owner's site, then the trial line from the pricing copy, then the freshness chip, the newest date in the updates feed
+ * linking to the updates page. The headline and the offer stay on top; the visitor meets the team, then the form.
  */
 export default function Cover({ lang, t }: { lang: Lang; t: Dict }) {
   const last = latestChange();
@@ -47,14 +47,6 @@ export default function Cover({ lang, t }: { lang: Lang; t: Dict }) {
               {HERO.offerSwash[lang]}
             </span>
           </p>
-          <UrlStart t={t} lang={lang} />
-          <p className={styles.trialLine}>{t.pricing.trial}</p>
-          {last && (
-            <Link href={chipHref(lang)} className={styles.fresh}>
-              {HERO_START.chip[lang]}{" "}
-              <time dateTime={last.date}>{dateFormat(lang, { day: "numeric", month: "long", year: "numeric" }).format(new Date(last.date))}</time>
-            </Link>
-          )}
         </div>
         <p className={styles.hint}>
           <svg viewBox="0 0 40 28" aria-hidden="true">
@@ -65,6 +57,16 @@ export default function Cover({ lang, t }: { lang: Lang; t: Dict }) {
         </p>
       </div>
       <Lineup lang={lang} />
+      <div className={`${styles.lead} ${styles.coverCta}`}>
+        <UrlStart t={t} lang={lang} />
+        <p className={styles.trialLine}>{t.pricing.trial}</p>
+        {last && (
+          <Link href={chipHref(lang)} className={styles.fresh}>
+            {HERO_START.chip[lang]}{" "}
+            <time dateTime={last.date}>{dateFormat(lang, { day: "numeric", month: "long", year: "numeric" }).format(new Date(last.date))}</time>
+          </Link>
+        )}
+      </div>
     </section>
   );
 }
