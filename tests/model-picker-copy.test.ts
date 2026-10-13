@@ -139,7 +139,7 @@ const PUBLIC = () => [
   ...walk("src/app/p"),
   ...readdirSync("src/components").filter((f) => f.endsWith(".tsx")).map((f) => join("src/components", f)),
   ...walk("src/components/home"),
-  ...["i18n", "home", "site", "help", "pages-vs", "pages-industry", "changelog", "dictionary", "legal"].map((f) => `src/lib/${f}.ts`),
+  ...["i18n", "home", "site", "help", "pages-compare", "pages-industry", "changelog", "dictionary", "legal"].map((f) => `src/lib/${f}.ts`),
   ...walk("content/blog"),
 ];
 /** Copy modules whose comments are notes for developers (they name models there), scanned with the comments removed. */
