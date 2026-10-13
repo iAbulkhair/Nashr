@@ -11,6 +11,7 @@ import { billingLocked, type Billing } from "./billing-state";
 import { signupConsent, type Consent } from "./consent";
 import type { HandPlan } from "./hand-plan";
 import type { FoundingSeat, PriceLock } from "./founding";
+import { SESSION_COOKIE, dropCookie, dropLegacyCookie, namesOf, readCookie } from "./cookie-names";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -217,7 +218,8 @@ export type User = {
 export const sc = (u: User) => u.scope ?? u.email;
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
-const COOKIE = "nashr_session";
+// `thakeen_session`, read with the old `nashr_session` as a fallback during the rename (rule 1810, src/lib/cookie-names.ts).
+const COOKIE = SESSION_COOKIE;
 
 /** Whole days left in a trial (0 when it has ended). Server-side: the clock is read per request here, never inside a component. */
 /**
@@ -403,6 +405,7 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   await db.set(sessionKey(token), rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
+  dropLegacyCookie(jar, COOKIE);
 }
 
 /**
@@ -413,7 +416,7 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
  */
 export async function rotateSession(email: string, revoke: (stamp: string) => Promise<boolean>): Promise<boolean> {
   const jar = await cookies();
-  const old = jar.get(COOKIE)?.value;
+  const old = readCookie(jar, COOKIE);
   const stamp = new Date().toISOString();
   await createSession(email);
   const fresh = jar.get(COOKIE)?.value;
@@ -428,9 +431,10 @@ export async function rotateSession(email: string, revoke: (stamp: string) => Pr
 
 export async function destroySession() {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
-  if (token) await dropSession(token);
-  jar.delete(COOKIE);
+  // Both names (rule 1811): a browser may still hold an old `nashr_session` beside the new one; both records go.
+  const tokens = [...new Set(namesOf(COOKIE).map((n) => jar.get(n)?.value).filter((v): v is string => !!v))];
+  await Promise.all(tokens.map((t) => dropSession(t)));
+  dropCookie(jar, COOKIE);
 }
 
 /** An owner is verified when the address was proved with an emailed code (`User.emailVerifiedAt`). */
@@ -439,7 +443,7 @@ export const emailVerified = (u: Pick<User, "emailVerifiedAt">): boolean => !!u.
 /** The session behind the cookie, or null (no cookie, expired, a key impersonation whose key changed). */
 async function readSession(): Promise<Session | null> {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
+  const token = readCookie(jar, COOKIE);
   if (!token) return null;
   const s = sessionOf(await sessionRecord(token));
   if (!s) return null;

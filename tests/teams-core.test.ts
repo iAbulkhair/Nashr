@@ -102,9 +102,9 @@ describe("resolving a member session", () => {
     const memberTok = await signIn(m.email);
     const ownerTok = await signIn(owner.email);
     await saveUser({ ...(await getUser(owner.email))!, teamSessionsAfter: new Date(Date.now() + 1000).toISOString() });
-    jar().set("nashr_session", memberTok);
+    jar().set("thakeen_session", memberTok);
     expect(await currentUser()).toBeNull();
-    jar().set("nashr_session", ownerTok);
+    jar().set("thakeen_session", ownerTok);
     expect((await currentUser())!.email).toBe(owner.email);
   });
   it("a member's own sessionsAfter kills only that member's older sessions", async () => {
@@ -112,13 +112,13 @@ describe("resolving a member session", () => {
     const m = await newMember(owner);
     const old = await signIn(m.email);
     await saveMember({ ...(await getMember(m.email))!, sessionsAfter: new Date(Date.now() + 1000).toISOString() });
-    jar().set("nashr_session", old);
+    jar().set("thakeen_session", old);
     expect(await currentUser()).toBeNull();
     // A legacy bare-email session never works for a member (issued at 0, before acceptedAt).
     const legacy = randomBytes(32).toString("hex");
     const n = await newMember(owner);
     await db.set(`session:${legacy}`, n.email);
-    jar().set("nashr_session", legacy);
+    jar().set("thakeen_session", legacy);
     expect(await currentUser()).toBeNull();
   });
   it("an impersonation session is never honoured for a member login", async () => {
@@ -206,7 +206,7 @@ describe("founder console follows the actor", () => {
     const res = await users.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) }));
     expect(res.status).toBe(200);
     expect((await getUser(owner.email))!.teamSessionsAfter).toBeTruthy();
-    jar().set("nashr_session", memberTok);
+    jar().set("thakeen_session", memberTok);
     expect(await currentUser()).toBeNull();
   });
 });
@@ -548,7 +548,7 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     expect(await removal).toEqual({ ok: true });
     expect(await getMember(m.email)).toBeNull();
     expect(await listMembers(owner.email)).toEqual([]);
-    jar().set("nashr_session", tok);
+    jar().set("thakeen_session", tok);
     expect(await currentUser()).toBeNull();
   });
   it("a member record that outlived its roster entry neither signs in nor holds the address", async () => {
@@ -558,7 +558,7 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     const tok = await signIn(m.email);
     expect(await removeMember(owner, ownerActor(owner), m.email)).toEqual({ ok: true });
     await saveMember(rec); // restored behind the roster's back
-    jar().set("nashr_session", tok);
+    jar().set("thakeen_session", tok);
     expect(await currentUser()).toBeNull();
     expect(await getLogin(m.email)).toBeNull();
   });
@@ -649,7 +649,7 @@ describe("account deletion cascades to the team", () => {
     expect(await db.smembers(`members:${owner.email}`)).toEqual([]);
     expect(await db.smembers(`invites:${owner.email}`)).toEqual([]);
     const again = await markVerified((await createUser({ email: owner.email, name: "New owner", phone: "", password: "abc12345", lang: "ar" })).email);
-    jar().set("nashr_session", tok);
+    jar().set("thakeen_session", tok);
     expect(await currentUser()).toBeNull();
     expect(await listMembers(again.email)).toEqual([]);
     expect(await peekInvite(inv.token)).toBeNull();

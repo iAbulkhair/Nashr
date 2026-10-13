@@ -58,6 +58,7 @@ describe("the staff cookie (rule 1633)", () => {
     const { staff } = await enrolledStaff();
     await openStaffSession(staff.email);
     expect(await currentUser()).toBeNull();
+    expect(jar().has("thakeen_session")).toBe(false);
     expect(jar().has("nashr_session")).toBe(false);
   });
 });
@@ -184,7 +185,7 @@ describe("a customer view opened from a staff session ends with it (rule 1648)",
     await openStepUp(staff.email, jar().get(STAFF_COOKIE)!);
     const r = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", minutes: 60, reason: "support call" }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) });
     expect(r.status).toBe(200);
-    const token = jar().get("nashr_session")!;
+    const token = jar().get("thakeen_session")!;
     const { sessionRecord } = await import("@/lib/auth");
     expect(await sessionRecord(token)).toMatchObject({ email: customer.email, imp: staff.email, ss: hash });
     expect((await currentUser())?.email).toBe(customer.email);
@@ -196,7 +197,7 @@ describe("a customer view opened from a staff session ends with it (rule 1648)",
     expect(await db.get(staffSessionKey(hash))).toMatchObject({ email: staff.email });
     // Signing out of the staff session ends the view.
     await staffSignOut();
-    jar().set("nashr_session", token);
+    jar().set("thakeen_session", token);
     expect(await currentUser()).toBeNull();
   });
 

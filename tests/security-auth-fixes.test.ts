@@ -33,12 +33,12 @@ afterEach(() => { vi.unstubAllEnvs(); });
 describe("impersonation stop (rules 540-542)", () => {
   it("540: a forged nashr_impersonate cookie with no impersonation session writes nothing to admin:log", async () => {
     // Anonymous: only the cookie.
-    jar().set("nashr_impersonate", "victim@test.example");
+    jar().set("thakeen_impersonate", "victim@test.example");
     expect((await stop()).status).toBe(303);
     // A normal customer session plus the cookie.
     const u = await newUser("imp");
     await signIn(u.email);
-    jar().set("nashr_impersonate", "victim@test.example");
+    jar().set("thakeen_impersonate", "victim@test.example");
     expect((await stop()).status).toBe(303);
     // A founder's own return cookie plus the forged one: still no impersonation session to burn.
     signOut();
@@ -46,15 +46,15 @@ describe("impersonation stop (rules 540-542)", () => {
     expect((await stop()).status).toBe(303);
     expect(await adminLog()).toEqual([]);
     // The caller's own helper cookies are still cleared.
-    expect(jar().has("nashr_impersonate")).toBe(false);
-    expect(jar().has("nashr_return")).toBe(false);
+    expect(jar().has("thakeen_impersonate")).toBe(false);
+    expect(jar().has("thakeen_return")).toBe(false);
   });
 
   it("541: a real impersonation session logs its own founder and account, never the cookie value or a literal", async () => {
     const u = await newUser("imp");
     const founder = "real-founder@test.example";
     const temp = await signIn(u.email, { imp: founder });
-    jar().set("nashr_impersonate", "someone-else@test.example");
+    jar().set("thakeen_impersonate", "someone-else@test.example");
     expect((await stop()).status).toBe(303);
     const rows = await adminLog();
     expect(rows).toHaveLength(1);
@@ -62,7 +62,7 @@ describe("impersonation stop (rules 540-542)", () => {
     expect(JSON.stringify(rows)).not.toContain("someone-else@test.example");
     expect(await (await import("@/lib/auth")).sessionRecord(temp)).toBeNull();
     // The burned session cannot be replayed into a second log row.
-    jar().set("nashr_session", temp);
+    jar().set("thakeen_session", temp);
     await stop();
     expect(await adminLog()).toHaveLength(1);
   });

@@ -75,7 +75,7 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
     expect(mem.sessionsAfter).toBe(sessionsAfter);
     expect(mem.devicesAfter).toBeTruthy();
     expect(await loginHolds(rec)).toBe(true);
-    jar().set("nashr_session", other);
+    jar().set("thakeen_session", other);
     expect(await currentUser()).toBeNull();
   });
 
@@ -83,7 +83,7 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
     const u = await newUser("so4");
     const t = await signIn(u.email);
     expect((await getUser(u.email))!.devicesAfter).toBeUndefined();
-    jar().set("nashr_session", t);
+    jar().set("thakeen_session", t);
     expect((await currentUser())?.email).toBe(u.email);
   });
 
@@ -118,7 +118,7 @@ describe("rule 1171: the new session is written before the old ones end", () => 
     const u = await newUser("so4");
     const mine = await signIn(u.email);
     expect((await post("abc12345")).status).toBe(200);
-    const now = jar().get("nashr_session")!;
+    const now = jar().get("thakeen_session")!;
     expect(now).not.toBe(mine);
     expect(await sessionRecord(mine)).toBeNull();
     expect(await sessionRecord(now)).toBeTruthy();

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { levelFor, type Journey, type LevelId, type MilestoneId } from "@/lib/journey";
 import { Icon } from "./Icons";
+import { JOURNEY_KEY, readStored, writeStored } from "@/lib/cookie-names";
 
 const STR = {
   ar: {
@@ -39,11 +40,10 @@ const STR = {
 
 const ICON: Record<MilestoneId, string> = { brand: "folder", guard: "shield", approve: "thumbUp", schedule: "calendar", connect: "plug", publish: "send", ai: "spark" };
 const COLORS = ["var(--color-primary)", "var(--color-accent)", "var(--color-danger)", "var(--color-foreground)", "var(--color-background-muted)"];
-const KEY = "nashr:journey:v1";
 
 type Seen = { done: MilestoneId[]; level: LevelId; hidden?: boolean };
-const read = (): Seen | null => { try { const v = localStorage.getItem(KEY); return v ? (JSON.parse(v) as Seen) : null; } catch { return null; } };
-const write = (s: Seen) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private window: celebrations just repeat */ } };
+const read = (): Seen | null => { try { const v = readStored(localStorage, JOURNEY_KEY); return v ? (JSON.parse(v) as Seen) : null; } catch { return null; } };
+const write = (s: Seen) => { try { writeStored(localStorage, JOURNEY_KEY, JSON.stringify(s)); } catch { /* private window: celebrations just repeat */ } };
 
 /** Tell the card a milestone just happened in this tab (the inbox fires it after an approve, a date or a publish). */
 export function milestone(id: MilestoneId) {

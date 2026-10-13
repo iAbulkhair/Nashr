@@ -28,7 +28,7 @@ export const maxDuration = 300;
 /**
  * Nashr MCP — Streamable HTTP (JSON responses), JSON-RPC 2.0.
  * Connect from Claude Desktop / Claude Code / any MCP client:
- *   URL: {APP_ORIGIN}/api/mcp (src/lib/origin.ts `appOrigin()`)   Header: Authorization: Bearer nashr_...
+ *   URL: {APP_ORIGIN}/api/mcp (src/lib/origin.ts `appOrigin()`)   Header: Authorization: Bearer thakeen_...
  */
 /** Layer 1 for the clients (rule 797): the one sentence about what Thakeen's team will and will not do, in the two tool descriptions that start work. */
 const SCOPE_SENTENCE = "Scope: only marketing, sales, growth, finance and analytics work for this account's brands; anything else is refused.";

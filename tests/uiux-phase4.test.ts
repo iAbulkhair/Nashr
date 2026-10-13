@@ -411,7 +411,7 @@ describe("rule 1177 (banner): the founder's view of an account shows a sticky ba
   it("is shown from the session's founder actor, never from the cookie alone, and Stop posts to the impersonate route", () => {
     const layout = read("src/app/[lang]/app/layout.tsx");
     expect(layout).toContain('{actor?.kind === "founder" && <ImpersonationBanner lang={lang} email={user.email} until={actor.until} />}');
-    expect(layout).not.toContain('jar.get("nashr_impersonate")');
+    expect(layout).not.toContain('jar.get("thakeen_impersonate")');
     const b = read("src/components/app/ImpersonationBanner.tsx");
     expect(b).toContain('action="/api/admin/impersonate"');
     expect(b).toContain('method="post"');
@@ -539,7 +539,7 @@ describe("security review fixes (rules 1184-1190)", () => {
     const body = src.slice(src.indexOf('case "impersonate"'), src.indexOf('case "resendVerification"'));
     expect(body.indexOf('await log("impersonate"')).toBeGreaterThan(-1);
     expect(body.indexOf('await log("impersonate"')).toBeLessThan(body.indexOf("await createSession(email, ttl"));
-    expect(body.indexOf('await log("impersonate"')).toBeLessThan(body.indexOf('jar.set("nashr_impersonate"'));
+    expect(body.indexOf('await log("impersonate"')).toBeLessThan(body.indexOf('jar.set(IMPERSONATE_COOKIE'));
     const c = await createUser({ email: `a6-${Date.now().toString(36)}@test.example`, name: "C", phone: "", password: "abc12345", lang: "en" });
     const users = await import("@/app/api/admin/users/[email]/route");
     await adminSignIn();
@@ -547,7 +547,7 @@ describe("security review fixes (rules 1184-1190)", () => {
     vi.spyOn(db, "lpush").mockImplementation(((key: string, value: string) => (key === "admin:log" ? Promise.reject(new Error("store down")) : real(key, value))) as typeof db.lpush);
     await expect(users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", minutes: 15 }), userParams(c.email))).rejects.toThrow();
     vi.restoreAllMocks();
-    expect(jar().get("nashr_impersonate")).toBeUndefined();
+    expect(jar().get("thakeen_impersonate")).toBeUndefined();
   });
 
   it("rule 1188: the console follows only /ar/app or /en/app, and the server builds it from a fixed list", () => {

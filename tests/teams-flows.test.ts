@@ -56,7 +56,7 @@ const loginAs = (email: string, password: string) => login.POST(json("/api/auth/
 const inviteReq = (body: unknown) => invite.POST(json("/api/team/invite", "POST", body, ip()));
 const tokenOf = (text: string) => text.match(/#t=([a-f0-9]{64})/)![1];
 const resetTokenOf = (text: string) => text.match(/\/app\/reset#t=([a-f0-9]{64})/)![1];
-const sessionRec = async () => (await sessionRecord(jar().get("nashr_session")!)) as { email: string; at: number } | null;
+const sessionRec = async () => (await sessionRecord(jar().get("thakeen_session")!)) as { email: string; at: number } | null;
 
 beforeEach(() => {
   sent.length = 0;
@@ -98,7 +98,7 @@ describe("login: every login is checked against its own password", () => {
     const paused = await loginAs(m, MEMBER_PW);
     expect(paused.status).toBe(403);
     expect(await paused.json()).toMatchObject({ error: "disabled" });
-    expect(jar().get("nashr_session"), "no session is issued").toBeUndefined();
+    expect(jar().get("thakeen_session"), "no session is issued").toBeUndefined();
 
     const m2 = await memberWithOwnPassword(owner);
     await saveUser({ ...(await getUser(owner.email))!, suspended: true });
@@ -131,9 +131,9 @@ describe("a member's password is its own", () => {
     expect(after.sessionsAfter).toBe(before.sessionsAfter);
     expect(after.teamSessionsAfter).toBeUndefined();
     expect(await userFromBearer(new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${token}` } }))).not.toBeNull();
-    jar().set("nashr_session", ownerSession);
+    jar().set("thakeen_session", ownerSession);
     expect((await currentUser())!.actor!.kind, "the owner stays signed in").toBe("owner");
-    jar().set("nashr_session", otherDevice);
+    jar().set("thakeen_session", otherDevice);
     expect(await currentUser(), "the member's other device is signed out").toBeNull();
 
     expect((await loginAs(m, MEMBER_PW)).status).toBe(401);
@@ -186,7 +186,7 @@ describe("forgot and reset act on the login the link was issued for", () => {
     expect(after.sessionsAfter).toBe(before.sessionsAfter);
     expect(after.teamSessionsAfter, "a member's reset never signs the team out").toBeUndefined();
     expect(await userFromBearer(new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${token}` } }))).not.toBeNull();
-    jar().set("nashr_session", ownerSession);
+    jar().set("thakeen_session", ownerSession);
     expect((await currentUser())!.actor!.kind).toBe("owner");
     expect((await loginAs(m, "reset1234")).status).toBe(200);
     expect((await loginAs(owner.email, "reset1234")).status).toBe(401);
@@ -201,7 +201,7 @@ describe("forgot and reset act on the login the link was issued for", () => {
     const t = resetTokenOf(sent[0].text);
     expect(await db.get(`pwreset:${sha(t)}`)).toEqual({ email: owner.email, kind: "owner" });
     expect((await reset.POST(json("/api/auth/reset", "POST", { token: t, password: "owner1234" }, ip()))).status).toBe(200);
-    jar().set("nashr_session", memberSession);
+    jar().set("thakeen_session", memberSession);
     expect(await currentUser()).toBeNull();
     expect((await loginAs(m, MEMBER_PW)).status).toBe(200);
   });
@@ -215,7 +215,7 @@ describe("forgot and reset act on the login the link was issued for", () => {
     expect((await memberRoute.DELETE(json("/api/team/member", "DELETE", { email: m }))).status).toBe(200);
     signOut();
     expect((await reset.POST(json("/api/auth/reset", "POST", { token: t, password: "reset1234" }, ip()))).status).toBe(400);
-    expect(jar().get("nashr_session")).toBeUndefined();
+    expect(jar().get("thakeen_session")).toBeUndefined();
   });
 });
 
@@ -448,7 +448,7 @@ describe("invite, preview and accept", () => {
     expect(res.status).toBe(200);
     signOut();
     expect((await accept.POST(json("/api/team/accept", "POST", { token, name: "Late", password: "late12345" }, ip()))).status).toBe(400);
-    expect(jar().get("nashr_session")).toBeUndefined();
+    expect(jar().get("thakeen_session")).toBeUndefined();
   });
 
   it("is rate limited: invites per account per day, accepts and previews per IP", async () => {
@@ -482,15 +482,15 @@ describe("removal, leaving and roles take effect at the next request", () => {
 
     await signIn(owner.email);
     expect((await memberRoute.DELETE(json("/api/team/member", "DELETE", { email: gone }))).status).toBe(200);
-    jar().set("nashr_session", goneSession);
+    jar().set("thakeen_session", goneSession);
     expect(await currentUser()).toBeNull();
     expect((await loginAs(gone, MEMBER_PW)).status).toBe(401);
     expect(await db.get(`activebrand:${gone}`)).toBeNull();
 
     const leaverSession = await signIn(leaver);
     expect((await leave.POST()).status).toBe(200);
-    expect(jar().get("nashr_session"), "the cookie is cleared").toBeUndefined();
-    jar().set("nashr_session", leaverSession);
+    expect(jar().get("thakeen_session"), "the cookie is cleared").toBeUndefined();
+    jar().set("thakeen_session", leaverSession);
     expect(await currentUser()).toBeNull();
     expect(await getMember(leaver)).toBeNull();
 
@@ -522,7 +522,7 @@ describe("removal, leaving and roles take effect at the next request", () => {
     expect((await currentUser())!.actor!.role).toBe("member");
     await signIn(owner.email);
     expect((await memberRoute.PATCH(json("/api/team/member", "PATCH", { email: m.email, role: "admin" }))).status).toBe(200);
-    jar().set("nashr_session", session);
+    jar().set("thakeen_session", session);
     expect((await currentUser())!.actor!.role).toBe("admin");
   });
 
@@ -556,7 +556,7 @@ describe("a plan change refits the team (founder console)", () => {
     expect(down.status).toBe(200);
     expect(((await down.json()) as { team: { disabled: string[] } }).team.disabled).toEqual([emails[2]]);
     expect(await paused()).toEqual([false, false, true]);
-    jar().set("nashr_session", newestSession);
+    jar().set("thakeen_session", newestSession);
     expect(await currentUser(), "a paused member is out at its next request").toBeNull();
     expect(await (await loginAs(emails[2], MEMBER_PW)).json()).toMatchObject({ error: "disabled" });
 

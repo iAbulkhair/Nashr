@@ -55,7 +55,7 @@ describe("token endpoint client authentication (rule 18)", () => {
     // None of the refusals reached the code: the right secret still redeems it once.
     const ok = await token.POST(post("/api/oauth/token", { ...exchange, client_secret: client.client_secret }, h));
     expect(ok.status).toBe(200);
-    expect((await ok.json()).access_token).toMatch(/^nashr_/);
+    expect((await ok.json()).access_token).toMatch(/^thakeen_/);
   });
 
   it("accepts the right secret in the Basic header", async () => {

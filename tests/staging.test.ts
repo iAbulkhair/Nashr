@@ -76,10 +76,10 @@ describe("the staging lock (rules 674, 677)", () => {
     // require(). Comments are not stripped on purpose: a comment that looks like an import fails, the safe direction.
     const specs = (src: string) =>
       [...new Set([...src.matchAll(/\b(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]))].sort();
-    // A closed list: proxy -> {csrf, deploy-env, staging-access}; csrf -> origin; staging-access -> {secret, deploy-env};
+    // A closed list: proxy -> {cookie-names, csrf, deploy-env, staging-access}; cookie-names -> nothing; csrf -> origin; staging-access -> {secret, deploy-env};
     // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
-      "src/proxy.ts": ["@/lib/csrf", "@/lib/deploy-env", "@/lib/settings-nav", "@/lib/staging-access", "next/server"],
+      "src/proxy.ts": ["@/lib/cookie-names", "@/lib/csrf", "@/lib/deploy-env", "@/lib/settings-nav", "@/lib/staging-access", "next/server"],
       // The settings redirect map (rule 1141): plain data; its one import is a type, erased at build (pinned below).
       "src/lib/settings-nav.ts": ["./i18n"],
       "src/lib/csrf.ts": ["@/lib/origin", "next/server"],
@@ -87,6 +87,8 @@ describe("the staging lock (rules 674, 677)", () => {
       "src/lib/staging-access.ts": ["@/lib/deploy-env", "@/lib/secret", "node:crypto"],
       "src/lib/deploy-env.ts": [],
       "src/lib/secret.ts": ["crypto"],
+      // Cookie names and jar helpers (rules 1810-1813): import-free, so the language cookie read adds nothing behind it.
+      "src/lib/cookie-names.ts": [],
     };
     for (const [f, ok] of Object.entries(allowed))
       expect(specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)), f).toEqual([]);

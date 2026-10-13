@@ -751,7 +751,7 @@ describe("an admin runs the workspace but not the account", () => {
     expect(await status(governanceRoute.PUT(json("/api/governance", "PUT", { learning: false })))).toBe(200);
     expect((await getGov(owner.email)).learning).toBe(false);
     const minted = (await (await tokenRoute.POST()).json()) as { token: string };
-    expect(minted.token).toMatch(/^nashr_/);
+    expect(minted.token).toMatch(/^thakeen_/);
     expect(await getMcpToken(owner.email)).toBe(tokenHash(minted.token)); // stored hashed, never raw (rules 548-555)
   });
 });

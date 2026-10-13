@@ -37,7 +37,7 @@ export const PARTNER_TERMS_VERSION = "2026-10-12";
 /** The early-partner offer can be used until the end of this many Riyadh days after the trial's last day (rule 410). */
 export const EARLY_OFFER_DAYS = 7;
 /** The first-party cookie a partner link sets (httpOnly, 30 days), `CODE.<click ms>`. Never the credits referral's `?ref=`. */
-export const PARTNER_COOKIE = "nashr_partner";
+export { PARTNER_COOKIE } from "./cookie-names";
 export const PARTNER_COOKIE_DAYS = 30;
 /** The cookie's value: the code and the moment of the click, so the 30 days run from the click, not from signup. */
 export const partnerCookieValue = (code: string, clickMs: number): string => `${code}.${Math.floor(clickMs)}`;
