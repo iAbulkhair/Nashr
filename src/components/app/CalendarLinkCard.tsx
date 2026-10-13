@@ -45,7 +45,7 @@ export type CalState =
 const startHref = (p: CalProviderId, lang: "ar" | "en") => `/api/connect/${p}/start?lang=${lang}`;
 const isProvider = (p: unknown): p is CalProviderId => p === "gcal" || p === "mscal";
 
-/** «قبل ٤ دقائق» / "4 minutes ago" in Latin digits, from an ISO time; "" when the time does not parse. */
+/** «قبل 4 دقائق» / "4 minutes ago" in Latin digits, from an ISO time; "" when the time does not parse. */
 export function sinceText(iso: string, lang: "ar" | "en", now: number): string {
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return "";

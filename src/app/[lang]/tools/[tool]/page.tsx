@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { backArrow } from "@/lib/format";
 import { dict, isLang, LANGS } from "@/lib/i18n";
 import { TOOLS, getTool } from "@/lib/tools";
 import Nav from "@/components/Nav";
@@ -29,7 +30,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
     <>
       <Nav t={t} lang={lang} />
       <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <Link href={`/${lang}/tools`} className="text-sm font-bold text-foreground underline">{lang === "ar" ? "← كل الأدوات" : "← All tools"}</Link>
+        <Link href={`/${lang}/tools`} className="text-sm font-bold text-foreground underline">{`${backArrow(lang)} ${lang === "ar" ? "كل الأدوات" : "All tools"}`}</Link>
         <h1 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><Scribble kind="underline" seed="tool-h" />{x.h1[lang]}</span></h1>
         <p className="mt-2 max-w-2xl text-foreground-muted">{x.desc[lang]}</p>
         <div className="mt-8"><ToolForm tool={x} lang={lang} /></div>

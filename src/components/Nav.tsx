@@ -58,7 +58,7 @@ export default function Nav({ t, lang, sections }: { t: Dict; lang: Lang; sectio
         <Link href={`/${lang}`} className="font-display text-2xl font-bold tracking-tight text-foreground">
           <Wordmark lang={lang} name={t.brand} />
         </Link>
-        <nav className="hidden items-center gap-5 text-sm lg:flex" aria-label="Main">
+        <nav className="hidden items-center gap-5 text-sm lg:flex" aria-label={lang === "ar" ? "القائمة الرئيسية" : "Main"}>
           {anchors.length > 0 ? anchors.map((a) => <NavLink key={a.href} href={a.href}>{a.label}</NavLink>) : <>
           {/* The Agents tab leads to Noor: she is the front door to the team. */}
           <Drop label={m.agents} href={`/${lang}/agents/noor`} items={agents} />
