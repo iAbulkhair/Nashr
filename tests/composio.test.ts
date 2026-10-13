@@ -365,6 +365,7 @@ describe("who can reach Composio (rule 652)", () => {
       "src/app/api/connect/[provider]/route.ts",
       "src/app/api/connect/[provider]/start/route.ts",
       "src/lib/account.ts",
+      "src/lib/cloud-drives.ts",
       "src/lib/connectors/ads-via-composio.ts",
       "src/lib/connectors/publish.ts",
       "src/lib/connectors/registry.ts",

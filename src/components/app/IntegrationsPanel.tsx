@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
-import { IMPORTS_PRODUCTS, READS_ADS, READS_REFERENCES, isWorking } from "@/lib/connectors/working";
+import { DRIVES, IMPORTS_PRODUCTS, READS_ADS, READS_REFERENCES, isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 import { connectError } from "@/lib/connect-errors";
 import ReadOnlyNote from "./ReadOnlyNote";
@@ -251,8 +251,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
               // A card offers "Connect" or shows "Connected" only when code uses that connection; the others keep their
               // catalog status. The Connected section above still lists every stored connection so it can be removed.
               const found = providerById.get(connectorId(i));
-              // Working: publishes or imports. Reading ad results counts too (READS_ADS), and so do the reference files (READS_REFERENCES).
-              const p = found && (isWorking(found.id) || READS_ADS.includes(found.id) || READS_REFERENCES.includes(found.id)) ? found : undefined;
+              // Working: publishes or imports. Reading ad results counts too (READS_ADS), and so do the reference files (READS_REFERENCES) and the cloud drives (DRIVES).
+              const p = found && (isWorking(found.id) || READS_ADS.includes(found.id) || READS_REFERENCES.includes(found.id) || DRIVES.includes(found.id)) ? found : undefined;
               const part = p?.toolkits && p.toolkits.length > 1 && p.toolkits.includes(i.id) ? i.id : undefined;
               const isConnected = p ? (part ? !!conns.find((c) => c.provider === p.id)?.meta?.[PART_MARK[part]] : connectedIds.has(p.id)) : false;
               const ready = !!p?.available && !isConnected;
