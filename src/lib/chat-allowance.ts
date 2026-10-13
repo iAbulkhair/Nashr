@@ -46,7 +46,7 @@ export type ChatStatus = {
 };
 
 type Refusal = { ok: false; error: "chat_allowance" | "chat_credits"; status: ChatStatus; credits: number; need?: number };
-/** The fair-use stop (src/lib/fair-use.ts, rule 1722): the account's cost this month reached what it paid. */
+/** The fair-use stop (src/lib/fair-use.ts, rule 1722): the account's cost this month reached 95% of what it paid. */
 type FairUseStop = { ok: false; error: FairUseRefusal["error"]; fairUse: FairUseRefusal; status: ChatStatus; credits: number };
 /**
  * `units`: the messages this turn counts (`chatUnitsFor(model)`), on `key`; `model`: the catalog id they were computed

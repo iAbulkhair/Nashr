@@ -150,7 +150,7 @@ export type BatchRefusal =
   | { ok: false; reason: "paused" }
   | { ok: false; reason: "no_brand" }
   | { ok: false; reason: "trial_over" }
-  /** The fair-use stop (src/lib/fair-use.ts, rule 1723): the account's cost this month reached what it paid; `resumes` is YYYY-MM-DD. */
+  /** The fair-use stop (src/lib/fair-use.ts, rule 1723): the account's cost this month reached 95% of what it paid; `resumes` is YYYY-MM-DD. */
   | { ok: false; reason: "fair_use"; resumes: string }
   | { ok: false; reason: "missing_data"; missing: string }
   | { ok: false; reason: "agent_cap"; agent: AgentId; spent: number; cap: number; credits: number }

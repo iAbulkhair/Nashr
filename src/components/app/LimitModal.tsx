@@ -14,7 +14,7 @@ import { chatOverflowHold, formatCount } from "@/lib/pricing";
  * `chat`: the account's chat messages are used up and chat is paused (POST /api/chat answered 402 `chat_allowance`);
  * `chat_credits`: "continue on credits" is on but the balance is below `overflow.hold`, the least a message on credits
  * needs (402 `chat_credits`). Nothing is taken before a message: after the reply it is billed what it actually cost.
- * `fair_use`: the account's AI cost this month reached what it paid (src/lib/fair-use.ts, rule 1727): chat, generation,
+ * `fair_use`: the account's AI cost this month reached 95% of what it paid (src/lib/fair-use.ts, rule 1727): chat, generation,
  * routines and media pause until the 1st of next month; a top-up pack raises the limit by what it cost, so the way out
  * is the packs on the Subscription page.
  */

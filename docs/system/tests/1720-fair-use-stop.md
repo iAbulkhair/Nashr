@@ -4,7 +4,7 @@ Status on 2026-10-13, branch `claude/fair-use-stop-4fd43a` (draft pull request).
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
-| 1720 | The limit: `FAIR_USE_PCT` = 100; limit = (`netPriceSar(priceOf(u))` + top-up packs paid this month net of VAT and refunds, `topupRevenueSar`) × 100%; cost = margin alert's model + media counters × `SAR_PER_USD`; paused when cost ≥ limit (equal pauses) | `tests/fair-use.test.ts` ("the limit") | — |
+| 1720 | The limit: `FAIR_USE_PCT` = 95; limit = (`netPriceSar(priceOf(u))` + top-up packs paid this month net of VAT and refunds, `topupRevenueSar`) × 95%; cost = margin alert's model + media counters × `SAR_PER_USD`; paused when cost ≥ limit (equal pauses; a halala under the 95% line still runs) | `tests/fair-use.test.ts` ("the limit") | — |
 | 1721 | Applies to paying accounts only (`isPaying`); the trial, a suspended account and a plan without a price are never paused, so the trial is never gated twice | `tests/fair-use.test.ts` ("the limit", "the trial is not gated twice") | — |
 | 1722 | Chat: `reserveChatTurn` refuses `fair_use` before the allowance is counted; `POST /api/chat` answers 402 `fair_use`; no message counted, no model call | `tests/fair-use.test.ts` ("POST /api/chat answers 402 fair_use") | A streamed chat turn with the stop |
 | 1723 | `generateBatch` refuses `fair_use` after the trial check, before the classifier, the charge and the model; callers answer 402 `{error:"fair_use", resumes}` (generate, spend cards, handoffs), MCP `generate_content` and chat tools the sentence; a routine's outcome `fair_use` counts as skipped | `tests/fair-use.test.ts` ("generateBatch refuses"; source pin) | A routine run that records the `fair_use` outcome |

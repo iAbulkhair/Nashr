@@ -10,8 +10,9 @@ import { isPaying, revenueSarOf, type MarginRow } from "./margin";
 
 /**
  * The fair-use stop (rules 1720-1739, docs/system/flows.md section 73). Founder decision of 2026-10-13: "no need to
- * lawyer, just stop the service". When what an account cost us this month reaches what it paid us this month, its paid
- * AI usage pauses in code, before any provider call, until the next month, a top-up pack, or the founder lifts it.
+ * lawyer, just stop the service". When what an account cost us this month reaches 95% of
+ * what it paid us this month (founder decision of 2026-10-13: 5% stays as margin, not 100%), its paid AI usage pauses in
+ * code, before any provider call, until the next month, a top-up pack, or the founder lifts it.
  *
  * For one paying account (`isPaying`, src/lib/margin.ts: not suspended, not on the trial, a plan with a price) and one
  * UTC calendar month (`monthKey()`, the month the usage counters and the margin alert use):
@@ -31,8 +32,8 @@ import { isPaying, revenueSarOf, type MarginRow } from "./margin";
  * /api/onboard, POST /api/instructions/test and the meeting transcript. tests/fair-use.test.ts pins the list.
  */
 
-/** The limit, in percent of what the account paid this month. 100: the account may cost what it paid, not more. */
-export const FAIR_USE_PCT = 100;
+/** The limit, in percent of what the account paid this month. 95 (founder, 2026-10-13): the account may cost up to 95% of what it paid; 5% is kept as margin. */
+export const FAIR_USE_PCT = 95;
 /** The refusal code every gated path answers with (HTTP 402). */
 export const FAIR_USE_ERROR = "fair_use" as const;
 /** The founder's "an account just paused" marker lives a little longer than a month, so one alert per account a month. */
@@ -101,8 +102,8 @@ const PLAN_NAME: Record<"ar" | "en", Record<string, string>> = {
 export function fairUseAlertText(plan: string, lang: "ar" | "en") {
   const p = PLAN_NAME[lang][plan] ?? plan;
   return lang === "ar"
-    ? { title: `توقف الاستخدام المدفوع لحساب على باقة ${p}`, body: "بلغت تكلفة الحساب هذا الشهر ما دفعه. توقفت المحادثات والتوليد والمهام المجدولة والوسائط حتى الشهر القادم أو شراء باقة شحن. يمكنك رفع الإيقاف من لوحة المؤسس، قسم الاستخدام." }
-    : { title: `Paid usage paused for an account on ${p}`, body: "The account's cost this month reached what it paid. Chat, generation, routines and media are paused until next month or a top-up pack. You can lift the pause in the founder console, Usage." };
+    ? { title: `توقف الاستخدام المدفوع لحساب على باقة ${p}`, body: "بلغت تكلفة الحساب هذا الشهر 95% مما دفعه. توقفت المحادثات والتوليد والمهام المجدولة والوسائط حتى الشهر القادم أو شراء باقة شحن. يمكنك رفع الإيقاف من لوحة المؤسس، قسم الاستخدام." }
+    : { title: `Paid usage paused for an account on ${p}`, body: "The account's cost this month reached 95% of what it paid. Chat, generation, routines and media are paused until next month or a top-up pack. You can lift the pause in the founder console, Usage." };
 }
 
 /**

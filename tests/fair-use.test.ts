@@ -58,25 +58,29 @@ const spend = (email: string, month: string, modelUsd: number, mediaUsd = 0) =>
 /** A Starter account (299 SAR net) whose cost this month is past its limit. */
 async function paused(extra: Partial<User> = {}): Promise<User> {
   const u = await account("starter", extra);
-  await spend(u.email, monthKey(), 60, 30); // 90 USD × 3.75 = 337.5 SAR ≥ 299
+  await spend(u.email, monthKey(), 60, 30); // 90 USD × 3.75 = 337.5 SAR ≥ 284.05 (95% of 299)
   return u;
 }
 
 describe("the limit (rules 1720, 1721)", () => {
-  it("is 100% of the plan's net price; cost equal to the limit pauses, a halala under it does not", () => {
-    expect(FAIR_USE_PCT).toBe(100);
+  it("is 95% of the plan's net price (founder, 2026-10-13); cost equal to the limit pauses, a halala under it does not", () => {
+    expect(FAIR_USE_PCT).toBe(95);
     const u = { plan: "starter" as Plan, email: "x@test.example" };
     const month = "2031-05";
-    expect(fairUseLimitSar(u, month)).toBe(299);
-    expect(fairUseState(u, 299 / SAR_PER_USD, month)).toMatchObject({ applies: true, costSar: 299, limitSar: 299, paused: true });
-    expect(fairUseState(u, 298.99 / SAR_PER_USD, month).paused).toBe(false);
+    expect(fairUseLimitSar(u, month)).toBe(284.05);
+    expect(fairUseState(u, 284.05 / SAR_PER_USD, month)).toMatchObject({ applies: true, costSar: 284.05, limitSar: 284.05, paused: true });
+    expect(fairUseState(u, 284.04 / SAR_PER_USD, month).paused).toBe(false);
+    // just under 95% of the price still runs; at or over 95% is paused, and 100% is long past the line
+    expect(fairUseState(u, (299 * 0.949) / SAR_PER_USD, month).paused).toBe(false);
+    expect(fairUseState(u, (299 * 0.95) / SAR_PER_USD, month).paused).toBe(true);
+    expect(fairUseState(u, 299 / SAR_PER_USD, month).paused).toBe(true);
     expect(fairUseState(u, 0, month).paused).toBe(false);
     expect(fairUseState(u, Number.NaN, month).paused).toBe(false);
-    expect(fairUseLimitSar({ plan: "pro" }, month)).toBe(499);
+    expect(fairUseLimitSar({ plan: "pro" }, month)).toBe(474.05);
   });
   it("the Agency deal's price is its revenue", () => {
     const u = { plan: "agency" as Plan, deal: { credits: 5000, priceSar: 3330, setAt: "2031-05-01T00:00:00.000Z", setBy: "f@test.example" } };
-    expect(fairUseLimitSar(u, "2031-05")).toBe(3330);
+    expect(fairUseLimitSar(u, "2031-05")).toBe(3163.5);
   });
   it("the trial, a suspended account and a plan without a price are never paused (the trial keeps its own limits)", () => {
     for (const u of [{ plan: "trial" as Plan }, { plan: "starter" as Plan, suspended: true }]) {
@@ -86,9 +90,9 @@ describe("the limit (rules 1720, 1721)", () => {
   it("a top-up pack paid this month raises the limit by what was paid, net of refunds; last month's pack does not", () => {
     const lot = (paidOn: string, paidSar: number, refund?: number) => ({ id: "a".repeat(16), credits: 100, left: 100, paidSar, paidOn, expiresAt: "2031-12-01T00:00:00.000Z", ...(refund ? { refund: { sar: refund, at: paidOn, by: "f@test.example" } } : {}) });
     const u = { plan: "starter" as Plan, topups: [lot("2031-05-03", 100), lot("2031-05-04", 50, 20), lot("2031-04-28", 999)] } as unknown as User;
-    expect(fairUseLimitSar(u, "2031-05")).toBe(299 + 100 + 30);
-    expect(fairUseState(u, 400 / SAR_PER_USD, "2031-05").paused).toBe(false);
-    expect(fairUseState(u, 429 / SAR_PER_USD, "2031-05").paused).toBe(true);
+    expect(fairUseLimitSar(u, "2031-05")).toBe(407.55); // (299 + 100 + 30) × 95%
+    expect(fairUseState(u, 407.54 / SAR_PER_USD, "2031-05").paused).toBe(false);
+    expect(fairUseState(u, 407.55 / SAR_PER_USD, "2031-05").paused).toBe(true);
   });
   it("the founder's lift counts for its month only", () => {
     const u = { plan: "starter" as Plan, fairUseLift: { month: "2031-05", at: "2031-05-10T00:00:00.000Z", by: "f@test.example" } };
@@ -111,7 +115,7 @@ describe("the reads (rules 1726, 1728)", () => {
     const s = await fairUseOf(u, month);
     expect(mget).toHaveBeenCalledTimes(1);
     expect(mget.mock.calls[0][0]).toEqual([`usage:${u.email}:${month}:usd_micro`, mediaCostKey(u.email, month)]);
-    expect(s).toMatchObject({ costSar: 300, limitSar: 299, paused: true });
+    expect(s).toMatchObject({ costSar: 300, limitSar: 284.05, paused: true });
     mget.mockClear();
     const t = await account("trial");
     await spend(t.email, month, 1000);
@@ -187,6 +191,8 @@ describe("the founder (rules 1729-1731, 1733)", () => {
     expect(await db.get(fairUseAlertedKey(month, u.email))).toBeTruthy();
     expect(fairUseAlertedKey(month, u.email)).not.toContain(u.email);
     for (const lang of ["ar", "en"] as const) expect(fairUseAlertText("starter", lang).title.length).toBeGreaterThan(0);
+    expect(fairUseAlertText("starter", "en").body).toContain("95% of what it paid");
+    expect(fairUseAlertText("starter", "ar").body).toContain("95%");
   });
   it("POST /api/admin/fair-use: founder only, a reason, a known action; lift and clear are audited and month-scoped", async () => {
     const u = await paused();
