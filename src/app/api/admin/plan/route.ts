@@ -4,13 +4,14 @@ import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { matchUser, pageOf, parseUserQuery, sortUsers, tileCounts, userFacets } from "@/lib/admin-users";
 import { db } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
-import { getUsage } from "@/lib/usage";
+import { getUsage, mediaCostKey } from "@/lib/usage";
+import { marginPct, revenueSarOf } from "@/lib/margin";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
 import { enforceSeats } from "@/lib/team";
-import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, brandCapFor, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
+import { MAX_SEAT_OVERRIDE, allowanceOf, brandCapFor, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 import { parseVideoGrant } from "@/lib/entitlements";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
@@ -61,10 +62,11 @@ const videoLabel = (g: Grant<"all"> | undefined) => (g ? `all@${g.until}` : "pla
 //      Rules 243-244 and 316, tests/admin-deal.test.ts.
 /** One account's row: its record with this month's usage and chat. Two reads per account (usage and chat). */
 async function rowOf(u: User) {
-  const [usage, chat] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model)]);
+  const [usage, chat, mediaMicro] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model), db.get<number>(mediaCostKey(u.email)).catch(() => 0)]);
   // The list price, or an Agency account's deal price (Business's without a deal).
   const priceSar = priceOf(u);
-  const costSar = usage.usd * SAR_PER_USD;
+  // Rule 1532: the same margin as the daily alert (src/lib/margin.ts): model cost plus this month's render cost.
+  const mediaUsd = Math.max(0, Number(mediaMicro ?? 0) || 0) / 1e6;
   // `chatStatus`, not the month counter alone: a trial's messages are counted once for the whole trial.
   const chatUsd = usage.byKind.chat?.usd ?? 0;
   return ({
@@ -84,7 +86,7 @@ async function rowOf(u: User) {
     tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls, byKind: usage.byKind,
     priceSar,
     // A trial has no list price, so a margin would be meaningless rather than negative.
-    marginPct: priceSar > 0 ? Math.round(((priceSar - costSar) / priceSar) * 100) : null,
+    marginPct: marginPct(revenueSarOf(u), usage.usd + mediaUsd), mediaUsd,
     // `chatUsed` is the RAW count (`counted`), not the owner's clamped `used`: after the allowance was lowered
     // mid-period it can pass `chatAllowance`, and the console shows that as it is.
     chatUsed: chat.counted, chatAllowance: chat.allowance, chatLeft: chat.left, chatPeriod: chat.period,

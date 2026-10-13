@@ -3,13 +3,13 @@
  * layout, never inside the customer app's layout. Client-safe: no runtime imports, so the admin sidebar and the
  * customer account menu can both use it. The gate itself is server code: src/lib/admin-gate-server.ts.
  */
-export const ADMIN_SECTIONS = ["overview", "users", "leads", "usage", "billing", "partners", "quality", "skills", "wishlist", "log"] as const;
+export const ADMIN_SECTIONS = ["overview", "users", "leads", "usage", "billing", "partners", "quality", "skills", "integrations", "wishlist", "log"] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
 /** Each section's name: the admin sidebar's link and the page's `<title>` (src/lib/screen-titles.ts). */
 export const ADMIN_LABEL: Record<"en" | "ar", Record<AdminSection, string>> = {
-  en: { overview: "Overview", users: "Users", leads: "Leads", usage: "Usage", billing: "Billing", partners: "Partners", quality: "Quality", skills: "Agent skills", wishlist: "Wishlist", log: "Audit log" },
-  ar: { overview: "نظرة عامة", users: "المستخدمون", leads: "العملاء المحتملون", usage: "الاستخدام", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", skills: "مهارات الوكلاء", wishlist: "الأمنيات", log: "سجل الإجراءات" },
+  en: { overview: "Overview", users: "Users", leads: "Leads", usage: "Usage", billing: "Billing", partners: "Partners", quality: "Quality", skills: "Agent skills", integrations: "Integrations", wishlist: "Wishlist", log: "Audit log" },
+  ar: { overview: "نظرة عامة", users: "المستخدمون", leads: "العملاء المحتملون", usage: "الاستخدام", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", skills: "مهارات الوكلاء", integrations: "التكاملات", wishlist: "الأمنيات", log: "سجل الإجراءات" },
 };
 
 /** `/{lang}/admin` for the overview, `/{lang}/admin/{section}` for the others. */
