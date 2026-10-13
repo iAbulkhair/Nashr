@@ -1337,8 +1337,9 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       expect(results.map((r) => r.tool_use_id)).toEqual(names.map((_, i) => `tu${i}`));
       expect(results.slice(0, 5).every((r) => r.content.startsWith("Proposed, not saved"))).toBe(true);
       expect(results[5].content).toBe("Not done: one reply carries at most 5 away cards. Nothing more was saved.");
-      // Stored with the reply, so a reload shows the same five cards; five proposals in the index; nothing on the away list.
-      expect((await history(u.email)).at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
+      // Stored with the reply, so a reload at the turn's time shows the same five cards (read under the frozen clock: the
+      // proposals expire, and the real date passed 2026-10-12); five proposals in the index; nothing on the away list.
+      expect((await at(NOW, () => history(u.email))).at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
       expect((await propIds(u.email)).sort()).toEqual(m.awayProposals!.map((p) => p.id).sort());
       expect(await awayKeys(u.email)).toEqual([]);
     } finally {
