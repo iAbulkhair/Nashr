@@ -24,6 +24,7 @@ import { hintDismissed, dismissHint } from "@/lib/pwa";
 import { recallInviteToken, rememberInviteToken, forgetInviteToken } from "@/components/app/inviteToken";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { BEARER, TOKEN_PREFIX, tokenHash } from "@/lib/oauth";
+import * as impersonateStop from "@/app/api/admin/impersonate/route";
 
 /**
  * UI leftovers after phases 0-5 (rules 1800-1813, docs/system/tests/1800-ui-leftovers.md): Western digits in rendered
@@ -217,6 +218,34 @@ describe("rule 1811: sign-out, stop viewing and a used OAuth state clear both na
     expect(jar().has("nashr_session")).toBe(false);
     expect(await sessionRecord(a)).toBeNull();
     expect(await sessionRecord(b)).toBeNull();
+  });
+
+  it("a customer view opened before the release (old cookie names) stops cleanly and hands the founder back", async () => {
+    const founder = await newUser("imp-founder");
+    const customer = await newUser("imp-customer");
+    const mine = randomBytes(32).toString("hex"), temp = randomBytes(32).toString("hex");
+    await Promise.all([
+      db.set(sessionKey(mine), { email: founder.email, at: Date.now() }, 3600),
+      db.set(sessionKey(temp), { email: customer.email, at: Date.now(), imp: founder.email }, 3600),
+      db.del("admin:log"),
+    ]);
+    // What the code before this release left in the browser: every helper cookie under its `nashr_` name only.
+    jar().clear();
+    jar().set("nashr_session", temp);
+    jar().set("nashr_return", mine);
+    jar().set("nashr_impersonate", customer.email);
+    expect((await currentUser())?.email).toBe(customer.email);
+    const form = new FormData();
+    form.set("lang", "en");
+    const r = await impersonateStop.POST(new Request("https://nashr.test/api/admin/impersonate", { method: "POST", body: form, headers: { "x-forwarded-for": "192.0.2.181" } }));
+    expect(r.status).toBe(303);
+    // The founder is back under the new name, the view's session is burned, and no helper cookie is left under either name.
+    expect(jar().get("thakeen_session")).toBe(mine);
+    for (const n of ["nashr_session", "nashr_return", "thakeen_return", "nashr_impersonate", "thakeen_impersonate"]) expect(jar().has(n), n).toBe(false);
+    expect(await sessionRecord(temp)).toBeNull();
+    expect((await currentUser())?.email).toBe(founder.email);
+    const rows = (await db.lrange("admin:log", 0, -1)).map((x) => JSON.parse(x) as { actor: string; what: string });
+    expect(rows.filter((x) => x.what === "impersonate:stop").map((x) => x.actor)).toEqual([founder.email]);
   });
 
   it("dropCookie deletes both spellings", () => {
