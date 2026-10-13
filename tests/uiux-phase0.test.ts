@@ -64,9 +64,10 @@ describe("rule 961: every app and founder console screen has its own title", () 
 
   // 44 since UI/UX phase 3 (rule 1140): the profile page left, the settings index and its account, security,
   // notifications and danger sections came; a settings section's title comes from `settingsScreenMeta`. 46 with the
-  // agent instructions page and the console's skills section (rules 957-958).
-  it("finds all 46 pages and each exports generateMetadata from the shared helper", () => {
-    expect(pages.length).toBe(46);
+  // agent instructions page and the console's skills section (rules 957-958). 47 with the console's Integrations
+  // section (rule 1540).
+  it("finds all 47 pages and each exports generateMetadata from the shared helper", () => {
+    expect(pages.length).toBe(47);
     for (const p of pages) expect(read(p), p).toMatch(/export const generateMetadata = (?:app|admin|settings)ScreenMeta\("[a-z]+"\);/);
   });
 

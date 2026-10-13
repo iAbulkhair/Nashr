@@ -60,7 +60,7 @@ export function costUsd(model: string, u: TokenUsage): number {
 export function usageMonthKeys(email: string, month: string): string[] {
   const k = `usage:${email}:${month}`;
   return [
-    ...["in", "out", "calls", "usd_micro", "cache_read", "cache_write", "chat_msgs", "chat_over", "chat_cred"].map((p) => `${k}:${p}`),
+    ...["in", "out", "calls", "usd_micro", "cache_read", "cache_write", "chat_msgs", "chat_over", "chat_cred", "media_usd_micro"].map((p) => `${k}:${p}`),
     ...KINDS.flatMap((kind) => [`${k}:kind:${kind}`, `${k}:kind:${kind}:in`, `${k}:kind:${kind}:out`, `${k}:kind:${kind}:usd_micro`]),
     ...AGENT_IDS.flatMap((id) => [`${k}:agent:${id}:calls`, `${k}:agent:${id}:usd_micro`]),
   ];
@@ -206,6 +206,18 @@ export async function noteRejectedPick(purpose: PickPurpose, reason: Rejected): 
 export const chatMsgKey = (email: string, month = monthKey()) => `usage:${email}:${month}:chat_msgs`;
 export const chatOverKey = (email: string, month = monthKey()) => `usage:${email}:${month}:chat_over`;
 export const chatCredKey = (email: string, month = monthKey()) => `usage:${email}:${month}:chat_cred`;
+/**
+ * What the account's image and video renders cost us this month, in micro-dollars (rule 1531): `costUsd` of every render
+ * the provider billed (a done job, and a `store_failed` one), added by `meterRender` from src/lib/media/jobs.ts. Under the
+ * `usage:{email}:{YYYY-MM}` prefix, so `usageMonthKeys` and `wipeAccount` cover it; the global render counters
+ * (`render:_all:*`, spec A19) are unchanged. Counted from the day this shipped: earlier months read as zero.
+ */
+export const mediaCostKey = (email: string, month = monthKey()) => `usage:${email}:${month}:media_usd_micro`;
+/** Adds one render's cost to the account's month (whole micro-dollars, as INCRBY needs). Nothing for 0 or a bad number. */
+export async function meterRender(email: string, usd: number | undefined): Promise<void> {
+  if (!email || typeof usd !== "number" || !Number.isFinite(usd) || usd <= 0) return;
+  await db.incrby(mediaCostKey(email), Math.round(usd * 1e6));
+}
 /** The trial's messages are granted once for the whole trial, not per month. Deleted with the account (`wipeAccount`). */
 export const chatTrialKey = (email: string) => `chatm:${email}:trial`;
 

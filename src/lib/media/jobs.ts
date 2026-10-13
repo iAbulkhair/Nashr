@@ -27,6 +27,7 @@ import {
 } from "../media-catalog";
 import { JOB_ID, JOB_TTL_S, PROVIDER_TASK_ID, abortAfter, budget, mk, parseOpenMember } from "./keys";
 import { recordActivity, type Activity, type ActivityVia } from "../activity";
+import { meterRender } from "../usage";
 import { COST_USD, EXPECTED_KIE_CREDITS, KIE_USD_PER_CREDIT, type OffMap } from "./config";
 import {
   ProviderError, StoreError,
@@ -491,6 +492,8 @@ async function finalizeLocked(job: MediaJob, urls: string[], providerCredits: nu
     quiet(db.srem(mk.open(cur.provider), mk.openMember(cur.scope, cur.id)), "media open-set remove failed"),
     quiet(releaseFlight(done, now()), "media flight release failed"),
     recordOutcome(done, ctx),
+    // Rule 1531: the render's cost on the account's month too (the margin alert), only while it is the same account.
+    quiet(own.then((ok) => (ok ? meterRender(cur.email, costUsd) : undefined)), "media account cost failed"),
     cur.kind === "image" ? quiet(own.then((ok) => (ok ? track(cur.email, "image") : undefined)), "media track failed") : null,
     overbilled ? quiet(setOff(cur.model, "overbilled", BREAKER.offMs), "media breaker failed") : null,
     unattended(ctx) ? quiet(notifyOwner(done, task, own), "media notice failed") : null,
@@ -564,14 +567,18 @@ async function failLocked(job: MediaJob, reason: MediaFailure, deps: MediaDeps, 
   const task = await updateTask(cur.scope, cur.taskId, (t) => (t.mediaJob?.[cur.kind] === cur.id
     ? { ...t, mediaJob: without(t.mediaJob, cur.kind), mediaLast: { ...t.mediaLast, [cur.kind]: last } }
     : null));
+  // One account check for the account's render cost, the notice and the activity row (spec A32).
+  const own = sameAccount(cur);
   await Promise.all([
     saveJob(failed),
     quiet(db.srem(mk.open(cur.provider), mk.openMember(cur.scope, cur.id)), "media open-set remove failed"),
     quiet(releaseFlight(failed, now()), "media flight release failed"),
     recordOutcome(failed, ctx),
+    // Rule 1531: a store_failed job was billed by the provider (costUsd set); a refund gives the owner's credits back, not ours.
+    failed.costUsd != null ? quiet(own.then((ok) => (ok ? meterRender(cur.email, failed.costUsd) : undefined)), "media account cost failed") : null,
     cur.trialVideo && refunded ? quiet(db.del(mk.trialVideo(cur.email)), "media trial release failed") : null,
-    unattended(ctx) && refunded ? quiet(notifyOwner(failed, task), "media notice failed") : null,
-    quiet(sameAccount(cur).then((ok) => (ok ? recordActivity(cur.scope, [terminalRow(failed, task, ctx)]) : undefined)), "media activity failed"),
+    unattended(ctx) && refunded ? quiet(notifyOwner(failed, task, own), "media notice failed") : null,
+    quiet(own.then((ok) => (ok ? recordActivity(cur.scope, [terminalRow(failed, task, ctx)]) : undefined)), "media activity failed"),
   ]);
   return { job: failed, task, credits };
 }
