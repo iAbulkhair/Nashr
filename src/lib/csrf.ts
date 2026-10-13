@@ -106,10 +106,10 @@ export function isCrossSiteExempt(pathname: string): boolean {
  * `Origin` and `Sec-Fetch-Site` included, but it holds no victim's cookie, so it can do only what its own credentials
  * allow.
  */
-export function acceptedOrigins(req: NextRequest): Set<string> {
+export function acceptedOrigins(req: Request): Set<string> {
   const out = new Set([appOrigin()]);
   const proto = first(req.headers.get("x-forwarded-proto"));
-  const scheme = proto === "http" || proto === "https" ? proto : req.nextUrl.protocol.replace(/:$/, "");
+  const scheme = proto === "http" || proto === "https" ? proto : new URL(req.url).protocol.replace(/:$/, "");
   for (const host of [first(req.headers.get("x-forwarded-host")), first(req.headers.get("host"))]) {
     if (!HOST_SHAPE.test(host)) continue;
     for (const s of new Set([scheme, "https"])) {

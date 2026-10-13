@@ -190,11 +190,12 @@ describe("after enrolment every founder write needs the second factor (rule 1376
     for (const r of res) expect([r.status, (await r.json()).error]).toEqual([403, "second_factor"]);
     expect((await getUser(customer.email))!.credits).toBe(customer.credits);
   });
-  it("every POST, PUT, PATCH and DELETE under /api/admin calls the gate, except the key form, impersonation stop, the 2FA route and marking leads seen", () => {
+  it("every POST, PUT, PATCH and DELETE under /api/admin calls the gate, except the key form, impersonation stop, the 2FA route, marking leads seen and the staff sign-in steps", () => {
     const files: string[] = [];
     const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f === "route.ts") files.push(p); } };
     walk("src/app/api/admin");
-    const exempt = ["login", "impersonate", "2fa", "leads"].map((s) => join("src/app/api/admin", s, "route.ts"));
+    // The staff sign-in steps open a session, so no actor exists yet; they run the console write check themselves (rule 1647).
+    const exempt = ["login", "impersonate", "2fa", "leads", "staff/login", "staff/login/code", "staff/login/enrol", "staff/setup"].map((s) => join("src/app/api/admin", s, "route.ts"));
     for (const f of files) {
       const src = readFileSync(f, "utf8");
       const writes = (src.match(/export (?:async )?function (POST|PUT|PATCH|DELETE)\b/g) ?? []).length;

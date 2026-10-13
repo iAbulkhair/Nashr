@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminActor, isAdmin } from "@/lib/auth";
+import { adminActor, isAdmin, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { approvePartner, confirmBank, listApplications, listPartners, recordPayout, rejectApplication, voidPayout } from "@/lib/partners";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
   const no2fa = await secondFactorRefusal(req, who);
   if (no2fa) return no2fa;
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const log = (email: string, what: string, reason?: string) => adminAudit({ actor: who, section: "partners", target: email, what, reason });
+  const log = (email: string, what: string, reason?: string) => adminAudit({ actor: who, via: viaOf(req), section: "partners", target: email, what, reason });
   if (b.action === "approve") {
     const res = await approvePartner({ email: b.email, name: b.name, code: b.code, appId: b.appId, consentOutOfBand: b.consentOutOfBand }, who);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "already_partner" || res.error === "code_taken" || res.error === "member_login" ? 409 : 400 });

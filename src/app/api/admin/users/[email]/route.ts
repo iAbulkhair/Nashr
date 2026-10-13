@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord } from "@/lib/auth";
+import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
@@ -93,7 +93,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   if (noReason) return noReason;
   const log = (what: string, extra: Record<string, unknown> = {}) => {
     const { before, after, action, ...rest } = extra;
-    return adminAudit({ actor: who, section: "users", target: email, what, reason: b.reason, before, after, ...(typeof action === "string" ? { action } : {}), ...(Object.keys(rest).length ? { extra: rest } : {}) });
+    return adminAudit({ actor: who, via: viaOf(req), section: "users", target: email, what, reason: b.reason, before, after, ...(typeof action === "string" ? { action } : {}), ...(Object.keys(rest).length ? { extra: rest } : {}) });
   };
   if (!u) {
     // A member login: the one action is removing it (the owner's own removal, done by support), which frees the address.

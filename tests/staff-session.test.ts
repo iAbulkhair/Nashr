@@ -129,3 +129,44 @@ describe("sessionsAfter ends every session (rule 1635)", () => {
     }
   });
 });
+
+describe("staff writes need a step-up tied to the staff session (rule 1636)", () => {
+  it("sign-in opens one; without it a write asks; the person's own code passes, the console's does not", async () => {
+    vi.useRealTimers();
+    const { hashStaffPassword } = await import("@/lib/staff");
+    const { ADMIN_2FA_COOKIE } = await import("@/lib/admin-2fa");
+    const plan = await import("@/app/api/admin/plan/route");
+    const twoFa = await import("@/app/api/admin/2fa/route");
+    const { json, newUser } = await import("./helpers/session");
+    const { staffSignIn, codeAt, freshIp } = await import("./helpers/staff");
+    const customer = await newUser("stepup");
+    const pw = "a long staff password here";
+    const { staff, secret } = await enrolledStaff({ passHash: await hashStaffPassword(pw) });
+    await staffSignIn(staff.email, pw, secret);
+    const write = (headers: Record<string, string> = {}) => plan.POST(json("/api/admin/plan", "POST", { email: customer.email, addCredits: 1 }, { "x-forwarded-for": freshIp(), ...headers }));
+    expect((await write()).status).toBe(200);
+    // Another browser's step-up cookie is useless with this session, and no step-up at all asks for the code.
+    const stepCookie = jar().get(ADMIN_2FA_COOKIE)!;
+    jar().delete(ADMIN_2FA_COOKIE);
+    expect(await (await write()).json()).toEqual({ ok: false, error: "second_factor" });
+    // A code from someone else's authenticator is refused; this person's own passes.
+    expect((await write({ "x-admin-otp": codeAt(newTotpSecretForTest()) })).status).toBe(403);
+    expect((await write({ "x-admin-otp": codeAt(secret, Date.now() + 30_000) })).status).toBe(200);
+    // The step-up of this session does not follow a different staff session (a copied cookie).
+    const { openStaffSession: open2 } = await import("@/lib/staff-session");
+    await open2(staff.email);
+    jar().set(ADMIN_2FA_COOKIE, stepCookie);
+    expect((await write()).status).toBe(403);
+    // The console prompt checks the person's own code and opens a step-up for this session.
+    const v = await twoFa.POST(json("/api/admin/2fa", "POST", { action: "verify", code: codeAt(secret, Date.now() - 30_000) }, { "x-forwarded-for": freshIp() }));
+    expect(await v.json()).toMatchObject({ ok: true, stepUp: true });
+    expect((await write()).status).toBe(200);
+    // admin:2fa stays the key's factor: staff cannot start or confirm it.
+    expect(await (await twoFa.POST(json("/api/admin/2fa", "POST", { action: "start" }))).json()).toEqual({ ok: false, error: "staff_own_factor" });
+    expect(await (await twoFa.GET(json("/api/admin/2fa", "GET"))).json()).toMatchObject({ ok: true, enrolled: true, stepUp: true, staff: true });
+  });
+});
+
+function newTotpSecretForTest(): string {
+  return "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+}

@@ -263,3 +263,21 @@ describe("the per-address lock (rule 1644)", () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+describe("roles fail closed on writes (rule 1637)", () => {
+  it("support and unknown roles get 403 read_only on a write; reads work", async () => {
+    const { openStaffSession } = await import("@/lib/staff-session");
+    const plan = await import("@/app/api/admin/plan/route");
+    const { json } = await import("./helpers/session");
+    const customer = await newUser("rolecheck");
+    for (const role of ["support", "admin"]) {
+      jar().clear();
+      const { staff } = await enrolledStaff({ role: role as Staff["role"] });
+      await openStaffSession(staff.email);
+      const r = await plan.POST(json("/api/admin/plan", "POST", { email: customer.email, addCredits: 1 }, { "x-forwarded-for": freshIp() }));
+      expect(r.status, role).toBe(403);
+      expect(await r.json()).toEqual({ ok: false, error: "read_only" });
+      expect((await plan.GET(json(`/api/admin/plan?email=${encodeURIComponent(customer.email)}`, "GET"))).status, role).toBe(200);
+    }
+  });
+});

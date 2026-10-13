@@ -771,3 +771,54 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", (
     expect(TURNSTILE_VERIFY_URL).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
   });
 });
+
+describe("staff identity: the console write check and the expand path (rules 1647, 1649)", () => {
+  beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
+
+  it("1647: a console write refuses a foreign Origin, Sec-Fetch-Site cross-site, and a body that is not JSON", async () => {
+    const plan = await import("@/app/api/admin/plan/route");
+    const login = await import("@/app/api/admin/staff/login/route");
+    const { newUser } = await import("./helpers/session");
+    const u = await newUser("origin");
+    await adminSignIn();
+    const post = (headers: Record<string, string>, body: string = JSON.stringify({ email: u.email, addCredits: 1, reason: "test reason" })) =>
+      plan.POST(new Request("https://nashr.test/api/admin/plan", { method: "POST", headers: { "content-type": "application/json", ...ip(), ...headers }, body }));
+    expect(await (await post({ origin: "https://evil.example" })).json()).toEqual({ ok: false, error: "cross_site" });
+    expect((await post({ origin: "null" })).status).toBe(403);
+    expect((await post({ "sec-fetch-site": "cross-site" })).status).toBe(403);
+    expect((await post({ "sec-fetch-site": "same-site" })).status).toBe(403); // a sibling host (staging) is not this site
+    expect((await post({ "sec-fetch-site": "same-origin", origin: "https://evil.example" })).status).toBe(403);
+    expect((await post({ "content-type": "text/plain" })).status).toBe(415);
+    expect((await post({ "content-type": "application/x-www-form-urlencoded" }, "email=x")).status).toBe(415);
+    expect((await post({ "sec-fetch-site": "same-origin", origin: "https://nashr.test", "x-forwarded-host": "nashr.test" })).status).toBe(200);
+    expect((await post({})).status).toBe(200); // a script: neither header
+    // The public sign-in steps run the same check.
+    const r = await login.POST(new Request("https://nashr.test/api/admin/staff/login", { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example", ...ip() }, body: "{}" }));
+    expect(r.status).toBe(403);
+    expect(readFileSync("src/lib/admin-2fa.ts", "utf8")).toMatch(/const foreign = consoleWriteRefusal\(req\);\n {2}if \(foreign\) return foreign;/);
+  });
+
+  it("1649: the founder's customer session still opens the console in the expand release, with via founder-session", async () => {
+    const { newUser } = await import("./helpers/session");
+    const { adminActor, viaOf } = await import("@/lib/auth");
+    const plan = await import("@/app/api/admin/plan/route");
+    const founder = await newUser("expand-founder");
+    const target = await newUser("expand-target");
+    vi.stubEnv("ADMIN_EMAILS", founder.email);
+    await signIn(founder.email);
+    const req = json("/api/admin/overview", "GET");
+    expect(await adminActor(req)).toBe(founder.email);
+    expect(viaOf(req)).toBe("founder-session");
+    expect(await isAdminCookie()).toBe(true);
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, ip()))).status).toBe(200);
+    const row = JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { actor: string; via?: string };
+    expect(row).toMatchObject({ actor: founder.email, via: "founder-session" });
+    // The key session's rows say so too.
+    signOut();
+    await adminSignIn();
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, ip()))).status).toBe(200);
+    expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0])).toMatchObject({ actor: "key", via: "key" });
+    expect((await plan.POST(json("/api/admin/plan", "POST", { email: target.email, addCredits: 1 }, { ...ip(), "x-admin-key": KEY }))).status).toBe(200);
+    expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0])).toMatchObject({ actor: "key", via: "header" });
+  });
+});

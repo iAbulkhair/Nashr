@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { consoleWriteRefusal } from "@/lib/console-origin";
 import { allow, clientIp, giveBack, retryLater } from "@/lib/rate";
 import { adminAudit } from "@/lib/admin-audit";
 import { clearStaffFailures, countStaffFailure, getStaff, staffEmail, staffLocked, staffPasswordMatches } from "@/lib/staff";
@@ -18,6 +19,8 @@ import { STAFF_LOGIN_PER_IP, STAFF_LOGIN_WINDOW, invalid } from "@/lib/staff-sig
  * DELETE: sign out. Deletes the staff session record and both staff cookies.
  */
 export async function POST(req: Request) {
+  const foreign = consoleWriteRefusal(req);
+  if (foreign) return foreign;
   const ipBucket = `stafflogin:ip:${clientIp(req)}`;
   if (!(await allow(ipBucket, STAFF_LOGIN_PER_IP, STAFF_LOGIN_WINDOW))) return retryLater({ ok: false, error: "slow_down" }, STAFF_LOGIN_WINDOW);
   const b = (await req.json().catch(() => ({}))) as { email?: unknown; password?: unknown };
@@ -36,7 +39,9 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, next });
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
+  const foreign = consoleWriteRefusal(req);
+  if (foreign) return foreign;
   const email = await destroyStaffSession();
   if (email) await adminAudit({ actor: email, via: "staff", section: "system", action: "staff.signout", target: email, what: "staff:signout" });
   return NextResponse.json({ ok: true });

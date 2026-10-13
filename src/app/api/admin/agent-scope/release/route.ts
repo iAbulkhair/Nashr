@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminActor, getUser, normalizeEmail } from "@/lib/auth";
+import { adminActor, getUser, normalizeEmail, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { adminAudit } from "@/lib/admin-audit";
 import { updateTask } from "@/lib/brand";
@@ -43,6 +43,6 @@ export async function POST(req: Request) {
   const at = new Date().toISOString();
   const done = await updateTask(scopeFor(email, brandId), itemId, (t) => ({ ...t, agentScopeRelease: { hash: itemHash(t), by: who, at } }));
   if (!done) return NextResponse.json({ ok: false, error: "no_item" }, { status: 404 });
-  await adminAudit({ actor: who, section: "quality", action: "agent_scope_release", target: email, what: "agent_scope_release", extra: { brandId, itemId } });
+  await adminAudit({ actor: who, via: viaOf(req), section: "quality", action: "agent_scope_release", target: email, what: "agent_scope_release", extra: { brandId, itemId } });
   return NextResponse.json({ ok: true });
 }

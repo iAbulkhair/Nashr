@@ -2,7 +2,10 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypt
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { db } from "./db";
-import { ADMIN_COOKIE, sessionCookie } from "./auth";
+import { ADMIN_COOKIE, actorInfo, sessionCookie } from "./auth";
+import { consoleWriteRefusal } from "./console-origin";
+import { canWrite, getStaff } from "./staff";
+import { checkStaffCode } from "./staff-code";
 import { allow, clientIp, giveBack, retryLater, sameSecret } from "./rate";
 import { connectSecret } from "./connectors/store";
 import { looksLikeRecovery, newRecoveryCode, newTotpSecret, otpauthUri, recoveryHash, totpMatch } from "./totp";
@@ -181,14 +184,39 @@ export async function checkCode(req: Request, code: unknown): Promise<CodeResult
 }
 
 /**
- * The gate every founder write calls right after `adminActor` (rule 1376). Null to go on: nothing enrolled yet, a live
- * step-up for this actor, or a right code in `x-admin-otp` (for a script on the key header). Otherwise 403
- * `second_factor`, which the console's `adminFetch` turns into the code prompt and then sends the request again.
+ * The gate every founder write calls right after `adminActor` (rule 1376). Null to go on.
+ *
+ * 1. The console write check (rule 1647, src/lib/console-origin.ts): a foreign `Origin`, `Sec-Fetch-Site: cross-site`
+ *    or a body that is not JSON is refused before anything else.
+ * 2. A staff actor (rules 1636, 1637): a role other than `owner` is 403 `read_only` (an unknown role too: fail closed).
+ *    Then the write needs that person's own step-up, tied to the staff session cookie, or a right code from that
+ *    person's own authenticator in `x-admin-otp`, whatever `admin:2fa` says: staff always have a second factor.
+ * 3. The key and the founder's customer session (as before): nothing enrolled yet, a live step-up for this actor, or a
+ *    right console code in `x-admin-otp` (for a script on the key header).
+ *
+ * Otherwise 403 `second_factor`, which the console's `adminFetch` turns into the code prompt and then sends the
+ * request again.
  */
 export async function secondFactorRefusal(req: Request, who: string): Promise<NextResponse | null> {
+  const foreign = consoleWriteRefusal(req);
+  if (foreign) return foreign;
+  const info = actorInfo(req);
+  const otp = req.headers.get("x-admin-otp");
+  if (info?.via === "staff" && info.who === who) {
+    if (!canWrite(info.role)) return NextResponse.json({ ok: false, error: "read_only" }, { status: 403 });
+    if (await stepUpLive(who, info.staffCookie ?? null)) return null;
+    if (otp !== null && /^\d{6}$/.test(otp)) {
+      const staff = await getStaff(who);
+      if (staff) {
+        const r = await checkStaffCode(req, staff, otp);
+        if (r.ok) return null;
+        if (r.res.status === 429) return r.res;
+      }
+    }
+    return NextResponse.json({ ok: false, error: "second_factor" }, { status: 403 });
+  }
   const [rec, live] = await Promise.all([db.get<Enrolment>(ENROLMENT_KEY), stepUpLive(who)]);
   if (!isEnrolment(rec) || live) return null;
-  const otp = req.headers.get("x-admin-otp");
   // Six digits only: a recovery code in a header would remove the enrolment as a side effect of some other write.
   if (otp !== null && /^\d{6}$/.test(otp)) {
     const r = await checkCode(req, otp);
@@ -198,8 +226,20 @@ export async function secondFactorRefusal(req: Request, who: string): Promise<Ne
   return NextResponse.json({ ok: false, error: "second_factor" }, { status: 403 });
 }
 
-/** Verify a code from the console's prompt and open a step-up. What POST /api/admin/2fa `verify` does. */
+/**
+ * Verify a code from the console's prompt and open a step-up. What POST /api/admin/2fa `verify` does. A staff actor's
+ * code is checked against that person's own authenticator (6 digits only: recovery codes are spent at sign-in), and the
+ * step-up is tied to the staff session cookie.
+ */
 export async function verifyAndStepUp(req: Request, who: string, code: unknown): Promise<CodeResult & { stepUp?: boolean }> {
+  const info = actorInfo(req);
+  if (info?.via === "staff" && info.who === who) {
+    const staff = await getStaff(who);
+    if (!staff) return { ok: false, res: badCode() };
+    const r = await checkStaffCode(req, staff, code);
+    if (!r.ok) return r;
+    return { ok: true, via: "totp", stepUp: await openStepUp(who, info.staffCookie ?? null) };
+  }
   const r = await checkCode(req, code);
   if (!r.ok) return r;
   return { ...r, stepUp: r.via === "totp" ? await openStepUp(who) : false };

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { consoleWriteRefusal } from "@/lib/console-origin";
 import { adminAudit } from "@/lib/admin-audit";
 import { getStaff, issuedBeforeStaff, looksLikeStaffCode, recoveryIndex, saveStaff, withStaffLock } from "@/lib/staff";
 import { dropStaffPre, readStaffPre, setStaffPreStage } from "@/lib/staff-session";
@@ -15,6 +16,8 @@ import { signInWithTotp, startAgain } from "@/lib/staff-signin";
  * until the new one is confirmed, so the password alone can never enrol one.
  */
 export async function POST(req: Request) {
+  const foreign = consoleWriteRefusal(req);
+  if (foreign) return foreign;
   const pre = await readStaffPre();
   if (!pre || pre.stage !== "code") return startAgain();
   const staff = await getStaff(pre.email);

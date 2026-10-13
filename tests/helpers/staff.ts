@@ -38,7 +38,7 @@ export const staffLogin = (email: unknown, password: unknown, ip = freshIp()) =>
 export const staffCode = (code: unknown, ip = freshIp()) => codeRoute.POST(json("/api/admin/staff/login/code", "POST", { code }, h(ip)));
 export const staffEnrol = (body: Record<string, unknown>, ip = freshIp()) => enrolRoute.POST(json("/api/admin/staff/login/enrol", "POST", body, h(ip)));
 export const staffSetup = (body: Record<string, unknown>, ip = freshIp()) => setupRoute.POST(json("/api/admin/staff/setup", "POST", body, h(ip)));
-export const staffSignOut = () => loginRoute.DELETE();
+export const staffSignOut = () => loginRoute.DELETE(new Request("https://nashr.test/api/admin/staff/login", { method: "DELETE" }));
 
 /** Sign `staff` in through the real routes (password, then a code from `secret`); leaves the staff cookie in the jar. */
 export async function staffSignIn(email: string, password: string, secret: string): Promise<void> {

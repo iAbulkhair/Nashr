@@ -654,9 +654,36 @@ export async function destroyAdminSession(): Promise<void> {
 }
 
 /**
- * Who is acting in the founder console: "key" for the admin key (the x-admin-key header or a key session cookie, never
- * the URL: query strings end up in logs and history), the founder's email for a founder's own session, null for anyone
- * else. `admin:log` records it.
+ * How the console actor of a request was resolved (rule 1638): a staff session, the key session, the `x-admin-key`
+ * header, or the founder's customer session (expand only, rule 1649). Runtime only, never stored.
+ */
+export type ConsoleVia = "staff" | "key" | "header" | "founder-session";
+/** `role` and `staffCookie` for a staff actor only: what the write gate's role check and the staff step-up read. */
+export type ActorInfo = { who: string; via: ConsoleVia; role?: string; staffCookie?: string };
+const actors = new WeakMap<Request, ActorInfo>();
+/** What `adminActor` found for this request, or null when it was not called or found nobody. */
+export const actorInfo = (req: Request): ActorInfo | null => actors.get(req) ?? null;
+/** The `via` of this request's console actor, for `adminAudit`. */
+export const viaOf = (req: Request): ConsoleVia | null => actors.get(req)?.via ?? null;
+
+/**
+ * Whether the founder's own customer session still opens the console: an expand-only path (rule 1649) that a staff
+ * owner can switch off at runtime (rule 1650, `staff:config.customerPathOff`) and the contract release removes.
+ */
+async function founderSessionConsole(): Promise<{ email: string } | null> {
+  const { customerPathOff } = await import("./staff");
+  const [off, u] = await Promise.all([customerPathOff(), currentUser()]);
+  return !off && isFounderActor(u) ? { email: u!.actor!.email } : null;
+}
+
+/**
+ * Who is acting in the founder console, in this order: "key" for the `x-admin-key` header (scripts, never the URL:
+ * query strings end up in logs and history); the staff email for a live staff session (rules 1630-1636); "key" for a
+ * key session; the founder's email for a founder's own customer session while that path is open (rule 1649); null for
+ * anyone else. The signature stays a string, so the callers do not change; the details for the request (how, the
+ * staff role, the staff cookie) are kept in a WeakMap that `secondFactorRefusal` and `adminAudit` callers read
+ * (`actorInfo`, `viaOf`). No MCP token, OAuth grant or agent tool is ever a console actor (rule 1653): only these
+ * cookies and the header are read.
  */
 export async function adminActor(req: Request): Promise<string | null> {
   const key = process.env.WAITLIST_ADMIN_KEY;
@@ -666,21 +693,45 @@ export async function adminActor(req: Request): Promise<string | null> {
     if (given !== null) {
       // Key guesses sent as a header are throttled like the login form.
       if (!(await allow(`adminhdr:${clientIp(req)}`, 30, 900))) return null;
-      if (sameSecret(given, key)) return "key";
+      if (sameSecret(given, key)) {
+        actors.set(req, { who: "key", via: "header" });
+        return "key";
+      }
     }
-    if (await adminKeySession()) return "key";
   }
-  const u = await currentUser();
-  return isFounderActor(u) ? u!.actor!.email : null;
+  const { readStaffSession } = await import("./staff-session");
+  const staff = await readStaffSession();
+  if (staff) {
+    actors.set(req, { who: staff.email, via: "staff", role: staff.staff.role, staffCookie: staff.cookie });
+    return staff.email;
+  }
+  if (key && (await adminKeySession())) {
+    actors.set(req, { who: "key", via: "key" });
+    return "key";
+  }
+  const founder = await founderSessionConsole();
+  if (founder) {
+    actors.set(req, { who: founder.email, via: "founder-session" });
+    return founder.email;
+  }
+  return null;
 }
 
-/** API access: admin key (header or key session) or a founder signed in as themselves (`adminActor`). */
+/** API access: the header key, a staff session, a key session, or the founder's own session (`adminActor`). */
 export async function isAdmin(req: Request) {
   return (await adminActor(req)) !== null;
 }
 
-/** Page access: a key session or a founder signed in as themselves (`isFounderActor`). */
+/** Who holds the console in this browser (pages): a staff session, a key session, the founder's customer session. */
+export type ConsoleIdentity = { staff: { email: string; name: string; role: string } | null; keySession: boolean; founder: boolean };
+export async function consoleIdentity(): Promise<ConsoleIdentity> {
+  const { readStaffSession } = await import("./staff-session");
+  const [s, keySession, founder] = await Promise.all([readStaffSession(), adminKeySession(), founderSessionConsole()]);
+  return { staff: s ? { email: s.email, name: s.staff.name, role: s.staff.role } : null, keySession, founder: !!founder };
+}
+
+/** Page access: a staff session, a key session, or the founder's own session while that path is open. */
 export async function isAdminCookie() {
-  if (await adminKeySession()) return true;
-  return isFounderActor(await currentUser());
+  const id = await consoleIdentity();
+  return !!id.staff || id.keySession || id.founder;
 }

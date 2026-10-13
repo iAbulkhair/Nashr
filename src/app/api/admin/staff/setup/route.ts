@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { consoleWriteRefusal } from "@/lib/console-origin";
 import { allow, clientIp, giveBack, retryLater } from "@/lib/rate";
 import { adminAudit } from "@/lib/admin-audit";
 import { hashStaffPassword, passwordRefusal, peekSetupCode, saveStaff, staffEmail, takeSetupCode, withStaffLock } from "@/lib/staff";
@@ -15,6 +16,8 @@ import { SETUP_PER_IP, SETUP_WINDOW, invalid } from "@/lib/staff-signin";
  * An unknown, spent or expired code, or one for another address, is the same 401 `invalid`.
  */
 export async function POST(req: Request) {
+  const foreign = consoleWriteRefusal(req);
+  if (foreign) return foreign;
   const ipBucket = `staffsetup:ip:${clientIp(req)}`;
   if (!(await allow(ipBucket, SETUP_PER_IP, SETUP_WINDOW))) return retryLater({ ok: false, error: "slow_down" }, SETUP_WINDOW);
   const b = (await req.json().catch(() => ({}))) as { email?: unknown; code?: unknown; password?: unknown };

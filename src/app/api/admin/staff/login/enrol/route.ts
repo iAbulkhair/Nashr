@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { consoleWriteRefusal } from "@/lib/console-origin";
 import { getStaff, issuedBeforeStaff } from "@/lib/staff";
 import { dropStaffPre, readStaffPre } from "@/lib/staff-session";
 import { confirmStaffEnrol, startAgain, startStaffEnrol } from "@/lib/staff-signin";
@@ -12,6 +13,8 @@ import { confirmStaffEnrol, startAgain, startStaffEnrol } from "@/lib/staff-sign
  *   recovery codes, answered this once, and opens the session.
  */
 export async function POST(req: Request) {
+  const foreign = consoleWriteRefusal(req);
+  if (foreign) return foreign;
   const pre = await readStaffPre();
   if (!pre || pre.stage !== "enrol") return startAgain();
   const staff = await getStaff(pre.email);

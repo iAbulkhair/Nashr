@@ -1,9 +1,11 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { ADMIN_COOKIE, adminKeySession, currentUser, isAdminCookie, isFounderActor } from "@/lib/auth";
+import { ADMIN_COOKIE, consoleIdentity, type ConsoleIdentity } from "@/lib/auth";
 
 /** What a console page renders: the section (`ended: false`), or the "key session ended" notice (`ended: true`). */
-export type AdminGate = { ended: false; keySession: boolean; founder: boolean } | { ended: true; keySession: true; founder: false };
+export type AdminGate =
+  | { ended: false; keySession: boolean; founder: boolean; staff: ConsoleIdentity["staff"] }
+  | { ended: true; keySession: true; founder: false; staff: null };
 
 /**
  * The founder console's page gate (rule 870): a key session or a founder signed in as themselves (`isAdminCookie`),
@@ -19,11 +21,11 @@ export type AdminGate = { ended: false; keySession: boolean; founder: boolean } 
  * apart without telling customers the console exists.
  */
 export async function requireAdmin(): Promise<AdminGate> {
-  if (!(await isAdminCookie())) {
+  const who = await consoleIdentity();
+  if (!who.staff && !who.keySession && !who.founder) {
     const id = (await cookies()).get(ADMIN_COOKIE)?.value;
-    if (id && /^[0-9a-f]{64}$/.test(id)) return { ended: true, keySession: true, founder: false };
+    if (id && /^[0-9a-f]{64}$/.test(id)) return { ended: true, keySession: true, founder: false, staff: null };
     notFound();
   }
-  const [keySession, user] = await Promise.all([adminKeySession(), currentUser()]);
-  return { ended: false, keySession, founder: isFounderActor(user) };
+  return { ended: false, keySession: who.keySession, founder: who.founder, staff: who.staff };
 }

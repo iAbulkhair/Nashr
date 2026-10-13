@@ -255,7 +255,8 @@ describe("rule 958: the platform layer is written like the customer's, with the 
   it("rule 958: an unknown action is 400 and a body that is not an object is 400, with nothing logged", async () => {
     expect((await post({ action: "delete-everything" })).body).toMatchObject({ ok: false, error: "unknown_action" });
     expect((await route.POST(json("/api/admin/skills", "POST", [1])).then(call)).status).toBe(400);
-    expect((await route.POST(new Request("https://nashr.test/api/admin/skills", { method: "POST", body: "{" })).then(call)).status).toBe(400);
+    // JSON that does not parse is 400 (a body that is not JSON at all is 415 since rule 1647, tests/launch-security.test.ts).
+    expect((await route.POST(new Request("https://nashr.test/api/admin/skills", { method: "POST", headers: { "content-type": "application/json" }, body: "{" })).then(call)).status).toBe(400);
     expect(await log()).toEqual([]);
   });
 });

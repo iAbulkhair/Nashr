@@ -98,7 +98,8 @@ async function liveByHash(hash: string): Promise<{ rec: StaffSessionRec; staff: 
   return { rec, staff };
 }
 
-export type StaffSession = { email: string; staff: Staff; hash: string; at: number };
+/** `cookie`: the raw cookie value, what a staff step-up is tied to (never stored, never logged). */
+export type StaffSession = { email: string; staff: Staff; hash: string; at: number; cookie: string };
 
 /** The caller's live staff session, renewed; null without one. */
 export async function readStaffSession(): Promise<StaffSession | null> {
@@ -106,7 +107,7 @@ export async function readStaffSession(): Promise<StaffSession | null> {
   if (!id) return null;
   const hash = sha(id);
   const live = await liveByHash(hash);
-  return live ? { email: live.staff.email, staff: live.staff, hash, at: live.rec.at } : null;
+  return live ? { email: live.staff.email, staff: live.staff, hash, at: live.rec.at, cookie: id } : null;
 }
 
 /**

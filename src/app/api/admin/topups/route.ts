@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminActor, getUser, normalizeEmail } from "@/lib/auth";
+import { adminActor, getUser, normalizeEmail, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { addPaidTopup, refundPaidTopup, voidPaidTopup, type Payment, type PaidTopupError, type RefundTopupError } from "@/lib/partners";
 import { parseTopup, parseTopupRefund, topupCredits } from "@/lib/topups";
@@ -97,7 +97,7 @@ export async function POST(req: Request) {
       const { lot, payment } = done;
       if (!done.already) {
         await adminAudit({
-          actor: who, section: "billing", target: email, what: `topup:+${lot.credits}${paymentText(payment)}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
+          actor: who, via: viaOf(req), section: "billing", target: email, what: `topup:+${lot.credits}${paymentText(payment)}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
           before: { credits: done.before }, after: { credits: done.credits },
           // The pack as the console shows it, without the payment reference.
           extra: { topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt } },
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
       if (!done.already) {
         const after = payment?.commission?.sar ?? (payment ? 0 : undefined);
         await adminAudit({
-          actor: who, section: "billing", target: email,
+          actor: who, via: viaOf(req), section: "billing", target: email,
           what: `topup_refund:${lot.credits} removed:${refunded.credits} sar:${refunded.sar}${payment ? ` payment:${payment.id}` : ""}${done.commissionBefore !== undefined && after !== undefined ? ` commission:${done.commissionBefore}->${after}` : ""}${done.completed ? " completed" : ""}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
           before: { credits: done.before }, after: { credits: done.credits },
           // The pack and the refund, without the payment's or the transfer's reference.
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
     if (!done.ok) return NextResponse.json({ ok: false, error: done.error }, { status: STATUS[done.error] });
     const { lot, payment } = done;
     await adminAudit({
-      actor: who, section: "billing", target: email, what: `topup_void:${lot.credits} removed:${done.removed}${payment ? ` payment:${payment.id} void` : ""}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
+      actor: who, via: viaOf(req), section: "billing", target: email, what: `topup_void:${lot.credits} removed:${done.removed}${payment ? ` payment:${payment.id} void` : ""}${done.reclassified ? ` reclassified:${done.reclassified.join(",")}` : ""}`,
       before: { credits: done.before }, after: { credits: done.credits },
       extra: { topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt } },
       reason,
