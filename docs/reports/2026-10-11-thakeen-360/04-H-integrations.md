@@ -6,7 +6,7 @@ Scope: one row per integration. Read-only study on origin/main 3bf67673, compare
 
 1. Only key-based connectors (Telegram, WordPress, WooCommerce, Odoo, PrestaShop, Klaviyo, Brevo) and Resend mail work on thakeen.com without any approval. Social, ads and store OAuth are all dormant.
 2. Composio (publishing plus read-only ads and analytics) is in production code but no COMPOSIO_* variable is known to be set, so Facebook, Instagram, X, LinkedIn and TikTok cannot be connected today.
-3. LinkedIn: our code sends no Linkedin-Version header and calls no LinkedIn endpoint directly; the version is whatever Composio's toolkit sends. 202510 sunsets 15 Oct (4 days). No live impact while Composio is dormant. The PRD toolkit pin (20250915_00) is stale; code pins 20260924_00.
+3. LinkedIn: our code sends no Linkedin-Version header and calls no LinkedIn endpoint directly; the version is whatever Composio's toolkit sends. Our pins (linkedin 20260924_00, linkedin_ads 20260826_00) are Composio snapshot dates, not LinkedIn versions, so changing them does not set the header. 202510 sunsets on 15 Oct 2026 (confirmed 2026-10-12 on LinkedIn's official [versioning page](https://learn.microsoft.com/en-us/linkedin/marketing/versioning); latest 202609). Which version Composio sends is unverified. No live impact while Composio is dormant. The PRD toolkit pin was stale (20250915_00); fixed to 20260924_00 on 2026-10-12.
 4. Reem calendars, Drive archive and media storage are not live: calendars are main-only, Drive is a spec, media has no keys or Blob on live.
 5. No page shows which integrations are on. Statuses had to be inferred from docs, logs and DNS.
 
@@ -29,7 +29,7 @@ Scope: one row per integration. Read-only study on origin/main 3bf67673, compare
 | fal (images) | yes | yes | `FAL_KEY` | none; spend limit advised (#137) | UNVERIFIED on live; placeholders without key |
 | kie.ai, Higgsfield | yes, `media/config.ts` | yes | `KIE_API_KEY`, `HIGGSFIELD_*`, `BLOB_READ_WRITE_TOKEN` | none | dormant; live has no Blob |
 | Resend mail | yes, `notify.ts` | yes | `RESEND_API_KEY`, `MAIL_FROM` | none | working (verification codes delivered); DMARC p=none; reset incident e577 unresolved |
-| LinkedIn version header | none in our code | n/a | n/a | n/a | version set by Composio toolkit; pin 20260924_00 |
+| LinkedIn version header | none in our code | n/a | n/a | n/a | version set by Composio toolkit (unverified which); Composio snapshot pins 20260924_00 and 20260826_00 |
 
 ## Findings (P0 first)
 
@@ -37,7 +37,7 @@ No P0 in H. Nothing here is a live bug or legal exposure on its own; the launch 
 
 P1
 - H-001 Composio dormant. Without it no social publishing exists. Founder creates the account and sets the env names; Claude probes on staging.
-- H-002 LinkedIn 15 Oct sunset. Ask Composio which Linkedin-Version toolkit 20260924_00 sends; bump the pin before enabling LinkedIn. Fix the PRD number.
+- H-002 LinkedIn 15 Oct sunset (202510, confirmed on the official page). No code change today. Before enabling LinkedIn: ask Composio support which Linkedin-Version toolkits 20260924_00 and 20260826_00 send, or run one read on a test account after 15 Oct; only if one sends 202510, move that pin to the newer Composio snapshot they name. PRD number fixed 2026-10-12.
 - H-003 Read-only ads and analytics dormant; approvals with weeks of lead time (Meta ads_read, LinkedIn Advertising, Google).
 - H-009 Meta direct and App Review not started; depends on company papers.
 - H-011 Reem calendars main-only and unlinkable; Google sensitive-scope verification takes weeks and needs the privacy policy fixed first.
