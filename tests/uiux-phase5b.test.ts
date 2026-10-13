@@ -210,7 +210,8 @@ describe("rule 1226: a static render in both languages shows the chat screen wit
   }
 });
 
-describe("rule 1227: the gallery stays light and uses only the colour roles", () => {
+// Rule 1214 replaced the "stays light" half: the gallery follows the page's theme, set once by the language layout.
+describe("rule 1227: the gallery uses only the colour roles and sets no theme of its own", () => {
   it("has no raw palette colour and no theme switch of its own", () => {
     for (const f of [GALLERY, TABS, "src/components/app/ChatBubble.tsx"]) {
       const src = read(f);
@@ -219,6 +220,6 @@ describe("rule 1227: the gallery stays light and uses only the colour roles", ()
       }
       expect(src, f).not.toMatch(/ThemeScope|data-theme|ThemeToggle/);
     }
-    expect(read(PAGE)).not.toMatch(/ThemeScope/);
+    expect(read(PAGE)).not.toMatch(/ThemeScope|data-theme/);
   });
 });

@@ -1,9 +1,9 @@
 /*
  * The dark theme (rules 1202-1204, UI/UX report §5.2): deep aubergine ground, lilac text, lemon still the call to action.
  * Only the semantic and component roles change; primitives, agent colours and lemon stay as they are. The head script in
- * src/app/[lang]/layout.tsx sets `data-theme` on <html> before the first paint (src/lib/theme.ts): dark only on the
- * signed-in screens (/{lang}/app and /{lang}/admin) when the viewer chose dark, or chose "system" and the device is
- * dark. Public pages stay light this phase (report §8.1). Every name here also exists in tokens.css (light); the pairs
+ * src/app/[lang]/layout.tsx sets `data-theme` on <html> before the first paint (src/lib/theme.ts): dark on every page
+ * under /{lang} (public pages too since rule 1214, the founder's yes on 2026-10-12) when the viewer chose dark, or chose
+ * "system" and the device is dark; light otherwise. Every name here also exists in tokens.css (light); the pairs
  * are held to WCAG AA by tests/theme.test.ts.
  */
 :root[data-theme="dark"] {
