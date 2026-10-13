@@ -104,3 +104,20 @@ export function withDisclaimer(body: string, sector: Sector): string {
   const line = d[langOf(body)];
   return body.trim() ? `${body.trimEnd()}\n\n${line}` : line;
 }
+
+/**
+ * A post cut to a platform's length (X: 280) that keeps a regulated brand's disclaimer line whole (rule 1524). Only a
+ * regulated brand's customer-facing item carries one of the `DISCLAIMER` lines (`withDisclaimer`), so the line itself marks
+ * it: the body is trimmed and the line stays at the end. Any other text is cut exactly as before (`slice(0, max)`). Lengths
+ * are UTF-16 units, like that slice; a cut never ends on half a surrogate pair.
+ */
+export function cutKeepingDisclaimer(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const line = Object.values(DISCLAIMER).flatMap((d) => [d.ar, d.en]).find((l) => text.includes(l));
+  if (!line || line.length > max) return text.slice(0, max);
+  const at = text.lastIndexOf(line);
+  const body = `${text.slice(0, at)}${text.slice(at + line.length)}`.trim();
+  let cut = body.slice(0, Math.max(0, max - line.length - 2)).trimEnd();
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1).trimEnd();
+  return cut ? `${cut}\n\n${line}` : line;
+}

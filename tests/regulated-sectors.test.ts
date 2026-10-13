@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { DISCLAIMER, REGULATED_SECTORS, regulatedSector, withDisclaimer, type Sector } from "@/lib/regulated";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DISCLAIMER, REGULATED_SECTORS, cutKeepingDisclaimer, regulatedSector, withDisclaimer, type Sector } from "@/lib/regulated";
+import { postToX } from "@/lib/connectors/x";
+import type { Connection } from "@/lib/connectors/store";
+import { readFileSync } from "node:fs";
 import { initialStatus } from "@/lib/brand-rules";
 import { taskFromItem } from "@/lib/generate-batch";
 
@@ -80,5 +83,54 @@ describe("rule 1522: a regulated brand's customer-facing items carry a disclaime
     expect(plan.body).toBe("خطة الأسبوع");
     const cafe = taskFromItem({ channel: "instagram", title: "t", body: "قهوة" }, { type: "social", brand: { ...brand, industry: "مقهى" }, source: "chat", createdAt: at });
     expect(cafe.body).toBe("قهوة");
+  });
+});
+
+describe("rule 1524: the X cut keeps a regulated brand's disclaimer and trims the body", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const long = (n: number, ch = "ق") => Array.from({ length: n }, (_, i) => (i % 12 === 11 ? " " : ch)).join("");
+
+  it("a long regulated post ends with its whole disclaimer, within 280 characters, in either language", () => {
+    for (const sector of REGULATED_SECTORS) {
+      for (const [body, lang] of [[long(400), "ar"], [long(400, "a"), "en"]] as const) {
+        const post = withDisclaimer(body, sector);
+        expect(post.length).toBeGreaterThan(280);
+        const cut = cutKeepingDisclaimer(post, 280);
+        expect(cut.length, `${sector} ${lang}`).toBeLessThanOrEqual(280);
+        expect(cut.endsWith(`\n\n${DISCLAIMER[sector][lang]}`), `${sector} ${lang}`).toBe(true);
+        expect(post.startsWith(cut.slice(0, cut.length - DISCLAIMER[sector][lang].length - 2)), "the body is trimmed, not rewritten").toBe(true);
+      }
+    }
+  });
+
+  it("other text is cut as before; a short post and a line moved by an edit are handled", () => {
+    const plain = long(400);
+    expect(cutKeepingDisclaimer(plain, 280)).toBe(plain.slice(0, 280));
+    const short = withDisclaimer("نص قصير", "health");
+    expect(cutKeepingDisclaimer(short, 280)).toBe(short);
+    // The owner's edit put the line first: it still survives, at the end.
+    const moved = `${DISCLAIMER.finance.ar}\n\n${long(400)}`;
+    const cut = cutKeepingDisclaimer(moved, 280);
+    expect(cut.length).toBeLessThanOrEqual(280);
+    expect(cut.endsWith(DISCLAIMER.finance.ar)).toBe(true);
+    expect(cut.split(DISCLAIMER.finance.ar)).toHaveLength(2);
+    // Never half an emoji at the cut.
+    const emoji = cutKeepingDisclaimer(withDisclaimer("😀".repeat(200), "legal"), 280);
+    expect(emoji).not.toMatch(/[\uD800-\uDBFF]\n/);
+  });
+
+  it("postToX sends the cut text, with the disclaimer, to X; the Composio path uses the same cut", async () => {
+    const sent: string[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      sent.push((JSON.parse(String(init.body)) as { text: string }).text);
+      return new Response(JSON.stringify({ data: { id: "1" } }), { status: 200 });
+    });
+    const c = { data: { access_token: "t" } } as unknown as Connection;
+    await postToX(c, withDisclaimer(long(500), "real_estate"));
+    expect(sent[0].length).toBeLessThanOrEqual(280);
+    expect(sent[0].endsWith(DISCLAIMER.real_estate.ar)).toBe(true);
+    const via = readFileSync("src/lib/connectors/via-composio.ts", "utf8");
+    expect(via).toContain('"TWITTER_CREATION_OF_A_POST", { text: cutKeepingDisclaimer(text, CHANNEL_LIMITS.x) }');
+    expect(via).not.toMatch(/text\.slice\(0, 280\)/);
   });
 });
