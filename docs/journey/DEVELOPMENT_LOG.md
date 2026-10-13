@@ -205,7 +205,7 @@ This is a log, not a summary. Every entry says what was known, what was decided 
 ### 11:44 UTC — "Do all platforms connect with Nashr?" Honest answer: zero connected (e016)
 
 - **Type:** founder, planning, docs
-- **Context / Thinking:** Founder asked whether all platforms integrate. Assistant: "No. Zero platforms are connected today." Table of per-platform requirements and wait times (Meta business verification and WhatsApp API 2-6 weeks, Instagram/Facebook app review 2-4 weeks, Snap 2-8 weeks, TikTok 2-4 weeks, X paid tier, Google OAuth verification, Salla/Zid partner programs, Tap/Moyasar merchant account).
+- **Context / Thinking:** Founder asked whether all platforms integrate. Assistant: "No. Zero platforms are connected today." Table of per-platform requirements and wait times (Meta business verification and WhatsApp API (2-6 weeks); Instagram and Facebook app review (2-4 weeks), Snap 2-8 weeks, TikTok 2-4 weeks, X paid tier, Google OAuth verification, Salla/Zid partner programs, Tap/Moyasar merchant account).
 - **Decision:** Founder said "yes, for all" and added Zid.sa, Snapchat, TikTok, LinkedIn, WordPress and Enrich's integration list. Assistant wrote a platform access playbook (what to apply for first: Meta verification, Salla/Zid partners, Moyasar/Tap today; Shopify/X/Google this week; customers' own keys need no registration: WordPress, WooCommerce, Klaviyo, Brevo).
 - **Action:** commit `1162aa26` (11:59) `docs/Platform_Access_Playbook.md` and extended integrations catalog.
 - **Founder:** 11:57 "yes, for all. also Zid.sa, snapchat, tiktok, linkeding, wordpress,.. check https://agent.enrichlabs.ai/marketing/integrations list"
