@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf } from "@/lib/auth";
+import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf, actorInfo } from "@/lib/auth";
+import { sha } from "@/lib/staff";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
@@ -159,15 +160,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       // Opened with the console key: the session is tied to that key and key session, so "End key session" and a key
       // rotation end it too (rule 429).
       const bind = who === "key" ? await keyImpBinding() : null;
+      // Opened from a staff session (rule 1648): the view carries that session's hash and ends with it.
+      const staffCookie = viaOf(req) === "staff" ? actorInfo(req)?.staffCookie : undefined;
+      const ss = staffCookie ? sha(staffCookie) : undefined;
       // The audit row is written BEFORE the session exists (rule 1187): when the log cannot be written, no view of the
       // account opens. `minutes` at most; one opened from a key session also ends with it: after 15 minutes without a
       // request on either side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
-      await log("impersonate", { action: "impersonate.start", expiresInMin: minutes, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
+      await log("impersonate", { action: "impersonate.start", expiresInMin: minutes, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}), ...(ss ? { endsWithStaffSession: true } : {}) });
       if (mine) jar.set("nashr_return", mine, await sessionCookie(ttl));
       jar.set("nashr_impersonate", email, await sessionCookie(ttl));
       // The session record carries the founder (`imp`): it resolves to actor kind "founder", which never passes the
       // founder console and is refused account delete, password change, invites, role changes, MCP tokens and OAuth.
-      await createSession(email, ttl, { imp: who, ...(bind ?? {}) });
+      await createSession(email, ttl, { imp: who, ...(bind ?? {}), ...(ss ? { ss } : {}) });
       // The redirect is built from a fixed list, never from the stored value as it is (rule 1188).
       return NextResponse.json({ ok: true, redirect: `/${u.lang === "en" ? "en" : "ar"}/app` });
     }

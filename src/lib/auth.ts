@@ -294,8 +294,10 @@ export async function verifyPassword(u: User, password: string) {
  * A stored session. `exp` (epoch ms, since 2026-10-11, rule 1177) is the end of an impersonation the founder chose in the
  * console (15, 60 or 120 minutes); the record's TTL ends at the same moment. Optional (expand): a session without it
  * reads as before, and an impersonation without it shows `at` + 2 hours, the TTL every one had until then.
+ * `ss` (rule 1648, new and optional: old code ignores it) is the hash of the staff session an impersonation was opened
+ * from: the customer view lives only as long as that staff session, and a request through it renews it.
  */
-export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string; exp?: number };
+export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string; exp?: number; ss?: string };
 /** The impersonation length every session had before the founder could choose it (2 hours). */
 export const IMPERSONATION_LEGACY_MS = 2 * 60 * 60 * 1000;
 type SessionRec = string | Session;
@@ -374,11 +376,11 @@ export async function loopbackHttp(): Promise<boolean> {
  * `imp` marks a founder impersonation session (admin console only): it resolves to actor kind "founder". One opened
  * with the console key also carries `kp` and `as` from `keyImpBinding` (rule 429).
  */
-export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string } = {}) {
+export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string; ss?: string } = {}) {
   const token = randomBytes(32).toString("hex");
   const now = Date.now();
   // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
-  const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: now };
+  const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}), ...(opts.ss ? { ss: opts.ss } : {}) } : { email, at: now };
   // Hashed key only (rule 1345): the raw token is in the cookie and nowhere else.
   await db.set(sessionKey(token), rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
@@ -424,6 +426,7 @@ async function readSession(): Promise<Session | null> {
   const s = sessionOf(await sessionRecord(token));
   if (!s) return null;
   if (s.imp === "key" && !(await keyImpLive(s))) return null;
+  if (s.imp && s.ss !== undefined && !(await staffImpLive(s))) return null;
   return s;
 }
 
@@ -648,6 +651,16 @@ async function keyImpLive(s: Session): Promise<boolean> {
   if (!adminSessionInTime(rec, now)) return false;
   await renewAdminSession(k, rec, now);
   return true;
+}
+
+/**
+ * A customer view opened from a staff session (rule 1648): live only while that staff session is, for the same person.
+ * Checking it renews the staff session, so working in the customer view keeps it from going idle.
+ */
+async function staffImpLive(s: Session): Promise<boolean> {
+  if (typeof s.ss !== "string" || typeof s.imp !== "string") return false;
+  const { staffSessionLive } = await import("./staff-session");
+  return staffSessionLive(s.ss, s.imp);
 }
 
 /** Log the key session out: the server record goes, so the same cookie value never works again. */

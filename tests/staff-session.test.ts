@@ -170,3 +170,51 @@ describe("staff writes need a step-up tied to the staff session (rule 1636)", ()
 function newTotpSecretForTest(): string {
   return "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 }
+
+describe("a customer view opened from a staff session ends with it (rule 1648)", () => {
+  it("carries ss, renews the staff session while used, and ends at staff sign-out", async () => {
+    const users = await import("@/app/api/admin/users/[email]/route");
+    const { newUser, json } = await import("./helpers/session");
+    const { staffSignOut } = await import("./helpers/staff");
+    const { staffSessionKey } = await import("@/lib/staff-session");
+    const customer = await newUser("ss-view");
+    const { staff } = await enrolledStaff();
+    const { hash } = await openStaffSession(staff.email);
+    const { openStepUp } = await import("@/lib/admin-2fa");
+    await openStepUp(staff.email, jar().get(STAFF_COOKIE)!);
+    const r = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", minutes: 60, reason: "support call" }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) });
+    expect(r.status).toBe(200);
+    const token = jar().get("nashr_session")!;
+    const { sessionRecord } = await import("@/lib/auth");
+    expect(await sessionRecord(token)).toMatchObject({ email: customer.email, imp: staff.email, ss: hash });
+    expect((await currentUser())?.email).toBe(customer.email);
+    // Working in the view keeps the staff session from going idle: 10 minutes, then 10 more, past the 15-minute limit.
+    at(T0 + 10 * 60_000);
+    expect((await currentUser())?.email).toBe(customer.email);
+    at(T0 + 20 * 60_000);
+    expect((await currentUser())?.email).toBe(customer.email);
+    expect(await db.get(staffSessionKey(hash))).toMatchObject({ email: staff.email });
+    // Signing out of the staff session ends the view.
+    await staffSignOut();
+    jar().set("nashr_session", token);
+    expect(await currentUser()).toBeNull();
+  });
+
+  it("a view bound to another person's staff session, or a damaged ss, opens nothing", async () => {
+    const { newUser } = await import("./helpers/session");
+    const { createSession } = await import("@/lib/auth");
+    const customer = await newUser("ss-bad");
+    const a = await enrolledStaff();
+    const b = await enrolledStaff();
+    const { hash } = await openStaffSession(a.staff.email);
+    jar().clear();
+    await createSession(customer.email, 600, { imp: b.staff.email, ss: hash });
+    expect(await currentUser()).toBeNull();
+    jar().clear();
+    await createSession(customer.email, 600, { imp: a.staff.email, ss: "not-a-hash" });
+    expect(await currentUser()).toBeNull();
+    jar().clear();
+    await createSession(customer.email, 600, { imp: a.staff.email, ss: hash });
+    expect((await currentUser())?.email).toBe(customer.email);
+  });
+});
