@@ -3,7 +3,7 @@ import type { User } from "@/lib/auth";
 import type { Task } from "@/lib/brand";
 
 /**
- * Rules 1510-1513 and 1523: the spend gate on the chat's paid tools, the cards it leaves, and the owner's Run.
+ * Rules 1510-1514 and 1523: the spend gate on the chat's paid tools, the cards it leaves, and the owner's Run.
  * `generateBatch` and `renderImage` are replaced by recorders (the batch and the render engine have their own tests), so
  * these tests see exactly when a paid pipeline is reached, with what, and under which scope; no model is called except in
  * the one chat() test, where the SDK is scripted.
@@ -14,6 +14,8 @@ const g = vi.hoisted(() => ({
   renders: [] as { taskId: string; opts: Record<string, unknown> }[],
   renderResult: null as unknown,
   strip: false,
+  /** While set, the batch waits on it after recording the call: a run that is still charging when the second click lands. */
+  hold: null as Promise<void> | null,
 }));
 vi.mock("@/lib/generate-batch", async (orig) => {
   const real = await orig<typeof import("@/lib/generate-batch")>();
@@ -22,6 +24,7 @@ vi.mock("@/lib/generate-batch", async (orig) => {
     ...real,
     generateBatch: async (_u: User, scope: string, opts: Record<string, unknown>) => {
       g.batch.push({ scope, opts });
+      if (g.hold) await g.hold;
       if (g.batchResult) return g.batchResult;
       const t: Task = { id: `t${g.batch.length}`.padEnd(16, "0"), type: opts.type as Task["type"], channel: "instagram", title: "عنوان", body: "نص", status: "pending", createdAt: new Date().toISOString(), lang: "ar" };
       return { ok: true, tasks: [t], credits: 90, receipt: { ok: true, credits: 90 }, cost: 10, agent: "noor", gov: DEFAULT_GOV };
@@ -71,7 +74,7 @@ async function owner(prefix: string, industry?: string): Promise<User> {
 /** A chat turn's context, as chat() builds it: the owner's message, the turn's card lists, the app. */
 const turn = (u: User, ownerMsg: string, extra: Partial<ToolCtx> = {}): ToolCtx & { spendProposed: SpendProposal[] } => ({ agent: "noor", by: byOf(u), via: "app", proposed: [], awayProposed: [], instructionProposed: [], spendProposed: [], ownerMsg, lang: "ar", ...extra });
 
-beforeEach(() => { g.batch = []; g.batchResult = null; g.renders = []; g.renderResult = null; g.strip = false; });
+beforeEach(() => { g.batch = []; g.batchResult = null; g.renders = []; g.renderResult = null; g.strip = false; g.hold = null; });
 afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.doUnmock("@/lib/model"); vi.unstubAllEnvs(); });
 
 describe("rule 1510: a paid chat tool runs only when the owner's own latest message asks for it", () => {
@@ -217,6 +220,31 @@ describe("rule 1512: POST /api/chat/spend/[id] is the owner's approval, once, in
     expect(await spendProposalStates(sc(u), [p.id])).toEqual({ [p.id]: "open" });
     expect((await decide(p.id, { decision: "dismiss" })).status).toBe(200);
     expect((await decide(p.id, { decision: "run" })).status).toBe(410);
+  });
+
+  it("rule 1514: two Run clicks at once charge once; the other click is 409 claim_busy or 410", async () => {
+    const u = await owner("sg-r-race");
+    const p = await proposal(u);
+    // Fired together: exactly one reaches the batch (the charge), the other is turned away by the claim or the outcome.
+    const both = await Promise.all([decide(p.id, { decision: "run" }), decide(p.id, { decision: "run" })]);
+    expect(both.map((r) => r.status).sort()).toSatisfy((s: number[]) => s[0] === 200 && (s[1] === 409 || s[1] === 410));
+    const loser = both.find((r) => r.status !== 200)!;
+    expect(loser.body.error).toBe(loser.status === 409 ? "claim_busy" : "gone");
+    expect(g.batch, "one charge").toHaveLength(1);
+
+    // The second click lands while the first is still charging: 409 claim_busy, nothing run; once it closes, 410.
+    const q = await proposal(u);
+    let release!: () => void;
+    g.hold = new Promise<void>((r) => { release = r; });
+    const first = decide(q.id, { decision: "run" });
+    await vi.waitFor(() => expect(g.batch).toHaveLength(2));
+    const second = await decide(q.id, { decision: "run" });
+    expect(second).toMatchObject({ status: 409, body: { ok: false, error: "claim_busy" } });
+    release();
+    expect((await first).status).toBe(200);
+    expect((await decide(q.id, { decision: "run" })).status).toBe(410);
+    expect(g.batch, "one charge per card").toHaveLength(2);
+    expect(await spendProposalStates(sc(u), [p.id, q.id])).toEqual({ [p.id]: "ran", [q.id]: "ran" });
   });
 
   it("an image card renders the stored item with the default model", async () => {
