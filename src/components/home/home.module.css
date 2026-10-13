@@ -358,6 +358,11 @@
 .lead { display: grid; gap: 14px; justify-items: start; min-width: 0; }
 .lead > form { width: 100%; }
 .trialLine { font-size: var(--t-s); color: var(--color-foreground-muted); }
+/* The closing call before the footer (rule 1600): a drawn panel, centred, holding the cover's form and trial line. */
+.closing { padding: 34px 20px 30px; gap: 18px; align-items: center; text-align: center; }
+@media (min-width: 700px) { .closing { padding: 48px 40px 40px; } }
+.closing h2 { font: 900 var(--t-xl)/1.25 var(--home-display); }
+.closing .lead { justify-items: center; width: min(100%, 36rem); }
 .fresh {
   display: inline-flex;
   align-items: center;

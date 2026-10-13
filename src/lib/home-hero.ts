@@ -22,6 +22,20 @@ export const HERO_START: { chip: L } = {
   chip: { ar: "آخر تحديث للمنتج:", en: "Latest product update:" },
 };
 
+/**
+ * The closing call at the end of the home page, before the footer (rule 1600): this heading, then the same signup form
+ * and trial line as the cover (rule 1228). `FinalCta` is not reused here: its heading is the old one-agent line and its
+ * button is a plain link, not the form.
+ */
+export const HOME_END: { h: L } = {
+  h: { ar: "فريقك جاهز، وينتظر كلمتك.", en: "Your team is ready. It’s waiting for your word." },
+};
+
+/** Every visible string the closing call owns, both languages (rule 1600's scan). */
+export function homeEndStrings(): string[] {
+  return Object.values(HOME_END).flatMap((l: L) => [l.ar, l.en]);
+}
+
 /** The newest dated entry in a changelog (the newest ISO date, whatever the order), or null when it is empty. */
 export function latestChange(entries: readonly ChangeEntry[] = CHANGELOG): ChangeEntry | null {
   let best: ChangeEntry | null = null;
