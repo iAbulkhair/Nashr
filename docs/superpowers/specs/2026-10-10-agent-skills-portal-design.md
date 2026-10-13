@@ -1,6 +1,6 @@
 # Agent skills portal: platform, workspace and per-agent instructions (design)
 
-> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged to `main` as #316 (2026-10-12); not in `production` yet.
+> **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged to `main` as #316 (2026-10-12); in `production` since release #336 (2026-10-12).
 
 Date: 2026-10-10. Branch `claude/agent-skills-portal-47b7dd`. Rules 930-959 reserved, flows §60, permissions route rows 190-199, coverage file `docs/system/tests/0930-agent-skills-portal.md`.
 

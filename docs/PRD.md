@@ -92,7 +92,7 @@ Common thread: execution volume across too many channels, in two languages, with
 **Billing**
 - Plans (superseded on 2026-09-30 by pricing phase 1; source of truth `src/lib/pricing.ts` and `docs/superpowers/specs/2026-09-29-pricing-design.md`): Starter SAR 299, Pro SAR 499, Business SAR 999 a month + VAT, Agency by contract (it absorbed Enterprise). Credits 300 / 700 / 1,500, Agency never cheaper per credit than Business. Annual = 2 months free (not built). Trial today: 3 days, 50 credits, no card. The original MVP line read Starter 149, Pro 399, Agency 799, Enterprise custom, credits 200 / 700 / 2,000.
 - Credit ledger: post/image/ad/chat = 1, article = 2, WhatsApp campaign or TikTok slideshow = 3, video 4–12s = 12, video 16–20s = 24. Top-ups: 100 credits SAR 59, 500 credits SAR 249.
-- Payments: Tap or Moyasar (mada, Visa/MC, Apple Pay, STC Pay). VAT-compliant invoices (ZATCA e-invoicing phase 2 ready).
+- Payments: Tap or Moyasar (mada, Visa/MC, Apple Pay, STC Pay). (2026-10-13: superseded, Paymob KSA was chosen on 2026-10-08.) VAT-compliant invoices (ZATCA e-invoicing phase 2 ready).
 
 **Workspace & team**
 - Brands unlimited on every plan since 2026-09-30 (each added brand's setup costs 9 credits; creation is rate-limited), seats 1 / 3 / 7 (Agency by contract), roles (owner, admin, member), agency white-label report PDF (not built).
@@ -263,5 +263,5 @@ Launch sequence: waitlist (now) → 20 design partners (weeks 4–8) → Salla a
 | Language | English | Arabic (dialect-aware) + English |
 | Calendar | US retail | Hijri + GCC national days + White Friday + DSF |
 | Data residency | US | KSA |
-| Payments | Stripe | Tap / Moyasar (mada, Apple Pay, STC Pay) |
+| Payments | Stripe | Tap / Moyasar (mada, Apple Pay, STC Pay); 2026-10-13: Paymob KSA chosen |
 | Distribution | SEO free tools, direct | Salla/Zid app stores, agencies, free Arabic tools |

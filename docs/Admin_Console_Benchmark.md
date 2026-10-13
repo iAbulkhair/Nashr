@@ -6,6 +6,8 @@ Researched 17 Sep 2026. Claims link to the page they came from. **[unverified]**
 
 > **الخلاصة:** في الأسابيع 1–4 يحتاج المؤسس لوحة تعمل من Redis فقط: عدّادات التسجيل والتجارب، جدول مستخدمين مع بحث وفلاتر، درج تفاصيل، تعديل رصيد بسبب إلزامي وسجل تدقيق كامل، ومراقبة تكلفة النماذج. الفوترة وZATCA تنتظر Moyasar/Tap، والتحليلات السلوكية تنتظر PostHog.
 
+> **Note (2026-10-13):** this benchmark names Moyasar and Tap as the payment provider. The founder chose Paymob KSA on 2026-10-08 (built, off until its keys are set); read "Moyasar or Tap" below as "the payment provider".
+
 **Weeks 1–4 (solo founder, no payment provider):** a Redis-only console with signup/trial/paid counters, a searchable user table (plan, credits, trial end, last activity, model cost), a user drawer with a timeline and a **credit adjustment that requires a reason**, an audit log recording actor, before/after and reason (today's `admin:log` records none of these), model-cost and 429 counters, and cron heartbeats. Yaro Labs calls this the minimum first version: "account search and profile view with subscription, usage, and billing data in a single view" plus an audit log "from day one" ([Yaro Labs](https://yaro-labs.com/blog/saas-admin-panel)).
 
 **Later:** subscriptions, invoices, dunning and ZATCA e-invoices once Moyasar or Tap is wired; MRR movements, cohorts and funnels once an analytics tool is fed; role-scoped admin and safe impersonation before anyone but the founder gets access.

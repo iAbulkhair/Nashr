@@ -1,5 +1,7 @@
 # Composio evaluation: a managed connection layer for social, ads, analytics and calendars
 
+> **Status update (2026-10-13, from `git log origin/main`):** the experiment became the build: Composio is installed as #272 and #281 (2026-10-08, in `production`), dormant until the `COMPOSIO_*` variables are set; the decision record is in `docs/system/flows.md` section 11a. The status line below is the state when the document was written.
+
 Status: draft for the founder's review, 2026-10-05. This is an **experiment spec**, not a decision to adopt. It says what is tested, how, what may and may not touch customers, and what result adopts, trims or rejects Composio. Stores (Salla, Zid, WooCommerce, WordPress) are a separate spec (`2026-10-05-store-connectors-design.md`) and are not tested here.
 
 ## 1. Goal and what the founder decided
