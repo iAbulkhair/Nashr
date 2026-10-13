@@ -1,9 +1,9 @@
 "use client";
 
-import { Children, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Children, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Scribble from "@/components/Scribble";
 import type { Lang } from "@/lib/i18n";
-import { toggleMotion, useMotionPaused, useShowing } from "./motion";
+import { toggleMotion, useMotionPaused, useReducedMotion, useShowing } from "./motion";
 import styles from "./home.module.css";
 
 /** How long a slide stays before the row moves on by itself. */
@@ -15,13 +15,6 @@ export const AUTO_MS = 6000;
  */
 export const autoplays = (s: { reduced: boolean; paused: boolean; held: boolean; over: boolean; focused: boolean; showing: boolean; n: number }) =>
   !s.reduced && !s.paused && !s.held && !s.over && !s.focused && s.showing && s.n > 1;
-
-const REDUCED = "(prefers-reduced-motion: reduce)";
-const watchReduced = (onChange: () => void) => {
-  const mq = window.matchMedia(REDUCED);
-  mq.addEventListener("change", onChange);
-  return () => mq.removeEventListener("change", onChange);
-};
 
 /** Smooth only when the visitor allows motion and the page's pause button has not turned it off (motion.ts). */
 const smooth = () =>
@@ -65,8 +58,7 @@ export default function SceneTrack({
   const [focused, setFocused] = useState(false);
   const paused = useMotionPaused();
   const showing = useShowing(car, { threshold: 0.3 });
-  // True on the server, so the first paint agrees with it; the real answer arrives with hydration.
-  const reduced = useSyncExternalStore(watchReduced, () => window.matchMedia(REDUCED).matches, () => true);
+  const reduced = useReducedMotion();
   const slides = Children.toArray(children);
   const n = slides.length;
   // Western digits in both languages (rule 1584), written by hand so the server and the browser always agree.

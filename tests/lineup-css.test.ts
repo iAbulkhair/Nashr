@@ -42,7 +42,7 @@ describe("the lineup wraps and the chosen figure grows in place (rule 515)", () 
     expect(find("", /^\.fig$/)).toMatch(/width:\s*clamp\(70px,\s*[^,]+,\s*92px\)/);
   });
   it("grows the chosen figure by transform from its feet, and the chosen state changes nothing else's size", () => {
-    expect(find("", /\.who:is\(:hover, :focus-visible, \[aria-pressed="true"\]\) \.fig/)).toMatch(/transform:\s*scale\(1\.25\)/);
+    expect(find("", /\.who:is\(:hover, :focus-visible, \[aria-pressed="true"\], \[data-turn\]\) \.fig/)).toMatch(/transform:\s*scale\(1\.25\)/);
     expect(find("", /^\.fig$/)).toMatch(/transform-origin:\s*50% 100%/);
     const chosen = all.filter(([, s]) => /\.(who|fig|tag|cast)/.test(s) && /:hover|:focus-visible|aria-pressed/.test(s));
     expect(chosen.length).toBeGreaterThan(0);

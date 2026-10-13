@@ -226,11 +226,11 @@
   font-size: 0.95rem;
   white-space: nowrap;
 }
-.who:is(:hover, :focus-visible, [aria-pressed="true"]) { --tagfill: var(--tag); }
+.who:is(:hover, :focus-visible, [aria-pressed="true"], [data-turn]) { --tagfill: var(--tag); }
 /* On the agent's own colour the name is ink in both themes; the darker agents keep white (the rule below). */
-.who:is(:hover, :focus-visible, [aria-pressed="true"]) .tag { color: var(--color-accent-foreground); }
-.who:is(:hover, :focus-visible, [aria-pressed="true"]) .fig { transform: scale(1.25); }
-.who[data-dark]:is(:hover, :focus-visible, [aria-pressed="true"]) .tag { color: var(--color-paper); }
+.who:is(:hover, :focus-visible, [aria-pressed="true"], [data-turn]) .tag { color: var(--color-accent-foreground); }
+.who:is(:hover, :focus-visible, [aria-pressed="true"], [data-turn]) .fig { transform: scale(1.25); }
+.who[data-dark]:is(:hover, :focus-visible, [aria-pressed="true"], [data-turn]) .tag { color: var(--color-paper); }
 
 /* One thought at a time, above the chosen head (placed by Lineup.tsx); it never takes room in the row. */
 .think {
@@ -366,6 +366,12 @@
 @media (min-width: 700px) { .closing { padding: 48px 40px 40px; } }
 .closing h2 { font: 900 var(--t-xl)/1.25 var(--home-display); }
 .closing .lead { justify-items: center; width: min(100%, 36rem); }
+/* The cover's call to action stands under the team (rule 1830), centred like the closing call's. */
+.coverCta { justify-items: center; width: min(100%, 36rem); margin-inline: auto; text-align: center; }
+/* On a phone the form's button wraps under the field; it stands in the middle like the lines under it. */
+.coverCta > form { justify-content: center; }
+/* The form follows the team closely: the row keeps only the room the owner's caption needs. */
+.cover > .lineup { padding-block-end: 8px; }
 .fresh {
   display: inline-flex;
   align-items: center;
