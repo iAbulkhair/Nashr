@@ -822,3 +822,50 @@ describe("staff identity: the console write check and the expand path (rules 164
     expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0])).toMatchObject({ actor: "key", via: "header" });
   });
 });
+
+describe("closing the customer path at runtime (rule 1650)", () => {
+  beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
+  afterEach(async () => { await db.del("staff:config"); });
+
+  it("refused for the key, the header and the founder session; a staff owner with a fresh code switches it off, and then the founder session is no console actor", async () => {
+    const { newUser } = await import("./helpers/session");
+    const { adminActor } = await import("@/lib/auth");
+    const config = await import("@/app/api/admin/staff/config/route");
+    const { hashStaffPassword } = await import("@/lib/staff");
+    const { enrolledStaff, staffSignIn, codeAt } = await import("./helpers/staff");
+    const body = { customerPathOff: true, reason: "move to the staff login" };
+    const call = (b: Record<string, unknown>, h: Record<string, string> = {}) => config.POST(json("/api/admin/staff/config", "POST", b, { ...ip(), ...h }));
+    const founder = await newUser("switch-founder");
+    vi.stubEnv("ADMIN_EMAILS", founder.email);
+    await signIn(founder.email);
+    expect(await (await call(body)).json()).toEqual({ ok: false, error: "staff_owner_only" });
+    signOut();
+    await adminSignIn();
+    expect((await call(body)).status).toBe(403);
+    signOut();
+    expect((await call(body, { "x-admin-key": KEY })).status).toBe(403);
+    // A staff owner: a reason and a fresh code (the sign-in step-up is not enough).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const t = Date.now() + 5 * 60 * 60_000;
+    vi.setSystemTime(t);
+    const pw = "the owner's long phrase";
+    const { staff, secret } = await enrolledStaff({ passHash: await hashStaffPassword(pw) });
+    await staffSignIn(staff.email, pw, secret);
+    expect(await (await call(body)).json()).toEqual({ ok: false, error: "fresh_code" });
+    expect(await (await call({ customerPathOff: true })).json()).toEqual({ ok: false, error: "reason_short" });
+    expect(await (await call({ ...body, customerPathOff: false })).json()).toEqual({ ok: false, error: "off_only" });
+    vi.setSystemTime(t + 31_000);
+    expect((await call({ ...body, code: codeAt(secret) })).status).toBe(200);
+    vi.useRealTimers();
+    const row = JSON.parse((await db.lrange("admin:log", 0, 0))[0]);
+    expect(row).toMatchObject({ actor: staff.email, via: "staff", action: "console.customerPathOff", reason: "move to the staff login" });
+    // From now on the founder's customer session opens nothing; the key path is still there.
+    signOut();
+    await signIn(founder.email);
+    expect(await adminActor(json("/api/admin/overview", "GET"))).toBeNull();
+    expect(await isAdminCookie()).toBe(false);
+    signOut();
+    await adminSignIn();
+    expect(await adminActor(json("/api/admin/overview", "GET"))).toBe("key");
+  });
+});

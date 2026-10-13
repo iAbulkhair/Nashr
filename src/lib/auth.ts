@@ -358,11 +358,15 @@ export function revokeTeamSessions(u: User) {
  * that mistake to fail — loudly and locally, never by quietly dropping the flag on live traffic.
  */
 export async function sessionCookie(maxAge: number) {
+  return { httpOnly: true, sameSite: "lax", secure: !(await loopbackHttp()), path: "/", maxAge } as const;
+}
+
+/** Plain http to the loopback interface (local development): the one case a cookie may go without Secure. */
+export async function loopbackHttp(): Promise<boolean> {
   const h = await headers();
   const host = (h.get("host") ?? "").toLowerCase();
   const plainHttp = (h.get("x-forwarded-proto") ?? "http") === "http";
-  const loopback = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
-  return { httpOnly: true, sameSite: "lax", secure: !(plainHttp && loopback), path: "/", maxAge } as const;
+  return plainHttp && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
 }
 
 /**
@@ -659,12 +663,21 @@ export async function destroyAdminSession(): Promise<void> {
  */
 export type ConsoleVia = "staff" | "key" | "header" | "founder-session";
 /** `role` and `staffCookie` for a staff actor only: what the write gate's role check and the staff step-up read. */
-export type ActorInfo = { who: string; via: ConsoleVia; role?: string; staffCookie?: string };
+export type ActorInfo = { who: string; via: ConsoleVia; role?: string; staffCookie?: string; fresh?: boolean };
 const actors = new WeakMap<Request, ActorInfo>();
 /** What `adminActor` found for this request, or null when it was not called or found nobody. */
 export const actorInfo = (req: Request): ActorInfo | null => actors.get(req) ?? null;
 /** The `via` of this request's console actor, for `adminAudit`. */
 export const viaOf = (req: Request): ConsoleVia | null => actors.get(req)?.via ?? null;
+/**
+ * The write gate accepted a code typed for THIS request (`x-admin-otp`): the request already carries a fresh code, which
+ * is what staff management, the customer-path switch and own credential changes need (rule 1636). The code's step is
+ * burned by then, so the route must not ask for it a second time.
+ */
+export function markFreshCode(req: Request): void {
+  const i = actors.get(req);
+  if (i) i.fresh = true;
+}
 
 /**
  * Whether the founder's own customer session still opens the console: an expand-only path (rule 1649) that a staff

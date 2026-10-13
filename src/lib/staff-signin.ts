@@ -15,6 +15,11 @@ import { checkStaffCode, staffTotpOnce, staffTryAccepted, takeStaffTry, badCode 
 /** Sign-in tries per IP per window (a right password hands its hit back), and setup-code tries per IP. */
 export const STAFF_LOGIN_PER_IP = 5, STAFF_LOGIN_WINDOW = 15 * 60;
 export const SETUP_PER_IP = 5, SETUP_WINDOW = 15 * 60;
+/**
+ * The pre-auth steps (code, enrol) per IP per window, on top of the code tries: bounds how often one address can start
+ * an enrolment or post to these routes at all, whatever the body says.
+ */
+export const STAFF_STEP_PER_IP = 30, STAFF_STEP_WINDOW = 15 * 60;
 
 /** The one refusal of the sign-in: unknown address, wrong password, disabled, locked, all alike (rule 1631). */
 export const invalid = () => NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });

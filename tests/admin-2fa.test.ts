@@ -194,8 +194,8 @@ describe("after enrolment every founder write needs the second factor (rule 1376
     const files: string[] = [];
     const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f === "route.ts") files.push(p); } };
     walk("src/app/api/admin");
-    // The staff sign-in steps open a session, so no actor exists yet; they run the console write check themselves (rule 1647).
-    const exempt = ["login", "impersonate", "2fa", "leads", "staff/login", "staff/login/code", "staff/login/enrol", "staff/setup"].map((s) => join("src/app/api/admin", s, "route.ts"));
+    // The staff sign-in steps open a session, so no actor exists yet, and staff/me changes only the caller's own credentials with a fresh code; they run the console write check themselves (rule 1647).
+    const exempt = ["login", "impersonate", "2fa", "leads", "staff/login", "staff/login/code", "staff/login/enrol", "staff/setup", "staff/me"].map((s) => join("src/app/api/admin", s, "route.ts"));
     for (const f of files) {
       const src = readFileSync(f, "utf8");
       const writes = (src.match(/export (?:async )?function (POST|PUT|PATCH|DELETE)\b/g) ?? []).length;

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { consoleWriteRefusal } from "@/lib/console-origin";
 import { getStaff, issuedBeforeStaff } from "@/lib/staff";
 import { dropStaffPre, readStaffPre } from "@/lib/staff-session";
-import { confirmStaffEnrol, startAgain, startStaffEnrol } from "@/lib/staff-signin";
+import { allow, clientIp, retryLater } from "@/lib/rate";
+import { STAFF_STEP_PER_IP, STAFF_STEP_WINDOW, confirmStaffEnrol, startAgain, startStaffEnrol } from "@/lib/staff-signin";
 
 /**
  * Enrol an authenticator (rule 1632): the first sign-in, after a recovery code, or after a reset. Needs the pre-auth
@@ -15,6 +16,7 @@ import { confirmStaffEnrol, startAgain, startStaffEnrol } from "@/lib/staff-sign
 export async function POST(req: Request) {
   const foreign = consoleWriteRefusal(req);
   if (foreign) return foreign;
+  if (!(await allow(`staffstep:ip:${clientIp(req)}`, STAFF_STEP_PER_IP, STAFF_STEP_WINDOW))) return retryLater({ ok: false, error: "slow_down" }, STAFF_STEP_WINDOW);
   const pre = await readStaffPre();
   if (!pre || pre.stage !== "enrol") return startAgain();
   const staff = await getStaff(pre.email);

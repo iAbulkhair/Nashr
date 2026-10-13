@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypt
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { db } from "./db";
-import { ADMIN_COOKIE, actorInfo, sessionCookie } from "./auth";
+import { ADMIN_COOKIE, actorInfo, markFreshCode, sessionCookie } from "./auth";
 import { consoleWriteRefusal } from "./console-origin";
 import { canWrite, getStaff } from "./staff";
 import { checkStaffCode } from "./staff-code";
@@ -209,7 +209,10 @@ export async function secondFactorRefusal(req: Request, who: string): Promise<Ne
       const staff = await getStaff(who);
       if (staff) {
         const r = await checkStaffCode(req, staff, otp);
-        if (r.ok) return null;
+        if (r.ok) {
+          markFreshCode(req);
+          return null;
+        }
         if (r.res.status === 429) return r.res;
       }
     }
@@ -220,7 +223,10 @@ export async function secondFactorRefusal(req: Request, who: string): Promise<Ne
   // Six digits only: a recovery code in a header would remove the enrolment as a side effect of some other write.
   if (otp !== null && /^\d{6}$/.test(otp)) {
     const r = await checkCode(req, otp);
-    if (r.ok) return null;
+    if (r.ok) {
+      markFreshCode(req);
+      return null;
+    }
     if (!r.ok && r.res.status === 429) return r.res;
   }
   return NextResponse.json({ ok: false, error: "second_factor" }, { status: 403 });

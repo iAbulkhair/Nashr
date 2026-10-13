@@ -4,7 +4,8 @@ import { adminAudit } from "@/lib/admin-audit";
 import { getStaff, issuedBeforeStaff, looksLikeStaffCode, recoveryIndex, saveStaff, withStaffLock } from "@/lib/staff";
 import { dropStaffPre, readStaffPre, setStaffPreStage } from "@/lib/staff-session";
 import { badCode, staffTryAccepted, takeStaffTry } from "@/lib/staff-code";
-import { signInWithTotp, startAgain } from "@/lib/staff-signin";
+import { allow, clientIp, retryLater } from "@/lib/rate";
+import { STAFF_STEP_PER_IP, STAFF_STEP_WINDOW, signInWithTotp, startAgain } from "@/lib/staff-signin";
 
 /**
  * Staff sign-in, step 2 of 2 (rules 1632, 1642). Needs the pre-auth cookie at stage `code` (a right password within the
@@ -18,6 +19,7 @@ import { signInWithTotp, startAgain } from "@/lib/staff-signin";
 export async function POST(req: Request) {
   const foreign = consoleWriteRefusal(req);
   if (foreign) return foreign;
+  if (!(await allow(`staffstep:ip:${clientIp(req)}`, STAFF_STEP_PER_IP, STAFF_STEP_WINDOW))) return retryLater({ ok: false, error: "slow_down" }, STAFF_STEP_WINDOW);
   const pre = await readStaffPre();
   if (!pre || pre.stage !== "code") return startAgain();
   const staff = await getStaff(pre.email);

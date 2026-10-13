@@ -1,6 +1,7 @@
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
 import { db } from "./db";
+import { loopbackHttp } from "./auth";
 import { idleInTime, renewIdle, type IdleLimits } from "./idle-session";
 import { getStaff, issuedBeforeStaff, sha, type Staff } from "./staff";
 
@@ -41,14 +42,6 @@ export const staffSessionKey = (hash: string) => `staffsession:${hash}`;
 const preKey = (hash: string) => `staffpre:${hash}`;
 const ID = /^[0-9a-f]{64}$/;
 export const isStaffHash = (h: unknown): h is string => typeof h === "string" && ID.test(h);
-
-/** Plain http to the loopback host: the one case the cookies go without `Secure` and without the prefix. */
-async function loopbackHttp(): Promise<boolean> {
-  const h = await headers();
-  const host = (h.get("host") ?? "").toLowerCase();
-  const plainHttp = (h.get("x-forwarded-proto") ?? "http") === "http";
-  return plainHttp && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
-}
 
 /** The two cookie names for this transport (rule 1633). */
 export async function staffCookieNames(): Promise<{ session: string; pre: string }> {
