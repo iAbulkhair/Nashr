@@ -1,5 +1,5 @@
-import Link from "next/link";
 import Scribble from "@/components/Scribble";
+import { HOME_FEATURES, PlanList } from "@/components/PlanCard";
 import { AGENT_CAST, PLANS } from "@/lib/home";
 import type { Dict, Lang } from "@/lib/i18n";
 import { PUBLIC_TIERS } from "@/lib/pricing";
@@ -7,13 +7,10 @@ import { Float } from "./Decor";
 import Face from "./Face";
 import styles from "./home.module.css";
 
-/** How many of a plan's features its card lists after the credits; the pricing page lists them all. */
-const SHOWN = 3;
-
 /**
  * Prototype D's plans (rule 516). Every price, credit count and feature is the dictionary's pricing block, built from
- * `src/lib/pricing.ts` (rule 248), in the public order; this file holds no number. The agency plan leads to the
- * enterprise contact form, the others to sign-up.
+ * `src/lib/pricing.ts` (rule 248), in the public order; this file holds no number. The cards are the shared `PlanCard`
+ * (rule 1849), the same as /pricing, listing each plan's first `HOME_FEATURES` features: seats, social posts and chat.
  */
 export default function Plans({ t, lang }: { t: Dict; lang: Lang }) {
   const p = t.pricing;
@@ -42,41 +39,7 @@ export default function Plans({ t, lang }: { t: Dict; lang: Lang }) {
           </p>
         </div>
       </div>
-      <ul className={styles.plans} role="list">
-        {plans.map((plan) => (
-          <li key={plan.id} className={`s-card ${styles.plan}`}>
-            <Scribble kind="box" seed={`pl-${plan.id}`} fill="paper" heavy={plan.highlight} />
-            {plan.highlight && (
-              <span className={`s-tape ${styles.planTape}`}>
-                <Scribble kind="tape" seed={`tape-${plan.id}`} />
-                {PLANS.tape[lang]}
-              </span>
-            )}
-            <h3>{plan.name}</h3>
-            <p className={styles.planTag}>{plan.tagline}</p>
-            <p className={styles.price}>
-              <span className={plan.highlight ? styles.loopw : undefined}>
-                {plan.highlight && <Scribble kind="circleLoop" seed={`loop-${plan.id}`} />}
-                <b>{plan.price}</b> {plan.period}
-              </span>
-            </p>
-            <ul className={styles.feat} role="list">
-              {[plan.credits, ...plan.features.slice(0, SHOWN)].map((f) => (
-                <li key={f}>
-                  <i className={styles.mk} aria-hidden="true">
-                    <Scribble kind="tick" seed={`mk-${plan.id}-${f.length}`} />
-                  </i>
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-            <Link href={plan.id === "agency" ? `/${lang}/enterprise#contact` : `/${lang}/app/signup`} className={`s-link ${styles.planCta}`}>
-              <Scribble kind="underline" seed={`cta-${plan.id}`} />
-              {plan.cta}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <PlanList plans={plans} lang={lang} level={3} shown={HOME_FEATURES} />
       <p className={styles.rulel}>{PLANS.rule[lang]}</p>
     </section>
   );

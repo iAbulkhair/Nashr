@@ -542,22 +542,42 @@
   .intro > .act { grid-column: 2; grid-row: 1 / span 3; }
 }
 .trial { justify-self: start; max-width: 100%; white-space: normal; transform: rotate(-2deg); }
-.plans { display: grid; gap: 34px 22px; grid-template-columns: minmax(0, 1fr); }
+/*
+ * The plan cards (src/components/PlanCard.tsx), shared by the home page and /pricing (rules 1849-1853). /pricing sits
+ * outside `.home`, so the box is its own container and every home variable has a fallback.
+ */
+.plansBox {
+  container-type: inline-size;
+  --plan-display: var(--home-display, var(--font-display), ui-sans-serif, system-ui, sans-serif);
+  --plan-s: var(--t-s, 16px);
+}
+.plans { display: grid; gap: 34px 22px; grid-template-columns: minmax(0, 1fr); margin: 0; padding: 0; list-style: none; }
 @container (min-width: 440px) { .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (min-width: 960px) { .plans { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .plan { display: grid; gap: 10px; align-content: start; padding: 26px 22px; }
-.plan h3 { font: 900 24px/1.25 var(--home-display); }
-.planTag { font-size: var(--t-s); color: var(--color-foreground-muted); }
+/*
+ * Rule 1852: a card's five parts (head, price, credits, features, call to action) are rows of the list's grid, so a
+ * longer tagline or the "Start here" tape lowers the price on every card of the row alike and the buttons line up.
+ */
+@supports (grid-template-rows: subgrid) {
+  .plan { grid-row: span 5; grid-template-rows: subgrid; row-gap: 10px; align-content: normal; }
+}
+.planHead { display: grid; gap: 6px; align-content: start; }
+.planName { margin: 0; font: 900 24px/1.25 var(--plan-display); }
+.planTag { margin: 0; font-size: var(--plan-s); color: var(--color-foreground-muted); }
 .planTape { justify-self: start; margin-block-end: 4px; }
-.price { padding-block: 4px; font-size: var(--t-s); font-weight: 700; }
-.price b { font: 900 30px/1.1 var(--home-display); margin-inline-end: 4px; }
-@container (max-width: 560px) { .price b { font-size: 26px; } }
+.price { margin: 0; padding-block: 4px; font-size: var(--plan-s); font-weight: 700; }
+.priceN { font: 900 30px/1.1 var(--plan-display); margin-inline-end: 4px; }
+@container (max-width: 560px) { .priceN { font-size: 26px; } }
 .loopw { position: relative; isolation: isolate; display: inline-block; padding: 8px 12px; white-space: nowrap; }
-.feat { display: grid; gap: 8px; font-size: var(--t-s); }
+.planCredits { display: grid; gap: 2px; align-content: start; font-size: var(--plan-s); }
+.planCredits > p { margin: 0; }
+.planCr { font-weight: 800; }
+.planOut { color: var(--color-foreground-muted); }
+.feat { display: grid; gap: 8px; align-content: start; margin: 0; padding: 0; list-style: none; font-size: var(--plan-s); }
 .feat > li { display: flex; align-items: flex-start; gap: 10px; }
-.mk { position: relative; isolation: isolate; flex: none; width: 20px; height: 18px; margin-block-start: 4px; display: inline-block; }
-.planCta { justify-self: start; margin-block-start: 6px; font-weight: 800; color: var(--color-foreground); text-decoration: none; padding-block-end: 4px; }
-.planCta:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 4px; }
+.mk { position: relative; isolation: isolate; flex: none; inline-size: 20px; block-size: 18px; margin-block-start: 4px; display: inline-block; }
+.planCta { align-self: end; justify-self: stretch; min-block-size: var(--hit-min); margin-block-start: 8px; text-align: center; }
 .rulel { font-size: var(--t-m); font-weight: 700; }
 
 /* Questions */
