@@ -1,4 +1,4 @@
-import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import type { Dict } from "@/lib/i18n";
 
 /** The questions, drawn as prototype D (rule 518): an underlined title over plain ink rules. */
@@ -9,7 +9,7 @@ export default function Faq({ t }: { t: Dict }) {
         <p className="eyebrow">{t.faq.eyebrow}</p>
         <h2 className="section-title">
           <span className="s-ul">
-            <Scribble kind="underline" seed="faq-h" />
+            <ScribbleStatic kind="underline" seed="faq-h" rtl={t.dir === "rtl"} />
             {t.faq.title}
           </span>
         </h2>

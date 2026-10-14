@@ -6,6 +6,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import AffiliateForm from "@/components/AffiliateForm";
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { ATTRIBUTION_DAYS, COMMISSION_MONTHS, COMMISSION_PCT, PAYOUT_MIN_SAR } from "@/lib/partner-rules";
 import { FIRST_MONTH_DISCOUNT_PCT } from "@/lib/pricing";
 
@@ -36,9 +37,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main className="mx-auto max-w-4xl px-4 py-16 sm:px-6">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-4xl px-4 py-16 sm:px-6">
         <p className="eyebrow">{ar ? "برنامج الشركاء" : "Partner program"}</p>
-        <h1 className="mt-3 font-display text-4xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><Scribble kind="underline" seed="affiliates-h" />{ar ? `اكسب ${C}% من كل دفعة لأول ${M} أشهر، وعميلك يوفّر ${D}% على شهره الأول.` : `Earn ${C}% of every payment for ${M} months, and your customer saves ${D}% on their first month.`}</span></h1>
+        <h1 className="mt-3 font-display text-4xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><ScribbleStatic kind="underline" seed="affiliates-h" rtl={lang === "ar"} />{ar ? `اكسب ${C}% من كل دفعة لأول ${M} أشهر، وعميلك يوفّر ${D}% على شهره الأول.` : `Earn ${C}% of every payment for ${M} months, and your customer saves ${D}% on their first month.`}</span></h1>
         <p className="mt-4 max-w-2xl text-lg text-foreground-muted">{ar ? "للوكالات والمستشارين وصنّاع المحتوى والنشرات البريدية المقيمين في السعودية. لك كود خاص بك ورابط، وصفحة شراكة داخل حسابك في ذكين تتابع منها إحالاتك وعمولاتك ودفعاتك." : "For agencies, consultants, creators and newsletters living in Saudi Arabia. You get your own code and link, and a partner page inside your Thakeen account to follow your referrals, commissions and payouts."}</p>
         <div className="mt-10 grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">{items.map(([n, l], i) => <div key={l} className="s-card"><Scribble kind="box" seed={`affiliates-n-${i}`} fill={i === 0 ? "lemon" : "paper"} /><p className="font-display text-3xl font-bold" dir="ltr">{n}</p><p className="mt-1 text-sm text-foreground-muted">{l}</p></div>)}</div>
         <div className="mt-12 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-2">

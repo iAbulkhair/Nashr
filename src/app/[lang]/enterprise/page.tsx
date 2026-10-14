@@ -6,6 +6,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ContactForm from "@/components/ContactForm";
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { pageMeta } from "@/lib/page-meta";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
@@ -21,12 +22,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main>
+      <main id="main" tabIndex={-1}>
         <section className="section-wrap">
           <p className="eyebrow">{s.eyebrow}</p>
           <h1 className="mt-3 max-w-3xl font-display text-4xl font-bold leading-tight sm:text-6xl">
             <span className="s-ul">
-              <Scribble kind="underline" seed="enterprise-h" />
+              <ScribbleStatic kind="underline" seed="enterprise-h" rtl={lang === "ar"} />
               {s.title}
             </span>
           </h1>
