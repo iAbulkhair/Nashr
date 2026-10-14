@@ -17,14 +17,22 @@ export default function ContactForm({ lang, kind, page }: { lang: Lang; kind: "e
     setState(r?.ok ? "sent" : "error");
   }
   if (state === "sent") return <p role="status" className="s-card font-bold"><Scribble kind="box" seed="contact-sent" fill="lemon" />{f.sent}</p>;
+  // Rule 1878: every field has a visible label above its box (the words stay when the field has text). The label's
+  // `text-start` follows the page direction, so Arabic labels sit on the right.
+  const box = (name: string, label: string, control: React.ReactNode) => (
+    <label className="grid gap-1.5 text-start text-sm font-bold" data-field={name}>
+      <span>{label}</span>
+      <span className="s-input font-normal"><Scribble kind="box" seed={`contact-${name}`} fill="paper" ring />{control}</span>
+    </label>
+  );
   return (
     <form onSubmit={onSubmit} className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
-        <span className="s-input"><Scribble kind="box" seed="contact-name" fill="paper" ring /><input name="name" required autoComplete="name" placeholder={f.name} aria-label={f.name} /></span>
-        <span className="s-input"><Scribble kind="box" seed="contact-email" fill="paper" ring /><input name="email" required type="email" autoComplete="email" dir="ltr" placeholder={f.email} aria-label={f.email} /></span>
+        {box("name", f.name, <input name="name" required autoComplete="name" />)}
+        {box("email", f.email, <input name="email" required type="email" inputMode="email" autoComplete="email" dir="ltr" />)}
       </div>
-      <span className="s-input"><Scribble kind="box" seed="contact-company" fill="paper" ring /><input name="company" required autoComplete="organization" placeholder={f.company} aria-label={f.company} /></span>
-      <span className="s-input"><Scribble kind="box" seed="contact-message" fill="paper" ring /><textarea name="message" required rows={4} placeholder={f.message} aria-label={f.message} /></span>
+      {box("company", f.company, <input name="company" required autoComplete="organization" />)}
+      {box("message", f.message, <textarea name="message" required rows={4} />)}
       {state === "error" && <p role="alert" className="text-sm font-bold text-danger">{f.error}</p>}
       <button disabled={state === "busy"} className="s-btn justify-self-start"><Scribble kind="pill" seed="contact-send" fill="ink" shadow ring />{state === "busy" ? "…" : f.send}</button>
     </form>
