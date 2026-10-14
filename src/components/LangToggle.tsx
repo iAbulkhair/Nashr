@@ -30,7 +30,9 @@ export default function LangToggle({ lang, size = "md" }: { lang: Lang; size?: "
 
   const on = "bg-inverse text-inverse-foreground";
   const off = "text-foreground-muted hover:text-foreground";
-  const pad = size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs";
+  // Every segment is a 44px target (rule 1857, site critique 2026-10-14) and no word is under 12px: `sm` only trims the
+  // side padding for the app sidebar and the console bar.
+  const pad = size === "sm" ? "px-2 text-xs" : "px-3 text-xs";
 
   const seg = (to: Lang, label: string, title: string) => (
     <a
@@ -42,7 +44,7 @@ export default function LangToggle({ lang, size = "md" }: { lang: Lang; size?: "
       // The visible word is the name (WCAG 2.5.3, found by the axe check, rule 1801): a voice user says what they see.
       // The full language name is a hover hint only.
       title={title}
-      className={`rounded-full font-semibold transition ${pad} ${to === lang ? on : off}`}
+      className={`inline-flex min-h-[var(--hit-min)] min-w-[var(--hit-min)] items-center justify-center rounded-full font-semibold transition ${pad} ${to === lang ? on : off}`}
     >
       {label}
     </a>

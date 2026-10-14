@@ -26,11 +26,16 @@ describe("the homepage is D, without the game (rule 516)", () => {
     // The face circle the app's first-login game reads as `cast.face` stays.
     expect(css).toMatch(/\n\.face \{/);
   });
-  it("gives each section the id the homepage nav points at", () => {
-    const ids: [string, string][] = [["Cover", "team"], ["Rules", "rules"], ["Day", "day"], ["Steps", "steps"], ["Plans", "price"], ["HomeFaq", "faq"]];
+  it("gives each section the id the homepage's section chips point at (rule 1854)", () => {
+    // The cover keeps `#team` for links from elsewhere; it has no chip because the chips sit right under it.
+    expect(home("Cover")).toMatch(/<section[^>]*\bid="team"/);
+    const ids: [string, string][] = [["Rules", "rules"], ["Day", "day"], ["Steps", "steps"], ["Plans", "price"], ["HomeFaq", "faq"]];
     for (const [file, id] of ids) expect(home(file), file).toMatch(new RegExp(`<section[^>]*\\bid="${id}"`));
     expect(HOME_NAV.map((n) => n.href)).toEqual(ids.map(([, id]) => `#${id}`));
-    expect(page).toMatch(/<Nav [^>]*sections=\{HOME_NAV\}/);
+    // The chips render under the cover, and the site menu takes no homepage anchors any more.
+    expect(page.indexOf("<SectionChips ")).toBeGreaterThan(page.indexOf("<Cover "));
+    expect(page.indexOf("<SectionChips ")).toBeLessThan(page.indexOf("<Stories "));
+    expect(page).toMatch(/<Nav t=\{t\} lang=\{lang\} \/>/);
   });
   it("takes every price, credit and seat from the pricing module", () => {
     const plans = home("Plans");

@@ -27,8 +27,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }
   return paths.map((p) => {
     const date = posts.get(p.split("/blog/")[1] ?? "");
+    // hreflang (rule 1876): every page exists in both languages, so each URL names its Arabic and English twin and
+    // Arabic as the default for a reader whose language is neither.
+    const rest = p.replace(/^\/(ar|en)/, "");
     return {
       url: BASE + p,
+      alternates: { languages: { ar: `${BASE}/ar${rest}`, en: `${BASE}/en${rest}`, "x-default": `${BASE}/ar${rest}` } },
       ...(date ? { lastModified: new Date(`${date}T00:00:00Z`) } : {}),
       changeFrequency: p.includes("/blog") ? ("weekly" as const) : ("monthly" as const),
       priority: p.split("/").length <= 2 ? 1 : 0.7,

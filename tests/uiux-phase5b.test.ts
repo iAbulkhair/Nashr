@@ -41,7 +41,8 @@ describe("rule 1220: the gallery sits on the home page with its copy in its own 
   it("keeps the scenes' heading to the critique's wording (rule 1840) and the gallery free of it", () => {
     expect(SCENES_COPY.h.ar).toBe("كيف يشتغل أصحاب المحلات مع ذكين.");
     expect(SCENES_COPY.h.en).toBe("How shop owners work with Thakeen.");
-    expect(HOME_NAV.map((n) => n.href)).toEqual(["#team", "#rules", "#day", "#steps", "#price", "#faq"]);
+    // The section chips under the cover (rule 1854): the team is the cover itself, so it has no chip.
+    expect(HOME_NAV.map((n) => n.href)).toEqual(["#rules", "#day", "#steps", "#price", "#faq"]);
     for (const s of galleryStrings()) expect(s).not.toContain("كيف يشتغل أصحاب المحلات");
   });
 });

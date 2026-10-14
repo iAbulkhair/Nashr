@@ -242,15 +242,21 @@ export const HERO: { issue: L; tbox: L; offer: L; offerSwash: L; hintMouse: L; h
   mecap: { ar: "…وهذا أنت. عليك كلمة وحدة.", en: "…and this is you. You have one word to say." },
 };
 
-/** The homepage's own nav: an anchor to each section, in page order, with D's labels. */
+/**
+ * The homepage's section chips (rule 1854): an in-page link to each section after the cover, in page order, with D's
+ * labels. They sit under the cover as a row of pills (src/components/home/SectionChips.tsx), not as a second site menu;
+ * the team is the cover itself, right above them, so it has no chip.
+ */
 export const HOME_NAV: { href: string; label: L }[] = [
-  { href: "#team", label: { ar: "الفريق", en: "Team" } },
   { href: "#rules", label: { ar: "القوانين", en: "Rules" } },
   { href: "#day", label: { ar: "يومك", en: "Your day" } },
   { href: "#steps", label: { ar: "كيف يعمل ذكين", en: "How Thakeen works" } },
   { href: "#price", label: { ar: "الخطط", en: "Plans" } },
   { href: "#faq", label: { ar: "أسئلة", en: "Questions" } },
 ];
+
+/** The chips' list name, read by a screen reader before the chips. */
+export const HOME_NAV_LABEL: L = { ar: "في هذه الصفحة", en: "On this page" };
 
 /** The prefix a rule's caption reads with. */
 export const RULE_LABEL: L = { ar: "القانون: ", en: "Rule: " };
