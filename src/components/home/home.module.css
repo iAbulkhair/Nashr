@@ -704,7 +704,6 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 .sfig { display: flex; flex-direction: column; gap: 14px; height: 100%; margin: 0; }
 .sfig > p { margin: 0; }
 .sfig > :global(.s-bubble) { flex: 1; display: flex; align-items: center; }
-.kind { margin-block-start: -38px; margin-inline-start: var(--brk); width: fit-content; }
 .swho { display: flex; align-items: center; gap: 12px; }
 .swho b { display: block; font-weight: 800; line-height: 1.35; }
 .swho small { display: block; font-size: var(--t-xs); color: var(--color-foreground-muted); }

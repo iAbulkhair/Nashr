@@ -483,17 +483,16 @@ export type Look = {
 /**
  * One scenario under the cover (rules 775, 1840): an illustrative kind of business, never a named customer or a review,
  * told as "if you run a …" and showing which agent does which job. Each line is backed like a question: a task type that
- * agent really performs, or a feature it really runs (`tests/home-scenes.test.ts`). Every card carries the «مثال» /
- * "Example" stamp. No digits, no result promises.
+ * agent really performs, or a feature it really runs (`tests/home-scenes.test.ts`). It quotes nobody and carries no
+ * stamp. No digits, no result promises.
  */
 export type Scene = { role: L; line: L; agent: HomeAgentId; look: Look } & ({ task: TaskType; feature?: never } | { feature: Feature; task?: never });
 
-export const SCENES_COPY: { h: L; sub: L; stamp: L; with: L; prev: L; next: L; slide: L; pause: L; play: L } = {
-  // Rule 1840 (founder decision 2026-10-14, reverses the 2026-10-11 one): the cards are scenarios, not customers, and the
-  // heading says so in both languages. Rule 926: the line under the heading marks them as illustrative examples.
-  h: { ar: "كيف يشتغل أصحاب المحلات مع ذكين.", en: "How shop owners work with Thakeen." },
-  sub: { ar: "أمثلة توضيحية، مو تجارب عملاء: لو عندك محل، هذا اللي يسويه الفريق معك.", en: "Illustrative examples, not customer stories: if you run a shop, this is what the team does with you." },
-  stamp: { ar: "مثال", en: "Example" },
+export const SCENES_COPY: { h: L; sub: L; with: L; prev: L; next: L; slide: L; pause: L; play: L } = {
+  // Rules 926 and 1840 (founder decisions 2026-10-14): the cards are scenarios, not customers. The heading and the line
+  // under it name no customers and use no "example" wording; the "if you run a …" cards carry the framing themselves.
+  h: { ar: "كيف يشتغل ذكين مع أصحاب المحلات.", en: "How Thakeen works with shop owners." },
+  sub: { ar: "عندك محل؟ هذا اللي يسويه الفريق معك.", en: "Run a shop? Here's what the team does with you." },
   with: { ar: "مع", en: "with" },
   prev: { ar: "السابق", en: "Previous" },
   next: { ar: "التالي", en: "Next" },

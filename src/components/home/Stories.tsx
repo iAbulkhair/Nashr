@@ -13,9 +13,9 @@ const agentName = (id: string, lang: Lang) => AGENT_CAST.find((a) => a.id === id
 
 /**
  * The scenarios under the cover (rules 775, 1840-1842): eight kinds of business, four to a slide, each told as "if you
- * run a …" in a bubble, with the agent who does the job. Every card wears the «مثال» / "Example" stamp, and the line under
- * the heading says they are illustrative examples, before any card (rule 926). They are not quotes, so no quotation
- * markup and no caption: a plain paragraph and the business it is about. Without script the slides still scroll and snap.
+ * run a …" in a bubble, with the agent who does the job. The heading and the line under it name no customers and use
+ * no "example" wording (rule 926); the cards carry no stamp. They are not quotes, so no quotation markup and no caption:
+ * a plain paragraph and the business it is about. Without script the slides still scroll and snap.
  */
 export default function Stories({ lang }: { lang: Lang }) {
   const c = SCENES_COPY;
@@ -41,10 +41,6 @@ export default function Stories({ lang }: { lang: Lang }) {
                 <li key={k} className={`${styles.panel} ${styles.scn}`}>
                   <Scribble kind="box" seed={`sc${k}`} fill="paper" />
                   <div className={styles.sfig}>
-                    <span className={`s-stamp ${styles.kind}`}>
-                      <ScribbleStatic kind="stamp" seed={`sk${k}`} fill="lemon" rtl={rtl} />
-                      {c.stamp[lang]}
-                    </span>
                     <p className="s-bubble" data-tail="bottom">
                       <Scribble kind="bubble" seed={`sb${k}`} tail="bottom" tailAt={0.2} rtl={rtl} />
                       {s.line[lang]}

@@ -56,11 +56,14 @@ describe("the scenes under the cover are illustrative and true to the product (r
   it("keeps Reem's lines free of what she does not do yet", () => {
     for (const s of SCENES.filter((x) => x.agent === "reem")) for (const p of NOT_YET) expect(`${s.line.ar} ${s.line.en}`).not.toMatch(p);
   });
-  it("puts the line under the heading before the first scene; the line says the scenes are illustrative examples (rule 926)", () => {
-    expect(SCENES_COPY.h.ar).toBe("كيف يشتغل أصحاب المحلات مع ذكين.");
-    expect(SCENES_COPY.h.en).toBe("How shop owners work with Thakeen.");
-    expect(SCENES_COPY.sub.ar).toBe("أمثلة توضيحية، مو تجارب عملاء: لو عندك محل، هذا اللي يسويه الفريق معك.");
-    expect(SCENES_COPY.sub.en).toBe("Illustrative examples, not customer stories: if you run a shop, this is what the team does with you.");
+  it("puts the line under the heading before the first scene; heading and line name no customers and say no \"example\" (rules 926, 1840)", () => {
+    expect(SCENES_COPY.h.ar).toBe("كيف يشتغل ذكين مع أصحاب المحلات.");
+    expect(SCENES_COPY.h.en).toBe("How Thakeen works with shop owners.");
+    expect(SCENES_COPY.sub.ar).toBe("عندك محل؟ هذا اللي يسويه الفريق معك.");
+    expect(SCENES_COPY.sub.en).toBe("Run a shop? Here's what the team does with you.");
+    const copy = JSON.stringify(SCENES_COPY);
+    expect(copy).not.toMatch(/مثال|أمثلة|Example|Illustrative/i);
+    expect(copy).not.toMatch(/عملاء جربوا|customers who/i);
     const src = read("src/components/home/Stories.tsx");
     expect(src.indexOf("c.sub[lang]")).toBeGreaterThan(-1);
     expect(src.indexOf("c.sub[lang]")).toBeLessThan(src.indexOf("<SceneTrack"));
@@ -107,10 +110,10 @@ describe("the scenes under the cover are illustrative and true to the product (r
     }
     expect(new Set(SCENES.map((s) => s.role.en)).size).toBe(SCENES.length);
   });
-  it("stamps every card «مثال» / \"Example\" and quotes nobody: no blockquote, no like/learned tag (rules 1841-1842)", () => {
-    expect(SCENES_COPY.stamp).toEqual({ ar: "مثال", en: "Example" });
+  it("carries no stamp on the cards and quotes nobody: no blockquote, no like/learned tag (rules 1841-1842)", () => {
+    expect(SCENES_COPY).not.toHaveProperty("stamp");
     const src = read("src/components/home/Stories.tsx");
-    expect(src).toContain("{c.stamp[lang]}");
+    expect(src).not.toMatch(/s-stamp|c\.stamp/);
     expect(src).not.toMatch(/<blockquote|<figure|<figcaption/);
     expect(src).not.toMatch(/kinds\[/);
     expect(JSON.stringify(SCENES_COPY)).not.toMatch(/يعجبني|I like/);
