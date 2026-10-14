@@ -120,8 +120,8 @@ describe("rule 1862: /for/* and /agents speak in the home page's voice, with the
   });
 });
 
-/** The public pages this change owns; the home page and /pricing are other sessions' files. */
-const PAGES = ["agents", "agents/[agent]", "for/[industry]", "compare", "ai-marketing-agent", "blog", "blog/[slug]", "customers", "enterprise", "help", "privacy", "terms", "resources", "tools", "tools/[tool]", "updates", "affiliates", "affiliates/terms"].map((p) => `src/app/[lang]/${p}/page.tsx`);
+/** The public pages this change owns; the home page has its own check in tests/global-nav.test.ts. */
+const PAGES = ["pricing", "staging-access", "agents", "agents/[agent]", "for/[industry]", "compare", "ai-marketing-agent", "blog", "blog/[slug]", "customers", "enterprise", "help", "privacy", "terms", "resources", "tools", "tools/[tool]", "updates", "affiliates", "affiliates/terms"].map((p) => `src/app/[lang]/${p}/page.tsx`);
 
 describe("rule 1863: one <main id=\"main\"> holds the closing call; fixed-size scribbles are drawn on the server", () => {
   it("every owned public page has a focusable main#main, and FinalCta sits inside it", () => {
@@ -132,6 +132,10 @@ describe("rule 1863: one <main id=\"main\"> holds the closing call; fixed-size s
       const cta = s.indexOf("<FinalCta"), end = s.indexOf("</main>");
       if (cta >= 0) expect(cta, f).toBeLessThan(end);
     }
+  });
+
+  it("the language's error and not-found pages are #main too, so the skip link always lands", () => {
+    for (const f of ["src/app/[lang]/error.tsx", "src/app/[lang]/not-found.tsx"]) expect(read(f), f).toMatch(/<main id="main" tabIndex=\{-1\}/);
   });
 
   for (const lang of LANGS) {

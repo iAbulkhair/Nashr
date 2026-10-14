@@ -16,7 +16,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   }, [error]);
 
   return (
-    <main className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-6 px-6 py-20 text-center">
+    <main id="main" tabIndex={-1} className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-6 px-6 py-20 text-center">
       <div className="grid gap-2">
         <h1 className="font-display text-3xl font-bold">صار خطأ غير متوقع</h1>
         <p className="text-foreground-muted">جرّب مرة أخرى. إذا تكرر، تواصل معنا وسنصلحه.</p>

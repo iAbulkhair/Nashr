@@ -25,7 +25,7 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main>
+      <main id="main" tabIndex={-1}>
         <Pricing t={t} lang={lang} headingLevel={1} />
         {/* Razan's credit calculator (rules 1885-1887): /pricing only, a section of the page beside the cards. */}
         <div className="mt-16">
