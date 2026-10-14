@@ -1,9 +1,8 @@
 "use client";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Scribble from "@/components/Scribble";
 import { CAST, HERO, HOME, type CastId } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
-import Doodle from "./Doodle";
 import MotionToggle from "./MotionToggle";
 import { useMotionPaused, useReducedMotion, useShowing } from "./motion";
 import styles from "./home.module.css";
@@ -46,7 +45,7 @@ export const takesTurns = (s: { reduced: boolean; paused: boolean; showing: bool
  * rule 1834), and they stop for reduced motion, the page's pause button, an off-screen row or a hidden tab (rule 1833).
  * Pointing at, focusing or tapping a figure takes the cloud from the turns at once and holds it until let go.
  */
-export default function Lineup({ lang }: { lang: Lang }) {
+export default function Lineup({ lang, figures }: { lang: Lang; figures: Record<CastId, ReactNode> }) {
   const wrap = useRef<HTMLDivElement>(null);
   const cloud = useRef<HTMLParagraphElement>(null);
   const turn = useRef<Partial<Record<CastId, number>>>({});
@@ -239,7 +238,7 @@ export default function Lineup({ lang }: { lang: Lang }) {
                   <span className={styles.pud}>
                     <Scribble kind="puddle" seed={`pud-${member.id}`} fill={`agent-${member.id}`} />
                   </span>
-                  <Doodle who={member.id} />
+                  {figures[member.id]}
                 </span>
                 <span className={`s-tag ${styles.tag}`}>
                   <Scribble kind="box" seed={`tag-${member.id}`} fill="var(--tagfill)" />

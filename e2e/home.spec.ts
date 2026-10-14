@@ -59,13 +59,25 @@ for (const lang of LANGS) {
       }
     });
 
-    test("puts the call to action under the team (rule 1830)", async ({ page }) => {
+    test("puts the call to action under the offer, above the team (rule 1844)", async ({ page }) => {
       await open(page, `/${lang}`);
-      const team = await page.locator('[data-testid="lineup"] [data-id="you"]').boundingBox();
+      const team = await page.getByTestId("lineup").boundingBox();
       const form = await page.locator(`#team form[action="/${lang}/app/signup"]`).boundingBox();
       const h1 = await page.locator("h1").boundingBox();
-      expect(h1!.y).toBeLessThan(team!.y);
-      expect(form!.y).toBeGreaterThan(team!.y + team!.height);
+      expect(h1!.y).toBeLessThan(form!.y);
+      expect(form!.y + form!.height).toBeLessThan(team!.y);
+    });
+
+    test("on a phone, offers the start at the bottom once the cover's form has scrolled away (rule 1845)", async ({ page, isMobile }) => {
+      test.skip(!isMobile, "phone only");
+      await open(page, `/${lang}`);
+      const bar = page.getByTestId("sticky-start");
+      await expect(bar).toBeHidden();
+      await page.locator("#steps").scrollIntoViewIfNeeded();
+      await expect(bar).toBeVisible();
+      await expect(bar.getByRole("link")).toHaveAttribute("href", `/${lang}/app/signup`);
+      await page.locator("footer").scrollIntoViewIfNeeded();
+      await expect(bar).toBeHidden();
     });
 
     test("never scrolls sideways", async ({ page }) => {
