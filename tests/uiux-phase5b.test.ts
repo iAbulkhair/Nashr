@@ -38,11 +38,11 @@ describe("rule 1220: the gallery sits on the home page with its copy in its own 
     for (const f of [GALLERY, TABS, COPY]) expect(code(f), f).not.toMatch(/from "@\/lib\/home"/);
     expect(code(GALLERY)).toMatch(/from "@\/lib\/home-gallery"/);
   });
-  it("leaves the scenes' heading and the homepage nav as they were (release R1 owns them)", () => {
-    expect(SCENES_COPY.h.ar).toBe("عملاء جربوا ذكين.");
-    expect(SCENES_COPY.h.en).toBe("How owners work with Thakeen.");
+  it("keeps the scenes' heading to the critique's wording (rule 1840) and the gallery free of it", () => {
+    expect(SCENES_COPY.h.ar).toBe("كيف يشتغل أصحاب المحلات مع ذكين.");
+    expect(SCENES_COPY.h.en).toBe("How shop owners work with Thakeen.");
     expect(HOME_NAV.map((n) => n.href)).toEqual(["#team", "#rules", "#day", "#steps", "#price", "#faq"]);
-    for (const s of galleryStrings()) expect(s).not.toContain("عملاء جربوا ذكين");
+    for (const s of galleryStrings()) expect(s).not.toContain("كيف يشتغل أصحاب المحلات");
   });
 });
 

@@ -47,9 +47,11 @@ describe("rule 926: the scenes subline marks them as illustrative examples in bo
     expect(SCENES_COPY.sub.en.startsWith("Illustrative examples")).toBe(true);
   });
 
-  it("keeps the founder's Arabic heading (decision 2026-10-11) and the English one", () => {
-    expect(SCENES_COPY.h.ar).toBe("عملاء جربوا ذكين.");
-    expect(SCENES_COPY.h.en).toBe("How owners work with Thakeen.");
+  it("frames the cards as scenarios, not customers (critique 2026-10-14, rule 1840; it replaces the 2026-10-11 heading)", () => {
+    expect(SCENES_COPY.h.ar).toBe("كيف يشتغل أصحاب المحلات مع ذكين.");
+    expect(SCENES_COPY.h.en).toBe("How shop owners work with Thakeen.");
+    expect(SCENES_COPY.sub.ar).toContain("مو تجارب عملاء");
+    expect(SCENES_COPY.sub.en).toContain("not customer stories");
   });
 
   it("renders the heading and the line, with the wording in src/lib/home.ts only", () => {
@@ -148,7 +150,9 @@ describe("rule 929: the R1 release checklist lists what ships and what to check 
 
   it("has the smoke checks: heading text, partner redirect, billing email, console Cancel, titles, health", () => {
     const doc = read(path);
-    for (const s of [SCENES_COPY.h.ar, SCENES_COPY.sub.ar, SCENES_COPY.h.en, SCENES_COPY.sub.en, "/p/", "0.0.0.0", SUPPORT_EMAIL, "Cancel", "titles", "/api/health"]) {
+    // R1 is a past release: its checklist keeps the wording that shipped then (the scenes were reframed later, rule 1840).
+    const r1 = ["عملاء جربوا ذكين.", "أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", "How owners work with Thakeen.", "Illustrative examples: what they like, what they learned, and what they recommend."];
+    for (const s of [...r1, "/p/", "0.0.0.0", SUPPORT_EMAIL, "Cancel", "titles", "/api/health"]) {
       expect(doc, s).toContain(s);
     }
   });
