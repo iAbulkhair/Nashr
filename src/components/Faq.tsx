@@ -31,7 +31,7 @@ export function QaList({ items, className = "" }: { items: readonly { q: string;
               +
             </span>
           </summary>
-          <p className="mt-3 leading-relaxed text-foreground-muted">{f.a}</p>
+          <p className="mt-3 max-w-prose leading-relaxed text-foreground-muted">{f.a}</p>
         </details>
       ))}
     </div>

@@ -58,14 +58,14 @@ export default function CreditCalculator({ t, lang, level = 2 }: { t: Dict; lang
         </H>
         <div className="mt-5 flex items-end gap-3">
           <Face who={razan.id} seed="calc-razan" />
-          <p className="s-bubble" data-tail="start">
+          <p className="s-bubble max-w-prose" data-tail="start">
             <Scribble kind="bubble" seed="calc-razan-b" tail="start" rtl={rtl} />
             <span className="sr-only">{razan.name[lang]}: </span>
             {CALC_COPY.intro[lang]}
           </p>
         </div>
         <CreditCalculatorForm lang={lang} rows={rows} plans={plans} />
-        <p className="mt-4 max-w-2xl text-sm text-foreground-muted">{CALC_COPY.note[lang]}</p>
+        <p className="mt-4 max-w-prose text-sm text-foreground-muted">{CALC_COPY.note[lang]}</p>
       </div>
     </section>
   );
