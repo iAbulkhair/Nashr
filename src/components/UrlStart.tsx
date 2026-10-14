@@ -13,9 +13,9 @@ export default function UrlStart({ t, lang }: { t: Dict; lang: Lang }) {
   const label = lang === "ar" ? "رابط موقعك أو متجرك (اختياري)" : "Your website or store URL (optional)";
   return (
     <form action={`/${lang}/app/signup`} method="get" noValidate className="flex max-w-xl flex-wrap items-end gap-3 sm:flex-nowrap">
-      <label className="grid min-w-0 flex-1 basis-full gap-1.5 text-start sm:basis-auto">
+      <label className="grid min-w-0 flex-1 basis-full grid-cols-[minmax(0,1fr)] gap-1.5 text-start sm:basis-auto">
         <span className="text-sm font-bold">{label}</span>
-        <span className="s-input">
+        <span className="s-input min-w-0">
           <Scribble kind="box" seed="url-start" fill="paper" ring />
           <input name="url" type="url" dir="ltr" inputMode="url" autoComplete="url" placeholder="yourstore.com" />
         </span>

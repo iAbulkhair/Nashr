@@ -23,7 +23,7 @@ describe("rule 1845: the phone's start bar", () => {
     const src = read("src/components/home/StickyStart.tsx");
     expect(src).toMatch(/hidden=\{!on\}/);
     expect(src).toMatch(/createPortal\(/);
-    expect(src).toMatch(/querySelectorAll\("#start, footer"\)/);
+    expect(src).toMatch(/querySelectorAll\("#start, main ~ footer"\)/);
     expect(CSS).toMatch(/\.sticky\[hidden\] \{ display: none; \}/);
     expect(CSS).toMatch(/@media \(min-width: 700px\) \{ \.sticky \{ display: none; \} \}/);
     expect(CSS).toMatch(/\.stickyBtn \{[^}]*min-height: var\(--hit-min\)/);

@@ -24,9 +24,9 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
   }
   // Rule 1878: every field has a visible label above its box; `text-start` puts Arabic labels on the right.
   const box = (id: string, label: string, control: React.ReactNode, className = "") => (
-    <label className={`grid gap-1.5 text-start text-sm font-bold ${className}`} data-field={id}>
+    <label className={`grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 text-start text-sm font-bold ${className}`} data-field={id}>
       <span>{label}</span>
-      <span className="s-input font-normal"><Scribble kind="box" seed={`help-${id}`} fill="paper" ring />{control}</span>
+      <span className="s-input min-w-0 font-normal"><Scribble kind="box" seed={`help-${id}`} fill="paper" ring />{control}</span>
     </label>
   );
   const chip = (on: boolean, id: string, label: string, pick: () => void) => (

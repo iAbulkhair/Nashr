@@ -52,9 +52,9 @@ export default function ToolForm({ tool, lang, trial }: { tool: Tool; lang: Lang
     <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-2">
       <form onSubmit={onSubmit} className="grid grid-cols-[minmax(0,1fr)] gap-4">
         {tool.fields.map((f) => (
-          <label key={f.name} className="grid gap-1.5 text-sm font-bold">
+          <label key={f.name} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 text-start text-sm font-bold">
             <span>{f.label[lang]}</span>
-            <span className="s-input font-normal"><Scribble kind="box" seed={`tool-${tool.slug}-${f.name}`} fill="paper" ring />{field(f)}</span>
+            <span className="s-input min-w-0 font-normal"><Scribble kind="box" seed={`tool-${tool.slug}-${f.name}`} fill="paper" ring />{field(f)}</span>
           </label>
         ))}
         <button disabled={busy} className="s-btn justify-self-start"><Scribble kind="pill" seed={`tool-${tool.slug}-go`} fill="ink" shadow ring />{busy ? (ar ? "نور تكتب…" : "Noor is writing…") : ar ? "ولّد مجاناً" : "Generate free"}</button>

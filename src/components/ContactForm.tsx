@@ -20,9 +20,9 @@ export default function ContactForm({ lang, kind, page }: { lang: Lang; kind: "e
   // Rule 1878: every field has a visible label above its box (the words stay when the field has text). The label's
   // `text-start` follows the page direction, so Arabic labels sit on the right.
   const box = (name: string, label: string, control: React.ReactNode) => (
-    <label className="grid gap-1.5 text-start text-sm font-bold" data-field={name}>
+    <label className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 text-start text-sm font-bold" data-field={name}>
       <span>{label}</span>
-      <span className="s-input font-normal"><Scribble kind="box" seed={`contact-${name}`} fill="paper" ring />{control}</span>
+      <span className="s-input min-w-0 font-normal"><Scribble kind="box" seed={`contact-${name}`} fill="paper" ring />{control}</span>
     </label>
   );
   return (

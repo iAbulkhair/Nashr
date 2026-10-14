@@ -39,7 +39,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/ai-marketing-agent", unique: { en: "What is an AI Marketing Agent?", ar: "ما هو وكيل التسويق" }, ownTitle: true },
   { path: "/agents/noor", unique: { en: "Noor", ar: "نور" }, ownTitle: true },
   { path: "/tools/hook-generator", unique: { en: "Hook Generator", ar: "مولّد هوكات" }, ownTitle: true },
-  { path: "/for/ecommerce", unique: { en: "store", ar: "متجرك يحتاج محتوى" }, ownTitle: true },
+  { path: "/for/ecommerce", unique: { en: "store", ar: "متجرك يبي محتوى" }, ownTitle: true },
   { path: "/compare", unique: { en: "Thakeen compared with the alternatives", ar: "ذكين مقارنةً بالبدائل" }, ownTitle: true },
   { path: "/blog/ramadan-marketing-guide-2026", unique: { en: "Ramadan Marketing", ar: "تسويق رمضان" }, ownTitle: true },
 ];

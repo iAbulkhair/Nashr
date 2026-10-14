@@ -40,7 +40,7 @@ export default function StickyStart({ lang, label }: { lang: Lang; label: string
       }
       setEndShowing(seen.size > 0);
     });
-    document.querySelectorAll("#start, footer").forEach((n) => end.observe(n));
+    document.querySelectorAll("#start, main ~ footer").forEach((n) => end.observe(n));
     return () => {
       form.disconnect();
       end.disconnect();

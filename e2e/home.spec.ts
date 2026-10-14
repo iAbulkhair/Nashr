@@ -11,8 +11,9 @@ import { CLAUDE_PAUSED } from "../src/lib/model";
  */
 
 // The gallery (rule 1220) sits after your day and has no nav link: its copy stays out of src/lib/home.ts. The closing
-// call (rule 1600, `#start`) is the last block of <main> and has no nav link either: the cover already carries the call.
-const SECTIONS = [...HOME_NAV.map((n) => n.href.slice(1)).flatMap((id) => (id === "day" ? [id, "gallery"] : [id])), "start"];
+// call (rule 1600, `#start`) is the last block of <main> and has no chip either: the cover already carries the call. The
+// cover (`#team`) comes first and has no chip since rule 1854: the site menu's Team link leads there.
+const SECTIONS = ["team", ...HOME_NAV.map((n) => n.href.slice(1)).flatMap((id) => (id === "day" ? [id, "gallery"] : [id])), "start"];
 
 for (const lang of LANGS) {
   test.describe(`home · ${lang}`, () => {
@@ -27,10 +28,10 @@ for (const lang of LANGS) {
       for (const list of await page.locator("main ul, main ol").all()) await expect(list).toHaveAttribute("role", "list");
     });
 
-    test("the nav leads to every section", async ({ page }) => {
+    test("the section chips lead to every section but the cover (rule 1854)", async ({ page }) => {
       await open(page, `/${lang}`);
       for (const { href } of HOME_NAV) {
-        await expect(page.locator(`header a[href="${href}"]`).first()).toBeAttached();
+        await expect(page.locator(`[data-section-chips] a[href="${href}"]`)).toHaveCount(1);
         await expect(page.locator(href)).toHaveCount(1);
       }
     });
@@ -76,7 +77,7 @@ for (const lang of LANGS) {
       await page.locator("#steps").scrollIntoViewIfNeeded();
       await expect(bar).toBeVisible();
       await expect(bar.getByRole("link")).toHaveAttribute("href", `/${lang}/app/signup`);
-      await page.locator("footer").scrollIntoViewIfNeeded();
+      await page.getByRole("contentinfo").scrollIntoViewIfNeeded();
       await expect(bar).toBeHidden();
     });
 
