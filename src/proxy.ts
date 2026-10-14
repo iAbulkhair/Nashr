@@ -14,15 +14,36 @@ const APP_PATH = /^\/[^/]+\/app(\/|$)/;
 // so a sign-in step, a setup code or a recovery code is never kept on disk or behind a back button.
 const CONSOLE_PATH = /^\/(ar|en)\/admin(\/|$)|^\/api\/admin\/staff(\/|$)/;
 
-function pickLang(req: NextRequest): Lang {
+// English locales of the Gulf (rule 1873): a browser set to en-SA or en-AE is a Gulf reader on an English system, and
+// the site is Arabic first, so these pick Arabic. A cookie the visitor chose still wins over any header.
+const GULF_ENGLISH = new Set(["en-sa", "en-ae", "en-kw", "en-qa", "en-bh", "en-om"]);
+
+/** The visitor's language: their cookie, else the first Accept-Language entry, else Arabic. */
+export function pickLang(req: Pick<NextRequest, "cookies" | "headers">): Lang {
   const c = readCookie(req.cookies, LANG_COOKIE);
   if (c === "ar" || c === "en") return c;
   const al = (req.headers.get("accept-language") || "").toLowerCase();
   // Arabic is the default; only send English to browsers that prefer it and do not list Arabic first.
-  const first = al.split(",")[0]?.trim() ?? "";
+  const first = al.split(",")[0]?.split(";")[0]?.trim() ?? "";
+  if (GULF_ENGLISH.has(first)) return "ar";
   if (first.startsWith("en") && !al.startsWith("ar")) return "en";
   return "ar";
 }
+
+/**
+ * The public pages' first path segments under `src/app/[lang]` (rule 1874). An address without the language, such as
+ * `/pricing` or `/for/clinics`, is sent to `/{lang}` plus the same path and query. Only these segments move: `/api`,
+ * `/m`, `/p`, `/oauth`, `/llms.txt`, `/robots.txt`, `/sitemap.xml`, the manifest, the icons, `/_next` and `/.well-known`
+ * are never redirected, and the app and the console keep their own paths. tests/global-nav.test.ts holds this list to
+ * the folders on disk.
+ */
+export const PUBLIC_SEGMENTS = [
+  "affiliates", "agents", "ai-marketing-agent", "blog", "compare", "customers", "enterprise", "for", "help", "pricing",
+  "privacy", "resources", "terms", "tools", "updates",
+] as const;
+const UNPREFIXED = new RegExp(`^/(?:${PUBLIC_SEGMENTS.join("|")})(?:/|$)`);
+/** True for a public page's address written without its language. */
+export const unprefixedPublic = (pathname: string): boolean => UNPREFIXED.test(pathname);
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -47,6 +68,14 @@ export function proxy(req: NextRequest) {
     url.pathname = pathname === "/" ? `/${pickLang(req)}` : `/${pickLang(req)}/app`;
     url.search = search;
     res = NextResponse.redirect(url, 307);
+  } else if (unprefixedPublic(pathname)) {
+    // `/pricing`, `/agents/noor`, `/for/clinics` (rule 1874): the same choice as the root, then the same path and query.
+    // A 307 like the root's, never a permanent redirect: the target depends on the visitor's cookie and browser language.
+    const url = req.nextUrl.clone();
+    url.pathname = `/${pickLang(req)}${pathname}`;
+    url.search = search;
+    res = NextResponse.redirect(url, 307);
+    res.headers.set("Vary", "Cookie, Accept-Language");
   } else if (legacySettingsPath(pathname)) {
     // The old account, team, brand and billing pages moved under /app/settings (rule 1141, expand step): a 307 keeps the
     // query string (a Paymob return, an integration error) and lets a rollback find the old pages again.

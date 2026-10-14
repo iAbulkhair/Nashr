@@ -1,4 +1,4 @@
-import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { appDict } from "@/lib/app-i18n";
 import { approvalDict } from "@/lib/approval-dict";
 import { GALLERY_COPY, GALLERY_TABS, gallerySamples } from "@/lib/home-gallery";
@@ -25,7 +25,7 @@ export default function Gallery({ lang }: { lang: Lang }) {
       <div className={styles.sh}>
         <h2 id="t-gallery">
           <span className={styles.ul}>
-            <Scribble kind="underline" seed="gallery-h" />
+            <ScribbleStatic kind="underline" seed="gallery-h" rtl={lang === "ar"} />
             {c.h[lang]}
           </span>
         </h2>

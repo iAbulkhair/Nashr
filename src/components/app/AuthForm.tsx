@@ -13,6 +13,8 @@ import { Turnstile } from "./Turnstile";
 import { safeNext } from "@/lib/safe-next";
 import { readInviteToken as readFragmentToken, withoutFragment } from "./inviteToken";
 import Scribble from "@/components/Scribble";
+import Face from "@/components/home/Face";
+import { SIGNUP_NEXT, shownSite } from "@/lib/signup-preview";
 import Button from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-class";
 import Callout from "@/components/ui/Callout";
@@ -76,6 +78,7 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t1" />{t.signup.title}</span></h1>
       <p className="mt-2 text-foreground-muted">{t.signup.sub}</p>
+      <SignupNext lang={lang} site={shownSite(site)} />
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         {step === 1 ? (
           <Field label={t.signup.email}><Input name="email" required autoFocus type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
@@ -100,6 +103,35 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
       </p>
       <p className="mt-2 text-xs text-foreground-muted">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
     </div>
+  );
+}
+
+/**
+ * Above the signup form (rule 1847): when the visitor brought a site from the home page, Noor's face and «نور تقرا:
+ * <site>»; always, the three steps of the next few minutes and the trial's chat messages and credits.
+ */
+function SignupNext({ lang, site }: { lang: Lang; site: string }) {
+  const N = SIGNUP_NEXT;
+  return (
+    <section className="s-card mt-5 grid gap-3 text-sm" aria-label={N.h[lang]}>
+      <Scribble kind="box" seed="signup-next" fill="paper" />
+      {site && (
+        <p className="flex items-center gap-3 font-bold">
+          <Face who="noor" seed="signup-noor" small />
+          <span className="min-w-0">
+            {N.reads[lang]}{" "}
+            <bdi dir="ltr" className="break-all font-mono" data-testid="signup-site">{site}</bdi>
+          </span>
+        </p>
+      )}
+      <p className="font-bold">{N.h[lang]}</p>
+      <ol className="grid list-decimal gap-1.5 ps-5">
+        {N.steps[lang].map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+      </ol>
+      <p className="text-foreground-muted">{N.trial[lang]}</p>
+    </section>
   );
 }
 

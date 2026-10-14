@@ -8,6 +8,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ContactForm from "@/components/ContactForm";
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import TickList from "@/components/TickList";
 import { pageMeta } from "@/lib/page-meta";
 
@@ -24,12 +25,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main>
+      <main id="main" tabIndex={-1}>
         <section className="section-wrap">
           <p className="eyebrow">{s.eyebrow}</p>
           <h1 className="mt-3 max-w-3xl font-display text-4xl font-bold leading-tight sm:text-6xl">
             <span className="s-ul">
-              <Scribble kind="underline" seed="customers-h" />
+              <ScribbleStatic kind="underline" seed="customers-h" rtl={lang === "ar"} />
               {s.title}
             </span>
           </h1>
@@ -53,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               <h2 className="font-display text-2xl font-bold">{s.honestTitle}</h2>
               <p className="mt-3">{s.honest}</p>
               <h2 className="mt-8 font-display text-2xl font-bold">{s.programTitle}</h2>
-              <TickList items={s.program} seed="customers-program" className="mt-4" />
+              <TickList items={s.program} seed="customers-program" rtl={lang === "ar"} className="mt-4" />
             </div>
             <div className="s-card">
               <Scribble kind="box" seed="customers-form" fill="paper" heavy shadow />

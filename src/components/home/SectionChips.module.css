@@ -1,0 +1,28 @@
+/*
+ * The homepage's section chips (rule 1854): one row under the cover. It scrolls inside itself on a narrow screen, with
+ * room above and below for the drawn pills' overhang, so the page never scrolls sideways. Tokens only.
+ */
+.chips {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  margin-block-start: -32px;
+  padding: 6px 4px 10px;
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-padding-inline: 4px;
+  scrollbar-width: thin;
+}
+.chips > li { flex: none; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--hit-min);
+  white-space: nowrap;
+  color: var(--color-foreground);
+  text-decoration: none;
+}
+@media (min-width: 700px) {
+  .chips { flex-wrap: wrap; overflow-x: visible; margin-block-start: -56px; }
+}

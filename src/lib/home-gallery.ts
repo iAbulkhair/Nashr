@@ -92,13 +92,13 @@ const INBOX_ITEMS: SampleItem[] = [
 
 const PLAN: { type: TaskType; title: L; brief: L }[] = [
   { type: "weekly_plan", title: { ar: "خطة محتوى الأسبوع", en: "This week's content plan" }, brief: { ar: "خطة منشورات الأسبوع للمحمصة.", en: "The roastery's posts for the week." } },
-  { type: "social", title: { ar: "منشور عن الخلطة الجديدة", en: "A post about the new blend" }, brief: { ar: "منشور انستقرام عن الخلطة الجديدة.", en: "An Instagram post about the new blend." } },
+  { type: "social", title: { ar: "منشور عن الخلطة الجديدة", en: "A post about the new blend" }, brief: { ar: "منشور إنستقرام عن الخلطة الجديدة.", en: "An Instagram post about the new blend." } },
   { type: "whatsapp", title: { ar: "رسالة واتساب للعملاء الدائمين", en: "A WhatsApp message for regular customers" }, brief: { ar: "رسالة ترحيب بالخلطة الجديدة.", en: "A message welcoming the new blend." } },
   { type: "gbp", title: { ar: "تحديث صفحة النشاط في قوقل", en: "An update for the Google Business Profile" }, brief: { ar: "خبر ركن التذوق.", en: "News of the tasting corner." } },
 ];
 
 const CHAT: { ask: L; reply: L } = {
-  ask: { ar: "نور، اكتبي منشور انستقرام عن الخلطة الجديدة.", en: "Noor, write an Instagram post about the new blend." },
+  ask: { ar: "نور، اكتبي منشور إنستقرام عن الخلطة الجديدة.", en: "Noor, write an Instagram post about the new blend." },
   reply: {
     ar: "جهّزت لك مسودة. راجعها، وإذا عجبتك اعتمدها. ما ينشر شي بدون موافقتك.",
     en: "Here is a draft. Review it, and approve it if you like it. Nothing goes out without your approval.",

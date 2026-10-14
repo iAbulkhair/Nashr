@@ -1,28 +1,32 @@
-import Link from "next/link";
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
+import { PlanList } from "@/components/PlanCard";
 import type { Dict, Lang } from "@/lib/i18n";
 
 /**
  * `headingLevel` exists because this section is reused on the home page and the industry pages, which have their own
  * h1, and on /pricing, which had none at all — that page opened its document outline at h2, so it shipped with no
- * first-level heading in either language.
+ * first-level heading in either language. The card and credits-table headings sit one level below it (rule 1853): h2
+ * under the page's h1, h3 under a section h2.
  *
- * Prices, credits and seats on the cards are built in the dictionary from src/lib/pricing.ts (rule 248). The Agency card
- * has no list price: its call to action goes to the contact form on /enterprise, the others to signup.
+ * Prices, credits and seats on the cards are built in the dictionary from src/lib/pricing.ts (rule 248). The cards are
+ * the shared `PlanCard` (rule 1849), the same as on the home page, with every feature listed here. The Agency card has
+ * no list price: its call to action goes to the contact form on /enterprise, the others to signup.
  *
  * Drawn as prototype D (rule 518): a scribbled card per plan, the highlighted plan on lilac with the ink pill, the
- * others with the lemon ghost pill.
+ * others with the lemon ghost pill. The title's underline is drawn once on the server in the page's direction.
  */
 export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: Lang; headingLevel?: 1 | 2 }) {
   const p = t.pricing;
   const Heading = headingLevel === 1 ? "h1" : "h2";
+  const Sub = headingLevel === 1 ? "h2" : "h3";
   return (
     <section id="pricing" className="scroll-mt-20">
       <div className="section-wrap">
         <p className="eyebrow">{p.eyebrow}</p>
         <Heading className="section-title">
           <span className="s-ul">
-            <Scribble kind="underline" seed="pricing-h" />
+            <ScribbleStatic kind="underline" seed="pricing-h" rtl={lang === "ar"} />
             {p.title}
           </span>
         </Heading>
@@ -34,44 +38,17 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
           </span>
         </div>
 
-        <div className="mt-12 grid gap-x-6 gap-y-9 md:grid-cols-2 lg:grid-cols-4">
-          {p.plans.map((plan) => (
-            <article key={plan.id} data-tier={plan.id} className="s-card flex flex-col">
-              <Scribble kind="box" seed={`pricing-${plan.id}`} fill={plan.highlight ? "lilac" : "paper"} heavy={plan.highlight} shadow={plan.highlight} />
-              <h3 className="font-display text-2xl font-bold">{plan.name}</h3>
-              <p className="mt-1 text-sm text-foreground-muted">{plan.tagline}</p>
-              <p className="mt-5 flex items-baseline gap-2">
-                <span className="font-display text-4xl font-bold" dir={plan.id === "agency" ? undefined : "ltr"}>
-                  {plan.price}
-                </span>
-                <span className="text-sm text-foreground-muted">{plan.period}</span>
-              </p>
-              <p className="mt-1 text-sm font-bold">{plan.credits}</p>
-              <ul className="mt-5 flex-1 space-y-2 text-sm" role="list">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5">
-                    <i className="relative isolate mt-1 inline-block h-[18px] w-5 flex-none" aria-hidden="true">
-                      <Scribble kind="tick" seed={`pricing-${plan.id}-${f.length}`} />
-                    </i>
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link href={plan.id === "agency" ? `/${lang}/enterprise#contact` : `/${lang}/app/signup`} className={`s-btn mt-7 ${plan.highlight ? "" : "s-btn--ghost"}`}>
-                <Scribble kind="pill" seed={`pricing-cta-${plan.id}`} fill={plan.highlight ? "ink" : "lemon"} shadow={plan.highlight} ring />
-                {plan.cta}
-              </Link>
-            </article>
-          ))}
+        <div className="mt-12">
+          <PlanList plans={p.plans} lang={lang} level={headingLevel === 1 ? 2 : 3} />
         </div>
 
         <div className="mt-14 max-w-lg">
-          <h3 className="font-display text-xl font-bold">{p.creditsTitle}</h3>
-          <table className="mt-3 w-full text-sm">
+          <Sub id="pricing-credits-h" className="font-display text-xl font-bold">{p.creditsTitle}</Sub>
+          <table className="mt-3 w-full text-sm" aria-labelledby="pricing-credits-h">
             <tbody className="divide-y divide-foreground/15 border-y-[1.5px] border-border-strong">
               {p.credits.map((c) => (
                 <tr key={c.action}>
-                  <td className="py-2">{c.action}</td>
+                  <th scope="row" className="py-2 text-start font-normal">{c.action}</th>
                   <td className="py-2 text-end font-mono font-bold" dir="ltr">
                     {c.cost}
                   </td>

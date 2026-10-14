@@ -78,7 +78,8 @@
 .doodle .paper { fill: var(--color-paper); }
 .doodle .inkFill { fill: var(--color-ink); }
 .doodle .dot { fill: var(--color-ink); stroke: none; }
-:global(:root[data-theme="dark"]) .doodle { filter: drop-shadow(0 0 0.6px var(--color-foreground)) drop-shadow(0 0 0.6px var(--color-foreground)); }
+/* One soft outline per figure on the dark page (rule 1867): two stacked drop-shadows doubled the paint cost of every figure. */
+:global(:root[data-theme="dark"]) .doodle { filter: drop-shadow(0 0 1px var(--color-foreground)); }
 @media (forced-colors: active) {
   :global(:root[data-theme="dark"]) .doodle { filter: none; }
 }
@@ -366,18 +367,35 @@
 @media (min-width: 700px) { .closing { padding: 48px 40px 40px; } }
 .closing h2 { font: 900 var(--t-xl)/1.25 var(--home-display); }
 .closing .lead { justify-items: center; width: min(100%, 36rem); }
-/* The cover's call to action stands under the team (rule 1830), centred like the closing call's. */
-.coverCta { justify-items: center; width: min(100%, 36rem); margin-inline: auto; text-align: center; }
-/* On a phone the form's button wraps under the field; it stands in the middle like the lines under it. */
-.coverCta > form { justify-content: center; }
-/* The form follows the team closely: the row keeps only the room the owner's caption needs. */
-.cover > .lineup { padding-block-end: 8px; }
+/* The cover's form sits under the offer (rule 1844), in the offer's column; on a phone its button wraps under the field. */
+.cover > .lineup { padding-block-start: 4px; }
+/* The phone's start bar (rule 1845): fixed to the bottom, above the safe area, on the page's own ground. From 700px up
+   the nav's button is always in view, so the bar never shows. */
+.stickySentinel { display: block; height: 0; }
+.sticky {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  border-block-start: 1.5px solid var(--color-border-strong);
+  background: var(--color-background);
+}
+.sticky[hidden] { display: none; }
+.stickyBtn { width: min(100%, 24rem); min-height: var(--hit-min); justify-content: center; }
+@media (min-width: 700px) { .sticky { display: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-motion="off"]) .sticky { animation: stickyIn 180ms ease-out; }
+}
+@keyframes stickyIn { from { transform: translateY(100%); } }
 .fresh {
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
   min-height: var(--hit-min);
-  padding: 2px 14px;
+  padding: 6px 16px;
   border: 1.5px solid var(--color-border-strong);
   border-radius: 999px;
   background: var(--color-surface);
@@ -488,6 +506,14 @@
   transform: rotate(-9deg);
 }
 .bigstamp:lang(en) { font-size: clamp(24px, 2.4vw, 34px) !important; }
+/* The stamp the visitor presses (rule 1881): a real button that looks like the stamp, held up until pressed. */
+.press { font-family: inherit; font-weight: 800; color: var(--color-foreground); background: none; cursor: pointer; min-height: var(--hit-min); }
+.press:not([data-on]) { transform: rotate(-9deg) translateY(-6px); }
+.press:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ring); outline-offset: 4px; }
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-motion="off"]) .home .press[data-on] { animation: thump 220ms ease-out; }
+}
+@keyframes thump { 0% { transform: rotate(-9deg) translateY(-6px) scale(1.25); } 100% { transform: rotate(-9deg) scale(1); } }
 .capEnd { margin: 0; margin-inline-start: auto; margin-block-end: -34px; }
 
 /* Steps */
@@ -516,22 +542,42 @@
   .intro > .act { grid-column: 2; grid-row: 1 / span 3; }
 }
 .trial { justify-self: start; max-width: 100%; white-space: normal; transform: rotate(-2deg); }
-.plans { display: grid; gap: 34px 22px; grid-template-columns: minmax(0, 1fr); }
+/*
+ * The plan cards (src/components/PlanCard.tsx), shared by the home page and /pricing (rules 1849-1853). /pricing sits
+ * outside `.home`, so the box is its own container and every home variable has a fallback.
+ */
+.plansBox {
+  container-type: inline-size;
+  --plan-display: var(--home-display, var(--font-display), ui-sans-serif, system-ui, sans-serif);
+  --plan-s: var(--t-s, 16px);
+}
+.plans { display: grid; gap: 34px 22px; grid-template-columns: minmax(0, 1fr); margin: 0; padding: 0; list-style: none; }
 @container (min-width: 440px) { .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (min-width: 960px) { .plans { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .plan { display: grid; gap: 10px; align-content: start; padding: 26px 22px; }
-.plan h3 { font: 900 24px/1.25 var(--home-display); }
-.planTag { font-size: var(--t-s); color: var(--color-foreground-muted); }
+/*
+ * Rule 1852: a card's five parts (head, price, credits, features, call to action) are rows of the list's grid, so a
+ * longer tagline or the "Start here" tape lowers the price on every card of the row alike and the buttons line up.
+ */
+@supports (grid-template-rows: subgrid) {
+  .plan { grid-row: span 5; grid-template-rows: subgrid; row-gap: 10px; align-content: normal; }
+}
+.planHead { display: grid; gap: 6px; align-content: start; }
+.planName { margin: 0; font: 900 24px/1.25 var(--plan-display); }
+.planTag { margin: 0; font-size: var(--plan-s); color: var(--color-foreground-muted); }
 .planTape { justify-self: start; margin-block-end: 4px; }
-.price { padding-block: 4px; font-size: var(--t-s); font-weight: 700; }
-.price b { font: 900 30px/1.1 var(--home-display); margin-inline-end: 4px; }
-@container (max-width: 560px) { .price b { font-size: 26px; } }
+.price { margin: 0; padding-block: 4px; font-size: var(--plan-s); font-weight: 700; }
+.priceN { font: 900 30px/1.1 var(--plan-display); margin-inline-end: 4px; }
+@container (max-width: 560px) { .priceN { font-size: 26px; } }
 .loopw { position: relative; isolation: isolate; display: inline-block; padding: 8px 12px; white-space: nowrap; }
-.feat { display: grid; gap: 8px; font-size: var(--t-s); }
+.planCredits { display: grid; gap: 2px; align-content: start; font-size: var(--plan-s); }
+.planCredits > p { margin: 0; }
+.planCr { font-weight: 800; }
+.planOut { color: var(--color-foreground-muted); }
+.feat { display: grid; gap: 8px; align-content: start; margin: 0; padding: 0; list-style: none; font-size: var(--plan-s); }
 .feat > li { display: flex; align-items: flex-start; gap: 10px; }
-.mk { position: relative; isolation: isolate; flex: none; width: 20px; height: 18px; margin-block-start: 4px; display: inline-block; }
-.planCta { justify-self: start; margin-block-start: 6px; font-weight: 800; color: var(--color-foreground); text-decoration: none; padding-block-end: 4px; }
-.planCta:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 4px; }
+.mk { position: relative; isolation: isolate; flex: none; inline-size: 20px; block-size: 18px; margin-block-start: 4px; display: inline-block; }
+.planCta { align-self: end; justify-self: stretch; min-block-size: var(--hit-min); margin-block-start: 8px; text-align: center; }
 .rulel { font-size: var(--t-m); font-weight: 700; }
 
 /* Questions */
@@ -630,6 +676,8 @@
   html:not([data-motion="off"]) .home .dots > i { animation: hop 2.2s ease-in-out calc(var(--k) * 0.13s) infinite; }
   html:not([data-motion="off"]) .home .seamInk .seamLine .fi { stroke-dasharray: 1 1; animation: ink 6.5s cubic-bezier(0.55, 0, 0.25, 1) infinite; }
 }
+/* Off screen, the endless decoration holds still (rule 1868, `LoopPause.tsx`). */
+.home [data-away], .home [data-away] * { animation-play-state: paused !important; }
 html[data-motion="off"] .plane { inset-inline-start: 14%; }
 html[data-motion="off"] .home * { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) {
@@ -654,9 +702,8 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 .slide { min-width: 0; padding: 18px 10px 10px; scroll-snap-align: start; }
 .scn { justify-content: space-between; }
 .sfig { display: flex; flex-direction: column; gap: 14px; height: 100%; margin: 0; }
-.sfig blockquote { margin: 0; }
+.sfig > p { margin: 0; }
 .sfig > :global(.s-bubble) { flex: 1; display: flex; align-items: center; }
-.kind { margin-block-start: -38px; margin-inline-start: var(--brk); width: fit-content; }
 .swho { display: flex; align-items: center; gap: 12px; }
 .swho b { display: block; font-weight: 800; line-height: 1.35; }
 .swho small { display: block; font-size: var(--t-xs); color: var(--color-foreground-muted); }
@@ -685,8 +732,8 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 @media (prefers-reduced-motion: reduce) { .autoBtn { display: none; } }
 :global([dir="rtl"]) .chev { transform: scaleX(-1); }
 .arrow:focus-visible, .pip:focus-visible { outline: var(--primitive-stroke-focus) solid var(--color-ring); outline-offset: 2px; border-radius: 50%; }
-.pips { display: flex; gap: 2px; }
-.pip { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; }
+.pips { display: flex; gap: 0; }
+.pip { display: grid; place-items: center; width: var(--hit-min); height: var(--hit-min); padding: 0; border: 0; background: none; cursor: pointer; }
 .pip::before { content: ""; width: 10px; height: 10px; border: 1.5px solid var(--color-foreground); border-radius: 50%; }
 .pip[aria-current="true"]::before { background: var(--color-foreground); }
 @media (scripting: none) { .carNav { display: none; } .track { scrollbar-width: thin; } }
@@ -695,3 +742,11 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 }
 li:nth-child(2n) .pface > i { --nw: 6.1s; --nd: -2.6s; }
 li:nth-child(3n) .pface > i { --nw: 4.6s; --nd: -1.2s; }
+
+/* ---------- The season ribbon in the steps' heading (SeasonRibbon.tsx, rule 1880) ---------- */
+/* The row keeps its room before the count arrives, so nothing under it moves. */
+.ribbonRow { min-height: 3.6em; margin-block-start: 6px; }
+.ribbon { display: inline-flex; align-items: flex-start; gap: 8px; max-width: 100%; padding: 6px 14px; white-space: normal; line-height: 1.5; }
+.ribbon b { font-weight: 900; }
+.cal { width: 22px; height: 22px; flex: none; margin-block-start: 2px; fill: none; stroke: currentColor; stroke-width: 1.6px; stroke-linecap: round; stroke-linejoin: round; }
+.ribbonNote { display: block; font-size: 14px; font-weight: 600; }

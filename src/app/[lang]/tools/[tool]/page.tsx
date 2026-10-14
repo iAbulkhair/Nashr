@@ -7,6 +7,7 @@ import { TOOLS, getTool } from "@/lib/tools";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import ToolForm from "@/components/ToolForm";
 import { pageMeta } from "@/lib/page-meta";
 
@@ -29,11 +30,11 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <Link href={`/${lang}/tools`} className="text-sm font-bold text-foreground underline">{`${backArrow(lang)} ${lang === "ar" ? "كل الأدوات" : "All tools"}`}</Link>
-        <h1 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><Scribble kind="underline" seed="tool-h" />{x.h1[lang]}</span></h1>
+        <h1 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><ScribbleStatic kind="underline" seed="tool-h" rtl={lang === "ar"} />{x.h1[lang]}</span></h1>
         <p className="mt-2 max-w-2xl text-foreground-muted">{x.desc[lang]}</p>
-        <div className="mt-8"><ToolForm tool={x} lang={lang} /></div>
+        <div className="mt-8"><ToolForm tool={x} lang={lang} trial={t.pricing.trial} /></div>
         <section className="mt-16">
           <h2 className="font-display text-xl font-bold">{lang === "ar" ? "أدوات أخرى" : "More tools"}</h2>
           <div className="mt-4 flex flex-wrap gap-3">{TOOLS.filter((y) => y.slug !== x.slug).map((y) => <Link key={y.slug} href={`/${lang}/tools/${y.slug}`} className="s-chip inline-flex items-center"><Scribble kind="pill" seed={`tool-more-${y.slug}`} fill="paper" ring />{y.name[lang]}</Link>)}</div>

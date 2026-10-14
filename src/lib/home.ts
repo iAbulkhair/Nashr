@@ -242,15 +242,21 @@ export const HERO: { issue: L; tbox: L; offer: L; offerSwash: L; hintMouse: L; h
   mecap: { ar: "…وهذا أنت. عليك كلمة وحدة.", en: "…and this is you. You have one word to say." },
 };
 
-/** The homepage's own nav: an anchor to each section, in page order, with D's labels. */
+/**
+ * The homepage's section chips (rule 1854): an in-page link to each section after the cover, in page order, with D's
+ * labels. They sit under the cover as a row of pills (src/components/home/SectionChips.tsx), not as a second site menu;
+ * the team is the cover itself, right above them, so it has no chip.
+ */
 export const HOME_NAV: { href: string; label: L }[] = [
-  { href: "#team", label: { ar: "الفريق", en: "Team" } },
   { href: "#rules", label: { ar: "القوانين", en: "Rules" } },
   { href: "#day", label: { ar: "يومك", en: "Your day" } },
   { href: "#steps", label: { ar: "كيف يعمل ذكين", en: "How Thakeen works" } },
   { href: "#price", label: { ar: "الخطط", en: "Plans" } },
   { href: "#faq", label: { ar: "أسئلة", en: "Questions" } },
 ];
+
+/** The chips' list name, read by a screen reader before the chips. */
+export const HOME_NAV_LABEL: L = { ar: "في هذه الصفحة", en: "On this page" };
 
 /** The prefix a rule's caption reads with. */
 export const RULE_LABEL: L = { ar: "القانون: ", en: "Rule: " };
@@ -283,7 +289,7 @@ export const SECTIONS: Record<"rules" | "day" | "steps" | "faq", { h: L; sub?: L
     h: { ar: "وش يصير بعد ما تلصق الرابط؟", en: "What happens after you paste the link?" },
     sub: { ar: "سبع خطوات. ثنتين منها بيدك: كلماتك، وموافقتك.", en: "Seven steps. Two of them are in your hands: your words and your approval." },
   },
-  faq: { h: { ar: "أسئلة قبل ما تبدأ", en: "Questions before you start" } },
+  faq: { h: { ar: "أسئلة قبل ما تبدأ.", en: "Questions before you start." } },
 };
 
 /** The team rules: each banter exchange above, with the rule it proves. */
@@ -474,27 +480,19 @@ export type Look = {
   tone: "noor" | "sami" | "razan" | "faris" | "dana" | "majed" | "layan" | "reem";
 };
 
-/** What the line is: something the person likes, a habit they recommend, or a suggestion. */
-export type SceneKind = "like" | "tip" | "idea";
-
 /**
- * One scene under the cover (rule 775): an illustrative person, never a named customer, saying how they work with one
- * agent. Each line is backed like a question: a task type that agent really performs, or a feature it really runs
- * (`tests/home-copy.test.ts`). No digits, no result promises.
+ * One scenario under the cover (rules 775, 1840): an illustrative kind of business, never a named customer or a review,
+ * told as "if you run a …" and showing which agent does which job. Each line is backed like a question: a task type that
+ * agent really performs, or a feature it really runs (`tests/home-scenes.test.ts`). It quotes nobody and carries no
+ * stamp. No digits, no result promises.
  */
-export type Scene = { role: L; line: L; kind: SceneKind; agent: HomeAgentId; look: Look } & ({ task: TaskType; feature?: never } | { feature: Feature; task?: never });
+export type Scene = { role: L; line: L; agent: HomeAgentId; look: Look } & ({ task: TaskType; feature?: never } | { feature: Feature; task?: never });
 
-export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; prev: L; next: L; slide: L; pause: L; play: L } = {
-  // Rule 926: the line under the heading marks the scenes as illustrative examples in both languages. The Arabic heading
-  // «عملاء جربوا ذكين.» is kept by founder decision 2026-10-11. Rule 775: the scenes stay role-only illustrations, not
-  // reviews: no names, no digits.
-  h: { ar: "عملاء جربوا ذكين.", en: "How owners work with Thakeen." },
-  sub: { ar: "أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", en: "Illustrative examples: what they like, what they learned, and what they recommend." },
-  kinds: {
-    like: { ar: "يعجبني", en: "What I like" },
-    tip: { ar: "نصيحة", en: "Tip" },
-    idea: { ar: "اقتراح", en: "Suggestion" },
-  },
+export const SCENES_COPY: { h: L; sub: L; with: L; prev: L; next: L; slide: L; pause: L; play: L } = {
+  // Rules 926 and 1840 (founder decisions 2026-10-14): the cards are scenarios, not customers. The heading and the line
+  // under it name no customers and use no "example" wording; the "if you run a …" cards carry the framing themselves.
+  h: { ar: "كيف يشتغل ذكين مع أصحاب المحلات.", en: "How Thakeen works with shop owners." },
+  sub: { ar: "عندك محل؟ هذا اللي يسويه الفريق معك.", en: "Run a shop? Here's what the team does with you." },
   with: { ar: "مع", en: "with" },
   prev: { ar: "السابق", en: "Previous" },
   next: { ar: "التالي", en: "Next" },
@@ -506,147 +504,51 @@ export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; 
 
 export const SCENES: Scene[] = [
   {
-    role: { ar: "صاحبة متجر عطور", en: "Perfume shop owner" },
-    line: { ar: "خلّيت نور تكتب لي منشورات الأسبوع بصوت متجري، وأنا عدّلت عليها بس واعتمدت المحتوى.", en: "I had Noor write my week of posts in my shop's voice. I only tweaked them and approved." },
-    kind: "like", agent: "noor", task: "social",
-    look: { head: "shayla", eyes: "laugh", tone: "noor" },
-  },
-  {
-    role: { ar: "صاحب مقهى", en: "Café owner" },
-    line: { ar: "قبل ما أغيّر سعر القهوة، رزان أعطتني التكلفة الصح، وصرت أشوف الربح بعيني.", en: "Before I changed the coffee price, Razan gave me the real cost, and I could see the margin myself." },
-    kind: "like", agent: "razan", task: "pricing_review",
-    look: { head: "ghutra", beard: "full", eyes: "laugh", tone: "razan" },
-  },
-  {
-    role: { ar: "مصممة عبايات", en: "Abaya designer" },
-    line: { ar: "ليان جمعت تعليقات العميلات في صفحة، وعرفت وش يبون في التشكيلة الجاية.", en: "Layan gathered my customers' comments on one page, and I knew what they want next season." },
-    kind: "like", agent: "layan", task: "feedback_synthesis",
-    look: { head: "shayla", glasses: true, eyes: "dot", tone: "sami" },
-  },
-  {
-    role: { ar: "وسيط عقاري", en: "Real-estate broker" },
-    line: { ar: "خلّيت سامي يتابع العملاء معي من أول يوم، وصار كل عميل يوصله رد في وقته.", en: "I had Sami follow up with customers alongside me from day one, so every customer hears back on time." },
-    kind: "like", agent: "sami", task: "followup_seq",
-    look: { head: "shemagh", beard: "short", eyes: "laugh", tone: "sami" },
-  },
-  {
-    role: { ar: "صاحبة مخبز", en: "Bakery owner" },
-    line: { ar: "نور جهّزت لي رسالة الواتساب للعملاء كل خميس، وأنا أراجعها وأرسلها.", en: "Noor gets my WhatsApp message to customers ready every Thursday. I review it and send it." },
-    kind: "like", agent: "noor", task: "whatsapp",
-    look: { head: "shayla", eyes: "dot", tone: "reem" },
-  },
-  {
-    role: { ar: "مدرب لياقة", en: "Fitness coach" },
-    line: { ar: "فارس ساعدني أجرّب السوق بأفكار صغيرة، وصار يعطيني تجربة وحدة كل أسبوع.", en: "Faris helped me test the market with small ideas, and now he gives me one test a week." },
-    kind: "like", agent: "faris", task: "growth_experiments",
-    look: { head: "hair", eyes: "laugh", tone: "layan" },
-  },
-  {
-    role: { ar: "صاحبة متجر إلكتروني", en: "Online store owner" },
-    line: { ar: "أحب إن رسائل السلة المتروكة من نور صارت بلهجتنا وبهوية متجري. كفو يا نور!", en: "I love that Noor's abandoned-cart messages sound like us and carry my shop's identity. Well done, Noor!" },
-    kind: "like", agent: "noor", task: "cart_recovery",
-    look: { head: "shayla", eyes: "laugh", tone: "razan" },
-  },
-  {
-    role: { ar: "مدير مطعم", en: "Restaurant manager" },
-    line: { ar: "دانة تجمع لي أرقام الأسبوع في تقرير واحد، بدل ما أدوّر عليها كل يوم.", en: "Dana pulls the week's numbers into one report for me, instead of me hunting for them every day." },
-    kind: "like", agent: "dana", task: "weekly_report",
-    look: { head: "ghutra", beard: "full", glasses: true, eyes: "dot", tone: "dana" },
-  },
-  {
-    role: { ar: "صاحبة محل ورد", en: "Flower shop owner" },
-    line: { ar: "ريم تحط مهامي ومتابعات الفريق في قائمة وحدة. أفتحها الصبح وأعرف وش عليّ ووش ينتظرني.", en: "Reem keeps my tasks and my team's follow-ups in one list. I open it in the morning and know what's on me and what's waiting." },
-    kind: "like", agent: "reem", feature: "todo",
-    look: { head: "shayla", eyes: "laugh", tone: "layan" },
-  },
-  {
-    role: { ar: "مسوّقة عيادة", en: "Clinic marketer" },
-    line: { ar: "أحدّث صفحة قوقل ماب مع كل عرض. نور تكتب النص، وأنا أنسخه.", en: "I update my Google Maps page with every offer. Noor writes the text, I paste it." },
-    kind: "tip", agent: "noor", task: "gbp",
-    look: { head: "shayla", glasses: true, eyes: "laugh", tone: "faris" },
-  },
-  {
-    role: { ar: "صاحب مغسلة سيارات", en: "Car wash owner" },
-    line: { ar: "مع رزان صرت أعرف من أول الشهر إذا الكاش يكفي، قبل ما أتفاجأ.", en: "With Razan, I know at the start of the month whether cash will last, before it surprises me." },
-    kind: "like", agent: "razan", task: "cash_forecast",
-    look: { head: "hair", beard: "short", eyes: "dot", tone: "razan" },
-  },
-  {
-    role: { ar: "صاحب محل خياطة", en: "Tailor shop owner" },
-    line: { ar: "لما العميل يقول «غالي»، سامي عنده رد محترم ما يكسر السعر ويخلّي الباب مفتوح.", en: "When a customer says “too expensive”, Sami has a polite answer that keeps the price and keeps the door open." },
-    kind: "like", agent: "sami", task: "sales_script",
-    look: { head: "shemagh", beard: "full", eyes: "laugh", tone: "sami" },
-  },
-  {
-    role: { ar: "مؤسسة محمصة قهوة", en: "Coffee roastery founder" },
-    line: { ar: "كنت محتارة أفتح فرع ولا لا. ماجد حطّ لي الخطة في صفحة وحدة، وقررت.", en: "I couldn't decide on a new branch. Majed put the plan on one page for me, and I made the call." },
-    kind: "like", agent: "majed", task: "decision_memo",
-    look: { head: "shayla", eyes: "dot", tone: "majed" },
-  },
-  {
-    role: { ar: "صاحبة علامة عناية بالبشرة", en: "Skincare brand owner" },
-    line: { ar: "اكتب فكرتك مرة وحدة واضحة لنور، وهي تفصّلها لإعلان سناب وتيك توك.", en: "Give Noor your idea once, clearly, and she shapes it into Snapchat and TikTok ads." },
-    kind: "idea", agent: "noor", task: "ads",
-    look: { head: "shayla", eyes: "laugh", tone: "sami" },
-  },
-  {
-    role: { ar: "صاحب مركز تدريب", en: "Training center owner" },
-    line: { ar: "خطة النمو من فارس مقسومة أسابيع، وكل أسبوع أعرف وش أسوي.", en: "Faris's growth plan is split into weeks, so every week I know what to do." },
-    kind: "like", agent: "faris", task: "gtm_plan",
-    look: { head: "ghutra", beard: "short", glasses: true, eyes: "laugh", tone: "faris" },
-  },
-  {
-    role: { ar: "صاحبة متجر هدايا يدوية", en: "Handmade gifts seller" },
-    line: { ar: "سألت ليان عن أول تجربة وانطباع لعميلنا، وبعدها غيّرنا رسالة الترحيب.", en: "I asked Layan about our customer's first experience and impression, then we rewrote our welcome message." },
-    kind: "like", agent: "layan", task: "onboarding_flow",
-    look: { head: "shayla", glasses: true, eyes: "dot", tone: "noor" },
-  },
-  {
-    role: { ar: "صاحب مغسلة ملابس", en: "Laundry owner" },
-    line: { ar: "دانة قالت لي أي رقم أراقب في الحملات، وتجاهلت الباقي. ارتحت.", en: "Dana told me which number to watch in my campaigns, and I ignored the rest. What a relief." },
-    kind: "like", agent: "dana", task: "dashboard_spec",
-    look: { head: "curls", eyes: "laugh", tone: "reem" },
-  },
-  {
-    role: { ar: "منظمة مناسبات", en: "Events planner" },
-    line: { ar: "كل ما وعدت أحد بشي، اكتبه في قائمة ريم على طول، لا تخليه في راسك.", en: "Whenever you promise someone something, put it on Reem's list right away, not in your head." },
-    kind: "tip", agent: "reem", feature: "todo",
-    look: { head: "shayla", eyes: "laugh", tone: "dana" },
-  },
-  {
-    role: { ar: "شريك في محل حلويات", en: "Sweets shop partner" },
-    line: { ar: "قبل اجتماع الإدارة، دانة تجهّز لي وش أعرض عليهم.", en: "Before the management meeting, Dana prepares what I'll present to them." },
-    kind: "like", agent: "dana", task: "board_deck",
+    role: { ar: "مقهى", en: "Café" },
+    line: { ar: "لو عندك مقهى وما تدري وش تنزّل هالأسبوع: نور تكتب منشورات الأسبوع بصوت محلك، وأنت تعدّل وتوافق.", en: "If you run a café and don't know what to post this week: Noor writes the week's posts in your café's voice, and you edit and approve." },
+    agent: "noor", task: "social",
     look: { head: "ghutra", beard: "full", eyes: "laugh", tone: "noor" },
   },
   {
-    role: { ar: "صاحب استوديو تصوير", en: "Photo studio owner" },
-    line: { ar: "سامي يفرز لي مين جاد ومين يسأل وبس، فأرد على الجاد أول.", en: "Sami sorts who's serious from who's just asking, so I answer the serious ones first." },
-    kind: "like", agent: "sami", task: "lead_qualifier",
-    look: { head: "hair", glasses: true, eyes: "dot", tone: "faris" },
+    role: { ar: "مخبز", en: "Bakery" },
+    line: { ar: "لو عندك مخبز وتفكر ترفع السعر: رزان تراجع تسعيرك وتوريك وش يصير للربح قبل ما تقرر.", en: "If you run a bakery and are thinking of raising prices: Razan reviews your pricing and shows you what happens to the margin before you decide." },
+    agent: "razan", task: "pricing_review",
+    look: { head: "shayla", eyes: "dot", tone: "razan" },
   },
   {
-    role: { ar: "صاحبة متجر أزياء", en: "Fashion store owner" },
-    line: { ar: "اختر أولويات قليلة حسب الخطة اللي سويتها مع ماجد، وقل لا لأي شي ثاني.", en: "Pick a few priorities from the plan you made with Majed, and say no to anything else." },
-    kind: "tip", agent: "majed", task: "okrs",
+    role: { ar: "مكتب عقار", en: "Real-estate office" },
+    line: { ar: "لو عندك مكتب عقار والعملاء يسألون ويختفون: سامي يكتب لك متابعة لكل واحد، وأنت ترسلها.", en: "If you run a real-estate office and leads ask, then go quiet: Sami writes a follow-up for each one, and you send it." },
+    agent: "sami", task: "followup_seq",
+    look: { head: "shemagh", beard: "short", eyes: "laugh", tone: "sami" },
+  },
+  {
+    role: { ar: "متجر إلكتروني", en: "Online store" },
+    line: { ar: "لو عندك متجر إلكتروني والعملاء يتركون السلة: نور تكتب رسائل السلة المتروكة بلهجتك، وتنتظر موافقتك.", en: "If you run an online store and carts get left behind: Noor writes the abandoned-cart messages in your dialect, and they wait for your approval." },
+    agent: "noor", task: "cart_recovery",
+    look: { head: "shayla", eyes: "laugh", tone: "reem" },
+  },
+  {
+    role: { ar: "محل عبايات", en: "Abaya shop" },
+    line: { ar: "لو عندك محل عبايات والتعليقات متفرقة: ليان تجمعها في صفحة وحدة وتقول لك وش يتكرر.", en: "If you run an abaya shop and the comments are scattered: Layan gathers them on one page and tells you what keeps coming up." },
+    agent: "layan", task: "feedback_synthesis",
+    look: { head: "shayla", glasses: true, eyes: "dot", tone: "layan" },
+  },
+  {
+    role: { ar: "مطعم", en: "Restaurant" },
+    line: { ar: "لو عندك مطعم وأرقامك في كل مكان: دانة تاخذ أرقام الأسبوع منك وتجمعها في تقرير واحد، بدون تجميل.", en: "If you run a restaurant and your numbers are all over the place: Dana puts the week's numbers you give her into one report, no makeup." },
+    agent: "dana", task: "weekly_report",
+    look: { head: "ghutra", beard: "full", glasses: true, eyes: "dot", tone: "dana" },
+  },
+  {
+    role: { ar: "نادي لياقة", en: "Gym" },
+    line: { ar: "لو عندك نادي لياقة وتبي مشتركين جدد: فارس يقترح تجارب صغيرة تختبرها قبل ما تصرف كثير.", en: "If you run a gym and want new members: Faris suggests small tests to try before you spend big." },
+    agent: "faris", task: "growth_experiments",
+    look: { head: "hair", eyes: "laugh", tone: "faris" },
+  },
+  {
+    role: { ar: "محمصة قهوة", en: "Coffee roastery" },
+    line: { ar: "لو عندك محمصة ومحتار تفتح فرع ثاني: ماجد يحط لك الخيارين في صفحة وحدة، والقرار لك.", en: "If you run a roastery and can't decide on a second branch: Majed puts the decision on one page, and the call is yours." },
+    agent: "majed", task: "decision_memo",
     look: { head: "shayla", eyes: "laugh", tone: "majed" },
-  },
-  {
-    role: { ar: "بائع عسل", en: "Honey seller" },
-    line: { ar: "رزان حسبت كم يكلفني العميل الواحد، وعرفت أي إعلان أوقّف.", en: "Razan worked out what one customer costs me, and I knew which ad to stop." },
-    kind: "like", agent: "razan", task: "unit_economics",
-    look: { head: "shemagh", beard: "short", eyes: "dot", tone: "sami" },
-  },
-  {
-    role: { ar: "صاحبة صالون", en: "Salon owner" },
-    line: { ar: "أحلى عادة: كل سبت أوافق على خطة نور للأسبوع، وبعدها أركّز على صالوني.", en: "Best habit: every Saturday I approve Noor's plan for the week, then I focus on my salon." },
-    kind: "tip", agent: "noor", task: "weekly_plan",
-    look: { head: "shayla", glasses: true, eyes: "laugh", tone: "razan" },
-  },
-  {
-    role: { ar: "مؤسس تطبيق", en: "App founder" },
-    line: { ar: "خلّيت ليان تكتب وش يطلب العملاء قبل ما أبرمج أي ميزة.", en: "I had Layan write up what customers ask for before I built any feature." },
-    kind: "like", agent: "layan", task: "prd",
-    look: { head: "hair", beard: "short", eyes: "laugh", tone: "dana" },
   },
 ];

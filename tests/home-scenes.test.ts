@@ -17,8 +17,8 @@ const FEATURES: Record<Feature, { skills: string; page: string }> = {
 const NOT_YET = [/remind/i, /whats\s*app/i, /telegram/i, /ذكّر/, /ذكر(ي)?ني/, /تذكير/, /واتس\s*اب/, /تي?لي?[جغ]رام/];
 
 describe("the scenes under the cover are illustrative and true to the product (rule 775)", () => {
-  it("draws more than twenty people, four to a slide, in full slides", () => {
-    expect(SCENES.length).toBeGreaterThan(20);
+  it("shows eight scenarios, four to a slide, in full slides (rule 1841)", () => {
+    expect(SCENES.length).toBe(8);
     expect(PER_SLIDE).toBe(4);
     expect(SCENES.length % PER_SLIDE).toBe(0);
   });
@@ -56,11 +56,14 @@ describe("the scenes under the cover are illustrative and true to the product (r
   it("keeps Reem's lines free of what she does not do yet", () => {
     for (const s of SCENES.filter((x) => x.agent === "reem")) for (const p of NOT_YET) expect(`${s.line.ar} ${s.line.en}`).not.toMatch(p);
   });
-  it("puts the line under the heading before the first scene; the line says the scenes are illustrative examples (rule 926)", () => {
-    expect(SCENES_COPY.h.ar).toBe("عملاء جربوا ذكين.");
-    expect(SCENES_COPY.h.en).toBe("How owners work with Thakeen.");
-    expect(SCENES_COPY.sub.ar).toBe("أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.");
-    expect(SCENES_COPY.sub.en).toBe("Illustrative examples: what they like, what they learned, and what they recommend.");
+  it("puts the line under the heading before the first scene; heading and line name no customers and say no \"example\" (rules 926, 1840)", () => {
+    expect(SCENES_COPY.h.ar).toBe("كيف يشتغل ذكين مع أصحاب المحلات.");
+    expect(SCENES_COPY.h.en).toBe("How Thakeen works with shop owners.");
+    expect(SCENES_COPY.sub.ar).toBe("عندك محل؟ هذا اللي يسويه الفريق معك.");
+    expect(SCENES_COPY.sub.en).toBe("Run a shop? Here's what the team does with you.");
+    const copy = JSON.stringify(SCENES_COPY);
+    expect(copy).not.toMatch(/مثال|أمثلة|Example|Illustrative/i);
+    expect(copy).not.toMatch(/عملاء جربوا|customers who/i);
     const src = read("src/components/home/Stories.tsx");
     expect(src.indexOf("c.sub[lang]")).toBeGreaterThan(-1);
     expect(src.indexOf("c.sub[lang]")).toBeLessThan(src.indexOf("<SceneTrack"));
@@ -99,6 +102,21 @@ describe("the scenes under the cover are illustrative and true to the product (r
     const person = read("src/components/home/Person.tsx");
     expect(person).toMatch(/The grin/);
     expect(read("src/components/home/Stories.tsx")).toMatch(/kind="circleLoop"[^>]*fill="none"/);
+  });
+  it("tells every card as a scenario: «لو عندك…» / \"If you run…\", one business per card, no repeat (rule 1840)", () => {
+    for (const s of SCENES) {
+      expect(s.line.ar.startsWith("لو عندك"), s.role.en).toBe(true);
+      expect(s.line.en.startsWith("If you run"), s.role.en).toBe(true);
+    }
+    expect(new Set(SCENES.map((s) => s.role.en)).size).toBe(SCENES.length);
+  });
+  it("carries no stamp on the cards and quotes nobody: no blockquote, no like/learned tag (rules 1841-1842)", () => {
+    expect(SCENES_COPY).not.toHaveProperty("stamp");
+    const src = read("src/components/home/Stories.tsx");
+    expect(src).not.toMatch(/s-stamp|c\.stamp/);
+    expect(src).not.toMatch(/<blockquote|<figure|<figcaption/);
+    expect(src).not.toMatch(/kinds\[/);
+    expect(JSON.stringify(SCENES_COPY)).not.toMatch(/يعجبني|I like/);
   });
   it("sits right under the cover", () => {
     const page = read("src/app/[lang]/page.tsx");

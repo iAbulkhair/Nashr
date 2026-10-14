@@ -7,6 +7,7 @@ import { LANGS, dict, isLang } from "@/lib/i18n";
 import { appOrigin } from "@/lib/origin";
 import { SITE_DEFAULT } from "@/lib/page-meta";
 import { THEME_SCRIPT } from "@/lib/theme";
+import ScribbleDir from "@/components/ScribbleDir";
 import ThemeScope from "@/components/ThemeScope";
 
 // Thmanyah Serif Display («ثمانية للعناوين») for headings and large type; body text stays IBM Plex Sans Arabic.
@@ -65,6 +66,7 @@ export default async function RootLayout({ children, params }: { children: React
   // `thakeen_theme` cookie (or the old `nashr_theme`) and the device setting and sets `data-theme` before the body is parsed, so a dark page never
   // flashes light and the page stays statically prerendered (no cookies() here). suppressHydrationWarning covers only
   // that one attribute on <html>. One `ThemeScope` here serves every page in the language, public, app and console.
+  // `ScribbleDir` hands the page's direction to client scribbles so they draw the right way from the first paint (rule 1869).
   return (
     <html lang={lang} dir={t.dir} translate="no" data-theme="light" suppressHydrationWarning className={`${thmanyah.variable} ${plexArabic.variable} ${plexMono.variable}`}>
       <head>
@@ -72,7 +74,7 @@ export default async function RootLayout({ children, params }: { children: React
       </head>
       <body>
         <ThemeScope />
-        {children}
+        <ScribbleDir rtl={t.dir === "rtl"}>{children}</ScribbleDir>
       </body>
     </html>
   );

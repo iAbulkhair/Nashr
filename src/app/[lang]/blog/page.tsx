@@ -6,6 +6,7 @@ import { listPosts } from "@/lib/blog";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
@@ -25,8 +26,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main className="page-wrap">
-        <h1 className="font-display text-4xl font-bold"><span className="s-ul"><Scribble kind="underline" seed="blog-h" />{lang === "ar" ? "المدونة" : "Blog"}</span></h1>
+      <main id="main" tabIndex={-1} className="page-wrap">
+        <h1 className="font-display text-4xl font-bold"><span className="s-ul"><ScribbleStatic kind="underline" seed="blog-h" rtl={lang === "ar"} />{lang === "ar" ? "المدونة" : "Blog"}</span></h1>
         <ul className="mt-10 grid gap-8">
           {posts.map((p) => (
             <li key={p.slug}>

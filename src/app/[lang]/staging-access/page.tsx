@@ -24,7 +24,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!isStaging() || !isLang(lang)) notFound();
   const t = COPY[lang];
   return (
-    <main className="page-wrap">
+    <main id="main" tabIndex={-1} className="page-wrap">
       <form method="post" action="/api/staging-access" className="mx-auto grid max-w-sm gap-3">
         <h1 className="font-display text-2xl font-bold text-foreground">{t.title}</h1>
         <input type="hidden" name="lang" value={lang} />

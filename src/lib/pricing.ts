@@ -143,6 +143,17 @@ export function brandCapFor(u: { plan: Plan; brandCap?: number }): number {
   return isFixedPlan(u.plan) ? PLAN_BRANDS[u.plan] : 1;
 }
 
+/**
+ * The cheapest public plan whose monthly credits cover `credits` (Razan's calculator on /pricing, rule 1885): the
+ * self-serve plans in price order, then "agency" for anything above Business (an Agency deal starts at AGENCY_MIN and is
+ * sized by contract). Zero, a negative number or NaN needs no plan and reads as the cheapest, Starter.
+ */
+export function smallestPlanFor(credits: number): PublicTier {
+  const need = Number.isFinite(credits) ? credits : 0;
+  const byPrice = [...SELF_SERVE_PLANS].sort((a, b) => PLAN_PRICE_SAR[a] - PLAN_PRICE_SAR[b]);
+  return byPrice.find((p) => PLAN_CREDITS[p] >= need) ?? "agency";
+}
+
 // ---- The margin floor (rule 241, tests/pricing-floor.test.ts) ----
 
 export const SAR_PER_USD = 3.75;

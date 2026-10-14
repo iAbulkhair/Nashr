@@ -222,7 +222,8 @@ describe("rule 1203: the theme is set before the first paint (every page in the 
     // Rule 1214: one ThemeScope in the language layout serves every page; the app and the console no longer mount one,
     // so leaving the app for a public page keeps the viewer's theme.
     expect(read("src/app/[lang]/layout.tsx").match(/<ThemeScope \/>/g)).toHaveLength(1);
-    expect(read("src/app/[lang]/layout.tsx")).toMatch(/<body>\s*<ThemeScope \/>\s*\{children\}\s*<\/body>/);
+    // Rule 1869 wraps the children in the scribbles' direction, nothing else sits between.
+    expect(read("src/app/[lang]/layout.tsx")).toMatch(/<body>\s*<ThemeScope \/>\s*<ScribbleDir rtl=\{t\.dir === "rtl"\}>\{children\}<\/ScribbleDir>\s*<\/body>/);
     expect(read("src/app/[lang]/app/layout.tsx")).not.toMatch(/ThemeScope/);
     expect(read("src/app/[lang]/admin/layout.tsx")).not.toMatch(/ThemeScope/);
   });

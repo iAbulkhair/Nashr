@@ -1,0 +1,9 @@
+# Coverage: the Saudi-dialect review of the critique's Arabic (rules 1888-1890)
+
+Status on 2026-10-14 on branch `claude/frosty-haibt-2e4d5a` (PR #370). A dialect review read every Arabic string this PR adds; the founder approved every correction («اعتمد كل التصحيحات», 2026-10-14). English is unchanged, and «أنت توافق» stays everywhere as the brand line. No route, permission or environment variable changed.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 1888 | The Arabic the critique added reads Saudi: no Levantine/Egyptian «بـ» + verb (Noor «تقرا»), the signup steps («تفعّل إيميلك», «وتتأكد من رابطك»), the ribbon's Umm al-Qura note («وممكن يختلف يوم حسب الرؤية»), the cover banter's spoken count «ثلاث عملاء» (reverses the critique's «ثلاثة عملاء», rule 1843), the scenes (abandoned carts, Dana's report, Faris's tests, Majed's two options), the industry pages (passive «تنتسى», «أحطهم», «وأنت ما تطلع»), the calculator's lines, the tool form's error and both 404 pages («الرابط اللي فتحته مو موجود، أو انكتب غلط.») | `tests/dialect-review.test.ts`; `tests/site-critique-copy.test.ts` (count); `tests/home-conversion.test.ts`; `tests/plan-cards.test.ts` (calculator's contract line) | — |
+| 1889 | The agent pages' Arabic headings address the visitor, so they fit the five women on the team as well as the men: «وش تستلم», «جرّب تطلب» (`AGENTS_VOICE` in `src/lib/pages-voice.ts`) | `tests/dialect-review.test.ts` | — |
+| 1890 | /agents takes its share title and description from `AGENTS_VOICE` (the words its heading shows), not the old formal `SITE.agents` copy; `SITE.agents` keeps only `eyebrow`, `title` and `sub` (`title` and `sub` are still read by `llms.txt`), and its five unread keys are gone | `tests/dialect-review.test.ts`; `tests/pages-copy-forms.test.ts` (the old closing line never returns) | — |
