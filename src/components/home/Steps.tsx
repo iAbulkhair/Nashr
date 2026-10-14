@@ -1,4 +1,5 @@
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { CAST, SECTIONS, STEP7_LINK, STEPS } from "@/lib/home";
 import { formatNumber } from "@/lib/format";
 import type { Lang } from "@/lib/i18n";
@@ -6,6 +7,7 @@ import { CLAUDE_PAUSED } from "@/lib/model";
 import { Float } from "./Decor";
 import Doodle from "./Doodle";
 import Face from "./Face";
+import SeasonRibbon from "./SeasonRibbon";
 import styles from "./home.module.css";
 
 /** Step five, the owner's approval, is the one D draws twice as wide with the owner standing beside it. */
@@ -24,11 +26,12 @@ export default function Steps({ lang }: { lang: Lang }) {
       <div className={styles.sh}>
         <h2 id="t-steps">
           <span className={styles.ul}>
-            <Scribble kind="underline" seed="steps-h" />
+            <ScribbleStatic kind="underline" seed="steps-h" rtl={lang === "ar"} />
             {s.h[lang]}
           </span>
         </h2>
         {s.sub && <p className={styles.sub}>{s.sub[lang]}</p>}
+        <SeasonRibbon lang={lang} paused={CLAUDE_PAUSED} />
       </div>
       <ol className={`${styles.grid4} ${styles.steps}`} role="list">
         {STEPS.map((st, i) => {

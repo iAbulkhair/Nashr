@@ -1,8 +1,10 @@
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { AGENT_CAST, CAST, DAY, SECTIONS } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
 import { Float } from "./Decor";
 import Doodle from "./Doodle";
+import PressStamp from "./PressStamp";
 import styles from "./home.module.css";
 
 const you = CAST.find((m) => m.id === "you")!;
@@ -31,7 +33,7 @@ export default function Day({ lang }: { lang: Lang }) {
       <div className={styles.sh}>
         <h2 id="t-day">
           <span className={styles.ul}>
-            <Scribble kind="underline" seed="day-h" />
+            <ScribbleStatic kind="underline" seed="day-h" rtl={lang === "ar"} />
             {s.h[lang]}
           </span>
         </h2>
@@ -127,10 +129,7 @@ export default function Day({ lang }: { lang: Lang }) {
             <span className={styles.signFig} aria-hidden="true">
               <Doodle who="you" />
             </span>
-            <p className={`s-stamp ${styles.bigstamp}`}>
-              <Scribble kind="stamp" seed="d4stamp" fill="lemon" />
-              {word.stamp[lang]}
-            </p>
+            <PressStamp label={word.stamp[lang]} />
           </div>
           <Cap seed="d4end" className={styles.capEnd}>
             {word.end[lang]}
