@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { dict, isLang } from "@/lib/i18n";
 import Nav from "@/components/Nav";
 import Pricing from "@/components/Pricing";
+import CreditCalculator from "@/components/CreditCalculator";
 import Faq from "@/components/Faq";
 import FinalCta from "@/components/FinalCta";
 import Footer from "@/components/Footer";
@@ -26,6 +27,10 @@ export default async function PricingPage({ params }: { params: Promise<{ lang: 
       <Nav t={t} lang={lang} />
       <main>
         <Pricing t={t} lang={lang} headingLevel={1} />
+        {/* Razan's credit calculator (rules 1885-1887): /pricing only, a section of the page beside the cards. */}
+        <div className="mt-16">
+          <CreditCalculator t={t} lang={lang} level={2} />
+        </div>
         <Faq t={t} />
         <FinalCta t={t} lang={lang} />
       </main>
