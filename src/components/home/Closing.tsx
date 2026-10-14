@@ -1,4 +1,5 @@
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import UrlStart from "@/components/UrlStart";
 import { HOME_END } from "@/lib/home-hero";
 import type { Dict, Lang } from "@/lib/i18n";
@@ -15,7 +16,7 @@ export default function Closing({ lang, t }: { lang: Lang; t: Dict }) {
       <Scribble kind="box" seed="closing" fill="paper" />
       <h2 id="t-start">
         <span className={styles.ul}>
-          <Scribble kind="underline" seed="closing-h" />
+          <ScribbleStatic kind="underline" seed="closing-h" rtl={lang === "ar"} />
           {HOME_END.h[lang]}
         </span>
       </h2>

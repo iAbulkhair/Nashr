@@ -36,7 +36,7 @@ export default function ThemeToggle({ lang, size = "md", className = "" }: { lan
     chooseTheme(THEME_PREFS[next]);
     refs.current[next]?.focus();
   }
-  const pad = size === "sm" ? "px-2.5 text-[11px] pointer-fine:min-h-7" : "px-3.5 text-sm pointer-fine:min-h-8 pointer-fine:text-xs";
+  const pad = size === "sm" ? "px-2.5 text-xs pointer-fine:min-h-7" : "px-3.5 text-sm pointer-fine:min-h-8 pointer-fine:text-xs";
   return (
     <div role="radiogroup" aria-label={c.label} className={`inline-flex items-center gap-0.5 rounded-full border-[1.5px] border-border-strong bg-surface p-0.5 ${className}`}>
       {THEME_PREFS.map((p, i) => {

@@ -1,4 +1,5 @@
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { AGENT_CAST, RULES, RULE_LABEL, SECTIONS } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
 import { Float } from "./Decor";
@@ -20,7 +21,7 @@ export default function Rules({ lang }: { lang: Lang }) {
       <div className={styles.sh}>
         <h2 id="t-rules">
           <span className={styles.ul}>
-            <Scribble kind="underline" seed="rules-h" />
+            <ScribbleStatic kind="underline" seed="rules-h" rtl={lang === "ar"} />
             {s.h[lang]}
           </span>
         </h2>

@@ -7,6 +7,7 @@ import { LANGS, dict, isLang } from "@/lib/i18n";
 import { appOrigin } from "@/lib/origin";
 import { SITE_DEFAULT } from "@/lib/page-meta";
 import { THEME_SCRIPT } from "@/lib/theme";
+import ScribbleDir from "@/components/ScribbleDir";
 import ThemeScope from "@/components/ThemeScope";
 
 // Thmanyah Serif Display («ثمانية للعناوين») for headings and large type; body text stays IBM Plex Sans Arabic.
@@ -72,7 +73,8 @@ export default async function RootLayout({ children, params }: { children: React
       </head>
       <body>
         <ThemeScope />
-        {children}
+        {/* Scribbles draw in the page's direction from the first paint (rule 1869). */}
+        <ScribbleDir rtl={t.dir === "rtl"}>{children}</ScribbleDir>
       </body>
     </html>
   );
