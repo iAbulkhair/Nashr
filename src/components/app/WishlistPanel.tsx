@@ -1,6 +1,5 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { adminFetch } from "@/lib/admin-fetch";
 import { TITLE_MAX, WISH_STATUSES, type Bi, type WishArea, type WishStatus } from "@/lib/changelog";
 
 type Item = { id: string; title: Bi; area: WishArea | null; status: WishStatus; votes: number; seeded: boolean; hidden: boolean };
@@ -21,7 +20,7 @@ function PromoteForm({ lang, initial, suggestionId, onDone, onCancel }: { lang: 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const r = await adminFetch("/api/admin/wishlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "promote", title: { ar, en }, area: area || undefined, suggestionId }) });
+    const r = await fetch("/api/admin/wishlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "promote", title: { ar, en }, area: area || undefined, suggestionId }) });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
     if (j.ok) { setAr(""); setEn(""); setArea(""); }
@@ -50,13 +49,13 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const load = useCallback(async () => {
-    const j = await adminFetch("/api/admin/wishlist").then((r) => r.json()).catch(() => ({}));
+    const j = await fetch("/api/admin/wishlist").then((r) => r.json()).catch(() => ({}));
     if (j.ok) setData({ suggestions: j.suggestions, items: j.items });
   }, []);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   async function act(body: Record<string, unknown>) {
-    const r = await adminFetch("/api/admin/wishlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await fetch("/api/admin/wishlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
     setMsg(j.ok ? `${String(body.action)} ✓` : `${L.failed}: ${j.error ?? r.status}`);
     await load();

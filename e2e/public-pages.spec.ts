@@ -26,6 +26,24 @@ for (const lang of LANGS) {
         await expect(page.locator("body"), `${path} must render its own content`).toContainText(unique);
       });
 
+      // #45: a shared link previews this page, not the brand word, with the share image and a large card.
+      test(`${path} has its own share card`, async ({ page }) => {
+        await open(page, path);
+        const ogTitle = page.locator('meta[property="og:title"]').first();
+        await expect(ogTitle).toHaveAttribute("content", /.+/);
+        const title = await page.title();
+        expect(await ogTitle.getAttribute("content"), `${path}: og:title must be the page's own title`).toBe(title);
+        expect(title).not.toBe(lang === "ar" ? "ذكين" : "Thakeen");
+        await expect(page.locator('meta[name="twitter:card"]').first()).toHaveAttribute("content", "summary_large_image");
+        const image = await page.locator('meta[property="og:image"]').first().getAttribute("content");
+        expect(image, `${path}: og:image must be an absolute https URL`).toMatch(/^https:\/\//);
+        // The URL is on the canonical origin (APP_ORIGIN, or production when unset); fetch the same path from this build.
+        const url = new URL(image!);
+        const res = await page.request.get(url.pathname + url.search);
+        expect(res.status(), `${path}: the share image must answer 200`).toBe(200);
+        expect(res.headers()["content-type"]).toMatch(/^image\/png/);
+      });
+
       if (route.ownTitle) {
         test(`${path} has its own title`, async ({ page }) => {
           await open(page, path);
