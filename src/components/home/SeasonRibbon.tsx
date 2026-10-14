@@ -1,10 +1,26 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import Scribble from "@/components/Scribble";
 import { dateFormat } from "@/lib/dates";
 import type { Lang } from "@/lib/i18n";
 import { RIBBON, daysLeft, nextSeason, type NextSeason } from "@/lib/season-ribbon";
 import styles from "./home.module.css";
+
+const noSubscribe = () => () => {};
+
+/** The next season from today, or null in a browser without the Umm al-Qura calendar (no ribbon beats a wrong date). */
+function countNext(): NextSeason | null {
+  try {
+    const f = dateFormat("en", { calendar: "islamic-umalqura", month: "numeric", day: "numeric" });
+    const hijriOf = (d: Date) => {
+      const p = f.formatToParts(d);
+      return { m: Number(p.find((x) => x.type === "month")?.value), day: Number(p.find((x) => x.type === "day")?.value) };
+    };
+    return nextSeason(new Date(), hijriOf);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The next Gulf season, on a hand-drawn ribbon (rule 1880). The page is built ahead of time, so the count is made in
@@ -12,19 +28,9 @@ import styles from "./home.module.css";
  * move. While the weekly plan is paused (`paused`) the ribbon names the season only and promises nothing about it.
  */
 export default function SeasonRibbon({ lang, paused }: { lang: Lang; paused: boolean }) {
-  const [next, setNext] = useState<NextSeason | null>(null);
-  useEffect(() => {
-    try {
-      const f = dateFormat("en", { calendar: "islamic-umalqura", month: "numeric", day: "numeric" });
-      const hijriOf = (d: Date) => {
-        const p = f.formatToParts(d);
-        return { m: Number(p.find((x) => x.type === "month")?.value), day: Number(p.find((x) => x.type === "day")?.value) };
-      };
-      setNext(nextSeason(new Date(), hijriOf));
-    } catch {
-      // A browser without the Umm al-Qura calendar shows no ribbon rather than a wrong date.
-    }
-  }, []);
+  // True only in the browser after hydration, so the server and the first client render agree on an empty row.
+  const ready = useSyncExternalStore(noSubscribe, () => true, () => false);
+  const next = useMemo(() => (ready ? countNext() : null), [ready]);
   return (
     <p className={styles.ribbonRow} aria-live="off">
       {next && (

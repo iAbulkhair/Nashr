@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import Scribble from "@/components/Scribble";
 import type { Lang } from "@/lib/i18n";
@@ -10,6 +10,8 @@ import styles from "./home.module.css";
  * Whether the bar shows (rule 1845): only once the cover's form has scrolled up past the top of the screen, and never
  * while the closing call or the footer is on screen, so it never covers another way to start or the footer's links.
  */
+const noSubscribe = () => () => {};
+
 export const barShows = (s: { formAbove: boolean; endShowing: boolean }) => s.formAbove && !s.endShowing;
 
 /**
@@ -23,9 +25,9 @@ export default function StickyStart({ lang, label }: { lang: Lang; label: string
   const sentinel = useRef<HTMLSpanElement>(null);
   const [formAbove, setFormAbove] = useState(false);
   const [endShowing, setEndShowing] = useState(false);
-  const [host, setHost] = useState<HTMLElement | null>(null);
+  // `body` exists only in the browser; the server and the hydrating render draw no bar.
+  const host = useSyncExternalStore(noSubscribe, () => document.body, () => null);
   useEffect(() => {
-    setHost(document.body);
     const el = sentinel.current;
     if (!el) return;
     const form = new IntersectionObserver(([e]) => setFormAbove(!e.isIntersecting && e.boundingClientRect.top < 0));

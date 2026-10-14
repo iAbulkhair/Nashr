@@ -5,6 +5,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import PressStamp from "@/components/home/PressStamp";
+import SeasonRibbon from "@/components/home/SeasonRibbon";
 import { hijriDate } from "@/lib/seasons";
 import { RIBBON, daysLeft, nextSeason, riyadhDay, whiteFriday, type HijriOf } from "@/lib/season-ribbon";
 import { HOME } from "@/lib/home";
@@ -48,7 +49,9 @@ describe("rule 1880: the season ribbon counts to the next real season", () => {
   });
   it("counts in the browser, keeps its room before then, and promises nothing while the plan is paused", () => {
     const src = read("src/components/home/SeasonRibbon.tsx");
-    expect(src).toMatch(/useEffect\(/);
+    // The server (and the hydrating render) draws the empty row only; the count waits for the browser.
+    expect(src).toMatch(/useSyncExternalStore\(noSubscribe, \(\) => true, \(\) => false\)/);
+    expect(renderToStaticMarkup(h(SeasonRibbon, { lang: "ar", paused: false }))).toMatch(/^<p class="[^"]*" aria-live="off"><\/p>$/);
     expect(src).toMatch(/dateFormat\("en", \{ calendar: "islamic-umalqura"/);
     expect(src).toMatch(/\{!paused && <> \{RIBBON\.tail\[lang\]\}<\/>\}/);
     expect(CSS).toMatch(/\.ribbonRow \{ min-height:/);
