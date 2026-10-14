@@ -10,12 +10,12 @@ type L = { ar: string; en: string };
  * messages and credits come from `src/lib/pricing.ts`. The page imports this module, not the whole dictionary.
  */
 export const SIGNUP_NEXT: { reads: L; h: L; steps: { ar: readonly string[]; en: readonly string[] }; trial: L } = {
-  reads: { ar: "نور بتقرا:", en: "Noor will read:" },
+  reads: { ar: "نور تقرا:", en: "Noor will read:" },
   h: { ar: "وش يصير في الدقايق الجاية", en: "What happens in the next few minutes" },
   steps: {
     ar: [
-      "تأكد إيميلك من رابط نرسله لك.",
-      "تجاوب على أسئلة سريعة عن محلك وتأكد رابطك.",
+      "تفعّل إيميلك من رابط نرسله لك.",
+      "تجاوب على أسئلة سريعة عن محلك وتتأكد من رابطك.",
       "نور تبني ملف علامتك وأول خطة، وما ينشر شي بدون موافقتك.",
     ],
     en: [

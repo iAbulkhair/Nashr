@@ -17,9 +17,9 @@ export const AGENTS_VOICE: Record<Lang, { title: string; sub: string; does: stri
   ar: {
     title: "ثمانية وكلاء، ومحادثة وحدة.",
     sub: "تبدأ مع نور. هي تعرف علامتك، ولو احتجت متخصص تناديه لك في نفس المحادثة.",
-    does: "وش يسلّمك",
+    does: "وش تستلم",
     works: "كيف يمشي الشغل",
-    asks: "جرّب اطلب",
+    asks: "جرّب تطلب",
     onMind: "اللي يدور في بالك",
     others: "باقي الفريق",
     startWith: "نفس المحادثة ونفس ملف العلامة. ابدأ مع",

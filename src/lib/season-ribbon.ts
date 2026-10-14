@@ -73,5 +73,5 @@ export function daysLeft(lang: "ar" | "en", n: number): string {
 export const RIBBON: { lead: L; tail: L; hijri: L } = {
   lead: { ar: "الموسم الجاي:", en: "Next season:" },
   tail: { ar: "ونور تحسب حسابه في خطتك لما يقرب.", en: "Noor works it into your plan as it gets close." },
-  hijri: { ar: "حسب تقويم أم القرى، وقد يختلف يوم مع الرؤية.", en: "By the Umm al-Qura calendar; a moon sighting can move it a day." },
+  hijri: { ar: "حسب تقويم أم القرى، وممكن يختلف يوم حسب الرؤية.", en: "By the Umm al-Qura calendar; a moon sighting can move it a day." },
 };

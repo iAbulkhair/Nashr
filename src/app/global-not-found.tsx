@@ -17,7 +17,7 @@ const plexArabic = IBM_Plex_Sans_Arabic({ subsets: ["arabic"], weight: ["400", "
 
 export const metadata: Metadata = {
   title: "الصفحة غير موجودة · Page not found — ذكين",
-  description: "الرابط الذي فتحته غير موجود. The link you opened does not exist.",
+  description: "الرابط اللي فتحته مو موجود. The link you opened does not exist.",
 };
 
 /**
@@ -35,7 +35,7 @@ export default function GlobalNotFound() {
           <p className="s-stamp font-mono text-2xl tracking-widest" dir="ltr"><Scribble kind="stamp" seed="global-not-found" fill="lemon" />404</p>
           <div className="grid gap-2">
             <h1 className="font-display text-3xl font-bold">الصفحة غير موجودة</h1>
-            <p className="text-foreground-muted">الرابط الذي فتحته غير موجود أو كُتب بشكل خاطئ.</p>
+            <p className="text-foreground-muted">الرابط اللي فتحته مو موجود، أو انكتب غلط.</p>
           </div>
           <div className="grid gap-2" lang="en" dir="ltr">
             <h2 className="font-display text-xl font-bold">Page not found</h2>

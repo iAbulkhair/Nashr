@@ -19,16 +19,16 @@ export const CALC_TYPES: readonly { type: TaskType; perItem?: boolean; start: nu
   { type: "article", start: 0, label: { ar: "مقالات SEO", en: "SEO articles" } },
   { type: "ads", perItem: true, start: 0, label: { ar: "إعلانات", en: "Ads" } },
   { type: "whatsapp", perItem: true, start: 0, label: { ar: "رسائل واتساب", en: "WhatsApp messages" } },
-  { type: "weekly_plan", start: 4, label: { ar: "خطط الأسبوع (تُجهَّز كل أحد)", en: "Weekly plans (one each Sunday)" } },
+  { type: "weekly_plan", start: 4, label: { ar: "خطط الأسبوع (وحدة كل أحد)", en: "Weekly plans (one each Sunday)" } },
   { type: "weekly_report", start: 0, label: { ar: "تقارير أسبوعية", en: "Weekly reports" } },
 ];
 
 export const CALC_COPY = {
   h: { ar: "احسبها مع رزان", en: "Work it out with Razan" },
   /** Razan's one line (rule 1887): what the calculator does, no saving and no result promised. */
-  intro: { ar: "قل لي وش تحتاج بالشهر، وأحسب لك كم كريدت يلزمك وأي خطة تكفيك.", en: "Tell me what you need each month, and I'll work out the credits it takes and the plan that covers it." },
+  intro: { ar: "علّمني وش تحتاج بالشهر، وأحسب لك كم كريدت يكفيك وأي خطة تناسبك.", en: "Tell me what you need each month, and I'll work out the credits it takes and the plan that covers it." },
   note: {
-    ar: "الدردشة مع الفريق لا تُحسب هنا: لكل خطة رسائلها الشهرية. والصور تُحسب حسب النموذج، كما في الجدول أعلاه.",
+    ar: "المحادثة مع الفريق ما تنحسب هنا: كل خطة لها رسائلها بالشهر. والصور تنحسب حسب النموذج، زي الجدول اللي فوق.",
     en: "Chatting with the team is not counted here: each plan has its own monthly messages. Images are priced by model, as in the table above.",
   },
 } satisfies Record<string, L>;

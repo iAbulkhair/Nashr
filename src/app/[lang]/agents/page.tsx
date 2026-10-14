@@ -18,7 +18,7 @@ import { pageMeta } from "@/lib/page-meta";
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
   if (!isLang(lang)) return {};
-  return pageMeta(lang, "/agents", { title: `${SITE[lang].agents.title} — ${dict[lang].brand}`, description: SITE[lang].agents.sub });
+  return pageMeta(lang, "/agents", { title: `${AGENTS_VOICE[lang].title} — ${dict[lang].brand}`, description: AGENTS_VOICE[lang].sub });
 }
 
 /** The quotation marks around a question the agent answers: «…» in Arabic, “…” in English. */

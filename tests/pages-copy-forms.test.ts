@@ -108,7 +108,8 @@ describe("rule 1862: /for/* and /agents speak in the home page's voice, with the
       const h = renderToStaticMarkup(await AgentPage({ params: Promise.resolve({ lang, agent: "razan" }) }));
       expect(h).toMatch(/class="s-cloud[^"]*"[^>]*data-on-mind/);
       for (const k of ["does", "works", "asks", "others"] as const) expect(h, k).toContain(AGENTS_VOICE[lang][k]);
-      expect(h).not.toContain(SITE[lang].agents.startWith);
+      // The old formal closing line (removed from SITE with its four siblings) never comes back.
+      expect(h).not.toContain(lang === "ar" ? "كل شيء يبدأ من نور: نفس المحادثة ونفس ملفات العلامة." : "Everything starts with Noor: same conversation, same brand files.");
       expect(h).toMatch(hitLink(`/${lang}/agents/noor`));
     });
   }

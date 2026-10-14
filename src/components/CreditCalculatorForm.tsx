@@ -33,11 +33,11 @@ export function calcResult(lang: Lang, total: number, plans: readonly CalcPlan[]
   if (id === "agency") {
     const biz = formatCount(PLAN_CREDITS.business);
     return lang === "ar"
-      ? `تحتاج ${credit(lang, total)} في الشهر، أكثر من ${biz} في خطة الأعمال. رصيد ${plan.name} يُحدَّد بالعقد: تواصل معنا.`
+      ? `تحتاج ${credit(lang, total)} في الشهر، أكثر من ${biz} في خطة الأعمال. رصيد ${plan.name} نتفق عليه في العقد: كلّمنا.`
       : `That's ${credit(lang, total)} a month, more than Business's ${biz}. ${plan.name} credits are set by contract: contact us.`;
   }
   return lang === "ar"
-    ? `تحتاج ${credit(lang, total)} في الشهر. أصغر خطة تكفيها: ${plan.name}، ${credit(lang, plan.credits)} بـ ${plan.price} ${plan.period}.`
+    ? `تحتاج ${credit(lang, total)} في الشهر. أصغر خطة تكفيك: ${plan.name}، ${credit(lang, plan.credits)} بـ ${plan.price} ${plan.period}.`
     : `That's ${credit(lang, total)} a month. The smallest plan that covers it: ${plan.name}, ${credit(lang, plan.credits)} for ${plan.price} ${plan.period}.`;
 }
 

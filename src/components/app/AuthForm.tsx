@@ -107,7 +107,7 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
 }
 
 /**
- * Above the signup form (rule 1847): when the visitor brought a site from the home page, Noor's face and «نور بتقرا:
+ * Above the signup form (rule 1847): when the visitor brought a site from the home page, Noor's face and «نور تقرا:
  * <site>»; always, the three steps of the next few minutes and the trial's chat messages and credits.
  */
 function SignupNext({ lang, site }: { lang: Lang; site: string }) {

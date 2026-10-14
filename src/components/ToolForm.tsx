@@ -20,7 +20,7 @@ export default function ToolForm({ tool, lang, trial }: { tool: Tool; lang: Lang
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const ar = lang === "ar";
-  const failed = ar ? "حدث خطأ، حاول مرة أخرى." : "Something failed, try again.";
+  const failed = ar ? "صار خطأ، جرّب مرة ثانية." : "Something failed, try again.";
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true); setErr(""); setOut(""); setCopied("idle");

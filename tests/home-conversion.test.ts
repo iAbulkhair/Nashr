@@ -65,7 +65,7 @@ describe("rule 1847: the signup page says what happens next", () => {
     expect(SIGNUP_NEXT.steps.en).toHaveLength(3);
     expect(SIGNUP_NEXT.steps.ar[2]).toContain("بدون موافقتك");
     expect(SIGNUP_NEXT.steps.en[2]).toContain("without your approval");
-    expect(SIGNUP_NEXT.reads.ar).toBe("نور بتقرا:");
+    expect(SIGNUP_NEXT.reads.ar).toBe("نور تقرا:");
   });
   it("shows back only an address-shaped site, without its scheme, and never a sentence", () => {
     expect(shownSite("https://mystore.com/")).toBe("mystore.com");

@@ -245,7 +245,7 @@ describe("rules 1885-1887: Razan's credit calculator on /pricing", () => {
       expect(pro, lang).toContain(PLAN_CREDITS.pro.toString());
       const agency = calcResult(lang, PLAN_CREDITS.business + 1, plans);
       expect(agency, lang).toContain(plan(lang, "agency").name);
-      expect(agency, lang).toMatch(lang === "en" ? /contact us/ : /تواصل معنا/);
+      expect(agency, lang).toMatch(lang === "en" ? /contact us/ : /كلّمنا/);
       for (const s of [pro, agency, calcResult(lang, 0, plans)]) expect(s, lang).not.toMatch(/sav(e|ing)|cheaper|%|توفير|وفّر|أرخص/i);
     }
   });

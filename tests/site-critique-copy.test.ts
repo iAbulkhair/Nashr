@@ -7,9 +7,10 @@ const walk = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? walk(`${dir}/${d.name}`) : /\.(ts|tsx)$/.test(d.name) ? [`${dir}/${d.name}`] : []));
 
 describe("site critique 2026-10-14: the small copy fixes (rule 1843)", () => {
-  it("counts customers in the masculine: «ثلاثة عملاء», never «ثلاث عملاء»", () => {
-    expect(JSON.stringify(BANTER)).toContain("ثلاثة عملاء");
-    for (const f of walk("src")) expect(read(f), f).not.toContain("ثلاث عملاء");
+  // Rule 1888 reverses the critique's «ثلاثة عملاء»: the founder approved the spoken Saudi count (2026-10-14).
+  it("counts customers the way Saudis say it: «ثلاث عملاء», never «ثلاثة عملاء»", () => {
+    expect(JSON.stringify(BANTER)).toContain("ثلاث عملاء");
+    for (const f of walk("src")) expect(read(f), f).not.toContain("ثلاثة عملاء");
   });
   it("ends the FAQ heading with a full stop in both languages, like the other section headings", () => {
     expect(SECTIONS.faq.h.ar).toBe("أسئلة قبل ما تبدأ.");

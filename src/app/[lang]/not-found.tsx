@@ -16,7 +16,7 @@ export default function NotFound() {
       <p className="s-stamp font-mono text-2xl tracking-widest" dir="ltr"><Scribble kind="stamp" seed="not-found" fill="lemon" />404</p>
       <div className="grid gap-2">
         <h1 className="font-display text-3xl font-bold">الصفحة غير موجودة</h1>
-        <p className="text-foreground-muted">الرابط الذي فتحته لم يعد موجوداً أو كُتب بشكل خاطئ.</p>
+        <p className="text-foreground-muted">الرابط اللي فتحته مو موجود، أو انكتب غلط.</p>
       </div>
       <div className="grid gap-2" dir="ltr">
         <h2 className="font-display text-xl font-bold">Page not found</h2>

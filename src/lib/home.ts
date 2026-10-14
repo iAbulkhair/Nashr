@@ -211,7 +211,7 @@ export const BANTER: Banter[] = [
   },
   {
     lines: [
-      { who: "layan", text: { ar: "ثلاثة عملاء قالوا نفس الملاحظة.", en: "Three customers said the same thing." } },
+      { who: "layan", text: { ar: "ثلاث عملاء قالوا نفس الملاحظة.", en: "Three customers said the same thing." } },
       { who: "noor", text: { ar: "أجل هذا بوست الأسبوع.", en: "Then that's this week's post." } },
     ],
     rule: "shared memory across agents",
@@ -524,7 +524,7 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "متجر إلكتروني", en: "Online store" },
-    line: { ar: "لو عندك متجر إلكتروني والسلال تنترك: نور تكتب رسائل السلة المتروكة بلهجتك، وتنتظر موافقتك.", en: "If you run an online store and carts get left behind: Noor writes the abandoned-cart messages in your dialect, and they wait for your approval." },
+    line: { ar: "لو عندك متجر إلكتروني والعملاء يتركون السلة: نور تكتب رسائل السلة المتروكة بلهجتك، وتنتظر موافقتك.", en: "If you run an online store and carts get left behind: Noor writes the abandoned-cart messages in your dialect, and they wait for your approval." },
     agent: "noor", task: "cart_recovery",
     look: { head: "shayla", eyes: "laugh", tone: "reem" },
   },
@@ -536,19 +536,19 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "مطعم", en: "Restaurant" },
-    line: { ar: "لو عندك مطعم وأرقامك في كل مكان: دانة تجمع أرقام الأسبوع اللي تعطيها في تقرير واحد، بدون تجميل.", en: "If you run a restaurant and your numbers are all over the place: Dana puts the week's numbers you give her into one report, no makeup." },
+    line: { ar: "لو عندك مطعم وأرقامك في كل مكان: دانة تاخذ أرقام الأسبوع منك وتجمعها في تقرير واحد، بدون تجميل.", en: "If you run a restaurant and your numbers are all over the place: Dana puts the week's numbers you give her into one report, no makeup." },
     agent: "dana", task: "weekly_report",
     look: { head: "ghutra", beard: "full", glasses: true, eyes: "dot", tone: "dana" },
   },
   {
     role: { ar: "نادي لياقة", en: "Gym" },
-    line: { ar: "لو عندك نادي لياقة وتبي مشتركين جدد: فارس يقترح تجارب صغيرة تجربها قبل ما تصرف كثير.", en: "If you run a gym and want new members: Faris suggests small tests to try before you spend big." },
+    line: { ar: "لو عندك نادي لياقة وتبي مشتركين جدد: فارس يقترح تجارب صغيرة تختبرها قبل ما تصرف كثير.", en: "If you run a gym and want new members: Faris suggests small tests to try before you spend big." },
     agent: "faris", task: "growth_experiments",
     look: { head: "hair", eyes: "laugh", tone: "faris" },
   },
   {
     role: { ar: "محمصة قهوة", en: "Coffee roastery" },
-    line: { ar: "لو عندك محمصة ومحتار تفتح فرع ثاني: ماجد يحط لك القرار في صفحة وحدة، والقرار لك.", en: "If you run a roastery and can't decide on a second branch: Majed puts the decision on one page, and the call is yours." },
+    line: { ar: "لو عندك محمصة ومحتار تفتح فرع ثاني: ماجد يحط لك الخيارين في صفحة وحدة، والقرار لك.", en: "If you run a roastery and can't decide on a second branch: Majed puts the decision on one page, and the call is yours." },
     agent: "majed", task: "decision_memo",
     look: { head: "shayla", eyes: "laugh", tone: "majed" },
   },
