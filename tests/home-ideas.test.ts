@@ -12,7 +12,8 @@ import { HOME } from "@/lib/home";
 const read = (f: string) => readFileSync(f, "utf8");
 const CSS = read("src/components/home/home.module.css");
 // The server's Umm al-Qura reader, the same calendar the weekly plan uses (seasons.ts), as the ribbon's reader.
-const hijriOf: HijriOf = (d) => hijriDate(d, "UTC");
+// The ribbon asks for the Riyadh day at UTC midnight, which is 03:00 the same day in Riyadh.
+const hijriOf: HijriOf = (d) => hijriDate(d, "Asia/Riyadh");
 const at = (iso: string) => new Date(iso);
 
 describe("rule 1880: the season ribbon counts to the next real season", () => {

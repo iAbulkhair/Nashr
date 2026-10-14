@@ -30,7 +30,7 @@ describe("rule 1868: endless decoration holds still off screen", () => {
 
 describe("rule 1869: client scribbles start in the page's direction", () => {
   it("draws the first paint right to left under an Arabic page, and left to right without one", () => {
-    const rtl = renderToStaticMarkup(h(ScribbleDir, { rtl: true }, h(Scribble, { kind: "underline", seed: "t" })));
+    const rtl = renderToStaticMarkup(h(ScribbleDir, { rtl: true, children: null }, h(Scribble, { kind: "underline", seed: "t" })));
     const ltr = renderToStaticMarkup(h(Scribble, { kind: "underline", seed: "t" }));
     expect(rtl).not.toBe(ltr);
     expect(read("src/components/Scribble.tsx")).toMatch(/rtl: rtl \?\? page \?\? false/);
