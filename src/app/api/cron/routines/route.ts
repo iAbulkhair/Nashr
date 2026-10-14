@@ -5,6 +5,7 @@ import { dueRoutines, runRoutine, type RoutineId } from "@/lib/routines";
 import { AUTO_HANDOFF_CRON_ID, autoRunHandoff, dueHandoffs } from "@/lib/handoff-auto";
 import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
+import { deadlineFor } from "@/lib/media/keys";
 
 export const maxDuration = 300;
 
@@ -29,7 +30,9 @@ type Item = { kind: "routine"; user: User; id: RoutineId } | { kind: "handoff"; 
  * and the same deadline bounds each batch's cross-agent review.
  */
 export async function GET(req: Request) {
-  const deadline = Date.now() + maxDuration * 1000;
+  // 15 s under the platform's limit (`deadlineFor`), like every other route: since 2026-10-01 each batch's model calls end
+  // by it (rule 336), and a call ending at the kill itself would leave no time for its refund.
+  const deadline = deadlineFor(maxDuration);
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!sameSecret(bearer, process.env.CRON_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
   const users = await allUsers();

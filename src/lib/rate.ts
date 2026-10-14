@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "crypto";
 import { db } from "./db";
+import type { User } from "./auth";
 
 /** Fixed-window rate limit. True when the caller is still inside the allowance. */
 export async function allow(bucket: string, max: number, windowSeconds: number): Promise<boolean> {
@@ -26,16 +27,36 @@ export const clientIp = (req: Request) =>
   (req.headers.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "unknown";
 
 /**
- * Chat turns per account, in a short window. A turn is the most expensive call in the product (up to five model calls
- * with the full workspace in the prompt), so a burst from one account is bounded here, before the month's message
- * allowance is touched (src/lib/chat-allowance.ts). Generous enough that no real conversation hits it: the ceiling is
- * roughly a day of continuous use.
+ * Chat turns per account, in a short window (the owner's email: members, brands and connected apps share the account's
+ * buckets). A turn is the most expensive call in the product (up to five model calls with the full workspace in the
+ * prompt), so a burst from one account is bounded here, before the month's message allowance is touched
+ * (src/lib/chat-allowance.ts). The monthly allowance stays the real ceiling of a month; these only pace it.
+ * Founder decision 2026-10-01: lowered until the Sonnet chat eval passes, from 40 an hour and 200 a day on every plan to
+ * 30 and 150 on a paid plan (Agency included) and 10 an hour on a trial. A trial's day is 30, the same as its whole-trial
+ * allowance (CHAT_ALLOWANCE.trial, counted once), so it never binds before the allowance does; an ended trial gets no
+ * turn at all (`trialOver`, checked by both chat routes before this). Rule 331.
  */
-export const CHAT_PER_HOUR = 40;
-export const CHAT_PER_DAY = 200;
-export async function chatAllowed(email: string): Promise<boolean> {
-  const [hour, day] = await Promise.all([allow(`chat:h:${email}`, CHAT_PER_HOUR, 3600), allow(`chat:d:${email}`, CHAT_PER_DAY, 86400)]);
-  return hour && day;
+export type ChatCaps = Readonly<{ hour: number; day: number }>;
+export const CHAT_CAPS: Readonly<{ paid: ChatCaps; trial: ChatCaps }> = {
+  paid: { hour: 30, day: 150 },
+  trial: { hour: 10, day: 30 },
+};
+/** The account's hourly and daily chat ceilings, by plan: a trial, or any paid plan (the predicate chat-allowance.ts uses). */
+export const chatCaps = (u: Pick<User, "plan">): ChatCaps => (u.plan === "trial" ? CHAT_CAPS.trial : CHAT_CAPS.paid);
+/**
+ * Null when the turn may go ahead, else which window refused it, so the owner is told "in an hour" or "tomorrow". The
+ * hour is counted first and the day only for a turn the hour let through: counting both on every attempt let refused
+ * retries inside the hour use up the day, so an owner told "in an hour" met "tomorrow" next (rule 331). A refusal by the
+ * hour reads the day's count without adding to it, and names the day when that is spent too, being the longer wait. Two
+ * round trips one after the other only for a turn the hour allows. The ceilings are the account's own (`chatCaps`).
+ */
+export async function chatRefusal(u: Pick<User, "email" | "plan">): Promise<"hour" | "day" | null> {
+  const caps = chatCaps(u);
+  if (!(await allow(`chat:h:${u.email}`, caps.hour, 3600))) {
+    const used = Number((await db.get<number | string>(`rate:chat:d:${u.email}`)) ?? 0);
+    return used >= caps.day ? "day" : "hour";
+  }
+  return (await allow(`chat:d:${u.email}`, caps.day, 86400)) ? null : "day";
 }
 
 /**

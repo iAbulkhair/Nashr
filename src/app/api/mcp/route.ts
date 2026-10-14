@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
-import { DRAFTS_PER_HOUR, chatAllowed } from "@/lib/rate";
+import { DRAFTS_PER_HOUR, chatCaps, chatRefusal } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
-import { chat } from "@/lib/chat";
+import { chat, chatRefusedText } from "@/lib/chat";
+import { trialOver } from "@/lib/auth";
+import { ORIGIN } from "@/lib/oauth";
 import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
@@ -79,8 +81,12 @@ export async function POST(req: Request) {
         // The web chat's limits on the message itself: trimmed, at most 4,000 characters, never empty.
         const message = String(args.message ?? "").trim().slice(0, 4000);
         if (!message) return ok(id, { ...text("Empty message. Nothing was sent."), isError: true });
-        // Same ceiling as the web chat: a bearer token must not be a cheaper way to spend the same models.
-        if (!(await chatAllowed(user.email))) return ok(id, { ...text("Too many messages in a short time. Wait a few minutes and try again."), isError: true });
+        // The web chat's gates, in its order (rules 330-331): a bearer token must not be a way around an ended trial or a
+        // cheaper way to spend the same models. Answered as a tool error, like MCP generate_content's trial_over: a
+        // JSON-RPC client reads the result, not an HTTP status. The link is absolute: it is read outside the app.
+        if (trialOver(user)) return ok(id, { ...text(chatRefusedText("trial", user.lang, { origin: ORIGIN() })), isError: true });
+        const slow = await chatRefusal(user);
+        if (slow) return ok(id, { ...text(chatRefusedText(slow, user.lang, { cap: chatCaps(user)[slow] })), isError: true });
         // The same monthly allowance too, shared with the app (src/lib/chat-allowance.ts), before chat() saves the message.
         const gate = await reserveChatTurn(user);
         if (!gate.ok) return ok(id, { ...text(refusalText(gate)), isError: true });

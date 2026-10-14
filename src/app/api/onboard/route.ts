@@ -16,6 +16,7 @@ import { warnAgentCap } from "@/lib/notifications";
 import { onboardCost } from "@/lib/pricing";
 import { recordActivity, type Activity } from "@/lib/activity";
 import { byOf } from "@/lib/actor";
+import { deadlineFor } from "@/lib/media/keys";
 
 export const maxDuration = 300;
 /**
@@ -89,6 +90,8 @@ async function refuse(u: User, scope: string, cost: number, r: PayRefusal): Prom
  * tests/activity-sources.test.ts.
  */
 export async function POST(req: Request) {
+  // The request's one deadline, taken first: the crawl and the three model calls share it (rule 336).
+  const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return new Response("unauthorized", { status: 401 });
   // Onboarding writes the brand file and the core memory: admin and owner only (src/lib/roles.ts "onboard").
@@ -156,7 +159,7 @@ export async function POST(req: Request) {
         const stages = [t.research, t.files, t.plan];
         let landed = 0;
         send({ type: "status", text: stages[0] });
-        const r = await buildFromSite(site, u.lang, b.hints, u.email, () => { landed++; if (landed < stages.length) send({ type: "status", text: stages[landed] }); });
+        const r = await buildFromSite(site, u.lang, b.hints, u.email, () => { landed++; if (landed < stages.length) send({ type: "status", text: stages[landed] }); }, deadline);
         await track(u.email, "onboard");
         await saveBrand(scope, r.brand);
         brandSaved = true;

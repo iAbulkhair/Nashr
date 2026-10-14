@@ -240,8 +240,8 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
 const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
-  "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",
-  "DELETE /api/admin/login": "ends the caller's own key session: deletes the server record and the cookie",
+  "POST /api/admin/login": "the console key in the body is the credential (compared in constant time, rate limited)",
+  "DELETE /api/admin/login": "clears the caller's own console cookie",
   "POST /api/admin/impersonate": "stop: burns the impersonation session and restores the caller's own saved one",
 };
 

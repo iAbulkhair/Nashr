@@ -4,8 +4,6 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
-import { passwordChecks, unmetRules } from "@/lib/auth-client";
-import { PasswordRules } from "./PasswordRules";
 import { forgetInviteToken, readInviteToken, recallInviteToken, rememberInviteToken, withoutFragment } from "./inviteToken";
 
 type Preview = { team: string; inviter: string; email: string; role: "admin" | "member"; expiresAt: string };
@@ -31,8 +29,7 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const pwRef = useRef<HTMLInputElement>(null);
-  const checks = passwordChecks(pw);
+  const checks = [pw.length >= 8, /\p{L}/u.test(pw), /\d/.test(pw)];
 
   useEffect(() => {
     // Read once (the ref survives React's development double-run), then take the token out of the address bar and history.
@@ -68,9 +65,7 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!name.trim()) return;
-    // The button stays focusable (aria-disabled), so pressing it early says which rules are still unmet (rule 434).
-    if (!checks.every(Boolean)) { setErr(unmetRules(checks, J.rules, lang)); pwRef.current?.focus(); return; }
+    if (!name.trim() || !checks.every(Boolean)) return;
     setBusy(true);
     setErr("");
     try {
@@ -130,10 +125,10 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
               <input type="email" name="email" autoComplete="username" value={preview.email} readOnly className="input" dir="ltr" />
             </label>
             <input name="name" required autoFocus autoComplete="name" maxLength={80} dir="auto" value={name} onChange={(e) => setName(e.target.value)} placeholder={J.name} aria-label={J.name} className="input" />
-            <input ref={pwRef} name="password" required type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={J.password} aria-label={J.password} aria-describedby="join-rules" className="input" />
-            <PasswordRules id="join-rules" rules={J.rules} checks={checks} lang={lang} />
+            <input name="password" required type="password" autoComplete="new-password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} placeholder={J.password} aria-label={J.password} className="input" />
+            <ul className="grid gap-1 text-xs" aria-live="polite">{J.rules.map((rule, i) => <li key={rule} className={`flex items-center gap-2 ${checks[i] ? "text-oasis" : "text-ink/60"}`}><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${checks[i] ? "bg-oasis" : "bg-ink/30"}`} />{rule}</li>)}</ul>
             {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
-            <button disabled={busy} aria-disabled={!ok ? true : undefined} aria-describedby="join-rules" className="btn btn-primary">{busy ? J.joining : J.submit}</button>
+            <button disabled={busy || !ok} className="btn btn-primary">{busy ? J.joining : J.submit}</button>
           </form>
           <p className="mt-3 text-xs text-ink/60">{parts(J.note, { team: <span dir="auto">{preview.team}</span> })}</p>
           <p className="mt-2 text-xs text-ink/60">{J.legal1} <Link href={`/${lang}/terms`} className="underline">{J.terms}</Link> {J.and} <Link href={`/${lang}/privacy`} className="underline">{J.privacy}</Link>.</p>

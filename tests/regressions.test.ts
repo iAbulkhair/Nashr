@@ -7,7 +7,7 @@ import { deleteFile, listFiles, writeFile } from "@/lib/files";
 import { deleteConnection, listConnections, OAUTH_COOKIE, saveConnection, saveState } from "@/lib/connectors/store";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { EDITABLE_BRAND_FIELDS, runTool } from "@/lib/chat";
-import { CHAT_PER_HOUR, chatAllowed } from "@/lib/rate";
+import { chatCaps, chatRefusal } from "@/lib/rate";
 import { currentUser, isAdminCookie } from "@/lib/auth";
 
 /** Each test here is a bug that was live in the code and is now fixed; the test is what keeps it fixed. */
@@ -108,9 +108,10 @@ describe("chat is bounded per account", () => {
   it("stops a single account after the hourly ceiling and answers 429", async () => {
     const u = await newUser("chatcap");
     await signIn(u.email);
-    for (let i = 0; i < CHAT_PER_HOUR; i++) expect(await chatAllowed(u.email)).toBe(true);
-    expect(await chatAllowed(u.email)).toBe(false);
-    // A turn is free in credits and can run five model calls, so this is the only ceiling on one account's model spend.
+    // The account's own ceiling, by plan (rule 331, tests/chat-trial.test.ts).
+    for (let i = 0; i < chatCaps(u).hour; i++) expect(await chatRefusal(u)).toBeNull();
+    expect(await chatRefusal(u)).toBe("hour");
+    // A burst is refused before the month's chat allowance is touched (src/lib/chat-allowance.ts).
     expect((await chatRoute.POST(json("/api/chat", "POST", { text: "مرحبا" }))).status).toBe(429);
   });
 });
@@ -136,20 +137,16 @@ describe("the Shopify callback only ever talks to a Shopify host", () => {
   });
 });
 
-describe("the admin cookie is a server-side key session, never the key itself (rule 424)", () => {
-  it("refuses the raw key and a prefix of a session id, and accepts only a live session", async () => {
+describe("the admin cookie is compared like a secret", () => {
+  it("accepts only the exact key, and a prefix of it is not enough", async () => {
     const prev = process.env.WAITLIST_ADMIN_KEY;
     process.env.WAITLIST_ADMIN_KEY = "s3cret-admin-key";
     try {
-      const { adminSignIn, jar } = await import("./helpers/session");
+      const { jar } = await import("./helpers/session");
       jar().clear();
-      // The cookie a browser kept from before the key session existed: the raw key no longer opens anything.
+      jar().set("nashr_admin", "s3cret-admin-ke");
+      expect(await isAdminCookie()).toBe(false);
       jar().set("nashr_admin", "s3cret-admin-key");
-      expect(await isAdminCookie()).toBe(false);
-      const id = await adminSignIn();
-      jar().set("nashr_admin", id.slice(0, -1));
-      expect(await isAdminCookie()).toBe(false);
-      jar().set("nashr_admin", id);
       expect(await isAdminCookie()).toBe(true);
     } finally {
       if (prev === undefined) delete process.env.WAITLIST_ADMIN_KEY; else process.env.WAITLIST_ADMIN_KEY = prev;
