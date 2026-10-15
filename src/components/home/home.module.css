@@ -367,8 +367,12 @@
 @media (min-width: 700px) { .closing { padding: 48px 40px 40px; } }
 .closing h2 { font: 900 var(--t-xl)/1.25 var(--home-display); }
 .closing .lead { justify-items: center; width: min(100%, 36rem); }
-/* The cover's form sits under the offer (rule 1844), in the offer's column; on a phone its button wraps under the field. */
-.cover > .lineup { padding-block-start: 4px; }
+/* The cover's call to action stands under the team (rules 1830, 1892), centred like the closing call's. */
+.coverCta { justify-items: center; width: min(100%, 36rem); margin-inline: auto; text-align: center; }
+/* On a phone the form's button wraps under the field; it stands in the middle like the lines under it. */
+.coverCta > form { justify-content: center; }
+/* The form follows the team closely: the row keeps only the room the owner's caption needs. */
+.cover > .lineup { padding-block-end: 8px; }
 /* The phone's start bar (rule 1845): fixed to the bottom, above the safe area, on the page's own ground. From 700px up
    the nav's button is always in view, so the bar never shows. */
 .stickySentinel { display: block; height: 0; }
