@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { HOME_FAQ, SECTIONS } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
 import { Float } from "./Decor";
@@ -16,7 +16,7 @@ export default function HomeFaq({ lang }: { lang: Lang }) {
       <div className={styles.sh}>
         <h2 id="t-faq">
           <span className={styles.ul}>
-            <Scribble kind="underline" seed="faq-h" />
+            <ScribbleStatic kind="underline" seed="faq-h" rtl={lang === "ar"} />
             {SECTIONS.faq.h[lang]}
           </span>
         </h2>
@@ -26,7 +26,7 @@ export default function HomeFaq({ lang }: { lang: Lang }) {
           <Fragment key={i}>
             {i > 0 && (
               <div className={styles.faqRule} aria-hidden="true">
-                <Scribble kind="divider" seed={`fr${i}`} />
+                <ScribbleStatic kind="divider" seed={`fr${i}`} rtl={lang === "ar"} />
               </div>
             )}
             <details className={styles.qa}>

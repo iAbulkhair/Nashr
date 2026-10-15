@@ -41,15 +41,21 @@ describe("rule 925: no dead launch promise of free months for the first brands",
   });
 });
 
-describe("rule 926: the scenes subline marks them as illustrative examples in both languages", () => {
-  it("opens the line under the heading with «أمثلة توضيحية» / \"Illustrative examples\"", () => {
-    expect(SCENES_COPY.sub.ar.startsWith("أمثلة توضيحية")).toBe(true);
-    expect(SCENES_COPY.sub.en.startsWith("Illustrative examples")).toBe(true);
+describe("rule 926: the scenes heading and subline name no customers and use no \"example\" wording, in both languages", () => {
+  it("says no «مثال» / «أمثلة» / \"example\" / \"illustrative\" (founder decision 2026-10-14)", () => {
+    for (const t of [SCENES_COPY.h.ar, SCENES_COPY.h.en, SCENES_COPY.sub.ar, SCENES_COPY.sub.en]) {
+      expect(t).not.toMatch(/مثال|أمثلة|توضيحي|example|illustrative/i);
+    }
   });
 
-  it("keeps the founder's Arabic heading (decision 2026-10-11) and the English one", () => {
-    expect(SCENES_COPY.h.ar).toBe("عملاء جربوا ذكين.");
-    expect(SCENES_COPY.h.en).toBe("How owners work with Thakeen.");
+  it("frames the cards as scenarios, not customers (critique 2026-10-14, rule 1840; it replaces the 2026-10-11 heading)", () => {
+    expect(SCENES_COPY.h.ar).toBe("كيف يشتغل ذكين مع أصحاب المحلات.");
+    expect(SCENES_COPY.h.en).toBe("How Thakeen works with shop owners.");
+    expect(SCENES_COPY.sub.ar).toBe("عندك محل؟ هذا اللي يسويه الفريق معك.");
+    expect(SCENES_COPY.sub.en).toBe("Run a shop? Here's what the team does with you.");
+    for (const t of [SCENES_COPY.h.ar, SCENES_COPY.h.en, SCENES_COPY.sub.ar, SCENES_COPY.sub.en]) {
+      expect(t).not.toMatch(/عملاء|customer/i);
+    }
   });
 
   it("renders the heading and the line, with the wording in src/lib/home.ts only", () => {
@@ -148,7 +154,9 @@ describe("rule 929: the R1 release checklist lists what ships and what to check 
 
   it("has the smoke checks: heading text, partner redirect, billing email, console Cancel, titles, health", () => {
     const doc = read(path);
-    for (const s of [SCENES_COPY.h.ar, SCENES_COPY.sub.ar, SCENES_COPY.h.en, SCENES_COPY.sub.en, "/p/", "0.0.0.0", SUPPORT_EMAIL, "Cancel", "titles", "/api/health"]) {
+    // R1 is a past release: its checklist keeps the wording that shipped then (the scenes were reframed later, rule 1840).
+    const r1 = ["عملاء جربوا ذكين.", "أمثلة توضيحية: وش عجبهم، وش تعلّموا، ووش ينصحون غيرهم فيه.", "How owners work with Thakeen.", "Illustrative examples: what they like, what they learned, and what they recommend."];
+    for (const s of [...r1, "/p/", "0.0.0.0", SUPPORT_EMAIL, "Cancel", "titles", "/api/health"]) {
       expect(doc, s).toContain(s);
     }
   });

@@ -17,5 +17,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const wa = process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}` : null;
-  return (<><Nav t={dict[lang]} lang={lang} /><main><HelpCenter lang={lang} wa={wa} origin={appOrigin()} /></main><Footer t={dict[lang]} /></>);
+  return (<><Nav t={dict[lang]} lang={lang} /><main id="main" tabIndex={-1}><HelpCenter lang={lang} wa={wa} origin={appOrigin()} /></main><Footer t={dict[lang]} /></>);
 }

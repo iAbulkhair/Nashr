@@ -11,6 +11,7 @@ import Footer from "@/components/Footer";
 import WishVote from "@/components/WishVote";
 import WishSuggest from "@/components/WishSuggest";
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { pageMeta } from "@/lib/page-meta";
 
 // Vote counts and the viewer's own votes are read on every request and rendered on the server, so the page is right
@@ -51,12 +52,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main>
+      <main id="main" tabIndex={-1}>
         <section className="section-wrap">
           <p className="eyebrow">{c.eyebrow}</p>
           <h1 className="mt-3 max-w-3xl font-display text-4xl font-bold leading-tight sm:text-6xl">
             <span className="s-ul">
-              <Scribble kind="underline" seed="updates-h" />
+              <ScribbleStatic kind="underline" seed="updates-h" rtl={lang === "ar"} />
               {c.title}
             </span>
           </h1>

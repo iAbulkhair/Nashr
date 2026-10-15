@@ -150,7 +150,7 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       expect(page).toMatch(TITLE_SCRIBBLE("h1"));
       expect(count(page, 'class="s-chip')).toBe(TOOLS.length - 1);
       for (const t of TOOLS) {
-        const f = html(ToolForm, { tool: t, lang });
+        const f = html(ToolForm, { tool: t, lang, trial: dict[lang].pricing.trial });
         expect(count(f, 'class="s-input'), t.slug).toBe(t.fields.length);
         expect(f).toMatch(/<button[^>]*class="s-btn/);
         expect(f).not.toMatch(/class="input/);

@@ -22,9 +22,9 @@ const LINEUP = read("src/components/home/Lineup.tsx");
 const MOTION = read("src/components/home/motion.ts");
 const CSS = read("src/components/home/home.module.css").replace(/\/\*[\s*][\s\S]*?\*\//g, "");
 
-describe("rule 1830: the cover's call to action stands under the team", () => {
+describe("rule 1844 (replaces 1830): the cover's call to action sits under the offer, above the team", () => {
   for (const lang of LANGS) {
-    it(`renders headline, offer and hint, then the team, then the form, the trial line and the freshness chip (${lang})`, () => {
+    it(`renders headline, offer, then the form, the trial line and the freshness chip, then the hint and the team (${lang})`, () => {
       const html = renderToStaticMarkup(h(Cover, { lang, t: dict[lang] }));
       const at = (s: string) => {
         const i = html.indexOf(s);
@@ -33,37 +33,32 @@ describe("rule 1830: the cover's call to action stands under the team", () => {
       };
       const h1 = at("<h1");
       const offer = at(HERO.offerSwash[lang]);
-      const hint = at(HERO.hintMouse[lang]);
-      const team = at('data-testid="lineup"');
       const form = at(`action="/${lang}/app/signup"`);
       const trial = at(dict[lang].pricing.trial.replace(/&/g, "&amp;"));
       const chip = at(HERO_START.chip[lang]);
+      const hint = at(HERO.hintMouse[lang]);
+      const team = at('data-testid="lineup"');
       expect(h1).toBeLessThan(offer);
-      expect(offer).toBeLessThan(team);
-      expect(hint).toBeLessThan(team);
-      expect(team).toBeLessThan(form);
+      expect(offer).toBeLessThan(form);
       expect(form).toBeLessThan(trial);
       expect(trial).toBeLessThan(chip);
+      expect(chip).toBeLessThan(hint);
+      expect(hint).toBeLessThan(team);
       // One form on the cover, no second signup path.
       expect(html.match(/<form /g)).toHaveLength(1);
     });
   }
-  it("keeps the form out of the headline column", () => {
+  it("keeps the form in the offer's column, before the lineup", () => {
     const src = read("src/components/home/Cover.tsx");
-    const top = src.slice(src.indexOf("styles.ctop"), src.indexOf("<Lineup"));
-    expect(top).not.toMatch(/<UrlStart|trialLine|styles\.fresh/);
-    expect(src.indexOf("<Lineup")).toBeLessThan(src.indexOf("<UrlStart"));
+    const lead = src.slice(src.indexOf("styles.lead"), src.indexOf("styles.hint"));
+    expect(lead).toMatch(/<UrlStart[\s\S]*trialLine[\s\S]*styles\.fresh/);
+    expect(src.indexOf("<UrlStart")).toBeLessThan(src.indexOf("<Lineup"));
+    expect(CSS).not.toMatch(/\.coverCta/);
   });
-});
-
-describe("rule 1831: the call to action under the team is centred and logical-direction only", () => {
-  it("centres the column, the wrapped button and the lines, with no left or right", () => {
-    const block = [...CSS.matchAll(/^\.(coverCta[^{]*|cover > \.lineup )\{[^}]*\}/gm)].map((m) => m[0]).join("\n");
-    expect(block).toMatch(/\.coverCta \{[^}]*justify-items:\s*center/);
-    expect(block).toMatch(/\.coverCta \{[^}]*margin-inline:\s*auto/);
-    expect(block).toMatch(/\.coverCta > form \{[^}]*justify-content:\s*center/);
-    expect(block).toMatch(/\.cover > \.lineup \{/);
-    expect(block).not.toMatch(/\b(left|right)\b|#[0-9a-f]{3,8}\b/i);
+  it("hands the lineup its figures drawn on the server (rule 1866)", () => {
+    expect(LINEUP).not.toMatch(/from "\.\/Doodle"/);
+    expect(LINEUP).toMatch(/\{figures\[member\.id\]\}/);
+    expect(read("src/components/home/Cover.tsx")).toMatch(/<Lineup lang=\{lang\} figures=\{figures\} \/>/);
   });
 });
 

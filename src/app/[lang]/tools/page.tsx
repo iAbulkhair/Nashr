@@ -6,6 +6,7 @@ import { TOOLS } from "@/lib/tools";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import Scribble from "@/components/Scribble";
+import ScribbleStatic from "@/components/ScribbleStatic";
 import { pageMeta } from "@/lib/page-meta";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
@@ -21,9 +22,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <p className="eyebrow">{lang === "ar" ? "أدوات مجانية" : "Free tools"}</p>
-        <h1 className="mt-3 font-display text-4xl font-bold"><span className="s-ul"><Scribble kind="underline" seed="tools-h" />{lang === "ar" ? `${TOOLS.length} أداة تسويق مجانية بالعربي` : `${TOOLS.length} free Arabic marketing tools`}</span></h1>
+        <h1 className="mt-3 font-display text-4xl font-bold"><span className="s-ul"><ScribbleStatic kind="underline" seed="tools-h" rtl={lang === "ar"} />{lang === "ar" ? `${TOOLS.length} أداة تسويق مجانية بالعربي` : `${TOOLS.length} free Arabic marketing tools`}</span></h1>
         <p className="mt-3 max-w-2xl text-foreground-muted">{lang === "ar" ? "كلها تعمل بنور، بلهجتك، بدون تسجيل — 5 استخدامات يومياً." : "All powered by Noor, in your dialect, no signup — 5 uses a day."}</p>
         <div className="mt-10 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
           {TOOLS.map((x) => (

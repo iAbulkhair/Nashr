@@ -7,7 +7,8 @@ import styles from "./home.module.css";
  * sections (a paper plane on its dashed trail, the team's colours hopping in a wave with «you» last, an ink line that
  * writes itself). All of it is hidden from assistive technology and drawn at rest; it moves only under
  * `prefers-reduced-motion: no-preference` and stops when the page's pause button sets `html[data-motion="off"]`
- * (`./motion`). Server components: CSS does the moving.
+ * (`./motion`). Server components: CSS does the moving. Each moving piece carries `data-loop`, and `LoopPause` holds
+ * its endless animations while it is off screen (rule 1868), so a long page does not keep painting what nobody sees.
  */
 
 const f = (fill: string) => ({ "--f": fill }) as CSSProperties;
@@ -70,7 +71,7 @@ const FLOATS = {
 /** One floating doodle, placed in its section's margin by `.fl-<kind>` in home.module.css. */
 export function Float({ kind }: { kind: keyof typeof FLOATS }) {
   return (
-    <span className={`${styles.fl} ${styles[`fl-${kind}`]}`} aria-hidden="true">
+    <span className={`${styles.fl} ${styles[`fl-${kind}`]}`} data-loop="" aria-hidden="true">
       <svg viewBox="0 0 48 48">{FLOATS[kind]}</svg>
     </span>
   );
@@ -83,7 +84,7 @@ const INK = "M60 30 C140 28 200 22 260 26 C300 30 312 10 290 8 C268 6 262 34 300
 export function Seam({ kind, pace }: { kind: "fly" | "team" | "ink"; pace?: { t: string; d: string } }) {
   if (kind === "fly")
     return (
-      <div className={`${styles.seam} ${styles.seamFly}`} aria-hidden="true" style={pace ? ({ "--ft": pace.t, "--fd": pace.d } as CSSProperties) : undefined}>
+      <div className={`${styles.seam} ${styles.seamFly}`} data-loop="" aria-hidden="true" style={pace ? ({ "--ft": pace.t, "--fd": pace.d } as CSSProperties) : undefined}>
         <svg className={styles.seamLine} viewBox="0 0 1000 40" preserveAspectRatio="none">
           <path className={styles.fi} pathLength="1" d={FLY} />
         </svg>
@@ -96,7 +97,7 @@ export function Seam({ kind, pace }: { kind: "fly" | "team" | "ink"; pace?: { t:
     );
   if (kind === "team")
     return (
-      <div className={`${styles.seam} ${styles.seamTeam}`} aria-hidden="true">
+      <div className={`${styles.seam} ${styles.seamTeam}`} data-loop="" aria-hidden="true">
         <svg className={styles.seamLine} viewBox="0 0 1000 8" preserveAspectRatio="none">
           <path className={styles.fi} d="M330 4 C440 2 560 6 670 3" />
         </svg>
@@ -108,7 +109,7 @@ export function Seam({ kind, pace }: { kind: "fly" | "team" | "ink"; pace?: { t:
       </div>
     );
   return (
-    <div className={`${styles.seam} ${styles.seamInk}`} aria-hidden="true">
+    <div className={`${styles.seam} ${styles.seamInk}`} data-loop="" aria-hidden="true">
       <svg className={styles.seamLine} viewBox="0 0 1000 48">
         <path className={styles.fi} pathLength="1" d={INK} />
       </svg>
