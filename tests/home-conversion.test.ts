@@ -5,7 +5,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import UrlStart from "@/components/UrlStart";
-import { barShows } from "@/components/home/StickyStart";
+import { FAR_BELOW, barShows } from "@/components/home/StickyStart";
 import { chatMessagesText, dict, LANGS } from "@/lib/i18n";
 import { CHAT_ALLOWANCE, PLAN_CREDITS } from "@/lib/pricing";
 import { SIGNUP_NEXT, shownSite } from "@/lib/signup-preview";
@@ -18,6 +18,11 @@ describe("rule 1845: the phone's start bar", () => {
     expect(barShows({ formAbove: false, endShowing: false })).toBe(false);
     expect(barShows({ formAbove: true, endShowing: false })).toBe(true);
     expect(barShows({ formAbove: true, endShowing: true })).toBe(false);
+  });
+  it("sees the form pass the top edge even after a jump from below it (rule 1892: the form starts under the first screen)", () => {
+    const src = read("src/components/home/StickyStart.tsx");
+    expect(FAR_BELOW).toBeGreaterThanOrEqual(50_000);
+    expect(src).toMatch(/rootMargin: `0px 0px \$\{FAR_BELOW\}px 0px`/);
   });
   it("is hidden (out of the tab order) until wanted, portalled to body, and never shows from 700px up", () => {
     const src = read("src/components/home/StickyStart.tsx");
