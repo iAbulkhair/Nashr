@@ -56,10 +56,12 @@ const ROOT_ROUTE = new RegExp(`^/(?:ar|en|${ROOT_SEGMENTS.join("|")})(?:/|$)`);
  * `[lang]` takes any first segment, so `/xyz` reached `[lang]/layout.tsx` with `lang = "xyz"`, whose `notFound()` has no
  * root `not-found` above it and showed the framework's untitled English page; `global-not-found.tsx` never ran, because
  * the address did match a route. A segment with a dot (`/robots.txt`, `/favicon.ico`, `/manifest.webmanifest`) or a
- * leading `_` or `.` (`/_next`, `/.well-known`) is a file or a framework path and is left alone.
+ * leading `_` or `.` (`/_next`, `/.well-known`) is a file or a framework path and is left alone. So is a file under
+ * `/-/`: Next serves a metadata file of the `[lang]` segment from that placeholder, and every page's share image is
+ * `/-/opengraph-image.png` (rule 1891a).
  */
 export const strayPath = (pathname: string): boolean =>
-  pathname !== "/" && !ROOT_ROUTE.test(pathname) && !/^\/(?:[_.]|[^/]*\.)/.test(pathname);
+  pathname !== "/" && !ROOT_ROUTE.test(pathname) && !/^\/(?:[_.]|[^/]*\.|-\/[^/]*\.)/.test(pathname);
 /** The segment a stray path is served from: no folder under `[lang]` claims it, so `[lang]/[...rest]` answers 404. */
 export const STRAY_TARGET = "__missing";
 

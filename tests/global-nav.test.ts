@@ -226,8 +226,9 @@ describe("rule 1891: an address outside the language tree gets the branded 404",
     expect(folders("src/app/[lang]")).not.toContain(STRAY_TARGET);
   });
   it("marks unknown first segments as stray and leaves languages, root routes and files alone", () => {
-    for (const p of ["/xyz", "/xyz/abc", "/ar-sa/pricing", "/admin", "/xyz/app", "/AR", "/login"]) expect(strayPath(p), p).toBe(true);
-    for (const p of ["/", "/ar", "/en/help", "/ar/xyz", "/api", "/api/health", "/m/abc", "/p/x", "/oauth/authorize", "/robots.txt", "/sitemap.xml", "/llms.txt", "/favicon.ico", "/manifest.webmanifest", "/apple-icon.png", "/icons/icon-192.png", "/_next/data/x.json", "/.well-known/oauth-authorization-server"]) {
+    for (const p of ["/xyz", "/xyz/abc", "/ar-sa/pricing", "/admin", "/xyz/app", "/AR", "/login", "/-", "/-/pricing"]) expect(strayPath(p), p).toBe(true);
+    // Rule 1891a: the share image of every page is served from Next's `/-/` placeholder for the `[lang]` segment.
+    for (const p of ["/", "/ar", "/en/help", "/ar/xyz", "/api", "/api/health", "/m/abc", "/p/x", "/oauth/authorize", "/robots.txt", "/sitemap.xml", "/llms.txt", "/favicon.ico", "/manifest.webmanifest", "/apple-icon.png", "/icons/icon-192.png", "/_next/data/x.json", "/.well-known/oauth-authorization-server", "/-/opengraph-image.png"]) {
       expect(strayPath(p), p).toBe(false);
     }
   });
