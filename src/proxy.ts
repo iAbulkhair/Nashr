@@ -45,6 +45,24 @@ const UNPREFIXED = new RegExp(`^/(?:${PUBLIC_SEGMENTS.join("|")})(?:/|$)`);
 /** True for a public page's address written without its language. */
 export const unprefixedPublic = (pathname: string): boolean => UNPREFIXED.test(pathname);
 
+/**
+ * The first path segments that live outside `src/app/[lang]`: the folders beside it (`api`, `m`, `p`, `oauth`, `fonts`)
+ * and under `public` (`icons`). tests/global-nav.test.ts holds this list to the folders on disk.
+ */
+export const ROOT_SEGMENTS = ["api", "fonts", "icons", "m", "oauth", "p"] as const;
+const ROOT_ROUTE = new RegExp(`^/(?:ar|en|${ROOT_SEGMENTS.join("|")})(?:/|$)`);
+/**
+ * True for an address outside the language tree that no route serves (rule 1891): `/xyz`, `/ar-sa/pricing`, `/admin`.
+ * `[lang]` takes any first segment, so `/xyz` reached `[lang]/layout.tsx` with `lang = "xyz"`, whose `notFound()` has no
+ * root `not-found` above it and showed the framework's untitled English page; `global-not-found.tsx` never ran, because
+ * the address did match a route. A segment with a dot (`/robots.txt`, `/favicon.ico`, `/manifest.webmanifest`) or a
+ * leading `_` or `.` (`/_next`, `/.well-known`) is a file or a framework path and is left alone.
+ */
+export const strayPath = (pathname: string): boolean =>
+  pathname !== "/" && !ROOT_ROUTE.test(pathname) && !/^\/(?:[_.]|[^/]*\.)/.test(pathname);
+/** The segment a stray path is served from: no folder under `[lang]` claims it, so `[lang]/[...rest]` answers 404. */
+export const STRAY_TARGET = "__missing";
+
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const staging = isStaging();
@@ -75,6 +93,15 @@ export function proxy(req: NextRequest) {
     url.pathname = `/${pickLang(req)}${pathname}`;
     url.search = search;
     res = NextResponse.redirect(url, 307);
+    res.headers.set("Vary", "Cookie, Accept-Language");
+  } else if (strayPath(pathname)) {
+    // `/xyz`, `/admin`, `/xyz/app` (rule 1891): served, without moving the address bar, by the page at `/{lang}/__missing`, which
+    // no folder under `[lang]` claims, so the catch-all answers 404 with the branded page inside the visitor's language
+    // and navigation. A rewrite, never a redirect: the visitor keeps the address they typed and can see the mistake.
+    const url = req.nextUrl.clone();
+    url.pathname = `/${pickLang(req)}/${STRAY_TARGET}`;
+    url.search = "";
+    res = NextResponse.rewrite(url);
     res.headers.set("Vary", "Cookie, Accept-Language");
   } else if (legacySettingsPath(pathname)) {
     // The old account, team, brand and billing pages moved under /app/settings (rule 1141, expand step): a 307 keeps the
