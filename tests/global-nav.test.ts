@@ -16,7 +16,7 @@ import LangToggle from "@/components/LangToggle";
 import Footer from "@/components/Footer";
 import SectionChips from "@/components/home/SectionChips";
 import sitemap from "@/app/sitemap";
-import { PUBLIC_SEGMENTS, pickLang, proxy, unprefixedPublic } from "@/proxy";
+import { PUBLIC_SEGMENTS, ROOT_SEGMENTS, STRAY_TARGET, pickLang, proxy, strayPath, unprefixedPublic } from "@/proxy";
 
 vi.mock("next/navigation", async (orig) => ({
   ...(await orig<typeof import("next/navigation")>()),
@@ -214,6 +214,34 @@ describe("rule 1875: a branded bilingual 404 outside the language tree", () => {
     expect(src).toMatch(/href="\/ar"/);
     expect(src).toMatch(/href="\/en"/);
     expect(code("src/app/global-not-found.tsx")).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
+});
+
+describe("rule 1891: an address outside the language tree gets the branded 404", () => {
+  const go = (path: string, headers?: Record<string, string>) => proxy(new NextRequest(`https://thakeen.example${path}`, headers ? { headers } : undefined));
+  it("knows every folder beside [lang] and under public, and serves strays from a segment no folder claims", () => {
+    // A folder with a dot (`.well-known`, `llms.txt`) is left alone by the dot rule, so the list holds only the others.
+    const folders = (d: string) => readdirSync(d).filter((f) => statSync(join(d, f)).isDirectory() && !f.startsWith("[") && !f.includes("."));
+    expect([...ROOT_SEGMENTS].sort()).toEqual([...folders("src/app"), ...folders("public")].sort());
+    expect(folders("src/app/[lang]")).not.toContain(STRAY_TARGET);
+  });
+  it("marks unknown first segments as stray and leaves languages, root routes and files alone", () => {
+    for (const p of ["/xyz", "/xyz/abc", "/ar-sa/pricing", "/admin", "/xyz/app", "/AR", "/login", "/-", "/-/pricing"]) expect(strayPath(p), p).toBe(true);
+    // Rule 1891a: the share image of every page is served from Next's `/-/` placeholder for the `[lang]` segment.
+    for (const p of ["/", "/ar", "/en/help", "/ar/xyz", "/api", "/api/health", "/m/abc", "/p/x", "/oauth/authorize", "/robots.txt", "/sitemap.xml", "/llms.txt", "/favicon.ico", "/manifest.webmanifest", "/apple-icon.png", "/icons/icon-192.png", "/_next/data/x.json", "/.well-known/oauth-authorization-server", "/-/opengraph-image.png"]) {
+      expect(strayPath(p), p).toBe(false);
+    }
+  });
+  it("rewrites a stray to the picked language's catch-all, without a redirect and without the query", () => {
+    const a = go("/xyz?q=1");
+    expect(a.headers.get("location")).toBeNull();
+    expect(a.headers.get("x-middleware-rewrite")).toBe(`https://thakeen.example/ar/${STRAY_TARGET}`);
+    expect(a.headers.get("vary")).toBe("Cookie, Accept-Language");
+    expect(go("/xyz", { "accept-language": "en-US" }).headers.get("x-middleware-rewrite")).toBe(`https://thakeen.example/en/${STRAY_TARGET}`);
+    // The public redirects and the root still win.
+    expect(go("/pricing").status).toBe(307);
+    expect(go("/").status).toBe(307);
+    expect(go("/ar/xyz").headers.get("x-middleware-rewrite")).toBeNull();
   });
 });
 

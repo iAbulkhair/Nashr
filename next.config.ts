@@ -63,8 +63,9 @@ const nextConfig: NextConfig = {
   // /api/performance: a CSV of at most 2,000,000 characters (MAX_CSV_CHARS in src/lib/perf-import.ts; the page refuses
   // files over 2,000,000 bytes) sent as JSON, at most 3 bytes a character (a byte that is not UTF-8, as in a
   // Windows-1256 export, becomes U+FFFD), so 6,000,000 bytes and the file name. Every other route takes far less.
-  // `globalNotFound` (rule 1875): an address outside the language tree (`/xyz`, `/ar-sa/x`) gets the branded bilingual
-  // src/app/global-not-found.tsx, a full Arabic right-to-left document, instead of the framework's untitled English page.
+  // `globalNotFound` (rule 1875): src/app/global-not-found.tsx, a full Arabic right-to-left document, for an address
+  // that matches no route at all. `[lang]` takes any first segment, so `/xyz` and `/ar-sa/x` never reach it: the proxy
+  // serves those from the language tree's own 404 (rule 1891, `strayPath` in src/proxy.ts). This stays as the fallback.
   experimental: { proxyClientMaxBodySize: 6 * 1024 * 1024, globalNotFound: true },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
