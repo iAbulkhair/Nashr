@@ -1204,6 +1204,31 @@ Files: `src/components/Nav.tsx`, `src/components/NavDrop.tsx`, `src/components/L
 7. Search data (rules 1859, 1876). `/ar` and `/en` set their canonical and hreflang (ar, en, x-default = Arabic). The homepage carries three JSON-LD blocks from `homeJsonLd`: Organization, SoftwareApplication with one offer per self-serve plan from `PLAN_PRICE_SAR` in SAR a month (VAT as `PRICES_INCLUDE_VAT`), and FAQPage from `HOME_FAQ`; no rating or review. Each sitemap URL lists its ar, en and x-default alternates.
 8. Releases. No stored shape changes. No permission or environment variable changes.
 
+---
+## 77. API route wrapper: one entry path for a request (2026-10-16, branch only, rules 1900-1906)
+
+1. A request reaches a route exported as `handler(options, fn)` (`src/lib/api-handler.ts`, `architecture.md` 2.4 "API route wrapper").
+2. Authentication first. `auth: "user"` reads the session with `currentUser()`; `"admin"` asks `isAdmin(req)`; `"cron"` compares the `Authorization: Bearer` value with `CRON_SECRET` through `sameSecret` (an unset secret refuses everyone); `"public"` skips this step. A failure answers 401 with the route's own body (`{ ok: false }`, or `{ ok: false, error: "auth" }` where the route already said so). Nothing else runs: the role, the rate counter, the query and the body are untouched.
+3. Role. With `role`, `forbid(u, role)` from `src/lib/roles.ts` answers its usual 403 `{ error: "forbidden" }`. A role on any auth but `"user"` throws when the module loads.
+4. Rate limit. With `rate`, one `allow` hit on `rate:<bucket>:<who>`: the account's email (default), `sc(u)` (`per: "scope"`), or the client IP (`per: "ip"`, and always without a user). Past `max` it answers 429 `{ ok: false, error: "slow_down" }` with `Retry-After` set to the window. A route that should count only well-formed requests (`wishlist/suggest`) keeps its `allow` inside `fn` instead.
+5. Size. With `maxBytes`, a Content-Length above it answers 413 `too_large` before the body is read.
+6. Query, then body. Each zod schema checks its part (the query as the first value of each name; a body that is not JSON as `{}`). A refusal is 400: the first failing field's message when it is an `ApiError` code (`bad_agent`, `too_short`), else the option `invalid`, else `{ ok: false }`.
+7. `fn` runs with `{ req, u, scope, input, query, params }`. `scope` is `sc(u)` from the session. A scope, email or id in the body, the query, a header or the path is data to `fn` and never selects the tenant.
+8. Releases. No stored shape changes, no permission change, no environment variable change (`CRON_SECRET` and `WAITLIST_ADMIN_KEY` are read as before). New dependency `zod`.
+
+---
+## 78. Mail, logs and tooling (2026-10-16, branch only, rules 1960-1979)
+
+Supastarter quick wins (gap study 2026-10-16, standing order «the best of supastarter in all aspects»), built with our own code: no react-email, no new dependency. Files: `src/lib/mail-provider.ts`, `src/lib/notify.ts`, `src/emails/{index,verify-code,daily-brief,samples,copy}.ts`, `src/app/[lang]/admin/mail/page.tsx`, `src/lib/log.ts`, `src/lib/request-id.ts`, `src/proxy.ts`, `src/instrumentation.ts`, `src/lib/notifications.ts`, `src/app/api/notifications/route.ts`, `src/components/app/{NotificationCenter,NotificationsPanel}.tsx`, `.env.example`, `src/lib/blog.ts`, `src/lib/home-ld.ts`, `src/app/[lang]/blog/[slug]/page.tsx`. Tests: `tests/mail-logs-tooling.test.ts`; coverage `docs/system/tests/1960-mail-logs-tooling.md`.
+
+1. Mail (rules 1960-1963). `sendEmail({ to, subject, text, template, context, locale })` renders the HTML part from `EMAIL_TEMPLATES` and hands the message to `mailProvider()`: Resend with `RESEND_API_KEY`, else the console provider off production (kept in memory, logged as domain and sizes only, answers not delivered), else nothing. The answer is unchanged: true only when Resend accepted it. The verify code (`verifyCode`), Noor's brief (`dailyBrief`), the signup nudge and the daily follow-ups (`notice`) now have HTML parts; their subjects and text parts are word for word what they were.
+2. Mail preview (rules 1964-1965). `/{lang}/admin/mail`, a console section behind `requireAdmin`, shows every template in Arabic and English from fixed samples, each in a sandboxed frame (`sandbox=""`: no script, no same origin). It reads no customer data.
+3. Logs (rules 1970-1976). Server code writes `log.error("what failed", { safe fields })`; `architecture.md` lists what the logger never writes. The proxy gives every request an `x-request-id` (kept when the client sent a well-formed one) on the request and the response; `withRequest(req)` adds it to a route's lines, and `onRequestError` logs Next's own request errors with it.
+4. One bell entry read (rule 1966). Opening an unread entry in the bell or on the notifications page, or its "Mark as read" button there, posts `{ id }` to `/api/notifications`; the entry is marked read under the bell lock and the answer carries the unread count, which the workspace counter takes. "Mark all as read" is unchanged.
+5. Tooling (rules 1977-1979). `.env.example` lists every name in `variables.md`, values empty (the build- and platform-set ones and the release-script inputs commented out); `.gitignore` keeps it. Every blog post page carries an Article (`articleJsonLd`, escaped by `ldJson`). `src/lib/blog.ts` checks every post when it reads them (five front matter fields, a real `YYYY-MM-DD` date, a hyphenated lowercase slug, an Arabic and an English body split by `---EN---`) and throws naming every problem, so `next build` fails on a bad post.
+6. Releases. No stored shape changes (`read` on a bell entry already existed). One request body gains an optional field (`POST /api/notifications { id }`): a client that sends no body keeps working. No environment variable added.
+
+---
 ## 80. Customer account security: two-step sign-in, devices, sign-in address, Google (2026-10-16, branch `claude/beautiful-blackburn-50e6d7`, rules 1930-1956)
 
 Supastarter gap study 2026-10-16 (customer auth pack), built on Thakeen's own staff code. Permissions in docs/system/permissions.md rows 242-248 and "Account security"; tests in `docs/system/tests/1930-account-security.md`. Every record below is keyed by the ACTING login (`actingLogin` in `src/lib/own-password.ts`): a member manages its own login, never the owner's.

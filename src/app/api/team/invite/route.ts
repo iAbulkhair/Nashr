@@ -1,5 +1,4 @@
 import { createHash } from "crypto";
-import { teamInvite } from "@/emails";
 import { currentUser, normalizeEmail, validEmail, type User } from "@/lib/auth";
 import { notifyItem } from "@/lib/notifications";
 import { mailReady, sendEmail } from "@/lib/notify";
@@ -26,21 +25,22 @@ const ROLE = { ar: { admin: "مدير", member: "عضو" }, en: { admin: "admin"
  * address of the login that sent it (a validated email, no spaces or line breaks). No display name and no brand name:
  * both are free text anyone can set at signup or on the brand form, and they would turn this email, sent from the
  * product's own verified domain to any address, into a relay for whatever text the sender wanted to put in it. The HTML
- * part (src/emails/team-invite.ts) takes the same three values and nothing else (rule 688).
+ * part (src/emails/team-invite.ts) takes the same three values and nothing else (rule 688); `sendEmail` renders it from
+ * `context` (rule 1962).
  */
 function inviteMail(inv: Invite, inviterEmail: string, link: string) {
-  const html = teamInvite({ lang: inv.lang, inviterEmail, role: inv.role, link });
+  const context = { inviterEmail, role: inv.role, link };
   if (inv.lang === "ar") {
     return {
       subject: "دعوة للانضمام إلى فريق في ذكين",
       text: `مرحباً،\n\nدعاك مستخدم ذكين ${inviterEmail} للانضمام إلى حسابه في ذكين بصفة ${ROLE.ar[inv.role]}.\n\nافتح الرابط التالي خلال 7 أيام لتختار اسمك وكلمة مرورك:\n\n${link}\n\nالدعوة لهذا البريد وحده. إذا لم تتوقعها فتجاهل هذه الرسالة، ولن يتغير شيء.`,
-      html,
+      context,
     };
   }
   return {
     subject: "You are invited to join a team on Thakeen",
     text: `Hello,\n\nThe Thakeen user ${inviterEmail} invited you to join their account on Thakeen as ${inv.role === "admin" ? "an admin" : "a member"}.\n\nOpen this link within 7 days to choose your name and password:\n\n${link}\n\nThe invitation is for this email address only. If you did not expect it, ignore this email and nothing changes.`,
-    html,
+    context,
   };
 }
 
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
   const link = `${appOrigin()}/${inv.lang}/app/join#t=${res.token}`;
   if (byEmail) {
     const mail = inviteMail(inv, normalizeEmail(a.email), link);
-    if (!(await sendEmail(inv.email, mail.subject, mail.text, mail.html))) {
+    if (!(await sendEmail({ to: inv.email, subject: mail.subject, text: mail.text, template: "teamInvite", context: mail.context, locale: inv.lang }))) {
       await discardInvite(u.email, res.id);
       return Response.json({ error: "send_failed" }, { status: 502 });
     }

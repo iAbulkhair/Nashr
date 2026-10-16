@@ -22,7 +22,7 @@ const sends: { to: string; subject: string; text: string }[] = [];
 // sendEmail itself is replaced (not the resend module): two first-time sends at once can slip past a module mock.
 vi.mock("@/lib/notify", async (orig) => ({
   ...(await orig<typeof import("@/lib/notify")>()),
-  sendEmail: async (to: string, subject: string, text: string) => { sends.push({ to, subject, text }); return true; },
+  sendEmail: async (...a: unknown[]) => { const { to: to, subject: subject, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; sends.push({ to, subject, text }); return true; },
 }));
 
 const KEY = "staff-hardening-test-key-0123456789";

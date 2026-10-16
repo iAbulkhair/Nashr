@@ -8,6 +8,7 @@ import { accountOf, at, findKey, isComposio, listOf, num } from "./connectors/co
 import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
 import { anyAboveZero, day, rangeBefore } from "./social-read/common";
+import { log } from "./log";
 
 /**
  * The site's traffic (Google Analytics 4) and search (Search Console), read through Composio and kept as totals for
@@ -121,7 +122,7 @@ async function readGa(scope: string, c: Connection, now: Date): Promise<Ga> {
       property, dateRanges, dimensions: [{ name: "landingPage" }], metrics: [{ name: "sessions" }, { name: "keyEvents" }],
       orderBys: [{ desc: false, dimension: { dimensionName: "dateRange" } }, { desc: true, metric: { metricName: "sessions" } }], limit: 20,
     }, acc).catch(() => {
-      console.warn("ga_pages_failed");
+      log.warn("ga_pages_failed");
       return null;
     }),
   ]);
@@ -129,7 +130,7 @@ async function readGa(scope: string, c: Connection, now: Date): Promise<Ga> {
   // carry no label we know is logged once per read, the code alone, and leaves null figures, never 0.
   const rows = gaRows(byChannel);
   const pageRows = byPage == null ? [] : gaRows(byPage);
-  if ([rows, pageRows].some((rs) => rs.length > 0 && rs.every((x) => x.range == null))) console.warn("ga_no_range_column");
+  if ([rows, pageRows].some((rs) => rs.length > 0 && rs.every((x) => x.range == null))) log.warn("ga_no_range_column");
   const cur = rows.filter((x) => x.range === CUR);
   const prev = gaTotals(rows.filter((x) => x.range === PREV));
   const channels = cur.map((x) => ({ name: clean(x.dim, 40) || "(other)", sessions: x.m[0] ?? null, users: x.m[1] ?? null, keyEvents: x.m[3] ?? null, revenue: x.m[4] == null ? null : round2(x.m[4]) }));
@@ -224,7 +225,7 @@ export async function syncSiteIfDue(scope: string, now = new Date(), force = fal
  * a failure only logs, since the daily run reads again.
  */
 export function readSiteSoon(scope: string) {
-  const later = () => syncSiteIfDue(scope, new Date(), true).then(() => undefined, () => console.error("site read failed"));
+  const later = () => syncSiteIfDue(scope, new Date(), true).then(() => undefined, () => log.error("site read failed"));
   try { after(later); } catch { void later(); }
 }
 

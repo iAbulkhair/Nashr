@@ -6,6 +6,7 @@ import { accountOf, at, findKey, isComposio, listOf } from "../connectors/compos
 import type { Connection } from "../connectors/store";
 import type { Range, ReadPart, SocialPost, Totals } from "../social-stats";
 import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, anyAboveZero, beforeDeadline, count, dateOf, day, late, message, rangeBefore, refused, settle, splitDays } from "./common";
+import { log } from "../log";
 
 /**
  * The YouTube channel's results (rule 740, spec 2026-10-08-social-analytics-reports B2): the channel the owner connected
@@ -126,7 +127,7 @@ export async function readYoutube(scope: string, c: Connection, now: Date, deadl
   const rows = report.ok ? dayRows(report.value) : [];
   const { cur, prev } = splitDays(rows, window);
   // Rows YouTube answered that fall in neither period (no date, another range) are not summed: said once, never guessed.
-  if (rows.length && !cur.length && !prev.length) console.warn("yt_no_day_rows");
+  if (rows.length && !cur.length && !prev.length) log.warn("yt_no_day_rows");
   const before = totalsOf(prev);
 
   // The latest uploads, then their counts in one call. Only videos the answer gives back for the ids asked, published

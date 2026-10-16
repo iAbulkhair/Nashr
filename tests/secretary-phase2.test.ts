@@ -30,7 +30,7 @@ import { appDict } from "@/lib/app-i18n";
 // tick, the next-week snooze, reopen, the WhatsApp follow-up, "walk me through", the evening wrap and handoff notes.
 
 const sent: { to: string; subject: string; text: string }[] = [];
-vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, subject: string, text: string) => { sent.push({ to, subject, text }); return true; } }));
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (...a: unknown[]) => { const { to: to, subject: subject, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; sent.push({ to, subject, text }); return true; } }));
 // The app router only exists inside Next: the page's client component gets a router whose refresh does nothing.
 vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next/navigation")>()), useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 import * as listRoute from "@/app/api/secretary/route";

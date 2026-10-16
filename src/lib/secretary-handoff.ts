@@ -25,6 +25,7 @@ import { similarity } from "./similarity";
 import { SEC_KEYS, SEC_WRITES_PER_HOUR, calFor, changeItem, cleanBlock, cleanLine, createItem, listOpenItems, toolError, whereShown, withLock, type SecFail } from "./secretary";
 import { SEC_LIMITS, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
+import { log } from "./log";
 
 export const HANDOFF_KINDS = ["blocked", "ready", "note"] as const;
 export type HandoffKind = (typeof HANDOFF_KINDS)[number];
@@ -152,7 +153,7 @@ export async function runHandoffNote(user: User, input: Record<string, unknown>,
     const due = it.dueAt ? ` It is due today${it.allDay ? " (all day)" : ""}.` : "";
     return { text: `Note left for ${toName}, and it opened an item on the owner's list [id=${it.id}] ${JSON.stringify(it.title)} (${to === "owner" ? "the owner owes you input" : `${toName} owes it`}).${due} ${whereShown(it, zone)} Tell the owner what you are waiting for.`, isError: false, id: it.id };
   } catch (e) {
-    console.error("handoff note failed", e instanceof Error ? e.name : "error");
+    log.error("handoff note failed", e);
     return { text: "Not done: the note could not be saved just now. Try again in a moment.", isError: true };
   }
 }

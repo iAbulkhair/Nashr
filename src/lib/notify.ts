@@ -1,5 +1,9 @@
 import { db } from "./db";
 import { adminAudit } from "./admin-audit";
+import { renderEmail, type EmailContext, type EmailTemplateId } from "../emails";
+import type { Lang } from "./i18n";
+import { log } from "./log";
+import { mailProvider } from "./mail-provider";
 
 /**
  * Whether email can actually reach a customer. It needs the API key AND a real sender. Without MAIL_FROM the sender is
@@ -17,38 +21,50 @@ export const mailReady = () => !!process.env.RESEND_API_KEY && !!process.env.MAI
 export const EMAIL_TIMEOUT_MS = 10_000;
 
 /**
- * Notification channels. Email via Resend when RESEND_API_KEY is set; WhatsApp when the Business API is approved.
- *
- * `html` is the HTML part from a template in src/emails/ (rule 689). It is sent only when given, and the plain-text part
- * is always sent with it, so a templated message is multipart: a client that shows no HTML, a screen reader in text mode
- * and every test that reads a token out of the text still get the same words. Without `html` the message is text only,
- * as before; Resend then receives no `html` key at all. Click tracking must stay off for the sending domain in Resend:
- * it rewrites the HTML part's links through Resend's redirect, and the reset and join links carry their token in the
- * fragment (rule 546, src/emails/reset-password.ts).
+ * A message from one registered template (rule 1962): the caller names the template, hands it its typed `context` and
+ * the reader's `locale`, and keeps writing the subject and the plain-text part itself (tests parse tokens and links out
+ * of the text, so it stays word for word). `sendEmail` renders the HTML part from src/emails/ and sends both.
  */
-export async function sendEmail(to: string, subject: string, text: string, html?: string): Promise<boolean> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return false;
+export type TemplateMail<T extends EmailTemplateId = EmailTemplateId> = { to: string; subject: string; text: string; template: T; context: EmailContext<T>; locale: Lang };
+
+/**
+ * Send one email. Two forms:
+ * - typed: `sendEmail({ to, subject, text, template, context, locale })`, for every message a customer receives. The
+ *   template's context is checked at compile time against its function in src/emails/ (`EmailContext`).
+ * - plain: `sendEmail(to, subject, text, html?)`, for internal text-only mail (the support inbox, staff alerts) and the
+ *   routes that still build their HTML themselves. Expand step: the typed form is new, the plain one stays.
+ *
+ * The message goes to the provider for this process (src/lib/mail-provider.ts, rule 1963): Resend when RESEND_API_KEY is
+ * set, the console provider on a non-production deploy without one, none on production without one. The answer is true
+ * only when Resend accepted the message; a refusal, a timeout, a transport error, the console provider and no provider at
+ * all answer false. `html`, when given, is sent with the plain-text part, so a templated message is multipart (rule 689);
+ * without it Resend receives no `html` key. Click tracking must stay off for the sending domain in Resend: it rewrites
+ * the HTML part's links through Resend's redirect, and the reset and join links carry their token in the fragment (rule
+ * 546, src/emails/reset-password.ts).
+ */
+export async function sendEmail<T extends EmailTemplateId>(mail: TemplateMail<T>): Promise<boolean>;
+export async function sendEmail(to: string, subject: string, text: string, html?: string): Promise<boolean>;
+export async function sendEmail(a: string | TemplateMail, subject?: string, text?: string, html?: string): Promise<boolean> {
+  const msg = typeof a === "string" ? { to: a, subject: subject ?? "", text: text ?? "", html } : { to: a.to, subject: a.subject, text: a.text, html: renderEmail(a.template, a.context, a.locale) };
+  const provider = mailProvider();
+  if (!provider) return false;
   const from = process.env.MAIL_FROM ?? "Noor at Thakeen <onboarding@resend.dev>";
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const { Resend } = await import("resend");
-    const resend = new Resend(key);
-    // `send` RESOLVES with { data, error }; it does not throw when the API refuses the message (see the Response type
-    // in resend's own d.ts). The old code awaited it and returned true regardless, so a refused email was reported as
-    // sent: password resets, trial mail and weekly plans all silently went nowhere while every screen said they had
-    // been sent. The catch below only ever caught a transport failure, which is the rarer half of the problem.
+    // A hung call must not hold a cron slot: the provider's promise is raced against EMAIL_TIMEOUT_MS. The old code
+    // awaited Resend and returned true regardless, so a refused email was reported as sent; the provider now reports a
+    // refusal (`delivered: false` with `refused`), and the catch below only ever sees a transport failure.
     const timeout = new Promise<"timeout">((resolve) => {
       timer = setTimeout(() => resolve("timeout"), EMAIL_TIMEOUT_MS);
       (timer as { unref?: () => void }).unref?.();
     });
-    const res = await Promise.race([resend.emails.send({ from, to, subject, text, ...(html ? { html } : {}) }), timeout]);
+    const res = await Promise.race([provider.send({ from, ...msg }), timeout]);
     if (res === "timeout") {
       await mailFailed(from, `no answer within ${EMAIL_TIMEOUT_MS / 1000} s`);
       return false;
     }
-    if (res.error) {
-      await mailFailed(from, res.error.message ?? res.error.name ?? "unknown");
+    if (!res.delivered) {
+      if (res.refused !== undefined) await mailFailed(from, res.refused);
       return false;
     }
     return true;
@@ -66,7 +82,7 @@ export async function sendEmail(to: string, subject: string, text: string, html?
  * owner's own address, so every other recipient is rejected one at a time and in silence.
  */
 async function mailFailed(from: string, reason: string) {
-  console.error("email refused", { from, reason });
+  log.error("email refused", { from, reason: reason.slice(0, 200) });
   // The recipient is deliberately NOT recorded: this ring is read by the founder console and an address here would
   // turn a delivery log into a list of who asked for a password reset.
   await adminAudit({ actor: "system", section: "system", target: "mail", what: "mail:refused", after: { from, reason: reason.slice(0, 200) } }).catch(() => {});
@@ -103,9 +119,10 @@ async function mailFailed(from: string, reason: string) {
  * predates that guard. A marker burned after the cutoff and before this code is live is left alone: missing that one
  * repair is the lesser failure.
  *
- * `html`, when given, is the message's HTML part and goes to `sendEmail` with the text (rule 689).
+ * `html`, when given, is the message's HTML part and goes to `sendEmail` with the text (rule 689): a registered template
+ * (`{ template, context, locale }`, rule 1962), or markup a caller already built.
  */
-export async function sendOnce(email: string, key: string, subject: string, text: string, html?: string): Promise<OnceResult> {
+export async function sendOnce<T extends EmailTemplateId>(email: string, key: string, subject: string, text: string, html?: string | OncePart<T>): Promise<OnceResult> {
   const marker = onceKey(email, key);
   const first = await db.get(marker);
   if (!repairable(first) || (isOldMarker(first) && !(await writtenBeforeRepairCutoff(marker)))) return "already";
@@ -124,7 +141,8 @@ export async function sendOnce(email: string, key: string, subject: string, text
       if (!(await db.lock(onceRepairKey(email, key), ONCE_TTL_SECONDS))) return "already";
       await db.del(marker);
     }
-    if (!(await sendEmail(email, subject, text, html))) return "failed";
+    const sent = typeof html === "object" ? await sendEmail({ to: email, subject, text, ...html }) : await sendEmail(email, subject, text, html);
+    if (!sent) return "failed";
     await markSent(email, key);
     return "sent";
   } finally {
@@ -132,6 +150,8 @@ export async function sendOnce(email: string, key: string, subject: string, text
   }
 }
 export type OnceResult = "sent" | "already" | "busy" | "failed";
+/** The template half of a typed message, for `sendOnce`: the address, subject and text are its own arguments. */
+export type OncePart<T extends EmailTemplateId = EmailTemplateId> = Pick<TemplateMail<T>, "template" | "context" | "locale">;
 
 /** What `markSent` stores: the moment Resend accepted the message. The old claim-before-send guard stored a bare lock. */
 type SentRecord = { sent: string };

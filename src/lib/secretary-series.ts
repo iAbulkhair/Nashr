@@ -3,9 +3,10 @@ import { getUser } from "./auth";
 import { listBrands } from "./brands";
 import { brandFingerprint, brandTag, pushNotifs, withBrand, type Notif } from "./notifications";
 import { emailAllowed, readPrefs } from "./notify-prefs";
+import { log } from "./log";
 import { sendEmail } from "./notify";
 import { appOrigin } from "./origin";
-import { COPY, notice, paragraphs } from "../emails";
+import { COPY, paragraphs } from "../emails";
 import { pmap } from "./parallel";
 import { SEC_ID, SEC_KEYS, SEC_PURGE_BATCH, SERIES_ID, audit, fail, stateOf, withLock, zoneFor, type SecFail, type Who } from "./secretary";
 import { arCount, formatWhen, zoneDay, type SecItem } from "./secretary-agenda";
@@ -128,12 +129,12 @@ export async function warnSeries(scope: string, now = Date.now()): Promise<numbe
     moved += rowsN.length;
     try {
       // Reem's reminder switch (rule 1147); the old "none" level reads as off, as before.
-      if (emailAllowed(await readPrefs(scope, email), "reminders")) await sendEmail(email, title, `${text.body}\n\n${appOrigin()}${href}`, notice({ lang, title, paragraphs: paragraphs(text.body), cta: { href: `${appOrigin()}${href}`, label: COPY[lang].notice.todo } }));
+      if (emailAllowed(await readPrefs(scope, email), "reminders")) await sendEmail({ to: email, subject: title, text: `${text.body}\n\n${appOrigin()}${href}`, template: "notice", context: { title, paragraphs: paragraphs(text.body), cta: { href: `${appOrigin()}${href}`, label: COPY[lang].notice.todo } }, locale: lang });
     } catch (e) {
-      console.error("sec series warning email failed", e instanceof Error ? e.name : "error");
+      log.error("sec series warning email failed", e);
     }
   } catch (e) {
-    console.error("sec series warning failed", e instanceof Error ? e.name : "error");
+    log.error("sec series warning failed", e);
   }
   return moved;
 }
@@ -189,7 +190,7 @@ export async function purgeSeries(scope: string, now = Date.now()): Promise<numb
       const r = await withLock(scope, id, () => purgeOne(scope, id, now));
       return typeof r === "string" ? r : null;
     } catch (e) {
-      console.error("sec series purge item failed", e instanceof Error ? e.name : "error");
+      log.error("sec series purge item failed", e);
       return null;
     }
   }, 8);
@@ -203,13 +204,13 @@ export async function purgeSeries(scope: string, now = Date.now()): Promise<numb
       await Promise.all([db.srem(SEC_KEYS.seriesList(scope), sid), db.del(SEC_KEYS.swarn(scope, sid))]);
       if ((await db.zcard(SEC_KEYS.series(scope, sid))) > 0) await db.sadd(SEC_KEYS.seriesList(scope), sid);
     } catch (e) {
-      console.error("sec series list cleanup failed", e instanceof Error ? e.name : "error");
+      log.error("sec series list cleanup failed", e);
     }
   }, 8);
   try {
     await audit(scope, { actor: "cron", via: "cron" }, "series_purge", "-", `${gone.length} closed copy(ies) of recurring to-dos deleted 90 days after their close`);
   } catch (e) {
-    console.error("sec series purge audit failed", e instanceof Error ? e.name : "error");
+    log.error("sec series purge audit failed", e);
   }
   return gone.length;
 }
@@ -251,7 +252,7 @@ async function purgeOne(scope: string, id: string, now: number): Promise<string 
       db.zrem(SEC_KEYS.spurge(scope), id), db.zrem(SEC_KEYS.sdone(scope), id), db.zrem(SEC_KEYS.series(scope, sid), id),
     ]);
   } catch (e) {
-    console.error("sec series purge index cleanup failed", e instanceof Error ? e.name : "error");
+    log.error("sec series purge index cleanup failed", e);
   }
   return sid;
 }
@@ -319,7 +320,7 @@ export async function seriesDaily(scope: string, now = Date.now()): Promise<{ wa
   const row = brands.find((b) => b.id === brandIdOf(scope));
   if (!user || user.suspended || !row || row.status !== "active") return { warned: 0, deleted: 0, idle: true };
   const step = <T,>(name: string, f: () => Promise<T>, empty: T) => f().catch((e) => {
-    console.error(`sec series ${name} failed`, e instanceof Error ? e.name : "error");
+    log.error(`sec series ${name} failed`, e);
     return empty;
   });
   const deleted = await step("purge", () => purgeSeries(scope, now), 0);

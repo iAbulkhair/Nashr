@@ -201,7 +201,10 @@ describe("submit errors carry a fixed code and nothing of kie's reply", () => {
     expect(m).not.toContain(KEY);
     expect(m).not.toContain("leak");
     // A log line may carry numbers only: never the body, never a header.
-    for (const args of log.mock.calls) for (const a of args) expect(typeof a === "number" || a === "kie", `logged ${String(a)}`).toBe(true);
+    for (const args of log.mock.calls) {
+      expect(args[0]).toBe("kie");
+      expect(args[1], "the status and the provider code, both numbers").toEqual({ status: expect.any(Number), provider_code: expect.any(Number) });
+    }
     expect(calls, "a submit is never retried").toHaveLength(1);
   });
 

@@ -13,6 +13,7 @@ import { GRACE_DAYS, addDays, addMonths, billingLocked, paymobRenewalDue, type B
 import { PaymobError, TOKEN_HMAC_FIELDS, TXN_HMAC_FIELDS, checkoutUrl, createIntention, parseTxn, payWithToken, paymobConfig, refundTxn, verifyHmac, type PaymobConfig, type Txn } from "./paymob";
 import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
+import { log as logger } from "./log";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
@@ -159,7 +160,7 @@ export async function startCheckout(owner: Pick<User, "email">, body: unknown, l
     return { ok: true, url: checkoutUrl(cfg, it.clientSecret), ref };
   } catch (e) {
     await db.set(intentKey(ref), { ...intent, status: "failed" }, DAYS_400);
-    console.error("paymob checkout", e instanceof PaymobError ? e.message : "error");
+    logger.error("paymob checkout", { error: e instanceof PaymobError ? e.message : "error" });
     return { ok: false, error: "paymob_error" };
   }
 }
@@ -360,7 +361,7 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
       if (r === "pending") return "paymob_pending";
     } catch (e) {
       outcome = "paymob_error";
-      console.error("paymob renewal", e instanceof PaymobError ? e.message : "error");
+      logger.error("paymob renewal", { error: e instanceof PaymobError ? e.message : "error" });
     }
   }
   await withUserLock(email, async (x) => {
@@ -538,7 +539,7 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
         try {
           await refundTxn(cfg, txnId, rec.amountCents);
         } catch (err) {
-          console.error("paymob refund", err instanceof PaymobError ? err.message : "error");
+          logger.error("paymob refund", { error: err instanceof PaymobError ? err.message : "error" });
           return { ok: false, error: "paymob_refund_failed" };
         }
         await db.set(refundedKey(txnId), JSON.stringify({ at: new Date().toISOString(), by }), DAYS_400);

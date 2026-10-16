@@ -7,6 +7,8 @@ import Footer from "@/components/Footer";
 import ScribbleStatic from "@/components/ScribbleStatic";
 import FinalCta from "@/components/FinalCta";
 import { pageMeta } from "@/lib/page-meta";
+import { articleJsonLd, ldJson } from "@/lib/home-ld";
+import { appOrigin } from "@/lib/origin";
 
 export function generateStaticParams() {
   return LANGS.flatMap((lang) => slugs().map((slug) => ({ lang, slug })));
@@ -26,6 +28,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
   const t = dict[lang];
   return (
     <>
+      {/* Rule 1978: the post as an Article for search engines, escaped by `ldJson` so no text can close the script. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(articleJsonLd(lang, appOrigin(), p)) }} />
       <Nav t={t} lang={lang} />
       <main id="main" tabIndex={-1}>
         <div className="page-wrap">

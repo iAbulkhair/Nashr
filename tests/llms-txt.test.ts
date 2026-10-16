@@ -235,8 +235,19 @@ describe("rule 698: /llms.txt is a static plain-text index of the sitemap's publ
     const res = proxy(new NextRequest("https://thakeen.com/llms.txt"));
     expect(res.status).toBe(200);
     expect(res.headers.get("x-middleware-next")).toBe("1");
-    expect(res.headers.get("x-middleware-override-headers")).toBeNull();
+    onlyRequestId(res);
     expect(res.headers.get("location")).toBeNull();
     expect(res.headers.get("x-robots-tag")).toBeNull();
   });
 });
+
+/**
+ * Rule 1975: the proxy now passes every request on with one header added, its request id, and nothing else. "Untouched"
+ * means exactly that: no x-pathname, no other header changed, the id well formed.
+ */
+function onlyRequestId(res: Response, where = "") {
+  const over = (res.headers.get("x-middleware-override-headers") ?? "").split(",").filter(Boolean);
+  expect(over, where).toContain("x-request-id");
+  expect(over, where).not.toContain("x-pathname");
+  expect(res.headers.get("x-middleware-request-x-request-id") ?? "", where).toMatch(/^[A-Za-z0-9-]{8,64}$/);
+}

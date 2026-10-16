@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { log } from "./log";
 
 /**
  * Cron heartbeats (rule 1014). Every cron route writes `cronbeat:{job}` = the time of its last finished run, and the
@@ -34,7 +35,7 @@ export async function recordCronRun(job: CronJob, now = Date.now()): Promise<voi
   try {
     await db.set(key(job), now, KEEP_SECONDS);
   } catch (e) {
-    console.error("cron heartbeat failed", job, e instanceof Error ? e.name : "error");
+    log.error("cron heartbeat failed", { job, error: e });
   }
 }
 

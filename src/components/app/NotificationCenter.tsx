@@ -22,6 +22,16 @@ export const BELL_LIST = 8;
  * effect of looking: the old page marked everything read 1.5 seconds after it opened. Escape or a click outside closes the
  * panel and gives focus back to the bell. `align` keeps the panel on screen: "start" in the rail, "end" in the phone header.
  */
+/**
+ * Mark one bell entry read (rule 1966). Sent with `keepalive`, so a click on the entry's link that navigates away still
+ * lands. Answers the account's unread count after the write, or null when it failed (the entry stays unread there).
+ */
+export async function markOneRead(id: string): Promise<number | null> {
+  const r = await fetch("/api/notifications", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }), keepalive: true }).catch(() => null);
+  const j = r?.ok ? ((await r.json().catch(() => ({}))) as { unread?: unknown }) : {};
+  return typeof j.unread === "number" ? j.unread : null;
+}
+
 export default function NotificationCenter({ t, lang, align = "start", fallbackUnread = 0 }: { t: AppDict; lang: Lang; align?: "start" | "end"; fallbackUnread?: number }) {
   const U = t.ux.notif;
   const ws = useWorkspace();
@@ -49,6 +59,13 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
     ws?.setUnread(0);
     window.dispatchEvent(new Event(WORKSPACE_EVENTS.unread));
     setSaid(U.marked);
+  }
+  /** Opening an unread entry marks that one read, not the whole bell (rule 1966). */
+  async function readOne(n: Notif) {
+    if (n.read) return;
+    setItems((p) => p?.map((x) => (x.id === n.id ? { ...x, read: true } : x)) ?? p);
+    const left = await markOneRead(n.id);
+    if (left !== null) ws?.setUnread(left);
   }
 
   function toggle() {
@@ -87,7 +104,7 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
             <ul className="max-h-[60dvh] divide-y divide-border overflow-y-auto">
               {items.map((n) => (
                 <li key={n.id}>
-                  <Link href={n.href} onClick={() => setOpen(false)} className="flex gap-2 px-3 py-2.5 hover:bg-background-muted/60">
+                  <Link href={n.href} onClick={() => { setOpen(false); void readOne(n); }} className="flex gap-2 px-3 py-2.5 hover:bg-background-muted/60">
                     <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-foreground"}`} />
                     <span className="min-w-0 flex-1">
                       <span className={`block text-sm ${n.read ? "" : "font-semibold"}`} dir="auto">{n.title}{!n.read && <span className="sr-only"> ({U.unread})</span>}</span>

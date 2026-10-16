@@ -26,6 +26,7 @@ import { tokenBy } from "./actor";
 import { recordActivity } from "./activity";
 import { agentForTask } from "./agents";
 import { itemText, otherBrandNames, readAgentScopeModes, scopeCheck, type AgentScopeModes, type ScopeDecision } from "./agent-scope";
+import { log } from "./log";
 
 export const DRAFT_LIMITS = { title: 200, body: 20000, notes: 500, channel: 30 } as const;
 
@@ -73,7 +74,7 @@ export async function saveExternalDraft(user: User, d: DraftInput, o: { agentSco
   const output = modes.output;
   const check: Promise<ScopeDecision> | null = output === "off" ? null : otherBrandNames(user)
     .catch((e): string[] => {
-      console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+      log.error("agent scope brand names failed", e);
       return [];
     })
     .then((otherBrands) => scopeCheck("output", output, itemText({ title: d.title, body: d.body }), { user, agent: agentForTask(d.type).id, where: "save_draft", lang: d.lang ?? brand.languages[0] ?? (user.lang === "en" ? "en" : "ar"), brand: { name: brand.name, industry: brand.industry ?? "" }, otherBrands }));

@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { Redis } from "@upstash/redis";
 import { isProductionDeploy } from "./deploy-env";
 import { pmap } from "./parallel";
+import { log } from "./log";
 
 /**
  * Storage adapter. Upstash Redis in production; in-memory Map when no
@@ -494,7 +495,7 @@ function pickStore(): Store {
   const u = upstash();
   if (u) return u;
   if (isProductionDeploy()) {
-    console.error("store_not_configured: Redis credentials are missing in production; every data call will fail");
+    log.error("store_not_configured: Redis credentials are missing in production; every data call will fail");
     return unconfigured();
   }
   return memory();

@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { sameSecret } from "./rate";
+import { log } from "./log";
 
 /**
  * Paymob KSA adapter (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md section 2): the configuration gate,
@@ -41,7 +42,7 @@ export function paymobConfig(): PaymobConfig | null {
   if (!secretKey || !publicKey || !hmacSecret || cardIntegration === null) return null;
   const live = !(isTestKey(secretKey, "sk") && isTestKey(publicKey, "pk"));
   if (live && process.env.PAYMOB_LIVE !== "1") {
-    if (!warnedLive) console.error("paymob_live_keys_refused: PAYMOB_LIVE is not 1, so Paymob stays off");
+    if (!warnedLive) log.error("paymob_live_keys_refused: PAYMOB_LIVE is not 1, so Paymob stays off");
     warnedLive = true;
     return null;
   }

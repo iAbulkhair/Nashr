@@ -31,10 +31,11 @@ import { SEC_KEYS, fireReminder, zoneFor } from "./secretary";
 import { formatWhen, type SecItem } from "./secretary-agenda";
 import { pushNotifs, type Push } from "./notifications";
 import { emailAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
+import { log } from "./log";
 import { sendEmail } from "./notify";
 import { DEFAULT_ZONE, type Zone } from "./zones";
 import { appOrigin } from "./origin";
-import { COPY, notice, paragraphs } from "../emails";
+import { COPY, paragraphs } from "../emails";
 import { meetingsNow } from "./secretary-cal-link";
 import { quietUntil } from "./secretary-meetings";
 
@@ -115,8 +116,14 @@ async function deliver(ctx: AccountCtx, scope: string, zone: Zone, cur: SecItem)
   const ar = ctx.user.lang === "ar";
   // The HTML part says what the bell says, with a button to the list. The title holds the task's title, which the
   // owner or an agent wrote: `notice` escapes it as text (rule 686).
-  const html = notice({ lang: ctx.user.lang, title: push.n.title, paragraphs: paragraphs(push.n.body), cta: { href: `${appOrigin()}${push.n.href}`, label: COPY[ctx.user.lang].notice.todo } });
-  const sent = await sendEmail(ctx.email, ar ? `تذكير من ريم: ${cur.title.slice(0, 80)}` : `Reminder from Reem: ${cur.title.slice(0, 80)}`, `${push.n.title}\n${push.n.body}\n\n${appOrigin()}${push.n.href}`, html);
+  const sent = await sendEmail({
+    to: ctx.email,
+    subject: ar ? `تذكير من ريم: ${cur.title.slice(0, 80)}` : `Reminder from Reem: ${cur.title.slice(0, 80)}`,
+    text: `${push.n.title}\n${push.n.body}\n\n${appOrigin()}${push.n.href}`,
+    template: "notice",
+    context: { title: push.n.title, paragraphs: paragraphs(push.n.body), cta: { href: `${appOrigin()}${push.n.href}`, label: COPY[ctx.user.lang].notice.todo } },
+    locale: ctx.user.lang,
+  });
   if (sent) ctx.tally.emailed++;
 }
 
@@ -143,7 +150,7 @@ async function sweepScope(ctx: AccountCtx, scope: string): Promise<void> {
     } catch (e) {
       // Nothing was written to the item (or only its index is stale): the id is still due and the next sweep retries.
       ctx.tally.failed++;
-      console.error("reminder fire failed", e instanceof Error ? e.name : "error");
+      log.error("reminder fire failed", e);
     } finally {
       await db.del(lease).catch(() => {});
     }
@@ -151,7 +158,7 @@ async function sweepScope(ctx: AccountCtx, scope: string): Promise<void> {
   try {
     await rescore(scope);
   } catch (e) {
-    console.error("reminder index rescore failed", e instanceof Error ? e.name : "error");
+    log.error("reminder index rescore failed", e);
   }
 }
 
@@ -180,7 +187,7 @@ async function sweepAccount(email: string, scopes: string[], now: number, deadli
   const results = await Promise.allSettled(live.map((s) => sweepScope(ctx, s)));
   for (const r of results) if (r.status === "rejected") {
     tally.failed++;
-    console.error("reminder sweep failed for a scope", r.reason instanceof Error ? r.reason.name : "error");
+    log.error("reminder sweep failed for a scope", r.reason);
   }
   return tally;
 }
@@ -202,7 +209,7 @@ export async function sweepReminders(now = Date.now(), opts: { tick?: boolean; d
     // Past the deadline no account is started: its scopes keep their past score and come first next time.
     if (Date.now() >= deadline) return { ...zero(), deferred: list.length };
     return sweepAccount(email, list, now, deadline).catch((e) => {
-      console.error("reminder sweep failed for an account", e instanceof Error ? e.name : "error");
+      log.error("reminder sweep failed for an account", e);
       return { ...zero(), failed: 1 };
     });
   }, SWEEP_CONCURRENCY);

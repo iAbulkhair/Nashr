@@ -19,7 +19,7 @@ import { SERIES_KEEP_MAX, purgeSeries, requeueSeries, seriesRows, setSeriesKeep,
 import { formatWhen, zoneDay, type SecItem } from "@/lib/secretary-agenda";
 
 const sent: { to: string; subject: string; text: string }[] = [];
-vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, subject: string, text: string) => { sent.push({ to, subject, text }); return true; } }));
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (...a: unknown[]) => { const { to: to, subject: subject, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; sent.push({ to, subject, text }); return true; } }));
 import * as cronDaily from "@/app/api/cron/daily/route";
 // The app router only exists inside Next: the page's client components get a router whose refresh does nothing.
 vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next/navigation")>()), useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
@@ -287,7 +287,7 @@ describe("rule 503: no copy is deleted without a warning at least 7 days earlier
     const spy = vi.spyOn(db, "set").mockImplementation((k, v, ttl) => (k.startsWith("notifs:") ? Promise.reject(new TypeError("bell down")) : set(k, v, ttl)));
     expect(await warnSeries(p.email, T)).toBe(0);
     spy.mockRestore();
-    expect(errors.mock.calls).toContainEqual(["sec series warning failed", "TypeError"]);
+    expect(errors.mock.calls).toContainEqual(["sec series warning failed", { error: "TypeError" }]);
     expect(await members(SEC_KEYS.sdone(p.email))).toEqual([c.id]);
     expect(await members(SEC_KEYS.spurge(p.email))).toEqual([]);
     expect(await db.get(SEC_KEYS.swarn(p.email, psid))).toBeNull();
@@ -500,7 +500,7 @@ describe("rule 504: the purge is safe", () => {
     const spy = vi.spyOn(db, "get").mockImplementation(((k: string) => (k === SEC_KEYS.item(o.email, bad.id) ? Promise.reject(new TypeError("redis down")) : get(k))) as typeof db.get);
     expect(await purgeSeries(o.email, T)).toBe(3);
     spy.mockRestore();
-    expect(errors.mock.calls).toContainEqual(["sec series purge item failed", "TypeError"]);
+    expect(errors.mock.calls).toContainEqual(["sec series purge item failed", { error: "TypeError" }]);
     expect(await exists(o.email, copies.map((x) => x.id))).toEqual([false, false, true, false]);
     expect(await members(SEC_KEYS.spurge(o.email))).toEqual([bad.id]);
     // The series still has a closed copy: it stays listed.

@@ -47,6 +47,7 @@ export type { TaskType } from "./tasks";
 export { TASK_COST, TASK_COUNT, IMAGE_TYPES, VIDEO_TYPES, IMAGE_COST } from "./tasks";
 import { isTaskType, type TaskType } from "./tasks";
 import type { ImageModelId, MediaFailure, MediaProviderId, VideoModelId } from "./media-catalog";
+import { log } from "./log";
 
 /** The last render of one kind that ended without a result, kept on the card until the next render of that kind. */
 export type MediaLast = { error: MediaFailure; credits: number; refunded: boolean; at: string };
@@ -395,7 +396,7 @@ export async function updateTask(scope: string, id: string, mutate: (t: Task) =>
     return next;
   } finally {
     // As in withUserLock: a failed release must not turn a saved change into a throw. The 10 s TTL frees the lock.
-    await db.unlock(key).catch((e) => console.error("task lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(key).catch((e) => log.error("task lock release failed", e));
   }
 }
 export async function addPreference(email: string, note: string) {

@@ -23,6 +23,7 @@ import { dropLink, getLink, openTokens, putEvents, putLink, scheduleSync, sealTo
 import { decodeIdToken, googleAccount, microsoftDomain, MS_CONSUMER_TENANT, proofOf } from "./secretary-cal-proof";
 import { keepGoogle, keepGraph, limitMeetings, type GEvent, type GraphEvent, type Meeting } from "./secretary-meetings";
 import { zoneOf } from "./zones";
+import { log } from "./log";
 
 export const GOOGLE_API = "https://www.googleapis.com";
 export const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -59,7 +60,7 @@ export async function withCalLock<T>(scope: string, fn: () => Promise<T>): Promi
   try {
     return await fn();
   } finally {
-    await db.unlockOwned(key, token).catch((e) => console.error("cal lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlockOwned(key, token).catch((e) => log.error("cal lock release failed", e));
   }
 }
 
@@ -183,7 +184,7 @@ export async function freshAccess(scope: string, link: CalLink, now: number): Pr
     data = await Promise.race([refreshTokens(p, t.refresh), slow]);
   } catch (e) {
     if (e instanceof Error && e.message.includes("invalid_grant")) return { ok: false, lost: "token" };
-    console.error("cal refresh failed", e instanceof Error ? e.name : "error");
+    log.error("cal refresh failed", e);
     return { ok: false, retry: true };
   } finally {
     clearTimeout(timer);
@@ -232,7 +233,7 @@ export async function loseLink(scope: string, link: CalLink, login: string, reas
   const next: CalLink = { ...link, state: "reconnect", lostReason: reason, rev: link.rev + 1 };
   delete next.choices;
   await Promise.all([putLink(scope, next), db.del(SEC_KEYS.calEvents(scope)), db.zrem(SEC_KEYS.calDue, scope), audit(scope, { actor: via === "cron" ? "cron" : "owner", via, login }, "cal_lost", "-", `provider=${link.provider}`)]);
-  if (reason === "token") await noticeLost(scope, link).catch((e) => console.error("cal lost notice failed", e instanceof Error ? e.name : "error"));
+  if (reason === "token") await noticeLost(scope, link).catch((e) => log.error("cal lost notice failed", e));
 }
 
 /** Calendar names are the provider's text: no control characters, at most 100 characters. */
@@ -301,7 +302,7 @@ export async function fetchEvents(link: CalLink, access: string, fromMs: number,
     const rows = google ? j?.items ?? [] : j?.value;
     return Array.isArray(rows) ? { ok: true, raw: rows } : { ok: false, kind: "retry" };
   } catch (e) {
-    console.error("cal events fetch failed", e instanceof Error ? e.name : "error");
+    log.error("cal events fetch failed", e);
     return { ok: false, kind: "retry" };
   }
 }
@@ -378,7 +379,7 @@ async function syncLocked(scope: string, now: number): Promise<Outcome> {
       const who = await reproof(cur, fresh.data, fresh.access);
       if (proofOf(who.accountDomain, brand?.website) === null) return loseSync(scope, cur, "domain");
     } catch (e) {
-      console.error("cal proof failed", e instanceof Error ? e.name : "error");
+      log.error("cal proof failed", e);
       return retryAt(scope, cur, now + RETRY_DEFAULT_S * 1000);
     }
   }
@@ -434,7 +435,7 @@ export async function sweepCalendars(now: number, deadline: number): Promise<Cal
         const o = await syncOne(scope, now);
         if (o !== "dropped") report[o]++;
       } catch (e) {
-        console.error("cal sync failed", e instanceof Error ? e.name : "error");
+        log.error("cal sync failed", e);
         report.retried++;
         await scheduleSync(scope, now + CAL_ERROR_RETRY_MS).catch(() => {});
       }

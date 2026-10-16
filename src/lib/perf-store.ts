@@ -8,6 +8,7 @@ import { adRowsVia, snapPrevSpendVia } from "./connectors/ads-via-composio";
 import { isComposio } from "./connectors/composio-shape";
 import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
+import { log } from "./log";
 
 export const LEARNINGS_FILE = "performance-learnings.md";
 const KEY = (scope: string) => `perfimport:${scope}`;
@@ -39,7 +40,7 @@ export async function syncAds(scope: string, provider: AdProvider, c: Connection
   const [pull, prev, codes] = await Promise.all([
     read(now),
     prevOf(scope, c, read, now).catch((e) => {
-      console.warn("ad_prev_failed", provider, failCode(e));
+      log.warn("ad_prev_failed", { provider, error: failCode(e) });
       return null;
     }),
     adCodeIndex(scope),

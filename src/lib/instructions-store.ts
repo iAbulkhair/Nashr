@@ -15,6 +15,7 @@ import {
   type InstructionLimits,
   type ScreenCode,
 } from "./instructions-safety";
+import { log } from "./log";
 
 /**
  * The stored layers of agent instructions (spec 5.1): the platform's own (`skills:platform`) and one per brand workspace
@@ -116,7 +117,7 @@ async function withLock<T>(scope: string, fn: () => Promise<T>): Promise<T | { o
     return await fn();
   } finally {
     // As in saveGovAs: a failed release must not turn a saved change into an error. The 10 s TTL frees the lock.
-    await db.unlockOwned(lock, token).catch((e) => console.error("instructions lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlockOwned(lock, token).catch((e) => log.error("instructions lock release failed", e));
   }
 }
 
@@ -287,7 +288,7 @@ async function commit(scope: string, layer: Layer, items: Instruction[], by: By,
       : [
           recordActivity(scope, [{ at, kind: "instructions_changed", by, via: extra.via ?? "app", count, note: `v${after.v}` }]),
           // The feed is the founder's overview: a failed write must not undo the change, as `recordActivity` never does.
-          pushCapped(FEED, JSON.stringify({ at, scope, email: emailOf(scope), action, v: after.v, count } satisfies FeedRow), CAPS.skillsFeed).catch((e) => console.error("instructions feed failed", e instanceof Error ? e.name : "error")),
+          pushCapped(FEED, JSON.stringify({ at, scope, email: emailOf(scope), action, v: after.v, count } satisfies FeedRow), CAPS.skillsFeed).catch((e) => log.error("instructions feed failed", e)),
         ]),
   ]);
   return { ok: true, layer: next, revision };

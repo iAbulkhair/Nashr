@@ -1,32 +1,27 @@
 import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
-import { currentUser, sc } from "@/lib/auth";
+import { z } from "zod";
+import { handler } from "@/lib/api-handler";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { isZone } from "@/lib/zones";
-import { forbid } from "@/lib/roles";
 import { withBrandLock } from "@/lib/brand-proposals";
 
-export async function GET() {
-  const u = await currentUser();
-  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  return NextResponse.json({ ok: true, brand: await getBrand(sc(u)) });
-}
+export const GET = handler({ auth: "user" }, async ({ scope }) => NextResponse.json({ ok: true, brand: await getBrand(scope) }));
 
-export async function PUT(req: Request) {
-  const u = await currentUser();
-  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  // The brand file holds the banned words the approve and publish gates enforce: admin and owner only.
-  const no = forbid(u, "brand.write");
-  if (no) return no;
-  const b = (await req.json().catch(() => ({}))) as Partial<Brand> & { create?: boolean };
-  if (!b.name || !b.industry || !b.products || !b.audience) return NextResponse.json({ ok: false, error: "missing" }, { status: 400 });
+/** The four fields a brand file cannot be saved without; every other field is optional and cut to size below. */
+const present = z.unknown().refine(Boolean);
+const brandBody = z.looseObject({ name: present, industry: present, products: present, audience: present });
+
+// The brand file holds the banned words the approve and publish gates enforce: admin and owner only.
+export const PUT = handler({ auth: "user", role: "brand.write", input: brandBody, invalid: "missing" }, async ({ u, scope, input }) => {
+  const b = input as Partial<Brand> & { create?: boolean };
   const s = (v: unknown, n = 1000) => String(v ?? "").slice(0, n);
   try {
     // Read, merge and save under the brand lock (src/lib/brand-proposals.ts), the one a proposal the owner applies and the
     // Profile page's brand fields hold: a change applied while this request runs is never overwritten by an older copy.
     // A field the request does not send keeps the value the file has now.
-    const brand = await withBrandLock(sc(u), async () => {
-      const cur = await getBrand(sc(u));
+    const brand = await withBrandLock(scope, async () => {
+      const cur = await getBrand(scope);
       // Create-only (the first-login game's no-site save, rule 527): a brand that exists, built meanwhile in another tab,
       // is never replaced by the game's five fields.
       if (b.create === true && cur) return null;
@@ -55,7 +50,7 @@ export async function PUT(req: Request) {
         // The brand's model pick is PUT /api/models' alone (src/lib/models/overrides.ts): kept as stored, never read from this body.
         ...(cur?.model !== undefined ? { model: cur.model } : {}),
       };
-      await saveBrand(sc(u), next);
+      await saveBrand(scope, next);
       return next;
     });
     if (!brand) return NextResponse.json({ ok: false, error: "exists" }, { status: 409 });
@@ -66,4 +61,4 @@ export async function PUT(req: Request) {
     if (e instanceof Error && e.message === "brand_lock_timeout") return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
     throw e;
   }
-}
+});

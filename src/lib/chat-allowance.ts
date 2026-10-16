@@ -7,6 +7,7 @@ import { modelById } from "./models/catalog";
 import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey } from "./usage";
 import type { ChatTurn } from "./chat";
 import { fairUseGate, fairUseText, type FairUseRefusal } from "./fair-use";
+import { log } from "./log";
 
 /**
  * The chat allowance (pricing phase 2, rules 308-310): every owner message (one turn, however many model calls it takes)
@@ -160,7 +161,7 @@ export async function runChatTurn(u: User, gate: ChatReserved, run: () => Promis
   try {
     m = await run();
   } catch (e) {
-    await settleChatTurn(u, gate, null).catch((x) => console.error("chat settle failed", x instanceof Error ? x.name : "error"));
+    await settleChatTurn(u, gate, null).catch((x) => log.error("chat settle failed", x));
     throw e;
   }
   const { usd, ...message } = m;
@@ -168,7 +169,7 @@ export async function runChatTurn(u: User, gate: ChatReserved, run: () => Promis
     const s = await settleChatTurn(u, gate, usd ?? 0);
     return { message, chat: s.status, charged: s.charged };
   } catch (x) {
-    console.error("chat settle failed", x instanceof Error ? x.name : "error");
+    log.error("chat settle failed", x);
     return { message, chat: gate.status, charged: 0 };
   }
 }

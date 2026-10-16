@@ -34,6 +34,7 @@ import {
   type AdvanceOpts, type MediaDeps, type MediaJob, type ProviderErrorCode, type PublicJob, type StartError, type StartInput,
   type StartResult, type StatusResult, type SubmitResult, type SweepReport,
 } from "./types";
+import { log } from "../log";
 
 /** One render per task and kind at a time, a little longer than that kind's max age. */
 export const FLIGHT_TTL_S: Record<MediaKind, number> = { image: 15 * 60, video: 35 * 60 };
@@ -83,7 +84,7 @@ const unattended = (ctx: AdvanceOpts) => ctx.via === "hook" || ctx.via === "swee
 /** What a log line may say about an error: our fixed codes (provider_busy:429, store_put_failed, user_lock_timeout), else its name. */
 const codeOf = (e: unknown) => (e instanceof Error ? (/^[a-z_]+(:\d+)?$/.test(e.message) ? e.message : e.name) : "error");
 /** Side effects of a transition (set members, flight lock, counters, notices) never undo the transition that was saved. */
-const quiet = (p: Promise<unknown> | null, what: string) => p && p.catch((e) => console.error(what, codeOf(e)));
+const quiet = (p: Promise<unknown> | null, what: string) => p && p.catch((e) => log.error(what, { error: codeOf(e) }));
 /** What a render cost us: kie's creditsConsumed when it reported one, else the list price. */
 const costOf = (model: MediaModelId, providerCredits?: number) => (providerCredits != null ? providerCredits * KIE_USD_PER_CREDIT : COST_USD[model]);
 const https = (urls: string[]) => urls.filter((u) => typeof u === "string" && u.startsWith("https://"));
@@ -167,7 +168,7 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
     try {
       paid = await charge(email, m.credits, { scope, agent: input.agent, cap: input.cap });
     } catch (e) {
-      console.error("media charge failed", codeOf(e));
+      log.error("media charge failed", { error: codeOf(e) });
       return { ok: false, status: 429, error: "busy", retryAfter: BUSY_RETRY_S };
     }
     if (!paid.ok && paid.reason === "agent_cap") return refused("cap_reached", { ok: false, status: 402, error: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap }, `${paid.spent}/${paid.cap}`);
@@ -201,7 +202,7 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
     ]);
     const lost = round.find((r): r is PromiseRejectedResult => r.status === "rejected");
     if (lost) {
-      console.error("media job save failed", codeOf(lost.reason));
+      log.error("media job save failed", { error: codeOf(lost.reason) });
       const back = await refundUnsaved(job, prior.last);
       // Not refunded: the job is still owed a refund and stays this task's render until the next poll or sweep ends it.
       if (back.open) keepFlight = true;
@@ -257,7 +258,7 @@ async function refundUnsaved(job: MediaJob, last: MediaLast | undefined): Promis
     ]);
     return { credits, open: false };
   } catch (e) {
-    console.error("media refund failed", codeOf(e));
+    log.error("media refund failed", { error: codeOf(e) });
     await Promise.all([
       quiet(saveJob(job), "media job save failed"),
       quiet(db.sadd(mk.open(job.provider), mk.openMember(scope, job.id)), "media job save failed"),
@@ -279,7 +280,7 @@ async function submitLocked(job: MediaJob, task: Task | null, credits: number, i
   try {
     job.prompt = await input.prompt(budget(PROMPT_MAX_MS, input.deadline - SUBMIT_MIN_MS, now()));
   } catch (e) {
-    console.error("media prompt failed", codeOf(e));
+    log.error("media prompt failed", { error: codeOf(e) });
     return refuse("submit_failed", 502, "media_failed");
   }
   // fal answers with the image in the same request, so its submit leaves room for the copy (spec A23).
@@ -291,7 +292,7 @@ async function submitLocked(job: MediaJob, task: Task | null, credits: number, i
     res = await deps.adapter(job.provider).submit({ model: job.model, prompt: job.prompt, aspect: input.aspect, ...(job.imageUrl ? { imageUrl: job.imageUrl } : {}) }, abortAfter(ms));
   } catch (e) {
     const cause = e instanceof ProviderError ? e.code : undefined;
-    console.error("media submit failed", job.provider, codeOf(e));
+    log.error("media submit failed", { provider: job.provider, error: codeOf(e) });
     return cause === "busy" ? refuse("submit_failed", 429, "busy", cause) : refuse("submit_failed", 502, "media_failed", cause);
   }
 
@@ -331,7 +332,7 @@ async function hfAdmission(email: string, kind: MediaKind, deps: MediaDeps, dead
     const stale = jobs.filter((j) => !live(j) || ageOf(j, now()) > STALE_MS).sort(oldestFirst).slice(0, 4);
     // A 20 s deadline leaves no room for a copy: a result waiting for one stays in resultUrls.
     const moved = await pmap(stale, (j) => advance(j, deps, { force: true, deadline: Math.min(deadline, now() + 20_000), via: "sweep" }).catch((e) => {
-      console.error("media admission advance failed", codeOf(e));
+      log.error("media admission advance failed", { error: codeOf(e) });
       return j;
     }), 2);
     const byId = new Map(moved.map((j) => [j.id, j]));
@@ -403,7 +404,7 @@ async function checkStatus(cur: MediaJob, deps: MediaDeps, ctx: AdvanceOpts): Pr
   try {
     st = await deps.adapter(cur.provider).status(ref, abortAfter(ms));
   } catch (e) {
-    console.error("media status failed", cur.provider, codeOf(e));
+    log.error("media status failed", { provider: cur.provider, error: codeOf(e) });
     return late() ? timeout() : cur;
   }
   if (st.state === "done") return (await finalizeLocked(cur, st.urls, st.providerCredits, deps, ctx)).job;
@@ -453,7 +454,7 @@ async function finalizeLocked(job: MediaJob, urls: string[], providerCredits: nu
     if (await deps.storeReady(cur.kind)) url = (await deps.store(results[0], cur.kind, ctx.deadline, { scope: cur.scope, taskId: cur.taskId })).url;
     else if (cur.provider !== "fal") throw new StoreError("full");
   } catch (e) {
-    console.error("media store failed", cur.model, codeOf(e));
+    log.error("media store failed", { model: cur.model, error: codeOf(e) });
     // fal keeps its own URL, exactly as before the store existed (spec A25). kie and Higgsfield delete results
     // after 1 to 14 days, so theirs must be copied: retry from resultUrls without another status call. A full or
     // missing store fails at once (rule 1753): no retry can make room, and the refund runs now.
@@ -623,7 +624,7 @@ async function recordOutcome(j: MediaJob, ctx: Ctx): Promise<void> {
       trip(j, ctx.cause),
     ]);
   } catch (e) {
-    console.error("media outcome failed", codeOf(e));
+    log.error("media outcome failed", { error: codeOf(e) });
   }
 }
 
@@ -703,7 +704,7 @@ export async function sweepMedia(deps: MediaDeps, opts: { deadline: number; limi
       if (r.state === "done") report.done++;
       else if (r.state === "failed") report.failed++;
     } catch (e) {
-      console.error("media sweep failed", j.provider, codeOf(e));
+      log.error("media sweep failed", { provider: j.provider, error: codeOf(e) });
       report.skipped++;
     }
   }, 4);
@@ -717,7 +718,7 @@ export async function maybeSweep(deps: MediaDeps, deadline: number): Promise<Swe
     if (!(await db.lock(mk.sweepLock(), SWEEP_LOCK_S))) return null;
     return await sweepMedia(deps, { deadline, limit: 6 });
   } catch (e) {
-    console.error("media sweep failed", codeOf(e));
+    log.error("media sweep failed", { error: codeOf(e) });
     return null;
   }
 }

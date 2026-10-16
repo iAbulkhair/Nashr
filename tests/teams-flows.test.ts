@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 const sent: { to: string; subject: string; text: string }[] = [];
 /** Switched off to play a provider that refuses the message (a rate limit, a quota, a rejected recipient). */
 const mail = { works: true };
-vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, subject: string, text: string) => { if (!mail.works) return false; sent.push({ to, subject, text }); return true; } }));
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (...a: unknown[]) => { const { to: to, subject: subject, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; if (!mail.works) return false; sent.push({ to, subject, text }); return true; } }));
 
 import * as login from "@/app/api/auth/login/route";
 import * as forgot from "@/app/api/auth/forgot/route";
