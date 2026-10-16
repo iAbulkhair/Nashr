@@ -130,6 +130,15 @@ export const MIN_ROLE = {
    * member, the account's for the owner. Refused while impersonating: it would end the customer's own sessions.
    */
   "sessions.revoke": "member",
+  /**
+   * Turn one's OWN two-step sign-in on or off and renew its recovery codes (POST /api/account/2fa, rules 1930-1937).
+   * Refused while impersonating: a founder must never enrol an authenticator on a customer's login.
+   */
+  "mfa.manage": "member",
+  /** Change one's OWN sign-in address (POST /api/account/email, rules 1942-1947). Refused while impersonating. */
+  "email.change": "member",
+  /** Unlink one's OWN Google sign-in (POST /api/account/google, rules 1948-1955). Refused while impersonating. */
+  "google.manage": "member",
   /** One's own display name and interface language. */
   "profile.self": "member",
 } as const satisfies Record<string, Role>;
@@ -146,6 +155,9 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "account.export",
   "password.change",
   "sessions.revoke",
+  "mfa.manage",
+  "email.change",
+  "google.manage",
   "team.invite.member",
   "team.invite.admin",
   "team.invite.cancel",
