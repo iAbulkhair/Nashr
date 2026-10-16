@@ -23,6 +23,7 @@ import { MEDIA_NAME, isOurMediaUrl, ourMediaName, type MediaKind } from "../medi
 import { mediaDir, mediaOrigin, storeConfigured, storeLimits } from "./config";
 import { abortAfter, budget } from "./keys";
 import { StoreError, type StoredMedia } from "./types";
+import { log } from "../log";
 
 export const SOURCE_CAP_BYTES: Record<MediaKind, number> = { image: 25 * 1024 * 1024, video: 100 * 1024 * 1024 };
 export const DOWNLOAD_MAX_MS: Record<MediaKind, number> = { image: 15_000, video: 45_000 };
@@ -283,7 +284,7 @@ export async function forgetScopeMedia(scopes: readonly string[]): Promise<strin
     }, 8);
   } else {
     // Count only: no scope or name in a log.
-    console.error("account wipe: media index without a store", files.length);
+    log.error("account wipe: media index without a store", { files: files.length });
   }
   const bytes = entries.reduce((n, e) => n + (e && Number.isFinite(e.bytes) ? e.bytes : 0), 0);
   const count = entries.filter(Boolean).length;

@@ -7,7 +7,7 @@ import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { issueCode, issueTokens, listGrants, redeemCode, registerClient, rotateRefresh } from "@/lib/oauth";
 import { db } from "@/lib/db";
 
-vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (_to: string, _s: string, text: string) => { lastMail = text; return true; } }));
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (...a: unknown[]) => { const { text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; lastMail = text; return true; } }));
 let lastMail = "";
 
 import * as account from "@/app/api/account/route";

@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { isProductionDeploy } from "./deploy-env";
 import { db } from "./db";
 import { gatewayOrigin } from "./models/gateway-url";
+import { log } from "./log";
 
 /**
  * One switch for every Claude call in the product: chat, generation and its reviewer, the judge, onboarding, image
@@ -85,7 +86,7 @@ function warnNoKey() {
   if (warned) return;
   warned = true;
   const missing = llmProvider() === "straitly" ? "STRAITLY_API_KEY and ANTHROPIC_API_KEY are not set" : "ANTHROPIC_API_KEY is not set";
-  console.error(`model_not_configured: ${missing} in production; the agents refuse as paused`);
+  log.error(`model_not_configured: ${missing} in production; the agents refuse as paused`);
 }
 
 /** Thrown by the model-backed helpers while paused. A backstop: every caller that charges first refunds on a throw. */
@@ -162,13 +163,13 @@ function withDirectFallback(): Fetch {
       if (init?.signal?.aborted) throw e;
       const retry = directRequest(input, init);
       if (!retry) throw e;
-      console.warn("model_fallback: straitly connection error, retried on anthropic");
+      log.warn("model_fallback: straitly connection error, retried on anthropic");
       noteFallback();
       return globalThis.fetch(retry.url, retry.init);
     }
     const retry = directRequest(input, init);
     if (!retry) return first;
-    console.warn(`model_fallback: straitly status ${first.status}, retried on anthropic`);
+    log.warn(`model_fallback: straitly status ${first.status}, retried on anthropic`);
     // Unread, so the connection is released instead of held until the body is collected.
     void first.body?.cancel().catch(() => {});
     noteFallback();

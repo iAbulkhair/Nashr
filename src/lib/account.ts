@@ -33,6 +33,7 @@ import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
 import { instructionProposalKeys } from "./instruction-proposals";
 import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
+import { log } from "./log";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -53,7 +54,7 @@ async function revokeComposio(scopes: string[]) {
     return c && isComposio(c) ? revokeAll(s, c).catch(() => ["all"]) : Promise.resolve([] as string[]);
   });
   const failed = left.flat().length;
-  if (failed) console.error("account wipe: composio revoke failed", failed);
+  if (failed) log.error("account wipe: composio revoke failed", { failed });
 }
 
 /**

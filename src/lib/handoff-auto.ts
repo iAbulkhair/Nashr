@@ -44,6 +44,7 @@ import { notifyItem } from "./notifications";
 import { appDict } from "./app-i18n";
 import { autoHoldKey, holdBatch } from "./routines";
 import { HANDOFF_RUN_MIN_MS, autoBlock, autoTryKey, getHandoff, handoffFingerprint, isHandoffId, recentHandoffs, runItemLocked, withRunLock, type Handoff } from "./handoffs";
+import { log } from "./log";
 
 /**
  * The cron looks at the newest this many proposals of a brand whose switch is on (one index read and one MGET), never
@@ -148,7 +149,7 @@ async function runLocked(user: User, scope: string, id: string, n: number, deadl
       r = await runItemLocked(user, scope, h, n, { by: systemBy("auto_handoff"), auto: true, gov, settle, deadline });
     } catch (e) {
       // Unexpected (a refused or failed batch is an answer, not a throw): the item is marked failed for the owner.
-      console.error("auto handoff run failed", e instanceof Error ? e.name : "error");
+      log.error("auto handoff run failed", e);
       return "error";
     }
     if (r.ok) {
@@ -159,7 +160,7 @@ async function runLocked(user: User, scope: string, id: string, n: number, deadl
     return r.error === "paused" ? "retry:paused" : r.error === "not_found" ? "skip:not_found" : r.error;
   } finally {
     // The hold goes only after the batch is saved: until then the brand's routines count it, and after it the items.
-    await db.del(hold).catch((e) => console.error("auto handoff hold release failed", e instanceof Error ? e.name : "error"));
+    await db.del(hold).catch((e) => log.error("auto handoff hold release failed", e));
   }
 }
 
@@ -183,6 +184,6 @@ async function tell(user: User, scope: string, h: Handoff, n: number, count: num
       href: "",
     }, handoffFingerprint(scope, h.id, n), AUTO_KEYS_DAYS);
   } catch (e) {
-    console.error("auto handoff notification failed", e instanceof Error ? e.name : "error");
+    log.error("auto handoff notification failed", e);
   }
 }

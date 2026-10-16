@@ -20,6 +20,7 @@ import { sweepOnboardHolds } from "@/lib/onboard-confirm";
 import { purgeExpired, secretaryDaily } from "@/lib/secretary";
 import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type SweepReport } from "@/lib/secretary-remind";
 import { appOrigin } from "@/lib/origin";
+import { paragraphs } from "@/emails";
 import { paymobConfig } from "@/lib/paymob";
 import { renewPaymob } from "@/lib/billing";
 import { runMarginAlert } from "@/lib/margin";
@@ -108,9 +109,13 @@ async function dailyFor(u: User): Promise<string> {
     if (Date.now() - new Date(u.createdAt).getTime() > 10 * 60e3 && mailReady()) {
       const ar = u.lang === "ar";
       const link = `${appOrigin()}/${u.lang}/app/start`;
-      const res = await sendOnce(u.email, "nudge1", ar ? "نور جاهزة — أعطيها رابط موقعك" : "Noor is ready — give her your website", ar
+      const subject = ar ? "نور جاهزة — أعطيها رابط موقعك" : "Noor is ready — give her your website";
+      const text = ar
         ? `أهلاً ${u.name}\n\nسجّلت في ذكين وما بدأت بعد. نور جاهزة: أعطيها رابط موقعك وتكتب ملف علامتك وخطتك أمامك، ثم اطلب منها أول دفعة منشورات.\n\n${link}`
-        : `Hi ${u.name}\n\nYou signed up for Thakeen but have not started. Noor is ready: give her your website and she writes your brand file and plan in front of you, then ask her for your first batch of posts.\n\n${link}`);
+        : `Hi ${u.name}\n\nYou signed up for Thakeen but have not started. Noor is ready: give her your website and she writes your brand file and plan in front of you, then ask her for your first batch of posts.\n\n${link}`;
+      // The HTML part (rule 1961): the same paragraphs in the shared layout, the bare link turned into the button. The
+      // name is what the owner typed at signup, so `notice` escapes it as text.
+      const res = await sendOnce(u.email, "nudge1", subject, text, { template: "notice", locale: u.lang, context: { title: subject, paragraphs: paragraphs(text).filter((p) => p !== link), cta: { href: link } } });
       if (res === "sent") out.push("nudge");
       // Not "nudge_…": the report counts every outcome that starts with "nudge" as a nudge sent.
       else if (res === "failed") out.push("mail_refused:nudge");
@@ -134,9 +139,15 @@ async function dailyFor(u: User): Promise<string> {
     // "important": something waits for a decision, a follow-up fired, or a to-do is overdue or due today.
     const worth = emailAllowed(prefs, "brief", brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0);
     const extra = fu.length ? `\n\n${notifEmailText(u, fu)}` : "";
-    if (worth && (await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + extra + `\n\n${appOrigin()}/${u.lang}/app`))) out.push("email");
+    const app = `${appOrigin()}/${u.lang}/app`;
+    const text = brief.text + extra + `\n\n${app}`;
+    // The HTML part is the same text in the shared layout (rule 1961): the model's brief is untrusted, so `dailyBrief`
+    // escapes every paragraph and links only the button.
+    if (worth && (await sendEmail({ to: u.email, subject: u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, text, template: "dailyBrief", context: { date: brief.date, body: text, href: app }, locale: u.lang }))) out.push("email");
   } else if (fu.length && prefs.brief !== "none") {
-    if (await sendEmail(u.email, u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team", notifEmailText(u, fu))) out.push("email");
+    const subject = u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team";
+    const text = notifEmailText(u, fu);
+    if (await sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}/${u.lang}/app` } }, locale: u.lang })) out.push("email");
   }
   // Instagram and LinkedIn page results for Dana (src/lib/social-stats.ts), last: up to 30 post reads may be slow, and a
   // slow platform must never cost this workspace its brief or its email. Tomorrow's report reads what lands here.

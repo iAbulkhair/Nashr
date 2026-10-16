@@ -3,6 +3,7 @@ import { getTask, updateTask, type Task } from "./brand";
 import { publishTask, type PublishResult } from "./connectors/publish";
 import { ReconnectRequired } from "./connectors/fresh";
 import { SOCIAL_PUB_KEY } from "./social-stats";
+import { log } from "./log";
 
 /**
  * One publish per item and platform, and an honest answer when a publish may or may not have landed.
@@ -65,7 +66,7 @@ export function mayHavePosted(e: unknown): boolean {
 const KEEPS_ID: readonly string[] = ["wordpress", "instagram", "linkedin"];
 /** Platforms whose post ids join the workspace's own list, so a result read later can say the post came from Thakeen (rule 667). */
 const OWN_POSTS: readonly string[] = ["instagram", "facebook", "linkedin", "youtube", "tiktok", "x"];
-const quietly = (p: Promise<unknown>, what: string) => p.catch((e) => console.error(`publish ${what} failed`, e instanceof Error ? e.name : "error"));
+const quietly = (p: Promise<unknown>, what: string) => p.catch((e) => log.error(`publish ${what} failed`, e));
 
 export async function publishOnce(scope: string, id: string, provider: string, opts: { again?: boolean; live?: boolean; check?: (t: Task) => Refusal | null; lockS?: number } = {}): Promise<PublishOnce> {
   const lk = lockKey(scope, id, provider);

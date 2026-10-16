@@ -13,6 +13,7 @@ import { holdsFb, readFacebook } from "./social-read/facebook";
 import { holdsTt, readTiktok } from "./social-read/tiktok";
 import { holdsYt, readYoutube } from "./social-read/youtube";
 import { X_MAX_POSTS } from "./connectors/x";
+import { log } from "./log";
 
 /**
  * Social platform results, read through Composio for Dana's reports and the Reports page
@@ -329,7 +330,7 @@ async function readLi(scope: string, c: Connection, now: Date, deadline: number)
   const views = splitDays(pages, window);
   // Rows LinkedIn answered that fall in neither period (no date, another range) are not summed: said once, never guessed.
   const undated = (all: unknown[], split: { cur: unknown[]; prev: unknown[] }) => all.length > 0 && !split.cur.length && !split.prev.length;
-  if (undated(rows, { cur, prev }) || undated(pages, views)) console.warn("li_no_day_rows");
+  if (undated(rows, { cur, prev }) || undated(pages, views)) log.warn("li_no_day_rows");
   const totals = { ...liTotals(cur.map((r) => r.row)), pageViews: liPageViews(views.cur) };
   const before = { ...liTotals(prev.map((r) => r.row)), pageViews: liPageViews(views.prev) };
   let name = "";
@@ -524,7 +525,7 @@ export async function syncSocialIfDue(scope: string, now = new Date(), force = f
  * owner does not wait, and a failure only logs, since the daily run reads again.
  */
 export function readSocialSoon(scope: string) {
-  const later = () => syncSocialIfDue(scope, new Date(), true).then(() => undefined, () => console.error("social first read failed"));
+  const later = () => syncSocialIfDue(scope, new Date(), true).then(() => undefined, () => log.error("social first read failed"));
   try { after(later); } catch { void later(); }
 }
 

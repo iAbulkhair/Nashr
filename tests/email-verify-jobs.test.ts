@@ -14,7 +14,7 @@ import { getItem } from "@/lib/secretary";
 import { SUSPENDED_HOLD_MS, sweepReminders } from "@/lib/secretary-remind";
 
 const sent: { to: string; subject: string; text: string }[] = [];
-vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, subject: string, text: string) => { sent.push({ to, subject, text }); return true; } }));
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (...a: unknown[]) => { const { to: to, subject: subject, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; sent.push({ to, subject, text }); return true; } }));
 
 beforeEach(() => { sent.length = 0; });
 

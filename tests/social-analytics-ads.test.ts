@@ -333,7 +333,7 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     // Each failure is logged by its code alone: never the platform's text, a token or a URL.
     const logged = warn.mock.calls.filter((a) => a[0] === "ad_prev_failed");
     warn.mockRestore();
-    expect(logged).toEqual([["ad_prev_failed", "meta_ads", "meta_ads insights 500"], ["ad_prev_failed", "snapchat", "snapchat stats 500"]]);
+    expect(logged).toEqual([["ad_prev_failed", { provider: "meta_ads", error: "meta_ads insights 500" }], ["ad_prev_failed", { provider: "snapchat", error: "snapchat stats 500" }]]);
     expect(JSON.stringify(logged)).not.toMatch(/long-ads|snap-access|https?:|unavailable|Internal/);
   });
 
@@ -472,7 +472,7 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     const logged = warn.mock.calls.filter((a) => a[0] === "ad_prev_failed");
     warn.mockRestore();
     // Composio's adapter reads a refusal it cannot place as 502 (statusOf); the slug names the call that failed.
-    expect(logged).toEqual([["ad_prev_failed", "snapchat", "snapchat 502 get_ad_accounts_stats"]]);
+    expect(logged).toEqual([["ad_prev_failed", { provider: "snapchat", error: "snapchat 502 get_ad_accounts_stats" }]]);
     const s = await stored(scope, "snapchat");
     expect(s).not.toHaveProperty("prev");
     expect(s.spend).toBe(25.5);

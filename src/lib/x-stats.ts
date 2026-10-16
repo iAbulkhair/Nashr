@@ -8,6 +8,7 @@ import type { Connection } from "./connectors/store";
 import { X_READ_CREDITS, XUnavailable, readX } from "./connectors/x";
 import { SOCIAL_PUB_KEY, XSTATS_KEY, day } from "./social-read/common";
 import { upsertHistory, type PlatformPart, type XStats } from "./social-stats";
+import { log } from "./log";
 
 /**
  * The X account's results, read on a click and paid by the account (rules 744, 745, spec
@@ -109,7 +110,7 @@ export async function refreshX(u: User, c: Connection, now = new Date()): Promis
       const landed = await getXStats(scope).catch(() => null);
       // A refund that fails (the user lock timed out) must not hide X's own answer: the route still answers this
       // failure, and the hold it leaves is the credit standing for the day, as for a click stopped after its charge.
-      if (!readOn(landed, today)) await refundOnce(u.email, claim).catch(() => console.error("x_refund_failed"));
+      if (!readOn(landed, today)) await refundOnce(u.email, claim).catch(() => log.error("x_refund_failed"));
     }
     if (e instanceof XUnavailable && e.status === 429) return { ok: false, status: 429, error: "x_unavailable", retryAfter: e.retryAfter ?? X_RETRY_DEFAULT_S };
     if (e instanceof XUnavailable) return { ok: false, status: 502, error: "x_unavailable" };
@@ -119,7 +120,7 @@ export async function refreshX(u: User, c: Connection, now = new Date()): Promis
   // The hold this click read on may have been given back meanwhile (the click that took it failed before this read
   // landed): the read that landed takes the charge again. While the hold stands this debits nothing.
   const again = await chargeOnce(u.email, X_READ_CREDITS, spend, claim).catch(() => {
-    console.error("x_recharge_failed");
+    log.error("x_recharge_failed");
     return null;
   });
   const charged = !!again?.ok && !again.reused;

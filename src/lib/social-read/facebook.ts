@@ -7,6 +7,7 @@ import { accountOf, at, isComposio, listOf } from "../connectors/composio-shape"
 import type { Connection } from "../connectors/store";
 import type { PlatformPart, Range, SocialPost, Totals } from "../social-stats";
 import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, anyAboveZero, beforeDeadline, count, dateOf, day, message, rangeBefore, refused, settle, splitDays } from "./common";
+import { log } from "../log";
 
 /**
  * The Facebook Page's results (rule 739, spec 2026-10-08-social-analytics-reports B1): the Page chosen for publishing
@@ -119,7 +120,7 @@ export async function readFacebook(scope: string, c: Connection, now: Date, dead
     .flatMap((m) => (Array.isArray(m.values) ? m.values : []).map((x): Row => ({ day: fbDay(at(x, "end_time")), name: String(m.name), value: count(at(x, "value")) })));
   const { cur, prev } = splitDays(rows, window);
   // Rows Meta answered that fall in neither period (no stamp, another range) are not summed: said once, never guessed.
-  if (rows.length && !cur.length && !prev.length) console.warn("fb_no_day_rows");
+  if (rows.length && !cur.length && !prev.length) log.warn("fb_no_day_rows");
   // Only a row dated with its day: an undated one is no count on any day. Stable sort: of two values for one day, the later one stands.
   const follows = rows.filter((r) => r.name === "page_follows" && r.value != null && ISO_DAY.test(r.day)).sort((a, b) => a.day.localeCompare(b.day));
   const before = totalsOf(prev);

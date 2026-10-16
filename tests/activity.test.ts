@@ -84,7 +84,7 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(recordActivity(u.email, [row({})])).resolves.toBeUndefined();
     await expect(recordRun(u.email, { id: "dana_weekly_report", agent: "dana", type: "weekly_report", via: "routine", by: { kind: "system", job: "routine" }, period: "2026-09-27", ttlS: 60 }, "ok:1")).resolves.toBeUndefined();
-    expect(err).toHaveBeenCalledWith("activity record failed", "Error");
+    expect(err).toHaveBeenCalledWith("activity record failed", { error: "Error" });
   });
 
   it("reads newest first whatever the push order, skips unreadable rows, filters, and pages by time without losing a row", async () => {

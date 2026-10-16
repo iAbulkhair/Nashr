@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "./db";
 import type { User } from "./auth";
 import { onVercel } from "./deploy-env";
+import { log } from "./log";
 
 /** The two windows the per-account buckets use, in seconds; a refusal that names one ("hour", "day") waits this long. */
 export const WINDOW = { hour: 3600, day: 86400 } as const;
@@ -17,7 +18,7 @@ export async function allow(bucket: string, max: number, windowSeconds: number):
   try {
     await db.expireNx(key, windowSeconds);
   } catch (e) {
-    console.error("rate expiry failed", e instanceof Error ? e.name : "error");
+    log.error("rate expiry failed", e);
     // A store that refused the NX form must not leave every counter without an expiry: the first hit falls back to the
     // old SET, which can only reset hits that landed in the same instant.
     if (n === 1) await db.set(key, 1, windowSeconds).catch(() => {});

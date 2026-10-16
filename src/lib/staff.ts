@@ -5,6 +5,7 @@ import { getLogin, normalizeEmail, validEmail } from "./auth";
 import { connectSecret, kidOf } from "./connectors/store";
 import { sameSecret } from "./secret";
 import { newRecoveryCode } from "./totp";
+import { log } from "./log";
 
 /**
  * Staff identity (docs/specs/2026-10-13-staff-identity.md phase 1, rules 1630-1654, docs/system/flows.md section 71).
@@ -132,7 +133,7 @@ export async function withStaffLock<T>(email: string, fn: (s: Staff | null) => P
   try {
     return await fn(await getStaff(email));
   } finally {
-    await db.unlock(key).catch((e) => console.error("staff lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(key).catch((e) => log.error("staff lock release failed", e));
   }
 }
 

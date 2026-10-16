@@ -6,6 +6,7 @@ import { connectSecret } from "./store";
 import { PROVIDER_TOOLKITS, TOOLKITS, type Toolkit } from "./composio-catalog";
 import { isOurMediaUrl } from "../media-catalog";
 import { shareUrl } from "../media/share";
+import { log } from "../log";
 
 /**
  * The only file that talks to Composio (docs/superpowers/specs/2026-10-05-meta-via-composio-design.md, section 3).
@@ -158,14 +159,14 @@ async function run(kind: "read" | "write", scope: string, toolkit: Toolkit, slug
     if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) throw e;
     const text = e instanceof Error ? e.message : "";
     const status = statusOf(text);
-    console.error("composio call failed", slug, status);
+    log.error("composio call failed", { slug, status });
     // Only the adapter's own word, never the thrown text, which can carry ids; a scope refusal keeps its name, so a
     // reader can tell it from a refused token (TikTok's tt_no_scope, rule 742).
     throw shaped(toolkit, slug, status, SCOPE_REFUSED.test(text) ? "scope_not_authorized" : "call_failed");
   }
   if (r.successful) return r.data;
   const status = statusOf(r.error ?? "");
-  console.error("composio tool refused", slug, status);
+  log.error("composio tool refused", { slug, status });
   throw shaped(toolkit, slug, status, r.error ?? "failed");
 }
 
@@ -193,7 +194,7 @@ export async function composioStageFile(scope: string, toolkit: Toolkit, slug: s
     if (!f?.s3key || !f.name || !f.mimetype) throw new Error("no_key");
     return { name: f.name, mimetype: f.mimetype, s3key: f.s3key };
   } catch {
-    console.error("composio stage failed", slug);
+    log.error("composio stage failed", { slug });
     throw new Error("composio_stage_failed");
   } finally {
     clearTimeout(timer);

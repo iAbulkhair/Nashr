@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { log } from "./log";
 
 /**
  * Lightweight product analytics, self-hosted in Redis counters.
@@ -40,7 +41,7 @@ export async function track(email: string | undefined, event: Event) {
       await db.del(k);
     }
   } catch (e) {
-    console.error("track failed", e);
+    log.error("track failed", e);
   }
 }
 

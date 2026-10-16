@@ -18,6 +18,10 @@ export type EmailCopy = {
   invite: { title: string; greeting: string; body: string; action: string; expiry: string; only: string; preheader: string; roles: Record<TeamRole, string> };
   /** Button labels of the generic notice (./notice.ts), named after the page each one opens. */
   notice: { open: string; todo: string; billing: string };
+  /** The verification code email (./verify-code.ts, rule 1960). Same sentences as the plain-text part in src/lib/verify-email.ts. */
+  verify: { title: string; intro: string; expiry: string; ignore: string; preheader: string };
+  /** Noor's daily brief (./daily-brief.ts, rule 1961). `{date}` is the brief's own date line. */
+  brief: { title: string; preheader: string; action: string };
 };
 
 export const COPY: Record<Lang, EmailCopy> = {
@@ -45,6 +49,14 @@ export const COPY: Record<Lang, EmailCopy> = {
       roles: { admin: "مدير", member: "عضو" },
     },
     notice: { open: "افتح ذكين", todo: "افتح مهامي", billing: "افتح صفحة الاشتراك" },
+    verify: {
+      title: "رمز التحقق",
+      intro: "اكتب هذا الرمز في ذكين لتأكيد بريدك:",
+      expiry: "صالح لمدة 15 دقيقة.",
+      ignore: "إذا لم تطلب هذا الرمز، تجاهل هذه الرسالة.",
+      preheader: "رمز التحقق في ذكين صالح لمدة 15 دقيقة.",
+    },
+    brief: { title: "ملخص نور — {date}", preheader: "ملخص نور لليوم وما ينتظر قرارك.", action: "افتح ذكين" },
   },
   en: {
     wordmark: "Thakeen",
@@ -70,5 +82,13 @@ export const COPY: Record<Lang, EmailCopy> = {
       roles: { admin: "an admin", member: "a member" },
     },
     notice: { open: "Open Thakeen", todo: "Open To-dos", billing: "Open Subscription" },
+    verify: {
+      title: "Your verification code",
+      intro: "Type this code in Thakeen to confirm your email:",
+      expiry: "It works for 15 minutes.",
+      ignore: "If you did not ask for it, ignore this email.",
+      preheader: "Your Thakeen code works for 15 minutes.",
+    },
+    brief: { title: "Noor's brief — {date}", preheader: "Noor's brief for today and what waits for your decision.", action: "Open Thakeen" },
   },
 };

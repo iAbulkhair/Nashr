@@ -35,6 +35,7 @@ import {
 } from "./secretary-agenda";
 import { hijriDate } from "./seasons";
 import { DEFAULT_WORK_HOURS, calendarView, nextOccurrence, workCalendar, workHoursOf, type CalendarView, type SecCalendar } from "./secretary-calendar";
+import { log } from "./log";
 
 export const SEC_ID = /^s[a-f0-9]{16}$/;
 /** Starts with a letter: the Redis client parses a member that looks like a number, and 16 digits lose precision. */
@@ -171,7 +172,7 @@ export function usableCalendar(stored: unknown, zone: Zone, now: number): SecCal
     workCalendar(own, zone, now);
     return own;
   } catch (e) {
-    console.error("sec calendar unreadable, defaults used", e instanceof Error ? e.name : "error");
+    log.error("sec calendar unreadable, defaults used", e);
     return null;
   }
 }
@@ -854,7 +855,7 @@ export async function withLock<T>(scope: string, id: string, fn: () => Promise<T
   try {
     return await fn();
   } finally {
-    await db.unlock(key).catch((e) => console.error("sec lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(key).catch((e) => log.error("sec lock release failed", e));
   }
 }
 
@@ -973,7 +974,7 @@ export async function removeBySystem(
     });
     return isFail(r) ? "failed" : r;
   } catch (e) {
-    console.error("sec system delete failed", e instanceof Error ? e.name : "error");
+    log.error("sec system delete failed", e);
     return "failed";
   }
 }
@@ -1265,7 +1266,7 @@ export async function secretaryDaily(scope: string, now = Date.now()) {
     Promise.all([import("./secretary-away"), zoneFor(scope)])
       .then(([away, zone]) => away.cleanAway(scope, now, zone))
       .catch((e) => {
-        console.error("sec away clean-up failed", e instanceof Error ? e.name : "error");
+        log.error("sec away clean-up failed", e);
         return 0;
       }),
   ]);
@@ -1274,7 +1275,7 @@ export async function secretaryDaily(scope: string, now = Date.now()) {
   const series = await import("./secretary-series")
     .then((m) => m.seriesDaily(scope, now))
     .catch((e) => {
-      console.error("sec series step failed", e instanceof Error ? e.name : "error");
+      log.error("sec series step failed", e);
       return { warned: 0, deleted: 0, idle: false };
     });
   const agenda = await agendaFor(scope, now, { actor: "cron", via: "cron" });
@@ -1792,7 +1793,7 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
       }
     }
   } catch (e) {
-    console.error("secretary tool failed", name, e instanceof Error ? e.name : "error");
+    log.error("secretary tool failed", { tool: name, error: e });
     return { text: "Not done: the to-do list could not be reached just now. Try again in a moment.", isError: true };
   }
   return { text: "Unknown tool.", isError: true };

@@ -42,6 +42,7 @@ import { LEAD_BRIEF_MAX } from "./json";
 import { getGov, type Governance } from "./governance";
 import { estimateBatch } from "./task-costs";
 import { maxCostPerCreditUsd } from "./pricing";
+import { log } from "./log";
 
 /** A handoff id: 16 hex characters, checked before any key is built from it. */
 export const HANDOFF_ID = /^[a-f0-9]{16}$/;
@@ -319,7 +320,7 @@ export async function markShown(scope: string, id: string): Promise<boolean> {
       return save(scope, { ...h, shownAt: new Date().toISOString() });
     })) ?? false;
   } catch (e) {
-    console.error("handoff mark failed", e instanceof Error ? e.name : "error");
+    log.error("handoff mark failed", e);
     return false;
   }
 }
@@ -499,7 +500,7 @@ async function withShortLock<T>(scope: string, id: string, fn: () => Promise<T>)
   try {
     return await fn();
   } finally {
-    await db.unlock(lk).catch((e) => console.error("handoff lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(lk).catch((e) => log.error("handoff lock release failed", e));
   }
 }
 
@@ -516,7 +517,7 @@ export async function withRunLock<T>(scope: string, id: string, fn: () => Promis
     return await fn();
   } finally {
     // A failed release must not turn a finished run into an error: the lock's TTL frees it.
-    await db.unlock(lk).catch((e) => console.error("handoff lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(lk).catch((e) => log.error("handoff lock release failed", e));
   }
 }
 

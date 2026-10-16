@@ -3,6 +3,7 @@ import { db, mgetChunked } from "./db";
 import { pmap } from "./parallel";
 import type { ChatMsg } from "./chat";
 import type { AgentId } from "./agents";
+import { log } from "./log";
 
 /**
  * Multiple conversations per scope, searchable. `chat:{scope}` stays the legacy default thread, which has no record.
@@ -52,7 +53,7 @@ async function withConversationLock<T>(scope: string, id: string, fn: () => Prom
   try {
     return { ok: true, value: await fn() };
   } finally {
-    await db.unlockOwned(key, token).catch((e) => console.error("conversation lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlockOwned(key, token).catch((e) => log.error("conversation lock release failed", e));
   }
 }
 
@@ -108,7 +109,7 @@ export async function touchConversation(scope: string, id: string, firstUserText
     if (firstUserText && (c.title === "" || c.title === "…")) c.title = firstUserText.slice(0, 60);
     await db.set(key, c);
   });
-  if (!r.ok) console.warn("conversation touch skipped: lock busy");
+  if (!r.ok) log.warn("conversation touch skipped: lock busy");
 }
 /** Rename under the conversation's lock; `not_found` (nothing written) when it does not exist, `busy` when the lock was not taken. */
 export async function renameConversation(scope: string, id: string, title: string): Promise<ConversationWrite> {
@@ -122,7 +123,7 @@ export async function renameConversation(scope: string, id: string, title: strin
     return true;
   });
   if (!r.ok) {
-    console.warn("conversation rename skipped: lock busy");
+    log.warn("conversation rename skipped: lock busy");
     return "busy";
   }
   return r.value ? "ok" : "not_found";

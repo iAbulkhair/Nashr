@@ -1,6 +1,6 @@
 # HTML email layout for the mails that still go as plain text
 
-Status: proposed, not built. Written 2026-10-13 against `main` at `4c0264b4`. Build order: 1 of 8 (the others reuse this layout). Rule numbers are assigned when it is built.
+Status: built 2026-10-16 on branch `claude/funny-lehmann-37da27` (rules 1960-1961, `docs/system/tests/1960-mail-logs-tooling.md`): the verify code, the "start" nudge, Noor's brief and the follow-ups have HTML parts. Written 2026-10-13 against `main` at `4c0264b4`. Build order: 1 of 8 (the others reuse this layout). Rule numbers are assigned when it is built.
 
 ## ملخص
 

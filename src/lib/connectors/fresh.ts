@@ -2,6 +2,7 @@ import { db } from "../db";
 import { getProvider } from "./registry";
 import { refreshTokens } from "./oauth";
 import { getConnection, saveConnection, type Connection } from "./store";
+import { log } from "../log";
 
 /** Refresh this long before the stored expiry, so a publish never starts with a token about to lapse. */
 const EARLY_MS = 5 * 60_000;
@@ -52,7 +53,7 @@ export async function getFreshConnection(scope: string, provider: string): Promi
     try {
       data = await refreshTokens(p, cur.data.refresh_token ?? c.data.refresh_token, cur.meta?.shop);
     } catch (e) {
-      console.error("connector refresh failed", provider, e instanceof Error ? e.message.slice(0, 120) : e);
+      log.error("connector refresh failed", { provider, error: e instanceof Error ? e.message.slice(0, 120) : e });
       await markNeedsReconnect(scope, cur);
       throw new ReconnectRequired(provider);
     }

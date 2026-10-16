@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { clientIp } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
+import { log } from "./log";
 
 /**
  * Cloudflare Turnstile on signup and forgot-password (rules 426-428, tests/launch-security.test.ts; issue #49, the
@@ -44,7 +45,7 @@ const logged = new Set<string>();
 const logOnce = (message: string) => {
   if (logged.has(message)) return;
   logged.add(message);
-  console.error(message);
+  log.error(message);
 };
 
 export type CaptchaResult = "ok" | "failed" | "unavailable";

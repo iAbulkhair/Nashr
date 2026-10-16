@@ -4,6 +4,7 @@ import { AGENT_IDS, isAgentId, type AgentId } from "./agents";
 import { MODELS, modelById } from "./models/catalog";
 import type { Rejected } from "./models/route";
 import { effectiveProvider, type LlmProvider } from "./model";
+import { log } from "./log";
 
 /**
  * Model token metering per account per month. Credits are what users pay;
@@ -170,7 +171,7 @@ async function record(email: string | undefined, model: string, kind: Kind, usag
       db.incrby(`${pk}:usd_micro`, micro),
     ]);
   } catch (e) {
-    console.error("meter failed", e);
+    log.error("meter failed", e);
   }
 }
 
@@ -193,7 +194,7 @@ export async function noteRejectedPick(purpose: PickPurpose, reason: Rejected): 
   try {
     await db.incrby(`usage:_all:${monthKey()}:pickreject:${purpose}:${reason}`, 1);
   } catch {
-    console.error("pick_reject_counter_failed");
+    log.error("pick_reject_counter_failed");
   }
 }
 

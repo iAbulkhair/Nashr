@@ -7,6 +7,7 @@ import { mediaCostKey } from "./usage";
 import { notifyItem } from "./notifications";
 import { pmap } from "./parallel";
 import { day } from "./track";
+import { log } from "./log";
 
 /**
  * The daily margin alert (rules 1530-1539, docs/system/flows.md section 69). The PRD asks for it before the first
@@ -141,7 +142,7 @@ export async function runMarginAlert(now = new Date()): Promise<MarginRun | { er
     ]);
     return run;
   } catch (e) {
-    console.error("margin_alert_failed", e instanceof Error ? e.name : "error");
+    log.error("margin_alert_failed", e);
     return { error: "margin_alert_failed" };
   }
 }
