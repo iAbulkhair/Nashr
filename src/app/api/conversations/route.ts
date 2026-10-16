@@ -1,39 +1,29 @@
 import { NextResponse } from "next/server";
-import { currentUser, sc } from "@/lib/auth";
+import { z } from "zod";
+import { handler } from "@/lib/api-handler";
 import { isAgentId } from "@/lib/agents";
 import { createConversation, deleteConversation, listConversations, renameConversation, searchConversations } from "@/lib/conversations";
 import { retryAfter } from "@/lib/rate";
 
 const busy = () => NextResponse.json({ ok: false, error: "busy" }, { status: 503, headers: retryAfter(1) });
 
-export async function GET(req: Request) {
-  const u = await currentUser();
-  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const q = new URL(req.url).searchParams.get("q");
-  if (q) return NextResponse.json({ ok: true, hits: await searchConversations(sc(u), q) });
-  return NextResponse.json({ ok: true, conversations: await listConversations(sc(u)) });
-}
-export async function POST(req: Request) {
-  const u = await currentUser();
-  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { title?: string; agent?: string };
-  return NextResponse.json({ ok: true, conversation: await createConversation(sc(u), b.title ?? "…", isAgentId(b.agent) ? b.agent : "noor") });
-}
-export async function PATCH(req: Request) {
-  const u = await currentUser();
-  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { id?: string; title?: string };
-  if (!b.id || !b.title) return NextResponse.json({ ok: false }, { status: 400 });
+export const GET = handler({ auth: "user", query: z.object({ q: z.string().optional() }) }, async ({ scope, query: { q } }) => {
+  if (q) return NextResponse.json({ ok: true, hits: await searchConversations(scope, q) });
+  return NextResponse.json({ ok: true, conversations: await listConversations(scope) });
+});
+
+export const POST = handler({ auth: "user", input: z.looseObject({ title: z.string().optional(), agent: z.unknown() }) }, async ({ scope, input: b }) =>
+  NextResponse.json({ ok: true, conversation: await createConversation(scope, b.title ?? "…", isAgentId(b.agent) ? b.agent : "noor") }),
+);
+
+export const PATCH = handler({ auth: "user", input: z.object({ id: z.string().min(1), title: z.string().min(1) }) }, async ({ scope, input: b }) => {
   // Under the conversation's lock (src/lib/conversations.ts): `busy` when it was not taken in time, nothing renamed.
-  if ((await renameConversation(sc(u), b.id, b.title)) === "busy") return busy();
+  if ((await renameConversation(scope, b.id, b.title)) === "busy") return busy();
   return NextResponse.json({ ok: true });
-}
-export async function DELETE(req: Request) {
-  const u = await currentUser();
-  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const id = new URL(req.url).searchParams.get("id");
-  if (!id) return NextResponse.json({ ok: false }, { status: 400 });
+});
+
+export const DELETE = handler({ auth: "user", query: z.object({ id: z.string().min(1) }) }, async ({ scope, query: { id } }) => {
   // Under the conversation's lock: `busy` when it was not taken in time, nothing deleted. Deleting what is not there is ok.
-  if ((await deleteConversation(sc(u), id)) === "busy") return busy();
+  if ((await deleteConversation(scope, id)) === "busy") return busy();
   return NextResponse.json({ ok: true });
-}
+});

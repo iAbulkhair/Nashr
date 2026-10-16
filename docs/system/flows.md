@@ -1204,7 +1204,20 @@ Files: `src/components/Nav.tsx`, `src/components/NavDrop.tsx`, `src/components/L
 7. Search data (rules 1859, 1876). `/ar` and `/en` set their canonical and hreflang (ar, en, x-default = Arabic). The homepage carries three JSON-LD blocks from `homeJsonLd`: Organization, SoftwareApplication with one offer per self-serve plan from `PLAN_PRICE_SAR` in SAR a month (VAT as `PRICES_INCLUDE_VAT`), and FAQPage from `HOME_FAQ`; no rating or review. Each sitemap URL lists its ar, en and x-default alternates.
 8. Releases. No stored shape changes. No permission or environment variable changes.
 
-## 77. Mail, logs and tooling (2026-10-16, branch only, rules 1960-1979)
+---
+## 77. API route wrapper: one entry path for a request (2026-10-16, branch only, rules 1900-1906)
+
+1. A request reaches a route exported as `handler(options, fn)` (`src/lib/api-handler.ts`, `architecture.md` 2.4 "API route wrapper").
+2. Authentication first. `auth: "user"` reads the session with `currentUser()`; `"admin"` asks `isAdmin(req)`; `"cron"` compares the `Authorization: Bearer` value with `CRON_SECRET` through `sameSecret` (an unset secret refuses everyone); `"public"` skips this step. A failure answers 401 with the route's own body (`{ ok: false }`, or `{ ok: false, error: "auth" }` where the route already said so). Nothing else runs: the role, the rate counter, the query and the body are untouched.
+3. Role. With `role`, `forbid(u, role)` from `src/lib/roles.ts` answers its usual 403 `{ error: "forbidden" }`. A role on any auth but `"user"` throws when the module loads.
+4. Rate limit. With `rate`, one `allow` hit on `rate:<bucket>:<who>`: the account's email (default), `sc(u)` (`per: "scope"`), or the client IP (`per: "ip"`, and always without a user). Past `max` it answers 429 `{ ok: false, error: "slow_down" }` with `Retry-After` set to the window. A route that should count only well-formed requests (`wishlist/suggest`) keeps its `allow` inside `fn` instead.
+5. Size. With `maxBytes`, a Content-Length above it answers 413 `too_large` before the body is read.
+6. Query, then body. Each zod schema checks its part (the query as the first value of each name; a body that is not JSON as `{}`). A refusal is 400: the first failing field's message when it is an `ApiError` code (`bad_agent`, `too_short`), else the option `invalid`, else `{ ok: false }`.
+7. `fn` runs with `{ req, u, scope, input, query, params }`. `scope` is `sc(u)` from the session. A scope, email or id in the body, the query, a header or the path is data to `fn` and never selects the tenant.
+8. Releases. No stored shape changes, no permission change, no environment variable change (`CRON_SECRET` and `WAITLIST_ADMIN_KEY` are read as before). New dependency `zod`.
+
+---
+## 78. Mail, logs and tooling (2026-10-16, branch only, rules 1960-1979)
 
 Supastarter quick wins (gap study 2026-10-16, standing order «the best of supastarter in all aspects»), built with our own code: no react-email, no new dependency. Files: `src/lib/mail-provider.ts`, `src/lib/notify.ts`, `src/emails/{index,verify-code,daily-brief,samples,copy}.ts`, `src/app/[lang]/admin/mail/page.tsx`, `src/lib/log.ts`, `src/lib/request-id.ts`, `src/proxy.ts`, `src/instrumentation.ts`, `src/lib/notifications.ts`, `src/app/api/notifications/route.ts`, `src/components/app/{NotificationCenter,NotificationsPanel}.tsx`, `.env.example`, `src/lib/blog.ts`, `src/lib/home-ld.ts`, `src/app/[lang]/blog/[slug]/page.tsx`. Tests: `tests/mail-logs-tooling.test.ts`; coverage `docs/system/tests/1960-mail-logs-tooling.md`.
 
