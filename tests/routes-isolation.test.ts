@@ -76,7 +76,7 @@ describe("tenant isolation at the route level (rule 1)", () => {
     expect(convs.conversations).toHaveLength(0);
     const hits = (await (await convRoute.GET(json("/api/conversations?q=private", "GET"))).json()) as { hits: unknown[] };
     expect(hits.hits).toHaveLength(0);
-    const br = (await (await brandRoute.GET()).json()) as { brand: Brand };
+    const br = (await (await brandRoute.GET(new Request("http://t/api/brand"))).json()) as { brand: Brand };
     expect(br.brand.name).toBe("Brand of B");
   });
 
@@ -110,7 +110,7 @@ describe("tenant isolation at the route level (rule 1)", () => {
       filesRoute.DELETE(json("/api/files?name=x.md", "DELETE")),
       convRoute.GET(json("/api/conversations", "GET")),
       convRoute.POST(json("/api/conversations", "POST", {})),
-      brandRoute.GET(),
+      brandRoute.GET(new Request("http://t/api/brand")),
     ]);
     expect(res.map((r) => r.status)).toEqual(res.map(() => 401));
   });

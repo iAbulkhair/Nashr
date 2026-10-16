@@ -568,7 +568,7 @@ describe("each reviewer's work is one activity row per batch (rule 269)", () => 
     const arHtml = await page("ar");
     expect(arHtml).toContain(ar.activity.kinds.cross_reviewed);
     expect(arHtml).toContain(fill(ar.activity.flags, { n: 1 }));
-    const csv = await (await exportRoute.GET()).text();
+    const csv = await (await exportRoute.GET(new Request("http://t/api/activity/export"))).text();
     expect(csv).toContain('"cross_reviewed"');
     expect(csv).toContain('"flags:1"');
   });
