@@ -266,7 +266,9 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
     const signup = sessionReach("src/app/api/auth/signup/route.ts").problems;
     expect(signup).toContain("src/app/api/auth/signup/route.ts imports createSession from auth.ts");
     expect(signup).toContain("src/app/api/auth/signup/route.ts imports afterSignup from partners.ts");
-    expect(sessionReach("src/app/api/files/route.ts").problems).toContain("src/app/api/files/route.ts imports currentUser from auth.ts");
+    expect(sessionReach("src/app/api/governance/route.ts").problems).toContain("src/app/api/governance/route.ts imports currentUser from auth.ts");
+    // A route on the wrapper (rule 1906) reaches the session through it: the walk follows the import.
+    expect(sessionReach("src/app/api/files/route.ts").problems).toContain("src/lib/api-handler.ts imports currentUser from auth.ts");
     expect(sessionReach("src/lib/partners.ts").problems).toContain("src/lib/partners.ts reads a cookie");
     expect(COOKIE_ACCESS.test('const c = req.cookies.get("x")')).toBe(true);
     expect(COOKIE_ACCESS.test('req.headers.get("Cookie")')).toBe(true);

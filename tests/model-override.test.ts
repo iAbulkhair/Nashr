@@ -501,7 +501,7 @@ describe("PUT /api/models: setting and clearing", () => {
   it("the picker reads the stored pick back through the existing scoped routes: GET /api/conversations and GET /api/brand carry `model` while it is set", async () => {
     const { u, conv } = await owner("mo-readback");
     const listed = async () => ((await (await conversationsRoute.GET(json("/api/conversations", "GET"))).json()) as { conversations: Conversation[] }).conversations.find((c) => c.id === conv)!;
-    const brandNow = async () => ((await (await brandRoute.GET()).json()) as { brand: Brand }).brand;
+    const brandNow = async () => ((await (await brandRoute.GET(new Request("http://t/api/brand"))).json()) as { brand: Brand }).brand;
     expect(await listed()).not.toHaveProperty("model");
     expect(await brandNow()).not.toHaveProperty("model");
     await put({ target: "conversation", id: conv, model: OPUS });

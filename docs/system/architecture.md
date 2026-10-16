@@ -77,6 +77,12 @@ UI/UX phase 3 (2026-10-11, branch `claude/uiux-phase3`) adds 3 files and 3 handl
 
 Per-route authorization is in `permissions.md`.
 
+#### API route wrapper (2026-10-16, branch only, rules 1900-1906, `flows.md` section 77)
+
+`src/lib/api-handler.ts` exports `handler(options, fn)`, the one place a route's entry checks run, in a fixed order: (1) authenticate (`auth: "user"` is `currentUser()`, `"admin"` is `isAdmin(req)`, `"cron"` is the `CRON_SECRET` bearer compared with `sameSecret`, `"public"` is none) and answer 401 before anything of the request is read; (2) `forbid(u, role)` with an action of `src/lib/roles.ts`; (3) the rate limit (`allow`, bucket `rate:<bucket>:<email | sc(u) | client IP>`, 429 `slow_down` with `Retry-After`); (4) `maxBytes` from Content-Length (413 `too_large`); (5) the query string, then the JSON body, each checked by a zod schema (400 with the first failing field's own code, else `invalid`, else the bare `{ ok: false }`). `fn` receives `{ req, u, scope, input, query, params }`; `scope` is `sc(u)` computed from the session, never from the request. Error codes are the `ApiError` union in the same file, the strings the routes already sent, so the client maps in `src/lib/app-i18n.ts` keep matching. Nothing is caught: a throw is the same 500. `zod` (4.x) is a direct dependency since this change. The static checker in `tests/role-gates.test.ts` reads a wrapped handler's `auth`, `role` and `rate` options as its gates.
+
+Converted so far (the pilot): `files` (GET, PUT, DELETE), `brand` (GET, PUT), `brand/proposals/[id]` (POST), `tasks` (GET), `activity` (GET), `activity/export` (GET), `conversations` (GET, POST, PATCH, DELETE), `wishlist/vote` (POST), `wishlist/suggest` (POST). Status codes and bodies are unchanged (rule 1905); the only difference is that a malformed body that used to reach the handler (a non-string file name, a `null` or array body, a non-string conversation id or title) is now a 400. The other routes still run the same steps by hand and move over in later batches.
+
 ### 2.5 Library modules (`src/lib`)
 
 | Module | One line |
