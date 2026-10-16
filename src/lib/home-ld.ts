@@ -48,5 +48,30 @@ export function homeJsonLd(lang: Lang, origin: string): Record<string, unknown>[
   ];
 }
 
+/**
+ * One blog post's structured data (rule 1978): an Article in the page's language with its headline, description and
+ * publication date from the post's own front matter (checked at build time, src/lib/blog.ts), its address, and the
+ * organisation as author and publisher, the same `@id` the homepage declares. No author person, rating or image is made
+ * up: the posts are the company's, signed by nobody.
+ */
+export function articleJsonLd(lang: Lang, origin: string, p: { slug: string; title: string; desc: string; date: string }): Record<string, unknown> {
+  const t = dict[lang];
+  const url = `${origin}/${lang}/blog/${p.slug}`;
+  const org = { "@type": "Organization", "@id": `${origin}/#organization`, name: t.brand, url: origin, logo: { "@type": "ImageObject", url: `${origin}/icons/icon-512.png` } };
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: p.title.slice(0, 110),
+    description: p.desc,
+    datePublished: p.date,
+    dateModified: p.date,
+    inLanguage: lang,
+    url,
+    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    author: org,
+    publisher: org,
+  };
+}
+
 /** JSON for a `<script type="application/ld+json">`: `<` is escaped so no string can close the script element. */
 export const ldJson = (v: unknown): string => JSON.stringify(v).replace(/</g, "\\u003c");

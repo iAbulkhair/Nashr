@@ -8,6 +8,7 @@ import { billingLocked } from "./billing-state";
 import { handPlanEnded } from "./hand-plan";
 import { ksaDay } from "./partner-rules";
 import { adminAudit } from "./admin-audit";
+import { log } from "./log";
 
 /**
  * Credit ledger. Every balance change goes through a per-user lock so two
@@ -31,7 +32,7 @@ export async function withUserLock<T>(email: string, fn: (u: User) => Promise<T>
   } finally {
     // A failed release must not turn a balance change that was saved into a throw: callers read a throw as "nothing
     // changed" (a charge answered busy while kept, a refund released for a second time). The 10 s TTL frees the lock.
-    await db.unlock(key).catch((e) => console.error("user lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(key).catch((e) => log.error("user lock release failed", e));
   }
 }
 
@@ -494,7 +495,7 @@ export async function renewIfDue(email: string): Promise<boolean> {
       actor: "system", section: "billing", action: "hand_refill", target: email,
       what: `hand_refill plan:${hand.plan} month:${hand.month} credits:${hand.after} paid_through:${hand.paidThrough ?? "none"}`,
       before: { credits: hand.before }, after: { credits: hand.after, paidThrough: hand.paidThrough },
-    }).catch((e) => console.error("hand refill log", e instanceof Error ? e.name : "error"));
+    }).catch((e) => log.error("hand refill log", e));
   }
   return true;
 }

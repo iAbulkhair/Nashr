@@ -9,6 +9,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import EmptyState from "@/components/ui/EmptyState";
 import { Time } from "@/components/ui/Time";
 import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { markOneRead } from "./NotificationCenter";
 import { SETTINGS_COPY, settingsHref } from "@/lib/settings-nav";
 
 /**
@@ -33,6 +34,16 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
     ws?.setUnread(0);
     window.dispatchEvent(new Event(WORKSPACE_EVENTS.unread));
     setSaid(U.marked);
+  }
+  /** One entry read (rule 1966): its own button, or opening it. The count comes back from the server. */
+  async function readOne(n: Notif, say: boolean) {
+    if (n.read) return;
+    setFailed(false);
+    setItems((p) => p.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    const left = await markOneRead(n.id);
+    if (left === null) { if (say) { setItems((p) => p.map((x) => (x.id === n.id ? { ...x, read: false } : x))); setFailed(true); } return; }
+    ws?.setUnread(left);
+    if (say) setSaid(U.markedOne);
   }
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -65,7 +76,10 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
                   <p className="whitespace-pre-line text-sm text-foreground-muted" dir="auto">{n.body}</p>
                 </div>
               </div>
-              <Link href={n.href} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-border-input px-3 text-xs text-foreground hover:bg-inverse hover:text-inverse-muted pointer-fine:min-h-8">{N.open}</Link>
+              <div className="flex flex-wrap items-center gap-2">
+                {!n.read && <button type="button" onClick={() => void readOne(n, true)} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full px-3 text-xs text-foreground underline-offset-2 hover:underline pointer-fine:min-h-8">{U.markOne}</button>}
+                <Link href={n.href} onClick={() => void readOne(n, false)} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-border-input px-3 text-xs text-foreground hover:bg-inverse hover:text-inverse-muted pointer-fine:min-h-8">{N.open}</Link>
+              </div>
             </li>
           ))}
         </ul>

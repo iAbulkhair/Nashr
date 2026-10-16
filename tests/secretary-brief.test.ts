@@ -14,7 +14,7 @@ import { AUTO_CLOSE_RESULT, alertStep, type SecItem } from "@/lib/secretary-agen
 // close.
 
 const sent: { to: string; subject: string; text: string }[] = [];
-vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, subject: string, text: string) => { sent.push({ to, subject, text }); return true; } }));
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (...a: unknown[]) => { const { to: to, subject: subject, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; sent.push({ to, subject, text }); return true; } }));
 import * as cronDaily from "@/app/api/cron/daily/route";
 
 const BRAND: Brand = { name: "Rif", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-09-29" };

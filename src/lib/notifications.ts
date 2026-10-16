@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
+import { log } from "./log";
 import type { User } from "./auth";
 import { getBrand, listLite } from "./brand";
 import { listBrands, scopeFor } from "./brands";
@@ -35,6 +36,22 @@ export async function markAllRead(email: string) {
     if (all.some((n) => !n.read)) await db.set(KEY(email), all.map((n) => ({ ...n, read: true })));
   });
 }
+/** A bell entry's id: `pushNotif` makes 10 hex characters; the route refuses anything outside this shape before a read. */
+export const NOTIF_ID = /^[A-Za-z0-9_-]{1,40}$/;
+/**
+ * Mark one entry read (rule 1966), under the bell lock like every other write. The id is only looked up inside the
+ * account's own list (`notifs:{email}`, the session's account), never used to build a key. Answers the unread count after
+ * the write, or null when the account has no entry with that id (already gone from the capped list, or never there).
+ */
+export async function markRead(email: string, id: string): Promise<number | null> {
+  return withBellLock(email, async () => {
+    const all = await listNotifs(email);
+    const hit = all.find((n) => n.id === id);
+    if (!hit) return null;
+    if (!hit.read) await db.set(KEY(email), all.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    return all.filter((n) => !n.read && n.id !== id).length;
+  });
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The bell's lock key, per account: every read-then-write of `notifs:{email}` holds it. */
@@ -52,11 +69,11 @@ export async function withBellLock<T>(email: string, fn: () => Promise<T>): Prom
     got = await db.lock(key, 10);
     if (!got) await sleep(50);
   }
-  if (!got) console.error("bell lock not taken; writing without it");
+  if (!got) log.error("bell lock not taken; writing without it");
   try {
     return await fn();
   } finally {
-    if (got) await db.unlock(key).catch((e) => console.error("bell lock release failed", e instanceof Error ? e.name : "error"));
+    if (got) await db.unlock(key).catch((e) => log.error("bell lock release failed", e));
   }
 }
 /** The marker that suppresses a repeat of one situation; exported so `wipeAccount` can name the ones it can list. */
@@ -308,6 +325,6 @@ export async function warnAgentCap(user: Pick<User, "email" | "lang">, paid: Ext
       href: "governance",
     }, agentCapFingerprint(paid.scope, paid.agent, paid.month), 35);
   } catch (e) {
-    console.error("agent cap warning failed", e);
+    log.error("agent cap warning failed", e);
   }
 }

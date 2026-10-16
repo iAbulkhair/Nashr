@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { adminAudit } from "./admin-audit";
 import { customerCode, providerFault, type CustomerModelError, type ProviderFault } from "./provider-errors";
+import { log } from "./log";
 
 /** Where a fault was met; a fixed name from code, never from a request. */
 export type FaultPlace = "chat" | "generate" | "onboard";
@@ -18,7 +19,7 @@ export async function noteProviderFault(fault: ProviderFault, place: FaultPlace)
     if (!(await db.setNx(`providerfault:${fault}:${place}`, "1", FAULT_NOTE_TTL_S))) return;
     await adminAudit({ actor: "system", section: "system", action: `provider_${fault}`, target: place, what: `provider_${fault} ${place}` });
   } catch (e) {
-    console.error("provider fault note failed", e instanceof Error ? e.name : "error");
+    log.error("provider fault note failed", e);
   }
 }
 

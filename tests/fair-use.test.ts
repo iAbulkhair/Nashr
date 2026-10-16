@@ -127,7 +127,7 @@ describe("the reads (rules 1726, 1728)", () => {
     vi.spyOn(db, "mget").mockRejectedValueOnce(new Error("store down"));
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await fairUseGate(u)).toBeNull();
-    expect(log).toHaveBeenCalledWith("fair_use_read_failed", "Error");
+    expect(log).toHaveBeenCalledWith("fair_use_read_failed", { error: "Error" });
   });
 });
 

@@ -388,7 +388,7 @@ describe("LinkedIn Ads through Composio (rule 743)", () => {
       answers.LINKEDIN_ADS_GET_AD_ANALYTICS = (a) => (a.dateRange as { start: { month: number } }).start.month === 9 ? ok(CUR) : { successful: false, error: "server error" };
       await syncAds(u.email, "linkedin_ads", liConn(), NOW);
       expect((await db.get<AdStats>(ADSTATS_KEY(u.email, "linkedin_ads")))!.prev).toBeUndefined();
-      expect(warn).toHaveBeenCalledWith("ad_prev_failed", "linkedin_ads", "linkedin_ads 502 ads_get_ad_analytics");
+      expect(warn).toHaveBeenCalledWith("ad_prev_failed", { provider: "linkedin_ads", error: "linkedin_ads 502 ads_get_ad_analytics" });
     } finally { warn.mockRestore(); err.mockRestore(); }
   });
 });

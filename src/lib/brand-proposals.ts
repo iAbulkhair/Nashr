@@ -3,6 +3,7 @@ import { db } from "./db";
 import { getBrand, saveBrand, type Brand } from "./brand";
 import { bannedTerms, normalize } from "./brand-rules";
 import type { AgentId } from "./agents";
+import { log } from "./log";
 
 /**
  * Brand changes an agent may propose but never apply.
@@ -59,7 +60,7 @@ export async function withBrandLock<T>(scope: string, fn: () => Promise<T>): Pro
   try {
     return await fn();
   } finally {
-    await db.unlock(k).catch((e) => console.error("brand lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(k).catch((e) => log.error("brand lock release failed", e));
   }
 }
 

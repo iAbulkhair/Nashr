@@ -4,6 +4,7 @@ import { isStaging } from "@/lib/deploy-env";
 import { STAGING_COOKIE, hasAccess, stagingOpen } from "@/lib/staging-access";
 import { legacySettingsPath } from "@/lib/settings-nav";
 import { LANG_COOKIE, readCookie } from "@/lib/cookie-names";
+import { REQUEST_ID_HEADER, requestId } from "@/lib/request-id";
 
 type Lang = "ar" | "en";
 
@@ -68,11 +69,18 @@ export const STRAY_TARGET = "__missing";
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const staging = isStaging();
+  // Request id (rule 1975): kept from an upstream hop when it is well formed, else a fresh one. It goes to the route on the
+  // request (`withRequest` in src/lib/log.ts reads it) and back to the browser on the response, so a support message
+  // that quotes it finds the matching log lines. Never a secret, never derived from the request's content.
+  const rid = requestId(req.headers) ?? crypto.randomUUID();
+  const reqHeaders = new Headers(req.headers);
+  reqHeaders.set(REQUEST_ID_HEADER, rid);
+  const next = () => NextResponse.next({ request: { headers: reqHeaders } });
 
   // Staging lock (rules 674, 677): without the access cookie every path but the four open ones and `/m/` (rule 1760) is
   // a bare 404, and with no STAGING_ACCESS_KEY nobody gets in. The proxy sees every path, so this runs before anything else.
   if (staging && !stagingOpen(pathname) && !hasAccess(req.cookies.get(STAGING_COOKIE)?.value)) {
-    return new NextResponse(null, { status: 404, headers: { "x-robots-tag": NOINDEX } });
+    return new NextResponse(null, { status: 404, headers: { "x-robots-tag": NOINDEX, [REQUEST_ID_HEADER]: rid } });
   }
 
   let res: NextResponse;
@@ -80,7 +88,7 @@ export function proxy(req: NextRequest) {
     // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), else pass it
     // on untouched. The exempt paths (webhooks, crons, MCP, OAuth token) pass inside crossSiteRefusal. The language and
     // x-pathname logic below is for pages only.
-    res = crossSiteRefusal(req) ?? NextResponse.next();
+    res = crossSiteRefusal(req) ?? next();
   } else if (pathname === "/" || pathname === "/app") {
     // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
     // (src/app/manifest.ts, rule 681): the same choice, into the app.
@@ -114,12 +122,13 @@ export function proxy(req: NextRequest) {
     res = NextResponse.redirect(url, 307);
   } else if (APP_PATH.test(pathname)) {
     // App routes: forward the pathname to server components.
-    const reqHeaders = new Headers(req.headers);
     reqHeaders.set("x-pathname", pathname);
-    res = NextResponse.next({ request: { headers: reqHeaders } });
+    res = next();
   } else {
-    res = NextResponse.next();
+    res = next();
   }
+
+  res.headers.set(REQUEST_ID_HEADER, rid);
 
   if (staging || CONSOLE_PATH.test(pathname)) res.headers.set("x-robots-tag", NOINDEX);
   if (CONSOLE_PATH.test(pathname)) res.headers.set("Cache-Control", "no-store");

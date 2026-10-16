@@ -8,6 +8,7 @@ import { sameSecret } from "../rate";
 import { callbackUrl } from "./config";
 import { PROVIDER_TASK_ID } from "./keys";
 import { ProviderError, type MediaAdapter, type ProviderCheck, type ProviderErrorCode, type StatusResult, type SubmitInput } from "./types";
+import { log } from "../log";
 
 const HOST = "https://api.kie.ai";
 
@@ -132,7 +133,7 @@ async function call(path: string, init: RequestInit, signal: AbortSignal): Promi
   }
   const code = typeof j?.code === "number" ? j.code : 0;
   if (!res.ok || code !== 200) {
-    console.error("kie", res.status, code);
+    log.error("kie", { status: res.status, provider_code: code });
     if (!res.ok) throw new ProviderError(codeError(res.status), res.status);
     throw code ? new ProviderError(codeError(code), code) : new ProviderError("bad_response");
   }

@@ -52,6 +52,7 @@ import { isRegulated } from "./regulated";
 import { fairUseText } from "./fair-use";
 import { SPEND_CARDS_PER_REPLY, proposeSpend, spendCard, spendProposalStates, type SpendProposal, type SpendProposalCard } from "./spend-proposals";
 import { AGENT_SCOPE_PARAGRAPH, AgentScopeRefused, logAgentScope, otherBrandNames, itemHash, publishScopeCheck, readAgentScopeModes, roleOwner, roleRefusalText, scopeCheck, type AgentScopeModes, type ScopeCtx } from "./agent-scope";
+import { log } from "./log";
 
 /**
  * An inbox item as a chat card shows it. `xflag`: the other agents that flagged it in the cross-agent review, each with
@@ -461,7 +462,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // two are for the agent-scope input gate below: the modes (the route's copy when it passed one) and the names of the
   // account's other brands. A store error on the brand names must not cost the owner the turn: the gate reads none.
   const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId]), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
-    console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+    log.error("agent scope brand names failed", e);
     return [];
   })]);
   // The agent-scope input gate (rule 794; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md 4.2),

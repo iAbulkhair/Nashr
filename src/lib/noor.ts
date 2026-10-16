@@ -15,6 +15,7 @@ import { NO_LAYERS, instructionBlocks, type Layers } from "./agent-instructions"
 import { automaticFor, route } from "./models/route";
 import { GENERATE_NOTES_READ } from "./notes-read";
 import { AGENT_SCOPE_PARAGRAPH } from "./agent-scope";
+import { log } from "./log";
 
 /** One generated item. `crossReview` is added by the cross-agent review and never changes the other three fields. */
 export type Generated = { channel: string; title: string; body: string; crossReview?: CrossVerdict[] };
@@ -290,7 +291,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   // yields to the request's deadline: with too little of it left the batch is saved without notes, never killed with its
   // charge kept.
   if (opts.crossReview !== false) {
-    if (deadline - Date.now() < CROSS_REVIEW_MIN_MS) console.warn("cross review skipped", "too little time left");
+    if (deadline - Date.now() < CROSS_REVIEW_MIN_MS) log.warn("cross review skipped", { reason: "too little time left" });
     else items = await crossReview(client, brand, type, items, { meter: opts.meter, ...ground, layers: opts.layers });
   }
   return items;
@@ -370,7 +371,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
   // Optional, like its failure below: with less than REVIEW_MIN_MS of the batch's deadline left the first pass ships.
   const end = Math.min(ctx.deadline ?? Infinity, Date.now() + MODEL_BUDGET.REVIEW_MS);
   if (ctx.deadline !== undefined && ctx.deadline - Date.now() < MODEL_BUDGET.REVIEW_MIN_MS) {
-    console.warn("critique skipped", "too little time left");
+    log.warn("critique skipped", { reason: "too little time left" });
     return items;
   }
   try {
@@ -394,7 +395,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
     return items.map((it, i) => (verdicts[i] && verdicts[i].ok === false && typeof verdicts[i].body === "string" && verdicts[i].body!.length > 20 ? { ...it, body: verdicts[i].body! } : it));
   } catch (e) {
     // Reviewer failure must never block delivery; ship the first pass.
-    console.warn("critique skipped", e instanceof Error ? e.message : e);
+    log.warn("critique skipped", { error: e instanceof Error ? e.message : e });
     return items;
   }
 }
@@ -558,7 +559,7 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
         const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
         return parseCrossVerdicts(raw, items.length, r, res.model, new Date().toISOString());
       } catch (e) {
-        console.warn("cross review skipped", r, e instanceof Error ? e.message : e);
+        log.warn("cross review skipped", { agent: r, error: e instanceof Error ? e.message : e });
         return [];
       }
     }));
@@ -568,7 +569,7 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
       return got.length ? { ...it, crossReview: got } : it;
     });
   } catch (e) {
-    console.warn("cross review skipped", e instanceof Error ? e.message : e);
+    log.warn("cross review skipped", { error: e instanceof Error ? e.message : e });
     return items;
   }
 }

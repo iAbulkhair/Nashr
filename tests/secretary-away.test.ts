@@ -314,7 +314,7 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     }
     // Ramadan hours are checked again when the calendar is built: `[null]` reads as the default hours, and the rest of
     // the record (its Friday-only weekend) still applies; only a record the build cannot read at all logs.
-    expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", "TypeError"]]);
+    expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", { error: "TypeError" }]]);
   });
 
   it("stored Ramadan hours are checked again when the calendar is built: hours parseCalendar would refuse (a hand-edited {from: 5}) read as the default 10:00-15:00, so a Ramadan day's agenda still builds", async () => {
@@ -570,7 +570,7 @@ describe("rule 482: the away list's limits: dates, the 200-field cap, the note, 
     vi.spyOn(fresh.db, "hgetall").mockRejectedValueOnce(new TypeError("store down"));
     await db.hset(SEC_KEYS.away(u.email), "old", awayEntry("Old", "2026-08-01"));
     expect(await fresh.daily(u.email, NOW)).toMatchObject({ awayCleaned: 0, closed: 0 });
-    expect(errors.mock.calls).toContainEqual(["sec away clean-up failed", "TypeError"]);
+    expect(errors.mock.calls).toContainEqual(["sec away clean-up failed", { error: "TypeError" }]);
     expect(await awayKeys(u.email)).toEqual(["old", "sara"]);
   });
 
@@ -896,7 +896,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
         expect(j.effective).toMatchObject({ country: "SA", weekend: [5, 6], weekStart: 0 });
       }
       // Only the error's name is logged, never the stored value.
-      expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", "TypeError"]]);
+      expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", { error: "TypeError" }]]);
       expect((await calPut({ weekend: [5] })).status).toBe(200);
       expect((await storedCal(o.email))?.weekend).toEqual([5]);
     });

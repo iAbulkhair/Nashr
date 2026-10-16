@@ -28,6 +28,7 @@ import { safeFetch } from "./safe-fetch";
 import { OWNER_ALIASES, SEC_ID, SEC_KEYS, calFor, changeItem, cleanLine, createItem, newSecId, parseFields, reindexOpen, removeBySystem, stateOf, withLock, type Who } from "./secretary";
 import { SEC_LIMITS, zoneLocalInput, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
+import { log } from "./log";
 
 export type Parsed = {
   kind: "create" | "move" | "cancel" | "ignore";
@@ -326,7 +327,7 @@ export async function applyBooking(rec: BookRecord, p: Parsed, hash: string, now
     }
     return await createBooked(rec, p, hash);
   } catch (e) {
-    console.error("booking apply failed", e instanceof Error ? e.name : "error");
+    log.error("booking apply failed", e);
     return "busy";
   }
 }

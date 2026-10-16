@@ -121,7 +121,8 @@ export async function sendVerifyCode(u: Pick<User, "email" | "lang">): Promise<{
   let sent = false;
   if (mailReady()) {
     const m = verifyMail(u, code);
-    sent = await sendEmail(u.email, m.subject, m.text).catch(() => false);
+    // The text part is unchanged byte for byte; the HTML part carries the same code in the shared layout (rule 1960).
+    sent = await sendEmail({ to: u.email, subject: m.subject, text: m.text, template: "verifyCode", context: { code }, locale: u.lang === "en" ? "en" : "ar" }).catch(() => false);
   }
   if (!sent && !devCodeExposed()) await dropVerifyCode(u.email);
   return { sent, code };

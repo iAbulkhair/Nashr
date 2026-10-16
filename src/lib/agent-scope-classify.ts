@@ -4,6 +4,7 @@ import { MODEL_BUDGET, anthropic, modelState, until } from "./model";
 import { route } from "./models/route";
 import { metered } from "./metered";
 import { VERDICTS, isVerdict, type Verdict } from "./agent-scope-verdicts";
+import { log } from "./log";
 
 /**
  * The agent-scope classifier (rule 791; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md section
@@ -115,7 +116,7 @@ function warnFailure(e: unknown): void {
   const raw = e !== null && typeof e === "object" ? ((e as { constructor?: { name?: unknown } }).constructor?.name ?? (e as { name?: unknown }).name) : typeof e;
   const name = typeof raw === "string" && /^\w{1,60}$/.test(raw) ? raw : "Error";
   const status = e !== null && typeof e === "object" ? (e as { status?: unknown }).status : undefined;
-  console.warn(`agent_scope: classify failed, ${name}${typeof status === "number" && Number.isInteger(status) ? `, status ${status}` : ""}`);
+  log.warn(`agent_scope: classify failed, ${name}${typeof status === "number" && Number.isInteger(status) ? `, status ${status}` : ""}`);
 }
 
 /**
@@ -132,7 +133,7 @@ function warnFailure(e: unknown): void {
  * the founder's monthly total includes it. It is metered to `o.meterAgent`, else the agent that was checked. A call that
  * answered is metered even when its verdict is unknown; one that failed is metered for what its stream had received
  * (rule 980), nothing when it failed before the first event. A call that failed leaves one
- * `console.warn` line with the error's class and status (`warnFailure`), never its message.
+ * `log.warn` line with the error's class and status (`warnFailure`), never its message.
  */
 export async function classify(input: ClassifyInput, o: { deadline?: number; meterAgent?: AgentId } = {}): Promise<Classified> {
   try {

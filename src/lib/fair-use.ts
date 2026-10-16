@@ -7,6 +7,7 @@ import { mediaCostKey } from "./usage";
 import { topupRevenueSar } from "./topups";
 import { notifyItem } from "./notifications";
 import { isPaying, revenueSarOf, type MarginRow } from "./margin";
+import { log } from "./log";
 
 /**
  * The fair-use stop (rules 1720-1739, docs/system/flows.md section 73). Founder decision of 2026-10-13: "no need to
@@ -119,7 +120,7 @@ async function alertFounders(u: Pick<User, "email" | "plan">, month: string): Pr
       return notifyItem(f.email, lang, { kind: "credits", ...fairUseAlertText(u.plan, lang), href: `/${lang}/admin/usage#margin` }, `fairuse:${month}:${tag(u.email)}`, 35);
     }));
   } catch (e) {
-    console.error("fair_use_alert_failed", e instanceof Error ? e.name : "error");
+    log.error("fair_use_alert_failed", e);
   }
 }
 
@@ -133,7 +134,7 @@ export async function fairUseGate(u: User, month = monthKey()): Promise<FairUseR
   try {
     s = await fairUseOf(u, month);
   } catch (e) {
-    console.error("fair_use_read_failed", e instanceof Error ? e.name : "error");
+    log.error("fair_use_read_failed", e);
     return null;
   }
   if (!s.paused) return null;

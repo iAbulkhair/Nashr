@@ -9,6 +9,7 @@ import { appOrigin } from "@/lib/origin";
 import { EMAIL_TEMPLATES, COPY, notice, paragraphs, resetPassword, teamInvite } from "@/emails";
 import { esc, fillHtml, html, plain, raw } from "@/emails/html";
 import { COLORS, FONT } from "@/emails/tokens";
+import { renderSamples } from "@/emails/samples";
 import { SEC_KEYS, newSecId, newSeriesId } from "@/lib/secretary";
 import type { SecItem } from "@/lib/secretary-agenda";
 
@@ -105,14 +106,13 @@ function expectFlow(doc: string, lang: "ar" | "en") {
 const hrefs = (doc: string) => [...doc.matchAll(/href="([^"]*)"/g)].map((m) => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
 const ARROW = /[\u2190-\u21ff\u27f0-\u27ff\u2900-\u297f\u2b00-\u2bff\u279c-\u27bf]|&[lrhu]arr;/i;
 
-/** One sample of every template in the registry, in `lang`, with links built from `appOrigin()` as the callers build them. */
+/**
+ * One sample of every template in the registry, in `lang`, with links built from `appOrigin()` as the callers build them.
+ * The samples live beside the templates (src/emails/samples.ts) since rule 1964, so the console's preview and these
+ * tests render the same thing, and a template without a sample does not compile.
+ */
 function samples(lang: "ar" | "en"): Record<keyof typeof EMAIL_TEMPLATES, string> {
-  const o = appOrigin();
-  return {
-    resetPassword: EMAIL_TEMPLATES.resetPassword({ lang, link: `${o}/${lang}/app/reset#t=${"a".repeat(64)}` }),
-    teamInvite: EMAIL_TEMPLATES.teamInvite({ lang, inviterEmail: "owner@test.example", role: "admin", link: `${o}/${lang}/app/join#t=${"b".repeat(64)}` }),
-    notice: EMAIL_TEMPLATES.notice({ lang, title: "t", paragraphs: ["one\ntwo", "three"], cta: { href: `${o}/${lang}/app/todo` } }),
-  };
+  return renderSamples(lang);
 }
 
 describe("rule 685: every templated email is multipart, and its HTML reads in the user's language and direction on the document and on every container", () => {

@@ -17,6 +17,7 @@ import {
   type Attribution, type Bank, type Commission, type LedgerRow, type NotCounted, type Payout, type ReferralStatus,
   PARTNER_COUNTRIES,
 } from "./partner-rules";
+import { log } from "./log";
 
 /**
  * The partner programme and the 15% first-month discount, store side (docs/superpowers/specs/2026-10-01-affiliates-design.md).
@@ -398,7 +399,7 @@ export async function recordPayment(email: string, input: PaymentInput, by: stri
   // The credits referral (src/lib/referral.ts, rules 557-558): the first payment that stands, plan or top-up, pays the
   // referrer once. Outside this account's lock (the referrer's credits take the referrer's); a retry (`already`) runs it
   // again, so a request that stopped here is completed, and the claim inside makes any later run a no-op.
-  if (res.ok && !res.payment.voidedAt) await rewardReferrer(e).catch((err) => console.error("referral reward failed", err instanceof Error ? err.message : "error"));
+  if (res.ok && !res.payment.voidedAt) await rewardReferrer(e).catch((err) => log.error("referral reward failed", { error: err instanceof Error ? err.message : "error" }));
   return res;
 }
 
