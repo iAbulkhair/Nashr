@@ -26,6 +26,7 @@ import { revokeAllDevices } from "./devices";
 import { freePlaces } from "./founding";
 import { proposalKeys } from "./brand-proposals";
 import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
+import { profileKey } from "./notify-prefs";
 import { getConnection } from "./connectors/store";
 import { isComposio, revokeAll } from "./connectors/via-composio";
 import { AD_PROVIDERS } from "./connectors/ads";
@@ -163,6 +164,8 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
       ...AD_PROVIDERS.map((p) => `adsync:${s}:${p}`),
       // Each ad account's totals and its top ads by name, and the last upload's (src/lib/ad-stats.ts, rule 747).
       ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
+      // The notification choices, per brand (src/lib/notify-prefs.ts `profileKey`): only the default brand's was deleted.
+      profileKey(s),
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });

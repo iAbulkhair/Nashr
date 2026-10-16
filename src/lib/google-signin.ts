@@ -220,6 +220,19 @@ export async function googleLinked(login: string): Promise<boolean> {
   return !!(await db.get<string>(subKey(login)));
 }
 
+/**
+ * An address move (src/lib/email-change.ts): the link follows the login, both ways, and nothing names the old address.
+ * The caller already holds both login locks (`withLoginLock` is not reentrant). A link whose `google:{sub}` names
+ * another login is only dropped here, never moved.
+ */
+export async function moveGoogleLink(from: string, to: string): Promise<void> {
+  const sub = await db.get<string>(subKey(from));
+  if (!sub) return;
+  const holder = await db.get<string>(linkKey(sub));
+  await db.del(subKey(from));
+  if (holder === normalizeEmail(from)) await writeLink(to, sub);
+}
+
 /** Drop this login's Google link, both ways. */
 export async function unlinkGoogle(login: string): Promise<void> {
   await withLoginLock(login, async () => {

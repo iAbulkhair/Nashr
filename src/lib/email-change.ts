@@ -1,8 +1,13 @@
 import { createHash, randomInt } from "crypto";
 import { db } from "./db";
+import { activityKey } from "./activity";
 import { getUser, normalizeEmail, validEmail, type User } from "./auth";
 import { listBrands } from "./brands";
 import { cardKey } from "./billing";
+import { moveGoogleLink } from "./google-signin";
+import { layerKey } from "./instructions-store";
+import { profileKey } from "./notify-prefs";
+import { SEC_KEYS } from "./secretary";
 import { chatTrialKey } from "./usage";
 import { mfaKey } from "./mfa";
 import { mailReady, sendEmail } from "./notify";
@@ -41,25 +46,31 @@ export type StartRefusal = "invalid_email" | "same_email" | "taken" | "owner_has
 /**
  * Whether an owner's account already holds anything an address change here could not carry. Read in one round: the
  * account record's paid and partner fields, then the brand record, the work lists and sets, the MCP token, a saved card
- * and the trial's chat count (an account that used its trial chat may not start it again under a new address).
+ * and the trial's chat count (an account that used its trial chat may not start it again under a new address). The
+ * move deletes the old address's keys (`wipeAccount`), so anything the owner made counts too: Reem's items, the agent
+ * instructions, the settings, notification choices and working days, and the activity, decision, handoff and note
+ * lists. A key the system writes by itself on an empty account (the daily run's `schedule:`) does not.
  */
 export async function ownerHasData(u: User): Promise<boolean> {
   const e = u.email;
   if (u.plan !== "trial" || u.paidOnce || u.firstPaidOn || u.billing || u.partnerCode || u.founding || u.priceLock || u.onboardPaid || u.handPlan || (u.topups?.length ?? 0) > 0) return true;
-  const [brands, strings, counts, tasks, convs] = await Promise.all([
+  const lists = [`tasks:${e}`, `convs:${e}`, activityKey(e), `decisions:${e}`, `handoffs:${e}`, SEC_KEYS.notes(e)];
+  const [brands, strings, counts, ...heads] = await Promise.all([
     listBrands(e),
-    db.mget<unknown>([`brand:${e}`, `mcptoken-of:${e}`, cardKey(e), chatTrialKey(e)]),
-    db.scardMany([`files:${e}`, `conns:${e}`, membersKey(e), `invites:${e}`]),
-    db.lrange(`tasks:${e}`, 0, 0),
-    db.lrange(`convs:${e}`, 0, 0),
+    db.mget<unknown>([`brand:${e}`, `mcptoken-of:${e}`, cardKey(e), chatTrialKey(e), layerKey(e), `gov:${e}`, profileKey(e), SEC_KEYS.cal(e)]),
+    db.scardMany([`files:${e}`, `conns:${e}`, membersKey(e), `invites:${e}`, SEC_KEYS.all(e)]),
+    ...lists.map((k) => db.lrange(k, 0, 0)),
   ]);
-  return brands.length > 1 || strings.some((v) => v !== null && v !== undefined) || counts.some((n) => n > 0) || tasks.length > 0 || convs.length > 0;
+  return brands.length > 1 || strings.some((v) => v !== null && v !== undefined) || counts.some((n) => n > 0) || heads.some((h) => h.length > 0);
 }
 
-/** The move's per-login carry: two-step sign-in follows the login (the enrolment record only; a setup in progress does not). */
+/**
+ * The move's per-login carry, run under both login locks: two-step sign-in follows the login (the enrolment record only;
+ * a setup in progress does not), and so does the Google link, both ways (`moveGoogleLink`).
+ */
 async function carryLogin(from: string, to: string): Promise<void> {
   const enr = await db.get<unknown>(mfaKey(from));
-  if (enr) await db.set(mfaKey(to), enr);
+  await Promise.all([enr ? db.set(mfaKey(to), enr) : Promise.resolve(), moveGoogleLink(from, to)]);
 }
 
 const mail = (lang: "ar" | "en") => ({

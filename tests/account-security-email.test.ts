@@ -7,6 +7,12 @@ import { db } from "@/lib/db";
 import { getMember, membersKey } from "@/lib/team";
 import { mfaKey } from "@/lib/mfa";
 import { MIN_ROLE, IMPERSONATION_BLOCKED } from "@/lib/roles";
+import { linkKey, subKey } from "@/lib/google-signin";
+import { SEC_KEYS } from "@/lib/secretary";
+import { layerKey } from "@/lib/instructions-store";
+import { profileKey } from "@/lib/notify-prefs";
+import { activityKey } from "@/lib/activity";
+import { ownerHasData } from "@/lib/email-change";
 
 type Mail = { to: string; subject: string; text: string };
 let mails: Mail[] = [];
@@ -82,6 +88,7 @@ describe("rule 1943: a member moves its own login; the team, the active brand an
     const m = await newMember(owner);
     await db.set(`activebrand:${m.email}`, "default");
     await db.set(mfaKey(m.email), { enc: "x", kid: "k", rc: [], at: new Date().toISOString() });
+    await Promise.all([db.set(subKey(m.email), "gMoveSub1"), db.set(linkKey("gMoveSub1"), m.email)]);
     await signIn(m.email);
     const before = jar().get("thakeen_session")!;
     const to = addr("mnew");
@@ -95,6 +102,10 @@ describe("rule 1943: a member moves its own login; the team, the active brand an
     expect(roster).not.toContain(m.email);
     expect(await db.get(`activebrand:${to}`)).toBe("default");
     expect(await db.get(mfaKey(to))).toBeTruthy();
+    // The Google link follows both ways; nothing names the old login.
+    expect(await db.get(subKey(to))).toBe("gMoveSub1");
+    expect(await db.get(linkKey("gMoveSub1"))).toBe(to);
+    expect(await db.get(subKey(m.email))).toBeNull();
     const me = await currentUser();
     expect(me?.email).toBe(owner.email);
     expect(me?.actor).toMatchObject({ kind: "member", email: to });
@@ -123,6 +134,30 @@ describe("rule 1944: an owner whose account holds work is sent to support; the t
     await signIn(c.email);
     expect((await start(addr("x"))).status).toBe(409);
     expect(mails).toEqual([]);
+  });
+
+  it("anything the owner made that the move would delete counts: Reem, instructions, settings, prefs, lists", async () => {
+    const seeds: ((e: string) => Promise<unknown>)[] = [
+      (e) => db.sadd(SEC_KEYS.all(e), "abcdef0123456789"),
+      (e) => db.set(SEC_KEYS.cal(e), { days: [0, 1, 2, 3, 4] }),
+      (e) => db.lpush(SEC_KEYS.notes(e), "{}"),
+      (e) => db.set(layerKey(e), { rules: [] }),
+      (e) => db.set(`gov:${e}`, { autopublish: false }),
+      (e) => db.set(profileKey(e), { email: true }),
+      (e) => db.lpush(activityKey(e), "{}"),
+      (e) => db.lpush(`decisions:${e}`, "{}"),
+      (e) => db.lpush(`handoffs:${e}`, "h1"),
+    ];
+    const refused = await Promise.all(seeds.map(async (seed) => {
+      const u = await newUser("em");
+      await seed(u.email);
+      return ownerHasData((await getUser(u.email))!);
+    }));
+    expect(refused).toEqual(seeds.map(() => true));
+    // The daily run writes `schedule:` on an empty account by itself: that alone does not block the move.
+    const quiet = await newUser("em");
+    await db.set(`schedule:${quiet.email}`, { lastDaily: "2026-10-16" });
+    expect(await ownerHasData((await getUser(quiet.email))!)).toBe(false);
   });
 
   it("work added between the code and the confirm still stops the move", async () => {

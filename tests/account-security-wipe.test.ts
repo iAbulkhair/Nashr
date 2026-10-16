@@ -10,6 +10,8 @@ import { devicesKey } from "@/lib/devices";
 import { mfaKeys } from "@/lib/mfa";
 import { linkKey, subKey } from "@/lib/google-signin";
 import { withUserLock } from "@/lib/credits";
+import { saveBrands, scopeFor } from "@/lib/brands";
+import { profileKey } from "@/lib/notify-prefs";
 
 /** Account deletion and the account-security pack (rules 1954-1956, docs/system/tests/1930-account-security.md). */
 const read = (f: string) => readFileSync(f, "utf8");
@@ -42,6 +44,15 @@ describe("rule 1954: deleting an account removes the two-step, address-change, G
     expect(left.filter((v) => v !== null && v !== undefined)).toEqual([]);
     expect(await currentUser()).toBeNull();
     expect(await getUser(owner.email)).toBeNull();
+  });
+
+  it("every brand's notification choices go, not only the default brand's", async () => {
+    const owner = await newUser("wipe");
+    await saveBrands(owner.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2wipe", name: "Second", createdAt: new Date().toISOString(), status: "active" }]);
+    const added = scopeFor(owner.email, "b2wipe");
+    await Promise.all([db.set(profileKey(owner.email), { email: true }), db.set(profileKey(added), { email: false })]);
+    await wipeAccount(owner.email);
+    expect(await db.mget<unknown>([profileKey(owner.email), profileKey(added)])).toEqual([null, null]);
   });
 
   it("a stored Google id that is not a plain id is never turned into a key", () => {
