@@ -4,6 +4,9 @@ import Badge from "@/components/ui/Badge";
 import { adminFetch } from "@/lib/admin-fetch";
 import { useAdminForm } from "./AdminForm";
 import { EndedNotice, OV, STR, useAdminEnded, useOverview, type Overview, type SectionProps } from "./shared";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import Callout from "@/components/ui/Callout";
 
 /** The Margin section's words (rule 1533), both languages. */
 const MG = {
@@ -88,9 +91,10 @@ export default function Usage({ lang, keySession }: SectionProps) {
   const ended = useAdminEnded();
   const S = STR[lang];
   const O = OV[lang];
-  const ov = useOverview();
+  const { ov, failed } = useOverview();
   if (ended) return <EndedNotice lang={lang} keySession={keySession} />;
-  if (!ov) return <p className="text-sm text-foreground-muted">{S.loading}</p>;
+  if (failed && !ov) return <Callout tone="danger">{S.loadFailed}</Callout>;
+  if (!ov) return <PanelSkeleton label={S.loading} shape="cards" />;
   return (
         <div className="grid gap-6">
           <MarginSection lang={lang} m={ov.margin} />

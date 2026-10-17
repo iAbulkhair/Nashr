@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { currentUser, sc } from "@/lib/auth";
-import { forbid } from "@/lib/roles";
+import { handler } from "@/lib/api-handler";
 import { CAPS } from "@/lib/db";
 import { listActivity, type Activity } from "@/lib/activity";
 import { csvSafe } from "@/lib/admin-stats";
-import { ACTIVITY_EXPORTS_PER_HOUR, allow, retryLater } from "@/lib/rate";
+import { ACTIVITY_EXPORTS_PER_HOUR, WINDOW } from "@/lib/rate";
 
 export const dynamic = "force-dynamic";
 
@@ -22,15 +21,13 @@ const line = (a: Activity) =>
  * GET — the caller's whole activity log for the active brand (every row the cap keeps), newest first, as a CSV file:
  * UTF-8 with a BOM so spreadsheet apps read Arabic, one header row. Only `sc(u)` is read; nothing comes from the request.
  */
-export async function GET() {
-  const u = await currentUser();
-  if (!u) return NextResponse.json({ ok: false, error: "auth" }, { status: 401 });
-  const no = forbid(u, "read");
-  if (no) return no;
-  if (!(await allow(`activityexport:${u.email}`, ACTIVITY_EXPORTS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
-  const { rows } = await listActivity(sc(u), { limit: CAPS.activity });
-  const csv = "\uFEFF" + [COLUMNS.join(","), ...rows.map(line)].join("\n");
-  return new NextResponse(csv, {
-    headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="thakeen-activity-${new Date().toISOString().slice(0, 10)}.csv"`, "Cache-Control": "no-store" },
-  });
-}
+export const GET = handler(
+  { auth: "user", unauthorized: "auth", role: "read", rate: { bucket: "activityexport", max: ACTIVITY_EXPORTS_PER_HOUR, window: WINDOW.hour } },
+  async ({ scope }) => {
+    const { rows } = await listActivity(scope, { limit: CAPS.activity });
+    const csv = "﻿" + [COLUMNS.join(","), ...rows.map(line)].join("\n");
+    return new NextResponse(csv, {
+      headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="thakeen-activity-${new Date().toISOString().slice(0, 10)}.csv"`, "Cache-Control": "no-store" },
+    });
+  },
+);

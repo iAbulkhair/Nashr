@@ -2,6 +2,8 @@ import type { Lang } from "./i18n";
 import { PLAN_CREDITS, type Plan } from "./pricing";
 
 const ar = {
+  /** The dictionary's own language, so a component given only `t` picks matching shared copy (rule 2002). */
+  lang: "ar" as Lang,
   appName: "ذكين",
   nav: { specialists: "المتخصصون", askSpecialist: "اسأل متخصصاً", newBadge: "جديد", plans: { trial: "تجربة", starter: "البداية", pro: "الاحتراف", business: "الأعمال", agency: "الوكالات" } satisfies Record<Plan, string>, channels: "القنوات", main: "الرئيسية", approvals: "الموافقات", todo: "مهامي", contentInspo: "إلهام", performance: "الأداء", calendarCh: "التقويم", dms: "الرسائل المباشرة", newConv: "جديد", searchConv: "ابحث في المحادثات…", gettingStarted: "البداية", seeAll: "كل المحادثات", profile: "حسابك", brands: "العلامات", help: "المساعدة", adminPanel: "لوحة الأدمن", inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة", instructions: "التعليمات", activity: "النشاط", tasks: "المهام المجدولة", calendar: "التقويم", refer: "اكسب كريدت", integrations: "التكاملات", inspo: "إلهام", reports: "التقارير", notifications: "التنبيهات", history: "سجل المحادثات", contact: "تواصل معنا", updates: "التحديثات والأمنيات", menu: "القائمة", workspace: "مساحة العمل", settings: "الإعدادات", members: "الأعضاء", sharedCredits: "رصيد الحساب المشترك. لرصيد أكثر اطلب من مالك الحساب." },
   start: {
@@ -31,7 +33,7 @@ const ar = {
     close: "إغلاق", loading: "يُحمَّل…", loadingScreen: "تُحمَّل الصفحة…", retry: "حاول مرة أخرى", errorTitle: "تعذّر التحميل", errorBody: "لم تصل البيانات. تحقق من الاتصال ثم حاول مرة أخرى.",
     copy: "انسخ", copied: "نُسخ", copyFailed: "تعذّر النسخ. حدّد النص وانسخه يدوياً.",
     nav: { work: "العمل", brand: "العلامة", workspace: "الحساب والفريق", support: "المساعدة", account: "قائمة الحساب" },
-    notif: { title: "التنبيهات", none: "لا تنبيهات جديدة.", markAll: "علّم الكل كمقروء", marked: "عُلّمت كلها كمقروءة.", seeAll: "كل التنبيهات", unread: "غير مقروء", unreadN: "{n} غير مقروء", failed: "تعذّر تحميل التنبيهات." },
+    notif: { title: "التنبيهات", none: "لا تنبيهات جديدة.", markAll: "علّم الكل كمقروء", marked: "عُلّمت كلها كمقروءة.", markOne: "علّمه كمقروء", markedOne: "عُلّم كمقروء.", seeAll: "كل التنبيهات", unread: "غير مقروء", unreadN: "{n} غير مقروء", failed: "تعذّر تحميل التنبيهات." },
     chat: {
       stop: "أوقف الانتظار", stopped: "توقفنا عن انتظار الرد في هذه الصفحة. قد يكمل الوكيل ويحفظ رده (ويُحسب)، وستجده حين تفتح المحادثة من جديد.",
       retry: "أعد الإرسال", copy: "انسخ الرد", enterHint: "Enter للإرسال، Shift+Enter لسطر جديد", enterHintTouch: "زر الإرسال يرسل، وEnter يضيف سطراً",
@@ -623,6 +625,7 @@ const ar = {
 };
 
 const en: typeof ar = {
+  lang: "en",
   appName: "Thakeen",
   nav: { specialists: "Specialists", askSpecialist: "Ask a specialist", newBadge: "New", plans: { trial: "Trial", starter: "Starter", pro: "Pro", business: "Business", agency: "Agency" }, channels: "Channels", main: "main", approvals: "approvals", todo: "my-to-dos", contentInspo: "content-inspo", performance: "performance", calendarCh: "calendar", dms: "Direct messages", newConv: "New", searchConv: "Search conversations…", gettingStarted: "Getting started", seeAll: "See all conversations", profile: "Your profile", brands: "Brands", help: "Help", adminPanel: "Admin console", inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance", instructions: "Instructions", activity: "Activity", tasks: "Scheduled tasks", calendar: "Calendar", refer: "Earn credits", integrations: "Integrations", inspo: "Inspiration", reports: "Reports", notifications: "Notifications", history: "Chat history", contact: "Contact us", updates: "Updates & wishlist", menu: "Menu", workspace: "Workspace", settings: "Settings", members: "Members", sharedCredits: "The account's shared credits. Ask the account owner for more." },
   start: {
@@ -650,7 +653,7 @@ const en: typeof ar = {
     close: "Close", loading: "Loading…", loadingScreen: "Loading the page…", retry: "Try again", errorTitle: "Could not load", errorBody: "The data did not arrive. Check your connection, then try again.",
     copy: "Copy", copied: "Copied", copyFailed: "Could not copy. Select the text and copy it yourself.",
     nav: { work: "Work", brand: "Brand", workspace: "Account and team", support: "Help", account: "Account menu" },
-    notif: { title: "Notifications", none: "No new notifications.", markAll: "Mark all as read", marked: "All marked as read.", seeAll: "All notifications", unread: "unread", unreadN: "{n} unread", failed: "Could not load notifications." },
+    notif: { title: "Notifications", none: "No new notifications.", markAll: "Mark all as read", marked: "All marked as read.", markOne: "Mark as read", markedOne: "Marked as read.", seeAll: "All notifications", unread: "unread", unreadN: "{n} unread", failed: "Could not load notifications." },
     chat: {
       stop: "Stop waiting", stopped: "This page stopped waiting for the reply. The agent may still finish and save it (and it is counted); you will find it when you open the conversation again.",
       retry: "Send again", copy: "Copy reply", enterHint: "Enter to send, Shift+Enter for a new line", enterHintTouch: "The send button sends; Enter adds a line",

@@ -10,6 +10,7 @@ import { adAccountsVia } from "./ads-via-composio";
 import { clean } from "../perf-import";
 import { CHANNEL_ID } from "../social-read/youtube";
 import { PAGE_ID } from "../social-read/facebook";
+import { log } from "../log";
 
 export { isComposio, pick };
 
@@ -322,7 +323,7 @@ export async function connectViaComposio(scope: string, provider: string, toolki
   if (provider === "dropbox") meta.account = "Dropbox";
   if (provider === "onedrive") meta.account = "OneDrive";
   // A reconnected toolkit leaves its old Composio account behind; it is revoked, quietly, after the new one is in hand.
-  if (before && before !== accountId) await composioRevoke(scope, before).catch(() => console.error("composio revoke of replaced account failed"));
+  if (before && before !== accountId) await composioRevoke(scope, before).catch(() => log.error("composio revoke of replaced account failed"));
   return { ...base, meta, expiresAt: undefined };
 }
 

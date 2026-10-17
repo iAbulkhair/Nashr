@@ -8,6 +8,9 @@ import Button from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
 import { EndedNotice, useAdminEnded, type SectionProps } from "./shared";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import EmptyState from "@/components/ui/EmptyState";
 
 /** The Log page's words (rule 1179), Arabic and English, Western digits in both. */
 export const LOG_COPY = {
@@ -110,7 +113,7 @@ export default function Log({ lang, keySession }: SectionProps) {
       </form>
       {scanned > 0 && <p className="text-xs text-foreground-muted">{L.scanned(scanned)}</p>}
       {failed && <p role="alert" className="text-sm text-danger">{L.failed}</p>}
-      {rows === null ? <p className="text-sm text-foreground-muted">{L.loading}</p> : rows.length === 0 ? <p className="text-sm text-foreground-muted">{L.empty}</p> : (
+      {rows === null ? (failed ? null : <PanelSkeleton label={L.loading} shape="rows" />) : rows.length === 0 ? <EmptyState compact title={L.empty} /> : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <caption className="sr-only">{L.title}</caption>

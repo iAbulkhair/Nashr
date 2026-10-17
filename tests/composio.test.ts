@@ -382,9 +382,10 @@ describe("who can reach Composio (rule 652)", () => {
 
   it("never logs a response body, an account id or a scope", () => {
     const src = readFileSync("src/lib/connectors/composio.ts", "utf8") + readFileSync("src/lib/connectors/via-composio.ts", "utf8");
-    const logged = [...src.matchAll(/console\.\w+\(([^)]*)\)/g)].map((m) => m[1]);
+    const logged = [...src.matchAll(/\blog\.\w+\(([^)]*)\)/g)].map((m) => m[1]);
     expect(logged.length).toBeGreaterThan(0);
-    for (const args of logged) expect(args, "a log carries a fixed message, the tool slug and the status only").toMatch(/^"[^"]*"(?:, (?:slug|status))*$/);
+    expect(src).not.toMatch(/console\.\w+\(/);
+    for (const args of logged) expect(args, "a log carries a fixed message, the tool slug and the status only").toMatch(/^"[^"]*"(?:, \{ (?:slug|status)(?:, (?:slug|status))* \})?$/);
     for (const args of logged) expect(args).not.toMatch(/accountId|scope|\bdata\b|\berr|\be\b/);
   });
 

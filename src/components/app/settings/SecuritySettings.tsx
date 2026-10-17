@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import type { Lang } from "@/lib/i18n";
 import { passwordChecks } from "@/lib/auth-client";
 import { Field } from "@/components/ui/Field";
@@ -7,6 +7,9 @@ import PasswordField from "../PasswordField";
 import { PasswordRules } from "../PasswordRules";
 import ReadOnlyNote from "../ReadOnlyNote";
 import SettingsCard, { type CardStatus } from "./SettingsCard";
+import TwoStepSettings from "./TwoStepSettings";
+import DeviceList from "./DeviceList";
+import GoogleLink from "./GoogleLink";
 
 const COPY = {
   ar: {
@@ -15,9 +18,8 @@ const COPY = {
     changed: "تم تغيير كلمة المرور.", wrong: "كلمة المرور الحالية غير صحيحة. لم يتغيّر شيء.", weak: "كلمة المرور الجديدة لا تحقق الشروط. لم يتغيّر شيء.",
     others: "الخروج من الأجهزة الأخرى", othersSub: "تخرج كل جلسة أخرى لحسابك في متصفح آخر أو جهاز آخر، ويبقى هذا الجهاز. لا تتأثر مفاتيح المساعد الذكي ولا التطبيقات المربوطة ولا رابط التقويم ولا روابط الحجز.",
     othersBtn: "اخرج من الأجهزة الأخرى", othersBusy: "يُخرج…", othersDone: "خرجت أجهزتك الأخرى. يبقى هذا الجهاز.", confirmPw: "كلمة المرور للتأكيد",
-    list: "قائمة الأجهزة المتصلة غير متاحة بعد.",
     slow: "محاولات كثيرة في وقت قصير. حاول بعد ساعة.", failed: "تعذّر ذلك. حاول مرة أخرى.",
-    founder: "تغيير كلمة المرور والخروج من الأجهزة الأخرى موقوفان أثناء تصفّح هذا الحساب كمؤسس.",
+    founder: "تغيير كلمة المرور والخروج من الأجهزة الأخرى والدخول بخطوتين موقوفة أثناء تصفّح هذا الحساب كمؤسس.",
   },
   en: {
     pw: "Password", pwSub: "Changing it signs your other devices out; this one stays signed in.", pwOwnerSub: "Changing it signs your other devices out and ends your AI-assistant keys, connected apps, calendar feed and booking links. This device stays signed in.",
@@ -25,17 +27,17 @@ const COPY = {
     changed: "Password changed.", wrong: "The current password is wrong. Nothing changed.", weak: "The new password does not meet the rules. Nothing changed.",
     others: "Sign out other devices", othersSub: "Ends every other session of your login, in another browser or on another device; this one stays signed in. AI-assistant keys, connected apps, the calendar feed and booking links are not affected.",
     othersBtn: "Sign out other devices", othersBusy: "Signing out…", othersDone: "Your other devices are signed out. This one stays signed in.", confirmPw: "Password to confirm",
-    list: "A list of signed-in devices is not available yet.",
     slow: "Too many tries in a short time. Try again in an hour.", failed: "That did not work. Try again.",
-    founder: "Changing the password and signing out other devices are off while you view this account as the founder.",
+    founder: "Changing the password, signing out other devices and two-step sign-in are off while you view this account as the founder.",
   },
 } as const;
 
 /**
  * Settings, Security (rules 1150-1151): the password change with the sign-up rules shown live as they are met (the
- * same `passwordChecks` and words as signup, reset and the invite form), and "sign out other devices". Each is its own
- * card; neither keeps a typed password once it is sent. `may`: from `can()` on the server (a founder viewing the
- * account may do neither).
+ * same `passwordChecks` and words as signup, reset and the invite form), two-step sign-in (rules 1930-1937,
+ * `TwoStepSettings`), and "sign out other devices" with the device list (rules 1938-1941, `DeviceList`, which uses the
+ * same password field to sign one device out). Each is its own card; none keeps a typed password once it is sent.
+ * `may`: from `can()` on the server (a founder viewing the account may do none of them).
  */
 export default function SecuritySettings({ lang, rules, may, owner, forbidden }: { lang: Lang; rules: readonly string[]; may: boolean; owner: boolean; forbidden: string }) {
   const T = COPY[lang];
@@ -45,6 +47,7 @@ export default function SecuritySettings({ lang, rules, may, owner, forbidden }:
   const [pwStatus, setPwStatus] = useState<CardStatus>(null);
   const [confirm, setConfirm] = useState("");
   const [othersStatus, setOthersStatus] = useState<CardStatus>(null);
+  const [devicesRefresh, setDevicesRefresh] = useState(0);
   if (!may) return <ReadOnlyNote className="" text={T.founder} />;
   const checks = passwordChecks(pw);
   const ready = checks.every(Boolean);
@@ -64,6 +67,7 @@ export default function SecuritySettings({ lang, rules, may, owner, forbidden }:
     const j = ((await res?.json().catch(() => ({}))) ?? {}) as { ok?: boolean; error?: string };
     setBusy("");
     setConfirm("");
+    setDevicesRefresh((n) => n + 1);
     setOthersStatus(j.ok ? { tone: "ok", text: T.othersDone }
       : { tone: "error", text: res?.status === 403 ? forbidden : res?.status === 429 ? T.slow : j.error === "wrong_password" ? T.wrong : T.failed });
   }
@@ -82,11 +86,14 @@ export default function SecuritySettings({ lang, rules, may, owner, forbidden }:
         </div>
       </SettingsCard>
 
+      <TwoStepSettings lang={lang} forbidden={forbidden} />
+      <Suspense><GoogleLink lang={lang} forbidden={forbidden} /></Suspense>
+
       <SettingsCard title={T.others} sub={T.othersSub} onSave={signOutOthers} dirty={confirm.length > 0} busy={busy === "others"} status={othersStatus} saveLabel={T.othersBtn} savingLabel={T.othersBusy}>
         <Field label={T.confirmPw} required className="sm:max-w-sm">
           <PasswordField lang={lang} name="password" autoComplete="current-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </Field>
-        <p className="text-xs text-foreground-muted">{T.list}</p>
+        <DeviceList lang={lang} password={confirm} onUsed={() => setConfirm("")} forbidden={forbidden} refresh={devicesRefresh} />
       </SettingsCard>
     </div>
   );

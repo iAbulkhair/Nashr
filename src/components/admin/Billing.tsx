@@ -3,6 +3,9 @@ import { Fragment, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
 import FoundingPanel from "./FoundingPanel";
 import { EndedNotice, OV, STR, useAdminEnded, useOverview, type MediaCheck, type SectionProps } from "./shared";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import Callout from "@/components/ui/Callout";
 
 /** The provider check as plain text: green when working, red when not (a false flag, webhooks off, a Blob probe that is not ok). */
 function MediaReport({ m, O }: { m: MediaCheck; O: Record<string, string> }) {
@@ -40,7 +43,7 @@ export default function Billing({ lang, keySession }: SectionProps) {
   const ended = useAdminEnded();
   const S = STR[lang];
   const O = OV[lang];
-  const ov = useOverview();
+  const { ov, failed } = useOverview();
   const [media, setMedia] = useState<MediaCheck | null>(null);
   const [checking, setChecking] = useState(false);
   const [mediaErr, setMediaErr] = useState("");
@@ -58,7 +61,8 @@ export default function Billing({ lang, keySession }: SectionProps) {
     }
   }
   if (ended) return <EndedNotice lang={lang} keySession={keySession} />;
-  if (!ov) return <p className="text-sm text-foreground-muted">{S.loading}</p>;
+  if (failed && !ov) return <Callout tone="danger">{S.loadFailed}</Callout>;
+  if (!ov) return <PanelSkeleton label={S.loading} shape="cards" />;
   return (
         <div className="grid gap-6">
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">

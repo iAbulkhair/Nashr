@@ -4,6 +4,11 @@ import { adminFetch } from "@/lib/admin-fetch";
 import { useAdminForm } from "./AdminForm";
 import { ksaDay, sarText } from "@/lib/partner-rules";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount, type SelfServePlan } from "@/lib/pricing";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import Callout from "@/components/ui/Callout";
+import { STR } from "./shared";
+import EmptyState from "@/components/ui/EmptyState";
 
 type Payment = {
   id: string; amountSar: number; plan: string; date: string; reference: string; recordedAt: string; recordedBy: string;
@@ -72,6 +77,7 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
   const [askForm, formDialog] = useAdminForm(lang);
   const who = encodeURIComponent(email);
   const [view, setView] = useState<View | null>(null);
+  const [failed, setFailed] = useState(false);
   const [msg, setMsg] = useState("");
   const [plan, setPlan] = useState<string>("starter");
   const [amount, setAmount] = useState("");
@@ -82,7 +88,7 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
   const load = useCallback(async () => {
     // Through adminFetch (rule 436): once the key session ends, a 401 shows the console's message, not an empty panel.
     const j = await adminFetch(`/api/admin/payments/${who}`).then((r) => r.json()).catch(() => ({}));
-    if (j.ok) setView(j);
+    if (j.ok) { setView(j); setFailed(false); } else setFailed(true);
   }, [who]);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
   const expected = useMemo(() => {
@@ -107,7 +113,7 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
     const v = await askForm({ title: L.void, subject: `${p.id} · ${sarText(p.amountSar)} SAR`, message: L.voidReason, destructive: true, submitLabel: L.void, fields: [], parse: () => ({ ok: true, value: {} }) });
     if (v) void post({ action: "void", id: p.id, reason: v.reason });
   }
-  if (!view) return <p className="mt-4 text-xs text-foreground-muted">{L.loading}</p>;
+  if (!view) return failed ? <div className="mt-4"><Callout tone="danger">{STR[lang].loadFailed}</Callout></div> : <PanelSkeleton label={L.loading} shape="rows" count={2} className="mt-4" />;
   return (
     <section className="mt-4 rounded border border-foreground/10 p-3 text-xs" data-payments>
       {formDialog}
@@ -131,7 +137,7 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
         <button disabled={busy || !amount} className="btn btn-primary btn-xs">{L.record}</button>
       </form>
       {msg && <p className="mt-1 text-foreground">{msg}</p>}
-      {view.payments.length === 0 ? <p className="mt-2 text-foreground-muted">{L.none}</p> : (
+      {view.payments.length === 0 ? <EmptyState compact title={L.none} className="mt-2" /> : (
         <table className="mt-2 w-full font-mono">
           <tbody>{view.payments.map((p) => (
             <tr key={p.id} className={`border-t border-foreground/5 ${p.voidedAt ? "text-foreground-muted" : ""}`}>

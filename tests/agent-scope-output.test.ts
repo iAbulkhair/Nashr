@@ -350,7 +350,7 @@ describe("rule 801: the items of a batch", () => {
     expect(await credits(u.email)).toBe(start - cost);
     const line = err.mock.calls.find((c) => c[0] === "agent scope partial refund failed")!;
     expect(line).toBeDefined();
-    expect(line).toContain("RefundStoreError");
+    expect(line[1]).toMatchObject({ error: "RefundStoreError" });
     expect(JSON.stringify(line), "no owner email in the log").not.toContain(u.email);
     // The owner-facing sentences: the chat tool, MCP and the web route.
     const out = await runTool(u, "generate_content", { type: "social", notes: "" }, [], [], undefined, { agent: "noor", modes: modes("enforce") });

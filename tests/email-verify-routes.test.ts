@@ -9,7 +9,7 @@ let mails: Mail[] = [];
 let mailOk = true;
 vi.mock("@/lib/notify", async (orig) => ({
   ...(await orig<typeof import("@/lib/notify")>()),
-  sendEmail: async (to: string, subject: string, text: string) => { mails.push({ to, subject, text }); return mailOk; },
+  sendEmail: async (...a: unknown[]) => { const { to: to, subject: subject, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; mails.push({ to, subject, text }); return mailOk; },
 }));
 
 import * as send from "@/app/api/auth/verify/send/route";

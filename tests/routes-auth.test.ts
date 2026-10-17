@@ -6,7 +6,7 @@ import { userFromBearer } from "@/lib/mcp";
 import { db } from "@/lib/db";
 
 const sent: { to: string; text: string }[] = [];
-vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, _s: string, text: string) => { sent.push({ to, text }); return true; } }));
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (...a: unknown[]) => { const { to: to, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; sent.push({ to, text }); return true; } }));
 
 import * as login from "@/app/api/auth/login/route";
 import * as forgot from "@/app/api/auth/forgot/route";

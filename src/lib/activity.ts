@@ -2,6 +2,7 @@ import { CAPS, db, pushCapped } from "./db";
 import { isAgentId, type AgentId } from "./agents";
 import { isTaskType, type TaskType } from "./tasks";
 import { isBy, publicBy, type By } from "./actor";
+import { log } from "./log";
 
 /**
  * The per-agent activity log: what each agent did in one brand, and what was done to its work, newest first in
@@ -115,7 +116,7 @@ export async function recordActivity(scope: string, entries: readonly (Activity 
     const rows = entries.filter((e): e is Activity => !!e).map((e) => JSON.stringify(bounded(e)));
     if (rows.length) await Promise.all(rows.map((r) => pushCapped(key(scope), r, CAPS.activity)));
   } catch (e) {
-    console.error("activity record failed", e instanceof Error ? e.name : "error");
+    log.error("activity record failed", e);
   }
 }
 
@@ -182,6 +183,6 @@ export async function recordRun(scope: string, run: ScheduledRun, outcome: strin
     if (SKIPPED.has(outcome)) return await recordActivity(scope, [{ ...row, kind: "routine_skipped" }]);
     if (NOTHING_NEW.has(outcome) && (await db.lock(actSkipKey(scope, run.id, run.period), run.ttlS))) await recordActivity(scope, [{ ...row, kind: "routine_skipped" }]);
   } catch (e) {
-    console.error("activity record failed", e instanceof Error ? e.name : "error");
+    log.error("activity record failed", e);
   }
 }

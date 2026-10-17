@@ -9,6 +9,7 @@ import { agentScopeCeiling, agentScopeGenRefusal, countAgentScopeRefusal } from 
 import { agentById, agentForTask, type AgentId } from "./agents";
 import { sc, type User } from "./auth";
 import type { TaskType } from "./tasks";
+import { log } from "./log";
 
 /**
  * Agent scope, Part B (rules 790-808; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md section 6):
@@ -72,7 +73,7 @@ export async function agentScopePreflight(u: User): Promise<{ modes: AgentScopeM
   const [modes, slow] = await Promise.all([
     readAgentScopeModes(),
     agentScopeCeiling(u).catch((e) => {
-      console.error("agent scope ceiling read failed", e instanceof Error ? e.name : "error");
+      log.error("agent scope ceiling read failed", e);
       return null;
     }),
   ]);
@@ -149,7 +150,7 @@ export async function logAgentScope(e: Omit<AgentScopeLogEntry, "at">): Promise<
     await pushCapped(k, JSON.stringify(row), CAPS.agentScopeLog);
     await db.expireNx(k, LOG_TTL_S);
   } catch (err) {
-    console.error("agent scope log failed", err instanceof Error ? err.name : "error");
+    log.error("agent scope log failed", err);
   }
 }
 
@@ -233,7 +234,7 @@ export async function scopeCheck(layer: "input" | "output", mode: AgentScopeMode
   if (verdict.verdict === "in") return { block: false };
   await logAgentScope({ ...line, verdict: verdict.verdict });
   if (mode !== "enforce") return { block: false };
-  if (layer === "input") await countAgentScopeRefusal(ctx.user).catch((e) => console.error("agent scope refusal count failed", e instanceof Error ? e.name : "error"));
+  if (layer === "input") await countAgentScopeRefusal(ctx.user).catch((e) => log.error("agent scope refusal count failed", e));
   return { block: true, verdict: verdict.verdict, reply: agentScopeRefusalText(verdict.verdict, ctx.lang, { brand: ctx.brand.name, otherBrands: ctx.otherBrands, classified: verdict.brand }) };
 }
 
@@ -257,7 +258,7 @@ export async function publishScopeCheck(u: User, t: Task, where: "publish" | "ch
   const [brand, otherBrands] = await Promise.all([
     getBrand(sc(u)),
     otherBrandNames(u).catch((e): string[] => {
-      console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+      log.error("agent scope brand names failed", e);
       return [];
     }),
   ]);
@@ -299,13 +300,13 @@ export async function checkGenerationNotes(user: User, type: TaskType, gate: Not
   if (gate.mode === "off" || !text) return { block: false };
   if (gate.mode === "enforce" && gate.slow) return { block: true, slow: gate.slow };
   const over = await agentScopeGenRefusal(user).catch((e): null => {
-    console.error("agent scope check count failed", e instanceof Error ? e.name : "error");
+    log.error("agent scope check count failed", e);
     return null;
   });
   if (over) return gate.mode === "enforce" ? { block: true, slow: over } : { block: false };
   // `names`: the batch's own read of them (`generateBatch` shares one with the items' check, rule 801); without it, read here.
   const otherBrands = await (names ? names() : otherBrandNames(user)).catch((e): string[] => {
-    console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+    log.error("agent scope brand names failed", e);
     return [];
   });
   const d = await scopeCheck("input", gate.mode, text, { user, agent: agentForTask(type).id, where: gate.where, lang: gate.lang, brand: { name: brand?.name ?? "", industry: brand?.industry ?? "" }, otherBrands, deadline });

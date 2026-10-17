@@ -10,6 +10,7 @@ import { route } from "../models/route";
 import { mediaModel, type Aspect, type ImageModelId, type VideoModelId } from "../media-catalog";
 import type { Brand, Task } from "../brand";
 import { instructionBlocks, type Layers } from "../agent-instructions";
+import { log } from "../log";
 
 export type PromptStyle = "photo" | "lifestyle" | "text" | "design";
 export const IMAGE_STYLE: Record<ImageModelId, PromptStyle> = {
@@ -91,9 +92,9 @@ async function write(system: string, brand: Brand, task: Task, fallback: string,
     ), { email, kind: "image_prompt", agent: agentForTask(task.type).id });
     const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(" ").trim();
     if (text) return text;
-    console.error("media prompt failed", "empty");
+    log.error("media prompt failed", { error: "empty" });
   } catch (e) {
-    console.error("media prompt failed", e instanceof Error ? e.message : "unknown");
+    log.error("media prompt failed", { error: e instanceof Error ? e.message : "unknown" });
   }
   return fallback;
 }

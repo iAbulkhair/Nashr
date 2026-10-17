@@ -266,7 +266,9 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
     const signup = sessionReach("src/app/api/auth/signup/route.ts").problems;
     expect(signup).toContain("src/app/api/auth/signup/route.ts imports createSession from auth.ts");
     expect(signup).toContain("src/app/api/auth/signup/route.ts imports afterSignup from partners.ts");
-    expect(sessionReach("src/app/api/files/route.ts").problems).toContain("src/app/api/files/route.ts imports currentUser from auth.ts");
+    expect(sessionReach("src/app/api/governance/route.ts").problems).toContain("src/app/api/governance/route.ts imports currentUser from auth.ts");
+    // A route on the wrapper (rule 1906) reaches the session through it: the walk follows the import.
+    expect(sessionReach("src/app/api/files/route.ts").problems).toContain("src/lib/api-handler.ts imports currentUser from auth.ts");
     expect(sessionReach("src/lib/partners.ts").problems).toContain("src/lib/partners.ts reads a cookie");
     expect(COOKIE_ACCESS.test('const c = req.cookies.get("x")')).toBe(true);
     expect(COOKIE_ACCESS.test('req.headers.get("Cookie")')).toBe(true);
@@ -314,7 +316,7 @@ describe("rule 693: proxy() runs the cross-site check for every /api/ path after
     for (const path of ["/api/cron/secretary", "/api/media/hook/kie", "/api/secretary/booking/0123abcd", "/api/billing/paymob/webhook"]) {
       const res = proxy(req(path, { headers: CROSS }));
       expect(res.status, path).toBe(200);
-      expect(res.headers.get("x-middleware-override-headers"), path).toBeNull();
+      onlyRequestId(res, path);
     }
   });
 
@@ -328,7 +330,7 @@ describe("rule 693: proxy() runs the cross-site check for every /api/ path after
       const res = proxy(r);
       expect(res.status).toBe(200);
       expect(res.headers.get("x-middleware-next")).toBe("1");
-      expect(res.headers.get("x-middleware-override-headers")).toBeNull();
+      onlyRequestId(res);
       expect(res.headers.get("location")).toBeNull();
     }
   });
@@ -357,3 +359,14 @@ describe("rule 693: proxy() runs the cross-site check for every /api/ path after
     expect(same.headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 });
+
+/**
+ * Rule 1975: the proxy now passes every request on with one header added, its request id, and nothing else. "Untouched"
+ * means exactly that: no x-pathname, no other header changed, the id well formed.
+ */
+function onlyRequestId(res: Response, where = "") {
+  const over = (res.headers.get("x-middleware-override-headers") ?? "").split(",").filter(Boolean);
+  expect(over, where).toContain("x-request-id");
+  expect(over, where).not.toContain("x-pathname");
+  expect(res.headers.get("x-middleware-request-x-request-id") ?? "", where).toMatch(/^[A-Za-z0-9-]{8,64}$/);
+}

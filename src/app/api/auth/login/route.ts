@@ -1,7 +1,7 @@
-import { track } from "@/lib/track";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { createSession, emailVerified, getLogin, normalizeEmail } from "@/lib/auth";
+import { getLogin, normalizeEmail } from "@/lib/auth";
+import { finishAnswer, finishLogin } from "@/lib/login-finish";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 
 /**
@@ -13,6 +13,10 @@ import { allow, clientIp, retryLater } from "@/lib/rate";
  * An owner who has not proved the address yet still gets a session, and the answer says `verify: true`: the form then
  * goes to the verify page with the destination in `next`, so a destination outside `/[lang]/app` (the OAuth consent
  * page) cannot loop back to login (rule 754). A member of such an owner gets no session at all (rule 767).
+ *
+ * A login with two-step sign-in on (src/lib/mfa.ts) gets no session from the password alone: the answer is
+ * `{ok: false, error: "mfa_required", mfa: true}` with a short-lived challenge cookie, and the code goes to
+ * POST /api/auth/login/mfa (rule 1934).
  */
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
@@ -24,28 +28,7 @@ export async function POST(req: Request) {
   const hash = !login ? null : login.kind === "owner" ? login.user.passHash : login.member.passHash;
   if (!hash || !(await bcrypt.compare(password, hash))) return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
 
-  if (login!.kind === "owner") {
-    const owner = login!.user;
-    if (owner.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
-    await createSession(owner.email);
-    await track(owner.email, "login");
-    return NextResponse.json({ ok: true, verify: !emailVerified(owner) });
-  }
-
-  // A member: the account it belongs to must still exist, not be suspended, and not be a newer account registered at
-  // the same address (the same checks `currentUser` makes on every request, answered here so the form can say why).
-  const { member, owner } = login!;
-  if (!owner || member.memberOf !== owner.email || !(new Date(member.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) {
-    return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
-  }
-  if (owner.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
-  // Rule 767: the account is paused until its owner proves the address, and only the owner can.
-  if (!emailVerified(owner)) return NextResponse.json({ ok: false, error: "owner_unverified" }, { status: 403 });
-  // Paused by the seat limit (a plan downgrade): kept, never deleted, and back when the owner has room again.
-  if (member.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
-  await createSession(member.email);
-  // Product analytics count ACCOUNTS: a member's activity is the owner's account being active. `wipeAccount` deletes
-  // the owner-keyed counters, so nothing keyed by the member's address is left behind.
-  await track(owner.email, "login");
-  return NextResponse.json({ ok: true });
+  // The account checks, the two-step challenge (rule 1934) and the session, shared with the Google sign-in and the code
+  // step: src/lib/login-finish.ts.
+  return finishAnswer(await finishLogin(login!, { via: "password" }));
 }

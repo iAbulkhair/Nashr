@@ -5,6 +5,8 @@ import Badge, { type BadgeTone } from "@/components/ui/Badge";
 import Callout from "@/components/ui/Callout";
 // Type only: integration-status.ts is server code (it imports model.ts); the type is erased from the bundle (rule 249).
 import type { IntegrationView } from "@/lib/integration-status";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
 
 const S = {
   en: {
@@ -36,7 +38,7 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
     adminFetch("/api/admin/integrations").then((r) => r.json()).then((j) => (j.ok ? setItems(j.items) : setError(true))).catch(() => setError(true));
   }, []);
   if (error) return <Callout tone="danger">{L.failed}</Callout>;
-  if (!items) return <p className="text-sm text-foreground-muted">{L.loading}</p>;
+  if (!items) return <PanelSkeleton label={L.loading} shape="rows" />;
   const on = items.filter((i) => i.status === "on").length;
   return (
     <div className="grid gap-4" data-testid="integrations-panel">

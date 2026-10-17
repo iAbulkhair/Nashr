@@ -172,7 +172,7 @@ describe("with Claude on", () => {
     const p = await load("on", async () => { throw Object.assign(new Error("Request timed out."), { name: "APIConnectionTimeoutError" }); });
     expect(await p.imagePrompt(brand(), task, "img-lifestyle", "portrait")).toBe(p.fixedImagePrompt(brand(), task, "img-lifestyle", "portrait"));
     expect(sdk.calls).toHaveLength(1);
-    expect(errors).toHaveBeenCalledWith("media prompt failed", "Request timed out.");
+    expect(errors).toHaveBeenCalledWith("media prompt failed", { error: "Request timed out." });
   });
 
   it("an empty reply gives the template", async () => {

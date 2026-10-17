@@ -20,10 +20,13 @@ import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
 import { revokeCalendarLinks } from "./secretary-gcal";
 import { handoffKeys } from "./handoffs";
-import { paymobAccountKeys } from "./billing";
+import { paymobAccountKeys, stopRenewals } from "./billing";
+import { mfaKeys } from "./mfa";
+import { revokeAllDevices } from "./devices";
 import { freePlaces } from "./founding";
 import { proposalKeys } from "./brand-proposals";
 import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
+import { profileKey } from "./notify-prefs";
 import { getConnection } from "./connectors/store";
 import { isComposio, revokeAll } from "./connectors/via-composio";
 import { AD_PROVIDERS } from "./connectors/ads";
@@ -33,6 +36,7 @@ import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
 import { instructionProposalKeys } from "./instruction-proposals";
 import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
+import { log } from "./log";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -53,7 +57,7 @@ async function revokeComposio(scopes: string[]) {
     return c && isComposio(c) ? revokeAll(s, c).catch(() => ["all"]) : Promise.resolve([] as string[]);
   });
   const failed = left.flat().length;
-  if (failed) console.error("account wipe: composio revoke failed", failed);
+  if (failed) log.error("account wipe: composio revoke failed", { failed });
 }
 
 /**
@@ -61,8 +65,13 @@ async function revokeComposio(scopes: string[]) {
  * team (every member login, member active brand, invite and both indexes, `wipeTeam`). Without the team cascade a
  * member login would point at an email that anyone can register again, and inherit that new account.
  */
-export async function wipeAccount(email: string) {
+export async function wipeAccount(email: string, opts: { userLocked?: boolean } = {}) {
   const e = email;
+  // Rule 1955: no charge after the owner asked to delete. Renewal turns off and the saved card goes under the account
+  // lock before anything slow can fail, so a retry after a failed wipe still finds nothing to charge, and a renewal
+  // already running stops at its own re-check under that lock (src/lib/billing.ts `chargeSavedCard`). A caller already
+  // inside `withUserLock(email)` (the address move, `moveOwnerLogin`) says so: the lock is not reentrant.
+  await stopRenewals(e, opts);
   // Calendar feed and booking links first, before anything slow can fail and before the roster is deleted: the owner's and every roster
   // member's (`members:{owner}`). A member added after this read is revoked by `wipeTeam` under `lock:team`. A failure
   // stops the wipe (a retry runs it again) rather than leaving a working link behind a half-wiped account.
@@ -156,6 +165,8 @@ export async function wipeAccount(email: string) {
       ...AD_PROVIDERS.map((p) => `adsync:${s}:${p}`),
       // Each ad account's totals and its top ads by name, and the last upload's (src/lib/ad-stats.ts, rule 747).
       ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
+      // The notification choices, per brand (src/lib/notify-prefs.ts `profileKey`): only the default brand's was deleted.
+      profileKey(s),
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });
@@ -170,6 +181,12 @@ export async function wipeAccount(email: string) {
   // The saved Paymob card token (src/lib/billing.ts): it charges the card, so it never outlives the account. The intents,
   // transaction records and done markers stay to their TTL: they hold no card data, and the founder may still refund.
   keys.push(...paymobAccountKeys(e));
+  // The account security pack (rule 1954; rules 1930-1956), for the owner and every member login: two-step sign-in (the enrolment
+  // and a setup in progress), a waiting address change (src/lib/email-change.ts) and the Google link both ways
+  // (src/lib/google-signin.ts). The device lists and the sessions they name go below, with `revokeAllDevices`.
+  keys.push(...logins.flatMap((l) => [...mfaKeys(l), `emailchange:${l}`, `emailchange:tries:${l}`, `googlesub:${l}`]));
+  const subs = await db.mget<string>(logins.map((l) => `googlesub:${l}`));
+  keys.push(...subs.filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(s)).map((s) => `google:${s}`));
   // A founding seat and a price-lock place (src/lib/founding.ts, rule 1712): the account's email leaves both counted sets.
   await freePlaces(e);
 
@@ -217,5 +234,6 @@ export async function wipeAccount(email: string) {
   await wipeTeam(e);
   // The owner's link once more, now the account is gone: a create that ran between the first revoke and the deletion of
   // `user:{owner}` could have written a new one.
+  await Promise.all(logins.map((l) => revokeAllDevices(l)));
   await Promise.all([revokeFeed(e), revokeBook(e), db.srem("users:all", e), db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }))]);
 }

@@ -66,6 +66,7 @@ import { SEC_ID, SEC_KEYS, SEC_WRITES_PER_HOUR, calFor, cleanLine, createItem, f
 import { addDays, zoneDay, type SecItem } from "./secretary-agenda";
 import { agentTaskItem } from "./secretary-handoff";
 import type { Zone } from "./zones";
+import { log } from "./log";
 
 /**
  * `itemId` is the id the item will get, chosen by `approveMeeting` and stored before anything is created (a retry then finds
@@ -261,7 +262,7 @@ export async function approveMeeting(user: Pick<User, "email" | "scope">, itemId
       try {
         await putPending(scope, itemId, withIds);
       } catch (e) {
-        console.error("meeting set store failed", e instanceof Error ? e.name : "error");
+        log.error("meeting set store failed", e);
         return { ...fail("busy", 503), created: [] };
       }
     }
@@ -283,7 +284,7 @@ export async function approveMeeting(user: Pick<User, "email" | "scope">, itemId
           : await createItem(user, fields, { ...who, source: "agent" }, { zone, cal, handoffFrom: "reem", id });
         return { p, id, c: c.ok ? ({ ok: true } as const) : c };
       } catch (e) {
-        console.error("meeting item create failed", e instanceof Error ? e.name : "error");
+        log.error("meeting item create failed", e);
         return { p, id, c: fail("busy", 503) };
       }
     }, 4);
@@ -298,7 +299,7 @@ export async function approveMeeting(user: Pick<User, "email" | "scope">, itemId
       }
     } catch (e) {
       // The set stays as stored, ids included: a retry finds the made items by id and makes them no more than once.
-      console.error("meeting set update failed", e instanceof Error ? e.name : "error");
+      log.error("meeting set update failed", e);
     }
     return bad ? { ...bad, created } : { ok: true, created };
   }, MEET_LOCK_S);
@@ -375,7 +376,7 @@ export async function proposeFromText(user: User, itemId: string, kind: "notes" 
     return await run(user, scope, itemId, kind, text, lang, opts);
   } finally {
     // Only while the lock is still this run's: a run whose lock lapsed cannot free the next run's.
-    await db.unlockOwned(lock, token).catch((e) => console.error("meeting run lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlockOwned(lock, token).catch((e) => log.error("meeting run lock release failed", e));
   }
 }
 
@@ -401,7 +402,7 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
   }
   // From here a failure gives the credit back, once: the hold is dropped in the same save as the refund.
   const back = async () => {
-    if (paid) await refundOnce(user.email, claim).catch((e) => console.error("meeting refund failed", e instanceof Error ? e.name : "error"));
+    if (paid) await refundOnce(user.email, claim).catch((e) => log.error("meeting refund failed", e));
   };
   let tasks: unknown;
   let zone!: Zone;
@@ -421,7 +422,7 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
     tasks = (block.input as { tasks?: unknown } | null)?.tasks;
   } catch (e) {
     // Never the text: a name or a message of the error only.
-    console.error("meeting extract failed", e instanceof Error ? e.name : "error");
+    log.error("meeting extract failed", e);
     await back();
     return { ok: false, error: "model_failed" };
   }
@@ -437,7 +438,7 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
       return { ok: false, error: saved.error };
     }
   } catch (e) {
-    console.error("meeting set store failed", e instanceof Error ? e.name : "error");
+    log.error("meeting set store failed", e);
     await back();
     return { ok: false, error: "busy" };
   }
@@ -445,7 +446,7 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
   // hold (one run free), never charges twice.
   if (paid) {
     const ran = Number(claim.slice(claim.lastIndexOf(":") + 1)) + 1;
-    await db.set(runKey, ran).catch((e) => console.error("meeting run counter failed", e instanceof Error ? e.name : "error"));
+    await db.set(runKey, ran).catch((e) => log.error("meeting run counter failed", e));
   }
   return { ok: true, proposals };
 }
@@ -510,7 +511,7 @@ export async function runProposeMeetingTasks(user: User, input: Record<string, u
     ].filter(Boolean).join(" ");
     return { text: `Stored ${ps.length} proposed task${ps.length === 1 ? "" : "s"} on the booking [id=${itemId}]: ${list}. ${notes ? `${notes} ` : ""}They await the owner's approval on that item (kept for 14 days). Nothing was created: no to-do item exists yet, and no agent has been told to run anything or been charged. Tell the owner plainly that nothing happens until they approve them on the item; never say a task was added or that an agent will start.`, isError: false, id: itemId };
   } catch (e) {
-    console.error("propose_meeting_tasks failed", e instanceof Error ? e.name : "error");
+    log.error("propose_meeting_tasks failed", e);
     return err("Not done: the proposals could not be stored just now. Nothing was stored. Try again in a moment.");
   }
 }

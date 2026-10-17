@@ -84,7 +84,7 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(recordActivity(u.email, [row({})])).resolves.toBeUndefined();
     await expect(recordRun(u.email, { id: "dana_weekly_report", agent: "dana", type: "weekly_report", via: "routine", by: { kind: "system", job: "routine" }, period: "2026-09-27", ttlS: 60 }, "ok:1")).resolves.toBeUndefined();
-    expect(err).toHaveBeenCalledWith("activity record failed", "Error");
+    expect(err).toHaveBeenCalledWith("activity record failed", { error: "Error" });
   });
 
   it("reads newest first whatever the push order, skips unreadable rows, filters, and pages by time without losing a row", async () => {
@@ -262,7 +262,7 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
   it("401 without a session; 400 for an unknown agent, kind or cursor; 429 past the hourly reads", async () => {
     signOut();
     expect((await listRoute.GET(json("/api/activity", "GET"))).status).toBe(401);
-    expect((await exportRoute.GET()).status).toBe(401);
+    expect((await exportRoute.GET(new Request("http://t/api/activity/export"))).status).toBe(401);
     const u = await owner("act-guard");
     for (const q of ["agent=zed", "agent=__proto__", "kind=hacked", "before=yesterday", "before=2026-09-29"]) {
       const res = await listRoute.GET(json(`/api/activity?${q}`, "GET"));
@@ -272,7 +272,7 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
     const slow = await listRoute.GET(json("/api/activity", "GET"));
     expect([slow.status, ((await slow.json()) as { error: string }).error]).toEqual([429, "slow_down"]);
     await db.set(`rate:activityexport:${u.email}`, ACTIVITY_EXPORTS_PER_HOUR);
-    expect((await exportRoute.GET()).status).toBe(429);
+    expect((await exportRoute.GET(new Request("http://t/api/activity/export"))).status).toBe(429);
   });
 
   it("pages of 50 with a time cursor, filtered, and never another account's rows whatever the request says", async () => {
@@ -290,7 +290,7 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
     const b = await owner("act-b");
     const other = (await (await listRoute.GET(json(`/api/activity?scope=${encodeURIComponent(a.email)}&email=${encodeURIComponent(a.email)}`, "GET"))).json()) as { rows: Activity[] };
     expect(other.rows).toEqual([]);
-    const csv = new TextDecoder().decode(await (await exportRoute.GET()).arrayBuffer());
+    const csv = new TextDecoder().decode(await (await exportRoute.GET(new Request("http://t/api/activity/export"))).arrayBuffer());
     expect(csv.split("\n")).toHaveLength(1); // the header only
     expect(b.email).not.toBe(a.email);
   });
@@ -301,7 +301,7 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
     const evil = '=HYPERLINK("https://evil.example","open")';
     await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "save_draft", arguments: { type: "social", title: evil, body: "نص المسودة" } } }) }));
     await recordActivity(u.email, [row({ agent: "razan", kind: "render_failed", media: "video", refunded: true, credits: 12, tasks: ["a", "b"], by: { kind: "member", email: "m@team.example", role: "admin" } })]);
-    const res = await exportRoute.GET();
+    const res = await exportRoute.GET(new Request("http://t/api/activity/export"));
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
     expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="thakeen-activity-\d{4}-\d{2}-\d{2}\.csv"$/);
@@ -373,7 +373,7 @@ describe("the Activity page renders the first page on the server (rule 238)", ()
 
     await owner("act-page-other");
     const other = await html("en");
-    expect(other).toContain("No activity recorded yet.");
+    expect(other).toContain("No activity yet"); // Rule 2002: the shared empty state.
     expect(other).not.toContain("6 credits");
     expect(other).not.toContain("alert(1)");
   });

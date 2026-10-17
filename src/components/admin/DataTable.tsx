@@ -1,6 +1,11 @@
 "use client";
+import { useCallback, useEffect, useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import { Select } from "@/components/ui/Field";
+import EmptyState from "@/components/ui/EmptyState";
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import { canonicalHref, historyFor, queryHref, type QueryCodec } from "@/lib/url-query";
 
 type Lang = "ar" | "en";
 
@@ -61,11 +66,13 @@ export function DataTable<R, K extends string>({ lang, caption, columns, rows, r
             })}
           </tr>
         </thead>
-        <tbody>
+        {/* Rules 2002-2003: row shapes while the first page loads, an empty state when nothing matches, and the old page
+            dimmed while a new one is on its way. */}
+        <tbody className={loading && rows ? "opacity-60" : undefined}>
           {rows === null ? (
-            <tr><td colSpan={columns.length} className="p-4 text-foreground-muted">{T.loading}</td></tr>
+            <tr><td colSpan={columns.length} className="p-3"><PanelSkeleton label={T.loading} count={5} /></td></tr>
           ) : rows.length === 0 ? (
-            <tr><td colSpan={columns.length} className="p-4 text-foreground-muted">{T.empty}</td></tr>
+            <tr><td colSpan={columns.length} className="p-3"><EmptyState compact icon="search" title={T.empty} /></td></tr>
           ) : rows.map((r) => (
             <tr key={rowKey(r)} className={`border-t border-border align-top ${rowClassName?.(r) ?? ""}`}>
               {columns.map((c) => <td key={c.id} className={`p-2 ${c.className ?? ""}`}>{c.cell(r)}</td>)}
@@ -75,6 +82,32 @@ export function DataTable<R, K extends string>({ lang, caption, columns, rows, r
       </table>
     </div>
   );
+}
+
+/**
+ * A table's query in the address (rule 2007): read and validated through the codec on every render, so a shared link, a
+ * reload and the back button all show the same view. A filter, a sort or a page change is a history step (`push`); typed
+ * text (`typed` keys) replaces the step. Any change but a page change goes back to page 1. An address holding a value the
+ * codec does not accept is put right in place, so the bar shows what the table shows.
+ */
+export function useUrlQuery<Q extends { page: number }>(codec: QueryCodec<Q>, typed: readonly (keyof Q)[] = []) {
+  const search = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const raw = search?.toString() ?? "";
+  const query = useMemo(() => codec.parse(new URLSearchParams(raw)), [codec, raw]);
+  useEffect(() => {
+    const fixed = canonicalHref(pathname, raw, codec);
+    if (fixed) router.replace(fixed, { scroll: false });
+  }, [codec, pathname, raw, router]);
+  /** Read at the moment of the change, so a debounced search keeps the other choices made since. */
+  const setQuery = useCallback((patch: Partial<Q>) => {
+    const reset = ("page" in patch ? {} : { page: 1 }) as Partial<Q>;
+    const href = queryHref(pathname, window.location.search, patch, codec, reset);
+    if (historyFor(patch, typed) === "replace") router.replace(href, { scroll: false });
+    else router.push(href, { scroll: false });
+  }, [codec, pathname, router, typed]);
+  return { query, setQuery };
 }
 
 /** Previous, "Page p of n" (Western digits) and next, plus the page size. Each control is 44px on touch. */

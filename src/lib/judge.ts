@@ -11,6 +11,7 @@ import { pmap } from "./parallel";
 import { recordActivity, type Activity, type ActivityVia } from "./activity";
 import { route } from "./models/route";
 import { NO_LAYERS, instructionBlocks, type Layers } from "./agent-instructions";
+import { log } from "./log";
 
 /**
  * Automated quality judge. A cheaper model scores every generated item against
@@ -182,7 +183,7 @@ export async function judgeTasks(scope: string, email: string, brand: Brand, tas
     const lang = tasks[0].lang ?? "ar";
     await notifyItem(email, lang, { kind: "quality", agent: "dana", title: lang === "ar" ? `أُعيد ${vetoed.length} من عناصر ${agent.name.ar} المعتمدة آلياً إلى صندوق الموافقة` : `${vetoed.length} auto-approved ${agent.name.en} item(s) sent back to your inbox`, body: vetoed[0].notes, href: "" }, `judgeveto:${tasks[0].id}`, 7);
   }
-  if (scored.length < tasks.length) console.error("judge: fewer verdicts than items", { type: tasks[0].type, items: tasks.length, verdicts: scored.length });
+  if (scored.length < tasks.length) log.error("judge: fewer verdicts than items", { type: tasks[0].type, items: tasks.length, verdicts: scored.length });
   const judged = scored.map((x) => x.q);
   const weak = judged.filter((q) => q.score < 70).length;
   const lang = tasks[0].lang ?? "ar";
@@ -218,7 +219,7 @@ function judgedRows(type: TaskType, agent: Activity["agent"], scored: { t: Task;
  * owner's notes and the data block the agent was given, so the judge scores against the same sources.
  */
 export function judgeLater(scope: string, email: string, brand: Brand, tasks: Task[], requested?: number, ctx: JudgeContext = {}) {
-  const run = () => judgeTasks(scope, email, brand, tasks, requested, ctx).catch((e) => console.error("judge failed", e));
+  const run = () => judgeTasks(scope, email, brand, tasks, requested, ctx).catch((e) => log.error("judge failed", e));
   try {
     after(run);
   } catch {

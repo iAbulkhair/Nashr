@@ -3,6 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
 import { ADMIN_LEADS_SEEN } from "@/lib/admin-gate";
 import type { Lead, LeadKind } from "@/lib/leads";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import EmptyState from "@/components/ui/EmptyState";
 
 /** GET /api/admin/leads. */
 type Page = { leads: Lead[]; total: number; unread: number; seenAt: string | null; scanCap: number; mail: { ready: boolean; forwardTo: boolean } };
@@ -80,7 +83,7 @@ export default function LeadsPanel({ lang }: { lang: "ar" | "en" }) {
       {page && !page.mail.ready && <p role="alert" className="mt-3 rounded-lg bg-agent-sami/20 px-3 py-2 text-sm text-danger">{L.mailOff}</p>}
       {page && page.mail.ready && !page.mail.forwardTo && <p role="alert" className="mt-3 rounded-lg bg-agent-sami/20 px-3 py-2 text-sm text-danger">{L.noForward}</p>}
       {err && <p className="mt-3 text-sm text-danger">{err}</p>}
-      {!page && !err ? <p className="mt-3 text-sm text-foreground-muted">{L.loading}</p> : page && page.leads.length === 0 ? <p className="mt-3 text-sm text-foreground-muted">{L.none}</p> : page && (
+      {!page && !err ? <PanelSkeleton label={L.loading} shape="rows" className="mt-3" /> : page && page.leads.length === 0 ? <EmptyState compact title={L.none} className="mt-3" /> : page && (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-background-muted text-start text-xs uppercase tracking-wide text-foreground-muted">

@@ -74,6 +74,8 @@ const g = (role: Role, ...actions: Action[]): Gate => ({ role, actions });
 const ROUTE_ROLES: Record<string, Gate> = {
   // Public: nobody is signed in yet, or the caller only ends their own session.
   "POST /api/auth/login": "public",
+  // The second sign-in step (rule 1934): the challenge cookie names the login, rate limited with the login buckets.
+  "POST /api/auth/login/mfa": "public",
   "POST /api/auth/signup": "public",
   "POST /api/auth/forgot": "public",
   "POST /api/auth/reset": "public",
@@ -204,6 +206,12 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PATCH /api/account": g("member", "password.change"),
   // Sign out other devices (rule 1150): the caller's own sessions only, never while impersonating.
   "POST /api/account/sessions": g("member", "sessions.revoke"),
+  // One device out of the login's own list (rule 1939).
+  "DELETE /api/account/sessions": g("member", "sessions.revoke"),
+  // The login's own two-step sign-in (rules 1930-1937).
+  "POST /api/account/2fa": g("member", "mfa.manage"),
+  "POST /api/account/email": g("member", "email.change"),
+  "POST /api/account/google": g("member", "google.manage"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "POST /api/team/leave": g("member", "team.leave"),
@@ -274,6 +282,13 @@ const READS: Record<string, Gate> = {
   "GET /api/profile": g("member", "read"),
   // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
   "GET /api/account/export": g("owner", "account.export"),
+  // The login's own two-step status and device list (rules 1930, 1938): a session, nothing written.
+  "GET /api/account/2fa": "member",
+  "GET /api/auth/google/start": "public",
+  "GET /api/auth/google/callback": "public",
+  "GET /api/account/email": g("member", "email.change"),
+  "GET /api/account/google": g("member", "google.manage"),
+  "GET /api/account/sessions": "member",
   // The Paymob return page's poll (rule 1155): the caller's own last checkout and plan, owner only.
   "GET /api/billing/status": g("owner", "billing"),
   "GET /api/activity": g("member", "read"),
@@ -434,12 +449,25 @@ const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
 /** A refusal that is RETURNED: `const no = forbid(u, …); if (no) return no;` or `if (!can(u, …)) return …`. A bare call proves nothing. */
 const RETURNED_GUARD = /const\s+(\w+)\s*=\s*forbid\([^;]*\);\s*if\s*\(\s*\1\s*\)\s*return\s+\1\b|if\s*\(\s*!can\([^;]*?\)\s*\)\s*return\b/;
 const WRITES = /\bdb\.(?:set|del|lpush|ltrim|lrem|sadd|srem|hset|hdel|incrby|lock)\(|\bsave[A-Z]\w*\(|\bcreateSession\(/;
+/**
+ * A handler built with `handler(options, fn)` from src/lib/api-handler.ts (rule 1906): the options object, read from the
+ * call's first argument. The wrapper runs `currentUser()` for auth "user", `isAdmin(req)` for "admin", the `sameSecret`
+ * bearer for "cron", returns `forbid(u, role)` and counts `rate` with `allow`, in that order; tests/api-handler.test.ts
+ * proves each against the wrapper itself. So `auth: "user"` stands for a session read, `role: "<action>"` for a returned
+ * refusal of that action, and `rate:` for an `allow` call.
+ */
+const WRAPPED = /=\s*handler(?:<[^>]*>)?\(\s*\{([\s\S]*?)\}\s*,\s*async\b/;
+const wrapped = (h: Handler) => {
+  const opts = WRAPPED.exec(h.body)?.[1];
+  return opts === undefined ? null : { auth: /\bauth:\s*"(\w+)"/.exec(opts)?.[1], role: /\brole:\s*"[\w.]+"/.test(opts), rate: /\brate:\s*\{/.test(opts) };
+};
 
 /** What is wrong with one handler against its declared gate; empty when it holds. */
 function violations(h: Handler, gate: Gate): string[] {
   const out: string[] = [];
+  const w = wrapped(h);
   if (gate === "public") {
-    if (!/\ballow\(/.test(h.body) && !PUBLIC_WITHOUT_LIMIT[h.key]) out.push("public write without a rate limit (allow)");
+    if (!/\ballow\(/.test(h.body) && !w?.rate && !PUBLIC_WITHOUT_LIMIT[h.key]) out.push("public write without a rate limit (allow)");
     return out;
   }
   if (gate === "public-read") {
@@ -447,13 +475,13 @@ function violations(h: Handler, gate: Gate): string[] {
     if (WRITES.test(h.body)) out.push("public-read handler writes state");
     return out;
   }
-  if (gate === "cron") return /sameSecret\(/.test(h.body) ? [] : ["cron handler without the sameSecret bearer check"];
+  if (gate === "cron") return /sameSecret\(/.test(h.body) || w?.auth === "cron" ? [] : ["cron handler without the sameSecret bearer check"];
   if (gate === "unverified-session") return /\bcurrentUserUnverified\(/.test(h.body) && /\b(?:allow|verifySendRefusal)\(/.test(h.body) ? [] : ["verify handler without currentUserUnverified and allow (or verifySendRefusal)"];
   if (gate === "bearer") return /userFromBearer\(/.test(h.body) ? [] : ["bearer handler without userFromBearer"];
-  if (gate === "admin-console") return /\b(?:isAdmin|adminActor)\(/.test(h.body) || CONSOLE_SELF[h.key] ? [] : ["console handler without isAdmin/adminActor"];
-  if (!/\bcurrentUser\(/.test(h.body)) out.push("no session read (currentUser)");
+  if (gate === "admin-console") return /\b(?:isAdmin|adminActor)\(/.test(h.body) || w?.auth === "admin" || CONSOLE_SELF[h.key] ? [] : ["console handler without isAdmin/adminActor"];
+  if (!/\bcurrentUser\(/.test(h.body) && w?.auth !== "user") out.push("no session read (currentUser)");
   if (gate === "member") return out;
-  if (!RETURNED_GUARD.test(h.body)) out.push(`declared ${gate.role} but the handler never returns the refusal of forbid() or can()`);
+  if (!RETURNED_GUARD.test(h.body) && !w?.role) out.push(`declared ${gate.role} but the handler never returns the refusal of forbid() or can()`);
   for (const a of gate.actions) {
     if (!Object.prototype.hasOwnProperty.call(MIN_ROLE, a)) out.push(`unknown action ${a}`);
     // In THIS handler (or module-level code no handler owns): a sibling handler naming the action proves nothing.
@@ -494,7 +522,7 @@ describe("every API handler has a declared gate (fail closed)", () => {
     for (const k of SESSION_RATE_LIMITED) {
       const h = all.find((x) => x.key === k);
       expect(h, `${k} exists`).toBeTruthy();
-      expect(h!.body, k).toMatch(/\ballow\(/);
+      if (!wrapped(h!)?.rate) expect(h!.body, k).toMatch(/\ballow\(/);
     }
   });
   it("the lists of tolerated exceptions only name public or console handlers", () => {
@@ -533,6 +561,34 @@ describe("every API handler has a declared gate (fail closed)", () => {
     expect(violations(hs.GET, g("admin", "connectors")), "an action named in module-level code no handler owns counts").toEqual([]);
     expect(violations(hs.OPTIONS, "public-read")).toEqual([]);
     expect(violations(hs.PATCH, "public-read")).toEqual(["only a GET, HEAD or OPTIONS can be public-read"]);
+  });
+  it("rule 1906: the checker reads a wrapped handler's options, and only those", () => {
+    const file = join(APP, "api", "probe", "route.ts");
+    const source = [
+      "const body = z.object({ x: z.string() });",
+      'export const GET = handler({ auth: "user", role: "read" }, async ({ scope }) => {',
+      "  return Response.json({ scope });",
+      "});",
+      'export const POST = handler({ auth: "user", rate: { bucket: "p", max: 1, window: WINDOW.hour }, input: body }, async () => Response.json({}));',
+      'export const PUT = handler({ auth: "user" }, async () => Response.json({}));',
+      'export const PATCH = handler({ auth: "public" }, async () => Response.json({ note: "auth: \\"user\\"" }));',
+      'export const DELETE = handler({ auth: "cron" }, async () => Response.json({}));',
+    ].join("\n");
+    const hs = Object.fromEntries(parse(file, source).map((h) => [h.method, h]));
+    expect(Object.keys(hs).sort()).toEqual(["DELETE", "GET", "PATCH", "POST", "PUT"]);
+    expect(violations(hs.GET, g("member", "read"))).toEqual([]);
+    // The wrapper's role is "read", so a gate that needs "brand.write" is not proven by it.
+    expect(violations(hs.GET, g("admin", "brand.write"))).toEqual([expect.stringContaining('"brand.write"')]);
+    expect(violations(hs.POST, "member")).toEqual([]);
+    expect(violations(hs.PUT, g("member", "read")), "no role option, no forbid").toEqual([expect.stringContaining("never returns the refusal"), expect.stringContaining('"read"')]);
+    // A public handler is not a session read, whatever its body says; and it has no rate limit.
+    expect(violations(hs.PATCH, "member")).toEqual(["no session read (currentUser)"]);
+    expect(violations(hs.PATCH, "public")).toEqual(["public write without a rate limit (allow)"]);
+    expect(violations(hs.DELETE, "cron")).toEqual([]);
+    expect(violations(hs.PUT, "cron")).toEqual(["cron handler without the sameSecret bearer check"]);
+    // What the checker trusts the wrapper to do, it does: the calls are in src/lib/api-handler.ts.
+    const lib = readFileSync(join("src", "lib", "api-handler.ts"), "utf8");
+    for (const call of ["currentUser()", "isAdmin(req)", "sameSecret(bearer, process.env.CRON_SECRET)", "forbid(u, opts.role)", "allow(`${r.bucket}:${who}`"]) expect(lib).toContain(call);
   });
 });
 
@@ -731,11 +787,11 @@ describe("a governance restore is a governance write; the activity log is a read
     const page = await activityRoute.GET(json("/api/activity", "GET"));
     expect(page.status).toBe(200);
     expect(((await page.json()) as { rows: { note?: string }[] }).rows.map((r) => r.note)).toEqual(["the owner's post"]);
-    const csv = await activityExportRoute.GET();
+    const csv = await activityExportRoute.GET(new Request("http://t/api/activity/export"));
     expect(csv.status).toBe(200);
     expect(await csv.text()).toContain("the owner's post");
     signOut();
-    expect(await status(activityExportRoute.GET())).toBe(401);
+    expect(await status(activityExportRoute.GET(new Request("http://t/api/activity/export")))).toBe(401);
   });
 });
 

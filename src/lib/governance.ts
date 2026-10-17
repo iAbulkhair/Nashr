@@ -4,6 +4,7 @@ import { TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "./agents";
 import { isBy, publicBy, type By } from "./actor";
 import { recordActivity } from "./activity";
+import { log } from "./log";
 
 export type Governance = {
   autoApprove: Partial<Record<TaskType, boolean>>; // skip inbox for these types
@@ -191,7 +192,7 @@ export async function saveGovAs(scope: string, patch: GovPatch, by: By, rollback
     return { ok: true, governance: after, revision };
   } finally {
     // As in updateTask: a failed release must not turn a saved change into an error. The 10 s TTL frees the lock.
-    await db.unlock(lock).catch((e) => console.error("governance lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(lock).catch((e) => log.error("governance lock release failed", e));
   }
 }
 

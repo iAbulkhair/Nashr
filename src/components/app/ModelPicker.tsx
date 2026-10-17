@@ -26,6 +26,7 @@ import {
 } from "@/lib/model-picker";
 import { useConfirm } from "./ConfirmDialog";
 import { Icon } from "./Icons";
+import { useToast } from "@/components/ui/Toast";
 
 /**
  * The model picker (spec 2026-10-08-straitly-model-routing, plan Task 7): `ChatModelPicker` in the chat header (one
@@ -139,6 +140,7 @@ export function ModelOptionList({ t, lang, surface, options, selected, onPick }:
  */
 export function ChatModelPicker({ t, lang, conv, stored, replying, canConfirmChina, onPicked, onChat, onGone }: { t: AppDict; lang: Lang; conv: string; stored: string | undefined; replying: boolean; canConfirmChina: boolean; onPicked: (conv: string, previous: string | null, model: string | null, outcome: PickOutcome) => void; onChat: (chat: PickedChat) => void; onGone: () => void }) {
   const router = useRouter();
+  const toast = useToast();
   const { view, setView, failed, reload } = useModels(lang);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -205,7 +207,9 @@ export function ChatModelPicker({ t, lang, conv, stored, replying, canConfirmChi
       return;
     }
     if (why === "signed_out") { router.replace(`/${lang}/app/login`); return; }
-    setNote(refusalText(why, t, "chat"));
+    // rule 2001: a plain failure is a toast; a typed refusal (busy, owner only, slow down) stays in the note.
+    const said = refusalText(why, t, "chat");
+    if (said === m.failed) toast.danger(said); else setNote(said);
     // The list changed (or the confirmation landed before the pick failed): ask for it again.
     if (why === "unavailable" || confirmFirst) reload();
     if (why === "not_found") onGone();
@@ -243,6 +247,7 @@ export function ChatModelPicker({ t, lang, conv, stored, replying, canConfirmChi
  */
 export function BrandModelField({ t, lang, stored, readOnly, canConfirmChina }: { t: AppDict; lang: Lang; stored: string | undefined; readOnly: boolean; canConfirmChina: boolean }) {
   const router = useRouter();
+  const toast = useToast();
   const { view, setView, failed, reload } = useModels(lang);
   // The stored pick and the person's unsaved choice, changed only through `nextBrandPick` and the radio buttons.
   const [pick, setPick] = useState<BrandPick>({ saved: stored ?? null, choice: undefined });
@@ -276,11 +281,12 @@ export function BrandModelField({ t, lang, stored, readOnly, canConfirmChina }: 
     setPick(nextBrandPick(previous, o.id, why));
     if (!why) {
       if (confirmFirst) setView((v) => (v ? { ...v, chinaConfirmed: true } : v));
-      setMsg(m.saved);
+      toast.success(m.saved); // rule 2001
       return;
     }
     if (why === "signed_out") { router.replace(`/${lang}/app/login`); return; }
-    setMsg(refusalText(why, t, "generate"));
+    const said = refusalText(why, t, "generate");
+    if (said === m.failed) toast.danger(said); else setMsg(said);
     if (why === "unavailable" || confirmFirst) reload();
   }
 

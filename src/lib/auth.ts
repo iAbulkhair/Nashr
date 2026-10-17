@@ -406,6 +406,18 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
   dropLegacyCookie(jar, COOKIE);
+  // The device list (rule 1938): the login's own sessions, never a founder's impersonation. Best effort: a failure here
+  // never blocks a sign-in.
+  if (!opts.imp) {
+    const { recordDevice } = await import("./devices");
+    await recordDevice(email, sessionKey(token)).catch(() => {});
+  }
+}
+
+/** The hashed session key behind this request's cookie (the device list marks it as "this device"), or null. */
+export async function currentSessionKey(): Promise<string | null> {
+  const token = readCookie(await cookies(), COOKIE);
+  return token ? sessionKey(token) : null;
 }
 
 /**
@@ -433,7 +445,13 @@ export async function destroySession() {
   const jar = await cookies();
   // Both names (rule 1811): a browser may still hold an old `nashr_session` beside the new one; both records go.
   const tokens = [...new Set(namesOf(COOKIE).map((n) => jar.get(n)?.value).filter((v): v is string => !!v))];
-  await Promise.all(tokens.map((t) => dropSession(t)));
+  // This device leaves the login's device list too (rule 1938); the list drops any entry this misses on its next read.
+  const { forgetDevice } = await import("./devices");
+  await Promise.all(tokens.map(async (t) => {
+    const s = sessionOf(await sessionRecord(t).catch(() => null));
+    await dropSession(t);
+    if (s && !s.imp) await forgetDevice(s.email, sessionKey(t)).catch(() => {});
+  }));
   dropCookie(jar, COOKIE);
 }
 

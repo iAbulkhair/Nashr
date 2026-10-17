@@ -7,6 +7,10 @@ import { AGENT_IDS, agentForTask, isAgentId, type AgentId } from "@/lib/agents";
 import { isTaskType } from "@/lib/tasks";
 import { dateFormat } from "@/lib/dates";
 import Scribble from "@/components/Scribble";
+import { useToast } from "@/components/ui/Toast";
+import EmptyState from "@/components/ui/EmptyState";
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import { emptyCopy } from "@/lib/empty-copy";
 
 type Page = { rows: Activity[]; next: string | null };
 
@@ -17,12 +21,16 @@ type Page = { rows: Activity[]; next: string | null };
  */
 export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t: AppDict; lang: "ar" | "en"; initial: Activity[]; next: string | null }) {
   const a = t.activity;
+  const toast = useToast();
   const [rows, setRows] = useState<Activity[]>(initial);
   const [next, setNext] = useState<string | null>(firstNext);
   const [agent, setAgent] = useState<AgentId | "">("");
   const [kind, setKind] = useState<ActivityKind | "">("");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
+  // The rate-limit refusal stays beside the filters (rule 2001); a plain failure is a toast.
+  const [slow, setSlow] = useState(false);
+  // A filter change is replacing the rows (rule 2003), as opposed to "Load more" adding to them.
+  const [replacing, setReplacing] = useState(false);
   // The kinds the filter offers are the ones the dictionary names (the server checks the value again).
   const kinds = Object.keys(a.kinds) as ActivityKind[];
 
@@ -32,8 +40,9 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
    * new filter's rows under the old filter's cursor.
    */
   async function load(f: { agent: AgentId | ""; kind: ActivityKind | "" }, before: string | null) {
-    setErr("");
     setBusy(true);
+    setSlow(false);
+    setReplacing(!before);
     try {
       const q = new URLSearchParams();
       if (f.agent) q.set("agent", f.agent);
@@ -41,18 +50,20 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
       if (before) q.set("before", before);
       const res = await fetch(`/api/activity?${q}`);
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string } & Partial<Page>;
-      if (!res.ok || !j.ok || !Array.isArray(j.rows)) { setErr(res.status === 429 ? a.slow : a.failed); return; }
+      if (!res.ok || !j.ok || !Array.isArray(j.rows)) { if (res.status === 429) setSlow(true); else toast.danger(a.failed); return; } // rule 2001
       const got = j.rows;
       setRows((cur) => (before ? [...cur, ...got] : got));
       setNext(j.next ?? null);
       if (!before) { setAgent(f.agent); setKind(f.kind); }
     } catch {
-      setErr(a.failed);
+      toast.danger(a.failed);
     } finally {
       setBusy(false);
+      setReplacing(false);
     }
   }
 
+  const empty = emptyCopy(lang, agent || kind ? "activityFiltered" : "activity");
   const when = dateFormat(lang, { dateStyle: "medium", timeStyle: "short" });
   const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
   // Majed's auto-run is the system's `auto_handoff` job: named, so the owner can tell it from the other automatic work.
@@ -131,10 +142,13 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
           </label>
           <a href="/api/activity/export" download className="btn btn-secondary btn-sm ms-auto">{a.export}</a>
         </div>
-        {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+        {slow && <p role="alert" className="text-sm text-danger">{a.slow}</p>}
         <section className="card" aria-busy={busy}>
-          {rows.length === 0 ? (
-            <p className="text-sm text-foreground-muted">{agent || kind ? a.emptyFiltered : a.empty}</p>
+          {replacing ? (
+            <PanelSkeleton label={a.loading} shape="rows" />
+          ) : rows.length === 0 ? (
+            // Rule 2002: the filtered words when a filter is set, else the plain ones.
+            <EmptyState compact title={empty.title} body={empty.body} />
           ) : (
             <ul className="divide-y divide-foreground/10">
               {rows.map((r, i) => (

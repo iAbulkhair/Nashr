@@ -9,9 +9,10 @@ import SettingsCard, { type CardStatus } from "./SettingsCard";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { THEME_COPY } from "@/lib/theme";
 import { readProfile, saveProfile } from "./profileSave";
+import EmailChange from "./EmailChange";
 
 /** The account values the page renders with: the acting person's name and language, and the account's phone (owner only). */
-export type AccountInitial = { name: string; email: string; lang: Lang; phone?: string; owner: boolean };
+export type AccountInitial = { name: string; email: string; lang: Lang; phone?: string; owner: boolean; canChangeEmail?: boolean };
 
 /** At least 9 digits: the phone check PUT /api/profile makes. */
 export const phoneValid = (v: string) => v.replace(/\D/g, "").length >= 9;
@@ -23,7 +24,7 @@ const COPY = {
     lang: "لغة التطبيق", langOwner: "لغة التطبيق والإيميلات", langSub: "تتغيّر الواجهة فور الحفظ.", langOwnerSub: "لغة الواجهة ولغة إيميلات الحساب والفوترة.",
     phone: "رقم الجوال", phoneSub: "رقم الحساب للتواصل والتفعيل. 9 أرقام على الأقل.", phoneBad: "اكتب 9 أرقام على الأقل.",
     phoneMissing: "أضف رقم جوالك: حفظ أي بطاقة أخرى هنا يحتاجه.",
-    email: "البريد", emailSub: "اسم الدخول. لا يتغيّر من الإعدادات؛ لتغييره تواصل مع الدعم.",
+    email: "البريد", emailSub: "اسم دخولك. تقدر تغيّره هنا برمز يوصل للبريد الجديد.", emailSubLocked: "اسم دخولك.",
   },
   en: {
     save: "Save", saving: "Saving…", saved: "Saved.",
@@ -31,13 +32,14 @@ const COPY = {
     lang: "App language", langOwner: "App and email language", langSub: "The app switches as soon as you save.", langOwnerSub: "The app's language and the language of account and billing emails.",
     phone: "Mobile number", phoneSub: "The account's contact and activation number. At least 9 digits.", phoneBad: "Use at least 9 digits.",
     phoneMissing: "Add your mobile number: saving any other card here needs it.",
-    email: "Email", emailSub: "Your login. It does not change in settings; contact support to change it.",
+    email: "Email", emailSub: "Your login. You can change it here with a code sent to the new address.", emailSubLocked: "Your login.",
   },
 } as const;
 
 /**
  * Settings, Account (rules 1142-1143): the name, the language and, for the owner, the account's phone, each in its own
- * card with its own Save, which stays off until the value is changed and can be saved. The email is shown, never sent.
+ * card with its own Save, which stays off until the value is changed and can be saved. The email card changes the
+ * sign-in address through POST /api/account/email (`EmailChange`, rules 1942-1945), never through PUT /api/profile.
  * Every card sends only its own field to PUT /api/profile, which checks the role for each field as before.
  */
 export default function AccountSettings({ lang, initial, forbidden }: { lang: Lang; initial: AccountInitial; forbidden: string }) {
@@ -111,8 +113,9 @@ export default function AccountSettings({ lang, initial, forbidden }: { lang: La
         </SettingsCard>
       )}
 
-      <SettingsCard title={T.email} sub={T.emailSub}>
+      <SettingsCard title={T.email} sub={stored.canChangeEmail ? T.emailSub : T.emailSubLocked} status={status.email ?? null}>
         <p className="tnum font-medium text-foreground" dir="ltr">{stored.email}</p>
+        {stored.canChangeEmail && <EmailChange lang={lang} forbidden={forbidden} onStatus={(s) => say("email", s)} />}
       </SettingsCard>
     </div>
   );

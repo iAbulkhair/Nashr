@@ -9,10 +9,13 @@ import { Icon, channelIcon } from "./Icons";
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import Scribble from "@/components/Scribble";
+import EmptyState from "@/components/ui/EmptyState";
+import { emptyCopy } from "@/lib/empty-copy";
 
 export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Inspo[] }) {
   const r = useRouter();
   const p = t.inspo;
+  const E = emptyCopy(lang, "inspo");
   const [channel, setChannel] = useState("all");
   const [kind, setKind] = useState("all");
   const [q, setQ] = useState("");
@@ -60,7 +63,8 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
         <span className="text-foreground-muted">{p.kind}:</span>
         {kinds.map((k) => <Pill key={k} v={k} cur={kind} set={setKind} label={k === "all" ? p.all : (p.kinds as Record<string, string>)[k] ?? k} />)}
       </div>
-      {shown.length === 0 && <p className="mt-6 text-sm text-foreground-muted">{p.none}</p>}
+      {/* Rule 2002 */}
+      {shown.length === 0 && <EmptyState className="mt-6" title={E.title} body={E.body} />}
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {shown.map((i) => (
           <article key={i.id} className="flex flex-col overflow-hidden card card-sm">

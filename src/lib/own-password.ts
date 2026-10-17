@@ -21,3 +21,17 @@ export const ownPasswordMatches = async (u: User, password: unknown) => {
   const hash = await ownHash(u);
   return !!hash && typeof password === "string" && (await bcrypt.compare(password, hash));
 };
+
+/**
+ * The acting LOGIN behind a session (rules 1930-1947): its own address and when its record was created (an owner's
+ * `createdAt`, a member's `acceptedAt`). Null for a founder impersonating, a token, or a member no longer in this
+ * account. Every per-login setting (two-step sign-in, the device list, the address change) keys on this address, never
+ * on one from the request.
+ */
+export async function actingLogin(u: User): Promise<{ kind: "owner" | "member"; email: string; bornAt: string | undefined } | null> {
+  const a = u.actor;
+  if (a?.kind === "owner" && a.email === u.email) return { kind: "owner", email: u.email, bornAt: u.createdAt };
+  if (a?.kind !== "member") return null;
+  const m = await getMember(a.email);
+  return m && m.memberOf === u.email && !m.disabled ? { kind: "member", email: m.email, bornAt: m.acceptedAt } : null;
+}

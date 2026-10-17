@@ -13,6 +13,7 @@ import { GRACE_DAYS, addDays, addMonths, billingLocked, paymobRenewalDue, type B
 import { PaymobError, TOKEN_HMAC_FIELDS, TXN_HMAC_FIELDS, checkoutUrl, createIntention, parseTxn, payWithToken, paymobConfig, refundTxn, verifyHmac, type PaymobConfig, type Txn } from "./paymob";
 import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
+import { log as logger } from "./log";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
@@ -159,7 +160,7 @@ export async function startCheckout(owner: Pick<User, "email">, body: unknown, l
     return { ok: true, url: checkoutUrl(cfg, it.clientSecret), ref };
   } catch (e) {
     await db.set(intentKey(ref), { ...intent, status: "failed" }, DAYS_400);
-    console.error("paymob checkout", e instanceof PaymobError ? e.message : "error");
+    logger.error("paymob checkout", { error: e instanceof PaymobError ? e.message : "error" });
     return { ok: false, error: "paymob_error" };
   }
 }
@@ -360,7 +361,7 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
       if (r === "pending") return "paymob_pending";
     } catch (e) {
       outcome = "paymob_error";
-      console.error("paymob renewal", e instanceof PaymobError ? e.message : "error");
+      logger.error("paymob renewal", { error: e instanceof PaymobError ? e.message : "error" });
     }
   }
   await withUserLock(email, async (x) => {
@@ -405,17 +406,52 @@ async function chargeSavedCard(cfg: PaymobConfig, u: User, b: Billing, card: Sav
     await db.set(intentKey(ref), { ...intent, orderId, status: "failed" }, DAYS_400);
     throw new PaymobError("no_payment_key");
   }
-  await withUserLock(u.email, async (x) => {
-    if (!x.billing) return;
+  // Rule 1956: the card is charged only if, under the account lock, the account still exists, renewal is still on and
+  // the card is still saved. Account deletion (`stopRenewals`, first step of `wipeAccount`) turns renewal off and drops
+  // the card under the same lock, so a renewal that read the card before the deletion stops here instead of charging
+  // it. A deleted account throws `user_not_found` out of the lock, which the daily job records and never retries.
+  const still = await withUserLock(u.email, async (x) => {
+    if (!x.billing || !x.billing.autoRenew || !(await db.get(cardKey(u.email)))) return false;
     x.billing = { ...x.billing, pending: { ref, day: today } };
     await saveUser(x);
+    return true;
   });
+  if (!still) {
+    await db.set(intentKey(ref), { ...intent, orderId, status: "failed" }, DAYS_400);
+    throw new PaymobError("renewal_off");
+  }
   const txn = await payWithToken(paymentKey, card.token);
   if (!txn || txn.pending) return "pending";
   // Our own call's answer over TLS: the reference is ours even when the answer does not echo it, but the order must match.
   if (txn.orderId !== null && txn.orderId !== orderId) return "pending";
   const r = await applyTransaction(cfg, { ...txn, ref: txn.ref ?? ref });
   return txn.success && (r.result === "paid" || r.result === "already") ? "paid" : r.status === 503 ? "pending" : "declined";
+}
+
+/**
+ * Rule 1955: stop every future charge of an account that is being deleted, before anything else of it is touched.
+ * Under the account lock, renewal turns off and the saved card token is deleted, so `chargeSavedCard` (which re-checks
+ * both under the same lock right before it charges) can not charge it any more. An account record already gone still
+ * loses its card. `userLocked`: the caller already holds that lock (the address move), so only the card goes here; the
+ * account record is deleted by the wipe that follows.
+ */
+export async function stopRenewals(email: string, opts: { userLocked?: boolean } = {}): Promise<void> {
+  if (opts.userLocked) {
+    await db.del(cardKey(email));
+    return;
+  }
+  try {
+    await withUserLock(email, async (x) => {
+      await db.del(cardKey(email));
+      if (x.billing?.autoRenew) {
+        x.billing = { ...x.billing, autoRenew: false };
+        await saveUser(x);
+      }
+    });
+  } catch (e) {
+    if (!(e instanceof Error && e.message === "user_not_found")) throw e;
+    await db.del(cardKey(email));
+  }
 }
 
 export type RenewalAction = "cancel" | "resume" | "remove_card";
@@ -503,7 +539,7 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
         try {
           await refundTxn(cfg, txnId, rec.amountCents);
         } catch (err) {
-          console.error("paymob refund", err instanceof PaymobError ? err.message : "error");
+          logger.error("paymob refund", { error: err instanceof PaymobError ? err.message : "error" });
           return { ok: false, error: "paymob_refund_failed" };
         }
         await db.set(refundedKey(txnId), JSON.stringify({ at: new Date().toISOString(), by }), DAYS_400);

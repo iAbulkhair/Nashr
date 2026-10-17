@@ -4,6 +4,7 @@ import { actorInfo, type ActorInfo } from "./auth";
 import { checkCode, secondFactorStatus } from "./admin-2fa";
 import { checkStaffCode } from "./staff-code";
 import { activeOwner, getStaff, listStaff, type Staff } from "./staff";
+import { log } from "./log";
 
 /**
  * What the staff management routes share (rules 1636-1640, 1650): the fresh-code check, who may do what, the view of a
@@ -107,6 +108,6 @@ export async function withNamedLock<T>(key: string, fn: () => Promise<T>): Promi
   try {
     return await fn();
   } finally {
-    await db.unlock(key).catch((e) => console.error("staff lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(key).catch((e) => log.error("staff lock release failed", e));
   }
 }

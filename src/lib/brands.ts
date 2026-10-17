@@ -1,6 +1,7 @@
 import { db } from "./db";
 import type { User } from "./auth";
 import { brandCapFor } from "./pricing";
+import { log } from "./log";
 
 /**
  * Multi-brand workspaces. Every brand-scoped record (brand file, tasks, files, chat, governance,
@@ -46,7 +47,7 @@ export async function withBrandsLock<T>(email: string, fn: (rows: BrandMeta[]) =
     return await fn(await listBrands(email));
   } finally {
     // A failed release must not turn a saved change into a throw. The 10 s TTL frees the lock.
-    await db.unlock(key).catch((e) => console.error("brands lock release failed", e instanceof Error ? e.name : "error"));
+    await db.unlock(key).catch((e) => log.error("brands lock release failed", e));
   }
 }
 

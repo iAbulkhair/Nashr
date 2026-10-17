@@ -6,6 +6,8 @@ import { AGENT_IDS } from "@/lib/agents";
 import { fill } from "@/lib/fill";
 import { MEETING_NOTES_MAX, MEETING_TEXT_MAX, MEETING_TRANSCRIPT_COST } from "@/lib/pricing";
 import { refusalText } from "./useOneWrite";
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 /**
  * A title in a proposal is at most this long (`MEET_TITLE_MAX` in src/lib/secretary-meeting.ts, which is server code and so
@@ -43,6 +45,7 @@ function draftsOf(list: unknown): Draft[] {
 export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemId: string; onClose?: () => void }) {
   const T = t.todo.meeting;
   const router = useRouter();
+  const toast = useToast();
   const uid = useId();
   const [notes, setNotes] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -51,7 +54,6 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
   const inflight = useRef(false);
   const base = `/api/secretary/meeting/${itemId}`;
   const words: Record<string, string> = { ...T.errors };
@@ -79,13 +81,12 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
     inflight.current = true;
     setBusy(key);
     setError(null);
-    setNote(null);
     try {
       const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
       return { ok: r.ok && j.ok === true, status: r.status, j };
     } catch {
-      setError(t.todo.errors.generic);
+      toast.danger(t.todo.errors.generic); // rule 2001: the request never got an answer
       return null;
     } finally {
       inflight.current = false;
@@ -116,7 +117,7 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
     const created = Array.isArray(r.j.created) ? r.j.created.length : 0;
     if (r.ok) {
       setDrafts([]);
-      setNote(fill(T.approved, { n: String(created) }));
+      toast.success(fill(T.approved, { n: String(created) })); // rule 2001
       router.refresh();
       return;
     }
@@ -135,7 +136,7 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
     if (!r) return;
     if (!r.ok) return setError(failText(r.status, r.j));
     setDrafts([]);
-    setNote(T.discarded);
+    toast.success(T.discarded);
   }
 
   function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -200,7 +201,7 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
       </div>
 
       <div className="mt-5" aria-live="polite">
-        {load === "loading" && <p className="text-sm text-foreground-muted">{T.loading}</p>}
+        {load === "loading" && <PanelSkeleton label={T.loading} shape="rows" count={2} />}{/* rule 2003 */}
         {load === "failed" && (
           <div>
             <p role="alert" className="text-sm text-danger">{T.loadFailed}</p>
@@ -245,7 +246,6 @@ export default function MeetingPanel({ t, itemId, onClose }: { t: AppDict; itemI
       </div>
 
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
-      {note && <p role="status" className="mt-3 text-sm text-foreground">{note}</p>}
     </section>
   );
 }

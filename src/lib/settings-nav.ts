@@ -8,6 +8,20 @@ import type { Lang } from "./i18n";
 export const SETTINGS_SECTIONS = ["account", "security", "notifications", "brand", "brands", "members", "billing", "connections", "governance", "danger"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
+/**
+ * The sections in two groups (rule 2006): what is yours alone (your account, its security, what reaches you) and what the
+ * workspace shares (the brand, its people, plan, connections, limits, and the danger zone). Groups only label the list:
+ * every section keeps its path, and together the groups hold each section once, in `SETTINGS_SECTIONS` order.
+ */
+export const SETTINGS_GROUPS = [
+  { id: "you", sections: ["account", "security", "notifications"] },
+  { id: "workspace", sections: ["brand", "brands", "members", "billing", "connections", "governance", "danger"] },
+] as const satisfies readonly { id: string; sections: readonly SettingsSection[] }[];
+export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
+
+/** The group a section sits in. */
+export const groupOf = (s: SettingsSection): SettingsGroup => SETTINGS_GROUPS.find((g) => (g.sections as readonly string[]).includes(s))!.id;
+
 export const isSettingsSection = (v: unknown): v is SettingsSection => typeof v === "string" && (SETTINGS_SECTIONS as readonly string[]).includes(v);
 
 /** `/{lang}/app/settings` or one section of it. */
@@ -41,13 +55,14 @@ export function legacySettingsPath(pathname: string): string | null {
 }
 
 /** Each section's name and one line of what it holds, in both languages. */
-export const SETTINGS_COPY: Record<Lang, { title: string; sub: string; back: string; nav: string; prefsLink: string; sections: Record<SettingsSection, { name: string; sub: string }> }> = {
+export const SETTINGS_COPY: Record<Lang, { title: string; sub: string; back: string; nav: string; prefsLink: string; groups: Record<SettingsGroup, string>; sections: Record<SettingsSection, { name: string; sub: string }> }> = {
   ar: {
     title: "الإعدادات",
     sub: "حسابك وأمانه وتنبيهاته، وملف علامتك وفريقك واشتراكك، كلها هنا.",
     back: "كل الإعدادات",
     nav: "أقسام الإعدادات",
     prefsLink: "تفضيلات التنبيهات",
+    groups: { you: "أنت", workspace: "مساحة العمل" },
     sections: {
       account: { name: "الحساب", sub: "اسمك ولغتك ورقم الجوال." },
       security: { name: "الأمان", sub: "كلمة المرور والخروج من الأجهزة الأخرى." },
@@ -67,6 +82,7 @@ export const SETTINGS_COPY: Record<Lang, { title: string; sub: string; back: str
     back: "All settings",
     nav: "Settings sections",
     prefsLink: "Notification preferences",
+    groups: { you: "You", workspace: "Workspace" },
     sections: {
       account: { name: "Account", sub: "Your name, language and phone." },
       security: { name: "Security", sub: "Password and signing out other devices." },

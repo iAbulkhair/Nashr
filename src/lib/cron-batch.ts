@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { db } from "./db";
 import { appOrigin } from "./origin";
 import { pmap } from "./parallel";
+import { log } from "./log";
 
 /**
  * Runs a per-user cron job so that EVERY user is served, whatever the count.
@@ -63,7 +64,7 @@ export async function runCronBatch<T>(o: {
       } catch (e) {
         failed++;
         results[o.id(t)] = "error:" + (e instanceof Error ? e.message : "x").slice(0, 120);
-        console.error(`cron ${o.job} failed for ${o.id(t)}`, e);
+        log.error(`cron ${o.job} failed for ${o.id(t)}`, e);
       }
     }
   }));

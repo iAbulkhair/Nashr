@@ -6,6 +6,7 @@ import type { partnerDashboard } from "@/lib/partners";
 import { PARTNER_COPY } from "@/lib/partner-copy";
 import { sarText } from "@/lib/partner-rules";
 import Scribble from "@/components/Scribble";
+import { useToast } from "@/components/ui/Toast";
 
 type Data = NonNullable<Awaited<ReturnType<typeof partnerDashboard>>>;
 
@@ -34,22 +35,26 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
   const [country, setCountry] = useState(data.bank?.country ?? "SA");
   const [taxNumber, setTaxNumber] = useState(data.bank?.taxNumber ?? "");
   const [vatRegistered, setVatRegistered] = useState(data.bank?.vatRegistered ?? false);
-  const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   async function saveBank(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
-    setBusy(true); setErr(""); setMsg("");
+    setBusy(true); setErr("");
     try {
       const res = await fetch("/api/partner", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holder, iban, country, taxNumber, vatRegistered }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; bank?: { holder: string; iban: string; country: string; taxNumber: string | null; vatRegistered: boolean } };
-      if (!j.ok || !j.bank) return setErr(S.errors[j.error ?? "server"] ?? S.errors.server);
+      if (!j.ok || !j.bank) {
+        // Rule 2001: a plain server failure is a toast; a refusal about the bank fields stays under the form.
+        if (!j.error || j.error === "server" || !S.errors[j.error]) toast.danger(S.errors.server); else setErr(S.errors[j.error]);
+        return;
+      }
       setBank({ ...j.bank, savedAt: new Date().toISOString(), confirmed: false });
       setIban("");
-      setMsg(S.saved);
+      toast.success(S.saved); // rule 2001
     } catch {
-      setErr(S.errors.server);
+      toast.danger(S.errors.server);
     } finally {
       setBusy(false);
     }
@@ -154,7 +159,6 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
             <input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} maxLength={30} autoComplete="off" dir="ltr" placeholder={S.taxNumber} aria-label={S.taxNumber} className="input font-mono" />
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="vatRegistered" checked={vatRegistered} onChange={(e) => setVatRegistered(e.target.checked)} className="mt-1" /><span>{S.vatRegistered}</span></label>
             <button disabled={busy} className="btn btn-primary">{S.save}</button>
-            {msg && <p className="text-sm text-foreground">{msg}</p>}
             {err && <p role="alert" className="text-sm text-danger">{err}</p>}
           </form>
         ) : <p className="mt-2 text-xs text-foreground-muted">{S.errors.forbidden}</p>}

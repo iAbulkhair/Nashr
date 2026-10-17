@@ -20,6 +20,9 @@ import AgentAvatar from "@/components/app/AgentAvatar";
 import Scribble from "@/components/Scribble";
 import { taskVersion } from "@/lib/task-version";
 import { CHANNEL_LIMITS } from "@/lib/channel-limits";
+import { useToast } from "@/components/ui/Toast";
+import EmptyState from "@/components/ui/EmptyState";
+import { emptyCopy } from "@/lib/empty-copy";
 
 const GUARD = {
   ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", heldPh: "فيه خانات لم تُعبّأ بعد (مثل [رقم] أو [date])، فلا يُعتمد ولا يُنشر حتى تضع القيمة الحقيقية مكانها أو تحذفها:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة ولا خانات فارغة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", rulePh: "قاعدة الخانات الفارغة", editBrand: "ملف العلامة" },
@@ -101,6 +104,8 @@ const saveLink = (url: string) => (isOurMediaUrl(url) ? `${url}?download=1` : ur
  */
 export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], included, credits = 0, plan, paused, canPublish = true, owner = true }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; included: readonly VideoModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean; owner?: boolean }) {
   const i = t.inbox;
+  const toast = useToast();
+  const E = emptyCopy(lang, "inbox");
   const G = GUARD[lang];
   // The brand file's rules and the empty-placeholder rule, applied here exactly as the approve route applies them.
   const hasBanned = useMemo(() => brandRules({ banned }).length > 0, [banned]);
@@ -168,8 +173,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
       else if (j.error === "already_published" || j.error === "publish_unknown" || j.error === "publish_busy" || j.error === "duplicate_post" || j.error === "earlier_live") setAgain({ id, provider, kind: j.error === "already_published" ? "already" : j.error === "publish_unknown" ? "unknown" : j.error === "duplicate_post" ? "duplicate" : j.error === "earlier_live" ? "earlier" : "busy", url: j.url });
       else if (j.error === "wordpress_cannot_publish_live") setWpNote({ id, kind: "cannotLive" });
       // Held by the agent-scope check (rule 1410): nothing went out; the server's message says why, in the item's language.
-      else if ((j.error === "agent_scope_held" || j.error === "agent_scope_unavailable") && j.message) alert(j.message);
-      else alert(res.status === 403 ? t.team.errors.forbidden : i.publishFail);
+      else if ((j.error === "agent_scope_held" || j.error === "agent_scope_unavailable") && j.message) toast.danger(j.message); // rule 2001
+      else toast.danger(res.status === 403 ? t.team.errors.forbidden : i.publishFail);
     }
     // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server
     // copy for ever: the publish landed and the image was generated, but the card never showed either.
@@ -303,10 +308,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
         </div>
       )}
       {shown.length === 0 && (
-        <div className="mt-10 rounded-xl border border-dashed border-border p-10 text-center text-foreground-muted">
-          <p>{i.empty}</p>
-          <Link href={`/${lang}/app/generate`} className="mt-4 inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-accent-foreground">{i.regenerate}</Link>
-        </div>
+        // Rule 2002: the shared empty state; the way to ask for a batch stays as its action.
+        <EmptyState className="mt-10" title={E.title} body={E.body} action={<Link href={`/${lang}/app/generate`} className="inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-accent-foreground">{i.regenerate}</Link>} />
       )}
 
       <ul className="mt-6 grid gap-4">

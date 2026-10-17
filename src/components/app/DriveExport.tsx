@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
+import { useToast } from "@/components/ui/Toast";
 
 export type DriveRow = { id: "google_drive" | "dropbox" | "onedrive"; connected: boolean };
 
@@ -33,6 +34,7 @@ export default function DriveExport({ t, url }: { t: AppDict; url: string }) {
   const [drives, setDrives] = useState<DriveRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
+  const toast = useToast();
   useEffect(() => {
     let live = true;
     void loadDrives().then((d) => { if (live) setDrives(d.filter((x) => x.connected)); });
@@ -44,7 +46,10 @@ export default function DriveExport({ t, url }: { t: AppDict; url: string }) {
     setMsg("");
     const res = await fetch("/api/drives", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "export", drive: id, url }) }).catch(() => null);
     const j = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
-    setMsg(res?.ok && j?.ok ? `${l.saved} ${l.drives[id]}` : driveError(t, res?.status ?? 0, j?.error));
+    // Rule 2001: saved and a plain failure are toasts; a role refusal (403) stays beside the buttons as an alert.
+    if (res?.ok && j?.ok) toast.success(`${l.saved} ${l.drives[id]}`);
+    else if (res?.status === 403) setMsg(driveError(t, 403, j?.error));
+    else toast.danger(driveError(t, res?.status ?? 0, j?.error));
     setBusy(null);
   }
   return (
@@ -54,7 +59,7 @@ export default function DriveExport({ t, url }: { t: AppDict; url: string }) {
           {busy === d.id ? l.saving : `${l.saveTo} ${l.drives[d.id]}`}
         </button>
       ))}
-      {msg && <span role="status">{msg}</span>}
+      {msg && <span role="alert">{msg}</span>}
     </span>
   );
 }

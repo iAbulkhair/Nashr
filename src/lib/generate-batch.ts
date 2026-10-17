@@ -45,6 +45,7 @@ import { byOf, systemBy, type By } from "./actor";
 import { recordActivity, type Activity } from "./activity";
 import { AgentScopeRefused, checkGenerationNotes, itemText, otherBrandNames, readAgentScopeModes, scopeCheck, type AgentScopeModes, type NotesGate, type ScopeDecision } from "./agent-scope";
 import { pmap } from "./parallel";
+import { log } from "./log";
 
 /** Where a batch was asked for. Not the same as `source`: MCP and chat items are both `source:"chat"`. */
 export type BatchVia = "app" | "chat" | "mcp" | "weekly" | "routine" | "handoff";
@@ -322,7 +323,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // the check reads none, and it must not cost the owner the batch.
   let names: Promise<string[]> | undefined;
   const brandNames = () => (names ??= otherBrandNames(user).catch((e): string[] => {
-    console.error("agent scope brand names failed", e instanceof Error ? e.name : "error");
+    log.error("agent scope brand names failed", e);
     return [];
   }));
   // The input gate on the notes (rule 796), after every free refusal and before the renewal and the charge, on this batch's own
@@ -332,7 +333,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   const gate = opts.notesGate;
   if (gate && gate.mode !== "off") {
     const check = checkGenerationNotes(user, type, gate, brand, opts.deadline, brandNames).catch((e): { block: false } => {
-      console.error("agent scope notes gate failed", e instanceof Error ? e.name : "error");
+      log.error("agent scope notes gate failed", e);
       return { block: false };
     });
     if (gate.mode === "enforce") {
@@ -414,7 +415,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
           held = tasks.length - kept.length;
           tasks = kept;
         }
-      } else late.push(run.catch((e) => console.error("agent scope items check failed", e instanceof Error ? e.name : "error")));
+      } else late.push(run.catch((e) => log.error("agent scope items check failed", e)));
     }
     // Together, not one round trip after another (Redis is HTTP per command). Every save settles before the guard
     // decides, so a refund below never races a save still landing.
@@ -428,7 +429,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     // commit failed are removed, or they stayed approvable for free and the Sunday retry planned the week a second time.
     // Their removal failing is logged and never stops the refund.
     const back = opts.once ? refundOnce(user.email, opts.once).then((r) => r.credits) : refund(user.email, cost, receipt);
-    const drop = tasks.length ? dropTasks(scope, tasks).catch((e) => console.error("refunded batch tasks not removed", e instanceof Error ? e.name : "error")) : null;
+    const drop = tasks.length ? dropTasks(scope, tasks).catch((e) => log.error("refunded batch tasks not removed", e)) : null;
     const [credits] = await Promise.all([back, opts.settle?.(), drop]);
     user.credits = credits;
     return { ok: false, reason: "failed", error, credits };
@@ -447,7 +448,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
       back = share;
     } catch (e) {
       // The error's name and where the charge was booked (agent, month, the top-up lots' ids), never the owner's email or text.
-      console.error("agent scope partial refund failed", e instanceof Error ? e.name : "error", { agent: receipt.agent, month: receipt.month, lots: receipt.from?.lots.map((l) => l.id) ?? [], share });
+      log.error("agent scope partial refund failed", { error: e, agent: receipt.agent, month: receipt.month, lots: receipt.from?.lots.map((l) => l.id) ?? [], share });
     }
   }
   const net = charged - back;

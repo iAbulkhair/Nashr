@@ -9,7 +9,7 @@ import ThemeToggle from "@/components/ui/ThemeToggle";
 import { Icon, type IconName } from "../app/Icons";
 import { SW } from "@/lib/staff-words";
 
-const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", skills: "strategy", integrations: "plug", wishlist: "spark", log: "clock" };
+const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", skills: "strategy", integrations: "plug", mail: "email", wishlist: "spark", log: "clock" };
 const T = {
   ar: { title: "لوحة المؤسس", back: "العودة للتطبيق", endKey: "إنهاء جلسة المفتاح", menu: "القائمة", staffLinks: "حساب الموظف" },
   en: { title: "Founder console", back: "Back to the app", endKey: "End key session", menu: "Menu", staffLinks: "Staff login" },
