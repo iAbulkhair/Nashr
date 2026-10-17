@@ -12,7 +12,10 @@ import styles from "./home.module.css";
  */
 const noSubscribe = () => () => {};
 
-export const barShows = (s: { formAbove: boolean; endShowing: boolean }) => s.formAbove && !s.endShowing;
+/** How far below the screen the form observer's root reaches: past the bottom of any page this tall. */
+export const FAR_BELOW = 100_000;
+
+export const barShows =(s: { formAbove: boolean; endShowing: boolean }) => s.formAbove && !s.endShowing;
 
 /**
  * The phone's start bar (rule 1845): a sentinel that sits where the cover's form ends, and a bar fixed to the bottom of
@@ -30,7 +33,12 @@ export default function StickyStart({ lang, label }: { lang: Lang; label: string
   useEffect(() => {
     const el = sentinel.current;
     if (!el) return;
-    const form = new IntersectionObserver(([e]) => setFormAbove(!e.isIntersecting && e.boundingClientRect.top < 0));
+    // The root reaches far below the screen, so the sentinel counts as "in" until it passes the top edge. With the form
+    // under the team (rule 1892) it starts below the first screen, and a jump past it (a nav anchor, a fast fling) went
+    // from below to above without ever meeting the screen: a plain observer saw no change and the bar never showed.
+    const form = new IntersectionObserver(([e]) => setFormAbove(!e.isIntersecting && e.boundingClientRect.top < 0), {
+      rootMargin: `0px 0px ${FAR_BELOW}px 0px`,
+    });
     form.observe(el);
     const seen = new Set<Element>();
     const end = new IntersectionObserver((entries) => {
