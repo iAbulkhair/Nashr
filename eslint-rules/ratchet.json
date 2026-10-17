@@ -1,0 +1,12 @@
+{
+  "note": "Warnings per rule over src/ that may only go down (rules 2092, 2096). tests/lint-ratchet.test.ts fails above these numbers. After a clean-up run `node scripts/lint-ratchet.mjs --write`; a rule that reaches 0 leaves this file and becomes an error in eslint-rules/tooling-rules.mjs.",
+  "rules": {
+    "@typescript-eslint/await-thenable": 10,
+    "jsx-a11y/click-events-have-key-events": 5,
+    "jsx-a11y/media-has-caption": 2,
+    "jsx-a11y/no-autofocus": 14,
+    "jsx-a11y/no-noninteractive-element-interactions": 3,
+    "jsx-a11y/no-noninteractive-tabindex": 1,
+    "jsx-a11y/no-static-element-interactions": 4
+  }
+}

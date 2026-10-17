@@ -4,6 +4,8 @@ import { isLang } from "@/lib/i18n";
 import { requireAdmin } from "@/lib/admin-gate-server";
 import { adminHref } from "@/lib/admin-gate";
 import { adminTestOptions, consoleState } from "@/lib/skills-admin";
+import { appDict } from "@/lib/app-i18n";
+import { pickSkillsDict } from "@/lib/skills-admin-dict";
 import SkillsAdminPanel from "@/components/admin/SkillsAdminPanel";
 import { EndedGate, EndedNotice } from "@/components/admin/shared";
 
@@ -19,5 +21,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (gate.ended) return <EndedNotice lang={lang} keySession />;
   const { keySession } = gate;
   const initial = await consoleState();
-  return <EndedGate lang={lang} keySession={keySession}><SkillsAdminPanel lang={lang} keySession={keySession} initial={initial} testOptions={adminTestOptions()} /></EndedGate>;
+  return <EndedGate lang={lang} keySession={keySession}><SkillsAdminPanel lang={lang} keySession={keySession} initial={initial} testOptions={adminTestOptions()} dict={pickSkillsDict(appDict[lang])} /></EndedGate>;
 }

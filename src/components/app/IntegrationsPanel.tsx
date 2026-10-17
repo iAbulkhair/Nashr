@@ -278,7 +278,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
         </section>
       ))}
 
-      <form onSubmit={(e) => { e.preventDefault(); if (other.trim()) { req("other:" + other.trim().toLowerCase(), other.trim()); setOther(""); } }} className="mt-8 flex max-w-md items-end gap-2">
+      <form onSubmit={(e) => { e.preventDefault(); if (other.trim()) { void req("other:" + other.trim().toLowerCase(), other.trim()); setOther(""); } }} className="mt-8 flex max-w-md items-end gap-2">
         <Field label={g.other} className="min-w-0 flex-1"><Input value={other} onChange={(e) => setOther(e.target.value)} maxLength={80} /></Field>
         <Button type="submit">{g.send}</Button>
       </form>

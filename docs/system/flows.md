@@ -1285,3 +1285,16 @@ Supastarter gap study 2026-10-16 (UX rollout, wave 1b), built with our own primi
 ### 81.1 Releases
 
 No stored shape changes: one release, no expand/contract step.
+
+## 85. Tooling, lint and measured performance (2026-10-17, branch `claude/wave2-perf-a11y-lint-cced78`, rules 2090-2101)
+
+Wave 2e of the supastarter gap study. Nothing a customer sees changes; the checks that guard the code get stricter and the build gets smaller.
+
+1. jsx-a11y (rules 2090-2093). `eslint.config.mjs` applies the plugin's recommended rules to `src/**/*.tsx` through `a11yRules()` in `eslint-rules/tooling-rules.mjs`. The plugin is a direct devDependency; `eslint-config-next` already registered it with six rules as warnings. A rule with no violation is an `error` and fails `npm run lint`. A rule with violations (29 in all: modal backdrops, autofocus in dialogs and sign-in, two videos without captions) is a `warn` and sits in `eslint-rules/ratchet.json`.
+2. Type-aware rules (rules 2094-2097). `src/**/*.{ts,tsx}` is linted with `projectService` against `tsconfig.json`: `no-floating-promises` and `no-misused-promises` (not for JSX attributes) are errors, `await-thenable` is a warning with ten hits. A promise nobody waits for in an event handler now says `void` on the call, so the next reader can tell it was meant.
+3. The ratchet (rules 2092, 2096). `tests/lint-ratchet.test.ts` lints `src` through the ESLint API and fails on any lint error or any ratcheted rule above its count. After a clean-up, `node scripts/lint-ratchet.mjs --write` lowers `ratchet.json`; a rule that reaches 0 is deleted there and loses its entry in `A11Y_RATCHETED`/`TYPE_RATCHETED`, which makes it an error. The count never goes up in a change that is not also removing a violation.
+4. Measured performance (rules 2098-2101). `scripts/route-sizes.mjs` reads a `next build --webpack` output (Next 16 prints no First Load JS column): shared runtime, each route's own page and layout chunks, and the total, all gzip. Two changes moved the numbers: the founder skills console no longer imports the whole dictionary (the page passes `pickSkillsDict(appDict[lang])`, rule 2098), and `MeetingPanel` loads on the first click (rule 2099). The public site has no raster image to optimise (rule 2101); `next/image` stays out of the inbox and library, which show media from hosts that are not ours.
+
+### 85.1 Releases
+
+No stored shape changes: one release, no expand/contract step. The lockfile gains one root `devDependencies` line (the package was already locked at 6.10.2).

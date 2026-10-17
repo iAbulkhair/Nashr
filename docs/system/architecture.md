@@ -323,6 +323,18 @@ Opportunistic sweep: the image, video and poll routes schedule `maybeSweep(media
 | Connector platforms | X, Shopify, Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat (OAuth); WordPress, WooCommerce, Klaviyo, Odoo, PrestaShop, Telegram, Brevo (keys). Actual API use exists for X, Shopify, Meta (Facebook Page and Instagram publishing), WordPress, WooCommerce, Odoo, PrestaShop, Telegram, Salla and Zid (product import and the store-sales sync), Brevo (verify only), Klaviyo (verify only). Google, LinkedIn, TikTok, Snapchat only complete the OAuth exchange and store tokens. |
 | Arbitrary customer websites | `crawl.ts:51` and `catalog.ts:13,27` fetch URLs supplied by the user or discovered in sitemaps. |
 
+### 2.8 Tooling and measured performance (2026-10-17, rules 2090-2101)
+
+| Piece | Where | What |
+|---|---|---|
+| Flat ESLint config | `eslint.config.mjs` | `eslint-config-next` (core web vitals, typescript), the `thakeen-ui` plugin (`eslint-rules/thakeen-ui.mjs`, rules 1095-1098, 1200-1201), the jsx-a11y recommended set for `src/**/*.tsx`, and three type-aware promise rules for `src/**/*.{ts,tsx}` with `projectService` |
+| Which rule is an error | `eslint-rules/tooling-rules.mjs` | `A11Y_RATCHETED` and `TYPE_RATCHETED` list the rules that still have violations (warnings); every other rule of those sets is an error. Options with a reason sit beside them |
+| Ratchet | `eslint-rules/ratchet.json`, `eslint-rules/ratchet.mjs`, `scripts/lint-ratchet.mjs`, `tests/lint-ratchet.test.ts` | Per-rule warning counts over `src` that may only go down |
+| Route sizes | `scripts/route-sizes.mjs` | Gzip client JS per route and in total from a webpack build; `--diff a.json b.json` compares two runs |
+| Skills console words | `src/lib/skills-admin-dict.ts` | `pickSkillsDict` picks the dictionary keys the founder skills console and the instruction editor read, on the server |
+
+`npm run check` is `tsc --noEmit -p . && eslint && vitest run`. Type-aware lint made `eslint` slower (18.5 s to 28 s) and the ratchet test lints `src` once more inside the unit tests (about 20 s, in parallel with the other files). The lockfile rule in CLAUDE.md still applies when a dependency changes: npm 11.5 drops the optional `@rolldown/binding-*` entries when it regenerates the lock, so a change to a single root line was made by hand.
+
 ## 3. Redis key namespace
 
 "scope" means `email` for the default brand or `email#brandId` for extra brands (`scopeFor`, `src/lib/brands.ts:60`). "email" and "owner" mean the normalized account (owner) email; "login" means the address a person signs in with, an owner's or a member's (2026-09-29). No key has a TTL unless stated.

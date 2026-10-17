@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { appDict } from "@/lib/app-i18n";
+import type { SkillsDict } from "@/lib/skills-admin-dict";
 import type { By } from "@/lib/actor";
 import { isAgentId, type AgentId } from "@/lib/agents";
 import { adminFetch } from "@/lib/admin-fetch";
@@ -22,7 +22,8 @@ type Reply = { ok: boolean; status: number; j: Record<string, unknown> };
 
 const URL = "/api/admin/skills";
 
-/** The console's own words. The editor, the errors and the agent names come from the shared dictionary (`appDict`). */
+/** The console's own words. The editor, the errors and the agent names come from the shared dictionary, passed in by the page as `dict`
+ * (rule 2098): importing `appDict` here would ship both languages of the whole dictionary to the browser. */
 const S = {
   ar: {
     title: "مهارات الوكلاء",
@@ -124,7 +125,7 @@ function Body({ md }: { md: string }) {
 }
 
 /** One instruction as a comparison or a workspace view shows it: plain text, and what else differs. */
-function ItemLine({ t, i }: { t: ReturnType<typeof dictOf>; i: Instruction }) {
+function ItemLine({ t, i }: { t: SkillsDict; i: Instruction }) {
   const I = t.instructions;
   const meta = [i.agents === "all" ? "" : fill(I.itemFor, { agents: i.agents.map((a) => targetLabel(t, a)).join(", ") }), i.on ? "" : I.itemOff, i.lock ? I.locked : ""].filter(Boolean).join(" · ");
   return (
@@ -134,7 +135,6 @@ function ItemLine({ t, i }: { t: ReturnType<typeof dictOf>; i: Instruction }) {
     </p>
   );
 }
-const dictOf = (lang: Lang) => appDict[lang];
 
 /**
  * The founder's skills console (agent skills portal, spec 8.2; rules 958-959). The state comes from the server render
@@ -143,8 +143,8 @@ const dictOf = (lang: Lang) => appDict[lang];
  * follows the layer an answer carries (`formAfterWrite`), so a save from a second tab never overwrites newer text:
  * `stale` offers a reload instead. Restore waits while the form has unsaved edits (`restoreBlocked`).
  */
-export default function SkillsAdminPanel({ lang, keySession, initial, testOptions }: { lang: Lang; keySession: boolean; initial: ConsoleState; testOptions: AdminTestOption[] }) {
-  const t = dictOf(lang);
+export default function SkillsAdminPanel({ lang, keySession, initial, testOptions, dict }: { lang: Lang; keySession: boolean; initial: ConsoleState; testOptions: AdminTestOption[]; dict: SkillsDict }) {
+  const t = dict;
   const I = t.instructions;
   const G = t.governance;
   const A = S[lang];

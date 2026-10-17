@@ -114,7 +114,7 @@ export async function POST(req: Request) {
   if (quote.routed.rejected) await noteRejectedPick("generate", quote.routed.rejected);
   if (!quote.available) return bad("model_unavailable", 503);
 
-  const by = await byOf(u);
+  const by = byOf(u);
   // The claim comes before the charge: whoever loses it has taken nothing.
   const row = (kind: Activity["kind"]): Activity => ({ at: new Date().toISOString(), kind, agent, by, via: "app", type, note: "instruction test" });
   const claim = `skilltest:${scope}:${nonce}`;

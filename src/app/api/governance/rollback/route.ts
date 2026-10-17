@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   const b = ((await req.json().catch(() => ({}))) ?? {}) as { id?: unknown; confirmAutoHandoff?: unknown };
   if (!isRevisionId(b.id)) return NextResponse.json({ ok: false, error: "bad_id" }, { status: 400 });
   // A restore that would switch Majed's auto-run back on needs the same explicit confirmation as a save.
-  const r = await rollbackGov(sc(u), b.id, await byOf(u), { confirmAutoHandoff: b.confirmAutoHandoff === true });
+  const r = await rollbackGov(sc(u), b.id, byOf(u), { confirmAutoHandoff: b.confirmAutoHandoff === true });
   if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: r.error === "not_found" ? 404 : r.error === "busy" ? 409 : 400 });
   // The change as the history lists it (null when nothing changed), so the page adds it without another request.
   return NextResponse.json({ ok: true, governance: r.governance, entry: r.revision ? historyView([r.revision])[0] : null });

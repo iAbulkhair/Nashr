@@ -12,7 +12,7 @@ export default function ReferPanel({ t, lang, code, count, earned, origin }: { t
   const [tab, setTab] = useState<"refer" | "social">("refer");
   const [done, setDone] = useState<string[]>([]);
   const toast = useToast();
-  useEffect(() => { fetch("/api/referral/share").then((x) => x.json()).then((j) => j.ok && setDone(j.done)); }, []);
+  useEffect(() => { void fetch("/api/referral/share").then((x) => x.json()).then((j) => j.ok && setDone(j.done)); }, []);
   const post = r.socialText + " " + `${origin}/${lang}`;
   const shares: { id: string; label: string; url: string }[] = [
     { id: "x", label: "X", url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(post)}` },
