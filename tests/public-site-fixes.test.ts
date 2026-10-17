@@ -30,7 +30,7 @@ describe("rule 1584: Western digits in the whole UI, Arabic pages included", () 
   const ARABIC_INDIC = /[٠-٩۰-۹]/;
   // Parsers that read what a person typed or pasted turn Arabic-Indic digits into Western ones; they keep the digits on
   // purpose and are not UI copy.
-  const PARSERS = new Set(["src/lib/perf-import.ts", "src/lib/cart-recovery.ts", "src/lib/instructions-safety.ts", "src/lib/verify-email.ts", "src/lib/verify-client.ts", "src/lib/secretary.ts", "src/lib/golden.ts"]);
+  const PARSERS = new Set(["src/lib/perf-import.ts", "src/lib/cart-recovery.ts", "src/lib/instructions-safety.ts", "src/lib/verify-email.ts", "src/lib/verify-client.ts", "src/lib/secretary-input.ts", "src/lib/golden.ts"]);
   const ui = [...walk("src/components"), ...walk("src/app"), ...walk("src/lib").filter((f) => /\.tsx?$/.test(f))].filter((f) => /\.(tsx?|css)$/.test(f) && !PARSERS.has(f));
 
   it("no component, page or copy file writes an Arabic-Indic digit", () => {

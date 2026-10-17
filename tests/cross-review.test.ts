@@ -425,7 +425,7 @@ describe("a failed review never blocks the batch (rule 266)", () => {
 
   it("every caller with a request or invocation deadline hands it to the batch; the Sunday plan's type is not cross-reviewed", () => {
     const calls = (f: string) => readFileSync(f, "utf8").split("\n").filter((l) => /\bgenerateBatch\(/.test(l) && !/^import|function generateBatch/.test(l.trim()));
-    for (const f of ["src/app/api/generate/route.ts", "src/app/api/mcp/route.ts", "src/lib/chat.ts", "src/lib/handoffs.ts", "src/lib/routines.ts"]) {
+    for (const f of ["src/app/api/generate/route.ts", "src/app/api/mcp/route.ts", "src/lib/chat-run-tool.ts", "src/lib/handoffs.ts", "src/lib/routines.ts"]) {
       const lines = calls(f);
       expect(lines.length, f).toBeGreaterThan(0);
       for (const l of lines) expect(l, f).toMatch(/\bdeadline\b/);

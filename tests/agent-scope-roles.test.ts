@@ -399,7 +399,7 @@ describe("rule 798: Layer 3, roles for every agent", () => {
     expect(line).not.toContain("dangerouslySetInnerHTML");
     expect(appDict.ar.chat.switchTo).toBe("تحدّث مع {name}");
     expect(appDict.en.chat.switchTo).toBe("Talk to {name}");
-    const ChatMsgField = readFileSync("src/lib/chat.ts", "utf8");
+    const ChatMsgField = readFileSync("src/lib/chat-history.ts", "utf8");
     expect(ChatMsgField).toMatch(/switchTo\?: AgentId/);
   });
 });
