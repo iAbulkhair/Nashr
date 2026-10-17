@@ -12,6 +12,7 @@ import { compareItems, daysBetween, overdueAlerts, partyKey, partyName, zoneDay,
 import type { Zone } from "./zones";
 import { appOrigin } from "./origin";
 import { inAppAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
+import { accountKey } from "./keys";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -21,7 +22,7 @@ import { inAppAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
 export type NotifKind = "due" | "pending" | "weekly" | "credits" | "trial" | "quality" | "info" | "todo";
 export type Notif = { id: string; kind: NotifKind; title: string; body: string; href: string; at: string; read?: boolean; agent?: AgentId };
 
-const KEY = (email: string) => `notifs:${email}`;
+const KEY = (email: string) => accountKey.notifications(email);
 const MAX = 50;
 
 export async function listNotifs(email: string): Promise<Notif[]> {

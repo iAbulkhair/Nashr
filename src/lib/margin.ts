@@ -9,6 +9,7 @@ import { notifyItem } from "./notifications";
 import { pmap } from "./parallel";
 import { day } from "./track";
 import { log } from "./log";
+import { globalKey } from "./keys";
 
 /**
  * The daily margin alert (rules 1530-1539, docs/system/flows.md section 69). The PRD asks for it before the first
@@ -124,7 +125,7 @@ export function alertText(rows: readonly Pick<MarginRow, "plan" | "marginPct">[]
 export async function runMarginAlert(now = new Date()): Promise<MarginRun | { error: string }> {
   try {
     const d = day(now), month = monthKey(now);
-    const emails = await db.smembers("users:all");
+    const emails = await db.smembers(globalKey.usersAll());
     const users = (await pmap(emails, (e) => getUser(e), 12)).filter((u): u is User => !!u);
     const rows = await accountMargins(users, month);
     const under = underFloor(rows);

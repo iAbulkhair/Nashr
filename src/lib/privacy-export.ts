@@ -9,12 +9,13 @@ import { consentOf, type ConsentView } from "./consent";
 import { CAPS, db } from "./db";
 import { pmap } from "./parallel";
 import { foundingView } from "./founding";
+import { workspaceScope, wsKey, type Scope } from "./keys";
 
 /**
  * The owner's own copy of their data (PDPL access and portability; rules 1320-1324): GET /api/account/export.
  *
  * Every key is built from the signed-in owner's email (`u.email`, set by `currentUser` from the session) and the brand
- * scopes of that account (`scopeFor(u.email, id)` over `listBrands(u.email)`, exactly as `wipeAccount` finds them);
+ * scopes of that account (`workspaceScope(u.email, id)` over `listBrands(u.email)`, exactly as `wipeAccount` finds them);
  * nothing comes from the request. Reads go out together: `mget` in chunks for records, `pmap` for lists, never one
  * command per record in a loop.
  *
@@ -83,22 +84,22 @@ export function connectionView(s: StoredConnection): ExportConnection {
 }
 
 /** Everything one brand scope holds that the export covers, read in parallel. */
-async function brandData(scope: string): Promise<Omit<ExportBrand, "id" | "name" | "status" | "createdAt" | "active">> {
+async function brandData(scope: Scope): Promise<Omit<ExportBrand, "id" | "name" | "status" | "createdAt" | "active">> {
   const [profile, taskIds, fileNames, convIds, connIds, defaultThread] = await Promise.all([
-    db.get<Brand>(`brand:${scope}`),
+    db.get<Brand>(wsKey.brand(scope)),
     // Every task, not only the newest 200 the inbox reads.
-    db.lrange(`tasks:${scope}`, 0, -1),
-    db.smembers(`files:${scope}`),
-    db.lrange(`convs:${scope}`, 0, -1),
-    db.smembers(`conns:${scope}`),
-    db.lrange(`chat:${scope}`, 0, CAPS.chat - 1),
+    db.lrange(wsKey.tasks(scope), 0, -1),
+    db.smembers(wsKey.files(scope)),
+    db.lrange(wsKey.convs(scope), 0, -1),
+    db.smembers(wsKey.conns(scope)),
+    db.lrange(wsKey.chat(scope), 0, CAPS.chat - 1),
   ]);
   const [tasks, files, convs, conns, threads] = await Promise.all([
-    mgetAll<Task>(taskIds.map((id) => `task:${scope}:${id}`)),
-    mgetAll<WFile>(fileNames.map((n) => `file:${scope}:${n}`)),
-    mgetAll<Conversation>(convIds.map((id) => `conv:${scope}:${id}`)),
-    mgetAll<StoredConnection>(connIds.map((p) => `conn:${scope}:${p}`)),
-    pmap(convIds, (id) => db.lrange(`chat:${scope}:${id}`, 0, CAPS.chat - 1)),
+    mgetAll<Task>(taskIds.map((id) => wsKey.task(scope, id))),
+    mgetAll<WFile>(fileNames.map((n) => wsKey.file(scope, n))),
+    mgetAll<Conversation>(convIds.map((id) => wsKey.conv(scope, id))),
+    mgetAll<StoredConnection>(connIds.map((p) => wsKey.conn(scope, p))),
+    pmap(convIds, (id) => db.lrange(wsKey.chat(scope, id), 0, CAPS.chat - 1)),
   ]);
   const conversations: ExportConversation[] = [];
   // The legacy default thread has no record (src/lib/conversations.ts): exported under the id "default" when it has messages.
@@ -120,7 +121,7 @@ export async function buildExport(u: User, now = new Date()): Promise<AccountExp
   // its own scope derived from the same signed-in owner.
   const activeScope = sc(u);
   const brands = await listBrands(owner);
-  const data = await pmap(brands, (b) => brandData(scopeFor(owner, b.id)), 4);
+  const data = await pmap(brands, (b) => brandData(workspaceScope(owner, b.id)), 4);
   return {
     format: EXPORT_FORMAT,
     exportedAt: now.toISOString(),

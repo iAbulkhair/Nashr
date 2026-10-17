@@ -14,6 +14,7 @@ import { mailReady, sendEmail } from "./notify";
 import { sameSecret } from "./rate";
 import { getMember, membersKey, moveMemberLogin } from "./team";
 import { devCodeExposed, moveOwnerLogin, normalizeCode, VERIFY } from "./verify-email";
+import { accountKey, workspaceScope, wsKey } from "./keys";
 
 /**
  * Self-serve change of the sign-in address (rules 1942-1945, docs/system/flows.md "Changing the sign-in address").
@@ -36,8 +37,8 @@ import { devCodeExposed, moveOwnerLogin, normalizeCode, VERIFY } from "./verify-
 export const EMAIL_CHANGE = { ttl: VERIFY.ttl, attempts: VERIFY.attempts } as const;
 
 type Pending = { to: string; hash: string; at: number };
-const pendingKey = (login: string) => `emailchange:${normalizeEmail(login)}`;
-const triesKey = (login: string) => `emailchange:tries:${normalizeEmail(login)}`;
+const pendingKey = (login: string) => accountKey.emailChange(normalizeEmail(login));
+const triesKey = (login: string) => accountKey.emailChangeTries(normalizeEmail(login));
 const hashOf = (login: string, to: string, code: string) => createHash("sha256").update(`nashr-emailchange:${login}:${to}:${code}`).digest("hex");
 
 export type Acting = { kind: "owner" | "member"; email: string };
@@ -53,12 +54,14 @@ export type StartRefusal = "invalid_email" | "same_email" | "taken" | "owner_has
  */
 export async function ownerHasData(u: User): Promise<boolean> {
   const e = u.email;
+  // The owner's default brand: its scope is the account email (`workspaceScope`), from the signed-in record.
+  const s = workspaceScope(e, "default");
   if (u.plan !== "trial" || u.paidOnce || u.firstPaidOn || u.billing || u.partnerCode || u.founding || u.priceLock || u.onboardPaid || u.handPlan || (u.topups?.length ?? 0) > 0) return true;
-  const lists = [`tasks:${e}`, `convs:${e}`, activityKey(e), `decisions:${e}`, `handoffs:${e}`, SEC_KEYS.notes(e)];
+  const lists = [wsKey.tasks(s), wsKey.convs(s), activityKey(e), wsKey.decisions(s), `handoffs:${e}`, SEC_KEYS.notes(e)];
   const [brands, strings, counts, ...heads] = await Promise.all([
     listBrands(e),
-    db.mget<unknown>([`brand:${e}`, `mcptoken-of:${e}`, cardKey(e), chatTrialKey(e), layerKey(e), `gov:${e}`, profileKey(e), SEC_KEYS.cal(e)]),
-    db.scardMany([`files:${e}`, `conns:${e}`, membersKey(e), `invites:${e}`, SEC_KEYS.all(e)]),
+    db.mget<unknown>([wsKey.brand(s), accountKey.mcpTokenOf(e), cardKey(e), chatTrialKey(e), layerKey(e), wsKey.gov(s), profileKey(e), SEC_KEYS.cal(e)]),
+    db.scardMany([wsKey.files(s), wsKey.conns(s), membersKey(e), accountKey.invites(e), SEC_KEYS.all(e)]),
     ...lists.map((k) => db.lrange(k, 0, 0)),
   ]);
   return brands.length > 1 || strings.some((v) => v !== null && v !== undefined) || counts.some((n) => n > 0) || heads.some((h) => h.length > 0);

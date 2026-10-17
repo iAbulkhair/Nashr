@@ -14,6 +14,7 @@ import { holdsTt, readTiktok } from "./social-read/tiktok";
 import { holdsYt, readYoutube } from "./social-read/youtube";
 import { X_MAX_POSTS } from "./connectors/x";
 import { log } from "./log";
+import { scopeParam, wsKey } from "./keys";
 
 /**
  * Social platform results, read through Composio for Dana's reports and the Reports page
@@ -25,7 +26,7 @@ import { log } from "./log";
 
 /** The shared helpers live in social-read/common.ts so each platform's reader can use them without a cycle. */
 export { EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, rangeBefore, splitDays };
-export const SOCIAL_KEY = (scope: string) => `socialstats:${scope}`;
+export const SOCIAL_KEY = (scope: string) => wsKey.socialStats(scopeParam(scope));
 const DAYS = 28;
 const MAX_POSTS = 30;
 const DUE_MS = 20 * 36e5;

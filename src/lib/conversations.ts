@@ -4,6 +4,8 @@ import { pmap } from "./parallel";
 import type { ChatMsg } from "./chat";
 import type { AgentId } from "./agents";
 import { log } from "./log";
+import { scopeParam, wsKey } from "./keys";
+import { ConversationRecord, parseStored } from "./stored";
 
 /**
  * Multiple conversations per scope, searchable. `chat:{scope}` stays the legacy default thread, which has no record.
@@ -18,10 +20,13 @@ export type Conversation = { id: string; title: string; createdAt: string; updat
  */
 const isConversationId = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id);
 
+/** A stored conversation record, checked (rule 2039): null when absent or when it has no id, logged without values. */
+const asConversation = (raw: unknown) => parseStored("conversation", ConversationRecord, raw, null) as Conversation | null;
+
 /** The record of conversation `id` under `scope`, or null: not one, or not a well-formed id (nothing is read then). */
 export async function getConversation(scope: string, id: unknown): Promise<Conversation | null> {
   if (!isConversationId(id)) return null;
-  return db.get<Conversation>(`conv:${scope}:${id}`);
+  return asConversation(await db.get<unknown>(wsKey.conv(scopeParam(scope), id)));
 }
 
 /**
@@ -43,7 +48,7 @@ const LOCK_WAIT_MS = 50;
 const LOCK_TTL_S = 10;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function withConversationLock<T>(scope: string, id: string, fn: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
-  const key = `convlock:${scope}:${id}`;
+  const key = wsKey.convLock(scopeParam(scope), id);
   let token: string | null = null;
   for (let i = 0; i < LOCK_TRIES && !token; i++) {
     token = await db.lockOwned(key, LOCK_TTL_S);
@@ -68,9 +73,9 @@ export type ConversationWrite = "ok" | "not_found" | "busy";
  */
 export async function setConversationModel(scope: string, id: unknown, model: string | null): Promise<ConversationWrite> {
   if (!isConversationId(id)) return "not_found";
-  const key = `conv:${scope}:${id}`;
+  const key = wsKey.conv(scopeParam(scope), id);
   const r = await withConversationLock(scope, id, async () => {
-    const c = await db.get<Conversation>(key);
+    const c = asConversation(await db.get<unknown>(key));
     if (!c || c.id !== id) return false;
     if (model === null) delete c.model;
     else c.model = model;
@@ -82,15 +87,15 @@ export async function setConversationModel(scope: string, id: unknown, model: st
 }
 
 export async function listConversations(scope: string): Promise<Conversation[]> {
-  const ids = await db.lrange(`convs:${scope}`, 0, 99);
+  const ids = await db.lrange(wsKey.convs(scopeParam(scope)), 0, 99);
   // Up to 100 conversations in one MGET (rule 1430), not one command each: the sidebar asks on every navigation.
-  const out = (await mgetChunked<Conversation>(ids.map((id) => `conv:${scope}:${id}`))).filter((c): c is Conversation => !!c);
+  const out = (await mgetChunked<unknown>(ids.map((id) => wsKey.conv(scopeParam(scope), id)))).map(asConversation).filter((c): c is Conversation => !!c);
   return out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 export async function createConversation(scope: string, title: string, agent: AgentId = "noor"): Promise<Conversation> {
   const c: Conversation = { id: randomBytes(6).toString("hex"), title: title.slice(0, 80), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), count: 0, agent };
-  await db.set(`conv:${scope}:${c.id}`, c);
-  await db.lpush(`convs:${scope}`, c.id);
+  await db.set(wsKey.conv(scopeParam(scope), c.id), c);
+  await db.lpush(wsKey.convs(scopeParam(scope)), c.id);
   return c;
 }
 /**
@@ -100,9 +105,9 @@ export async function createConversation(scope: string, title: string, agent: Ag
  */
 export async function touchConversation(scope: string, id: string, firstUserText?: string): Promise<void> {
   if (!isConversationId(id)) return;
-  const key = `conv:${scope}:${id}`;
+  const key = wsKey.conv(scopeParam(scope), id);
   const r = await withConversationLock(scope, id, async () => {
-    const c = await db.get<Conversation>(key);
+    const c = asConversation(await db.get<unknown>(key));
     if (!c) return;
     c.updatedAt = new Date().toISOString();
     c.count += 1;
@@ -114,9 +119,9 @@ export async function touchConversation(scope: string, id: string, firstUserText
 /** Rename under the conversation's lock; `not_found` (nothing written) when it does not exist, `busy` when the lock was not taken. */
 export async function renameConversation(scope: string, id: string, title: string): Promise<ConversationWrite> {
   if (!isConversationId(id)) return "not_found";
-  const key = `conv:${scope}:${id}`;
+  const key = wsKey.conv(scopeParam(scope), id);
   const r = await withConversationLock(scope, id, async () => {
-    const c = await db.get<Conversation>(key);
+    const c = asConversation(await db.get<unknown>(key));
     if (!c) return false;
     c.title = title.slice(0, 80);
     await db.set(key, c);
@@ -136,7 +141,7 @@ export async function renameConversation(scope: string, id: string, title: strin
 export async function liveConversations(scope: string, ids: readonly string[]): Promise<Set<string>> {
   const uniq = [...new Set(ids)];
   if (!uniq.length) return new Set();
-  const rows = await db.mget<Conversation>(uniq.map((id) => `conv:${scope}:${id}`));
+  const rows = await db.mget<Conversation>(uniq.map((id) => wsKey.conv(scopeParam(scope), id)));
   return new Set(uniq.filter((_, i) => rows[i] !== null));
 }
 /**
@@ -148,7 +153,7 @@ export async function deleteConversation(scope: string, id: string): Promise<Con
   const r = await withConversationLock(scope, id, async () => {
     // The id has to leave the index as well as the record. `listConversations` reads only the newest 100 ids, so dead
     // ids left behind push live conversations out of that window and they disappear from the owner's list for good.
-    await Promise.all([db.del(`conv:${scope}:${id}`), db.del(`chat:${scope}:${id}`), db.lrem(`convs:${scope}`, id)]);
+    await Promise.all([db.del(wsKey.conv(scopeParam(scope), id)), db.del(wsKey.chat(scopeParam(scope), id)), db.lrem(wsKey.convs(scopeParam(scope)), id)]);
   });
   return r.ok ? "ok" : "busy";
 }
@@ -158,7 +163,7 @@ export async function searchConversations(scope: string, q: string) {
   if (!needle) return [];
   const hits: { conversationId: string; title: string; snippet: string; at: string }[] = [];
   const convs = await listConversations(scope);
-  const threads: [string, string][] = [["default", `chat:${scope}`], ...convs.map((c): [string, string] => [c.id, `chat:${scope}:${c.id}`])];
+  const threads: [string, string][] = [["default", wsKey.chat(scopeParam(scope))], ...convs.map((c): [string, string] => [c.id, wsKey.chat(scopeParam(scope), c.id)])];
   // Every thread read together, 8 at a time (rule 1431): one awaited LRANGE per thread made a search on 100 threads 101
   // round trips in a row.
   const pages = await pmap(threads, ([, key]) => db.lrange(key, 0, 199), 8);

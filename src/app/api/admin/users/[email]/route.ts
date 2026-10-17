@@ -30,6 +30,7 @@ import { TRIAL_EXTEND_MAX_DAYS, parseImpersonateMinutes } from "@/lib/admin-inpu
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import { isSuspended, parseSuspendFor, suspensionEnd, suspensionExpired } from "@/lib/suspension";
 import { endExpiredSuspension } from "@/lib/suspension-server";
+import { accountKey } from "@/lib/keys";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     chatStatus(u, route("chat").model),
     listConnections(u.email),
     Promise.all(scopes.map((s) => listConversations(s))).then((x) => x.flat().length),
-    db.lrange(`referrals:${u.email}`, 0, 99).then((x) => x.length),
+    db.lrange(accountKey.referrals(u.email), 0, 99).then((x) => x.length),
     // The latest 100 activity rows of each brand, every brand in parallel (the scopes come from the account's own list).
     Promise.all(brands.map((b, i) => listActivity(scopes[i], { limit: 100 }).then((p) => ({ brand: b.id, name: b.name, rows: p.rows })))),
     // Packs whose refund is not on their payment yet: the Top-ups block offers "Finish refund" on them (rule 465).

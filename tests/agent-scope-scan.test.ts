@@ -32,7 +32,7 @@ describe("rule 1414: where the agent-scope gates sit", () => {
     const CALLERS: Record<string, { n: number; why: string }> = {
       "src/app/api/generate/route.ts": { n: 1, why: "owner notes, gated (notesGate, rule 796)" },
       "src/app/api/mcp/route.ts": { n: 1, why: "owner notes, gated (notesGate, rule 796)" },
-      "src/lib/chat.ts": { n: 2, why: "the turn's owner text already passed the chat input gate (rule 794); the tools are role-gated (rule 798)" },
+      "src/lib/chat-run-tool.ts": { n: 2, why: "the turn's owner text already passed the chat input gate (rule 794); the tools are role-gated (rule 798)" },
       "src/lib/routines.ts": { n: 1, why: "code notes (routineNote), no owner text (R5)" },
       "src/lib/schedule.ts": { n: 1, why: "code notes (WEEKLY_NOTE), no owner text (R5)" },
       "src/lib/handoffs.ts": { n: 1, why: "Majed's lead brief, model text checked by the output gate on the items (R5)" },
@@ -57,7 +57,7 @@ describe("rule 1414: where the agent-scope gates sit", () => {
   });
 
   it("write tools never take a brand, scope or email from input", () => {
-    const tools = fnSlice(read("src/lib/chat.ts"), "export async function runTool(");
+    const tools = fnSlice(read("src/lib/chat-run-tool.ts"), "export async function runTool(");
     expect(tools.match(/\binput\.(scope|email|brandId|brand)\b/g) ?? []).toEqual([]);
     expect(read("src/app/api/mcp/route.ts").match(/\bargs\.(scope|email|brandId|brand)\b/g) ?? []).toEqual([]);
   });
@@ -73,7 +73,7 @@ describe("rule 1414: where the agent-scope gates sit", () => {
     const route = read("src/app/api/publish/[id]/route.ts");
     expect(route.indexOf("publishScopeCheck(")).toBeGreaterThan(-1);
     expect(route.indexOf("publishScopeCheck(")).toBeLessThan(route.indexOf("publishOnce("));
-    const tools = fnSlice(read("src/lib/chat.ts"), "export async function runTool(");
+    const tools = fnSlice(read("src/lib/chat-run-tool.ts"), "export async function runTool(");
     const item = tools.slice(tools.indexOf('case "publish_item"'));
     expect(item.indexOf("publishScopeCheck(")).toBeGreaterThan(-1);
     expect(item.indexOf("publishScopeCheck(")).toBeLessThan(item.indexOf("publishOnce("));

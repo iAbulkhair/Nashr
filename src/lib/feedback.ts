@@ -4,6 +4,7 @@ import { listLite, type TaskType } from "./brand";
 import { listDecisions } from "./decisions";
 import { getGov, type Governance } from "./governance";
 import { asData } from "./json";
+import { scopeParam, wsKey } from "./keys";
 
 /**
  * What the owner thought of one agent's own recent work, for that agent's next prompt. Per brand scope, the last
@@ -45,7 +46,7 @@ export async function feedbackFor(scope: string, agent: AgentId, opts: { chat?: 
     opts.gov ?? getGov(scope),
     listDecisions(scope),
     listLite(scope, new Date(from)),
-    opts.chat ? db.lrange(`fblog:${scope}`, 0, -1) : ([] as string[]),
+    opts.chat ? db.lrange(wsKey.feedbackLog(scopeParam(scope)), 0, -1) : ([] as string[]),
   ]);
   if (!gov.learning) return "";
 

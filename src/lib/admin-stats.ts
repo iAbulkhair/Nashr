@@ -14,6 +14,7 @@ import { topupRevenueSar } from "./topups";
 import { cronStatuses, type CronStatus } from "./cron-heartbeat";
 import { marginView, type MarginView } from "./margin";
 import { markFairUse } from "./fair-use";
+import { globalKey } from "./keys";
 
 /**
  * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
@@ -97,7 +98,7 @@ export async function renderSpend(month = monthKey()): Promise<RenderSpend> {
 }
 
 export async function overview(): Promise<Overview> {
-  const emails = await db.smembers("users:all");
+  const emails = await db.smembers(globalKey.usersAll());
   const now = Date.now();
   const users = (await pmap(emails, (e) => getUser(e))).filter((u): u is NonNullable<typeof u> => !!u);
   const ageDays = (iso: string) => (now - new Date(iso).getTime()) / 864e5;

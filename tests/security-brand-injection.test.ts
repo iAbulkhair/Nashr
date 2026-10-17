@@ -81,7 +81,7 @@ describe("update_brand never writes the brand file: every field is a proposal th
   });
 
   it("the code has no brand write left in the update_brand tool", () => {
-    const src = readFileSync("src/lib/chat.ts", "utf8");
+    const src = readFileSync("src/lib/chat-run-tool.ts", "utf8");
     const tool = src.slice(src.indexOf('case "update_brand": {'), src.indexOf('case "read_file": {'));
     expect(tool).toContain("proposeBrandChange(");
     expect(tool).not.toMatch(/saveBrand\(|recordActivity\(/);
@@ -263,12 +263,14 @@ describe("the onboarding model reads the crawled site only inside <site_snapshot
 
 describe("the reviewer, the cross-reviewers and the judge read the brand file only as asData (rule 575)", () => {
   it("each builds its brand block with asData inside <brand_file>", () => {
+    // The chat module was split into these files (rule 2010); the whole of it is scanned, as before.
+    const CHAT_FILES = ["chat", "chat-gates", "chat-history", "chat-prompt", "chat-reply", "chat-run-tool", "chat-tools"];
     const noor = readFileSync("src/lib/noor.ts", "utf8");
     const judge = readFileSync("src/lib/judge.ts", "utf8");
     expect(at(noor, "<brand_file>\\n${asData(").length).toBe(2);
     expect(judge).toContain("<brand_file>\\n${asData(");
     // No prompt builder in these files interpolates a free-text brand field raw.
-    for (const src of [noor, judge, readFileSync("src/lib/chat.ts", "utf8")]) {
+    for (const src of [noor, judge, ...CHAT_FILES.map((f) => readFileSync(`src/lib/${f}.ts`, "utf8"))]) {
       expect(src).not.toMatch(/\$\{brand\??\.(products|audience|offers|tone|competitors|banned|preferred|valueProp)\b/);
     }
   });

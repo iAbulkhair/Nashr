@@ -18,6 +18,7 @@ import { parseVideoGrant } from "@/lib/entitlements";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import { defaultPaidThrough, parsePaidThrough } from "@/lib/hand-plan";
 import { ksaDay } from "@/lib/partner-rules";
+import { globalKey } from "@/lib/keys";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -108,7 +109,7 @@ async function rowOf(u: User) {
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const params = new URL(req.url).searchParams;
-  const emails = await db.smembers("users:all");
+  const emails = await db.smembers(globalKey.usersAll());
   const accounts = (await pmap(emails, (e) => getUser(e))).filter((u): u is User => !!u);
   if (params.get("view") === "table") {
     const q = parseUserQuery(params);
