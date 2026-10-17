@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { db } from "../db";
+import { globalKey, scopeParam, wsKey } from "../keys";
+import { parseStored, StoredConnection } from "../stored";
 
 /** Encrypted per-user connection records. AES-256-GCM with CONNECT_SECRET. */
 export type Connection = {
@@ -82,29 +84,30 @@ type Stored = Omit<Connection, "data"> & { enc: string; kid?: string };
 
 export async function saveConnection(email: string, c: Connection) {
   const s: Stored = { provider: c.provider, meta: c.meta, connectedAt: c.connectedAt, expiresAt: c.expiresAt, needsReconnect: c.needsReconnect, enc: encrypt(JSON.stringify(c.data)), kid: currentKid() };
-  await db.set(`conn:${email}:${c.provider}`, s);
-  await db.sadd(`conns:${email}`, c.provider);
+  await db.set(wsKey.conn(scopeParam(email), c.provider), s);
+  await db.sadd(wsKey.conns(scopeParam(email)), c.provider);
 }
 export async function getConnection(email: string, provider: string): Promise<Connection | null> {
-  const s = await db.get<Stored>(`conn:${email}:${provider}`);
+  // Rule 2038: a record without `enc` (or not a record) reads as not connected, logged, instead of failing in `decrypt`.
+  const s = parseStored("connection", StoredConnection, await db.get<unknown>(wsKey.conn(scopeParam(email), provider)), null);
   if (!s) return null;
   return { provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt, needsReconnect: s.needsReconnect, data: JSON.parse(decrypt(s.enc, s.kid)) };
 }
 export async function listConnections(email: string): Promise<Omit<Connection, "data">[]> {
-  const ids = await db.smembers(`conns:${email}`);
-  const rows = await Promise.all(ids.map((id) => db.get<Stored>(`conn:${email}:${id}`)));
-  return rows.filter((s): s is Stored => !!s).map((s) => ({ provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt, needsReconnect: s.needsReconnect }));
+  const ids = await db.smembers(wsKey.conns(scopeParam(email)));
+  const rows = await Promise.all(ids.map((id) => db.get<unknown>(wsKey.conn(scopeParam(email), id))));
+  return rows.map((raw) => parseStored("connection", StoredConnection, raw, null)).filter((s) => !!s).map((s) => ({ provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt, needsReconnect: s.needsReconnect }));
 }
 export async function deleteConnection(email: string, provider: string) {
   // Encrypted credentials go, and the provider leaves the index with them.
-  await Promise.all([db.del(`conn:${email}:${provider}`), db.srem(`conns:${email}`, provider)]);
+  await Promise.all([db.del(wsKey.conn(scopeParam(email), provider)), db.srem(wsKey.conns(scopeParam(email)), provider)]);
 }
 /** Short-lived OAuth state (10 min). */
 export async function saveState(state: string, payload: Record<string, string>) {
-  await db.set(`oauthstate:${state}`, payload, 600);
+  await db.set(globalKey.oauthState(state), payload, 600);
 }
 export async function takeState(state: string) {
-  const p = await db.get<Record<string, string>>(`oauthstate:${state}`);
-  if (p) await db.del(`oauthstate:${state}`);
+  const p = await db.get<Record<string, string>>(globalKey.oauthState(state));
+  if (p) await db.del(globalKey.oauthState(state));
   return p;
 }

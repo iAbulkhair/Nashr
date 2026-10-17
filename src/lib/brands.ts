@@ -2,6 +2,8 @@ import { db } from "./db";
 import type { User } from "./auth";
 import { brandCapFor } from "./pricing";
 import { log } from "./log";
+import { accountKey, workspaceScope } from "./keys";
+import { ActiveBrandId, brandRows, parseStored } from "./stored";
 
 /**
  * Multi-brand workspaces. Every brand-scoped record (brand file, tasks, files, chat, governance,
@@ -20,12 +22,13 @@ import { log } from "./log";
 export type BrandMeta = { id: string; name: string; createdAt: string; status: "active" | "archived" };
 
 export async function listBrands(email: string): Promise<BrandMeta[]> {
-  const rows = (await db.get<BrandMeta[]>(`brands:${email}`)) ?? [];
+  // Checked row by row (rule 2036): a row without an id is left out and logged, never thrown on.
+  const rows: BrandMeta[] = brandRows(await db.get<unknown>(accountKey.brands(email)));
   if (!rows.find((b) => b.id === "default")) rows.unshift({ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" });
   return rows;
 }
 export async function saveBrands(email: string, rows: BrandMeta[]) {
-  await db.set(`brands:${email}`, rows);
+  await db.set(accountKey.brands(email), rows);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -36,7 +39,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * was written, and the caller answers "busy". Always released.
  */
 export async function withBrandsLock<T>(email: string, fn: (rows: BrandMeta[]) => Promise<T>): Promise<T | null> {
-  const key = `brandslock:${email}`;
+  const key = accountKey.brandsLock(email);
   let got = false;
   for (let i = 0; i < 20 && !got; i++) {
     got = await db.lock(key, 10);
@@ -58,13 +61,15 @@ export async function withBrandsLock<T>(email: string, fn: (rows: BrandMeta[]) =
  * value against the owner's active brands.
  */
 export async function activeBrandId(email: string) {
-  return (await db.get<string>(`activebrand:${email}`)) ?? "default";
+  // Rule 2037: a missing or malformed value is the default brand; a numeric-looking id read back as a number is text again.
+  return parseStored("activebrand", ActiveBrandId, await db.get<unknown>(accountKey.activeBrand(email)), "default");
 }
 export async function setActiveBrand(email: string, id: string) {
-  await db.set(`activebrand:${email}`, id);
+  await db.set(accountKey.activeBrand(email), id);
 }
-export function scopeFor(email: string, brandId: string) {
-  return brandId === "default" ? email : `${email}#${brandId}`;
+/** Plain-string form of `workspaceScope` (src/lib/keys.ts), for code that compares scopes as strings. Keys take the branded one. */
+export function scopeFor(email: string, brandId: string): string {
+  return workspaceScope(email, brandId);
 }
 /** Brands that count against the cap: the active ones, the default brand included. */
 export const activeCount = (rows: BrandMeta[]) => rows.filter((b) => b.status === "active").length;

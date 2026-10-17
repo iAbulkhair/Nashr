@@ -6,6 +6,7 @@ import { appOrigin } from "./origin";
 import { sameSecret } from "./rate";
 import { safeNext } from "./safe-next";
 import { withLoginLock } from "./team";
+import { accountKey, globalKey } from "./keys";
 
 /**
  * Sign in with Google (rules 1946-1953, docs/specs/2026-10-13-google-sign-in.md), OFF until both
@@ -51,8 +52,8 @@ export const redirectUri = () => `${appOrigin()}${CALLBACK_PATH}`;
 const b64url = (b: Buffer) => b.toString("base64url");
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const stateKey = (state: string) => `gsi:state:${sha(state)}`;
-export const linkKey = (sub: string) => `google:${sub}`;
-export const subKey = (login: string) => `googlesub:${normalizeEmail(login)}`;
+export const linkKey = (sub: string) => globalKey.googleAccount(sub);
+export const subKey = (login: string) => accountKey.googleSub(normalizeEmail(login));
 
 /** Begin: store the flow's secrets, bind it to this browser, and return Google's consent address. */
 export async function startGoogle(input: { mode: GoogleMode; next?: unknown; lang?: unknown; ref?: unknown; login?: string }): Promise<string | null> {

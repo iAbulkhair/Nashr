@@ -4,10 +4,11 @@ import { adjust } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { SHARE_CREDITS } from "@/lib/referral";
 import { forbid } from "@/lib/roles";
+import { accountKey } from "@/lib/keys";
 
 const PLATFORMS = ["x", "linkedin", "whatsapp", "instagram"];
 /** Accounts that claimed before the marker moved into a set still have their per-platform key. */
-const legacyKey = (email: string, platform: string) => `shared:${email}:${platform}`;
+const legacyKey = (email: string, platform: string) => accountKey.shared(email, platform);
 
 /**
  * POST {platform} → one-time credits for sharing Nashr on a social platform (once per platform per account).
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   // Read-then-write was a race: ten concurrent POSTs each saw no marker and each took the bonus, minting ten times the
   // credits. `sadd` answers 1 only for the caller that actually added the member, so exactly one of them is paid.
   if (await db.get(legacyKey(u.email, b.platform))) return NextResponse.json({ ok: true, credited: 0, credits: u.credits, already: true });
-  const isNew = await db.sadd(`shared:${u.email}`, b.platform);
+  const isNew = await db.sadd(accountKey.shared(u.email), b.platform);
   if (!isNew) return NextResponse.json({ ok: true, credited: 0, credits: u.credits, already: true });
   const credits = await adjust(u.email, SHARE_CREDITS);
   return NextResponse.json({ ok: true, credited: SHARE_CREDITS, credits });
@@ -34,7 +35,7 @@ export async function GET() {
   const no = forbid(u, "referral");
   if (no) return no;
   const [claimed, legacy] = await Promise.all([
-    db.smembers(`shared:${u.email}`),
+    db.smembers(accountKey.shared(u.email)),
     Promise.all(PLATFORMS.map(async (p) => ((await db.get(legacyKey(u.email, p))) ? p : ""))),
   ]);
   const done = [...new Set([...claimed, ...legacy.filter(Boolean)])].filter((p) => PLATFORMS.includes(p));

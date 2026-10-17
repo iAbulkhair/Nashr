@@ -7,6 +7,7 @@ import { siteDataBlock } from "./site-stats";
 import { socialDataBlock } from "./social-stats";
 import { adDataBlock } from "./ad-stats";
 import { notRead, notReadBlock } from "./not-read";
+import { scopeParam, wsKey } from "./keys";
 
 /** Workspace KPIs for the Reports page and for Dana's prompts. Computed from stored tasks only; no model call. */
 export type Kpis = {
@@ -78,7 +79,7 @@ export function kpiSince(win?: { prevFrom: Date } | null): Date {
 export async function kpis(scope: string, days?: number, win?: { from: Date; to: Date; label: string; prevFrom: Date }, rows?: TaskLite[]): Promise<Kpis> {
   const now = new Date();
   const w = win ?? (days ? rangeWindow(String(days)) : null);
-  const [tasks, pendingIds] = await Promise.all([rows ?? listLite(scope, kpiSince(w)), db.smembers(`pending:${scope}`)]);
+  const [tasks, pendingIds] = await Promise.all([rows ?? listLite(scope, kpiSince(w)), db.smembers(wsKey.pending(scopeParam(scope)))]);
   const month = w ? w.label : now.toISOString().slice(0, 7);
   const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
   const inMonth = (t: TaskLite, m: string) => t.createdAt.slice(0, 7) === m;

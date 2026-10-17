@@ -5,6 +5,7 @@ import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "./agents";
 import { isBy, publicBy, type By } from "./actor";
 import { recordActivity } from "./activity";
 import { log } from "./log";
+import { scopeParam, wsKey } from "./keys";
 
 export type Governance = {
   autoApprove: Partial<Record<TaskType, boolean>>; // skip inbox for these types
@@ -38,7 +39,7 @@ export const AGENT_CAP_MAX = 100000;
 export type GovPatch = Partial<Omit<Governance, "agentCaps">> & { agentCaps?: Partial<Record<AgentId, number | null | "">> };
 
 export async function getGov(email: string): Promise<Governance> {
-  return { ...DEFAULT_GOV, ...((await db.get<Partial<Governance>>(`gov:${email}`)) ?? {}) };
+  return { ...DEFAULT_GOV, ...((await db.get<Partial<Governance>>(wsKey.gov(scopeParam(email)))) ?? {}) };
 }
 
 const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
@@ -86,7 +87,7 @@ export async function saveGov(email: string, patch: GovPatch) {
   const next = mergeGov(await getGov(email), patch);
   const no = govRefusal(next, next, true);
   if (no) throw new GovRefusedError(no);
-  await db.set(`gov:${email}`, next);
+  await db.set(wsKey.gov(scopeParam(email)), next);
   return next;
 }
 
@@ -126,8 +127,8 @@ function mergeGov(cur: Governance, patch: GovPatch): Governance {
  */
 export type GovRevision = { id: string; at: string; by: By; changed: string[]; before: Governance; after: Governance; rollbackOf?: string };
 
-const histKey = (scope: string) => `govhist:${scope}`;
-const lockKey = (scope: string) => `govlock:${scope}`;
+const histKey = (scope: string) => wsKey.govHistory(scopeParam(scope));
+const lockKey = (scope: string) => wsKey.govLock(scopeParam(scope));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Revision ids are 12 hex characters; anything else from a request is refused before any read. */
 export const isRevisionId = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{12}$/.test(v);
@@ -184,7 +185,7 @@ export async function saveGovAs(scope: string, patch: GovPatch, by: By, rollback
     if (no) return { ok: false, error: no };
     const revision: GovRevision = { id: randomBytes(6).toString("hex"), at: new Date().toISOString(), by, changed, before, after, ...(rollbackOf ? { rollbackOf } : {}) };
     await Promise.all([
-      db.set(`gov:${scope}`, after),
+      db.set(wsKey.gov(scopeParam(scope)), after),
       pushCapped(histKey(scope), JSON.stringify(revision), CAPS.govHistory),
       // The activity log names what changed; the values stay in the history above.
       recordActivity(scope, [{ at: revision.at, kind: rollbackOf ? "gov_rollback" : "gov_changed", by, via: "app", count: changed.length, note: changed.join(", ") }]),

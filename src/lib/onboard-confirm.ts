@@ -5,6 +5,7 @@ import { ONBOARD_HOLD_MS, resolveOnboardHolds } from "./credits";
 import { recordActivity } from "./activity";
 import { systemBy } from "./actor";
 import { parseAnswers, type GameAnswers } from "./dictionary";
+import { scopeParam, wsKey } from "./keys";
 
 /**
  * Which site a workspace is built from is the owner's choice, made on the start page and checked here in code.
@@ -13,7 +14,7 @@ import { parseAnswers, type GameAnswers } from "./dictionary";
  * call. The owner presses the button, `POST /api/onboard/confirm` records the URL under their own scope, and
  * `POST /api/onboard` refuses any other URL and clears the record once the brand is saved: one confirmation, one build.
  */
-const key = (scope: string) => `onboardok:${scope}`;
+const key = (scope: string) => wsKey.onboardOk(scopeParam(scope));
 /** A day, the window of the three-runs allowance, so "refresh to try again" after a failed or paused run still works. */
 const TTL = 86400;
 
@@ -29,7 +30,7 @@ export const clearOnboard = (scope: string) => Promise.all([db.del(key(scope)), 
  * earlier one, so a stale game never names a later build. The build reads them here, never from its request, and
  * validates them again: a stored value is data too. Rules 522-523.
  */
-const gameKey = (scope: string) => `onboardgame:${scope}`;
+const gameKey = (scope: string) => wsKey.onboardGame(scopeParam(scope));
 export const confirmAnswers = (scope: string, a: GameAnswers | null) => (a ? db.set(gameKey(scope), a, TTL) : db.del(gameKey(scope)));
 export const confirmedAnswers = async (scope: string) => parseAnswers(await db.get<unknown>(gameKey(scope)));
 

@@ -18,6 +18,7 @@ import {
   PARTNER_COUNTRIES,
 } from "./partner-rules";
 import { log } from "./log";
+import { accountKey } from "./keys";
 
 /**
  * The partner programme and the 15% first-month discount, store side (docs/superpowers/specs/2026-10-01-affiliates-design.md).
@@ -771,12 +772,12 @@ export async function listPartners() {
   const emails = await db.smembers(PARTNERS);
   const [records, owners, refSets, ledgers] = await Promise.all([
     db.mget<Partner>(emails.map(partnerKey)),
-    db.mget<User>(emails.map((e) => `user:${e}`)),
+    db.mget<User>(emails.map((e) => accountKey.user(e))),
     pmap(emails, (e) => db.smembers(refsKey(e))),
     pmap(emails, (e) => db.hgetall<LedgerRow>(ledgerKey(e))),
   ]);
   const refEmails = [...new Set(refSets.flatMap((r) => r.slice(0, 500)))];
-  const refUsers = refEmails.length ? await db.mget<User>(refEmails.map((r) => `user:${r}`)) : [];
+  const refUsers = refEmails.length ? await db.mget<User>(refEmails.map((r) => accountKey.user(r))) : [];
   const byLabel = new Map(refUsers.flatMap((u) => (u?.referredBy ? [[`${u.referredBy.partner}|${customerLabel(u)}`, u.email] as const] : [])));
   return emails.flatMap((e, i) => {
     const p = records[i];
@@ -809,7 +810,7 @@ export async function partnerDashboard(email: string, now: number = Date.now()) 
   const [refs, ledger] = await Promise.all([db.smembers(refsKey(e)), db.hgetall<LedgerRow>(ledgerKey(e))]);
   const rows = Object.values(ledger);
   const commissions = rows.filter((r): r is Commission => r.kind === "commission");
-  const users = await db.mget<User>(refs.slice(0, 500).map((r) => `user:${r}`));
+  const users = await db.mget<User>(refs.slice(0, 500).map((r) => accountKey.user(r)));
   const referrals: PartnerReferral[] = users.flatMap((u) => {
     if (!u?.referredBy || u.referredBy.partner !== e) return [];
     const label = customerLabel(u);
