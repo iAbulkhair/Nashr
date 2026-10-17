@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { appOrigin } from "./origin";
+import { accountKey, globalKey } from "./keys";
 
 /**
  * Minimal OAuth 2.1 authorization server for the Nashr MCP (PKCE S256, dynamic client
@@ -126,9 +127,9 @@ export const grantKey = (email: string, id: string) => `mcpgrant:${email}:${id}`
 /** Every key a grant's tokens may live under: hashed, and the raw ones of a pre-hashing grant. */
 function grantTokenKeys(g: Grant): string[] {
   const keys: string[] = [];
-  if (g.accessHash) keys.push(`mcptoken:${g.accessHash}`);
+  if (g.accessHash) keys.push(globalKey.mcpToken(g.accessHash));
   if (g.refreshHash) keys.push(`oauthrefresh:${g.refreshHash}`);
-  if (g.access) keys.push(`mcptoken:${g.access}`, `mcptoken:${tokenHash(g.access)}`);
+  if (g.access) keys.push(globalKey.mcpToken(g.access), globalKey.mcpToken(tokenHash(g.access)));
   if (g.refresh) keys.push(`oauthrefresh:${g.refresh}`, `oauthrefresh:${tokenHash(g.refresh)}`);
   return keys;
 }
@@ -157,9 +158,9 @@ async function mint(email: string, client_id: string, scope: string, prev: Grant
     if (!(await db.setXx(grantKey(email, id), grant, REFRESH_TTL))) return null;
   } else await db.set(grantKey(email, id), grant, REFRESH_TTL);
   await Promise.all([
-    db.set(`mcptoken:${accessHash}`, { email, grant: id } satisfies AccessRec, ACCESS_TTL),
+    db.set(globalKey.mcpToken(accessHash), { email, grant: id } satisfies AccessRec, ACCESS_TTL),
     db.set(`oauthrefresh:${refreshHash}`, { email, client_id, scope, grant: id } satisfies RefreshRec, REFRESH_TTL),
-    db.sadd(`mcpgrants:${email}`, id),
+    db.sadd(accountKey.mcpGrants(email), id),
     touchClient(client_id),
     // Rotation: the previous access token must not stay valid for the rest of its life.
     ...(prev ? grantTokenKeys(prev).map((k) => db.del(k)) : []),
@@ -173,7 +174,7 @@ async function mint(email: string, client_id: string, scope: string, prev: Grant
  * "Connected apps" that keeps working after the owner thinks they reconnected. Grants of other clients are untouched.
  */
 export async function issueTokens(email: string, client_id: string, scope: string) {
-  const ids = await db.smembers(`mcpgrants:${email}`);
+  const ids = await db.smembers(accountKey.mcpGrants(email));
   const rows = await Promise.all(ids.map((id) => db.get<Grant>(grantKey(email, id))));
   await Promise.all(rows.filter((g): g is Grant => !!g && g.client_id === client_id).map((g) => revokeGrant(email, g.id)));
   return (await mint(email, client_id, scope, null))!;
@@ -193,9 +194,9 @@ export async function rotateRefresh(refresh: string, client_id: string) {
 
 /** Connected apps of an account, newest first, without the tokens. Expired grants drop out of the index here. */
 export async function listGrants(email: string): Promise<Omit<Grant, "access" | "refresh" | "accessHash" | "refreshHash">[]> {
-  const ids = await db.smembers(`mcpgrants:${email}`);
+  const ids = await db.smembers(accountKey.mcpGrants(email));
   const rows = await Promise.all(ids.map((id) => db.get<Grant>(grantKey(email, id))));
-  await Promise.all(ids.filter((_, i) => !rows[i]).map((id) => db.srem(`mcpgrants:${email}`, id)));
+  await Promise.all(ids.filter((_, i) => !rows[i]).map((id) => db.srem(accountKey.mcpGrants(email), id)));
   return rows
     .filter((g): g is Grant => !!g)
     .map(({ id, client_id, client_name, scope, createdAt, lastIssuedAt }) => ({ id, client_id, client_name, scope, createdAt, lastIssuedAt }))
@@ -206,10 +207,10 @@ export async function revokeGrant(email: string, id: string): Promise<boolean> {
   const g = await db.get<Grant>(grantKey(email, id));
   if (!g) return false;
   // The grant record goes first in the same round: once it is gone no token of this grant is accepted, whatever survives.
-  await Promise.all([db.del(grantKey(email, id)), ...grantTokenKeys(g).map((k) => db.del(k)), db.srem(`mcpgrants:${email}`, id)]);
+  await Promise.all([db.del(grantKey(email, id)), ...grantTokenKeys(g).map((k) => db.del(k)), db.srem(accountKey.mcpGrants(email), id)]);
   return true;
 }
 export async function revokeAllGrants(email: string): Promise<number> {
-  const ids = await db.smembers(`mcpgrants:${email}`);
+  const ids = await db.smembers(accountKey.mcpGrants(email));
   return (await Promise.all(ids.map((id) => revokeGrant(email, id)))).filter(Boolean).length;
 }

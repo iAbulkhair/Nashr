@@ -4,7 +4,7 @@ import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { withUserLock } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { pmap } from "@/lib/parallel";
-import { paymobConfig } from "@/lib/paymob";
+import { paymentsEnabled } from "@/lib/payments";
 import { ksaDay } from "@/lib/partner-rules";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import {
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     rules: { seats: FOUNDING_SEATS, lockAccounts: PRICE_LOCK_ACCOUNTS, foundingMonths: FOUNDING_LOCK_MONTHS, laterMonths: LATER_LOCK_MONTHS, saleStart: SALE_START, refundDays: REFUND_WINDOW_DAYS },
-    paymentsOn: !!paymobConfig(), started: saleStarted(today),
+    paymentsOn: paymentsEnabled(), started: saleStarted(today),
     seats: { taken: seats.length, left: Math.max(0, FOUNDING_SEATS - seats.length) },
     locks: { taken: locks.length },
     rows,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { paymobConfig } from "@/lib/paymob";
+import { paymentsEnabled } from "@/lib/payments";
 import { publicSeats } from "@/lib/founding";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 
@@ -12,6 +12,6 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   if (!(await allow(`foundingseats:ip:${clientIp(req)}`, 60, 60))) return retryLater({ ok: false, error: "slow_down" }, 60);
-  const seats = await publicSeats(!!paymobConfig());
+  const seats = await publicSeats(paymentsEnabled());
   return NextResponse.json({ ok: true, ...seats }, { headers: { "Cache-Control": "public, max-age=30" } });
 }

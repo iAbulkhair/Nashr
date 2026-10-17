@@ -3,13 +3,14 @@ import { db } from "./db";
 import type { User } from "./auth";
 import { onVercel } from "./deploy-env";
 import { log } from "./log";
+import { globalKey } from "./keys";
 
 /** The two windows the per-account buckets use, in seconds; a refusal that names one ("hour", "day") waits this long. */
 export const WINDOW = { hour: 3600, day: 86400 } as const;
 
 /** Fixed-window rate limit. True when the caller is still inside the allowance. */
 export async function allow(bucket: string, max: number, windowSeconds: number): Promise<boolean> {
-  const key = `rate:${bucket}`;
+  const key = globalKey.rate(bucket);
   const n = await db.incrby(key, 1);
   // Every hit, not only the first: EXPIRE NX starts the window when the counter has none and never touches the count.
   // Setting the expiry on the first hit alone, with a SET, reset hits that landed in between, and when that one call
@@ -32,7 +33,7 @@ export async function allow(bucket: string, max: number, windowSeconds: number):
  * passes. A counter that expired in between would go below zero; it is removed instead.
  */
 export async function giveBack(bucket: string): Promise<void> {
-  const key = `rate:${bucket}`;
+  const key = globalKey.rate(bucket);
   const n = await db.incrby(key, -1);
   if (n < 0) await db.del(key);
 }

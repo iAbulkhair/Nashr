@@ -19,7 +19,7 @@ import PlanIncludesCard from "@/components/app/PlanIncludesCard";
 import TopupCard from "@/components/app/TopupCard";
 import PageHeader from "@/components/ui/PageHeader";
 import { PaymobPayButton, PaymobPlanCard, PaymobReturnStatus } from "@/components/app/PaymobBilling";
-import { paymobConfig } from "@/lib/paymob";
+import { paymentsEnabled } from "@/lib/payments";
 import { billingView, paymentHistory } from "@/lib/billing";
 import { monthUsage } from "@/lib/month-usage";
 import { settingsHref } from "@/lib/settings-nav";
@@ -42,7 +42,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // Online payment through Paymob KSA (src/lib/billing.ts, rules 700-729): only when it is configured, and only for the
   // owner themself (`billing.pay` is refused while the founder impersonates). Otherwise the pay links and WhatsApp below
   // stay the way to pay, exactly as before.
-  const online = can(u, "billing.pay") && !!paymobConfig();
+  const online = can(u, "billing.pay") && paymentsEnabled();
   const sub = online ? billingView(u.billing) : null;
   const returned = (await searchParams)?.paymob === "return";
   // One pay link per self-serve tier, keyed by plan id: each card finds its own copy by id, never by position, so a card

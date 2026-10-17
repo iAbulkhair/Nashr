@@ -21,7 +21,7 @@ import { purgeExpired, secretaryDaily } from "@/lib/secretary";
 import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type SweepReport } from "@/lib/secretary-remind";
 import { appOrigin } from "@/lib/origin";
 import { paragraphs } from "@/emails";
-import { paymobConfig } from "@/lib/paymob";
+import { paymentsEnabled } from "@/lib/payments";
 import { renewPaymob } from "@/lib/billing";
 import { runMarginAlert } from "@/lib/margin";
 
@@ -33,7 +33,7 @@ async function dailyFor(u: User): Promise<string> {
   // Once per account, on its default brand's entry, and only when Paymob is configured: a subscription whose paid month
   // ended is charged on its saved card, or marked past due, or locked once its grace days are over (src/lib/billing.ts
   // `renewPaymob`, rules 710-714). Before the credit renewal, so a locked account gets no new month. Never fatal.
-  if ((u.brandId ?? "default") === "default" && u.billing && paymobConfig()) {
+  if ((u.brandId ?? "default") === "default" && u.billing && paymentsEnabled()) {
     try {
       const r = await renewPaymob(u.email);
       if (r) out.push(r);

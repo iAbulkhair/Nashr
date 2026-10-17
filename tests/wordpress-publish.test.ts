@@ -124,7 +124,7 @@ describe("going live is a separate confirmation (rule 619)", () => {
     const route = readFileSync("src/app/api/publish/[id]/route.ts", "utf8");
     expect(route.indexOf('forbid(u, "publish")')).toBeGreaterThan(-1);
     expect(route.indexOf('forbid(u, "publish")')).toBeLessThan(route.indexOf("b.live"));
-    const chat = readFileSync("src/lib/chat.ts", "utf8").split("\n").filter((l) => l.includes("publishOnce("));
+    const chat = readFileSync("src/lib/chat-run-tool.ts", "utf8").split("\n").filter((l) => l.includes("publishOnce("));
     expect(chat.length).toBeGreaterThan(0);
     for (const l of chat) expect(l).not.toMatch(/live|again/);
   });

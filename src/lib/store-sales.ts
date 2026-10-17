@@ -8,9 +8,10 @@ import { zidSales } from "./connectors/zid";
 import { wooHost, wooSales } from "./connectors/woocommerce";
 import { PROVIDER_NAME, SALES_PROVIDERS, salesMarkdown, type SalesProvider, type SalesSnapshot } from "./connectors/sales";
 import { asData } from "./json";
+import { scopeParam, wsKey } from "./keys";
 
-const KEY = (scope: string) => `storesales:${scope}`;
-const FAIL = (scope: string) => `storesyncfail:${scope}`;
+const KEY = (scope: string) => wsKey.storeSales(scopeParam(scope));
+const FAIL = (scope: string) => wsKey.storeSyncFail(scopeParam(scope));
 
 /** The latest store sales snapshot for this workspace, or null if it was never synced. One store per workspace. */
 export async function getSalesSnapshot(scope: string) {

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isSuspended } from "./suspension";
 import { db, mgetChunked } from "./db";
 import { adminEmails, getUser, type User } from "./auth";
 import { SAR_PER_USD, netPriceSar, priceOf } from "./pricing";
@@ -8,6 +9,7 @@ import { notifyItem } from "./notifications";
 import { pmap } from "./parallel";
 import { day } from "./track";
 import { log } from "./log";
+import { globalKey } from "./keys";
 
 /**
  * The daily margin alert (rules 1530-1539, docs/system/flows.md section 69). The PRD asks for it before the first
@@ -56,7 +58,7 @@ export function marginPct(revenueSar: number, costUsd: number): number | null {
 export const revenueSarOf = (u: Pick<User, "plan" | "deal">) => netPriceSar(priceOf(u));
 
 /** A paying account: not suspended, not on the trial, and its plan has a price. Team members are not in `users:all`. */
-export const isPaying = (u: Pick<User, "plan" | "deal" | "suspended">) => !u.suspended && u.plan !== "trial" && revenueSarOf(u) > 0;
+export const isPaying = (u: Pick<User, "plan" | "deal" | "suspended">) => !isSuspended(u) && u.plan !== "trial" && revenueSarOf(u) > 0;
 
 const micro = (v: unknown) => {
   const n = Number(v ?? 0);
@@ -123,7 +125,7 @@ export function alertText(rows: readonly Pick<MarginRow, "plan" | "marginPct">[]
 export async function runMarginAlert(now = new Date()): Promise<MarginRun | { error: string }> {
   try {
     const d = day(now), month = monthKey(now);
-    const emails = await db.smembers("users:all");
+    const emails = await db.smembers(globalKey.usersAll());
     const users = (await pmap(emails, (e) => getUser(e), 12)).filter((u): u is User => !!u);
     const rows = await accountMargins(users, month);
     const under = underFloor(rows);

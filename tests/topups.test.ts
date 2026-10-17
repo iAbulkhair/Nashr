@@ -533,7 +533,7 @@ describe("out of credits, every message names the top-up (rule 450)", () => {
 
   it("the model and connected apps are told the same: chat tools, MCP and the chat refusal", () => {
     expect(NO_CREDITS_HINT).toMatch(/top up credits[\s\S]*upgrade the plan on the Subscription page[\s\S]*a trial subscribes/);
-    const chat = readFileSync("src/lib/chat.ts", "utf8");
+    const chat = readFileSync("src/lib/chat-run-tool.ts", "utf8");
     expect(chat.match(/NO_CREDITS_HINT/g)?.length).toBeGreaterThanOrEqual(4); // the import and three refusals
     expect(readFileSync("src/app/api/mcp/route.ts", "utf8")).toContain("Insufficient credits: need ${r.need}, have ${r.credits}. ${NO_CREDITS_HINT}");
     const status = { used: 250, allowance: 250, left: 0, counted: 250, period: "month" as const, overflow: { on: true, available: true, used: 0, credits: 0, hold: 5 } };

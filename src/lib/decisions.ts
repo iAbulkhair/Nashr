@@ -3,6 +3,7 @@ import { agentForTask, type AgentId } from "./agents";
 import type { Task, TaskType } from "./brand";
 import type { By } from "./actor";
 import { recordActivity, type Activity } from "./activity";
+import { scopeParam, wsKey } from "./keys";
 
 /**
  * The owner's decisions on the agents' work, one record per human decision, newest first in `decisions:{scope}`.
@@ -40,7 +41,7 @@ export type Decision = {
   by?: By;
 };
 
-const key = (scope: string) => `decisions:${scope}`;
+const key = (scope: string) => wsKey.decisions(scopeParam(scope));
 
 /** One record from the task as it stands after the decision. */
 export function decisionOf(t: Task, action: DecisionAction, at: string, extra: { note?: unknown; editPct?: number; by?: By } = {}): Decision {

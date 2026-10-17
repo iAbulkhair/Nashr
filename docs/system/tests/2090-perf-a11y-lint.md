@@ -1,6 +1,6 @@
 # Coverage: tooling, lint and measured performance (rules 2090-2101)
 
-Status on 2026-10-17 on branch `claude/wave2-perf-a11y-lint-cced78` (cut from main 50ff790b). This is wave 2e of the supastarter gap study of 2026-10-16, built under the founder's standing order «the best of supastarter in all aspects». The supastarter kit was read for its lint setup only; no code was copied. No route, permission, environment variable or stored shape changed, and no stored-shape release step is needed. See `flows.md` section 85 and `architecture.md` section 2.8. Rules 2102-2109 are free for follow-ups.
+Status on 2026-10-17 on branch `claude/wave2-perf-a11y-lint-cced78` (cut from main 50ff790b). This is wave 2e of the supastarter gap study of 2026-10-16, built under the founder's standing order «the best of supastarter in all aspects». The supastarter kit was read for its lint setup only; no code was copied. No route, permission, environment variable or stored shape changed, and no stored-shape release step is needed. See `flows.md` section 86 and `architecture.md` section 2.8. Rules 2102-2109 are free for follow-ups.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

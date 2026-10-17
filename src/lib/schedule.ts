@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { isSuspended } from "./suspension";
 import { emailVerified, getUser, trialOver, type User } from "./auth";
 import { getBrand, indexedAt, isAutonomous, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
 import { generateBatch } from "./generate-batch";
@@ -13,6 +14,7 @@ import { systemBy, type By } from "./actor";
 import { recordRun } from "./activity";
 import { briefAgenda, type BriefAgenda } from "./secretary-agenda";
 import { agendaFor } from "./secretary";
+import { accountKey, globalKey, scopeParam, wsKey } from "./keys";
 
 /**
  * Per-user recurring tasks. Cron hits /api/cron/* → we loop users. `routines` holds the owner's switches for the
@@ -46,7 +48,7 @@ function view(scope: string, stored: Stored): Schedule {
 }
 
 export async function getSchedule(scope: string): Promise<Schedule> {
-  return view(scope, (await db.get<Stored>(`schedule:${scope}`)) ?? {});
+  return view(scope, (await db.get<Stored>(wsKey.schedule(scopeParam(scope)))) ?? {});
 }
 /**
  * Stores only what was ever set explicitly (the stored fields plus this patch), never the defaults, and returns the
@@ -56,9 +58,9 @@ export async function getSchedule(scope: string): Promise<Schedule> {
  * were. Setting `weeklyPlan` stamps `weeklyPlanSetAt` (see `view`).
  */
 export async function saveSchedule(scope: string, s: Partial<Schedule>): Promise<Schedule> {
-  const stored = (await db.get<Stored>(`schedule:${scope}`)) ?? {};
+  const stored = (await db.get<Stored>(wsKey.schedule(scopeParam(scope)))) ?? {};
   const next: Stored = { ...stored, ...s, ...(s.routines ? { routines: { ...stored.routines, ...s.routines } } : {}), ...(s.weeklyPlan !== undefined ? { weeklyPlanSetAt: new Date().toISOString() } : {}) };
-  await db.set(`schedule:${scope}`, next);
+  await db.set(wsKey.schedule(scopeParam(scope)), next);
   return view(scope, next);
 }
 
@@ -66,7 +68,7 @@ export async function saveSchedule(scope: string, s: Partial<Schedule>): Promise
 export type Brief = { date: string; text: string; pending: number; approved7d: number; credits: number; seasons: string[]; agenda?: BriefAgenda };
 
 export async function latestBrief(email: string) {
-  return db.get<Brief>(`brief:${email}`);
+  return db.get<Brief>(wsKey.brief(scopeParam(email)));
 }
 
 /** The Sunday that starts the current UTC week, as YYYY-MM-DD. The weekly cron keys its markers to the same day. */
@@ -104,7 +106,7 @@ export async function runWeekly(user: User, by: By = systemBy("cron"), opts: { d
   // Before any charge. "retry" leaves the week open in the cron markers, so the Monday and Tuesday catch-ups still
   // serve this owner if Claude is back on by then.
   if (modelState() === "paused") return "retry:paused";
-  if (!(await db.lock(`weeklylock:${email}`, 300))) return "retry:locked";
+  if (!(await db.lock(accountKey.weeklyLock(email), 300))) return "retry:locked";
   // What happened, for the activity log, like a routine's; a throw is "error" (the charge was refunded first).
   let outcome = "error";
   try {
@@ -112,7 +114,7 @@ export async function runWeekly(user: User, by: By = systemBy("cron"), opts: { d
     return outcome;
   } finally {
     await Promise.all([
-      db.unlock(`weeklylock:${email}`),
+      db.unlock(accountKey.weeklyLock(email)),
       recordRun(email, { id: "weekly_plan", agent: "noor", type: "weekly_plan", via: "weekly", by, period: weekStartUtc(), ttlS: 8 * 86400 }, outcome),
     ]);
   }
@@ -225,7 +227,7 @@ export async function runDaily(user: User): Promise<Brief | null> {
         pending ? "Next step: open the inbox and approve what you like." : agenda.overdue + agenda.today ? "Next step: open My to-dos and start with what is overdue." : "Next step: ask Noor for a new batch in chat.",
       ];
   const brief: Brief = { date: new Date().toISOString().slice(0, 10), text: lines.join("\n"), pending, approved7d, credits: user.credits, seasons, agenda };
-  await db.set(`brief:${email}`, brief);
+  await db.set(wsKey.brief(scopeParam(email)), brief);
   await saveSchedule(email, { lastDaily: new Date().toISOString() });
   return brief;
 }
@@ -237,14 +239,14 @@ export async function runDaily(user: User): Promise<Brief | null> {
  */
 export async function dailyRoster(): Promise<{ users: User[]; idle: string[] }> {
   const { listBrands, scopeFor } = await import("./brands");
-  const emails = await db.smembers("users:all");
+  const emails = await db.smembers(globalKey.usersAll());
   const { pmap } = await import("./parallel");
   const groups = await pmap(emails, async (e) => {
     const u = await getUser(e);
     if (!u) return { users: [] as User[], idle: [] as string[] };
     const brands = (await listBrands(e)).map((b) => ({ b, scope: scopeFor(e, b.id) }));
     // Suspended accounts, and owners who have not verified the address (rule 755), get no scheduled work, no charges and no email.
-    if (u.suspended || !emailVerified(u)) return { users: [] as User[], idle: brands.map((x) => x.scope) };
+    if (isSuspended(u) || !emailVerified(u)) return { users: [] as User[], idle: brands.map((x) => x.scope) };
     return {
       users: brands.filter((x) => x.b.status === "active").map((x) => ({ ...u, brandId: x.b.id, scope: x.scope })),
       idle: brands.filter((x) => x.b.status !== "active").map((x) => x.scope),

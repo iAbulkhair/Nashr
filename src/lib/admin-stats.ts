@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { isSuspended } from "./suspension";
 import { getUser, type AgencyDeal, type Plan, type User } from "./auth";
 import { SAR_PER_USD, allowanceOf, chatAllowanceOf, priceOf, seatLimit } from "./pricing";
 import { getBrand, listLite, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
@@ -13,6 +14,7 @@ import { topupRevenueSar } from "./topups";
 import { cronStatuses, type CronStatus } from "./cron-heartbeat";
 import { marginView, type MarginView } from "./margin";
 import { markFairUse } from "./fair-use";
+import { globalKey } from "./keys";
 
 /**
  * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
@@ -58,7 +60,7 @@ export const STALLED_MAX = 50;
 /** Pure: the stalled sign-ups among `users`, newest first, at most `STALLED_MAX` rows, and how many there are in all. */
 export function stalledSignups(users: Pick<User, "email" | "name" | "phone" | "plan" | "createdAt" | "suspended" | "emailVerifiedAt">[], hasBrand: (email: string) => boolean, now: number): { total: number; rows: Stalled[] } {
   const all = users
-    .filter((u) => !u.suspended && !hasBrand(u.email) && now - new Date(u.createdAt).getTime() >= STALLED_AFTER_H * 36e5)
+    .filter((u) => !isSuspended(u) && !hasBrand(u.email) && now - new Date(u.createdAt).getTime() >= STALLED_AFTER_H * 36e5)
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   return {
     total: all.length,
@@ -96,7 +98,7 @@ export async function renderSpend(month = monthKey()): Promise<RenderSpend> {
 }
 
 export async function overview(): Promise<Overview> {
-  const emails = await db.smembers("users:all");
+  const emails = await db.smembers(globalKey.usersAll());
   const now = Date.now();
   const users = (await pmap(emails, (e) => getUser(e))).filter((u): u is NonNullable<typeof u> => !!u);
   const ageDays = (iso: string) => (now - new Date(iso).getTime()) / 864e5;
@@ -104,7 +106,7 @@ export async function overview(): Promise<Overview> {
   (await pmap(users, (u) => getBrand(u.email))).forEach((b, i) => brands.set(users[i].email, !!b));
   const activated = [...brands.values()].filter(Boolean).length;
   // A suspended account neither pays nor counts towards MRR (docs/Admin_Console_Benchmark.md: MRR over unsuspended users).
-  const live = users.filter((u) => !u.suspended);
+  const live = users.filter((u) => !isSuspended(u));
   const paying = live.filter((u) => u.plan !== "trial").length;
   const trialActive = users.filter((u) => u.plan === "trial" && new Date(u.trialEnds).getTime() > now).length;
   const trialExpired = users.filter((u) => u.plan === "trial" && new Date(u.trialEnds).getTime() <= now).length;
@@ -162,7 +164,7 @@ export async function overview(): Promise<Overview> {
     stalled: stalledSignups(users, (e) => brands.get(e) ?? false, now),
     margin,
     generatedAt: new Date().toISOString(),
-    users: { total: users.length, new1d: users.filter((u) => ageDays(u.createdAt) <= 1).length, new7d: users.filter((u) => ageDays(u.createdAt) <= 7).length, new30d: recentUsers.length, activated, activationRate: users.length ? Math.round((activated / users.length) * 100) : null, paying, trialActive, trialExpired, suspended: users.filter((u) => u.suspended).length },
+    users: { total: users.length, new1d: users.filter((u) => ageDays(u.createdAt) <= 1).length, new7d: users.filter((u) => ageDays(u.createdAt) <= 7).length, new30d: recentUsers.length, activated, activationRate: users.length ? Math.round((activated / users.length) * 100) : null, paying, trialActive, trialExpired, suspended: users.filter((u) => isSuspended(u)).length },
     engagement: { dau, wau, mau, stickiness: mau ? Math.round((dau / mau) * 100) : null, retention7: cohort.length ? Math.round((retained / cohort.length) * 100) : null },
     funnel: { signups30: recentUsers.length, activated30: recentUsers.filter((u) => brands.get(u.email)).length, generated30, approved30, paid30: recentUsers.filter((u) => u.plan !== "trial").length },
     revenue: { mrrSar: mrr, topupSarMonth, planMix, arpuSar: paying ? Math.round(mrr / paying) : null, creditsUsedMonth: Math.round(creditsUsed), modelCostUsd: total.usd, grossMarginPct: grossMargin, renderCostUsd: render.usd, renderByProvider: render.byProvider, renderByModel: render.byModel },

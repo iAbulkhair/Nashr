@@ -199,3 +199,26 @@ export function can(u: User | null | undefined, action: Action): boolean {
 export function forbid(u: User | null | undefined, action: Action): Response | null {
   return can(u, action) ? null : Response.json({ error: "forbidden" }, { status: 403 });
 }
+
+/**
+ * What a console role may do, for the founder console's staff (rules 2077-2078). Separate from `MIN_ROLE`: staff roles
+ * (src/lib/staff.ts) are not account roles, and no customer actor ever passes this table. Each action lists the staff
+ * roles allowed, by name; writes stay with `canWrite` in src/lib/staff.ts.
+ */
+export const STAFF_MAY = {
+  /** Open one customer workspace read-only (GET /api/admin/users/{email}/workspace): members, invites, brands, plan. */
+  "workspace.view": ["owner", "support"],
+} as const satisfies Record<string, readonly string[]>;
+
+export type StaffAction = keyof typeof STAFF_MAY;
+
+/**
+ * May a console actor with this role do `action`? Fails closed: an unknown action, a missing role, or a role not listed
+ * (a future role included) all answer false. The key, the key header and the founder's customer session act as "owner"
+ * (src/lib/auth.ts `consoleRole`); a staff session acts as its stored role.
+ */
+export function staffMay(role: unknown, action: StaffAction): boolean {
+  if (typeof action !== "string" || !Object.prototype.hasOwnProperty.call(STAFF_MAY, action)) return false;
+  if (typeof role !== "string") return false;
+  return (STAFF_MAY[action] as readonly string[]).includes(role);
+}

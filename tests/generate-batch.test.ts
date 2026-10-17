@@ -323,7 +323,7 @@ describe("every paid text batch goes through generateBatch (rule 224)", () => {
   });
 
   it("no caller charges, generates, saves or judges a batch on its own", () => {
-    const callers = ["src/app/api/generate/route.ts", "src/lib/chat.ts", "src/app/api/mcp/route.ts", "src/lib/schedule.ts", "src/lib/routines.ts"];
+    const callers = ["src/app/api/generate/route.ts", "src/lib/chat-run-tool.ts", "src/app/api/mcp/route.ts", "src/lib/schedule.ts", "src/lib/routines.ts"];
     for (const file of callers) {
       const code = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/.*$/gm, "$1");
       expect(code, file).toMatch(/\bgenerateBatch\(/);

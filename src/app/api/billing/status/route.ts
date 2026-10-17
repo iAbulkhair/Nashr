@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
 import { allow, retryLater, WINDOW } from "@/lib/rate";
-import { paymobConfig } from "@/lib/paymob";
+import { paymentsEnabled } from "@/lib/payments";
 import { billingView, lastCheckout } from "@/lib/billing";
 
 /** Reads per account and hour: the return page asks every few seconds for about a minute, so a few returns fit easily. */
@@ -21,7 +21,7 @@ export async function GET() {
   const no = forbid(u, "billing");
   if (no) return no;
   if (!(await allow(`billingstatus:${u.email}`, STATUS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
-  if (!paymobConfig()) return NextResponse.json({ ok: true, enabled: false }, { headers: { "Cache-Control": "no-store" } });
+  if (!paymentsEnabled()) return NextResponse.json({ ok: true, enabled: false }, { headers: { "Cache-Control": "no-store" } });
   const last = await lastCheckout(u.email);
   return NextResponse.json({ ok: true, enabled: true, plan: u.plan, checkout: last, billing: billingView(u.billing) }, { headers: { "Cache-Control": "no-store" } });
 }

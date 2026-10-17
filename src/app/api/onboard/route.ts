@@ -20,6 +20,7 @@ import { recordActivity, type Activity } from "@/lib/activity";
 import { byOf } from "@/lib/actor";
 import { deadlineFor } from "@/lib/media/keys";
 import { customerModelError } from "@/lib/provider-fault-note";
+import { wsKey } from "@/lib/keys";
 
 export const maxDuration = 300;
 /**
@@ -125,7 +126,7 @@ export async function POST(req: Request) {
   }
   if (!(await allow(`onboard:${u.email}`, 3, 86400))) return retryLater("slow_down", 86400);
   // One run at a time per workspace: a reload during the run must not start a second one.
-  const lockKey = `onboardlock:${scope}`;
+  const lockKey = wsKey.onboardLock(scope);
   const token = await db.lockOwned(lockKey, LOCK_TTL);
   if (!token) return new Response("busy", { status: 409 });
   const release = () => db.unlockOwned(lockKey, token).catch(() => {});
@@ -179,7 +180,7 @@ export async function POST(req: Request) {
         const [saved, prefs] = await Promise.all([
           Promise.all(r.files.map((f) => writeFile(scope, f.name, f.content, "noor"))),
           readFile(scope, "preferences.md"),
-          db.set(`onboardplan:${scope}`, { goal: r.goal, plan: r.plan, at: new Date().toISOString() }),
+          db.set(wsKey.onboardPlan(scope), { goal: r.goal, plan: r.plan, at: new Date().toISOString() }),
           clearOnboard(scope),
           held ? settleOnboard(u.email, scope) : Promise.resolve(),
         ]);
