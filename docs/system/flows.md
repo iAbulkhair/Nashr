@@ -1286,8 +1286,22 @@ Supastarter gap study 2026-10-16 (UX rollout, wave 1b), built with our own primi
 
 No stored shape changes: one release, no expand/contract step.
 
+## 82. File splits, wave 2a: secretary, chat and the in-app dictionary (2026-10-17, branch `claude/wave2-file-splits-fa14bc`, rules 2010-2015)
+
+Supastarter gap study 2026-10-16, wave 2a: three modules grew past what one person can hold in their head, so each was cut into cohesive modules. A pure move: every statement keeps its text, nothing is renamed, and the original path re-exports every public name it had. No route, permission, environment variable, Redis key or stored shape changes. Tests in `docs/system/tests/2010-file-splits.md`.
+
+1. `src/lib/secretary.ts` (1800 lines) is a barrel of 37 lines over nine modules, in import order: `secretary-keys` (ids, `SEC_KEYS`, the per-scope limits; imports nothing local), `secretary-zone` (zone, work calendar, away map), `secretary-input` (cleaning, parsing, `fail`), `secretary-mutate` (`OWNER_ONLY`, `mutateItem`), `secretary-store` (item reads and writes, `withLock`, `listOpenItems`), `secretary-change` (`changeItem`, reminders, series spawn), `secretary-read` (agenda, pages, purge, daily sweep), `secretary-owner` (snooze presets, owner change parsing) and `secretary-tools` (the chat and MCP tool definitions and `runSecretaryTool`). `listOpenItems` sits in `secretary-store` so that `secretary-change` and `secretary-read` need not import each other.
+2. `src/lib/chat.ts` (1101 lines) keeps the turn itself, `chat()`, at 215 lines and re-exports the rest from six modules: `chat-history` (message types and history lists), `chat-tools` (tool definitions), `chat-prompt` (the system prompt), `chat-reply` (reply parts and statuses), `chat-gates` (the role, plan and limit gates) and `chat-run-tool` (`runTool`, which executes a tool call). No part imports `chat.ts`.
+3. `src/lib/app-i18n.ts` (1231 lines) is 26 lines: `appDict` joins five area parts in order, `app-i18n-shell`, `-workspace`, `-pages`, `-todo` and `-team`. Each part declares its Arabic object and types its English against it (`enX: typeof arX`), and the join types the whole English against the whole Arabic (`const en: typeof ar`), so a missing key in either language is still a compile error. The 37 top-level keys keep their order.
+4. Layering. The modules form a one-way graph (rule 2013) and each stays under 450 lines (rule 2014). The next candidates are `secretary-agenda.ts` and `secretary-calendar.ts`.
+5. Tests that read source text now read the module that holds the code (rule 2015); no assertion was weakened. `tests/file-splits.test.ts` pins the exported names of `@/lib/secretary` and `@/lib/chat` against the lists captured from main 50ff790b.
+
+### 82.1 Releases
+
+No stored shape changes: one release, no expand/contract step.
+
 ---
-## 82. Typed Redis key registry and read validation (2026-10-17, branch `claude/wave2-key-registry-7ec6c2`, rules 2030-2039)
+## 83. Typed Redis key registry and read validation (2026-10-17, branch `claude/wave2-key-registry-7ec6c2`, rules 2030-2039)
 
 Supastarter gap study 2026-10-16, wave 2b. Files: new `src/lib/keys.ts`, new `src/lib/stored.ts`; key strings only in `src/lib/{auth,brands,brand,account,team,conversations,mcp,privacy-export,email-change,oauth,track,referral,schedule,usage,governance,perf-store,partners,files,evals,store-sales,rate,onboard-confirm,notifications,google-signin,stats,social-stats,site-stats,routines,margin,handoffs,feedback,decisions,admin-stats}.ts`, `src/lib/connectors/store.ts`, `src/lib/social-read/common.ts`, five API routes and the chat page. `src/lib/secretary*.ts`, `src/lib/chat.ts` and `src/lib/app-i18n.ts` are left for the wave 2a split. Tests: `tests/key-registry.test.ts`, `tests/key-registry-ratchet.test.ts`, `tests/stored-shapes.test.ts`; coverage `docs/system/tests/2030-key-registry.md`.
 
@@ -1297,6 +1311,6 @@ Supastarter gap study 2026-10-16, wave 2b. Files: new `src/lib/keys.ts`, new `sr
 4. Every builder returns the bytes of the template it replaced (rule 2030): no key moves, nothing to migrate. A raw key template written outside `keys.ts` counts against its file's number in the ratchet test, which may only go down (rule 2034; 801 before, 524 after this change, in 179 files).
 5. Reads of four shapes are checked (rules 2035-2039): the brand list (row by row; a row without an id is left out, a missing status is active), the active brand (missing or malformed is `default`; a numeric-looking id the Redis client read back as a number is text again), a connection (without `enc` it reads as not connected instead of failing in `decrypt`), a conversation (without an id it is absent; a missing count is 0). A record that does not fit is logged as `stored shape invalid` with the shape name, field paths and zod codes, never the key, the account or a value, and the reader gets the safe default. Nothing throws on old data.
 
-### 82.1 Releases
+### 83.1 Releases
 
 No stored shape changes and no key changes: one release, no expand/contract step (rule 679). The read schemas accept every shape written so far and keep unknown fields (`looseObject`), so the next write of a record carries the fields a newer release added. A brand row without an id is dropped on the next brand-list write; such a row could not name a scope before either. No permission or environment variable change; `zod` is already a dependency.

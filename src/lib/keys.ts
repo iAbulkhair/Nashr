@@ -1,5 +1,5 @@
 /**
- * The Redis key registry (rules 2030-2049, docs/system/flows.md section 82, architecture.md section 3).
+ * The Redis key registry (rules 2030-2049, docs/system/flows.md section 83, architecture.md section 3).
  *
  * Every key of the families below is built here and nowhere else. Three groups, by what addresses the record:
  *

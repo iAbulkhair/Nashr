@@ -2,7 +2,7 @@ import { z } from "zod";
 import { log } from "./log";
 
 /**
- * Read validation for stored shapes (rules 2035-2039, docs/system/flows.md section 82).
+ * Read validation for stored shapes (rules 2035-2039, docs/system/flows.md section 83).
  *
  * `db.get` hands back whatever JSON sits under a key, typed only by the caller's `<T>`. A record written by an older
  * release, by a bug, or by hand can miss a field the code relies on, and the reader then throws far from the cause (a

@@ -782,8 +782,8 @@ describe("depth 1, and no MCP surface (rule 280)", () => {
 
   it("only the chat tool creates a handoff, and it checks the talking agent first; the run path generates without tools", () => {
     const callers = walk("src").filter((p) => /\bcreateHandoff\(/.test(code(p)) && !p.endsWith(join("lib", "handoffs.ts")));
-    expect(callers).toEqual([join("src", "lib", "chat.ts")]);
-    const chat = code(join("src", "lib", "chat.ts"));
+    expect(callers).toEqual([join("src", "lib", "chat-run-tool.ts")]);
+    const chat = code(join("src", "lib", "chat-run-tool.ts"));
     const tool = chat.slice(chat.indexOf('case "propose_handoff"'), chat.indexOf("createHandoff("));
     expect(tool).toContain('if (ctx.agent !== "majed") return');
     const lib = code(join("src", "lib", "handoffs.ts"));
@@ -1074,7 +1074,7 @@ describe("a chat card never offers Approve on an item another agent flagged (rul
     expect(page).toContain(fill(en.inbox.xNote, { name: en.agents.razan.name }));
     expect(page).toContain(`>${en.chat.readNotes}</a>`);
     // A chat turn builds its item cards with the same helper.
-    const chatSrc = readFileSync(join("src", "lib", "chat.ts"), "utf8");
+    const chatSrc = readFileSync(join("src", "lib", "chat-reply.ts"), "utf8");
     expect(chatSrc).toContain("items: made.slice(0, 10).map(chatItemOf)");
   });
 });

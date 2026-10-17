@@ -110,7 +110,8 @@ describe("credits referral: no bonus for throwaway accounts (rules 556-559)", ()
   });
 
   it("559: the copy says the referrer's bonus comes at the friend's first payment, never at signup", () => {
-    const i18n = readFileSync("src/lib/app-i18n.ts", "utf8");
+    // The dictionary was split into parts (rule 2010); the copy is checked across all of them, as before.
+    const i18n = ["app-i18n", "app-i18n-shell", "app-i18n-workspace", "app-i18n-pages", "app-i18n-todo", "app-i18n-team"].map((f) => readFileSync(`src/lib/${f}.ts`, "utf8")).join("\n");
     const help = readFileSync("src/lib/help.ts", "utf8");
     expect(i18n).not.toContain("أنت وصديقك تحصلان");
     expect(i18n).not.toContain("You and your friend each get");
