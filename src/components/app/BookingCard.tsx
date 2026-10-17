@@ -4,6 +4,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import { fill } from "@/lib/fill";
 import { formatWhen } from "@/lib/secretary-agenda";
 import { refusalText, useOneWrite } from "./useOneWrite";
+import { PanelSkeleton } from "@/components/ui/Skeleton";
 
 type Provider = "calcom" | "calendly";
 
@@ -157,7 +158,7 @@ export function BookingView({ t, state, busy = null, error = null, confirming = 
     <section id="todo-booking" aria-labelledby="todo-booking-title" className="card mt-8">
       <h2 id="todo-booking-title" className="card-title">{T.title}</h2>
       <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
-      {state.kind === "loading" && <p className="mt-3 text-sm text-foreground-muted">{T.loading}</p>}
+      {state.kind === "loading" && <PanelSkeleton className="mt-3" label={T.loading} shape="rows" count={2} />}{/* rule 2003 */}
       {state.kind === "failed" && (
         <div className="mt-3">
           <p role="alert" className="text-sm text-danger">{state.text ?? T.error}</p>

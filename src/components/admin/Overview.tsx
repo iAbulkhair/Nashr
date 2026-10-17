@@ -3,6 +3,9 @@ import Link from "next/link";
 import { adminHref } from "@/lib/admin-gate";
 import { Time } from "@/components/ui/Time";
 import { EndedNotice, OV, PlanTiles, STR, useAdminEnded, useOverview, usePlanList, type Overview as OverviewData, type SectionProps } from "./shared";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import Callout from "@/components/ui/Callout";
 
 function Events({ data }: { data: OverviewData["events"] }) {
   const keys = ["signup", "chat", "generate", "approve"] as const;
@@ -29,13 +32,13 @@ export default function Overview({ lang, keySession }: SectionProps) {
   const ended = useAdminEnded();
   const S = STR[lang];
   const O = OV[lang];
-  const ov = useOverview();
+  const { ov, failed } = useOverview();
   const { users, total } = usePlanList();
   if (ended) return <EndedNotice lang={lang} keySession={keySession} />;
   return (
     <div className="grid gap-6">
       <PlanTiles lang={lang} users={users} total={total} />
-      {!ov ? <p className="text-sm text-foreground-muted">{S.loading}</p> : (
+      {!ov ? (failed ? <Callout tone="danger">{S.loadFailed}</Callout> : <PanelSkeleton label={S.loading} shape="cards" />) : (
         <div className="grid gap-6">
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[[O.total, ov.users.total], [O.new7, ov.users.new7d], [O.activated, `${ov.users.activated} (${ov.users.activationRate ?? "—"}%)`], [O.dau, ov.engagement.dau], [O.wau, ov.engagement.wau], [O.mau, ov.engagement.mau], [O.stickiness, ov.engagement.stickiness === null ? "—" : `${ov.engagement.stickiness}%`], [O.retention, ov.engagement.retention7 === null ? "—" : `${ov.engagement.retention7}%`], [O.mrr, ov.revenue.mrrSar], [O.topupRev, ov.revenue.topupSarMonth], [O.credits, ov.revenue.creditsUsedMonth], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.errors, ov.health.errors7d]].map(([l, v]) => (

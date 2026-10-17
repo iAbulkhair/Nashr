@@ -2,6 +2,8 @@ import type { Lang } from "./i18n";
 import { PLAN_CREDITS, type Plan } from "./pricing";
 
 const ar = {
+  /** The dictionary's own language, so a component given only `t` picks matching shared copy (rule 2002). */
+  lang: "ar" as Lang,
   appName: "ذكين",
   nav: { specialists: "المتخصصون", askSpecialist: "اسأل متخصصاً", newBadge: "جديد", plans: { trial: "تجربة", starter: "البداية", pro: "الاحتراف", business: "الأعمال", agency: "الوكالات" } satisfies Record<Plan, string>, channels: "القنوات", main: "الرئيسية", approvals: "الموافقات", todo: "مهامي", contentInspo: "إلهام", performance: "الأداء", calendarCh: "التقويم", dms: "الرسائل المباشرة", newConv: "جديد", searchConv: "ابحث في المحادثات…", gettingStarted: "البداية", seeAll: "كل المحادثات", profile: "حسابك", brands: "العلامات", help: "المساعدة", adminPanel: "لوحة الأدمن", inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة", instructions: "التعليمات", activity: "النشاط", tasks: "المهام المجدولة", calendar: "التقويم", refer: "اكسب كريدت", integrations: "التكاملات", inspo: "إلهام", reports: "التقارير", notifications: "التنبيهات", history: "سجل المحادثات", contact: "تواصل معنا", updates: "التحديثات والأمنيات", menu: "القائمة", workspace: "مساحة العمل", settings: "الإعدادات", members: "الأعضاء", sharedCredits: "رصيد الحساب المشترك. لرصيد أكثر اطلب من مالك الحساب." },
   start: {
@@ -623,6 +625,7 @@ const ar = {
 };
 
 const en: typeof ar = {
+  lang: "en",
   appName: "Thakeen",
   nav: { specialists: "Specialists", askSpecialist: "Ask a specialist", newBadge: "New", plans: { trial: "Trial", starter: "Starter", pro: "Pro", business: "Business", agency: "Agency" }, channels: "Channels", main: "main", approvals: "approvals", todo: "my-to-dos", contentInspo: "content-inspo", performance: "performance", calendarCh: "calendar", dms: "Direct messages", newConv: "New", searchConv: "Search conversations…", gettingStarted: "Getting started", seeAll: "See all conversations", profile: "Your profile", brands: "Brands", help: "Help", adminPanel: "Admin console", inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance", instructions: "Instructions", activity: "Activity", tasks: "Scheduled tasks", calendar: "Calendar", refer: "Earn credits", integrations: "Integrations", inspo: "Inspiration", reports: "Reports", notifications: "Notifications", history: "Chat history", contact: "Contact us", updates: "Updates & wishlist", menu: "Menu", workspace: "Workspace", settings: "Settings", members: "Members", sharedCredits: "The account's shared credits. Ask the account owner for more." },
   start: {

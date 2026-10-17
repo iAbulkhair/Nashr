@@ -8,6 +8,7 @@ import { TASK_COST } from "@/lib/tasks";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Scribble from "@/components/Scribble";
 import Switch from "@/components/ui/Switch";
+import { useToast } from "@/components/ui/Toast";
 
 type Which = "weekly" | "daily" | "followups";
 type ScheduleKey = "weeklyPlan" | "dailyBrief" | "followUps";
@@ -57,20 +58,20 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
   const r = useRouter();
   const k = t.tasks;
   const [s, setS] = useState(initial);
+  const toast = useToast();
   const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [saving, setSaving] = useState("");
   /** Saves one switch and shows what the server stored; a failure says so instead of passing silently. */
   async function put(patch: Partial<Schedule>, key: string) {
-    setSaving(key); setErr("");
+    setSaving(key);
     try {
       const res = await fetch("/api/schedule", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; schedule?: Schedule };
-      if (!res.ok || !j.ok || !j.schedule) { setErr(k.saveFailed); return; }
+      if (!res.ok || !j.ok || !j.schedule) { toast.danger(k.saveFailed); return; } // rule 2001
       setS(j.schedule);
     } catch {
-      setErr(k.saveFailed);
+      toast.danger(k.saveFailed);
     } finally {
       setSaving("");
     }
@@ -79,19 +80,25 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
   const toggleRoutine = (id: RoutineId, on: boolean) => put({ routines: { [id]: on } }, id);
   async function run(which: "weekly" | "daily") {
     setBusy(which);
+    setMsg("");
     try {
       const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run: which }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: string; brief?: { text: string } };
-      if (!res.ok || !j.ok) { setMsg(t.generate.failed); return; }
+      if (!res.ok || !j.ok) { toast.danger(t.generate.failed); return; }
       // `runWeekly` answers "ok:N" when it really produced items and a reason otherwise — "no_credits", "trial_over",
       // "cap_reached", "already_this_week". Prefixing all of them with "Ran:" told the owner their plan had been
       // generated when nothing had happened and no credits had moved.
       const outcome = which === "weekly" ? (j.result ?? "") : j.brief ? j.brief.text.split("\n")[1] : "off";
       const ran = which === "weekly" ? outcome.startsWith("ok:") : !!j.brief;
       // "off": an added brand's Sunday plan starts off (rule 247), and running it refuses before any charge.
-      setMsg(ran ? `${k.ran}: ${outcome}` : outcome === "retry:paused" ? t.generate.paused : outcome === "agent_cap" ? t.limit.agentCapTitle : which === "weekly" && outcome === "off" ? k.weeklyOff : `${t.generate.failed} (${outcome})`);
+      // rule 2001: a finished run and a plain failure are toasts; a pause, the agent cap and "off" stay inline (the person acts on them).
+      if (ran) toast.success(`${k.ran}: ${outcome}`);
+      else if (outcome === "retry:paused") setMsg(t.generate.paused);
+      else if (outcome === "agent_cap") setMsg(t.limit.agentCapTitle);
+      else if (which === "weekly" && outcome === "off") setMsg(k.weeklyOff);
+      else toast.danger(`${t.generate.failed} (${outcome})`);
     } catch {
-      setMsg(t.generate.failed);
+      toast.danger(t.generate.failed);
     } finally {
       setBusy("");
       r.refresh();
@@ -116,7 +123,6 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
         </div>
       </div>
       <p className="mt-3 text-xs text-foreground-muted">{k.capNote}</p>
-      {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
       {msg && <p role="status" className="mt-4 rounded-lg bg-background-muted p-3 text-sm text-foreground">{msg}</p>}
     </div>
   );

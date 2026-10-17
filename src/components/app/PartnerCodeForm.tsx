@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import { FIRST_MONTH_DISCOUNT_PCT } from "@/lib/pricing";
+import { useToast } from "@/components/ui/Toast";
 
 const T = {
   ar: {
@@ -19,6 +20,7 @@ const T = {
 export default function PartnerCodeForm({ lang }: { lang: Lang }) {
   const S = T[lang];
   const r = useRouter();
+  const toast = useToast();
   const [code, setCode] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,10 +32,14 @@ export default function PartnerCodeForm({ lang }: { lang: Lang }) {
     try {
       const res = await fetch("/api/partner/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!j.ok) return setErr(S.errors[j.error ?? "server"] ?? S.errors.server);
+      if (!j.ok) {
+        // Rule 2001: a plain server failure is a toast; a refusal about the code stays next to the field.
+        if (!j.error || j.error === "server" || !S.errors[j.error]) toast.danger(S.errors.server); else setErr(S.errors[j.error]);
+        return;
+      }
       r.refresh();
     } catch {
-      setErr(S.errors.server);
+      toast.danger(S.errors.server);
     } finally {
       setBusy(false);
     }

@@ -9,6 +9,7 @@ import { taskVersion } from "@/lib/task-version";
 import { CHANNEL_LIMITS } from "@/lib/channel-limits";
 import CopyButton from "@/components/ui/CopyButton";
 import Badge from "@/components/ui/Badge";
+import { useToast } from "@/components/ui/Toast";
 import { Icon, channelIcon } from "./Icons";
 import { WORKSPACE_EVENTS } from "./WorkspaceContext";
 
@@ -36,6 +37,7 @@ export default function ApprovalCard({ item, t, lang, onApproved, canApprove = t
   const [held, setHeld] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const id = useId();
+  const toast = useToast();
   const limit = CHANNEL_LIMITS[item.channel];
   const ar = lang === "ar";
   const chName = (t.channelNames as Record<string, string>)[item.channel] ?? item.channel;
@@ -52,7 +54,7 @@ export default function ApprovalCard({ item, t, lang, onApproved, canApprove = t
     try {
       // The version of the text on this card (src/lib/task-version.ts): an approval is refused when the item changed since.
       const r = await fetch(`/api/tasks/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next, version: taskVersion(item) }) }).catch(() => null);
-      if (!r) { setErr(t.chat.approveFail); return; }
+      if (!r) { toast.danger(t.chat.approveFail); return; } // rule 2001: a plain failure is a toast
       if (!r.ok) {
         // The brand rules hold this item on the server: say which word, and send the owner to the inbox to fix it.
         const j = (await r.json().catch(() => ({}))) as { error?: string; violations?: { term: string }[] };
@@ -60,7 +62,7 @@ export default function ApprovalCard({ item, t, lang, onApproved, canApprove = t
         // Edited in the inbox, or given an image, after this card was written: it is reviewed there, where the current
         // version is shown.
         if (r.status === 409 && j.error === "changed") { setErr(ar ? "تغيّر هذا العنصر بعد كتابة هذه البطاقة، فلم يُعتمد. راجع النسخة الحالية في صندوق الموافقة." : "This item changed after this card was written, so it was not approved. Review the current version in the inbox."); return; }
-        setErr(r.status === 403 ? t.team.errors.forbidden : t.chat.approveFail);
+        if (r.status === 403) setErr(t.team.errors.forbidden); else toast.danger(t.chat.approveFail);
         return;
       }
       setStatus(next);

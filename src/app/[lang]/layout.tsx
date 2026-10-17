@@ -9,6 +9,7 @@ import { SITE_DEFAULT } from "@/lib/page-meta";
 import { THEME_SCRIPT } from "@/lib/theme";
 import ScribbleDir from "@/components/ScribbleDir";
 import ThemeScope from "@/components/ThemeScope";
+import RouteProgress from "@/components/ui/RouteProgress";
 
 // Thmanyah Serif Display («ثمانية للعناوين») for headings and large type; body text stays IBM Plex Sans Arabic.
 // The Thmanyah Font License (font.thmanyah.com/licenses) allows websites only as part of a packaged product: the files
@@ -74,6 +75,7 @@ export default async function RootLayout({ children, params }: { children: React
       </head>
       <body>
         <ThemeScope />
+        <RouteProgress />
         <ScribbleDir rtl={t.dir === "rtl"}>{children}</ScribbleDir>
       </body>
     </html>

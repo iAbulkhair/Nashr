@@ -3,6 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
 import { useAdminForm } from "./AdminForm";
 import { NEW_TERMS_FROM, PAYOUT_MIN_SAR, codeProblem, countryName, ksaDay, normalizeCode, sarText, taxField, type Bank, type Commission, type Payout } from "@/lib/partner-rules";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import Callout from "@/components/ui/Callout";
+import { STR } from "./shared";
+import EmptyState from "@/components/ui/EmptyState";
 
 type App = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: string; at: string; consentAt: string | null; termsVersion: string | null; country?: string; suggested: string; decision: { status: "approved" | "rejected"; code?: string; at: string; by: string } | null };
 type PartnerRow = {
@@ -161,11 +166,12 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
   const [data, setData] = useState<{ applications: App[]; partners: PartnerRow[] } | null>(null);
   const [msg, setMsg] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const [manual, setManual] = useState({ name: "", email: "", code: "", consentOutOfBand: false });
   const load = useCallback(async () => {
     // Through adminFetch (rule 436): once the key session ends, a 401 shows the console's message, not an empty tab.
     const j = await adminFetch("/api/admin/partners").then((r) => r.json()).catch(() => ({}));
-    if (j.ok) setData({ applications: j.applications, partners: j.partners });
+    if (j.ok) { setData({ applications: j.applications, partners: j.partners }); setFailed(false); } else setFailed(true);
   }, []);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
   const act = useCallback<Act>(async (body) => {
@@ -180,7 +186,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
     const v = await askForm({ title: L.voidPayout, subject: email, message: L.voidPayoutReason, destructive: true, submitLabel: L.voidPayout, fields: [], parse: () => ({ ok: true, value: {} }) });
     if (v) void act({ action: "void_payout", email, id, reason: v.reason });
   };
-  if (!data) return <p className="text-sm text-foreground-muted">{L.loading}</p>;
+  if (!data) return failed ? <Callout tone="danger">{STR[lang].loadFailed}</Callout> : <PanelSkeleton label={L.loading} shape="rows" />;
   const waiting = data.applications.filter((a) => !a.decision);
   const decided = data.applications.filter((a) => a.decision);
   const manualBad = codeProblem(normalizeCode(manual.code));
@@ -191,7 +197,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
       <section className="card card-sm">
         <h2 className="font-display text-lg font-bold">{L.apps}</h2>
         <p className="mt-1 text-foreground-muted">{L.appsNote}</p>
-        {waiting.length === 0 ? <p className="mt-2 text-foreground-muted">{L.none}</p> : (
+        {waiting.length === 0 ? <EmptyState compact title={L.none} className="mt-2" /> : (
           <div className="mt-2 overflow-x-auto"><table className="w-full"><tbody>{waiting.map((a) => <AppRow key={a.id} a={a} L={L} onAct={act} />)}</tbody></table></div>
         )}
         <form onSubmit={(e) => { e.preventDefault(); void act({ action: "approve", ...manual }); }} className="mt-3 flex flex-wrap items-end gap-2 border-t border-foreground/10 pt-3">

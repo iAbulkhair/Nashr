@@ -7,6 +7,8 @@ import { ADMIN_INPUT_ERRORS } from "@/lib/admin-input";
 // Types only: agent-scope.ts and agent-scope-eval.ts are server code (Redis, the classifier); the types are erased from the bundle.
 import type { AgentScopeLogEntry, AgentScopeModes } from "@/lib/agent-scope";
 import type { AgentScopeEval } from "@/lib/agent-scope-eval";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import EmptyState from "@/components/ui/EmptyState";
 
 type Data = { day: string; modes: AgentScopeModes; eval: AgentScopeEval | null; log: AgentScopeLogEntry[]; cost: { month: string; calls: number; usd: number } };
 
@@ -147,7 +149,7 @@ export default function AgentScopePanel({ lang = "en" }: { lang?: "ar" | "en" })
             {S.day}
             <input type="date" value={day || data.day} onChange={(e) => setDay(e.target.value)} className="rounded border border-border bg-surface px-2 py-1 text-sm text-foreground" />
           </label>
-          {data.log.length === 0 ? <p className="mt-2 text-sm text-foreground-muted">{S.empty}</p> : (
+          {data.log.length === 0 ? <EmptyState compact title={S.empty} className="mt-2" /> : (
             <div className="overflow-x-auto"><table className="mt-2 w-full text-xs">
               <thead className="bg-background-muted text-left uppercase tracking-wide text-foreground-muted"><tr>{S.cols.map((c, i) => <th key={i} className="p-2">{c}</th>)}</tr></thead>
               <tbody>

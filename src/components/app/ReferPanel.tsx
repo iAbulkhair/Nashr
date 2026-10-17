@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import Scribble from "@/components/Scribble";
+import { useToast } from "@/components/ui/Toast";
 
 export default function ReferPanel({ t, lang, code, count, earned, origin }: { t: AppDict; lang: Lang; code: string; count: number; earned: number; origin: string }) {
   const r = t.refer;
@@ -10,7 +11,7 @@ export default function ReferPanel({ t, lang, code, count, earned, origin }: { t
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<"refer" | "social">("refer");
   const [done, setDone] = useState<string[]>([]);
-  const [msg, setMsg] = useState("");
+  const toast = useToast();
   useEffect(() => { fetch("/api/referral/share").then((x) => x.json()).then((j) => j.ok && setDone(j.done)); }, []);
   const post = r.socialText + " " + `${origin}/${lang}`;
   const shares: { id: string; label: string; url: string }[] = [
@@ -20,8 +21,9 @@ export default function ReferPanel({ t, lang, code, count, earned, origin }: { t
   ];
   async function shared(id: string, url: string) {
     window.open(url, "_blank", "noopener");
-    const j = await (await fetch("/api/referral/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: id }) })).json();
-    if (j.ok) { setDone((p) => [...new Set([...p, id])]); setMsg(j.credited ? `+${j.credited} ${r.creditsWord}` : r.alreadyShared); }
+    const j = await fetch("/api/referral/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: id }) }).then((x) => x.json()).catch(() => null);
+    if (!j?.ok) toast.danger(t.team.errors.failed); // rule 2001
+    else { setDone((p) => [...new Set([...p, id])]); toast.success(j.credited ? `+${j.credited} ${r.creditsWord}` : r.alreadyShared); }
   }
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -30,7 +32,6 @@ export default function ReferPanel({ t, lang, code, count, earned, origin }: { t
       <div className="mt-5 flex gap-2">
         {(["refer", "social"] as const).map((k) => <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm ${tab === k ? "bg-inverse text-inverse-muted" : "border border-border"}`}>{k === "refer" ? r.tabRefer : r.tabSocial}</button>)}
       </div>
-      {msg && <p className="mt-3 text-sm text-foreground">{msg}</p>}
       {tab === "social" && (
         <div className="mt-4 card">
           <p className="text-sm text-foreground-muted">{r.socialSub}</p>

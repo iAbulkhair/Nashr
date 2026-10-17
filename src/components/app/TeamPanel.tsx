@@ -10,6 +10,7 @@ import ReadOnlyNote from "./ReadOnlyNote";
 import { Icon } from "./Icons";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
+import { useToast } from "@/components/ui/Toast";
 
 type TeamRole = "admin" | "member";
 type Row = { email: string; name: string; role: Role; acceptedAt?: string; disabled?: "seats" };
@@ -53,11 +54,11 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
   const [role, setRole] = useState<TeamRole>("member");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
-  const [msg, setMsg] = useState("");
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
   // Remove, cancel and leave ask in the app's own dialog: each answer is "Go back" or the row's own action.
   const [ask, confirmDialog] = useConfirm();
+  const toast = useToast();
 
   const canInvite = perms.inviteMember || perms.inviteAdmin;
   const locked = busy !== "";
@@ -65,10 +66,16 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
   const full = used >= limit;
   const pct = Math.min(100, Math.round((used / Math.max(1, limit)) * 100));
 
+  const errorCode = (r: Result) => r.status === 429 ? "rate_limited" : typeof r.j.error === "string" ? r.j.error : "failed";
   const errorText = (r: Result) => {
-    const code = r.status === 429 ? "rate_limited" : typeof r.j.error === "string" ? r.j.error : "failed";
+    const code = errorCode(r);
     if (code === "seats") return fill(T.errors.seats, { used: Number(r.j.used ?? used), limit: Number(r.j.limit ?? limit) });
     return (T.errors as Record<string, string>)[code] ?? T.errors.failed;
+  };
+  /** Rule 2001: a plain "could not do it" is a toast; a refusal the person must act on (seats, rate, role, address) stays in the alert. */
+  const fail = (r: Result) => {
+    const code = errorCode(r);
+    if (code === "failed" || !(code in T.errors)) { setErr(""); toast.danger(errorText(r)); } else setErr(errorText(r));
   };
   /** Re-read the roster after every change, so the page shows what the server stored rather than what was asked. */
   async function reload() {
@@ -81,10 +88,10 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
     }
   }
   async function run(key: string, fn: () => Promise<Result>, after?: (r: Result) => void) {
-    setBusy(key); setErr(""); setMsg("");
+    setBusy(key); setErr("");
     const r = await fn();
     if (r.ok) after?.(r);
-    else setErr(errorText(r));
+    else fail(r);
     await reload();
     setBusy("");
   }
@@ -97,7 +104,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
     await run("invite", () => call("/api/team/invite", "POST", { email: to, role, lang }), (r) => {
       setEmail("");
       const shown = (r.j.invite as { email?: string } | undefined)?.email ?? to;
-      if (r.j.emailed === true) setMsg(fill(T.sent, { email: shown }));
+      if (r.j.emailed === true) toast.success(fill(T.sent, { email: shown })); // rule 2001
       else if (typeof r.j.link === "string" && r.j.link) {
         // Shown once, only in this component's state: the server keeps no copy of the token.
         const url = r.j.link.startsWith("/") ? `${window.location.origin}${r.j.link}` : r.j.link;
@@ -120,9 +127,9 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
   }
   async function leave() {
     if (!(await ask({ title: T.leave, message: T.confirmLeave, confirmLabel: T.leave, cancelLabel: t.dialog.back, destructive: true }))) return;
-    setBusy("leave"); setErr(""); setMsg("");
+    setBusy("leave"); setErr("");
     const r = await call("/api/team/leave", "POST");
-    if (!r.ok) { setErr(errorText(r)); setBusy(""); return; }
+    if (!r.ok) { fail(r); setBusy(""); return; }
     // The route cleared the session cookie; refreshing drops the app shell with it.
     router.push(`/${lang}/app/login`);
     router.refresh();
@@ -158,7 +165,6 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
       </div>
 
       {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
-      {msg && <p role="status" className="mt-4 rounded-lg bg-background-muted p-3 text-sm text-foreground">{msg}</p>}
 
       <div className="mt-4 grid gap-4">
         <section className="card">

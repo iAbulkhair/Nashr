@@ -371,7 +371,7 @@ describe("rule 957: the server render", () => {
   it("an empty workspace renders, with the empty state and no Activate", async () => {
     await account("p957r", "starter");
     const page = await html("en");
-    expect(page).toContain(appDict.en.instructions.empty);
+    expect(page).toContain("No instructions yet"); // Rule 2002: the shared empty state.
   });
 
   it("the founder's pause is shown, so a page does not say rules apply when they do not", async () => {

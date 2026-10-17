@@ -340,7 +340,8 @@ describe("rule 1178: the Users table is filtered, sorted and paged on the server
     expect(t).not.toMatch(/size="sm"/);
     const users = read("src/components/admin/Users.tsx");
     expect(users).toContain("useUserTable(query)");
-    expect(users).toContain("router.replace(p ? `${pathname}?${p}` : pathname, { scroll: false });");
+    // Rule 2007: the query lives in the address through the shared hook (history steps are pinned in ux-rollout.test.ts).
+    expect(users).toContain("useUrlQuery(USER_CODEC, TYPED)");
     expect(users).toContain("if (n !== seq.current) return;");
     expect(users).toContain("<PlanTiles lang={lang} counts={data?.tiles ?? null} total={data?.total ?? null} />");
   });

@@ -12,6 +12,7 @@ import Callout from "@/components/ui/Callout";
 import { usePrompt } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
+import { useToast } from "@/components/ui/Toast";
 
 type B = { id: string; name: string; createdAt: string; status: "active" | "archived"; hasBrandFile: boolean };
 
@@ -40,6 +41,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
   const [busy, setBusy] = useState(false);
   // Rename asks in the app's own dialog (rule 1089), in the page's language, where `window.prompt` asked in the browser's.
   const [ask, promptDialog] = usePrompt(lang);
+  const toast = useToast();
   async function load() { const j = await (await fetch("/api/brands")).json(); if (j.ok) { setBrands(j.brands); setActive(j.active); setCap(Number(j.cap) || 0); setCanUpgrade(!!j.canUpgrade); } }
   useEffect(() => { void Promise.resolve().then(load); }, []);
   async function act(body: Record<string, string>) {
@@ -49,6 +51,9 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
       const res = await fetch("/api/brands", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await res.json().catch(() => ({ ok: false, error: String(res.status) }));
       if (!j.ok) {
+        const nothing = ar ? "لم يتم التغيير. حاول مرة أخرى." : "Nothing changed. Try again.";
+        // Rule 2001: a plain "nothing changed" is a toast; the rate, lock and plan-limit refusals stay in the page's alert.
+        if (j.error !== "slow_down" && j.error !== "busy" && j.error !== "brand_limit") { setErr(""); toast.danger(nothing); return; }
         setErr(
           // Which window refused (src/lib/rate.ts `brandAddRefusal`): the day's can last until tomorrow, so never "shortly".
           j.error === "slow_down" ? (j.retry === "day"
@@ -58,7 +63,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
           // The plan's cap (rule 1391): an add, or a restore of an archived brand, past the active brands the plan includes.
           : j.error === "brand_limit" ? (ar ? `وصلت إلى عدد العلامات النشطة في خطتك (${j.cap}). أرشف علامة أو رقِّ الخطة لإضافة غيرها.` : `You reached your plan's active brands (${j.cap}). Archive one or upgrade the plan to add another.`)
           // Any other refusal says so in words; the route's code is never shown (rule 1091).
-          : (ar ? "لم يتم التغيير. حاول مرة أخرى." : "Nothing changed. Try again."),
+          : nothing,
         );
         return;
       }

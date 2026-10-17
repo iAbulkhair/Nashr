@@ -6,6 +6,7 @@ import type { Lang } from "@/lib/i18n";
 import { START_COPY, noSiteBrand, type GameAnswers } from "@/lib/dictionary";
 import { Icon } from "./Icons";
 import { limitFromError, raiseLimit } from "./LimitModal";
+import { useToast } from "@/components/ui/Toast";
 
 const STR = {
   ar: {
@@ -41,6 +42,7 @@ export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCo
   const s = t.start;
   const S = STR[lang];
   const hint = useId();
+  const toast = useToast();
   const [mode, setMode] = useState<"site" | "none">("site");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -69,7 +71,7 @@ export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCo
       setErr(j.error === "no_credits" ? fill(s.noCredits, j.need ?? setupCost, j.credits ?? credits) : j.error === "trial_over" ? t.generate.trialOver : j.error === "fair_use" ? t.limit.fairUseTitle : s.notCharged);
       return;
     }
-    setErr(s.steps.error);
+    toast.danger(s.steps.error); // rule 2001: a plain failure; the credit and trial refusals above stay inline
   }
 
   async function onNoSite(e: React.FormEvent<HTMLFormElement>) {
@@ -80,7 +82,7 @@ export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCo
     // 409: a brand was built meanwhile (another tab); the save is create-only, so the workspace opens with that brand.
     if (res && (res.ok || res.status === 409)) { r.push(`/${lang}/app`); r.refresh(); return; }
     setBusy(false);
-    setErr(s.steps.error);
+    toast.danger(s.steps.error);
   }
 
   const tab = (m: "site" | "none") => `btn ${mode === m ? "btn-primary" : "btn-secondary"}`;

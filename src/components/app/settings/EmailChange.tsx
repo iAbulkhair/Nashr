@@ -41,7 +41,7 @@ async function call(method: "GET" | "POST", body?: Record<string, unknown>) {
 /**
  * The sign-in address change inside the Email card (rules 1942-1945): the password and the new address send a code to
  * the new address; the code moves the login. A waiting code survives a reload (GET shows its address). The page then
- * reloads so every screen shows the new address under the new session the route opened.
+ * reloads (a moment later, so the done line is seen) so every screen shows the new address under the new session the route opened.
  */
 export default function EmailChange({ lang, forbidden, onStatus }: { lang: Lang; forbidden: string; onStatus: (s: CardStatus) => void }) {
   const T = COPY[lang];
@@ -74,7 +74,7 @@ export default function EmailChange({ lang, forbidden, onStatus }: { lang: Lang;
     setBusy("confirm"); onStatus(null);
     const { status, j } = await call("POST", { action: "confirm", code });
     setBusy(""); setCode("");
-    if (j.ok && j.email) { onStatus({ tone: "ok", text: T.done(j.email) }); window.location.reload(); return; }
+    if (j.ok && j.email) { onStatus({ tone: "ok", text: T.done(j.email) }); setTimeout(() => window.location.reload(), 1200); return; } // the success shows first (rule 2001)
     if (j.error === "expired" || j.error === "locked" || j.error === "taken" || j.error === "owner_has_data") setPending(null);
     onStatus({ tone: "error", text: err(status, j.error) });
   }
