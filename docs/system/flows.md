@@ -1228,3 +1228,45 @@ Supastarter quick wins (gap study 2026-10-16, standing order «the best of supas
 5. Tooling (rules 1977-1979). `.env.example` lists every name in `variables.md`, values empty (the build- and platform-set ones and the release-script inputs commented out); `.gitignore` keeps it. Every blog post page carries an Article (`articleJsonLd`, escaped by `ldJson`). `src/lib/blog.ts` checks every post when it reads them (five front matter fields, a real `YYYY-MM-DD` date, a hyphenated lowercase slug, an Arabic and an English body split by `---EN---`) and throws naming every problem, so `next build` fails on a bad post.
 6. Releases. No stored shape changes (`read` on a bell entry already existed). One request body gains an optional field (`POST /api/notifications { id }`): a client that sends no body keeps working. No environment variable added.
 
+---
+## 80. Customer account security: two-step sign-in, devices, sign-in address, Google (2026-10-16, branch `claude/beautiful-blackburn-50e6d7`, rules 1930-1956)
+
+Supastarter gap study 2026-10-16 (customer auth pack), built on Thakeen's own staff code. Permissions in docs/system/permissions.md rows 242-248 and "Account security"; tests in `docs/system/tests/1930-account-security.md`. Every record below is keyed by the ACTING login (`actingLogin` in `src/lib/own-password.ts`): a member manages its own login, never the owner's.
+
+### 80.1 Customer two-step sign-in (rules 1930-1937)
+
+Code in `src/lib/mfa.ts`, `src/lib/login-finish.ts`, `src/app/api/account/2fa/route.ts`, `src/app/api/auth/login/mfa/route.ts`, `src/components/app/settings/TwoStepSettings.tsx`.
+1. Setup (Settings, Security, «الدخول بخطوتين» / "Two-step sign-in"; recommended to owners). The password starts it: a new secret sealed with `CONNECT_SECRET` under its own label (`mfa:pending:{login}`, 15 minutes), shown once as a QR code and as text. A code from the app turns it on (`mfa:{login}`) and shows eight recovery codes once; only their hashes are stored.
+2. Sign-in. POST /api/auth/login checks the password as before, then `finishLogin`: with two-step on it answers 401 `mfa_required` and sets the short challenge cookie `thakeen_mfa` (5 minutes, 5 tries, the login kept server side). The form asks for the code; POST /api/auth/login/mfa takes the authenticator's 6 digits (each 30-second step works once) or one recovery code (spent), spends the challenge, runs every login refusal again and only then creates the session. The log-in route's own per-IP and per-login buckets apply to both steps.
+3. New recovery codes need the password and an authenticator code; turning it off needs the password and a code or a recovery code. A founder impersonating can do none of it (`mfa.manage`).
+4. A login record created after an enrolment (a deleted account's address registered again) ignores that older enrolment (`bornAt`).
+
+### 80.2 Signed-in devices (rules 1938-1941)
+
+Code in `src/lib/devices.ts`, `src/lib/device-label.ts`, `src/app/api/account/sessions/route.ts`, `src/components/app/settings/DeviceList.tsx`.
+1. `createSession` records the session in `devs:{login}` (a hash keyed by a device id derived from the session key; the value holds the session's Redis key, which is already a hash of the cookie, the browser string cut to 300 characters, the client address and the time; 50 at most, 30 days); impersonation sessions are never recorded. Signing out removes the entry; entries whose session has ended drop out on the next read.
+2. Settings, Security lists them with a plain label («كروم على ماك» / "Chrome on Mac"), the last sign-in and «هذا الجهاز» / "This device". DELETE ends one other device with the password (the current one is refused: that is signing out). "Sign out other devices" (POST, rule 1150) stays.
+
+### 80.3 Changing the sign-in address (rules 1942-1945)
+
+Code in `src/lib/email-change.ts`, `moveMemberLogin` in `src/lib/team.ts`, `moveOwnerLogin` in `src/lib/verify-email.ts` (the core shared with the typo fix of rules 763-765), `src/app/api/account/email/route.ts`, `src/components/app/settings/EmailChange.tsx`.
+1. Settings, Account, the email card: «غيّر البريد» / "Change email" asks for the new address and the password. A 6-digit code goes to the NEW address (15 minutes, 5 tries); nothing changes until it comes back. A taken address (owner or member) is refused.
+2. The code moves the login under `lock:login` of both addresses: a member's record, roster entry, active brand, two-step enrolment and Google link; an owner's account record (marked proved, since the code proved the new address), referral code, partner link, two-step enrolment and Google link. Pending invites a member sent are dropped; nothing keeps naming the old login. Every device of the old login is signed out, this device gets a new session, and the OLD address gets a notice naming the new one.
+3. Limit. An owner's data is keyed by the address today (`sc(u)` falls back to the email), so only an owner whose account holds no work yet (no brand record, tasks, chats, files, connections, members, paid plan, card or partner data, and none of Reem's items, agent instructions, settings, notification choices, working days or activity, decision, handoff and note lists; the daily run's own `schedule:` write does not count) can move here; any other gets «تغيير بريد المالك لحساب فيه شغل يمر عن طريق الدعم الحين» / "changed through support for now". Separating the account id from the address is the follow-up that lifts it.
+
+### 80.4 Sign in with Google (rules 1946-1953)
+
+Code in `src/lib/google-signin.ts`, `src/app/api/auth/google/start/route.ts`, `src/app/api/auth/google/callback/route.ts`, `src/app/api/account/google/route.ts`, `src/components/app/AuthForm.tsx`, `src/components/app/settings/GoogleLink.tsx`; spec `docs/specs/2026-10-13-google-sign-in.md`.
+1. Off until `GOOGLE_SIGNIN_CLIENT_ID` and `GOOGLE_SIGNIN_CLIENT_SECRET` are both set (variables.md section 2): the routes answer 404 and no button is drawn.
+2. «ادخل بحساب Google» / "Sign in with Google" on the login page and «سجّل بحساب Google» / "Sign up with Google" on the signup page goes to /api/auth/google/start: a state (cookie-bound, 10 minutes, used once), a PKCE S256 verifier and a nonce, then Google's consent page with the fixed callback `{APP_ORIGIN}/api/auth/google/callback` and the scopes `openid email profile`.
+3. The callback trades the code at Google's fixed token address and verifies the ID token. A Google account already linked opens its login. Otherwise: an owner whose address is proved is linked and signed in; an unproved owner, a member, or an owner linked to another Google account is refused with a message to sign in with the password and link from settings; an unknown address is refused on the login page and, on the signup page, becomes a new owner whose address is already proved (trial, referral and partner as a password signup). Every sign-in passes `finishLogin`, so a suspended account is refused and two-step sign-in still asks for its code.
+4. Settings, Security: «اربط حساب Google» / "Link a Google account" links the signed-in login (owner or member) to the Google account it picks; unlinking needs the password. An account opened with Google sets a password through "forgot password" before it can unlink.
+
+### 80.5 Account deletion and Paymob (rules 1954-1956)
+
+1. `wipeAccount` first calls `stopRenewals` (rule 1955): under the account lock, renewal turns off and the saved card token is deleted, before anything slow can fail. A renewal that read the card before that re-checks the account, renewal and card under the same lock right before it charges (`chargeSavedCard`, rule 1956) and stops with `renewal_off`.
+2. The wipe also deletes every login's two-step, address-change, Google link and device records and ends every recorded session (rule 1954).
+
+### 80.6 Releases
+
+All keys are new (`mfa:*`, `mfa:pending:*`, `mfacode:*`, `mfaotp:used:*`, `mfachal:*`, `devs:*`, `emailchange:*`, `gsi:state:*`, `google:*`, `googlesub:*`) and no older code reads them, so this is one release with no contract step (rule 679). Before Google sign-in is switched on, the founder creates the OAuth client and sets the two names in hPanel (the pull request lists the steps).

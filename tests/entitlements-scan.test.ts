@@ -90,6 +90,7 @@ describe("rule 784: the view's read model", () => {
 const PLAN_VS_TRIAL = /\bplan\s*[!=]==?\s*["']trial["']/g;
 const ALLOWED: Record<string, { n: number; why: string }> = {
   "src/app/[lang]/app/settings/billing/page.tsx": { n: 5, why: "display: a trial sees its end day (in the summary's next-date label and value, rule 1154), and its owner the activation card, the partner-code form and the open offer (partners.ts checks the code and the offer again)" },
+  "src/lib/email-change.ts": { n: 1, why: "data, not access: an owner on any plan but the trial already holds paid history keyed by the address, so its address can not move here (rule 1944, ownerHasData)" },
   "src/app/api/admin/plan/route.ts": { n: 2, why: "billing: a paid-through day belongs to a paid plan set by hand (rule 1302); the trial has none, so a change to it removes the day and a day sent alone on a trial is refused" },
   "src/app/api/team/invite/route.ts": { n: 1, why: "ACCESS (how much): a trial may send fewer invitations a day than a paid plan (PER_TRIAL_ACCOUNT_DAY against PER_ACCOUNT_DAY)" },
   "src/components/admin/Users.tsx": { n: 3, why: "display: the trial's end day in the list, the chat-overflow tooltip; form: the set-plan form sends no paid-through day for the trial (rule 1302)" },

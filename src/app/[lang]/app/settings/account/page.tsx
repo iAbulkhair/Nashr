@@ -30,7 +30,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <AccountSettings
         lang={lang}
         forbidden={appDict[lang].team.errors.forbidden}
-        initial={{ name: a?.name ?? u.name, email: a?.email ?? u.email, lang: a?.lang ?? u.lang, owner, ...(owner ? { phone: u.phone ?? "" } : {}) }}
+        initial={{ name: a?.name ?? u.name, email: a?.email ?? u.email, lang: a?.lang ?? u.lang, owner, canChangeEmail: can(u, "email.change"), ...(owner ? { phone: u.phone ?? "" } : {}) }}
       />
     </div>
   );

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { currentUser, rotateSession, saveUser } from "@/lib/auth";
+import { currentSessionKey, currentUser, rotateSession, saveUser, type User } from "@/lib/auth";
+import { listDevices, revokeDevice } from "@/lib/devices";
 import { withUserLock } from "@/lib/credits";
 import { forbid } from "@/lib/roles";
 import { allow, giveBack, retryLater, WINDOW } from "@/lib/rate";
-import { ownPasswordMatches } from "@/lib/own-password";
-import { saveMember, withMemberLock } from "@/lib/team";
+import { actingLogin, ownPasswordMatches } from "@/lib/own-password";
+import { getMember, saveMember, withMemberLock } from "@/lib/team";
 
 /** Wrong passwords per login and hour: a wrong password answers 401, and this bounds guessing it here. */
 const SIGN_OUT_OTHERS_PER_HOUR = 10;
@@ -13,7 +14,7 @@ const SIGN_OUT_OTHERS_PER_HOUR = 10;
  * POST /api/account/sessions {password} (rules 1150, 1170-1171): sign out every OTHER browser session of the acting
  * login, and keep this one. It stamps `devicesAfter` (the member record for a member, the account for the owner; a
  * member's sign-out never touches the owner's sessions or the other members'), a stamp only `resolveSession` reads.
- * Sessions are not listed: the store keeps them as unindexed `session:h:{sha256(token)}` keys (rule 1345), so the list waits for a later phase.
+ * GET lists the login's devices and DELETE ends one of them (rules 1938-1941, src/lib/devices.ts).
  *
  * What stays: MCP tokens, connected apps, the calendar feed and booking links. They follow `sessionsAfter` (`loginHolds`
  * in src/lib/secretary-feed.ts), which only a password change or reset moves; this route never moves it (rule 1170).
@@ -53,5 +54,49 @@ export async function POST(req: Request) {
     return true;
   });
   if (!done) return NextResponse.json({ ok: false }, { status: 401 });
+  return NextResponse.json({ ok: true });
+}
+
+/** The revocation stamps that apply to the acting login's sessions (as `resolveSession` reads them). */
+async function stampsOf(u: User, me: { kind: "owner" | "member"; email: string }): Promise<(string | undefined)[]> {
+  if (me.kind === "owner") return [u.sessionsAfter, u.devicesAfter];
+  const m = await getMember(me.email);
+  return [m?.sessionsAfter, m?.devicesAfter, u.teamSessionsAfter];
+}
+
+/**
+ * GET /api/account/sessions (rule 1938): the acting login's own signed-in devices, newest first, this one marked
+ * `current`. Each entry: an id, the browser string, the address and the sign-in time. Sessions from before the device
+ * list existed are not listed; "sign out other devices" still ends them.
+ */
+export async function GET() {
+  const u = await currentUser();
+  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const me = await actingLogin(u);
+  if (!me) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  const devices = await listDevices(me.email, await currentSessionKey(), await stampsOf(u, me));
+  return NextResponse.json({ ok: true, devices });
+}
+
+/**
+ * DELETE /api/account/sessions {id, password} (rules 1939-1940): end ONE other device of the acting login. The id is
+ * looked up in the login's own device index, so it can never name another login's session; the current device is
+ * refused (that is signing out). Same gate, password and wrong-password limit as POST.
+ */
+export async function DELETE(req: Request) {
+  const u = await currentUser();
+  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "sessions.revoke");
+  if (no) return no;
+  const me = await actingLogin(u);
+  if (!me) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  const bucket = `signoutothers:${me.email}`;
+  if (!(await allow(bucket, SIGN_OUT_OTHERS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
+  const b = (await req.json().catch(() => ({}))) as { id?: unknown; password?: unknown };
+  if (!(await ownPasswordMatches(u, b.password))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
+  await giveBack(bucket);
+  const done = await revokeDevice(me.email, typeof b.id === "string" ? b.id : "", await currentSessionKey());
+  if (done === "current") return NextResponse.json({ ok: false, error: "current_device" }, { status: 400 });
+  if (done === "unknown") return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

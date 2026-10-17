@@ -22,13 +22,46 @@ import { Field, Input } from "@/components/ui/Field";
 
 // Every field has a visible label (rule 1090): a placeholder is an example and disappears as soon as someone types.
 
+/** Sign in with Google (rules 1946-1953): drawn only when it is configured; every outcome comes back as `?google=`. */
+const GOOGLE = {
+  ar: {
+    login: "ادخل بحساب Google", signup: "سجّل بحساب Google", or: "أو",
+    google_failed: "ما قدرنا نكمل الدخول بـ Google. جرّب مرة ثانية.", google_cancelled: "ألغيت الدخول بـ Google.",
+    google_no_account: "ما فيه حساب بهذا البريد. سجّل حساب جديد.", google_not_linked: "هذا البريد له حساب بكلمة مرور. ادخل بكلمة المرور، وبعدين اربط Google من إعدادات الأمان.",
+    google_unverified_owner: "هذا البريد عليه حساب ما تأكد بريده. ادخل بكلمة المرور وأكّد البريد، أو استرد كلمة المرور.", google_taken: "حساب Google هذا مربوط بحساب ثاني.",
+  },
+  en: {
+    login: "Sign in with Google", signup: "Sign up with Google", or: "or",
+    google_failed: "We could not finish signing in with Google. Try again.", google_cancelled: "You cancelled signing in with Google.",
+    google_no_account: "No account uses this email. Sign up instead.", google_not_linked: "This email has a password login. Sign in with the password, then link Google in Security settings.",
+    google_unverified_owner: "This email has an account whose address is not confirmed yet. Sign in with the password and confirm it, or reset the password.", google_taken: "This Google account is linked to another login.",
+  },
+} as const;
+type GoogleCode = Exclude<keyof (typeof GOOGLE)["en"], "login" | "signup" | "or">;
+/** The `?google=` code as a message, or "" for anything this page does not know. */
+function googleMessage(code: string | null, lang: Lang): string {
+  if (!code) return "";
+  return code in GOOGLE[lang] && !["login", "signup", "or"].includes(code) ? GOOGLE[lang][code as GoogleCode] : code === "slow_down" ? authMessage("slow_down", lang) : authMessage("invalid", lang);
+}
+
+function GoogleButton({ lang, mode, next, refCode = "" }: { lang: Lang; mode: "login" | "signup"; next: string; refCode?: string }) {
+  const q = new URLSearchParams({ mode, lang, ...(next ? { next } : {}), ...(refCode ? { ref: refCode } : {}) });
+  return (
+    <div className="grid gap-3">
+      {/* A plain link: the start route answers with a redirect to Google, so no script is needed. */}
+      <a href={`/api/auth/google/start?${q.toString()}`} className={buttonClass({ variant: "secondary", block: true })}>{GOOGLE[lang][mode]}</a>
+      <p className="text-center text-xs text-foreground-muted">{GOOGLE[lang].or}</p>
+    </div>
+  );
+}
+
 const SU = {
   ar: { emailStep: "ابدأ مجاناً", cont: "متابعة", edit: "تعديل", rules: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل"], trial: `تجربة 3 أيام · ${PLAN_CREDITS.trial} كريدت · بدون بطاقة دفع`, legal1: "بالمتابعة أنت توافق على", terms: "الشروط", and: "و", privacy: "سياسة الخصوصية", nameOpt: "اسمك" },
   en: { emailStep: "Start free", cont: "Continue", edit: "Edit", rules: ["At least 8 characters", "At least one letter", "At least one number"], trial: `3-day trial · ${PLAN_CREDITS.trial} credits · no card required`, legal1: "By continuing you agree to the", terms: "Terms", and: "and", privacy: "Privacy Policy", nameOpt: "Your name" },
 } as const;
 
 /** Email first, then name and password with live requirements. Phone is asked later, inside onboarding. */
-export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang: Lang; turnstileKey?: string | null }) {
+export function SignupForm({ t, lang, turnstileKey = null, google = false }: { t: AppDict; lang: Lang; turnstileKey?: string | null; google?: boolean }) {
   const r = useRouter();
   const sp = useSearchParams();
   const S = SU[lang];
@@ -36,7 +69,7 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
   const site = (sp.get("url") ?? "").slice(0, 300);
   const nextParam = sp.get("next") ?? "";
   const next = safeNext(nextParam);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState(() => googleMessage(sp.get("google"), lang));
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState("");
   const [step, setStep] = useState<1 | 2>(1);
@@ -79,7 +112,8 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t1" />{t.signup.title}</span></h1>
       <p className="mt-2 text-foreground-muted">{t.signup.sub}</p>
       <SignupNext lang={lang} site={shownSite(site)} />
-      <form onSubmit={onSubmit} className="mt-6 grid gap-3">
+      {google && <div className="mt-6"><GoogleButton lang={lang} mode="signup" next={next} refCode={/^[A-Za-z0-9]{6,10}$/.test(ref) ? ref : ""} /></div>}
+      <form onSubmit={onSubmit} className={google ? "mt-3 grid gap-3" : "mt-6 grid gap-3"}>
         {step === 1 ? (
           <Field label={t.signup.email}><Input name="email" required autoFocus type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
         ) : (
@@ -135,12 +169,30 @@ function SignupNext({ lang, site }: { lang: Lang; site: string }) {
   );
 }
 
-export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
+const MFA = {
+  ar: { title: "رمز الدخول", sub: "افتح تطبيق المصادقة في جوالك واكتب الرمز اللي يطلع لذكين. ضاع جوالك؟ اكتب واحد من رموز الاسترداد.", code: "الرمز", submit: "ادخل", back: "رجوع", bad_code: "الرمز غير صحيح أو انتهى. جرّب الرمز اللي بعده.", mfa_expired: "انتهت المهلة. اكتب كلمة المرور من جديد." },
+  en: { title: "Sign-in code", sub: "Open the authenticator app on your phone and type the code it shows for Thakeen. Lost your phone? Type one of your recovery codes.", code: "Code", submit: "Sign in", back: "Back", bad_code: "That code is wrong or expired. Try the next one.", mfa_expired: "Time ran out. Type your password again." },
+} as const;
+
+export function LoginForm({ t, lang, google = false }: { t: AppDict; lang: Lang; google?: boolean }) {
   const r = useRouter();
-  const nextParam = useSearchParams().get("next") ?? "";
+  const sp = useSearchParams();
+  const nextParam = sp.get("next") ?? "";
   const next = safeNext(nextParam);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState(() => googleMessage(sp.get("google"), lang));
   const [busy, setBusy] = useState(false);
+  // Two-step sign-in (rule 1934): the password was right and the account wants a code; no session exists yet. A Google
+  // sign-in that needs the code comes back here with `?mfa=1` and the challenge cookie already set.
+  const [mfa, setMfa] = useState(sp.get("mfa") === "1");
+  const M = MFA[lang];
+  function arrive(p: { body: Record<string, unknown> }) {
+    // An owner who has not proved the address goes to the code page first, carrying the destination (rule 754), so a
+    // `next` outside the app (the OAuth consent page) is reached after the code instead of looping back here.
+    if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || `/${lang}/app`)}`); return; }
+    if (next) { window.location.href = next; return; }
+    r.push(`/${lang}/app`);
+    r.refresh();
+  }
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
@@ -148,23 +200,51 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
     setErr("");
     try {
       const p = await postJson("/api/auth/login", Object.fromEntries(new FormData(e.currentTarget)));
+      if (p.body.mfa === true) { setMfa(true); return; }
       // "Wrong email or password" only for a 401: a rate limit, a dropped connection and a server error each say so,
       // so a customer with the right password is not sent to a reset (rule 433).
       if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { invalid: t.login.invalid, suspended: t.login.suspended }));
-      // An owner who has not proved the address goes to the code page first, carrying the destination (rule 754), so a
-      // `next` outside the app (the OAuth consent page) is reached after the code instead of looping back here.
-      if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || `/${lang}/app`)}`); return; }
-      if (next) { window.location.href = next; return; }
-      r.push(`/${lang}/app`);
-      r.refresh();
+      arrive(p);
     } finally {
       setBusy(false);
     }
   }
+  async function onCode(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const p = await postJson("/api/auth/login/mfa", { code: String(new FormData(e.currentTarget).get("code") ?? "") });
+      if (!succeeded(p)) {
+        const code = failureCode(p);
+        if (code === "mfa_expired") setMfa(false);
+        return setErr(authMessage(code, lang, { invalid: t.login.invalid, suspended: t.login.suspended, bad_code: M.bad_code, mfa_expired: M.mfa_expired }));
+      }
+      arrive(p);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (mfa) {
+    return (
+      <div className="mx-auto w-full max-w-md">
+        <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{M.title}</span></h1>
+        <p className="mt-2 text-foreground-muted">{M.sub}</p>
+        <form onSubmit={onCode} className="mt-6 grid gap-3">
+          <Field label={M.code}><Input name="code" required autoFocus inputMode="text" autoComplete="one-time-code" dir="ltr" maxLength={40} /></Field>
+          {err && <Callout tone="danger">{err}</Callout>}
+          <Button type="submit" variant="pill" seed="authform-b2" loading={busy}>{M.submit}</Button>
+          <button type="button" onClick={() => { setMfa(false); setErr(""); }} className="text-center text-sm text-foreground-muted underline">{M.back}</button>
+        </form>
+      </div>
+    );
+  }
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{t.login.title}</span></h1>
-      <form onSubmit={onSubmit} className="mt-6 grid gap-3">
+      {google && <div className="mt-6"><GoogleButton lang={lang} mode="login" next={next} /></div>}
+      <form onSubmit={onSubmit} className={google ? "mt-3 grid gap-3" : "mt-6 grid gap-3"}>
         <Field label={t.login.email}><Input name="email" required type="email" autoComplete="username" /></Field>
         <Field label={t.login.password}><PasswordField lang={lang} name="password" required autoComplete="current-password" /></Field>
         {err && <Callout tone="danger">{err}</Callout>}

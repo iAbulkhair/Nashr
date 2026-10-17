@@ -205,17 +205,23 @@ export async function staffPasswordMatches(s: Staff | null, pw: unknown): Promis
  * (`CONNECT_SECRET` new, `CONNECT_SECRET_PREVIOUS` old) it still opens, and the next sign-in seals it again with the
  * current key.
  */
-const sealKey = (secret: string) => createHash("sha256").update(`nashr-staff-totp:${secret}`).digest();
-function staffKeyring(): { kid: string; key: Buffer }[] {
+const sealKey = (label: string, secret: string) => createHash("sha256").update(`${label}:${secret}`).digest();
+function keyring(label: string): { kid: string; key: Buffer }[] {
   const current = connectSecret();
   const previous = process.env.CONNECT_SECRET_PREVIOUS;
-  const ring = [{ kid: kidOf(current), key: sealKey(current) }];
-  if (previous && previous !== current) ring.push({ kid: kidOf(previous), key: sealKey(previous) });
+  const ring = [{ kid: kidOf(current), key: sealKey(label, current) }];
+  if (previous && previous !== current) ring.push({ kid: kidOf(previous), key: sealKey(label, previous) });
   return ring;
 }
+/** The label staff secrets are sealed under. Customer secrets (src/lib/mfa.ts, rule 1931) use their own. */
+export const STAFF_SEAL_LABEL = "nashr-staff-totp";
 
 export function sealStaffSecret(secret: string): { enc: string; kid: string } {
-  const [{ kid, key }] = staffKeyring();
+  return sealWithLabel(STAFF_SEAL_LABEL, secret);
+}
+/** Seal `secret` with AES-256-GCM under the current CONNECT_SECRET and `label` (rule 1654; reused by rule 1931). */
+export function sealWithLabel(label: string, secret: string): { enc: string; kid: string } {
+  const [{ kid, key }] = keyring(label);
   const iv = randomBytes(12);
   const c = createCipheriv("aes-256-gcm", key, iv);
   const enc = Buffer.concat([c.update(secret, "utf8"), c.final()]);
@@ -227,8 +233,12 @@ export function sealStaffSecret(secret: string): { enc: string; kid: string } {
  * seals it again. Null when no key in the ring matches or the blob does not open: the gate then refuses, never opens.
  */
 export function openStaffSecret(t: { enc: string; kid?: string } | undefined | null): { secret: string; stale: boolean } | null {
+  return openWithLabel(STAFF_SEAL_LABEL, t);
+}
+/** Open a blob `sealWithLabel` made under the same `label`; `stale` when the previous key opened it. */
+export function openWithLabel(label: string, t: { enc: string; kid?: string } | undefined | null): { secret: string; stale: boolean } | null {
   if (!t || typeof t.enc !== "string") return null;
-  const ring = staffKeyring();
+  const ring = keyring(label);
   const tries = typeof t.kid === "string" ? ring.filter((r) => r.kid === t.kid) : ring;
   for (const r of tries) {
     try {
@@ -248,22 +258,22 @@ export function openStaffSecret(t: { enc: string; kid?: string } | undefined | n
 // Recovery codes (rule 1642)
 
 export const RECOVERY_CODES = 8;
-const cleanCode = (s: string) => s.replace(/[\s-]/g, "").toUpperCase();
+export const cleanCode = (s: string) => s.replace(/[\s-]/g, "").toUpperCase();
 /** A staff recovery code (or setup code) as typed: 20 base32 characters once dashes and spaces are dropped. */
 export const looksLikeStaffCode = (s: unknown): s is string => typeof s === "string" && s.length <= 64 && /^[A-Z2-7]{20}$/.test(cleanCode(s));
 /** How a staff recovery code is kept: SHA-256 under its own label, never the code itself. */
 export const staffRecoveryHash = (code: string) => sha(`nashr-staff-recovery:${cleanCode(code)}`);
 
-/** Eight new codes, shown once, and their hashes for the record. */
-export function newRecoveryCodes(): { codes: string[]; rc: string[] } {
+/** Eight new codes, shown once, and their hashes for the record. `hash` is the staff one unless a caller names its own (rule 1932). */
+export function newRecoveryCodes(hash: (code: string) => string = staffRecoveryHash): { codes: string[]; rc: string[] } {
   const codes = Array.from({ length: RECOVERY_CODES }, () => newRecoveryCode());
-  return { codes, rc: codes.map(staffRecoveryHash) };
+  return { codes, rc: codes.map(hash) };
 }
 
 /** The index of the matching unused code in `rc`, or -1. Every entry is compared in constant time. */
-export function recoveryIndex(rc: readonly string[] | undefined, code: string): number {
+export function recoveryIndex(rc: readonly string[] | undefined, code: string, hash: (code: string) => string = staffRecoveryHash): number {
   if (!Array.isArray(rc)) return -1;
-  const h = staffRecoveryHash(code);
+  const h = hash(code);
   let found = -1;
   rc.forEach((x, i) => { if (sameSecret(x, h) && found < 0) found = i; });
   return found;

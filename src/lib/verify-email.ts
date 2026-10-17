@@ -179,32 +179,46 @@ export type MoveResult = "ok" | "exists" | "not_allowed" | "limit";
  * may name both addresses until that retry.
  */
 export async function moveUnverifiedAccount(from: User, target: string): Promise<MoveResult> {
+  const gated = (x: User) => x.gatedSignup === true && !x.emailVerifiedAt;
+  return moveOwnerLogin(from, target, { may: gated, isCopy: gated });
+}
+
+/**
+ * The owner move both callers share: `moveUnverifiedAccount` above (a gated owner correcting a typo) and the self-serve
+ * change of a proved address (rules 1942-1945, src/lib/email-change.ts, `proved: true`). `may` is re-checked on the
+ * record read under the user lock; `isCopy` tells a copy an earlier stopped run already wrote at the target (same
+ * createdAt and password hash) from someone else's login. `proved` stamps the new address as verified now, since its
+ * code was just checked. `carry` moves what other modules keep per login (two-step sign-in) before the old account is
+ * wiped.
+ */
+export async function moveOwnerLogin(from: User, target: string, opts: { may: (cur: User) => boolean | Promise<boolean>; isCopy: (copy: User) => boolean; proved?: boolean; carry?: (from: string, to: string) => Promise<void> }): Promise<MoveResult> {
   const old = from.email;
   const to = normalizeEmail(target);
-  if (!from.gatedSignup || from.emailVerifiedAt) return "not_allowed";
+  if (!(await opts.may(from))) return "not_allowed";
   if (to === old) return "exists";
   const [first, second] = old < to ? [old, to] : [to, old];
   try {
     return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(old, async (cur): Promise<MoveResult> => {
-      if (!cur.gatedSignup || cur.emailVerifiedAt) return "not_allowed";
+      if (!(await opts.may(cur))) return "not_allowed";
       const now = Date.now();
       const today = utcDay(now);
       const used = cur.emailMoves && cur.emailMoves.day === today ? cur.emailMoves.n : 0;
       if (used >= VERIFY.movesPerDay) return "limit";
       const login = await getLogin(to);
-      const unfinished = login?.kind === "owner" && login.user.gatedSignup === true && !login.user.emailVerifiedAt && login.user.createdAt === cur.createdAt && login.user.passHash === cur.passHash;
+      const unfinished = login?.kind === "owner" && opts.isCopy(login.user) && login.user.createdAt === cur.createdAt && login.user.passHash === cur.passHash;
       if (login && !unfinished) return "exists";
       // A fresh session window (as `createUser` stamps): a session issued earlier for the TARGET address (a deleted former
       // owner, a removed member, this owner's own devices after A to B to A) must never resolve to the moved account. The
       // session the route opens right after has `at >= sessionsAfter` (the check is a strict `<`), so it still resolves.
       const fresh = new Date(now).toISOString();
       if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh });
-      else await saveUser({ ...cur, email: to, sessionsAfter: fresh, emailMoves: { day: today, n: used + 1 } });
+      else await saveUser({ ...cur, email: to, sessionsAfter: fresh, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
+      if (opts.carry) await opts.carry(old, to);
       await registerCode(to);
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
       await dropVerifyCode(old);
-      await wipeAccount(old);
+      await wipeAccount(old, { userLocked: true });
       return "ok";
     })));
   } catch (e) {

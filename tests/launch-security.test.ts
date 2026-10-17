@@ -580,8 +580,9 @@ describe("the auth forms never get stuck and say what went wrong (rule 433)", ()
     const src = readFileSync("src/components/app/AuthForm.tsx", "utf8");
     expect(src).not.toMatch(/await fetch\(/);
     expect(src).not.toMatch(/\.json\(\)(?!\.catch)/);
-    expect(src.match(/await postJson\(/g)?.length).toBe(4);
-    expect(src.match(/\} finally \{/g)?.length).toBe(4);
+    // Signup, login, the two-step code step (rule 1932), forgot and reset.
+    expect(src.match(/await postJson\(/g)?.length).toBe(5);
+    expect(src.match(/\} finally \{/g)?.length).toBe(5);
   });
 });
 

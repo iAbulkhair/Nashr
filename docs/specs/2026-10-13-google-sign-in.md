@@ -1,6 +1,6 @@
 # Google sign-in
 
-Status: proposed, not built, and blocked on one founder task (a Google OAuth client). Written 2026-10-13 against `main` at `4c0264b4`. Build order: 3 of 8. Rule numbers are assigned when it is built.
+Status: built on branch `claude/beautiful-blackburn-50e6d7` (2026-10-16), rules 1946-1953, OFF until the founder task below is done and both variables are set. Proposed 2026-10-13 against `main` at `4c0264b4`; what changed while building it is in "As built" at the end. Flow in `docs/system/flows.md` section 80.4, routes in `docs/system/permissions.md` rows 246-248, tests in `docs/system/tests/1930-account-security.md`.
 
 ## ملخص
 
@@ -69,3 +69,19 @@ Create an OAuth client in Google Cloud (Web application). Authorised redirect UR
 ## Rough size
 
 Medium: three routes, one lib (state, ID-token check, linking), two buttons, tests, docs. One pull request after the founder task is done.
+
+## As built (2026-10-16)
+
+Built as part of the customer account-security pack (supastarter gap study 2026-10-16, wave 1; supastarter read for the user flow only, no code taken). Code: `src/lib/google-signin.ts`, `src/app/api/auth/google/start/route.ts`, `src/app/api/auth/google/callback/route.ts`, `src/app/api/account/google/route.ts`, the buttons in `src/components/app/AuthForm.tsx` and `src/components/app/settings/GoogleLink.tsx`. As proposed: its own client and the two variable names, code flow with PKCE S256, state and nonce, fixed Google addresses and redirect, ID-token checks (RS256 against Google's keys, issuer, audience, expiry, nonce, `email_verified`), linking by `sub`, `safeNext`, no Google script on our pages, 404 and no buttons while off. Where it differs from the proposal, and why:
+
+1. Members are not signed in by address. A member login at the Google address is refused (`google_not_linked`); the member signs in with the password once and links from Settings, Security. An owner at the address is linked only when its address is already proved (`emailVerifiedAt`); a verified Google address alone is not enough, so a password account somebody opened in another person's name is never handed over, nor theirs to it. An owner already linked to another Google account is refused (`google_taken`).
+2. Login and signup are separate: the login page with an unknown address creates nothing (`google_no_account`); only the signup page creates an owner.
+3. Storage is two new keys, `google:{sub}` and `googlesub:{login}`, instead of a `User.signIn` field, so members (who have no user record) link the same way and no stored shape changes.
+4. A Google-created account gets a random password nobody knows instead of an empty `passHash` (no code path has to treat an empty hash specially); "forgot password" sets a real one.
+5. Consent and attribution: the account is made by `createUser`, which writes the same signup consent record as the form; referral (`ref` kept with the state) and partner attribution (`signupPartner`, `afterSignup`) run as after a password signup. There is no separate tick box because the signup form has none either: the "By continuing you agree" line covers both buttons.
+6. Unlink is `POST /api/account/google {action: "unlink", password}` for any login (owner or member, its own link), not an owner-only `/api/profile/google/unlink`; it needs the login's password, so an account opened with Google sets a password first and can not lock itself out. Linking from settings is `GET /api/auth/google/start?mode=link`, which records the acting login; the callback links only if the session there is still that login. `google.manage` is impersonation-blocked.
+7. Every Google sign-in goes through `finishLogin` (src/lib/login-finish.ts), shared with the password route: the same refusals, and an enrolled two-step sign-in (rules 1930-1937) still asks for its code.
+8. Rate limits: starts 30 per address per 15 minutes; the callback shares the login route's `login:ip` bucket and, before creating an account, the signup route's `signup:ip` bucket.
+9. The phone is not asked on a next screen; it stays empty as an optional profile field, as for a password signup today.
+10. Not done: the privacy page naming Google as the sign-in provider (with the other privacy items for the lawyer check), and the founder task line in `docs/Owner_Tasks_AR.md`.
+

@@ -74,6 +74,8 @@ const g = (role: Role, ...actions: Action[]): Gate => ({ role, actions });
 const ROUTE_ROLES: Record<string, Gate> = {
   // Public: nobody is signed in yet, or the caller only ends their own session.
   "POST /api/auth/login": "public",
+  // The second sign-in step (rule 1934): the challenge cookie names the login, rate limited with the login buckets.
+  "POST /api/auth/login/mfa": "public",
   "POST /api/auth/signup": "public",
   "POST /api/auth/forgot": "public",
   "POST /api/auth/reset": "public",
@@ -204,6 +206,12 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PATCH /api/account": g("member", "password.change"),
   // Sign out other devices (rule 1150): the caller's own sessions only, never while impersonating.
   "POST /api/account/sessions": g("member", "sessions.revoke"),
+  // One device out of the login's own list (rule 1939).
+  "DELETE /api/account/sessions": g("member", "sessions.revoke"),
+  // The login's own two-step sign-in (rules 1930-1937).
+  "POST /api/account/2fa": g("member", "mfa.manage"),
+  "POST /api/account/email": g("member", "email.change"),
+  "POST /api/account/google": g("member", "google.manage"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "POST /api/team/leave": g("member", "team.leave"),
@@ -274,6 +282,13 @@ const READS: Record<string, Gate> = {
   "GET /api/profile": g("member", "read"),
   // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
   "GET /api/account/export": g("owner", "account.export"),
+  // The login's own two-step status and device list (rules 1930, 1938): a session, nothing written.
+  "GET /api/account/2fa": "member",
+  "GET /api/auth/google/start": "public",
+  "GET /api/auth/google/callback": "public",
+  "GET /api/account/email": g("member", "email.change"),
+  "GET /api/account/google": g("member", "google.manage"),
+  "GET /api/account/sessions": "member",
   // The Paymob return page's poll (rule 1155): the caller's own last checkout and plan, owner only.
   "GET /api/billing/status": g("owner", "billing"),
   "GET /api/activity": g("member", "read"),

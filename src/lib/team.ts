@@ -361,6 +361,38 @@ async function dropMember(owner: string, email: string, may: (m: Member) => bool
   return res ?? "not_found";
 }
 
+/**
+ * A member moves its own login to a new address it has proved (rules 1942-1945, src/lib/email-change.ts). Locks in the
+ * documented order: `lock:team:{owner}`, then both login locks (the smaller address first, as in
+ * `moveUnverifiedAccount`), then the old member record's lock. Inside: the target must hold no owner or member record
+ * at all, the record is written at the new address with a fresh session window (every device signs in again, an old
+ * session issued for the target address never resolves to it), the roster and the active brand follow, `carry` moves
+ * what other modules keep per login (two-step sign-in), and only then the old record, its roster entry, its pending
+ * invites (an invite names its inviter's address) and its feed and booking links go.
+ */
+export async function moveMemberLogin(owner: string, from: string, target: string, carry?: (from: string, to: string) => Promise<void>): Promise<"ok" | "exists" | "not_found"> {
+  const old = normalizeEmail(from);
+  const to = normalizeEmail(target);
+  if (to === old) return "exists";
+  const [first, second] = old < to ? [old, to] : [to, old];
+  return withLock(`lock:team:${owner}`, () => withLoginLock(first, () => withLoginLock(second, async () => {
+    const res = await withMemberLock(old, async (cur) => {
+      if (cur.memberOf !== owner) return "not_found" as const;
+      const [u, m] = await Promise.all([getUser(to), getMember(to)]);
+      if (u || m) return "exists" as const;
+      const [sent, brand] = await Promise.all([listInvites(owner), db.get<string>(`activebrand:${old}`)]);
+      const { devicesAfter: _d, ...rest } = cur;
+      await saveMember({ ...rest, email: to, sessionsAfter: new Date().toISOString() });
+      await Promise.all([db.sadd(membersKey(owner), to), brand ? db.set(`activebrand:${to}`, brand) : Promise.resolve()]);
+      if (carry) await carry(old, to);
+      await Promise.all([db.del(memberKey(old)), db.del(`activebrand:${old}`), db.srem(membersKey(owner), old), dropInvites(owner, sent.filter((i) => i.invitedBy === old).map((i) => i.id))]);
+      await Promise.all([revokeFeed(old), revokeBook(old)]);
+      return "ok" as const;
+    });
+    return res ?? "not_found";
+  })));
+}
+
 /** Remove a member. The owner may remove anyone; an admin only plain members. The owner itself cannot be removed. */
 export async function removeMember(owner: User, actor: Actor, email: string): Promise<{ ok: true } | TeamFail> {
   const e = normalizeEmail(typeof email === "string" ? email : "");
