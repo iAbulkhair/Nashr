@@ -101,7 +101,7 @@ const ALLOWED: Record<string, { n: number; why: string }> = {
   "src/lib/admin-stats.ts": { n: 4, why: "stats: the founder's counts of paying, active-trial and expired-trial accounts, and signups that paid" },
   "src/lib/auth.ts": { n: 1, why: "ACCESS: `trialOver`, the spend gate (chat, MCP, media, generation, onboarding, routines, the weekly plan): an ended trial or a Paymob-locked subscription may not spend; entitlements() reports them as inactive `trial_over` / `billing_locked`" },
   "src/lib/chat-allowance.ts": { n: 4, why: "ACCESS and mechanics: which counter holds a trial's messages, the status period, and `overflowAvailable` (continue on credits is a paid plan's option, not a trial's)" },
-  "src/lib/chat.ts": { n: 1, why: "copy: the PLAN line of the chat's system prompt adds the trial end day" },
+  "src/lib/chat-prompt.ts": { n: 1, why: "copy: the PLAN line of the chat's system prompt adds the trial end day" },
   "src/lib/credits.ts": { n: 1, why: "billing: `renewalDue`, a monthly renewal runs for a paid plan and never for a trial" },
   "src/lib/entitlements.ts": { n: 4, why: "home: the one place that decides what a plan includes (inactive trial, end day, trial video list, reset day)" },
   "src/lib/lifecycle.ts": { n: 1, why: "copy: the trial-deadline and win-back emails are for an account still on trial" },

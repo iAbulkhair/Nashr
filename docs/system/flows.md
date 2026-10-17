@@ -1285,3 +1285,17 @@ Supastarter gap study 2026-10-16 (UX rollout, wave 1b), built with our own primi
 ### 81.1 Releases
 
 No stored shape changes: one release, no expand/contract step.
+
+## 82. File splits, wave 2a: secretary, chat and the in-app dictionary (2026-10-17, branch `claude/wave2-file-splits-fa14bc`, rules 2010-2015)
+
+Supastarter gap study 2026-10-16, wave 2a: three modules grew past what one person can hold in their head, so each was cut into cohesive modules. A pure move: every statement keeps its text, nothing is renamed, and the original path re-exports every public name it had. No route, permission, environment variable, Redis key or stored shape changes. Tests in `docs/system/tests/2010-file-splits.md`.
+
+1. `src/lib/secretary.ts` (1800 lines) is a barrel of 37 lines over nine modules, in import order: `secretary-keys` (ids, `SEC_KEYS`, the per-scope limits; imports nothing local), `secretary-zone` (zone, work calendar, away map), `secretary-input` (cleaning, parsing, `fail`), `secretary-mutate` (`OWNER_ONLY`, `mutateItem`), `secretary-store` (item reads and writes, `withLock`, `listOpenItems`), `secretary-change` (`changeItem`, reminders, series spawn), `secretary-read` (agenda, pages, purge, daily sweep), `secretary-owner` (snooze presets, owner change parsing) and `secretary-tools` (the chat and MCP tool definitions and `runSecretaryTool`). `listOpenItems` sits in `secretary-store` so that `secretary-change` and `secretary-read` need not import each other.
+2. `src/lib/chat.ts` (1101 lines) keeps the turn itself, `chat()`, at 215 lines and re-exports the rest from six modules: `chat-history` (message types and history lists), `chat-tools` (tool definitions), `chat-prompt` (the system prompt), `chat-reply` (reply parts and statuses), `chat-gates` (the role, plan and limit gates) and `chat-run-tool` (`runTool`, which executes a tool call). No part imports `chat.ts`.
+3. `src/lib/app-i18n.ts` (1231 lines) is 26 lines: `appDict` joins five area parts in order, `app-i18n-shell`, `-workspace`, `-pages`, `-todo` and `-team`. Each part declares its Arabic object and types its English against it (`enX: typeof arX`), and the join types the whole English against the whole Arabic (`const en: typeof ar`), so a missing key in either language is still a compile error. The 37 top-level keys keep their order.
+4. Layering. The modules form a one-way graph (rule 2013) and each stays under 450 lines (rule 2014). The next candidates are `secretary-agenda.ts` and `secretary-calendar.ts`.
+5. Tests that read source text now read the module that holds the code (rule 2015); no assertion was weakened. `tests/file-splits.test.ts` pins the exported names of `@/lib/secretary` and `@/lib/chat` against the lists captured from main 50ff790b.
+
+### 82.1 Releases
+
+No stored shape changes: one release, no expand/contract step.

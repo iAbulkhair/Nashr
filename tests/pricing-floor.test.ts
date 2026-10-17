@@ -233,13 +233,13 @@ describe("chat drafts (rules 241, 250)", () => {
     expect([...DRAFT_TYPES]).toEqual(["social", "whatsapp", "ads", "gbp"]);
     for (const t of DRAFT_TYPES) expect([1, 2, 3].map((n) => draftCredits(t, n)), t).toEqual([1, 2, 3]);
     // The estimate uses the same formula as the chat's draft_items charge: the tool passes `count` to generateBatch
-    // (src/lib/chat.ts), which charges `countCost` (src/lib/generate-batch.ts).
+    // (src/lib/chat-run-tool.ts), which charges `countCost` (src/lib/generate-batch.ts).
     for (const t of TASK_TYPES) expect([1, 2, 3].map((n) => countCost(t, n)), t).toEqual([1, 2, 3].map((n) => draftCredits(t, n)));
     expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("Math.max(1,Math.ceil((TASK_COST[type]/(TASK_COUNT[type]||1))*count))");
     // The base is the batch's or the draft's share; the charge is that base at the batch model's tier (rule 241 by tier, below).
     expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("constbase=opts.count?countCost(type,opts.count):TASK_COST[type];");
     expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain('constcost=creditsFor(base,model,"generate",type);');
-    expect(src("src/lib/chat.ts").replace(/\s+/g, "")).toContain('generateBatch(user,email,{type,notes:String(input.brief??""),count,');
+    expect(src("src/lib/chat-run-tool.ts").replace(/\s+/g, "")).toContain('generateBatch(user,email,{type,notes:String(input.brief??""),count,');
   });
 
   it("every draft keeps the floor, one-item drafts included (no exemption since 2026-10-09)", () => {
