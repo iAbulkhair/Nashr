@@ -1285,3 +1285,16 @@ Supastarter gap study 2026-10-16 (UX rollout, wave 1b), built with our own primi
 ### 81.1 Releases
 
 No stored shape changes: one release, no expand/contract step.
+
+## 83. Payment provider and storage adapter seams (2026-10-17, branch `claude/wave2-payment-storage-seam-6c1d1e`, rules 2050-2063)
+
+Supastarter gap study 2026-10-16, wave 2c: two interfaces, no behaviour change. The provider type copies the idea of supastarter's payments package (one type, one implementation chosen in one place), not its code. Paymob stays off exactly as before, until its PAYMOB_* variables are set. No route, permission, environment variable, Redis key or stored shape changes. Tests in `docs/system/tests/2050-payment-storage-seams.md`.
+
+1. Payment provider (rules 2050-2057). Billing (`src/lib/billing.ts`) reaches a card processor only through `PaymentProvider` (`src/lib/payments/provider.ts`): `createCheckout`, `savedCard.prepare` / `savedCard.charge` (null when the deployment cannot charge a saved card), `parseEvent`, `verifyWebhook`, `parseTransaction`, `parseCardToken` and `refund`. `paymentProvider()` in `src/lib/payments/index.ts` is the one place it is chosen; Paymob KSA (`paymobProvider()` in `src/lib/paymob.ts`) is the only implementation and answers null while `paymobConfig()` does. Routes and pages ask `paymentsEnabled()` instead of reading the Paymob gate. The keys stay in the provider's closures, never on the object. Errors are `PaymentError` (`PaymobError` extends it with the same messages).
+2. What stays in billing, unchanged: the amount, currency and live check against our own `priceFor` (a mismatch applies nothing), the account taken from our intent record, never from a callback, and exactly-once handling per transaction (`paymob:done:{id}` and `paymob:txlock:{id}`). The webhook order is the same: no provider gives 404, a body that is not an envelope gives 400, a bad signature gives 401 before any field is used, then a card token is saved or a transaction applied. The signature is Paymob's HMAC-SHA512 over its 20 transaction fields (8 for a card token) in the documented order, compared with `sameSecret`.
+3. Storage adapter (rules 2058-2062). The media store (`src/lib/media/store.ts`) keeps every decision (download through `safeFetch`, magic bytes, JPEG conversion, size cap, quota and free-space guard, the index `mfile:{scope}:{name}` under `sc(u)`'s scope) and reaches the bytes only through `StorageAdapter` (`src/lib/media/storage.ts`): `configured`, `put`, `get`, `stream`, `head`, `delete`, `url`, `freeBytes` and `probe`. `storage()` is the one place it is chosen; the private disk folder (`src/lib/media/disk.ts`, rules 1750-1763) is the only implementation, with the same write order (`.tmp/{name}.part` opened `wx` 0600, fsynced, hard-linked, never overwritten). An adapter sees a name that passed `MEDIA_NAME` and bytes, never a scope or a request. The `/m/` route checks the share link or the member's index entry first, then asks the adapter for `head` and `stream`.
+4. Not built: the Hostinger disk + Drive archive backend (draft PR #320, rules 991-1015) would be a second `StorageAdapter`; a second payment processor would be a second `PaymentProvider` chosen in `paymentProvider()`.
+
+### 83.1 Releases
+
+No stored shape changes: one release, no expand/contract step.

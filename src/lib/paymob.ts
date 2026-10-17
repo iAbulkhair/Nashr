@@ -1,10 +1,12 @@
 import { createHmac } from "node:crypto";
 import { sameSecret } from "./rate";
 import { log } from "./log";
+import { PaymentError, type CardTokenEvent, type PaymentProvider, type PaymentTxn, type WebhookEvent } from "./payments/provider";
 
 /**
  * Paymob KSA adapter (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md section 2): the configuration gate,
- * the four HTTP calls we make (create intention, pay with a saved card, refund, void) and the callback HMACs. Plain
+ * the four HTTP calls we make (create intention, pay with a saved card, refund, void) and the callback HMACs, offered to
+ * billing as the only `PaymentProvider` (`paymobProvider`, src/lib/payments/provider.ts, rule 2050). Plain
  * `fetch` and `node:crypto`, no SDK. The hosts are constants, never user input. No secret is ever logged, put in a URL
  * or put in an error: errors carry a short code and the HTTP status only.
  */
@@ -49,9 +51,10 @@ export function paymobConfig(): PaymobConfig | null {
   return { secretKey, publicKey, hmacSecret, cardIntegration, motoIntegration: integrationId(process.env.PAYMOB_INTEGRATION_ID_MOTO), live };
 }
 
-export class PaymobError extends Error {
-  constructor(public code: string, public status = 0) {
-    super(`paymob_${code}${status ? `:${status}` : ""}`);
+/** A Paymob failure. The message is `paymob_{code}[:{status}]`, as before the provider seam (rule 2057). */
+export class PaymobError extends PaymentError {
+  constructor(code: string, status = 0) {
+    super("paymob", code, status);
     this.name = "PaymobError";
   }
 }
@@ -120,21 +123,11 @@ export async function createIntention(cfg: PaymobConfig, i: IntentionInput): Pro
 export const checkoutUrl = (cfg: PaymobConfig, clientSecret: string) =>
   `${PAYMOB_CHECKOUT}/?publicKey=${encodeURIComponent(cfg.publicKey)}&clientSecret=${encodeURIComponent(clientSecret)}`;
 
-/** A transaction as we use it, from a callback's `obj` or from the pay answer. Null when the shape is not one. */
-export type Txn = {
-  id: number;
-  success: boolean;
-  pending: boolean;
-  amountCents: number;
-  currency: string;
-  orderId: number | null;
-  /** Our reference (`special_reference`), echoed as `order.merchant_order_id`. */
-  ref: string | null;
-  isRefunded: boolean;
-  isVoided: boolean;
-  hasParent: boolean;
-  isLive: boolean | null;
-};
+/**
+ * A transaction as we use it, from a callback's `obj` or from the pay answer. Null when the shape is not one. Our
+ * reference (`special_reference`) is echoed as `order.merchant_order_id`.
+ */
+export type Txn = PaymentTxn;
 export function parseTxn(o: unknown): Txn | null {
   if (!isObj(o)) return null;
   const id = posInt(o.id);
@@ -203,4 +196,58 @@ export const signHmac = (text: string, secret: string) => createHmac("sha512", s
 export function verifyHmac(obj: unknown, fields: readonly string[], received: unknown, secret: string): boolean {
   if (!isObj(obj) || typeof received !== "string" || !/^[a-f0-9]{128}$/i.test(received) || !secret) return false;
   return sameSecret(signHmac(hmacString(obj, fields), secret), received.toLowerCase());
+}
+
+// ---- The provider (rule 2050) ----
+
+/** A callback's envelope: `{ type: "TRANSACTION" | "TOKEN", obj: {…} }`. Null for anything else (the webhook answers 400). */
+export function parseEvent(body: unknown): WebhookEvent | null {
+  const b = isObj(body) ? body : null;
+  const obj = b && isObj(b.obj) ? b.obj : null;
+  if (!b || !obj || (b.type !== "TRANSACTION" && b.type !== "TOKEN")) return null;
+  return { kind: b.type === "TOKEN" ? "card_token" : "transaction", obj };
+}
+
+/** A card token callback's `obj`. Null without a whole order id and a token of the documented alphabet. */
+export function parseCardToken(o: Record<string, unknown>): CardTokenEvent | null {
+  const orderId = typeof o.order_id === "string" && /^\d{1,15}$/.test(o.order_id) ? Number(o.order_id) : typeof o.order_id === "number" ? o.order_id : null;
+  const token = typeof o.token === "string" && /^[A-Za-z0-9_-]{16,256}$/.test(o.token) ? o.token : null;
+  if (!orderId || !Number.isSafeInteger(orderId) || !token) return null;
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[^\w -]/g, "").slice(0, max) : "");
+  return {
+    orderId, token, email: typeof o.email === "string" ? o.email : "",
+    last4: text(o.masked_pan, 32).replace(/\D/g, "").slice(-4), brand: text(o.card_subtype, 20),
+    expMonth: text(o.expiry_month, 2), expYear: text(o.expiry_year, 4),
+  };
+}
+
+/**
+ * Paymob as a `PaymentProvider`, or null while the gate (`paymobConfig`) is closed. The configuration, secrets included,
+ * stays inside these closures: the object carries no key, so nothing that logs or returns it can leak one. Saved-card
+ * renewals need the Moto integration; without it `savedCard` is null and renewals go through checkout by hand.
+ */
+export function paymobProvider(): PaymentProvider | null {
+  const cfg = paymobConfig();
+  if (!cfg) return null;
+  const moto = cfg.motoIntegration;
+  return {
+    name: "paymob",
+    live: cfg.live,
+    async createCheckout(i) {
+      const it = await createIntention(cfg, { ...i, integration: cfg.cardIntegration });
+      return { orderId: it.orderId, url: checkoutUrl(cfg, it.clientSecret) };
+    },
+    savedCard: moto ? {
+      async prepare(i) {
+        const it = await createIntention(cfg, { ...i, integration: moto });
+        return { orderId: it.orderId, paymentKey: it.paymentKey };
+      },
+      charge: payWithToken,
+    } : null,
+    parseEvent,
+    verifyWebhook: (e, signature) => verifyHmac(e.obj, e.kind === "card_token" ? TOKEN_HMAC_FIELDS : TXN_HMAC_FIELDS, signature, cfg.hmacSecret),
+    parseTransaction: parseTxn,
+    parseCardToken,
+    refund: (txnId, amountCents) => refundTxn(cfg, txnId, amountCents),
+  };
 }

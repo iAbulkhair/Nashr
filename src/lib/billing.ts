@@ -10,7 +10,7 @@ import { enforceSeats } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
 import { GRACE_DAYS, addDays, addMonths, billingLocked, paymobRenewalDue, type Billing } from "./billing-state";
-import { PaymobError, TOKEN_HMAC_FIELDS, TXN_HMAC_FIELDS, checkoutUrl, createIntention, parseTxn, payWithToken, paymobConfig, refundTxn, verifyHmac, type PaymobConfig, type Txn } from "./paymob";
+import { PaymentError, paymentProvider, type CardTokenEvent, type PaymentProvider, type PaymentTxn } from "./payments";
 import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
 import { log as logger } from "./log";
@@ -18,7 +18,8 @@ import { log as logger } from "./log";
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
  * checkout, the callbacks, saved-card renewals with grace and lock, the owner's renewal settings and the founder's
- * refund. Everything is off unless `paymobConfig()` answers (src/lib/paymob.ts). Amounts always come from
+ * refund. Everything is off unless `paymentProvider()` answers (src/lib/payments, rule 2050: Paymob is its only
+ * provider and every processor call goes through that type; the stored keys and shapes stay `paymob:*`). Amounts always come from
  * src/lib/pricing.ts, never from a request; the account always comes from the session or from our own intent record,
  * never from a callback's payload.
  */
@@ -119,8 +120,8 @@ export type CheckoutError = "not_enabled" | "bad_request" | "bad_plan" | "bad_pa
  * `billing.pay`). The intent is stored before Paymob is called; the answer is the unified checkout URL.
  */
 export async function startCheckout(owner: Pick<User, "email">, body: unknown, lang: "ar" | "en"): Promise<{ ok: true; url: string; ref: string } | { ok: false; error: CheckoutError }> {
-  const cfg = paymobConfig();
-  if (!cfg) return { ok: false, error: "not_enabled" };
+  const p = paymentProvider();
+  if (!p) return { ok: false, error: "not_enabled" };
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
   if (!b || (b.kind !== "plan" && b.kind !== "topup")) return { ok: false, error: "bad_request" };
   const kind = b.kind;
@@ -146,9 +147,8 @@ export async function startCheckout(owner: Pick<User, "email">, body: unknown, l
   await Promise.all([db.set(intentKey(ref), intent, DAYS_400), db.set(lastCheckoutKey(acc.email), ref, LAST_TTL)]);
   const label = kind === "plan" ? `Thakeen ${intent.plan} plan, 1 month` : `Thakeen ${intent.credits} credits top-up`;
   try {
-    const it = await createIntention(cfg, {
+    const it = await p.createCheckout({
       amountCents: price.amountCents,
-      integration: cfg.cardIntegration,
       item: { name: label, description: `${label}${price.vatHalalas ? " (incl. VAT)" : ""}` },
       billing: { ...billingName(acc), email: acc.email, phone },
       reference: ref,
@@ -157,10 +157,10 @@ export async function startCheckout(owner: Pick<User, "email">, body: unknown, l
       expirationS: 3600,
     });
     await Promise.all([db.set(intentKey(ref), { ...intent, orderId: it.orderId }, DAYS_400), db.set(orderKey(it.orderId), ref, DAYS_400)]);
-    return { ok: true, url: checkoutUrl(cfg, it.clientSecret), ref };
+    return { ok: true, url: it.url, ref };
   } catch (e) {
     await db.set(intentKey(ref), { ...intent, status: "failed" }, DAYS_400);
-    logger.error("paymob checkout", { error: e instanceof PaymobError ? e.message : "error" });
+    logger.error("paymob checkout", { error: e instanceof PaymentError ? e.message : "error" });
     return { ok: false, error: "paymob_error" };
   }
 }
@@ -234,7 +234,7 @@ const ok = (result: string): CallbackResult => ({ status: 200, result });
  * A transaction, from a verified callback or from our own pay call (spec 4.4). Exactly once per transaction id: a done
  * marker, a short lock, and idempotent steps inside; a failure throws so the caller answers 500 and Paymob retries.
  */
-export async function applyTransaction(cfg: PaymobConfig, t: Txn): Promise<CallbackResult> {
+export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promise<CallbackResult> {
   // A refund or void made in Paymob's dashboard, full or partial, arrives here as a child or refunded transaction and
   // changes nothing on the account (rule 1301): only the founder console's refund ends a plan (`refundPaymobPayment`).
   if (t.hasParent || t.isRefunded || t.isVoided || t.pending) return ok("ignored");
@@ -245,9 +245,10 @@ export async function applyTransaction(cfg: PaymobConfig, t: Txn): Promise<Callb
   if (!(await db.lock(txLockKey(t.id), 60))) return { status: 503, result: "busy" };
   try {
     if (await db.get(doneKey(t.id))) return ok("already");
+    // Rule 2051: the provider only reports the transaction; our own price and our own intent decide whether it is paid.
     const expected = priceFor(intent.kind, intent, intent.offer, intent.lockedBaseHalalas);
     const mismatch = !expected || expected.amountCents !== intent.amountCents || t.amountCents !== intent.amountCents || t.currency !== "SAR"
-      || (intent.orderId !== undefined && t.orderId !== intent.orderId) || (t.isLive !== null && t.isLive !== cfg.live);
+      || (intent.orderId !== undefined && t.orderId !== intent.orderId) || (t.isLive !== null && t.isLive !== p.live);
     if (mismatch) {
       await Promise.all([
         db.set(intentKey(intent.ref), { ...intent, status: "mismatch", txnId: t.id }, DAYS_400),
@@ -286,18 +287,19 @@ export async function applyTransaction(cfg: PaymobConfig, t: Txn): Promise<Callb
   }
 }
 
-/** A card token callback (spec 4.4): matched to our intent through our order pointer, and to its account's email. */
-async function saveCard(o: Record<string, unknown>): Promise<CallbackResult> {
-  const orderId = typeof o.order_id === "string" && /^\d{1,15}$/.test(o.order_id) ? Number(o.order_id) : typeof o.order_id === "number" ? o.order_id : null;
-  const token = typeof o.token === "string" && /^[A-Za-z0-9_-]{16,256}$/.test(o.token) ? o.token : null;
-  if (!orderId || !Number.isSafeInteger(orderId) || !token) return ok("ignored");
+/**
+ * A card token callback (spec 4.4), already verified and parsed by the provider: matched to our intent through our
+ * order pointer, and to its account's email.
+ */
+async function saveCard(ct: CardTokenEvent | null): Promise<CallbackResult> {
+  if (!ct) return ok("ignored");
+  const { orderId, token } = ct;
   const ref = await db.get<string>(orderKey(orderId));
   const intent = typeof ref === "string" && REF.test(ref) ? await db.get<PayIntent>(intentKey(ref)) : null;
-  if (!intent || normalizeEmail(typeof o.email === "string" ? o.email : "") !== intent.email) return ok("ignored");
-  const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[^\w -]/g, "").slice(0, max) : "");
+  if (!intent || normalizeEmail(ct.email) !== intent.email) return ok("ignored");
   const card: SavedCard = {
-    token, last4: text(o.masked_pan, 32).replace(/\D/g, "").slice(-4), brand: text(o.card_subtype, 20) || "card",
-    expMonth: text(o.expiry_month, 2), expYear: text(o.expiry_year, 4), savedAt: new Date().toISOString(), orderId,
+    token, last4: ct.last4, brand: ct.brand || "card",
+    expMonth: ct.expMonth, expYear: ct.expYear, savedAt: new Date().toISOString(), orderId,
   };
   await db.set(cardKey(intent.email), card);
   await withUserLock(intent.email, async (u) => {
@@ -313,15 +315,14 @@ async function saveCard(o: Record<string, unknown>): Promise<CallbackResult> {
  * nothing is used before it matches.
  */
 export async function handlePaymobCallback(body: unknown, hmac: string | null): Promise<CallbackResult> {
-  const cfg = paymobConfig();
-  if (!cfg) return { status: 404, result: "not_enabled" };
-  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-  const obj = b && b.obj && typeof b.obj === "object" && !Array.isArray(b.obj) ? (b.obj as Record<string, unknown>) : null;
-  if (!b || !obj || (b.type !== "TRANSACTION" && b.type !== "TOKEN")) return { status: 400, result: "bad_body" };
-  if (!verifyHmac(obj, b.type === "TOKEN" ? TOKEN_HMAC_FIELDS : TXN_HMAC_FIELDS, hmac, cfg.hmacSecret)) return { status: 401, result: "bad_hmac" };
-  if (b.type === "TOKEN") return saveCard(obj);
-  const t = parseTxn(obj);
-  return t ? applyTransaction(cfg, t) : ok("ignored");
+  const p = paymentProvider();
+  if (!p) return { status: 404, result: "not_enabled" };
+  const e = p.parseEvent(body);
+  if (!e) return { status: 400, result: "bad_body" };
+  if (!p.verifyWebhook(e, hmac)) return { status: 401, result: "bad_hmac" };
+  if (e.kind === "card_token") return saveCard(p.parseCardToken(e.obj));
+  const t = p.parseTransaction(e.obj);
+  return t ? applyTransaction(p, t) : ok("ignored");
 }
 
 /**
@@ -329,8 +330,8 @@ export async function handlePaymobCallback(body: unknown, hmac: string | null): 
  * cron report, or null when nothing was due. At most one charge attempt per account per Riyadh day.
  */
 export async function renewPaymob(email: string, now = Date.now()): Promise<string | null> {
-  const cfg = paymobConfig();
-  if (!cfg) return null;
+  const p = paymentProvider();
+  if (!p) return null;
   const today = ksaDay(now);
   const u = await getUser(email);
   const b = u?.billing;
@@ -352,16 +353,17 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
     if (prev?.status === "open") return "paymob_pending";
   }
   if (!(await db.setNx(attemptKey(email, today), 1, 3 * 86400))) return null;
-  const card = b.autoRenew && cfg.motoIntegration ? await db.get<SavedCard>(cardKey(email)) : null;
+  const saved = b.autoRenew ? p.savedCard : null;
+  const card = saved ? await db.get<SavedCard>(cardKey(email)) : null;
   let outcome = card ? "paymob_declined" : "paymob_due";
   if (card) {
     try {
-      const r = await chargeSavedCard(cfg, u, b, card, today);
+      const r = await chargeSavedCard(p, saved!, u, b, card, today);
       if (r === "paid") return "paymob_renewed";
       if (r === "pending") return "paymob_pending";
     } catch (e) {
       outcome = "paymob_error";
-      logger.error("paymob renewal", { error: e instanceof PaymobError ? e.message : "error" });
+      logger.error("paymob renewal", { error: e instanceof PaymentError ? e.message : "error" });
     }
   }
   await withUserLock(email, async (x) => {
@@ -374,8 +376,8 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
   return outcome;
 }
 
-/** MIT on the Moto integration: a renewal intent at the plan's full price, then the saved card (spec 4.2). */
-async function chargeSavedCard(cfg: PaymobConfig, u: User, b: Billing, card: SavedCard, today: string): Promise<"paid" | "pending" | "declined"> {
+/** MIT through the provider's saved-card charge (Paymob: the Moto integration): a renewal intent at the plan's price, then the saved card (spec 4.2). */
+async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentProvider["savedCard"]>, u: User, b: Billing, card: SavedCard, today: string): Promise<"paid" | "pending" | "declined"> {
   // The period being paid starts at `paidThrough`: a lock that covers it prices the renewal (rule 1706).
   const locked = lockedBaseHalalas(u, b.plan, b.paidThrough);
   const price = priceFor("renewal", { plan: b.plan }, false, locked ?? undefined)!;
@@ -385,9 +387,8 @@ async function chargeSavedCard(cfg: PaymobConfig, u: User, b: Billing, card: Sav
   let paymentKey: string | null = null;
   let orderId = 0;
   try {
-    const it = await createIntention(cfg, {
+    const it = await saved.prepare({
       amountCents: price.amountCents,
-      integration: cfg.motoIntegration!,
       item: { name: `Thakeen ${b.plan} plan, 1 month`, description: `Thakeen ${b.plan} plan renewal${price.vatHalalas ? " (incl. VAT)" : ""}` },
       billing: { ...billingName(u), email: u.email, phone: normalizePhone(u.phone ?? "") || "NA" },
       reference: ref,
@@ -404,7 +405,7 @@ async function chargeSavedCard(cfg: PaymobConfig, u: User, b: Billing, card: Sav
   }
   if (!paymentKey) {
     await db.set(intentKey(ref), { ...intent, orderId, status: "failed" }, DAYS_400);
-    throw new PaymobError("no_payment_key");
+    throw new PaymentError(p.name, "no_payment_key");
   }
   // Rule 1956: the card is charged only if, under the account lock, the account still exists, renewal is still on and
   // the card is still saved. Account deletion (`stopRenewals`, first step of `wipeAccount`) turns renewal off and drops
@@ -418,13 +419,13 @@ async function chargeSavedCard(cfg: PaymobConfig, u: User, b: Billing, card: Sav
   });
   if (!still) {
     await db.set(intentKey(ref), { ...intent, orderId, status: "failed" }, DAYS_400);
-    throw new PaymobError("renewal_off");
+    throw new PaymentError(p.name, "renewal_off");
   }
-  const txn = await payWithToken(paymentKey, card.token);
+  const txn = await saved.charge(paymentKey, card.token);
   if (!txn || txn.pending) return "pending";
   // Our own call's answer over TLS: the reference is ours even when the answer does not echo it, but the order must match.
   if (txn.orderId !== null && txn.orderId !== orderId) return "pending";
-  const r = await applyTransaction(cfg, { ...txn, ref: txn.ref ?? ref });
+  const r = await applyTransaction(p, { ...txn, ref: txn.ref ?? ref });
   return txn.success && (r.result === "paid" || r.result === "already") ? "paid" : r.status === 503 ? "pending" : "declined";
 }
 
@@ -520,8 +521,8 @@ export type RefundError = "not_enabled" | "not_found" | "not_paymob" | "busy" | 
  * (`endPlanOnRefund`, rule 1300). A retry after the Paymob refund only finishes the void and the end.
  */
 export async function refundPaymobPayment(email: string, id: unknown, by: string, reason: unknown): Promise<{ ok: true; payment: Payment; alreadyRefunded: boolean; planEnded: boolean } | { ok: false; error: RefundError }> {
-  const cfg = paymobConfig();
-  if (!cfg) return { ok: false, error: "not_enabled" };
+  const pp = paymentProvider();
+  if (!pp) return { ok: false, error: "not_enabled" };
   const e = normalizeEmail(email);
   if (typeof id !== "string" || !/^pay_[a-f0-9]{8,32}$/.test(id)) return { ok: false, error: "not_found" };
   const p = (await db.hgetall<Payment>(paymentsKey(e)))[id];
@@ -537,9 +538,9 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
       alreadyRefunded = !!(await db.get(refundedKey(txnId)));
       if (!alreadyRefunded) {
         try {
-          await refundTxn(cfg, txnId, rec.amountCents);
+          await pp.refund(txnId, rec.amountCents);
         } catch (err) {
-          logger.error("paymob refund", { error: err instanceof PaymobError ? err.message : "error" });
+          logger.error("paymob refund", { error: err instanceof PaymentError ? err.message : "error" });
           return { ok: false, error: "paymob_refund_failed" };
         }
         await db.set(refundedKey(txnId), JSON.stringify({ at: new Date().toISOString(), by }), DAYS_400);

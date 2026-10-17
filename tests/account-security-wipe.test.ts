@@ -106,7 +106,7 @@ describe("rule 1956: a renewal that read the card before the deletion re-checks 
     const check = body.indexOf("const still = await withUserLock(u.email");
     expect(check).toBeGreaterThan(0);
     expect(body).toMatch(/if \(!x\.billing \|\| !x\.billing\.autoRenew \|\| !\(await db\.get\(cardKey\(u\.email\)\)\)\) return false;/);
-    expect(body).toContain('throw new PaymobError("renewal_off")');
-    expect(check).toBeLessThan(body.indexOf("payWithToken(paymentKey, card.token)"));
+    expect(body).toContain('throw new PaymentError(p.name, "renewal_off")');
+    expect(check).toBeLessThan(body.indexOf("saved.charge(paymentKey, card.token)"));
   });
 });
