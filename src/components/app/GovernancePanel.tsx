@@ -12,6 +12,8 @@ import ReadOnlyNote from "./ReadOnlyNote";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import Switch from "@/components/ui/Switch";
+import EmptyState from "@/components/ui/EmptyState";
+import { useToast } from "@/components/ui/Toast";
 
 /** Declared at module scope: a component created during render is remounted on every keystroke and loses focus. */
 function Row({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
@@ -56,18 +58,16 @@ const validCap = (v: string) => v.trim() === "" || /^\d+$/.test(v.trim());
  */
 export default function GovernancePanel({ t, lang, initial, spend, history: initialHistory, historyCap, readOnly = false, queue: initialQueue = [], canDecline = false }: { t: AppDict; lang: "ar" | "en"; initial: Governance; spend: Partial<Record<AgentId, number>>; history: GovHistoryEntry[]; historyCap: number; readOnly?: boolean; queue?: AutoQueued[]; canDecline?: boolean }) {
   const g = t.governance;
+  const toast = useToast();
   const [gov, setGov] = useState<Governance>(initial);
   const [caps, setCaps] = useState<Record<AgentId, string>>(() => capText(initial));
   const [history, setHistory] = useState<GovHistoryEntry[]>(initialHistory);
   const [busy, setBusy] = useState(false);
   const [restoring, setRestoring] = useState<string | null>(null);
-  const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const [histMsg, setHistMsg] = useState("");
   const [histErr, setHistErr] = useState("");
   const [queue, setQueue] = useState<AutoQueued[]>(initialQueue);
   const [declining, setDeclining] = useState<string | null>(null);
-  const [queueMsg, setQueueMsg] = useState("");
   const [queueErr, setQueueErr] = useState("");
   // The owner confirmed switching Majed's auto-run on in this page's dialog: only then does Save send the server the
   // confirmation it requires for that change (PUT /api/governance refuses it otherwise).
@@ -94,7 +94,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
     if (entry) setHistory((h) => [entry, ...h].slice(0, historyCap));
   }
   async function save() {
-    setMsg(""); setErr(""); setHistMsg(""); setHistErr("");
+    setErr(""); setHistErr("");
     // Nothing is sent while a cap is not a whole number: dropping the field and saying "Saved" hid the mistake.
     if (CAPPED.some((id) => !validCap(caps[id]))) { setErr(g.capInvalid); return; }
     setBusy(true);
@@ -105,12 +105,17 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       const confirm = gov.majedAutoHandoff === true && autoConfirmed ? { confirmAutoHandoff: true } : {};
       const res = await fetch("/api/governance", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...gov, agentCaps, ...confirm }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; governance?: Governance; entry?: GovHistoryEntry | null };
-      if (!res.ok || !j.ok || !j.governance) { setErr(refusal(j.error, g.saveFailed)); return; }
+      if (!res.ok || !j.ok || !j.governance) {
+        // rule 2001: a plain failure is a toast; a typed refusal (busy, cap, confirm) stays inline, the owner acts on it.
+        const said = refusal(j.error, g.saveFailed);
+        if (said === g.saveFailed) toast.danger(said); else setErr(said);
+        return;
+      }
       applySaved({ governance: j.governance, entry: j.entry });
       setAutoConfirmed(false);
-      setMsg(g.saved);
+      toast.success(g.saved);
     } catch {
-      setErr(g.saveFailed);
+      toast.danger(g.saveFailed);
     } finally {
       setBusy(false);
     }
@@ -121,7 +126,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
    * same words as the switch; then it is sent once more with the confirmation.
    */
   async function restore(id: string) {
-    setMsg(""); setErr(""); setHistMsg(""); setHistErr("");
+    setErr(""); setHistErr("");
     if (!(await ask({ title: g.history, message: g.restoreConfirm, confirmLabel: g.restore, cancelLabel: t.dialog.back, destructive: true }))) return;
     setRestoring(id);
     try {
@@ -135,11 +140,15 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
         j = (await res.json().catch(() => ({}))) as Reply;
       }
       // not_found: the change has left the history (dropped past the cap, maybe by a save in another tab); retrying cannot help.
-      if (!res.ok || !j.ok || !j.governance) { setHistErr(j.error === "not_found" ? g.restoreGone : refusal(j.error, g.restoreFailed)); return; }
+      if (!res.ok || !j.ok || !j.governance) {
+        const said = j.error === "not_found" ? g.restoreGone : refusal(j.error, g.restoreFailed);
+        if (said === g.restoreFailed || said === g.restoreGone) toast.danger(said); else setHistErr(said);
+        return;
+      }
       applySaved({ governance: j.governance, entry: j.entry });
-      setHistMsg(j.entry ? g.restored : g.restoreNoop);
+      toast.success(j.entry ? g.restored : g.restoreNoop);
     } catch {
-      setHistErr(g.restoreFailed);
+      toast.danger(g.restoreFailed);
     } finally {
       setRestoring(null);
     }
@@ -149,7 +158,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
    * or is gone is no longer waiting either way, so it leaves the list too.
    */
   async function declineQueued(q: AutoQueued) {
-    setQueueMsg(""); setQueueErr("");
+    setQueueErr("");
     const k = `${q.id}:${q.item}`;
     setDeclining(k);
     try {
@@ -158,13 +167,14 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       const settled = r.ok && j.ok;
       if (settled || ["done", "declined", "running", "not_found"].includes(j.error ?? "")) {
         setQueue((l) => l.filter((x) => `${x.id}:${x.item}` !== k));
-        setQueueMsg(settled ? g.autoQueueDeclined : g.autoQueueGone);
+        toast.success(settled ? g.autoQueueDeclined : g.autoQueueGone);
         return;
       }
       const H = t.handoff.errors;
-      setQueueErr(r.status === 403 ? H.forbidden : j.error && Object.hasOwn(H, j.error) ? H[j.error as keyof typeof H] : H.failed);
+      const said = r.status === 403 ? H.forbidden : j.error && Object.hasOwn(H, j.error) ? H[j.error as keyof typeof H] : H.failed;
+      if (said === H.failed) toast.danger(said); else setQueueErr(said);
     } catch {
-      setQueueErr(t.handoff.errors.failed);
+      toast.danger(t.handoff.errors.failed);
     } finally {
       setDeclining(null);
     }
@@ -231,7 +241,6 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
         {!readOnly && (
           <div className="flex items-center gap-3">
             <button onClick={save} disabled={busy || !!restoring} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>
-            {msg && <span role="status" className="text-sm text-foreground">{msg}</span>}
             {err && <span role="alert" className="text-sm text-danger">{err}</span>}
           </div>
         )}
@@ -241,7 +250,6 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
         <section className="card mt-4" aria-labelledby="gov-auto-queue">
           <h2 id="gov-auto-queue" className="font-display font-medium">{g.autoQueue}</h2>
           <p className="mt-1 text-sm text-foreground-muted">{g.autoQueueSub}</p>
-          {queueMsg && <p role="status" className="mt-2 text-sm text-foreground">{queueMsg}</p>}
           {queueErr && <p role="alert" className="mt-2 text-sm text-danger">{queueErr}</p>}
           <ul className="mt-3 divide-y divide-foreground/10">
             {queue.map((q) => {
@@ -267,10 +275,10 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       <section className="card mt-4" aria-labelledby="gov-history">
         <h2 id="gov-history" className="font-display font-medium">{g.history}</h2>
         <p className="mt-1 text-sm text-foreground-muted">{g.historySub}</p>
-        {histMsg && <p role="status" className="mt-2 text-sm text-foreground">{histMsg}</p>}
         {histErr && <p role="alert" className="mt-2 text-sm text-danger">{histErr}</p>}
         {history.length === 0 ? (
-          <p className="mt-3 text-sm text-foreground-muted">{g.historyEmpty}</p>
+          // rule 2002
+          <EmptyState compact className="mt-3" title={g.historyEmpty} />
         ) : (
           <ul className="mt-3 divide-y divide-foreground/10">
             {history.map((r) => (

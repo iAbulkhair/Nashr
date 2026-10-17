@@ -10,6 +10,9 @@ import FeedCard from "./FeedCard";
 import CalendarLinkCard, { type CalProviders } from "./CalendarLinkCard";
 import MeetingPanel from "./MeetingPanel";
 import Scribble from "@/components/Scribble";
+import EmptyState from "@/components/ui/EmptyState";
+import { useToast } from "@/components/ui/Toast";
+import { emptyCopy } from "@/lib/empty-copy";
 
 /**
  * One item as the page shows it: every date already formatted on the server, in the brand's zone. `proposed.claim` is
@@ -166,6 +169,8 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
   const R = T.repeat;
   const timedText = timed ? T.timedOn : T.timedOff.replace("{brief}", () => briefAt);
   const router = useRouter();
+  const toast = useToast();
+  const E = emptyCopy(lang, "todo");
   const [panel, setPanel] = useState<Panel>(null);
   const [result, setResult] = useState("");
   const [when, setWhen] = useState("");
@@ -205,7 +210,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       router.refresh();
       return true;
     } catch {
-      setError({ id, text: T.errors.generic });
+      toast.danger(T.errors.generic); // rule 2001: the request never got an answer, not tied to a field
       return false;
     } finally {
       setBusy(null);
@@ -244,7 +249,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       setWalk({ card: j.card ?? null, left: j.left ?? 0 });
       setWalkResult(null);
     } catch {
-      setError({ id: "walk", text: T.errors.generic });
+      toast.danger(T.errors.generic); // rule 2001
     } finally {
       setBusy(null);
     }
@@ -262,7 +267,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       if (r.status === 409 && j.error === "changed") { await walkLoad(); setError({ id: "walk", text: lang === "ar" ? "تغيّرت هذه المسودة بعد عرض البطاقة، فلم تُعتمد. هذه نسختها الحالية." : "This draft changed after the card was shown, so it was not approved. Here is its current version." }); return; }
       if (!r.ok || j.ok === false) { setError({ id: "walk", text: errText(j.error) }); return; }
     } catch {
-      setError({ id: "walk", text: T.errors.generic });
+      toast.danger(T.errors.generic); // rule 2001
       return;
     } finally {
       setBusy(null);
@@ -456,7 +461,8 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
         </div>
       )}
 
-      {empty ? <p className="mt-6 card text-sm text-foreground-muted">{T.empty}</p> : allClear && <p className="mt-6 text-sm text-foreground-muted">{T.allClear}</p>}
+      {/* rule 2002: the empty list is an EmptyState */}
+      {empty ? <EmptyState compact className="mt-6" title={E.title} body={E.body} /> : allClear && <p className="mt-6 text-sm text-foreground-muted">{T.allClear}</p>}
       {sections.map((s) => (
         <section key={s.bucket} className="mt-6" aria-labelledby={`todo-${s.bucket}`}>
           <h2 id={`todo-${s.bucket}`} className={`font-display text-lg font-semibold ${s.bucket === "overdue" ? "text-danger" : "text-foreground"}`}>{s.title} <span className="tnum text-sm font-normal text-foreground-muted" dir="ltr">({s.rows.length})</span></h2>

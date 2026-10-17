@@ -3,6 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
 import { TITLE_MAX, WISH_STATUSES, type Bi, type WishArea, type WishStatus } from "@/lib/changelog";
 import { useConfirm } from "../app/ConfirmDialog";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import Callout from "@/components/ui/Callout";
+import { STR } from "./shared";
+import EmptyState from "@/components/ui/EmptyState";
 
 type Item = { id: string; title: Bi; area: WishArea | null; status: WishStatus; votes: number; seeded: boolean; hidden: boolean };
 type Sugg = { id: string; email: string; text: string; lang: "ar" | "en"; at: string };
@@ -49,12 +54,13 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
   const L = S[lang];
   const [data, setData] = useState<{ suggestions: Sugg[]; items: Item[] } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const [msg, setMsg] = useState("");
   // Above the early return below: hooks run on every render.
   const [ask, confirmDialog] = useConfirm();
   const load = useCallback(async () => {
     const j = await adminFetch("/api/admin/wishlist").then((r) => r.json()).catch(() => ({}));
-    if (j.ok) setData({ suggestions: j.suggestions, items: j.items });
+    if (j.ok) { setData({ suggestions: j.suggestions, items: j.items }); setFailed(false); } else setFailed(true);
   }, []);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
@@ -66,14 +72,14 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
   }
   const done = async (m: string) => { setMsg(m); setOpen(null); await load(); };
 
-  if (!data) return <p className="text-sm text-foreground-muted">{L.loading}</p>;
+  if (!data) return failed ? <Callout tone="danger">{STR[lang].loadFailed}</Callout> : <PanelSkeleton label={L.loading} shape="rows" />;
   return (
     <div className="grid gap-6">
       {msg && <p className="text-sm text-foreground">{msg}</p>}
       <section className="card card-sm">
         <h2 className="font-display text-lg font-semibold text-foreground">{L.queue} <span className="tnum text-sm text-foreground-muted" dir="ltr">({data.suggestions.length})</span></h2>
         <p className="text-xs text-foreground-muted">{L.queueNote}</p>
-        {data.suggestions.length === 0 ? <p className="mt-3 text-sm text-foreground-muted">{L.none}</p> : (
+        {data.suggestions.length === 0 ? <EmptyState compact title={L.none} className="mt-3" /> : (
           <ul className="mt-3 grid gap-2">
             {data.suggestions.map((s) => (
               <li key={s.id} className="rounded-lg border border-foreground/10 p-3 text-sm">

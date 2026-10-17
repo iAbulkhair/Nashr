@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import { fill } from "@/lib/fill";
 import { refusalText, useOneWrite } from "./useOneWrite";
+import { PanelSkeleton } from "@/components/ui/Skeleton";
 
 /**
  * «تقويم التسويق» / "Marketing calendar" on My to-dos (Reem B3, spec 2026-10-05-secretary-reem-b3-calendar-read-design.md §2): the
@@ -98,7 +99,7 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
       <h2 id="todo-calendar-title" className="card-title">{T.title}</h2>
       <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
       {fromError && <p role="alert" className="mt-3 rounded-xl border border-foreground/10 px-3 py-2 text-sm text-danger">{T.calError[fromError]}</p>}
-      {state.kind === "loading" && <p className="mt-3 text-sm text-foreground-muted">{T.loading}</p>}
+      {state.kind === "loading" && <PanelSkeleton className="mt-3" label={T.loading} shape="rows" count={2} />}{/* rule 2003 */}
       {state.kind === "failed" && (
         <div className="mt-3">
           <p role="alert" className="text-sm text-danger">{state.text ?? T.error}</p>
@@ -124,7 +125,7 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
             <h3 className="text-sm font-semibold">{T.chooseTitle}</h3>
             <p className="mt-1 text-xs text-foreground-muted">{T.chooseHint}</p>
           </div>
-          {state.calendars === null && <p className="text-sm text-foreground-muted">{T.loading}</p>}
+          {state.calendars === null && <PanelSkeleton label={T.loading} shape="line" />}
           {state.calendars !== null && state.calendars.length === 0 && (
             <div className="grid gap-2">
               <p className="text-sm">{T.noCalendars}</p>

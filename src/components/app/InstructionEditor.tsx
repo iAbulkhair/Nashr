@@ -4,6 +4,8 @@ import { isAgentId } from "@/lib/agents";
 import type { Draft, Target } from "@/lib/instructions-store";
 import { MAX_REFS, WORKSPACE_ITEMS } from "@/lib/instructions-safety";
 import { agentsControl, fill, showRefs } from "@/lib/instructions-ui";
+import EmptyState from "@/components/ui/EmptyState";
+import { emptyCopy } from "@/lib/empty-copy";
 
 /** The row-level reason a save was refused, by the row's position in the list. */
 export type RowErrors = Record<number, string>;
@@ -37,6 +39,7 @@ export const targetLabel = (t: AppDict, target: Target): string => (isAgentId(ta
  */
 export default function InstructionEditor({ t, items, onChange, maxChars, targets, perAgent, refsOn, files, allowLock, readOnly, errors = {}, refTitles = {}, maxItems = WORKSPACE_ITEMS }: { t: AppDict; items: Draft[]; onChange: (items: Draft[]) => void; maxChars: number; targets: Target[]; perAgent: boolean; refsOn: boolean; files: string[]; allowLock: boolean; readOnly: boolean; errors?: RowErrors; refTitles?: Record<string, string>; maxItems?: number }) {
   const I = t.instructions;
+  const E = emptyCopy(t.lang, "instructions");
   const set = (i: number, patch: Partial<Draft>) => onChange(items.map((d, j) => (j === i ? { ...d, ...patch } : d)));
   const drop = (i: number) => onChange(items.filter((_, j) => j !== i));
   /** Picking "Chosen agents" starts with the first target on, because a row needs at least one. */
@@ -49,7 +52,7 @@ export default function InstructionEditor({ t, items, onChange, maxChars, target
   };
   return (
     <div>
-      {items.length === 0 && <p className="text-sm text-foreground-muted">{I.empty}</p>}
+      {items.length === 0 && <EmptyState compact title={E.title} body={E.body} />}
       <ol className="grid gap-3">
         {items.map((d, i) => {
           const n = i + 1;

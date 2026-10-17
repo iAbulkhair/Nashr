@@ -10,6 +10,7 @@ import { modelErrorText } from "@/lib/provider-errors";
 import type { Lang } from "@/lib/i18n";
 import Scribble from "@/components/Scribble";
 import AgentAvatar from "@/components/app/AgentAvatar";
+import { useToast } from "@/components/ui/Toast";
 
 /**
  * `owner`: the acting person may subscribe (`can(u, "billing")`); `topups`: the account's plan may buy top-up packs
@@ -17,6 +18,7 @@ import AgentAvatar from "@/components/app/AgentAvatar";
  */
 export default function GeneratePanel({ t, lang, credits, owner = true, topups = true }: { t: AppDict; lang: Lang; credits: number; owner?: boolean; topups?: boolean }) {
   const r = useRouter();
+  const toast = useToast();
   const g = t.generate;
   const [busy, setBusy] = useState<TaskType | null>(null);
   const [msg, setMsg] = useState("");
@@ -32,7 +34,8 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
       const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, notes }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
       if (res.ok && j.ok) {
-        setMsg(g.done);
+        setMsg("");
+        toast.success(g.done); // rule 2001
         r.push(`/${lang}/app`);
         r.refresh();
         return;
@@ -46,9 +49,12 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
         return;
       }
       const map: Record<string, string> = { no_credits: noCreditsText(g, owner, topups), trial_over: g.trialOver, no_brand: g.noBrand, no_cart_data: g.noCartData, model_paused: g.paused, agent_cap: t.limit.agentCapTitle, fair_use: t.limit.fairUseTitle };
-      setMsg((j.error && map[j.error]) || modelErrorText(lang, j.error) || g.failed);
+      const said = (j.error && map[j.error]) || modelErrorText(lang, j.error);
+      if (said) setMsg(said);
+      else { setMsg(""); toast.danger(g.failed); } // rule 2001: a plain failure; credits, limits and refusals stay inline
     } catch {
-      setMsg(g.failed);
+      setMsg("");
+      toast.danger(g.failed);
     } finally {
       setBusy(null);
     }

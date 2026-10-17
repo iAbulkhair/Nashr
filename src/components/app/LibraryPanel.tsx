@@ -6,6 +6,10 @@ import type { LibraryItem } from "@/lib/media/store";
 import type { DriveHit } from "@/lib/cloud-drives";
 import DriveExport, { driveError, loadDrives, type DriveRow } from "./DriveExport";
 import { useConfirm } from "./ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
+import EmptyState from "@/components/ui/EmptyState";
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import { emptyCopy } from "@/lib/empty-copy";
 
 /**
  * The workspace's media library (rules 1781-1787): upload from the device, import from a connected cloud drive, delete,
@@ -24,10 +28,17 @@ const load = (): Promise<Listing> => fetch("/api/drives").then((r) => r.json() a
 export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWrite?: boolean }) {
   const l = t.library;
   const r = useRouter();
+  const toast = useToast();
+  // No lang prop: the language comes from the path, as ShellError does (rule 2002).
+  const E = emptyCopy(t.lang, "library");
+  const [loaded, setLoaded] = useState(false);
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [drives, setDrives] = useState<DriveRow[]>([]);
   const [store, setStore] = useState(true);
+  // In-progress and file-check words only; a finished upload, import or delete says so in a toast (rule 2001).
   const [msg, setMsg] = useState("");
+  // A role refusal (403) stays on the page for the person to act on; every other failure is a toast (rule 2001).
+  const [denied, setDenied] = useState("");
   const [busy, setBusy] = useState("");
   const [q, setQ] = useState<Record<string, string>>({});
   const [hits, setHits] = useState<Record<string, DriveHit[] | null>>({});
@@ -35,6 +46,10 @@ export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWr
   const text = useRef<HTMLInputElement>(null);
   const [ask, confirmDialog] = useConfirm();
 
+  function fail(status: number, code: unknown) {
+    if (status === 403) setDenied(driveError(t, 403, code));
+    else toast.danger(driveError(t, status, code));
+  }
   function apply(j: Listing) {
     setItems(j?.library ?? []);
     setDrives(j?.drives ?? []);
@@ -51,19 +66,23 @@ export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWr
       setItems(j?.library ?? []);
       setDrives(j?.drives ?? []);
       setStore(j?.store !== false);
+      setLoaded(true);
     });
     return () => { live = false; };
   }, []);
 
   async function uploadImage(f: File | undefined) {
     if (!f) return;
+    setDenied("");
     setBusy("upload");
     setMsg(l.uploading);
     const fd = new FormData();
     fd.append("file", f);
     const res = await fetch("/api/media/upload", { method: "POST", body: fd }).catch(() => null);
     const j = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
-    setMsg(res?.ok && j?.ok ? l.uploaded : driveError(t, res?.status ?? 0, j?.error));
+    setMsg("");
+    if (res?.ok && j?.ok) toast.success(l.uploaded);
+    else fail(res?.status ?? 0, j?.error);
     setBusy("");
     if (res?.ok) void refresh();
   }
@@ -71,6 +90,8 @@ export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWr
   /** A text file goes through the Files page's own route: it becomes an ordinary workspace file written by the owner. */
   async function uploadText(f: File | undefined) {
     if (!f) return;
+    setDenied("");
+    setMsg("");
     if (f.size > TEXT_MAX_BYTES) return setMsg(l.errors.too_large);
     setBusy("upload");
     const content = (await f.text().catch(() => "")).trim();
@@ -81,7 +102,8 @@ export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWr
     const name = `upload-${f.name.replace(/\.[^.]+$/, "")}.${/\.csv$/i.test(f.name) ? "csv" : "md"}`;
     const res = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content }) }).catch(() => null);
     const j = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string; file?: { name: string } } | null;
-    setMsg(res?.ok && j?.ok ? `${l.uploadedText} ${j.file?.name ?? name}` : driveError(t, res?.status ?? 0, j?.error));
+    if (res?.ok && j?.ok) toast.success(`${l.uploadedText} ${j.file?.name ?? name}`);
+    else fail(res?.status ?? 0, j?.error);
     setBusy("");
     if (res?.ok) r.refresh();
   }
@@ -90,32 +112,36 @@ export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWr
     const words = (q[d] ?? "").trim();
     if (!words) return;
     setBusy(`search:${d}`);
+    setDenied("");
     setMsg("");
     const res = await fetch("/api/drives", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "search", drive: d, q: words }) }).catch(() => null);
     const j = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string; results?: DriveHit[] } | null;
     if (res?.ok && j?.ok) setHits((p) => ({ ...p, [d]: j.results ?? [] }));
-    else setMsg(driveError(t, res?.status ?? 0, j?.error));
+    else fail(res?.status ?? 0, j?.error);
     setBusy("");
   }
 
   async function importOne(d: DriveRow["id"], h: DriveHit) {
     setBusy(`import:${h.id}`);
+    setDenied("");
     setMsg(l.importing);
     const res = await fetch("/api/drives", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "import", drive: d, id: h.id, name: h.name }) }).catch(() => null);
     const j = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string; imported?: { kind: string; file?: string } } | null;
+    setMsg("");
     if (res?.ok && j?.ok) {
-      setMsg(j.imported?.kind === "text" ? `${l.importedText} ${j.imported.file}` : l.importedMedia);
+      toast.success(j.imported?.kind === "text" ? `${l.importedText} ${j.imported.file}` : l.importedMedia);
       if (j.imported?.kind === "text") r.refresh();
       else void refresh();
-    } else setMsg(driveError(t, res?.status ?? 0, j?.error));
+    } else fail(res?.status ?? 0, j?.error);
     setBusy("");
   }
 
   async function remove(name: string) {
     if (!(await ask({ title: l.delete, message: l.deleteAsk, confirmLabel: l.delete, cancelLabel: t.dialog.back, destructive: true }))) return;
+    setDenied("");
     const res = await fetch(`/api/drives?name=${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => null);
     if (res?.ok) setItems((p) => p.filter((x) => x.name !== name));
-    else setMsg(driveError(t, res?.status ?? 0, null));
+    else fail(res?.status ?? 0, null);
   }
 
   return (
@@ -139,6 +165,7 @@ export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWr
         </div>
       )}
       {msg && <p role="status" className="text-sm">{msg}</p>}
+      {denied && <p role="alert" className="text-sm text-danger">{denied}</p>}
 
       {canWrite && drives.map((d) => (
         <div key={d.id} className="grid gap-2 rounded-lg border border-border p-3">
@@ -158,7 +185,7 @@ export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWr
                     </li>
                   ))}
                 </ul>
-              ) : <p className="text-xs text-foreground-muted">{l.noResults}</p>)}
+              ) : <EmptyState compact title={l.noResults} />)}
             </>
           ) : <p className="text-xs text-foreground-muted">{l.connectHint}</p>}
         </div>
@@ -182,7 +209,7 @@ export default function LibraryPanel({ t, canWrite = true }: { t: AppDict; canWr
             </li>
           ))}
         </ul>
-      ) : <p className="text-sm text-foreground-muted">{l.empty}</p>}
+      ) : !loaded ? <PanelSkeleton label={t.ux.loading} shape="cards" count={2} /> : <EmptyState compact title={E.title} body={E.body} />}
     </section>
   );
 }

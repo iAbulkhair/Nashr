@@ -5,6 +5,7 @@ import Button from "@/components/ui/Button";
 import Callout from "@/components/ui/Callout";
 import { Field, Input } from "@/components/ui/Field";
 import QrCode from "@/components/admin/QrCode";
+import { PanelSkeleton } from "@/components/ui/Skeleton";
 import PasswordField from "../PasswordField";
 import SettingsCard, { type CardStatus } from "./SettingsCard";
 
@@ -70,6 +71,8 @@ async function readStatus() {
 export default function TwoStepSettings({ lang, forbidden }: { lang: Lang; forbidden: string }) {
   const T = COPY[lang];
   const [st, setSt] = useState<Status | null>(null);
+  // The first read failed: say so, rather than a skeleton that never ends.
+  const [unread, setUnread] = useState(false);
   const [pw, setPw] = useState("");
   const [code, setCode] = useState("");
   const [setup, setSetup] = useState<{ secret: string; uri: string } | null>(null);
@@ -78,8 +81,9 @@ export default function TwoStepSettings({ lang, forbidden }: { lang: Lang; forbi
   const [status, setStatus] = useState<CardStatus>(null);
   const [copied, setCopied] = useState(false);
 
-  const load = async () => { const v = await readStatus(); if (v) setSt(v); };
-  useEffect(() => { void readStatus().then((v) => { if (v) setSt(v); }); }, []);
+  const show = (v: Status | null) => { setUnread(!v); if (v) setSt(v); };
+  const load = async () => show(await readStatus());
+  useEffect(() => { void readStatus().then(show); }, []);
 
   const err = (s: number, e?: string) => s === 403 ? forbidden : s === 429 ? T.slow : e === "wrong_password" ? T.wrong : e === "bad_code" ? T.badCode : e === "no_setup" ? T.noSetup : T.failed;
 
@@ -111,7 +115,14 @@ export default function TwoStepSettings({ lang, forbidden }: { lang: Lang; forbi
     await navigator.clipboard?.writeText(codes.join("\n")).then(() => setCopied(true), () => {});
   }
 
-  if (!st) return <SettingsCard title={T.title} sub={T.loading} />;
+  // Rule 2003: the card keeps its title while the status loads, with a skeleton line.
+  if (!st) {
+    return (
+      <SettingsCard title={T.title}>
+        {unread ? <p role="alert" className="text-sm text-danger">{T.failed}</p> : <PanelSkeleton label={T.loading} shape="line" />}
+      </SettingsCard>
+    );
+  }
 
   if (codes) {
     return (

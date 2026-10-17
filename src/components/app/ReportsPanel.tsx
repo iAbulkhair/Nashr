@@ -26,6 +26,9 @@ import type { NotReadItem, NotReadReason } from "@/lib/not-read";
 import { READS_ADS } from "@/lib/connectors/working";
 import Scribble from "@/components/Scribble";
 import { Time } from "@/components/ui/Time";
+import { useToast } from "@/components/ui/Toast";
+import EmptyState from "@/components/ui/EmptyState";
+import { emptyCopy } from "@/lib/empty-copy";
 import { METRICS_KEY, readStored, writeStored } from "@/lib/cookie-names";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
@@ -41,6 +44,8 @@ type MetricKey = (typeof METRICS)[number];
 export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, liNoPage = false, x = null, notRead = [], socialVia = null, xConnected = false, siteChoices = null, canRead = false, canGenerate = false, canConnectors = false, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: every platform part from the last read, or a snapshot from before v2 (src/lib/social-stats.ts). */ social?: StoredSocial | null; /** `liNeedsPage`: LinkedIn is connected through Composio with no company page chosen. */ liNoPage?: boolean; /** `xReadOf(getXStats)`, without the account's id: X's last paid read (rule 744). */ x?: XStats | null; /** `notReadOf` over the page's own reads (rule 738). */ notRead?: NotReadItem[]; /** `socialRefreshPath`: the provider path the social Refresh posts to. */ socialVia?: string | null; /** `xDirect`: X is connected directly. */ xConnected?: boolean; /** `siteChoices`: the GA4 properties and Search Console sites listed at connect. */ siteChoices?: SiteChoices | null; /** `can(u, "read")`: the free refreshes (rule 735). */ canRead?: boolean; /** `can(u, "generate")`: X's paid refresh (rule 744). */ canGenerate?: boolean; /** `can(u, "connectors")`: the property choice (rule 734). */ canConnectors?: boolean; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
   const r = useRouter();
   const R = t.reports;
+  const toast = useToast();
+  const E = emptyCopy(lang, "reports");
   const [busy, setBusy] = useState<TaskType | null>(null);
   const [msg, setMsg] = useState("");
   const [notes, setNotes] = useState("");
@@ -51,19 +56,23 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
   useEffect(() => { void Promise.resolve().then(() => { try { const s = readStored(localStorage, METRICS_KEY); if (s) setPicked(JSON.parse(s)); } catch { /* ignore */ } }); }, []);
   const savePicked = (p: MetricKey[]) => { setPicked(p); try { writeStored(localStorage, METRICS_KEY, JSON.stringify(p)); } catch { /* ignore */ } };
 
+  const refusals: Record<string, string> = { no_credits: noCreditsText(t.generate, owner, topups), trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle, fair_use: t.limit.fairUseTitle };
   async function run(type: TaskType) {
     setBusy(type); setMsg(t.generate.running);
     const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, notes }) });
     const j = await res.json();
     setBusy(null);
-    if (j.ok) { setMsg(t.generate.done); r.refresh(); return; }
+    // Rule 2001: the finished run is a toast; the inline line keeps the running words and the refusals the owner must act on.
+    if (j.ok) { setMsg(""); toast.success(t.generate.done); r.refresh(); return; }
     limitFromError(j.error);
     // Outside what the team works on (rule 796), or too many such requests: the server wrote the answer in the owner's language.
     // Shown as text in the status line, never as HTML.
     const refused = scopeRefusalText(j);
     if (refused) { setMsg(refused); return; }
-    const map: Record<string, string> = { no_credits: noCreditsText(t.generate, owner, topups), trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle, fair_use: t.limit.fairUseTitle };
-    setMsg(map[j.error] ?? modelErrorText(lang, j.error) ?? t.generate.failed);
+    // A mapped refusal (limits, no brand, models paused) is something the owner must act on or wait for: it stays inline.
+    if (refusals[j.error]) { setMsg(refusals[j.error]); return; }
+    setMsg("");
+    toast.danger(modelErrorText(lang, j.error) ?? t.generate.failed);
   }
 
   const delta = (cur: number, prev: number) => kpiDelta(cur, prev, R.vsPrev);
@@ -129,7 +138,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       {(social || x || liNoPage || socialVia || xConnected || notRead.some((i) => !QUIET.includes(i.reason))) && (
         <SocialStats lang={lang} social={social} x={x} notRead={notRead} liNoPage={liNoPage} canRefresh={canRead} socialVia={socialVia} canRefreshX={canGenerate} xConnected={xConnected} noCredits={noCreditsText(t.generate, owner, topups)} />
       )}
-      {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} failedAt={syncFailure?.provider === salesProvider ? syncFailure.at : null} lang={lang} />}
+      {salesProvider && <StoreSales R={R.store} refusals={refusals} failed={t.generate.failed} provider={salesProvider} store={store?.provider === salesProvider ? store : null} failedAt={syncFailure?.provider === salesProvider ? syncFailure.at : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -276,7 +285,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 
       <section className="mt-8">
         <h2 className="font-display text-lg font-semibold text-foreground">{R.items}</h2>
-        {items.length === 0 ? <p className="mt-2 text-sm text-foreground-muted">{R.empty}</p> : (
+        {items.length === 0 ? <EmptyState compact className="mt-2" title={E.title} body={E.body} /> : (
           <ul className="mt-3 divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-surface">
             {items.map((x) => (
               <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
@@ -298,9 +307,10 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 }
 
 /** Store orders and abandoned carts, as totals from the last sync. The numbers are the store's, never estimated. */
-function StoreSales({ R, paused, provider, store, failedAt, lang }: { R: AppDict["reports"]["store"]; paused: string; provider: SalesProvider; store: SalesSnapshot | null; failedAt: string | null; lang: Lang }) {
+function StoreSales({ R, refusals, failed, provider, store, failedAt, lang }: { R: AppDict["reports"]["store"]; /** The report buttons' refusal words by error code (limits, no brand, models paused). */ refusals: Record<string, string>; failed: string; provider: SalesProvider; store: SalesSnapshot | null; failedAt: string | null; lang: Lang }) {
   const r = useRouter();
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
   const [err, setErr] = useState("");
   const [drafting, setDrafting] = useState(false);
   const [note, setNote] = useState("");
@@ -309,16 +319,23 @@ function StoreSales({ R, paused, provider, store, failedAt, lang }: { R: AppDict
     try {
       const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "cart_recovery" }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
-      // The same refusal copy as the report buttons (rule 796), shown as text.
-      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(scopeRefusalText(j) ?? (j.error === "model_paused" ? paused : modelErrorText(lang, j.error) ?? j.error ?? `HTTP ${res.status}`)); }
-    } catch { setErr("failed"); } finally { setDrafting(false); }
+      // The same refusal copy as the report buttons (rule 796), shown as text. Refusals stay beside the card; any other failure is a toast (rule 2001).
+      if (j.ok) { setNote(R.drafted); r.refresh(); return; }
+      limitFromError(j.error);
+      const refused = scopeRefusalText(j) ?? refusals[j.error ?? ""];
+      if (refused) setErr(refused);
+      else toast.danger(modelErrorText(lang, j.error) ?? failed);
+    } catch { toast.danger(failed); } finally { setDrafting(false); }
   }
   async function sync() {
     setBusy(true); setErr("");
     const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_sales" }) });
     const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     setBusy(false);
-    if (j.ok) r.refresh(); else setErr(j.error === "orders_access_denied" ? R.accessDenied : j.error === "zid_access_denied" ? R.zidDenied : j.error === "woo_access_denied" ? R.wooDenied : j.error ?? `HTTP ${res.status}`);
+    if (j.ok) r.refresh();
+    // A store that refused access says what to reconnect: that stays beside the card. Any other failure is a toast.
+    else if (j.error === "orders_access_denied" || j.error === "zid_access_denied" || j.error === "woo_access_denied") setErr(j.error === "orders_access_denied" ? R.accessDenied : j.error === "zid_access_denied" ? R.zidDenied : R.wooDenied);
+    else toast.danger(j.error ?? `HTTP ${res.status}`);
   }
   const fill = (s: string, v: Record<string, number | string>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
   const name = PROVIDER_NAME[provider];

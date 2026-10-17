@@ -7,6 +7,9 @@ import ReadOnlyNote from "./ReadOnlyNote";
 import { readImportStream } from "./catalogImport";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
+import { useToast } from "@/components/ui/Toast";
+import EmptyState from "@/components/ui/EmptyState";
+import { emptyCopy } from "@/lib/empty-copy";
 
 /**
  * `canImport` = `can(u, "catalog.import")`; `locked` = the core memory files this person may not write or delete
@@ -17,6 +20,10 @@ import Scribble from "@/components/Scribble";
 export default function FilesPanel({ t, files, canImport = true, locked = [] }: { t: AppDict; files: WFile[]; canImport?: boolean; locked?: string[] }) {
   const r = useRouter();
   const f = t.files;
+  const toast = useToast();
+  // The panel takes no lang prop, so it reads the language from the path as ShellError does (rule 2002).
+  const lang = t.lang;
+  const E = emptyCopy(lang, "files");
   const [open, setOpen] = useState<string | null>(files[0]?.name ?? null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -24,25 +31,33 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   const cur = files.find((x) => x.name === open) ?? null;
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+  // A 403 refusal (rule 2001) stays on the page for the person to act on; a plain failure is a toast.
   const [err, setErr] = useState("");
   const [ask, confirmDialog] = useConfirm();
   const isLocked = (name: string) => locked.includes(name);
-  /** The message for a refused call: the role for a 403, otherwise the generic failure. */
-  const refusal = (status: number, generic: string) => (status === 403 ? t.team.errors.forbidden : generic);
+  /** Shows a refused call: the role for a 403 stays inline, any other failure is a toast. */
+  function fail(res: Response | null, generic: string) {
+    if (res?.status === 403) setErr(t.team.errors.forbidden);
+    else toast.danger(generic);
+  }
   async function importCatalog() {
     setImporting(true);
+    setErr("");
     setImportMsg(f.importing);
     try {
       const res = await fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => null);
       // Only a 200 event stream is read as one. A refusal (403 JSON) or a plain-text error (400 no_site) has a body too,
       // but no event in it, so reading it as a stream left "Importing…" on screen for good.
       if (!res || !res.ok || !res.body || !(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
-        setImportMsg(res ? refusal(res.status, f.importFail) : f.importFail);
+        setImportMsg("");
+        fail(res, f.importFail); // rule 2001
         return;
       }
       // A dropped connection mid-stream, or a stream that ends without a result, is reported as a failed import.
       const end = await readImportStream(res.body, (p) => setImportMsg(`${f.importing} ${p}`));
-      setImportMsg(end.ok ? `${f.imported} ${end.count}` : f.importFail);
+      setImportMsg("");
+      if (end.ok) toast.success(`${f.imported} ${end.count}`);
+      else toast.danger(f.importFail);
       if (end.ok) {
         setOpen("products.md");
         r.refresh();
@@ -56,7 +71,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
     setErr("");
     const res = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content }) }).catch(() => null);
     // A refused save keeps the editor open with the text in it.
-    if (!res?.ok) { setErr(res ? refusal(res.status, t.team.errors.failed) : t.team.errors.failed); return; }
+    if (!res?.ok) { fail(res, t.team.errors.failed); return; }
     setEditing(false);
     r.refresh();
   }
@@ -64,7 +79,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
     if (!(await ask({ title: name, message: `${f.delete} ${name}?`, confirmLabel: f.delete, cancelLabel: t.dialog.back, destructive: true }))) return;
     setErr("");
     const res = await fetch(`/api/files?name=${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => null);
-    if (!res?.ok) { setErr(res ? refusal(res.status, t.team.errors.failed) : t.team.errors.failed); return; }
+    if (!res?.ok) { fail(res, t.team.errors.failed); return; }
     setOpen(null);
     r.refresh();
   }
@@ -81,7 +96,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
       {err && <p role="alert" className="mt-3 text-sm text-danger">{err}</p>}
       <div className="mt-6 grid gap-4 md:grid-cols-[260px_1fr]">
         <aside className="rounded-xl border border-foreground/10 bg-surface p-3">
-          {files.length === 0 && <p className="p-2 text-sm text-foreground-muted">{f.empty}</p>}
+          {files.length === 0 && <EmptyState compact title={E.title} body={E.body} />}
           <ul className="grid gap-1">
             {files.map((x) => (
               <li key={x.name}>
@@ -123,7 +138,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
               )}
             </>
           ) : (
-            <p className="text-sm text-foreground-muted">{f.empty}</p>
+            files.length === 0 ? null : <EmptyState compact title={E.title} body={E.body} />
           )}
         </section>
       </div>

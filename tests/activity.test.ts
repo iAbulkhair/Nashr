@@ -373,7 +373,7 @@ describe("the Activity page renders the first page on the server (rule 238)", ()
 
     await owner("act-page-other");
     const other = await html("en");
-    expect(other).toContain("No activity recorded yet.");
+    expect(other).toContain("No activity yet"); // Rule 2002: the shared empty state.
     expect(other).not.toContain("6 credits");
     expect(other).not.toContain("alert(1)");
   });

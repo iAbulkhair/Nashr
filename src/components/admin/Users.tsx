@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { adminFetch } from "@/lib/admin-fetch";
+import type { QueryCodec } from "@/lib/url-query";
 import { newPaymentId } from "./PaymentsPanel";
 import { videoGrantRequest } from "./EntitlementsTable";
 import { ksaDay, sarText } from "@/lib/partner-rules";
@@ -15,12 +15,17 @@ import type { TopupLot } from "@/lib/topups";
 import { unusedRefundSar } from "@/lib/topups";
 import { EndedNotice, PlanTiles, STR, useAdminEnded, type Detail, type MemberDetail, type PlanTotal, type SectionProps, type TeamChange, type U } from "./shared";
 import { useAdminForm, type ActionSpec, type FieldSpec } from "./AdminForm";
-import { DataTable, Pager, type Column } from "./DataTable";
+import { DataTable, Pager, useUrlQuery, type Column } from "./DataTable";
 import UserSheet, { chatLow } from "./UserSheet";
 import Sheet from "@/components/ui/Sheet";
+import Callout from "@/components/ui/Callout";
 import Badge from "@/components/ui/Badge";
 import { Input, Select } from "@/components/ui/Field";
 import { USERS_COPY } from "./users-copy";
+
+/** The users list's query in the address (rule 2007): `parseUserQuery` validates every value, the defaults stay out. */
+const USER_CODEC: QueryCodec<UserQuery> = { parse: parseUserQuery, params: userQueryParams };
+const TYPED = ["q"] as const satisfies readonly (keyof UserQuery)[];
 
 /** A new "Refund unused" request id, `rf_` and 18 hex characters (POST /api/admin/topups, rule 460). */
 const newRefundId = () => `rf_${Array.from(crypto.getRandomValues(new Uint8Array(9)), (b) => b.toString(16).padStart(2, "0")).join("")}`;
@@ -39,6 +44,7 @@ type TableAnswer = { users: U[]; matched: number; page: number; pages: number; p
 function useUserTable(query: UserQuery) {
   const [data, setData] = useState<TableAnswer | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const seq = useRef(0);
   const key = userQueryParams(query).toString();
   const load = useCallback(async () => {
@@ -46,16 +52,17 @@ function useUserTable(query: UserQuery) {
     setLoading(true);
     const p = new URLSearchParams(key);
     p.set("view", "table");
-    const r = await adminFetch(`/api/admin/plan?${p.toString()}`);
+    const r = await adminFetch(`/api/admin/plan?${p.toString()}`).catch(() => null);
     if (n !== seq.current) return;
-    if (r.status === 401) { setLoading(false); return; }
-    const j = (await r.json().catch(() => null)) as ({ ok?: boolean } & TableAnswer) | null;
+    if (r?.status === 401) { setLoading(false); return; }
+    const j = (await r?.json().catch(() => null)) as ({ ok?: boolean } & TableAnswer) | null;
     if (n !== seq.current) return;
     if (j?.ok) setData(j);
+    setLoadFailed(!j?.ok);
     setLoading(false);
   }, [key]);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
-  return { data, loading, load };
+  return { data, loading, loadFailed, load };
 }
 
 /**
@@ -70,12 +77,18 @@ export default function Users({ lang, keySession }: SectionProps) {
   const UC = USERS_COPY[lang];
   const [askForm, formDialog] = useAdminForm(lang);
   // The overview's recent sign-ups link to /{lang}/admin/users?q={email}: the list opens filtered to that account.
-  const search = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const query = useMemo(() => parseUserQuery(new URLSearchParams(search.toString())), [search]);
-  const { data, loading, load } = useUserTable(query);
+  // Rule 2007: filters, sort and page are history steps, the search box replaces its step; every value is validated.
+  const { query, setQuery } = useUrlQuery(USER_CODEC, TYPED);
+  const { data, loading, loadFailed, load } = useUserTable(query);
   const [text, setText] = useState(query.q);
+  // The search box follows the address when it changes from outside (back, forward, a link), not while typing:
+  // `sent` is the last words this box put in the address.
+  const [seen, setSeen] = useState(query.q);
+  const [sent, setSent] = useState(query.q);
+  if (query.q !== seen) {
+    setSeen(query.q);
+    if (query.q !== sent) { setText(query.q); setSent(query.q); }
+  }
   const typing = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sel, setSel] = useState<Detail | null>(null);
   const [memberSel, setMemberSel] = useState<MemberDetail | null>(null);
@@ -93,16 +106,10 @@ export default function Users({ lang, keySession }: SectionProps) {
   /** The temporary password from "Reset password", shown once in its own dialog and dropped from state when it closes. */
   const [temp, setTemp] = useState<{ email: string; password: string } | null>(null);
 
-  /** A new query in the address (read at the moment of the change, so a debounced search keeps the other choices). */
-  function setQuery(patch: Partial<UserQuery>) {
-    const now = parseUserQuery(new URLSearchParams(window.location.search));
-    const p = userQueryParams({ ...now, page: 1, ...patch }).toString();
-    router.replace(p ? `${pathname}?${p}` : pathname, { scroll: false });
-  }
   function onText(v: string) {
     setText(v);
     if (typing.current) clearTimeout(typing.current);
-    typing.current = setTimeout(() => setQuery({ q: v.trim().slice(0, 120) }), 300);
+    typing.current = setTimeout(() => { const q = v.trim().slice(0, 120); setSent(q); setQuery({ q }); }, 300);
   }
   const errText = (code: string) => (ADMIN_INPUT_ERRORS[lang] as Record<string, string>)[code] ?? code;
   const failed = (email: string, code: string | number) => `${email}: ${typeof code === "string" ? errText(code) : code}`;
@@ -520,7 +527,8 @@ export default function Users({ lang, keySession }: SectionProps) {
         {text.includes("@") && <button type="button" disabled={busy} onClick={() => open(text.trim().toLowerCase())} className="btn btn-secondary btn-xs min-h-[var(--hit-min)]">{S.lookup}</button>}
       </div>
       {data && <p className="text-xs text-foreground-muted" aria-live="polite">{UC.matched(data.matched, data.facets.all)}</p>}
-      <DataTable
+      {loadFailed && <Callout tone="danger">{S.loadFailed}</Callout>}
+      {!(loadFailed && !data) && <DataTable
         lang={lang}
         caption={UC.caption}
         columns={columns}
@@ -532,7 +540,7 @@ export default function Users({ lang, keySession }: SectionProps) {
         onSort={(k) => setQuery({ sort: k, dir: query.sort === k ? (query.dir === "desc" ? "asc" : "desc") : k === "email" || k === "plan" ? "asc" : "desc" })}
         loading={loading}
         rowClassName={(u) => (u.suspended ? "bg-agent-sami/20" : "")}
-      />
+      />}
       {data && <Pager lang={lang} page={data.page} pages={data.pages} per={data.per} sizes={USER_PAGE_SIZES} onPage={(p) => setQuery({ page: p })} onPer={(n) => setQuery({ per: n })} />}
       <p className="text-xs text-foreground-muted">{S.planNote}</p>
       <p className="text-xs text-foreground-muted">{S.chatNote}</p>

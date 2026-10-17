@@ -1,15 +1,17 @@
 import type { Lang } from "@/lib/i18n";
 import type { PaymentRow } from "@/lib/billing";
 import { formatCount } from "@/lib/pricing";
+import EmptyState from "@/components/ui/EmptyState";
+import { emptyCopy } from "@/lib/empty-copy";
 
 const COPY = {
   ar: {
-    title: "سجل المدفوعات", sub: "المدفوعات المسجّلة على حسابك. المبالغ بالريال قبل الضريبة.", empty: "لا توجد مدفوعات مسجّلة بعد.",
+    title: "سجل المدفوعات", sub: "المدفوعات المسجّلة على حسابك. المبالغ بالريال قبل الضريبة.",
     date: "التاريخ", item: "البند", amount: "المبلغ", state: "الحالة", topup: (n: string) => `باقة شحن ${n} كريدت`, plan: (p: string) => `خطة ${p}، شهر`,
     paid: "مدفوعة", voided: "ملغاة", refunded: (n: string) => `استُرد ${n} ريال`,
   },
   en: {
-    title: "Payment history", sub: "The payments recorded on your account. Amounts in SAR before VAT.", empty: "No payments recorded yet.",
+    title: "Payment history", sub: "The payments recorded on your account. Amounts in SAR before VAT.",
     date: "Date", item: "Item", amount: "Amount", state: "Status", topup: (n: string) => `${n}-credit top-up pack`, plan: (p: string) => `${p} plan, one month`,
     paid: "Paid", voided: "Voided", refunded: (n: string) => `SAR ${n} refunded`,
   },
@@ -25,7 +27,7 @@ export default function PaymentHistory({ lang, rows, planName }: { lang: Lang; r
     <section className="mt-6 card" aria-labelledby="payment-history-title" data-payment-history="">
       <h2 id="payment-history-title" className="font-display text-lg font-bold">{T.title}</h2>
       <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
-      {rows.length === 0 ? <p className="mt-3 text-sm text-foreground-muted">{T.empty}</p> : (
+      {rows.length === 0 ? <EmptyState compact className="mt-3" title={emptyCopy(lang, "payments").title} body={emptyCopy(lang, "payments").body} /> : (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-xs text-foreground-muted"><tr>

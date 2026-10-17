@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { fmt, int, METRICS, type Finding, type MetricId, type PerfSnapshot } from "@/lib/perf-import";
 import { Icon } from "./Icons";
 import ReadOnlyNote from "./ReadOnlyNote";
+import { useToast } from "@/components/ui/Toast";
 
 const STR = {
   ar: {
@@ -52,6 +53,7 @@ const AD_NAMES: Record<string, string> = { meta_ads: "Meta Ads", snapchat: "Snap
 export default function PerformanceImport({ lang, initial, ads = [], canImport = true, canDelete = true }: { lang: "ar" | "en"; initial: PerfSnapshot | null; /** connected ad accounts it can read from */ ads?: string[]; canImport?: boolean; canDelete?: boolean }) {
   const S = STR[lang];
   const r = useRouter();
+  const toast = useToast();
   const [snap, setSnap] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -61,16 +63,18 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
   // The last file uploaded in this visit, kept so the metric can be switched without choosing the file again.
   const [last, setLast] = useState<{ csv: string; file: string } | null>(null);
 
+  // Rule 2001: a refusal about the file or the connection stays under the upload; a plain failure is a toast.
+  const refuse = (known: string | undefined) => { if (known) setErr(known); else toast.danger(S.errors.generic); };
   async function send(csv: string, file: string, metric?: MetricId) {
     setBusy(true); setErr("");
     try {
       const res = await fetch("/api/performance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv, file, metric }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; snapshot?: PerfSnapshot; error?: string };
-      if (!res.ok || !j.snapshot) { setErr(S.errors[j.error ?? ""] ?? S.errors.generic); return; }
+      if (!res.ok || !j.snapshot) { refuse(S.errors[j.error ?? ""]); return; }
       setLast({ csv, file });
       setSnap(j.snapshot); setFresh(true);
       r.refresh();
-    } catch { setErr(S.errors.generic); } finally { setBusy(false); }
+    } catch { toast.danger(S.errors.generic); } finally { setBusy(false); }
   }
   async function pick(f: File | undefined) {
     if (!f) return;
@@ -82,16 +86,16 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
     try {
       const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_ads" }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; snapshot?: PerfSnapshot; error?: string };
-      if (!res.ok || !j.snapshot) { setErr(S.adErrors[j.error ?? ""] ?? S.errors.generic); return; }
+      if (!res.ok || !j.snapshot) { refuse(S.adErrors[j.error ?? ""]); return; }
       setLast(null); setSnap(j.snapshot); setFresh(true);
       r.refresh();
-    } catch { setErr(S.errors.generic); } finally { setBusy(false); }
+    } catch { toast.danger(S.errors.generic); } finally { setBusy(false); }
   }
   async function remove() {
     setErr("");
     // Cleared only once the server said so: a refused or failed delete must not look like one that happened.
     const res = await fetch("/api/performance", { method: "DELETE" }).catch(() => null);
-    if (!res?.ok) { setErr(S.removeFail); return; }
+    if (!res?.ok) { toast.danger(S.removeFail); return; }
     setSnap(null); setLast(null); r.refresh();
   }
 

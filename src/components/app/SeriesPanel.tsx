@@ -5,6 +5,8 @@ import { fill } from "@/lib/fill";
 import { useOneWrite } from "./useOneWrite";
 import Scribble from "@/components/Scribble";
 import Switch from "@/components/ui/Switch";
+import EmptyState from "@/components/ui/EmptyState";
+import { emptyCopy } from "@/lib/empty-copy";
 
 /** One closed copy of a series as the page shows it: every date already formatted on the server, in the brand's zone. */
 export type SeriesRow = { id: string; title: string; due: string | null; closedAt: string | null; result: string; closedBy: string | null };
@@ -21,6 +23,8 @@ export default function SeriesPanel({ t, id, rows, total, kept, canWrite, canClo
 }) {
   const T = t.todo;
   const S = T.series;
+  // No lang prop: the language comes from the path, as ShellError does (rule 2002).
+  const E = emptyCopy(t.lang, "series");
   const { busy, error, send } = useOneWrite(t, { not_found: S.notFound });
   const locked = !canWrite || (kept && !canClose);
   return (
@@ -49,7 +53,7 @@ export default function SeriesPanel({ t, id, rows, total, kept, canWrite, canClo
             <a href={exportHref} download className="btn btn-secondary btn-xs">{S.download}</a>
           </div>
           {rows.length < total && <p className="mt-1 text-xs text-foreground-muted">{fill(S.shown, { shown: String(rows.length), total: String(total) })}</p>}
-          {rows.length === 0 ? <p className="mt-2 text-sm text-foreground-muted">{S.empty}</p> : (
+          {rows.length === 0 ? <EmptyState compact className="mt-2" title={E.title} body={E.body} /> : (
             <ul className="mt-2 divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-surface">
               {rows.map((r) => (
                 <li key={r.id} className="px-4 py-3">

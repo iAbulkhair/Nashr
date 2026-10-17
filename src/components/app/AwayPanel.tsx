@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { AwayEntry } from "@/lib/secretary-away";
 import { fill } from "@/lib/fill";
+import EmptyState from "@/components/ui/EmptyState";
+import { emptyCopy } from "@/lib/empty-copy";
 import { localDay, useOneWrite } from "./useOneWrite";
 
 /** One contact on the away list as GET /api/secretary/away gives it: `ended` once the last away day is before today. */
@@ -29,6 +31,7 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
   t: AppDict; lang: "ar" | "en"; entries: AwayRow[]; labels: string[]; canEdit: boolean; today: string; last: string; prefill?: string;
 }) {
   const T = t.todo.away;
+  const E = emptyCopy(lang, "away");
   const [form, setForm] = useState({ label: prefill ?? "", until: "", note: "" });
   const { busy, error, send } = useOneWrite(t, { not_found: T.notFound });
   const formRef = useRef<HTMLFormElement>(null);
@@ -55,7 +58,8 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
       <h2 id="todo-away-title" className="card-title">{T.title}</h2>
       <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
       {entries.length === 0 ? (
-        <p className="mt-3 text-sm text-foreground-muted">{T.empty}</p>
+        // rule 2002
+        <EmptyState compact className="mt-3" title={E.title} body={E.body} />
       ) : (
         <ul className="mt-3 divide-y divide-foreground/10 rounded-xl border border-foreground/10">
           {entries.map((e) => (

@@ -4,6 +4,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import { fill } from "@/lib/fill";
 import { formatWhen } from "@/lib/secretary-agenda";
 import { refusalText, useOneWrite } from "./useOneWrite";
+import { PanelSkeleton } from "@/components/ui/Skeleton";
 
 /**
  * What the card shows. `created` holds the link: it is component state only (never stored, never in the URL, never
@@ -43,7 +44,7 @@ export function FeedView({ t, state, busy = null, error = null, confirming = fal
     <section id="todo-feed" aria-labelledby="todo-feed-title" className="card mt-8">
       <h2 id="todo-feed-title" className="card-title">{T.title}</h2>
       <p className="mt-1 text-sm text-foreground-muted">{T.sub}</p>
-      {state.kind === "loading" && <p className="mt-3 text-sm text-foreground-muted">{T.loading}</p>}
+      {state.kind === "loading" && <PanelSkeleton className="mt-3" label={T.loading} shape="line" />}{/* rule 2003 */}
       {state.kind === "failed" && (
         <div className="mt-3">
           <p role="alert" className="text-sm text-danger">{state.text ?? T.error}</p>

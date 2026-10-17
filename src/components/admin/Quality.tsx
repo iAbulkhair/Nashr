@@ -4,6 +4,9 @@ import { adminFetch } from "@/lib/admin-fetch";
 import GoldenPanel from "./GoldenPanel";
 import AgentScopePanel from "./AgentScopePanel";
 import { EndedNotice, STR, useAdminEnded, type SectionProps } from "./shared";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import Callout from "@/components/ui/Callout";
 
 type TM = { type: string; n: number; approved: number; rejected: number; autoApproved: number; approvalRate: number | null; edited: number; editRate: number | null; editMagnitude: number | null; published: number; judged: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
 type AM = { agent: string; n: number; decided: number; autoApproved: number; approvalRate: number | null; reviewedApproved: number; editRate: number | null; judged: number; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
@@ -13,8 +16,9 @@ export default function Quality({ lang, keySession }: SectionProps) {
   const ended = useAdminEnded();
   const S = STR[lang];
   const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; label: string; suspended: boolean; archived: boolean; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] } | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
-    adminFetch("/api/admin/evals").then((r) => r.json()).then((j) => j.ok && setEvals(j)).catch(() => {});
+    adminFetch("/api/admin/evals").then((r) => r.json()).then((j) => { if (j.ok) setEvals(j); else setFailed(true); }).catch(() => setFailed(true));
   }, []);
   if (ended) return <EndedNotice lang={lang} keySession={keySession} />;
   return (
@@ -22,7 +26,7 @@ export default function Quality({ lang, keySession }: SectionProps) {
       <section className="card card-sm">
         <h2 className="font-display text-lg font-semibold text-foreground">{S.quality}</h2>
         <p className="text-xs text-foreground-muted">{S.qualityNote}</p>
-        {!evals ? <p className="mt-2 text-sm text-foreground-muted">{S.loading}</p> : (
+        {!evals ? (failed ? <Callout tone="danger" className="mt-2">{S.loadFailed}</Callout> : <PanelSkeleton label={S.loading} shape="rows" className="mt-2" />) : (
           <div className="overflow-x-auto"><table className="mt-3 w-full text-sm">
             <thead className="bg-background-muted text-left text-xs uppercase tracking-wide text-foreground-muted"><tr><th className="p-2">{S.agentType}</th><th>{S.items}</th><th>{S.approval}</th><th>{S.edited}</th><th>{S.magnitude}</th><th>{S.published}</th><th>{S.judge}</th><th>{S.low}</th><th>{S.hours}</th><th>👍/👎</th></tr></thead>
             <tbody>

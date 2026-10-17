@@ -1,6 +1,8 @@
 "use client";
 import { Fragment, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import EmptyState from "@/components/ui/EmptyState";
 
 type Check = { name: string; pass: boolean; detail?: string };
 type Result = { id: string; agent: string; type: string; brand: string; ok: boolean; error?: string; score: number | null; dims: Record<string, number> | null; notes: string[]; checks: Check[]; items: { channel: string; title: string; body: string }[]; ms: number; delta: number | null; carried?: string; pb?: { skills: string; review: string; industry?: string; code: string } };
@@ -55,7 +57,7 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
       {msg && <p role="alert" className="mt-2 text-sm text-danger">{msg}</p>}
       {data?.modelKey === false && <p className="mt-2 text-sm text-danger">{S.noKey}</p>}
       {data?.modelKey !== false && data?.paused && <p className="mt-2 text-sm text-danger">{S.paused}</p>}
-      {data && !latest && <p className="mt-3 text-sm text-foreground-muted">{S.none}</p>}
+      {data && !latest && <EmptyState compact title={S.none} className="mt-3" />}
 
       {latest && (
         <>

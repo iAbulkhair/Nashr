@@ -6,6 +6,7 @@ import { runwayLine, type Runway } from "@/lib/usage-view";
 import { formatCount } from "@/lib/pricing";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Switch from "@/components/ui/Switch";
+import { useToast } from "@/components/ui/Toast";
 
 /**
  * The billing page's chat card (rule 315): the account's chat messages used of the plan's allowance, when they renew,
@@ -38,6 +39,7 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
   premiumHold?: number;
 }) {
   const ar = lang === "ar";
+  const toast = useToast();
   const [s, setS] = useState(status);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -57,13 +59,13 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
     try {
       const res = await fetch("/api/billing/chat-overflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; chat?: ChatStatus };
-      if (j.ok && j.chat) { setS(j.chat); setMsg(ar ? "تم الحفظ" : "Saved"); }
-      else setMsg(res.status === 403 ? (ar ? "مالك الحساب فقط يغيّر هذا." : "Only the account owner can change this.")
-        : j.error === "trial" ? (ar ? "غير متاح في التجربة." : "Not available on a trial.")
-        : j.error === "slow_down" ? (ar ? "تغييرات كثيرة. حاول بعد قليل." : "Too many changes. Try again shortly.")
-        : (ar ? "تعذّر الحفظ. حاول مرة أخرى." : "Could not save. Try again."));
+      if (j.ok && j.chat) { setS(j.chat); toast.success(ar ? "تم الحفظ" : "Saved"); } // rule 2001
+      else if (res.status === 403) setMsg(ar ? "مالك الحساب فقط يغيّر هذا." : "Only the account owner can change this.");
+      else if (j.error === "trial") setMsg(ar ? "غير متاح في التجربة." : "Not available on a trial.");
+      else if (j.error === "slow_down") setMsg(ar ? "تغييرات كثيرة. حاول بعد قليل." : "Too many changes. Try again shortly.");
+      else toast.danger(ar ? "تعذّر الحفظ. حاول مرة أخرى." : "Could not save. Try again."); // permission and limits stay inline; a plain failure is a toast
     } catch {
-      setMsg(ar ? "تعذّر الحفظ. حاول مرة أخرى." : "Could not save. Try again.");
+      toast.danger(ar ? "تعذّر الحفظ. حاول مرة أخرى." : "Could not save. Try again.");
     } finally {
       setSaving(false);
     }

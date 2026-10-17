@@ -19,6 +19,8 @@ import ReadOnlyNote from "./ReadOnlyNote";
 import { useConfirm } from "./ConfirmDialog";
 import InstructionEditor, { targetLabel, type RowErrors } from "./InstructionEditor";
 import Scribble from "@/components/Scribble";
+import { useToast } from "@/components/ui/Toast";
+import EmptyState from "@/components/ui/EmptyState";
 
 /** The eight agents and the group for images and videos: what a customer may point an instruction at. */
 const CUSTOMER_TARGETS: Target[] = [...AGENT_IDS, "media"];
@@ -85,6 +87,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   const I = t.instructions;
   const G = t.governance;
   const router = useRouter();
+  const toast = useToast();
   const [ask, confirmDialog] = useConfirm();
   const [layer, setLayer] = useState<Layer>(initialLayer);
   const [base, setBase] = useState(initialBase);
@@ -94,11 +97,9 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   const [files, setFiles] = useState<string[]>(initialFiles);
   const [refs, setRefs] = useState<Record<string, RefSource>>(initialRefs);
   const [busy, setBusy] = useState<Busy>(null);
-  const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [rowErrors, setRowErrors] = useState<RowErrors>({});
   const [stale, setStale] = useState(false);
-  const [histMsg, setHistMsg] = useState("");
   const [histErr, setHistErr] = useState("");
   const [cmp, setCmp] = useState<{ id: string; loading: boolean; diff?: SetDiff } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
@@ -107,7 +108,6 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   // Import
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ id: string; title: string; kind: "doc" | "sheet"; modified?: string }[] | null>(null);
-  const [impMsg, setImpMsg] = useState("");
   const [impErr, setImpErr] = useState("");
   const [impCode, setImpCode] = useState("");
   const [importing, setImporting] = useState<string | null>(null);
@@ -140,7 +140,9 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   }
   /** The reason in the owner's words: the server's code, or for a bare 401 a sign-in message. */
   const reason = (r: Reply) => errorText(t, r.j.error ?? (r.status === 401 ? "unauthorized" : undefined), { max: limits.chars });
-  const clear = () => { setMsg(""); setErr(""); setRowErrors({}); setStale(false); setHistMsg(""); setHistErr(""); };
+  const clear = () => { setErr(""); setRowErrors({}); setStale(false); setHistErr(""); };
+  /** No answer or a server fault (rule 2001): a toast; a refusal with a reason (limit, role, text) stays beside its form. */
+  const soft = (r: Reply) => r.status === 0 || r.status >= 500;
 
   /** What the server stored is what the page shows: the form always follows the layer an answer carries (see `formAfterWrite`), never local rows next to a newer base. */
   function adopt(next: Layer) {
@@ -154,6 +156,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   /** A refused request: a refused text goes under its row, a changed-elsewhere answer offers the reload, the rest is a line. */
   function fail(r: Reply, into: "page" | "history" = "page") {
     const code = r.j.error;
+    if (soft(r)) { toast.danger(reason(r)); return; }
     if (into === "history") { setHistErr(reason(r)); return; }
     if (typeof code === "string" && ROW_CODES.has(code) && typeof r.j.index === "number") { setRowErrors({ [r.j.index]: reason(r) }); return; }
     if (code === "stale") setStale(true);
@@ -167,7 +170,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       const r = await call("/api/instructions", "PUT", { items: rows, base });
       if (!r.ok) { fail(r); return false; }
       adopt(r.j.layer as Layer);
-      setMsg(I.saved);
+      toast.success(I.saved); // rule 2001
       return true;
     } finally {
       setBusy(null);
@@ -183,7 +186,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       if (!r.ok) { fail(r); return; }
       adopt(r.j.layer as Layer);
       setHistory((h) => [summarizeRevision(r.j.revision as Revision), ...h].slice(0, 20));
-      setMsg(I.activated);
+      toast.success(I.activated);
       takeSkipped(r);
     } finally {
       setBusy(null);
@@ -197,7 +200,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       const r = await call("/api/instructions/discard", "POST", {});
       if (!r.ok) { fail(r); return; }
       adopt(r.j.layer as Layer);
-      setMsg(I.discarded);
+      toast.success(I.discarded);
     } finally {
       setBusy(null);
     }
@@ -225,7 +228,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       adopt(r.j.layer as Layer);
       setHistory((h) => [summarizeRevision(r.j.revision as Revision), ...h].slice(0, 20));
       setCmp(null);
-      setHistMsg(I.restored);
+      toast.success(I.restored);
       takeSkipped(r);
     } finally {
       setRestoring(null);
@@ -233,11 +236,11 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   }
 
   async function search() {
-    setImpMsg(""); setImpErr(""); setImpCode("");
+    setImpErr(""); setImpCode("");
     setBusy("search");
     try {
       const r = await call("/api/instructions/refs/search", "POST", { q: q.trim() });
-      if (!r.ok) { setImpErr(reason(r)); setImpCode(String(r.j.error ?? "")); return; }
+      if (!r.ok) { if (soft(r)) toast.danger(reason(r)); else { setImpErr(reason(r)); setImpCode(String(r.j.error ?? "")); } return; }
       setHits(Array.isArray(r.j.results) ? (r.j.results as NonNullable<typeof hits>) : []);
     } finally {
       setBusy(null);
@@ -245,17 +248,17 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
   }
   /** Import a search result, or Refresh an earlier import with the source it was stored with. */
   async function importRef(kind: "doc" | "sheet", id: string, title: string, key: string) {
-    setImpMsg(""); setImpErr(""); setImpCode("");
+    setImpErr(""); setImpCode("");
     setImporting(key);
     setBusy("import");
     try {
       const r = await call("/api/instructions/refs/import", "POST", { kind, id, title });
-      if (!r.ok || typeof r.j.name !== "string") { setImpErr(reason(r)); setImpCode(String(r.j.error ?? "")); return; }
+      if (!r.ok || typeof r.j.name !== "string") { if (soft(r) || r.ok) toast.danger(reason(r)); else { setImpErr(reason(r)); setImpCode(String(r.j.error ?? "")); } return; }
       const name = r.j.name;
       const shownTitle = typeof r.j.title === "string" ? r.j.title : title;
       setFiles((f) => (f.includes(name) ? f : [...f, name].sort()));
       setRefs((m) => ({ ...m, [name]: { source: kind === "doc" ? "gdocs" : "gsheets", id, title: shownTitle, at: new Date().toISOString() } }));
-      setImpMsg(fill(I.importDone, { name }));
+      toast.success(fill(I.importDone, { name }));
     } finally {
       setImporting(null);
       setBusy(null);
@@ -274,7 +277,11 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
       // A new nonce for each confirmed click: the server charges once per nonce, so a double click or a replay costs nothing more.
       const r = await call("/api/instructions/test", "POST", { agent: option.agent, type: option.type, brief: brief.trim(), confirm: true, nonce: newNonce() });
       const done = r.ok ? parseTestResult(r.j) : null;
-      if (!done) { setTestErr(errorText(t, r.j.error ?? (r.status === 401 ? "unauthorized" : undefined), { max: TEST_BRIEF_CHARS })); return; }
+      if (!done) {
+        const why = errorText(t, r.j.error ?? (r.status === 401 ? "unauthorized" : undefined), { max: TEST_BRIEF_CHARS });
+        if (soft(r) || r.ok) toast.danger(why); else setTestErr(why);
+        return;
+      }
       setResult(done);
       // The balance in the sidebar comes from the server render.
       router.refresh();
@@ -312,7 +319,6 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
               {dirty && <span className="text-sm text-foreground-muted">{I.unsaved}</span>}
             </div>
           )}
-          {msg && <p role="status" className="mt-2 text-sm text-foreground">{msg}</p>}
           {err && (
             <p role="alert" className="mt-2 text-sm text-danger">
               {err}
@@ -331,7 +337,6 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
             <input className="input min-w-0 flex-1" dir="auto" maxLength={100} value={q} onChange={(e) => setQ(e.target.value)} aria-label={I.importQuery} placeholder={I.importQuery} />
             <button type="submit" disabled={locked} className="btn btn-secondary btn-sm">{busy === "search" ? I.importSearching : I.importSearch}</button>
           </form>
-          {impMsg && <p role="status" className="mt-2 text-sm text-foreground">{impMsg}</p>}
           {impErr && (
             <p role="alert" className="mt-2 text-sm text-danger">
               {impErr}
@@ -339,7 +344,7 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
             </p>
           )}
           {hits && (
-            hits.length === 0 ? <p className="mt-3 text-sm text-foreground-muted">{I.importNone}</p> : (
+            hits.length === 0 ? <EmptyState compact className="mt-3" title={I.importNone} /> : (
               <ul className="mt-3 divide-y divide-foreground/10">
                 {hits.map((h) => (
                   <li key={`${h.kind}:${h.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -409,10 +414,9 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
         <h2 id="ins-history" className="font-display font-medium">{I.history}</h2>
         <p className="mt-1 text-sm text-foreground-muted">{I.historySub}</p>
         {!readOnly && restoreBlocked(dirty) && <p className="mt-2 text-sm text-foreground-muted">{I.restoreNeedsSaved}</p>}
-        {histMsg && <p role="status" className="mt-2 text-sm text-foreground">{histMsg}</p>}
         {histErr && <p role="alert" className="mt-2 text-sm text-danger">{histErr}</p>}
         {history.length === 0 ? (
-          <p className="mt-3 text-sm text-foreground-muted">{I.historyEmpty}</p>
+          <EmptyState compact className="mt-3" title={I.historyEmpty} />
         ) : (
           <ul className="mt-3 divide-y divide-foreground/10">
             {history.map((r) => (

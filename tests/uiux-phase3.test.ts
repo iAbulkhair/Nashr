@@ -442,7 +442,7 @@ describe("rule 1156: payment history from the payments already recorded", () => 
     const html = renderToStaticMarkup(h(PaymentHistory, { lang: "ar", rows, planName: (p) => p }));
     expect(html).not.toMatch(/[٠-٩]/);
     expect(html).toContain("2026-10-02");
-    expect(renderToStaticMarkup(h(PaymentHistory, { lang: "en", rows: [], planName: (p) => p }))).toContain("No payments recorded yet.");
+    expect(renderToStaticMarkup(h(PaymentHistory, { lang: "en", rows: [], planName: (p) => p }))).toContain("No payments yet"); // Rule 2002: the shared empty state.
     expect(read("src/app/[lang]/app/settings/billing/page.tsx")).toContain("owner ? paymentHistory(u.email) : Promise.resolve(null)");
   });
 });

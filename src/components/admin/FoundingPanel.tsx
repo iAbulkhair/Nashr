@@ -5,6 +5,11 @@ import { useAdminForm } from "./AdminForm";
 import { SELF_SERVE_PLANS } from "@/lib/pricing";
 import Badge from "@/components/ui/Badge";
 import { Time } from "@/components/ui/Time";
+// Rules 2002 empty state, 2003 skeleton while the panel loads.
+import { PanelSkeleton } from "@/components/ui/Skeleton";
+import Callout from "@/components/ui/Callout";
+import { STR } from "./shared";
+import EmptyState from "@/components/ui/EmptyState";
 
 type Seat = { at: string; by: string; endedAt: string | null } | null;
 type Lock = { plan: string; sar: number; from: string; until: string; months: number; founding: boolean; endedAt: string | null } | null;
@@ -58,9 +63,10 @@ export default function FoundingPanel({ lang }: { lang: "ar" | "en" }) {
   const [askForm, formDialog] = useAdminForm(lang);
   const [view, setView] = useState<View | null>(null);
   const [msg, setMsg] = useState("");
+  const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
     const j = await adminFetch("/api/admin/founding").then((r) => r.json()).catch(() => ({}));
-    if (j.ok) setView(j);
+    if (j.ok) { setView(j); setFailed(false); } else setFailed(true);
   }, []);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
@@ -88,7 +94,7 @@ export default function FoundingPanel({ lang }: { lang: "ar" | "en" }) {
     if (j.ok) await load();
   }
 
-  if (!view) return <section className="card card-sm text-xs text-foreground-muted">{L.loading}</section>;
+  if (!view) return <section className="card card-sm">{failed ? <Callout tone="danger">{STR[lang].loadFailed}</Callout> : <PanelSkeleton label={L.loading} shape="line" />}</section>;
   return (
     <section className="card card-sm text-xs" data-founding>
       {formDialog}
@@ -100,7 +106,7 @@ export default function FoundingPanel({ lang }: { lang: "ar" | "en" }) {
         {(["grant_seat", "grant_lock"] as const).map((a) => <button key={a} type="button" onClick={() => change(a)} className="btn btn-secondary btn-xs">{L.actions[a]}</button>)}
       </div>
       {msg && <p className="mt-1 text-foreground">{msg}</p>}
-      {view.rows.length === 0 ? <p className="mt-2 text-foreground-muted">{L.none}</p> : (
+      {view.rows.length === 0 ? <EmptyState compact title={L.none} className="mt-2" /> : (
         <div className="overflow-x-auto">
           <table className="mt-2 w-full">
             <thead className="text-foreground-muted"><tr><th className="p-1 text-start">{L.email}</th><th className="p-1 text-start">{L.seat}</th><th className="p-1 text-start">{L.lock}</th><th className="p-1 text-start">{L.refund}</th><th /></tr></thead>
