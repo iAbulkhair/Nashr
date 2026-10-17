@@ -1,12 +1,13 @@
 import { createHash } from "crypto";
 import { db } from "./db";
 import { pmap } from "./parallel";
+import { scopeParam, wsKey } from "./keys";
 
 /** Workspace files = Noor's memory. Markdown the user can read, edit, delete. */
 export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user" };
 
-const SET = (e: string) => `files:${e}`;
-const KEY = (e: string, n: string) => `file:${e}:${n}`;
+const SET = (e: string) => wsKey.files(scopeParam(e));
+const KEY = (e: string, n: string) => wsKey.file(scopeParam(e), n);
 /** The key of one workspace file, for a reader that fetches several in one `mget` (`agent-instructions.ts`). */
 export const fileKey = KEY;
 
@@ -119,7 +120,7 @@ export const CORE_FILES: readonly string[] = ["brand.md", "products.md", "store-
 export async function memoryBlock(email: string) {
   const wanted = ["brand.md", "products.md", "store-sales.md", "performance-learnings.md", "strategy.md", "market-research.md", "preferences.md"];
   // One round trip per file, read together, keep the fixed order (stable text also helps prompt caching).
-  const [files, plan] = await Promise.all([Promise.all(wanted.map((n) => readFile(email, n))), db.get<{ goal?: string }>(`onboardplan:${email}`)]);
+  const [files, plan] = await Promise.all([Promise.all(wanted.map((n) => readFile(email, n))), db.get<{ goal?: string }>(wsKey.onboardPlan(scopeParam(email)))]);
   const goal = goalLine(plan?.goal);
   const head = goal ? `--- OWNER GOAL (output target agreed at onboarding; not a file) ---\n${goal}` : "";
   return [head, ...wanted

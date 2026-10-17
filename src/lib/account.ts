@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { deleteConversation } from "./conversations";
 import { listFiles } from "./files";
-import { listBrands, scopeFor } from "./brands";
+import { listBrands } from "./brands";
 import { pmap } from "./parallel";
 import { revokeAllGrants } from "./oauth";
 import { EVENTS } from "./track";
@@ -37,6 +37,7 @@ import { instructionProposalKeys } from "./instruction-proposals";
 import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
 import { log } from "./log";
+import { type Scope, accountKey, globalKey, workspaceScope, wsKey } from "./keys";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -48,8 +49,8 @@ function usageKeys(email: string): string[] {
   return Array.from({ length: 36 }, (_, back) => usageMonthKeys(email, monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1))))).flat();
 }
 
-async function revokeComposio(scopes: string[]) {
-  const ids = await pmap(scopes, (s) => db.smembers(`conns:${s}`));
+async function revokeComposio(scopes: Scope[]) {
+  const ids = await pmap(scopes, (s) => db.smembers(wsKey.conns(s)));
   const pairs = scopes.flatMap((s, i) => ids[i].map((p) => [s, p] as const));
   const conns = await pmap(pairs, ([s, p]) => getConnection(s, p).catch(() => null));
   const left = await pmap(pairs, ([s], i) => {
@@ -78,14 +79,15 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
   const logins = [e, ...(await db.smembers(membersKey(e)))];
   // The owner's linked marketing calendars (Reem B3), every brand's: only our side is dropped, the owner removes access at the provider.
   await Promise.all([revokeFeeds(logins), revokeBooks(logins), revokeCalendarLinks(e)]);
-  const scopes = (await listBrands(e)).map((b) => scopeFor(e, b.id));
+  // The account's own brand list, read under its owner email: the scopes come from our records, never from a request.
+  const scopes = (await listBrands(e)).map((b) => workspaceScope(e, b.id));
   // Each conversation goes through the writer lock first (`deleteConversation`: its record, its thread and its id in the
   // index, under `convlock:{scope}:{id}`), before any third-party grant is revoked. A turn's touch, a rename or a pick that
   // had read the record and not yet written it would otherwise put it back after the wipe, a record of a deleted account
   // outside every index; under the lock it either finishes first and is deleted here, or finds no record and writes
   // nothing. A lock not taken in time stops the wipe, as a failed link revocation does: the account is kept and a retry
   // runs it again.
-  const earlyConvIds = await pmap(scopes, (s) => db.lrange(`convs:${s}`, 0, -1));
+  const earlyConvIds = await pmap(scopes, (s) => db.lrange(wsKey.convs(s), 0, -1));
   await pmap(scopes.flatMap((s, i) => earlyConvIds[i].map((id) => [s, id] as const)), async ([s, id]) => {
     if ((await deleteConversation(s, id)) === "busy") throw new Error("account wipe: a conversation is being written, try again");
   });
@@ -97,24 +99,24 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s)]));
   scopes.forEach((s, i) => {
     const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals] = perScope[i];
     keys.push(
-      ...taskIds.map((id) => `task:${s}:${id}`),
-      ...files.map((f) => `file:${s}:${f.name}`),
+      ...taskIds.map((id) => wsKey.task(s, id)),
+      ...files.map((f) => wsKey.file(s, f.name)),
       // Already deleted under their lock above; listed again for an id `deleteConversation` refuses (a malformed one) and
       // for the lock key itself (10 s TTL, src/lib/conversations.ts).
-      ...convIds.flatMap((id) => [`conv:${s}:${id}`, `chat:${s}:${id}`, `convlock:${s}:${id}`]),
-      ...conns.map((p) => `conn:${s}:${p}`), // encrypted third-party credentials
-      ...months.map((m) => `tidx:${s}:${m}`),
+      ...convIds.flatMap((id) => [wsKey.conv(s, id), wsKey.chat(s, id), wsKey.convLock(s, id)]),
+      ...conns.map((p) => wsKey.conn(s, p)), // encrypted third-party credentials
+      ...months.map((m) => wsKey.taskMonth(s, m)),
       // The chat feedback log: per brand, and it holds the free-text reason the owner typed, so it must not outlive
       // the account. wipeAccount never deleted it at all.
-      `fblog:${s}`,
+      wsKey.feedbackLog(s),
       // The owner's decision records: per brand, with the reasons the owner typed.
-      `decisions:${s}`,
+      wsKey.decisions(s),
       // The governance history (who changed which setting, with their email) and its save lock (10 s TTL).
-      `govhist:${s}`, `govlock:${s}`,
+      wsKey.govHistory(s), wsKey.govLock(s),
       // The agent instructions of this brand: its layer, revision history and write lock (src/lib/instructions-store.ts).
       ...instructionKeys(s),
       // The activity log (titles, file names, member emails) and the routines' "nothing new" markers (8 or 35 days).
@@ -149,25 +151,25 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
       // Onboarding's per-brand records: the owner's confirmed site and the run's lock (src/lib/onboard-confirm.ts). Only
       // the default brand's lock was deleted, and the confirmation never was. An added brand's held setup charge lives on
       // the account record (`User.onboardPaid`) and goes with it. The game's answers hold the brand name the owner typed.
-      `onboardok:${s}`, `onboardlock:${s}`, `onboardgame:${s}`,
+      wsKey.onboardOk(s), wsKey.onboardLock(s), wsKey.onboardGame(s),
       // The site's GA4 and Search Console totals (src/lib/site-stats.ts): the public's search queries and the site's pages.
-      `sitestats:${s}`,
+      wsKey.siteStats(s),
       // Instagram and LinkedIn page results (src/lib/social-stats.ts): captions are the owner's or the public's text,
       // and the Instagram ids Thakeen published.
-      `socialstats:${s}`, `socialpub:${s}`,
+      wsKey.socialStats(s), wsKey.socialPublished(s),
       // The X account's last read, paid on a click (src/lib/x-stats.ts, rule 747): its posts' text is the owner's.
       XSTATS_KEY(s),
       // The store's sales snapshot (orders, revenue, best sellers, abandoned carts) and its failure note (14 days).
-      `storesales:${s}`, `storesyncfail:${s}`,
+      wsKey.storeSales(s), wsKey.storeSyncFail(s),
       // The latest campaign results, from an upload or an ad account (src/lib/perf-store.ts).
-      `perfimport:${s}`,
+      wsKey.perfImport(s),
       // Each ad account's last read time, one per ad platform.
-      ...AD_PROVIDERS.map((p) => `adsync:${s}:${p}`),
+      ...AD_PROVIDERS.map((p) => wsKey.adSync(s, p)),
       // Each ad account's totals and its top ads by name, and the last upload's (src/lib/ad-stats.ts, rule 747).
       ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
       // The notification choices, per brand (src/lib/notify-prefs.ts `profileKey`): only the default brand's was deleted.
       profileKey(s),
-      `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
+      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
     );
   });
   // Our media copies on disk (rule 1761): every file of every brand, its index entries and the space they held. A disk
@@ -184,39 +186,39 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
   // The account security pack (rule 1954; rules 1930-1956), for the owner and every member login: two-step sign-in (the enrolment
   // and a setup in progress), a waiting address change (src/lib/email-change.ts) and the Google link both ways
   // (src/lib/google-signin.ts). The device lists and the sessions they name go below, with `revokeAllDevices`.
-  keys.push(...logins.flatMap((l) => [...mfaKeys(l), `emailchange:${l}`, `emailchange:tries:${l}`, `googlesub:${l}`]));
-  const subs = await db.mget<string>(logins.map((l) => `googlesub:${l}`));
-  keys.push(...subs.filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(s)).map((s) => `google:${s}`));
+  keys.push(...logins.flatMap((l) => [...mfaKeys(l), accountKey.emailChange(l), accountKey.emailChangeTries(l), accountKey.googleSub(l)]));
+  const subs = await db.mget<string>(logins.map((l) => accountKey.googleSub(l)));
+  keys.push(...subs.filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(s)).map((s) => globalKey.googleAccount(s)));
   // A founding seat and a price-lock place (src/lib/founding.ts, rule 1712): the account's email leaves both counted sets.
   await freePlaces(e);
 
-  const token = await db.get<string>(`mcptoken-of:${e}`);
-  if (token) keys.push(`mcptoken:${token}`);
+  const token = await db.get<string>(accountKey.mcpTokenOf(e));
+  if (token) keys.push(globalKey.mcpToken(token));
   await revokeAllGrants(e); // OAuth tokens issued to connected apps
   // Wishlist: votes are taken back (the counts drop) and suggestions, which carry the email and free text, are removed.
   keys.push(...(await forgetWishlistUser(e)));
   // Partner programme (src/lib/partners.ts): recorded payments and, for a partner, the record with its bank details, the
   // code, the referral set and the ledger. The account also leaves its own partner's referral set.
   keys.push(...(await forgetPartnerData(e)));
-  keys.push(`mcpgrants:${e}`);
-  keys.push(`profile:${e}`, `mcptoken-of:${e}`, `brands:${e}`, `activebrand:${e}`, `user:${e}`);
+  keys.push(accountKey.mcpGrants(e));
+  keys.push(`profile:${e}`, accountKey.mcpTokenOf(e), accountKey.brands(e), accountKey.activeBrand(e), accountKey.user(e));
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
   // referral graph, share-bonus markers and activity history behind, so re-registering the same address inherited
   // them. The other `notifseen:` markers are not listed: they live a week at most after their last write (Reem's to-do
   // alert markers are set again by each daily run while their step holds, and no run reaches a deleted account) and
   // their suffix cannot be enumerated (the ones that can, per brand, are deleted above).
   keys.push(
-    `notifs:${e}`,
-    `referrals:${e}`,
-    `referredBy:${e}`,
+    accountKey.notifications(e),
+    accountKey.referrals(e),
+    accountKey.referredBy(e),
     `ref:${codeFor(e)}`,
     // Referrer bonuses waiting for a friend's first payment, the friends already claimed, this month's paid count.
     ...referralKeys(e),
-    `shared:${e}`,
-    ...["x", "linkedin", "whatsapp", "instagram"].map((p) => `shared:${e}:${p}`), // pre-set markers
-    `ulast:${e}`,
-    `weeklylock:${e}`,
-    ...EVENTS.flatMap((ev) => [`uev:${e}:${ev}`, `ufirst:${e}:${ev}`, `ufirst0:${e}:${ev}`]),
+    accountKey.shared(e),
+    ...["x", "linkedin", "whatsapp", "instagram"].map((p) => accountKey.shared(e, p)), // pre-set markers
+    accountKey.lastSeen(e),
+    accountKey.weeklyLock(e),
+    ...EVENTS.flatMap((ev) => [accountKey.event(e, ev), accountKey.eventFirst(e, ev), accountKey.eventFirst0(e, ev)]),
     // Model-spend counters for the months this account could have been active (the monthly chat messages among them),
     // and the trial's chat messages, which are counted once for the trial and not per month.
     ...usageKeys(e),
@@ -235,5 +237,5 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
   // The owner's link once more, now the account is gone: a create that ran between the first revoke and the deletion of
   // `user:{owner}` could have written a new one.
   await Promise.all(logins.map((l) => revokeAllDevices(l)));
-  await Promise.all([revokeFeed(e), revokeBook(e), db.srem("users:all", e), db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }))]);
+  await Promise.all([revokeFeed(e), revokeBook(e), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ email: e, at: new Date().toISOString() }))]);
 }

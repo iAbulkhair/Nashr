@@ -3,6 +3,7 @@ import { db } from "./db";
 import { BEARER, TOKEN_PREFIX, grantHoldsAccess, revokeAllGrants, tokenHash } from "./oauth";
 import { emailVerified, getUser, type User } from "./auth";
 import type { Action } from "./roles";
+import { accountKey, globalKey } from "./keys";
 
 /**
  * The role each /api/mcp tool needs, the same action the web route for that work checks (src/lib/roles.ts). A bearer
@@ -23,18 +24,18 @@ export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "ch
 export async function createMcpToken(email: string) {
   const token = TOKEN_PREFIX + randomBytes(24).toString("base64url");
   const h = tokenHash(token);
-  await Promise.all([db.set(`mcptoken:${h}`, email), db.set(`mcptoken-of:${email}`, h)]);
+  await Promise.all([db.set(globalKey.mcpToken(h), email), db.set(accountKey.mcpTokenOf(email), h)]);
   return token;
 }
 /** The stored hash of the account's personal token (or, before migration, the raw value), for "is there one" only. */
 export async function getMcpToken(email: string) {
-  return db.get<string>(`mcptoken-of:${email}`);
+  return db.get<string>(accountKey.mcpTokenOf(email));
 }
 export async function revokeMcpToken(email: string) {
   const t = await getMcpToken(email);
   // A pre-hashing value may have been moved to its hashed key by a use since: both forms go.
-  const keys = t ? (t.startsWith("nashr_") ? [`mcptoken:${t}`, `mcptoken:${tokenHash(t)}`] : [`mcptoken:${t}`]) : [];
-  await Promise.all([...keys.map((k) => db.del(k)), db.del(`mcptoken-of:${email}`)]);
+  const keys = t ? (t.startsWith("nashr_") ? [globalKey.mcpToken(t), globalKey.mcpToken(tokenHash(t))] : [globalKey.mcpToken(t)]) : [];
+  await Promise.all([...keys.map((k) => db.del(k)), db.del(accountKey.mcpTokenOf(email))]);
 }
 /** Personal token and every OAuth grant of the account (password reset, founder reset, account deletion). */
 export async function revokeAllMcp(email: string) {
@@ -49,12 +50,12 @@ export async function revokeAllMcp(email: string) {
  */
 async function bearerRecord(raw: string): Promise<{ email: string; grant?: string; hash: string } | null> {
   const hash = tokenHash(raw);
-  const v = await db.get<string | { email: string; grant: string }>(`mcptoken:${hash}`);
+  const v = await db.get<string | { email: string; grant: string }>(globalKey.mcpToken(hash));
   if (v) return typeof v === "string" ? { email: v, hash } : { email: v.email, grant: v.grant, hash };
-  if (!(await db.rename(`mcptoken:${raw}`, `mcptoken:${hash}`))) return null;
-  const moved = await db.get<string>(`mcptoken:${hash}`);
+  if (!(await db.rename(globalKey.mcpToken(raw), globalKey.mcpToken(hash)))) return null;
+  const moved = await db.get<string>(globalKey.mcpToken(hash));
   if (!moved || typeof moved !== "string") return null;
-  await db.replaceIf(`mcptoken-of:${moved}`, raw, hash);
+  await db.replaceIf(accountKey.mcpTokenOf(moved), raw, hash);
   return { email: moved, hash };
 }
 

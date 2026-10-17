@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { db } from "./db";
 import { getUser } from "./auth";
 import { ksaDay } from "./partner-rules";
+import { accountKey } from "./keys";
 
 /** Credits each side of a referral gets: the new account at signup, the referrer at the friend's first payment. */
 export const REFERRAL_CREDITS = 50;
@@ -59,8 +60,8 @@ export async function applyReferral(newEmail: string, code: string) {
   const at = new Date().toISOString();
   await adjust(newEmail, REFERRAL_CREDITS);
   await Promise.all([
-    db.lpush(`referrals:${refEmail}`, JSON.stringify({ email: newEmail, at })),
-    db.set(`referredBy:${newEmail}`, refEmail),
+    db.lpush(accountKey.referrals(refEmail), JSON.stringify({ email: newEmail, at })),
+    db.set(accountKey.referredBy(newEmail), refEmail),
     db.hset(pendingKey(refEmail), who(newEmail), { at, status: "pending" } satisfies PendingReferral),
   ]);
   return true;
@@ -72,10 +73,10 @@ export async function applyReferral(newEmail: string, code: string) {
  * half way leaves both and a retry finishes it. Nothing happens when `from` was not referred.
  */
 export async function moveReferral(from: string, to: string): Promise<void> {
-  const refEmail = await db.get<string>(`referredBy:${from}`);
+  const refEmail = await db.get<string>(accountKey.referredBy(from));
   if (!refEmail) return;
-  const [states, rows] = await Promise.all([db.hgetall<PendingReferral>(pendingKey(refEmail)), db.lrange(`referrals:${refEmail}`, 0, -1)]);
-  await db.set(`referredBy:${to}`, refEmail);
+  const [states, rows] = await Promise.all([db.hgetall<PendingReferral>(pendingKey(refEmail)), db.lrange(accountKey.referrals(refEmail), 0, -1)]);
+  await db.set(accountKey.referredBy(to), refEmail);
   const fromId = who(from);
   if (states[fromId]) {
     await db.hset(pendingKey(refEmail), who(to), states[fromId]);
@@ -83,9 +84,9 @@ export async function moveReferral(from: string, to: string): Promise<void> {
   }
   const row = rows.find((r) => { try { return (JSON.parse(r) as { email?: string }).email === from; } catch { return false; } });
   if (row && !rows.some((r) => { try { return (JSON.parse(r) as { email?: string }).email === to; } catch { return false; } })) {
-    await db.lpush(`referrals:${refEmail}`, JSON.stringify({ ...JSON.parse(row), email: to }));
+    await db.lpush(accountKey.referrals(refEmail), JSON.stringify({ ...JSON.parse(row), email: to }));
   }
-  if (row) await db.lrem(`referrals:${refEmail}`, row);
+  if (row) await db.lrem(accountKey.referrals(refEmail), row);
 }
 
 export type ReferrerReward = "paid" | "capped" | "already" | "none";
@@ -96,7 +97,7 @@ export type ReferrerReward = "paid" | "capped" | "already" | "none";
  * REFERRAL_MONTHLY_CAP the bonus is decided as `capped` and never paid. The credits go through the ledger (`adjust`).
  */
 export async function rewardReferrer(payerEmail: string, now: number = Date.now()): Promise<ReferrerReward> {
-  const refEmail = await db.get<string>(`referredBy:${payerEmail}`);
+  const refEmail = await db.get<string>(accountKey.referredBy(payerEmail));
   if (!refEmail || refEmail === payerEmail || !(await getUser(refEmail))) return "none";
   const id = who(payerEmail);
   if ((await db.sadd(paidKey(refEmail), id)) !== 1) return "already";
@@ -114,7 +115,7 @@ export async function rewardReferrer(payerEmail: string, now: number = Date.now(
 }
 
 export async function referralStats(email: string) {
-  const [rows, states] = await Promise.all([db.lrange(`referrals:${email}`, 0, 99), db.hgetall<PendingReferral>(pendingKey(email))]);
+  const [rows, states] = await Promise.all([db.lrange(accountKey.referrals(email), 0, 99), db.hgetall<PendingReferral>(pendingKey(email))]);
   const all = Object.values(states);
   const paid = all.filter((s) => s.status === "paid").length;
   const pending = all.filter((s) => s.status === "pending").length;

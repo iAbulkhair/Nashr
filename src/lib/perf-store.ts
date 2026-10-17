@@ -9,9 +9,10 @@ import { isComposio } from "./connectors/composio-shape";
 import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
 import { log } from "./log";
+import { scopeParam, wsKey } from "./keys";
 
 export const LEARNINGS_FILE = "performance-learnings.md";
-const KEY = (scope: string) => `perfimport:${scope}`;
+const KEY = (scope: string) => wsKey.perfImport(scopeParam(scope));
 
 /** The latest campaign import for this workspace, or null. One at a time: a new upload replaces the last. */
 export async function getPerf(scope: string) {
@@ -50,7 +51,7 @@ export async function syncAds(scope: string, provider: AdProvider, c: Connection
   // window's per-ad read covered every ad; a capped or partial read keeps no prev (rule 733).
   const kept = c.provider === "snapchat" && isComposio(c) && pull.allAds !== true ? null : prev;
   const snap: PerfSnapshot = { ...analyze(pull.rows, `${pull.account}${pull.currency ? ` (${pull.currency})` : ""}`, pull.platform, pull.range, undefined, now.toISOString(), codes), source: provider };
-  await Promise.all([savePerf(scope, snap), db.set(`adsync:${scope}:${provider}`, now.toISOString()), db.set(ADSTATS_KEY(scope, provider), adStatsFrom(provider, pull, kept, now))]);
+  await Promise.all([savePerf(scope, snap), db.set(wsKey.adSync(scopeParam(scope), provider), now.toISOString()), db.set(ADSTATS_KEY(scope, provider), adStatsFrom(provider, pull, kept, now))]);
   return snap;
 }
 
@@ -82,7 +83,7 @@ export function failCode(e: unknown): string {
 
 /** Daily: refresh from the first connected ad account whose last read is older than 20 hours. One platform a day. */
 export async function syncAdsIfDue(scope: string): Promise<string | null> {
-  const found = await Promise.all(AD_PROVIDERS.map(async (p) => ({ p, c: await getConnection(scope, p), last: await db.get<string>(`adsync:${scope}:${p}`) })));
+  const found = await Promise.all(AD_PROVIDERS.map(async (p) => ({ p, c: await getConnection(scope, p), last: await db.get<string>(wsKey.adSync(scopeParam(scope), p)) })));
   const due = found.filter((x) => x.c && !x.c.needsReconnect && (!x.last || Date.now() - Date.parse(x.last) > 20 * 36e5)).sort((a, b) => (a.last ?? "").localeCompare(b.last ?? ""))[0];
   if (!due) return null;
   try {

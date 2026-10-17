@@ -1299,3 +1299,18 @@ Supastarter gap study 2026-10-16, wave 2a: three modules grew past what one pers
 ### 82.1 Releases
 
 No stored shape changes: one release, no expand/contract step.
+
+---
+## 83. Typed Redis key registry and read validation (2026-10-17, branch `claude/wave2-key-registry-7ec6c2`, rules 2030-2039)
+
+Supastarter gap study 2026-10-16, wave 2b. Files: new `src/lib/keys.ts`, new `src/lib/stored.ts`; key strings only in `src/lib/{auth,brands,brand,account,team,conversations,mcp,privacy-export,email-change,oauth,track,referral,schedule,usage,governance,perf-store,partners,files,evals,store-sales,rate,onboard-confirm,notifications,google-signin,stats,social-stats,site-stats,routines,margin,handoffs,feedback,decisions,admin-stats}.ts`, `src/lib/connectors/store.ts`, `src/lib/social-read/common.ts`, five API routes and the chat page. `src/lib/secretary*.ts`, `src/lib/chat.ts` and `src/lib/app-i18n.ts` are left for the wave 2a split. Tests: `tests/key-registry.test.ts`, `tests/key-registry-ratchet.test.ts`, `tests/stored-shapes.test.ts`; coverage `docs/system/tests/2030-key-registry.md`.
+
+1. A request names its workspace through `sc(u)` only. `sc` returns a `Scope`, the branded string every `wsKey.*` builder requires (rule 2031). A body, query, header, path or cookie value is a plain `string` and does not type-check as a key, so a route cannot key a workspace record by what the caller sent.
+2. Code that walks an account's own brands (`wipeAccount`, `buildExport`, `ownerHasData`) builds each scope with `workspaceScope(email, brandId)` over `listBrands(email)` for the signed-in owner (rule 2032). A scope read back from our own records uses `storedScope`. Neither appears under `src/app`.
+3. Lib helpers whose scope parameter is still `string` (`getTask`, `saveConnection`, `readFile`, ...) turn it into a `Scope` with `scopeParam` where they build the key (rule 2033). Their callers already pass `sc(u)`; narrowing the parameters is a later pass, and the ratchet counts these calls (90 when this landed).
+4. Every builder returns the bytes of the template it replaced (rule 2030): no key moves, nothing to migrate. A raw key template written outside `keys.ts` counts against its file's number in the ratchet test, which may only go down (rule 2034; 801 before, 524 after this change, in 179 files).
+5. Reads of four shapes are checked (rules 2035-2039): the brand list (row by row; a row without an id is left out, a missing status is active), the active brand (missing or malformed is `default`; a numeric-looking id the Redis client read back as a number is text again), a connection (without `enc` it reads as not connected instead of failing in `decrypt`), a conversation (without an id it is absent; a missing count is 0). A record that does not fit is logged as `stored shape invalid` with the shape name, field paths and zod codes, never the key, the account or a value, and the reader gets the safe default. Nothing throws on old data.
+
+### 83.1 Releases
+
+No stored shape changes and no key changes: one release, no expand/contract step (rule 679). The read schemas accept every shape written so far and keep unknown fields (`looseObject`), so the next write of a record carries the fields a newer release added. A brand row without an id is dropped on the next brand-list write; such a row could not name a scope before either. No permission or environment variable change; `zod` is already a dependency.

@@ -7,6 +7,7 @@ import { revokeFeed } from "./feed-token";
 import { getUser, normalizeEmail, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
 import { can } from "./roles";
 import { teamApprovals } from "./approver-stats";
+import { accountKey, globalKey } from "./keys";
 
 /**
  * Teams (seats): member logins, invites and seat accounting (docs/superpowers/specs/2026-09-29-teams-design.md).
@@ -67,10 +68,10 @@ export const INVITE_TTL_SECONDS = 7 * 24 * 3600;
 const LOCK_TTL_SECONDS = 10;
 const TOKEN_RE = /^[a-f0-9]{64}$/;
 
-const memberKey = (email: string) => `member:${email}`;
-export const membersKey = (owner: string) => `members:${owner}`;
-const inviteKey = (id: string) => `invite:${id}`;
-const invitesKey = (owner: string) => `invites:${owner}`;
+const memberKey = (email: string) => accountKey.member(email);
+export const membersKey = (owner: string) => accountKey.members(owner);
+const inviteKey = (id: string) => globalKey.invite(id);
+const invitesKey = (owner: string) => accountKey.invites(owner);
 const fail = (error: TeamError): TeamFail => ({ ok: false, error });
 
 export const isTeamRole = (v: unknown): v is TeamRole => v === "admin" || v === "member";
@@ -101,11 +102,11 @@ async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 /** Login uniqueness across `user:` and `member:`. Signup and accept both create logins under this lock. */
-export const withLoginLock = <T,>(email: string, fn: () => Promise<T>) => withLock(`lock:login:${normalizeEmail(email)}`, fn);
+export const withLoginLock = <T,>(email: string, fn: () => Promise<T>) => withLock(accountKey.loginLock(normalizeEmail(email)), fn);
 /** Read-modify-write of one member record (password, name, role, disabled). Null when the member does not exist. */
 export async function withMemberLock<T>(email: string, fn: (m: Member) => Promise<T>): Promise<T | null> {
   const e = normalizeEmail(email);
-  return withLock(`lock:member:${e}`, async () => {
+  return withLock(accountKey.memberLock(e), async () => {
     const m = await getMember(e);
     return m ? fn(m) : null;
   });
@@ -211,7 +212,7 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
   if (e === owner.email || e === normalizeEmail(actor.email)) return fail("unavailable");
   const token = randomBytes(32).toString("hex");
   const id = inviteId(token);
-  return withLock(`lock:team:${owner.email}`, async () => {
+  return withLock(accountKey.teamLock(owner.email), async () => {
     const [u, m, members, invites, fresh] = await Promise.all([getUser(e), getMember(e), listMembers(owner.email), listInvites(owner.email), getUser(owner.email)]);
     if (u || m || invites.some((i) => i.email === e)) return fail("unavailable");
     const limit = seatLimit(fresh ?? owner);
@@ -261,14 +262,14 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
   if (typeof input.password !== "string" || !strongPassword(input.password)) return fail("weak_password");
   // Hash before taking any lock: bcrypt is the slow part.
   const passHash = await bcrypt.hash(input.password, 10);
-  const use = `inviteuse:${id}`;
+  const use = globalKey.inviteUse(id);
   if (!(await db.lock(use, 30))) return fail("invalid"); // being accepted right now
   try {
     const inv = await db.get<Invite>(inviteKey(id));
     if (!inv || expired(inv) || !isTeamRole(inv.role)) return fail("invalid");
     // Everything that decides the answer is read again under the team lock: a plan change, a cancel, a demotion or an
     // account deletion that finished while this request waited for the lock must be seen, never a copy read before it.
-    return await withLock(`lock:team:${inv.owner}`, async () => {
+    return await withLock(accountKey.teamLock(inv.owner), async () => {
       const [owner, inviter, live, members, invites] = await Promise.all([
         getUser(inv.owner),
         inv.invitedBy === inv.owner ? null : getMember(inv.invitedBy),
@@ -313,7 +314,7 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
  * email could not be sent). No role check: it is the creating request's own rollback, never exposed to a caller's id.
  */
 export async function discardInvite(owner: string, id: string) {
-  await withLock(`lock:team:${owner}`, () => dropInvites(owner, [id]));
+  await withLock(accountKey.teamLock(owner), () => dropInvites(owner, [id]));
 }
 
 /** Cancel a pending invite of this account. An admin may cancel only invites for role "member". */
@@ -327,7 +328,7 @@ export async function cancelInvite(owner: User, actor: Actor, id: string): Promi
   if (!(await actorStillHolds(owner, actor))) return fail("forbidden");
   // Under the team lock, like every other seat change: an accept holding it either finishes first (and this invite is
   // gone: the person joined) or runs after and finds the invite cancelled. Never both "cancelled" and "joined".
-  const done = await withLock(`lock:team:${owner.email}`, async () => {
+  const done = await withLock(accountKey.teamLock(owner.email), async () => {
     const cur = await db.get<Invite>(inviteKey(id));
     if (!cur || cur.owner !== owner.email) return false;
     await dropInvites(owner.email, [id]);
@@ -349,7 +350,7 @@ async function dropMember(owner: string, email: string, may: (m: Member) => bool
     if (cur.memberOf !== owner) return "not_found" as const;
     if (!may(cur)) return "forbidden" as const;
     const sent = (await listInvites(owner)).filter((i) => i.invitedBy === cur.email).map((i) => i.id);
-    await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`), db.srem(membersKey(owner), cur.email), dropInvites(owner, sent)]);
+    await Promise.all([db.del(memberKey(cur.email)), db.del(accountKey.activeBrand(cur.email)), db.srem(membersKey(owner), cur.email), dropInvites(owner, sent)]);
     // The login is gone, so its calendar feed and booking links go too (their records and pointers; the booking claims
     // belong to the brand scope and go with the account). After the record is deleted, so nothing can mint a new one for
     // it any more (`revokeFeed` waits out a create already running). A failed revoke is retried by nothing: the removal
@@ -375,17 +376,17 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
   const to = normalizeEmail(target);
   if (to === old) return "exists";
   const [first, second] = old < to ? [old, to] : [to, old];
-  return withLock(`lock:team:${owner}`, () => withLoginLock(first, () => withLoginLock(second, async () => {
+  return withLock(accountKey.teamLock(owner), () => withLoginLock(first, () => withLoginLock(second, async () => {
     const res = await withMemberLock(old, async (cur) => {
       if (cur.memberOf !== owner) return "not_found" as const;
       const [u, m] = await Promise.all([getUser(to), getMember(to)]);
       if (u || m) return "exists" as const;
-      const [sent, brand] = await Promise.all([listInvites(owner), db.get<string>(`activebrand:${old}`)]);
+      const [sent, brand] = await Promise.all([listInvites(owner), db.get<string>(accountKey.activeBrand(old))]);
       const { devicesAfter: _d, ...rest } = cur;
       await saveMember({ ...rest, email: to, sessionsAfter: new Date().toISOString() });
-      await Promise.all([db.sadd(membersKey(owner), to), brand ? db.set(`activebrand:${to}`, brand) : Promise.resolve()]);
+      await Promise.all([db.sadd(membersKey(owner), to), brand ? db.set(accountKey.activeBrand(to), brand) : Promise.resolve()]);
       if (carry) await carry(old, to);
-      await Promise.all([db.del(memberKey(old)), db.del(`activebrand:${old}`), db.srem(membersKey(owner), old), dropInvites(owner, sent.filter((i) => i.invitedBy === old).map((i) => i.id))]);
+      await Promise.all([db.del(memberKey(old)), db.del(accountKey.activeBrand(old)), db.srem(membersKey(owner), old), dropInvites(owner, sent.filter((i) => i.invitedBy === old).map((i) => i.id))]);
       await Promise.all([revokeFeed(old), revokeBook(old)]);
       return "ok" as const;
     });
@@ -402,7 +403,7 @@ export async function removeMember(owner: User, actor: Actor, email: string): Pr
   if (!m || m.memberOf !== owner.email) return fail("not_found");
   if (m.role === "admin" && !can(acting, "team.remove.admin")) return fail("forbidden");
   if (!(await actorStillHolds(owner, actor))) return fail("forbidden");
-  const res = await withLock(`lock:team:${owner.email}`, () => dropMember(owner.email, e, (cur) => cur.role !== "admin" || can(acting, "team.remove.admin")));
+  const res = await withLock(accountKey.teamLock(owner.email), () => dropMember(owner.email, e, (cur) => cur.role !== "admin" || can(acting, "team.remove.admin")));
   return res === "ok" ? { ok: true } : fail(res);
 }
 
@@ -414,7 +415,7 @@ export async function removeMember(owner: User, actor: Actor, email: string): Pr
 export async function forceRemoveMember(email: string): Promise<boolean> {
   const m = await getMember(email);
   if (!m) return false;
-  return (await withLock(`lock:team:${m.memberOf}`, () => dropMember(m.memberOf, m.email))) === "ok";
+  return (await withLock(accountKey.teamLock(m.memberOf), () => dropMember(m.memberOf, m.email))) === "ok";
 }
 
 /** Change a member's role (owner only). The owner role is never assignable, removable or transferable in v1. */
@@ -424,7 +425,7 @@ export async function setRole(owner: User, actor: Actor, email: string, role: st
   const e = normalizeEmail(typeof email === "string" ? email : "");
   const m = await getMember(e);
   if (!m || m.memberOf !== owner.email) return fail("not_found");
-  const done = await withLock(`lock:team:${owner.email}`, () =>
+  const done = await withLock(accountKey.teamLock(owner.email), () =>
     withMemberLock(e, async (cur) => {
       if (cur.memberOf !== owner.email) return false;
       const demoted = cur.role === "admin" && role !== "admin";
@@ -445,7 +446,7 @@ export async function leaveTeam(u: User): Promise<{ ok: true } | TeamFail> {
   if (!a || a.kind !== "member" || !can(u, "team.leave")) return fail("forbidden");
   const m = await getMember(a.email);
   if (!m || m.memberOf !== u.email) return fail("not_found");
-  const res = await withLock(`lock:team:${u.email}`, () => dropMember(u.email, m.email));
+  const res = await withLock(accountKey.teamLock(u.email), () => dropMember(u.email, m.email));
   return res === "ok" ? { ok: true } : fail(res);
 }
 
@@ -458,7 +459,7 @@ export async function leaveTeam(u: User): Promise<{ ok: true } | TeamFail> {
  */
 export async function enforceSeats(owner: User | string): Promise<{ limit: number; disabled: string[]; enabled: string[]; cancelled: string[] }> {
   const email = typeof owner === "string" ? normalizeEmail(owner) : owner.email;
-  return withLock(`lock:team:${email}`, async () => {
+  return withLock(accountKey.teamLock(email), async () => {
     const [o, members, invites] = await Promise.all([getUser(email), listMembers(email), listInvites(email)]);
     const limit = o ? seatLimit(o) : 1;
     const slots = Math.max(0, limit - 1);
@@ -497,12 +498,12 @@ export async function enforceSeats(owner: User | string): Promise<{ limit: numbe
  * deleted under its own `lock:member` (as in `dropMember`), so a profile or password save in flight cannot restore it.
  */
 export async function wipeTeam(owner: string) {
-  await withLock(`lock:team:${owner}`, async () => {
+  await withLock(accountKey.teamLock(owner), async () => {
     const [emails, ids] = await Promise.all([db.smembers(membersKey(owner)), db.smembers(invitesKey(owner))]);
     await Promise.all([
       pmap(emails, (e) =>
         withMemberLock(e, async (cur) => {
-          if (cur.memberOf === owner) await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`), revokeFeed(cur.email), revokeBook(cur.email)]);
+          if (cur.memberOf === owner) await Promise.all([db.del(memberKey(cur.email)), db.del(accountKey.activeBrand(cur.email)), revokeFeed(cur.email), revokeBook(cur.email)]);
         }),
       ),
       pmap([...ids.map(inviteKey), membersKey(owner), invitesKey(owner)], (k) => db.del(k)),

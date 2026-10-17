@@ -1,5 +1,6 @@
 import type { N } from "../figures";
 import type { Range, Totals } from "../social-stats";
+import { scopeParam, wsKey } from "../keys";
 
 /**
  * What every social reader shares: the key of the posts Thakeen published, the empty totals, the deadline, the split of
@@ -12,7 +13,7 @@ import type { Range, Totals } from "../social-stats";
  * Post ids Thakeen published for this workspace on a platform whose results are read (publish-once.ts), so a result can
  * say «من ذكين». No TTL: the wrapper cannot refresh a set's TTL, one id is about 20 bytes, and wipeAccount deletes it.
  */
-export const SOCIAL_PUB_KEY = (scope: string) => `socialpub:${scope}`;
+export const SOCIAL_PUB_KEY = (scope: string) => wsKey.socialPublished(scopeParam(scope));
 /**
  * The X account's last read (src/lib/x-stats.ts, rule 744): its own key, beside `socialstats:{scope}`, so the daily social
  * sync never reads or writes it and Dana's block merges it with its own date. Kept here, with no import, so social-stats.ts
