@@ -1,4 +1,5 @@
 import { AGENT_IDS, type AgentId } from "./agents";
+import { isSuspended } from "./suspension";
 import type { Grant, User } from "./auth";
 import { billingLocked } from "./billing-state";
 import { chatStatus, type ChatStatus } from "./chat-allowance";
@@ -102,7 +103,7 @@ export function parseVideoGrant(v: unknown, now: number = Date.now()): { ok: tru
 
 /** The first reason the account is not active, or undefined. Suspension first, then a locked subscription, then an ended trial. */
 function inactiveOf(u: EntUser, now: number): Inactive | undefined {
-  if (u.suspended) return "suspended";
+  if (isSuspended(u, now)) return "suspended";
   if (billingLocked(u.billing)) return "billing_locked";
   if (u.plan === "trial" && Date.parse(u.trialEnds) < now) return "trial_over";
   return undefined;

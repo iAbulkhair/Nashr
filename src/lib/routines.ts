@@ -16,6 +16,7 @@ import { pmap } from "./parallel";
 import { appDict } from "./app-i18n";
 import { actSkipKey, recordRun } from "./activity";
 import { systemBy } from "./actor";
+import { scopeParam, wsKey } from "./keys";
 
 /**
  * Routines: recurring work for agents other than Noor's Sunday plan, each ON by default for every brand, added brands
@@ -66,7 +67,7 @@ async function activity(c: GateCtx) {
   const [decided, snap, ads, owner] = await Promise.all([
     listDecisions(c.scope, 1),
     getSalesSnapshot(c.scope),
-    Promise.all(AD_PROVIDERS.map((p) => db.get<string>(`adsync:${c.scope}:${p}`))),
+    Promise.all(AD_PROVIDERS.map((p) => db.get<string>(wsKey.adSync(scopeParam(c.scope), p)))),
     db.get<string>(OWNER_SYNC_KEY(c.scope)),
   ]);
   return newer(decided[0]?.at, from) || newer(snap?.at, from) || ads.some((a) => newer(a, from)) || newer(owner, from) ? null : "idle";

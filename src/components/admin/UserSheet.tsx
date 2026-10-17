@@ -10,6 +10,8 @@ import { formatCount, topupsSold, type AgencyDeal, type Plan } from "@/lib/prici
 import type { TopupLot } from "@/lib/topups";
 import { CHAT_LOW_SHARE, STR, type Detail, type Lang, type U } from "./shared";
 import { USERS_COPY } from "./users-copy";
+import { formatSuspensionEnd } from "@/lib/suspension";
+import WorkspacePanel from "./WorkspacePanel";
 
 /**
  * Red once the raw count reached the allowance (it can pass one lowered mid-period; an allowance of 0, chat stopped,
@@ -18,17 +20,18 @@ import { USERS_COPY } from "./users-copy";
 export const chatLow = (counted: number, allowance: number | undefined, left: number | undefined) =>
   allowance != null && (counted >= allowance || (left ?? Math.max(0, allowance - counted)) <= allowance * CHAT_LOW_SHARE);
 
-const TAB_IDS = ["overview", "billing", "usage", "activity", "brand"] as const;
+const TAB_IDS = ["overview", "billing", "usage", "activity", "brand", "workspace"] as const;
 type Tab = (typeof TAB_IDS)[number];
 
 /** A brand file value as one line of text: text as it is, a list joined, anything else as JSON. Text only, never HTML. */
 const brandValue = (v: unknown): string => (typeof v === "string" ? v : Array.isArray(v) && v.every((x) => typeof x === "string") ? v.join("، ") : JSON.stringify(v));
 
 /**
- * One account in the founder console (rule 1180): a `Sheet` from the inline end, up to 48rem wide, with five tabs.
+ * One account in the founder console (rule 1180): a `Sheet` from the inline end, up to 48rem wide, with six tabs.
  * Overview holds the facts and every action (each asks its form first, rule 1176); Billing the payments and top-up
  * packs; Usage this month's model use, chat and entitlements; Activity the tasks and the brand activity log; Brand the
- * brand file as fields. Closing it gives focus back to the account's button in the table.
+ * brand file as fields; Workspace the read-only team view (members, invites, brands, plan, rule 2083), loaded and audited
+ * only when that tab opens. Closing it gives focus back to the account's button in the table.
  */
 export default function UserSheet({
   lang, sel, busy, msg, payTick, onClose, dealText,
@@ -72,7 +75,7 @@ export default function UserSheet({
             <span>{sel.user.plan}{sel.user.plan === "agency" ? ` (${dealText(sel.user.deal)})` : ""}</span>
             <span aria-hidden>·</span>
             <span className="tabular-nums">{formatCount(sel.user.credits)} {UC.creditsWord}</span>
-            {sel.user.suspended && <Badge tone="danger">{UC.suspendedBadge}</Badge>}
+            {sel.user.suspended && <Badge tone="danger"><span suppressHydrationWarning>{UC.suspendedBadge}{sel.user.suspendedUntil ? ` · ${UC.suspendedUntil(formatSuspensionEnd(sel.user.suspendedUntil, lang))}` : ""}</span></Badge>}
             {sel.user.emailVerifiedAt ? <span>{S.verifiedOn} <bdi dir="ltr">{sel.user.emailVerifiedAt.slice(0, 10)}</bdi></span> : <Badge tone="warning">{S.unverified}</Badge>}
           </p>
         </header>
@@ -241,6 +244,10 @@ export default function UserSheet({
               ))}
             </dl>
           )}
+        </TabPanel>
+
+        <TabPanel idBase={idBase} id="workspace" value={tab}>
+          <WorkspacePanel lang={lang} email={sel.user.email} />
         </TabPanel>
       </div>
     </Sheet>

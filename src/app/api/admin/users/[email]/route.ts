@@ -28,13 +28,18 @@ import { unfinishedRefunds } from "@/lib/partners";
 import { sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
 import { TRIAL_EXTEND_MAX_DAYS, parseImpersonateMinutes } from "@/lib/admin-input";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
+import { isSuspended, parseSuspendFor, suspensionEnd, suspensionExpired } from "@/lib/suspension";
+import { endExpiredSuspension } from "@/lib/suspension-server";
+import { accountKey } from "@/lib/keys";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, ctx: { params: Promise<{ email: string }> }) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const { email } = await ctx.params;
-  const u = await getUser(decodeURIComponent(email));
+  let u = await getUser(decodeURIComponent(email));
+  // A suspension whose end date passed is cleared and logged when staff open the account (rule 2073), then read again.
+  if (u && suspensionExpired(u) && (await endExpiredSuspension(u.email))) u = (await getUser(u.email)) ?? u;
   if (!u) {
     // Member logins never enter users:all, so the list cannot show them: an address is looked up here instead, which is
     // how support finds (and can remove, below) a member login holding an address its real owner wants to sign up with.
@@ -57,7 +62,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     chatStatus(u, route("chat").model),
     listConnections(u.email),
     Promise.all(scopes.map((s) => listConversations(s))).then((x) => x.flat().length),
-    db.lrange(`referrals:${u.email}`, 0, 99).then((x) => x.length),
+    db.lrange(accountKey.referrals(u.email), 0, 99).then((x) => x.length),
     // The latest 100 activity rows of each brand, every brand in parallel (the scopes come from the account's own list).
     Promise.all(brands.map((b, i) => listActivity(scopes[i], { limit: 100 }).then((p) => ({ brand: b.id, name: b.name, rows: p.rows })))),
     // Packs whose refund is not on their payment yet: the Top-ups block offers "Finish refund" on them (rule 465).
@@ -67,8 +72,11 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     entitlementView(u),
   ]);
   const scores = tasks.filter((t) => t.quality).map((t) => t.quality!.score);
-  const { passHash: _omit, ...safe } = u;
+  const { passHash: _omit, suspended: _stored, ...rest } = u;
   void _omit;
+  void _stored;
+  // The console reads the state as it is now (rule 2074): `suspended` true only while it blocks, and its end date, if any.
+  const safe = { ...rest, suspended: isSuspended(u), suspendedUntil: isSuspended(u) ? suspensionEnd(u) : null };
   return NextResponse.json({
     ok: true, user: safe, brand, tasks, usage, chat, connections, brands, conversations: convs, referrals, activity, unfinishedRefunds: unfinished, entitlements: ent,
     // What one chat message cost this month, over every message sent (the raw count and those on credits), as the list shows.
@@ -77,7 +85,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   });
 }
 
-type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember" | "resendVerification"; days?: number; lang?: "ar" | "en"; reason?: string; minutes?: unknown };
+type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember" | "resendVerification"; days?: number; lang?: "ar" | "en"; reason?: string; minutes?: unknown; for?: unknown; date?: unknown };
 
 /** POST actions on one user. Every action is logged to admin:log with WHO did it: the founder's email, or "key". */
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
@@ -110,10 +118,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   switch (b.action) {
     case "suspend":
     case "unsuspend": {
-      const was = !!u.suspended;
-      const user = await withUserLock(email, async (x) => { x.suspended = b.action === "suspend"; await saveUser(x); return x; });
-      await log(b.action, { before: { suspended: was }, after: { suspended: !!user.suspended } });
-      return NextResponse.json({ ok: true, suspended: !!user.suspended });
+      // Rule 2070: staff pick no end date, 7 days, 30 days or a date; a request without `for` keeps the old meaning (none).
+      const pick = b.action === "suspend" ? parseSuspendFor(b.for, b.date) : null;
+      if (pick && !pick.ok) return NextResponse.json({ ok: false, error: pick.error }, { status: 400 });
+      const state = (x: { suspended?: unknown }) => ({ suspended: isSuspended(x), until: isSuspended(x) ? suspensionEnd(x) : null });
+      const before = state(u);
+      // Unsuspend writes `false`; suspend writes `true` or `{ until }`, the whole field, never a stale end date (rule 2070).
+      const user = await withUserLock(email, async (x) => { x.suspended = pick?.ok ? pick.value : false; await saveUser(x); return x; });
+      const after = state(user);
+      await log(b.action, { before, after });
+      return NextResponse.json({ ok: true, suspended: after.suspended, suspendedUntil: after.until });
     }
     case "extendTrial": {
       const days = Math.max(1, Math.min(TRIAL_EXTEND_MAX_DAYS, Math.trunc(b.days ?? 7)));

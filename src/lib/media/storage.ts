@@ -1,5 +1,5 @@
 /**
- * The storage adapter seam (rules 2058-2063, `flows.md` section 83): where the bytes of our media copies live. The
+ * The storage adapter seam (rules 2058-2063, `flows.md` section 85): where the bytes of our media copies live. The
  * store (src/lib/media/store.ts) keeps everything that decides what may be written and who may read it: the source
  * download through safeFetch, the magic-byte check, the JPEG conversion, the size cap, the quota guard and the
  * tenant index `mfile:{scope}:{name}` written with `sc(u)`'s scope. An adapter only keeps bytes under a name that passed

@@ -1,4 +1,6 @@
 import { createHash } from "crypto";
+import { isSuspended } from "@/lib/suspension";
+import { suspendedAnswer } from "@/lib/login-finish";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { createSession, emailVerified, getLogin, revokeSessions, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
@@ -43,7 +45,7 @@ export async function POST(req: Request) {
   if (login.kind === "member") {
     const { member, owner } = login;
     if (!owner || member.memberOf !== owner.email) return badToken();
-    if (owner.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
+    if (isSuspended(owner)) return suspendedAnswer(owner);
     // The member record only, under its own lock. Every other device of THIS member is signed out; the owner and the
     // rest of the team are untouched.
     const done = await withMemberLock(member.email, async (m) => {
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
   }
 
   const owner = login.user;
-  if (owner.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
+  if (isSuspended(owner)) return suspendedAnswer(owner);
   // A reset is what an owner does after losing control of the account: the owner's sessions, every member's session
   // (each signs back in with their own password) and every MCP token die with the old password.
   // Rule 769: the link was mailed to this very address and used once, which proves the inbox as well as a code does, so

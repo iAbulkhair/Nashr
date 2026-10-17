@@ -18,7 +18,7 @@ import * as checkout from "@/app/api/billing/checkout/route";
 import * as webhook from "@/app/api/billing/paymob/webhook/route";
 
 /**
- * Wave 2c (rules 2050-2063, docs/system/tests/2050-payment-storage-seams.md, flows.md section 83): billing reaches
+ * Wave 2c (rules 2050-2063, docs/system/tests/2050-payment-storage-seams.md, flows.md section 85): billing reaches
  * Paymob only through the PaymentProvider type, and the media store reaches the disk only through the StorageAdapter
  * type. No behaviour changed: every safety we had is pinned again here, through the new interfaces. Paymob is faked at
  * `fetch` as in tests/paymob.test.ts; the store writes to a temporary MEDIA_DIR.

@@ -1,4 +1,5 @@
 import { appDict } from "./app-i18n";
+import { isSuspended } from "./suspension";
 import { emailVerified, getLogin, normalizeEmail } from "./auth";
 import { listBrands, scopeFor } from "./brands";
 import type { FeedRecord } from "./feed-token";
@@ -98,13 +99,13 @@ export async function loginHolds(rec: Pick<FeedRecord, "login" | "scope" | "crea
   if (!login) return false;
   let owner: string;
   if (login.kind === "owner") {
-    if (login.user.suspended || !emailVerified(login.user)) return false;
+    if (isSuspended(login.user) || !emailVerified(login.user)) return false;
     if (olderThan(rec.createdAt, login.user.createdAt)) return false;
     if (olderThan(rec.createdAt, login.user.sessionsAfter)) return false;
     owner = login.user.email;
   } else {
     const { member: m, owner: u } = login;
-    if (!u || u.suspended || !emailVerified(u) || m.disabled) return false;
+    if (!u || isSuspended(u) || !emailVerified(u) || m.disabled) return false;
     if (m.role !== "admin" && m.role !== "member") return false;
     if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === normalizeEmail(rec.login)) return false;
     // NaN on either side (a malformed date) refuses too.

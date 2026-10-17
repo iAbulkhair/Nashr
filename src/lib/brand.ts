@@ -48,6 +48,7 @@ export { TASK_COST, TASK_COUNT, IMAGE_TYPES, VIDEO_TYPES, IMAGE_COST } from "./t
 import { isTaskType, type TaskType } from "./tasks";
 import type { ImageModelId, MediaFailure, MediaProviderId, VideoModelId } from "./media-catalog";
 import { log } from "./log";
+import { scopeParam, wsKey } from "./keys";
 
 /** The last render of one kind that ended without a result, kept on the card until the next render of that kind. */
 export type MediaLast = { error: MediaFailure; credits: number; refunded: boolean; at: string };
@@ -172,10 +173,10 @@ export const crossFlagged = (t: Pick<Task, "crossReview">): boolean => !!t.cross
 export const briefOf = (notes: unknown): string | undefined => (typeof notes === "string" && notes.trim() ? notes.trim().slice(0, 500) : undefined);
 
 export async function getBrand(email: string) {
-  return db.get<Brand>(`brand:${email}`);
+  return db.get<Brand>(wsKey.brand(scopeParam(email)));
 }
 export async function saveBrand(email: string, b: Brand) {
-  await db.set(`brand:${email}`, b);
+  await db.set(wsKey.brand(scopeParam(email)), b);
 }
 /**
  * Ids waiting for the owner's decision, seeding the set on first use exactly as the badge does. The badge and the
@@ -183,8 +184,8 @@ export async function saveBrand(email: string, b: Brand) {
  * Reem's "walk me through" (src/lib/secretary-walk.ts), so its approval cards are the badge's items.
  */
 export async function pendingIds(email: string): Promise<string[]> {
-  if (!(await db.get(`pendingidx:${email}`))) await rebuildPending(email);
-  return db.smembers(`pending:${email}`);
+  if (!(await db.get(wsKey.pendingIndex(scopeParam(email))))) await rebuildPending(email);
+  return db.smembers(wsKey.pending(scopeParam(email)));
 }
 
 /**
@@ -199,19 +200,19 @@ export async function pendingIds(email: string): Promise<string[]> {
  * Cost is bounded by 200 + the backlog the owner still has to clear, never by the size of the workspace.
  */
 export async function listTasks(email: string): Promise<Task[]> {
-  const [head, pending] = await Promise.all([db.lrange(`tasks:${email}`, 0, 199), pendingIds(email)]);
+  const [head, pending] = await Promise.all([db.lrange(wsKey.tasks(scopeParam(email)), 0, 199), pendingIds(email)]);
   // Dedupe BEFORE fetching. A pending task inside the newest 200 must appear once: twice would give React duplicate
   // keys and make the optimistic overlay in Inbox.tsx apply to both copies of the same card.
   const seen = new Set(head);
   const tail = pending.filter((id) => !seen.has(id));
   // Chunked MGET (rule 1430): two requests for the newest 200, where one GET per task cost 200 billed commands a page view.
-  const rows = await mgetChunked<Task>([...head, ...tail].map((id) => `task:${email}:${id}`));
+  const rows = await mgetChunked<Task>([...head, ...tail].map((id) => wsKey.task(scopeParam(email), id)));
   const tailRows = rows.slice(head.length);
 
   // A pending id whose task record is gone is counted by the badge and dropped here — the same disagreement in
   // miniature. This read already knows which ones they are, so it clears them; the badge is fetched after the render.
   const ghosts = tail.filter((_, i) => !tailRows[i]);
-  if (ghosts.length) void Promise.all(ghosts.map((id) => db.srem(`pending:${email}`, id))).catch(() => {});
+  if (ghosts.length) void Promise.all(ghosts.map((id) => db.srem(wsKey.pending(scopeParam(email)), id))).catch(() => {});
 
   // The head keeps the list's own order. The tail is newest-first too, ordered by (createdAt, id) so a batch written
   // inside one millisecond does not reshuffle under an owner working through it.
@@ -288,12 +289,12 @@ export async function saveTask(email: string, t: Task, isNew = false) {
   // Every path that changes a task goes through here, and each write below is idempotent, so the pending set and the
   // light index cannot drift the way a +1/-1 counter would. One round of parallel commands instead of a chain.
   await Promise.all([
-    db.set(`task:${email}:${t.id}`, t),
-    isNew ? db.lpush(`tasks:${email}`, t.id) : null,
-    t.status === "pending" ? db.sadd(`pending:${email}`, t.id) : db.srem(`pending:${email}`, t.id),
-    db.hset(`tidx:${email}:${month}`, t.id, liteOf(t)),
-    db.sadd(`tidxm:${email}`, month),
-    isNew && t.adCode ? db.hset(`adcodes:${email}`, t.adCode, t.id) : null,
+    db.set(wsKey.task(scopeParam(email), t.id), t),
+    isNew ? db.lpush(wsKey.tasks(scopeParam(email)), t.id) : null,
+    t.status === "pending" ? db.sadd(wsKey.pending(scopeParam(email)), t.id) : db.srem(wsKey.pending(scopeParam(email)), t.id),
+    db.hset(wsKey.taskMonth(scopeParam(email), month), t.id, liteOf(t)),
+    db.sadd(wsKey.taskMonths(scopeParam(email)), month),
+    isNew && t.adCode ? db.hset(wsKey.adCodes(scopeParam(email)), t.adCode, t.id) : null,
   ]);
 }
 
@@ -304,43 +305,43 @@ export async function saveTask(email: string, t: Task, isNew = false) {
  */
 export async function dropTasks(email: string, tasks: readonly Task[]): Promise<void> {
   await Promise.all(tasks.flatMap((t) => [
-    db.del(`task:${email}:${t.id}`),
-    db.lrem(`tasks:${email}`, t.id),
-    db.srem(`pending:${email}`, t.id),
-    db.hdel(`tidx:${email}:${monthOf(t.createdAt)}`, t.id),
-    t.adCode ? db.hdel(`adcodes:${email}`, t.adCode) : null,
+    db.del(wsKey.task(scopeParam(email), t.id)),
+    db.lrem(wsKey.tasks(scopeParam(email)), t.id),
+    db.srem(wsKey.pending(scopeParam(email)), t.id),
+    db.hdel(wsKey.taskMonth(scopeParam(email), monthOf(t.createdAt)), t.id),
+    t.adCode ? db.hdel(wsKey.adCodes(scopeParam(email)), t.adCode) : null,
   ]));
 }
 
 /** This workspace's ad codes, code → task id: one read, used when results come in. */
 export async function adCodeIndex(email: string): Promise<Record<string, string>> {
-  return db.hgetall<string>(`adcodes:${email}`);
+  return db.hgetall<string>(wsKey.adCodes(scopeParam(email)));
 }
 
 /** Rebuild the light index from the stored tasks (first use on an existing workspace, and the weekly reconcile). */
 export async function rebuildIndex(email: string): Promise<TaskLite[]> {
-  const ids = await db.lrange(`tasks:${email}`, 0, -1);
-  const rows = (await mgetChunked<Task>(ids.map((id) => `task:${email}:${id}`))).filter((t): t is Task => !!t);
+  const ids = await db.lrange(wsKey.tasks(scopeParam(email)), 0, -1);
+  const rows = (await mgetChunked<Task>(ids.map((id) => wsKey.task(scopeParam(email), id)))).filter((t): t is Task => !!t);
   const lite = rows.map(liteOf);
-  await pmap(lite, (l) => db.hset(`tidx:${email}:${monthOf(l.createdAt)}`, l.id, l));
-  await Promise.all([...new Set(lite.map((l) => monthOf(l.createdAt)))].map((m) => db.sadd(`tidxm:${email}`, m)));
-  await db.set(`tidxv:${email}`, new Date().toISOString());
+  await pmap(lite, (l) => db.hset(wsKey.taskMonth(scopeParam(email), monthOf(l.createdAt)), l.id, l));
+  await Promise.all([...new Set(lite.map((l) => monthOf(l.createdAt)))].map((m) => db.sadd(wsKey.taskMonths(scopeParam(email)), m)));
+  await db.set(wsKey.taskIndexVersion(scopeParam(email)), new Date().toISOString());
   return lite.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 /** When the light index was last rebuilt from the tasks themselves, or null when it never was. */
 export async function indexedAt(email: string) {
-  return db.get<string>(`tidxv:${email}`);
+  return db.get<string>(wsKey.taskIndexVersion(scopeParam(email)));
 }
 
 /** Light rows, newest first. `since` limits the read to the months that can hold tasks created on or after it. */
 export async function listLite(email: string, since?: Date): Promise<TaskLite[]> {
-  const [marker, months] = await Promise.all([db.get<string>(`tidxv:${email}`), db.smembers(`tidxm:${email}`)]);
+  const [marker, months] = await Promise.all([db.get<string>(wsKey.taskIndexVersion(scopeParam(email))), db.smembers(wsKey.taskMonths(scopeParam(email)))]);
   if (!marker) {
     const all = await rebuildIndex(email);
     return since ? all.filter((l) => new Date(l.createdAt) >= since) : all;
   }
   const from = since ? since.toISOString().slice(0, 7) : "";
-  const maps = await Promise.all(months.filter((m) => m >= from).map((m) => db.hgetall<unknown>(`tidx:${email}:${m}`)));
+  const maps = await Promise.all(months.filter((m) => m >= from).map((m) => db.hgetall<unknown>(wsKey.taskMonth(scopeParam(email), m))));
   const out: TaskLite[] = [];
   for (const map of maps) for (const v of Object.values(map)) { const l = asLite(v); if (l && (!since || new Date(l.createdAt) >= since)) out.push(l); }
   return out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
@@ -353,9 +354,9 @@ export const listLiteDays = (email: string, days: number) => listLite(email, new
 export async function rebuildPending(email: string, tasks?: Pick<Task, "id" | "status">[]): Promise<number> {
   const list = tasks ?? (await listLite(email));
   const want = new Set(list.filter((t) => t.status === "pending").map((t) => t.id));
-  const have = await db.smembers(`pending:${email}`);
-  await Promise.all([...have.filter((id) => !want.has(id)).map((id) => db.srem(`pending:${email}`, id)), ...[...want].filter((id) => !have.includes(id)).map((id) => db.sadd(`pending:${email}`, id))]);
-  await db.set(`pendingidx:${email}`, new Date().toISOString());
+  const have = await db.smembers(wsKey.pending(scopeParam(email)));
+  await Promise.all([...have.filter((id) => !want.has(id)).map((id) => db.srem(wsKey.pending(scopeParam(email)), id)), ...[...want].filter((id) => !have.includes(id)).map((id) => db.sadd(wsKey.pending(scopeParam(email)), id))]);
+  await db.set(wsKey.pendingIndex(scopeParam(email)), new Date().toISOString());
   return want.size;
 }
 
@@ -364,7 +365,7 @@ export async function pendingCount(email: string): Promise<number> {
   return (await pendingIds(email)).length;
 }
 export async function getTask(email: string, id: string) {
-  return db.get<Task>(`task:${email}:${id}`);
+  return db.get<Task>(wsKey.task(scopeParam(email), id));
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -379,7 +380,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * meanwhile is never recreated. `scope` is the caller's own (`sc(u)`, or the scope the server stored on a media job).
  */
 export async function updateTask(scope: string, id: string, mutate: (t: Task) => Task | null): Promise<Task | null> {
-  const key = `tasklock:${scope}:${id}`;
+  const key = wsKey.taskLock(scopeParam(scope), id);
   let got = false;
   for (let i = 0; i < 60 && !got; i++) {
     got = await db.lock(key, 10);
@@ -400,10 +401,10 @@ export async function updateTask(scope: string, id: string, mutate: (t: Task) =>
   }
 }
 export async function addPreference(email: string, note: string) {
-  await pushCapped(`prefs:${email}`, note.slice(0, 500), CAPS.prefs);
+  await pushCapped(wsKey.prefs(scopeParam(email)), note.slice(0, 500), CAPS.prefs);
 }
 export async function listPreferences(email: string) {
-  return db.lrange(`prefs:${email}`, 0, 29);
+  return db.lrange(wsKey.prefs(scopeParam(email)), 0, 29);
 }
 
 /** The task type a learned note names ("Owner edited a social item (instagram). ..."), when it names one. */
@@ -415,6 +416,6 @@ const noteType = (note: string) => /^Owner (?:edited|rejected) an? ([a-z_]+) ite
  * and stays. The whole capped list is read in one command, so notes filtered out do not shrink the 30.
  */
 export async function listPreferencesFor(email: string, agent: AgentId) {
-  const notes = await db.lrange(`prefs:${email}`, 0, CAPS.prefs - 1);
+  const notes = await db.lrange(wsKey.prefs(scopeParam(email)), 0, CAPS.prefs - 1);
   return notes.filter((n) => { const type = noteType(n); return !isTaskType(type) || agentForTask(type).id === agent; }).slice(0, 30);
 }

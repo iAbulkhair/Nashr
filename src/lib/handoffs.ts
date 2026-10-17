@@ -43,6 +43,7 @@ import { getGov, type Governance } from "./governance";
 import { estimateBatch } from "./task-costs";
 import { maxCostPerCreditUsd } from "./pricing";
 import { log } from "./log";
+import { scopeParam, wsKey } from "./keys";
 
 /** A handoff id: 16 hex characters, checked before any key is built from it. */
 export const HANDOFF_ID = /^[a-f0-9]{16}$/;
@@ -431,7 +432,7 @@ export async function handoffView(scope: string, h: Handoff, gov?: Pick<Governan
 export async function handoffViews(scope: string, hs: readonly Handoff[], gov?: Pick<Governance, "majedAutoHandoff" | "agentCaps">): Promise<HandoffView[]> {
   if (!hs.length) return [];
   const ids = hs.flatMap((h) => h.items.flatMap((i) => i.tasks ?? []));
-  const [rows, g] = await Promise.all([ids.length ? db.mget<Task>(ids.map((id) => `task:${scope}:${id}`)) : Promise.resolve([] as (Task | null)[]), gov ?? getGov(scope)]);
+  const [rows, g] = await Promise.all([ids.length ? db.mget<Task>(ids.map((id) => wsKey.task(scopeParam(scope), id))) : Promise.resolve([] as (Task | null)[]), gov ?? getGov(scope)]);
   const byId = new Map(rows.filter((t): t is Task => !!t && typeof t === "object").map((t) => [t.id, t]));
   const now = Date.now();
   return hs.map((h) => viewOf(h, byId, g, now));

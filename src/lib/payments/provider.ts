@@ -1,5 +1,5 @@
 /**
- * The payment provider seam (rules 2050-2057, `flows.md` section 83). Billing (src/lib/billing.ts) talks to a card
+ * The payment provider seam (rules 2050-2057, `flows.md` section 85). Billing (src/lib/billing.ts) talks to a card
  * processor only through this type: start a checkout, prepare and charge a saved card, read and verify a callback,
  * refund. The shape follows the idea of supastarter's payments package (one provider type, one implementation chosen in
  * one place); none of its code is used. Paymob KSA (src/lib/paymob.ts) is the only implementation, chosen in
