@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { isSuspended } from "./suspension";
 import { getUser } from "./auth";
 import { listBrands } from "./brands";
 import { brandFingerprint, brandTag, pushNotifs, withBrand, type Notif } from "./notifications";
@@ -318,7 +319,7 @@ export async function seriesDaily(scope: string, now = Date.now()): Promise<{ wa
   const email = accountOf(scope);
   const [user, brands] = await Promise.all([getUser(email), listBrands(email)]);
   const row = brands.find((b) => b.id === brandIdOf(scope));
-  if (!user || user.suspended || !row || row.status !== "active") return { warned: 0, deleted: 0, idle: true };
+  if (!user || isSuspended(user) || !row || row.status !== "active") return { warned: 0, deleted: 0, idle: true };
   const step = <T,>(name: string, f: () => Promise<T>, empty: T) => f().catch((e) => {
     log.error(`sec series ${name} failed`, e);
     return empty;

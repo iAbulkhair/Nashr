@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { isSuspended, type StoredSuspension } from "./suspension";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
@@ -68,8 +69,11 @@ export type User = {
   lang: "ar" | "en";
   /** YYYY-MM of the last monthly credit renewal (paid plans). */
   renewedAt?: string;
-  /** Set by the admin: login and all API access blocked. */
-  suspended?: boolean;
+  /**
+   * Set by staff: login and all API access blocked. `true` has no end date; `{ until }` (rule 2070, expand) ends at that
+   * moment. Read only through `isSuspended` in src/lib/suspension.ts (rule 2071).
+   */
+  suspended?: StoredSuspension;
   /** ISO time of the last password change: every session issued before it is dead (src/lib/auth.ts `currentUser`). */
   sessionsAfter?: string;
   /**
@@ -500,7 +504,7 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records.
   const [u, m, brandId] = await Promise.all([getUser(email), getMember(email), activeBrandId(email)]);
   if (u) {
-    if (u.suspended) return null;
+    if (isSuspended(u)) return null;
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
     if (issuedBefore(s.at, u.devicesAfter)) return null; // issued before the owner's last "sign out other devices" (rule 1170)
     // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
@@ -525,7 +529,7 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   // entry anyway (restored by a racing write, left by a deleted account) is off the owner's Members page, so it must
   // not sign in either.
   const [owner, brands, listed] = await Promise.all([getUser(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email)]);
-  if (!owner || owner.suspended || !listed) return null;
+  if (!owner || isSuspended(owner) || !listed) return null;
   // Rule 767: while the owner has not proved the address, the account spends nothing, so its members are signed out too,
   // in both resolvers. A member has no address of the owner's to prove, so `currentUserUnverified` never hands one to the
   // verify page: they read as signed out, and login answers `owner_unverified`. (Impersonation never reaches this branch.)
@@ -723,6 +727,16 @@ const actors = new WeakMap<Request, ActorInfo>();
 export const actorInfo = (req: Request): ActorInfo | null => actors.get(req) ?? null;
 /** The `via` of this request's console actor, for `adminAudit`. */
 export const viaOf = (req: Request): ConsoleVia | null => actors.get(req)?.via ?? null;
+/**
+ * The console role of this request's actor, for `staffMay` in src/lib/roles.ts (rule 2078): a staff session's stored
+ * role (none stored: null, refused); the key, the key header and the founder's customer session are the founder, "owner".
+ * Null when `adminActor` was not called or found nobody.
+ */
+export function consoleRole(req: Request): string | null {
+  const i = actors.get(req);
+  if (!i) return null;
+  return i.via === "staff" ? (typeof i.role === "string" ? i.role : null) : "owner";
+}
 /**
  * The write gate accepted a code typed for THIS request (`x-admin-otp`): the request already carries a fresh code, which
  * is what staff management, the customer-path switch and own credential changes need (rule 1636). The code's step is

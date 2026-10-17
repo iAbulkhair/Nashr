@@ -24,6 +24,7 @@
  * - Free: no credits, no model call. The text is the item's title, which is the owner's record.
  */
 import { db } from "./db";
+import { isSuspended } from "./suspension";
 import { pmap } from "./parallel";
 import { emailVerified, getUser, type User } from "./auth";
 import { listBrands, scopeFor } from "./brands";
@@ -174,7 +175,7 @@ async function sweepAccount(email: string, scopes: string[], now: number, deadli
   // A suspended account, an owner who has not verified the address yet (rule 755), and a brand that is not active get no
   // scheduled work: their reminders wait, looked at again later (one brand-list read per account, not one per scope).
   const active = new Set(brands.filter((b) => b.status === "active").map((b) => scopeFor(email, b.id)));
-  const hold = user.suspended || !emailVerified(user);
+  const hold = isSuspended(user) || !emailVerified(user);
   const held = hold ? scopes : scopes.filter((s) => !active.has(s));
   const live = hold ? [] : scopes.filter((s) => active.has(s));
   if (held.length) {

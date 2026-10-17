@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isSuspended } from "./suspension";
 import { db, mgetChunked } from "./db";
 import { adminEmails, getUser, type User } from "./auth";
 import { SAR_PER_USD, netPriceSar, priceOf } from "./pricing";
@@ -56,7 +57,7 @@ export function marginPct(revenueSar: number, costUsd: number): number | null {
 export const revenueSarOf = (u: Pick<User, "plan" | "deal">) => netPriceSar(priceOf(u));
 
 /** A paying account: not suspended, not on the trial, and its plan has a price. Team members are not in `users:all`. */
-export const isPaying = (u: Pick<User, "plan" | "deal" | "suspended">) => !u.suspended && u.plan !== "trial" && revenueSarOf(u) > 0;
+export const isPaying = (u: Pick<User, "plan" | "deal" | "suspended">) => !isSuspended(u) && u.plan !== "trial" && revenueSarOf(u) > 0;
 
 const micro = (v: unknown) => {
   const n = Number(v ?? 0);

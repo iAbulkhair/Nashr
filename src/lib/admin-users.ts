@@ -6,6 +6,7 @@
  * so a page of 25 costs 25 usage reads, not one per account.
  */
 import { PLANS, type Plan } from "./pricing";
+import { isSuspended, type StoredSuspension } from "./suspension";
 
 export const USER_FILTERS = ["suspended", "unverified", "trialEnding", "lowCredits"] as const;
 export type UserFilter = (typeof USER_FILTERS)[number];
@@ -19,7 +20,7 @@ export const TRIAL_ENDING_HOURS = 24;
 
 export type UserQuery = { q: string; plan: Plan | ""; filter: UserFilter | ""; sort: UserSort; dir: "asc" | "desc"; page: number; per: number };
 /** What the route needs of an account to filter and sort it. */
-export type UserFacts = { email: string; name?: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; suspended?: boolean; emailVerifiedAt?: string | null };
+export type UserFacts = { email: string; name?: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; suspended?: StoredSuspension; emailVerifiedAt?: string | null };
 
 export const DEFAULT_USER_QUERY: UserQuery = { q: "", plan: "", filter: "", sort: "createdAt", dir: "desc", page: 1, per: 25 };
 
@@ -55,7 +56,7 @@ export function userQueryParams(q: UserQuery): URLSearchParams {
 /** True when the account has the named state at `now`. */
 export function hasFilter(u: UserFacts, f: UserFilter, now = Date.now()): boolean {
   switch (f) {
-    case "suspended": return !!u.suspended;
+    case "suspended": return isSuspended(u);
     case "unverified": return !u.emailVerifiedAt;
     case "trialEnding": {
       const end = new Date(u.trialEnds).getTime();
@@ -102,7 +103,7 @@ export function userFacets(list: UserFacts[], q: UserQuery, now = Date.now()) {
 /** The account tiles over every account (the table pages; the tiles never do): live paying, live trial, today, suspended. */
 export function tileCounts(list: UserFacts[], now = Date.now()) {
   const day = new Date(now).toISOString().slice(0, 10);
-  const live = list.filter((u) => !u.suspended);
+  const live = list.filter((u) => !isSuspended(u));
   return {
     users: list.length,
     paying: live.filter((u) => u.plan !== "trial").length,

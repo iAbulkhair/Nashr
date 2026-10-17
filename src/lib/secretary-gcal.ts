@@ -11,6 +11,7 @@
  * Tokens, provider answers and the account address never go into a log, an audit line or a URL.
  */
 import { getUser } from "./auth";
+import { isSuspended } from "./suspension";
 import { getBrand } from "./brand";
 import { listBrands, scopeFor } from "./brands";
 import { refreshTokens } from "./connectors/oauth";
@@ -365,7 +366,7 @@ async function syncLocked(scope: string, now: number): Promise<Outcome> {
     await dropLink(scope);
     return "dropped";
   }
-  if (!user || user.suspended || link.login !== user.email) return loseSync(scope, link, "owner");
+  if (!user || isSuspended(user) || link.login !== user.email) return loseSync(scope, link, "owner");
   if (meta?.status !== "active") return loseSync(scope, link, "brand");
   // The brand's website may have moved to another domain since the proof was made.
   if (link.proof === "domain" && proofOf(link.accountDomain ?? null, brand?.website) === null) return loseSync(scope, link, "domain");

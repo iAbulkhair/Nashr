@@ -327,6 +327,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/partners": "admin-console",
   "GET /api/admin/payments/[email]": "admin-console",
   "GET /api/admin/users/[email]": "admin-console",
+  "GET /api/admin/users/[email]/workspace": "admin-console", // rule 2077: read-only workspace view, staffMay("workspace.view") after the console gate
   "GET /api/affiliates": "admin-console",
   "GET /api/waitlist": "admin-console",
   "GET /api/support": "admin-console",

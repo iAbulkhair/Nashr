@@ -1,4 +1,5 @@
 import { CAPS, db, pushCapped } from "./db";
+import { isSuspended } from "./suspension";
 import { listLite, type TaskLite, type TaskType } from "./brand";
 import { AGENTS, agentForTask, type AgentId } from "./agents";
 import { pmap } from "./parallel";
@@ -156,7 +157,7 @@ async function everyWorkspace() {
       // Per brand, and labelled that way. The rows were one per brand scope but printed as the bare email, so an
       // agency with five brands appeared five times under one name with five different sets of numbers.
       const label = scope === e ? e : `${e} · ${b.name || b.id}`;
-      return { email: e, scope, label, suspended: !!u.suspended, archived: b.status !== "active" };
+      return { email: e, scope, label, suspended: isSuspended(u), archived: b.status !== "active" };
     });
   });
   return groups.flat();
