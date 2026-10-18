@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { writeFile } from "./files";
+import { deleteFile, writeFile } from "./files";
 import { listConnections, type Connection } from "./connectors/store";
 import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { sallaSales } from "./connectors/salla";
@@ -16,6 +16,13 @@ const FAIL = (scope: string) => wsKey.storeSyncFail(scopeParam(scope));
 /** The latest store sales snapshot for this workspace, or null if it was never synced. One store per workspace. */
 export async function getSalesSnapshot(scope: string) {
   return db.get<SalesSnapshot>(KEY(scope));
+}
+
+/** The snapshot, its failure note and store-sales.md, when they came from `provider` (a Shopify `shop/redact`, rule 2171). */
+export async function dropSalesSnapshot(scope: string, provider: SalesProvider): Promise<boolean> {
+  if ((await getSalesSnapshot(scope))?.provider !== provider) return false;
+  await Promise.all([db.del(KEY(scope)), db.del(FAIL(scope)), deleteFile(scope, "store-sales.md")]);
+  return true;
 }
 
 /** Read orders and abandoned carts from the store, keep the totals, and give Noor the same totals as store-sales.md. */

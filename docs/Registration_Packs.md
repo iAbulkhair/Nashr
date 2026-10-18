@@ -33,6 +33,12 @@ a platform or a key name changes and this table does not.
 | Outlook Calendar (Reem) | `https://thakeen.com/api/connect/mscal/callback` | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | `openid email offline_access User.Read Calendars.ReadBasic` |
 | Sign in with Google, its own client | `https://thakeen.com/api/auth/google/callback` | `GOOGLE_SIGNIN_CLIENT_ID`, `GOOGLE_SIGNIN_CLIENT_SECRET` | `openid email profile` |
 
+Shopify compliance webhooks (rules 2168-2171): Shopify will not list an app without them. In the Shopify app's
+configuration, under **Compliance webhooks**, put `https://thakeen.com/api/shopify/compliance` in all three fields
+(customer data request, customer data erasure, shop data erasure). No new key: Shopify signs them with the same
+`SHOPIFY_CLIENT_SECRET`. Thakeen keeps no Shopify customer data, so the two customer requests are only logged; a shop
+erasure removes that store's connection and sales totals at the next stores cron run.
+
 Names in the dated packs and in `docs/Platform_Access_Playbook.md` that the code does not read: `MS_CLIENT_ID` and
 `MS_CLIENT_SECRET` (the code reads `MICROSOFT_CLIENT_*`), `TIKTOK_ADS_APP_ID` and `TIKTOK_ADS_SECRET` (TikTok Ads results
 come through Composio, no app of ours). WhatsApp, YouTube, Google Ads, TikTok Ads, LinkedIn Ads, Google Docs and Sheets,

@@ -93,7 +93,7 @@ Read indirectly as `process.env[o.clientIdEnv]` and `process.env[o.clientSecretE
 | `X_CLIENT_ID` | X | No (public client id), keep internal |
 | `X_CLIENT_SECRET` | X | Yes |
 | `SHOPIFY_CLIENT_ID` | Shopify | No, keep internal |
-| `SHOPIFY_CLIENT_SECRET` | Shopify | Yes |
+| `SHOPIFY_CLIENT_SECRET` | Shopify, and the key of its compliance webhook signature (`X-Shopify-Hmac-Sha256` on `POST /api/shopify/compliance`, rules 2168-2171; that route answers 401 while it is unset) | Yes |
 | `GOOGLE_CLIENT_ID` | Google (Business Profile, GA4, Search Console, YouTube), and since Reem B3 also the `gcal` calendar provider (same OAuth client, its own redirect `/api/connect/gcal/callback`) | No, keep internal |
 | `GOOGLE_CLIENT_SECRET` | Google, and `gcal` | Yes |
 | `MICROSOFT_CLIENT_ID` | Microsoft Entra app for the `mscal` Outlook calendar provider (Reem B3; multi-tenant plus personal accounts, redirect `/api/connect/mscal/callback`) | No, keep internal |

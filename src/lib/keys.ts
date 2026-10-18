@@ -203,4 +203,8 @@ export const globalKey = {
   rate: (bucket: string) => `rate:${bucket}`,
   /** hash: model spend of everyone in one month. */
   usageAll: (month: string) => `usage:_all:${month}`,
+  /** list: Shopify compliance webhook receipts, topic + store + time only (rule 2169). */
+  shopifyCompliance: () => "shopify:compliance",
+  /** hash: store domain → time of a pending `shop/redact`, applied by the stores cron (rules 2170-2171). */
+  shopifyRedact: () => "shopify:redact",
 } as const;
