@@ -18,6 +18,8 @@ import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
 import PlanIncludesCard from "@/components/app/PlanIncludesCard";
 import TopupCard from "@/components/app/TopupCard";
 import PageHeader from "@/components/ui/PageHeader";
+import HelpLink from "@/components/ui/HelpLink";
+import { helpHref } from "@/lib/help";
 import { PaymobPayButton, PaymobPlanCard, PaymobReturnStatus } from "@/components/app/PaymobBilling";
 import { paymentsEnabled } from "@/lib/payments";
 import { billingView, paymentHistory } from "@/lib/billing";
@@ -93,7 +95,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const nextDate = u.plan === "trial" ? u.trialEnds.slice(0, 10) : sub ? sub.paidThrough : nextReset;
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-0">
-      <PageHeader lang={lang} title={t.billing.title} seed="billing-t1" />
+      <PageHeader lang={lang} title={t.billing.title} seed="billing-t1" actions={<HelpLink lang={lang} href={helpHref(lang, "credits", "task-costs")} />} />
       <dl className="mt-4 grid gap-3 card text-sm sm:grid-cols-2 lg:grid-cols-4" data-billing-summary="">
         <div><dt className="text-foreground-muted">{t.billing.current}</dt><dd className="font-display text-lg font-medium">{t.billing.plans[u.plan]}</dd></div>
         <div><dt className="text-foreground-muted">{t.billing.credits}</dt><dd className="font-mono text-lg tnum" dir="ltr">{formatCount(u.credits)}</dd>{fromTopups > 0 && <dd className="text-xs text-foreground-muted" data-topup-share="">{lang === "ar" ? `منها ${formatCount(fromTopups)} من باقات الشحن` : `incl. ${formatCount(fromTopups)} from top-ups`}</dd>}</div>

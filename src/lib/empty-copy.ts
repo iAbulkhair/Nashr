@@ -1,3 +1,4 @@
+import { helpHref } from "./help";
 import type { Lang } from "./i18n";
 
 /**
@@ -45,6 +46,24 @@ export const EMPTY_COPY: Record<Lang, Record<EmptyKey, EmptyCopy>> = {
     payments: { title: "No payments yet", body: "Once you pay, the receipt shows up here." },
     devices: { title: "No other devices", body: "Your account is open on this device only." },
   },
+};
+
+/**
+ * The help answer an empty panel links to (rule 2147): only where a new user is most likely to be stuck, and each one the
+ * answer about that panel. `helpHref` is typed against the help topics, so a renamed slug fails the type check here.
+ */
+const EMPTY_HELP: Partial<Record<EmptyKey, (lang: Lang) => string>> = {
+  inbox: (l) => helpHref(l, "inbox", "approval-before-publishing"),
+  files: (l) => helpHref(l, "inbox", "files"),
+  todo: (l) => helpHref(l, "team", "my-to-dos"),
+  reports: (l) => helpHref(l, "team", "reports-page"),
+  activity: (l) => helpHref(l, "automation", "agent-activity"),
+};
+
+/** The empty panel's help link for `EmptyState`'s `help`, or undefined when that panel has none. */
+export const emptyHelp = (lang: Lang, key: EmptyKey): { lang: Lang; href: string } | undefined => {
+  const h = EMPTY_HELP[key];
+  return h ? { lang, href: h(lang) } : undefined;
 };
 
 /** The empty state's words for one panel in one language. */

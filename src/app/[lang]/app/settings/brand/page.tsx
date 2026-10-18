@@ -6,6 +6,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { can } from "@/lib/roles";
 import BrandForm from "@/components/app/BrandForm";
+import { helpHref } from "@/lib/help";
 import BrandExtras from "@/components/app/settings/BrandExtras";
 
 export const generateMetadata = settingsScreenMeta("brand");
@@ -23,7 +24,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   // The brand-file fields the old profile page edited (rule 1152): social handles, value proposition and sitemap.
   return (
     <div className="grid gap-6">
-      <BrandForm t={t} lang={lang} initial={brand} readOnly={readOnly} canConfirmChina={can(u, "profile.account") && u.actor?.kind !== "founder"} />
+      <BrandForm t={t} lang={lang} help={helpHref(lang, "start", "dialect-and-tone")} initial={brand} readOnly={readOnly} canConfirmChina={can(u, "profile.account") && u.actor?.kind !== "founder"} />
       {brand && <BrandExtras lang={lang} readOnly={readOnly} forbidden={t.team.errors.forbidden} initial={{ social: brand.social ?? {}, valueProp: brand.valueProp ?? "", sitemap: brand.sitemap ?? "" }} />}
     </div>
   );

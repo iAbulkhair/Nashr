@@ -22,7 +22,7 @@ import { taskVersion } from "@/lib/task-version";
 import { CHANNEL_LIMITS } from "@/lib/channel-limits";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
-import { emptyCopy } from "@/lib/empty-copy";
+import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 
 const GUARD = {
   ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", heldPh: "فيه خانات لم تُعبّأ بعد (مثل [رقم] أو [date])، فلا يُعتمد ولا يُنشر حتى تضع القيمة الحقيقية مكانها أو تحذفها:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة ولا خانات فارغة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", rulePh: "قاعدة الخانات الفارغة", editBrand: "ملف العلامة" },
@@ -309,7 +309,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
       )}
       {shown.length === 0 && (
         // Rule 2002: the shared empty state; the way to ask for a batch stays as its action.
-        <EmptyState className="mt-10" title={E.title} body={E.body} action={<Link href={`/${lang}/app/generate`} className="inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-accent-foreground">{i.regenerate}</Link>} />
+        <EmptyState className="mt-10" title={E.title} body={E.body} help={emptyHelp(lang, "inbox")} action={<Link href={`/${lang}/app/generate`} className="inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-accent-foreground">{i.regenerate}</Link>} />
       )}
 
       <ul className="mt-6 grid gap-4">
