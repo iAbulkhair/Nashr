@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { allow, clientIp, retryLater } from "@/lib/rate";
-import { paymobConfig } from "@/lib/paymob";
+import { paymentsEnabled } from "@/lib/payments";
 import { handlePaymobCallback } from "@/lib/billing";
 import { readCapped } from "@/lib/read-capped";
 
@@ -15,7 +15,7 @@ const HOOK_PER_IP = { max: 240, windowS: 60 };
  * or nothing is applied. Exactly once per transaction id. 404 while Paymob is not configured.
  */
 export async function POST(req: Request) {
-  if (!paymobConfig()) return NextResponse.json({ ok: false }, { status: 404 });
+  if (!paymentsEnabled()) return NextResponse.json({ ok: false }, { status: 404 });
   // Per IP only: a global bucket spent before the HMAC check would let anyone starve real callbacks.
   if (!(await allow(`paymobhook:${clientIp(req)}`, HOOK_PER_IP.max, HOOK_PER_IP.windowS))) return retryLater({ ok: false, error: "slow_down" }, HOOK_PER_IP.windowS);
   let body: unknown;

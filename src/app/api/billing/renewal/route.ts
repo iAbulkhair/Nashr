@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
 import { allow, retryLater } from "@/lib/rate";
-import { paymobConfig } from "@/lib/paymob";
+import { paymentsEnabled } from "@/lib/payments";
 import { setRenewal } from "@/lib/billing";
 
 /**
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const no = forbid(u, "billing.pay");
   if (no) return no;
-  if (!paymobConfig()) return NextResponse.json({ ok: false, error: "not_enabled" }, { status: 404 });
+  if (!paymentsEnabled()) return NextResponse.json({ ok: false, error: "not_enabled" }, { status: 404 });
   if (!(await allow(`payrenewal:${u.email}`, 30, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const b = (await req.json().catch(() => ({}))) as { action?: unknown };
   const r = await setRenewal(u.email, b?.action);
