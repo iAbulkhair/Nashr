@@ -19,7 +19,7 @@ Rules that apply everywhere:
 **Noor will:** read products, orders, abandoned checkouts; publish blog articles; recover carts.
 1. https://partners.shopify.com → Create partner account (company name, email).
 2. Partners dashboard → **Apps → Create app → Create app manually**. Name: `Nashr`. App URL: `https://nashr-tau.vercel.app/ar/app/integrations`. Redirect URL: `https://nashr-tau.vercel.app/api/connect/shopify/callback`.
-3. Under **API access scopes** request: `read_products, read_orders, read_checkouts, write_content, read_customers`.
+3. Under **API access scopes** request: `read_products, read_orders, write_content` (2026-10-18, rule 2174: no `read_checkouts`, no `read_customers`).
 4. Copy **Client ID** and **Client secret**.
 **Send me:** confirm `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` are in Vercel env. Also create a free **development store** in the partner dashboard so we can test.
 **Wait:** none for custom install. Public App Store listing later (2–3 weeks review).

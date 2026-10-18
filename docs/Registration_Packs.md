@@ -20,7 +20,7 @@ a platform or a key name changes and this table does not.
 | Platform | Callback (redirect) URL | Key names | Scopes the code asks for |
 |---|---|---|---|
 | X | `https://thakeen.com/api/connect/x/callback` | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `tweet.read tweet.write users.read offline.access` |
-| Shopify | `https://thakeen.com/api/connect/shopify/callback` | `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` | `read_products read_orders read_checkouts write_content read_customers` |
+| Shopify | `https://thakeen.com/api/connect/shopify/callback` | `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` | `read_products read_orders write_content` |
 | Meta (Pages, Instagram) | `https://thakeen.com/api/connect/meta/callback` | `META_APP_ID`, `META_APP_SECRET` (optional `META_CONFIG_ID`) | `pages_show_list pages_manage_posts pages_read_engagement instagram_basic instagram_content_publish business_management` |
 | Meta Ads (results), same Meta app | `https://thakeen.com/api/connect/meta_ads/callback` | `META_APP_ID`, `META_APP_SECRET` | `ads_read` |
 | Salla | `https://thakeen.com/api/connect/salla/callback` | `SALLA_CLIENT_ID`, `SALLA_CLIENT_SECRET` | `offline_access` |
@@ -101,7 +101,8 @@ by Noor (built 2026-09-28).
    | App name | `Nashr` |
    | App URL | `https://nashr-tau.vercel.app/en/app/integrations` |
    | Allowed redirection URL(s) | `https://nashr-tau.vercel.app/api/connect/shopify/callback` |
-4. **API access / scopes:** `read_products, read_orders, read_checkouts, write_content, read_customers`
+4. **API access / scopes:** `read_products, read_orders, write_content` (2026-10-18, rule 2174: `read_checkouts` and
+   `read_customers` dropped; abandoned checkouts are read with `read_orders`)
    **Protected customer data access** (same app, API access section): request access for **orders** at the first
    level only, with no customer fields (name, email, phone, address). Reason to give: "Totals of the merchant's own
    orders and abandoned checkouts (count, revenue, top products) for their marketing reports; no customer fields are

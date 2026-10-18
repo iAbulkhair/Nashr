@@ -51,6 +51,39 @@ describe("Registration packs current values (rule 2164)", () => {
   });
 });
 
+describe("Each platform is asked only for the scopes the code uses (rule 2174)", () => {
+  it("every direct row's scopes column is the registry's list, word for word", () => {
+    for (const p of PROVIDERS.filter((x) => x.oauth)) {
+      const row = current.split("\n").find((l) => l.includes(`/api/connect/${p.id}/callback\``));
+      expect(row, p.id).toBeTruthy();
+      const cells = row!.split("|").map((c) => c.trim());
+      // Google's rows name each scope by its last path segment (`https://www.googleapis.com/auth/business.manage` is `business.manage`).
+      const short = p.oauth!.scopes.map((x) => (x.startsWith("https://") ? x.slice(x.lastIndexOf("/") + 1) : x));
+      expect(cells[cells.length - 2], p.id).toBe(short.length ? `\`${short.join(" ")}\`` : "none in the URL");
+    }
+  });
+
+  it("Shopify asks for read_products, read_orders and write_content only: every Admin call in shopify.ts needs one of them", () => {
+    expect(PROVIDERS.find((p) => p.id === "shopify")?.oauth?.scopes).toEqual(["read_products", "read_orders", "write_content"]);
+    const src = readFileSync("src/lib/connectors/shopify.ts", "utf8");
+    // The root fields the connector calls, and the scope Shopify's Admin GraphQL reference names for each (2026-10-18).
+    const NEEDS: Record<string, string> = { products: "read_products", orders: "read_orders", ordersCount: "read_orders", abandonedCheckouts: "read_orders", abandonedCheckoutsCount: "read_orders", blogs: "write_content", articleCreate: "write_content", shop: "" };
+    // The top-level fields of every operation: names at brace depth 1, before their arguments or selection.
+    const roots = [...src.matchAll(/`((?:query|mutation) [\s\S]*?)`;/g)].flatMap(([, op]) => {
+      const out: string[] = [];
+      let depth = 0;
+      for (const m of op.matchAll(/[{}]|\(.*?\)|[A-Za-z_]\w*/g)) {
+        if (m[0] === "{") depth++;
+        else if (m[0] === "}") depth--;
+        else if (depth === 1 && /^[A-Za-z_]/.test(m[0])) out.push(m[0]);
+      }
+      return out;
+    });
+    expect(roots.length).toBeGreaterThan(0);
+    for (const r of new Set(roots)) expect(Object.keys(NEEDS), `${r} has no scope listed here`).toContain(r);
+  });
+});
+
 describe("Privacy anchors for platform app review (rule 2167)", () => {
   it("every privacy section has the same unique id in both languages, and the page renders it", async () => {
     const { LEGAL } = await import("@/lib/legal");
