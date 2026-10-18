@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 import { readCapped } from "@/lib/read-capped";
-import { isComplianceTopic, recordCompliance, validShopifyWebhook } from "@/lib/connectors/shopify-compliance";
+import { isShopHookTopic, recordCompliance, validShopifyWebhook } from "@/lib/connectors/shopify-compliance";
 
 /** A compliance payload is a store, a customer and a list of order ids: a few kilobytes. */
 const MAX_BODY_BYTES = 64 * 1024;
 const HOOK_PER_IP = { max: 120, windowS: 60 };
 
 /**
- * Shopify's mandatory compliance webhooks, one URL for all three topics (rules 2168-2171,
+ * Shopify's mandatory compliance webhooks, one URL for all three topics and for `app/uninstalled` (rules 2168-2171, 2203;
  * src/lib/connectors/shopify-compliance.ts). Public: no cookie is read and nothing is trusted before
  * `X-Shopify-Hmac-Sha256` matches the raw body under SHOPIFY_CLIENT_SECRET; Shopify's review expects 401 otherwise,
  * including while the secret is unset. A verified delivery answers 200 so Shopify stops retrying; a store write that
@@ -22,8 +22,8 @@ export async function POST(req: Request) {
   if (raw === null) return NextResponse.json({ ok: false, error: "too_large" }, { status: 413 });
   if (!validShopifyWebhook(raw, req.headers.get("x-shopify-hmac-sha256"), process.env.SHOPIFY_CLIENT_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
   const topic = req.headers.get("x-shopify-topic");
-  // Signed by Shopify but not a compliance topic (a webhook added to this URL by mistake): acknowledged, nothing kept.
-  if (!isComplianceTopic(topic)) return NextResponse.json({ ok: true, ignored: true });
+  // Signed by Shopify but not a topic we take (a webhook added to this URL by mistake): acknowledged, nothing kept.
+  if (!isShopHookTopic(topic)) return NextResponse.json({ ok: true, ignored: true });
   let body: unknown;
   try {
     body = JSON.parse(raw);

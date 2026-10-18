@@ -19,12 +19,20 @@ import { deleteConnection, listConnections } from "./store";
  *   roster and drops the Shopify connection, sales snapshot and store-sales.md of each one whose own stored `meta.shop`
  *   is that store and that connected before the request (a store connected again since is a new grant).
  *
+ * - `app/uninstalled` (rule 2203; not a compliance topic: subscribed per store by `subscribeUninstall` at connect): the
+ *   store's token is dead from that moment, so the store joins the same pending list at once instead of 48 hours later,
+ *   and the next stores run drops it the same way. The store comes from the shop body's `myshopify_domain`.
+ *
  * Shopify signs each delivery with `X-Shopify-Hmac-Sha256`: base64 HMAC-SHA256 of the raw body with the app's secret.
  */
 
 export const COMPLIANCE_TOPICS = ["customers/data_request", "customers/redact", "shop/redact"] as const;
 export type ComplianceTopic = (typeof COMPLIANCE_TOPICS)[number];
 export const isComplianceTopic = (t: string | null): t is ComplianceTopic => (COMPLIANCE_TOPICS as readonly string[]).includes(t ?? "");
+/** The app-lifecycle topic the same URL takes (rule 2203). */
+export const UNINSTALL_TOPIC = "app/uninstalled";
+export type ShopHookTopic = ComplianceTopic | typeof UNINSTALL_TOPIC;
+export const isShopHookTopic = (t: string | null): t is ShopHookTopic => isComplianceTopic(t) || t === UNINSTALL_TOPIC;
 
 /** Receipts kept for the founder: topic, store and time only. */
 export const COMPLIANCE_LOG_CAP = 500;
@@ -35,21 +43,23 @@ export function validShopifyWebhook(raw: string, given: string | null, secret: s
   return sameSecret(createHmac("sha256", secret).update(raw, "utf8").digest("base64"), given);
 }
 
-export type ComplianceReceipt = { topic: ComplianceTopic | "shop/redact:done"; shop: string; at: string; workspaces?: number };
+export type ComplianceReceipt = { topic: ShopHookTopic | "shop/redact:done"; shop: string; at: string; workspaces?: number };
 
 /**
- * Records one verified delivery. Returns false for a body without a real *.myshopify.com `shop_domain`. Only the topic,
- * the store and the time are kept: `customer`, `orders_requested` and `orders_to_redact` are never read.
+ * Records one verified delivery. Returns false for a body without a real *.myshopify.com `shop_domain` (or, for
+ * `app/uninstalled`, `myshopify_domain`). Only the topic, the store and the time are kept: `customer`,
+ * `orders_requested`, `orders_to_redact` and the shop's own fields are never read.
  */
-export async function recordCompliance(topic: ComplianceTopic, body: unknown, now = new Date()): Promise<boolean> {
-  const raw = (body as { shop_domain?: unknown } | null)?.shop_domain;
+export async function recordCompliance(topic: ShopHookTopic, body: unknown, now = new Date()): Promise<boolean> {
+  const b = body as { shop_domain?: unknown; myshopify_domain?: unknown } | null;
+  const raw = topic === UNINSTALL_TOPIC ? b?.myshopify_domain : b?.shop_domain;
   const shop = typeof raw === "string" ? raw.toLowerCase() : "";
   if (!SHOP_HOST.test(shop)) return false;
   const at = now.toISOString();
   await Promise.all([
     pushCapped(globalKey.shopifyCompliance(), JSON.stringify({ topic, shop, at } satisfies ComplianceReceipt), COMPLIANCE_LOG_CAP),
     // A retried delivery only moves the time forward; the field is the store, the key is fixed.
-    topic === "shop/redact" ? db.hset(globalKey.shopifyRedact(), shop, at) : null,
+    topic === "shop/redact" || topic === UNINSTALL_TOPIC ? db.hset(globalKey.shopifyRedact(), shop, at) : null,
   ]);
   return true;
 }

@@ -65,6 +65,27 @@ export async function shopifyGql<T>(c: Connection, query: string, variables: Rec
   }
 }
 
+/** The one webhook URL of ours Shopify calls: compliance topics and `app/uninstalled` (rules 2168, 2203). */
+export const SHOPIFY_HOOK_PATH = "/api/shopify/compliance";
+
+const SUBSCRIBE_UNINSTALL = `mutation Subscribe($sub: WebhookSubscriptionInput!) {
+  webhookSubscriptionCreate(topic: APP_UNINSTALLED, webhookSubscription: $sub) { userErrors { message } }
+}`;
+
+/**
+ * Asks the store to tell us when it uninstalls the app (rule 2203), so the stores cron drops the dead connection within
+ * hours instead of the 48 that `shop/redact` takes. Needs no scope. Best effort: answers false on any failure or
+ * userError (already subscribed included) and never throws, so a connect never fails because of it.
+ */
+export async function subscribeUninstall(c: Connection, origin: string): Promise<boolean> {
+  try {
+    const d = await shopifyGql<{ webhookSubscriptionCreate: { userErrors: { message: string }[] } }>(c, SUBSCRIBE_UNINSTALL, { sub: { uri: `${origin}${SHOPIFY_HOOK_PATH}` } });
+    return !d.webhookSubscriptionCreate.userErrors.length;
+  } catch {
+    return false;
+  }
+}
+
 const PRODUCTS = `query Products($first: Int!) {
   products(first: $first, query: "status:active", sortKey: UPDATED_AT, reverse: true) {
     nodes { title handle description onlineStoreUrl priceRangeV2 { minVariantPrice { amount currencyCode } } }

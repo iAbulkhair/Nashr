@@ -40,7 +40,9 @@ Shopify compliance webhooks (rules 2168-2171): Shopify will not list an app with
 configuration, under **Compliance webhooks**, put `https://thakeen.com/api/shopify/compliance` in all three fields
 (customer data request, customer data erasure, shop data erasure). No new key: Shopify signs them with the same
 `SHOPIFY_CLIENT_SECRET`. Thakeen keeps no Shopify customer data, so the two customer requests are only logged; a shop
-erasure removes that store's connection and sales totals at the next stores cron run.
+erasure removes that store's connection and sales totals at the next stores cron run. The `app/uninstalled` webhook
+(rule 2203) needs no step here: Thakeen subscribes each store to it through the API when the store connects, and an
+uninstall then removes the connection at the next stores run instead of 48 hours later.
 
 Names in the dated packs and in `docs/Platform_Access_Playbook.md` that the code does not read: `MS_CLIENT_ID` and
 `MS_CLIENT_SECRET` (the code reads `MICROSOFT_CLIENT_*`), `TIKTOK_ADS_APP_ID` and `TIKTOK_ADS_SECRET` (TikTok Ads results
