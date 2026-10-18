@@ -1,4 +1,6 @@
 import { CLAUDE_PAUSED } from "./model";
+import { PROVIDER_TOOLKITS, TOOLKITS } from "./connectors/composio-catalog";
+import { PROVIDERS } from "./connectors/registry";
 
 /**
  * The founder console's Integrations page (rules 1540-1549, docs/system/flows.md section 69): every outside service the
@@ -22,6 +24,8 @@ export type IntegrationDef = {
   need: Need;
   /** Names that add to it but are not needed for it to work. */
   optional?: readonly string[];
+  /** Callback paths outside the connector registry that the platform app must list (rule 2165). */
+  callbacks?: readonly string[];
 };
 
 const all = (...n: string[]): Need => ({ all: n });
@@ -41,7 +45,7 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: "higgsfield", name: { ar: "Higgsfield (صور ومقاطع)", en: "Higgsfield (images, video)" }, what: { ar: "نماذج نمط الحياة والتصميم والمقاطع السينمائية", en: "Lifestyle, design and cinematic video models" }, need: all("HIGGSFIELD_API_KEY_ID", "HIGGSFIELD_API_KEY_SECRET", "MEDIA_DIR") },
   { id: "store", name: { ar: "تخزين الوسائط (قرص Hostinger)", en: "Media storage (Hostinger disk)" }, what: { ar: "نسختنا الخاصة من كل صورة ومقطع", en: "Our private copy of every image and clip" }, need: all("MEDIA_DIR") },
   { id: "turnstile", name: { ar: "Cloudflare Turnstile (التحقق البشري)", en: "Cloudflare Turnstile (CAPTCHA)" }, what: { ar: "التسجيل واستعادة كلمة المرور", en: "Sign-up and password reset" }, need: all("TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY") },
-  { id: "google_signin", name: { ar: "الدخول بحساب Google", en: "Sign in with Google" }, what: { ar: "زر الدخول والتسجيل بحساب Google", en: "The sign-in and sign-up button with a Google account" }, need: all("GOOGLE_SIGNIN_CLIENT_ID", "GOOGLE_SIGNIN_CLIENT_SECRET") },
+  { id: "google_signin", name: { ar: "الدخول بحساب Google", en: "Sign in with Google" }, what: { ar: "زر الدخول والتسجيل بحساب Google", en: "The sign-in and sign-up button with a Google account" }, need: all("GOOGLE_SIGNIN_CLIENT_ID", "GOOGLE_SIGNIN_CLIENT_SECRET"), callbacks: ["/api/auth/google/callback"] },
   { id: "gcal", name: { ar: "Google (الربط والتقويم)", en: "Google (connector, calendar)" }, what: { ar: "ملف النشاط والتحليلات وتقويم Google لريم", en: "Business Profile, analytics, Reem's Google Calendar" }, need: all("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET") },
   { id: "mscal", name: { ar: "Microsoft (تقويم Outlook)", en: "Microsoft (Outlook calendar)" }, what: { ar: "تقويم Outlook لريم", en: "Reem's Outlook calendar" }, need: all("MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET") },
   { id: "meta", name: { ar: "Meta (فيسبوك وإنستقرام)", en: "Meta (Facebook, Instagram)" }, what: { ar: "النشر المباشر ونتائج الإعلانات", en: "Direct publishing and ads results" }, need: all("META_APP_ID", "META_APP_SECRET"), optional: ["META_CONFIG_ID"] },
@@ -60,7 +64,7 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
 /** A code-level switch on top of the variables. `off: true` means the code keeps the service off right now. */
 export type Gate = { id: string; off: boolean; label: { ar: string; en: string } };
 export type IntegrationStatus = "on" | "partial" | "off";
-export type IntegrationView = { id: string; name: { ar: string; en: string }; what: { ar: string; en: string }; status: IntegrationStatus; names: { name: string; set: boolean; required: boolean }[]; gates: Gate[] };
+export type IntegrationView = { id: string; name: { ar: string; en: string }; what: { ar: string; en: string }; status: IntegrationStatus; names: { name: string; set: boolean; required: boolean }[]; gates: Gate[]; callbacks: string[] };
 
 /** Presence only: the variable exists and is not empty. The value itself is never returned, logged or compared. */
 export const present = (env: Readonly<Record<string, string | undefined>>, name: string): boolean => typeof env[name] === "string" && env[name] !== "";
@@ -90,13 +94,38 @@ export function gatesOf(id: string, has: (name: string) => boolean, claudePaused
     case "higgsfield":
       return [{ id: "media_models_on", off: !has("MEDIA_MODELS_ON"), label: { ar: "لا يُعرض نموذج منها حتى يُذكر في MEDIA_MODELS_ON", en: "No model of it is offered until listed in MEDIA_MODELS_ON" } }];
     case "composio":
+      return [composioGate(has), ...halfSetComposio(has)];
     case "linkedin":
     case "tiktok":
-      return [{ id: "composio_providers", off: !(has("COMPOSIO_API_KEY") && has("COMPOSIO_PROVIDERS")), label: { ar: "لا يمر مزوّد عبر Composio حتى يُضبط COMPOSIO_API_KEY و COMPOSIO_PROVIDERS", en: "No provider goes through Composio until COMPOSIO_API_KEY and COMPOSIO_PROVIDERS are set" } }];
+      return [composioGate(has)];
     default:
       return [];
   }
 }
+
+/** The Composio switch: no provider goes through Composio until both names are present. */
+const composioGate = (has: (name: string) => boolean): Gate => ({ id: "composio_providers", off: !(has("COMPOSIO_API_KEY") && has("COMPOSIO_PROVIDERS")), label: { ar: "لا يمر مزوّد عبر Composio حتى يُضبط COMPOSIO_API_KEY و COMPOSIO_PROVIDERS", en: "No provider goes through Composio until COMPOSIO_API_KEY and COMPOSIO_PROVIDERS are set" } });
+
+/**
+ * Rule 2165: a Composio provider with two toolkits (Meta, Google, Google Docs and Sheets) whose auth config names are
+ * set for one toolkit and not the other. Its Connect button stays hidden (`composioReady` wants every toolkit), and the
+ * page said nothing. Presence only, like every other check here: which providers COMPOSIO_PROVIDERS lists is not read.
+ */
+export function halfSetComposio(has: (name: string) => boolean): Gate[] {
+  return Object.entries(PROVIDER_TOOLKITS).flatMap(([provider, toolkits]) => {
+    const names = toolkits.map((t) => TOOLKITS[t].authEnv);
+    const missing = names.filter((n) => !has(n));
+    if (missing.length === 0 || missing.length === names.length) return [];
+    const set = names.filter(has).join(", ");
+    return [{ id: `composio_half_${provider}`, off: true, label: { ar: `${provider}: ضُبط ${set} وينقص ${missing.join(", ")}، فيبقى زر الربط مخفيًا`, en: `${provider}: ${set} is set but ${missing.join(", ")} is missing, so its Connect button stays hidden` } }];
+  });
+}
+
+/** Rule 2165: the callback paths each row's platform app must list, from the registry (by client id name) and the row. */
+const callbacksOf = (d: IntegrationDef, req: readonly string[]): string[] => [
+  ...PROVIDERS.filter((p) => p.oauth && req.includes(p.oauth.clientIdEnv)).map((p) => `/api/connect/${p.id}/callback`),
+  ...(d.callbacks ?? []),
+];
 
 /** Every integration's state from `env` (the process environment by default). Names and booleans only. */
 export function integrationsView(env: Readonly<Record<string, string | undefined>> = process.env, claudePaused: boolean = CLAUDE_PAUSED): IntegrationView[] {
@@ -109,6 +138,7 @@ export function integrationsView(env: Readonly<Record<string, string | undefined
       status: statusOf(d.need, has),
       names: [...req.map((name) => ({ name, set: has(name), required: true })), ...opt.map((name) => ({ name, set: has(name), required: false }))],
       gates: gatesOf(d.id, has, claudePaused),
+      callbacks: callbacksOf(d, req),
     };
   });
 }

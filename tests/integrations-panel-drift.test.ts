@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { INTEGRATIONS, integrationNames, integrationsView } from "@/lib/integration-status";
+import { INTEGRATIONS, halfSetComposio, integrationNames, integrationsView } from "@/lib/integration-status";
+import { PROVIDERS } from "@/lib/connectors/registry";
+import { CALLBACK_PATH } from "@/lib/google-signin";
 
 /**
- * The console's Integrations page must match what the code reads today (rules 2160-2162, docs/system/tests/2160-integrations-panel-drift.md).
+ * The console's Integrations page must match what the code reads today (rules 2160-2162 and 2165, docs/system/tests/2160-integrations-panel-drift.md).
  * On 2026-10-18 it still asked kie.ai and Higgsfield for `BLOB_READ_WRITE_TOKEN`, which nothing has read since the disk
  * store (rules 1750-1763), and it had no row for Google sign-in (#376).
  */
@@ -47,5 +49,33 @@ describe("Integrations page drift (rules 2160-2162)", () => {
 
   it("every name the page shows is still read somewhere in src/ outside the page's own list (rule 2162)", () => {
     for (const n of integrationNames()) expect(code.includes(n), n).toBe(true);
+  });
+
+  it("a two-toolkit Composio provider with one auth name set and the other missing is flagged, by name only (rule 2165)", () => {
+    const has = (set: string[]) => (n: string) => set.includes(n);
+    expect(halfSetComposio(has([]))).toEqual([]);
+    expect(halfSetComposio(has(["COMPOSIO_AUTH_GOOGLEDOCS", "COMPOSIO_AUTH_GOOGLESHEETS", "COMPOSIO_AUTH_LINKEDIN"]))).toEqual([]);
+    const half = halfSetComposio(has(["COMPOSIO_AUTH_GOOGLEDOCS", "COMPOSIO_AUTH_FACEBOOK"]));
+    expect(half.map((g) => g.id).sort()).toEqual(["composio_half_google_workspace", "composio_half_meta"]);
+    expect(half.every((g) => g.off)).toBe(true);
+    expect(half.find((g) => g.id === "composio_half_meta")?.label.en).toContain("COMPOSIO_AUTH_INSTAGRAM is missing");
+    // On the page: under the Composio row only, and the same for any value (rule 1542 still holds).
+    const gates = (v: string) => integrationsView({ COMPOSIO_API_KEY: v, COMPOSIO_PROVIDERS: v, COMPOSIO_AUTH_GOOGLEDOCS: v }, false).flatMap((i) => i.gates.map((g) => `${i.id}:${g.id}`));
+    expect(gates("x")).toContain("composio:composio_half_google_workspace");
+    expect(gates("SENTINEL-other")).toEqual(gates("x"));
+  });
+
+  it("each direct-app row shows the callback paths its platform app must list (rule 2165)", () => {
+    const view = integrationsView({}, false);
+    const cb = (id: string) => view.find((i) => i.id === id)?.callbacks;
+    expect(cb("meta")).toEqual(["/api/connect/meta/callback", "/api/connect/meta_ads/callback"]);
+    expect(cb("gcal")).toEqual(["/api/connect/google/callback", "/api/connect/gcal/callback"]);
+    expect(cb("google_signin")).toEqual([CALLBACK_PATH]);
+    expect(cb("composio")).toEqual([]);
+    // Every direct OAuth provider's callback appears on exactly one row.
+    const all = view.flatMap((i) => i.callbacks);
+    expect(new Set(all).size).toBe(all.length);
+    for (const p of PROVIDERS) if (p.oauth) expect(all).toContain(`/api/connect/${p.id}/callback`);
+    expect(readFileSync("src/components/admin/IntegrationsPanel.tsx", "utf8")).toContain("i.callbacks.map(");
   });
 });

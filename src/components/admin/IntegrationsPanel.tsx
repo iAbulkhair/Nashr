@@ -15,6 +15,7 @@ const S = {
     loading: "Loading…", failed: "Could not load the list.",
     status: { on: "On", partial: "Incomplete", off: "Off" },
     required: "needed", optional: "optional", set: "set", missing: "missing", gatedOff: "Off in code", gatedOn: "Code switch",
+    callback: "Callback path to list in the platform app (after this site's address)",
     summary: (on: number, all: number) => `${on} of ${all} on`,
   },
   ar: {
@@ -23,6 +24,7 @@ const S = {
     loading: "جارٍ التحميل…", failed: "تعذّر تحميل القائمة.",
     status: { on: "تعمل", partial: "ناقصة", off: "متوقفة" },
     required: "مطلوب", optional: "اختياري", set: "مضبوط", missing: "غير مضبوط", gatedOff: "متوقفة في الكود", gatedOn: "مفتاح في الكود",
+    callback: "مسار الرجوع الذي يُضاف في تطبيق المنصة (بعد عنوان هذا الموقع)",
     summary: (on: number, all: number) => `${on} من ${all} تعمل`,
   },
 } as const;
@@ -68,6 +70,12 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
                 </li>
               ))}
             </ul>
+            {i.callbacks.length > 0 && (
+              <div className="mt-2 text-xs" data-testid={`integration-${i.id}-callbacks`}>
+                <p className="text-foreground-muted">{L.callback}</p>
+                {i.callbacks.map((c) => <p key={c} className="font-mono break-all" dir="ltr">{c}</p>)}
+              </div>
+            )}
             {i.gates.map((g) => (
               <p key={g.id} className="mt-2 flex items-start gap-2 text-xs text-foreground-muted"><Badge tone={g.off ? "warning" : "neutral"} className="shrink-0">{g.off ? L.gatedOff : L.gatedOn}</Badge><span>{g.label[lang]}</span></p>
             ))}
