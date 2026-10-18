@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
@@ -8,11 +9,13 @@ import AwayPanel, { type AwayRow } from "./AwayPanel";
 import BookingCard from "./BookingCard";
 import FeedCard from "./FeedCard";
 import CalendarLinkCard, { type CalProviders } from "./CalendarLinkCard";
-import MeetingPanel from "./MeetingPanel";
 import Scribble from "@/components/Scribble";
 import EmptyState from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { emptyCopy } from "@/lib/empty-copy";
+
+// Rule 2099: the meeting panel opens only after a click on a row, so its code loads then and not with the page.
+const MeetingPanel = dynamic(() => import("./MeetingPanel"));
 
 /**
  * One item as the page shows it: every date already formatted on the server, in the brand's zone. `proposed.claim` is

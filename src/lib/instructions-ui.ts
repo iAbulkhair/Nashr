@@ -62,7 +62,7 @@ const ERROR_KEY = {
 export const INSTRUCTION_ERROR_CODES: readonly string[] = Object.keys(ERROR_KEY);
 
 /** The message for a refused request, in the page's language. `vars` fills {max}. */
-export function errorText(t: AppDict, code: unknown, vars: Record<string, string | number> = {}): string {
+export function errorText(t: Pick<AppDict, "instructions">, code: unknown, vars: Record<string, string | number> = {}): string {
   const E = t.instructions.errors;
   const key: ErrorKey = typeof code === "string" && Object.hasOwn(ERROR_KEY, code) ? ERROR_KEY[code as keyof typeof ERROR_KEY] : "failed";
   return fill(E[key], vars);

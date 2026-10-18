@@ -95,7 +95,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
           </p>
         )}
         {manage && !full && (
-          <form onSubmit={(e) => { e.preventDefault(); act({ action: "add", name }); }} className="flex w-full min-w-0 items-end gap-2 sm:w-auto">
+          <form onSubmit={(e) => { e.preventDefault(); void act({ action: "add", name }); }} className="flex w-full min-w-0 items-end gap-2 sm:w-auto">
             <Field label={ar ? "اسم العلامة الجديدة" : "New brand name"} hideLabel className="min-w-0 flex-1">
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={ar ? "اسم العلامة الجديدة" : "New brand name"} maxLength={80} />
             </Field>

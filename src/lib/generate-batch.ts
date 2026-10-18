@@ -293,7 +293,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     await Promise.all([opts.settle?.(), row && !scheduled ? recordActivity(scope, [row]) : null]);
     return r;
   };
-  const who = async () => opts.by ?? (opts.via === "weekly" ? systemBy("cron") : opts.via === "routine" ? systemBy("routine") : await byOf(user));
+  const who = async () => opts.by ?? (opts.via === "weekly" ? systemBy("cron") : opts.via === "routine" ? systemBy("routine") : byOf(user));
   // Before any read or charge. Chat is the exception: its turn answers while paused before any tool runs (rule 76), and
   // a tool called outside a turn keeps the backstop every path has, generate() throwing and the charge refunded.
   if (opts.via !== "chat" && modelState() === "paused") return refuse({ ok: false, reason: "paused" });
