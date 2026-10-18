@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { adminActor, getUser, isAdmin, normalizeEmail, saveUser, type User } from "@/lib/auth";
+import { accountByLogin, adminActor, getUser, isAdmin, normalizeEmail, saveUser, type User } from "@/lib/auth";
+import { acct } from "@/lib/account-id";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { withUserLock } from "@/lib/credits";
 import { db } from "@/lib/db";
@@ -65,8 +66,11 @@ export async function POST(req: Request) {
   if (!email) return NextResponse.json({ ok: false, error: "bad_email" }, { status: 400 });
   type View = ReturnType<typeof foundingView>;
   let done: { ok: true; before: View; after: View; free?: { seat?: boolean; lock?: boolean } } | { ok: false; error: GrantError };
+  // The address names the account; the lock and the save use its id (rule 1982).
+  const account = await accountByLogin(email);
+  if (!account) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   try {
-    done = await withUserLock(email, async (u: User) => {
+    done = await withUserLock(acct(account), async (u: User) => {
       const before = foundingView(u);
       const r = await applyGrant(u, action, { plan: b.plan, from: b.from }, who);
       if (!r.ok) return r;

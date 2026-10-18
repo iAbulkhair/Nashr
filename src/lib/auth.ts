@@ -327,10 +327,20 @@ export async function readLoginIndex(email: string): Promise<LoginIndexValue | n
 export async function claimLogin(email: string, pid: string): Promise<void> {
   await db.set(accountKey.login(normalizeEmail(email)), loginIndexOf(pid));
 }
-/** Drop the index of a sign-in address, but only while it still names `pid` (a later owner of the address keeps theirs). */
-export async function releaseLogin(email: string, pid: string): Promise<void> {
-  const cur = await readLoginIndex(email);
-  if (cur && cur.pid === pid) await db.del(accountKey.login(normalizeEmail(email)));
+/**
+ * Drop the index of a sign-in address, but only while it still names `pid` (a later owner of the address keeps theirs).
+ * The read and the delete run under `lock:login:{email}`, so a signup or accept claiming the address in between is never
+ * undone (security review L1). A caller that already holds that lock (an address move) passes `locked`: the lock is not
+ * reentrant. Order: `lock:team` and `lock:member` first, `lock:login` last, as `acceptInvite` and `dropMember` take them.
+ */
+export async function releaseLogin(email: string, pid: string, opts: { locked?: boolean } = {}): Promise<void> {
+  const drop = async () => {
+    const cur = await readLoginIndex(email);
+    if (cur && cur.pid === pid) await db.del(accountKey.login(normalizeEmail(email)));
+  };
+  if (opts.locked) return drop();
+  const { withLoginLock } = await import("./team");
+  await withLoginLock(email, drop);
 }
 
 /**
@@ -675,6 +685,14 @@ export async function getLogin(email: string): Promise<Login | null> {
   if (!m || normalizeEmail(m.email) !== e || !memberHolds(memberPid(m), e, idx)) return null;
   const [owner, listed] = await Promise.all([getAccount(m.memberOf), onRoster(m.memberOf, e)]);
   return listed ? { kind: "member", member: m, owner, pid: memberPid(m) } : null;
+}
+/**
+ * The account a sign-in address owns, or null (a member's address, or nobody's). For the founder console's routes that
+ * name an account by its address in the URL or body (rule 1982): the address is resolved, never used as the key.
+ */
+export async function accountByLogin(email: string): Promise<User | null> {
+  const l = await getLogin(email);
+  return l?.kind === "owner" ? l.user : null;
 }
 
 /**

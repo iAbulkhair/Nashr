@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import type { User } from "./auth";
 import { getMember } from "./team";
+import { acct } from "./account-id";
 
 /**
  * The acting LOGIN's own password hash: the member record for a member, the owner record for the owner. Null for any
@@ -13,7 +14,7 @@ async function ownHash(u: User): Promise<string | null> {
   if (a?.kind === "owner" && a.email === u.email) return u.passHash;
   if (a?.kind !== "member") return null;
   const m = await getMember(a.email);
-  return m && m.memberOf === u.email && !m.disabled ? m.passHash : null;
+  return m && m.memberOf === acct(u) && !m.disabled ? m.passHash : null;
 }
 
 /** Does `password` match the acting login's own password? False for any actor that has none of its own. */
@@ -33,5 +34,5 @@ export async function actingLogin(u: User): Promise<{ kind: "owner" | "member"; 
   if (a?.kind === "owner" && a.email === u.email) return { kind: "owner", email: u.email, bornAt: u.createdAt };
   if (a?.kind !== "member") return null;
   const m = await getMember(a.email);
-  return m && m.memberOf === u.email && !m.disabled ? { kind: "member", email: m.email, bornAt: m.acceptedAt } : null;
+  return m && m.memberOf === acct(u) && !m.disabled ? { kind: "member", email: m.email, bornAt: m.acceptedAt } : null;
 }

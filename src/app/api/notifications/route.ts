@@ -27,6 +27,6 @@ export async function POST(req: Request) {
     if (unread === null) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     return NextResponse.json({ ok: true, unread });
   }
-  await markAllRead(u.email);
+  await markAllRead(acct(u));
   return NextResponse.json({ ok: true, unread: 0 });
 }

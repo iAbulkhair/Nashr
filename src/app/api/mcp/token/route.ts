@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, type User } from "@/lib/auth";
+import { acct } from "@/lib/account-id";
 import { createMcpToken, getMcpToken, revokeMcpToken } from "@/lib/mcp";
 import { forbid } from "@/lib/roles";
 
@@ -8,10 +9,12 @@ import { forbid } from "@/lib/roles";
  * `userFromBearer`), so only the owner, signed in as themselves, may see, mint or revoke it. A member, and a founder
  * impersonating the account, get 403 (src/lib/roles.ts "mcp.token").
  *
- * The slot is keyed by the acting login. Past the gate that is always the owner's own address; should members ever get
- * tokens, theirs would map to their own login, which `userFromBearer` refuses, so the rule fails closed.
+ * The slot is keyed by the account (`acct(u)`, rule 1985): the same key `revokeAllMcp(acct(u))` clears on a password
+ * change, a reset or a deletion, and the value `userFromBearer` reads the account by. Past the gate the actor is always
+ * the owner; any other actor (should a gate ever let one through) keys by its own login, which `userFromBearer` finds
+ * no account for, so the rule fails closed.
  */
-const holder = (u: User) => u.actor!.email;
+const holder = (u: User) => (u.actor?.kind === "owner" ? acct(u) : u.actor!.email);
 
 export async function GET() {
   const u = await currentUser();

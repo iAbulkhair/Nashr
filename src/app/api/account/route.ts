@@ -32,7 +32,7 @@ export async function PATCH(req: Request) {
     // The member record only, under its own lock. Every other device of this member is signed out; the owner's hash,
     // sessions, MCP token and connected apps are not touched.
     const done = await withMemberLock(a.email, async (m) => {
-      if (m.memberOf !== u.email) return false;
+      if (m.memberOf !== acct(u)) return false;
       m.passHash = hash;
       m.sessionsAfter = new Date().toISOString();
       await saveMember(m);

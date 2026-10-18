@@ -68,7 +68,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // The card is handed `ent` and `used` only: `view.grants` holds the founder's email and note, which an owner never sees.
   // This month's usage for the credit card (rule 1153) and the owner's recorded payments (rule 1156) are read alongside it.
   const now = new Date();
-  const [view, month, history] = await Promise.all([entitlementView(u), monthUsage(u, now), owner ? paymentHistory(u.email) : Promise.resolve(null)]);
+  const [view, month, history] = await Promise.all([entitlementView(u), monthUsage(u, now), owner ? paymentHistory(acct(u)) : Promise.resolve(null)]);
   const { seats: used, chat } = view.used;
   const nextReset = month.nextReset;
   const trial = chat.period === "trial";

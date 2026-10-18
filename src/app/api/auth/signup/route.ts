@@ -6,7 +6,7 @@ import { allow, clientIp, retryLater } from "@/lib/rate";
 import { countVerifySend, devCodeExposed, sendVerifyCode } from "@/lib/verify-email";
 import { applyReferral, registerCode } from "@/lib/referral";
 import { captchaRefusal } from "@/lib/turnstile";
-import { withLoginLock } from "@/lib/team";
+import { getMember, withLoginLock } from "@/lib/team";
 import { acct } from "@/lib/account-id";
 
 export async function POST(req: Request) {
@@ -31,15 +31,17 @@ export async function POST(req: Request) {
   // Checked and created under the same lock invite acceptance takes, so a signup and an accept racing on one address
   // cannot both succeed. A member's address gets the same answer as an existing account.
   const account = await withLoginLock(email, async () => {
-    if (await getLogin(email)) return null;
+    // A member record that is not a login (off its roster, or a stale copy) still holds the address, as in Google sign-in.
+    const [login, member] = await Promise.all([getLogin(email), getMember(email)]);
+    if (login || member) return null;
     return createUser({ email, name: String(b.name ?? ""), phone: String(b.phone ?? ""), password: b.password, lang: b.lang === "en" ? "en" : "ar" });
   });
   if (!account) return NextResponse.json({ ok: false, error: "exists" }, { status: 409 });
-  await registerCode(account.email);
+  await registerCode(acct(account));
   let referred = false;
-  if (b.ref && /^[A-Za-z0-9]{6,10}$/.test(b.ref)) referred = await applyReferral(account.email, b.ref);
+  if (b.ref && /^[A-Za-z0-9]{6,10}$/.test(b.ref)) referred = await applyReferral(acct(account), b.ref);
   // The account exists by now: a failed attribution is logged, never turned into a failed signup.
-  const partnered = await afterSignup(account.email, partner).catch((e) => { console.error("partner attribution failed", e instanceof Error ? e.message : "error"); return false; });
+  const partnered = await afterSignup(account, partner).catch((e) => { console.error("partner attribution failed", e instanceof Error ? e.message : "error"); return false; });
   await createSession(account.email);
   await track(acct(account), "signup");
   // The first verification code (rule 762). The account exists and is signed in by now, so a mail that cannot go out

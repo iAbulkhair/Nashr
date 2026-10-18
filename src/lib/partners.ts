@@ -165,13 +165,15 @@ export async function signupPartner(typed: unknown): Promise<SignupPartner | "ba
  * first-month offer, and, when this address was approved as a partner before it had an account, show it the partner page.
  * The link cookie is spent either way. True when the account was attributed.
  */
-export async function afterSignup(email: string, found: SignupPartner): Promise<boolean> {
-  const e = normalizeEmail(email);
+export async function afterSignup(account: Pick<User, "id" | "email">, found: SignupPartner): Promise<boolean> {
+  // The partner side (its record, its referral set) is keyed by the partner's address; the account by its id (rule 1985).
+  const e = normalizeEmail(account.email);
+  const id = acct(account);
   const own = await getPartner(e);
-  const attribute = !!found && found.partner.email !== e;
+  const attribute = !!found && normalizeEmail(found.partner.email) !== e;
   let done = false;
   if (attribute || own) {
-    done = await withUserLock(e, async (u) => {
+    done = await withUserLock(id, async (u) => {
       let attributed = false;
       if (attribute && !u.referredBy) {
         const now = new Date().toISOString();
@@ -183,7 +185,7 @@ export async function afterSignup(email: string, found: SignupPartner): Promise<
       await saveUser(u);
       return attributed;
     });
-    if (done) await db.sadd(refsKey(found!.partner.email), e);
+    if (done) await db.sadd(refsKey(normalizeEmail(found!.partner.email)), id);
   }
   const jar = await cookies();
   if (readCookie(jar, PARTNER_COOKIE)) dropCookie(jar, PARTNER_COOKIE);
@@ -208,8 +210,14 @@ export type ClaimError = "bad_partner_code" | "self_referral" | "already_attribu
 export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: true; code: string } | { ok: false; error: ClaimError }> {
   const partner = await partnerByCode(raw);
   if (!partner) return { ok: false, error: "bad_partner_code" };
-  if (acct(partner) === acct(u)) return { ok: false, error: "self_referral" };
-  const [a, b] = await Promise.all([onRoster(acct(u), partner.email), onRoster(acct(partner), u.email)]);
+  // A partner is a person with an address, not an account (it has no id): the owner's own address, a member of this
+  // account, or an account whose roster lists this owner is a self-referral. The partner's account is found by its
+  // address through the login index (rule 1982), never built from it.
+  if (normalizeEmail(partner.email) === normalizeEmail(u.email)) return { ok: false, error: "self_referral" };
+  const [a, theirs] = await Promise.all([onRoster(acct(u), partner.email), getLogin(partner.email)]);
+  const partnerAccount = theirs?.kind === "owner" ? acct(theirs.user) : null;
+  if (partnerAccount === acct(u)) return { ok: false, error: "self_referral" };
+  const b = partnerAccount ? await onRoster(partnerAccount, u.email) : false;
   if (a || b) return { ok: false, error: "self_referral" };
   const res = await withUserLock(acct(u), async (x): Promise<ClaimError | null> => {
     if (x.referredBy) return "already_attributed";
@@ -221,7 +229,7 @@ export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: tru
     return null;
   });
   if (res) return { ok: false, error: res };
-  await db.sadd(refsKey(acct(partner)), acct(u));
+  await db.sadd(refsKey(normalizeEmail(partner.email)), acct(u));
   return { ok: true, code: partner.code };
 }
 
@@ -871,9 +879,11 @@ export async function saveBank(email: string, input: BankInput): Promise<{ ok: t
  * details included), code, referral set and ledger. The account is also taken out of its own partner's referral set.
  * Ledger rows never carry a customer's email (only the label), so no deleted address stays listed anywhere.
  */
-export async function forgetPartnerData(email: string): Promise<string[]> {
-  const e = normalizeEmail(email);
-  const [u, partner] = await Promise.all([getUser(e), getPartner(e)]);
-  await Promise.all([u?.referredBy ? db.srem(refsKey(u.referredBy.partner), e) : null, partner ? db.srem(PARTNERS, e) : null]);
-  return [paymentsKey(e), partnerKey(e), refsKey(e), ledgerKey(e), ...(partner ? [codeKey(partner.code)] : [])];
+export async function forgetPartnerData(id: string, login: string = id): Promise<string[]> {
+  // The account's payments by its id; the partner record, its referral set and ledger by the person's address (rule 1985).
+  const e = normalizeEmail(id);
+  const l = normalizeEmail(login);
+  const [u, partner] = await Promise.all([getUser(e), getPartner(l)]);
+  await Promise.all([u?.referredBy ? db.srem(refsKey(normalizeEmail(u.referredBy.partner)), e) : null, partner ? db.srem(PARTNERS, l) : null]);
+  return [paymentsKey(e), partnerKey(l), refsKey(l), ledgerKey(l), ...(partner ? [codeKey(partner.code)] : [])];
 }

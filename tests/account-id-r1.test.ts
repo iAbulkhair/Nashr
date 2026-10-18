@@ -1,13 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
-import { jar, newMember, newOpaqueUser, newUser, signIn, signOut } from "./helpers/session";
-import { acct, accountOfScope, claimLogin, createSession, createUser, currentUser, getAccount, getLogin, getUser, saveUser, sc, sessionKey, type User } from "@/lib/auth";
+import { jar, json, newMember, newOpaqueUser, newUser, signIn, signOut } from "./helpers/session";
+import { accountByLogin, acct, accountOfScope, claimLogin, createSession, createUser, currentUser, getAccount, getLogin, getUser, releaseLogin, saveUser, sc, sessionKey, type User } from "@/lib/auth";
 import { brandOfScope, idForNewAccount, LoginIndex, newAccountId, OPAQUE_ACCOUNT_ID, OPAQUE_IDS } from "@/lib/account-id";
 import { db } from "@/lib/db";
 import { accountKey, globalKey } from "@/lib/keys";
 import { charge } from "@/lib/credits";
-import { getMember, withLoginLock } from "@/lib/team";
+import { getMember, memberPid, saveMember, withLoginLock } from "@/lib/team";
+import { revokeAllMcp, userFromBearer } from "@/lib/mcp";
+import { chatStatus } from "@/lib/chat-allowance";
+import { chatMsgKey, chatTrialKey } from "@/lib/usage";
+import { route } from "@/lib/models/route";
+import * as signupRoute from "@/app/api/auth/signup/route";
+import * as mcpTokenRoute from "@/app/api/mcp/token/route";
 import { wipeAccount } from "@/lib/account";
 import { dailyRoster } from "@/lib/schedule";
 import { convertAccountIds } from "../scripts/account-ids";
@@ -218,9 +224,30 @@ describe("rule 1985: account keys come from acct(u), never from u.email", () => 
     expect([...found].filter((p) => !RATE.has(p))).toEqual([]);
   });
   it("no account-key builder or account function is handed u.email, user.email or owner.email", () => {
-    const ACCOUNT = /\b(accountKey\.(?:user|brands|members|invites|teamLock|notifications|referrals|shared)|scopeFor|listBrands|saveBrands|withBrandsLock|withUserLock|charge|chargeOnce|refund|refundOnce|renewIfDue|notifyItem|listNotifs|getUsage|track|wipeAccount|seatsUsed)\((?:u|user|owner)\.email\b/;
+    // Widened after the security review (M2): the MCP and OAuth slots, billing, notifications, seats, the roster and the chat counters.
+    const ACCOUNT = /\b(accountKey\.(?:user|brands|members|invites|teamLock|notifications|referrals|shared|mcpTokenOf)|scopeFor|listBrands|saveBrands|withBrandsLock|withUserLock|charge|chargeOnce|refund|refundOnce|renewIfDue|notifyItem|listNotifs|getUsage|track|wipeAccount|seatsUsed|revokeAllMcp|createMcpToken|getMcpToken|revokeMcpToken|listGrants|revokeAllGrants|revokeGrant|markAllRead|lastCheckout|paymentHistory|paymentsView|renewPaymob|enforceSeats|membersKey|chatTrialKey|chatMsgKey|chatOverKey|chatCredKey|registerCode|applyReferral)\((?:u|user|owner|account|prev)\.email\b/;
     const offenders = srcFiles("src").flatMap((f) => read(f).split("\n").map((l, i) => [f, i + 1, l] as const)).filter(([, , l]) => ACCOUNT.test(l)).map(([f, i]) => `${f}:${i}`);
     expect(offenders).toEqual([]);
+  });
+  it("no OAuth code, roster check or partner lock is keyed by an address where it means the account", () => {
+    const lines = srcFiles("src").flatMap((f) => read(f).split("\n").map((l, i) => [f, i + 1, l] as const));
+    const at = (re: RegExp) => lines.filter(([, , l]) => re.test(l)).map(([f, i]) => `${f}:${i}`);
+    // issueCode's `email` is the account id (src/lib/oauth.ts CodeRec).
+    expect(at(/\bemail: (?:u|user|owner)\.email\b.*\bclientId\b|issueCode\(\{[^}]*email: (?:u|user)\.email/)).toEqual([]);
+    // A member's `memberOf` holds the team's account id.
+    expect(at(/memberOf [!=]== (?:u|user|owner|account)\.email\b/)).toEqual([]);
+    // afterSignup locks the new account by its id, not by its address.
+    const partners = read("src/lib/partners.ts");
+    const after = partners.slice(partners.indexOf("export async function afterSignup"), partners.indexOf("\n}\n", partners.indexOf("export async function afterSignup")));
+    expect(after).not.toMatch(/withUserLock\(e\b/);
+    expect(after).toMatch(/withUserLock\(id\b/);
+  });
+  it("the founder console's address routes resolve the address through getLogin, never read user:{address} as the account", () => {
+    for (const f of ["src/app/api/admin/topups/route.ts", "src/app/api/admin/agent-scope/release/route.ts", "src/app/api/admin/plan/route.ts", "src/app/api/admin/payments/[email]/route.ts", "src/app/api/admin/fair-use/route.ts", "src/app/api/admin/founding/route.ts", "src/app/api/admin/brand-cap/route.ts"]) {
+      const src = read(f);
+      expect(src, f).toContain("accountByLogin(");
+      expect(src, f).not.toMatch(/getUser\(email\)|withUserLock\(email\b|listBrands\(email\)|scopeFor\(email\b/);
+    }
   });
   it("the default signup still writes id = email, so R1 changes no production key", async () => {
     const e = addr("plain");
@@ -359,7 +386,7 @@ describe("the owner move in R1 is still a copy: the new record lives under the n
     const src = read("src/lib/verify-email.ts");
     expect(src).toMatch(/saveUser\(\{ \.\.\.cur, id: to, email: to,/);
     expect(src).toContain("await claimLogin(to, to);");
-    expect(src).toContain("await wipeAccount(id, { userLocked: true });");
+    expect(src).toContain("await wipeAccount(id, { userLocked: true, loginLocked: true });");
   });
   it("a member move claims the new index and releases the old one", () => {
     const team = read("src/lib/team.ts");
@@ -373,5 +400,89 @@ describe("the owner move in R1 is still a copy: the new record lives under the n
     await saveUser({ ...(await getUser(u.email))!, id: to, email: to });
     await claimLogin(to, to);
     expect(await getLogin(to)).toMatchObject({ kind: "owner", pid: to });
+  });
+});
+
+describe("security review of R1 (M1, M2, L1)", () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  it("M1: while OPAQUE_IDS is off, a member's stored id that is not its address is ignored and logged", async () => {
+    const o = await newUser("m1");
+    const m = await newMember(o);
+    const other = addr("m1old");
+    await saveMember({ ...(await getMember(m.email))!, id: other });
+    await db.del(accountKey.login(m.email));
+    const got = (await getMember(m.email))!;
+    expect(got.id).toBe(m.email);
+    expect(memberPid({ id: other, email: m.email })).toBe(m.email);
+    expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email });
+  });
+  it("M1: signup refuses an address that still has a member record off its roster", async () => {
+    const o = await newUser("m1s");
+    const m = await newMember(o);
+    await Promise.all([db.srem(accountKey.members(acct(o)), m.email), db.del(accountKey.login(m.email))]);
+    expect(await getLogin(m.email)).toBeNull();
+    jar().clear();
+    const res = await signupRoute.POST(json("/api/auth/signup", "POST", { email: m.email, password: "abc12345", name: "X", lang: "en" }, { "x-forwarded-for": `10.9.${n % 250}.${(n * 7) % 250}` }));
+    expect(res.status).toBe(409);
+    expect(await db.get(accountKey.user(m.email))).toBeNull();
+  });
+  it("M1: the script counts a member whose id is not its address as a conflict and writes no index for it", async () => {
+    const o = await newUser("m1c");
+    const m = await newMember(o);
+    await saveMember({ ...(await getMember(m.email))!, id: addr("m1cold") });
+    await db.del(accountKey.login(m.email));
+    const r = await convertAccountIds(true);
+    expect(r.conflicts).toBeGreaterThanOrEqual(1);
+    expect(await index(m.email)).toBeNull();
+  });
+  it("L1: releaseLogin waits for the login lock and re-reads, so an index claimed meanwhile survives", async () => {
+    const u = await newUser("l1");
+    const next = "a_jjjjjjjjjjjjjjjjjjjjjjjj";
+    let release: Promise<void> | null = null;
+    await withLoginLock(u.email, async () => {
+      release = releaseLogin(u.email, u.email);
+      await sleep(150);
+      expect(await index(u.email)).toEqual({ kind: "person", pid: u.email });
+      await db.set(accountKey.login(u.email), { kind: "person", pid: next });
+    });
+    await release;
+    expect(await index(u.email)).toEqual({ kind: "person", pid: next });
+    await releaseLogin(u.email, next);
+    expect(await index(u.email)).toBeNull();
+  });
+  it("L1: callers that already hold the login lock say so, so nothing waits on itself", () => {
+    expect(read("src/lib/auth.ts")).toMatch(/withLoginLock\(email, drop\)/);
+    expect(read("src/lib/team.ts")).toContain("releaseLogin(old, memberPid(cur), { locked: true })");
+    expect(read("src/lib/account.ts")).toContain("releaseLogin(login, e, { locked: opts.loginLocked })");
+  });
+  it("M2: an opaque owner's MCP token is kept under its id, resolves to it, and revokeAllMcp(acct) ends it", async () => {
+    const o = await newOpaqueUser("m2t");
+    await createSession(o.email);
+    const res = await mcpTokenRoute.POST();
+    const { token } = (await res.json()) as { token: string };
+    expect(await db.get(accountKey.mcpTokenOf(acct(o)))).toBeTruthy();
+    expect(await db.get(accountKey.mcpTokenOf(o.email))).toBeNull();
+    const bearer = () => new Request("http://x/api/mcp", { headers: { authorization: `Bearer ${token}` } });
+    const u = (await userFromBearer(bearer()))!;
+    expect(acct(u)).toBe(acct(o));
+    expect(accountOfScope(u.scope!)).toBe(acct(o));
+    await revokeAllMcp(acct(o));
+    expect(await userFromBearer(bearer())).toBeNull();
+  });
+  it("M2: an opaque account's chat counter is read under its id", async () => {
+    const o = await newOpaqueUser("m2c");
+    await db.set(chatTrialKey(acct(o)), 4);
+    await db.set(chatTrialKey(o.email), 9);
+    expect((await chatStatus(o, route("chat").model)).counted).toBe(4);
+    const paid = { ...o, plan: "pro" as const };
+    await db.set(chatMsgKey(acct(o)), 6);
+    expect((await chatStatus(paid, route("chat").model)).counted).toBe(6);
+  });
+  it("M2: accountByLogin resolves an owner's address to its account and a member's to nothing", async () => {
+    const o = await newOpaqueUser("m2a");
+    const m = await newMember(o);
+    expect(acct((await accountByLogin(o.email))!)).toBe(acct(o));
+    expect(await accountByLogin(m.email)).toBeNull();
+    expect(await accountByLogin(addr("nobody"))).toBeNull();
   });
 });

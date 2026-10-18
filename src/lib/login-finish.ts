@@ -27,7 +27,7 @@ export const loginEmail = (l: Login) => (l.kind === "owner" ? l.user.email : l.m
 export function loginRefusal(l: Login): NextResponse | null {
   if (l.kind === "owner") return isSuspended(l.user) ? suspendedAnswer(l.user) : null;
   const { member, owner } = l;
-  if (!owner || member.memberOf !== owner.email || !(new Date(member.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) {
+  if (!owner || member.memberOf !== acct(owner) || !(new Date(member.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
   }
   if (isSuspended(owner)) return suspendedAnswer(owner);

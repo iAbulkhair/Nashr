@@ -2,11 +2,12 @@ import bcrypt from "bcryptjs";
 import { isSuspended } from "./suspension";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
+import { log } from "./log";
 import { pmap } from "./parallel";
 import { revokeBook } from "./booking-token";
 import { revokeFeed } from "./feed-token";
 import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
-import { acct } from "./account-id";
+import { acct, OPAQUE_IDS } from "./account-id";
 import { can } from "./roles";
 import { teamApprovals } from "./approver-stats";
 import { accountKey, globalKey } from "./keys";
@@ -120,11 +121,22 @@ export async function withMemberLock<T>(email: string, fn: (m: Member) => Promis
   });
 }
 
-/** A member's person id: the frozen `id`, or the address of a record written before R1. */
-export const memberPid = (m: Pick<Member, "id" | "email">): string => m.id ?? normalizeEmail(m.email);
+/**
+ * A member's person id: the frozen `id`, or the address of a record written before R1. While `OPAQUE_IDS` is off (R1)
+ * every member's person id IS its address: a stored `id` that differs was copied by a rolled-back build's move
+ * (`{id: old, email: new}` at `member:{new}`, with no `login:{new}`) and is ignored, so the member still signs in and
+ * holds the address (security review M1, 2026-10-18).
+ */
+export const memberPid = (m: Pick<Member, "id" | "email">): string => (OPAQUE_IDS ? (m.id ?? normalizeEmail(m.email)) : normalizeEmail(m.email));
 
 export async function getMember(email: string): Promise<Member | null> {
-  return db.get<Member>(memberKey(normalizeEmail(email)));
+  const m = await db.get<Member>(memberKey(normalizeEmail(email)));
+  // The same stale id, corrected in memory so the next save writes the address (as `getAccount` does for owners).
+  if (m && !OPAQUE_IDS && m.id !== undefined && m.id !== normalizeEmail(m.email)) {
+    log.warn("member id differs from its address", { shape: "member.id" });
+    m.id = normalizeEmail(m.email);
+  }
+  return m;
 }
 /** Writes the member record only: never `users:all`, never the roster index. Callers hold `lock:member:{email}`. */
 export async function saveMember(m: Member) {
@@ -415,7 +427,7 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
       await saveMember({ ...rest, id: to, email: to, sessionsAfter: new Date().toISOString() });
       await Promise.all([db.sadd(membersKey(owner), to), brand ? db.set(accountKey.activeBrand(to), brand) : Promise.resolve(), claimLogin(to, to)]);
       if (carry) await carry(old, to);
-      await Promise.all([db.del(memberKey(old)), db.del(accountKey.activeBrand(old)), db.srem(membersKey(owner), old), dropInvites(owner, sent.filter((i) => i.invitedBy === old).map((i) => i.id)), releaseLogin(old, memberPid(cur))]);
+      await Promise.all([db.del(memberKey(old)), db.del(accountKey.activeBrand(old)), db.srem(membersKey(owner), old), dropInvites(owner, sent.filter((i) => i.invitedBy === old).map((i) => i.id)), releaseLogin(old, memberPid(cur), { locked: true })]);
       await Promise.all([revokeFeed(old), revokeBook(old)]);
       return "ok" as const;
     });

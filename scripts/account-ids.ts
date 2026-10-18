@@ -12,7 +12,8 @@
 // For every id in `users:all` (in parallel, 50 at a time; no `await db.*` inside a loop):
 //   - the owner record gets `id` = the key it is stored under, if it has none (under the account lock, `withUserLock`);
 //   - `login:{address}` gets `{ kind: "person", pid: id }` if absent (under `lock:login:{address}`, read again first);
-//   - every member on its roster gets `id` = its address and its own `login:{address}`, the same way.
+//   - every member on its roster gets `id` = its address and its own `login:{address}`, the same way; a member whose
+//     stored `id` is not its address is a conflict, left as it is.
 // It never overwrites: an index that names someone else, an owner record whose address differs from its key, and a
 // roster entry with no member record (or one of another team) are counted as conflicts or orphans and left as they are.
 // A second run writes nothing (idempotent).
@@ -26,7 +27,7 @@ import { accountKey, globalKey } from "../src/lib/keys";
 import { LoginIndex, loginIndexOf } from "../src/lib/account-id";
 import { normalizeEmail, saveUser, type User } from "../src/lib/auth";
 import { withUserLock } from "../src/lib/credits";
-import { memberPid, saveMember, withLoginLock, withMemberLock, type Member } from "../src/lib/team";
+import { saveMember, withLoginLock, withMemberLock, type Member } from "../src/lib/team";
 
 export type IdsReport = {
   apply: boolean;
@@ -95,8 +96,14 @@ export async function convertAccountIds(apply: boolean): Promise<IdsReport> {
       r.orphans++;
       return;
     }
+    // A stored id that is not the address (a rolled-back build's move copied the old one): reported, never indexed, so
+    // no index ever names one person for two addresses (security review M1).
+    if (m.id !== undefined && m.id !== login) {
+      r.conflicts++;
+      return;
+    }
     r.members++;
-    plans.push({ kind: "member", owner, login, pid: memberPid(m), needsId: m.id === undefined });
+    plans.push({ kind: "member", owner, login, pid: login, needsId: m.id === undefined });
   });
   const indexes = await mgetChunked<unknown>(plans.map((p) => accountKey.login(p.login)));
   const work: Plan[] = [];

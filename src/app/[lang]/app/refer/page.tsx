@@ -29,7 +29,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       </div>
     );
   }
-  await registerCode(u.email);
+  await registerCode(acct(u));
   const s = await referralStats(acct(u));
   // The canonical origin, not the request's Host header: a link shared from a preview deployment or an alias must still
   // point at the production domain, and a Host header is whatever the client sent.

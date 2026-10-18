@@ -144,7 +144,7 @@ export async function PUT(req: Request) {
       // The member's own record, under its own lock. The owner's name and language are the account's, not theirs.
       if (name || lang) {
         const done = await withMemberLock(a.email, async (m) => {
-          if (m.memberOf !== u.email) return false;
+          if (m.memberOf !== acct(u)) return false;
           if (name) m.name = name;
           if (lang) m.lang = lang;
           await saveMember(m);

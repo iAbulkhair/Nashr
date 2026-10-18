@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isSuspended, suspensionEnd } from "@/lib/suspension";
-import { adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan, type User, viaOf } from "@/lib/auth";
+import { accountByLogin, adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan, type User, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { matchUser, pageOf, parseUserQuery, sortUsers, tileCounts, userFacets } from "@/lib/admin-users";
 import { db } from "@/lib/db";
@@ -184,13 +184,14 @@ export async function POST(req: Request) {
     paidDay = d.day;
   }
   const planGiven = isPlan(b.plan);
-  const prev = email ? await getUser(email) : null;
+  // The address names the account; the lock and the save use its id (rule 1982).
+  const prev = email ? await accountByLogin(email) : null;
   if (!prev) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const before = { plan: String(prev.plan), credits: Number(prev.credits), seats: seatLimit(prev), chat: chatAllowanceOf(prev), deal: dealLabel(prev.deal), video: videoLabel(prev.grants?.video), paidThrough: prev.handPlan?.paidThrough ?? null };
   let seatsReset = false;
   let chatReset = false;
   let billingEnded = false;
-  const done = await withUserLock(email, async (u) => {
+  const done = await withUserLock(acct(prev), async (u) => {
     const plan = planGiven ? (b.plan as Plan) : u.plan;
     // Decided on the record as it is under the lock, before anything changes: a refused request writes nothing.
     if (deal && plan !== "agency") return "deal_needs_agency" as const;
@@ -238,7 +239,7 @@ export async function POST(req: Request) {
   if (done === "paid_through_paymob") return NextResponse.json({ ok: false, error: done }, { status: 409 });
   const user = done;
   // Every change to the seat limit, up or down, refits the team: paused members come back oldest-first when it grows.
-  const team = planGiven || seatsGiven || seatsReset ? await enforceSeats(user.email) : null;
+  const team = planGiven || seatsGiven || seatsReset ? await enforceSeats(acct(user)) : null;
   const dealAfter = dealLabel(user.deal);
   const what = [
     planGiven ? `plan:${b.plan}` : "",

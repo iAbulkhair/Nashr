@@ -10,6 +10,6 @@ export async function GET() {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const no = forbid(u, "referral");
   if (no) return no;
-  await registerCode(u.email);
+  await registerCode(acct(u));
   return NextResponse.json({ ok: true, ...(await referralStats(acct(u))) });
 }

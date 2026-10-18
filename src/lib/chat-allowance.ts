@@ -12,7 +12,7 @@ import { acct } from "./account-id";
 
 /**
  * The chat allowance (pricing phase 2, rules 308-310): every owner message (one turn, however many model calls it takes)
- * is counted per account, shared by every seat, brand and connected app (`u.email` is always the account's). A paid plan
+ * is counted per account, shared by every seat, brand and connected app (`acct(u)`, the account's id). A paid plan
  * counts per UTC calendar month (`chatMsgKey`), a trial once for the whole trial (`chatTrialKey`), against
  * `chatAllowanceOf` (src/lib/pricing.ts).
  *
@@ -60,7 +60,8 @@ type Reserved = { ok: true; key: string; units: number; model: string; status: C
 export type ChatGate = (Reserved & { mode: "included" }) | (Reserved & { mode: "overflow"; hold: number }) | Refusal | FairUseStop;
 export type ChatReserved = Extract<ChatGate, { ok: true }>;
 
-const counterKey = (u: Pick<User, "email" | "plan">) => (u.plan === "trial" ? chatTrialKey(u.email) : chatMsgKey(u.email));
+// By account id (rule 1985), like the overflow and credit counters next to it.
+const counterKey = (u: Pick<User, "id" | "email" | "plan">) => (u.plan === "trial" ? chatTrialKey(acct(u)) : chatMsgKey(acct(u)));
 /** "Continue on credits" is offered on paid plans only: the trial's chat is its 30 messages. */
 export const overflowAvailable = (u: Pick<User, "plan">) => u.plan !== "trial";
 const overflowOn = (u: Pick<User, "plan" | "chatOverflow">) => overflowAvailable(u) && u.chatOverflow === true;

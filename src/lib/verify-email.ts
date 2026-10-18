@@ -223,7 +223,7 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
       await dropVerifyCode(old);
-      await wipeAccount(id, { userLocked: true });
+      await wipeAccount(id, { userLocked: true, loginLocked: true });
       return "ok";
     })));
   } catch (e) {

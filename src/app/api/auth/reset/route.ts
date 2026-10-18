@@ -45,12 +45,12 @@ export async function POST(req: Request) {
 
   if (login.kind === "member") {
     const { member, owner } = login;
-    if (!owner || member.memberOf !== owner.email) return badToken();
+    if (!owner || member.memberOf !== acct(owner)) return badToken();
     if (isSuspended(owner)) return suspendedAnswer(owner);
     // The member record only, under its own lock. Every other device of THIS member is signed out; the owner and the
     // rest of the team are untouched.
     const done = await withMemberLock(member.email, async (m) => {
-      if (m.memberOf !== owner.email) return false;
+      if (m.memberOf !== acct(owner)) return false;
       m.passHash = hash;
       m.sessionsAfter = new Date().toISOString();
       await saveMember(m);
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
   await withUserLock(acct(owner), async (x) => { x.passHash = hash; x.emailVerifiedAt ??= new Date().toISOString(); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
   // The owner's calendar feed and booking links and every member's go with the MCP tokens, as every member's session does above (the
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
-  const roster = await db.smembers(membersKey(owner.email));
+  const roster = await db.smembers(membersKey(acct(owner)));
   // The owner's linked marketing calendars (Reem B3) end with them too: whoever holds the account next links their own.
   await Promise.all([revokeAllMcp(acct(owner)), revokeFeeds([owner.email, ...roster]), revokeBooks([owner.email, ...roster]), revokeCalendarLinks(owner.email)]);
   await createSession(owner.email);

@@ -36,7 +36,7 @@ async function dailyFor(u: User): Promise<string> {
   // `renewPaymob`, rules 710-714). Before the credit renewal, so a locked account gets no new month. Never fatal.
   if ((u.brandId ?? "default") === "default" && u.billing && paymentsEnabled()) {
     try {
-      const r = await renewPaymob(u.email);
+      const r = await renewPaymob(acct(u));
       if (r) out.push(r);
     } catch (e) {
       out.push(`paymob_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);

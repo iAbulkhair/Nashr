@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   const done = await rotateSession(a.email, async (stamp) => {
     if (a.kind === "member") {
       const ok = await withMemberLock(a.email, async (m) => {
-        if (m.memberOf !== u.email) return false;
+        if (m.memberOf !== acct(u)) return false;
         m.devicesAfter = stamp;
         await saveMember(m);
         return true;

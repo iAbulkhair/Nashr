@@ -69,9 +69,10 @@ async function revokeComposio(scopes: Scope[]) {
  *
  * `id` is the account id (`acct(u)`, rule 1980): every account key below is built from it. The owner's sign-in address
  * is read from the record (in R1 it equals the id), and its login index goes with the account; another account's index
- * is never deleted (`releaseLogin` deletes only an index that names this account, rule 1999).
+ * is never deleted (`releaseLogin` deletes only an index that names this account, rule 1999). `loginLocked`: the caller
+ * holds `lock:login:{address}` already (the address move), so the release does not take it again (security review L1).
  */
-export async function wipeAccount(id: string, opts: { userLocked?: boolean } = {}) {
+export async function wipeAccount(id: string, opts: { userLocked?: boolean; loginLocked?: boolean } = {}) {
   const e = id;
   const login = normalizeEmail((await getAccount(e))?.email ?? e);
   // Rule 1955: no charge after the owner asked to delete. Renewal turns off and the saved card goes under the account
@@ -205,7 +206,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean } = {
   keys.push(...(await forgetWishlistUser(e)));
   // Partner programme (src/lib/partners.ts): recorded payments and, for a partner, the record with its bank details, the
   // code, the referral set and the ledger. The account also leaves its own partner's referral set.
-  keys.push(...(await forgetPartnerData(e)));
+  keys.push(...(await forgetPartnerData(e, login)));
   keys.push(accountKey.mcpGrants(e));
   keys.push(`profile:${e}`, accountKey.mcpTokenOf(e), accountKey.brands(e), accountKey.activeBrand(login), accountKey.user(e));
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
@@ -244,5 +245,5 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean } = {
   // `user:{owner}` could have written a new one.
   await Promise.all(logins.map((l) => revokeAllDevices(l)));
   // The owner's login index (members' go in `wipeTeam`), and the deletion row names the id and the address (rule 1999).
-  await Promise.all([revokeFeed(login), revokeBook(login), releaseLogin(login, e), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
+  await Promise.all([revokeFeed(login), revokeBook(login), releaseLogin(login, e, { locked: opts.loginLocked }), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
 }
