@@ -26,6 +26,8 @@ export type IntegrationDef = {
   optional?: readonly string[];
   /** Callback paths outside the connector registry that the platform app must list (rule 2165). */
   callbacks?: readonly string[];
+  /** Webhook paths the platform app must be given, each a route of ours (rule 2172). */
+  webhooks?: readonly string[];
 };
 
 const all = (...n: string[]): Need => ({ all: n });
@@ -53,7 +55,7 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: "linkedin", name: { ar: "لينكدإن", en: "LinkedIn" }, what: { ar: "تطبيق لينكدإن (يعمل عبر Composio فقط)", en: "LinkedIn app (works through Composio only)" }, need: all("LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET") },
   { id: "tiktok", name: { ar: "تيك توك", en: "TikTok" }, what: { ar: "تطبيق تيك توك (يعمل عبر Composio فقط)", en: "TikTok app (works through Composio only)" }, need: all("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET") },
   { id: "snapchat", name: { ar: "سناب شات (إعلانات)", en: "Snapchat Ads" }, what: { ar: "نتائج الإعلانات", en: "Ads results" }, need: all("SNAP_CLIENT_ID", "SNAP_CLIENT_SECRET") },
-  { id: "shopify", name: { ar: "Shopify", en: "Shopify" }, what: { ar: "المنتجات والطلبات والمقالات", en: "Products, orders, articles" }, need: all("SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET") },
+  { id: "shopify", name: { ar: "Shopify", en: "Shopify" }, what: { ar: "المنتجات والطلبات والمقالات", en: "Products, orders, articles" }, need: all("SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET"), webhooks: ["/api/shopify/compliance"] },
   { id: "salla", name: { ar: "سلة", en: "Salla" }, what: { ar: "المنتجات والطلبات", en: "Products and orders" }, need: all("SALLA_CLIENT_ID", "SALLA_CLIENT_SECRET") },
   { id: "zid", name: { ar: "زد", en: "Zid" }, what: { ar: "المنتجات والطلبات", en: "Products and orders" }, need: all("ZID_CLIENT_ID", "ZID_CLIENT_SECRET") },
   { id: "whatsapp", name: { ar: "واتساب الدعم", en: "Support WhatsApp" }, what: { ar: "رقم الدعم في التطبيق والفوترة والرسائل", en: "The support number in the app, billing and emails" }, need: all("SUPPORT_WHATSAPP") },
@@ -64,7 +66,7 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
 /** A code-level switch on top of the variables. `off: true` means the code keeps the service off right now. */
 export type Gate = { id: string; off: boolean; label: { ar: string; en: string } };
 export type IntegrationStatus = "on" | "partial" | "off";
-export type IntegrationView = { id: string; name: { ar: string; en: string }; what: { ar: string; en: string }; status: IntegrationStatus; names: { name: string; set: boolean; required: boolean }[]; gates: Gate[]; callbacks: string[] };
+export type IntegrationView = { id: string; name: { ar: string; en: string }; what: { ar: string; en: string }; status: IntegrationStatus; names: { name: string; set: boolean; required: boolean }[]; gates: Gate[]; callbacks: string[]; webhooks: string[] };
 
 /** Presence only: the variable exists and is not empty. The value itself is never returned, logged or compared. */
 export const present = (env: Readonly<Record<string, string | undefined>>, name: string): boolean => typeof env[name] === "string" && env[name] !== "";
@@ -139,6 +141,7 @@ export function integrationsView(env: Readonly<Record<string, string | undefined
       names: [...req.map((name) => ({ name, set: has(name), required: true })), ...opt.map((name) => ({ name, set: has(name), required: false }))],
       gates: gatesOf(d.id, has, claudePaused),
       callbacks: callbacksOf(d, req),
+      webhooks: [...(d.webhooks ?? [])],
     };
   });
 }

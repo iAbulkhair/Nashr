@@ -6,7 +6,11 @@ import { db } from "@/lib/db";
 import { globalKey } from "@/lib/keys";
 import { readFile, writeFile } from "@/lib/files";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
-import { applyShopRedactions, COMPLIANCE_TOPICS, recordCompliance, validShopifyWebhook } from "@/lib/connectors/shopify-compliance";
+import { applyShopRedactions, COMPLIANCE_SHOWN, COMPLIANCE_TOPICS, complianceSummary, recordCompliance, validShopifyWebhook } from "@/lib/connectors/shopify-compliance";
+import { integrationsView } from "@/lib/integration-status";
+import { adminSignIn, json, signOut } from "./helpers/session";
+import * as integrationsRoute from "@/app/api/admin/integrations/route";
+import { existsSync } from "node:fs";
 import * as route from "@/app/api/shopify/compliance/route";
 
 /**
@@ -175,5 +179,51 @@ describe("the stores cron applies shop/redact from its own roster (rule 2171)", 
     expect(src.indexOf("applyShopRedactions(")).toBeLessThan(src.indexOf("runCronBatch({"));
     expect(src).toMatch(/applyShopRedactions\([^;]*\.catch\(/);
     expect(src).toContain("shop_redactions: shopRedactions");
+  });
+});
+
+describe("the Integrations page gives the founder the webhook URL and the receipts (rules 2172-2173)", () => {
+  it("the Shopify row lists /api/shopify/compliance as its webhook, every listed webhook is a route of ours, no other row has one", () => {
+    const rows = integrationsView({});
+    expect(rows.find((r) => r.id === "shopify")?.webhooks).toEqual(["/api/shopify/compliance"]);
+    for (const r of rows) for (const w of r.webhooks) expect(existsSync(`src/app${w}/route.ts`), w).toBe(true);
+    expect(rows.filter((r) => r.webhooks.length).map((r) => r.id)).toEqual(["shopify"]);
+    expect(readFileSync("src/components/admin/IntegrationsPanel.tsx", "utf8")).toContain("data-testid={`integration-${i.id}-webhooks`}");
+  });
+
+  it("complianceSummary: the stores still pending, oldest first, and the newest receipts; a broken row is left out", async () => {
+    expect(await complianceSummary()).toEqual({ pending: [], recent: [] });
+    const t0 = new Date("2026-10-18T08:00:00.000Z");
+    await recordCompliance("customers/data_request", { shop_domain: "a.myshopify.com", customer: CUSTOMER }, t0);
+    await recordCompliance("shop/redact", { shop_domain: "b.myshopify.com" }, new Date("2026-10-18T09:00:00.000Z"));
+    await recordCompliance("shop/redact", { shop_domain: "c.myshopify.com" }, new Date("2026-10-18T07:00:00.000Z"));
+    await db.lpush(globalKey.shopifyCompliance(), "{broken");
+    await db.lpush(globalKey.shopifyCompliance(), JSON.stringify({ topic: "shop/redact", shop: "evil.example.com", at: "x" }));
+    const s = await complianceSummary();
+    expect(s.pending).toEqual([{ shop: "c.myshopify.com", at: "2026-10-18T07:00:00.000Z" }, { shop: "b.myshopify.com", at: "2026-10-18T09:00:00.000Z" }]);
+    expect(s.recent.map((r) => [r.topic, r.shop])).toEqual([["shop/redact", "c.myshopify.com"], ["shop/redact", "b.myshopify.com"], ["customers/data_request", "a.myshopify.com"]]);
+    expect(JSON.stringify(s)).not.toContain(CUSTOMER.email);
+    for (let n = 0; n < COMPLIANCE_SHOWN + 5; n++) await recordCompliance("customers/redact", { shop_domain: "d.myshopify.com" });
+    expect((await complianceSummary()).recent).toHaveLength(COMPLIANCE_SHOWN);
+  });
+
+  it("GET /api/admin/integrations carries the summary to a founder only, and still loads when the store read fails", async () => {
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-shopify-compliance");
+    await recordCompliance("shop/redact", { shop_domain: "a.myshopify.com" });
+    expect((await integrationsRoute.GET(json("/api/admin/integrations", "GET"))).status).toBe(401);
+    await adminSignIn();
+    try {
+      const body = (await (await integrationsRoute.GET(json("/api/admin/integrations", "GET"))).json()) as { shopifyCompliance: { pending: { shop: string }[] } };
+      expect(body.shopifyCompliance.pending.map((p) => p.shop)).toEqual(["a.myshopify.com"]);
+      const fail = vi.spyOn(db, "hgetall").mockRejectedValueOnce(new Error("down"));
+      const down = await integrationsRoute.GET(json("/api/admin/integrations", "GET"));
+      fail.mockRestore();
+      expect(down.status).toBe(200);
+      expect(((await down.json()) as { shopifyCompliance: unknown; items: unknown[] })).toMatchObject({ shopifyCompliance: null });
+      const r = readFileSync("src/app/api/admin/integrations/route.ts", "utf8");
+      expect(r.indexOf("adminActor(req)")).toBeLessThan(r.indexOf("complianceSummary()"));
+    } finally {
+      signOut();
+    }
   });
 });

@@ -81,3 +81,24 @@ export async function applyShopRedactions(scopes: readonly string[], now = new D
   ])));
   return done.filter(Boolean).length;
 }
+
+/** Receipts the founder console shows (rule 2173): the newest ones, plus every store still waiting for a stores run. */
+export const COMPLIANCE_SHOWN = 10;
+export type ComplianceSummary = { pending: { shop: string; at: string }[]; recent: ComplianceReceipt[] };
+
+/** Two reads of the two fixed keys. Stores and times only, as recorded; a row that does not parse is left out. */
+export async function complianceSummary(): Promise<ComplianceSummary> {
+  const [pending, rows] = await Promise.all([db.hgetall<string>(globalKey.shopifyRedact()), db.lrange(globalKey.shopifyCompliance(), 0, COMPLIANCE_SHOWN - 1)]);
+  const recent = rows.flatMap((r) => {
+    try {
+      const x = JSON.parse(r) as ComplianceReceipt;
+      return typeof x?.topic === "string" && SHOP_HOST.test(String(x.shop)) ? [{ topic: x.topic, shop: x.shop, at: String(x.at), ...(typeof x.workspaces === "number" ? { workspaces: x.workspaces } : {}) }] : [];
+    } catch {
+      return [];
+    }
+  });
+  return {
+    pending: Object.entries(pending).filter(([shop]) => SHOP_HOST.test(shop)).map(([shop, at]) => ({ shop, at: String(at) })).sort((a, b) => a.at.localeCompare(b.at)),
+    recent,
+  };
+}

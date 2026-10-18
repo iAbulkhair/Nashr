@@ -5,8 +5,10 @@ import Badge, { type BadgeTone } from "@/components/ui/Badge";
 import Callout from "@/components/ui/Callout";
 // Type only: integration-status.ts is server code (it imports model.ts); the type is erased from the bundle (rule 249).
 import type { IntegrationView } from "@/lib/integration-status";
+import type { ComplianceSummary } from "@/lib/connectors/shopify-compliance";
 // Rules 2002 empty state, 2003 skeleton while the panel loads.
 import { PanelSkeleton } from "@/components/ui/Skeleton";
+import { Time } from "@/components/ui/Time";
 
 const S = {
   en: {
@@ -16,6 +18,12 @@ const S = {
     status: { on: "On", partial: "Incomplete", off: "Off" },
     required: "needed", optional: "optional", set: "set", missing: "missing", gatedOff: "Off in code", gatedOn: "Code switch",
     callback: "Callback path to list in the platform app (after this site's address)",
+    webhook: "Webhook path to give the platform app (after this site's address; Shopify: all three compliance fields)",
+    compliance: "Shopify compliance requests",
+    pending: (n: number) => `${n} store erasure${n === 1 ? "" : "s"} waiting for the next stores run`,
+    none: "None received yet.",
+    topic: { "customers/data_request": "Customer data request (nothing held)", "customers/redact": "Customer erasure (nothing held)", "shop/redact": "Store erasure queued", "shop/redact:done": "Store erasure done" } as Record<string, string>,
+    workspaces: (n: number) => `${n} workspace${n === 1 ? "" : "s"}`,
     summary: (on: number, all: number) => `${on} of ${all} on`,
   },
   ar: {
@@ -25,6 +33,12 @@ const S = {
     status: { on: "تعمل", partial: "ناقصة", off: "متوقفة" },
     required: "مطلوب", optional: "اختياري", set: "مضبوط", missing: "غير مضبوط", gatedOff: "متوقفة في الكود", gatedOn: "مفتاح في الكود",
     callback: "مسار الرجوع الذي يُضاف في تطبيق المنصة (بعد عنوان هذا الموقع)",
+    webhook: "مسار الإشعارات (Webhook) الذي يُعطى لتطبيق المنصة (بعد عنوان هذا الموقع؛ في Shopify: حقول الامتثال الثلاثة)",
+    compliance: "طلبات الامتثال من Shopify",
+    pending: (n: number) => `طلبات حذف متاجر تنتظر تشغيل المتاجر القادم: ${n}`,
+    none: "لم يصل أي طلب بعد.",
+    topic: { "customers/data_request": "طلب بيانات عميل (لا نحتفظ بشيء)", "customers/redact": "حذف بيانات عميل (لا نحتفظ بشيء)", "shop/redact": "طلب حذف بيانات متجر في الانتظار", "shop/redact:done": "تم حذف بيانات المتجر" } as Record<string, string>,
+    workspaces: (n: number) => `مساحات العمل: ${n}`,
     summary: (on: number, all: number) => `${on} من ${all} تعمل`,
   },
 } as const;
@@ -35,9 +49,14 @@ const TONE: Record<IntegrationView["status"], BadgeTone> = { on: "success", part
 export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
   const L = S[lang];
   const [items, setItems] = useState<IntegrationView[] | null>(null);
+  const [shopify, setShopify] = useState<ComplianceSummary | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
-    adminFetch("/api/admin/integrations").then((r) => r.json()).then((j) => (j.ok ? setItems(j.items) : setError(true))).catch(() => setError(true));
+    adminFetch("/api/admin/integrations").then((r) => r.json()).then((j) => {
+      if (!j.ok) return setError(true);
+      setItems(j.items);
+      setShopify(j.shopifyCompliance ?? null);
+    }).catch(() => setError(true));
   }, []);
   if (error) return <Callout tone="danger">{L.failed}</Callout>;
   if (!items) return <PanelSkeleton label={L.loading} shape="rows" />;
@@ -74,6 +93,30 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
               <div className="mt-2 text-xs" data-testid={`integration-${i.id}-callbacks`}>
                 <p className="text-foreground-muted">{L.callback}</p>
                 {i.callbacks.map((c) => <p key={c} className="font-mono break-all" dir="ltr">{c}</p>)}
+              </div>
+            )}
+            {i.webhooks.length > 0 && (
+              <div className="mt-2 text-xs" data-testid={`integration-${i.id}-webhooks`}>
+                <p className="text-foreground-muted">{L.webhook}</p>
+                {i.webhooks.map((w) => <p key={w} className="font-mono break-all" dir="ltr">{w}</p>)}
+              </div>
+            )}
+            {i.id === "shopify" && shopify && (
+              <div className="mt-2 text-xs" data-testid="integration-shopify-compliance">
+                <p className="font-semibold">{L.compliance}</p>
+                {shopify.pending.length > 0 && <p className="mt-1"><Badge tone="warning">{L.pending(shopify.pending.length)}</Badge></p>}
+                {shopify.recent.length === 0 ? <p className="text-foreground-muted">{L.none}</p> : (
+                  <ul className="mt-1 grid gap-0.5">
+                    {shopify.recent.map((r, n) => (
+                      <li key={n} className="flex flex-wrap gap-x-2">
+                        <span>{L.topic[r.topic] ?? r.topic}</span>
+                        <span className="font-mono" dir="ltr">{r.shop}</span>
+                        <Time value={r.at} lang={lang} style="datetime" className="tnum text-foreground-muted" />
+                        {typeof r.workspaces === "number" && <span className="text-foreground-muted">{L.workspaces(r.workspaces)}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
             {i.gates.map((g) => (
