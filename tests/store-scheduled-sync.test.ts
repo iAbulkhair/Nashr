@@ -214,9 +214,12 @@ describe("the route runs each workspace once per slot (rule 627)", () => {
     expect((await getSalesSnapshot(withStore))?.provider).toBe("woocommerce");
     expect(await getSalesSnapshot(without)).toBeNull();
 
-    const before = asked;
+    // Store reads only: the cron also retries the `app/uninstalled` subscription of the Shopify connections other tests
+    // here left unmarked (rule 2204), which is not a sync.
+    const reads = () => (globalThis.fetch as unknown as { mock: { calls: [RequestInfo, RequestInit?][] } }).mock.calls.filter(([, init]) => !String(init?.body ?? "").includes("webhookSubscription")).length;
+    const before = reads();
     const second = (await (await call()).json()) as { alreadyDone: number; processed: number };
-    expect(asked).toBe(before);
+    expect(reads()).toBe(before);
     expect(second.processed).toBe(0);
     expect(second.alreadyDone).toBeGreaterThanOrEqual(2);
   });

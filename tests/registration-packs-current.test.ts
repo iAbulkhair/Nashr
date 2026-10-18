@@ -77,7 +77,7 @@ describe("Each platform is asked only for the scopes the code uses (rule 2174)",
     expect(PROVIDERS.find((p) => p.id === "shopify")?.oauth?.scopes).toEqual(["read_products", "read_orders", "write_content"]);
     const src = readFileSync("src/lib/connectors/shopify.ts", "utf8");
     // The root fields the connector calls, and the scope Shopify's Admin GraphQL reference names for each (2026-10-18).
-    const NEEDS: Record<string, string> = { products: "read_products", orders: "read_orders", ordersCount: "read_orders", abandonedCheckouts: "read_orders", abandonedCheckoutsCount: "read_orders", blogs: "write_content", articleCreate: "write_content", shop: "", webhookSubscriptionCreate: "" };
+    const NEEDS: Record<string, string> = { products: "read_products", orders: "read_orders", ordersCount: "read_orders", abandonedCheckouts: "read_orders", abandonedCheckoutsCount: "read_orders", webhookSubscriptions: "", blogs: "write_content", articleCreate: "write_content", shop: "", webhookSubscriptionCreate: "" };
     // The top-level fields of every operation: names at brace depth 1, before their arguments or selection.
     const roots = [...src.matchAll(/`((?:query|mutation) [\s\S]*?)`;/g)].flatMap(([, op]) => {
       const out: string[] = [];

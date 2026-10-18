@@ -5,7 +5,8 @@ import { sc } from "@/lib/auth";
 import { dailyRoster } from "@/lib/schedule";
 import { runCronBatch } from "@/lib/cron-batch";
 import { syncStoreIfDue } from "@/lib/store-sales";
-import { applyShopRedactions } from "@/lib/connectors/shopify-compliance";
+import { applyShopRedactions, backfillUninstallHooks } from "@/lib/connectors/shopify-compliance";
+import { appOrigin } from "@/lib/origin";
 import { tallyConnections } from "@/lib/connectors/health";
 import { keepTokensAlive } from "@/lib/connectors/keepalive";
 
@@ -27,6 +28,10 @@ export const maxDuration = 300;
  * src/lib/connectors/keepalive.ts) are refreshed for the same roster, so a paused brand keeps its store connection.
  * At most 60 a run; a failure does not stop the syncs.
  *
+ * Then Shopify stores connected before rule 2203, or whose subscription failed at connect, are subscribed to
+ * `app/uninstalled` (rule 2204, src/lib/connectors/shopify-compliance.ts): at most 30 a run; a failure does not stop
+ * the syncs.
+ *
  * Then the connections of the same roster are counted per platform for the founder console (rules 2177-2178,
  * src/lib/connectors/health.ts), with the keep-alive's counts beside them (rule 2202): counts only, one fixed key. A failed
  * count leaves the last one and does not stop the syncs.
@@ -46,6 +51,10 @@ export async function GET(req: Request) {
     console.error("token keep-alive", e instanceof Error ? e.name : "error");
     return null;
   });
+  const hooks = await backfillUninstallHooks(scopes, appOrigin(), now).catch((e) => {
+    console.error("uninstall hooks", e instanceof Error ? e.name : "error");
+    return null;
+  });
   // After the redactions and the keep-alive, so an erased store is not counted and a token lost this run is.
   const health = await tallyConnections(scopes, now, kept).then((h) => h.workspaces).catch((e) => {
     console.error("connection health", e instanceof Error ? e.name : "error");
@@ -58,5 +67,5 @@ export async function GET(req: Request) {
   });
   await recordCronRun("stores");
   const count = (prefix: string) => Object.values(report.results).filter((r) => r.startsWith(prefix)).length;
-  return NextResponse.json({ ok: true, ...report, synced: count("synced:"), failed_sync: count("failed:"), shop_redactions: shopRedactions, health_workspaces: health, kept_alive: kept });
+  return NextResponse.json({ ok: true, ...report, synced: count("synced:"), failed_sync: count("failed:"), shop_redactions: shopRedactions, health_workspaces: health, kept_alive: kept, uninstall_hooks: hooks });
 }

@@ -18,7 +18,7 @@ import { sallaStore } from "@/lib/connectors/salla";
 import { zidStore } from "@/lib/connectors/zid";
 import { connectMeta } from "@/lib/connectors/meta";
 import { connectAds, isAdProvider } from "@/lib/connectors/ads";
-import { SHOP_HOST, subscribeUninstall, validShopifyHmac } from "@/lib/connectors/shopify";
+import { SHOP_HOST, subscribeUninstall, UNINSTALL_HOOK_META, validShopifyHmac } from "@/lib/connectors/shopify";
 import { can } from "@/lib/roles";
 import { appOrigin } from "@/lib/origin";
 import { connectCalendar } from "@/lib/secretary-gcal";
@@ -124,9 +124,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     if (p.id === "zid") { const z = await zidStore(conn); if (z?.id) meta.storeId = z.id; if (z?.name) meta.account = z.name; if (z?.url) meta.site = z.url; }
     if (p.id === "meta") conn = await connectMeta(conn);
     if (isAdProvider(p.id)) conn = await connectAds(conn);
+    // Best effort: Shopify then tells us when the store uninstalls the app (rule 2203). Never throws; the mark saved with
+    // the connection tells the stores cron this store needs no second try (rule 2204).
+    if (p.id === "shopify" && (await subscribeUninstall(conn, origin))) meta[UNINSTALL_HOOK_META] = new Date().toISOString();
     await saveConnection(st.email, conn);
-    // After the save, best effort: Shopify then tells us when the store uninstalls the app (rule 2203). Never throws.
-    if (p.id === "shopify") await subscribeUninstall(conn, origin);
     await track(st.email.split("#")[0], "connect");
     return back(`connected=${p.id}`);
   } catch (e) {

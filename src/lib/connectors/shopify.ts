@@ -68,18 +68,28 @@ export async function shopifyGql<T>(c: Connection, query: string, variables: Rec
 /** The one webhook URL of ours Shopify calls: compliance topics and `app/uninstalled` (rules 2168, 2203). */
 export const SHOPIFY_HOOK_PATH = "/api/shopify/compliance";
 
+const FIND_UNINSTALL = `query FindUninstall($uri: String!) {
+  webhookSubscriptions(first: 1, topics: [APP_UNINSTALLED], uri: $uri) { nodes { id } }
+}`;
 const SUBSCRIBE_UNINSTALL = `mutation Subscribe($sub: WebhookSubscriptionInput!) {
   webhookSubscriptionCreate(topic: APP_UNINSTALLED, webhookSubscription: $sub) { userErrors { message } }
 }`;
 
+/** The `meta` field a Shopify connection carries once its store is subscribed to `app/uninstalled` (rule 2204). */
+export const UNINSTALL_HOOK_META = "uninstallHook";
+
 /**
  * Asks the store to tell us when it uninstalls the app (rule 2203), so the stores cron drops the dead connection within
- * hours instead of the 48 that `shop/redact` takes. Needs no scope. Best effort: answers false on any failure or
- * userError (already subscribed included) and never throws, so a connect never fails because of it.
+ * hours instead of the 48 that `shop/redact` takes. Needs no scope. A store already subscribed to our URL (a reconnect,
+ * or a second try) answers true without a second subscription (rule 2204). Best effort: false on any failure or
+ * userError, never a throw, so a connect never fails because of it.
  */
 export async function subscribeUninstall(c: Connection, origin: string): Promise<boolean> {
   try {
-    const d = await shopifyGql<{ webhookSubscriptionCreate: { userErrors: { message: string }[] } }>(c, SUBSCRIBE_UNINSTALL, { sub: { uri: `${origin}${SHOPIFY_HOOK_PATH}` } });
+    const uri = `${origin}${SHOPIFY_HOOK_PATH}`;
+    const found = await shopifyGql<{ webhookSubscriptions: { nodes: { id: string }[] } }>(c, FIND_UNINSTALL, { uri });
+    if (found.webhookSubscriptions.nodes.length) return true;
+    const d = await shopifyGql<{ webhookSubscriptionCreate: { userErrors: { message: string }[] } }>(c, SUBSCRIBE_UNINSTALL, { sub: { uri } });
     return !d.webhookSubscriptionCreate.userErrors.length;
   } catch {
     return false;

@@ -4,8 +4,8 @@ import { globalKey } from "../keys";
 import { pmap } from "../parallel";
 import { sameSecret } from "../rate";
 import { dropSalesSnapshot } from "../store-sales";
-import { SHOP_HOST } from "./shopify";
-import { deleteConnection, listConnections } from "./store";
+import { SHOP_HOST, subscribeUninstall, UNINSTALL_HOOK_META } from "./shopify";
+import { deleteConnection, getConnection, listConnections, saveConnection } from "./store";
 
 /**
  * Shopify's three mandatory compliance webhooks (rules 2168-2171, docs/system/tests/2160-integrations-panel-drift.md).
@@ -90,6 +90,35 @@ export async function applyShopRedactions(scopes: readonly string[], now = new D
     pushCapped(globalKey.shopifyCompliance(), JSON.stringify({ topic: "shop/redact:done", shop, at: stamp, workspaces: hits.get(shop) ?? 0 } satisfies ComplianceReceipt), COMPLIANCE_LOG_CAP),
   ])));
   return done.filter(Boolean).length;
+}
+
+/** Stores subscribed to `app/uninstalled` by one stores run at most (rule 2204): two Shopify calls each. */
+export const HOOKS_PER_RUN = 30;
+export type HookBackfill = { due: number; subscribed: number; failed: number };
+
+/**
+ * Subscribes `app/uninstalled` (rule 2203) for the Shopify connections of the workspaces given (the cron's roster) that
+ * do not carry the mark yet: those made before rule 2203, and those whose subscription failed at connect. A connection
+ * that must reconnect or runs through Composio is left alone. At most HOOKS_PER_RUN a run, six at a time; the mark is
+ * saved only when the store answered and the connection read back is still the same grant (same `connectedAt`, no
+ * mark), so a reconnect in between is never overwritten. A failure is retried by the next run.
+ */
+export async function backfillUninstallHooks(scopes: readonly string[], origin: string, now = new Date()): Promise<HookBackfill> {
+  const lists = await pmap(scopes, (scope) => listConnections(scope));
+  const due = scopes.flatMap((scope, i) => {
+    const c = (lists[i] ?? []).find((x) => x.provider === "shopify");
+    return c && SHOP_HOST.test(String(c.meta?.shop ?? "")) && !c.meta?.[UNINSTALL_HOOK_META] && !c.needsReconnect && c.meta?.via !== "composio" ? [{ scope, connectedAt: c.connectedAt }] : [];
+  });
+  const results = await pmap(due.slice(0, HOOKS_PER_RUN), async ({ scope, connectedAt }) => {
+    const conn = await getConnection(scope, "shopify");
+    if (!conn || conn.connectedAt !== connectedAt || conn.meta?.[UNINSTALL_HOOK_META]) return "skip" as const;
+    if (!(await subscribeUninstall(conn, origin))) return "failed" as const;
+    const again = await getConnection(scope, "shopify");
+    if (!again || again.connectedAt !== connectedAt) return "skip" as const;
+    await saveConnection(scope, { ...again, meta: { ...again.meta, [UNINSTALL_HOOK_META]: now.toISOString() } });
+    return "subscribed" as const;
+  }, 6);
+  return { due: due.length, subscribed: results.filter((r) => r === "subscribed").length, failed: results.filter((r) => r === "failed").length };
 }
 
 /** Receipts the founder console shows (rule 2173): the newest ones, plus every store still waiting for a stores run. */

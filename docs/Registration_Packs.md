@@ -41,7 +41,8 @@ configuration, under **Compliance webhooks**, put `https://thakeen.com/api/shopi
 (customer data request, customer data erasure, shop data erasure). No new key: Shopify signs them with the same
 `SHOPIFY_CLIENT_SECRET`. Thakeen keeps no Shopify customer data, so the two customer requests are only logged; a shop
 erasure removes that store's connection and sales totals at the next stores cron run. The `app/uninstalled` webhook
-(rule 2203) needs no step here: Thakeen subscribes each store to it through the API when the store connects, and an
+(rule 2203) needs no step here: Thakeen subscribes each store to it through the API when the store connects (stores
+connected earlier are subscribed by the stores cron, rule 2204), and an
 uninstall then removes the connection at the next stores run instead of 48 hours later.
 
 Names in the dated packs and in `docs/Platform_Access_Playbook.md` that the code does not read: `MS_CLIENT_ID` and
