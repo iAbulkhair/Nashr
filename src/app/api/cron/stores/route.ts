@@ -7,6 +7,7 @@ import { runCronBatch } from "@/lib/cron-batch";
 import { syncStoreIfDue } from "@/lib/store-sales";
 import { applyShopRedactions } from "@/lib/connectors/shopify-compliance";
 import { tallyConnections } from "@/lib/connectors/health";
+import { keepTokensAlive } from "@/lib/connectors/keepalive";
 
 export const maxDuration = 300;
 
@@ -22,6 +23,10 @@ export const maxDuration = 300;
  * every workspace of the roster, active and idle, so an uninstalled store's connection is gone before any sync. A failed
  * pass keeps the list for the next run and does not stop the syncs.
  *
+ * Then expired access tokens of providers whose refresh tokens lapse when unused (Salla, rule 2179,
+ * src/lib/connectors/keepalive.ts) are refreshed for the same roster, so a paused brand keeps its store connection.
+ * At most 60 a run; a failure does not stop the syncs.
+ *
  * Then the connections of the same roster are counted per platform for the founder console (rules 2177-2178,
  * src/lib/connectors/health.ts): counts only, one fixed key. A failed count leaves the last one and does not stop the syncs.
  */
@@ -36,7 +41,11 @@ export async function GET(req: Request) {
     console.error("shop redactions", e instanceof Error ? e.name : "error");
     return -1;
   });
-  // After the redactions, so a store erased this run is not counted.
+  const kept = await keepTokensAlive(scopes, now.getTime()).catch((e) => {
+    console.error("token keep-alive", e instanceof Error ? e.name : "error");
+    return null;
+  });
+  // After the redactions and the keep-alive, so an erased store is not counted and a token lost this run is.
   const health = await tallyConnections(scopes, now).then((h) => h.workspaces).catch((e) => {
     console.error("connection health", e instanceof Error ? e.name : "error");
     return -1;
@@ -48,5 +57,5 @@ export async function GET(req: Request) {
   });
   await recordCronRun("stores");
   const count = (prefix: string) => Object.values(report.results).filter((r) => r.startsWith(prefix)).length;
-  return NextResponse.json({ ok: true, ...report, synced: count("synced:"), failed_sync: count("failed:"), shop_redactions: shopRedactions, health_workspaces: health });
+  return NextResponse.json({ ok: true, ...report, synced: count("synced:"), failed_sync: count("failed:"), shop_redactions: shopRedactions, health_workspaces: health, kept_alive: kept });
 }
