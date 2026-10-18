@@ -30,6 +30,12 @@ a platform or a key name changes and this table does not.
 | Outlook Calendar (Reem) | `https://thakeen.com/api/connect/mscal/callback` | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | `openid email offline_access User.Read Calendars.ReadBasic` |
 | Sign in with Google, its own client | `https://thakeen.com/api/auth/google/callback` | `GOOGLE_SIGNIN_CLIENT_ID`, `GOOGLE_SIGNIN_CLIENT_SECRET` | `openid email profile` |
 
+Salla (2026-10-18, read from Salla's Authorization docs): an app published on the Salla App Store must use **Easy
+Mode**, where Salla sends the tokens to a webhook (`app.store.authorize`). Thakeen implements only **Custom Mode** (the
+callback above), which Salla allows for testing. Choose Custom Mode under App Keys and keep the app unpublished (test
+stores and the merchants you add by hand) until Easy Mode is built. Salla access tokens last 14 days and refresh tokens a
+month, single use; Thakeen refreshes early (rule 2176).
+
 Shopify compliance webhooks (rules 2168-2171): Shopify will not list an app without them. In the Shopify app's
 configuration, under **Compliance webhooks**, put `https://thakeen.com/api/shopify/compliance` in all three fields
 (customer data request, customer data erasure, shop data erasure). No new key: Shopify signs them with the same

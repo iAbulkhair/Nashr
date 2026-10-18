@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { currentUser } from "@/lib/auth";
 import { sameSecret } from "@/lib/rate";
 import { getProvider } from "@/lib/connectors/registry";
-import { exchangeCode } from "@/lib/connectors/oauth";
+import { exchangeCode, tokenExpiry } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, getConnection, saveConnection, takeState, type Connection } from "@/lib/connectors/store";
 import { dropCookie, readCookie } from "@/lib/cookie-names";
 import { composioDiscard, composioVerify } from "@/lib/connectors/composio";
@@ -117,7 +117,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     const data = await exchangeCode(p, code, { shop, verifier: st.verifier || undefined });
     const meta: Record<string, string> = {};
     if (shop) meta.shop = shop;
-    const expiresAt = data.expires_in ? new Date(Date.now() + Number(data.expires_in) * 1000).toISOString() : undefined;
+    const expiresAt = tokenExpiry(data);
     let conn: Connection = { provider: p.id, data, meta, connectedAt: new Date().toISOString(), expiresAt };
     if (p.id === "x") { const me = await xMe(conn); if (me) meta.account = `@${me.username}`; }
     if (p.id === "salla") { const st2 = await sallaStore(conn); if (st2?.name) meta.account = st2.name; if (st2?.domain) meta.site = st2.domain; }
