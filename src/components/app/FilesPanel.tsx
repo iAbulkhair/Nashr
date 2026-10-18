@@ -9,7 +9,7 @@ import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
-import { emptyCopy } from "@/lib/empty-copy";
+import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 
 /**
  * `canImport` = `can(u, "catalog.import")`; `locked` = the core memory files this person may not write or delete
@@ -96,7 +96,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
       {err && <p role="alert" className="mt-3 text-sm text-danger">{err}</p>}
       <div className="mt-6 grid gap-4 md:grid-cols-[260px_1fr]">
         <aside className="rounded-xl border border-foreground/10 bg-surface p-3">
-          {files.length === 0 && <EmptyState compact title={E.title} body={E.body} />}
+          {files.length === 0 && <EmptyState compact title={E.title} body={E.body} help={emptyHelp(lang, "files")} />}
           <ul className="grid gap-1">
             {files.map((x) => (
               <li key={x.name}>
@@ -138,7 +138,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
               )}
             </>
           ) : (
-            files.length === 0 ? null : <EmptyState compact title={E.title} body={E.body} />
+            files.length === 0 ? null : <EmptyState compact title={E.title} body={E.body} help={emptyHelp(lang, "files")} />
           )}
         </section>
       </div>

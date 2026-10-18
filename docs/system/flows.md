@@ -1358,3 +1358,17 @@ Wave 2e of the supastarter gap study. Nothing a customer sees changes; the check
 ### 86.1 Releases
 
 No stored shape changes: one release, no expand/contract step. The lockfile gains one root `devDependencies` line (the package was already locked at 6.10.2).
+
+## 87. Help centre stable URLs (2026-10-18, branch `claude/wave3-help-urls-4919c5`, rules 2140-2149)
+
+Wave 3b of the supastarter gap study. supastarter's docs give every page its own URL; the pattern is ported onto the help centre's own data (`src/lib/help.ts`), and no supastarter code is copied.
+
+1. One page per topic (rules 2140, 2143). `/{lang}/help/{topic}` (`src/app/[lang]/help/[topic]/page.tsx`) is built at build time for every id in `HELP` and both languages; any other id calls `notFound()`, which `[lang]/not-found.tsx` draws. Its title is the topic's name, its description the topic's own questions (at most 160 characters), its canonical and hreflang come from `pageMeta`. `/{lang}/help` stays the index with search and topic pills; each topic heading there links its page.
+2. Stable anchors (rules 2141, 2142). Every answer has a hand-written `slug`, never made from the question text, so a reworded question keeps its links. `tests/help-urls.test.ts` pins every slug: renaming, moving or dropping one fails it. On the topic page each answer is a `<section id={slug}>`; on the index each `<details id={slug}>` opens and scrolls into view when the hash names it. Both show a "Link to this answer" link.
+3. Search and machines (rules 2144, 2145). The sitemap lists each topic page in both languages (anchors are not pages), and `/llms.txt` follows it with a section named by the resources card's own "Help center" title, each link the topic's title. The topic page carries FAQPage JSON-LD from `helpFaqJsonLd` (`src/lib/home-ld.ts`): each question and answer exactly as shown, serialised with `ldJson`, which escapes `<`.
+4. In-app help (rules 2146, 2147). `helpHref(lang, topic, slug?)` is typed from `HELP`: an unknown topic, or a slug from another topic, fails `tsc`. `HelpLink` (`src/components/ui/HelpLink.tsx`, "How does this work?", new tab) uses it on Settings, Billing (`credits#task-costs`), Security (`privacy#two-step-and-devices`), Brand file (`start#dialect-and-tone`) and Connections (`connect#platforms`), and `EmptyState` draws it for the empty inbox, files, to-dos, reports and activity (`emptyHelp` in `src/lib/empty-copy.ts`).
+5. One new answer (rule 2148): "How do I turn on two-step sign-in and see my devices?" in Privacy and account, written from the Security screen's own copy. It is `chat: false`, so the chat prompt keeps its size (rule 1328 now pins four help-page-only answers). `src/lib/help.ts` still imports only the language type and the import-free pricing and task tables (rule 2149), so the client help centre can read it.
+
+### 87.1 Releases
+
+No stored shape changes: one release, no expand/contract step. The help data gains a field in code only.

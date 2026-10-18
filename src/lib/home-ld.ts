@@ -1,3 +1,4 @@
+import type { HelpTopic } from "./help";
 import { HOME_FAQ } from "./home";
 import { dict, type Lang } from "./i18n";
 import { PLAN_PRICE_SAR, PRICES_INCLUDE_VAT, SELF_SERVE_PLANS } from "./pricing";
@@ -70,6 +71,22 @@ export function articleJsonLd(lang: Lang, origin: string, p: { slug: string; tit
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
     author: org,
     publisher: org,
+  };
+}
+
+/**
+ * One help topic's FAQPage (rule 2145): each question and answer exactly as the topic page shows them, from the same
+ * `helpTopics(origin)` list, so the markup can never say more than the page. No rating, author, date or number of its own.
+ */
+export function helpFaqJsonLd(lang: Lang, origin: string, topic: HelpTopic) {
+  const url = `${origin}/${lang}/help/${topic.id}`;
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    name: topic.title[lang],
+    inLanguage: lang,
+    url,
+    mainEntity: topic.items.map((i) => ({ "@type": "Question", name: i.q[lang], url: `${url}#${i.slug}`, acceptedAnswer: { "@type": "Answer", text: i.a[lang] } })),
   };
 }
 

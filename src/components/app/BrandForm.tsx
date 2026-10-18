@@ -1,4 +1,5 @@
 "use client";
+import HelpLink from "@/components/ui/HelpLink";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
@@ -41,7 +42,8 @@ const CHANNELS = ["instagram", "snapchat", "tiktok", "x", "linkedin", "whatsapp"
  * Under the form, once the brand file exists, its "Default model for content" (`BrandModelField`), with its own Save:
  * PUT /api/brand never changes the pick. `canConfirmChina`: the owner, not a founder impersonating.
  */
-export default function BrandForm({ t, lang, initial, readOnly = false, canConfirmChina = false }: { t: AppDict; lang: Lang; initial: Brand | null; readOnly?: boolean; canConfirmChina?: boolean }) {
+/** `help` is the help answer about the brand file (rule 2147), from `helpHref`. */
+export default function BrandForm({ t, lang, initial, readOnly = false, canConfirmChina = false, help }: { t: AppDict; lang: Lang; initial: Brand | null; readOnly?: boolean; canConfirmChina?: boolean; help?: string }) {
   const r = useRouter();
   const o = t.onboarding;
   const [busy, setBusy] = useState(false);
@@ -81,6 +83,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false, canConfi
     <div className="mx-auto w-full max-w-2xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="brandform-t1" />{o.title}</span></h1>
       <p className="mt-2 text-foreground-muted">{o.sub}</p>
+      {help && <p className="mt-1"><HelpLink lang={lang} href={help} /></p>}
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
       <form onSubmit={onSubmit} className="mt-6">
         <fieldset disabled={readOnly} className="grid min-w-0 gap-4">

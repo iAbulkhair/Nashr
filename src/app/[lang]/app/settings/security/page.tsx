@@ -6,6 +6,8 @@ import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/roles";
 import { SETTINGS_COPY } from "@/lib/settings-nav";
 import PageHeader from "@/components/ui/PageHeader";
+import HelpLink from "@/components/ui/HelpLink";
+import { helpHref } from "@/lib/help";
 import SecuritySettings from "@/components/app/settings/SecuritySettings";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +23,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const S = SETTINGS_COPY[lang].sections.security;
   return (
     <div className="grid gap-6">
-      <PageHeader lang={lang} title={S.name} sub={S.sub} seed="settings-security" />
+      <PageHeader lang={lang} title={S.name} sub={S.sub} seed="settings-security" actions={<HelpLink lang={lang} href={helpHref(lang, "privacy", "two-step-and-devices")} />} />
       <SecuritySettings lang={lang} rules={t.join.rules} may={can(u, "password.change") && can(u, "sessions.revoke") && can(u, "mfa.manage")} owner={u.actor?.kind === "owner"} forbidden={t.team.errors.forbidden} />
     </div>
   );
