@@ -21,6 +21,7 @@ import { connectAds, isAdProvider } from "@/lib/connectors/ads";
 import { SHOP_HOST, subscribeUninstall, UNINSTALL_HOOK_META, validShopifyHmac } from "@/lib/connectors/shopify";
 import { can } from "@/lib/roles";
 import { appOrigin } from "@/lib/origin";
+import { dropSnapshotIfStoreChanged, storeIdentity } from "@/lib/store-sales";
 import { connectCalendar } from "@/lib/secretary-gcal";
 import type { CalProvider } from "@/lib/connectors/registry";
 
@@ -127,7 +128,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     // Best effort: Shopify then tells us when the store uninstalls the app (rule 2203). Never throws; the mark saved with
     // the connection tells the stores cron this store needs no second try (rule 2204).
     if (p.id === "shopify" && (await subscribeUninstall(conn, origin))) meta[UNINSTALL_HOOK_META] = new Date().toISOString();
+    // Another store of the same platform replaces this one: its totals go before the new store's first sync (rule 2207).
+    const before = storeIdentity(conn) ? await getConnection(st.email, p.id).catch(() => null) : null;
     await saveConnection(st.email, conn);
+    await dropSnapshotIfStoreChanged(st.email, before, conn);
     await track(st.email.split("#")[0], "connect");
     return back(`connected=${p.id}`);
   } catch (e) {

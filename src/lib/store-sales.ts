@@ -25,6 +25,38 @@ export async function dropSalesSnapshot(scope: string, provider: SalesProvider):
   return true;
 }
 
+const host = (v: string) => {
+  try {
+    return new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).host.toLowerCase();
+  } catch {
+    return v.trim().toLowerCase();
+  }
+};
+
+/**
+ * The store a sales connection points at, as its connect step stored it (rule 2207): Shopify's `meta.shop`, Zid's
+ * `meta.storeId`, the host of Salla's and WooCommerce's `meta.site`. "" when it is not known or not a store.
+ */
+export function storeIdentity(c: Pick<Connection, "provider" | "meta">): string {
+  if (!(SALES_PROVIDERS as readonly string[]).includes(c.provider)) return "";
+  const m = c.meta ?? {};
+  const v = String((c.provider === "shopify" ? m.shop : c.provider === "zid" ? m.storeId : m.site) ?? "").trim();
+  return !v ? "" : c.provider === "zid" ? v : host(v);
+}
+
+/**
+ * A reconnect of the same platform to another store drops the old store's snapshot, failure note and store-sales.md
+ * (rule 2207), so the reports never show one store's totals under another's name; the new store starts from its own
+ * first sync. Unknown on either side, the same store again, or another platform: nothing is dropped.
+ */
+export async function dropSnapshotIfStoreChanged(scope: string, before: Pick<Connection, "provider" | "meta"> | null, after: Pick<Connection, "provider" | "meta">): Promise<boolean> {
+  if (!before || before.provider !== after.provider) return false;
+  const a = storeIdentity(before);
+  const b = storeIdentity(after);
+  if (!a || !b || a === b) return false;
+  return dropSalesSnapshot(scope, after.provider as SalesProvider);
+}
+
 /** Read orders and abandoned carts from the store, keep the totals, and give Noor the same totals as store-sales.md. */
 export async function syncSales(scope: string, provider: SalesProvider, c: Connection): Promise<SalesSnapshot> {
   const snap = provider === "shopify" ? await shopifySales(c) : provider === "zid" ? await zidSales(c) : provider === "woocommerce" ? await wooSales(c) : await sallaSales(c);
