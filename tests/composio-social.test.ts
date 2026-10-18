@@ -658,6 +658,9 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     expect(refreshNote("en", "x", 200, { ok: true, charged: true })).toMatch(/One credit was used/);
     expect(refreshNote("en", "social", 502, { ok: false, error: "reconnect_required" })).toMatch(/connect it again/);
     expect(refreshNote("en", "social", 0, {})).toMatch(/failed/);
+    // A token refresh held by another request (rule 2192).
+    expect(refreshNote("en", "social", 503, { ok: false, error: "busy" })).toMatch(/Try again in a few seconds/);
+    expect(refreshNote("ar", "social", 503, { ok: false, error: "busy" })).toContain("ثوانٍ");
 
     const w = await workspace("rpbtn");
     await signIn(w.member.email);

@@ -7,7 +7,7 @@ import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { explain, gateTask, initialStatus, placeholderHits } from "@/lib/brand-rules";
 import { saveConnection } from "@/lib/connectors/store";
-import { ReconnectRequired } from "@/lib/connectors/fresh";
+import { ReconnectRequired, RefreshBusy } from "@/lib/connectors/fresh";
 import { runTool, system } from "@/lib/chat";
 import { systemPrompt } from "@/lib/noor";
 import { agentById } from "@/lib/agents";
@@ -413,6 +413,8 @@ describe("one publish per item and platform (rule 216)", () => {
     expect(mayHavePosted(new Error("not_connected"))).toBe(false);
     expect(mayHavePosted(new Error("shopify article: Title can't be blank"))).toBe(false);
     expect(mayHavePosted(new ReconnectRequired("x"))).toBe(false);
+    // Thrown before anything is sent: the token refresh was held by another request (rule 2192).
+    expect(mayHavePosted(new RefreshBusy("x"))).toBe(false);
   });
 });
 

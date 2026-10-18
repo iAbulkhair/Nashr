@@ -7,10 +7,10 @@ import { PartlyRead, holdsSocial, isSocialProvider, readSocialSoon, syncSocialIf
 import { holdsSite, readSiteSoon, syncSiteIfDue } from "@/lib/site-stats";
 import { X_RETRY_DEFAULT_S, dropXStats, refreshX, xForPage } from "@/lib/x-stats";
 import { markOwnerSync } from "@/lib/routines";
-import { CATALOG_IMPORTS_PER_HOUR, STORE_SYNCS_PER_HOUR, WINDOW, allow, retryLater } from "@/lib/rate";
+import { CATALOG_IMPORTS_PER_HOUR, STORE_SYNCS_PER_HOUR, WINDOW, allow, retryAfter, retryLater } from "@/lib/rate";
 import { wsKey } from "@/lib/keys";
 import { byOf } from "@/lib/actor";
-import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
+import { BUSY_RETRY_S, RefreshBusy, getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
 import { importWoo } from "@/lib/connectors/woocommerce";
 import { importSalla } from "@/lib/connectors/salla";
@@ -78,11 +78,15 @@ const OWNER_SYNCS_PER_HOUR = 6;
  * answered here and never reaches the route's refusedToken, which would use the path's provider. A social read that saved the
  * snapshot while one part's token was refused is a read: 200 with the part to reconnect.
  */
+/** Another request held the token's refresh through every wait (rule 2192): nothing was read or spent, try again shortly. */
+const refreshBusy = () => NextResponse.json({ ok: false, error: "busy" }, { status: 503, headers: retryAfter(BUSY_RETRY_S) });
+
 async function ownerRefresh(scope: string, read: () => Promise<boolean>) {
   const [r, mark] = await Promise.allSettled([read(), markOwnerSync(scope)]);
   if (mark.status === "rejected") console.error("owner sync mark failed");
   if (r.status === "fulfilled") return NextResponse.json({ ok: true, read: r.value });
   if (r.reason instanceof PartlyRead) return NextResponse.json({ ok: true, read: true, reconnect: r.reason.provider });
+  if (r.reason instanceof RefreshBusy) return refreshBusy();
   return NextResponse.json({ ok: false, error: r.reason instanceof Error ? r.reason.message : "failed" }, { status: 502 });
 }
 
@@ -204,6 +208,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     }
     return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   } catch (e) {
+    if (e instanceof RefreshBusy) return refreshBusy();
     const err = await refusedToken(sc(u), provider, e);
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "failed" }, { status: 502 });
   }
