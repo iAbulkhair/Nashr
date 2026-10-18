@@ -27,8 +27,14 @@ type ZidProduct = {
   is_published?: boolean;
 };
 
+/**
+ * Zid's docs (Authorization, read 2026-10-18) write the field `Authorization`; this code and its tests had `authorization`.
+ * The token answer is stored with each key's case as it arrives (oauth.ts), so either spelling is read (rule 2201).
+ */
+export const zidAuthorization = (c: Pick<Connection, "data">) => c.data.authorization || c.data.Authorization || "";
+
 export function zidHeaders(c: Connection): Record<string, string> {
-  const h: Record<string, string> = { Authorization: `Bearer ${c.data.authorization ?? ""}`, "X-Manager-Token": c.data.access_token ?? "", Role: "Manager", "Accept-Language": "ar", Accept: "application/json" };
+  const h: Record<string, string> = { Authorization: `Bearer ${zidAuthorization(c)}`, "X-Manager-Token": c.data.access_token ?? "", Role: "Manager", "Accept-Language": "ar", Accept: "application/json" };
   if (c.meta?.storeId) h["Store-Id"] = c.meta.storeId;
   return h;
 }
