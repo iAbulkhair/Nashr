@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { isSuspended } from "./suspension";
 import { emailVerified, getUser, trialOver, type User } from "./auth";
 import { getBrand, indexedAt, isAutonomous, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
 import { generateBatch } from "./generate-batch";
@@ -245,7 +246,7 @@ export async function dailyRoster(): Promise<{ users: User[]; idle: string[] }> 
     if (!u) return { users: [] as User[], idle: [] as string[] };
     const brands = (await listBrands(e)).map((b) => ({ b, scope: scopeFor(e, b.id) }));
     // Suspended accounts, and owners who have not verified the address (rule 755), get no scheduled work, no charges and no email.
-    if (u.suspended || !emailVerified(u)) return { users: [] as User[], idle: brands.map((x) => x.scope) };
+    if (isSuspended(u) || !emailVerified(u)) return { users: [] as User[], idle: brands.map((x) => x.scope) };
     return {
       users: brands.filter((x) => x.b.status === "active").map((x) => ({ ...u, brandId: x.b.id, scope: x.scope })),
       idle: brands.filter((x) => x.b.status !== "active").map((x) => x.scope),

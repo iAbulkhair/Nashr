@@ -22,6 +22,7 @@ import Callout from "@/components/ui/Callout";
 import Badge from "@/components/ui/Badge";
 import { Input, Select } from "@/components/ui/Field";
 import { USERS_COPY } from "./users-copy";
+import { formatSuspensionEnd, parseSuspendFor, SUSPEND_FOR } from "@/lib/suspension";
 
 /** The users list's query in the address (rule 2007): `parseUserQuery` validates every value, the defaults stay out. */
 const USER_CODEC: QueryCodec<UserQuery> = { parse: parseUserQuery, params: userQueryParams };
@@ -123,7 +124,15 @@ export default function Users({ lang, keySession }: SectionProps) {
     const none = () => ok({});
     const base = { subject: email, fields: [] as FieldSpec[], parse: none };
     switch (action) {
-      case "suspend": return { ...base, title: UC.suspendTitle, message: UC.suspendNote, destructive: true, submitLabel: S.suspend };
+      // Rule 2070: no end date, 7 or 30 days, or until a date. Checked here with the server's own parser; the server checks again.
+      case "suspend": return {
+        ...base, title: UC.suspendTitle, message: UC.suspendNote, destructive: true, submitLabel: S.suspend,
+        fields: [
+          { name: "for", label: UC.suspendFor, kind: "select", initial: "indefinite", options: SUSPEND_FOR.map((v) => ({ value: v, label: UC.suspendForLabels[v] })) },
+          { name: "date", label: UC.suspendDate, kind: "date", hint: UC.suspendDateHint, ltr: true },
+        ],
+        parse: (v) => (parseSuspendFor(v.for, v.date).ok ? ok(v.for === "date" ? { for: v.for, date: v.date } : { for: v.for }) : { ok: false, error: "bad_until" }),
+      };
       case "unsuspend": return { ...base, title: UC.unsuspendTitle, submitLabel: S.unsuspend };
       case "extendTrial": return {
         ...base, title: UC.trialTitle,
@@ -450,7 +459,7 @@ export default function Users({ lang, keySession }: SectionProps) {
       cell: (u) => (
         <span className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => open(u.email)} className="min-h-[var(--hit-min)] text-start text-foreground underline pointer-fine:min-h-6"><bdi dir="ltr">{u.email}</bdi></button>
-          {u.suspended && <Badge tone="danger">{UC.suspendedBadge}</Badge>}
+          {u.suspended && <Badge tone="danger">{UC.suspendedBadge}{u.suspendedUntil ? ` · ${UC.suspendedUntil(formatSuspensionEnd(u.suspendedUntil, lang))}` : ""}</Badge>}
           {!u.emailVerifiedAt && <span className="rounded border border-border px-1.5 text-xs text-foreground-muted" data-testid="unverified">{S.unverified}</span>}
         </span>
       ),

@@ -384,11 +384,11 @@ describe("rule 1179: the Log page shows who, the change key by key and the reaso
 });
 
 describe("rule 1180: an account opens in a Sheet with tabs", () => {
-  it("the sheet is the inline-end, large Sheet with five tabs and their panels", () => {
+  it("the sheet is the inline-end, large Sheet with its tabs and their panels (six since rule 2083)", () => {
     const sheet = read("src/components/admin/UserSheet.tsx");
     expect(sheet).toContain('<Sheet lang={lang} label={`${UC.sheetLabel} ${sel.user.email}`} onClose={onClose} side="end" size="lg">');
-    expect(sheet).toContain('const TAB_IDS = ["overview", "billing", "usage", "activity", "brand"] as const;');
-    for (const id of ["overview", "billing", "usage", "activity", "brand"]) expect(sheet, id).toContain(`<TabPanel idBase={idBase} id="${id}" value={tab}`);
+    expect(sheet).toContain('const TAB_IDS = ["overview", "billing", "usage", "activity", "brand", "workspace"] as const;');
+    for (const id of ["overview", "billing", "usage", "activity", "brand", "workspace"]) expect(sheet, id).toContain(`<TabPanel idBase={idBase} id="${id}" value={tab}`);
     // The brand file is fields now, text only, not a JSON dump.
     expect(sheet).toContain("<dl ");
     expect(sheet).not.toMatch(/JSON\.stringify\(sel\.brand/);

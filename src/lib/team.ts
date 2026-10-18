@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { isSuspended } from "./suspension";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { pmap } from "./parallel";
@@ -157,16 +158,27 @@ export async function listMembers(owner: string): Promise<Member[]> {
   return rows.filter((m): m is Member => !!m && m.memberOf === owner).sort(byAge((m) => m.acceptedAt, (m) => m.email));
 }
 
-/** Pending, unexpired invites of the account, oldest first. Index entries whose invite expired are dropped. */
-export async function listInvites(owner: string): Promise<PendingInvite[]> {
+/** The account's invite index read once: the pending, unexpired invites (oldest first) and the ids that are stale. */
+async function readInvites(owner: string): Promise<{ live: PendingInvite[]; stale: string[] }> {
   const ids = await db.smembers(invitesKey(owner));
   const rows = await pmap(ids, async (id) => ({ id, inv: await db.get<Invite>(inviteKey(id)) }));
   const now = Date.now();
   const live = rows.filter((r): r is { id: string; inv: Invite } => !!r.inv && r.inv.owner === owner && !expired(r.inv, now));
   const liveIds = new Set(live.map((r) => r.id));
   const stale = ids.filter((id) => !liveIds.has(id));
+  return { live: live.map((r) => ({ ...r.inv, id: r.id })).sort(byAge((i) => i.createdAt, (i) => i.id)), stale };
+}
+
+/** Pending, unexpired invites of the account, oldest first. Index entries whose invite expired are dropped. */
+export async function listInvites(owner: string): Promise<PendingInvite[]> {
+  const { live, stale } = await readInvites(owner);
   if (stale.length) await pmap(stale, (id) => db.srem(invitesKey(owner), id));
-  return live.map((r) => ({ ...r.inv, id: r.id })).sort(byAge((i) => i.createdAt, (i) => i.id));
+  return live;
+}
+
+/** The same list, reading only: the founder console's workspace view writes nothing (rule 2079). */
+export async function peekInvites(owner: string): Promise<PendingInvite[]> {
+  return (await readInvites(owner)).live;
 }
 
 /** Seats in use: the owner, every member not disabled, and every unexpired invite. */
@@ -240,7 +252,7 @@ export async function peekInvite(token: string): Promise<{ team: string; inviter
   if (!inv || expired(inv)) return null;
   const { getBrand } = await import("./brand");
   const [owner, inviter, brand] = await Promise.all([getUser(inv.owner), inv.invitedBy === inv.owner ? null : getMember(inv.invitedBy), getBrand(inv.owner)]);
-  if (!owner || owner.suspended || !inviteHolds(inv, owner, inviter)) return null;
+  if (!owner || isSuspended(owner) || !inviteHolds(inv, owner, inviter)) return null;
   return { team: brand?.name || owner.name, inviter: inviter?.name || owner.name, email: inv.email, role: inv.role, expiresAt: inv.expiresAt };
 }
 
@@ -279,7 +291,7 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
       ]);
       // A cancelled, seat-cancelled or already-used invite is gone from the record and the index: refused, not counted.
       if (!live || expired(live) || !invites.some((i) => i.id === id)) return fail("invalid");
-      if (!owner || owner.suspended || !inviteHolds(inv, owner, inviter)) return fail("invalid");
+      if (!owner || isSuspended(owner) || !inviteHolds(inv, owner, inviter)) return fail("invalid");
       const limit = seatLimit(owner);
       // This invite already holds a seat (it is in the index); accepting turns it into a member, same count.
       const used = 1 + members.filter((m) => !m.disabled).length + invites.length;
