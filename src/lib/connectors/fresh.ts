@@ -6,6 +6,7 @@ import { log } from "../log";
 
 /** Refresh this long before the stored expiry, so a publish never starts with a token about to lapse. */
 const EARLY_MS = 5 * 60_000;
+const DAY_MS = 86_400_000;
 const LOCK_S = 30;
 /** Tries for the refresh lock, 250 ms apart: about five seconds for the request that holds it to save the new token. */
 const LOCK_TRIES = 20;
@@ -29,27 +30,48 @@ export class RefreshBusy extends Error {
   }
 }
 
-const due = (c: Connection) => !!c.expiresAt && new Date(c.expiresAt).getTime() - Date.now() < EARLY_MS;
+/**
+ * How long before its stored expiry a provider's token is refreshed (rule 2210): `oauth.refreshLeadDays` where the
+ * registry sets it (Zid, 60 days: its access and refresh tokens both last a year), five minutes for every other
+ * provider.
+ */
+export function refreshLeadMs(provider: string): number {
+  const days = getProvider(provider)?.oauth?.refreshLeadDays;
+  return days && days > 0 ? days * DAY_MS : EARLY_MS;
+}
+
+/** The connection's token expires within its provider's lead time, so the next use refreshes it (rule 2210). */
+export function refreshDue(c: Pick<Connection, "provider" | "expiresAt">, now = Date.now()): boolean {
+  return !!c.expiresAt && Date.parse(c.expiresAt) - now < refreshLeadMs(c.provider);
+}
+
+/** Within the last five minutes: the token cannot be used as it is, whatever its provider's lead time (rule 2211). */
+const urgent = (c: Connection) => !!c.expiresAt && Date.parse(c.expiresAt) - Date.now() < EARLY_MS;
+/** The token URL answered 400, 401 or 403: the refresh token itself was refused, not a passing failure. */
+const refused = (e: unknown) => e instanceof Error && /\btoken 40[013]\b/.test(e.message);
 
 async function markNeedsReconnect(scope: string, c: Connection) {
   await saveConnection(scope, { ...c, needsReconnect: new Date().toISOString() });
 }
 
 /**
- * The connection with a usable access token. An OAuth token that expires within five minutes is refreshed first,
- * under a per-connection lock: X rotates its refresh token on every use, so two publishes refreshing at once would
- * spend the same single-use token and the second would fail. A refresh the platform refuses marks the connection
- * `needsReconnect` and throws `ReconnectRequired`, instead of letting the raw 401 of the next call reach the owner (#34).
+ * The connection with a usable access token. An OAuth token that expires within five minutes (Zid: 60 days, rule
+ * 2210, `refreshDue`) is refreshed first, under a per-connection lock: X rotates its refresh token on every use, so
+ * two publishes refreshing at once would spend the same single-use token and the second would fail. A refresh the
+ * platform refuses marks the connection `needsReconnect` and throws `ReconnectRequired`, instead of letting the raw 401
+ * of the next call reach the owner (#34).
  * The lock is owned (`lockOwned`): a request that never wins it does not refresh, it returns what the holder saved or
- * throws `RefreshBusy` (rule 2192).
+ * throws `RefreshBusy` (rule 2192). A token that is only inside its provider's lead time still works, so there a busy
+ * lock or a passing refresh failure returns the connection as it is, unmarked, and a later use tries again (rule 2211).
  */
 export async function getFreshConnection(scope: string, provider: string): Promise<Connection | null> {
   const c = await getConnection(scope, provider);
   if (!c) return null;
   if (c.needsReconnect) throw new ReconnectRequired(provider);
   const p = getProvider(provider);
-  if (!p || p.kind !== "oauth" || !due(c)) return c;
+  if (!p || p.kind !== "oauth" || !refreshDue(c)) return c;
   if (!c.data.refresh_token) {
+    if (!urgent(c)) return c;
     await markNeedsReconnect(scope, c);
     throw new ReconnectRequired(provider);
   }
@@ -57,6 +79,7 @@ export async function getFreshConnection(scope: string, provider: string): Promi
   // Never refresh without the lock (rule 2192): X rotates its refresh token on every use and Salla revokes every token
   // when one is used twice, so a refresh outside the lock spends the same single-use token twice.
   let token: string | null = null;
+  let latest = c;
   for (let i = 0; i < LOCK_TRIES; i++) {
     token = await db.lockOwned(lock, LOCK_S);
     if (token) break;
@@ -65,17 +88,24 @@ export async function getFreshConnection(scope: string, provider: string): Promi
     const now = await getConnection(scope, provider);
     if (!now) return null;
     if (now.needsReconnect) throw new ReconnectRequired(provider);
-    if (!due(now)) return now;
+    if (!refreshDue(now)) return now;
+    latest = now;
   }
-  if (!token) throw new RefreshBusy(provider);
+  if (!token) {
+    // The holder is refreshing a token that still works for weeks: use it rather than fail the request (rule 2211).
+    if (!urgent(latest)) return latest;
+    throw new RefreshBusy(provider);
+  }
   try {
     const cur = (await getConnection(scope, provider)) ?? c;
-    if (!due(cur)) return cur;
+    if (!refreshDue(cur)) return cur;
     let data: Record<string, string>;
     try {
       data = await refreshTokens(p, cur.data.refresh_token ?? c.data.refresh_token, cur.meta?.shop);
     } catch (e) {
       log.error("connector refresh failed", { provider, error: e instanceof Error ? e.message.slice(0, 120) : e });
+      // Weeks left on the token and the platform did not refuse the refresh token: keep the connection (rule 2211).
+      if (!urgent(cur) && !refused(e)) return cur;
       await markNeedsReconnect(scope, cur);
       throw new ReconnectRequired(provider);
     }
