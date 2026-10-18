@@ -53,6 +53,19 @@ describe("tallyConnections (rule 2177)", () => {
     expect(await connectionHealth()).toBeNull();
   });
 
+  it("keeps the same run's keep-alive counts beside them, null when the pass failed, zeros for broken ones (rule 2202)", async () => {
+    const scopes = await threeWorkspaces();
+    const kept = { due: 3, refreshed: 2, lost: 1, failed: 0 };
+    expect((await tallyConnections(scopes, new Date(), kept)).keepAlive).toEqual(kept);
+    expect((await connectionHealth())?.keepAlive).toEqual(kept);
+    await tallyConnections(scopes, new Date(), null);
+    expect((await connectionHealth())?.keepAlive).toBeNull();
+    await db.set(globalKey.connectionHealth(), { at: "2026-10-18T02:00:00Z", workspaces: 1, providers: {}, keepAlive: { due: "x", refreshed: -2, lost: 1 } });
+    expect((await connectionHealth())?.keepAlive).toEqual({ due: 0, refreshed: 0, lost: 1, failed: 0 });
+    await tallyConnections(scopes);
+    expect(await connectionHealth()).not.toHaveProperty("keepAlive");
+  });
+
   it("reads each workspace through pmap and writes one fixed key", () => {
     const src = readFileSync("src/lib/connectors/health.ts", "utf8");
     expect(src).toContain("pmap(scopes, (scope) => listConnections(scope))");
@@ -64,9 +77,9 @@ describe("tallyConnections (rule 2177)", () => {
   it("the stores cron counts after the redactions and before the syncs, and a failed count does not stop them", () => {
     const src = readFileSync("src/app/api/cron/stores/route.ts", "utf8");
     expect(src.indexOf("applyShopRedactions(scopes)")).toBeGreaterThan(0);
-    expect(src.indexOf("applyShopRedactions(scopes)")).toBeLessThan(src.indexOf("tallyConnections(scopes, now)"));
-    expect(src.indexOf("tallyConnections(scopes, now)")).toBeLessThan(src.indexOf("runCronBatch({"));
-    expect(src).toMatch(/tallyConnections\(scopes, now\)[\s\S]{0,120}\.catch\(/);
+    expect(src.indexOf("applyShopRedactions(scopes)")).toBeLessThan(src.indexOf("tallyConnections(scopes, now, kept)"));
+    expect(src.indexOf("tallyConnections(scopes, now, kept)")).toBeLessThan(src.indexOf("runCronBatch({"));
+    expect(src).toMatch(/tallyConnections\(scopes, now, kept\)[\s\S]{0,120}\.catch\(/);
     expect(src).toContain("health_workspaces: health");
   });
 });
@@ -91,6 +104,7 @@ describe("the Integrations page shows the counts to a founder (rule 2178)", () =
       expect(body.connections.workspaces).toBe(3);
       expect(body.connections.rows.map((r) => r.id)).toEqual(["shopify", "linkedin", "x"]);
       expect(body.connections.rows[0]).toMatchObject({ name: "Shopify", connected: 2, reconnect: 1 });
+      expect(body.connections).toHaveProperty("keepAlive", null);
 
       const get = db.get.bind(db);
       vi.spyOn(db, "get").mockImplementation(((key: string) => (key === globalKey.connectionHealth() ? Promise.reject(new Error("down")) : get(key))) as typeof db.get);
@@ -109,5 +123,7 @@ describe("the Integrations page shows the counts to a founder (rule 2178)", () =
     expect(src).toContain('data-testid="integrations-connections"');
     expect(src).toContain("setConnections(j.connections ?? null)");
     expect(src).toContain('r.reconnect > 0 ? <Badge tone="warning">');
+    expect(src).toContain('data-testid="integrations-keepalive"');
+    expect(src).toMatch(/keepAlive\.lost \+ connections\.keepAlive\.failed > 0 && <Badge tone="warning"/);
   });
 });

@@ -16,10 +16,15 @@ import { listConnections } from "./store";
  */
 
 export type ProviderHealth = { connected: number; reconnect: number; composio: number };
-export type ConnectionHealth = { at: string; workspaces: number; providers: Record<string, ProviderHealth> };
+/** The same run's token keep-alive (rule 2179, connectors/keepalive.ts), shown beside the counts (rule 2202). */
+export type KeepAliveCounts = { due: number; refreshed: number; lost: number; failed: number };
+export type ConnectionHealth = { at: string; workspaces: number; providers: Record<string, ProviderHealth>; keepAlive?: KeepAliveCounts | null };
 
-/** One listing per workspace (pmap, never a loop of awaits), then one write. Returns what it stored. */
-export async function tallyConnections(scopes: readonly string[], now = new Date()): Promise<ConnectionHealth> {
+/**
+ * One listing per workspace (pmap, never a loop of awaits), then one write. Returns what it stored. `keepAlive` is the
+ * keep-alive pass the cron ran just before (null when it failed, left out when none ran).
+ */
+export async function tallyConnections(scopes: readonly string[], now = new Date(), keepAlive?: KeepAliveCounts | null): Promise<ConnectionHealth> {
   const lists = await pmap(scopes, (scope) => listConnections(scope));
   const providers: Record<string, ProviderHealth> = {};
   for (const conns of lists) {
@@ -31,7 +36,7 @@ export async function tallyConnections(scopes: readonly string[], now = new Date
       if (isComposio(c)) p.composio++;
     }
   }
-  const health: ConnectionHealth = { at: now.toISOString(), workspaces: scopes.length, providers };
+  const health: ConnectionHealth = { at: now.toISOString(), workspaces: scopes.length, providers, ...(keepAlive !== undefined ? { keepAlive } : {}) };
   await db.set(globalKey.connectionHealth(), health);
   return health;
 }
@@ -42,7 +47,7 @@ const count = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v
 export async function connectionHealth(): Promise<ConnectionHealth | null> {
   const raw = await db.get<unknown>(globalKey.connectionHealth());
   if (!raw || typeof raw !== "object") return null;
-  const r = raw as { at?: unknown; workspaces?: unknown; providers?: unknown };
+  const r = raw as { at?: unknown; workspaces?: unknown; providers?: unknown; keepAlive?: unknown };
   if (typeof r.at !== "string") return null;
   const providers: Record<string, ProviderHealth> = {};
   if (r.providers && typeof r.providers === "object") {
@@ -52,5 +57,7 @@ export async function connectionHealth(): Promise<ConnectionHealth | null> {
       providers[id] = { connected: count(x.connected), reconnect: count(x.reconnect), composio: count(x.composio) };
     }
   }
-  return { at: r.at, workspaces: count(r.workspaces), providers };
+  const k = r.keepAlive && typeof r.keepAlive === "object" ? (r.keepAlive as Record<string, unknown>) : null;
+  const keepAlive = k ? { due: count(k.due), refreshed: count(k.refreshed), lost: count(k.lost), failed: count(k.failed) } : r.keepAlive === null ? null : undefined;
+  return { at: r.at, workspaces: count(r.workspaces), providers, ...(keepAlive !== undefined ? { keepAlive } : {}) };
 }

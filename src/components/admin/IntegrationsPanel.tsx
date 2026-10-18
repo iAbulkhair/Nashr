@@ -29,6 +29,8 @@ const S = {
     healthNote: (n: number) => `Counted by the stores run over ${n} workspace${n === 1 ? "" : "s"}. Numbers only; no workspace is named.`,
     healthNone: "Not counted yet: the stores run writes this.",
     healthCols: { platform: "Platform", connected: "Connected", reconnect: "Must reconnect", composio: "Via Composio" },
+    keepAlive: (k: KeepAlive) => `Token keep-alive: ${k.due} expired, ${k.refreshed} refreshed, ${k.lost} refused, ${k.failed} failed.`,
+    keepAliveNone: "Token keep-alive: not recorded for this run.",
   },
   ar: {
     title: "التكاملات",
@@ -48,11 +50,14 @@ const S = {
     healthNote: (n: number) => `عدّها تشغيل المتاجر في مساحات العمل: ${n}. أرقام فقط، ولا تُسمّى أي مساحة.`,
     healthNone: "لم تُعدّ بعد: يكتبها تشغيل المتاجر.",
     healthCols: { platform: "المنصة", connected: "مربوطة", reconnect: "تحتاج إعادة ربط", composio: "عبر Composio" },
+    keepAlive: (k: KeepAlive) => `تجديد الرموز: منتهية ${k.due}، جُدّدت ${k.refreshed}، رفضتها المنصة ${k.lost}، تعذّرت ${k.failed}.`,
+    keepAliveNone: "تجديد الرموز: غير مسجّل في هذا التشغيل.",
   },
 } as const;
 
 /** GET /api/admin/integrations `connections` (rules 2177-2178): the stores run's last count, numbers and names only. */
-type Connections = { at: string; workspaces: number; rows: { id: string; name: string; connected: number; reconnect: number; composio: number }[] };
+type KeepAlive = { due: number; refreshed: number; lost: number; failed: number };
+type Connections = { at: string; workspaces: number; keepAlive: KeepAlive | null; rows: { id: string; name: string; connected: number; reconnect: number; composio: number }[] };
 
 const TONE: Record<IntegrationView["status"], BadgeTone> = { on: "success", partial: "warning", off: "neutral" };
 
@@ -144,6 +149,10 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
           <>
             <p className="mt-1 text-xs text-foreground-muted">
               {L.healthNote(connections.workspaces)} <Time value={connections.at} lang={lang} style="datetime" className="tnum" />
+            </p>
+            <p className="mt-1 text-xs" data-testid="integrations-keepalive">
+              {connections.keepAlive ? L.keepAlive(connections.keepAlive) : <span className="text-foreground-muted">{L.keepAliveNone}</span>}
+              {connections.keepAlive && connections.keepAlive.lost + connections.keepAlive.failed > 0 && <Badge tone="warning" className="ms-2">{connections.keepAlive.lost + connections.keepAlive.failed}</Badge>}
             </p>
             {connections.rows.length > 0 && (
               <table className="mt-2 w-full text-xs">

@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
  * Beside them, Shopify's compliance receipts (rule 2173): topic, store and time from the two fixed keys, never a
  * customer field (none is kept); null when the store cannot be read, so the list still loads.
  * And the stores cron's last connection count per platform (rules 2177-2178): numbers and the registry's platform name
- * only, busiest first; null before the first run or when the read fails.
+ * only, busiest first, and that run's token keep-alive counts (rule 2202, null when none is recorded); null before the
+ * first run or when the read fails.
  */
 export async function GET(req: Request) {
   if (!(await adminActor(req))) return NextResponse.json({ ok: false }, { status: 401 });
@@ -23,6 +24,7 @@ export async function GET(req: Request) {
   const connections = health && {
     at: health.at,
     workspaces: health.workspaces,
+    keepAlive: health.keepAlive ?? null,
     rows: Object.entries(health.providers)
       .map(([id, h]) => ({ id, name: getProvider(id)?.name ?? id, ...h }))
       .sort((a, b) => b.connected - a.connected || a.id.localeCompare(b.id)),

@@ -67,7 +67,7 @@ describe("keepTokensAlive (rule 2179)", () => {
     const src = readFileSync("src/app/api/cron/stores/route.ts", "utf8");
     const at = src.indexOf("keepTokensAlive(scopes, now.getTime())");
     expect(src.indexOf("applyShopRedactions(scopes)")).toBeLessThan(at);
-    expect(at).toBeLessThan(src.indexOf("tallyConnections(scopes, now)"));
+    expect(at).toBeLessThan(src.indexOf("tallyConnections(scopes, now, kept)"));
     expect(at).toBeLessThan(src.indexOf("runCronBatch({"));
     expect(src).toMatch(/keepTokensAlive\(scopes, now\.getTime\(\)\)\.catch\(/);
     expect(src).toContain("kept_alive: kept");
