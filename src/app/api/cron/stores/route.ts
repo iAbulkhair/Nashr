@@ -11,6 +11,10 @@ import { tallyConnections } from "@/lib/connectors/health";
 import { keepTokensAlive } from "@/lib/connectors/keepalive";
 
 export const maxDuration = 300;
+/** No new workspace's sync starts after this long from the request's start: the limit minus the longest sync (rule 2208). */
+const SYNC_START_BUDGET_MS = 240_000;
+/** No new Shopify store's subscription starts after this long from the request's start (rule 2208). */
+const HOOKS_DEADLINE_MS = 60_000;
 
 /**
  * The store sales snapshot of every active workspace that has a store connected, twice a day (`crons.json`: 02:00 and
@@ -35,6 +39,10 @@ export const maxDuration = 300;
  * Then the connections of the same roster are counted per platform for the founder console (rules 2177-2178,
  * src/lib/connectors/health.ts), with the keep-alive's and the Shopify subscriptions' counts beside them (rules 2202, 2205): counts only, one fixed key. A failed
  * count leaves the last one and does not stop the syncs.
+ *
+ * These passes run on the first hop only, never again on a chained one (rule 2208), and the syncs' start budget counts
+ * from the request's start, so time the passes take comes out of it instead of past the function's limit; workspaces
+ * not started go to the next hop.
  */
 export async function GET(req: Request) {
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -43,27 +51,30 @@ export async function GET(req: Request) {
   const slot = now.getUTCHours() < 12 ? "am" : "pm";
   const { users, idle } = await dailyRoster();
   const scopes = [...users.map((u) => sc(u)), ...idle];
-  const shopRedactions = await applyShopRedactions(scopes).catch((e) => {
+  // A chained hop only continues the syncs (rule 2208); its answer leaves the passes' fields out.
+  const firstHop = !(Number(new URL(req.url).searchParams.get("chain") ?? 0) > 0);
+  const once = <T,>(pass: () => Promise<T>): Promise<T | undefined> => (firstHop ? pass() : Promise.resolve(undefined));
+  const shopRedactions = await once(() => applyShopRedactions(scopes).catch((e) => {
     console.error("shop redactions", e instanceof Error ? e.name : "error");
     return -1;
-  });
-  const kept = await keepTokensAlive(scopes, now.getTime()).catch((e) => {
+  }));
+  const kept = await once(() => keepTokensAlive(scopes, now.getTime()).catch((e) => {
     console.error("token keep-alive", e instanceof Error ? e.name : "error");
     return null;
-  });
-  const hooks = await backfillUninstallHooks(scopes, appOrigin(), now).catch((e) => {
+  }));
+  const hooks = await once(() => backfillUninstallHooks(scopes, appOrigin(), now, now.getTime() + HOOKS_DEADLINE_MS).catch((e) => {
     console.error("uninstall hooks", e instanceof Error ? e.name : "error");
     return null;
-  });
+  }));
   // After the redactions and the keep-alive, so an erased store is not counted and a token lost this run is.
-  const health = await tallyConnections(scopes, now, kept, hooks).then((h) => h.workspaces).catch((e) => {
+  const health = await once(() => tallyConnections(scopes, now, kept, hooks).then((h) => h.workspaces).catch((e) => {
     console.error("connection health", e instanceof Error ? e.name : "error");
     return -1;
-  });
+  }));
   const report = await runCronBatch({
     job: "stores", period: `${now.toISOString().slice(0, 10)}-${slot}`, items: users,
     id: (u) => sc(u), run: (u) => syncStoreIfDue(sc(u)),
-    concurrency: 6, startBudgetMs: 240_000, markerTtlSeconds: 2 * 86400, req,
+    concurrency: 6, startBudgetMs: Math.max(0, SYNC_START_BUDGET_MS - (Date.now() - now.getTime())), markerTtlSeconds: 2 * 86400, req,
   });
   await recordCronRun("stores");
   const count = (prefix: string) => Object.values(report.results).filter((r) => r.startsWith(prefix)).length;

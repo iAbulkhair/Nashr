@@ -101,15 +101,17 @@ export type HookBackfill = { due: number; subscribed: number; failed: number };
  * do not carry the mark yet: those made before rule 2203, and those whose subscription failed at connect. A connection
  * that must reconnect or runs through Composio is left alone. At most HOOKS_PER_RUN a run, six at a time; the mark is
  * saved only when the store answered and the connection read back is still the same grant (same `connectedAt`, no
- * mark), so a reconnect in between is never overwritten. A failure is retried by the next run.
+ * mark), so a reconnect in between is never overwritten. A failure is retried by the next run. No store is started
+ * at or after `deadline` (epoch ms, rule 2208), so a slow platform cannot eat the syncs' time; those wait for a later run.
  */
-export async function backfillUninstallHooks(scopes: readonly string[], origin: string, now = new Date()): Promise<HookBackfill> {
+export async function backfillUninstallHooks(scopes: readonly string[], origin: string, now = new Date(), deadline = Infinity): Promise<HookBackfill> {
   const lists = await pmap(scopes, (scope) => listConnections(scope));
   const due = scopes.flatMap((scope, i) => {
     const c = (lists[i] ?? []).find((x) => x.provider === "shopify");
     return c && SHOP_HOST.test(String(c.meta?.shop ?? "")) && !c.meta?.[UNINSTALL_HOOK_META] && !c.needsReconnect && c.meta?.via !== "composio" ? [{ scope, connectedAt: c.connectedAt }] : [];
   });
   const results = await pmap(due.slice(0, HOOKS_PER_RUN), async ({ scope, connectedAt }) => {
+    if (Date.now() >= deadline) return "late" as const;
     const conn = await getConnection(scope, "shopify");
     if (!conn || conn.connectedAt !== connectedAt || conn.meta?.[UNINSTALL_HOOK_META]) return "skip" as const;
     if (!(await subscribeUninstall(conn, origin))) return "failed" as const;

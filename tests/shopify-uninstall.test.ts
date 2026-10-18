@@ -191,11 +191,11 @@ describe("the stores cron subscribes the Shopify connections without the mark (r
     expect(src).toContain("due.slice(0, HOOKS_PER_RUN)");
     expect(src).toMatch(/return "subscribed" as const;\n  \}, 6\);/);
     const cron = readFileSync("src/app/api/cron/stores/route.ts", "utf8");
-    const at = cron.indexOf("backfillUninstallHooks(scopes, appOrigin(), now)");
+    const at = cron.indexOf("backfillUninstallHooks(scopes, appOrigin(), now, now.getTime() + HOOKS_DEADLINE_MS)");
     expect(cron.indexOf("applyShopRedactions(scopes)")).toBeLessThan(at);
     expect(at).toBeLessThan(cron.indexOf("tallyConnections(scopes, now, kept, hooks)"));
     expect(at).toBeLessThan(cron.indexOf("runCronBatch({"));
-    expect(cron).toMatch(/backfillUninstallHooks\(scopes, appOrigin\(\), now\)\.catch\(/);
+    expect(cron).toMatch(/backfillUninstallHooks\(scopes, appOrigin\(\), now, now\.getTime\(\) \+ HOOKS_DEADLINE_MS\)\.catch\(/);
     expect(cron).toContain("uninstall_hooks: hooks");
   });
 });
