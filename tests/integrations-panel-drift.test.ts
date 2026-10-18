@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { INTEGRATIONS, halfSetComposio, integrationNames, integrationsView } from "@/lib/integration-status";
-import { PROVIDERS } from "@/lib/connectors/registry";
+import { COMPOSIO_ONLY, PROVIDERS, isDirectApp } from "@/lib/connectors/registry";
 import { CALLBACK_PATH } from "@/lib/google-signin";
 
 /**
@@ -69,13 +69,17 @@ describe("Integrations page drift (rules 2160-2162)", () => {
     const view = integrationsView({}, false);
     const cb = (id: string) => view.find((i) => i.id === id)?.callbacks;
     expect(cb("meta")).toEqual(["/api/connect/meta/callback", "/api/connect/meta_ads/callback"]);
-    expect(cb("gcal")).toEqual(["/api/connect/google/callback", "/api/connect/gcal/callback"]);
+    // Rule 2175: the Google connector shares GOOGLE_CLIENT_ID but connects through Composio: only Reem's calendar callback.
+    expect(cb("gcal")).toEqual(["/api/connect/gcal/callback"]);
+    expect(cb("linkedin")).toEqual([]);
+    expect(cb("tiktok")).toEqual([]);
     expect(cb("google_signin")).toEqual([CALLBACK_PATH]);
     expect(cb("composio")).toEqual([]);
-    // Every direct OAuth provider's callback appears on exactly one row.
+    // Every direct-app provider's callback appears on exactly one row, and no Composio-only provider's on any.
     const all = view.flatMap((i) => i.callbacks);
     expect(new Set(all).size).toBe(all.length);
-    for (const p of PROVIDERS) if (p.oauth) expect(all).toContain(`/api/connect/${p.id}/callback`);
+    for (const p of PROVIDERS.filter(isDirectApp)) expect(all).toContain(`/api/connect/${p.id}/callback`);
+    for (const id of COMPOSIO_ONLY) expect(all).not.toContain(`/api/connect/${id}/callback`);
     expect(readFileSync("src/components/admin/IntegrationsPanel.tsx", "utf8")).toContain("i.callbacks.map(");
   });
 });

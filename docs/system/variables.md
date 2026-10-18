@@ -105,10 +105,10 @@ Read indirectly as `process.env[o.clientIdEnv]` and `process.env[o.clientSecretE
 | `SALLA_CLIENT_SECRET` | Salla | Yes |
 | `ZID_CLIENT_ID` | Zid | No, keep internal |
 | `ZID_CLIENT_SECRET` | Zid | Yes |
-| `LINKEDIN_CLIENT_ID` | LinkedIn | No, keep internal |
-| `LINKEDIN_CLIENT_SECRET` | LinkedIn | Yes |
-| `TIKTOK_CLIENT_KEY` | TikTok (sent as `client_key`) | No, keep internal |
-| `TIKTOK_CLIENT_SECRET` | TikTok | Yes |
+| `LINKEDIN_CLIENT_ID` | LinkedIn. Not needed (rule 2175): LinkedIn connects through Composio only (`COMPOSIO_AUTH_LINKEDIN`); read only to renew a direct connection, and none can be made | No, keep internal |
+| `LINKEDIN_CLIENT_SECRET` | LinkedIn, as `LINKEDIN_CLIENT_ID` | Yes |
+| `TIKTOK_CLIENT_KEY` | TikTok (sent as `client_key`). Not needed (rule 2175): TikTok connects through Composio only (`COMPOSIO_AUTH_TIKTOK`); read only to renew a direct connection, and none can be made | No, keep internal |
+| `TIKTOK_CLIENT_SECRET` | TikTok, as `TIKTOK_CLIENT_KEY` | Yes |
 | `SNAP_CLIENT_ID` | Snapchat Ads | No, keep internal |
 | `SNAP_CLIENT_SECRET` | Snapchat Ads | Yes |
 

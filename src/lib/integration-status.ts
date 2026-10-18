@@ -1,6 +1,6 @@
 import { CLAUDE_PAUSED } from "./model";
 import { PROVIDER_TOOLKITS, TOOLKITS } from "./connectors/composio-catalog";
-import { PROVIDERS } from "./connectors/registry";
+import { PROVIDERS, isDirectApp } from "./connectors/registry";
 
 /**
  * The founder console's Integrations page (rules 1540-1549, docs/system/flows.md section 69): every outside service the
@@ -48,12 +48,12 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: "store", name: { ar: "تخزين الوسائط (قرص Hostinger)", en: "Media storage (Hostinger disk)" }, what: { ar: "نسختنا الخاصة من كل صورة ومقطع", en: "Our private copy of every image and clip" }, need: all("MEDIA_DIR") },
   { id: "turnstile", name: { ar: "Cloudflare Turnstile (التحقق البشري)", en: "Cloudflare Turnstile (CAPTCHA)" }, what: { ar: "التسجيل واستعادة كلمة المرور", en: "Sign-up and password reset" }, need: all("TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY") },
   { id: "google_signin", name: { ar: "الدخول بحساب Google", en: "Sign in with Google" }, what: { ar: "زر الدخول والتسجيل بحساب Google", en: "The sign-in and sign-up button with a Google account" }, need: all("GOOGLE_SIGNIN_CLIENT_ID", "GOOGLE_SIGNIN_CLIENT_SECRET"), callbacks: ["/api/auth/google/callback"] },
-  { id: "gcal", name: { ar: "Google (الربط والتقويم)", en: "Google (connector, calendar)" }, what: { ar: "ملف النشاط والتحليلات وتقويم Google لريم", en: "Business Profile, analytics, Reem's Google Calendar" }, need: all("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET") },
+  { id: "gcal", name: { ar: "Google (تقويم ريم)", en: "Google (Reem's calendar)" }, what: { ar: "تقويم Google لريم، وتجديد ربط الموقع القديم المباشر. ملف النشاط والتحليلات عبر Composio", en: "Reem's Google Calendar, and renewing an older direct site connection. Business Profile and analytics go through Composio" }, need: all("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET") },
   { id: "mscal", name: { ar: "Microsoft (تقويم Outlook)", en: "Microsoft (Outlook calendar)" }, what: { ar: "تقويم Outlook لريم", en: "Reem's Outlook calendar" }, need: all("MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET") },
   { id: "meta", name: { ar: "Meta (فيسبوك وإنستقرام)", en: "Meta (Facebook, Instagram)" }, what: { ar: "النشر المباشر ونتائج الإعلانات", en: "Direct publishing and ads results" }, need: all("META_APP_ID", "META_APP_SECRET"), optional: ["META_CONFIG_ID"] },
   { id: "x", name: { ar: "X", en: "X" }, what: { ar: "النشر المباشر", en: "Direct publishing" }, need: all("X_CLIENT_ID", "X_CLIENT_SECRET") },
-  { id: "linkedin", name: { ar: "لينكدإن", en: "LinkedIn" }, what: { ar: "تطبيق لينكدإن (يعمل عبر Composio فقط)", en: "LinkedIn app (works through Composio only)" }, need: all("LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET") },
-  { id: "tiktok", name: { ar: "تيك توك", en: "TikTok" }, what: { ar: "تطبيق تيك توك (يعمل عبر Composio فقط)", en: "TikTok app (works through Composio only)" }, need: all("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET") },
+  { id: "linkedin", name: { ar: "لينكدإن", en: "LinkedIn" }, what: { ar: "النشر عبر Composio فقط، بلا تطبيق لينكدإن خاص بنا", en: "Publishing through Composio only, no LinkedIn app of ours" }, need: all("COMPOSIO_AUTH_LINKEDIN") },
+  { id: "tiktok", name: { ar: "تيك توك", en: "TikTok" }, what: { ar: "مسودات عبر Composio فقط، بلا تطبيق تيك توك خاص بنا", en: "Drafts through Composio only, no TikTok app of ours" }, need: all("COMPOSIO_AUTH_TIKTOK") },
   { id: "snapchat", name: { ar: "سناب شات (إعلانات)", en: "Snapchat Ads" }, what: { ar: "نتائج الإعلانات", en: "Ads results" }, need: all("SNAP_CLIENT_ID", "SNAP_CLIENT_SECRET") },
   { id: "shopify", name: { ar: "Shopify", en: "Shopify" }, what: { ar: "المنتجات والطلبات والمقالات", en: "Products, orders, articles" }, need: all("SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET"), webhooks: ["/api/shopify/compliance"] },
   { id: "salla", name: { ar: "سلة", en: "Salla" }, what: { ar: "المنتجات والطلبات", en: "Products and orders" }, need: all("SALLA_CLIENT_ID", "SALLA_CLIENT_SECRET") },
@@ -123,9 +123,13 @@ export function halfSetComposio(has: (name: string) => boolean): Gate[] {
   });
 }
 
-/** Rule 2165: the callback paths each row's platform app must list, from the registry (by client id name) and the row. */
+/**
+ * Rule 2165: the callback paths each row's platform app must list, from the registry (by client id name) and the row.
+ * Rule 2175: only providers an app of ours connects (`isDirectApp`); the Google connector shares GOOGLE_CLIENT_ID with
+ * Reem's calendar but connects through Composio, so its callback is never listed.
+ */
 const callbacksOf = (d: IntegrationDef, req: readonly string[]): string[] => [
-  ...PROVIDERS.filter((p) => p.oauth && req.includes(p.oauth.clientIdEnv)).map((p) => `/api/connect/${p.id}/callback`),
+  ...PROVIDERS.filter((p) => isDirectApp(p) && req.includes(p.oauth!.clientIdEnv)).map((p) => `/api/connect/${p.id}/callback`),
   ...(d.callbacks ?? []),
 ];
 

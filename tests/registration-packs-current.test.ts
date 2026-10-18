@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { PROVIDERS } from "@/lib/connectors/registry";
+import { COMPOSIO_ONLY, PROVIDERS, isDirectApp } from "@/lib/connectors/registry";
 import { CALLBACK_PATH } from "@/lib/google-signin";
 
 /**
@@ -26,7 +26,7 @@ describe("Registration packs current values (rule 2164)", () => {
   });
 
   it("lists every direct OAuth platform's callback and both key names, as registry.ts has them", () => {
-    const direct = PROVIDERS.filter((p) => p.oauth);
+    const direct = PROVIDERS.filter(isDirectApp);
     expect(direct.length).toBeGreaterThan(0);
     for (const p of direct) {
       expect(current, p.id).toContain(`\`https://thakeen.com/api/connect/${p.id}/callback\``);
@@ -34,8 +34,18 @@ describe("Registration packs current values (rule 2164)", () => {
       expect(current, p.id).toContain(`\`${p.oauth!.clientSecretEnv}\``);
     }
     // No callback row for a platform that has no direct app.
-    const ids = [...current.matchAll(/thakeen\.com\/api\/connect\/([a-z_]+)\/callback/g)].map((m) => m[1]);
+    // Table rows only: the rule 2175 paragraph names the Composio-only callbacks that are never called.
+    const table = current.split("\n").filter((l) => l.startsWith("| ")).join("\n");
+    const ids = [...table.matchAll(/thakeen\.com\/api\/connect\/([a-z_]+)\/callback/g)].map((m) => m[1]);
     expect(new Set(ids)).toEqual(new Set(direct.map((p) => p.id)));
+  });
+
+  it("names no callback and no client key for a Composio-only provider, and says they connect through Composio (rule 2175)", () => {
+    for (const id of COMPOSIO_ONLY) expect(current, id).not.toContain(`/api/connect/${id}/callback\` |`);
+    for (const id of ["linkedin", "tiktok", "google"]) expect(COMPOSIO_ONLY, id).toContain(id);
+    const rows = current.split("\n").filter((l) => l.startsWith("| ") && l.includes("thakeen.com"));
+    for (const n of ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET", "TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"]) expect(rows.join("\n"), n).not.toContain(n);
+    expect(current).toMatch(/LinkedIn, TikTok and the Google connector[\s\S]*through Composio only/);
   });
 
   it("gives Sign in with Google its own client and callback", () => {
@@ -53,7 +63,7 @@ describe("Registration packs current values (rule 2164)", () => {
 
 describe("Each platform is asked only for the scopes the code uses (rule 2174)", () => {
   it("every direct row's scopes column is the registry's list, word for word", () => {
-    for (const p of PROVIDERS.filter((x) => x.oauth)) {
+    for (const p of PROVIDERS.filter(isDirectApp)) {
       const row = current.split("\n").find((l) => l.includes(`/api/connect/${p.id}/callback\``));
       expect(row, p.id).toBeTruthy();
       const cells = row!.split("|").map((c) => c.trim());

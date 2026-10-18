@@ -125,7 +125,14 @@ export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;
 }
 /** Providers with no direct publishing code: they connect through Composio or not at all. */
-const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "whatsapp", "youtube", "google_workspace", "google_drive", "dropbox", "onedrive"];
+export const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "whatsapp", "youtube", "google_workspace", "google_drive", "dropbox", "onedrive"];
+
+/**
+ * Rule 2175: the OAuth providers a platform app of ours can connect (the start route refuses the others). Only these
+ * need a thakeen.com callback and `*_CLIENT_*` names; the Composio-only ones keep their `oauth` entry for the token
+ * renewal of a connection made before they moved to Composio.
+ */
+export const isDirectApp = (p: Provider) => !!p.oauth && !COMPOSIO_ONLY.includes(p.id);
 
 /** The provider connects through Composio (COMPOSIO_PROVIDERS names it and the key is set), not its own OAuth app. */
 export const routedViaComposio = (id: string) => composioEnabled(id);

@@ -25,11 +25,8 @@ a platform or a key name changes and this table does not.
 | Meta Ads (results), same Meta app | `https://thakeen.com/api/connect/meta_ads/callback` | `META_APP_ID`, `META_APP_SECRET` | `ads_read` |
 | Salla | `https://thakeen.com/api/connect/salla/callback` | `SALLA_CLIENT_ID`, `SALLA_CLIENT_SECRET` | `offline_access` |
 | Zid | `https://thakeen.com/api/connect/zid/callback` | `ZID_CLIENT_ID`, `ZID_CLIENT_SECRET` | none in the URL |
-| LinkedIn | `https://thakeen.com/api/connect/linkedin/callback` | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` | `openid profile w_member_social` |
-| TikTok | `https://thakeen.com/api/connect/tiktok/callback` | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | `user.info.basic video.publish video.upload` |
 | Snapchat Ads | `https://thakeen.com/api/connect/snapchat/callback` | `SNAP_CLIENT_ID`, `SNAP_CLIENT_SECRET` | `snapchat-marketing-api` |
-| Google (Business Profile, GA4, Search Console) | `https://thakeen.com/api/connect/google/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `business.manage analytics.readonly webmasters.readonly openid email` |
-| Google Calendar (Reem), same Google client | `https://thakeen.com/api/connect/gcal/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `openid email calendar.calendarlist.readonly calendar.events.owned.readonly` |
+| Google Calendar (Reem) | `https://thakeen.com/api/connect/gcal/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `openid email calendar.calendarlist.readonly calendar.events.owned.readonly` |
 | Outlook Calendar (Reem) | `https://thakeen.com/api/connect/mscal/callback` | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | `openid email offline_access User.Read Calendars.ReadBasic` |
 | Sign in with Google, its own client | `https://thakeen.com/api/auth/google/callback` | `GOOGLE_SIGNIN_CLIENT_ID`, `GOOGLE_SIGNIN_CLIENT_SECRET` | `openid email profile` |
 
@@ -43,6 +40,15 @@ Names in the dated packs and in `docs/Platform_Access_Playbook.md` that the code
 `MS_CLIENT_SECRET` (the code reads `MICROSOFT_CLIENT_*`), `TIKTOK_ADS_APP_ID` and `TIKTOK_ADS_SECRET` (TikTok Ads results
 come through Composio, no app of ours). WhatsApp, YouTube, Google Ads, TikTok Ads, LinkedIn Ads, Google Docs and Sheets,
 Google Drive, Dropbox and OneDrive need no app of ours: they connect through Composio (checklist job `composio`).
+
+LinkedIn, TikTok and the Google connector (Business Profile, GA4, Search Console) also connect through Composio only
+(rule 2175): Thakeen's connect route refuses them without Composio, so `https://thakeen.com/api/connect/linkedin/callback`,
+`/tiktok/callback` and `/google/callback` are never called and `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`,
+`TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` are not needed in hPanel. Their dated packs below are history. A Composio
+auth config that uses a LinkedIn or TikTok developer app of our own takes the redirect URL Composio shows when the auth
+config is created, not a thakeen.com one. The Google client above (`GOOGLE_CLIENT_ID`) is for Reem's calendar; its
+consent screen needs only the calendar scopes in its row, not `business.manage`, `analytics.readonly` or
+`webmasters.readonly`.
 
 Written 2026-09-27 for the owner. One section per platform: which steps come first, what to type into each field,
 and where the keys go. Everything here is registered on the temporary address `https://nashr-tau.vercel.app` (owner
