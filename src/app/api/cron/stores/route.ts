@@ -33,7 +33,7 @@ export const maxDuration = 300;
  * the syncs.
  *
  * Then the connections of the same roster are counted per platform for the founder console (rules 2177-2178,
- * src/lib/connectors/health.ts), with the keep-alive's counts beside them (rule 2202): counts only, one fixed key. A failed
+ * src/lib/connectors/health.ts), with the keep-alive's and the Shopify subscriptions' counts beside them (rules 2202, 2205): counts only, one fixed key. A failed
  * count leaves the last one and does not stop the syncs.
  */
 export async function GET(req: Request) {
@@ -56,7 +56,7 @@ export async function GET(req: Request) {
     return null;
   });
   // After the redactions and the keep-alive, so an erased store is not counted and a token lost this run is.
-  const health = await tallyConnections(scopes, now, kept).then((h) => h.workspaces).catch((e) => {
+  const health = await tallyConnections(scopes, now, kept, hooks).then((h) => h.workspaces).catch((e) => {
     console.error("connection health", e instanceof Error ? e.name : "error");
     return -1;
   });

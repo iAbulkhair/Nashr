@@ -22,7 +22,7 @@ const S = {
     compliance: "Shopify compliance requests",
     pending: (n: number) => `${n} store erasure${n === 1 ? "" : "s"} waiting for the next stores run`,
     none: "None received yet.",
-    topic: { "customers/data_request": "Customer data request (nothing held)", "customers/redact": "Customer erasure (nothing held)", "shop/redact": "Store erasure queued", "shop/redact:done": "Store erasure done" } as Record<string, string>,
+    topic: { "customers/data_request": "Customer data request (nothing held)", "customers/redact": "Customer erasure (nothing held)", "shop/redact": "Store erasure queued", "app/uninstalled": "Store uninstalled the app: removal queued", "shop/redact:done": "Store erasure done" } as Record<string, string>,
     workspaces: (n: number) => `${n} workspace${n === 1 ? "" : "s"}`,
     summary: (on: number, all: number) => `${on} of ${all} on`,
     health: "Connections across workspaces",
@@ -31,6 +31,8 @@ const S = {
     healthCols: { platform: "Platform", connected: "Connected", reconnect: "Must reconnect", composio: "Via Composio" },
     keepAlive: (k: KeepAlive) => `Token keep-alive: ${k.due} expired, ${k.refreshed} refreshed, ${k.lost} refused, ${k.failed} failed.`,
     keepAliveNone: "Token keep-alive: not recorded for this run.",
+    hooks: (h: Hooks) => `Shopify uninstall webhook: ${h.due} stores without it, ${h.subscribed} subscribed, ${h.failed} failed.`,
+    hooksNone: "Shopify uninstall webhook: not recorded for this run.",
   },
   ar: {
     title: "التكاملات",
@@ -43,7 +45,7 @@ const S = {
     compliance: "طلبات الامتثال من Shopify",
     pending: (n: number) => `طلبات حذف متاجر تنتظر تشغيل المتاجر القادم: ${n}`,
     none: "لم يصل أي طلب بعد.",
-    topic: { "customers/data_request": "طلب بيانات عميل (لا نحتفظ بشيء)", "customers/redact": "حذف بيانات عميل (لا نحتفظ بشيء)", "shop/redact": "طلب حذف بيانات متجر في الانتظار", "shop/redact:done": "تم حذف بيانات المتجر" } as Record<string, string>,
+    topic: { "customers/data_request": "طلب بيانات عميل (لا نحتفظ بشيء)", "customers/redact": "حذف بيانات عميل (لا نحتفظ بشيء)", "shop/redact": "طلب حذف بيانات متجر في الانتظار", "app/uninstalled": "ألغى المتجر تثبيت التطبيق: الحذف في الانتظار", "shop/redact:done": "تم حذف بيانات المتجر" } as Record<string, string>,
     workspaces: (n: number) => `مساحات العمل: ${n}`,
     summary: (on: number, all: number) => `${on} من ${all} تعمل`,
     health: "الربط عبر مساحات العمل",
@@ -52,12 +54,15 @@ const S = {
     healthCols: { platform: "المنصة", connected: "مربوطة", reconnect: "تحتاج إعادة ربط", composio: "عبر Composio" },
     keepAlive: (k: KeepAlive) => `تجديد الرموز: منتهية ${k.due}، جُدّدت ${k.refreshed}، رفضتها المنصة ${k.lost}، تعذّرت ${k.failed}.`,
     keepAliveNone: "تجديد الرموز: غير مسجّل في هذا التشغيل.",
+    hooks: (h: Hooks) => `إشعار إلغاء التثبيت في Shopify: متاجر بلا اشتراك ${h.due}، اشتركت ${h.subscribed}، تعذّر ${h.failed}.`,
+    hooksNone: "إشعار إلغاء التثبيت في Shopify: غير مسجّل في هذا التشغيل.",
   },
 } as const;
 
 /** GET /api/admin/integrations `connections` (rules 2177-2178): the stores run's last count, numbers and names only. */
 type KeepAlive = { due: number; refreshed: number; lost: number; failed: number };
-type Connections = { at: string; workspaces: number; keepAlive: KeepAlive | null; rows: { id: string; name: string; connected: number; reconnect: number; composio: number }[] };
+type Hooks = { due: number; subscribed: number; failed: number };
+type Connections = { at: string; workspaces: number; keepAlive: KeepAlive | null; uninstallHooks: Hooks | null; rows: { id: string; name: string; connected: number; reconnect: number; composio: number }[] };
 
 const TONE: Record<IntegrationView["status"], BadgeTone> = { on: "success", partial: "warning", off: "neutral" };
 
@@ -153,6 +158,10 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
             <p className="mt-1 text-xs" data-testid="integrations-keepalive">
               {connections.keepAlive ? L.keepAlive(connections.keepAlive) : <span className="text-foreground-muted">{L.keepAliveNone}</span>}
               {connections.keepAlive && connections.keepAlive.lost + connections.keepAlive.failed > 0 && <Badge tone="warning" className="ms-2">{connections.keepAlive.lost + connections.keepAlive.failed}</Badge>}
+            </p>
+            <p className="mt-1 text-xs" data-testid="integrations-uninstall-hooks">
+              {connections.uninstallHooks ? L.hooks(connections.uninstallHooks) : <span className="text-foreground-muted">{L.hooksNone}</span>}
+              {connections.uninstallHooks && connections.uninstallHooks.failed > 0 && <Badge tone="warning" className="ms-2">{connections.uninstallHooks.failed}</Badge>}
             </p>
             {connections.rows.length > 0 && (
               <table className="mt-2 w-full text-xs">
