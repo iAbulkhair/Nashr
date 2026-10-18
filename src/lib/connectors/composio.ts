@@ -53,7 +53,9 @@ export type StagedFile = { name: string; mimetype: string; s3key: string };
  * `version` `composio tools info` reported that day for each of their allowlisted tools, with every allowlisted argument
  * present and every required argument sent or fixed. whatsapp and the three Google/TikTok ads toolkits now have real
  * versions, so "00000000_00" is no longer used. twitter and metaads keep their 2026-10-05 pins: neither can connect
- * until the founder's own developer apps exist (no Composio managed auth); re-read them then.
+ * until the founder's own developer apps exist (no Composio managed auth); re-read them then. Before changing a pin or
+ * adding a provider to COMPOSIO_PROVIDERS, run scripts/check-composio-pins.ts (rule 2166): it reads each allowlisted
+ * tool at the pinned version, which `composio tools info` (latest only) cannot.
  */
 export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   facebook: "20261008_00",

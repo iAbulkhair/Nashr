@@ -118,7 +118,7 @@ Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `g
 
 | Name | Purpose | Secret |
 |---|---|---|
-| `COMPOSIO_API_KEY` | Server-side key for Composio's API | Yes |
+| `COMPOSIO_API_KEY` | Server-side key for Composio's API (a project key). Also read, outside `src/`, by `scripts/check-composio-pins.ts` when run by hand (rule 2166); it is never printed | Yes |
 | `COMPOSIO_PROVIDERS` | Comma list of providers routed through Composio (`meta`, `x`, `linkedin`, `tiktok`; drafts only: `whatsapp`, `youtube`; read only: `meta_ads`, `snapchat`, `google_ads`, `tiktok_ads`, `linkedin_ads`, `google`, `google_workspace` for the Docs and Sheets reference files; import and export: `google_drive`, `dropbox`, `onedrive` for the cloud drives, rules 1775-1789). Unset: none, and Meta and X keep their direct apps | No |
 | `COMPOSIO_AUTH_FACEBOOK` | Composio auth config id for the Facebook toolkit | No, keep internal |
 | `COMPOSIO_AUTH_INSTAGRAM` | Composio auth config id for the Instagram toolkit | No, keep internal |
