@@ -2,6 +2,7 @@ import { dict, LANGS, type Lang } from "@/lib/i18n";
 import { AGENTS } from "@/lib/agents";
 import { AGENT_PAGES, SITE } from "@/lib/site";
 import { TOOLS } from "@/lib/tools";
+import { HELP } from "@/lib/help";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { listPosts } from "@/lib/blog";
@@ -16,7 +17,8 @@ import { appOrigin } from "@/lib/origin";
  * (docs/superpowers/specs/2026-10-08-supastarter-adoption-design.md, item 5); the code is ours.
  *
  * Every word is copy the site already shows: the share description, the footer's column titles, the menu labels, the
- * agent, industry, comparison and tool pages, the blog's front matter and the legal and partner-terms titles. This file
+ * agent, industry, comparison and tool pages, the help topics' titles, the blog's front matter and the legal and
+ * partner-terms titles. This file
  * writes no sentence, claim or number of its own, so when the site's copy changes this index follows, and the two cannot
  * disagree. It links only pages that src/app/sitemap.ts lists, built the same way (`appOrigin()` plus the path), so
  * nothing under `/app`, `/api`, the founder console, OAuth or the partner dashboard. Arabic comes first, as on the site.
@@ -69,6 +71,8 @@ function sections(lang: Lang): Section[] {
       ],
     },
     { title: s.resources.compare, links: [{ path: "/compare", name: COMPARE_PAGE[lang].title, note: COMPARE_PAGE[lang].desc }] },
+    // The help topics' pages (rule 2144), under the resources card's own name for the help centre; each named by its title.
+    { title: s.resources.cards.find((c) => c.href === "/help")?.t ?? f.resources, links: HELP.map((h) => ({ path: `/help/${h.id}`, name: h.title[lang] })) },
     { title: t.nav.tools, links: TOOLS.map((x) => ({ path: `/tools/${x.slug}`, name: x.name[lang], note: x.desc[lang] })) },
     { title: t.nav.blog, links: listPosts(lang).map((p) => ({ path: `/blog/${p.slug}`, name: p.title, note: p.desc })) },
   ];

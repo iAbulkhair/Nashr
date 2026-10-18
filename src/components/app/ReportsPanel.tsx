@@ -28,7 +28,7 @@ import Scribble from "@/components/Scribble";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
-import { emptyCopy } from "@/lib/empty-copy";
+import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 import { METRICS_KEY, readStored, writeStored } from "@/lib/cookie-names";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
@@ -285,7 +285,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 
       <section className="mt-8">
         <h2 className="font-display text-lg font-semibold text-foreground">{R.items}</h2>
-        {items.length === 0 ? <EmptyState compact className="mt-2" title={E.title} body={E.body} /> : (
+        {items.length === 0 ? <EmptyState compact className="mt-2" title={E.title} body={E.body} help={emptyHelp(lang, "reports")} /> : (
           <ul className="mt-3 divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-surface">
             {items.map((x) => (
               <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">

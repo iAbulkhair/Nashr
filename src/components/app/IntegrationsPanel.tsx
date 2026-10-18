@@ -1,4 +1,5 @@
 "use client";
+import HelpLink from "@/components/ui/HelpLink";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
@@ -34,7 +35,8 @@ export function pageNote(g: Pick<AppDict["integrations"], "readLater">, j: { ok?
  * `manage` (owner, admin): connect, reconnect, disconnect, keys, page and ad-account choice, product import. Everyone
  * else sees the connections read-only and can still ask for an integration. Display only: the routes enforce it.
  */
-export default function IntegrationsPanel({ t, lang, items, manage = true }: { t: AppDict; lang: Lang; items: Integration[]; manage?: boolean }) {
+/** `help` is the help answer about connecting (rule 2147), from `helpHref`. */
+export default function IntegrationsPanel({ t, lang, items, manage = true, help }: { t: AppDict; lang: Lang; items: Integration[]; manage?: boolean; help?: string }) {
   const g = t.integrations;
   const r = useRouter();
   const sp = useSearchParams();
@@ -177,6 +179,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     <div>
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="integrationspanel-t1" />{g.title}</span></h1>
       <p className="mt-2 text-foreground-muted">{g.sub}</p>
+      {help && <p className="mt-1"><HelpLink lang={lang} href={help} /></p>}
       {flash && <Callout tone="success" className="mt-3">{flash}</Callout>}
       {(actErr || flashErr) && <Callout tone="danger" className="mt-3">{actErr || flashErr}</Callout>}
       <Callout tone="info" role="note" className="mt-2">{g.note}</Callout>

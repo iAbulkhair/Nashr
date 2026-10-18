@@ -7,6 +7,7 @@ import { can } from "@/lib/roles";
 import { INTEGRATIONS } from "@/lib/integrations";
 import { Suspense } from "react";
 import IntegrationsPanel from "@/components/app/IntegrationsPanel";
+import { helpHref } from "@/lib/help";
 export const generateMetadata = settingsScreenMeta("connections");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
@@ -16,5 +17,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!u) redirect(`/${lang}/app/login`);
   // Connecting, disconnecting, keys, page and ad-account choice and product import are owner/admin (the /api/connect
   // routes check the same `can()`); asking for an integration is open to every role.
-  return <Suspense><IntegrationsPanel t={appDict[lang]} lang={lang} items={INTEGRATIONS} manage={can(u, "connectors")} /></Suspense>;
+  return <Suspense><IntegrationsPanel t={appDict[lang]} lang={lang} help={helpHref(lang, "connect", "platforms")} items={INTEGRATIONS} manage={can(u, "connectors")} /></Suspense>;
 }

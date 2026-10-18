@@ -12,7 +12,7 @@ import CalendarLinkCard, { type CalProviders } from "./CalendarLinkCard";
 import Scribble from "@/components/Scribble";
 import EmptyState from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
-import { emptyCopy } from "@/lib/empty-copy";
+import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 
 // Rule 2099: the meeting panel opens only after a click on a row, so its code loads then and not with the page.
 const MeetingPanel = dynamic(() => import("./MeetingPanel"));
@@ -465,7 +465,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       )}
 
       {/* rule 2002: the empty list is an EmptyState */}
-      {empty ? <EmptyState compact className="mt-6" title={E.title} body={E.body} /> : allClear && <p className="mt-6 text-sm text-foreground-muted">{T.allClear}</p>}
+      {empty ? <EmptyState compact className="mt-6" title={E.title} body={E.body} help={emptyHelp(lang, "todo")} /> : allClear && <p className="mt-6 text-sm text-foreground-muted">{T.allClear}</p>}
       {sections.map((s) => (
         <section key={s.bucket} className="mt-6" aria-labelledby={`todo-${s.bucket}`}>
           <h2 id={`todo-${s.bucket}`} className={`font-display text-lg font-semibold ${s.bucket === "overdue" ? "text-danger" : "text-foreground"}`}>{s.title} <span className="tnum text-sm font-normal text-foreground-muted" dir="ltr">({s.rows.length})</span></h2>

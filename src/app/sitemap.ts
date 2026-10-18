@@ -4,6 +4,7 @@ import { TOOLS } from "@/lib/tools";
 import { INDUSTRY_SLUGS } from "@/lib/pages-industry";
 import { postIndex } from "@/lib/blog";
 import { AGENT_SLUGS } from "@/lib/site";
+import { HELP } from "@/lib/help";
 import { appOrigin } from "@/lib/origin";
 import { isStaging } from "@/lib/deploy-env";
 
@@ -22,6 +23,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     paths.push(`/${l}/agents`, `/${l}/customers`, `/${l}/enterprise`, `/${l}/resources`, `/${l}/updates`, `/${l}/compare`);
     for (const a of AGENT_SLUGS) paths.push(`/${l}/agents/${a}`);
     for (const t of TOOLS) paths.push(`/${l}/tools/${t.slug}`);
+    // One page per help topic (rule 2144); an answer is a `#slug` on its topic page, so it has no URL of its own here.
+    for (const t of HELP) paths.push(`/${l}/help/${t.id}`);
     for (const s of INDUSTRY_SLUGS) paths.push(`/${l}/for/${s}`);
     for (const p of posts.keys()) paths.push(`/${l}/blog/${p}`);
   }
