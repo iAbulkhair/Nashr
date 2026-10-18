@@ -14,7 +14,7 @@ import { importShopify } from "@/lib/connectors/shopify";
 import { importWoo } from "@/lib/connectors/woocommerce";
 import { importSalla } from "@/lib/connectors/salla";
 import { importZid } from "@/lib/connectors/zid";
-import { syncSales } from "@/lib/store-sales";
+import { dropSalesSnapshot, syncSales } from "@/lib/store-sales";
 import { SALES_PROVIDERS, type SalesProvider } from "@/lib/connectors/sales";
 import { importOdoo, importPrestaShop } from "@/lib/connectors/keyed";
 import { selectPage } from "@/lib/connectors/meta";
@@ -25,6 +25,8 @@ import { getProvider } from "@/lib/connectors/registry";
 import { forbid, type Action } from "@/lib/roles";
 
 export const maxDuration = 120;
+
+const isSalesProvider = (p: string): p is SalesProvider => (SALES_PROVIDERS as readonly string[]).includes(p);
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
@@ -45,8 +47,14 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
     }
   }
   // X's stored read goes with its connection (rule 747): another account connected later must never show this one's
-  // results or history, and its first read is its own.
-  await Promise.all([deleteConnection(sc(u), provider), provider === "x" ? dropXStats(sc(u)) : null]);
+  // results or history, and its first read is its own. A store's sales snapshot, its failure note and store-sales.md go
+  // the same way when they came from this store's platform (rule 2206), so Dana never reports on a store that is gone;
+  // the owner's products.md stays.
+  await Promise.all([
+    deleteConnection(sc(u), provider),
+    provider === "x" ? dropXStats(sc(u)) : null,
+    isSalesProvider(provider) ? dropSalesSnapshot(sc(u), provider) : null,
+  ]);
   return NextResponse.json({ ok: true });
 }
 
