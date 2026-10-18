@@ -2,6 +2,39 @@
 
 > **Dated record (banner added 2026-10-12).** Written when the site ran on Vercel at `nashr-tau.vercel.app`. Since 2026-10-08 thakeen.com runs on Hostinger from the `production` branch, and the Vercel project is retired (`docs/system/architecture.md` section 6, rules 987-990). Read hosts, callback URLs and "Vercel" steps below as history; whether each platform app already has its `thakeen.com` callback is unverified here. Current state: `docs/system/*`.
 
+## Current values (2026-10-18, rule 2164)
+
+Use this section, not the dated packs below, for hosts, callbacks and key names. It is read from
+`src/lib/connectors/registry.ts` and `src/lib/google-signin.ts`; `tests/registration-packs-current.test.ts` fails when
+a platform or a key name changes and this table does not.
+
+- App name: `Thakeen` (Arabic, where asked: `ذكين`). Website `https://thakeen.com`. Privacy `https://thakeen.com/ar/privacy`
+  (English `/en/privacy`). Terms `https://thakeen.com/ar/terms` (English `/en/terms`).
+- Keys go straight from the portal into hPanel (Websites, thakeen.com, Node.js app, Environment variables), never into
+  chat or a file. Adding a name to the live site rebuilds it; tell Claude first. The `vercel env add` steps below are history.
+- Staging gets the same callback on `https://staging.thakeen.com` once its own app or redirect is added.
+
+| Platform | Callback (redirect) URL | Key names | Scopes the code asks for |
+|---|---|---|---|
+| X | `https://thakeen.com/api/connect/x/callback` | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `tweet.read tweet.write users.read offline.access` |
+| Shopify | `https://thakeen.com/api/connect/shopify/callback` | `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` | `read_products read_orders read_checkouts write_content read_customers` |
+| Meta (Pages, Instagram) | `https://thakeen.com/api/connect/meta/callback` | `META_APP_ID`, `META_APP_SECRET` (optional `META_CONFIG_ID`) | `pages_show_list pages_manage_posts pages_read_engagement instagram_basic instagram_content_publish business_management` |
+| Meta Ads (results), same Meta app | `https://thakeen.com/api/connect/meta_ads/callback` | `META_APP_ID`, `META_APP_SECRET` | `ads_read` |
+| Salla | `https://thakeen.com/api/connect/salla/callback` | `SALLA_CLIENT_ID`, `SALLA_CLIENT_SECRET` | `offline_access` |
+| Zid | `https://thakeen.com/api/connect/zid/callback` | `ZID_CLIENT_ID`, `ZID_CLIENT_SECRET` | none in the URL |
+| LinkedIn | `https://thakeen.com/api/connect/linkedin/callback` | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` | `openid profile w_member_social` |
+| TikTok | `https://thakeen.com/api/connect/tiktok/callback` | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | `user.info.basic video.publish video.upload` |
+| Snapchat Ads | `https://thakeen.com/api/connect/snapchat/callback` | `SNAP_CLIENT_ID`, `SNAP_CLIENT_SECRET` | `snapchat-marketing-api` |
+| Google (Business Profile, GA4, Search Console) | `https://thakeen.com/api/connect/google/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `business.manage analytics.readonly webmasters.readonly openid email` |
+| Google Calendar (Reem), same Google client | `https://thakeen.com/api/connect/gcal/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `openid email calendar.calendarlist.readonly calendar.events.owned.readonly` |
+| Outlook Calendar (Reem) | `https://thakeen.com/api/connect/mscal/callback` | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | `openid email offline_access User.Read Calendars.ReadBasic` |
+| Sign in with Google, its own client | `https://thakeen.com/api/auth/google/callback` | `GOOGLE_SIGNIN_CLIENT_ID`, `GOOGLE_SIGNIN_CLIENT_SECRET` | `openid email profile` |
+
+Names in the dated packs and in `docs/Platform_Access_Playbook.md` that the code does not read: `MS_CLIENT_ID` and
+`MS_CLIENT_SECRET` (the code reads `MICROSOFT_CLIENT_*`), `TIKTOK_ADS_APP_ID` and `TIKTOK_ADS_SECRET` (TikTok Ads results
+come through Composio, no app of ours). WhatsApp, YouTube, Google Ads, TikTok Ads, LinkedIn Ads, Google Docs and Sheets,
+Google Drive, Dropbox and OneDrive need no app of ours: they connect through Composio (checklist job `composio`).
+
 Written 2026-09-27 for the owner. One section per platform: which steps come first, what to type into each field,
 and where the keys go. Everything here is registered on the temporary address `https://nashr-tau.vercel.app` (owner
 decision, 2026-09-27); after `nashr.ai` is bought, add the same callback on the new domain to every app.
