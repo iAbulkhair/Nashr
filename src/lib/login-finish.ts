@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createSession, emailVerified, type Login } from "./auth";
 import { mfaActive, openChallenge } from "./mfa";
 import { track } from "./track";
+import { isSuspended, suspensionEnd, suspensionExpired } from "./suspension";
+import { endExpiredSuspension } from "./suspension-server";
 
 /**
  * What every sign-in path shares once the person has proved who they are (a password in POST /api/auth/login, a
@@ -22,15 +24,24 @@ export const loginEmail = (l: Login) => (l.kind === "owner" ? l.user.email : l.m
  * account at the same address, an owner who has not proved the address (rule 767), a member paused by the seat limit.
  */
 export function loginRefusal(l: Login): NextResponse | null {
-  if (l.kind === "owner") return l.user.suspended ? NextResponse.json({ ok: false, error: "suspended" }, { status: 403 }) : null;
+  if (l.kind === "owner") return isSuspended(l.user) ? suspendedAnswer(l.user) : null;
   const { member, owner } = l;
   if (!owner || member.memberOf !== owner.email || !(new Date(member.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
   }
-  if (owner.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
+  if (isSuspended(owner)) return suspendedAnswer(owner);
   if (!emailVerified(owner)) return NextResponse.json({ ok: false, error: "owner_unverified" }, { status: 403 });
   if (member.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
   return null;
+}
+
+/**
+ * The 403 for a suspended account: `until` (rule 2075) when the suspension has an end date, so the form can say when the
+ * account opens again. The date is the account's own; nothing else about the account is in the answer.
+ */
+export function suspendedAnswer(u: { suspended?: unknown }): NextResponse {
+  const until = suspensionEnd(u);
+  return NextResponse.json(until ? { ok: false, error: "suspended", until } : { ok: false, error: "suspended" }, { status: 403 });
 }
 
 export type Finish =
@@ -43,6 +54,9 @@ export type Finish =
  * create the session. `codeDone` is true only on POST /api/auth/login/mfa after the code matched.
  */
 export async function finishLogin(l: Login, { via, next, codeDone = false }: { via: "password" | "google"; next?: string; codeDone?: boolean }): Promise<Finish> {
+  // An account whose suspension ended is let in by `isSuspended` already; this clears it and logs the expiry (rule 2073).
+  const account = accountOf(l);
+  if (account && suspensionExpired(account)) await endExpiredSuspension(account.email);
   const refused = loginRefusal(l);
   if (refused) return { kind: "refused", res: refused };
   const email = loginEmail(l);

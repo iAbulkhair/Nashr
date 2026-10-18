@@ -77,12 +77,12 @@ Read only in `src/lib/paymob.ts:37-48` (`paymobConfig`), per call. Online paymen
 
 | Name | Enables | Read in | Without it | Secret |
 |---|---|---|---|---|
-| `PAYMOB_SECRET_KEY` | Server calls to Paymob: create an intention, refund (`Authorization: Token …`). Never sent to a browser, logged or put in a URL | `src/lib/paymob.ts:37` | Paymob off (fail closed) | **Yes** |
-| `PAYMOB_PUBLIC_KEY` | The unified checkout URL (`publicKey=` with the intention's single-use client secret) | `src/lib/paymob.ts:38` | Paymob off | No (in the checkout URL) |
-| `PAYMOB_HMAC_SECRET` | Verifies every callback (HMAC-SHA512 of the documented fields, compared with `sameSecret`). Nothing in a callback is used before it matches | `src/lib/paymob.ts:39` | Paymob off | **Yes** |
-| `PAYMOB_INTEGRATION_ID_CARD` | The card integration (3-D Secure) for the first payment and packs; the customer can save the card there | `src/lib/paymob.ts:40` | Paymob off | No, keep internal |
-| `PAYMOB_INTEGRATION_ID_MOTO` | The Moto integration that charges a saved card for the monthly renewal (MIT). Optional | `src/lib/paymob.ts:48` | Renewals are not charged automatically: a due month becomes "past due" and the owner pays it from the billing page | No, keep internal |
-| `PAYMOB_LIVE` | `1` allows live keys. Set only on the production project, only after the founder approves going live | `src/lib/paymob.ts:43` | Live keys are refused (Paymob off); test keys work | No |
+| `PAYMOB_SECRET_KEY` | Server calls to Paymob: create an intention, refund (`Authorization: Token …`). Never sent to a browser, logged or put in a URL | `src/lib/paymob.ts:40` | Paymob off (fail closed) | **Yes** |
+| `PAYMOB_PUBLIC_KEY` | The unified checkout URL (`publicKey=` with the intention's single-use client secret) | `src/lib/paymob.ts:41` | Paymob off | No (in the checkout URL) |
+| `PAYMOB_HMAC_SECRET` | Verifies every callback (HMAC-SHA512 of the documented fields, compared with `sameSecret`). Nothing in a callback is used before it matches | `src/lib/paymob.ts:42` | Paymob off | **Yes** |
+| `PAYMOB_INTEGRATION_ID_CARD` | The card integration (3-D Secure) for the first payment and packs; the customer can save the card there | `src/lib/paymob.ts:43` | Paymob off | No, keep internal |
+| `PAYMOB_INTEGRATION_ID_MOTO` | The Moto integration that charges a saved card for the monthly renewal (MIT). Optional | `src/lib/paymob.ts:51` | Renewals are not charged automatically: a due month becomes "past due" and the owner pays it from the billing page | No, keep internal |
+| `PAYMOB_LIVE` | `1` allows live keys. Set only on the production project, only after the founder approves going live | `src/lib/paymob.ts:46` | Live keys are refused (Paymob off); test keys work | No |
 
 ## 5. Connector OAuth application credentials
 

@@ -5,6 +5,7 @@ import { MODELS, modelById } from "./models/catalog";
 import type { Rejected } from "./models/route";
 import { effectiveProvider, type LlmProvider } from "./model";
 import { log } from "./log";
+import { accountKey, globalKey } from "./keys";
 
 /**
  * Model token metering per account per month. Credits are what users pay;
@@ -59,7 +60,7 @@ export function costUsd(model: string, u: TokenUsage): number {
  * AGENT_IDS, so `wipeAccount` cannot miss a counter that a new kind or a new agent adds.
  */
 export function usageMonthKeys(email: string, month: string): string[] {
-  const k = `usage:${email}:${month}`;
+  const k = accountKey.usage(email, month);
   return [
     ...["in", "out", "calls", "usd_micro", "cache_read", "cache_write", "chat_msgs", "chat_over", "chat_cred", "media_usd_micro"].map((p) => `${k}:${p}`),
     ...KINDS.flatMap((kind) => [`${k}:kind:${kind}`, `${k}:kind:${kind}:in`, `${k}:kind:${kind}:out`, `${k}:kind:${kind}:usd_micro`]),
@@ -142,7 +143,7 @@ async function record(email: string | undefined, model: string, kind: Kind, usag
   const inp = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
   const out = usage.output_tokens ?? 0;
   const micro = Math.round(costUsd(model, usage) * 1e6);
-  const targets = [`usage:_all:${m}`, ...(email ? [`usage:${email}:${m}`] : [])];
+  const targets = [globalKey.usageAll(m), ...(email ? [accountKey.usage(email, m)] : [])];
   const mk = `usage:_all:${m}:model:${modelKeyOf(model)}`;
   const pk = `usage:_all:${m}:provider:${PROVIDERS.includes(provider as LlmProvider) ? provider : effectiveProvider()}`;
   try {
@@ -220,7 +221,7 @@ export async function meterRender(email: string, usd: number | undefined): Promi
   await db.incrby(mediaCostKey(email), Math.round(usd * 1e6));
 }
 /** The trial's messages are granted once for the whole trial, not per month. Deleted with the account (`wipeAccount`). */
-export const chatTrialKey = (email: string) => `chatm:${email}:trial`;
+export const chatTrialKey = (email: string) => accountKey.chatTrial(email);
 
 /** Tokens and money for one kind of model call. */
 export type KindUsage = { calls: number; in: number; out: number; usd: number };
@@ -235,7 +236,7 @@ export type UsageSummary = { month: string; in: number; out: number; calls: numb
  * plus "other", the providers are the two fixed ones; a counter that does not exist (a month before this shipped) is zero.
  */
 async function globalModelUsage(month: string): Promise<Pick<UsageSummary, "models" | "providers" | "fallbacks" | "rejectedPicks">> {
-  const k = `usage:_all:${month}`;
+  const k = globalKey.usageAll(month);
   const ids = [...MODELS.map((x) => x.id), OTHER_MODEL];
   const picks = PICK_PURPOSES.flatMap((p) => PICK_REJECT_REASONS.map((r) => `${p}:${r}`));
   const keys = [
@@ -270,7 +271,7 @@ async function globalModelUsage(month: string): Promise<Pick<UsageSummary, "mode
 }
 
 export async function getUsage(email: string | "_all", month = monthKey()): Promise<UsageSummary> {
-  const k = `usage:${email}:${month}`;
+  const k = accountKey.usage(email, month);
   const n = async (s: string) => Number((await db.get<number>(`${k}:${s}`)) ?? 0);
   const [inp, out, calls, micro, cacheRead, cacheWrite, chatMessages, chatOverflow, chatCredits] = await Promise.all([n("in"), n("out"), n("calls"), n("usd_micro"), n("cache_read"), n("cache_write"), n("chat_msgs"), n("chat_over"), n("chat_cred")]);
   const kinds: Record<string, number> = {};

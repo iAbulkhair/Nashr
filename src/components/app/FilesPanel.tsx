@@ -107,7 +107,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
               </li>
             ))}
           </ul>
-          <form onSubmit={(e) => { e.preventDefault(); if (newName) save(newName.endsWith(".md") ? newName : newName + ".md", "# " + newName + "\n"); setNewName(""); }} className="mt-3 flex gap-1">
+          <form onSubmit={(e) => { e.preventDefault(); if (newName) void save(newName.endsWith(".md") ? newName : newName + ".md", "# " + newName + "\n"); setNewName(""); }} className="mt-3 flex gap-1">
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={f.newFile} dir="ltr" className="min-w-0 flex-1 rounded border border-border px-2 py-1 text-xs" />
             <button className="rounded bg-inverse px-2 text-xs text-inverse-muted">+</button>
           </form>

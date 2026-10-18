@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { log } from "./log";
+import { accountKey } from "./keys";
 
 /**
  * Lightweight product analytics, self-hosted in Redis counters.
@@ -28,16 +29,16 @@ export async function track(email: string | undefined, event: Event) {
         db.sadd(`active:d:${d}`, email),
         db.sadd(`active:w:${isoWeek(now)}`, email),
         db.sadd(`active:m:${d.slice(0, 7)}`, email),
-        db.incrby(`uev:${email}:${event}`, 1),
-        db.set(`ulast:${email}`, now.toISOString()),
-        ...(event === "signup" ? [] : [db.set(`ufirst:${email}:${event}`, now.toISOString())].filter(() => true)),
+        db.incrby(accountKey.event(email, event), 1),
+        db.set(accountKey.lastSeen(email), now.toISOString()),
+        ...(event === "signup" ? [] : [db.set(accountKey.eventFirst(email, event), now.toISOString())].filter(() => true)),
       ] : []),
     ]);
     if (email && event !== "error" && event !== "signup") {
       // keep the first occurrence only
-      const k = `ufirst:${email}:${event}`;
-      const existing = await db.get<string>(`ufirst0:${email}:${event}`);
-      if (!existing) await db.set(`ufirst0:${email}:${event}`, now.toISOString());
+      const k = accountKey.eventFirst(email, event);
+      const existing = await db.get<string>(accountKey.eventFirst0(email, event));
+      if (!existing) await db.set(accountKey.eventFirst0(email, event), now.toISOString());
       await db.del(k);
     }
   } catch (e) {
@@ -48,11 +49,11 @@ export async function track(email: string | undefined, event: Event) {
 export async function userEvents(email: string): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   // One MGET for the eleven counters (rule 1433), not eleven GETs in a row: the console reads this for every user it lists.
-  const counts = await db.mget<number>(EVENTS.map((e) => `uev:${email}:${e}`));
+  const counts = await db.mget<number>(EVENTS.map((e) => accountKey.event(email, e)));
   EVENTS.forEach((e, i) => { if (counts[i]) out[e] = Number(counts[i]); });
   return out;
 }
-export const lastActive = (email: string) => db.get<string>(`ulast:${email}`);
-export const firstEvent = (email: string, e: Event) => db.get<string>(`ufirst0:${email}:${e}`);
+export const lastActive = (email: string) => db.get<string>(accountKey.lastSeen(email));
+export const firstEvent = (email: string, e: Event) => db.get<string>(accountKey.eventFirst0(email, e));
 export const dayCount = async (d: string, e: Event) => Number((await db.get<number>(`ev:${d}:${e}`)) ?? 0);
 export const activeCount = async (key: string) => (await db.smembers(key)).length;

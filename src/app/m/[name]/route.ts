@@ -1,10 +1,10 @@
-import { createReadStream, promises as fs } from "node:fs";
 import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { MEDIA_NAME } from "@/lib/media-catalog";
-import { MEDIA_KEYS, mediaPath } from "@/lib/media/store";
+import { MEDIA_KEYS } from "@/lib/media/store";
+import { storage } from "@/lib/media/storage";
 import { shareValid } from "@/lib/media/share";
 import { WINDOW, allow, clientIp, retryLater } from "@/lib/rate";
 
@@ -16,7 +16,8 @@ import { WINDOW, allow, clientIp, retryLater } from "@/lib/rate";
  *    Higgsfield, Composio and WordPress fetch it at the moment we hand it over.
  * Everything else, a bad name, a missing file and another workspace's file alike, is the same bare 404: the route never
  * says whether a name exists. The name is checked against MEDIA_NAME before any filesystem or store call, so no `/`,
- * `..`, `%`, NUL or uppercase reaches a path. GET and HEAD only.
+ * `..`, `%`, NUL or uppercase reaches a path. The bytes come from the storage adapter (`storage()`, rule 2062), which is
+ * asked only after the check above passed. GET and HEAD only.
  */
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -67,21 +68,14 @@ async function serve(req: Request, ctx: Ctx, head: boolean): Promise<Response> {
     if (!u || !(await db.get(MEDIA_KEYS.entry(sc(u), name)))) return notFound();
   }
 
-  const file = mediaPath(name);
-  if (!file) return notFound();
-  let stat: { size: number; mtime: Date };
-  try {
-    const s = await fs.stat(file);
-    if (!s.isFile()) return notFound();
-    stat = { size: s.size, mtime: s.mtime };
-  } catch {
-    return notFound();
-  }
+  const st = storage();
+  const stat = await st.head(name);
+  if (!stat) return notFound();
 
   const etag = `"${name.slice(0, 32)}"`;
   const download = q.get("download") === "1";
   const headers: Record<string, string> = {
-    "content-type": name.endsWith(".mp4") ? "video/mp4" : "image/jpeg",
+    "content-type": stat.contentType,
     "accept-ranges": "bytes",
     // A signed link is for one fetcher at one moment; a member's browser may keep its own copy. Never a shared cache.
     "cache-control": signed ? "no-store" : "private, max-age=86400",
@@ -114,7 +108,7 @@ async function serve(req: Request, ctx: Ctx, head: boolean): Promise<Response> {
   const release = () => {
     if (!released) { released = true; bigStreams--; }
   };
-  const stream = createReadStream(file, { start, end });
+  const stream = st.stream(name, { start, end });
   stream.once("close", release);
   stream.once("error", release);
   req.signal.addEventListener("abort", () => { stream.destroy(); release(); }, { once: true });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSuspended, suspensionEnd } from "@/lib/suspension";
 import { adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan, type User, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { matchUser, pageOf, parseUserQuery, sortUsers, tileCounts, userFacets } from "@/lib/admin-users";
@@ -17,6 +18,7 @@ import { parseVideoGrant } from "@/lib/entitlements";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import { defaultPaidThrough, parsePaidThrough } from "@/lib/hand-plan";
 import { ksaDay } from "@/lib/partner-rules";
+import { globalKey } from "@/lib/keys";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -73,7 +75,7 @@ async function rowOf(u: User) {
     email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt,
     // Of `credits`, what is left in live top-up packs (src/lib/topups.ts): the rest is the month's plan credits.
     topupCredits: topupCredits(u),
-    renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang,
+    renewedAt: u.renewedAt ?? null, suspended: isSuspended(u), suspendedUntil: isSuspended(u) ? suspensionEnd(u) : null, lang: u.lang,
     // Rule 776: when the owner proved the address (null: not yet, so the account reads as signed out until they do).
     emailVerifiedAt: u.emailVerifiedAt ?? null,
     seats: seatLimit(u), seatsOverride: u.seats ?? null,
@@ -107,7 +109,7 @@ async function rowOf(u: User) {
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const params = new URL(req.url).searchParams;
-  const emails = await db.smembers("users:all");
+  const emails = await db.smembers(globalKey.usersAll());
   const accounts = (await pmap(emails, (e) => getUser(e))).filter((u): u is User => !!u);
   if (params.get("view") === "table") {
     const q = parseUserQuery(params);

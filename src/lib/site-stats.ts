@@ -9,6 +9,7 @@ import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
 import { anyAboveZero, day, rangeBefore } from "./social-read/common";
 import { log } from "./log";
+import { scopeParam, wsKey } from "./keys";
 
 /**
  * The site's traffic (Google Analytics 4) and search (Search Console), read through Composio and kept as totals for
@@ -24,7 +25,7 @@ import { log } from "./log";
  * parts). A figure Google did not return is null, never 0 (rule 737).
  */
 
-const KEY = (scope: string) => `sitestats:${scope}`;
+const KEY = (scope: string) => wsKey.siteStats(scopeParam(scope));
 const DAYS = 28;
 /** Search Console's figures settle two to three days late. */
 const GSC_LAG = 3;

@@ -1,7 +1,9 @@
 import { CAPS, db, pushCapped } from "./db";
+import { isSuspended } from "./suspension";
 import { listLite, type TaskLite, type TaskType } from "./brand";
 import { AGENTS, agentForTask, type AgentId } from "./agents";
 import { pmap } from "./parallel";
+import { globalKey, scopeParam, wsKey } from "./keys";
 
 /**
  * Behavioural evals: what owners actually did with each agent's output
@@ -85,7 +87,7 @@ export function typeMetrics(tasks: TaskLite[]): TypeMetrics[] {
  * undercount at the far edge, never a thumb counted in the wrong period.
  */
 async function thumbsIn(scopes: string[], win: Window): Promise<Map<AgentId, { up: number; down: number }>> {
-  const logs = await pmap(scopes, (s) => db.lrange(`fblog:${s}`, 0, -1));
+  const logs = await pmap(scopes, (s) => db.lrange(wsKey.feedbackLog(scopeParam(s)), 0, -1));
   const from = win.from.getTime(), to = win.to.getTime();
   const known = new Set<string>(AGENTS.map((a) => a.id));
   const out = new Map<AgentId, { up: number; down: number }>();
@@ -147,7 +149,7 @@ export async function scopeMetrics(scope: string, win: Window) {
  */
 async function everyWorkspace() {
   const [{ getUser }, { listBrands, scopeFor }] = await Promise.all([import("./auth"), import("./brands")]);
-  const emails = await db.smembers("users:all");
+  const emails = await db.smembers(globalKey.usersAll());
   const groups = await pmap(emails, async (e) => {
     const [u, brands] = await Promise.all([getUser(e), listBrands(e)]);
     if (!u) return [];
@@ -156,7 +158,7 @@ async function everyWorkspace() {
       // Per brand, and labelled that way. The rows were one per brand scope but printed as the bare email, so an
       // agency with five brands appeared five times under one name with five different sets of numbers.
       const label = scope === e ? e : `${e} · ${b.name || b.id}`;
-      return { email: e, scope, label, suspended: !!u.suspended, archived: b.status !== "active" };
+      return { email: e, scope, label, suspended: isSuspended(u), archived: b.status !== "active" };
     });
   });
   return groups.flat();
@@ -189,5 +191,5 @@ export async function globalMetrics(sinceDays = 30) {
  * timestamped log, and a counter that only grows was the reason the old column could never show an agent improving.
  */
 export async function recordThumb(scope: string, agent: AgentId, value: 1 | -1, reason?: string, at?: string) {
-  await pushCapped(`fblog:${scope}`, JSON.stringify({ agent, value, reason: (reason ?? "").slice(0, 300), msgAt: at ?? null, at: new Date().toISOString() }), CAPS.feedback);
+  await pushCapped(wsKey.feedbackLog(scopeParam(scope)), JSON.stringify({ agent, value, reason: (reason ?? "").slice(0, 300), msgAt: at ?? null, at: new Date().toISOString() }), CAPS.feedback);
 }

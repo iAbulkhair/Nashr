@@ -64,14 +64,17 @@ export function WorkspaceProvider({ initial, children }: { initial: WorkspaceCou
 
   useEffect(() => {
     const onCredits = (e: Event) => { const n = (e as CustomEvent<number>).detail; if (typeof n === "number" && Number.isFinite(n)) setCredits(n); };
-    window.addEventListener(WORKSPACE_EVENTS.pending, loadPending);
-    window.addEventListener(WORKSPACE_EVENTS.unread, loadUnread);
-    window.addEventListener(WORKSPACE_EVENTS.convs, loadConvs);
+    const onPending = () => { void loadPending(); };
+    const onUnread = () => { void loadUnread(); };
+    const onConvs = () => { void loadConvs(); };
+    window.addEventListener(WORKSPACE_EVENTS.pending, onPending);
+    window.addEventListener(WORKSPACE_EVENTS.unread, onUnread);
+    window.addEventListener(WORKSPACE_EVENTS.convs, onConvs);
     window.addEventListener(WORKSPACE_EVENTS.credits, onCredits);
     return () => {
-      window.removeEventListener(WORKSPACE_EVENTS.pending, loadPending);
-      window.removeEventListener(WORKSPACE_EVENTS.unread, loadUnread);
-      window.removeEventListener(WORKSPACE_EVENTS.convs, loadConvs);
+      window.removeEventListener(WORKSPACE_EVENTS.pending, onPending);
+      window.removeEventListener(WORKSPACE_EVENTS.unread, onUnread);
+      window.removeEventListener(WORKSPACE_EVENTS.convs, onConvs);
       window.removeEventListener(WORKSPACE_EVENTS.credits, onCredits);
     };
   }, [loadPending, loadUnread, loadConvs]);

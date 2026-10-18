@@ -18,7 +18,7 @@ import type { User } from "./auth";
  * - Refund proposal: the 7-day guarantee's amount, shown to the founder; the refund itself stays the console's existing
  *   full refund, which ends the plan (rule 1300) and with it the seat and the lock.
  *
- * Everything automatic here is off while Paymob is off: no checkout and no callback run without `paymobConfig()`, and
+ * Everything automatic here is off while Paymob is off: no checkout and no callback run without `paymentProvider()` (src/lib/payments), and
  * the public counter answers closed. The founder console may grant or end a seat or a lock by hand at any time.
  * Stored on the account as two optional fields (expand step, rule 679): old code ignores them and keeps them on save.
  */

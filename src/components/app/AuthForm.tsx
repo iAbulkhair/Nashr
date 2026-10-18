@@ -7,6 +7,7 @@ import type { Lang } from "@/lib/i18n";
 import PartnerCodeField from "./PartnerCodeField";
 import { PLAN_CREDITS } from "@/lib/pricing";
 import { authMessage, failureCode, passwordChecks, postJson, succeeded, unmetRules } from "@/lib/auth-client";
+import { suspendedMessage } from "@/lib/suspension";
 import { PasswordRules } from "./PasswordRules";
 import PasswordField from "./PasswordField";
 import { Turnstile } from "./Turnstile";
@@ -203,7 +204,7 @@ export function LoginForm({ t, lang, google = false }: { t: AppDict; lang: Lang;
       if (p.body.mfa === true) { setMfa(true); return; }
       // "Wrong email or password" only for a 401: a rate limit, a dropped connection and a server error each say so,
       // so a customer with the right password is not sent to a reset (rule 433).
-      if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { invalid: t.login.invalid, suspended: t.login.suspended }));
+      if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { invalid: t.login.invalid, suspended: suspendedMessage(p.body.until, lang, t.login.suspended) }));
       arrive(p);
     } finally {
       setBusy(false);
@@ -219,7 +220,7 @@ export function LoginForm({ t, lang, google = false }: { t: AppDict; lang: Lang;
       if (!succeeded(p)) {
         const code = failureCode(p);
         if (code === "mfa_expired") setMfa(false);
-        return setErr(authMessage(code, lang, { invalid: t.login.invalid, suspended: t.login.suspended, bad_code: M.bad_code, mfa_expired: M.mfa_expired }));
+        return setErr(authMessage(code, lang, { invalid: t.login.invalid, suspended: suspendedMessage(p.body.until, lang, t.login.suspended), bad_code: M.bad_code, mfa_expired: M.mfa_expired }));
       }
       arrive(p);
     } finally {
@@ -340,7 +341,7 @@ export function ResetForm({ lang }: { lang: Lang }) {
       const p = await postJson("/api/auth/reset", { token: tokenRef.current, password: pw });
       // bad_token, weak_password, slow_down and suspended keep their own messages; disabled, network and server errors
       // get the shared ones.
-      if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, S as Record<string, string>));
+      if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { ...(S as Record<string, string>), suspended: suspendedMessage(p.body.until, lang, S.suspended) }));
       r.push(`/${lang}/app`);
       r.refresh();
     } finally {

@@ -77,6 +77,17 @@ export async function listDevices(login: string, currentKey: string | null, afte
 }
 
 /**
+ * When `login` last signed in, as epoch ms, or null when no sign-in is indexed (none in the last 30 days, or every one
+ * before this index existed). Reading only, for the founder console's workspace view (rule 2080): it never drops an
+ * entry, and it says nothing about the browser or the address.
+ */
+export async function lastSignIn(login: string): Promise<number | null> {
+  const all = (await db.hgetall<Entry>(devicesKey(login))) ?? {};
+  const ats = Object.values(all).filter(isEntry).map((e) => Number(e.at) || 0).filter((n) => n > 0);
+  return ats.length ? Math.max(...ats) : null;
+}
+
+/**
  * End one session of `login` by its id: the entry is looked up in the login's own index and its stored session key
  * deleted. False when the id is not one of this login's devices. Never the current session: that is signing out.
  */

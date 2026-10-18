@@ -11,17 +11,19 @@
  * The source URL is provider output, so it is untrusted: downloaded only through safeFetch over https on every redirect
  * hop, capped while it streams, and judged by its magic bytes, never by its Content-Type. Every error is a StoreError
  * with a fixed code.
+ *
+ * The bytes themselves go through the storage adapter (`storage()`, src/lib/media/storage.ts, rule 2058); everything
+ * that decides what may be written and who may read it stays here.
  */
 import { randomBytes } from "node:crypto";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import sharp from "sharp";
 import { db } from "../db";
 import { pmap } from "../parallel";
 import { safeFetch } from "../safe-fetch";
 import { MEDIA_NAME, isOurMediaUrl, ourMediaName, type MediaKind } from "../media-catalog";
-import { mediaDir, mediaOrigin, storeConfigured, storeLimits } from "./config";
+import { storeConfigured, storeLimits } from "./config";
 import { abortAfter, budget } from "./keys";
+import { storage } from "./storage";
 import { StoreError, type StoredMedia } from "./types";
 import { log } from "../log";
 
@@ -120,26 +122,8 @@ export const MEDIA_KEYS = {
   count: () => "mfiles:count",
 };
 
-/** The file on disk for a name that passed MEDIA_NAME, sharded by its first two hex digits. Null for anything else. */
-export function mediaPath(name: string, dir = mediaDir()): string | null {
-  if (!dir || !MEDIA_NAME.test(name)) return null;
-  return path.join(dir, name.slice(0, 2), name);
-}
-
-/** Rule 1750: the folder exists with owner-only access, created on first use. */
-async function ensureDir(p: string) {
-  await fs.mkdir(p, { recursive: true, mode: 0o700 });
-}
-
-/** Free space under the store, or Infinity when the platform cannot say (statfs on shared hosting may show the whole disk). */
-async function freeBytes(dir: string): Promise<number> {
-  try {
-    const s = await fs.statfs(dir);
-    return Number(s.bavail) * Number(s.bsize);
-  } catch {
-    return Infinity;
-  }
-}
+/** The disk backend's path for a name (tests and the one-time Blob move read it). */
+export { mediaPath } from "./disk";
 /** Kept free on the disk whatever our own counters say: the last guard if hPanel's quota is smaller than configured. */
 export const MIN_FREE_BYTES = 2 * 1024 ** 3;
 /** The share of each ceiling the store may fill before it refuses new renders (rule 1753). */
@@ -159,9 +143,9 @@ export const storeReady = (kind: MediaKind) => storeHasRoom(kind);
 
 /**
  * Download a provider result (untrusted URL) and keep our own copy under the job's scope and task. Throws StoreError
- * with a fixed code. Write order (rule 1752): the index first, then the bytes to `.tmp/{name}.part` (created with `wx`,
- * flushed), then a hard link to the final name, which fails rather than overwrite; a crash leaves an index entry with no
- * file (served as a 404), never a file nobody can find to delete.
+ * with a fixed code. Write order (rule 1752): the index first, then the bytes through the adapter, which never
+ * overwrites (disk: `.tmp/{name}.part` created with `wx` and flushed, then a hard link to the final name); a crash leaves
+ * an index entry with no file (served as a 404), never a file nobody can find to delete.
  */
 export async function copyToStore(sourceUrl: string, kind: MediaKind, deadline: number, owner: { scope: string; taskId: string }): Promise<StoredMedia> {
   if (!storeConfigured()) throw new StoreError("no_store");
@@ -183,39 +167,27 @@ export async function copyToStore(sourceUrl: string, kind: MediaKind, deadline: 
  * 1752) hold for all of them.
  */
 export async function writeToStore(body: Buffer, kind: MediaKind, owner: MediaOwner): Promise<StoredMedia> {
-  const dir = mediaDir();
-  if (!dir) throw new StoreError("no_store");
+  const st = storage();
+  if (!st.configured()) throw new StoreError("no_store");
   const contentType = kind === "image" ? "image/jpeg" : "video/mp4";
+  // Rule 2059: the cap, the quota and the free-space guard run before the adapter is asked to keep anything.
   if (body.length > storeLimits().maxFileBytes) throw new StoreError("too_large");
-  if (!(await storeHasRoom(kind, body.length)) || (await freeBytes(dir)) - body.length < MIN_FREE_BYTES) throw new StoreError("full");
+  if (!(await storeHasRoom(kind, body.length)) || (await st.freeBytes()) - body.length < MIN_FREE_BYTES) throw new StoreError("full");
 
   const name = `${randomBytes(16).toString("hex")}.${kind === "image" ? "jpg" : "mp4"}`;
-  const final = mediaPath(name, dir)!;
-  const tmpDir = path.join(dir, ".tmp");
-  const tmp = path.join(tmpDir, `${name}.part`);
   const entry: MediaEntry = { taskId: owner.taskId, kind, bytes: body.length, at: new Date().toISOString(), ...(owner.source ? { source: owner.source } : {}) };
   await Promise.all([db.set(MEDIA_KEYS.entry(owner.scope, name), entry), db.sadd(MEDIA_KEYS.names(owner.scope), name)]);
   try {
-    await Promise.all([ensureDir(tmpDir), ensureDir(path.dirname(final))]);
-    const fh = await fs.open(tmp, "wx", 0o600);
-    try {
-      await fh.writeFile(body);
-      await fh.sync();
-    } finally {
-      await fh.close();
-    }
-    await fs.link(tmp, final);
+    await st.put(name, body);
   } catch {
     await Promise.all([
-      fs.unlink(tmp).catch(() => {}),
       db.del(MEDIA_KEYS.entry(owner.scope, name)).catch(() => {}),
       db.srem(MEDIA_KEYS.names(owner.scope), name).catch(() => {}),
     ]);
     throw new StoreError("put_failed");
   }
-  await fs.unlink(tmp).catch(() => {});
   await Promise.all([db.incrby(MEDIA_KEYS.bytes(), body.length), db.incrby(MEDIA_KEYS.count(), 1)]);
-  const url = `${mediaOrigin()}/m/${name}`;
+  const url = st.url(name);
   if (!isOurMediaUrl(url)) throw new StoreError("put_failed");
   return { url, bytes: body.length, contentType };
 }
@@ -237,11 +209,11 @@ export async function listLibrary(scope: string): Promise<LibraryItem[]> {
   const names = (await db.smembers(MEDIA_KEYS.names(scope))).filter((n) => MEDIA_NAME.test(n));
   if (!names.length) return [];
   const entries = await db.mget<MediaEntry>(names.map((n) => MEDIA_KEYS.entry(scope, n)));
-  const origin = mediaOrigin();
+  const st = storage();
   return names
     .map((name, i) => ({ name, e: entries[i] }))
     .filter((x): x is { name: string; e: MediaEntry } => !!x.e && !x.e.taskId && !!x.e.source)
-    .map(({ name, e }) => ({ name, url: `${origin}/m/${name}`, kind: e.kind, bytes: e.bytes, at: e.at, source: e.source! }))
+    .map(({ name, e }) => ({ name, url: st.url(name), kind: e.kind, bytes: e.bytes, at: e.at, source: e.source! }))
     .sort((a, b) => b.at.localeCompare(a.at));
 }
 
@@ -255,8 +227,7 @@ export async function deleteLibraryFile(scope: string, name: string): Promise<bo
   const e = await db.get<MediaEntry>(MEDIA_KEYS.entry(scope, name));
   if (!e || e.taskId || !e.source) return false;
   await Promise.all([db.del(MEDIA_KEYS.entry(scope, name)), db.srem(MEDIA_KEYS.names(scope), name)]);
-  const file = mediaPath(name);
-  if (file) await fs.unlink(file).catch(() => {});
+  await storage().delete(name).catch(() => "missing");
   await Promise.all([db.incrby(MEDIA_KEYS.bytes(), -(Number(e.bytes) || 0)), db.incrby(MEDIA_KEYS.count(), -1)]);
   return true;
 }
@@ -273,13 +244,13 @@ export async function forgetScopeMedia(scopes: readonly string[]): Promise<strin
   const keys = [...scopes.map((s) => MEDIA_KEYS.names(s)), ...scopes.flatMap((s, i) => perScope[i].map((n) => MEDIA_KEYS.entry(s, n)))];
   if (!files.length) return keys;
   const entries = await db.mget<MediaEntry>(files.map((f) => MEDIA_KEYS.entry(f.s, f.name)));
-  const dir = mediaDir();
-  if (dir) {
+  const st = storage();
+  if (st.configured()) {
     await pmap(files, async (f) => {
       try {
-        await fs.unlink(mediaPath(f.name, dir)!);
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("account wipe: a media file could not be deleted, try again");
+        await st.delete(f.name);
+      } catch {
+        throw new Error("account wipe: a media file could not be deleted, try again");
       }
     }, 8);
   } else {
@@ -300,47 +271,15 @@ export type StoreProbe = {
   limits: { maxBytes: number; maxFiles: number; maxFileBytes: number };
   freeBytes: number | null;
 };
-const SENTINEL = ".sentinel";
 
 /**
- * Founder console only (rule 1762): write a tiny file, read it back, delete it, and keep a sentinel that names every
- * build that found the store. If a build wipes the folder the sentinel goes with it, and the count starts again at 0.
- * Usage figures are the store's totals: no scope, name or tenant data. Never throws.
+ * Founder console only (rule 1762): the adapter's write, read-back and delete check with its build sentinel
+ * (`StorageAdapter.probe`), and the store's totals. Usage figures are the store's totals: no scope, name or tenant
+ * data. Never throws.
  */
 export async function probeStore(): Promise<StoreProbe> {
   const limits = storeLimits();
   const [bytes, files] = (await db.mget<number>([MEDIA_KEYS.bytes(), MEDIA_KEYS.count()]).catch(() => [0, 0])).map((v) => Math.max(0, Number(v) || 0));
-  const out: StoreProbe = { status: "ok", survivedBuilds: null, usage: { bytes, files }, limits, freeBytes: null };
-  const dir = mediaDir();
-  if (!dir) return { ...out, status: "error:no_store" };
-  const check = path.join(dir, ".tmp", `check-${randomBytes(8).toString("hex")}.part`);
-  try {
-    await ensureDir(path.dirname(check));
-    await fs.writeFile(check, "ok", { flag: "wx", mode: 0o600 });
-  } catch {
-    return { ...out, status: "error:write_failed" };
-  }
-  let read = "";
-  try {
-    read = await fs.readFile(check, "utf8");
-  } catch {}
-  try {
-    await fs.unlink(check);
-  } catch {
-    return { ...out, status: "error:del_failed" };
-  }
-  if (read !== "ok") return { ...out, status: "error:read_failed" };
-  const free = await freeBytes(dir);
-  out.freeBytes = Number.isFinite(free) ? free : null;
-  const build = process.env.BUILD_COMMIT || "unknown";
-  try {
-    const seen = await fs.readFile(path.join(dir, SENTINEL), "utf8").then((t) => (JSON.parse(t) as { builds?: unknown }).builds).catch(() => null);
-    const builds = Array.isArray(seen) ? seen.filter((b): b is string => typeof b === "string") : [];
-    if (!builds.includes(build)) builds.push(build);
-    await fs.writeFile(path.join(dir, SENTINEL), JSON.stringify({ builds: builds.slice(-100) }), { mode: 0o600 });
-    out.survivedBuilds = Math.max(0, builds.length - 1);
-  } catch {
-    out.survivedBuilds = null;
-  }
-  return out;
+  const r = await storage().probe();
+  return { status: r.status, survivedBuilds: r.survivedBuilds, usage: { bytes, files }, limits, freeBytes: r.freeBytes };
 }

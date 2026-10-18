@@ -60,7 +60,7 @@ export function pollJob(id: string, kind: MediaKind, report: (e: PollEvent) => v
   let late = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const age = () => Date.now() - born;
-  const again = (ms: number) => { timer = setTimeout(tick, ms); };
+  const again = (ms: number) => { timer = setTimeout(() => { void tick(); }, ms); };
   const backOff = () => { gap = late ? LATE_GAP : Math.min(gap * 2, MAX_GAP); again(gap); };
   async function tick() {
     if (!late && age() >= MEDIA_MAX_AGE_MS[kind] + GRACE) {

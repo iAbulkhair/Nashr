@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { isSuspended, type StoredSuspension } from "./suspension";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
@@ -12,6 +13,7 @@ import { signupConsent, type Consent } from "./consent";
 import type { HandPlan } from "./hand-plan";
 import type { FoundingSeat, PriceLock } from "./founding";
 import { SESSION_COOKIE, dropCookie, dropLegacyCookie, namesOf, readCookie } from "./cookie-names";
+import { accountKey, globalKey, storedScope, type Scope } from "./keys";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -68,8 +70,11 @@ export type User = {
   lang: "ar" | "en";
   /** YYYY-MM of the last monthly credit renewal (paid plans). */
   renewedAt?: string;
-  /** Set by the admin: login and all API access blocked. */
-  suspended?: boolean;
+  /**
+   * Set by staff: login and all API access blocked. `true` has no end date; `{ until }` (rule 2070, expand) ends at that
+   * moment. Read only through `isSuspended` in src/lib/suspension.ts (rule 2071).
+   */
+  suspended?: StoredSuspension;
   /** ISO time of the last password change: every session issued before it is dead (src/lib/auth.ts `currentUser`). */
   sessionsAfter?: string;
   /**
@@ -209,13 +214,17 @@ export type User = {
    * added 2026-10-12 (expand, rule 679): older accounts have none and read through `consentOf` as not recorded.
    */
   consent?: Consent;
-  /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
+  /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. Read it through `sc(u)`. */
   scope?: string;
   brandId?: string;
   /** Runtime only: who is acting (owner, a member of this account, an MCP token, a founder impersonating). Never persisted. */
   actor?: Actor;
 };
-export const sc = (u: User) => u.scope ?? u.email;
+/**
+ * The caller's workspace scope (rule 2031): how a request reaches a `wsKey` builder in src/lib/keys.ts. `u.scope` is set
+ * only by `currentUser` (`scopeFor` over the account's own brand list) and the founder's impersonation, never from input.
+ */
+export const sc = (u: User): Scope => storedScope(u.scope ?? u.email);
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
 // `thakeen_session`, read with the old `nashr_session` as a fallback during the rename (rule 1810, src/lib/cookie-names.ts).
@@ -258,7 +267,7 @@ export function normalizePhone(p: string) {
  * the mapped value back.
  */
 export async function getUser(email: string): Promise<User | null> {
-  const u = await db.get<User>(`user:${normalizeEmail(email)}`);
+  const u = await db.get<User>(accountKey.user(normalizeEmail(email)));
   if (u) {
     u.plan = planFromStore(u.plan);
     // An expired top-up pack leaves the balance as it expires, not at the next cron (src/lib/topups.ts, rule 444).
@@ -272,8 +281,8 @@ export async function saveUser(u: User) {
   // The runtime-only fields: the active scope and who is acting are per request, never part of the account.
   const { scope: _s, brandId: _b, actor: _a, topupsDirty: _t, ...persist } = u;
   void _s; void _b; void _a; void _t;
-  await db.set(`user:${u.email}`, persist);
-  await db.sadd("users:all", u.email);
+  await db.set(accountKey.user(u.email), persist);
+  await db.sadd(globalKey.usersAll(), u.email);
 }
 
 export async function createUser(input: { email: string; name: string; phone: string; password: string; lang: "ar" | "en" }): Promise<User> {
@@ -333,10 +342,10 @@ const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typ
  * The raw key is tried only for a token of the shape `createSession` mints (64 hex characters): a cookie set to
  * `h:{hash}` must never read the hashed record through the raw path, or a leaked hash would sign in after all.
  */
-export const sessionKey = (token: string) => `session:h:${createHash("sha256").update(token).digest("hex")}`;
+export const sessionKey = (token: string) => globalKey.session(createHash("sha256").update(token).digest("hex"));
 const RAW_TOKEN = /^[0-9a-f]{64}$/;
 /** Every key a cookie's session may live under: the hashed one first, then the raw one written before rule 1345. */
-export const sessionKeys = (token: string) => (RAW_TOKEN.test(token) ? [sessionKey(token), `session:${token}`] : [sessionKey(token)]);
+export const sessionKeys = (token: string) => (RAW_TOKEN.test(token) ? [sessionKey(token), globalKey.sessionLegacy(token)] : [sessionKey(token)]);
 /** Read the record behind a cookie token: hashed first, then the raw key of a session written before rule 1345. */
 export async function sessionRecord(token: string): Promise<SessionRec | null> {
   const [hashed, raw] = await Promise.all(sessionKeys(token).map((k) => db.get<SessionRec>(k)));
@@ -500,7 +509,7 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records.
   const [u, m, brandId] = await Promise.all([getUser(email), getMember(email), activeBrandId(email)]);
   if (u) {
-    if (u.suspended) return null;
+    if (isSuspended(u)) return null;
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
     if (issuedBefore(s.at, u.devicesAfter)) return null; // issued before the owner's last "sign out other devices" (rule 1170)
     // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
@@ -525,7 +534,7 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   // entry anyway (restored by a racing write, left by a deleted account) is off the owner's Members page, so it must
   // not sign in either.
   const [owner, brands, listed] = await Promise.all([getUser(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email)]);
-  if (!owner || owner.suspended || !listed) return null;
+  if (!owner || isSuspended(owner) || !listed) return null;
   // Rule 767: while the owner has not proved the address, the account spends nothing, so its members are signed out too,
   // in both resolvers. A member has no address of the owner's to prove, so `currentUserUnverified` never hands one to the
   // verify page: they read as signed out, and login answers `owner_unverified`. (Impersonation never reaches this branch.)
@@ -723,6 +732,16 @@ const actors = new WeakMap<Request, ActorInfo>();
 export const actorInfo = (req: Request): ActorInfo | null => actors.get(req) ?? null;
 /** The `via` of this request's console actor, for `adminAudit`. */
 export const viaOf = (req: Request): ConsoleVia | null => actors.get(req)?.via ?? null;
+/**
+ * The console role of this request's actor, for `staffMay` in src/lib/roles.ts (rule 2078): a staff session's stored
+ * role (none stored: null, refused); the key, the key header and the founder's customer session are the founder, "owner".
+ * Null when `adminActor` was not called or found nobody.
+ */
+export function consoleRole(req: Request): string | null {
+  const i = actors.get(req);
+  if (!i) return null;
+  return i.via === "staff" ? (typeof i.role === "string" ? i.role : null) : "owner";
+}
 /**
  * The write gate accepted a code typed for THIS request (`x-admin-otp`): the request already carries a fresh code, which
  * is what staff management, the customer-path switch and own credential changes need (rule 1636). The code's step is
