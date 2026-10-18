@@ -6,7 +6,7 @@ import { CALLBACK_PATH } from "@/lib/google-signin";
 
 /**
  * docs/Registration_Packs.md opens with a "Current values" table the founder copies into each platform's portal
- * (rule 2164, docs/system/tests/2160-integrations-panel-drift.md). On 2026-10-18 the packs below it still named the
+ * (rule 2164, docs/system/tests/2160-integrations-panel-drift.md), and the privacy anchors it links (rule 2167). On 2026-10-18 the packs below it still named the
  * retired nashr-tau host, `vercel env` steps and `MS_CLIENT_ID`, which the code never reads.
  */
 
@@ -48,5 +48,25 @@ describe("Registration packs current values (rule 2164)", () => {
       expect(current).toContain(`\`${n}\``);
       expect(src.includes(n), n).toBe(false);
     }
+  });
+});
+
+describe("Privacy anchors for platform app review (rule 2167)", () => {
+  it("every privacy section has the same unique id in both languages, and the page renders it", async () => {
+    const { LEGAL } = await import("@/lib/legal");
+    const ids = (l: "ar" | "en") => LEGAL[l].privacy.sections.map((s) => s.id);
+    expect(ids("ar")).toEqual(ids("en"));
+    expect(ids("en").every((i) => typeof i === "string" && /^[a-z][a-z-]*$/.test(i))).toBe(true);
+    expect(new Set(ids("en")).size).toBe(ids("en").length);
+    // The two a platform app is given: never renamed.
+    expect(ids("en")).toContain("deletion");
+    expect(ids("en")).toContain("connected-platforms");
+    expect(LEGAL.en.privacy.sections.find((s) => s.id === "deletion")?.p.join(" ")).toMatch(/delete your account yourself/);
+    expect(readFileSync("src/app/[lang]/privacy/page.tsx", "utf8")).toContain("id={s.id}");
+  });
+
+  it("the current values give Meta the deletion anchor", () => {
+    expect(current).toContain("`https://thakeen.com/en/privacy#deletion`");
+    expect(current).toContain("`https://thakeen.com/en/privacy#connected-platforms`");
   });
 });

@@ -10,6 +10,9 @@ a platform or a key name changes and this table does not.
 
 - App name: `Thakeen` (Arabic, where asked: `ذكين`). Website `https://thakeen.com`. Privacy `https://thakeen.com/ar/privacy`
   (English `/en/privacy`). Terms `https://thakeen.com/ar/terms` (English `/en/terms`).
+- Meta's "Data deletion instructions URL" (App settings, Basic, User data deletion): `https://thakeen.com/en/privacy#deletion`.
+  Platforms that ask how a user disconnects or revokes access: `https://thakeen.com/en/privacy#connected-platforms`.
+  These anchors are fixed (rule 2167); the Arabic page has the same ones (`/ar/privacy#deletion`).
 - Keys go straight from the portal into hPanel (Websites, thakeen.com, Node.js app, Environment variables), never into
   chat or a file. Adding a name to the live site rebuilds it; tell Claude first. The `vercel env add` steps below are history.
 - Staging gets the same callback on `https://staging.thakeen.com` once its own app or redirect is added.
