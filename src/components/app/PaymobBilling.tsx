@@ -181,7 +181,7 @@ export function PaymobReturnStatus({ lang, every = 3000, tries = 20 }: { lang: L
       if (state === "failed") { stop(S.failed, "bad"); return; }
       // A dropped request (no answer) tries again like a pending one; an answer with no checkout to wait for stops.
       if (n >= tries || (j !== null && state !== "pending")) { stop(S.late, "bad"); return; }
-      timer = setTimeout(tick, every);
+      timer = setTimeout(() => { void tick(); }, every);
     }
     void tick();
     return () => { done = true; if (timer) clearTimeout(timer); };

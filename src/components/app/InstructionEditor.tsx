@@ -20,7 +20,7 @@ function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: 
 }
 
 /** The name an owner reads for a target: an agent's own name, or the fixed label of a group. */
-export const targetLabel = (t: AppDict, target: Target): string => (isAgentId(target) ? t.agents[target].name : t.instructions.targets[target]);
+export const targetLabel = (t: Pick<AppDict, "agents" | "instructions">, target: Target): string => (isAgentId(target) ? t.agents[target].name : t.instructions.targets[target]);
 
 /**
  * The rows of one instruction set, shared by the customer page and the founder's console (Task 11): the same row, the
@@ -37,7 +37,7 @@ export const targetLabel = (t: AppDict, target: Target): string => (isAgentId(ta
  *
  * Every text is rendered as a value of a form field or as plain React text: an instruction or an imported title never becomes HTML.
  */
-export default function InstructionEditor({ t, items, onChange, maxChars, targets, perAgent, refsOn, files, allowLock, readOnly, errors = {}, refTitles = {}, maxItems = WORKSPACE_ITEMS }: { t: AppDict; items: Draft[]; onChange: (items: Draft[]) => void; maxChars: number; targets: Target[]; perAgent: boolean; refsOn: boolean; files: string[]; allowLock: boolean; readOnly: boolean; errors?: RowErrors; refTitles?: Record<string, string>; maxItems?: number }) {
+export default function InstructionEditor({ t, items, onChange, maxChars, targets, perAgent, refsOn, files, allowLock, readOnly, errors = {}, refTitles = {}, maxItems = WORKSPACE_ITEMS }: { t: Pick<AppDict, "agents" | "files" | "instructions" | "lang">; items: Draft[]; onChange: (items: Draft[]) => void; maxChars: number; targets: Target[]; perAgent: boolean; refsOn: boolean; files: string[]; allowLock: boolean; readOnly: boolean; errors?: RowErrors; refTitles?: Record<string, string>; maxItems?: number }) {
   const I = t.instructions;
   const E = emptyCopy(t.lang, "instructions");
   const set = (i: number, patch: Partial<Draft>) => onChange(items.map((d, j) => (j === i ? { ...d, ...patch } : d)));

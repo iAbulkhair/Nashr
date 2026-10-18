@@ -605,7 +605,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   }, [text]);
   // The shell's balance (rail, phone header) follows this panel's: every answer and every handoff run brings it.
   useEffect(() => { announceCredits(credits); }, [credits]);
-  useEffect(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }); }, [initialConv]);
+  useEffect(() => { void fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }); }, [initialConv]);
   // After the model picker's `not_found` (the conversation is gone): the list again, without touching the agent.
   const reloadConvs = useCallback(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) setConvs(j.conversations); }).catch(() => {}); }, []);
   // The picks made in this panel, by conversation (the picker's optimistic change and its rollback, `nextMadePicks`).
@@ -624,7 +624,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   useEffect(() => {
     if (!onboardUrl || ranOnboard.current) return;
     ranOnboard.current = true;
-    (async () => {
+    void (async () => {
       setBusy(true); setSteps([]);
       const S = t.start;
       const fill = (text: string, n: number, have: number) => text.split("{n}").join(String(n)).split("{credits}").join(String(have));
@@ -862,7 +862,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
                 <button type="button" onClick={() => vote(m, 1)} aria-pressed={voted[m.at] === 1} aria-label={t.chat.helpful} title={t.chat.helpful} className="icon-btn"><Icon name="thumbUp" className="h-4 w-4" /></button>
                 <button type="button" onClick={() => vote(m, -1)} aria-pressed={voted[m.at] === -1} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className="icon-btn"><Icon name="thumbDown" className="h-4 w-4" /></button>
                 {reasonFor === m.at && !voted[m.at] && (
-                  <form onSubmit={(e) => { e.preventDefault(); vote(m, -1); }} className="flex flex-1 items-center gap-1">
+                  <form onSubmit={(e) => { e.preventDefault(); void vote(m, -1); }} className="flex flex-1 items-center gap-1">
                     <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t.chat.whyBad} className="input py-1 text-xs" />
                     <button className="btn btn-secondary btn-xs">{t.chat.send_}</button>
                   </form>
@@ -888,9 +888,9 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       {/* Rule 1125: a growing box. Enter sends and Shift+Enter is a new line with a mouse and keyboard; on a touch screen
           Enter is a new line and the button sends. On a phone the page scrolls and the box stays at the bottom, above
           the home bar. While an answer is coming the button is Stop (rule 1126). */}
-      <form onSubmit={(e) => { e.preventDefault(); send(text); }} aria-busy={busy} className="sticky bottom-0 z-10 -mx-4 mt-3 bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:p-0">
+      <form onSubmit={(e) => { e.preventDefault(); void send(text); }} aria-busy={busy} className="sticky bottom-0 z-10 -mx-4 mt-3 bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:p-0">
         <div className="flex items-end gap-2">
-          <textarea ref={input} rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (enterSends({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, coarse)) { e.preventDefault(); send(text); } }} enterKeyHint={coarse ? "enter" : "send"} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} aria-describedby="chat-enter-hint" className="input min-h-[var(--hit-min)] resize-none overflow-y-auto rounded-2xl py-2.5 leading-normal" />
+          <textarea ref={input} rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (enterSends({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, coarse)) { e.preventDefault(); void send(text); } }} enterKeyHint={coarse ? "enter" : "send"} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} aria-describedby="chat-enter-hint" className="input min-h-[var(--hit-min)] resize-none overflow-y-auto rounded-2xl py-2.5 leading-normal" />
           {busy && !onboardUrl
             ? <button type="button" onClick={stop} className="btn btn-secondary btn-lg shrink-0" aria-label={t.ux.chat.stop}><Icon name="stop" className="h-4 w-4" /><span className="hidden sm:inline">{t.ux.chat.stop}</span></button>
             : <button type="submit" disabled={busy || !text.trim()} className="btn btn-accent btn-lg shrink-0" aria-label={t.chat.send}><Icon name="send" mirror className="h-4 w-4" /><span className="hidden sm:inline">{t.chat.send}</span></button>}

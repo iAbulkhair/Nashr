@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { run?: string };
   // A login's own "Run now" (any role): its activity rows name that login (or the founder), not the cron.
-  if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, await byOf(u), { deadline }) });
+  if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, byOf(u), { deadline }) });
   if (b.run === "daily") return NextResponse.json({ ok: true, brief: await runDaily(u) });
   return NextResponse.json({ ok: false, error: "bad_run" }, { status: 400 });
 }
