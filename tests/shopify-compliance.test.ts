@@ -175,7 +175,8 @@ describe("the stores cron applies shop/redact from its own roster (rule 2171)", 
 
   it("the cron runs it over active and idle workspaces before any sync, and a failed pass does not stop the syncs", () => {
     const src = readFileSync("src/app/api/cron/stores/route.ts", "utf8");
-    expect(src).toContain("applyShopRedactions([...users.map((u) => sc(u)), ...idle])");
+    expect(src).toContain("const scopes = [...users.map((u) => sc(u)), ...idle];");
+    expect(src).toContain("applyShopRedactions(scopes)");
     expect(src.indexOf("applyShopRedactions(")).toBeLessThan(src.indexOf("runCronBatch({"));
     expect(src).toMatch(/applyShopRedactions\([^;]*\.catch\(/);
     expect(src).toContain("shop_redactions: shopRedactions");

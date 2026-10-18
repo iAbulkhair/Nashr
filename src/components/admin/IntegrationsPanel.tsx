@@ -25,6 +25,10 @@ const S = {
     topic: { "customers/data_request": "Customer data request (nothing held)", "customers/redact": "Customer erasure (nothing held)", "shop/redact": "Store erasure queued", "shop/redact:done": "Store erasure done" } as Record<string, string>,
     workspaces: (n: number) => `${n} workspace${n === 1 ? "" : "s"}`,
     summary: (on: number, all: number) => `${on} of ${all} on`,
+    health: "Connections across workspaces",
+    healthNote: (n: number) => `Counted by the stores run over ${n} workspace${n === 1 ? "" : "s"}. Numbers only; no workspace is named.`,
+    healthNone: "Not counted yet: the stores run writes this.",
+    healthCols: { platform: "Platform", connected: "Connected", reconnect: "Must reconnect", composio: "Via Composio" },
   },
   ar: {
     title: "التكاملات",
@@ -40,8 +44,15 @@ const S = {
     topic: { "customers/data_request": "طلب بيانات عميل (لا نحتفظ بشيء)", "customers/redact": "حذف بيانات عميل (لا نحتفظ بشيء)", "shop/redact": "طلب حذف بيانات متجر في الانتظار", "shop/redact:done": "تم حذف بيانات المتجر" } as Record<string, string>,
     workspaces: (n: number) => `مساحات العمل: ${n}`,
     summary: (on: number, all: number) => `${on} من ${all} تعمل`,
+    health: "الربط عبر مساحات العمل",
+    healthNote: (n: number) => `عدّها تشغيل المتاجر في مساحات العمل: ${n}. أرقام فقط، ولا تُسمّى أي مساحة.`,
+    healthNone: "لم تُعدّ بعد: يكتبها تشغيل المتاجر.",
+    healthCols: { platform: "المنصة", connected: "مربوطة", reconnect: "تحتاج إعادة ربط", composio: "عبر Composio" },
   },
 } as const;
+
+/** GET /api/admin/integrations `connections` (rules 2177-2178): the stores run's last count, numbers and names only. */
+type Connections = { at: string; workspaces: number; rows: { id: string; name: string; connected: number; reconnect: number; composio: number }[] };
 
 const TONE: Record<IntegrationView["status"], BadgeTone> = { on: "success", partial: "warning", off: "neutral" };
 
@@ -50,12 +61,14 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
   const L = S[lang];
   const [items, setItems] = useState<IntegrationView[] | null>(null);
   const [shopify, setShopify] = useState<ComplianceSummary | null>(null);
+  const [connections, setConnections] = useState<Connections | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
     adminFetch("/api/admin/integrations").then((r) => r.json()).then((j) => {
       if (!j.ok) return setError(true);
       setItems(j.items);
       setShopify(j.shopifyCompliance ?? null);
+      setConnections(j.connections ?? null);
     }).catch(() => setError(true));
   }, []);
   if (error) return <Callout tone="danger">{L.failed}</Callout>;
@@ -125,6 +138,38 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
           </li>
         ))}
       </ul>
+      <section className="card card-sm" data-testid="integrations-connections">
+        <h2 className="font-semibold">{L.health}</h2>
+        {!connections ? <p className="mt-1 text-xs text-foreground-muted">{L.healthNone}</p> : (
+          <>
+            <p className="mt-1 text-xs text-foreground-muted">
+              {L.healthNote(connections.workspaces)} <Time value={connections.at} lang={lang} style="datetime" className="tnum" />
+            </p>
+            {connections.rows.length > 0 && (
+              <table className="mt-2 w-full text-xs">
+                <thead>
+                  <tr className="text-foreground-muted">
+                    <th className="py-1 text-start font-normal">{L.healthCols.platform}</th>
+                    <th className="py-1 text-end font-normal">{L.healthCols.connected}</th>
+                    <th className="py-1 text-end font-normal">{L.healthCols.reconnect}</th>
+                    <th className="py-1 text-end font-normal">{L.healthCols.composio}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {connections.rows.map((r) => (
+                    <tr key={r.id} className="border-t border-border" data-testid={`integrations-connections-${r.id}`}>
+                      <td className="py-1">{r.name}</td>
+                      <td className="tnum py-1 text-end">{r.connected}</td>
+                      <td className="tnum py-1 text-end">{r.reconnect > 0 ? <Badge tone="warning">{r.reconnect}</Badge> : 0}</td>
+                      <td className="tnum py-1 text-end">{r.composio}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </section>
     </div>
   );
 }

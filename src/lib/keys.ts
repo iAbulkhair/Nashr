@@ -207,4 +207,6 @@ export const globalKey = {
   shopifyCompliance: () => "shopify:compliance",
   /** hash: store domain → time of a pending `shop/redact`, applied by the stores cron (rules 2170-2171). */
   shopifyRedact: () => "shopify:redact",
+  /** json: per-platform connection counts across every workspace, written by the stores cron (rules 2177-2178). */
+  connectionHealth: () => "connections:health",
 } as const;

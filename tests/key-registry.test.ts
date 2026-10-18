@@ -100,6 +100,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.usageAll("2026-10"), "usage:_all:2026-10"],
     [globalKey.shopifyCompliance(), "shopify:compliance"],
     [globalKey.shopifyRedact(), "shopify:redact"],
+    [globalKey.connectionHealth(), "connections:health"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));

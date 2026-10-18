@@ -6,6 +6,7 @@ import { dailyRoster } from "@/lib/schedule";
 import { runCronBatch } from "@/lib/cron-batch";
 import { syncStoreIfDue } from "@/lib/store-sales";
 import { applyShopRedactions } from "@/lib/connectors/shopify-compliance";
+import { tallyConnections } from "@/lib/connectors/health";
 
 export const maxDuration = 300;
 
@@ -20,6 +21,9 @@ export const maxDuration = 300;
  * First, every pending Shopify `shop/redact` (rules 2170-2171, src/lib/connectors/shopify-compliance.ts) is applied to
  * every workspace of the roster, active and idle, so an uninstalled store's connection is gone before any sync. A failed
  * pass keeps the list for the next run and does not stop the syncs.
+ *
+ * Then the connections of the same roster are counted per platform for the founder console (rules 2177-2178,
+ * src/lib/connectors/health.ts): counts only, one fixed key. A failed count leaves the last one and does not stop the syncs.
  */
 export async function GET(req: Request) {
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -27,8 +31,14 @@ export async function GET(req: Request) {
   const now = new Date();
   const slot = now.getUTCHours() < 12 ? "am" : "pm";
   const { users, idle } = await dailyRoster();
-  const shopRedactions = await applyShopRedactions([...users.map((u) => sc(u)), ...idle]).catch((e) => {
+  const scopes = [...users.map((u) => sc(u)), ...idle];
+  const shopRedactions = await applyShopRedactions(scopes).catch((e) => {
     console.error("shop redactions", e instanceof Error ? e.name : "error");
+    return -1;
+  });
+  // After the redactions, so a store erased this run is not counted.
+  const health = await tallyConnections(scopes, now).then((h) => h.workspaces).catch((e) => {
+    console.error("connection health", e instanceof Error ? e.name : "error");
     return -1;
   });
   const report = await runCronBatch({
@@ -38,5 +48,5 @@ export async function GET(req: Request) {
   });
   await recordCronRun("stores");
   const count = (prefix: string) => Object.values(report.results).filter((r) => r.startsWith(prefix)).length;
-  return NextResponse.json({ ok: true, ...report, synced: count("synced:"), failed_sync: count("failed:"), shop_redactions: shopRedactions });
+  return NextResponse.json({ ok: true, ...report, synced: count("synced:"), failed_sync: count("failed:"), shop_redactions: shopRedactions, health_workspaces: health });
 }
