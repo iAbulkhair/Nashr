@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { NOTIF_ID, listNotifs, markAllRead, markRead } from "@/lib/notifications";
+import { acct } from "@/lib/account-id";
 
 export async function GET(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const all = await listNotifs(u.email);
+  const all = await listNotifs(acct(u));
   const unread = all.filter((n) => !n.read).length;
   if (new URL(req.url).searchParams.get("count")) return NextResponse.json({ ok: true, unread });
   return NextResponse.json({ ok: true, notifications: all, unread });

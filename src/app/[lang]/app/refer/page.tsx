@@ -9,6 +9,7 @@ import ReferPanel from "@/components/app/ReferPanel";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import { appOrigin } from "@/lib/origin";
 import Scribble from "@/components/Scribble";
+import { acct } from "@/lib/account-id";
 export const dynamic = "force-dynamic";
 export const generateMetadata = appScreenMeta("refer");
 
@@ -29,7 +30,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     );
   }
   await registerCode(u.email);
-  const s = await referralStats(u.email);
+  const s = await referralStats(acct(u));
   // The canonical origin, not the request's Host header: a link shared from a preview deployment or an alias must still
   // point at the production domain, and a Host header is whatever the client sent.
   const origin = appOrigin();

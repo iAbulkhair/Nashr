@@ -7,6 +7,7 @@ import { countVerifySend, devCodeExposed, sendVerifyCode } from "@/lib/verify-em
 import { applyReferral, registerCode } from "@/lib/referral";
 import { captchaRefusal } from "@/lib/turnstile";
 import { withLoginLock } from "@/lib/team";
+import { acct } from "@/lib/account-id";
 
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
   // The account exists by now: a failed attribution is logged, never turned into a failed signup.
   const partnered = await afterSignup(account.email, partner).catch((e) => { console.error("partner attribution failed", e instanceof Error ? e.message : "error"); return false; });
   await createSession(account.email);
-  await track(account.email, "signup");
+  await track(acct(account), "signup");
   // The first verification code (rule 762). The account exists and is signed in by now, so a mail that cannot go out
   // never fails the signup: `mail: false` tells the verify page to offer a resend. Rule 766: `devCode` only on a test deploy.
   let mail = false;

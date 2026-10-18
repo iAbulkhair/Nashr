@@ -26,6 +26,7 @@ import { allow, INSTRUCTION_TESTS_PER_DAY, INSTRUCTION_TESTS_PER_HOUR, retryLate
 import { forbid } from "@/lib/roles";
 import { isDraftType } from "@/lib/tasks";
 import { deadlineFor } from "@/lib/media/keys";
+import { acct } from "@/lib/account-id";
 
 export const maxDuration = 300;
 
@@ -120,8 +121,8 @@ export async function POST(req: Request) {
   const claim = `skilltest:${scope}:${nonce}`;
   if (!(await db.setNx(claim, "1", CLAIM_SECONDS))) return bad("duplicate", 409);
 
-  if (renewalDue(u)) await renewIfDue(u.email);
-  const paid = await charge(u.email, cost, { scope, agent, cap: gov.agentCaps[agent] });
+  if (renewalDue(u)) await renewIfDue(acct(u));
+  const paid = await charge(acct(u), cost, { scope, agent, cap: gov.agentCaps[agent] });
   if (!paid.ok) {
     // Nothing was taken and no model was called: the same click may be sent again. Deleting the claim is safe only while
     // CLAIM_SECONDS (600) exceeds the route's maxDuration (300): no other request of this click can still be running.
@@ -155,7 +156,7 @@ export async function POST(req: Request) {
     console.error("instruction test failed", error instanceof Error ? error.name : "error");
     // Exactly what was taken, with the receipt so the agent's monthly counter comes down with the balance.
     try {
-      await refund(u.email, cost, paid);
+      await refund(acct(u), cost, paid);
     } catch {
       // The amount and the spend reference (agent, month, and a short hash of the scope, which for a default brand is the email) so the founder can find the charge; never the email or a secret.
       console.error("instruction test refund failed", JSON.stringify({ cost, agent: paid.agent, month: paid.month, scope: createHash("sha256").update(paid.scope).digest("hex").slice(0, 12) }));

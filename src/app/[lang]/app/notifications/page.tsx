@@ -5,6 +5,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser } from "@/lib/auth";
 import { listNotifs } from "@/lib/notifications";
 import NotificationsPanel from "@/components/app/NotificationsPanel";
+import { acct } from "@/lib/account-id";
 
 export const dynamic = "force-dynamic";
 
@@ -15,5 +16,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  return <NotificationsPanel t={appDict[lang]} lang={lang} initial={await listNotifs(u.email)} />;
+  return <NotificationsPanel t={appDict[lang]} lang={lang} initial={await listNotifs(acct(u))} />;
 }

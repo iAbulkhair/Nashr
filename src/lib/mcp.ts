@@ -5,6 +5,7 @@ import { BEARER, TOKEN_PREFIX, grantHoldsAccess, revokeAllGrants, tokenHash } fr
 import { emailVerified, getUser, type User } from "./auth";
 import type { Action } from "./roles";
 import { accountKey, globalKey } from "./keys";
+import { acct } from "./account-id";
 
 /**
  * The role each /api/mcp tool needs, the same action the web route for that work checks (src/lib/roles.ts). A bearer
@@ -79,7 +80,7 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   // Same scope resolution as a browser session (src/lib/auth.ts `currentUser`): without it every MCP call read and
   // wrote the default brand even while the owner had another brand active.
   u.brandId = brandId;
-  u.scope = scopeFor(u.email, brandId);
+  u.scope = scopeFor(acct(u), brandId);
   u.actor = { kind: "token", email: u.email, name: u.name, lang: u.lang, role: "owner" };
   return u;
 }

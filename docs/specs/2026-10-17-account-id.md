@@ -296,3 +296,14 @@ Two gaps found while mapping are fixed in the same release:
 1. **Data loss.** `ownerHasData` does not look at the secretary's items (`sec:*`), `skills:`, `gov:`, `schedule:`, `profile:`, `activity:`, `decisions:`, `handoffs:` or `notes:`. A trial owner who has used only Reem or agent instructions passes the check, and `wipeAccount(old)` deletes those items on the move. Fix in #376: refuse when any of them exists. The cheapest checks are `sec:all:{e}` (or the secretary's open index), `skills:{e}`, `gov:{e}` and `activity:{e}`, all in the same one round. Do not refuse on a key the system writes by itself on an empty account; the daily cron's `schedule:` write (`lastDaily`) is one. Pin it in rule 1944's test.
 2. **Stale link.** `moveMemberLogin` leaves `googlesub:{old}` and the `google:{sub}` that names the old login. It is cleaned on the next Google lookup, but it should be deleted in the move.
 3. **Missed keys on wipe.** `wipeAccount` deletes only `profile:{e}`. Added-brand `profile:{e}#{id}` keys survive the deletion of an account.
+
+## Applied in R1 (2026-10-18, branch `claude/wave3-account-id-r1`)
+
+Built as the expand step with the multi-org spec's forced changes (`docs/specs/2026-10-18-multi-org.md`): the login index is `{kind:"person", pid}` (the first shape `{kind:"owner", id}` is still read), members store a frozen `id`, and the session's `acct` is the active workspace. Where the build differs from the text above:
+
+- The script is `scripts/account-ids.ts`, run with `npx --no-install jiti scripts/account-ids.ts [--apply]` like `scripts/media-blob-move.ts`, so the test imports it. It also gives members their `id` and index.
+- `claimLogin` writes the index with a plain `SET` under `lock:login:{e}` after `getLogin` found nothing, not `SET NX`: `db.setNx` needs a TTL, and the lock already serialises writers. That also replaces an index a rolled-back build left without an account.
+- Rule 1985's "every test account has an opaque id" is met by opt-in opaque tests (`newOpaqueUser`, `createUser(input, { opaque: true })`) plus the source scans; switching every fixture waits for R2, when `OPAQUE_IDS` turns on.
+- The owner move is still a copy in R1: the new record is saved with `id = to` at `user:{to}`, so its key is its id. The move in place is R2.
+- The founder console's user page resolves the address in its URL through `getLogin` and acts on `acct(u)`.
+- The coverage list is `docs/system/tests/1980-account-id-r1.md`; flows.md section 88.

@@ -26,6 +26,7 @@ import { settingsHref } from "@/lib/settings-nav";
 import CreditUsageCard from "@/components/app/settings/CreditUsageCard";
 import PlanCard from "@/components/app/settings/PlanCard";
 import PaymentHistory from "@/components/app/settings/PaymentHistory";
+import { acct } from "@/lib/account-id";
 
 export const generateMetadata = settingsScreenMeta("billing");
 
@@ -79,7 +80,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // Fixed-price pay links cannot carry a discount, so a discounted month is activated on WhatsApp for the discounted
   // amount. Shown while the account is still on its trial: a paid plan needs no "activate" offer (the console still
   // applies an open offer to the first payment it records). A busy lock only delays the grant to the next visit.
-  if (owner && u.actor?.kind !== "founder" && lastDayOfferOwed(u) && (await grantEarlyOffer(u.email, (x) => lastDayOfferOwed(x)).catch(() => false))) u.firstMonthOffer = { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() };
+  if (owner && u.actor?.kind !== "founder" && lastDayOfferOwed(u) && (await grantEarlyOffer(acct(u), (x) => lastDayOfferOwed(x)).catch(() => false))) u.firstMonthOffer = { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() };
   const offer = owner && u.plan === "trial" ? openOffer(u) : null;
   const offerUntil = offer ? offerLastDay(u, offer) : null;
   const O = OFFER_COPY[lang];

@@ -19,6 +19,7 @@ import {
 } from "./partner-rules";
 import { log } from "./log";
 import { accountKey } from "./keys";
+import { acct } from "./account-id";
 
 /**
  * The partner programme and the 15% first-month discount, store side (docs/superpowers/specs/2026-10-01-affiliates-design.md).
@@ -91,7 +92,7 @@ export const newId = (prefix: string) => `${prefix}_${randomBytes(9).toString("h
  * refs existed (none in production: the programme ships with them) falls back to a hash of the address.
  */
 export const customerLabel = (u: Pick<User, "email" | "referredBy">) =>
-  CUSTOMER_LABEL_PREFIX + (u.referredBy?.ref ?? createHash("sha256").update(`nashr-partner-ref:${u.email}`).digest("hex")).slice(0, 6).toUpperCase();
+  CUSTOMER_LABEL_PREFIX + (u.referredBy?.ref ?? createHash("sha256").update(`nashr-partner-ref:${acct(u)}`).digest("hex")).slice(0, 6).toUpperCase();
 const newRef = () => randomBytes(6).toString("hex");
 /** An application stored before applications carried an id: a stable id from its email and time. */
 export const applicationId = (a: { id?: string; email?: string; at?: string }) => a.id ?? `app_${createHash("sha256").update(`${a.email ?? ""}|${a.at ?? ""}`).digest("hex").slice(0, 16)}`;
@@ -207,10 +208,10 @@ export type ClaimError = "bad_partner_code" | "self_referral" | "already_attribu
 export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: true; code: string } | { ok: false; error: ClaimError }> {
   const partner = await partnerByCode(raw);
   if (!partner) return { ok: false, error: "bad_partner_code" };
-  if (partner.email === u.email) return { ok: false, error: "self_referral" };
-  const [a, b] = await Promise.all([onRoster(u.email, partner.email), onRoster(partner.email, u.email)]);
+  if (acct(partner) === acct(u)) return { ok: false, error: "self_referral" };
+  const [a, b] = await Promise.all([onRoster(acct(u), partner.email), onRoster(acct(partner), u.email)]);
   if (a || b) return { ok: false, error: "self_referral" };
-  const res = await withUserLock(u.email, async (x): Promise<ClaimError | null> => {
+  const res = await withUserLock(acct(u), async (x): Promise<ClaimError | null> => {
     if (x.referredBy) return "already_attributed";
     if (x.plan !== "trial" || x.firstPaidOn) return "already_paid";
     const at = new Date().toISOString();
@@ -220,7 +221,7 @@ export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: tru
     return null;
   });
   if (res) return { ok: false, error: res };
-  await db.sadd(refsKey(partner.email), u.email);
+  await db.sadd(refsKey(acct(partner)), acct(u));
   return { ok: true, code: partner.code };
 }
 
@@ -590,7 +591,7 @@ export async function refundPaidTopup(email: string, lotId: string, input: Refun
 export async function unfinishedRefunds(u: Pick<User, "email" | "topups">): Promise<string[]> {
   const refunded = lotsOf(u).filter((l) => l.refund && l.paymentId && l.paidSar > 0);
   if (!refunded.length) return [];
-  const all = await db.hgetall<Payment>(paymentsKey(normalizeEmail(u.email)));
+  const all = await db.hgetall<Payment>(paymentsKey(acct(u)));
   return refunded.filter((l) => { const p = all[l.paymentId!]; return !p || (!p.voidedAt && !p.refund); }).map((l) => l.id);
 }
 
@@ -778,7 +779,7 @@ export async function listPartners() {
   ]);
   const refEmails = [...new Set(refSets.flatMap((r) => r.slice(0, 500)))];
   const refUsers = refEmails.length ? await db.mget<User>(refEmails.map((r) => accountKey.user(r))) : [];
-  const byLabel = new Map(refUsers.flatMap((u) => (u?.referredBy ? [[`${u.referredBy.partner}|${customerLabel(u)}`, u.email] as const] : [])));
+  const byLabel = new Map(refUsers.flatMap((u) => (u?.referredBy ? [[`${u.referredBy.partner}|${customerLabel(u)}`, acct(u)] as const] : [])));
   return emails.flatMap((e, i) => {
     const p = records[i];
     if (!p) return [];

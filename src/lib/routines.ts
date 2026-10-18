@@ -17,6 +17,7 @@ import { appDict } from "./app-i18n";
 import { actSkipKey, recordRun } from "./activity";
 import { systemBy } from "./actor";
 import { scopeParam, wsKey } from "./keys";
+import { acct } from "./account-id";
 
 /**
  * Routines: recurring work for agents other than Noor's Sunday plan, each ON by default for every brand, added brands
@@ -295,7 +296,7 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine, d
   const ar = ul === "ar";
   const name = agentById(r.agent).name[ul];
   const label = appDict[ul].generate.types[r.type].t;
-  await notifyItem(user.email, ul, {
+  await notifyItem(acct(user), ul, {
     kind: "pending",
     agent: r.agent,
     title: ar ? `${label} من ${name} في صندوق الموافقة` : `${label} from ${name} is in your inbox`,

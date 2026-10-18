@@ -3,6 +3,7 @@ import { isSuspended, type StoredSuspension } from "./suspension";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
+import { log } from "./log";
 import { idleInTime, renewIdle, type IdleLimits } from "./idle-session";
 import type { AgentId } from "./agents";
 import type { Member } from "./team";
@@ -14,6 +15,10 @@ import type { HandPlan } from "./hand-plan";
 import type { FoundingSeat, PriceLock } from "./founding";
 import { SESSION_COOKIE, dropCookie, dropLegacyCookie, namesOf, readCookie } from "./cookie-names";
 import { accountKey, globalKey, storedScope, type Scope } from "./keys";
+import { acct, idForNewAccount, LoginIndex, loginIndexOf, type LoginIndexValue } from "./account-id";
+import { parseStored } from "./stored";
+
+export { acct, accountOfScope } from "./account-id";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -59,6 +64,14 @@ export type Grant<T> = { value: T; until: string; by: string; at: string; note?:
 export type OnboardHold = { scope: string; agent: AgentId; month: string; credits: number; at: string; from?: Receipt };
 
 export type User = {
+  /**
+   * The account's storage key (docs/specs/2026-10-17-account-id.md, rules 1980-1999). Never changes for the life of the
+   * account. Optional (R1 expand): a record written before R1 has none and its id is its `email` (`acct`). R1 writes
+   * `id = email` on every save; the key a record is read from always wins over a stored `id` (`getAccount`). Never sent
+   * to the browser (`GET /api/profile` names its fields, rule 1995).
+   */
+  id?: string;
+  /** The sign-in and contact address: mail goes here, display uses it. Never a key: keys go through `acct(u)`. */
   email: string;
   name: string;
   phone: string;
@@ -224,7 +237,7 @@ export type User = {
  * The caller's workspace scope (rule 2031): how a request reaches a `wsKey` builder in src/lib/keys.ts. `u.scope` is set
  * only by `currentUser` (`scopeFor` over the account's own brand list) and the founder's impersonation, never from input.
  */
-export const sc = (u: User): Scope => storedScope(u.scope ?? u.email);
+export const sc = (u: User): Scope => storedScope(u.scope ?? acct(u));
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
 // `thakeen_session`, read with the old `nashr_session` as a fallback during the rename (rule 1810, src/lib/cookie-names.ts).
@@ -261,34 +274,75 @@ export function normalizePhone(p: string) {
 }
 
 /**
- * The only reader of `user:{email}`. The stored plan is mapped on read (src/lib/pricing.ts `planFromStore`): the retired
- * "enterprise" reads as "agency", and any other unknown value as "trial", so no caller ever sees a plan outside `PLANS`.
- * Top-up packs are settled the same way (`settleTopups`: expired packs leave the balance). The next locked save writes
- * the mapped value back.
+ * The only reader of `user:{id}` (rule 1982): resolves an ACCOUNT from a pointer that already names one (`memberOf`, an
+ * invite's owner, an MCP token, an OAuth code, a Paymob intent, a feed or booking record, a scope prefix, a member of
+ * `users:all`, a referral code). It never checks an address: a sign-in address goes through `getLogin`, never here.
+ *
+ * The key the record was read from is its id: a stored `id` that differs (a record a rolled-back build copied to a new
+ * address with the old `id` inside) is ignored and logged, so the account is always keyed where it lives.
+ *
+ * The stored plan is mapped on read (src/lib/pricing.ts `planFromStore`): the retired "enterprise" reads as "agency",
+ * and any other unknown value as "trial", so no caller ever sees a plan outside `PLANS`. Top-up packs are settled the
+ * same way (`settleTopups`: expired packs leave the balance). The next locked save writes the mapped value back.
  */
-export async function getUser(email: string): Promise<User | null> {
-  const u = await db.get<User>(accountKey.user(normalizeEmail(email)));
+export async function getAccount(id: string): Promise<User | null> {
+  const key = normalizeEmail(id);
+  const u = await db.get<User>(accountKey.user(key));
   if (u) {
+    if (u.id !== undefined && u.id !== key) log.warn("account id differs from its key", { shape: "user.id" });
+    // A legacy record (no `id`) keeps reading as one, so `acct(u)` is its address; a record with an id is keyed where it lives.
+    if (u.id !== undefined) u.id = key;
     u.plan = planFromStore(u.plan);
     // An expired top-up pack leaves the balance as it expires, not at the next cron (src/lib/topups.ts, rule 444).
     if (settleTopups(u)) u.topupsDirty = true;
   }
   return u;
 }
+/** The account behind a stored pointer: the same function as `getAccount`, kept under its old name for its callers. */
+export const getUser = getAccount;
 
-/** Owner accounts only. Members live at `member:{email}` (src/lib/team.ts) and never pass through here or `users:all`. */
+/**
+ * Owner accounts only. Members live at `member:{email}` (src/lib/team.ts) and never pass through here or `users:all`.
+ * Keyed by `acct(u)` (rule 1980), and R1 writes the id into every record it saves (`id = email` for a legacy account),
+ * which builds before R1 ignore (rule 1995).
+ */
 export async function saveUser(u: User) {
   // The runtime-only fields: the active scope and who is acting are per request, never part of the account.
   const { scope: _s, brandId: _b, actor: _a, topupsDirty: _t, ...persist } = u;
   void _s; void _b; void _a; void _t;
-  await db.set(accountKey.user(u.email), persist);
-  await db.sadd(globalKey.usersAll(), u.email);
+  const id = acct(u);
+  await db.set(accountKey.user(id), { ...persist, id });
+  await db.sadd(globalKey.usersAll(), id);
 }
 
-export async function createUser(input: { email: string; name: string; phone: string; password: string; lang: "ar" | "en" }): Promise<User> {
+/** `login:{email}`, checked (a value of an unknown shape reads as no index). */
+export async function readLoginIndex(email: string): Promise<LoginIndexValue | null> {
+  return parseStored("login", LoginIndex, await db.get<unknown>(accountKey.login(normalizeEmail(email))), null);
+}
+/**
+ * Point the sign-in address `email` at the person `pid` (rule 1983). Callers hold `lock:login:{email}` and have just seen
+ * `getLogin(email)` answer null under it, so a value already there names nobody who still signs in (left by a deletion
+ * in a build before R1): it is replaced. Two signups or accepts racing for one address cannot both get here.
+ */
+export async function claimLogin(email: string, pid: string): Promise<void> {
+  await db.set(accountKey.login(normalizeEmail(email)), loginIndexOf(pid));
+}
+/** Drop the index of a sign-in address, but only while it still names `pid` (a later owner of the address keeps theirs). */
+export async function releaseLogin(email: string, pid: string): Promise<void> {
+  const cur = await readLoginIndex(email);
+  if (cur && cur.pid === pid) await db.del(accountKey.login(normalizeEmail(email)));
+}
+
+/**
+ * A new owner account. Callers hold `lock:login:{email}` and have checked `getLogin(email)` is null under it. The id is
+ * the address while `OPAQUE_IDS` is off (rule 1996); `opaque` is for tests that need id ≠ email (rule 1985). The login
+ * index is written with the record: the person is the account's owner, whose person id is the account id.
+ */
+export async function createUser(input: { email: string; name: string; phone: string; password: string; lang: "ar" | "en" }, opts: { opaque?: boolean } = {}): Promise<User> {
   const email = normalizeEmail(input.email);
   const now = new Date();
   const u: User = {
+    id: idForNewAccount(email, opts.opaque),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",
@@ -306,6 +360,7 @@ export async function createUser(input: { email: string; name: string; phone: st
     consent: signupConsent(input.lang, now),
   };
   await saveUser(u);
+  await claimLogin(email, acct(u));
   return u;
 }
 
@@ -326,7 +381,13 @@ export async function verifyPassword(u: User, password: string) {
  * `ss` (rule 1648, new and optional: old code ignores it) is the hash of the staff session an impersonation was opened
  * from: the customer view lives only as long as that staff session, and a request through it renews it.
  */
-export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string; exp?: number; ss?: string };
+/**
+ * `pid` and `acct` (account-id R1, rule 1984, with multi-org forced change 3): the person signed in and the ACTIVE
+ * account, written by `createSession` from the resolved login. Optional (expand): a session without them (written before
+ * R1) resolves exactly as before. With them, `resolveSession` checks that the login still names `pid` and that `pid`
+ * owns `acct` or is on its roster, so a session never follows an address that moved to someone else.
+ */
+export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string; exp?: number; ss?: string; pid?: string; acct?: string };
 /** The impersonation length every session had before the founder could choose it (2 hours). */
 export const IMPERSONATION_LEGACY_MS = 2 * 60 * 60 * 1000;
 type SessionRec = string | Session;
@@ -408,8 +469,11 @@ export async function loopbackHttp(): Promise<boolean> {
 export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string; ss?: string } = {}) {
   const token = randomBytes(32).toString("hex");
   const now = Date.now();
+  // The person and the active account (rule 1984), from the login as it resolves now. No login: neither is written, and
+  // the session resolves to nothing anyway.
+  const ids = await sessionIds(email);
   // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
-  const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}), ...(opts.ss ? { ss: opts.ss } : {}) } : { email, at: now };
+  const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}), ...(opts.ss ? { ss: opts.ss } : {}), ...ids } : { email, at: now, ...ids };
   // Hashed key only (rule 1345): the raw token is in the cookie and nowhere else.
   await db.set(sessionKey(token), rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
@@ -421,6 +485,13 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
     const { recordDevice } = await import("./devices");
     await recordDevice(email, sessionKey(token)).catch(() => {});
   }
+}
+
+/** The person and active account a new session of this login carries: the owner's own account, or the member's team. */
+async function sessionIds(email: string): Promise<{ pid?: string; acct?: string }> {
+  const l = await getLogin(email).catch(() => null);
+  if (!l) return {};
+  return l.kind === "owner" ? { pid: l.pid, acct: acct(l.user) } : { pid: l.pid, acct: l.member.memberOf };
 }
 
 /** The hashed session key behind this request's cookie (the device list marks it as "this device"), or null. */
@@ -505,9 +576,17 @@ export async function currentUserUnverified(): Promise<User | null> {
  */
 async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): Promise<User | null> {
   const email = normalizeEmail(s.email);
-  const [{ getMember, onRoster }, { activeBrandId, listBrands, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
-  // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records.
-  const [u, m, brandId] = await Promise.all([getUser(email), getMember(email), activeBrandId(email)]);
+  const [{ getMember, onRoster, memberPid }, { activeBrandId, listBrands, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
+  // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records, and so
+  // is the login index (rule 1984): one more command, no more rounds. A session without `acct` (written before R1) reads
+  // the account at its own address, exactly the record it read before.
+  const [idx, first, m, brandId] = await Promise.all([readLoginIndex(email), getAccount(typeof s.acct === "string" && s.acct ? s.acct : email), getMember(email), activeBrandId(email)]);
+  // The login must still name the session's person: an address that moved on, or was taken by someone else, ends it.
+  if (idx && typeof s.pid === "string" && s.pid && idx.pid !== s.pid) return null;
+  // A session without `acct` whose index names an account stored under another id (none exists while `OPAQUE_IDS` is
+  // off): one more round, never taken by a legacy account.
+  const stored = first ?? (!s.acct && idx && idx.pid !== email ? await getAccount(idx.pid) : null);
+  const u = stored && ownsLogin(stored, email, idx) && (!s.acct || s.acct === acct(stored)) ? stored : null;
   if (u) {
     if (isSuspended(u)) return null;
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
@@ -517,7 +596,7 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
     // is gated by its owner's state too (rule 767).
     if (!emailVerified(u) && !s.imp && !opts.unverified) return null;
     u.brandId = brandId;
-    u.scope = scopeFor(u.email, brandId);
+    u.scope = scopeFor(acct(u), brandId);
     const base = { email: u.email, name: u.name, lang: u.lang, role: "owner" as const };
     if (s.imp && typeof s.exp === "number" && Date.now() >= s.exp) return null; // the founder's chosen length is over (rule 1177)
     u.actor = s.imp
@@ -529,11 +608,15 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   if (!m || s.imp || m.disabled) return null;
   if (m.role !== "admin" && m.role !== "member") return null;
   if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === email) return null;
+  // The member record must be this login's (its own address, its frozen person id matching the index), and a session
+  // that names an account names this member's team (multi-org forced change 3: `pid` is on the roster of `acct`).
+  if (normalizeEmail(m.email) !== email || !memberHolds(memberPid(m), email, idx)) return null;
+  if (typeof s.acct === "string" && s.acct && s.acct !== m.memberOf) return null;
   if (issuedBefore(s.at, m.sessionsAfter) || issuedBefore(s.at, m.devicesAfter)) return null;
   // The roster entry too, in the same round: removal deletes both under `lock:member`, and a record that outlived its
   // entry anyway (restored by a racing write, left by a deleted account) is off the owner's Members page, so it must
   // not sign in either.
-  const [owner, brands, listed] = await Promise.all([getUser(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email)]);
+  const [owner, brands, listed] = await Promise.all([getAccount(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email)]);
   if (!owner || isSuspended(owner) || !listed) return null;
   // Rule 767: while the owner has not proved the address, the account spends nothing, so its members are signed out too,
   // in both resolvers. A member has no address of the owner's to prove, so `currentUserUnverified` never hands one to the
@@ -545,27 +628,53 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   // The member's own active brand, but only while it is one of the owner's active brands.
   const bid = brands.some((b) => b.id === brandId && b.status === "active") ? brandId : "default";
   owner.brandId = bid;
-  owner.scope = scopeFor(owner.email, bid);
+  owner.scope = scopeFor(acct(owner), bid);
   owner.actor = { kind: "member", email: m.email, name: m.name, lang: m.lang === "en" ? "en" : "ar", role: m.role };
   return owner;
 }
 
-/** A login: an owner account, or a member login with the account it belongs to (null when that owner is gone). */
-export type Login = { kind: "owner"; user: User } | { kind: "member"; member: Member; owner: User | null };
 /**
- * What an email signs in as. Login, forgot, reset and signup use this. An email is unique across `user:` and `member:`
- * (enforced under `lock:login:{email}`); should both ever exist, the owner record wins, as in `currentUser`. A member
- * record that is not on its owner's roster (the owner deleted, or the record outlived a removal) is no login at all:
- * it cannot sign in, and it does not keep the address from signing up.
+ * An owner record signs in with the address `email` (rule 1981): the record's own address is `email`, and its id is the
+ * person the index names. Without an index (an account from before R1, before the conversion script) the record counts
+ * only when it has no id or its id is `email`: after an address move in R2 the record stays at `user:{old}` holding the
+ * new address, and the old address must resolve to nothing, so a forgot-password or a signup there never reaches it.
+ */
+function ownsLogin(u: User, email: string, idx: LoginIndexValue | null): boolean {
+  if (normalizeEmail(u.email) !== email) return false;
+  return idx ? acct(u) === idx.pid : u.id === undefined || u.id === email;
+}
+/** The same guard for a member record (multi-org forced change 2): its frozen person id is the one the index names. */
+function memberHolds(pid: string, email: string, idx: LoginIndexValue | null): boolean {
+  return idx ? pid === idx.pid : pid === email;
+}
+
+/**
+ * A login: an owner account, or a member login with the account it belongs to (null when that owner is gone). `pid` is
+ * the person (multi-org forced change 1): an owner's person id is its account id, a member's its frozen address.
+ */
+export type Login = { kind: "owner"; user: User; pid: string } | { kind: "member"; member: Member; owner: User | null; pid: string };
+/**
+ * What a SIGN-IN ADDRESS signs in as (rule 1982): only sign-in, signup, forgot/reset password, Google sign-in, the
+ * address-change "is it taken" check and the console's lookup by address use this. A pointer that already names an
+ * account goes through `getAccount`, never here.
+ *
+ * In this order: the login index `login:{e}` names a person; else (no index yet) the address's own records. Either way
+ * the owner record must hold the address as its own (`ownsLogin`, rule 1981) and the member record too, its person id
+ * matching. An email is unique across `user:` and `member:` (enforced under `lock:login:{email}`); should both ever
+ * exist, the owner record wins, as in `currentUser`. A member record that is not on its owner's roster (the owner
+ * deleted, or the record outlived a removal) is no login at all: it cannot sign in, and it does not keep the address
+ * from signing up. In R1 every index names the address itself, so this is one round, as before; an index naming
+ * another id (R2) costs one more read.
  */
 export async function getLogin(email: string): Promise<Login | null> {
   const e = normalizeEmail(email);
-  const { getMember, onRoster } = await import("./team");
-  const [u, m] = await Promise.all([getUser(e), getMember(e)]);
-  if (u) return { kind: "owner", user: u };
-  if (!m) return null;
-  const [owner, listed] = await Promise.all([getUser(m.memberOf), onRoster(m.memberOf, e)]);
-  return listed ? { kind: "member", member: m, owner } : null;
+  const { getMember, onRoster, memberPid } = await import("./team");
+  const [idx, own, m] = await Promise.all([readLoginIndex(e), getAccount(e), getMember(e)]);
+  const u = idx && idx.pid !== e ? await getAccount(idx.pid) : own;
+  if (u && ownsLogin(u, e, idx)) return { kind: "owner", user: u, pid: acct(u) };
+  if (!m || normalizeEmail(m.email) !== e || !memberHolds(memberPid(m), e, idx)) return null;
+  const [owner, listed] = await Promise.all([getAccount(m.memberOf), onRoster(m.memberOf, e)]);
+  return listed ? { kind: "member", member: m, owner, pid: memberPid(m) } : null;
 }
 
 /**

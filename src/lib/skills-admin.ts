@@ -8,6 +8,7 @@ import { listBrands } from "./brands";
 import { agentForTask, type AgentId } from "./agents";
 import { DRAFT_TYPES, type TaskType } from "./tasks";
 import { PLATFORM, editBase, getLayer, isPaused, listFeed, listHistory, type FeedRow, type Layer } from "./instructions-store";
+import { brandOfScope } from "./account-id";
 
 /**
  * What the founder's skills console reads and logs (agent skills portal, spec 8.2 and 10; rules 958-959). Server code:
@@ -27,7 +28,7 @@ export const CONSOLE_HISTORY = 20;
 
 /** A feed row as the console shows it: the row, and its brand (the brand's name when the account still has it, else the id from `email#brandId`; empty for the default brand). */
 export type FeedView = FeedRow & { brand: string };
-const brandIdOf = (scope: string) => (scope.includes("#") ? scope.slice(scope.indexOf("#") + 1) : "");
+const brandIdOf = (scope: string) => (scope.includes("#") ? brandOfScope(scope) : "");
 /** One batched read: each account's brand list once (`listBrands`), however many rows it has, all in parallel. */
 export async function feedViews(rows: FeedRow[]): Promise<FeedView[]> {
   const emails = [...new Set(rows.filter((r) => r.scope.includes("#")).map((r) => r.email))];

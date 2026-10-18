@@ -712,7 +712,7 @@ describe("rule 796: where the routes, the batch and the panels put the gate", ()
   it("generateBatch: the gate comes after paused, no brand, trial, missing data and before the renewal and the charge, on the batch's own brand read", () => {
     const s = src("src/lib/generate-batch.ts");
     const body = s.slice(s.indexOf("async function runBatch("));
-    order(body, ['modelState() === "paused"', 'reason: "no_brand"', "trialOver(user)", "missingData(type, scope)", "checkGenerationNotes(", "renewalDue(user)", "chargeOnce(user.email"]);
+    order(body, ['modelState() === "paused"', 'reason: "no_brand"', "trialOver(user)", "missingData(type, scope)", "checkGenerationNotes(", "renewalDue(user)", "chargeOnce(acct(user)"]);
     expect(s.match(/getBrand\(/g), "one brand read: the gate is given it").toHaveLength(1);
     // Rule 801 adds the batch's one shared read of the other brands' names (`brandNames`), which the items' check reuses.
     expect(s).toMatch(/checkGenerationNotes\(user, type, gate, brand, opts\.deadline, brandNames\)/);

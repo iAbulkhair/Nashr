@@ -46,6 +46,7 @@ import { recordActivity, type Activity } from "./activity";
 import { AgentScopeRefused, checkGenerationNotes, itemText, otherBrandNames, readAgentScopeModes, scopeCheck, type AgentScopeModes, type NotesGate, type ScopeDecision } from "./agent-scope";
 import { pmap } from "./parallel";
 import { log } from "./log";
+import { acct } from "./account-id";
 
 /** Where a batch was asked for. Not the same as `source`: MCP and chat items are both `source:"chat"`. */
 export type BatchVia = "app" | "chat" | "mcp" | "weekly" | "routine" | "handoff";
@@ -351,9 +352,9 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // Only the daily cron at 05:00 UTC renewed, after the Sunday plan at 03:00: on a Sunday the 1st (next 2026-11-01) the
   // plan met last month's balance, answered no_credits and marked the week done. `renewIfDue` is the cron's own
   // function, idempotent and under the ledger's lock; the copy in hand only decides whether to take that lock.
-  if (renewalDue(user)) await renewIfDue(user.email);
+  if (renewalDue(user)) await renewIfDue(acct(user));
   const meta = { scope, agent, cap: gov.agentCaps[agent] };
-  const paid = opts.once ? await chargeOnce(user.email, cost, meta, opts.once) : await charge(user.email, cost, meta);
+  const paid = opts.once ? await chargeOnce(acct(user), cost, meta, opts.once) : await charge(acct(user), cost, meta);
   // Nothing was charged; the row says what the batch would have cost and, at a cap, what the agent spent of it.
   const refused = async (kind: "cap_reached" | "no_credits", outcome?: string): Promise<Activity> => ({ at: new Date().toISOString(), kind, agent, by: await who(), via: opts.via, type, credits: cost, ...(outcome ? { outcome } : {}) });
   if (!paid.ok && paid.reason === "agent_cap") return refuse({ ok: false, reason: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap, credits: paid.credits }, await refused("cap_reached", `${paid.spent}/${paid.cap}`));
@@ -428,7 +429,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     // hold is dropped in the same save. A refunded batch keeps no task (rule 334): the ones saved before a save or the
     // commit failed are removed, or they stayed approvable for free and the Sunday retry planned the week a second time.
     // Their removal failing is logged and never stops the refund.
-    const back = opts.once ? refundOnce(user.email, opts.once).then((r) => r.credits) : refund(user.email, cost, receipt);
+    const back = opts.once ? refundOnce(acct(user), opts.once).then((r) => r.credits) : refund(acct(user), cost, receipt);
     const drop = tasks.length ? dropTasks(scope, tasks).catch((e) => log.error("refunded batch tasks not removed", e)) : null;
     const [credits] = await Promise.all([back, opts.settle?.(), drop]);
     user.credits = credits;
@@ -444,7 +445,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   if (held > 0) {
     const share = Math.ceil((charged * held) / made);
     try {
-      user.credits = await refund(user.email, share, receipt);
+      user.credits = await refund(acct(user), share, receipt);
       back = share;
     } catch (e) {
       // The error's name and where the charge was booked (agent, month, the top-up lots' ids), never the owner's email or text.

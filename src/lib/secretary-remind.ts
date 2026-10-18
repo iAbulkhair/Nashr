@@ -39,6 +39,7 @@ import { appOrigin } from "./origin";
 import { COPY, paragraphs } from "../emails";
 import { meetingsNow } from "./secretary-cal-link";
 import { quietUntil } from "./secretary-meetings";
+import { accountOfScope } from "./account-id";
 
 /** Scopes read per sweep, due ids read per scope, scopes handled at once. */
 export const SWEEP_SCOPES = 200;
@@ -58,7 +59,8 @@ export const SWEEP_BUDGET_DAILY_MS = 60_000;
 export const remindFingerprint = (scope: string, id: string, remindAtMs: number) => `todo-remind:${scope}:${id}:${remindAtMs}`;
 
 /** The account a scope belongs to: the default brand's scope is the email, another brand's is `email#brandId`. */
-const accountOf = (scope: string) => scope.split("#")[0];
+/** The account behind a scope (rule 1986). */
+const accountOf = accountOfScope;
 
 /** `quiet`: reminders left due because the owner is in a meeting of the linked marketing calendar (Reem B3, rule 917). */
 export type SweepReport = { scopes: number; claimed: number; fired: number; notified: number; emailed: number; deferred: number; held: number; quiet: number; failed: number };

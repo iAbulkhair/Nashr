@@ -9,6 +9,7 @@ import { revokeFeed } from "@/lib/feed-token";
 import { forbid } from "@/lib/roles";
 import { saveMember, withMemberLock } from "@/lib/team";
 import { ownPasswordMatches as matches } from "@/lib/own-password";
+import { acct } from "@/lib/account-id";
 
 /**
  * PATCH {currentPassword, newPassword}: the acting login changes ITS OWN password. A member rewrites the member record
@@ -42,10 +43,10 @@ export async function PATCH(req: Request) {
     await Promise.all([revokeFeed(a.email), revokeBook(a.email)]);
   } else {
     // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
-    await withUserLock(u.email, async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
+    await withUserLock(acct(u), async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
     // Every other device is signed out, and every MCP token and connected app dies with the old password, exactly as in
     // the reset route: a stolen bearer token must not outlive the password it was obtained with.
-    await Promise.all([revokeAllMcp(u.email), revokeFeed(u.email), revokeBook(u.email)]);
+    await Promise.all([revokeAllMcp(acct(u)), revokeFeed(u.email), revokeBook(u.email)]);
   }
   // This device stays signed in, as the same login that made the change.
   await destroySession();
@@ -61,7 +62,7 @@ export async function DELETE(req: Request) {
   if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { password?: string };
   if (!(await matches(u, b.password))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
-  await wipeAccount(u.email);
+  await wipeAccount(acct(u));
   await destroySession();
   return NextResponse.json({ ok: true });
 }

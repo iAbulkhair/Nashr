@@ -545,9 +545,9 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     const src = readFileSync("src/lib/generate-batch.ts", "utf8").replace(/\s+/g, "");
     expect(src).toContain('constcost=creditsFor(base,model,"generate",type);');
     expect(src.match(/creditsFor\(/g)?.length).toBe(1);
-    expect(src).toContain("chargeOnce(user.email,cost,meta,opts.once)");
-    expect(src).toContain("charge(user.email,cost,meta)");
-    expect(src).toContain("refund(user.email,cost,receipt)");
+    expect(src).toContain("chargeOnce(acct(user),cost,meta,opts.once)");
+    expect(src).toContain("charge(acct(user),cost,meta)");
+    expect(src).toContain("refund(acct(user),cost,receipt)");
     // What is reported is what was charged: the price, or a reused hold's credits (chargeOnce reuses only an equal one).
     expect(src).toContain('constcharged="hold"inpaid?paid.hold.credits:cost;');
     // Less the share of the items the output check held back, refunded after the commit (rule 801): `back` is 0 otherwise.

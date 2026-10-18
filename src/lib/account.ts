@@ -38,6 +38,7 @@ import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
 import { log } from "./log";
 import { type Scope, accountKey, globalKey, workspaceScope, wsKey } from "./keys";
+import { getAccount, normalizeEmail, releaseLogin } from "./auth";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -65,9 +66,14 @@ async function revokeComposio(scopes: Scope[]) {
  * Wipe every record of an account: all brand scopes, files, tasks, chats, connections, tokens, the user itself, and the
  * team (every member login, member active brand, invite and both indexes, `wipeTeam`). Without the team cascade a
  * member login would point at an email that anyone can register again, and inherit that new account.
+ *
+ * `id` is the account id (`acct(u)`, rule 1980): every account key below is built from it. The owner's sign-in address
+ * is read from the record (in R1 it equals the id), and its login index goes with the account; another account's index
+ * is never deleted (`releaseLogin` deletes only an index that names this account, rule 1999).
  */
-export async function wipeAccount(email: string, opts: { userLocked?: boolean } = {}) {
-  const e = email;
+export async function wipeAccount(id: string, opts: { userLocked?: boolean } = {}) {
+  const e = id;
+  const login = normalizeEmail((await getAccount(e))?.email ?? e);
   // Rule 1955: no charge after the owner asked to delete. Renewal turns off and the saved card goes under the account
   // lock before anything slow can fail, so a retry after a failed wipe still finds nothing to charge, and a renewal
   // already running stops at its own re-check under that lock (src/lib/billing.ts `chargeSavedCard`). A caller already
@@ -76,7 +82,7 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
   // Calendar feed and booking links first, before anything slow can fail and before the roster is deleted: the owner's and every roster
   // member's (`members:{owner}`). A member added after this read is revoked by `wipeTeam` under `lock:team`. A failure
   // stops the wipe (a retry runs it again) rather than leaving a working link behind a half-wiped account.
-  const logins = [e, ...(await db.smembers(membersKey(e)))];
+  const logins = [login, ...(await db.smembers(membersKey(e)))];
   // The owner's linked marketing calendars (Reem B3), every brand's: only our side is dropped, the owner removes access at the provider.
   await Promise.all([revokeFeeds(logins), revokeBooks(logins), revokeCalendarLinks(e)]);
   // The account's own brand list, read under its owner email: the scopes come from our records, never from a request.
@@ -201,7 +207,7 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
   // code, the referral set and the ledger. The account also leaves its own partner's referral set.
   keys.push(...(await forgetPartnerData(e)));
   keys.push(accountKey.mcpGrants(e));
-  keys.push(`profile:${e}`, accountKey.mcpTokenOf(e), accountKey.brands(e), accountKey.activeBrand(e), accountKey.user(e));
+  keys.push(`profile:${e}`, accountKey.mcpTokenOf(e), accountKey.brands(e), accountKey.activeBrand(login), accountKey.user(e));
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
   // referral graph, share-bonus markers and activity history behind, so re-registering the same address inherited
   // them. The other `notifseen:` markers are not listed: they live a week at most after their last write (Reem's to-do
@@ -237,5 +243,6 @@ export async function wipeAccount(email: string, opts: { userLocked?: boolean } 
   // The owner's link once more, now the account is gone: a create that ran between the first revoke and the deletion of
   // `user:{owner}` could have written a new one.
   await Promise.all(logins.map((l) => revokeAllDevices(l)));
-  await Promise.all([revokeFeed(e), revokeBook(e), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ email: e, at: new Date().toISOString() }))]);
+  // The owner's login index (members' go in `wipeTeam`), and the deletion row names the id and the address (rule 1999).
+  await Promise.all([revokeFeed(login), revokeBook(login), releaseLogin(login, e), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
 }

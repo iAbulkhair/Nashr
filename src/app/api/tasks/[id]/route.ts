@@ -11,6 +11,7 @@ import { byOf } from "@/lib/actor";
 import { can, forbid } from "@/lib/roles";
 import { db } from "@/lib/db";
 import { taskVersion } from "@/lib/task-version";
+import { acct } from "@/lib/account-id";
 
 type Patch = { status?: string; editedBody?: string; note?: unknown; scheduledFor?: string | null; version?: unknown };
 
@@ -136,7 +137,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       // One round of parallel writes. The decision records are kept whether or not learning is on: they are the
       // owner's own history, under the caller's scope only. Preference notes are written only when learning is on.
       await Promise.all([
-        ...events.map((e) => track(u.email, e)),
+        ...events.map((e) => track(acct(u), e)),
         recordDecisions(scope, records),
         ...(gov.learning ? notes.map((n) => addPreference(scope, n)) : []),
       ]);

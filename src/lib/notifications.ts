@@ -13,6 +13,8 @@ import type { Zone } from "./zones";
 import { appOrigin } from "./origin";
 import { inAppAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
 import { accountKey } from "./keys";
+import { acct } from "./account-id";
+import { brandOfScope } from "./account-id";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -86,10 +88,7 @@ export const seenKey = (email: string, fingerprint: string) => `notifseen:${emai
  * email) keeps the fingerprint it always had, so a notice it already sent today is not sent again on the day this ships.
  * Account-level situations (`credits`, `trial`) keep a plain fingerprint: they describe the account, once.
  */
-export const brandFingerprint = (scope: string, fp: string) => {
-  const i = scope.indexOf("#");
-  return i < 0 ? fp : `${fp}#${scope.slice(i + 1)}`;
-};
+export const brandFingerprint = (scope: string, fp: string) => (scope.includes("#") ? `${fp}#${brandOfScope(scope)}` : fp);
 /**
  * The brand a brand-level notice is about, for its title: "" when the account has one active brand (nothing to tell
  * apart), else the name the brand switcher shows (the name given to the brand, else its brand file's).
@@ -163,11 +162,11 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
   const out: Notif[] = [];
-  const add = async (n: Omit<Notif, "id" | "at">, fp: string, ttl = 3) => { const x = await pushNotif(user.email, n, fp, ttl, scope); if (x) out.push(x); };
+  const add = async (n: Omit<Notif, "id" | "at">, fp: string, ttl = 3) => { const x = await pushNotif(acct(user), n, fp, ttl, scope); if (x) out.push(x); };
   // Due items and old approvals belong to this brand: its fingerprint and, on a multi-brand account, its name (#15).
   const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published);
   const stale = tasks.filter((t) => t.status === "pending" && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
-  const tag = due.length || stale.length ? await brandTag(user.email, scope) : "";
+  const tag = due.length || stale.length ? await brandTag(acct(user), scope) : "";
 
   // 1. Scheduled items due today or tomorrow and not yet published through a connector.
   if (due.length) {
@@ -240,7 +239,7 @@ async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
   const ar = user.lang === "ar";
   const lang = user.lang;
   const ttl = ALERT_TTL_DAYS * 86400;
-  const marker = (a: OverdueAlert) => seenKey(user.email, overdueAlertFingerprint(scope, a.entry.item.id, a.anchorMs, a.step));
+  const marker = (a: OverdueAlert) => seenKey(acct(user), overdueAlertFingerprint(scope, a.entry.item.id, a.anchorMs, a.step));
   const due = steps.filter((a) => a.send), held = steps.filter((a) => !a.send);
   // One round: claim the steps that can be sent; keep alive the markers of steps that only hold today.
   const claims = Promise.all(due.map((a) => db.setNx(marker(a), 1, ttl)));
@@ -253,7 +252,7 @@ async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
   const allowed = Math.max(0, SEC_ALERTS_PER_DAY - (total - claimed.length));
   const send = claimed.slice(0, allowed), back = claimed.slice(allowed);
   const ended = send.map((a) => endedAbsence(a.entry.item, away, today, zone));
-  const backWon = Promise.all(send.map((a, i) => (ended[i] ? db.setNx(seenKey(user.email, backFingerprint(scope, a.entry.item.id, ended[i]!)), 1, BACK_DAYS * 86400) : false)));
+  const backWon = Promise.all(send.map((a, i) => (ended[i] ? db.setNx(seenKey(acct(user), backFingerprint(scope, a.entry.item.id, ended[i]!)), 1, BACK_DAYS * 86400) : false)));
   await Promise.all([
     ...(claimed.length ? [db.expireNx(counter, 2 * 86400)] : []),
     backWon,
@@ -264,7 +263,7 @@ async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
   if (!send.length) return [];
   const isBack = await backWon;
   // Already claimed above: pushed without a fingerprint, in one write of the bell.
-  return pushMany(user.email, send.map(({ entry, step, ramadanToday: at }, i): Push => {
+  return pushMany(acct(user), send.map(({ entry, step, ramadanToday: at }, i): Push => {
     const it = entry.item;
     const t = `«${it.title.slice(0, 80)}»`;
     const theirs = it.owedBy !== "owner";
@@ -309,10 +308,10 @@ export async function warnAgentCap(user: Pick<User, "email" | "lang">, paid: Ext
   const name = agentById(paid.agent).name[user.lang];
   try {
     // Named as the brand switcher names it: the name given to the brand, else its brand file's.
-    const [rows, file] = await Promise.all([listBrands(user.email), getBrand(paid.scope)]);
-    const brand = (rows.find((b) => scopeFor(user.email, b.id) === paid.scope)?.name || file?.name || "").trim().slice(0, 60);
+    const [rows, file] = await Promise.all([listBrands(acct(user)), getBrand(paid.scope)]);
+    const brand = (rows.find((b) => scopeFor(acct(user), b.id) === paid.scope)?.name || file?.name || "").trim().slice(0, 60);
     const where = brand ? (ar ? ` في «${brand}»` : ` in “${brand}”`) : "";
-    await notifyItem(user.email, user.lang, {
+    await notifyItem(acct(user), user.lang, {
       kind: "credits",
       agent: paid.agent,
       title: ar ? `${name}${where}: ${paid.spent} من ${paid.cap} كريدت هذا الشهر` : `${name}${where}: ${paid.spent} of ${paid.cap} credits this month`,

@@ -3,6 +3,7 @@ import { notifyItem } from "@/lib/notifications";
 import { allow, clientIp } from "@/lib/rate";
 import { acceptInvite, peekInvite, type Member } from "@/lib/team";
 import { rateLimited, teamFail } from "../respond";
+import { acct } from "@/lib/account-id";
 
 /** Per IP, per 15 minutes. The token is 256 bits, so these bound load and noise, not guessing. */
 const PEEKS = 30;
@@ -15,7 +16,7 @@ async function tellOwner(m: Member) {
     if (!owner) return;
     const ar = owner.lang === "ar";
     const role = ar ? (m.role === "admin" ? "مدير" : "عضو") : m.role;
-    await notifyItem(owner.email, owner.lang, {
+    await notifyItem(acct(owner), owner.lang, {
       kind: "info",
       title: ar ? `${m.name} انضم إلى الأعضاء` : `${m.name} joined your members`,
       body: ar ? `قبل ${m.email} الدعوة بصفة ${role}. تدير الأعضاء والمقاعد من صفحة «الأعضاء».` : `${m.email} accepted the invitation as ${role}. Manage members and seats on the Members page.`,

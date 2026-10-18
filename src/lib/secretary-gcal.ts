@@ -25,6 +25,7 @@ import { decodeIdToken, googleAccount, microsoftDomain, MS_CONSUMER_TENANT, proo
 import { keepGoogle, keepGraph, limitMeetings, type GEvent, type GraphEvent, type Meeting } from "./secretary-meetings";
 import { zoneOf } from "./zones";
 import { log } from "./log";
+import { accountOfScope, acct } from "./account-id";
 
 export const GOOGLE_API = "https://www.googleapis.com";
 export const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -111,7 +112,7 @@ export type ConnectResult = { ok: true } | { ok: false; code: "brand_inactive" |
  */
 export async function connectCalendar(scope: string, login: string, p: CalProvider, data: Record<string, string>, now: number): Promise<ConnectResult> {
   const r = await withCalLock(scope, async (): Promise<ConnectResult> => {
-    const owner = scope.split("#")[0];
+    const owner = accountOfScope(scope);
     const active = (await listBrands(owner)).some((b) => b.status === "active" && scopeFor(owner, b.id) === scope);
     if (!active) {
       return { ok: false, code: "brand_inactive" };
@@ -205,11 +206,11 @@ type LostReason = NonNullable<CalLink["lostReason"]>;
 
 /** The in-app notice of a lost grant (spec §7.3): Reem stopped reading the calendar until the owner connects it again. Says nothing of the provider. */
 async function noticeLost(scope: string, link: CalLink): Promise<void> {
-  const owner = await getUser(scope.split("#")[0]);
+  const owner = await getUser(accountOfScope(scope));
   if (!owner) return;
   const ar = owner.lang === "ar";
   await notifyItem(
-    owner.email,
+    acct(owner),
     owner.lang,
     {
       kind: "todo",
@@ -358,7 +359,7 @@ async function syncLocked(scope: string, now: number): Promise<Outcome> {
     await db.zrem(SEC_KEYS.calDue, scope);
     return "dropped";
   }
-  const owner = scope.split("#")[0];
+  const owner = accountOfScope(scope);
   const [user, brands, brand] = await Promise.all([getUser(owner), listBrands(owner), getBrand(scope)]);
   const meta = brands.find((b) => scopeFor(owner, b.id) === scope);
   // An archived brand ends its link; Nashr holds no token afterwards and calls no provider (ruling R7).

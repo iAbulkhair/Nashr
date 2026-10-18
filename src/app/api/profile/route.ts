@@ -11,6 +11,7 @@ import { saveMember, withMemberLock } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { openLots, topupBalance } from "@/lib/topups";
+import { acct } from "@/lib/account-id";
 
 export type EmailPrefs = "all" | "important" | "none";
 
@@ -156,7 +157,7 @@ export async function PUT(req: Request) {
       // Inside the lock, on the record as it is NOW. `saveUser` writes the whole user, so mutating the copy this request
       // read at its start would put that request's stale `credits` back over any charge committed in between — the work
       // would be delivered and the charge silently reversed. Same shape as /api/account.
-      await withUserLock(u.email, async (x) => {
+      await withUserLock(acct(u), async (x) => {
         if (name !== undefined) x.name = name;
         if (phone !== undefined) x.phone = phone;
         if (lang) x.lang = lang;

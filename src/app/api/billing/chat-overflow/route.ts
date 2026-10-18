@@ -5,6 +5,7 @@ import { withUserLock } from "@/lib/credits";
 import { chatStatus, overflowAvailable } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { allow, retryLater } from "@/lib/rate";
+import { acct } from "@/lib/account-id";
 
 /**
  * POST {on: boolean}: the owner's choice for when the month's chat messages run out (src/lib/chat-allowance.ts). Off
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   if (typeof b.on !== "boolean") return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   if (!overflowAvailable(u)) return NextResponse.json({ ok: false, error: "trial" }, { status: 409 });
   const on = b.on;
-  const saved = await withUserLock(u.email, async (acc) => {
+  const saved = await withUserLock(acct(u), async (acc) => {
     if (on) acc.chatOverflow = true;
     else delete acc.chatOverflow;
     await saveUser(acc);

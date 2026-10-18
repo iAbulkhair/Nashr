@@ -19,6 +19,7 @@ import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import { defaultPaidThrough, parsePaidThrough } from "@/lib/hand-plan";
 import { ksaDay } from "@/lib/partner-rules";
 import { globalKey } from "@/lib/keys";
+import { acct } from "@/lib/account-id";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -64,7 +65,7 @@ const videoLabel = (g: Grant<"all"> | undefined) => (g ? `all@${g.until}` : "pla
 //      Rules 243-244 and 316, tests/admin-deal.test.ts.
 /** One account's row: its record with this month's usage and chat. Two reads per account (usage and chat). */
 async function rowOf(u: User) {
-  const [usage, chat, mediaMicro] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model), db.get<number>(mediaCostKey(u.email)).catch(() => 0)]);
+  const [usage, chat, mediaMicro] = await Promise.all([getUsage(acct(u)), chatStatus(u, route("chat").model), db.get<number>(mediaCostKey(acct(u))).catch(() => 0)]);
   // The list price, or an Agency account's deal price (Business's without a deal).
   const priceSar = priceOf(u);
   // Rule 1532: the same margin as the daily alert (src/lib/margin.ts): model cost plus this month's render cost.
