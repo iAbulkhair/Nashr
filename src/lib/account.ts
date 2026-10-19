@@ -272,6 +272,11 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // id); the rest of the account's keys follow outside the login lock. Under that lock nothing can give the owner a new
   // membership (an accept takes the invited address's `lock:login`; with `MULTI_ORG` off it refuses an address that signs
   // in) or take one away (`deleteMembership` takes the person's `lock:login` too), so `alone` stays true.
+  // No `MULTI_ORG` guard here, unlike `forgetPersonIfAlone` (src/lib/team.ts), on purpose: with the flag off an owner
+  // can hold nothing else (that accept refuses it), so `alone` is always true and this is R1's deletion either way. With
+  // it on, the two differ in who asked: a removed member did not ask to lose their sign-in, so M2 keeps that person; this
+  // owner asked to delete the account, and an owner person left with nothing would keep a login index that names a
+  // deleted account (a legacy owner's names the account id itself). Holding anything else keeps everything (`alone`).
   const record = accountKey.user(e);
   let alone = false;
   const finish = async () => {

@@ -375,6 +375,7 @@ Since 2026-10-19 (multi-workspace membership, release M1 expand, branch `claude/
 | `paymob:done:{txnId}` | string | Outcome of a transaction callback (`paid`, `declined`, `mismatch`, `unapplied`): a repeated callback answers `already` | `billing.ts` | 400 days |
 | `paymob:txlock:{txnId}` | lock | One callback applied at a time per transaction | `billing.ts` | 60 s |
 | `paymob:refunded:{txnId}` | string | `{at, by}` once the founder refunded the transaction | `billing.ts` | 400 days |
+| `paymob:refund_ended:{txnId}` | string | The payment id whose refund ended the plan (`endPlanOnRefund`, written under `lock:user` before the save, multi-workspace M1 Task 8 fix round 1), so a retry after a `busy` answer still answers `planEnded: true` | `billing.ts` | 400 days |
 | `paymob:refundlock:{txnId}` | lock | One refund at a time per transaction | `billing.ts` | 60 s |
 | `paymob:attempt:{email}:{day}` | counter | Marks a saved-card renewal attempt for the Riyadh day (SET NX, so one attempt a day per account) | `billing.ts` | 3 days |
 | `paymob:card:{email}` | json | The saved card token for renewals; no page or API answer reads it; deleted by the owner's `remove_card` and by `wipeAccount` | `billing.ts` (`cardKey`), `account.ts` | none |

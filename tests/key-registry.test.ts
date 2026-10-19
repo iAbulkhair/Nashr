@@ -102,6 +102,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.inviteUse("i1"), "inviteuse:i1"],
     [globalKey.rate("files:x"), "rate:files:x"],
     [globalKey.usageAll("2026-10"), "usage:_all:2026-10"],
+    [globalKey.paymobRefundEnded(123456), "paymob:refund_ended:123456"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));

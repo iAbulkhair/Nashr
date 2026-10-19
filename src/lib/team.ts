@@ -139,6 +139,11 @@ export const isTeamLockTimeout = (e: unknown): boolean => e instanceof Error && 
 /** `lock:team:{aid}`: every seat count and every membership event of the account. */
 const withTeamLock = <T,>(aid: AccountId, fn: () => Promise<T>): Promise<T> => withLock(accountKey.teamLock(aid), fn);
 /**
+ * `lock:team:{aid}` for a caller outside this file that must hold it across its own writes (POST /api/admin/plan: team
+ * before user, rule 2139). A timeout throws `team_lock_timeout` before `fn` runs, so nothing is written.
+ */
+export const withAccountTeamLock = <T,>(aid: AccountId, fn: () => Promise<T>): Promise<T> => withTeamLock(aid, fn);
+/**
  * How long the owner address move's `lock:team` lives (src/lib/verify-email.ts `moveOwnerLogin`). The move holds it from
  * before its first write until the old account is wiped: about 30-50 Redis round trips, longer than the 10 s every other
  * holder gets on a slow day. The lock has no renewal, so this holder alone asks a longer expiry. It is always released
@@ -780,10 +785,14 @@ export async function leaveTeam(u: User): Promise<{ ok: true } | TeamFail> {
  * team is never re-ranked, so a member the owner brought in after a downgrade is not swapped for one the plan paused
  * earlier. Only this account's memberships change: the same person's membership elsewhere is untouched. Each pause or
  * resume writes one "paused_for_seats" / "resumed" row (via "system", the owner as the actor).
+ *
+ * `teamLocked`: the caller holds `lock:team:{aid}` already (the founder's plan change, POST /api/admin/plan, takes it
+ * before `lock:user` so a busy team refuses the change before anything is written): the lock is not reentrant.
  */
-export async function enforceSeats(owner: User | string): Promise<{ limit: number; disabled: string[]; enabled: string[]; cancelled: string[] }> {
+export async function enforceSeats(owner: User | string, opts: { teamLocked?: boolean } = {}): Promise<{ limit: number; disabled: string[]; enabled: string[]; cancelled: string[] }> {
   const aid = typeof owner === "string" ? aidFrom(normalizeEmail(owner)) : aidOf(owner);
-  return withTeamLock(aid, async () => {
+  const locked = <T,>(fn: () => Promise<T>) => (opts.teamLocked ? fn() : withTeamLock(aid, fn));
+  return locked(async () => {
     const [o, members, invites] = await Promise.all([getAccount(aid), listMembers(aid), listInvites(aid)]);
     const limit = o ? seatLimit(o) : 1;
     const slots = Math.max(0, limit - 1);
