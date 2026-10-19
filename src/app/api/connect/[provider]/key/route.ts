@@ -8,6 +8,7 @@ import { verifyWordPress } from "@/lib/connectors/wordpress";
 import { verifyWoo } from "@/lib/connectors/woocommerce";
 import { verifyBrevo, verifyOdoo, verifyPrestaShop, verifyTelegram } from "@/lib/connectors/keyed";
 import { forbid } from "@/lib/roles";
+import { providerTimeout } from "@/lib/fetch-timeout";
 import { wsKey } from "@/lib/keys";
 import { KEY_CHECK_FAILS_PER_DAY, KEY_CHECK_FAILS_PER_HOUR, WINDOW, allow, giveBack, retryLater } from "@/lib/rate";
 
@@ -62,7 +63,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     if (!v.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: v.error }, { status: 400 });
     meta.account = v.name ?? "";
   } else if (provider === "klaviyo") {
-    const r = await fetch("https://a.klaviyo.com/api/accounts/", { headers: { Authorization: `Klaviyo-API-Key ${data.apiKey}`, revision: "2024-10-15" } });
+    const r = await fetch("https://a.klaviyo.com/api/accounts/", { headers: { Authorization: `Klaviyo-API-Key ${data.apiKey}`, revision: "2024-10-15" }, signal: providerTimeout() });
     if (!r.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: `HTTP ${r.status}` }, { status: 400 });
   }
   await Promise.all(buckets.map((b) => giveBack(b)));
