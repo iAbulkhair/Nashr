@@ -170,6 +170,14 @@ export const personKey = {
   feedOf: (p: PersonId, a: AccountId) => `sec:feedof:${p}:${a}`,
   /** string: the hash of the person's current booking link for one provider in one account. */
   bookOf: (p: PersonId, a: AccountId, prov: string) => `sec:bookof:${p}:${a}:${prov}`,
+  /**
+   * lock: one person's feed link in one account (src/lib/feed-token.ts). A LEAF lock (rule 2139): it may be taken while
+   * any other lock is held, and nothing else is taken while it is held except the legacy per-login `lock:feed:{login}`
+   * of the same home link, always after it.
+   */
+  feedLock: (p: PersonId, a: AccountId) => `lock:feed:${p}:${a}`,
+  /** lock: one person's booking link for one provider in one account (src/lib/booking-token.ts). A leaf lock, as `feedLock`. */
+  bookLock: (p: PersonId, a: AccountId, prov: string) => `lock:book:${p}:${a}:${prov}`,
 } as const;
 
 export const accountKey = {

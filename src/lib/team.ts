@@ -266,7 +266,7 @@ async function forgetPersonIfAlone(pid: PersonId, email: string, aid: AccountId,
  * roster entry, the `orgs:` entry, the per-(person, account) active brand and the invites the person sent in this
  * account, in one round; for the HOME membership also the legacy `member:{email}` record and `activebrand:{login}`,
  * under `lock:member` and only while the record is still this membership's (a profile or password save in flight can
- * never bring the login back behind the roster's back). Then the person's calendar feed and booking links, and with
+ * never bring the login back behind the roster's back). Then the person's calendar feed and booking links in this account, and with
  * nothing left the person (`forgetPersonIfAlone`, plan reconciliation 7). The caller holds `lock:team:{aid}` and has
  * checked who may do it on the membership read under that lock. `lock:login:{email}` → `lock:person:{pid}` are taken
  * here BEFORE the first write (rule 2139), so a lock that cannot be had throws with nothing deleted and a retry finds the
@@ -296,10 +296,13 @@ export async function deleteMembership(aid: AccountId, pid: PersonId, opts: { ho
         await round(isHome(m, aid, pid) ? m : null);
       });
     } else await round(null);
-    // Task 7: revoke the person's (pid, aid) feed and booking links here. Until then the legacy per-login links, which
-    // belong to the home account only. After the record is gone, so nothing can mint a new one for it (`revokeFeed` waits
-    // out a create already running); the link is refused at read time while the login is gone (`feedHolds`).
-    if (opts.home && email) await Promise.all([revokeFeed(email), revokeBook(email)]);
+    // The person's (pid, aid) feed and booking links (rule 2119), and for the home membership the legacy per-login
+    // pointers and a link made before M1 (rule 2132). After the record is gone, so nothing can mint a new one for it
+    // (`revokeFeed` waits out a create already running); a link that outlives a skipped revoke is refused at read time
+    // anyway, since the membership no longer holds (`loginHolds`). The feed and booking locks are leaves (rule 2139):
+    // taken here under lock:team, lock:login and lock:person, and they take nothing else.
+    const who = { pid, aid, login: email ?? "", home: opts.home && !!email };
+    await Promise.all([revokeFeed(who), revokeBook(who)]);
     if (email) await forgetPersonIfAlone(pid, email, aid, { loginLocked: true, personLocked: true });
   };
   // No address (a roster entry with no person and no legacy record): nothing signs in, so no login or person to lock.
@@ -661,8 +664,10 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
         dropInvites(aid, mine),
         releaseLogin(old, memberPid(cur), { locked: true }),
       ]);
-      // Task 7: the (pid, aid) feed and booking links of the old person id go here too.
-      await Promise.all([revokeFeed(old), revokeBook(old)]);
+      // The old person id's links in this account, its home (`cur.memberOf` is `aid`): the (pid, aid) pointers, the legacy
+      // per-login ones and a link made before M1. Leaf locks, taken under lock:member (rule 2139).
+      const was = { pid: oldPid, aid, login: old, home: true };
+      await Promise.all([revokeFeed(was), revokeBook(was)]);
       return "ok" as const;
     });
     return res ?? "not_found";
