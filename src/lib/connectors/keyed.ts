@@ -3,6 +3,7 @@ import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { safeFetch } from "../safe-fetch";
 import { STORE_REPLY_BYTES, responseJson } from "../read-capped";
+import { productsMarkdown } from "./products-md";
 
 /** Key-based connectors that need no partner registration: Odoo, PrestaShop, Telegram, Brevo. */
 
@@ -22,9 +23,12 @@ export async function verifyOdoo(d: Record<string, string>) {
 }
 export async function importOdoo(email: string, c: Connection) {
   const rows = (await odooCall(c.data, "product.template", "search_read", [[["sale_ok", "=", true]]], { fields: ["name", "list_price", "description_sale", "website_url"], limit: 60 })) as { name: string; list_price: number; description_sale?: string | false; website_url?: string | false }[];
-  const md = [`# Product catalog (Odoo, ${new Date().toISOString().slice(0, 10)})`, "", ...rows.map((p) => `- **${p.name}** — ${p.list_price}${p.description_sale ? `\n  ${String(p.description_sale).slice(0, 200)}` : ""}${p.website_url ? `\n  ${c.data.url.replace(/\/+$/, "")}${p.website_url}` : ""}`)].join("\n");
+  if (!Array.isArray(rows)) throw new Error("odoo unexpected_products");
+  // The host is the owner's: each field one capped line, and a link only on the Odoo site's own host (rule 2247).
+  const base = c.data.url.replace(/\/+$/, "");
+  const { md, count } = productsMarkdown(`Product catalog (Odoo, ${new Date().toISOString().slice(0, 10)})`, rows.map((p) => ({ name: p?.name, price: p?.list_price, description: p?.description_sale || "", url: typeof p?.website_url === "string" ? `${base}${p.website_url}` : "" })), new URL(base).hostname);
   await writeFile(email, "products.md", md, "noor");
-  return rows.length;
+  return count;
 }
 
 // ---------- PrestaShop (Webservice key) ----------
@@ -43,10 +47,11 @@ export async function importPrestaShop(email: string, c: Connection) {
   if (!r.ok) throw new Error(`prestashop ${r.status}`);
   const j = (await responseJson(r, STORE_REPLY_BYTES)) as { products?: { id: number; name: string | { value: string }[]; price: string; link_rewrite: string | { value: string }[]; description_short?: string | { value: string }[] }[] };
   const txt = (v: unknown) => (Array.isArray(v) ? String((v[0] as { value: string })?.value ?? "") : String(v ?? ""));
-  const rows = j.products ?? [];
-  const md = [`# Product catalog (PrestaShop, ${new Date().toISOString().slice(0, 10)})`, "", ...rows.map((p) => `- **${txt(p.name)}** — ${p.price}\n  ${txt(p.description_short).replace(/<[^>]+>/g, "").slice(0, 200)}\n  ${base}/${txt(p.link_rewrite)}`)].join("\n");
+  const rows = Array.isArray(j?.products) ? j.products : [];
+  // The host is the owner's: each field one capped line, and a link only on the shop's own host (rule 2247).
+  const { md, count } = productsMarkdown(`Product catalog (PrestaShop, ${new Date().toISOString().slice(0, 10)})`, rows.map((p) => ({ name: txt(p?.name), price: p?.price, description: txt(p?.description_short), url: `${base}/${encodeURIComponent(txt(p?.link_rewrite))}` })), new URL(base).hostname);
   await writeFile(email, "products.md", md, "noor");
-  return rows.length;
+  return count;
 }
 
 // ---------- Telegram (bot token + channel) ----------

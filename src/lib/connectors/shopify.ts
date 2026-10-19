@@ -1,4 +1,5 @@
 import { createHmac } from "crypto";
+import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
 import type { Connection } from "./store";
 import { sameSecret } from "../rate";
@@ -107,19 +108,14 @@ type ProductsData = { products: { nodes: { title: string; handle: string; descri
 
 export async function importShopify(email: string, c: Connection) {
   const d = await shopifyGql<ProductsData>(c, PRODUCTS, { first: 50 });
-  const products = d.products.nodes;
-  const md = [
-    `# Product catalog (Shopify ${c.meta?.shop}, ${new Date().toISOString().slice(0, 10)})`,
-    "",
-    ...products.map((p) => {
-      const m = p.priceRangeV2?.minVariantPrice;
-      const price = m ? `${m.amount} ${m.currencyCode}` : "";
-      const desc = (p.description ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
-      return `- **${p.title}** — ${price}${desc ? `\n  ${desc}` : ""}\n  ${p.onlineStoreUrl ?? `https://${c.meta?.shop}/products/${p.handle}`}`;
-    }),
-  ].join("\n");
+  const products = Array.isArray(d.products?.nodes) ? d.products.nodes : [];
+  // Each field one capped line, links http(s) only (rule 2247).
+  const { md, count } = productsMarkdown(`Product catalog (Shopify ${c.meta?.shop}, ${new Date().toISOString().slice(0, 10)})`, products.map((p) => {
+    const m = p.priceRangeV2?.minVariantPrice;
+    return { name: p.title, price: m ? `${m.amount} ${m.currencyCode}` : "", description: p.description, url: p.onlineStoreUrl ?? `https://${c.meta?.shop}/products/${p.handle}` };
+  }));
   await writeFile(email, "products.md", md, "noor");
-  return products.length;
+  return count;
 }
 
 const BLOG = `query Blog { shop { name } blogs(first: 1) { nodes { id handle } } }`;

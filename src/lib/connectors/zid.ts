@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { pmap } from "../parallel";
@@ -73,20 +74,15 @@ export async function importZid(email: string, c: Connection) {
   }
   const live = items.filter((p) => zidText(p.name) && p.is_published !== false);
   const store = conn.meta?.account ? ` ${conn.meta.account}` : "";
-  const md = [
-    `# Product catalog (Zid${store}, ${new Date().toISOString().slice(0, 10)})`,
-    "",
-    ...live.map((p) => {
-      const cur = p.currency ? ` ${p.currency}` : "";
-      const reg = p.price == null || p.price === "" ? "" : `${p.price}${cur}`;
-      const sale = p.sale_price == null || p.sale_price === "" || Number(p.sale_price) === Number(p.price) ? "" : `${p.sale_price}${cur}`;
-      const price = sale ? `${sale} (was ${reg})` : reg;
-      const desc = zidText(p.description).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
-      return `- **${zidText(p.name)}** — ${price}${desc ? `\n  ${desc}` : ""}${p.html_url ? `\n  ${p.html_url}` : ""}`;
-    }),
-  ].join("\n");
+  // Each field one capped line, links http(s) only (rule 2247).
+  const { md, count } = productsMarkdown(`Product catalog (Zid${store}, ${new Date().toISOString().slice(0, 10)})`, live.map((p) => {
+    const cur = p.currency ? ` ${p.currency}` : "";
+    const reg = p.price == null || p.price === "" ? "" : `${p.price}${cur}`;
+    const sale = p.sale_price == null || p.sale_price === "" || Number(p.sale_price) === Number(p.price) ? "" : `${p.sale_price}${cur}`;
+    return { name: zidText(p.name), price: sale ? `${sale} (was ${reg})` : reg, description: zidText(p.description), url: p.html_url };
+  }));
   await writeFile(email, "products.md", md, "noor");
-  return live.length;
+  return count;
 }
 
 // ---------- Orders and abandoned carts: totals only ----------

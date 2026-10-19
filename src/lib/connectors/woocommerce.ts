@@ -2,6 +2,7 @@ import type { Connection } from "./store";
 import { writeFile } from "../files";
 import { safeFetch } from "../safe-fetch";
 import { STORE_REPLY_BYTES, responseJson } from "../read-capped";
+import { productsMarkdown } from "./products-md";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
 
 type WooKey = { site: string; consumerKey: string; consumerSecret: string };
@@ -33,10 +34,13 @@ export async function verifyWoo(data: Record<string, string>) {
 export async function importWoo(email: string, c: Connection) {
   const r = await wooGet(c.data as WooKey, "products?per_page=50&status=publish");
   if (!r.ok) throw new Error(`woo ${r.status}`);
-  const items = (await responseJson(r, STORE_REPLY_BYTES)) as { name: string; price: string; permalink: string; short_description?: string }[];
-  const md = [`# Product catalog (WooCommerce, ${new Date().toISOString().slice(0, 10)})`, "", ...items.map((p) => `- **${p.name}** — ${p.price} \n  ${(p.short_description ?? "").replace(/<[^>]+>/g, "").slice(0, 200)}\n  ${p.permalink}`)].join("\n");
+  const items = (await responseJson(r, STORE_REPLY_BYTES)) as unknown;
+  if (!Array.isArray(items)) throw new Error("woo unexpected_products");
+  // The host is the owner's: each field one capped line, and a permalink only on the store's own host (rule 2247).
+  const host = new URL((c.data as WooKey).site).hostname;
+  const { md, count } = productsMarkdown(`Product catalog (WooCommerce, ${new Date().toISOString().slice(0, 10)})`, (items as { name?: unknown; price?: unknown; permalink?: unknown; short_description?: unknown }[]).map((p) => ({ name: p?.name, price: p?.price, description: p?.short_description, url: p?.permalink })), host);
   await writeFile(email, "products.md", md, "noor");
-  return items.length;
+  return count;
 }
 
 // ---------- Orders: totals only ----------

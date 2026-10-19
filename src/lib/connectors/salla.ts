@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
@@ -57,19 +58,13 @@ export async function importSalla(email: string, c: Connection) {
   }
   const live = items.filter((p) => p.name && p.status !== "hidden" && p.status !== "deleted");
   const store = c.meta?.account ? ` ${c.meta.account}` : "";
-  const md = [
-    `# Product catalog (Salla${store}, ${new Date().toISOString().slice(0, 10)})`,
-    "",
-    ...live.map((p) => {
-      const sale = money(p.sale_price);
-      const price = sale && sale !== money(p.price) ? `${sale} (was ${money(p.price)})` : money(p.price);
-      const desc = (p.description ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
-      const url = p.urls?.customer ?? p.url ?? "";
-      return `- **${p.name}** — ${price}${desc ? `\n  ${desc}` : ""}${url ? `\n  ${url}` : ""}`;
-    }),
-  ].join("\n");
+  // Each field one capped line, links http(s) only (rule 2247).
+  const { md, count } = productsMarkdown(`Product catalog (Salla${store}, ${new Date().toISOString().slice(0, 10)})`, live.map((p) => {
+    const sale = money(p.sale_price);
+    return { name: p.name, price: sale && sale !== money(p.price) ? `${sale} (was ${money(p.price)})` : money(p.price), description: p.description, url: p.urls?.customer ?? p.url };
+  }));
   await writeFile(email, "products.md", md, "noor");
-  return live.length;
+  return count;
 }
 
 // ---------- Orders and abandoned carts: totals only ----------
