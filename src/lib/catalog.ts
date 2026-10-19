@@ -40,7 +40,10 @@ async function resolve(base: string): Promise<{ origin: string; html: string }> 
 function locs(xml: string) {
   return [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]);
 }
-/** The site's own host or its www twin (rule 2248): a sitemap or robots.txt cannot send the import to another site. */
+/**
+ * The site's own host or its www twin: a sitemap cannot add a product on another site (rule 2248), and neither
+ * robots.txt nor a sitemap index can send the import to fetch a sitemap there (rule 2251).
+ */
 function sameSite(u: string, origin: string) {
   try {
     const bare = (h: string) => h.toLowerCase().replace(/^www\./, "");
@@ -57,17 +60,18 @@ export async function discoverProductUrls(site: string, limit = 25): Promise<str
   const deadline = Date.now() + 40000;
   const { origin, html: home } = await resolve(base);
   const candidates = [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`, `${origin}/sitemap-products.xml`, `${origin}/sitemap_products_1.xml`, `${origin}/product-sitemap.xml`, `${origin}/sitemap/products.xml`];
-  // robots.txt may point to the real sitemap(s)
+  // robots.txt may point to the real sitemap(s), on the site's own host only (rule 2251)
   const robots = await get(`${origin}/robots.txt`, 5000);
-  for (const m of robots.matchAll(/^sitemap:\s*(\S+)/gim)) candidates.unshift(m[1]);
+  for (const m of robots.matchAll(/^sitemap:\s*(\S+)/gim)) if (sameSite(m[1], origin)) candidates.unshift(m[1]);
   const urls = new Set<string>();
   for (const sm of [...new Set(candidates)]) {
     if (Date.now() > deadline) break;
     const xml = await get(sm, 6000);
     if (!xml || !/<loc>/i.test(xml)) continue;
     const found = locs(xml);
-    // sitemap index → follow product-ish children
-    const children = found.filter((u) => /\.xml(\.gz)?(\?|$)/i.test(u)).slice(0, 12);
+    // sitemap index → follow product-ish children on the site's own host (rule 2251): the sitemaps protocol keeps an
+    // index's sitemaps on its host, and one elsewhere would spend the import's fetches on a host the owner never named
+    const children = found.filter((u) => /\.xml(\.gz)?(\?|$)/i.test(u) && sameSite(u, origin)).slice(0, 12);
     for (const c of children) {
       if (Date.now() > deadline) break;
       const cx = await get(c, 6000);

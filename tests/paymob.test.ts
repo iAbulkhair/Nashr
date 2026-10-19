@@ -707,3 +707,49 @@ describe("rule 1991: an intent names the account by its id and the billing addre
     expect((await getUser(u.email))!.plan).toBe("starter");
   });
 });
+
+describe("the first-month offer pays once (rule 2303)", () => {
+  /** A trial owner holding an unused 15% partner offer. */
+  async function offerOwner(): Promise<User> {
+    const u = await owner("pmoffer");
+    await saveUser({ ...(await getUser(u.email))!, firstMonthOffer: { kind: "partner", pct: 15, at: new Date().toISOString() } });
+    return (await getUser(u.email))!;
+  }
+  const confirm = (it: { amount: number; orderId: number; ref: string }) => hook(txnObj({ amount: it.amount, orderId: it.orderId, ref: it.ref }));
+
+  it("two checkouts opened before the first payment both carry the offer; only the first one paid applies, the second is left for a refund", async () => {
+    const u = await offerOwner();
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const [a, b] = fake.intents.slice(-2);
+    expect(a.amount).toBe(b.amount);
+    expect(a.amount).toBe(priceFor("plan", { plan: "starter" }, true)!.amountCents);
+    expect(await (await confirm(a)).json()).toMatchObject({ result: "paid" });
+    expect(await (await confirm(b)).json()).toMatchObject({ result: "unapplied" });
+    const after = (await getUser(u.email))!;
+    expect(after.billing!.paidThrough).toBe(addMonths(today(), 1));
+    expect(after.billing!.txns).toHaveLength(1);
+    expect(await payments(u.email)).toHaveLength(1);
+  });
+  it("an offer checkout paid after the offer was used elsewhere does not apply", async () => {
+    const u = await offerOwner();
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const it = fake.intents.at(-1)!;
+    const cur = (await getUser(u.email))!;
+    await saveUser({ ...cur, firstMonthOffer: { ...cur.firstMonthOffer!, usedAt: new Date().toISOString(), paymentId: "manual-1" } });
+    expect(await (await confirm(it)).json()).toMatchObject({ result: "unapplied" });
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("trial");
+    expect(after.billing).toBeUndefined();
+  });
+  it("a checkout without the offer still applies on an account that already paid", async () => {
+    const u = await offerOwner();
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    expect(await (await confirm(fake.intents.at(-1)!)).json()).toMatchObject({ result: "paid" });
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const full = fake.intents.at(-1)!;
+    expect(full.amount).toBe(priceFor("plan", { plan: "starter" })!.amountCents);
+    expect(await (await confirm(full)).json()).toMatchObject({ result: "paid" });
+    expect((await getUser(u.email))!.billing!.paidThrough).toBe(addMonths(addMonths(today(), 1), 1, Number(today().slice(8, 10))));
+  });
+});

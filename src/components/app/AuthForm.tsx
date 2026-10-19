@@ -339,6 +339,9 @@ export function ResetForm({ lang }: { lang: Lang }) {
     setBusy(true);
     try {
       const p = await postJson("/api/auth/reset", { token: tokenRef.current, password: pw });
+      // The password is saved, and two-step sign-in is on (rule 2300): no session yet. The challenge cookie is set, so the
+      // log-in page opens straight on its code step, as after a Google sign-in that needs the code.
+      if (p.body.mfa === true) { r.push(`/${lang}/app/login?mfa=1`); return; }
       // bad_token, weak_password, slow_down and suspended keep their own messages; disabled, network and server errors
       // get the shared ones.
       if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { ...(S as Record<string, string>), suspended: suspendedMessage(p.body.until, lang, S.suspended) }));

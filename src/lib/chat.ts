@@ -24,6 +24,7 @@ import { entitlements } from "./entitlements";
 import { route } from "./models/route";
 import { MODEL_UNAVAILABLE } from "./models/overrides";
 import type { SpendProposal } from "./spend-proposals";
+import type { FileProposal } from "./file-proposals";
 import { otherBrandNames, readAgentScopeModes, scopeCheck, type ScopeCtx } from "./agent-scope";
 import { log } from "./log";
 import { CAPPED_REPLY, CHAT_MAX_DURATION_S, CUT_NOTE, type ChatOpts, type ChatTurn, DONE_REPLY, LARGE_REPLY, OUT_OF_TIME_REPLY, REFUSED_REPLY, chatRefusedText, textOf, turnParts, withLimit } from "./chat-reply";
@@ -63,6 +64,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   const awayProposed: AwayProposal[] = [];
   const instructionProposed: InstructionProposal[] = [];
   const spendProposed: SpendProposal[] = [];
+  const fileProposed: FileProposal[] = [];
   const via = opts.via ?? "app";
 
   const state = modelState();
@@ -171,7 +173,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
             shown = out.block ? out.reply : said;
           } else late.push(check);
         }
-        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed), agent: agentId };
+        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed), agent: agentId };
         await deliver(email, m, conv);
         return withLimit(m, actions, spent);
       }
@@ -181,7 +183,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
         let isError = false;
         opts.onStatus?.(statusFor(u.name, lang, agentName));
         try {
-          out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, spendProposed, ownerMsg: text, conv, modes: scopeModes });
+          out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, ownerMsg: text, conv, modes: scopeModes });
         } catch (e) {
           isError = true;
           out = e instanceof Error ? e.message : "tool_failed";
@@ -206,7 +208,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       } else late.push(check);
     }
     const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? cut : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
-    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
+    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
     await deliver(email, m, conv);
     return withLimit(m, actions, spent);
   } finally {

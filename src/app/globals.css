@@ -292,6 +292,19 @@ body {
 .log-row { animation: rise 0.5s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .log-row { animation: none; } html { scroll-behavior: auto; } }
 
+/*
+ * The pricing page's one entrance (rule 2319): the plan cards rise 20px into place on load, 70ms apart. Only when motion
+ * is allowed and the site's pause switch is not off; otherwise, or when the animation never runs, the cards just stand.
+ */
+@keyframes plan-rise { from { opacity: 0; transform: translateY(20px); } }
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-motion="off"]) .plans-rise ul > li { animation: plan-rise 480ms var(--ease-out) both; }
+  html:not([data-motion="off"]) .plans-rise ul > li:nth-child(2) { animation-delay: 70ms; }
+  html:not([data-motion="off"]) .plans-rise ul > li:nth-child(3) { animation-delay: 140ms; }
+  html:not([data-motion="off"]) .plans-rise ul > li:nth-child(4) { animation-delay: 210ms; }
+  html:not([data-motion="off"]) .plans-rise ul > li:nth-child(n + 5) { animation-delay: 280ms; }
+}
+
 :focus-visible { outline: var(--stroke-focus) solid var(--color-ring); outline-offset: 2px; }
 /* Lemon is the focus ring on ink (rule 1081): an ink ring on an ink surface is invisible. Comes after the global ring so
    it wins at equal specificity. */

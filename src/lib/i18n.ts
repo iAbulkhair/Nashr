@@ -194,11 +194,11 @@ export const dict: Record<Lang, Dict> = {
     agent: "نور",
     nav: { how: "كيف تعمل", agents: "الوكلاء", industries: "القطاعات", pricing: "الأسعار", faq: "الأسئلة", cta: "ابدأ مجاناً", switchLang: "English", switchHref: "/en", tools: "أدوات مجانية", blog: "المدونة" },
     hero: {
-      eyebrow: "فريق تسويق كامل يعمل بالذكاء الاصطناعي — مبني للخليج",
+      eyebrow: "فريق تسويق كامل يعمل بالذكاء الاصطناعي، مبني للخليج",
       title1: "أنت توافق،",
       title2: "نور تسوّق.",
       sub: "نور وكيلة تسويق تخطط وتكتب بالعربي وبالإنجليزي، وحين تعتمد العنصر وتضغط «انشر» أو تطلب منها في الدردشة، تنشره على Telegram أو ترسل المقال مسودة إلى WordPress. أنت توافق، هي تنفّذ.",
-      cta: "ابدأ تجربتك المجانية",
+      cta: "ابدأ مجاناً",
       cta2: "شاهد مثالاً من يومها",
       logTitle: "مثال من أسبوع مع نور",
       logNote: "مثال توضيحي، لا حساب حقيقي. خطة الأسبوع تُجهَّز تلقائياً صباح الأحد، وباقي العناصر عندما تطلبها، ولا يُنشر شيء قبل موافقتك.",
@@ -214,7 +214,7 @@ export const dict: Record<Lang, Dict> = {
     proof: {
       label: "لماذا الآن",
       items: [
-        { n: "12", l: "موسم بيع خليجي في السنة — كلها في تقويم نور" },
+        { n: "12", l: "موسم بيع خليجي في السنة، كلها في تقويم نور" },
         { n: "8:00", l: "صباحاً بتوقيت السعودية: ملخصك في التطبيق، كل يوم" },
       ],
     },
@@ -222,7 +222,7 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "كيف تعمل",
       title: "اربط، وافق، وخلّها تشتغل.",
       steps: [
-        { title: "اربط قنواتك", body: "WordPress لمسودات المقالات، وTelegram لنشر ما توافق عليه، ومنتجات متجرك على سلة أو زد أو شوبيفاي أو WooCommerce تُستورد من رابطه — بدون تصدير ملفات." },
+        { title: "اربط قنواتك", body: "WordPress لمسودات المقالات، وTelegram لنشر ما توافق عليه، ومنتجات متجرك على سلة أو زد أو شوبيفاي أو WooCommerce تُستورد من رابطه، بدون تصدير ملفات." },
         { title: "نور تتعلم علامتك", body: "تقرأ موقعك ومنتجاتك، وتبني ملف صوت العلامة: اللهجة، الأسلوب، الممنوعات، والمنافسين." },
         { title: "خطة أسبوعية من بياناتك", body: "من ملف علامتك ومنتجاتك وتعديلاتك السابقة تقترح خطة: ماذا ننشر، أين نعلن، ولمن نرسل. مبنية على التقويم الخليجي." },
         { title: "أنت توافق، هي تنفّذ", body: "صندوق موافقة واحد. اقبل أو عدّل أو ارفض. كل تعديل يعلّمها." },
@@ -255,7 +255,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "العيادات والتجميل", body: "منشورات Google Business Profile، رسائل حجز عبر واتساب، ومحتوى يراعي ضوابط الإعلان الطبي." },
         { name: "المطاعم والضيافة", body: "عروض يومية، مراجعات، توصيل، محتوى مرئي بلهجة محلية." },
         { name: "وكالات التسويق", body: `عدة علامات من حساب واحد: ${brandsText("ar", PLAN_BRANDS.business)} في خطة الأعمال، وفي الوكالات حسب الاتفاق، ولكل علامة ملفها وصندوق موافقتها.` },
-        { name: "الخدمات المهنية", body: "محاسبة، استشارات، تعليم — محتوى يبني الثقة، مقالات SEO ومنشورات Google Business." },
+        { name: "الخدمات المهنية", body: "محاسبة، استشارات، تعليم: محتوى يبني الثقة، مقالات SEO ومنشورات Google Business." },
       ],
     },
     integrations: {
@@ -288,11 +288,11 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "الأسعار",
       title: "أرخص من موظف واحد.",
       sub: "الأسعار بالريال السعودي غير شاملة الضريبة. ألغِ في أي وقت.",
-      trial: `تجربة 3 أيام مجاناً: ${PLAN_CREDITS.trial} كريدت و${chatMessagesText("ar", CHAT_ALLOWANCE.trial)} — بدون بطاقة`,
+      trial: `تجربة 3 أيام مجاناً: ${PLAN_CREDITS.trial} كريدت و${chatMessagesText("ar", CHAT_ALLOWANCE.trial)}، بدون بطاقة`,
       plans: [
         { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, output: reachText("ar", PLAN_CREDITS.starter), tagline: "للتاجر الفرد والمبدع", features: [`${brandsText("ar", PLAN_BRANDS.starter)}، ${seatsText("ar", PLAN_SEATS.starter)}`, SOCIAL.ar, `${chatMessagesText("ar", CHAT_ALLOWANCE.starter)} مع الفريق شهرياً`, "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
         { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, output: reachText("ar", PLAN_CREDITS.pro), tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: [`${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`, SOCIAL.ar, `${chatMessagesText("ar", CHAT_ALLOWANCE.pro)} مع الفريق شهرياً`, brandsText("ar", PLAN_BRANDS.pro), "وكل ما في البداية"], cta: "ابدأ مجاناً" },
-        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً — يتجدد كل شهر ولا يترحّل`, output: reachText("ar", PLAN_CREDITS.business), tagline: "للفرق والشركات الأكبر", features: [`${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`, SOCIAL.ar, `${chatMessagesText("ar", CHAT_ALLOWANCE.business)} مع الفريق شهرياً`, brandsText("ar", PLAN_BRANDS.business), "وكل ما في الاحتراف"], cta: "ابدأ مجاناً" },
+        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً، يتجدد كل شهر ولا يترحّل`, output: reachText("ar", PLAN_CREDITS.business), tagline: "للفرق والشركات الأكبر", features: [`${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`, SOCIAL.ar, `${chatMessagesText("ar", CHAT_ALLOWANCE.business)} مع الفريق شهرياً`, brandsText("ar", PLAN_BRANDS.business), "وكل ما في الاحتراف"], cta: "ابدأ مجاناً" },
         { id: "agency", name: "الوكالات", price: "تواصل معنا", period: "فوترة سنوية", credits: `رصيد مخصص، من ${formatCount(AGENCY_MIN.credits)} كريدت شهرياً`, output: reachText("ar", AGENCY_MIN.credits, true), tagline: "للوكالات والمجموعات الكبيرة", features: ["عدد مقاعد حسب فريقك", SOCIAL.ar, "رسائل محادثة شهرية حسب الاتفاق", "عدد العلامات حسب الاتفاق", "الوكلاء المتخصصون كلهم", "مدير نجاح مخصص"], cta: "تواصل معنا" },
       ],
       creditsTitle: "كم تكلّف كل مهمة؟",
@@ -338,7 +338,7 @@ export const dict: Record<Lang, Dict> = {
       title1: "You approve,",
       title2: "Noor markets.",
       sub: "Noor is an AI marketing agent that plans and writes in Arabic and English. When you approve an item and click Publish, or ask her in chat, she posts it to Telegram or sends the article to WordPress as a draft. You approve. She executes.",
-      cta: "Start your free trial",
+      cta: "Start free",
       cta2: "See a sample of her work",
       logTitle: "A sample week with Noor",
       logNote: "An illustrative example, not a real account. The weekly plan is drafted automatically on Sunday morning, everything else when you ask, and nothing is published before you approve.",
@@ -354,7 +354,7 @@ export const dict: Record<Lang, Dict> = {
     proof: {
       label: "Why now",
       items: [
-        { n: "12", l: "Gulf selling seasons a year — all in Noor's calendar" },
+        { n: "12", l: "Gulf selling seasons a year, all in Noor's calendar" },
         { n: "8:00", l: "AM KSA: your brief in the app, every day" },
       ],
     },
@@ -362,9 +362,9 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "How it works",
       title: "Connect, approve, let it run.",
       steps: [
-        { title: "Connect your channels", body: "WordPress for article drafts, Telegram for posts you approve, and your store's products on Salla, Zid, Shopify or WooCommerce, imported from its URL — no file exports." },
+        { title: "Connect your channels", body: "WordPress for article drafts, Telegram for posts you approve, and your store's products on Salla, Zid, Shopify or WooCommerce, imported from its URL, with no file exports." },
         { title: "Noor learns your brand", body: "She reads your site and products, then builds a brand voice file: dialect, tone, banned words, competitors." },
-        { title: "A weekly plan from your data", body: "From your brand file and memory — not templates — she proposes what to post, where to advertise, and who to message. Built on the Gulf calendar." },
+        { title: "A weekly plan from your data", body: "From your brand file and memory, not templates, she proposes what to post, where to advertise, and who to message. Built on the Gulf calendar." },
         { title: "You approve, she executes", body: "One approval inbox. Accept, edit, or reject. Every edit teaches her." },
         { title: "Morning brief", body: "What waits for your approval, what you approved, your balance and upcoming seasons. One short summary in the app." },
       ],
@@ -395,7 +395,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "Clinics & aesthetics", body: "Google Business Profile posts, WhatsApp booking messages, content written with MOH advertising rules in mind." },
         { name: "Restaurants & hospitality", body: "Daily offers, reviews, delivery, visual content in local dialect." },
         { name: "Marketing agencies", body: `Several brands from one account: ${brandsText("en", PLAN_BRANDS.business)} on Business and as agreed on Agency, each with its own brand file and approval inbox.` },
-        { name: "Professional services", body: "Accounting, consulting, education — authority content, SEO articles and Google Business posts." },
+        { name: "Professional services", body: "Accounting, consulting, education: authority content, SEO articles and Google Business posts." },
       ],
     },
     integrations: {
@@ -428,7 +428,7 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "Pricing",
       title: "Cheaper than one hire.",
       sub: "Prices in Saudi riyals, excluding VAT. Cancel anytime.",
-      trial: `3-day free trial: ${PLAN_CREDITS.trial} credits and ${chatMessagesText("en", CHAT_ALLOWANCE.trial)} — no card`,
+      trial: `3-day free trial: ${PLAN_CREDITS.trial} credits and ${chatMessagesText("en", CHAT_ALLOWANCE.trial)}, no card`,
       plans: [
         { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, output: reachText("en", PLAN_CREDITS.starter), tagline: "For solo sellers and creators", features: [`${brandsText("en", PLAN_BRANDS.starter)}, ${seatsText("en", PLAN_SEATS.starter)}`, SOCIAL.en, `${chatMessagesText("en", CHAT_ALLOWANCE.starter)} a month with the team`, "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
         { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, output: reachText("en", PLAN_CREDITS.pro), tagline: "For founders, stores, and clinics", highlight: true, features: [`${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`, SOCIAL.en, `${chatMessagesText("en", CHAT_ALLOWANCE.pro)} a month with the team`, brandsText("en", PLAN_BRANDS.pro), "Plus everything in Starter"], cta: "Start free" },

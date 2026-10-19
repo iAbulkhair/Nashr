@@ -12,9 +12,10 @@ import { proposalCard, type InstructionProposal } from "./instruction-proposals"
 import { chatItemOf } from "./handoffs";
 import { DEFAULTS, type Rejected } from "./models/route";
 import { SPEND_CARDS_PER_REPLY, spendCard, type SpendProposal } from "./spend-proposals";
+import { fileProposalCard, type FileProposal } from "./file-proposals";
 import type { AgentScopeModes } from "./agent-scope";
 import type { ChatMsg } from "./chat-history";
-import { AWAY_CARDS_PER_REPLY, BRAND_CARDS_PER_REPLY, INSTRUCTION_CARDS_PER_REPLY } from "./chat-gates";
+import { AWAY_CARDS_PER_REPLY, BRAND_CARDS_PER_REPLY, FILE_CARDS_PER_REPLY, INSTRUCTION_CARDS_PER_REPLY } from "./chat-gates";
 
 /**
  * The `maxDuration` of the two routes that call chat(), `/api/chat` and `/api/mcp` (route config must be a literal, so
@@ -73,8 +74,8 @@ export const cleanName = (v: unknown) => (typeof v === "string" ? cleanLine(v).s
 /** The text blocks of a model response, joined. */
 export const textOf = (content: Anthropic.ContentBlock[]) => content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
 /** What every reply of a turn carries: its actions (without the `limit:*` tags), the items made, the handoff card, the switch card, brand proposals, away proposals, instruction proposals and spend proposals (as cards: without who proposed). */
-export function turnParts(actions: string[], made: Task[], proposed: BrandProposal[], awayProposed: AwayProposal[] = [], instructionProposed: InstructionProposal[] = [], spendProposed: SpendProposal[] = []): Pick<ChatMsg, "actions" | "items" | "handoff" | "switchTo" | "proposals" | "awayProposals" | "instructionProposals" | "spendProposals"> {
-  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...switchOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, BRAND_CARDS_PER_REPLY) } : {}), ...(awayProposed.length ? { awayProposals: awayProposed.slice(0, AWAY_CARDS_PER_REPLY) } : {}), ...(instructionProposed.length ? { instructionProposals: instructionProposed.slice(0, INSTRUCTION_CARDS_PER_REPLY).map(proposalCard) } : {}), ...(spendProposed.length ? { spendProposals: spendProposed.slice(0, SPEND_CARDS_PER_REPLY).map(spendCard) } : {}) };
+export function turnParts(actions: string[], made: Task[], proposed: BrandProposal[], awayProposed: AwayProposal[] = [], instructionProposed: InstructionProposal[] = [], spendProposed: SpendProposal[] = [], fileProposed: FileProposal[] = []): Pick<ChatMsg, "actions" | "items" | "handoff" | "switchTo" | "proposals" | "awayProposals" | "instructionProposals" | "spendProposals" | "fileProposals"> {
+  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...switchOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, BRAND_CARDS_PER_REPLY) } : {}), ...(awayProposed.length ? { awayProposals: awayProposed.slice(0, AWAY_CARDS_PER_REPLY) } : {}), ...(instructionProposed.length ? { instructionProposals: instructionProposed.slice(0, INSTRUCTION_CARDS_PER_REPLY).map(proposalCard) } : {}), ...(spendProposed.length ? { spendProposals: spendProposed.slice(0, SPEND_CARDS_PER_REPLY).map(spendCard) } : {}), ...(fileProposed.length ? { fileProposals: fileProposed.slice(0, FILE_CARDS_PER_REPLY).map(fileProposalCard) } : {}) };
 }
 /** After the reply is saved: the first limit a tool hit (the app raises its dialog) and the turn's model cost, neither saved. */
 export function withLimit(m: ChatTurn, actions: string[], spent: number): ChatTurn {

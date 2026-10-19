@@ -10,6 +10,7 @@ import type { BrandProposal } from "./brand-proposals";
 import { byOf, type By } from "./actor";
 import type { AwayProposal } from "./secretary-away";
 import type { InstructionProposal } from "./instruction-proposals";
+import type { FileProposal } from "./file-proposals";
 import type { Action } from "./roles";
 import { spendIntent } from "./spend-intent";
 import { fairUseText } from "./fair-use";
@@ -106,13 +107,15 @@ export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "br
  * proposal (`proposed`) and an away proposal (`awayProposed`, Reem's contact_away) are collected for the turn's reply
  * cards, and, for a handoff (src/lib/handoffs.ts), the turn's own message (`ownerMsg`) and its conversation (`conv`).
  */
-export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[]; awayProposed?: AwayProposal[]; instructionProposed?: InstructionProposal[]; /** paid work proposed on a card this turn because the owner's message did not ask for it (rule 1511) */ spendProposed?: SpendProposal[]; ownerMsg?: string; conv?: string; /** the founder's agent-scope modes for this turn (the preflight's copy): the role layer and the prompt flag for the batch */ modes?: AgentScopeModes };
+export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[]; awayProposed?: AwayProposal[]; instructionProposed?: InstructionProposal[]; /** core-file rewrites held for the owner's Apply this turn (rule 2306, src/lib/file-proposals.ts) */ fileProposed?: FileProposal[]; /** paid work proposed on a card this turn because the owner's message did not ask for it (rule 1511) */ spendProposed?: SpendProposal[]; ownerMsg?: string; conv?: string; /** the founder's agent-scope modes for this turn (the preflight's copy): the role layer and the prompt flag for the batch */ modes?: AgentScopeModes };
 /** Brand-change cards one reply carries at most: update_brand refuses a further proposal rather than save one with no card. */
 export const BRAND_CARDS_PER_REPLY = 5;
 /** Away cards one reply carries at most: the turn's further contact_away calls are refused, not dropped from view. */
 export const AWAY_CARDS_PER_REPLY = 5;
 /** Instruction cards one reply carries at most (spec 7): a further propose_instruction is refused in its answer, with no card. */
 export const INSTRUCTION_CARDS_PER_REPLY = 2;
+/** Core-file cards one reply carries at most (rule 2306): a further rewrite of core memory is refused in its answer, with no card. */
+export const FILE_CARDS_PER_REPLY = 2;
 
 /** The refusal another agent's turn reads for one of Reem's own tools (rules 607 and 919); the same words as the tool's gate below. */
 export const REEM_ONLY_REFUSAL: Readonly<Record<string, string>> = {

@@ -11,12 +11,13 @@ const name = (id: string, lang: Lang) => AGENT_CAST.find((a) => a.id === id)?.na
 /**
  * Prototype D's house rules (rule 516): four short exchanges between the agents, each pinned with the rule it shows.
  * The first speaker's lines sit on the reading side, the other's opposite. Each bubble carries its speaker's name for
- * screen readers; the faces are decoration.
+ * screen readers; the faces are decoration. The section is the page's one colour band (rule 2315): Lilac Wash from edge
+ * to edge, so the law captions under the panels are paper, not lilac on lilac.
  */
 export default function Rules({ lang }: { lang: Lang }) {
   const s = SECTIONS.rules;
   return (
-    <section className={styles.sec} id="rules" aria-labelledby="t-rules">
+    <section className={`${styles.sec} ${styles.band}`} id="rules" aria-labelledby="t-rules">
       <Float kind="q" />
       <div className={styles.sh}>
         <h2 id="t-rules">
@@ -49,7 +50,7 @@ export default function Rules({ lang }: { lang: Lang }) {
                 })}
               </div>
               <p className={`${styles.cap} ${styles.law}`}>
-                <Scribble kind="box" seed={`rl${i}`} fill="lilac" />
+                <Scribble kind="box" seed={`rl${i}`} fill="paper" />
                 {RULE_LABEL[lang]}
                 {r.law[lang]}
               </p>

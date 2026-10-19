@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { jar, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
 import { sc } from "@/lib/auth";
 import { globalKey, wsKey } from "@/lib/keys";
 import { CONNECT_STARTS_PER_HOUR } from "@/lib/rate";
+import { OAUTH_COOKIE } from "@/lib/connectors/store";
+import { bucketFor, composioUserId, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
 import * as start from "@/app/api/connect/[provider]/start/route";
 
 /**
@@ -68,6 +70,58 @@ describe("connect starts are limited per workspace (rule 2242)", () => {
     await signIn(u.email);
     expect((await go("nope")).status).toBe(404);
     expect(await db.get(bucket(sc(u)))).toBeNull();
+  });
+
+  it("through Composio: a start counts, links once and keeps the account id server-side; a full bucket never reaches Composio", async () => {
+    vi.stubEnv("COMPOSIO_API_KEY", "test-key");
+    vi.stubEnv("COMPOSIO_PROVIDERS", "x");
+    vi.stubEnv("COMPOSIO_AUTH_TWITTER", "ac_twitter");
+    const links: { userId: string; auth: string; callbackUrl: string }[] = [];
+    const fake = {
+      connectedAccounts: {
+        link: async (userId: string, auth: string, o: { callbackUrl: string }) => { links.push({ userId, auth, callbackUrl: o.callbackUrl }); return { id: `ca_${links.length}`, redirectUrl: "https://connect.composio.dev/link/lk_1" }; },
+        waitForConnection: async (id: string) => ({ id, status: "ACTIVE" }),
+        list: async () => ({ items: [] }),
+        revoke: async () => {},
+        delete: async () => {},
+      },
+      tools: { execute: async () => ({ successful: false, error: "not mocked" }) },
+      files: { upload: async () => ({}) },
+    } as unknown as ComposioClient;
+    setComposioClientForTests(fake);
+    try {
+      const u = await newUser("startrate-composio");
+      await signIn(u.email);
+
+      // Happy path: the browser goes to Composio, the bucket holds one start, the state keeps the pending account.
+      const ok = await go("x");
+      expect(ok.headers.get("location")).toBe("https://connect.composio.dev/link/lk_1");
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({ userId: composioUserId(sc(u)), auth: "ac_twitter" });
+      const state = jar().get(OAUTH_COOKIE)!;
+      expect(links[0].callbackUrl).toContain(`/api/connect/x/callback?state=${state}`);
+      expect(await db.get(`oauthstate:${state}`)).toMatchObject({ email: sc(u), provider: "x", via: "composio", toolkit: "twitter", accountId: "ca_1" });
+      expect(Number(await db.get(bucket(sc(u))))).toBe(1);
+
+      // Composio's own per-workspace limit is still reported by its code, after the start counted.
+      await db.set(globalKey.rate(bucketFor(sc(u))), 10_000, 3600);
+      const busy = new URL((await go("x")).headers.get("location")!);
+      expect(busy.searchParams.get("error")).toBe("composio_rate_limited");
+      expect(links).toHaveLength(1);
+      expect(Number(await db.get(bucket(sc(u))))).toBe(2);
+      await db.del(globalKey.rate(bucketFor(sc(u))));
+
+      // A full start bucket goes back to the page before Composio is asked, and writes no new state.
+      await db.set(bucket(sc(u)), CONNECT_STARTS_PER_HOUR, 3600);
+      jar().delete(OAUTH_COOKIE);
+      const refused = new URL((await go("x", "lang=ar")).headers.get("location")!);
+      expect(refused.pathname).toBe("/ar/app/integrations");
+      expect(refused.searchParams.get("error")).toBe("slow_down");
+      expect(links).toHaveLength(1);
+      expect(jar().get(OAUTH_COOKIE)).toBeUndefined();
+    } finally {
+      setComposioClientForTests(null);
+    }
   });
 
   it("the start counts before Composio is asked or a state is written", () => {

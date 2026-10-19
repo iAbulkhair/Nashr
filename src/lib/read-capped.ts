@@ -37,6 +37,14 @@ export class TooLargeError extends Error {
 export const STORE_REPLY_BYTES = 8 * 1024 * 1024;
 
 /**
+ * Most bytes a reply from a provider at a fixed host may hold (rule 2250): Shopify, Salla, Zid, Meta, Meta Ads, X, an
+ * OAuth token URL, Telegram, Brevo and Klaviyo. The host is not the owner's, but its answer is still not ours to trust
+ * with the memory every workspace shares; the largest page asked for (250 Shopify products, 100 Meta insight rows) is
+ * well under the store cap, so the two are one number.
+ */
+export const PROVIDER_REPLY_BYTES = STORE_REPLY_BYTES;
+
+/**
  * A response body as bytes, or TooLargeError past `max`: the declared length first, then a running total, so a lying
  * or missing `content-length` cannot get more read (rule 2245). The stream is cancelled at the cap.
  */

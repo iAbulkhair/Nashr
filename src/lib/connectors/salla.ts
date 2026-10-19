@@ -1,6 +1,7 @@
 import type { Connection } from "./store";
 import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
+import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 import { writeFile } from "../files";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
 
@@ -39,7 +40,7 @@ function money(m: Money): string {
 export async function sallaStore(c: Connection): Promise<{ name?: string; domain?: string } | null> {
   const r = await fetch(PROFILE, { headers: auth(c), signal: providerTimeout() });
   if (!r.ok) return null;
-  const j = (await r.json().catch(() => null)) as { data?: { merchant?: { name?: string; domain?: string } } } | null;
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES).catch(() => null)) as { data?: { merchant?: { name?: string; domain?: string } } } | null;
   const m = j?.data?.merchant;
   return m ? { name: m.name, domain: m.domain } : null;
 }
@@ -50,7 +51,7 @@ export async function importSalla(email: string, c: Connection) {
   for (let page = 1; page <= MAX_PAGES; page++) {
     const r = await fetch(`${API}/products?page=${page}&per_page=${PER_PAGE}`, { headers: auth(c), signal: providerTimeout() });
     if (!r.ok) throw new Error(`salla ${r.status}`);
-    const j = (await r.json()) as Page;
+    const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as Page;
     items.push(...(j.data ?? []));
     const cur = j.pagination?.currentPage ?? j.pagination?.current_page ?? page;
     const total = j.pagination?.totalPages ?? j.pagination?.total_pages ?? cur;
@@ -91,7 +92,7 @@ async function pages<T>(c: Connection, path: string, max: number): Promise<{ row
   for (let page = 1; page <= max; page++) {
     const r = await fetch(`${API}${path}${path.includes("?") ? "&" : "?"}page=${page}`, { headers: auth(c), signal: providerTimeout() });
     if (!r.ok) throw new Error(`salla ${r.status}`);
-    const j = (await r.json()) as ListPage<T>;
+    const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as ListPage<T>;
     rows.push(...(j.data ?? []));
     total ??= typeof j.pagination?.total === "number" ? j.pagination.total : null;
     const cur = j.pagination?.currentPage ?? j.pagination?.current_page ?? page;

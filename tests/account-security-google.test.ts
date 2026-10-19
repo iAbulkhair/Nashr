@@ -63,6 +63,13 @@ async function begin(query: string) {
   const to = new URL(r.headers.get("location")!);
   return { to, q: to.searchParams };
 }
+/** Start linking from settings (rule 2302): the password in a JSON body, Google's address in the answer. */
+async function beginLink(password = "abc12345", lang?: string) {
+  const r = await googleRoute.POST(json("/api/account/google", "POST", { action: "link", password, ...(lang ? { lang } : {}) }, ipHeader()));
+  expect(r.status).toBe(200);
+  const to = new URL((await r.json()).url);
+  return { to, q: to.searchParams };
+}
 /** The whole round trip: start, Google answers with an ID token for `email`, the callback runs. */
 async function roundTrip(query: string, email: string, extra: Record<string, unknown> = {}) {
   const { q } = await begin(query);
@@ -262,13 +269,16 @@ describe("rule 1952: linking from settings links the session's own login only", 
     const owner = await newUser("gsi");
     const m = await newMember(owner);
     await signIn(m.email);
-    const { loc, claims } = await roundTrip("mode=link&lang=en", `personal-${randomBytes(3).toString("hex")}@test.example`);
+    const { q: lq } = await beginLink(m.password, "en");
+    const claims = claimsFor(`personal-${randomBytes(3).toString("hex")}@test.example`, lq.get("nonce")!);
+    idToken = token(claims);
+    const loc = (await callbackRoute.GET(get(`${CALLBACK_PATH}?code=auth-code&state=${lq.get("state")}`))).headers.get("location") ?? "";
     expect(loc).toMatch(/\/en\/app\/settings\/security\?google=linked$/);
     expect(await db.get(subKey(m.email))).toBe(claims.sub);
 
     const u = await newUser("gsi");
     await signIn(u.email);
-    const { q } = await begin("mode=link");
+    const { q } = await beginLink();
     idToken = token(claimsFor(`x-${randomBytes(3).toString("hex")}@test.example`, q.get("nonce")!));
     const state = q.get("state")!;
     await signIn(owner.email);
@@ -280,11 +290,12 @@ describe("rule 1952: linking from settings links the session's own login only", 
   });
 
   it("starting a link needs a session and is refused while a founder impersonates", async () => {
-    expect((await startRoute.GET(get("/api/auth/google/start?mode=link"))).status).toBe(401);
+    const link = () => googleRoute.POST(json("/api/account/google", "POST", { action: "link", password: "abc12345" }, ipHeader()));
+    expect((await link()).status).toBe(401);
     vi.stubEnv("ADMIN_EMAILS", "founder-gsi@test.example");
     const u = await newUser("gsi");
     await signIn(u.email, { imp: "founder-gsi@test.example" });
-    expect((await startRoute.GET(get("/api/auth/google/start?mode=link"))).status).toBe(403);
+    expect((await link()).status).toBe(403);
     expect(MIN_ROLE["google.manage"]).toBe("member");
     expect(IMPERSONATION_BLOCKED.has("google.manage")).toBe(true);
   });

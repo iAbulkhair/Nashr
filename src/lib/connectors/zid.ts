@@ -1,6 +1,7 @@
 import type { Connection } from "./store";
 import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
+import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 import { writeFile } from "../files";
 import { pmap } from "../parallel";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
@@ -47,7 +48,7 @@ export const zidText = (t: Text): string => (t == null ? "" : typeof t === "stri
 export async function zidStore(c: Connection): Promise<{ id?: string; name?: string; url?: string } | null> {
   const r = await fetch(`${ZID_API}/managers/account/profile`, { headers: zidHeaders(c), signal: providerTimeout() });
   if (!r.ok) return null;
-  const j = (await r.json().catch(() => null)) as { user?: { store?: { id?: number | string; title?: Text; url?: string } } } | null;
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES).catch(() => null)) as { user?: { store?: { id?: number | string; title?: Text; url?: string } } } | null;
   const s = j?.user?.store;
   if (!s) return null;
   return { id: s.id == null ? undefined : String(s.id), name: zidText(s.title) || undefined, url: s.url };
@@ -68,7 +69,7 @@ export async function importZid(email: string, c: Connection) {
     const r = await fetch(`${ZID_API}/products/?page=${page}&page_size=${PER_PAGE}`, { headers: zidHeaders(conn), signal: providerTimeout() });
     // 403 is a permission the app was not granted: a new connection cannot fix it, so it must not ask for one.
     if (!r.ok) throw new Error(r.status === 403 ? ZID_ACCESS_DENIED : `zid ${r.status}`);
-    const j = (await r.json()) as { results?: ZidProduct[]; next?: string | null };
+    const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as { results?: ZidProduct[]; next?: string | null };
     items.push(...(j.results ?? []));
     if (!j.next || !j.results?.length) break;
   }
@@ -140,7 +141,7 @@ class ZidStatus extends Error {
 async function zidGet<T>(c: Connection, path: string): Promise<T> {
   const r = await fetch(`${ZID_API}${path}`, { headers: zidHeaders(c), signal: providerTimeout() });
   if (!r.ok) throw new ZidStatus(r.status);
-  return (await r.json()) as T;
+  return (await responseJson(r, PROVIDER_REPLY_BYTES)) as T;
 }
 
 /** Last 30 days of orders and the open abandoned carts, reduced to totals. */
