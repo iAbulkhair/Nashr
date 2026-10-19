@@ -58,6 +58,13 @@ export function isSuspended(u: HasSuspension, now: number = Date.now()): boolean
  */
 export const isPersonSuspended = (p: Pick<PersonRowValue, "suspended">, now: number = Date.now()): boolean => isSuspended(p, now);
 
+/**
+ * A person's stored suspension, carried as stored when the person is rebuilt from a legacy record (`getPerson`'s stale
+ * guard, rule 2134): a set value only, so a rebuild never drops a suspension (fails closed) and never invents one. It
+ * lives here because this module is the only reader of the field (rule 2071).
+ */
+export const keptSuspension = (p: Pick<PersonRowValue, "suspended">): Pick<PersonRowValue, "suspended"> => (p.suspended ? { suspended: p.suspended } : {});
+
 /** Stored as suspended, but its end date has passed: what `endExpiredSuspension` tidies and writes to the log. */
 export const suspensionExpired = (u: HasSuspension, now: number = Date.now()): boolean => !!u?.suspended && !isSuspended(u, now);
 

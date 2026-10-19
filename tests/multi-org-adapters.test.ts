@@ -142,9 +142,9 @@ describe("rule 2134: getPerson reads person:, then the legacy owner, then the le
     await db.set(personKey.person(pid), personRow(e, e, { passHash: "hash-old", sessionsAfter: T1, devicesAfter: T3, trialUsedAt: T1, suspended: true }));
     const w = vi.spyOn(log, "warn");
     const p = await getPerson(pid);
-    expect(p).toMatchObject({ source: "owner", passHash: "hash-new", sessionsAfter: T2, name: "Owner Name" });
-    // The later stamp of each kind is kept (it only ends more sessions), and person-only fields stay.
-    expect(p?.devicesAfter).toBe(T3);
+    expect(p).toMatchObject({ source: "owner", passHash: "hash-new", sessionsAfter: T2, name: "Owner Name", lang: "en", emailVerifiedAt: T0 });
+    // Every field the owner record carries comes from it (its devicesAfter too); person-only fields stay from the row.
+    expect(p?.devicesAfter).toBe(T0);
     expect(p?.trialUsedAt).toBe(T1);
     expect(isPersonSuspended(p!)).toBe(true);
     expect(w).toHaveBeenCalledWith("person stale", { shape: "person", source: "owner" });
@@ -160,10 +160,50 @@ describe("rule 2134: getPerson reads person:, then the legacy owner, then the le
     expect(await getPerson(pid)).toMatchObject({ source: "person", passHash: "hash-leftover" });
     // A member re-created at the address after the person was written (by an older build).
     await db.set(accountKey.member(e), legacyMember(e, address("team"), { acceptedAt: T3, sessionsAfter: T0, passHash: "hash-fresh" }));
-    expect(await getPerson(pid)).toMatchObject({ source: "member", passHash: "hash-fresh", createdAt: T3, sessionsAfter: T2 });
+    // The leftover lends nothing: not even its later session stamp.
+    expect(await getPerson(pid)).toEqual({ pid, source: "member", email: e, name: "Member Name", lang: "en", passHash: "hash-fresh", createdAt: T3, sessionsAfter: T0 });
     // An owner signed up at the address after the person was written.
     await putAccount(account(e, { createdAt: T3, sessionsAfter: T0, passHash: "hash-signup" }));
-    expect(await getPerson(pid)).toMatchObject({ source: "owner", passHash: "hash-signup" });
+    expect(await getPerson(pid)).toMatchObject({ source: "owner", passHash: "hash-signup", sessionsAfter: T0 });
+  });
+
+  it("a verified leftover person lends no verification, trial or stamps to an unverified owner born later; a set suspension is kept", async () => {
+    const e = address("leftover");
+    const pid = storedPersonId(e);
+    await db.set(personKey.person(pid), personRow(e, e, { passHash: "hash-leftover", emailVerifiedAt: T0, trialUsedAt: T0, sessionsAfter: T2, devicesAfter: T2, createdAt: T0 }));
+    await putAccount(account(e, { createdAt: T3, emailVerifiedAt: undefined, sessionsAfter: undefined, passHash: "hash-signup", name: "New Human" }));
+    const p = await getPerson(pid);
+    expect(p).toEqual({ pid, source: "owner", email: e, name: "New Human", lang: "en", passHash: "hash-signup", createdAt: T3 });
+    expect(p).not.toHaveProperty("emailVerifiedAt");
+    expect(isPersonSuspended(p!)).toBe(false);
+    // Fail closed: a suspension on the leftover row stays (it can never be lifted by a rebuild).
+    await db.set(personKey.person(pid), personRow(e, e, { emailVerifiedAt: T0, suspended: true, createdAt: T0 }));
+    const q = await getPerson(pid);
+    expect(q).toMatchObject({ source: "owner", passHash: "hash-signup" });
+    expect(q).not.toHaveProperty("emailVerifiedAt");
+    expect(isPersonSuspended(q!)).toBe(true);
+  });
+
+  it("the same human, address changed by a rolled-back build (verification cleared): the new address reads unverified", async () => {
+    const e = address("moved");
+    const moved = address("NewAddr");
+    const pid = storedPersonId(e);
+    await db.set(personKey.person(pid), personRow(e, e, { emailVerifiedAt: T0, trialUsedAt: T0, sessionsAfter: T1, createdAt: T0 }));
+    // The old build kept the account id and wrote the new address, cleared the verification and ended sessions.
+    await putAccount(account(e, { email: moved, emailVerifiedAt: undefined, sessionsAfter: T2, devicesAfter: undefined }));
+    const p = await getPerson(pid);
+    expect(p).toMatchObject({ source: "owner", email: moved.toLowerCase(), sessionsAfter: T2, trialUsedAt: T0, passHash: "hash-owner" });
+    expect(p).not.toHaveProperty("emailVerifiedAt");
+    expect(p).not.toHaveProperty("devicesAfter");
+  });
+
+  it("the same-human merge never lets a PersonRow default (name, lang, createdAt) replace the row's real value", async () => {
+    const e = address("defaults");
+    const pid = storedPersonId(e);
+    await db.set(personKey.person(pid), personRow(e, e, { name: "Person Name", lang: "en", sessionsAfter: T1, createdAt: T1 }));
+    await putAccount(account(e, { name: undefined, lang: "xx" as never, createdAt: undefined, sessionsAfter: T2, passHash: "hash-new" }));
+    const p = await getPerson(pid);
+    expect(p).toMatchObject({ source: "owner", name: "Person Name", lang: "en", createdAt: T1, passHash: "hash-new", sessionsAfter: T2 });
   });
 
   it("makes exactly one round of three reads, and personFromRaw gives the same answer from the raw values", async () => {
@@ -242,6 +282,22 @@ describe("rule 2134: getMembership reads mbr: and the roster, then the legacy me
     w.mockClear();
     expect(await getMembership(aid, pid)).toEqual({ aid, pid, role: "admin", acceptedAt: T1, invitedBy: "p_inviterinviterinviterinv", source: "mbr" });
     expect(w).not.toHaveBeenCalled();
+  });
+
+  it("fails closed: a resume or promotion made only on the legacy record (by a rolled-back build) grants nothing after roll-forward", async () => {
+    const aid = await putAccount(account(address("acc")));
+    const e = address("resumed");
+    const pid = storedPersonId(e);
+    // M1 paused and demoted the member (both records); the rolled-back build then resumed and promoted it, legacy only.
+    await db.set(accountKey.membership(aid, pid), mbrRow(aid, e, { role: "member", disabled: "seats", acceptedAt: T1 }));
+    await db.set(accountKey.member(e), legacyMember(e, aid, { role: "admin", acceptedAt: T1 }));
+    await db.sadd(accountKey.members(aid), pid);
+    const m = await getMembership(aid, pid);
+    expect(m).toMatchObject({ role: "member", disabled: "seats", source: "mbr" });
+    // The owner repeats the resume and the promotion (both records), and only then does it hold.
+    await db.set(accountKey.membership(aid, pid), mbrRow(aid, e, { role: "admin", acceptedAt: T1 }));
+    expect(await getMembership(aid, pid)).toMatchObject({ role: "admin", source: "mbr" });
+    expect(await getMembership(aid, pid)).not.toHaveProperty("disabled");
   });
 
   it("makes exactly one round (two reads and one SISMEMBER), and membershipFromRaw gives the same answer", async () => {
