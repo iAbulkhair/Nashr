@@ -132,7 +132,10 @@ const cleanName = (v: unknown) => {
 const byAge = <T,>(at: (x: T) => string, tie: (x: T) => string) => (a: T, b: T) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : tie(a) < tie(b) ? -1 : 1);
 
 /** Run `fn` under a Redis lock, waiting up to ~3 s for it (`withNamedLock`, src/lib/locks.ts). Always released. */
-const withLock = <T,>(key: string, fn: () => Promise<T>): Promise<T> => withNamedLock(key, fn, "team_lock_timeout");
+const withLock = <T,>(key: string, fn: () => Promise<T>): Promise<T> => withNamedLock(key, fn, TEAM_LOCK_TIMEOUT);
+/** The error a team, login or member lock throws when still held after the wait (taken before any write: a 409 `busy`). */
+export const TEAM_LOCK_TIMEOUT = "team_lock_timeout";
+export const isTeamLockTimeout = (e: unknown): boolean => e instanceof Error && e.message === TEAM_LOCK_TIMEOUT;
 /** `lock:team:{aid}`: every seat count and every membership event of the account. */
 const withTeamLock = <T,>(aid: AccountId, fn: () => Promise<T>): Promise<T> => withLock(accountKey.teamLock(aid), fn);
 /** Login uniqueness across `user:` and `member:`. Signup and accept both create logins under this lock. */
@@ -265,18 +268,24 @@ export async function deleteMembership(aid: AccountId, pid: PersonId, opts: { ho
   const run = async () => {
     const invites = await listInvites(aid);
     const sent = invites.filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === pid : email !== null && normalizeEmail(i.invitedBy) === email)).map((i) => i.id);
-    await Promise.all([
-      db.del(accountKey.membership(aid, pid)),
-      db.srem(accountKey.members(aid), pid),
-      db.srem(personKey.orgs(pid), aid),
-      db.del(personKey.activeBrand(pid, aid)),
-      dropInvites(aid, sent),
-      opts.home
-        ? withMemberLock(pid, async (m) => {
-            if (isHome(m, aid, pid)) await Promise.all([db.del(memberKey(m.email)), db.del(accountKey.activeBrand(m.email))]);
-          })
-        : null,
-    ]);
+    const round = (legacy: Member | null) =>
+      Promise.all([
+        db.del(accountKey.membership(aid, pid)),
+        db.srem(accountKey.members(aid), pid),
+        db.srem(personKey.orgs(pid), aid),
+        db.del(personKey.activeBrand(pid, aid)),
+        dropInvites(aid, sent),
+        legacy ? db.del(memberKey(legacy.email)) : null,
+        legacy ? db.del(accountKey.activeBrand(legacy.email)) : null,
+      ]);
+    // The home membership's `lock:member` is taken BEFORE the first delete of the round (person → member is in the
+    // order), so a stale member lock throws with nothing deleted, never a half-removed membership.
+    if (opts.home) {
+      await withLock(accountKey.memberLock(normalizeEmail(pid)), async () => {
+        const m = await getMember(pid);
+        await round(isHome(m, aid, pid) ? m : null);
+      });
+    } else await round(null);
     // Task 7: revoke the person's (pid, aid) feed and booking links here. Until then the legacy per-login links, which
     // belong to the home account only. After the record is gone, so nothing can mint a new one for it (`revokeFeed` waits
     // out a create already running); the link is refused at read time while the login is gone (`feedHolds`).
@@ -325,15 +334,17 @@ async function insertMember(
     sessionsAfter: now,
   };
   // The person row fresh (plan reconciliation 6: a leftover row at this id lends nothing), born with the membership so
-  // the stale guard reads the two records as one, and the legacy record exactly as R1 wrote it.
-  await Promise.all([
-    createPersonRecord({ pid, email, name: member.name, lang: member.lang, passHash: member.passHash, createdAt: now, sessionsAfter: now }, { loginLocked: true }),
-    home ? saveMember(member) : null,
-  ]);
-  await Promise.all([
-    writeMembership(aid, pid, { aid, pid, role: input.role, acceptedAt: now, invitedBy: input.invitedByPid ?? input.invitedBy }, { home, teamLocked: true }),
-    claimLogin(email, pid),
-  ]);
+  // the stale guard reads the two records as one, and the legacy record exactly as R1 wrote it. Every write runs under
+  // `lock:person:{pid}` (rule 2139: inviteuse → team → login → person), taken BEFORE the first one, so a person lock that
+  // cannot be had throws with nothing written (no `member:`, no roster entry, no `mbr:`, no login) and a retry starts clean.
+  await withPersonLock(pid, async () => {
+    await createPersonRecord({ pid, email, name: member.name, lang: member.lang, passHash: member.passHash, createdAt: now, sessionsAfter: now }, { loginLocked: true, personLocked: true });
+    if (home) await saveMember(member);
+    await Promise.all([
+      writeMembership(aid, pid, { aid, pid, role: input.role, acceptedAt: now, invitedBy: input.invitedByPid ?? input.invitedBy }, { home, teamLocked: true }),
+      claimLogin(email, pid),
+    ]);
+  });
   return member;
 }
 
@@ -789,24 +800,25 @@ export async function enforceSeats(owner: User | string): Promise<{ limit: numbe
 }
 
 /**
- * Account deletion (src/lib/account.ts `wipeAccount`, which deletes `user:{owner}` BEFORE calling this): every
- * membership (`deleteMembership`: the row, the roster and `orgs:` entries, the legacy member record and both active
- * brands, the links, and the person when nothing else is left), every invite and both indexes. Under `lock:team`, so an
- * accept already holding it finishes first and its member is deleted here, and one that takes it afterwards re-reads the
- * owner and finds none. Each legacy record is deleted under its own `lock:member`, so a profile or password save in
- * flight cannot restore it. (Task 8 renames it `wipeMemberships` and drops the owner's `orgs:` entry.)
+ * Account deletion (src/lib/account.ts `wipeAccount`): every membership (`deleteMembership`: the row, the roster and
+ * `orgs:` entries, the legacy member record and both active brands, the links, and the person when nothing else is
+ * left), then every invite and both indexes, then `finish` (the account's own records, `user:{owner}` among them), all
+ * under `lock:team`: an accept already holding it finishes first and its member is deleted here, and one that takes it
+ * afterwards re-reads the owner and finds none. The members go FIRST: a member lock that cannot be had throws before any
+ * invite, index or `finish` write, so the owner's account is still whole and a retry runs the wipe again. Each legacy
+ * record is deleted under its own `lock:member`, so a profile or password save in flight cannot restore it. (Task 8
+ * renames it `wipeMemberships` and drops the owner's `orgs:` entry.)
  */
-export async function wipeTeam(owner: string) {
+export async function wipeTeam(owner: string, finish?: () => Promise<void>) {
   const aid = aidFrom(owner);
   await withTeamLock(aid, async () => {
     const [pids, ids] = await Promise.all([db.smembers(membersKey(aid)), db.smembers(invitesKey(aid))]);
-    await Promise.all([
-      pmap(pids, async (p) => {
-        const pid = pidFrom(p);
-        await deleteMembership(aid, pid, { home: isHome(await getMember(pid), aid, pid), teamLocked: true });
-      }),
-      pmap([...ids.map(inviteKey), membersKey(aid), invitesKey(aid)], (k) => db.del(k)),
-    ]);
+    await pmap(pids, async (p) => {
+      const pid = pidFrom(p);
+      await deleteMembership(aid, pid, { home: isHome(await getMember(pid), aid, pid), teamLocked: true });
+    });
+    await pmap([...ids.map(inviteKey), membersKey(aid), invitesKey(aid)], (k) => db.del(k));
+    if (finish) await finish();
   });
 }
 

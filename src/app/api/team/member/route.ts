@@ -1,7 +1,7 @@
 import { currentUser } from "@/lib/auth";
 import { isPersonLockTimeout } from "@/lib/person";
 import { forbid } from "@/lib/roles";
-import { removeMember, setRole } from "@/lib/team";
+import { isTeamLockTimeout, removeMember, setRole } from "@/lib/team";
 import { busy, teamFail, unauthorized } from "../respond";
 
 /** PATCH /api/team/member {email, role:"admin"|"member"} → {ok}. Owner only; the owner role itself is never assignable. */
@@ -27,12 +27,13 @@ export async function DELETE(req: Request) {
   const no = forbid(u, "team.remove.member");
   if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { email?: unknown };
-  // A person left with nothing is deleted under `lock:person:{pid}` (multi-workspace M1): a timeout there is a 409.
+  // The removal takes `lock:login` → `lock:person` → `lock:member` before its first write (multi-workspace M1, rule 2139):
+  // a timeout on any of them is a 409 with the membership whole.
   let res: Awaited<ReturnType<typeof removeMember>>;
   try {
     res = await removeMember(u, u.actor!, typeof b.email === "string" ? b.email : "");
   } catch (e) {
-    if (isPersonLockTimeout(e)) return busy();
+    if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return busy();
     throw e;
   }
   if (!res.ok) return teamFail(res);

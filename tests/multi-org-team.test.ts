@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
-import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { adminSignIn, json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { acct, currentUser, getLogin, getUser, saveUser, type Actor, type Plan, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { accountKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
+import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { getMembership } from "@/lib/membership";
 import { getPerson } from "@/lib/person";
 import {
@@ -22,6 +22,11 @@ import {
 } from "@/lib/team";
 import { logTeam, readTeamLog } from "@/lib/teamlog";
 import * as memberRoute from "@/app/api/team/member/route";
+import * as leaveRoute from "@/app/api/team/leave/route";
+import * as acceptRoute from "@/app/api/team/accept/route";
+import * as accountRoute from "@/app/api/account/route";
+import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
+import { moveUnverifiedAccount } from "@/lib/verify-email";
 
 /**
  * Multi-workspace M1 expand, Task 6 (docs/specs/2026-10-18-multi-org.md sections 9, 13 and 15): team membership writes on
@@ -374,6 +379,146 @@ describe("rule 2139: the lock order, and no half-written membership under races"
       expect(await traces(aid, storedPersonId(q.email))).toMatchObject({ row: false });
     }
   }, 120_000);
+});
+
+describe("rule 2139: a lock that cannot be had writes nothing, and the retry finishes (Task 6 fix round 1)", () => {
+  /** Run `fn` while `key` is held by someone else, then release it. */
+  const holding = async <T,>(key: string, fn: () => Promise<T>): Promise<T> => {
+    expect(await db.lock(key, 10)).toBe(true);
+    try { return await fn(); } finally { await db.unlock(key); }
+  };
+  /** Whether the owner's account is still whole: the record, its login index and its `users:all` entry. */
+  const ownerWhole = async (o: User) => {
+    const [rec, login, listed] = await Promise.all([db.get(accountKey.user(acct(o))), getLogin(o.email), db.sismember(globalKey.usersAll(), acct(o))]);
+    return { rec: rec !== null, login: login !== null, listed: !!listed };
+  };
+
+  it("accept with the new person's lock held answers busy and writes no member:, roster entry, mbr:, person or login; the retry joins", async () => {
+    const A = await newUser("ap");
+    const inv = await invite(A);
+    const e = inv.invite.email;
+    const pid = storedPersonId(e);
+    const accept = () => acceptRoute.POST(json("/api/team/accept", "POST", { token: inv.token, name: "Late", password: "abc12345" }));
+    const r = await holding(personKey.lock(pid), accept);
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ error: "busy" });
+    expect(await db.get(accountKey.member(e))).toBeNull();
+    expect(await traces(aidOf(A), pid)).toMatchObject({ row: false, listed: false, org: false });
+    expect(await db.get(personKey.person(pid))).toBeNull();
+    expect(await getLogin(e)).toBeNull();
+    expect(await kinds(A)).toEqual(["invited"]);
+    expect((await accept()).status).toBe(200);
+    expect(await db.get(accountKey.member(e))).not.toBeNull();
+    expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
+    expect(await getLogin(e)).not.toBeNull();
+    expect(await kinds(A)).toEqual(["joined", "invited"]);
+  }, 20_000);
+
+  it("an owner's account DELETE with a member's person lock held answers busy with the owner's record, login and users:all intact; the retry wipes", async () => {
+    const A = await newUser("dw");
+    const m = await newMember(A);
+    const pid = storedPersonId(m.email);
+    await signIn(A.email);
+    const del = () => accountRoute.DELETE(json("/api/account", "DELETE", { password: "abc12345" }));
+    const r = await holding(personKey.lock(pid), del);
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ ok: false, error: "busy" });
+    expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
+    expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true });
+    expect(await getLogin(m.email)).not.toBeNull();
+    // The owner still signs in, so the "try again" is true.
+    expect(acct((await currentUser())!)).toBe(acct(A));
+    expect((await del()).status).toBe(200);
+    expect(await ownerWhole(A)).toEqual({ rec: false, login: false, listed: false });
+    expect(await traces(aidOf(A), pid)).toMatchObject({ row: false, listed: false, org: false });
+    expect(await getLogin(m.email)).toBeNull();
+    expect(await db.get(accountKey.member(m.email))).toBeNull();
+  }, 20_000);
+
+  it("the console's delete with a member's person lock held answers busy with the owner's account whole; the retry wipes", async () => {
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "mo-team-admin-key-0123456789");
+    try {
+      const A = await newUser("cw");
+      const m = await newMember(A);
+      const pid = storedPersonId(m.email);
+      signOut();
+      await adminSignIn();
+      const del = () => adminUserRoute.POST(json(`/api/admin/users/${encodeURIComponent(A.email)}`, "POST", { action: "delete" }), params({ email: encodeURIComponent(A.email) }));
+      const r = await holding(personKey.lock(pid), del);
+      expect(r.status).toBe(409);
+      expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
+      expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true });
+      expect((await del()).status).toBe(200);
+      expect(await ownerWhole(A)).toEqual({ rec: false, login: false, listed: false });
+      expect(await getLogin(m.email)).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }, 20_000);
+
+  it("a login lock held during a removal, a leave or the console's removal answers 409 with the membership whole", async () => {
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "mo-team-admin-key-0123456789");
+    try {
+      const A = await newUser("ll");
+      const m = await newMember(A);
+      const pid = storedPersonId(m.email);
+      const lock = accountKey.loginLock(m.email);
+      await signIn(A.email);
+      expect((await holding(lock, () => memberRoute.DELETE(json("/api/team/member", "DELETE", { email: m.email })))).status).toBe(409);
+      await signIn(m.email);
+      expect((await holding(lock, () => leaveRoute.POST())).status).toBe(409);
+      signOut();
+      await adminSignIn();
+      const force = () => adminUserRoute.POST(json(`/api/admin/users/${encodeURIComponent(m.email)}`, "POST", { action: "removeMember" }), params({ email: encodeURIComponent(m.email) }));
+      expect((await holding(lock, force)).status).toBe(409);
+      expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
+      expect(await db.get(accountKey.member(m.email))).not.toBeNull();
+      expect(await getLogin(m.email)).not.toBeNull();
+      expect(await kinds(A)).toEqual([]);
+      expect((await force()).status).toBe(200);
+      expect(await getLogin(m.email)).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }, 30_000);
+
+  it("a stale member lock stops a removal before its first delete; the retry removes the member", async () => {
+    const A = await newUser("sm");
+    const m = await newMember(A);
+    const pid = storedPersonId(m.email);
+    await signIn(A.email);
+    const del = () => memberRoute.DELETE(json("/api/team/member", "DELETE", { email: m.email }));
+    expect((await holding(accountKey.memberLock(m.email), del)).status).toBe(409);
+    expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
+    expect(await db.get(accountKey.member(m.email))).not.toBeNull();
+    expect(await getLogin(m.email)).not.toBeNull();
+    expect(await kinds(A)).toEqual([]);
+    expect((await del()).status).toBe(200);
+    expect(await traces(aidOf(A), pid)).toMatchObject({ row: false, listed: false, org: false });
+    expect(await db.get(accountKey.member(m.email))).toBeNull();
+  }, 20_000);
+
+  it("an owner move never wipes an account with a team: refused before the first write, and again right before the wipe", async () => {
+    const A = await newUser("mt", { verified: false });
+    const m = await newMember(A);
+    const to = freshEmail("mtto");
+    expect(await moveUnverifiedAccount((await getUser(A.email))!, to)).toBe("not_allowed");
+    expect(await db.get(accountKey.user(to))).toBeNull();
+    expect(await getLogin(to)).toBeNull();
+    // A member that slips in after the first check (the first count is made to read empty) stops the move before the wipe.
+    const real = db.scardMany.bind(db);
+    vi.spyOn(db, "scardMany").mockImplementationOnce(async () => [0, 0]).mockImplementation(real);
+    expect(await moveUnverifiedAccount((await getUser(A.email))!, to)).toBe("not_allowed");
+    expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
+    expect(await traces(aidOf(A), storedPersonId(m.email))).toMatchObject({ row: true, listed: true });
+    expect(await getLogin(m.email)).not.toBeNull();
+    vi.restoreAllMocks();
+    // Once the team is gone, the retry finds its own copy at the new address and finishes the move.
+    expect(await removeMember(A, ownerActor(A), m.email)).toEqual({ ok: true });
+    expect(await moveUnverifiedAccount((await getUser(A.email))!, to)).toBe("ok");
+    expect(await db.get(accountKey.user(acct(A)))).toBeNull();
+    expect(await db.get(accountKey.user(to))).not.toBeNull();
+  }, 20_000);
 });
 
 describe("rule 2132: a reader of R1's shapes sees R1's bytes", () => {

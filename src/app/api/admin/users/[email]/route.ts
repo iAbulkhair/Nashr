@@ -24,7 +24,7 @@ import { wipeAccount } from "@/lib/account";
 import { db } from "@/lib/db";
 import { listActivity } from "@/lib/activity";
 import { cookies } from "next/headers";
-import { forceRemoveMember, getMember, membersKey, onRoster } from "@/lib/team";
+import { forceRemoveMember, getMember, isTeamLockTimeout, membersKey, onRoster } from "@/lib/team";
 import { unfinishedRefunds } from "@/lib/partners";
 import { sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
 import { TRIAL_EXTEND_MAX_DAYS, parseImpersonateMinutes } from "@/lib/admin-input";
@@ -140,13 +140,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     const m = await getMember(email);
     if (!m) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     if (b.action !== "removeMember") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
-    // The person left with nothing is deleted under `lock:person:{pid}` (multi-workspace M1): a timeout is a 409, and a
-    // retry finishes the clean-up (every step is a delete). Not `personWrite`: the membership may be gone already.
+    // The person left with nothing is deleted under `lock:person:{pid}` (multi-workspace M1): a person, login or member
+    // lock timeout is a 409, and a retry finishes the clean-up (every step is a delete). Not `personWrite`: the membership
+    // may be gone already.
     let removed: boolean;
     try {
       removed = await forceRemoveMember(email);
     } catch (e) {
-      if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+      if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
       throw e;
     }
     if (!removed) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
@@ -261,11 +262,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       return NextResponse.json({ ok: true, resendIn: VERIFY.gap });
     }
     case "delete": {
-      // Members left with nothing are deleted under `lock:person:{pid}` (`wipeTeam`): a timeout is a 409, a retry runs it again.
+      // Members left with nothing are deleted under `lock:person:{pid}` (`wipeTeam`): a person, login or member lock timeout is a 409 with the owner's account still whole, a retry runs it again.
       try {
         await wipeAccount(id);
       } catch (e) {
-        if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+        if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
         throw e;
       }
       await log("delete");

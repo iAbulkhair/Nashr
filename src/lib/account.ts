@@ -237,14 +237,18 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
     // Lifetime thumbs counters from before the feedback log replaced them. No longer written, but never deleted either.
     ...AGENTS.flatMap((a) => [`fb:${e}:${a.id}:up`, `fb:${e}:${a.id}:down`]),
   );
-  // The account record goes first, then the team under its lock: an invite accepted while this runs either finished
-  // before `wipeTeam` took `lock:team` (and its member is deleted there) or re-reads the owner after it and finds none.
   // The founder feed of instruction changes holds this account's email: its rows leave with it (a busy lock stops the wipe, a retry runs it again).
   await removeFeedRowsFor(e);
-  await pmap(keys, (k) => db.del(k));
+  // The team first, then the account record, both under `lock:team` (`wipeTeam` runs the deletes below as its `finish`):
+  // an invite accepted while this runs either finished before `wipeTeam` took the lock (and its member is deleted there)
+  // or re-reads the owner after it and finds none. A member's lock that cannot be had stops the wipe BEFORE `user:{owner}`,
+  // the owner's login index and `users:all` are touched, so the account still signs in and a retry runs it again (the
+  // 409 "try again" of DELETE /api/account and the console's delete is true).
+  await wipeTeam(e, async () => {
+    await pmap(keys, (k) => db.del(k));
+  });
   // The global reminder index names every scope with a reminder: this account's leave it.
   await Promise.all(scopes.map((s) => forgetDueScope(s)));
-  await wipeTeam(e);
   // The owner's link once more, now the account is gone: a create that ran between the first revoke and the deletion of
   // `user:{owner}` could have written a new one.
   await Promise.all(logins.map((l) => revokeAllDevices(l)));

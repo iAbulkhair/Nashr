@@ -12,7 +12,7 @@ import { mailReady, sendEmail } from "./notify";
 import { withLoginLock } from "./team";
 import { createPersonRecord, getPerson, laterStamp, updatePerson } from "./person";
 import { ownerOf } from "./membership";
-import { personKey, storedPersonId } from "./keys";
+import { accountKey, personKey, storedPersonId } from "./keys";
 
 /**
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
@@ -185,6 +185,12 @@ export async function moveUnverifiedAccount(from: User, target: string): Promise
   return moveOwnerLogin(from, target, { may: gated, isCopy: gated });
 }
 
+/** Does the account have a member or a pending invite (`members:{id}`, `invites:{id}`)? */
+async function hasTeam(id: string): Promise<boolean> {
+  const counts = await db.scardMany([accountKey.members(id), accountKey.invites(id)]);
+  return counts.some((n) => n > 0);
+}
+
 /**
  * The owner move both callers share: `moveUnverifiedAccount` above (a gated owner correcting a typo) and the self-serve
  * change of a proved address (rules 1942-1945, src/lib/email-change.ts, `proved: true`). `may` is re-checked on the
@@ -205,6 +211,9 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
   try {
     return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(id, async (cur): Promise<MoveResult> => {
       if (!(await opts.may(cur))) return "not_allowed";
+      // An account with a team never moves (both callers refuse one before this): checked again here, before the first
+      // write, and once more right before the wipe below.
+      if (await hasTeam(id)) return "not_allowed";
       const now = Date.now();
       const today = utcDay(now);
       const used = cur.emailMoves && cur.emailMoves.day === today ? cur.emailMoves.n : 0;
@@ -248,6 +257,11 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
       await dropVerifyCode(old);
+      // Rule 2139: the wipe runs inside `lock:user`, so it must find no member (`wipeTeam` would take each member's
+      // `lock:login` and `lock:person` after `lock:user`, inverting the order) and no invite. An accept that slipped in
+      // since the check above stops the move here, before the wipe; the copy at the new address is the one a retry
+      // finds as unfinished, and it finishes once the team is gone.
+      if (await hasTeam(id)) return "not_allowed";
       await wipeAccount(id, { userLocked: true, loginLocked: true });
       return "ok";
     })));

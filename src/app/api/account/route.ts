@@ -9,6 +9,7 @@ import { revokeFeed } from "@/lib/feed-token";
 import { forbid } from "@/lib/roles";
 import { ownPasswordMatches as matches } from "@/lib/own-password";
 import { acct } from "@/lib/account-id";
+import { isTeamLockTimeout } from "@/lib/team";
 
 /**
  * PATCH {currentPassword, newPassword}: the acting login changes ITS OWN password, on its person (`updatePerson`, which
@@ -63,12 +64,13 @@ export async function DELETE(req: Request) {
   if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { password?: string };
   if (!(await matches(u, b.password))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
-  // Each member left with nothing is deleted under `lock:person:{pid}` (`wipeTeam`, multi-workspace M1): a timeout stops
-  // the wipe with a 409, and the owner's retry runs it again (every step is a delete).
+  // Each member left with nothing is deleted under `lock:person:{pid}` (`wipeTeam`, multi-workspace M1): a timeout (person,
+  // login or member lock) stops the wipe with a 409 before `user:{owner}` and the owner's login are touched, and the
+  // owner's retry runs it again.
   try {
     await wipeAccount(acct(u));
   } catch (e) {
-    if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+    if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
     throw e;
   }
   await destroySession();
