@@ -11,7 +11,8 @@ import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./prici
 import { settleTopups, type Receipt, type TopupLot } from "./topups";
 import { billingLocked, type Billing } from "./billing-state";
 import { signupConsent, type Consent } from "./consent";
-import type { HandPlan } from "./hand-plan";
+import { handPlanEnded, type HandPlan } from "./hand-plan";
+import { ksaDay } from "./partner-rules";
 import type { FoundingSeat, PriceLock } from "./founding";
 import { SESSION_COOKIE, dropCookie, dropLegacyCookie, namesOf, readCookie } from "./cookie-names";
 import { accountKey, globalKey, storedScope, type Scope } from "./keys";
@@ -248,9 +249,13 @@ const COOKIE = SESSION_COOKIE;
  * An ended trial may not spend. Written once because it was written five times: the image route and the chat's
  * generate_image tool were the two spending paths that never got a copy, so an expired trial went on paying for
  * fal.ai and Anthropic calls indefinitely. A Paymob subscription locked after its failed renewal's grace (rule 712)
- * stops the same way, through every gate that already reads this.
+ * stops the same way, through every gate that already reads this. So does a plan the founder set by hand once its
+ * paid-through day has passed (Riyadh, `handPlanEnded`, rule 2273): the account is in the trial state from then on,
+ * before the daily job writes the trial onto the record (rule 2274). Once the record says "trial", its `trialEnds`
+ * alone decides, so a trial the founder extends afterwards (`extendTrial`) works. A record without `handPlan` is read as before.
  */
-export const trialOver = (u: Pick<User, "plan" | "trialEnds" | "billing">) => (u.plan === "trial" && new Date(u.trialEnds) < new Date()) || billingLocked(u.billing);
+export const trialOver = (u: Pick<User, "plan" | "trialEnds" | "billing" | "handPlan">) =>
+  (u.plan === "trial" && new Date(u.trialEnds) < new Date()) || billingLocked(u.billing) || handPlanEnded(u, ksaDay());
 
 export const trialDaysLeft = (trialEnds: string) => Math.max(0, Math.ceil((new Date(trialEnds).getTime() - Date.now()) / 864e5));
 

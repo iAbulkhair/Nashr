@@ -20,9 +20,9 @@ Other tests touched: `tests/admin-deal.test.ts` (the plan log's `what` now names
 
 ## Not pinned
 
-- A batch that returns fewer items than asked (3 of 10) is still charged in full: rule 1306 only covers zero items. Open question from issue #79.
+- Answered 2026-10-19: a batch that returns fewer items than asked (3 of 10) is charged per item delivered, rounded down in the owner's favour (rules 2276-2279, `docs/system/tests/2270-money-decisions.md`). An empty batch stays free (rule 1306).
 - The media engine's refund on a failed image or video was not traced for the empty case in this batch.
-- The founder console has no refund button for a Paymob payment: the refund is API only (`POST /api/admin/payments/{email}` `refund`).
-- The saved card token (`paymob:card:{email}`) stays after a refund ends the plan, as after a plan set by hand: a later checkout can turn automatic renewal on again. Open question.
-- After a hand-set plan's paid-through day the account keeps the plan's name, seats and chat allowance and is not locked; only the monthly credit refill stops. Open question.
+- The founder console has no refund button for a Paymob payment: the refund is API only (`POST /api/admin/payments/{email}` `refund`). Founder decision 2026-10-19: later.
+- Answered 2026-10-19: a plan or renewal refund deletes the saved card token, and a late card callback for the refunded order is ignored, so a later checkout starts with automatic renewal off (rules 2270-2272).
+- Answered 2026-10-19: after a hand-set plan's paid-through day the account is in the trial state (`trialOver`, entitlements `trial_over`) and the daily cron writes plan "trial"; no data is deleted (rules 2273-2275).
 - A plan set by hand mid-month with a day in the next month still gets that next month's refill on the 1st if the day has not passed (the refill runs by calendar month, the day is compared on the day of the refill).

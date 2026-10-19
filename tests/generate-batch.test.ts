@@ -232,7 +232,9 @@ describe("tasks are built in one place, saved together and judged with what the 
       expect(t.brief!.startsWith("عرض الخريف")).toBe(true);
     }
     expect(new Set(r.tasks.map((t) => t.createdAt)).size).toBe(1);
-    expect(r).toMatchObject({ credits: 50 - TASK_COST.social, cost: TASK_COST.social, agent: "noor", receipt: { ok: true, agent: "noor", scope: u.email } });
+    // Two of the ten a social batch asks for: a short batch, charged per item delivered (rule 2276), 2/10 of the price.
+    const kept = Math.floor((TASK_COST.social * 2) / 10);
+    expect(r).toMatchObject({ credits: 50 - kept, cost: kept, short: { asked: 10, delivered: 2 }, refunded: TASK_COST.social - kept, agent: "noor", receipt: { ok: true, agent: "noor", scope: u.email } });
     expect((await listTasks(u.email)).map((t) => t.id).sort()).toEqual(r.tasks.map((t) => t.id).sort());
     // Together, not one after another: every save starts before the first one ends.
     expect(seen.saves).toEqual(["start", "start", "end", "end"]);
@@ -329,5 +331,91 @@ describe("every paid text batch goes through generateBatch (rule 224)", () => {
       expect(code, file).toMatch(/\bgenerateBatch\(/);
       expect(code.match(/\b(charge|refund|generate|saveTask|judgeLater|initialStatus)\(/g), file).toBeNull();
     }
+  });
+});
+
+describe("a short batch is charged per item delivered (founder decision 2026-10-19, rules 2276-2279)", () => {
+  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ ...ITEM, title: `قهوة ${i + 1}` }));
+  it("batchKeeps: the price times delivered of asked, rounded down in the owner's favour; rule 801 unchanged on a full batch (rules 2276, 2277)", async () => {
+    const { batchKeeps } = await load();
+    expect(batchKeeps(10, 10, 3, 0), "3 of 10 keeps 3/10").toBe(3);
+    expect(batchKeeps(25, 10, 3, 0), "7.5 credits keeps 7").toBe(7);
+    expect(batchKeeps(10, 10, 10, 0), "a full batch keeps all").toBe(10);
+    expect(batchKeeps(10, 3, 5, 0), "more than asked is never charged more").toBe(10);
+    expect(batchKeeps(10, 10, 0, 0), "nothing made keeps nothing").toBe(0);
+    expect(batchKeeps(0, 10, 3, 0)).toBe(0);
+    // Full batches with items held: exactly what rule 801 kept before, `charged - ceil(charged * held / made)`.
+    for (const [charged, made, held] of [[10, 10, 1], [10, 10, 3], [7, 10, 1], [5, 5, 2], [10, 10, 10]]) {
+      expect(batchKeeps(charged, made, made, held), `${charged}/${made}/${held}`).toBe(charged - Math.ceil((charged * held) / made));
+    }
+    // Short and held together: the share of the asked items that came, of which the share the check let through.
+    expect(batchKeeps(10, 10, 4, 1), "4 of 10 came, 3 of them kept: 3/10").toBe(3);
+  });
+  it("3 of 10: the balance, the agent's counter, the activity row and the answer show 3/10 of the price; one refund (rules 2276, 2279)", async () => {
+    const { generateBatch, seen } = await load({ items: items(3) });
+    const u = await owner("gb-short");
+    const cost = TASK_COST.social;
+    const kept = Math.floor((cost * 3) / 10);
+    const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    if (!r.ok) throw new Error(`refused: ${r.reason}`);
+    expect(r).toMatchObject({ cost: kept, credits: 50 - kept, short: { asked: 10, delivered: 3 }, refunded: cost - kept });
+    expect(r.held).toBeUndefined();
+    expect(r.tasks).toHaveLength(3);
+    expect(seen.charged, "charged once, then one refund for the part not delivered").toBe(1);
+    expect(await credits(u.email)).toBe(50 - kept);
+    expect(await spend(u.email)).toEqual({ noor: kept });
+    const { listActivity } = await import("@/lib/activity");
+    const row = (await listActivity(u.email)).rows.find((a) => a.kind === "generated")!;
+    expect([row.credits, row.count]).toEqual([kept, 3]);
+  });
+  it("a full batch has no `short` and keeps its whole price; an asked count is the batch's size (rule 2276)", async () => {
+    const full = await load({ items: items(10) });
+    const u = await owner("gb-full");
+    const r = await full.generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    if (!r.ok) throw new Error("refused");
+    expect([r.cost, r.short, r.refunded]).toEqual([TASK_COST.social, undefined, undefined]);
+    // Two asked, two delivered: full, charged the count's own price (`countCost`).
+    const two = await load({ items: items(2) });
+    const v = await owner("gb-count");
+    const c = await two.generateBatch(v, v.email, { type: "social", source: "manual", via: "app", count: 2 });
+    if (!c.ok) throw new Error("refused");
+    expect([c.cost, c.short]).toEqual([two.countCost("social", 2), undefined]);
+  });
+  it("an empty batch stays free: refunded whole, nothing saved (rule 1306 unchanged)", async () => {
+    const { generateBatch } = await load({ items: [] });
+    const u = await owner("gb-empty");
+    const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    expect(r.ok).toBe(false);
+    expect([await credits(u.email), await spend(u.email), await listTasks(u.email)]).toEqual([50, { noor: 0 }, []]);
+  });
+  it("a claim's batch gives the short share back from its hold and lowers the hold; a later refundOnce gives back only the rest (rule 2278)", async () => {
+    const { generateBatch } = await load({ items: items(3) });
+    const u = await owner("gb-short-once");
+    const claim = `weekly:${u.email}:short`;
+    const cost = TASK_COST.social;
+    const kept = Math.floor((cost * 3) / 10);
+    const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "weekly", once: claim });
+    if (!r.ok) throw new Error(`refused: ${r.reason}`);
+    expect(r).toMatchObject({ cost: kept, refunded: cost - kept, short: { asked: 10, delivered: 3 } });
+    const after = (await getUser(u.email))!;
+    expect(after.credits).toBe(50 - kept);
+    expect(after.paidOnce?.[claim]?.credits, "the hold now holds what was kept").toBe(kept);
+    const { refundOnce } = await import("@/lib/credits");
+    expect((await refundOnce(u.email, claim)).refunded, "never the short share twice").toBe(kept);
+    expect(await credits(u.email)).toBe(50);
+  });
+  it("refundOncePart: at most the hold, a missing hold gives nothing, bad input throws (rule 2278)", async () => {
+    const { chargeOnce, refundOncePart } = await import("@/lib/credits");
+    const u = await owner("gb-part");
+    const meta = { scope: u.email, agent: "noor" as const };
+    expect((await chargeOnce(u.email, 10, meta, "c")).ok).toBe(true);
+    expect(await refundOncePart(u.email, "c", 4)).toEqual({ credits: 44, refunded: 4 });
+    expect((await getUser(u.email))!.paidOnce?.c?.credits).toBe(6);
+    expect(await refundOncePart(u.email, "c", 99)).toEqual({ credits: 50, refunded: 6 });
+    expect(await refundOncePart(u.email, "c", 1)).toEqual({ credits: 50, refunded: 0 });
+    expect(await refundOncePart(u.email, "none", 3)).toEqual({ credits: 50, refunded: 0 });
+    await expect(refundOncePart(u.email, "c", -1)).rejects.toThrow("invalid_delta");
+    await expect(refundOncePart(u.email, "c", 1.5)).rejects.toThrow("invalid_delta");
+    expect(await spend(u.email)).toEqual({ noor: 0 });
   });
 });
