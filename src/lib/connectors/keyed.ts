@@ -2,6 +2,7 @@ import type { Connection } from "./store";
 import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { safeFetch } from "../safe-fetch";
+import { STORE_REPLY_BYTES, responseJson } from "../read-capped";
 
 /** Key-based connectors that need no partner registration: Odoo, PrestaShop, Telegram, Brevo. */
 
@@ -9,10 +10,10 @@ import { safeFetch } from "../safe-fetch";
 async function odooCall(c: Record<string, string>, model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}) {
   const url = c.url.replace(/\/+$/, "") + "/jsonrpc";
   const auth = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 1, params: { service: "common", method: "authenticate", args: [c.db, c.username, c.apiKey, {}] } }) });
-  const aj = (await auth.json()) as { result?: number; error?: { message: string } };
+  const aj = (await responseJson(auth, STORE_REPLY_BYTES)) as { result?: number; error?: { message: string } };
   if (!aj.result) throw new Error(aj.error?.message ?? "odoo auth failed");
   const r = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 2, params: { service: "object", method: "execute_kw", args: [c.db, aj.result, c.apiKey, model, method, args, kwargs] } }) });
-  const j = (await r.json()) as { result?: unknown; error?: { message: string } };
+  const j = (await responseJson(r, STORE_REPLY_BYTES)) as { result?: unknown; error?: { message: string } };
   if (j.error) throw new Error(j.error.message);
   return j.result;
 }
@@ -40,7 +41,7 @@ export async function importPrestaShop(email: string, c: Connection) {
   const base = c.data.site.replace(/\/+$/, "");
   const r = await safeFetch(`${base}/api/products?display=[id,name,price,link_rewrite,description_short]&limit=60&output_format=JSON`, { headers: { Authorization: psAuth(c.data) } });
   if (!r.ok) throw new Error(`prestashop ${r.status}`);
-  const j = (await r.json()) as { products?: { id: number; name: string | { value: string }[]; price: string; link_rewrite: string | { value: string }[]; description_short?: string | { value: string }[] }[] };
+  const j = (await responseJson(r, STORE_REPLY_BYTES)) as { products?: { id: number; name: string | { value: string }[]; price: string; link_rewrite: string | { value: string }[]; description_short?: string | { value: string }[] }[] };
   const txt = (v: unknown) => (Array.isArray(v) ? String((v[0] as { value: string })?.value ?? "") : String(v ?? ""));
   const rows = j.products ?? [];
   const md = [`# Product catalog (PrestaShop, ${new Date().toISOString().slice(0, 10)})`, "", ...rows.map((p) => `- **${txt(p.name)}** — ${p.price}\n  ${txt(p.description_short).replace(/<[^>]+>/g, "").slice(0, 200)}\n  ${base}/${txt(p.link_rewrite)}`)].join("\n");

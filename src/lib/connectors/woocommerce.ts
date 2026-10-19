@@ -1,6 +1,7 @@
 import type { Connection } from "./store";
 import { writeFile } from "../files";
 import { safeFetch } from "../safe-fetch";
+import { STORE_REPLY_BYTES, responseJson } from "../read-capped";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
 
 type WooKey = { site: string; consumerKey: string; consumerSecret: string };
@@ -32,7 +33,7 @@ export async function verifyWoo(data: Record<string, string>) {
 export async function importWoo(email: string, c: Connection) {
   const r = await wooGet(c.data as WooKey, "products?per_page=50&status=publish");
   if (!r.ok) throw new Error(`woo ${r.status}`);
-  const items = (await r.json()) as { name: string; price: string; permalink: string; short_description?: string }[];
+  const items = (await responseJson(r, STORE_REPLY_BYTES)) as { name: string; price: string; permalink: string; short_description?: string }[];
   const md = [`# Product catalog (WooCommerce, ${new Date().toISOString().slice(0, 10)})`, "", ...items.map((p) => `- **${p.name}** — ${p.price} \n  ${(p.short_description ?? "").replace(/<[^>]+>/g, "").slice(0, 200)}\n  ${p.permalink}`)].join("\n");
   await writeFile(email, "products.md", md, "noor");
   return items.length;
@@ -88,7 +89,7 @@ export async function wooSales(c: Connection, now = new Date()): Promise<SalesSn
     const r = await wooGet(c.data as WooKey, `orders?per_page=${ORDER_PER_PAGE}&page=${page}&orderby=date&order=desc&after=${after}&dates_are_gmt=true&_fields=${ORDER_FIELDS}`);
     if (r.status === 401 || r.status === 403) throw new Error(WOO_ACCESS_DENIED);
     if (!r.ok) throw new Error(`woo ${r.status}`);
-    const list = (await r.json().catch(() => null)) as unknown;
+    const list = (await responseJson(r, STORE_REPLY_BYTES).catch(() => null)) as unknown;
     if (!Array.isArray(list)) throw new Error("woo unexpected_orders");
     let past = false;
     for (const o of list as WooOrder[]) {
