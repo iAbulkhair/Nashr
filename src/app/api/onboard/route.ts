@@ -21,6 +21,7 @@ import { byOf } from "@/lib/actor";
 import { deadlineFor } from "@/lib/media/keys";
 import { customerModelError } from "@/lib/provider-fault-note";
 import { wsKey } from "@/lib/keys";
+import { acct } from "@/lib/account-id";
 
 export const maxDuration = 300;
 /**
@@ -168,7 +169,7 @@ export async function POST(req: Request) {
         let landed = 0;
         send({ type: "status", text: stages[0] });
         const r = await buildFromSite(site, u.lang, answers ? answersHint(answers) : b.hints, u.email, () => { landed++; if (landed < stages.length) send({ type: "status", text: stages[landed] }); }, deadline);
-        await track(u.email, "onboard");
+        await track(acct(u), "onboard");
         // What the owner chose in the game wins over what the model read off the site, in code, not in the prompt.
         if (answers) r.brand = { ...r.brand, ...answersToBrand(answers) };
         // The generation pick is a setting only PUT /api/models writes: a `model` in the model's output (a crawled page
@@ -182,7 +183,7 @@ export async function POST(req: Request) {
           readFile(scope, "preferences.md"),
           db.set(wsKey.onboardPlan(scope), { goal: r.goal, plan: r.plan, at: new Date().toISOString() }),
           clearOnboard(scope),
-          held ? settleOnboard(u.email, scope) : Promise.resolve(),
+          held ? settleOnboard(acct(u), scope) : Promise.resolve(),
         ]);
         const files = saved.map((f) => ({ name: f.name, content: f.content }));
         if (!prefs) await writeFile(scope, "preferences.md", "# Preferences learned from the owner\n", "noor");
@@ -191,7 +192,7 @@ export async function POST(req: Request) {
         send({ type: "done", brand: r.brand.name, goal: r.goal, credits: u.credits });
       } catch (e) {
         console.error("onboard failed", e);
-        await track(u.email, "error").catch(() => {});
+        await track(acct(u), "error").catch(() => {});
         let refunded: { credits: number; refunded: number } | null = null;
         if (held && !brandSaved) {
           // No brand, so nothing was delivered: the held credits go back and the hold with them, in one save, so the next
@@ -204,7 +205,7 @@ export async function POST(req: Request) {
           }
         } else if (held) {
           // The brand file was saved, so the owner has the brand they paid for: the charge stands and the hold goes.
-          await settleOnboard(u.email, scope).catch((err) => console.error("onboard hold drop failed", err instanceof Error ? err.name : "error"));
+          await settleOnboard(acct(u), scope).catch((err) => console.error("onboard hold drop failed", err instanceof Error ? err.name : "error"));
         }
         // A fixed code, never the error's own text (rule 1477): a provider fault is `model_busy` or `model_unavailable`.
         send({ type: "error", error: (await customerModelError(e, "onboard")) ?? "failed", ...(refunded ? { refunded: refunded.refunded, credits: refunded.credits } : {}), ...(brandSaved ? { saved: true } : {}) });

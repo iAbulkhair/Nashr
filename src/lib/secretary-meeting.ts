@@ -67,6 +67,7 @@ import { addDays, zoneDay, type SecItem } from "./secretary-agenda";
 import { agentTaskItem } from "./secretary-handoff";
 import type { Zone } from "./zones";
 import { log } from "./log";
+import { acct } from "./account-id";
 
 /**
  * `itemId` is the id the item will get, chosen by `approveMeeting` and stored before anything is created (a retry then finds
@@ -393,16 +394,16 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
   } else {
     if (trialOver(user)) return { ok: false, error: "trial_over" };
     // A paid account's monthly credits arrive before its first charge of the month (rule 332).
-    if (renewalDue(user)) await renewIfDue(user.email);
+    if (renewalDue(user)) await renewIfDue(acct(user));
     const [gov, ran] = await Promise.all([getGov(scope), db.get<number>(runKey)]);
     const n = typeof ran === "number" && Number.isSafeInteger(ran) && ran > 0 ? ran : 0;
     claim = `meeting:${scope}:${itemId}:${n}`;
-    const c = await chargeOnce(user.email, MEETING_TRANSCRIPT_COST, { scope, agent: "reem", cap: gov.agentCaps.reem }, claim);
+    const c = await chargeOnce(acct(user), MEETING_TRANSCRIPT_COST, { scope, agent: "reem", cap: gov.agentCaps.reem }, claim);
     if (!c.ok) return c.reason === "agent_cap" ? { ok: false, error: "agent_cap", agent: c.agent, spent: c.spent, cap: c.cap } : { ok: false, error: "no_credits" };
   }
   // From here a failure gives the credit back, once: the hold is dropped in the same save as the refund.
   const back = async () => {
-    if (paid) await refundOnce(user.email, claim).catch((e) => log.error("meeting refund failed", e));
+    if (paid) await refundOnce(acct(user), claim).catch((e) => log.error("meeting refund failed", e));
   };
   let tasks: unknown;
   let zone!: Zone;

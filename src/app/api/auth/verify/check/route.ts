@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUserUnverified, emailVerified, getUser } from "@/lib/auth";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 import { checkVerifyCode, markVerified, normalizeCode } from "@/lib/verify-email";
+import { acct } from "@/lib/account-id";
 
 /**
  * Check the 6-digit code the owner typed (rule 761). The address is the session's, never one from the request. A member
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
   // A parallel submit of the right code may have won a moment ago and consumed it: the account is verified now, so ok.
-  if (emailVerified((await getUser(u.email)) ?? {})) return NextResponse.json({ ok: true });
+  if (emailVerified((await getUser(acct(u))) ?? {})) return NextResponse.json({ ok: true });
   if (r.reason === "wrong") return NextResponse.json({ ok: false, error: "wrong_code", attemptsLeft: r.attemptsLeft }, { status: 400 });
   return NextResponse.json({ ok: false, error: r.reason }, { status: 400 });
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isSuspended, suspensionEnd } from "@/lib/suspension";
-import { adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan, type User, viaOf } from "@/lib/auth";
+import { accountByLogin, adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLimit, type Grant, type Plan, type User, viaOf } from "@/lib/auth";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { matchUser, pageOf, parseUserQuery, sortUsers, tileCounts, userFacets } from "@/lib/admin-users";
 import { db } from "@/lib/db";
@@ -19,6 +19,7 @@ import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import { defaultPaidThrough, parsePaidThrough } from "@/lib/hand-plan";
 import { ksaDay } from "@/lib/partner-rules";
 import { globalKey } from "@/lib/keys";
+import { acct } from "@/lib/account-id";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -64,7 +65,7 @@ const videoLabel = (g: Grant<"all"> | undefined) => (g ? `all@${g.until}` : "pla
 //      Rules 243-244 and 316, tests/admin-deal.test.ts.
 /** One account's row: its record with this month's usage and chat. Two reads per account (usage and chat). */
 async function rowOf(u: User) {
-  const [usage, chat, mediaMicro] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model), db.get<number>(mediaCostKey(u.email)).catch(() => 0)]);
+  const [usage, chat, mediaMicro] = await Promise.all([getUsage(acct(u)), chatStatus(u, route("chat").model), db.get<number>(mediaCostKey(acct(u))).catch(() => 0)]);
   // The list price, or an Agency account's deal price (Business's without a deal).
   const priceSar = priceOf(u);
   // Rule 1532: the same margin as the daily alert (src/lib/margin.ts): model cost plus this month's render cost.
@@ -183,13 +184,14 @@ export async function POST(req: Request) {
     paidDay = d.day;
   }
   const planGiven = isPlan(b.plan);
-  const prev = email ? await getUser(email) : null;
+  // The address names the account; the lock and the save use its id (rule 1982).
+  const prev = email ? await accountByLogin(email) : null;
   if (!prev) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const before = { plan: String(prev.plan), credits: Number(prev.credits), seats: seatLimit(prev), chat: chatAllowanceOf(prev), deal: dealLabel(prev.deal), video: videoLabel(prev.grants?.video), paidThrough: prev.handPlan?.paidThrough ?? null };
   let seatsReset = false;
   let chatReset = false;
   let billingEnded = false;
-  const done = await withUserLock(email, async (u) => {
+  const done = await withUserLock(acct(prev), async (u) => {
     const plan = planGiven ? (b.plan as Plan) : u.plan;
     // Decided on the record as it is under the lock, before anything changes: a refused request writes nothing.
     if (deal && plan !== "agency") return "deal_needs_agency" as const;
@@ -237,7 +239,7 @@ export async function POST(req: Request) {
   if (done === "paid_through_paymob") return NextResponse.json({ ok: false, error: done }, { status: 409 });
   const user = done;
   // Every change to the seat limit, up or down, refits the team: paused members come back oldest-first when it grows.
-  const team = planGiven || seatsGiven || seatsReset ? await enforceSeats(user.email) : null;
+  const team = planGiven || seatsGiven || seatsReset ? await enforceSeats(acct(user)) : null;
   const dealAfter = dealLabel(user.deal);
   const what = [
     planGiven ? `plan:${b.plan}` : "",

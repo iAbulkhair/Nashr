@@ -45,6 +45,7 @@ import { appDict } from "./app-i18n";
 import { autoHoldKey, holdBatch } from "./routines";
 import { HANDOFF_RUN_MIN_MS, autoBlock, autoTryKey, getHandoff, handoffFingerprint, isHandoffId, recentHandoffs, runItemLocked, withRunLock, type Handoff } from "./handoffs";
 import { log } from "./log";
+import { acct } from "./account-id";
 
 /**
  * The cron looks at the newest this many proposals of a brand whose switch is on (one index read and one MGET), never
@@ -174,7 +175,7 @@ async function tell(user: User, scope: string, h: Handoff, n: number, count: num
   const lead = agentById("majed").name[ul];
   const label = appDict[ul].generate.types[it.type].t;
   try {
-    await notifyItem(user.email, ul, {
+    await notifyItem(acct(user), ul, {
       kind: "pending",
       agent: it.agent,
       title: ar ? `${label} من ${name} في صندوق الموافقة` : `${label} from ${name} is in your inbox`,

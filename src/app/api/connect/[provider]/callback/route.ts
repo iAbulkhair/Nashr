@@ -3,6 +3,7 @@ import { errorTag } from "@/lib/log-safe";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { currentUser } from "@/lib/auth";
+import { accountOfScope, acct } from "@/lib/account-id";
 import { sameSecret } from "@/lib/rate";
 import { getProvider } from "@/lib/connectors/registry";
 import { exchangeCode, tokenExpiry } from "@/lib/connectors/oauth";
@@ -57,7 +58,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   // workspace chosen at start (st.email), so switching brand mid-flow does not move it.
   const u = await currentUser();
   const mismatch = cal ? "cal_error=session_mismatch" : "error=session_mismatch";
-  if (!sameSecret(bound, state) || !u || u.email !== st.email.split("#")[0]) return back(mismatch);
+  if (!sameSecret(bound, state) || !u || acct(u) !== accountOfScope(st.email)) return back(mismatch);
   // And by the same login within the account. A state from before the actor was recorded names only the account, which
   // is the owner's own login, so it still completes for the owner and for nobody else.
   if ((st.actor || u.email) !== (u.actor?.email ?? "")) return back(mismatch);
@@ -97,7 +98,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
       // And the social card's first figures, after the redirect: any social record (Instagram or the Facebook Page on Meta,
       // the LinkedIn page once one is chosen, the YouTube channel, the TikTok account). It reads only the parts held.
       if (isSocialProvider(p.id)) readSocialSoon(st.email);
-      await track(st.email.split("#")[0], "connect");
+      await track(accountOfScope(st.email), "connect");
       return back(`connected=${p.id}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
@@ -132,7 +133,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     const before = storeIdentity(conn) ? await getConnection(st.email, p.id).catch(() => null) : null;
     await saveConnection(st.email, conn);
     await dropSnapshotIfStoreChanged(st.email, before, conn);
-    await track(st.email.split("#")[0], "connect");
+    await track(accountOfScope(st.email), "connect");
     return back(`connected=${p.id}`);
   } catch (e) {
     console.error("oauth callback failed", p.id, errorTag(e));

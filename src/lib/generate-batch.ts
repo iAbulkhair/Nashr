@@ -16,7 +16,7 @@
  */
 import { randomBytes } from "crypto";
 import { trialOver, type User } from "./auth";
-import { charge, chargeOnce, refund, refundOnce, renewIfDue, renewalDue, type SpendRef } from "./credits";
+import { charge, chargeOnce, refund, refundOnce, refundOncePart, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { fairUseGate } from "./fair-use";
 import { agentForTask, type AgentId } from "./agents";
 import { briefOf, dropTasks, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
@@ -46,6 +46,7 @@ import { recordActivity, type Activity } from "./activity";
 import { AgentScopeRefused, checkGenerationNotes, itemText, otherBrandNames, readAgentScopeModes, scopeCheck, type AgentScopeModes, type NotesGate, type ScopeDecision } from "./agent-scope";
 import { pmap } from "./parallel";
 import { log } from "./log";
+import { acct } from "./account-id";
 
 /** Where a batch was asked for. Not the same as `source`: MCP and chat items are both `source:"chat"`. */
 export type BatchVia = "app" | "chat" | "mcp" | "weekly" | "routine" | "handoff";
@@ -167,8 +168,27 @@ export type BatchRefusal =
  * share of the price is refunded after the commit; `refunded` (present with `held`) is what actually landed, 0 when that
  * refund could not be written, so no answer claims a refund that did not happen (`withheldNote`). `cost` (and `credits`) are
  * net of what landed.
+ * `short` (rule 2276): the batch delivered fewer items than asked (`delivered` of `asked`, before the output check), present
+ * only then; it is charged per item delivered and `refunded` is present with it too. When both apply, `refunded` is the one
+ * refund that landed for both.
  */
-export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected; held?: number; refunded?: number };
+export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected; held?: number; refunded?: number; short?: { asked: number; delivered: number } };
+
+/**
+ * What a batch keeps of what it charged (rules 2276 and 801): its price times the share of the asked items it delivered
+ * (`delivered` of `asked`, at most all of them), times the share of the generated items (`made`) the output check let
+ * through (`made - held`). Rounded down, in the owner's favour: 3 of 10 delivered keeps 3/10 of the price, 7.5 credits
+ * keeps 7. A full batch with nothing held keeps all of it; with items held it keeps exactly what rule 801 kept before
+ * (`charged - ceil(charged * held / made)`). Whole credits, never below 0 or above `charged`. An empty batch never gets
+ * here: it throws and is refunded whole (rule 1306).
+ */
+export function batchKeeps(charged: number, asked: number, made: number, held: number): number {
+  if (!(charged > 0) || !(made > 0)) return 0;
+  const a = Math.max(1, Math.trunc(asked));
+  const delivered = Math.min(made, a);
+  const kept = Math.max(0, made - Math.max(0, held));
+  return Math.max(0, Math.min(charged, Math.floor((charged * delivered * kept) / (a * made))));
+}
 
 /**
  * The sentence the chat tools and MCP add when the output check withheld items (rule 801): it says the credits came back only
@@ -351,9 +371,9 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // Only the daily cron at 05:00 UTC renewed, after the Sunday plan at 03:00: on a Sunday the 1st (next 2026-11-01) the
   // plan met last month's balance, answered no_credits and marked the week done. `renewIfDue` is the cron's own
   // function, idempotent and under the ledger's lock; the copy in hand only decides whether to take that lock.
-  if (renewalDue(user)) await renewIfDue(user.email);
+  if (renewalDue(user)) await renewIfDue(acct(user));
   const meta = { scope, agent, cap: gov.agentCaps[agent] };
-  const paid = opts.once ? await chargeOnce(user.email, cost, meta, opts.once) : await charge(user.email, cost, meta);
+  const paid = opts.once ? await chargeOnce(acct(user), cost, meta, opts.once) : await charge(acct(user), cost, meta);
   // Nothing was charged; the row says what the batch would have cost and, at a cap, what the agent spent of it.
   const refused = async (kind: "cap_reached" | "no_credits", outcome?: string): Promise<Activity> => ({ at: new Date().toISOString(), kind, agent, by: await who(), via: opts.via, type, credits: cost, ...(outcome ? { outcome } : {}) });
   if (!paid.ok && paid.reason === "agent_cap") return refuse({ ok: false, reason: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap, credits: paid.credits }, await refused("cap_reached", `${paid.spent}/${paid.cap}`));
@@ -428,27 +448,39 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     // hold is dropped in the same save. A refunded batch keeps no task (rule 334): the ones saved before a save or the
     // commit failed are removed, or they stayed approvable for free and the Sunday retry planned the week a second time.
     // Their removal failing is logged and never stops the refund.
-    const back = opts.once ? refundOnce(user.email, opts.once).then((r) => r.credits) : refund(user.email, cost, receipt);
+    const back = opts.once ? refundOnce(acct(user), opts.once).then((r) => r.credits) : refund(acct(user), cost, receipt);
     const drop = tasks.length ? dropTasks(scope, tasks).catch((e) => log.error("refunded batch tasks not removed", e)) : null;
     const [credits] = await Promise.all([back, opts.settle?.(), drop]);
     user.credits = credits;
     return { ok: false, reason: "failed", error, credits };
   }
 
-  // The share of the items the output check held back (rule 801), after the commit and outside the guard: the rest is saved and
-  // paid for. `Math.ceil(charged * held / made)`, rounded in the owner's favour, of what this batch charged; with the charge's
-  // receipt, so the agent's monthly counter comes down with the balance, exactly as the whole-batch refund above does. Never a
-  // claim's batch (`once` throws above instead). A refund that cannot be written is logged by name and the batch kept: the
-  // balance then lost the whole price, and the activity row and `cost` say so.
+  // One refund, after the commit and outside the guard, for what the batch did not deliver: the share of the items the output
+  // check held back (rule 801) and, for a short batch, the share of the asked items that never came (founder decision
+  // 2026-10-19, rule 2276). The rest is saved and paid for. `batchKeeps` rounds in the owner's favour. With the charge's
+  // receipt, so the agent's monthly counter comes down with the balance, exactly as the whole-batch refund above does. After
+  // the guard on purpose: the whole-batch refund in the catch gives back `cost`, so a partial one before it could give the
+  // same credits back twice. A claim's batch (`once`) gives its share back from its hold and lowers the hold in the same save
+  // (`refundOncePart`, rule 2278), so the daily sweep or a retry never refunds those credits again; items held in a claim's
+  // batch throw above instead. A refund that cannot be written is logged by name and the batch kept: the balance then lost the
+  // whole price, and the activity row and `cost` say so.
+  const asked = opts.count ?? TASK_COUNT[type] ?? 1;
+  const short = made < asked ? { asked, delivered: made } : undefined;
   let back = 0;
-  if (held > 0) {
-    const share = Math.ceil((charged * held) / made);
+  const share = charged - batchKeeps(charged, asked, made, held);
+  if (share > 0) {
     try {
-      user.credits = await refund(user.email, share, receipt);
-      back = share;
+      if (opts.once) {
+        const r = await refundOncePart(acct(user), opts.once, share);
+        user.credits = r.credits;
+        back = r.refunded;
+      } else {
+        user.credits = await refund(acct(user), share, receipt);
+        back = share;
+      }
     } catch (e) {
       // The error's name and where the charge was booked (agent, month, the top-up lots' ids), never the owner's email or text.
-      log.error("agent scope partial refund failed", { error: e, agent: receipt.agent, month: receipt.month, lots: receipt.from?.lots.map((l) => l.id) ?? [], share });
+      log.error(held > 0 ? "agent scope partial refund failed" : "short batch refund failed", { error: e, agent: receipt.agent, month: receipt.month, lots: receipt.from?.lots.map((l) => l.id) ?? [], share, ...(short ? short : {}) });
     }
   }
   const net = charged - back;
@@ -458,5 +490,5 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
   judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model, layers });
-  return { ok: true, tasks, credits: user.credits, receipt, cost: net, agent, gov, ...(modelRejected ? { modelRejected } : {}), ...(held > 0 ? { held, refunded: back } : {}) };
+  return { ok: true, tasks, credits: user.credits, receipt, cost: net, agent, gov, ...(modelRejected ? { modelRejected } : {}), ...(held > 0 ? { held } : {}), ...(short ? { short } : {}), ...(held > 0 || short ? { refunded: back } : {}) };
 }

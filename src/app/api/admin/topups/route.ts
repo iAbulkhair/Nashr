@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { adminActor, getUser, normalizeEmail, viaOf } from "@/lib/auth";
+import { accountByLogin, adminActor, getUser, normalizeEmail, viaOf } from "@/lib/auth";
+import { acct } from "@/lib/account-id";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { addPaidTopup, refundPaidTopup, voidPaidTopup, type Payment, type PaidTopupError, type RefundTopupError } from "@/lib/partners";
 import { parseTopup, parseTopupRefund, topupCredits } from "@/lib/topups";
@@ -88,11 +89,14 @@ export async function POST(req: Request) {
   if (b.action === "add" && b.paymentId !== undefined && !(typeof b.paymentId === "string" && /^pay_[a-f0-9]{8,32}$/.test(b.paymentId))) return NextResponse.json({ ok: false, error: "bad_id" }, { status: 400 });
   if (b.action !== "add" && !(typeof b.id === "string" && LOT_ID.test(b.id))) return NextResponse.json({ ok: false, error: "bad_id" }, { status: 400 });
   if (b.action === "refund" && b.refundId !== undefined && !(typeof b.refundId === "string" && REFUND_ID.test(b.refundId))) return NextResponse.json({ ok: false, error: "bad_id" }, { status: 400 });
-  if (!email || !(await getUser(email))) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // The address names the account; every write goes to the account's id (rule 1982).
+  const account = email ? await accountByLogin(email) : null;
+  if (!account) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  const id = acct(account);
 
   try {
     if (parsed?.ok) {
-      const done = await addPaidTopup(email, { ...parsed.topup, paymentId: b.paymentId }, who);
+      const done = await addPaidTopup(id, { ...parsed.topup, paymentId: b.paymentId }, who);
       if (!done.ok) return NextResponse.json({ ok: false, error: done.error }, { status: STATUS[done.error] });
       const { lot, payment } = done;
       if (!done.already) {
@@ -104,12 +108,12 @@ export async function POST(req: Request) {
           reason,
         });
       }
-      const fresh = await getUser(email);
+      const fresh = await getUser(id);
       return NextResponse.json({ ok: true, lot, credits: done.credits, topupCredits: fresh ? topupCredits(fresh) : 0, payment, already: done.already });
     }
     if (asked?.ok || finish) {
       const refundId = typeof b.refundId === "string" ? b.refundId : undefined;
-      const done = await refundPaidTopup(email, b.id as string, asked?.ok ? { ...asked.refund, ...(refundId ? { id: refundId } : {}) } : { finish: true }, who);
+      const done = await refundPaidTopup(id, b.id as string, asked?.ok ? { ...asked.refund, ...(refundId ? { id: refundId } : {}) } : { finish: true }, who);
       if (!done.ok) return NextResponse.json({ ok: false, error: done.error, ...(done.left !== undefined ? { left: done.left, sar: done.sar } : {}) }, { status: STATUS[done.error] });
       const { lot, payment, refunded } = done;
       if (!done.already) {
@@ -126,10 +130,10 @@ export async function POST(req: Request) {
           reason,
         });
       }
-      const fresh = await getUser(email);
+      const fresh = await getUser(id);
       return NextResponse.json({ ok: true, lot, credits: done.credits, topupCredits: fresh ? topupCredits(fresh) : 0, refunded, payment, already: !!done.already, completed: !!done.completed });
     }
-    const done = await voidPaidTopup(email, b.id as string, who, reason);
+    const done = await voidPaidTopup(id, b.id as string, who, reason);
     if (!done.ok) return NextResponse.json({ ok: false, error: done.error }, { status: STATUS[done.error] });
     const { lot, payment } = done;
     await adminAudit({
@@ -138,7 +142,7 @@ export async function POST(req: Request) {
       extra: { topup: { id: lot.id, credits: lot.credits, paidSar: lot.paidSar, paidOn: lot.paidOn, expiresAt: lot.expiresAt } },
       reason,
     });
-    const fresh = await getUser(email);
+    const fresh = await getUser(id);
     return NextResponse.json({ ok: true, lot, credits: done.credits, topupCredits: fresh ? topupCredits(fresh) : 0, removed: done.removed, payment });
   } catch (e) {
     // Deleted between the check above and the lock.

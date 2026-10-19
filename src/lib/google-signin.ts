@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, randomBytes, verify as verifySig, type JsonWebKey } from "crypto";
 import { cookies } from "next/headers";
 import { db } from "./db";
-import { createUser, getLogin, normalizeEmail, saveUser, validEmail, type Login } from "./auth";
+import { acct, createUser, getLogin, normalizeEmail, saveUser, validEmail, type Login } from "./auth";
 import { appOrigin } from "./origin";
 import { sameSecret } from "./rate";
 import { safeNext } from "./safe-next";
@@ -202,7 +202,7 @@ export async function resolveGoogle(id: GoogleIdentity, mode: "login" | "signup"
     const proved = { ...u, emailVerifiedAt: new Date().toISOString() };
     await saveUser(proved);
     await writeLink(id.email, id.sub);
-    return { kind: "created", login: { kind: "owner", user: proved }, email: id.email };
+    return { kind: "created", login: { kind: "owner", user: proved, pid: acct(proved) }, email: id.email };
   });
 }
 

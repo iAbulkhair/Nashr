@@ -16,6 +16,7 @@ import {
   type ScreenCode,
 } from "./instructions-safety";
 import { log } from "./log";
+import { accountOfScope } from "./account-id";
 
 /**
  * The stored layers of agent instructions (spec 5.1): the platform's own (`skills:platform`) and one per brand workspace
@@ -262,7 +263,7 @@ export type FeedAction = "activate" | "restore" | "apply";
 export type FeedRow = { at: string; scope: string; email: string; action: FeedAction; v: number; count: number };
 const FEED_ACTIONS: readonly string[] = ["activate", "restore", "apply"];
 /** The account behind a scope: `email` or `email#brandId`. */
-const emailOf = (scope: string) => (scope.includes("#") ? scope.slice(0, scope.indexOf("#")) : scope);
+const emailOf = accountOfScope;
 
 /** A workspace write must name its plan's limits (a type error without them); the platform layer has none. */
 type Opts = ({ platform: true } | { platform: false; limits: InstructionLimits }) & { note?: string };

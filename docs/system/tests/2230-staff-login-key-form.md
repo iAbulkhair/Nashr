@@ -1,0 +1,9 @@
+# Coverage: the founder banner reaches the key form (rules 2230-2232)
+
+Status on 2026-10-18 on branch `claude/fix-staff-login-key-form-loop` (cut from main 6b8090a6). Bug the founder reported the same day: in the founder console, signed in with his own customer account (an `ADMIN_EMAILS` address, rule 1649), the link «إنشاء حساب الموظف من جلسة المفتاح» / "Create your staff login from a key session" went to `/{lang}/admin?login=1` and came straight back to the overview, so he could not open the key session that creating the first staff login needs (rule 1639) and the checklist job "Create your staff login" stayed blocked. Cause: the page showed the key form only when `isAdminCookie()` was false, and the founder's customer session makes it true. Rules 2233-2239 are held for this work and unused.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 2230 | `/{lang}/admin?login=1` shows the key form to anyone without a staff session or a live key session (`showKeyForm(login, consoleIdentity())` in `src/lib/admin-gate.ts`), the founder's customer session included; a staff or key session gets the overview; without `?login=1` nothing changes | `tests/staff-login-key-form.test.ts` (rule 2230: the helper's six cases and a source scan that the page no longer reads `isAdminCookie`) | none |
+| 2231 | While no owner exists, the founder banner of a customer session links to `/{lang}/admin?login=1` in both languages, and that page renders `AdminLogin` (a password field), not the overview | `tests/staff-login-key-form.test.ts` (rule 2231) | An end-to-end visit as an `ADMIN_EMAILS` customer that clicks the link and sees the key form |
+| 2232 | After the key (and the console code once enrolled) the same URL renders the console: the key-session banner with «إنشاء حساب الموظف» and the create note, and no founder banner | `tests/staff-login-key-form.test.ts` (rule 2232); the bootstrap itself stays pinned by the rule 1639 tests | none |

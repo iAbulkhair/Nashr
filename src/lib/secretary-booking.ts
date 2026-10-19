@@ -29,6 +29,7 @@ import { OWNER_ALIASES, SEC_ID, SEC_KEYS, calFor, changeItem, cleanLine, createI
 import { SEC_LIMITS, zoneLocalInput, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 import { log } from "./log";
+import { accountOfScope } from "./account-id";
 
 export type Parsed = {
   kind: "create" | "move" | "cancel" | "ignore";
@@ -159,7 +160,8 @@ const WORDS = {
   ar: { title: (n: string) => `اجتماع مع ${n}`, guest: "ضيف", via: (p: string) => `حُجز عبر ${p}` },
 } as const;
 /** The account behind a brand scope (`email` or `email#brandId`), whose daily allowance a creation spends. */
-const accountOf = (scope: string) => scope.split("#")[0];
+/** The account behind a scope (rule 1986). */
+const accountOf = accountOfScope;
 
 /**
  * The item's fields from a booking: title in the link's language, the event-type name and the provider in the

@@ -667,8 +667,9 @@ describe("MCP bearer", () => {
     const m = await newMember(owner);
     await db.set("mcptoken:nashr_memberforged1", m.email);
     expect(await userFromBearer(bearer("nashr_memberforged1"))).toBeNull();
-    // Even should an owner record exist at a member's address, the token is refused.
-    await saveUser({ ...owner, email: m.email });
+    // Even should an owner record exist at a member's address, the token is refused. (A record is stored under its id,
+    // rule 1980: the copy names the member's address as its id too.)
+    await saveUser({ ...owner, id: m.email, email: m.email });
     expect(await userFromBearer(bearer("nashr_memberforged1"))).toBeNull();
     signOut();
   });

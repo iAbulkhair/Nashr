@@ -25,7 +25,9 @@ const sdk = vi.hoisted(() => {
     { channel: "instagram", title: "بند 2", body: "نص تجريبي للعنصر الثاني يكفي للمراجعة" },
     { channel: "instagram", title: "بند 3", body: "نص تجريبي للعنصر الثالث يكفي للمراجعة" },
   ];
-  return { msg, items: items as typeof items, all: items, gens: 0, streams: 0, chat: [] as unknown[][], stops: [] as string[], onStream: null as null | (() => void), noUsage: false };
+  // A full social batch (TASK_COUNT.social items): a batch of fewer is a short one, charged per item delivered (rule 2276).
+  const full = Array.from({ length: 10 }, (_, i) => ({ channel: "instagram", title: `بند ${i + 1}`, body: `نص تجريبي للعنصر رقم ${i + 1} يكفي للمراجعة` }));
+  return { msg, items: items as typeof items, all: items, full, gens: 0, streams: 0, chat: [] as unknown[][], stops: [] as string[], onStream: null as null | (() => void), noUsage: false };
 });
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
@@ -307,18 +309,21 @@ describe("rule 800: the chat reply", () => {
 });
 
 describe("rule 801: the items of a batch", () => {
-  it("items: 1 of 3 refused in enforce: 2 saved, ceil(cost/3) refunded, held 1", async () => {
+  it("items: 1 of a full batch of 10 refused in enforce: 9 saved, ceil(cost/10) refunded, held 1", async () => {
     const u = await owner("aso-items");
     const start = await credits(u.email);
+    sdk.items = sdk.full;
     cls.decide = refuseTitle("بند 2");
     const r = await batch(u, modes("enforce"));
     if (!r.ok) throw new Error(`refused: ${r.reason}`);
     const cost = TASK_COST.social;
-    const back = Math.ceil(cost / 3);
+    const back = Math.ceil(cost / 10);
+    const kept = sdk.full.map((i) => i.title).filter((t) => t !== "بند 2");
     expect(r.held).toBe(1);
+    expect(r.short, "a full batch is not a short one").toBeUndefined();
     expect(r.refunded, "the refund that landed").toBe(back);
-    expect(r.tasks.map((t) => t.title)).toEqual(["بند 1", "بند 3"]);
-    expect((await listTasks(sc(u))).map((t) => t.title).sort()).toEqual(["بند 1", "بند 3"]);
+    expect(r.tasks.map((t) => t.title)).toEqual(kept);
+    expect((await listTasks(sc(u))).map((t) => t.title).sort()).toEqual([...kept].sort());
     expect(await credits(u.email)).toBe(start - cost + back);
     expect(r.credits).toBe(start - cost + back);
     expect(r.cost, "what the balance lost").toBe(cost - back);
@@ -326,12 +331,12 @@ describe("rule 801: the items of a batch", () => {
     expect(agentSpendFor((await getUser(u.email))!, sc(u)).noor).toBe(cost - back);
     const row = (await listActivity(sc(u))).rows.find((a) => a.kind === "generated")!;
     expect(row.credits).toBe(cost - back);
-    expect(row.count).toBe(2);
+    expect(row.count).toBe(9);
     const log = await logOf(u.email);
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ layer: "output", where: "items", mode: "enforce", verdict: "off_topic", agent: "noor" });
     expect(log[0].itemId).toMatch(/^[0-9a-f]{16}$/);
-    expect(cls.calls).toHaveLength(3);
+    expect(cls.calls).toHaveLength(10);
     expect(cls.calls[0]).toMatchObject({ kind: "output", agent: "noor", lang: "ar", brand: { name: BRAND.name, industry: BRAND.industry } });
   });
 
@@ -394,10 +399,11 @@ describe("rule 801: the items of a batch", () => {
   it("items: shadow saves all and logs the refusals with itemId", async () => {
     const u = await owner("aso-shadow");
     const start = await credits(u.email);
+    sdk.items = sdk.full;
     cls.decide = refuseTitle("بند 2");
     const r = await batch(u, modes("shadow"));
     if (!r.ok) throw new Error("refused");
-    expect(r.tasks).toHaveLength(3);
+    expect(r.tasks).toHaveLength(10);
     expect(r.held).toBeUndefined();
     expect(await credits(u.email)).toBe(start - TASK_COST.social);
     const log = await logOf(u.email);

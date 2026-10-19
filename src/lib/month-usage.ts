@@ -2,6 +2,7 @@ import type { User } from "./auth";
 import { IMAGE_COST, listLite, TASK_COST, TASK_COUNT, type TaskType } from "./brand";
 import { listBrands, scopeFor } from "./brands";
 import { pmap } from "./parallel";
+import { acct } from "./account-id";
 
 /** This month's usage on the account: per task type (items and credits), the items with a render, and what renders charged. */
 export type MonthUsage = { usage: Record<string, { count: number; credits: number }>; images: number; mediaCredits: number; nextReset: string };
@@ -15,7 +16,7 @@ export type MonthUsage = { usage: Record<string, { count: number; credits: numbe
  */
 export async function monthUsage(u: Pick<User, "email">, now = new Date()): Promise<MonthUsage> {
   const monthStart = new Date(now); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
-  const scopes = (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id));
+  const scopes = (await listBrands(acct(u))).map((b) => scopeFor(acct(u), b.id));
   const lists = await pmap(scopes, (s) => listLite(s, monthStart));
   const tasks = lists.flat();
   const usage: Record<string, { count: number; credits: number }> = {};

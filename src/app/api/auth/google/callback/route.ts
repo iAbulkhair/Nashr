@@ -44,12 +44,14 @@ export async function GET(req: Request) {
   const res = await resolveGoogle(id, st.mode, lang);
   if (res.kind === "refused") return fail(res.error, st.mode === "signup" ? "signup" : "login");
   if (res.kind === "created") {
-    await registerCode(res.email);
-    if (st.ref) await applyReferral(res.email, st.ref).catch(() => false);
+    // The new account's id is its person id (rule 1985); the address only signs in.
+    const id = res.login.pid;
+    await registerCode(id);
+    if (st.ref) await applyReferral(id, st.ref).catch(() => false);
     const partner = await signupPartner(undefined).catch(() => null);
-    if (partner && partner !== "bad") await afterSignup(res.email, partner).catch(() => false);
+    if (partner && partner !== "bad") await afterSignup({ id, email: res.email }, partner).catch(() => false);
     await createSession(res.email);
-    await track(res.email, "signup");
+    await track(id, "signup");
     return go(st.next || `/${lang}/app/start`);
   }
   const f = await finishLogin(res.login, { via: "google", next: st.next });
