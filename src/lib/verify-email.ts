@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "crypto";
 import { db } from "./db";
 import { NextResponse } from "next/server";
-import { acct, claimLogin, getLogin, normalizeEmail, saveUser, type User } from "./auth";
+import { acct, claimLogin, getLogin, normalizeEmail, releaseLogin, saveUser, type User } from "./auth";
 import { wipeAccount } from "./account";
 import { withUserLock } from "./credits";
 import { movePartnerRef } from "./partners";
@@ -12,7 +12,7 @@ import { mailReady, sendEmail } from "./notify";
 import { withLoginLock } from "./team";
 import { createPersonRecord, getPerson, laterStamp, updatePerson } from "./person";
 import { ownerOf } from "./membership";
-import { accountKey, personKey, storedPersonId } from "./keys";
+import { accountKey, globalKey, personKey, storedPersonId } from "./keys";
 
 /**
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
@@ -190,6 +190,11 @@ async function hasTeam(id: string): Promise<boolean> {
   const counts = await db.scardMany([accountKey.members(id), accountKey.invites(id)]);
   return counts.some((n) => n > 0);
 }
+/** Does the account have a member (`members:{id}`)? An invite alone is deleted by `wipeTeam` under `lock:team` only. */
+async function hasMembers(id: string): Promise<boolean> {
+  const [n] = await db.scardMany([accountKey.members(id)]);
+  return n > 0;
+}
 
 /**
  * The owner move both callers share: `moveUnverifiedAccount` above (a gated owner correcting a typo) and the self-serve
@@ -212,7 +217,7 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
     return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(id, async (cur): Promise<MoveResult> => {
       if (!(await opts.may(cur))) return "not_allowed";
       // An account with a team never moves (both callers refuse one before this): checked again here, before the first
-      // write, and once more right before the wipe below.
+      // write (a member or an invite refuses), and for members once more after the copy is claimed, below.
       if (await hasTeam(id)) return "not_allowed";
       const now = Date.now();
       const today = utcDay(now);
@@ -252,16 +257,23 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       ]);
       // The new address's login index (rule 1983: under both login locks, after `getLogin(to)` found nothing or this copy).
       await claimLogin(to, to);
+      // Rule 2139: the wipe below runs inside `lock:user`, so it must find no member (`wipeTeam` would take each member's
+      // `lock:login` and `lock:person` after `lock:user`, inverting the order). An invite created since the first check
+      // is fine: `wipeTeam` deletes it under `lock:team` alone. A member accepted since then (it needs an invite the
+      // first check found absent) refuses the move, and the copy is undone first, under the login locks held here:
+      // `user:{to}` and its `users:all` entry, `person:{to}`, `orgs:{to}` and `login:{to}`. Nothing at the new address
+      // survives the refusal, so a fresh code for it is not refused as `taken`. The check runs before the carry, the
+      // referral code, the referral and partner moves and the code drop, so none of those has to be undone.
+      if (await hasMembers(id)) {
+        await Promise.all([db.del(accountKey.user(to)), db.srem(globalKey.usersAll(), to), db.del(personKey.person(toPid)), db.del(personKey.orgs(toPid))]);
+        await releaseLogin(to, to, { locked: true });
+        return "not_allowed";
+      }
       if (opts.carry) await opts.carry(old, to);
       await registerCode(to);
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
       await dropVerifyCode(old);
-      // Rule 2139: the wipe runs inside `lock:user`, so it must find no member (`wipeTeam` would take each member's
-      // `lock:login` and `lock:person` after `lock:user`, inverting the order) and no invite. An accept that slipped in
-      // since the check above stops the move here, before the wipe; the copy at the new address is the one a retry
-      // finds as unfinished, and it finishes once the team is gone.
-      if (await hasTeam(id)) return "not_allowed";
       await wipeAccount(id, { userLocked: true, loginLocked: true });
       return "ok";
     })));

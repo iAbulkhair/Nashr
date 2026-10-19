@@ -453,7 +453,11 @@ describe("security review of R1 (M1, M2, L1)", () => {
   it("L1: callers that already hold the login lock say so, so nothing waits on itself", () => {
     expect(read("src/lib/auth.ts")).toMatch(/withLoginLock\(email, drop\)/);
     expect(read("src/lib/team.ts")).toContain("releaseLogin(old, memberPid(cur), { locked: true })");
-    expect(read("src/lib/account.ts")).toContain("releaseLogin(login, e, { locked: opts.loginLocked })");
+    // Multi-workspace M1 Task 6 fix round 2: `wipeAccount` releases the owner's login inside `wipeTeam`'s finish, under the
+    // login lock it takes itself unless the caller (the address move) says it holds it already.
+    const account = read("src/lib/account.ts");
+    expect(account).toContain("releaseLogin(login, e, { locked: true })");
+    expect(account).toContain("if (opts.loginLocked) await owner();\n    else await withLoginLock(login, owner);");
   });
   it("M2: an opaque owner's MCP token is kept under its id, resolves to it, and revokeAllMcp(acct) ends it", async () => {
     const o = await newOpaqueUser("m2t");

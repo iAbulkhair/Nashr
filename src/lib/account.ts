@@ -13,7 +13,7 @@ import { chatTrialKey, usageMonthKeys } from "./usage";
 import { OWNER_SYNC_KEY, autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
-import { membersKey, wipeTeam } from "./team";
+import { membersKey, wipeTeam, withLoginLock } from "./team";
 import { revokeBook, revokeBooks } from "./booking-token";
 import { revokeFeed, revokeFeeds } from "./feed-token";
 import { forgetWishlistUser } from "./wishlist";
@@ -244,14 +244,26 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // or re-reads the owner after it and finds none. A member's lock that cannot be had stops the wipe BEFORE `user:{owner}`,
   // the owner's login index and `users:all` are touched, so the account still signs in and a retry runs it again (the
   // 409 "try again" of DELETE /api/account and the console's delete is true).
+  // Inside `finish`, the owner's `lock:login` is taken first (team → login is in rule 2139's order; the address move holds
+  // it already), so a timeout there also stops the wipe with nothing of the owner deleted. Under it `user:{owner}` goes
+  // FIRST (an accept that takes an expired `lock:team` while the bulk deletes run then finds no owner), then the owner's
+  // login index; the rest of the account's keys follow outside the login lock.
+  const record = accountKey.user(e);
   await wipeTeam(e, async () => {
-    await pmap(keys, (k) => db.del(k));
+    const owner = async () => {
+      await db.del(record);
+      await releaseLogin(login, e, { locked: true });
+    };
+    if (opts.loginLocked) await owner();
+    else await withLoginLock(login, owner);
+    await pmap(keys.filter((k) => k !== record), (k) => db.del(k));
   });
   // The global reminder index names every scope with a reminder: this account's leave it.
   await Promise.all(scopes.map((s) => forgetDueScope(s)));
   // The owner's link once more, now the account is gone: a create that ran between the first revoke and the deletion of
   // `user:{owner}` could have written a new one.
   await Promise.all(logins.map((l) => revokeAllDevices(l)));
-  // The owner's login index (members' go in `wipeTeam`), and the deletion row names the id and the address (rule 1999).
-  await Promise.all([revokeFeed(login), revokeBook(login), releaseLogin(login, e, { locked: opts.loginLocked }), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
+  // The owner's login index went in `finish` above (members' in `wipeTeam`); the deletion row names the id and the
+  // address (rule 1999).
+  await Promise.all([revokeFeed(login), revokeBook(login), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
 }

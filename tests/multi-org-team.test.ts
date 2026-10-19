@@ -27,6 +27,7 @@ import * as acceptRoute from "@/app/api/team/accept/route";
 import * as accountRoute from "@/app/api/account/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import { moveUnverifiedAccount } from "@/lib/verify-email";
+import { confirmEmailChange, startEmailChange } from "@/lib/email-change";
 
 /**
  * Multi-workspace M1 expand, Task 6 (docs/specs/2026-10-18-multi-org.md sections 9, 13 and 15): team membership writes on
@@ -498,7 +499,7 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     expect(await db.get(accountKey.member(m.email))).toBeNull();
   }, 20_000);
 
-  it("an owner move never wipes an account with a team: refused before the first write, and again right before the wipe", async () => {
+  it("an owner move never wipes an account with a team: refused before the first write, and on a member again before the wipe, with the copy undone", async () => {
     const A = await newUser("mt", { verified: false });
     const m = await newMember(A);
     const to = freshEmail("mtto");
@@ -512,13 +513,120 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
     expect(await traces(aidOf(A), storedPersonId(m.email))).toMatchObject({ row: true, listed: true });
     expect(await getLogin(m.email)).not.toBeNull();
+    expect(await db.get(accountKey.user(to))).toBeNull();
+    expect(await db.get(personKey.person(storedPersonId(to)))).toBeNull();
+    expect(await getLogin(to)).toBeNull();
     vi.restoreAllMocks();
-    // Once the team is gone, the retry finds its own copy at the new address and finishes the move.
+    // Once the team is gone, a new move finds the address free and moves the account.
     expect(await removeMember(A, ownerActor(A), m.email)).toEqual({ ok: true });
     expect(await moveUnverifiedAccount((await getUser(A.email))!, to)).toBe("ok");
     expect(await db.get(accountKey.user(acct(A)))).toBeNull();
     expect(await db.get(accountKey.user(to))).not.toBeNull();
   }, 20_000);
+});
+
+describe("rule 2139: the owner's records go last and first (Task 6 fix round 2)", () => {
+  const ownerWhole = async (o: User) => {
+    const [rec, login, listed] = await Promise.all([db.get(accountKey.user(acct(o))), getLogin(o.email), db.sismember(globalKey.usersAll(), acct(o))]);
+    return { rec: rec !== null, login: login !== null, listed: !!listed };
+  };
+
+  it("an owner's DELETE with the owner's own login lock held answers busy with the account whole; the retry wipes", async () => {
+    const A = await newUser("ol");
+    await signIn(A.email);
+    const del = () => accountRoute.DELETE(json("/api/account", "DELETE", { password: "abc12345" }));
+    const lock = accountKey.loginLock(A.email);
+    expect(await db.lock(lock, 10)).toBe(true);
+    let r: Response;
+    try { r = await del(); } finally { await db.unlock(lock); }
+    expect(r.status).toBe(409);
+    expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
+    expect(acct((await currentUser())!)).toBe(acct(A));
+    expect((await del()).status).toBe(200);
+    expect(await ownerWhole(A)).toEqual({ rec: false, login: false, listed: false });
+  }, 20_000);
+
+  it("the wipe deletes user:{owner} before the owner's login index and before any other key of the account", async () => {
+    const A = await newUser("od");
+    const order: string[] = [];
+    const real = db.del.bind(db);
+    vi.spyOn(db, "del").mockImplementation(async (k: string) => { order.push(k); return real(k); });
+    const { wipeAccount } = await import("@/lib/account");
+    await wipeAccount(acct(A));
+    const at = (k: string) => order.indexOf(k);
+    expect(at(accountKey.user(acct(A)))).toBeGreaterThanOrEqual(0);
+    expect(at(accountKey.user(acct(A)))).toBeLessThan(at(accountKey.login(A.email)));
+    expect(at(accountKey.user(acct(A)))).toBeLessThan(at(accountKey.brands(acct(A))));
+    expect(at(accountKey.user(acct(A)))).toBeLessThan(at(`profile:${acct(A)}`));
+  });
+
+  describe("the proved address change", () => {
+    /** A fresh code for `to` (no mail on this machine: the test deploy hands the code back). */
+    const startFor = async (u: User, to: string) => startEmailChange(u, { kind: "owner", email: u.email }, to, "ar");
+    const confirmAs = async (u: User, code: string) => confirmEmailChange((await getUser(u.email))!, { kind: "owner", email: u.email }, code, "ar");
+    /** Run `inject` once, when the move claims `login:{to}`: after the first team check, before the second. */
+    const between = (to: string, inject: () => Promise<unknown>) => {
+      let done = false;
+      const real = db.set.bind(db) as (...a: unknown[]) => Promise<unknown>;
+      vi.spyOn(db, "set").mockImplementation((async (...a: unknown[]) => {
+        if (!done && a[0] === accountKey.login(to)) { done = true; await inject(); }
+        return real(...a);
+      }) as typeof db.set);
+    };
+    const envs = () => { vi.stubEnv("APP_ENV", "test"); vi.stubEnv("RESEND_API_KEY", ""); vi.stubEnv("MAIL_FROM", ""); };
+
+    it("an invite created between the two checks: the move completes and the invite is gone", async () => {
+      envs();
+      try {
+        const A = await newUser("pi");
+        const to = freshEmail("pito");
+        const s1 = await startFor(A, to);
+        if (!s1.ok || !s1.devCode) throw new Error("no code");
+        let id = "";
+        between(to, async () => { id = (await invite(A)).id; });
+        expect(await confirmAs(A, s1.devCode)).toEqual({ ok: true, to });
+        vi.restoreAllMocks();
+        expect(id).not.toBe("");
+        expect(await db.smembers(accountKey.invites(acct(A)))).toEqual([]);
+        expect(await db.get(accountKey.user(acct(A)))).toBeNull();
+        expect(await db.get(accountKey.user(to))).not.toBeNull();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }, 20_000);
+
+    it("a member accepted between the two checks: refused, nothing left at the new address, the old account whole, and a new code is not refused as taken", async () => {
+      envs();
+      try {
+        const A = await newUser("pm");
+        const to = freshEmail("pmto");
+        const s1 = await startFor(A, to);
+        if (!s1.ok || !s1.devCode) throw new Error("no code");
+        let m = { email: "", password: "" };
+        between(to, async () => { m = await newMember(A); });
+        expect(await confirmAs(A, s1.devCode)).toEqual({ ok: false, error: "owner_has_data" });
+        vi.restoreAllMocks();
+        const toPid = storedPersonId(to);
+        expect(await db.get(accountKey.user(to))).toBeNull();
+        expect(await db.get(personKey.person(toPid))).toBeNull();
+        expect(await db.smembers(personKey.orgs(toPid))).toEqual([]);
+        expect(await db.get(accountKey.login(to))).toBeNull();
+        expect(await db.sismember(globalKey.usersAll(), to)).toBeFalsy();
+        expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
+        expect(await traces(aidOf(A), storedPersonId(m.email))).toMatchObject({ row: true, listed: true });
+        const u = (await getUser(A.email))!;
+        const again = await startFor(u, to);
+        expect(again).not.toMatchObject({ ok: false, error: "taken" });
+        // Once the team is gone, a fresh code moves the account.
+        expect(await removeMember(A, ownerActor(A), m.email)).toEqual({ ok: true });
+        const s2 = await startFor((await getUser(A.email))!, to);
+        if (!s2.ok || !s2.devCode) throw new Error("no code");
+        expect(await confirmAs(A, s2.devCode)).toEqual({ ok: true, to });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }, 30_000);
+  });
 });
 
 describe("rule 2132: a reader of R1's shapes sees R1's bytes", () => {
