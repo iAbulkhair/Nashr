@@ -300,9 +300,11 @@ const STORED_SCOPE: Record<string, number> = {
 // or an account id is read back from a record; each call site is listed here, none under src/app.
 const STORED_PERSON_ID: Record<string, number> = {
   "src/lib/membership.ts": 1, // ownerOf: the account record's ownerPid, else acct(u)
-  "src/lib/auth.ts": 2, // getLogin: the sign-in address as a legacy person id, and the person id the login index names
+  "src/lib/auth.ts": 5, // getLogin: the sign-in address as a legacy person id, and the person id the login index names; sessionPerson: the session's pid (index-checked); resolveIds: the session's pid (index-checked); resolveLegacy: the legacy member's pid
+  "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy owner's person id (used only when ownerOf agrees)
 };
 const STORED_ACCOUNT_ID: Record<string, number> = {
-  "src/lib/membership.ts": 5, // listOrgs: an orgs:{pid} entry (re-checked); legacyHomeOf: a legacy owner's own id (twice), a legacy memberOf; pickAccount: lastorg:{pid} (re-checked)
-  "src/lib/auth.ts": 2, // getLogin: a legacy owner's own id, a legacy member's memberOf
+  "src/lib/membership.ts": 6, // aidOf: a resolved account's own id; listOrgs: an orgs:{pid} entry (re-checked); legacyHomeOf/legacyHomeFrom: a legacy owner's own id (twice), a legacy memberOf; pickAccount: lastorg:{pid} (re-checked)
+  "src/lib/auth.ts": 3, // getLogin: a legacy owner's own id, a legacy member's memberOf; resolveIds: the session's acct (re-checked against the account record and roleIn)
+  "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy account id (used only when aidOf agrees)
 };

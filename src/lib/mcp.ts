@@ -1,10 +1,10 @@
 import { randomBytes } from "crypto";
-import { isSuspended } from "./suspension";
+import { isPersonSuspended, isSuspended } from "./suspension";
 import { db } from "./db";
 import { BEARER, TOKEN_PREFIX, grantHoldsAccess, revokeAllGrants, tokenHash } from "./oauth";
 import { emailVerified, getUser, normalizeEmail, type User } from "./auth";
 import type { Action } from "./roles";
-import { accountKey, globalKey } from "./keys";
+import { accountKey, globalKey, personKey, storedAccountId, storedPersonId } from "./keys";
 import { acct } from "./account-id";
 
 /**
@@ -61,6 +61,13 @@ async function bearerRecord(raw: string): Promise<{ email: string; grant?: strin
   return { email: moved, hash };
 }
 
+/**
+ * The account behind a bearer (rules 2120, 2131). A token names its ACCOUNT (the record's `email` is `acct(u)` when
+ * minted, rule 1985), never a browser session's `acct`, so a token never follows the person to another account. The
+ * actor is the account's owner (`ownerOf`), whose person is read in the same round: for a legacy account the owner's
+ * person id is the account id, known before the read; an account with `ownerPid` pays one more round. A suspended
+ * person is refused like a suspended account.
+ */
 export async function userFromBearer(req: Request): Promise<User | null> {
   const h = req.headers.get("authorization") ?? "";
   const m = h.match(BEARER);
@@ -70,19 +77,38 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   const email = rec.email;
   // Tokens (personal and OAuth) are minted by owners only, so a bearer resolves only to an owner account. A token whose
   // email is a member login is refused, even should an owner record exist at the same address.
-  const [{ getMember }, { activeBrandId, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
+  const [{ getMember }, { activeBrandFrom, activeBrandIn, scopeFor }, { getPerson, personFromRaw }, { aidOf, ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./person"), import("./membership")]);
+  // A legacy account's owner is the person whose id is the account id (the token record's value, which this app wrote).
+  const id = normalizeEmail(email);
+  const legacyPid = storedPersonId(id);
+  const legacyAid = storedAccountId(id);
   // An OAuth access token is accepted only while its grant exists and lists it (revoked, or rotated past, is refused).
-  // Read alongside the account, so it costs no extra round trip.
-  // `email` on a token record is the account id (`acct(u)` when minted, rule 1985); in R1 that is the owner's address.
-  const [u, member, brandId, granted] = await Promise.all([getUser(email), getMember(email), activeBrandId(email), rec.grant ? grantHoldsAccess(email, rec.grant, rec.hash) : true]);
+  // Read alongside the account, with the owner's person and active brand, so none of them costs an extra round trip.
+  const [u, member, rawPerson, rawActive, rawLegacyActive, granted] = await Promise.all([
+    getUser(email),
+    getMember(email),
+    db.get<unknown>(personKey.person(legacyPid)),
+    db.get<unknown>(personKey.activeBrand(legacyPid, legacyAid)),
+    db.get<unknown>(accountKey.activeBrand(id)),
+    rec.grant ? grantHoldsAccess(email, rec.grant, rec.hash) : true,
+  ]);
   // A suspended account is blocked everywhere, including tokens issued before the suspension; so is an owner who has
   // not proved the address yet (rule 753), which covers a token minted before the gate or by a not-yet-verified owner.
   if (!u || isSuspended(u) || !emailVerified(u) || member || !granted) return null;
+  const pid = ownerOf(u);
+  const aid = aidOf(u);
+  // The legacy per-login key belongs to the owner's home account: a legacy owner's own account, at its address.
+  const homeLogin = u.ownerPid === undefined ? u.email : null;
+  const inRound = pid === legacyPid && aid === legacyAid && normalizeEmail(u.email) === id;
+  const [person, chosen] = inRound
+    ? [personFromRaw(pid, rawPerson, u, null), activeBrandFrom(rawActive, rawLegacyActive, homeLogin !== null)]
+    : await Promise.all([getPerson(pid), activeBrandIn(pid, aid, homeLogin)]);
+  // Person suspension blocks the person in every account and every resolver, tokens included (rule 2131).
+  if (!person || isPersonSuspended(person)) return null;
   // Same scope resolution as a browser session (src/lib/auth.ts `currentUser`): without it every MCP call read and
-  // wrote the default brand even while the owner had another brand active.
-  // The active brand is per sign-in address: read again only when the account's id is not its address (none in R1).
-  u.brandId = normalizeEmail(u.email) === email ? brandId : await activeBrandId(u.email);
+  // wrote the default brand even while the owner had another brand active. The owner's choice in THIS account.
+  u.brandId = chosen;
   u.scope = scopeFor(acct(u), u.brandId);
-  u.actor = { kind: "token", email: u.email, name: u.name, lang: u.lang, role: "owner" };
+  u.actor = { kind: "token", pid, home: homeLogin !== null, email: u.email, name: u.name, lang: u.lang, role: "owner" };
   return u;
 }

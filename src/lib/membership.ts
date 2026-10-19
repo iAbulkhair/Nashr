@@ -33,6 +33,8 @@ export type Membership = MembershipValue & { aid: AccountId; pid: PersonId; sour
 
 /** The person who owns the account (rule 2115): `ownerPid`, else the legacy owner, whose person id is the account id. */
 export const ownerOf = (u: Pick<User, "ownerPid" | "id" | "email">): PersonId => storedPersonId(u.ownerPid ?? acct(u));
+/** The account's id as an `AccountId` (`acct(u)`, rule 2137): a `User` this app loaded from a pointer or a session. */
+export const aidOf = (u: Pick<User, "id" | "email">): AccountId => storedAccountId(acct(u));
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const time = (v: string) => Date.parse(v);
@@ -157,8 +159,21 @@ async function legacyHomeOf(p: Person): Promise<AccountId | null> {
   if (p.source === "owner") return storedAccountId(p.pid);
   if (p.source === "member") return legacyHome(p.pid, await db.get(accountKey.member(p.pid)));
   const [u, m] = await Promise.all([db.get<User>(accountKey.user(p.pid)), db.get(accountKey.member(p.pid))]);
-  if (u && typeof u.email === "string" && ownerOf({ ownerPid: u.ownerPid, id: u.id === undefined ? undefined : p.pid, email: u.email }) === p.pid) return storedAccountId(p.pid);
-  return legacyHome(p.pid, m);
+  return legacyHomeFrom(p.pid, u, m);
+}
+
+/**
+ * The same answer, pure, over the raw `user:{pid}` and `member:{pid}` values a caller already read in its own round
+ * (`resolveSession`): the legacy owner's own account when `user:{pid}` is owned by `pid` (`ownerOf`), else the legacy
+ * member record's `memberOf`, else null (a `p_` person). A pointer only: it says which account the legacy per-login keys
+ * (`activebrand:{login}` and the feed and booking pointers) belong to, never that the person holds it.
+ */
+export function legacyHomeFrom(pid: PersonId, rawUser: unknown, rawMember: unknown): AccountId | null {
+  if (isRecord(rawUser) && typeof rawUser.email === "string") {
+    const u = rawUser as Partial<User> & { email: string };
+    if (ownerOf({ ownerPid: u.ownerPid, id: u.id === undefined ? undefined : pid, email: u.email }) === pid) return storedAccountId(pid);
+  }
+  return legacyHome(pid, rawMember);
 }
 
 /**

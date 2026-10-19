@@ -6,6 +6,7 @@ import { claudeOn } from "./helpers/model";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
 import { type User } from "@/lib/auth";
+import { storedPersonId } from "@/lib/keys";
 import { AGENT_IDS } from "@/lib/agents";
 import { appDict } from "@/lib/app-i18n";
 import { saveBrand, type Brand } from "@/lib/brand";
@@ -1357,7 +1358,7 @@ describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for
   it("runTool refuses it for Noor, for another agent, for a turn with no agent, over MCP and for a token (in ctx.by or on the user), and writes nothing", async () => {
     await at(NOW, async () => {
       const u = await owner("aw486a");
-      const token = { kind: "token" as const, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
+      const token = { kind: "token" as const, pid: storedPersonId(u.email), home: true, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
       const cases: [string, User, Partial<ToolCtx>][] = [
         ["noor", u, { agent: "noor", via: "app" }],
         ["majed", u, { agent: "majed", via: "app" }],

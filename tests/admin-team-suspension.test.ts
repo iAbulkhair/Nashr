@@ -5,6 +5,7 @@ import { json, newMember, newUser, params, signOut, withHeaders } from "./helper
 import { enrolledStaff } from "./helpers/staff";
 import { db } from "@/lib/db";
 import { getUser, saveUser, type Actor, type User } from "@/lib/auth";
+import { storedPersonId } from "@/lib/keys";
 import { isSuspended, parseSuspendFor, suspendedMessage, suspensionEnd, suspensionExpired, SUSPEND_MAX_DAYS, SUSPENDED_UNTIL } from "@/lib/suspension";
 import { endExpiredSuspension } from "@/lib/suspension-server";
 import { staffMay, STAFF_MAY } from "@/lib/roles";
@@ -242,7 +243,7 @@ describe("rules 2077, 2079-2082: the read-only workspace view", () => {
     await store(owner.email, { seats: 5, brandCap: 3 });
     const o = (await getUser(owner.email))!;
     const [m1, m2] = await Promise.all([newMember(o, "admin", "wsa"), newMember(o, "member", "wsm")]);
-    const actor: Actor = { kind: "owner", email: o.email, name: o.name, lang: o.lang, role: "owner" };
+    const actor: Actor = { kind: "owner", pid: storedPersonId(o.email), home: true, email: o.email, name: o.name, lang: o.lang, role: "owner" };
     const inv = await createInvite(o, actor, `invitee-${Date.now()}@test.example`, "member", "ar");
     if (!inv.ok) throw new Error(JSON.stringify(inv));
     const b = await addBrand(o, "Second brand");

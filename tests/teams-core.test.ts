@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
 import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { adminActor, createUser, currentUser, getLogin, getUser, isAdmin, isAdminCookie, isFounderActor, PLAN_SEATS, saveUser, sc, seatLimit, type Actor, type Plan, type User } from "@/lib/auth";
+import { storedPersonId } from "@/lib/keys";
 import { can, forbid, IMPERSONATION_BLOCKED, roleOf, type Action } from "@/lib/roles";
 import { acceptInvite, cancelInvite, createInvite, enforceSeats, getMember, INVITE_TTL_SECONDS, leaveTeam, listInvites, listMembers, peekInvite, removeMember, saveMember, seatsUsed, setRole, teamView, withMemberLock } from "@/lib/team";
 import { addBrand, saveBrands, setActiveBrand, scopeFor } from "@/lib/brands";
@@ -11,8 +12,8 @@ import { db } from "@/lib/db";
 import * as users from "@/app/api/admin/users/[email]/route";
 
 const FOUNDER = "founder-teams@test.example";
-const ownerActor = (u: User): Actor => ({ kind: "owner", email: u.email, name: u.name, lang: u.lang, role: "owner" });
-const memberActor = (email: string, role: "admin" | "member"): Actor => ({ kind: "member", email, name: "M", lang: "ar", role });
+const ownerActor = (u: User): Actor => ({ kind: "owner", pid: storedPersonId(u.email), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" });
+const memberActor = (email: string, role: "admin" | "member"): Actor => ({ kind: "member", pid: storedPersonId(email), home: true, email, name: "M", lang: "ar", role });
 const as = (u: User, actor?: Actor): User => ({ ...u, actor });
 const bearer = (t: string) => new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${t}` } });
 const withPlan = async (u: User, plan: Plan, seats?: number) => { const x = { ...(await getUser(u.email))!, plan, seats }; await saveUser(x); return x; };
@@ -35,7 +36,7 @@ describe("resolving a member session", () => {
     await signIn(m.email);
     const again = (await currentUser())!;
     expect(sc(again)).toBe(owner.email);
-    expect(again.actor).toEqual({ kind: "member", email: m.email, name: expect.any(String), lang: "ar", role: "admin" });
+    expect(again.actor).toEqual({ kind: "member", pid: storedPersonId(m.email), home: true, email: m.email, name: expect.any(String), lang: "ar", role: "admin" });
     expect(roleOf(again)).toBe("admin");
   });
   it("gives the owner an owner actor", async () => {
@@ -214,9 +215,9 @@ describe("founder console follows the actor", () => {
 describe("roles table", () => {
   const owner = { email: "o@test.example", name: "O", plan: "trial", lang: "ar" } as User;
   const kinds = {
-    owner: as(owner, { kind: "owner", email: owner.email, name: "O", lang: "ar", role: "owner" }),
-    token: as(owner, { kind: "token", email: owner.email, name: "O", lang: "ar", role: "owner" }),
-    founder: as(owner, { kind: "founder", email: owner.email, name: "O", lang: "ar", role: "owner", impersonating: FOUNDER }),
+    owner: as(owner, { kind: "owner", pid: storedPersonId(owner.email), home: true, email: owner.email, name: "O", lang: "ar", role: "owner" }),
+    token: as(owner, { kind: "token", pid: storedPersonId(owner.email), home: true, email: owner.email, name: "O", lang: "ar", role: "owner" }),
+    founder: as(owner, { kind: "founder", pid: storedPersonId(owner.email), home: true, email: owner.email, name: "O", lang: "ar", role: "owner", impersonating: FOUNDER }),
     admin: as(owner, memberActor("a@test.example", "admin")),
     member: as(owner, memberActor("m@test.example", "member")),
   };
@@ -247,7 +248,7 @@ describe("roles table", () => {
     expect(can(kinds.owner, "no.such.action" as Action)).toBe(false);
     expect(can(kinds.owner, "__proto__" as Action)).toBe(false);
     expect(can(as(owner, { ...memberActor("x@test.example", "member"), role: "owner" }), "billing")).toBe(false);
-    expect(can(as(owner, { kind: "owner", email: owner.email, name: "O", lang: "ar", role: "member" }), "chat")).toBe(false);
+    expect(can(as(owner, { kind: "owner", pid: storedPersonId(owner.email), home: true, email: owner.email, name: "O", lang: "ar", role: "member" }), "chat")).toBe(false);
   });
   it("every impersonation-blocked action is refused to a founder", () => {
     for (const a of IMPERSONATION_BLOCKED) expect(can(kinds.founder, a), a).toBe(false);
