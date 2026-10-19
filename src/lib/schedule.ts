@@ -15,6 +15,7 @@ import { recordRun } from "./activity";
 import { briefAgenda, type BriefAgenda } from "./secretary-agenda";
 import { agendaFor } from "./secretary";
 import { accountKey, globalKey, scopeParam, wsKey } from "./keys";
+import { acct } from "./account-id";
 
 /**
  * Per-user recurring tasks. Cron hits /api/cron/* → we loop users. `routines` holds the owner's switches for the
@@ -177,8 +178,8 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadli
     return r.reason === "paused" ? "retry:paused" : r.reason;
   }
   // One notice per brand (#15): the fingerprint carries an added brand's id, and a multi-brand account sees which brand.
-  const tag = await brandTag(user.email, email).catch(() => "");
-  await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: withBrand(user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", tag), body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, brandFingerprint(email, `weekly:${new Date().toISOString().slice(0, 10)}`), 2, email);
+  const tag = await brandTag(acct(user), email).catch(() => "");
+  await notifyItem(acct(user), user.lang, { kind: "weekly", agent: "noor", title: withBrand(user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", tag), body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, brandFingerprint(email, `weekly:${new Date().toISOString().slice(0, 10)}`), 2, email);
   return `ok:${r.tasks.length}`;
 }
 

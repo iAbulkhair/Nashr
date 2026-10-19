@@ -7,6 +7,7 @@ import { verifyWordPress } from "@/lib/connectors/wordpress";
 import { verifyWoo } from "@/lib/connectors/woocommerce";
 import { verifyBrevo, verifyOdoo, verifyPrestaShop, verifyTelegram } from "@/lib/connectors/keyed";
 import { forbid } from "@/lib/roles";
+import { acct } from "@/lib/account-id";
 
 /** POST key-based credentials → verify → store encrypted. Admin and owner only (src/lib/roles.ts "connectors"). */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
@@ -56,6 +57,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     if (!r.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: `HTTP ${r.status}` }, { status: 400 });
   }
   await saveConnection(sc(u), { provider, data, meta, connectedAt: new Date().toISOString() });
-  await track(u.email, "connect");
+  await track(acct(u), "connect");
   return NextResponse.json({ ok: true, meta });
 }

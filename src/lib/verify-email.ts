@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "crypto";
 import { db } from "./db";
 import { NextResponse } from "next/server";
-import { getLogin, normalizeEmail, saveUser, type User } from "./auth";
+import { acct, claimLogin, getLogin, normalizeEmail, saveUser, type User } from "./auth";
 import { wipeAccount } from "./account";
 import { withUserLock } from "./credits";
 import { movePartnerRef } from "./partners";
@@ -193,12 +193,15 @@ export async function moveUnverifiedAccount(from: User, target: string): Promise
  */
 export async function moveOwnerLogin(from: User, target: string, opts: { may: (cur: User) => boolean | Promise<boolean>; isCopy: (copy: User) => boolean; proved?: boolean; carry?: (from: string, to: string) => Promise<void> }): Promise<MoveResult> {
   const old = from.email;
+  // R1 (OPAQUE_IDS off): the move is still a copy to a new record at the new address, so the new account's id is `to`.
+  // The move in place that keeps the id is release R2 (docs/specs/2026-10-17-account-id.md section 6).
+  const id = acct(from);
   const to = normalizeEmail(target);
   if (!(await opts.may(from))) return "not_allowed";
   if (to === old) return "exists";
   const [first, second] = old < to ? [old, to] : [to, old];
   try {
-    return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(old, async (cur): Promise<MoveResult> => {
+    return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(id, async (cur): Promise<MoveResult> => {
       if (!(await opts.may(cur))) return "not_allowed";
       const now = Date.now();
       const today = utcDay(now);
@@ -212,13 +215,15 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       // session the route opens right after has `at >= sessionsAfter` (the check is a strict `<`), so it still resolves.
       const fresh = new Date(now).toISOString();
       if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh });
-      else await saveUser({ ...cur, email: to, sessionsAfter: fresh, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
+      else await saveUser({ ...cur, id: to, email: to, sessionsAfter: fresh, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
+      // The new address's login index (rule 1983: under both login locks, after `getLogin(to)` found nothing or this copy).
+      await claimLogin(to, to);
       if (opts.carry) await opts.carry(old, to);
       await registerCode(to);
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
       await dropVerifyCode(old);
-      await wipeAccount(old, { userLocked: true });
+      await wipeAccount(id, { userLocked: true, loginLocked: true });
       return "ok";
     })));
   } catch (e) {

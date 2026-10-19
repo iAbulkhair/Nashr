@@ -193,7 +193,7 @@ describe("refunds go back where the credits came from (rule 442)", () => {
 
   it("every metered spender hands the receipt to its refund: batches pass the charge result, media jobs store it", () => {
     const batch = readFileSync("src/lib/generate-batch.ts", "utf8");
-    expect(batch).toContain("refund(user.email, cost, receipt)");
+    expect(batch).toContain("refund(acct(user), cost, receipt)");
     expect(batch).toContain("receipt = paid;");
     // A reused Sunday-plan hold names the same packs as the run that paid (rule 458).
     expect(batch).toContain("...(paid.hold.from ? { from: paid.hold.from } : {})");
@@ -261,7 +261,7 @@ describe("expiry: a pack's unspent credits leave on the day it expires (rule 444
   it("the daily cron saves settled packs once per account, on its default brand's entry, never in an awaited loop", () => {
     const src = readFileSync("src/app/api/cron/daily/route.ts", "utf8");
     expect(src).toContain('if ((u.brandId ?? "default") === "default" && u.topupsDirty) {');
-    expect(src).toContain("const settled = await saveSettledTopups(u.email);");
+    expect(src).toContain("const settled = await saveSettledTopups(acct(u));");
   });
 
   it("settleTopups repairs what it cannot trust: lefts past the pack, a balance below the packs, a malformed expiry", () => {

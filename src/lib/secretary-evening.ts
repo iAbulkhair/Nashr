@@ -38,6 +38,7 @@ import { dateFormat } from "./dates";
 import { DEFAULT_ZONE, ZONE_IDS, type Zone } from "./zones";
 import { appOrigin } from "./origin";
 import { COPY, paragraphs } from "../emails";
+import { acct } from "./account-id";
 
 /** The wrap's local time, and in Ramadan (after Taraweeh). */
 export const EVENING_AT = { hh: 18, mm: 0 } as const;
@@ -203,9 +204,9 @@ export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" 
   if (!(await db.setNx(marker, 1, WRAP_TTL_S))) return "already";
   let brand = "", title = "", body = "";
   try {
-    brand = await wrapBrand(user.email, scope);
+    brand = await wrapBrand(acct(user), scope);
     ({ title, body } = wrapText(w, user.lang, brand));
-    await notifyItem(user.email, user.lang, { kind: "todo", agent: "reem", title, body, href: `/${user.lang}/app/todo` }, undefined, undefined, scope);
+    await notifyItem(acct(user), user.lang, { kind: "todo", agent: "reem", title, body, href: `/${user.lang}/app/todo` }, undefined, undefined, scope);
   } catch (e) {
     await db.del(marker).catch(() => {});
     throw e;

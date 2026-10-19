@@ -83,7 +83,7 @@ describe("rule 1955: deletion first turns renewal off and drops the saved card, 
     await db.set(cardKey(u.email), { token: "tok_test" });
     await withUserLock(u.email, async () => { await stopRenewals(u.email, { userLocked: true }); });
     expect(await db.get(cardKey(u.email))).toBeNull();
-    expect(read("src/lib/verify-email.ts")).toContain("await wipeAccount(old, { userLocked: true });");
+    expect(read("src/lib/verify-email.ts")).toContain("await wipeAccount(id, { userLocked: true, loginLocked: true });");
   });
 
   it("wipeAccount calls it before anything else of the account is touched", async () => {
@@ -103,9 +103,9 @@ describe("rule 1956: a renewal that read the card before the deletion re-checks 
   it("chargeSavedCard charges only when the account, renewal and card are all still there", () => {
     const src = read("src/lib/billing.ts");
     const body = src.slice(src.indexOf("async function chargeSavedCard"));
-    const check = body.indexOf("const still = await withUserLock(u.email");
+    const check = body.indexOf("const still = await withUserLock(acct(u)");
     expect(check).toBeGreaterThan(0);
-    expect(body).toMatch(/if \(!x\.billing \|\| !x\.billing\.autoRenew \|\| !\(await db\.get\(cardKey\(u\.email\)\)\)\) return false;/);
+    expect(body).toMatch(/if \(!x\.billing \|\| !x\.billing\.autoRenew \|\| !\(await db\.get\(cardKey\(acct\(u\)\)\)\)\) return false;/);
     expect(body).toContain('throw new PaymentError(p.name, "renewal_off")');
     expect(check).toBeLessThan(body.indexOf("saved.charge(paymentKey, card.token)"));
   });

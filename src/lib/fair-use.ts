@@ -8,6 +8,7 @@ import { topupRevenueSar } from "./topups";
 import { notifyItem } from "./notifications";
 import { isPaying, revenueSarOf, type MarginRow } from "./margin";
 import { log } from "./log";
+import { acct } from "./account-id";
 
 /**
  * The fair-use stop (rules 1720-1739, docs/system/flows.md section 73). Founder decision of 2026-10-13: "no need to
@@ -77,7 +78,7 @@ export function fairUseState(u: Pick<User, "plan" | "deal" | "suspended" | "topu
 /** The account's state now: one MGET of the two counters, nothing read for an account the stop does not apply to. */
 export async function fairUseOf(u: User, month = monthKey()): Promise<FairUse> {
   if (!isPaying(u)) return fairUseState(u, 0, month);
-  const [model, media] = await db.mget<number>([`usage:${u.email}:${month}:usd_micro`, mediaCostKey(u.email, month)]);
+  const [model, media] = await db.mget<number>([`usage:${acct(u)}:${month}:usd_micro`, mediaCostKey(acct(u), month)]);
   return fairUseState(u, (micro(model) + micro(media)) / 1e6, month);
 }
 

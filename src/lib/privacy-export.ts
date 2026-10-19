@@ -10,12 +10,13 @@ import { CAPS, db } from "./db";
 import { pmap } from "./parallel";
 import { foundingView } from "./founding";
 import { workspaceScope, wsKey, type Scope } from "./keys";
+import { acct } from "./account-id";
 
 /**
  * The owner's own copy of their data (PDPL access and portability; rules 1320-1324): GET /api/account/export.
  *
  * Every key is built from the signed-in owner's email (`u.email`, set by `currentUser` from the session) and the brand
- * scopes of that account (`workspaceScope(u.email, id)` over `listBrands(u.email)`, exactly as `wipeAccount` finds them);
+ * scopes of that account (`workspaceScope(acct(u), id)` over `listBrands(acct(u))`, exactly as `wipeAccount` finds them);
  * nothing comes from the request. Reads go out together: `mget` in chunks for records, `pmap` for lists, never one
  * command per record in a loop.
  *

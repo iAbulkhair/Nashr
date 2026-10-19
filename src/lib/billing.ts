@@ -14,6 +14,7 @@ import { PaymentError, paymentProvider, type CardTokenEvent, type PaymentProvide
 import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
 import { log as logger } from "./log";
+import { acct } from "./account-id";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
@@ -51,7 +52,15 @@ export type IntentKind = "plan" | "topup" | "renewal";
 /** What we asked Paymob to charge, stored before the call. The only source of the account and the amount for a callback. */
 export type PayIntent = {
   ref: string;
+  /** The account at the time of writing; read through `intentAccount` (an intent from before R1 has only this). */
   email: string;
+  /**
+   * The account id (`acct(u)`, rule 1991): what the payment applies to, unchanged by a later address move. Optional
+   * (expand, R1): an intent without it applies to `email`, and older builds ignore it.
+   */
+  acct?: string;
+  /** The address sent to the provider as the billing email; the card callback matches it (rule 1991). Optional (expand). */
+  billingEmail?: string;
   kind: IntentKind;
   plan?: SelfServePlan;
   credits?: number;
@@ -76,7 +85,11 @@ export type PayIntent = {
 };
 /** A saved card. The token never leaves this record: no page, API answer or log reads it. */
 export type SavedCard = { token: string; last4: string; brand: string; expMonth: string; expYear: string; savedAt: string; orderId: number };
-type TxnRecord = { ref: string; email: string; kind: IntentKind; amountCents: number; paymentId: string };
+type TxnRecord = { ref: string; email: string; acct?: string; kind: IntentKind; amountCents: number; paymentId: string };
+/** The account an intent pays for: its `acct`, or `email` on an intent written before R1. */
+const intentAccount = (i: Pick<PayIntent, "acct" | "email">): string => i.acct ?? i.email;
+/** The billing address the provider was given: `billingEmail`, or `email` on an intent written before R1. */
+const intentBillingEmail = (i: Pick<PayIntent, "billingEmail" | "email">): string => i.billingEmail ?? i.email;
 
 const vatOf = (baseHalalas: number) => (PAYMOB_CHARGES_VAT ? Math.round(baseHalalas * VAT_RATE) : 0);
 const isSelfServe = (v: unknown): v is SelfServePlan => typeof v === "string" && (SELF_SERVE_PLANS as readonly string[]).includes(v);
@@ -119,7 +132,7 @@ export type CheckoutError = "not_enabled" | "bad_request" | "bad_plan" | "bad_pa
  * Start a payment (spec 4.1): the owner's plan month or top-up pack. `owner` is the session's account (the caller checked
  * `billing.pay`). The intent is stored before Paymob is called; the answer is the unified checkout URL.
  */
-export async function startCheckout(owner: Pick<User, "email">, body: unknown, lang: "ar" | "en"): Promise<{ ok: true; url: string; ref: string } | { ok: false; error: CheckoutError }> {
+export async function startCheckout(owner: Pick<User, "id" | "email">, body: unknown, lang: "ar" | "en"): Promise<{ ok: true; url: string; ref: string } | { ok: false; error: CheckoutError }> {
   const p = paymentProvider();
   if (!p) return { ok: false, error: "not_enabled" };
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
@@ -127,7 +140,7 @@ export async function startCheckout(owner: Pick<User, "email">, body: unknown, l
   const kind = b.kind;
   if (kind === "plan" && !isSelfServe(b.plan)) return { ok: false, error: "bad_plan" };
   if (kind === "topup" && !isTopupPack(b.credits)) return { ok: false, error: "bad_pack" };
-  const acc = await getUser(owner.email);
+  const acc = await getUser(acct(owner));
   if (!acc) return { ok: false, error: "not_found" };
   // Agency is sold by contract at its own price: no online checkout.
   if (acc.plan === "agency") return { ok: false, error: "agency" };
@@ -141,10 +154,10 @@ export async function startCheckout(owner: Pick<User, "email">, body: unknown, l
   const price = priceFor(kind, item, offer)!;
   const ref = newRef();
   const intent: PayIntent = {
-    ref, email: acc.email, kind, ...(kind === "plan" ? { plan: b.plan as SelfServePlan } : { credits: b.credits as number }),
+    ref, email: acct(acc), acct: acct(acc), billingEmail: acc.email, kind, ...(kind === "plan" ? { plan: b.plan as SelfServePlan } : { credits: b.credits as number }),
     ...price, currency: "SAR", offer, ...(founding ? { founding: true } : {}), createdAt: new Date().toISOString(), by: acc.email, status: "open",
   };
-  await Promise.all([db.set(intentKey(ref), intent, DAYS_400), db.set(lastCheckoutKey(acc.email), ref, LAST_TTL)]);
+  await Promise.all([db.set(intentKey(ref), intent, DAYS_400), db.set(lastCheckoutKey(acct(acc)), ref, LAST_TTL)]);
   const label = kind === "plan" ? `Thakeen ${intent.plan} plan, 1 month` : `Thakeen ${intent.credits} credits top-up`;
   try {
     const it = await p.createCheckout({
@@ -177,14 +190,14 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   const today = ksaDay();
   const baseSar = intent.baseHalalas / 100;
   if (intent.kind === "topup") {
-    const r = await addPaidTopup(intent.email, { credits: intent.credits!, paidSar: baseSar, paidOn: today, ref: `paymob:${txnId}`, paymentId }, "paymob");
+    const r = await addPaidTopup(intentAccount(intent), { credits: intent.credits!, paidSar: baseSar, paidOn: today, ref: `paymob:${txnId}`, paymentId }, "paymob");
     return r.ok ? { ok: true, already: r.already, payment: r.payment ?? undefined } : { ok: false, error: r.error };
   }
   const plan = intent.plan!;
-  const card = await db.get<SavedCard>(cardKey(intent.email));
+  const card = await db.get<SavedCard>(cardKey(intentAccount(intent)));
   const id = String(txnId);
   let claim: ClaimOutcome | null = null;
-  const step = await withUserLock(intent.email, async (u): Promise<"already" | "changed" | "same" | "no_billing"> => {
+  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing"> => {
     const b = u.billing;
     if (b?.txns?.includes(id)) return "already";
     if (intent.kind === "renewal") {
@@ -220,9 +233,9 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   });
   if (step === "no_billing") return { ok: false, error: "no_billing" };
   const c = claim as ClaimOutcome | null;
-  if (c && (c.seat || c.lock)) await log(intent.email, `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
-  if (step === "changed") await enforceSeats(intent.email);
-  const rec = await recordPayment(intent.email, { id: paymentId, amountSar: baseSar, plan, date: today, reference: `paymob:${txnId}` }, "paymob");
+  if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
+  if (step === "changed") await enforceSeats(intentAccount(intent));
+  const rec = await recordPayment(intentAccount(intent), { id: paymentId, amountSar: baseSar, plan, date: today, reference: `paymob:${txnId}` }, "paymob");
   if (!rec.ok) return { ok: false, error: rec.error };
   return { ok: true, already: step === "already" || !!rec.already, payment: rec.payment };
 }
@@ -252,7 +265,7 @@ export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promi
     if (mismatch) {
       await Promise.all([
         db.set(intentKey(intent.ref), { ...intent, status: "mismatch", txnId: t.id }, DAYS_400),
-        log(intent.email, `paymob_mismatch txn:${t.id} ref:${intent.ref} cents:${t.amountCents} expected:${intent.amountCents} currency:${t.currency}`),
+        log(intentAccount(intent), `paymob_mismatch txn:${t.id} ref:${intent.ref} cents:${t.amountCents} expected:${intent.amountCents} currency:${t.currency}`),
       ]);
       await db.set(doneKey(t.id), "mismatch", DAYS_400);
       return ok("mismatch");
@@ -263,22 +276,22 @@ export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promi
       return ok("declined");
     }
     const paymentId = paymentIdFor(t.id);
-    await db.set(txnKey(t.id), { ref: intent.ref, email: intent.email, kind: intent.kind, amountCents: t.amountCents, paymentId } satisfies TxnRecord, DAYS_400);
+    await db.set(txnKey(t.id), { ref: intent.ref, email: intentAccount(intent), acct: intentAccount(intent), kind: intent.kind, amountCents: t.amountCents, paymentId } satisfies TxnRecord, DAYS_400);
     const applied = await applyPaid(intent, t.id, paymentId);
     if (!applied.ok) {
       // Paid but not applicable (a pack for an account no longer on a paid plan, a renewal with no subscription): the
       // founder refunds it from the console. Not retried: retrying cannot change the answer.
-      await log(intent.email, `paymob_unapplied txn:${t.id} ref:${intent.ref} error:${applied.error}`);
+      await log(intentAccount(intent), `paymob_unapplied txn:${t.id} ref:${intent.ref} error:${applied.error}`);
       await db.set(doneKey(t.id), "unapplied", DAYS_400);
       return ok("unapplied");
     }
     await invoiceForPayment({
-      email: intent.email, paymentId, kind: intent.kind, baseHalalas: intent.baseHalalas, vatHalalas: intent.vatHalalas,
+      email: intentAccount(intent), paymentId, kind: intent.kind, baseHalalas: intent.baseHalalas, vatHalalas: intent.vatHalalas,
       totalHalalas: intent.amountCents, currency: "SAR", provider: "paymob", providerRef: String(t.id), day: ksaDay(),
     });
     await Promise.all([
       db.set(intentKey(intent.ref), { ...intent, status: "paid", txnId: t.id }, DAYS_400),
-      applied.already ? Promise.resolve() : log(intent.email, `paymob_paid txn:${t.id} kind:${intent.kind} ${intent.kind === "topup" ? `credits:${intent.credits}` : `plan:${intent.plan}`} sar:${intent.baseHalalas / 100} vat:${intent.vatHalalas / 100} payment:${paymentId}`),
+      applied.already ? Promise.resolve() : log(intentAccount(intent), `paymob_paid txn:${t.id} kind:${intent.kind} ${intent.kind === "topup" ? `credits:${intent.credits}` : `plan:${intent.plan}`} sar:${intent.baseHalalas / 100} vat:${intent.vatHalalas / 100} payment:${paymentId}`),
     ]);
     await db.set(doneKey(t.id), "paid", DAYS_400);
     return ok("paid");
@@ -296,13 +309,13 @@ async function saveCard(ct: CardTokenEvent | null): Promise<CallbackResult> {
   const { orderId, token } = ct;
   const ref = await db.get<string>(orderKey(orderId));
   const intent = typeof ref === "string" && REF.test(ref) ? await db.get<PayIntent>(intentKey(ref)) : null;
-  if (!intent || normalizeEmail(ct.email) !== intent.email) return ok("ignored");
+  if (!intent || normalizeEmail(ct.email) !== normalizeEmail(intentBillingEmail(intent))) return ok("ignored");
   const card: SavedCard = {
     token, last4: ct.last4, brand: ct.brand || "card",
     expMonth: ct.expMonth, expYear: ct.expYear, savedAt: new Date().toISOString(), orderId,
   };
-  await db.set(cardKey(intent.email), card);
-  await withUserLock(intent.email, async (u) => {
+  await db.set(cardKey(intentAccount(intent)), card);
+  await withUserLock(intentAccount(intent), async (u) => {
     if (!u.billing) return;
     u.billing = { ...u.billing, card: { brand: card.brand, last4: card.last4 }, ...(intent.kind === "plan" ? { autoRenew: true } : {}) };
     await saveUser(u);
@@ -382,7 +395,7 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
   const locked = lockedBaseHalalas(u, b.plan, b.paidThrough);
   const price = priceFor("renewal", { plan: b.plan }, false, locked ?? undefined)!;
   const ref = newRef();
-  const intent: PayIntent = { ref, email: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open" };
+  const intent: PayIntent = { ref, email: acct(u), acct: acct(u), billingEmail: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open" };
   await db.set(intentKey(ref), intent, DAYS_400);
   let paymentKey: string | null = null;
   let orderId = 0;
@@ -411,8 +424,8 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
   // the card is still saved. Account deletion (`stopRenewals`, first step of `wipeAccount`) turns renewal off and drops
   // the card under the same lock, so a renewal that read the card before the deletion stops here instead of charging
   // it. A deleted account throws `user_not_found` out of the lock, which the daily job records and never retries.
-  const still = await withUserLock(u.email, async (x) => {
-    if (!x.billing || !x.billing.autoRenew || !(await db.get(cardKey(u.email)))) return false;
+  const still = await withUserLock(acct(u), async (x) => {
+    if (!x.billing || !x.billing.autoRenew || !(await db.get(cardKey(acct(u))))) return false;
     x.billing = { ...x.billing, pending: { ref, day: today } };
     await saveUser(x);
     return true;
@@ -471,7 +484,7 @@ export async function lastCheckout(email: string): Promise<{ state: CheckoutStat
   const ref = await db.get<string>(lastCheckoutKey(email));
   if (typeof ref !== "string" || !REF.test(ref)) return { state: "none" };
   const intent = await db.get<PayIntent>(intentKey(ref));
-  if (!intent || intent.email !== email) return { state: "none" };
+  if (!intent || intentAccount(intent) !== email) return { state: "none" };
   return { state: checkoutState(intent.status), kind: intent.kind, ...(intent.plan ? { plan: intent.plan } : {}), ...(intent.credits ? { credits: intent.credits } : {}) };
 }
 
@@ -530,7 +543,7 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   const m = /^paymob:(\d{1,15})$/.exec(p.reference ?? "");
   const txnId = m ? Number(m[1]) : 0;
   const rec = txnId ? await db.get<TxnRecord>(txnKey(txnId)) : null;
-  if (!rec || rec.email !== e || rec.paymentId !== id) return { ok: false, error: "not_paymob" };
+  if (!rec || (rec.acct ?? rec.email) !== e || rec.paymentId !== id) return { ok: false, error: "not_paymob" };
   let alreadyRefunded = !!(await db.get(refundedKey(txnId)));
   if (!alreadyRefunded) {
     if (!(await db.lock(refundLockKey(txnId), 60))) return { ok: false, error: "busy" };

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf, actorInfo } from "@/lib/auth";
+import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getLogin, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf, actorInfo } from "@/lib/auth";
 import { sha } from "@/lib/staff";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
@@ -31,15 +31,18 @@ import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import { isSuspended, parseSuspendFor, suspensionEnd, suspensionExpired } from "@/lib/suspension";
 import { endExpiredSuspension } from "@/lib/suspension-server";
 import { accountKey } from "@/lib/keys";
+import { acct } from "@/lib/account-id";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, ctx: { params: Promise<{ email: string }> }) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const { email } = await ctx.params;
-  let u = await getUser(decodeURIComponent(email));
+  // The console names an owner by its sign-in address: resolved as a login (rule 1982), never read as an account key.
+  const login = await getLogin(decodeURIComponent(email));
+  let u = login?.kind === "owner" ? login.user : null;
   // A suspension whose end date passed is cleared and logged when staff open the account (rule 2073), then read again.
-  if (u && suspensionExpired(u) && (await endExpiredSuspension(u.email))) u = (await getUser(u.email)) ?? u;
+  if (u && suspensionExpired(u) && (await endExpiredSuspension(acct(u)))) u = (await getUser(acct(u))) ?? u;
   if (!u) {
     // Member logins never enter users:all, so the list cannot show them: an address is looked up here instead, which is
     // how support finds (and can remove, below) a member login holding an address its real owner wants to sign up with.
@@ -51,18 +54,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
       member: { email: m.email, name: m.name, role: m.role, memberOf: m.memberOf, invitedBy: m.invitedBy, acceptedAt: m.acceptedAt, disabled: m.disabled ?? null, ownerExists: !!owner, onRoster: listed },
     });
   }
-  const brands = await listBrands(u.email);
-  const scopes = brands.map((b) => scopeFor(u.email, b.id));
+  const brands = await listBrands(acct(u));
+  const scopes = brands.map((b) => scopeFor(acct(u), b.id));
   const tasks = (await Promise.all(scopes.map((s) => listTasks(s)))).flat().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const [brand, usage, chat, connections, convs, referrals, activity, unfinished, ent] = await Promise.all([
-    getBrand(u.email),
-    getUsage(u.email),
+    getBrand(acct(u)),
+    getUsage(acct(u)),
     // The chat allowance (a trial's for the whole trial, which the month's usage does not keep): the raw count
     // (`counted`), the messages continued on credits this month and the credits they were billed. Rule 316.
     chatStatus(u, route("chat").model),
-    listConnections(u.email),
+    listConnections(acct(u)),
     Promise.all(scopes.map((s) => listConversations(s))).then((x) => x.flat().length),
-    db.lrange(accountKey.referrals(u.email), 0, 99).then((x) => x.length),
+    db.lrange(accountKey.referrals(acct(u)), 0, 99).then((x) => x.length),
     // The latest 100 activity rows of each brand, every brand in parallel (the scopes come from the account's own list).
     Promise.all(brands.map((b, i) => listActivity(scopes[i], { limit: 100 }).then((p) => ({ brand: b.id, name: b.name, rows: p.rows })))),
     // Packs whose refund is not on their payment yet: the Top-ups block offers "Finish refund" on them (rule 465).
@@ -96,7 +99,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   if (no2fa) return no2fa;
   const { email: raw } = await ctx.params;
   const email = normalizeEmail(decodeURIComponent(raw)); // the same normalized key for lookup, locks and deletion
-  const u = await getUser(email);
+  const login = await getLogin(email);
+  const u = login?.kind === "owner" ? login.user : null;
   const b = (await req.json().catch(() => ({}))) as Action;
   // Every action here asks a reason in the console, so the server asks it too (rule 1185).
   const noReason = reasonRefused(b.reason);
@@ -115,6 +119,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     return NextResponse.json({ ok: true });
   }
 
+  // The account the address signs in to (rule 1980): every account key below, never the address from the path.
+  const id = acct(u);
   switch (b.action) {
     case "suspend":
     case "unsuspend": {
@@ -124,7 +130,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const state = (x: { suspended?: unknown }) => ({ suspended: isSuspended(x), until: isSuspended(x) ? suspensionEnd(x) : null });
       const before = state(u);
       // Unsuspend writes `false`; suspend writes `true` or `{ until }`, the whole field, never a stale end date (rule 2070).
-      const user = await withUserLock(email, async (x) => { x.suspended = pick?.ok ? pick.value : false; await saveUser(x); return x; });
+      const user = await withUserLock(id, async (x) => { x.suspended = pick?.ok ? pick.value : false; await saveUser(x); return x; });
       const after = state(user);
       await log(b.action, { before, after });
       return NextResponse.json({ ok: true, suspended: after.suspended, suspendedUntil: after.until });
@@ -132,7 +138,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     case "extendTrial": {
       const days = Math.max(1, Math.min(TRIAL_EXTEND_MAX_DAYS, Math.trunc(b.days ?? 7)));
       const prevTrial = String(u.trialEnds);
-      const user = await withUserLock(email, async (x) => {
+      const user = await withUserLock(id, async (x) => {
         const base = new Date(x.trialEnds).getTime() > Date.now() ? new Date(x.trialEnds) : new Date();
         x.trialEnds = new Date(base.getTime() + days * 864e5).toISOString();
         await saveUser(x);
@@ -144,10 +150,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     case "resetPassword": {
       const temp = randomBytes(6).toString("base64url").slice(0, 10) + "!";
       // The owner's sessions and every member's: a founder reset answers "someone else has this account".
-      await withUserLock(email, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
+      await withUserLock(id, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
       // The owner's calendar feed and booking links and every member's, as every member's session just ended.
-      const roster = await db.smembers(membersKey(email));
-      await Promise.all([revokeAllMcp(email), revokeFeeds([email, ...roster]), revokeBooks([email, ...roster]), revokeCalendarLinks(email)]);
+      const roster = await db.smembers(membersKey(id));
+      await Promise.all([revokeAllMcp(id), revokeFeeds([u.email, ...roster]), revokeBooks([u.email, ...roster]), revokeCalendarLinks(id)]);
       await log("resetPassword");
       // Shown once to the admin; never stored in clear.
       return NextResponse.json({ ok: true, tempPassword: temp });
@@ -155,7 +161,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     case "setLang": {
       if (b.lang !== "ar" && b.lang !== "en") return NextResponse.json({ ok: false, error: "bad_lang" }, { status: 400 });
       const was = u.lang;
-      await withUserLock(email, async (x) => { x.lang = b.lang!; await saveUser(x); });
+      await withUserLock(id, async (x) => { x.lang = b.lang!; await saveUser(x); });
       await log(`setLang ${b.lang}`, { before: { lang: was }, after: { lang: b.lang } });
       return NextResponse.json({ ok: true });
     }
@@ -203,7 +209,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       return NextResponse.json({ ok: true, resendIn: VERIFY.gap });
     }
     case "delete": {
-      await wipeAccount(email);
+      await wipeAccount(id);
       await log("delete");
       return NextResponse.json({ ok: true });
     }

@@ -7,6 +7,7 @@ import { track } from "@/lib/track";
 import { ModelPaused, modelState } from "@/lib/model";
 import { deadlineFor } from "@/lib/media/keys";
 import { chatItemOf, handoffView, isHandoffId, runHandoffItem, type Handoff, type RunResult } from "@/lib/handoffs";
+import { acct } from "@/lib/account-id";
 
 export const maxDuration = 300;
 
@@ -41,11 +42,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const r = await runHandoffItem(u, scope, id, item, { by: byOf(u), deadline });
   const view = async (h?: Handoff) => (h ? { handoff: await handoffView(scope, h) } : {});
   if (r.ok) {
-    await track(u.email, "generate");
+    await track(acct(u), "generate");
     return NextResponse.json({ ok: true, ...(await view(r.handoff)), items: r.tasks.map(chatItemOf), credits: u.credits });
   }
   const [status, body] = refusal(r);
-  if (r.error === "failed") await track(u.email, "error");
+  if (r.error === "failed") await track(acct(u), "error");
   return NextResponse.json({ ok: false, ...body, ...(await view(r.handoff)), credits: u.credits }, { status });
 }
 

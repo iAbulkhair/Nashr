@@ -10,6 +10,7 @@ import { pmap } from "./parallel";
 import { day } from "./track";
 import { log } from "./log";
 import { globalKey } from "./keys";
+import { acct } from "./account-id";
 
 /**
  * The daily margin alert (rules 1530-1539, docs/system/flows.md section 69). The PRD asks for it before the first
@@ -72,7 +73,7 @@ const micro = (v: unknown) => {
  */
 export async function accountMargins(users: readonly User[], month = monthKey()): Promise<MarginRow[]> {
   const paying = users.filter(isPaying);
-  const keys = paying.flatMap((u) => [`usage:${u.email}:${month}:usd_micro`, mediaCostKey(u.email, month)]);
+  const keys = paying.flatMap((u) => [`usage:${acct(u)}:${month}:usd_micro`, mediaCostKey(acct(u), month)]);
   const v = await mgetChunked<number>(keys);
   return paying
     .map((u, i) => {

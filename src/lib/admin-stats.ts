@@ -15,6 +15,7 @@ import { cronStatuses, type CronStatus } from "./cron-heartbeat";
 import { marginView, type MarginView } from "./margin";
 import { markFairUse } from "./fair-use";
 import { globalKey } from "./keys";
+import { acct } from "./account-id";
 
 /**
  * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
@@ -103,7 +104,7 @@ export async function overview(): Promise<Overview> {
   const users = (await pmap(emails, (e) => getUser(e))).filter((u): u is NonNullable<typeof u> => !!u);
   const ageDays = (iso: string) => (now - new Date(iso).getTime()) / 864e5;
   const brands = new Map<string, boolean>();
-  (await pmap(users, (u) => getBrand(u.email))).forEach((b, i) => brands.set(users[i].email, !!b));
+  (await pmap(users, (u) => getBrand(acct(u)))).forEach((b, i) => brands.set(users[i].email, !!b));
   const activated = [...brands.values()].filter(Boolean).length;
   // A suspended account neither pays nor counts towards MRR (docs/Admin_Console_Benchmark.md: MRR over unsuspended users).
   const live = users.filter((u) => !isSuspended(u));
@@ -126,7 +127,7 @@ export async function overview(): Promise<Overview> {
 
   // funnel over the last 30 days
   const recentUsers = users.filter((u) => ageDays(u.createdAt) <= 30);
-  const firsts = await pmap(recentUsers, (u) => Promise.all([firstEvent(u.email, "generate"), firstEvent(u.email, "approve")]));
+  const firsts = await pmap(recentUsers, (u) => Promise.all([firstEvent(acct(u), "generate"), firstEvent(acct(u), "approve")]));
   const generated30 = firsts.filter((f) => f[0]).length, approved30 = firsts.filter((f) => f[1]).length;
 
   // events per day, last 14 days
@@ -148,7 +149,7 @@ export async function overview(): Promise<Overview> {
   // agency that spent 10 credits on its default brand and 1,500 across four others showed 10, and the gross margin
   // beside it was computed against a fraction of the real spend.
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).getTime();
-  const scopes = (await pmap(users, async (u) => (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id)), 6)).flat();
+  const scopes = (await pmap(users, async (u) => (await listBrands(acct(u))).map((b) => scopeFor(acct(u), b.id)), 6)).flat();
   const perScope = await pmap(scopes, async (scope) => (await listLite(scope, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0), 6);
   const creditsUsed = perScope.reduce((s, x) => s + x, 0);
   const [total, render, crons, margin] = await Promise.all([getUsage("_all"), renderSpend(), cronStatuses().catch((): CronStatus[] => []), marginView(users).then((v) => ({ ...v, under: markFairUse(v.under, users, v.month) })).catch(() => null)]);
@@ -156,7 +157,7 @@ export async function overview(): Promise<Overview> {
   const grossMargin = mrr > 0 ? Math.round(((mrr - (total.usd + render.usd) * SAR_PER_USD) / mrr) * 100) : null;
 
   const recent = await pmap([...users].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 25), async (u) => {
-    const [last, evs] = await Promise.all([lastActive(u.email), userEvents(u.email)]);
+    const [last, evs] = await Promise.all([lastActive(u.email), userEvents(acct(u))]);
     return { email: u.email, name: u.name, plan: u.plan, credits: u.credits, createdAt: u.createdAt, lastActive: last, activated: brands.get(u.email) ?? false, events: evs };
   }, 8);
 

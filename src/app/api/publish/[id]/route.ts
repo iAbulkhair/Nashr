@@ -14,6 +14,7 @@ import { forbid } from "@/lib/roles";
 import { taskVersion } from "@/lib/task-version";
 import { publishScopeCheck, readAgentScopeModes } from "@/lib/agent-scope";
 import { deadlineFor } from "@/lib/media/keys";
+import { acct } from "@/lib/account-id";
 
 export const maxDuration = 60;
 
@@ -71,7 +72,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // failed record is logged, not reported as a failed publish. Every post that went out is one row of the activity log
   // (which never throws); a refused, busy, duplicate or unknown attempt returns below without one.
   const record = (task: Task, approving: boolean, provider: string, postedAt: string) => Promise.all([
-    track(u.email, "publish"),
+    track(acct(u), "publish"),
     approving ? recordDecisions(sc(u), [decisionOf(task, "publish", task.decidedAt ?? postedAt, { by })]).catch((e) => console.error("decision record failed", e)) : null,
     recordActivity(sc(u), [{ at: postedAt, kind: "published", agent: agentForTask(t.type).id, by, via: "app", type: t.type, tasks: [t.id], outcome: provider, note: t.title }]),
   ]);

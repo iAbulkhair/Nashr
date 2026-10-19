@@ -9,6 +9,7 @@ import { INSTRUCTION_CHARS, INSTRUCTION_PLAN, type InstructionLimits } from "./i
 import { chatCaps } from "./rate";
 import { route } from "./models/route";
 import { seatsUsed } from "./team";
+import { acct } from "./account-id";
 
 /**
  * What an account's plan includes, in one pure function (spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md
@@ -166,7 +167,7 @@ function resetsAtOf(u: EntUser, now: number): string | null {
  * its own `chat`; reading it twice is accepted, ruling R11). `now` is for tests.
  */
 export async function entitlementView(u: User, now: number = Date.now()): Promise<EntitlementView> {
-  const [seats, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u, route("chat").model)]);
+  const [seats, chat] = await Promise.all([seatsUsed(acct(u)), chatStatus(u, route("chat").model)]);
   const g = u.grants?.video;
   const own: EntUser = { plan: u.plan, trialEnds: u.trialEnds, suspended: u.suspended, billing: u.billing };
   return {
