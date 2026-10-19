@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getLogin, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf, actorInfo } from "@/lib/auth";
+import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getLogin, getUser, isAdmin, keyImpBinding, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf, actorInfo } from "@/lib/auth";
 import { sha } from "@/lib/staff";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
@@ -19,6 +19,7 @@ import { listConnections } from "@/lib/connectors/store";
 import { listBrands, scopeFor } from "@/lib/brands";
 import { listConversations } from "@/lib/conversations";
 import { withUserLock } from "@/lib/credits";
+import { isPersonLockTimeout, updatePerson, withPersonLock } from "@/lib/person";
 import { wipeAccount } from "@/lib/account";
 import { db } from "@/lib/db";
 import { listActivity } from "@/lib/activity";
@@ -32,7 +33,7 @@ import { isSuspended, parseSuspendFor, suspensionEnd, suspensionExpired } from "
 import { endExpiredSuspension } from "@/lib/suspension-server";
 import { accountKey } from "@/lib/keys";
 import { acct } from "@/lib/account-id";
-import { getMembership } from "@/lib/membership";
+import { aidOf, getMembership, ownerOf } from "@/lib/membership";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +102,20 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
 
 type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember" | "resendVerification"; days?: number; lang?: "ar" | "en"; reason?: string; minutes?: unknown; for?: unknown; date?: unknown };
 
+/**
+ * Run a write that takes the person lock: a lock held for the whole wait answers 409 `busy` (the lock is taken before the
+ * first write, so nothing was written); null when the write ran.
+ */
+async function personWrite(fn: () => Promise<unknown>): Promise<NextResponse | null> {
+  try {
+    await fn();
+    return null;
+  } catch (e) {
+    if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+    throw e;
+  }
+}
+
 /** POST actions on one user. Every action is logged to admin:log with WHO did it: the founder's email, or "key". */
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
   const who = await adminActor(req);
@@ -161,7 +176,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     case "resetPassword": {
       const temp = randomBytes(6).toString("base64url").slice(0, 10) + "!";
       // The owner's sessions and every member's: a founder reset answers "someone else has this account".
-      await withUserLock(id, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
+      // The password and the owner's session stamp are the owner PERSON's (multi-workspace M1, rule 2132: `updatePerson`,
+      // mirrored to a legacy owner's account); the team stamp is the account's. Person lock, then user lock (rule 2139).
+      const pid = ownerOf(u);
+      const passHash = await bcrypt.hash(temp, 10);
+      const held = await personWrite(() => withPersonLock(pid, () => withUserLock(id, async (x) => {
+        revokeTeamSessions(x);
+        await saveUser(x);
+        await updatePerson(pid, { passHash, sessionsAfter: new Date().toISOString() }, { personLocked: true, userLocked: aidOf(x) });
+      })));
+      if (held) return held;
       // The owner's calendar feed and booking links and every member's, as every member's session just ended.
       const roster = await db.smembers(membersKey(id));
       await Promise.all([revokeAllMcp(id), revokeFeeds([u.email, ...roster]), revokeBooks([u.email, ...roster]), revokeCalendarLinks(id)]);
@@ -172,7 +196,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     case "setLang": {
       if (b.lang !== "ar" && b.lang !== "en") return NextResponse.json({ ok: false, error: "bad_lang" }, { status: 400 });
       const was = u.lang;
-      await withUserLock(id, async (x) => { x.lang = b.lang!; await saveUser(x); });
+      // The account's language and its owner person's (rule 2132), person lock first (rule 2139).
+      const pid = ownerOf(u);
+      const lang = b.lang;
+      const held = await personWrite(() => withPersonLock(pid, () => withUserLock(id, async (x) => {
+        x.lang = lang;
+        await saveUser(x);
+        await updatePerson(pid, { lang }, { personLocked: true, userLocked: aidOf(x) });
+      })));
+      if (held) return held;
       await log(`setLang ${b.lang}`, { before: { lang: was }, after: { lang: b.lang } });
       return NextResponse.json({ ok: true });
     }

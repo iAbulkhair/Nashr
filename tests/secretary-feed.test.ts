@@ -8,6 +8,8 @@ import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
 import { createMember, forceRemoveMember, getMember, leaveTeam, removeMember, saveMember, type Member } from "@/lib/team";
 import { wipeAccount } from "@/lib/account";
+import { updatePerson } from "@/lib/person";
+import { ownerOf } from "@/lib/membership";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as accountRoute from "@/app/api/account/route";
@@ -638,7 +640,8 @@ describe("feed management (rules 580-581)", () => {
     const langOf = (login: string) => (recordsOf(login)[0][1] as { lang: string }).lang;
     for (const [ownerLang, memberLang] of [["en", "ar"], ["ar", "en"]] as const) {
       const owner = await newUser(`feed580l${ownerLang}`);
-      await saveUser({ ...(await getUser(owner.email))!, lang: ownerLang });
+      // The owner's language is the owner PERSON's (multi-workspace M1, rule 2132), mirrored to the account.
+      await updatePerson(ownerOf(owner), { lang: ownerLang });
       const member = await newMember(owner, "member");
       await saveMember({ ...(await getMember(member.email))!, lang: memberLang });
       await signIn(member.email);

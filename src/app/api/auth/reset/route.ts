@@ -3,13 +3,15 @@ import { isSuspended } from "@/lib/suspension";
 import { suspendedAnswer } from "@/lib/login-finish";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { createSession, emailVerified, getLogin, revokeSessions, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
+import { createSession, emailVerified, getLogin, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBook, revokeBooks } from "@/lib/booking-token";
 import { revokeFeed, revokeFeeds } from "@/lib/feed-token";
 import { revokeCalendarLinks } from "@/lib/secretary-gcal";
-import { membersKey, saveMember, withMemberLock } from "@/lib/team";
+import { membersKey } from "@/lib/team";
+import { aidOf, getMembership } from "@/lib/membership";
+import { isPersonLockTimeout, updatePerson, withPersonLock } from "@/lib/person";
 import { db } from "@/lib/db";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 import { acct } from "@/lib/account-id";
@@ -21,7 +23,8 @@ const badToken = () => NextResponse.json({ ok: false, error: "bad_token" }, { st
 
 /**
  * POST {token, password} → sets the new password of the login the token was issued for, burns the token, signs that
- * login in. A member's reset writes the member record only: it never touches the owner's hash, sessions or tokens.
+ * login in. The password is the PERSON's (`updatePerson`, multi-workspace M1, rule 2132). A member's reset writes the
+ * member's person only (and its legacy member record): it never touches the owner's hash, sessions or tokens.
  */
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { token?: string; password?: string };
@@ -43,44 +46,61 @@ export async function POST(req: Request) {
   if (!login || login.kind !== kind) return badToken();
   const hash = await bcrypt.hash(pw, 10);
 
+  const now = new Date().toISOString();
+  const busy = () => NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+
   if (login.kind === "member") {
-    const { member, owner } = login;
-    // A person known only through membership rows (multi-workspace M1, test persons only) has no legacy record to write:
-    // its credential write comes with `updatePerson`; until then the link does nothing, as for a removed member.
-    if (!member || !owner || member.memberOf !== acct(owner)) return badToken();
+    const { owner } = login;
+    // The membership as the forward records read it (the `mbr:` row, or the legacy member record): a person known only
+    // through membership rows (multi-workspace M1, a `p_` member) resets like a legacy member.
+    const m = owner ? await getMembership(aidOf(owner), login.pid) : null;
+    if (!owner || !m) return badToken();
     if (isSuspended(owner)) return suspendedAnswer(owner);
-    // The member record only, under its own lock. Every other device of THIS member is signed out; the owner and the
-    // rest of the team are untouched.
-    const done = await withMemberLock(member.email, async (m) => {
-      if (m.memberOf !== acct(owner)) return false;
-      m.passHash = hash;
-      m.sessionsAfter = new Date().toISOString();
-      await saveMember(m);
-      return true;
-    });
-    if (!done) return badToken();
+    // The PERSON's password only (rule 2132: `updatePerson`, mirrored to the member record). Every other device of THIS
+    // member is signed out; the owner and the rest of the team are untouched. A held person lock answers 409 `busy`
+    // before anything is written.
+    let p;
+    try {
+      p = await updatePerson(login.pid, { passHash: hash, sessionsAfter: now });
+    } catch (e) {
+      if (isPersonLockTimeout(e)) return busy();
+      throw e;
+    }
+    if (!p) return badToken();
     // The member's own calendar feed and booking links end with the password they were made under, as an owner's MCP
     // tokens do. Only this login's: the owner's links and the rest of the team's are untouched.
-    await Promise.all([revokeFeed(member.email), revokeBook(member.email)]);
+    await Promise.all([revokeFeed(p.email), revokeBook(p.email)]);
     // A seat-paused member gets the new password but no session: `currentUser` refuses it until the owner has room.
-    if (member.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
+    if (m.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
     // Likewise while the owner has not proved the address (rule 767): `currentUser` refuses the member, as login does.
     if (!emailVerified(owner)) return NextResponse.json({ ok: false, error: "owner_unverified" }, { status: 403 });
-    await createSession(member.email);
+    await createSession(p.email);
     return NextResponse.json({ ok: true });
   }
 
   const owner = login.user;
-  // An account owned by a person under another id (multi-workspace M1, test persons only): the password lives on the
-  // person, whose write comes with `updatePerson`; until then the link does nothing.
-  if (login.pid !== acct(owner)) return badToken();
   if (isSuspended(owner)) return suspendedAnswer(owner);
   // A reset is what an owner does after losing control of the account: the owner's sessions, every member's session
   // (each signs back in with their own password) and every MCP token die with the old password.
   // Rule 769: the link was mailed to this very address and used once, which proves the inbox as well as a code does, so
   // an owner who has not verified yet is verified here (the date is kept when there is one). A member's reset proves the
   // member's address, not the owner's, and never comes here.
-  await withUserLock(acct(owner), async (x) => { x.passHash = hash; x.emailVerifiedAt ??= new Date().toISOString(); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
+  // Multi-workspace M1 (rule 2132): the password, the session stamp and the proof are the PERSON's (`updatePerson`, which
+  // mirrors a legacy owner's account and stamps every account the person owns); the team stamp is the account's. The
+  // person lock, then the user lock (rule 2139), both before the first write: a `p_` owner's account record never gets
+  // a `passHash`, and a held person lock answers 409 `busy` with nothing written.
+  try {
+    await withPersonLock(login.pid, () =>
+      withUserLock(acct(owner), async (x) => {
+        revokeTeamSessions(x);
+        await saveUser(x);
+        await updatePerson(login.pid, { passHash: hash, sessionsAfter: now, emailVerifiedAt: now }, { personLocked: true, userLocked: aidOf(x) });
+      }),
+    );
+  } catch (e) {
+    if (isPersonLockTimeout(e)) return busy();
+    throw e;
+  }
   // The owner's calendar feed and booking links and every member's go with the MCP tokens, as every member's session does above (the
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
   const roster = await db.smembers(membersKey(acct(owner)));

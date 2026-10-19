@@ -10,6 +10,9 @@ import { allow, clientIp, retryLater, sameSecret } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
 import { mailReady, sendEmail } from "./notify";
 import { withLoginLock } from "./team";
+import { createPersonRecord, getPerson, updatePerson } from "./person";
+import { ownerOf } from "./membership";
+import { personKey, storedPersonId } from "./keys";
 
 /**
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
@@ -78,12 +81,11 @@ export async function hasPendingCode(email: string): Promise<boolean> {
 
 /** Stamp the address as proved (kept if it already is, so a repeat never moves the date) and drop the code and its counter. */
 export async function markVerified(email: string): Promise<void> {
-  await withUserLock(email, async (u) => {
-    if (!u.emailVerifiedAt) {
-      u.emailVerifiedAt = new Date().toISOString();
-      await saveUser(u);
-    }
-  });
+  // The proof is the PERSON's (multi-workspace M1, reconciliation 11): `updatePerson` stamps `person:`, mirrors a legacy
+  // owner's account and stamps every account the person owns, each only when unset. Only an owner proves an address here.
+  const login = await getLogin(email);
+  if (login?.kind !== "owner") throw new Error("user_not_found");
+  await updatePerson(login.pid, { emailVerifiedAt: new Date().toISOString() });
   await Promise.all([db.del(codeKey(email)), db.del(triesKey(email))]);
 }
 
@@ -207,8 +209,13 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       const today = utcDay(now);
       const used = cur.emailMoves && cur.emailMoves.day === today ? cur.emailMoves.n : 0;
       if (used >= VERIFY.movesPerDay) return "limit";
-      const login = await getLogin(to);
-      const unfinished = login?.kind === "owner" && opts.isCopy(login.user) && login.user.createdAt === cur.createdAt && login.user.passHash === cur.passHash;
+      // The owner's credentials are the PERSON's (rule 2132). The move copies a legacy owner's account to the new address;
+      // an account a `p_` person owns moves with the person (release M2), never here.
+      const pid = ownerOf(cur);
+      if (pid !== storedPersonId(id)) return "not_allowed";
+      const [login, me] = await Promise.all([getLogin(to), getPerson(pid)]);
+      if (!me) return "not_allowed";
+      const unfinished = login?.kind === "owner" && opts.isCopy(login.user) && login.user.createdAt === cur.createdAt && login.person.passHash === me.passHash;
       if (login && !unfinished) return "exists";
       // A fresh session window (as `createUser` stamps): a session issued earlier for the TARGET address (a deleted former
       // owner, a removed member, this owner's own devices after A to B to A) must never resolve to the moved account. The
@@ -216,6 +223,19 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       const fresh = new Date(now).toISOString();
       if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh });
       else await saveUser({ ...cur, id: to, email: to, sessionsAfter: fresh, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
+      // The person at the new address (multi-workspace M1, rule 2132), written whole (reconciliation 6: a leftover row at
+      // `person:{to}` lends nothing): the moved owner's password, the account's birth, the fresh session stamp, and the
+      // proof only when this move proved the address (or a stopped run's copy already carried one). Under both login
+      // locks: nothing else can write this person.
+      const copy = unfinished ? login.user : null;
+      const toPid = storedPersonId(to);
+      await Promise.all([
+        createPersonRecord(
+          { pid: toPid, email: to, name: me.name, lang: me.lang, passHash: me.passHash, createdAt: cur.createdAt, sessionsAfter: fresh, emailVerifiedAt: copy ? copy.emailVerifiedAt : opts.proved ? fresh : undefined },
+          { loginLocked: true },
+        ),
+        db.sadd(personKey.orgs(toPid), to),
+      ]);
       // The new address's login index (rule 1983: under both login locks, after `getLogin(to)` found nothing or this copy).
       await claimLogin(to, to);
       if (opts.carry) await opts.carry(old, to);

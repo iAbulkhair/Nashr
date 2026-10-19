@@ -37,7 +37,7 @@ import { instructionProposalKeys } from "./instruction-proposals";
 import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
 import { log } from "./log";
-import { type Scope, accountKey, globalKey, workspaceScope, wsKey } from "./keys";
+import { type Scope, accountKey, globalKey, personKey, storedPersonId, workspaceScope, wsKey } from "./keys";
 import { getAccount, normalizeEmail, releaseLogin } from "./auth";
 
 /**
@@ -209,6 +209,10 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   keys.push(...(await forgetPartnerData(e, login)));
   keys.push(accountKey.mcpGrants(e));
   keys.push(`profile:${e}`, accountKey.mcpTokenOf(e), accountKey.brands(e), accountKey.activeBrand(login), accountKey.user(e));
+  // The legacy owner's person row and account list (multi-workspace M1, rule 2132: `createUser` writes both under the
+  // account id, the owner's person id). A `p_` person keeps its row: it may own or belong to other accounts (release M2).
+  const self = storedPersonId(e);
+  keys.push(personKey.person(self), personKey.orgs(self));
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
   // referral graph, share-bonus markers and activity history behind, so re-registering the same address inherited
   // them. The other `notifseen:` markers are not listed: they live a week at most after their last write (Reem's to-do

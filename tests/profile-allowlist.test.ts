@@ -38,7 +38,8 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     email: u.email,
     name: "Owner Name",
     phone: "+966500000787",
-    passHash: u.passHash,
+    // The legacy mirror of the person's hash (rule 2132): storage only, never a profile field.
+    passHash: "$2b$10$profileallowlistfixturehashhhhhhhhhhhhhhhhhhhhhhhhhhhh",
     plan: "agency",
     credits: 1300,
     trialEnds: iso(-30),

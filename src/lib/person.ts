@@ -1,11 +1,12 @@
 import { db } from "./db";
 import { log } from "./log";
 import { withNamedLock } from "./locks";
-import { normalizeEmail, type User } from "./auth";
-import { accountKey, personKey, type PersonId } from "./keys";
+import { getUser, normalizeEmail, saveUser, type User } from "./auth";
+import { accountKey, personKey, storedAccountId, type AccountId, type PersonId } from "./keys";
 import { parseStored, PersonRow, type PersonRowValue } from "./stored";
-import { ownerOf } from "./membership";
-import { memberPid, type Member } from "./team";
+import { listOrgs, ownerOf } from "./membership";
+import { pmap } from "./parallel";
+import { memberPid, saveMember, withMemberLock, type Member } from "./team";
 import { keptSuspension } from "./suspension";
 
 /**
@@ -35,7 +36,9 @@ import { keptSuspension } from "./suspension";
  * Either way the mismatch is logged as `person stale` (shape only, no values). Every M1 credential write mirrors both
  * records, so in steady state they never differ.
  *
- * Read-only in this module apart from the lock; the writers come with the credential task (`updatePerson`).
+ * Writers (rule 2132, credential part): `updatePerson` for every change of a password, name, language, revocation stamp
+ * or address proof, and `createPersonRecord` for a new login. Both set `createdAt`; `updatePerson` mirrors the legacy
+ * record (see there), so a build rolled back to R1 reads the same credentials and the stale guard never fires.
  */
 
 /** A person as read: the stored row's fields, the id it was read under, and which record it came from. */
@@ -121,6 +124,11 @@ function legacyOver(row: PersonRowValue, legacy: Legacy): PersonRowValue {
  * none of the three is this person's.
  */
 export function personFromRaw(pid: PersonId, rawPerson: unknown, rawUser: unknown, rawMember: unknown): Person | null {
+  return resolvePerson(pid, rawPerson, rawUser, rawMember)?.person ?? null;
+}
+
+/** `personFromRaw`, plus the legacy record that backs the person (the one `updatePerson` mirrors to), or null. */
+function resolvePerson(pid: PersonId, rawPerson: unknown, rawUser: unknown, rawMember: unknown): { person: Person; legacy: Legacy | null } | null {
   const legacy = fromOwner(pid, rawUser) ?? fromMember(pid, rawMember);
   const row = parseStored("person", PersonRow, rawPerson, null);
   if (row) {
@@ -129,7 +137,7 @@ export function personFromRaw(pid: PersonId, rawPerson: unknown, rawUser: unknow
     if (legacy && newer(legacy.row.createdAt, row.createdAt)) {
       // Born after the row: a leftover, maybe another human's. It lends nothing but a set suspension (fail closed).
       log.warn("person stale", { shape: "person", source: legacy.source });
-      return { ...legacy.row, ...keptSuspension(row), pid, source: legacy.source };
+      return { person: { ...legacy.row, ...keptSuspension(row), pid, source: legacy.source }, legacy };
     }
     if (legacy && newer(legacy.row.sessionsAfter, row.sessionsAfter)) {
       // The same human, changed by a rolled-back build: the legacy record's own fields, the row's person-only ones.
@@ -137,11 +145,11 @@ export function personFromRaw(pid: PersonId, rawPerson: unknown, rawUser: unknow
       log.warn("person stale", { shape: "person", source: legacy.source });
       const merged = legacyOver(row, legacy);
       const stamps = defined({ sessionsAfter: later(row.sessionsAfter, legacy.row.sessionsAfter), devicesAfter: later(row.devicesAfter, legacy.row.devicesAfter) });
-      return { ...merged, ...stamps, pid, source: legacy.source };
+      return { person: { ...merged, ...stamps, pid, source: legacy.source }, legacy };
     }
-    return { ...row, pid, source: "person" };
+    return { person: { ...row, pid, source: "person" }, legacy };
   }
-  return legacy ? { ...legacy.row, pid, source: legacy.source } : null;
+  return legacy ? { person: { ...legacy.row, pid, source: legacy.source }, legacy } : null;
 }
 
 /** The one reader of a person (rule 2134): `person:{pid}`, `user:{pid}` and `member:{pid}` in ONE round. */
@@ -154,4 +162,116 @@ export async function getPerson(pid: PersonId): Promise<Person | null> {
  * Run `fn` under `lock:person:{pid}` (about 3 s wait, always released). Lock order (rule 2139): `inviteuse` →
  * `lock:team` → `lock:login` → `lock:person` → `lock:member` → `lock:user`. Not reentrant.
  */
-export const withPersonLock = <T,>(pid: PersonId, fn: () => Promise<T>): Promise<T> => withNamedLock(personKey.lock(pid), fn, "person_lock_timeout");
+export const withPersonLock = <T,>(pid: PersonId, fn: () => Promise<T>): Promise<T> => withNamedLock(personKey.lock(pid), fn, PERSON_LOCK_TIMEOUT);
+
+/** What `withPersonLock` throws when the lock stays taken; routes answer it 409 `busy` (nothing was written). */
+export const PERSON_LOCK_TIMEOUT = "person_lock_timeout";
+export const isPersonLockTimeout = (e: unknown): boolean => e instanceof Error && e.message === PERSON_LOCK_TIMEOUT;
+
+/** The credential and profile fields a write may change (`updatePerson`). */
+export type PersonPatch = Partial<Pick<PersonRowValue, "name" | "lang" | "passHash" | "sessionsAfter" | "devicesAfter" | "emailVerifiedAt">>;
+
+const valid = (v: unknown): v is string => Number.isFinite(time(v));
+
+/** `fn` on the account `aid` under its user lock, or without it when the caller holds that lock (`held`). A gone account is skipped. */
+async function onAccount(aid: AccountId, held: AccountId | undefined, fn: (x: User) => Promise<void>): Promise<void> {
+  if (aid === held) {
+    const x = await getUser(aid);
+    if (x) await fn(x);
+    return;
+  }
+  const { withUserLock } = await import("./credits");
+  try {
+    await withUserLock(aid, fn);
+  } catch (e) {
+    if (!(e instanceof Error && e.message === "user_not_found")) throw e;
+  }
+}
+
+/**
+ * The legacy record the person came from gets the row's values for every person field its type carries (never the
+ * address or the birth date, which no credential write moves), so an R1 build reads the same credentials and the stale
+ * guard sees two records that agree. Only defined values are written: a mirror never deletes a field, and never moves a
+ * proof date the legacy record already holds. Owner: under
+ * `lock:user:{pid}` (or the caller's hold of it), only while `ownerOf` still names this person. Member: under
+ * `lock:member`, only while the record's person id is this one.
+ */
+async function mirror(pid: PersonId, legacy: Legacy, row: PersonRowValue, held: AccountId | undefined): Promise<void> {
+  const values = defined(Object.fromEntries(legacy.fields.filter((f) => f !== "email" && f !== "createdAt").map((f) => [f, row[f]])));
+  if (legacy.source === "owner") {
+    await onAccount(storedAccountId(pid), held, async (x) => {
+      if (ownerOf(x) !== pid) return;
+      // A proof date already on the account is never moved (as `markVerified` and the reset keep the first date).
+      await saveUser(Object.assign(x, values, x.emailVerifiedAt ? { emailVerifiedAt: x.emailVerifiedAt } : {}));
+    });
+    return;
+  }
+  await withMemberLock(pid, async (m) => {
+    if (memberPid(m) !== pid) return;
+    await saveMember(Object.assign(m, values));
+  });
+}
+
+/**
+ * Reconciliation 11: a proved address is the person's, and every account the person owns reads it (`emailVerified`
+ * of the account gates sign-in for its owner and members, rule 751). Each account is stamped under its own user lock
+ * (after the person lock, rule 2139), only when unset, so a repeat never moves the date. The legacy home of a legacy
+ * owner was already written by the mirror.
+ */
+async function stampOwned(pid: PersonId, stamp: string, mirrored: boolean, held: AccountId | undefined): Promise<void> {
+  const owned = (await listOrgs(pid)).filter((o) => o.role === "owner" && !(mirrored && o.aid === storedAccountId(pid)));
+  await pmap(owned, async ({ aid }) =>
+    onAccount(aid, held, async (x) => {
+      if (ownerOf(x) !== pid || x.emailVerifiedAt) return;
+      x.emailVerifiedAt = stamp;
+      await saveUser(x);
+    }),
+  );
+}
+
+/**
+ * The one writer of a person's credentials (rule 2132, credential part). Under `lock:person:{pid}` (unless the caller
+ * holds it, `personLocked`): read the person as `getPerson` does, write `person:{pid}` as that view plus `patch` (unknown
+ * stored fields kept), and mirror the person fields to the legacy record that backs the person, FIRST: a legacy lock
+ * that cannot be had throws before anything is written, and a person write that fails after it leaves the legacy
+ * record newer, which the stale guard reads. `createdAt` is the legacy birth when a legacy record backs the person
+ * (an owner's `createdAt`, a member's `acceptedAt`), so the birth guard never fires on a mirrored row.
+ *
+ * `emailVerifiedAt` only fills an absent stamp (a repeat never moves the date) and also stamps every account the person
+ * owns (`stampOwned`). `userLocked` names an account whose `lock:user` the caller holds and whose record it saved before
+ * this call: that record is read and written here without its lock (locks are not reentrant).
+ *
+ * Null, with nothing written, when no record holds the person.
+ */
+export async function updatePerson(pid: PersonId, patch: PersonPatch, opts: { personLocked?: boolean; userLocked?: AccountId } = {}): Promise<Person | null> {
+  const run = async (): Promise<Person | null> => {
+    const [p, u, m] = await Promise.all([db.get(personKey.person(pid)), db.get(accountKey.user(pid)), db.get(accountKey.member(pid))]);
+    const read = resolvePerson(pid, p, u, m);
+    if (!read) return null;
+    const { person, legacy } = read;
+    const { pid: _pid, source: _source, ...view } = person;
+    void _pid; void _source;
+    const changes: PersonPatch = defined(patch);
+    if (changes.emailVerifiedAt && view.emailVerifiedAt) delete changes.emailVerifiedAt;
+    const birth = legacy && valid(legacy.row.createdAt) ? legacy.row.createdAt : valid(view.createdAt) ? view.createdAt : new Date().toISOString();
+    const row = { ...view, ...changes, pid, createdAt: birth } as PersonRowValue;
+    if (legacy) await mirror(pid, legacy, row, opts.userLocked);
+    await db.set(personKey.person(pid), row);
+    if (patch.emailVerifiedAt && row.emailVerifiedAt) await stampOwned(pid, row.emailVerifiedAt, legacy?.source === "owner", opts.userLocked);
+    return { ...row, pid, source: "person" };
+  };
+  return opts.personLocked ? run() : withPersonLock(pid, run);
+}
+
+/**
+ * A new login's person row (plan reconciliation 6): `SET person:{pid}` whole, so a leftover row of a deleted account at
+ * the same id (an address registered again) lends it nothing. The caller holds `lock:login` of the address and has
+ * checked it is free, so no other write of this person can be running.
+ */
+export async function createPersonRecord(
+  input: { pid: PersonId; email: string; name: string; lang: "ar" | "en"; passHash?: string; createdAt: string; sessionsAfter: string; emailVerifiedAt?: string },
+  opts: { loginLocked: true },
+): Promise<void> {
+  void opts;
+  await db.set(personKey.person(input.pid), defined({ ...input, email: normalizeEmail(input.email) }));
+}

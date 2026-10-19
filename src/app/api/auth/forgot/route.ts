@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { resetPassword } from "@/emails";
-import { acct, getLogin, normalizeEmail } from "@/lib/auth";
+import { getLogin, normalizeEmail } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { mailReady, sendEmail } from "@/lib/notify";
 import { appOrigin } from "@/lib/origin";
@@ -38,12 +38,10 @@ export async function POST(req: Request) {
   if (refused) return refused;
   if (!(await allow(`forgot:em:${email}`, 3, 900))) return NextResponse.json({ ok: true, mail });
   const login = await getLogin(email);
-  // A member whose account is gone has nothing to sign in to: no link, and the same answer as an unknown address. A
-  // person no legacy record backs (multi-workspace M1, test persons only: an account it owns under another id, or only
-  // membership rows) gets no link either until its credential write comes with `updatePerson`: the reset route could
-  // not write its password.
-  const legacy = !!login && (login.kind === "owner" ? login.pid === acct(login.user) : !!login.member);
-  const target: ResetRecord | null = !login || !legacy ? null : login.kind === "owner" ? { email: login.user.email, kind: "owner" } : login.owner && login.member ? { email: login.member.email, kind: "member" } : null;
+  // A member whose account is gone has nothing to sign in to: no link, and the same answer as an unknown address. The link
+  // names the PERSON's address (multi-workspace M1, rule 2132): the reset route writes the person's password with
+  // `updatePerson`, for a legacy login and a `p_` person alike.
+  const target: ResetRecord | null = !login ? null : login.kind === "owner" ? { email: login.person.email, kind: "owner" } : login.owner ? { email: login.person.email, kind: "member" } : null;
   if (target && mail) {
     const token = randomBytes(32).toString("hex");
     await db.set(`pwreset:${createHash("sha256").update(token).digest("hex")}`, target, 3600);

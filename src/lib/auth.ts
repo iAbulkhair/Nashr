@@ -93,7 +93,12 @@ export type User = {
   email: string;
   name: string;
   phone: string;
-  passHash: string;
+  /**
+   * The owner's password hash, a MIRROR of the person's (multi-workspace M1, rule 2132): written only by `createUser`
+   * and `updatePerson`, read by nobody in this build (the person is read: `login.person`, `getPerson`). Kept so a build
+   * rolled back to R1 still signs the owner in. Absent on an account a `p_` person owns: its password is on the person.
+   */
+  passHash?: string;
   plan: Plan;
   credits: number;
   trialEnds: string; // ISO
@@ -365,30 +370,45 @@ export async function releaseLogin(email: string, pid: string, opts: { locked?: 
  * A new owner account. Callers hold `lock:login:{email}` and have checked `getLogin(email)` is null under it. The id is
  * the address while `OPAQUE_IDS` is off (rule 1996); `opaque` is for tests that need id ≠ email (rule 1985). The login
  * index is written with the record: the person is the account's owner, whose person id is the account id.
+ *
+ * Multi-workspace M1 (rule 2132): the person row `person:{id}` is written fresh beside the account (plan reconciliation
+ * 6: a leftover row of a deleted account at this id lends nothing), with the same hash, birth and session stamp, and
+ * `orgs:{id}` names the account. Without a password (a Google sign-up) the person has no hash, and the account keeps a
+ * hash of random bytes only so a build rolled back to R1, which compares `user.passHash`, never meets a record without
+ * one. `person: "p"` (tests only, rule 2132; a source scan pins that no route passes it) makes the M2 shape: a `p_`
+ * person holding the credentials, and an account without them that names it in `ownerPid`.
  */
-export async function createUser(input: { email: string; name: string; phone: string; password: string; lang: "ar" | "en" }, opts: { opaque?: boolean } = {}): Promise<User> {
+export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en" }, opts: { opaque?: boolean; person?: "p" } = {}): Promise<User> {
   const email = normalizeEmail(input.email);
   const now = new Date();
-  const u: User = {
+  const stamp = now.toISOString();
+  const passHash = input.password ? await bcrypt.hash(input.password, 10) : undefined;
+  const account: User = {
     id: idForNewAccount(email, opts.opaque),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",
-    passHash: await bcrypt.hash(input.password, 10),
     plan: "trial",
     credits: PLAN_CREDITS.trial,
     trialEnds: new Date(now.getTime() + 3 * 864e5).toISOString(),
-    createdAt: now.toISOString(),
+    createdAt: stamp,
     lang: input.lang,
-    // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
-    // session issued before this account existed: a re-registered address never inherits an old login.
-    sessionsAfter: now.toISOString(),
     gatedSignup: true,
     // What the signup notice under the form named, from the versions in code (rule 1325).
     consent: signupConsent(input.lang, now),
   };
+  const [{ createPersonRecord }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
+  const pid = storedPersonId(opts.person === "p" ? newPersonId() : acct(account));
+  // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
+  // session issued before this person existed: a re-registered address never inherits an old login.
+  const person = { pid, email, name: account.name, lang: account.lang, passHash, createdAt: stamp, sessionsAfter: stamp };
+  const u: User =
+    opts.person === "p"
+      ? { ...account, ownerPid: pid }
+      : { ...account, passHash: passHash ?? (await bcrypt.hash(randomBytes(32).toString("base64url"), 10)), sessionsAfter: stamp };
   await saveUser(u);
-  await claimLogin(email, acct(u));
+  await Promise.all([createPersonRecord(person, { loginLocked: true }), db.sadd(personKey.orgs(pid), acct(u))]);
+  await claimLogin(email, pid);
   return u;
 }
 
@@ -862,7 +882,7 @@ export type Login =
  */
 export async function getLogin(email: string): Promise<Login | null> {
   const e = normalizeEmail(email);
-  const [{ getMember, onRoster, memberPid }, { personFromRaw }, { listOrgs, ownerOf }] = await Promise.all([import("./team"), import("./person"), import("./membership")]);
+  const [{ getMember, onRoster, memberPid }, { personFromRaw }, { legacyHomeFrom, listOrgs, ownerOf }] = await Promise.all([import("./team"), import("./person"), import("./membership")]);
   // The address as a person id (a legacy owner's or member's, while `OPAQUE_IDS` is off), and the id the index names.
   const self = storedPersonId(e);
   const [idx, own, m, ownRow] = await Promise.all([readLoginIndex(e), getAccount(e), getMember(e), db.get<unknown>(personKey.person(self))]);
@@ -881,9 +901,13 @@ export async function getLogin(email: string): Promise<Login | null> {
     const person = listed ? personFromRaw(pid, row, null, m) : null;
     if (here(person)) return { kind: "member", member: m, owner, pid, person, acct: m.memberOf ? storedAccountId(m.memberOf) : null };
   }
-  // Neither legacy record holds: a person read as `getPerson` reads it, through its forward records only.
-  const person = personFromRaw(pid, row, u, far ? farMember : m);
-  if (!here(person) || person.source !== "person") return null;
+  // Neither legacy record holds: a person read as `getPerson` reads it, through its forward records only. Only a person
+  // no legacy record backs (a `p_` person) signs in this way: a legacy owner or member whose own record no longer holds
+  // the address (an account that moved, a member removed from the roster) gets nothing, as in R1, even though its
+  // credentials are mirrored on a `person:` row (rule 2132).
+  const legacyRec = far ? farMember : m;
+  const person = personFromRaw(pid, row, u, legacyRec);
+  if (!here(person) || person.source !== "person" || legacyHomeFrom(pid, u, legacyRec)) return null;
   const orgs = await listOrgs(pid);
   const owned = orgs.find((o) => o.role === "owner");
   const first = owned ?? orgs[0];

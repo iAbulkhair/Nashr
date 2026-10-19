@@ -3,6 +3,8 @@ import { vi } from "vitest";
 import { acct, createUser, getUser, saveUser, sessionIds, sessionKey, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createMember } from "@/lib/team";
+import { updatePerson } from "@/lib/person";
+import { ownerOf } from "@/lib/membership";
 
 const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter: Promise<unknown>[]; __testAfterInScope: boolean; __testHeaders?: Record<string, string> };
 
@@ -80,13 +82,19 @@ let n = 0;
 /**
  * Stamp `emailVerifiedAt` on an existing owner, as the verify route does once the code matches (rule 751: an owner
  * without it reads as signed out). For fixtures that build the owner by hand (`createUser`, the signup route) and then
- * sign in. A plain read-modify-write: the account is brand new and nobody else holds it.
+ * sign in. Through `updatePerson` (multi-workspace M1, reconciliation 11): the owner person and every account it owns
+ * get the stamp, as production writes it. An account whose owner no record holds (a hand-built `ownerPid`) gets the
+ * stamp directly.
  */
 export async function markVerified(email: string): Promise<User> {
   const stored = (await getUser(email))!;
-  stored.emailVerifiedAt = new Date().toISOString();
-  await saveUser(stored);
-  return stored;
+  const at = new Date().toISOString();
+  await updatePerson(ownerOf(stored), { emailVerifiedAt: at });
+  const after = (await getUser(email))!;
+  if (after.emailVerifiedAt) return after;
+  after.emailVerifiedAt = at;
+  await saveUser(after);
+  return after;
 }
 
 /**
@@ -105,11 +113,7 @@ export async function newUser(prefix = "u", { verified = true }: { verified?: bo
  */
 export async function newOpaqueUser(prefix = "o", { verified = true }: { verified?: boolean } = {}): Promise<User> {
   const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, { opaque: true });
-  if (!verified) return u;
-  const stored = (await getUser(acct(u)))!;
-  stored.emailVerifiedAt = new Date().toISOString();
-  await saveUser(stored);
-  return stored;
+  return verified ? markVerified(acct(u)) : u;
 }
 
 /**

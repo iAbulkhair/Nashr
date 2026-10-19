@@ -124,7 +124,9 @@ describe("rule 2132: a legacy owner and a legacy member sign in exactly as in R1
   it("getLogin keeps R1's kinds and ids, and adds the person and the account", async () => {
     const o = await newUser("go");
     const m = await newMember(o);
-    expect(await getLogin(o.email)).toMatchObject({ kind: "owner", pid: acct(o), acct: acct(o), person: { email: o.email, source: "owner" } });
+    // The owner's person is read from the `person:` row `createUser` mirrors since Task 5 (rule 2132); a member record
+    // written before Task 6 is still read as the legacy member.
+    expect(await getLogin(o.email)).toMatchObject({ kind: "owner", pid: acct(o), acct: acct(o), person: { email: o.email, source: "person" } });
     expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email, acct: acct(o), member: { email: m.email }, person: { email: m.email, source: "member" } });
   });
 
@@ -228,8 +230,8 @@ describe("rule 2136: a p_ person signs in to the account the pick order names", 
   });
 });
 
-describe("forgot password: a person no legacy record backs gets no link until its credential write exists (Task 5)", () => {
-  it("a p_ owner and a p_ member get the same answer and no mail; a legacy owner still gets its link", async () => {
+describe("forgot password: a person no legacy record backs gets its link like a legacy login (Task 5, rule 2132)", () => {
+  it("a p_ owner, a p_ member and a legacy owner each get the same answer and a link at their own address", async () => {
     vi.stubEnv("RESEND_API_KEY", "test-key");
     vi.stubEnv("MAIL_FROM", "Noor <noor@mail.nashr.test>");
     const forgot = (email: string) => forgotRoute.POST(json("/api/auth/forgot", "POST", { email, lang: "en" }, ip()));
@@ -240,9 +242,9 @@ describe("forgot password: a person no legacy record backs gets no link until it
     const o = await newUser("fl");
     expect(await answer(await forgot(po))).toEqual({ status: 200, body: { ok: true, mail: true } });
     expect(await answer(await forgot(pm))).toEqual({ status: 200, body: { ok: true, mail: true } });
-    expect(mailed).toEqual([]);
+    expect(mailed).toEqual([po, pm]);
     expect(await answer(await forgot(o.email))).toEqual({ status: 200, body: { ok: true, mail: true } });
-    expect(mailed).toEqual([o.email]);
+    expect(mailed).toEqual([po, pm, o.email]);
   });
 });
 

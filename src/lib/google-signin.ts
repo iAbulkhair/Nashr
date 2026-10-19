@@ -1,7 +1,9 @@
 import { createHash, createPublicKey, randomBytes, verify as verifySig, type JsonWebKey } from "crypto";
 import { cookies } from "next/headers";
 import { db } from "./db";
-import { createUser, getLogin, normalizeEmail, saveUser, validEmail, type Login } from "./auth";
+import { createUser, getLogin, normalizeEmail, validEmail, type Login } from "./auth";
+import { updatePerson } from "./person";
+import { ownerOf } from "./membership";
 import { appOrigin } from "./origin";
 import { sameSecret } from "./rate";
 import { safeNext } from "./safe-next";
@@ -198,10 +200,10 @@ export async function resolveGoogle(id: GoogleIdentity, mode: "login" | "signup"
     const { getMember } = await import("./team");
     if (await getMember(id.email)) return { kind: "refused", error: "google_not_linked" };
     if (mode !== "signup") return { kind: "refused", error: "google_no_account" };
-    // A random password nobody knows: the account signs in with Google, or sets a password with "forgot password".
-    const u = await createUser({ email: id.email, name: id.name, phone: "", password: b64url(randomBytes(32)), lang });
-    const proved = { ...u, emailVerifiedAt: new Date().toISOString() };
-    await saveUser(proved);
+    // No password (multi-workspace M1, rule 2132): the person has no hash, so it signs in with Google, or sets a password
+    // with "forgot password". Google proved the address: the person and the account it owns are stamped (reconciliation 11).
+    const u = await createUser({ email: id.email, name: id.name, phone: "", lang });
+    await updatePerson(ownerOf(u), { emailVerifiedAt: new Date().toISOString() });
     await writeLink(id.email, id.sub);
     // The new login as every sign-in reads it (its person included), still under the login lock.
     const login = await getLogin(id.email);
