@@ -31,15 +31,16 @@ const find = (media: RegExp | "", sel: RegExp) =>
   all.filter(([m, s]) => (media === "" ? m === "" : media.test(m)) && sel.test(s)).map(([, , b]) => b).join(";");
 
 describe("the lineup wraps and the chosen figure grows in place (rule 515)", () => {
-  it("wraps 3+3+3 by default, 5+4 from 600px and one row of nine from 1200px", () => {
+  // Rule 2310 replaced the 5+4 step from 600px and the 1200px row with one row of nine from 700px.
+  it("wraps 3+3+3 by default and stands in one row of nine from 700px", () => {
     expect(find("", /^\.cast$/)).toMatch(/display:\s*flex/);
     expect(find("", /^\.cast$/)).toMatch(/flex-wrap:\s*wrap/);
     expect(find("", /^\.cast > li$/)).toMatch(/flex:\s*0 0 calc\(100% \/ 3\)/);
-    expect(find(/min-width:\s*600px/, /^\.cast > li$/)).toMatch(/flex-basis:\s*calc\(100% \/ 5\)/);
-    expect(find(/min-width:\s*1200px/, /^\.cast > li$/)).toMatch(/flex-basis:\s*calc\(100% \/ 9\)/);
+    expect(find(/min-width:\s*700px/, /^\.cast > li$/)).toMatch(/flex-basis:\s*calc\(100% \/ 9\)/);
   });
-  it("keeps each figure between 70px and 92px wide", () => {
+  it("keeps each figure between 70px and 92px wide on phones, 52px and 84px in the one row", () => {
     expect(find("", /^\.fig$/)).toMatch(/width:\s*clamp\(70px,\s*[^,]+,\s*92px\)/);
+    expect(find(/min-width:\s*700px/, /^\.fig$/)).toMatch(/width:\s*clamp\(52px,\s*[^,]+,\s*84px\)/);
   });
   it("grows the chosen figure by transform from its feet, and the chosen state changes nothing else's size", () => {
     expect(find("", /\.who:is\(:hover, :focus-visible, \[aria-pressed="true"\], \[data-turn\]\) \.fig/)).toMatch(/transform:\s*scale\(1\.25\)/);

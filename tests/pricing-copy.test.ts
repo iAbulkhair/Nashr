@@ -354,8 +354,8 @@ describe("public copy: chat messages from CHAT_ALLOWANCE and the overflow hold (
   });
 
   it("the trial line states the trial's credits and chat messages", () => {
-    expect(dict.en.pricing.trial).toBe(`3-day free trial: ${PLAN_CREDITS.trial} credits and ${chatMessagesText("en", M.trial)} — no card`);
-    expect(dict.ar.pricing.trial).toBe(`تجربة 3 أيام مجاناً: ${PLAN_CREDITS.trial} كريدت و${chatMessagesText("ar", M.trial)} — بدون بطاقة`);
+    expect(dict.en.pricing.trial).toBe(`3-day free trial: ${PLAN_CREDITS.trial} credits and ${chatMessagesText("en", M.trial)}, no card`);
+    expect(dict.ar.pricing.trial).toBe(`تجربة 3 أيام مجاناً: ${PLAN_CREDITS.trial} كريدت و${chatMessagesText("ar", M.trial)}، بدون بطاقة`);
   });
 
   it("the cost FAQ: chat within the plan's messages, paused until the 1st unless a paid owner continues on credits, at most the hold", () => {

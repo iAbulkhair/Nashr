@@ -102,13 +102,6 @@
   font-size: 0.8rem;
   font-weight: 600;
 }
-.aiLabel::before {
-  content: "";
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--color-foreground);
-}
 .value {
   font-family: var(--home-body);
   font-size: clamp(0.98rem, 1.2vw, 1.2rem);
@@ -157,9 +150,9 @@
 }
 
 /*
- * The cast (rule 515, prototype D's cover). Three to a row on phones, five and four from 600px, all nine in one row
- * from 1200px. Each place is a fixed share of the row, so a name tag never widens it and every figure draws at one size
- * (70-92px). The chosen figure grows from its feet by a transform only: nothing else changes size, so the rows never
+ * The cast (rule 515, prototype D's cover). Three to a row on phones, all nine in one row from 700px, so the form under
+ * the team stays on the first screen of a tablet and a laptop (rule 2310). Each place is a fixed share of the row, so a name tag never widens it and every figure draws at one size
+ * (70-92px on phones, 52-84px in the one row). The chosen figure grows from its feet by a transform only: nothing else changes size, so the rows never
  * get taller and the page below never moves. The row gap leaves room for the grown head under the row above.
  */
 .castWrap {
@@ -184,10 +177,7 @@
   display: flex;
   justify-content: center;
 }
-@media (min-width: 600px) {
-  .cast > li { flex-basis: calc(100% / 5); }
-}
-@media (min-width: 1200px) {
+@media (min-width: 700px) {
   .cast > li { flex-basis: calc(100% / 9); }
 }
 .who {
@@ -212,6 +202,9 @@
   width: clamp(70px, 12vw, 92px);
   transform-origin: 50% 100%;
   transition: transform var(--duration-normal) var(--ease-out);
+}
+@media (min-width: 700px) {
+  .fig { width: clamp(52px, 7vw, 84px); }
 }
 .fig > svg { position: relative; z-index: 1; display: block; width: 100%; height: auto; }
 .pud {
@@ -336,7 +329,16 @@
 
 /* Cover */
 .cover { padding: 30px 20px 24px; gap: 18px; }
-@media (min-width: 700px) { .cover { padding: 40px 40px 32px; } }
+/*
+ * From 700px the cover is tighter (rule 2310): with the cast in one row, the form under it ends inside a 1440x900 and a
+ * 768x1024 screen. The thought keeps 96px above the row; a tall one may reach over the label line, never the masthead.
+ */
+@media (min-width: 700px) {
+  .cover { padding: 32px 40px 28px; gap: 12px; }
+  .cover > .lineup { padding-block-start: 0; }
+  .cover .lineupHead { margin-block-end: 8px; }
+  .cover .castWrap { padding-block-start: 96px; }
+}
 .issue { position: absolute; top: -15px; inset-inline-end: 18px; transform: rotate(4deg); }
 .ctop { display: grid; gap: 12px 30px; }
 @media (min-width: 900px) {
