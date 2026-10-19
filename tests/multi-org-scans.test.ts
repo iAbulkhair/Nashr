@@ -84,45 +84,73 @@ const REQUEST_CALL = /\b[\w$.]+\(\s*(?:await\s+)?(?:req|request|params|searchPar
 /**
  * Calls that take the request only to authenticate it (a session, the founder's key, an MCP bearer) or to limit its
  * rate: their result is a checked identity or a yes/no, never data the caller typed, so it is not request data.
+ * `exchangeCode` (src/lib/google-signin.ts) trades the OAuth code with the PKCE verifier and returns only an ID token
+ * Google signed, verified with `verifyIdToken` against the client id and the flow's nonce: a checked identity too.
  */
-const AUTH_CALL = /^(?:await\s+)?(?:currentUser|currentUserUnverified|currentPerson|isAdmin|isAdminCookie|adminActor|adminKeySession|userFromBearer|bearerUser|limit|rateLimit|allow|ipOf|clientIp|sameOrigin|checkOrigin)\(/;
+const AUTH_CALL = /^(?:currentUser|currentUserUnverified|currentPerson|isAdmin|isAdminCookie|adminActor|adminKeySession|userFromBearer|bearerUser|limit|rateLimit|allow|ipOf|clientIp|sameOrigin|checkOrigin|exchangeCode)$/;
 /**
  * Reads of a record this app wrote, looked up by a request value (the console's lookup by address, rule 1982; a reset
  * link's record by its token's hash; an OAuth flow's server-side state by its random id). The ids inside such a record
  * were written by this app and are re-checked by its readers, so taint stops at the lookup. The lookup's own argument is
  * still scanned: `getMembership(body.acct, …)` is a hit on `body.acct`.
  */
-const STORED_LOOKUP = /^(?:await\s+)?(?:db\.get(?:<[^>]*>)?|getLogin|getMember|getMembership|getAccount|getUser|readLoginIndex|takeState)\(/;
+const STORED_LOOKUP = /^(?:db\.get|getLogin|getMember|getMembership|getAccount|getUser|readLoginIndex|takeState)$/;
 
+/** `e` without an `await`, parentheses, a type assertion or a non-null mark around it (none of them brings in a value). */
+function bare(e: ts.Expression): ts.Expression {
+  let x = e;
+  while (ts.isAwaitExpression(x) || ts.isParenthesizedExpression(x) || ts.isAsExpression(x) || ts.isSatisfiesExpression(x) || ts.isNonNullExpression(x)) x = x.expression;
+  return x;
+}
+/** The WHOLE expression is one call whose callee matches `names`: `await db.get(k) ?? b` or `currentUser() || b` is not. */
+const isCallTo = (e: ts.Expression, names: RegExp, sf: ts.SourceFile): boolean => {
+  const x = bare(e);
+  return ts.isCallExpression(x) && names.test(x.expression.getText(sf));
+};
 /** A stored lookup, alone or as every element of a `Promise.all([...])` round (a `cond ? lookup : null` element counts). */
 function storedLookup(e: ts.Expression, sf: ts.SourceFile): boolean {
-  let x: ts.Expression = e;
-  while (ts.isAwaitExpression(x) || ts.isParenthesizedExpression(x)) x = x.expression;
-  if (STORED_LOOKUP.test(x.getText(sf))) return true;
+  if (isCallTo(e, STORED_LOOKUP, sf)) return true;
+  const x = bare(e);
   if (ts.isCallExpression(x) && x.expression.getText(sf) === "Promise.all" && x.arguments.length === 1 && ts.isArrayLiteralExpression(x.arguments[0])) {
     return x.arguments[0].elements.every((el) => {
       const branches = ts.isConditionalExpression(el) ? [el.whenTrue, el.whenFalse] : [el];
-      return branches.every((b) => b.kind === ts.SyntaxKind.NullKeyword || STORED_LOOKUP.test(b.getText(sf)));
+      return branches.every((b) => b.kind === ts.SyntaxKind.NullKeyword || isCallTo(b as ts.Expression, STORED_LOOKUP, sf));
     });
   }
   return false;
 }
+/** The value is a checked identity or an app-written record: taint stops here (the call's own arguments are still scanned). */
+const exempt = (e: ts.Expression, sf: ts.SourceFile): boolean => isCallTo(e, AUTH_CALL, sf) || storedLookup(e, sf);
+
+/** The identifiers a binding or an assignment target names, without property names (`{ a: x }` names `x`). */
+function targetNames(t: ts.Node): string[] {
+  const names: string[] = [];
+  walk(t, (b) => {
+    if (!ts.isIdentifier(b)) return;
+    const p = b.parent;
+    if (ts.isBindingElement(p) && p.propertyName === b) return;
+    if (ts.isPropertyAssignment(p) && p.name === b) return;
+    if (ts.isPropertyAccessExpression(p) && p.name === b) return;
+    names.push(b.text);
+  });
+  return names;
+}
 
 function requestIdReads(sf: ts.SourceFile): { at: string; name: string; text: string; calls: string[] }[] {
-  // Every variable this file sets from the request, by name (scoping ignored: over-approximates on purpose). Taint:
-  // a declaration is request data when its initializer reads the request directly (`FROM_REQUEST`), when it calls a
-  // helper with the request or its parts (`REQUEST_CALL`, unless the helper only authenticates), or when it mentions a
-  // variable already tainted (`const c = raw`, `JSON.parse(raw)`, `{ data } = b`). Repeated to a fixed point, so an
-  // alias of an alias is caught however the declarations are ordered.
+  // Every variable this file sets from the request, by name (scoping ignored: over-approximates on purpose). A
+  // declaration (`const b = …`) or a plain assignment (`b = …`, `({ a } = …)`) taints its names when the right-hand
+  // side reads the request directly (`FROM_REQUEST`), calls a helper with the request or its parts (`REQUEST_CALL`), or
+  // mentions a variable already tainted (`const c = raw`, `b = JSON.parse(raw)`, `{ data } = b`), unless the WHOLE
+  // right-hand side is one authentication call or one stored lookup (`exempt`). Repeated to a fixed point, so an alias
+  // of an alias is caught however the statements are ordered. Not followed: a value passed into a local function or a
+  // callback and read there under the parameter's own name.
   const fromRequest = new Set<string>();
-  const decls: { names: string[]; init: ts.Expression }[] = [];
+  const sets: { names: string[]; init: ts.Expression }[] = [];
   walk(sf, (n) => {
-    if (ts.isVariableDeclaration(n) && n.initializer) {
-      const names: string[] = [];
-      walk(n.name, (b) => {
-        if (ts.isIdentifier(b) && !(ts.isBindingElement(b.parent) && b.parent.propertyName === b)) names.push(b.text);
-      });
-      decls.push({ names, init: n.initializer });
+    if (ts.isVariableDeclaration(n) && n.initializer) sets.push({ names: targetNames(n.name), init: n.initializer });
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && n.operatorToken.kind <= ts.SyntaxKind.LastAssignment) {
+      const left = bare(n.left);
+      if (ts.isIdentifier(left) || ts.isObjectLiteralExpression(left) || ts.isArrayLiteralExpression(left)) sets.push({ names: targetNames(left), init: n.right });
     }
     if (ts.isParameter(n) && ts.isIdentifier(n.name) && /^(params|searchParams|ctx|context|props)$/.test(n.name.text)) fromRequest.add(n.name.text);
   });
@@ -134,16 +162,15 @@ function requestIdReads(sf: ts.SourceFile): { at: string; name: string; text: st
     return found;
   };
   const direct = (e: ts.Expression): boolean => {
+    if (exempt(e, sf)) return false;
     const t = e.getText(sf);
-    if (AUTH_CALL.test(t) || storedLookup(e, sf)) return false;
     return FROM_REQUEST.test(t) || REQUEST_CALL.test(t);
   };
   for (let changed = true; changed; ) {
     changed = false;
-    for (const d of decls) {
+    for (const d of sets) {
       if (d.names.every((x) => fromRequest.has(x))) continue;
-      const t = d.init.getText(sf);
-      if (direct(d.init) || (!AUTH_CALL.test(t) && !storedLookup(d.init, sf) && mentionsTainted(d.init))) {
+      if (direct(d.init) || (!exempt(d.init, sf) && mentionsTainted(d.init))) {
         for (const x of d.names) if (!fromRequest.has(x)) { fromRequest.add(x); changed = true; }
       }
     }
@@ -172,6 +199,13 @@ function requestIdReads(sf: ts.SourceFile): { at: string; name: string; text: st
       for (const el of n.name.elements) {
         const key = el.propertyName && ts.isIdentifier(el.propertyName) ? el.propertyName.text : ts.isIdentifier(el.name) ? el.name.text : "";
         if (ID_NAMES.has(key)) out.push({ at: where(sf, el), name: key, text: el.getText(sf), calls: [n.initializer.getText(sf)] });
+      }
+    }
+    // ({ acct } = b) with b from the request
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isObjectLiteralExpression(bare(n.left)) && sourced(n.right)) {
+      for (const el of (bare(n.left) as ts.ObjectLiteralExpression).properties) {
+        const key = el.name && ts.isIdentifier(el.name) ? el.name.text : "";
+        if (ID_NAMES.has(key)) out.push({ at: where(sf, el), name: key, text: el.getText(sf), calls: [n.right.getText(sf)] });
       }
     }
     // the wrapper's ({ input: { acct }, query: { pid } }) or a page's ({ params: { aid } }) in a signature
@@ -243,6 +277,32 @@ describe("rule 2112 (scan half): no route or page reads a person or an account i
     expect(probe(`export async function GET(req: Request) { const b = await req.json(); const [x] = await Promise.all([parse(b)]); return x.aid; }`)).toEqual(["aid"]);
     // A call that only authenticates the request is not request data.
     expect(probe(`export async function GET(req: Request) { const u = await userFromBearer(req); return u.actor.pid; }`)).toEqual([]);
+    expect(probe(`export async function GET(req: Request) { const q = new URL(req.url).searchParams; const id = await exchangeCode(q.get("code"), st); let res; res = await resolveGoogle(id, "login", "ar"); return res.login.pid; }`)).toEqual([]);
+    expect(probe(`export async function GET(req: Request) { const q = new URL(req.url).searchParams; const id = (await exchangeCode(q.get("code"), st)) ?? q; return id.pid; }`)).toEqual(["pid"]);
+    // Assignments are followed like declarations.
+    expect(probe(`export async function POST(req: Request) { let b; b = await req.json(); return b.acct; }`)).toEqual(["acct"]);
+    expect(probe(`export async function POST(req: Request) { const raw = await req.text(); let b: unknown = null; try { b = JSON.parse(raw); } catch {} let x; x = b; return (x as { pid?: string }).pid; }`)).toEqual(["pid"]);
+    expect(probe(`export async function POST(req: Request) { let acct; ({ acct } = await req.json()); return acct; }`)).toEqual(["acct"]);
+    // An exemption covers only a WHOLE right-hand side that is the call; anything joined to it keeps the taint.
+    expect(probe(`export async function POST(req: Request) { const b = await req.json(); const x = await db.get(k) ?? b; return x.acct; }`)).toEqual(["acct"]);
+    expect(probe(`export async function POST(req: Request) { const x = await getLogin(e) || await req.json(); return x.aid; }`)).toEqual(["aid"]);
+    expect(probe(`export async function POST(req: Request) { const b = await req.json(); const u = await currentUser() ?? b; return u.pid; }`)).toEqual(["pid"]);
+    expect(probe(`export async function POST(req: Request) { const b = await req.json(); const x = ok ? await getMember(e) : b; return x.ownerPid; }`)).toEqual(["ownerPid"]);
+    expect(probe(`export async function POST(req: Request) { const b = await req.json(); const x = { ...(await getMember(e)), ...b }; return x.acct; }`)).toEqual(["acct"]);
+    expect(probe(`export async function GET() { const rec = (await db.get<{ acct: string }>(k))!; return rec.acct; }`)).toEqual([]);
+  });
+
+  it("a read of the request body by assignment in a real route is caught (mutation probe, in memory)", () => {
+    // src/app/api/oauth/token/route.ts reads its body as `let b = {}; b = await req.json()`. The file is read, an id read
+    // from `b` is added after the client lookup in memory only, and the scan must flag it; the repo file is never written.
+    const f = "src/app/api/oauth/token/route.ts";
+    const real = readFileSync(f, "utf8");
+    const anchor = "  if (!client) return err(\"invalid_client\");\n";
+    expect(real.includes(anchor), `${f} changed: move the mutation anchor`).toBe(true);
+    const scan = (code: string) => requestIdReads(ts.createSourceFile(f, code, ts.ScriptTarget.Latest, true)).map((r) => r.name);
+    expect(scan(real)).toEqual([]);
+    expect(scan(real.replace(anchor, `${anchor}  const forged = b.acct;\n`))).toEqual(["acct"]);
+    expect(scan(real.replace(anchor, `${anchor}  const { pid } = b as { pid?: string };\n`))).toEqual(["pid"]);
   });
 });
 
