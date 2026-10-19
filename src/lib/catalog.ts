@@ -1,5 +1,6 @@
 import { writeFile } from "./files";
 import { safeFetch } from "./safe-fetch";
+import { PAGE_PREFIX_BYTES, responsePrefix } from "./read-capped";
 
 /** Import a store's products from its sitemap → products.md. No API keys, works for Salla/Zid/Shopify/Woo. */
 export type Product = { url: string; title: string; price?: string; description?: string };
@@ -11,7 +12,8 @@ async function get(url: string, ms = 8000) {
   const t = setTimeout(() => c.abort(), ms);
   try {
     const r = await safeFetch(url, { signal: c.signal, headers: UA });
-    return r.ok ? await r.text() : "";
+    // The first 2 MB only, read inside the same deadline (rule 2246): a sitemap's or page's start is all that is used.
+    return r.ok ? await responsePrefix(r, PAGE_PREFIX_BYTES) : "";
   } catch {
     return "";
   } finally {
@@ -26,7 +28,7 @@ async function resolve(base: string): Promise<{ origin: string; html: string }> 
   try {
     const r = await safeFetch(base, { signal: c.signal, headers: UA });
     const origin = new URL(r.url || base).origin;
-    return { origin, html: r.ok ? await r.text() : "" };
+    return { origin, html: r.ok ? await responsePrefix(r, PAGE_PREFIX_BYTES) : "" };
   } catch {
     return { origin: new URL(base).origin, html: "" };
   } finally {

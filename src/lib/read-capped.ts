@@ -67,3 +67,30 @@ export const responseText = async (res: Response, max: number) => (await respons
 
 /** `res.json()` with the cap of `responseBytes`: a body that does not parse throws SyntaxError, as `res.json()` does. */
 export const responseJson = async <T = unknown>(res: Response, max: number): Promise<T> => JSON.parse(await responseText(res, max)) as T;
+
+/**
+ * The first `max` bytes of a response body as text, the rest never read (rule 2246): for pages and sitemaps of any site
+ * a user names, where the start is what is used and a cut-off end is harmless. The stream is cancelled at the cap; a
+ * character split by the cut becomes U+FFFD.
+ */
+export async function responsePrefix(res: Response, max: number): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const room = max - total;
+    chunks.push(value.byteLength > room ? value.subarray(0, room) : value);
+    total += Math.min(value.byteLength, room);
+    if (total >= max) {
+      await reader.cancel().catch(() => {});
+      break;
+    }
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+/** Most bytes read of one page or sitemap of a site a user names (rule 2246): the crawl keeps 600,000 characters of it. */
+export const PAGE_PREFIX_BYTES = 2 * 1024 * 1024;
