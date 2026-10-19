@@ -205,7 +205,7 @@ describe("rule 2130 (read-only part): the workspace view finds the account as a 
   });
 });
 
-describe("Task 6 review fold-in: createInvite refuses an account deleted while it waited for lock:team", () => {
+describe("rule 2126: createInvite refuses an account deleted while it waited for lock:team", () => {
   it("the account re-read under the lock is gone: forbidden, no invite, no index entry, no team log row", async () => {
     const A = await withPlan(await newUser("gone"), "pro");
     const team = accountKey.teamLock(acct(A));

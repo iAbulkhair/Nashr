@@ -71,7 +71,7 @@ const later = (a: string | undefined, b: string | undefined): string | undefined
 const STAMPS = ["sessionsAfter", "devicesAfter"] as const;
 /**
  * Each revocation stamp as the latest of the given records (absent ones skipped): a stamp never moves backwards, so a
- * "sign out" written by any build, to either record, keeps its effect (fix round 1 of Task 5, rule 2132).
+ * "sign out" written by any build, to either record, keeps its effect (multi-workspace M1, 2026-10-19, rule 2132).
  */
 const latestStamps = (...recs: (Partial<Record<(typeof STAMPS)[number], unknown>> | null | undefined)[]): { sessionsAfter?: string; devicesAfter?: string } =>
   defined(Object.fromEntries(STAMPS.map((k) => [k, recs.reduce<string | undefined>((acc, r) => later(acc, typeof r?.[k] === "string" ? (r[k] as string) : undefined), undefined)])));

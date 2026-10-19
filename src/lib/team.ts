@@ -400,7 +400,7 @@ export async function listMembers(owner: string): Promise<MemberView[]> {
 }
 
 /**
- * The address to show for a membership row's `invitedBy` (multi-workspace M1, Task 9). The row names the inviter by person
+ * The address to show for a membership row's `invitedBy` (multi-workspace M1, 2026-10-19). The row names the inviter by person
  * id: a legacy person's id is its address and is shown as stored; a `p_` id is read back as that person's address, or
  * shown as stored when no person holds it any more. The value is always one this app wrote, never a request's.
  */

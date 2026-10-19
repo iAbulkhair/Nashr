@@ -195,7 +195,7 @@ export async function POST(req: Request) {
   // Every change to the seat limit, up or down, refits the team: paused members come back oldest-first when it grows.
   // The limit moves with a plan, a seat number, or a contract that ends (a plan change or a cleared deal: `seatsReset`).
   // Such a request takes `lock:team` of the account FIRST (team before user, rule 2139) and fits the team inside it: a
-  // team lock still held after the wait (`team_lock_timeout`, multi-workspace M1 Task 8) answers 409 "busy" with nothing
+  // team lock still held after the wait (`team_lock_timeout`, multi-workspace M1, 2026-10-19) answers 409 "busy" with nothing
   // written (no plan, no credits, no audit row), so the founder's retry applies the change once. Once the change is
   // saved, a lock the refit itself cannot have (a home member's `lock:member`, held by that member's own credential
   // write) no longer refuses the request: the change stands, its audit row says `team: "busy"`, the answer is 200 with

@@ -237,7 +237,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   if (step === "no_billing") return { ok: false, error: "no_billing" };
   const c = claim as ClaimOutcome | null;
   if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
-  // Seats fit the new plan. Also on a plan transaction already applied (multi-workspace M1 Task 8): a first try whose
+  // Seats fit the new plan. Also on a plan transaction already applied (multi-workspace M1, 2026-10-19): a first try whose
   // `lock:team` wait ran out (`team_lock_timeout`, answered 503 "busy" by `applyTransaction`) saved the plan and its id,
   // so the retry finds it "already" and fits the seats then. `enforceSeats` is idempotent: a team that fits is not changed.
   if (step === "changed" || (step === "already" && intent.kind === "plan")) await enforceSeats(intentAccount(intent));
@@ -607,10 +607,10 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * is off with it), a hand-set paid-through day and an Agency deal go too, and the month's plan credits are set to 0.
  * Live top-up packs keep their credits: each is its own payment, refunded on its own. Under the ledger lock, once: a
  * retry finds the ended trial with no subscription and changes nothing. The change is logged with the balance before
- * and after, then seats are fitted to the trial's: also on that retry (multi-workspace M1 Task 8), so a first try whose
+ * and after, then seats are fitted to the trial's: also on that retry (multi-workspace M1, 2026-10-19), so a first try whose
  * `lock:team` wait ran out (409 "busy") still fits them when the founder tries again. `enforceSeats` is idempotent.
  * True when THIS refund ended the plan, also on that retry: the first try writes `paymob:refund_ended:{txnId}` under the
- * lock right after the save. A transaction whose marker exists never ends a plan again (fix round 2): repeating the
+ * lock right after the save. A transaction whose marker exists never ends a plan again (multi-workspace M1, 2026-10-19): repeating the
  * refund of an OLD payment after the customer bought a NEW plan answers `planEnded: true` and leaves the new
  * subscription alone. The marker goes after the save, so a save that throws leaves no marker and the retry ends the plan;
  * a marker write that fails after the save leaves the plan ended and the retry answers false (reporting only, no money).

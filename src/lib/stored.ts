@@ -149,7 +149,7 @@ export const TeamLogRow = z.looseObject({
   kind: z.enum(TEAM_LOG_KINDS),
   actor: z.looseObject({ pid: z.string(), email: z.string() }),
   target: z.looseObject({ pid: z.string().optional(), email: z.string() }),
-  /** The role the event gave or concerned (`TeamRole`). Tightened in M1 Task 6: nothing read the log before it. */
+  /** The role the event gave or concerned (`TeamRole`). Tightened in multi-workspace M1 (2026-10-19): nothing read the log before it. */
   role: z.enum(["admin", "member"]).optional(),
   via: z.enum(["web", "console", "system"]),
 });

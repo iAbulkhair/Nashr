@@ -156,7 +156,7 @@ export const wsKey = {
 } as const;
 
 export const personKey = {
-  /** json `Person` (`PersonRow`): credentials and profile. M1: written from Task 5, read from Task 2. */
+  /** json `Person` (`PersonRow`): credentials and profile. Written and read from multi-workspace M1 (2026-10-19). */
   person: (p: PersonId) => `person:${p}`,
   /** lock: one person's writes (after `lock:login`, before `lock:member`, rule 2139). */
   lock: (p: PersonId) => `lock:person:${p}`,
