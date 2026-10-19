@@ -31,7 +31,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "bad_json" }, { status: 400 });
   }
   try {
-    if (!(await recordCompliance(topic, body))) return NextResponse.json({ ok: false, error: "bad_shop" }, { status: 400 });
+    // The event's own time, not the receipt's (rule 2244): a retry after the owner connected again keeps the old time.
+    if (!(await recordCompliance(topic, body, new Date(), req.headers.get("x-shopify-triggered-at")))) return NextResponse.json({ ok: false, error: "bad_shop" }, { status: 400 });
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("shopify compliance", e instanceof Error ? e.name : "error");

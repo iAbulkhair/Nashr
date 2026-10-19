@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { globalKey } from "@/lib/keys";
 import { readFile, writeFile } from "@/lib/files";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
-import { applyShopRedactions, COMPLIANCE_SHOWN, COMPLIANCE_TOPICS, complianceSummary, recordCompliance, validShopifyWebhook } from "@/lib/connectors/shopify-compliance";
+import { applyShopRedactions, COMPLIANCE_SHOWN, COMPLIANCE_TOPICS, complianceSummary, eventTime, recordCompliance, validShopifyWebhook } from "@/lib/connectors/shopify-compliance";
 import { integrationsView } from "@/lib/integration-status";
 import { adminSignIn, json, signOut } from "./helpers/session";
 import * as integrationsRoute from "@/app/api/admin/integrations/route";
@@ -131,6 +131,56 @@ describe("shop/redact is queued under a fixed key (rule 2170)", () => {
     // Workspace data goes only through the helpers that take the scope they were handed.
     expect(src).toContain('Promise.all([deleteConnection(scope, "shopify"), dropSalesSnapshot(scope, "shopify")])');
     expect(src).not.toMatch(/`[^`]*\$\{shop\}[^`]*`/);
+  });
+});
+
+describe("a pending store carries the time Shopify fired the event, not the receipt's (rule 2244)", () => {
+  const signed = (topic: string, payload: Record<string, unknown>, triggeredAt: string) => {
+    const body = JSON.stringify(payload);
+    return post(body, { "x-shopify-topic": topic, "x-shopify-hmac-sha256": sign(body), "x-shopify-triggered-at": triggeredAt });
+  };
+
+  it("the route keeps X-Shopify-Triggered-At (nanosecond form) for the pending store and the receipt time in the log", async () => {
+    const fired = new Date(Date.now() - 3 * 36e5);
+    const nanos = fired.toISOString().replace(/\.(\d{3})Z$/, ".$1000000Z");
+    expect((await signed("app/uninstalled", { myshopify_domain: "late.myshopify.com" }, nanos)).status).toBe(200);
+    expect((await db.hgetall<string>(globalKey.shopifyRedact()))["late.myshopify.com"]).toBe(fired.toISOString());
+    const [receipt] = (await db.lrange(globalKey.shopifyCompliance(), 0, 0)).map((r) => JSON.parse(r) as { at: string });
+    expect(Date.parse(receipt.at)).toBeGreaterThan(fired.getTime() + 36e5);
+  });
+
+  it("a time in the future, a garbled header or none falls back to the receipt time", () => {
+    const now = new Date("2026-10-19T10:00:00.000Z");
+    expect(eventTime("2026-10-19T09:00:00.000000000Z", now)).toBe("2026-10-19T09:00:00.000Z");
+    expect(eventTime("2026-10-19T11:00:00Z", now)).toBe(now.toISOString());
+    expect(eventTime("yesterday", now)).toBe(now.toISOString());
+    expect(eventTime(null, now)).toBe(now.toISOString());
+  });
+
+  it("an older retry never moves a later pending time back; a later event moves it forward", async () => {
+    const shop = "order.myshopify.com";
+    const now = new Date("2026-10-19T12:00:00.000Z");
+    await recordCompliance("app/uninstalled", { myshopify_domain: shop }, now, "2026-10-19T08:00:00Z");
+    await recordCompliance("app/uninstalled", { myshopify_domain: shop }, now, "2026-10-19T07:00:00Z");
+    expect((await db.hgetall<string>(globalKey.shopifyRedact()))[shop]).toBe("2026-10-19T08:00:00.000Z");
+    await recordCompliance("shop/redact", { shop_domain: shop }, now, "2026-10-19T09:00:00Z");
+    expect((await db.hgetall<string>(globalKey.shopifyRedact()))[shop]).toBe("2026-10-19T09:00:00.000Z");
+  });
+
+  it("an uninstall retried after the owner connected again leaves the new connection alone", async () => {
+    const shop = "back.myshopify.com";
+    const uninstalled = new Date(Date.now() - 2 * 36e5);
+    const ws = await newUser("redact-retry").then((u) => u.email);
+    // The owner reconnected five minutes after the uninstall; Shopify's retry of the uninstall arrives now.
+    await saveConnection(ws, { provider: "shopify", data: { access_token: "shpat_SENTINEL" }, meta: { shop }, connectedAt: new Date(uninstalled.getTime() + 5 * 6e4).toISOString() });
+    expect((await signed("app/uninstalled", { myshopify_domain: shop }, uninstalled.toISOString())).status).toBe(200);
+    expect(await applyShopRedactions([ws])).toBe(0);
+    expect((await getConnection(ws, "shopify"))?.meta?.shop).toBe(shop);
+  });
+
+  it("the route passes the header and the module reads the pending list from its fixed key only", () => {
+    expect(src()).toContain('recordCompliance(topic, body, new Date(), req.headers.get("x-shopify-triggered-at"))');
+    expect(readFileSync("src/lib/connectors/shopify-compliance.ts", "utf8")).toContain("(await db.hgetall<string>(globalKey.shopifyRedact()))[shop]");
   });
 });
 

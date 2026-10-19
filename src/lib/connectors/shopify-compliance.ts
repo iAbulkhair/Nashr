@@ -46,20 +46,37 @@ export function validShopifyWebhook(raw: string, given: string | null, secret: s
 export type ComplianceReceipt = { topic: ShopHookTopic | "shop/redact:done"; shop: string; at: string; workspaces?: number };
 
 /**
+ * When the store's event happened (rule 2244): Shopify's `X-Shopify-Triggered-At` when it parses and is not later than
+ * `now`, else `now`. A retry Shopify sends hours later keeps the event's own time, so an owner who connected the store
+ * again in between is never taken for the uninstalled grant. The header is not signed; it can only move the time
+ * earlier than the receipt, which drops fewer connections, never more.
+ */
+export function eventTime(triggeredAt: string | null | undefined, now: Date): string {
+  const t = Date.parse(String(triggeredAt ?? ""));
+  return Number.isFinite(t) && t <= now.getTime() ? new Date(t).toISOString() : now.toISOString();
+}
+
+/**
  * Records one verified delivery. Returns false for a body without a real *.myshopify.com `shop_domain` (or, for
  * `app/uninstalled`, `myshopify_domain`). Only the topic, the store and the time are kept: `customer`,
- * `orders_requested`, `orders_to_redact` and the shop's own fields are never read.
+ * `orders_requested`, `orders_to_redact` and the shop's own fields are never read. The receipt carries the time it was
+ * received; the pending store carries the event's time (`eventTime`, rule 2244) and never moves back.
  */
-export async function recordCompliance(topic: ShopHookTopic, body: unknown, now = new Date()): Promise<boolean> {
+export async function recordCompliance(topic: ShopHookTopic, body: unknown, now = new Date(), triggeredAt?: string | null): Promise<boolean> {
   const b = body as { shop_domain?: unknown; myshopify_domain?: unknown } | null;
   const raw = topic === UNINSTALL_TOPIC ? b?.myshopify_domain : b?.shop_domain;
   const shop = typeof raw === "string" ? raw.toLowerCase() : "";
   if (!SHOP_HOST.test(shop)) return false;
   const at = now.toISOString();
+  const pending = topic === "shop/redact" || topic === UNINSTALL_TOPIC;
+  // The pending list is small and its key is fixed: one read of it, so an older retry cannot move a later time back.
+  const held = pending ? (await db.hgetall<string>(globalKey.shopifyRedact()))[shop] : undefined;
+  const event = eventTime(triggeredAt, now);
+  const keep = held && Date.parse(String(held)) > Date.parse(event) ? String(held) : event;
   await Promise.all([
     pushCapped(globalKey.shopifyCompliance(), JSON.stringify({ topic, shop, at } satisfies ComplianceReceipt), COMPLIANCE_LOG_CAP),
-    // A retried delivery only moves the time forward; the field is the store, the key is fixed.
-    topic === "shop/redact" || topic === UNINSTALL_TOPIC ? db.hset(globalKey.shopifyRedact(), shop, at) : null,
+    // The field is the store, the key is fixed.
+    pending ? db.hset(globalKey.shopifyRedact(), shop, keep) : null,
   ]);
   return true;
 }
