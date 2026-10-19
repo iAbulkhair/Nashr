@@ -53,8 +53,11 @@ export function productLine(p: ProductRow, host?: string): string {
   return `- **${name}**${price ? ` — ${price}` : ""}${desc ? `\n  ${desc}` : ""}${url ? `\n  ${url}` : ""}`;
 }
 
-/** The file: the heading, then up to PRODUCT_ROWS_MAX lines of rows that have a name. Returns the text and the count. */
-export function productsMarkdown(heading: string, rows: readonly ProductRow[], host?: string): { md: string; count: number } {
+/**
+ * The file: the heading, an optional note of Thakeen's own (never store text), then up to PRODUCT_ROWS_MAX lines of rows
+ * that have a name. Returns the text and the count.
+ */
+export function productsMarkdown(heading: string, rows: readonly ProductRow[], host?: string, note?: string): { md: string; count: number } {
   const lines = rows.slice(0, PRODUCT_ROWS_MAX).map((r) => productLine(r, host)).filter(Boolean);
-  return { md: [`# ${plainLine(heading, 200)}`, "", ...lines].join("\n"), count: lines.length };
+  return { md: [`# ${plainLine(heading, 200)}`, "", ...(note ? [note, ""] : []), ...lines].join("\n"), count: lines.length };
 }
