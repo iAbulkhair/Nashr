@@ -260,6 +260,7 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
       join("src/app/api/media/hook/[provider]/route.ts"),
       join("src/app/api/secretary/booking/[token]/route.ts"),
       join("src/app/api/billing/paymob/webhook/route.ts"),
+      join("src/app/api/shopify/compliance/route.ts"),
       join("src/app/api/cron/secretary/route.ts"),
     ]));
   });

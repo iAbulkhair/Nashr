@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, json, newUser, signIn } from "./helpers/session";
-import { importZid, zidStore } from "@/lib/connectors/zid";
+import { importZid, zidAuthorization, zidHeaders, zidStore } from "@/lib/connectors/zid";
+import { readFileSync } from "node:fs";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
 import { readFile } from "@/lib/files";
 import * as callback from "@/app/api/connect/[provider]/callback/route";
@@ -333,5 +334,22 @@ describe("Zid orders and abandoned carts, as totals only (rule 85)", () => {
     const bad = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "zid" }) });
     expect((await bad.json()).error).toBe("reconnect_required");
     expect((await getConnection(u.email, "zid"))?.needsReconnect).toBeTruthy();
+  });
+});
+
+describe("the bearer token is read in either spelling Zid uses (rule 2201)", () => {
+  const base = (data: Record<string, string>): Connection => ({ provider: "zid", data, meta: { storeId: "77" }, connectedAt: "2026-10-18T00:00:00Z" });
+
+  it("sends `authorization` or the docs' `Authorization` as the bearer, the manager token apart", () => {
+    expect(zidHeaders(base({ access_token: "mgr", authorization: "auth" }))).toMatchObject({ Authorization: "Bearer auth", "X-Manager-Token": "mgr", "Store-Id": "77" });
+    expect(zidHeaders(base({ access_token: "mgr", Authorization: "auth-docs" }))).toMatchObject({ Authorization: "Bearer auth-docs", "X-Manager-Token": "mgr" });
+    expect(zidAuthorization(base({ access_token: "mgr" }))).toBe("");
+  });
+
+  it("is the only reading of the field", () => {
+    for (const f of ["src/lib/connectors/zid.ts", "src/app/api/connect/[provider]/callback/route.ts", "src/lib/connectors/fresh.ts"]) {
+      const src = readFileSync(f, "utf8").replace(/export const zidAuthorization[^\n]*/, "");
+      expect(src, f).not.toMatch(/data\.[aA]uthorization/);
+    }
   });
 });

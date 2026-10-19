@@ -2,11 +2,15 @@ import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getProvider } from "@/lib/connectors/registry";
-import { saveConnection } from "@/lib/connectors/store";
+import { getConnection, saveConnection } from "@/lib/connectors/store";
+import { dropSnapshotIfStoreChanged, storeIdentity } from "@/lib/store-sales";
 import { verifyWordPress } from "@/lib/connectors/wordpress";
 import { verifyWoo } from "@/lib/connectors/woocommerce";
 import { verifyBrevo, verifyOdoo, verifyPrestaShop, verifyTelegram } from "@/lib/connectors/keyed";
 import { forbid } from "@/lib/roles";
+import { providerTimeout } from "@/lib/fetch-timeout";
+import { wsKey } from "@/lib/keys";
+import { KEY_CHECK_FAILS_PER_DAY, KEY_CHECK_FAILS_PER_HOUR, WINDOW, allow, giveBack, retryLater } from "@/lib/rate";
 import { acct } from "@/lib/account-id";
 
 /** POST key-based credentials → verify → store encrypted. Admin and owner only (src/lib/roles.ts "connectors"). */
@@ -26,6 +30,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     if (!v) return NextResponse.json({ ok: false, error: `missing_${f.name}` }, { status: 400 });
     data[f.name] = f.type === "url" ? (v.startsWith("http") ? v : "https://" + v) : v;
   }
+  // Each check below asks an outside service whether these credentials work (a WordPress site's password, a bot token,
+  // an API key), so the route must not become a way to try passwords from our servers: a failed check keeps its hit,
+  // ten an hour and thirty a day per workspace; one that passes gives it back (rule 2240, the rule 1183 pattern).
+  const buckets = [wsKey.keyCheckBucket(sc(u), "hour"), wsKey.keyCheckBucket(sc(u), "day")] as const;
+  const [hour, day] = await Promise.all([allow(buckets[0], KEY_CHECK_FAILS_PER_HOUR, WINDOW.hour), allow(buckets[1], KEY_CHECK_FAILS_PER_DAY, WINDOW.day)]);
+  if (!day) return retryLater({ ok: false, error: "slow_down" }, WINDOW.day);
+  if (!hour) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
   const meta: Record<string, string> = {};
   if (provider === "wordpress") {
     const v = await verifyWordPress(data);
@@ -53,10 +64,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     if (!v.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: v.error }, { status: 400 });
     meta.account = v.name ?? "";
   } else if (provider === "klaviyo") {
-    const r = await fetch("https://a.klaviyo.com/api/accounts/", { headers: { Authorization: `Klaviyo-API-Key ${data.apiKey}`, revision: "2024-10-15" } });
+    const r = await fetch("https://a.klaviyo.com/api/accounts/", { headers: { Authorization: `Klaviyo-API-Key ${data.apiKey}`, revision: "2024-10-15" }, signal: providerTimeout() });
     if (!r.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: `HTTP ${r.status}` }, { status: 400 });
   }
-  await saveConnection(sc(u), { provider, data, meta, connectedAt: new Date().toISOString() });
+  await Promise.all(buckets.map((b) => giveBack(b)));
+  const conn = { provider, data, meta, connectedAt: new Date().toISOString() };
+  // Another WooCommerce site replaces this one: its totals go before the new site's first sync (rule 2207).
+  const before = storeIdentity(conn) ? await getConnection(sc(u), provider).catch(() => null) : null;
+  await saveConnection(sc(u), conn);
+  await dropSnapshotIfStoreChanged(sc(u), before, conn);
   await track(acct(u), "connect");
   return NextResponse.json({ ok: true, meta });
 }

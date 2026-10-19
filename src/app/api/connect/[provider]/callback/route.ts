@@ -6,7 +6,7 @@ import { currentUser } from "@/lib/auth";
 import { accountOfScope, acct } from "@/lib/account-id";
 import { sameSecret } from "@/lib/rate";
 import { getProvider } from "@/lib/connectors/registry";
-import { exchangeCode } from "@/lib/connectors/oauth";
+import { exchangeCode, tokenExpiry } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, getConnection, saveConnection, takeState, type Connection } from "@/lib/connectors/store";
 import { dropCookie, readCookie } from "@/lib/cookie-names";
 import { composioDiscard, composioVerify } from "@/lib/connectors/composio";
@@ -19,9 +19,10 @@ import { sallaStore } from "@/lib/connectors/salla";
 import { zidStore } from "@/lib/connectors/zid";
 import { connectMeta } from "@/lib/connectors/meta";
 import { connectAds, isAdProvider } from "@/lib/connectors/ads";
-import { SHOP_HOST, validShopifyHmac } from "@/lib/connectors/shopify";
+import { SHOP_HOST, subscribeUninstall, UNINSTALL_HOOK_META, validShopifyHmac } from "@/lib/connectors/shopify";
 import { can } from "@/lib/roles";
 import { appOrigin } from "@/lib/origin";
+import { dropSnapshotIfStoreChanged, storeIdentity } from "@/lib/store-sales";
 import { connectCalendar } from "@/lib/secretary-gcal";
 import type { CalProvider } from "@/lib/connectors/registry";
 
@@ -118,14 +119,20 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     const data = await exchangeCode(p, code, { shop, verifier: st.verifier || undefined });
     const meta: Record<string, string> = {};
     if (shop) meta.shop = shop;
-    const expiresAt = data.expires_in ? new Date(Date.now() + Number(data.expires_in) * 1000).toISOString() : undefined;
+    const expiresAt = tokenExpiry(data);
     let conn: Connection = { provider: p.id, data, meta, connectedAt: new Date().toISOString(), expiresAt };
     if (p.id === "x") { const me = await xMe(conn); if (me) meta.account = `@${me.username}`; }
     if (p.id === "salla") { const st2 = await sallaStore(conn); if (st2?.name) meta.account = st2.name; if (st2?.domain) meta.site = st2.domain; }
     if (p.id === "zid") { const z = await zidStore(conn); if (z?.id) meta.storeId = z.id; if (z?.name) meta.account = z.name; if (z?.url) meta.site = z.url; }
     if (p.id === "meta") conn = await connectMeta(conn);
     if (isAdProvider(p.id)) conn = await connectAds(conn);
+    // Best effort: Shopify then tells us when the store uninstalls the app (rule 2203). Never throws; the mark saved with
+    // the connection tells the stores cron this store needs no second try (rule 2204).
+    if (p.id === "shopify" && (await subscribeUninstall(conn, origin))) meta[UNINSTALL_HOOK_META] = new Date().toISOString();
+    // Another store of the same platform replaces this one: its totals go before the new store's first sync (rule 2207).
+    const before = storeIdentity(conn) ? await getConnection(st.email, p.id).catch(() => null) : null;
     await saveConnection(st.email, conn);
+    await dropSnapshotIfStoreChanged(st.email, before, conn);
     await track(accountOfScope(st.email), "connect");
     return back(`connected=${p.id}`);
   } catch (e) {

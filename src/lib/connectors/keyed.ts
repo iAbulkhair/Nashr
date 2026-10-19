@@ -2,6 +2,8 @@ import type { Connection } from "./store";
 import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { safeFetch } from "../safe-fetch";
+import { STORE_REPLY_BYTES, responseJson } from "../read-capped";
+import { productsMarkdown } from "./products-md";
 
 /** Key-based connectors that need no partner registration: Odoo, PrestaShop, Telegram, Brevo. */
 
@@ -9,10 +11,10 @@ import { safeFetch } from "../safe-fetch";
 async function odooCall(c: Record<string, string>, model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}) {
   const url = c.url.replace(/\/+$/, "") + "/jsonrpc";
   const auth = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 1, params: { service: "common", method: "authenticate", args: [c.db, c.username, c.apiKey, {}] } }) });
-  const aj = (await auth.json()) as { result?: number; error?: { message: string } };
+  const aj = (await responseJson(auth, STORE_REPLY_BYTES)) as { result?: number; error?: { message: string } };
   if (!aj.result) throw new Error(aj.error?.message ?? "odoo auth failed");
   const r = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 2, params: { service: "object", method: "execute_kw", args: [c.db, aj.result, c.apiKey, model, method, args, kwargs] } }) });
-  const j = (await r.json()) as { result?: unknown; error?: { message: string } };
+  const j = (await responseJson(r, STORE_REPLY_BYTES)) as { result?: unknown; error?: { message: string } };
   if (j.error) throw new Error(j.error.message);
   return j.result;
 }
@@ -21,9 +23,12 @@ export async function verifyOdoo(d: Record<string, string>) {
 }
 export async function importOdoo(email: string, c: Connection) {
   const rows = (await odooCall(c.data, "product.template", "search_read", [[["sale_ok", "=", true]]], { fields: ["name", "list_price", "description_sale", "website_url"], limit: 60 })) as { name: string; list_price: number; description_sale?: string | false; website_url?: string | false }[];
-  const md = [`# Product catalog (Odoo, ${new Date().toISOString().slice(0, 10)})`, "", ...rows.map((p) => `- **${p.name}** — ${p.list_price}${p.description_sale ? `\n  ${String(p.description_sale).slice(0, 200)}` : ""}${p.website_url ? `\n  ${c.data.url.replace(/\/+$/, "")}${p.website_url}` : ""}`)].join("\n");
+  if (!Array.isArray(rows)) throw new Error("odoo unexpected_products");
+  // The host is the owner's: each field one capped line, and a link only on the Odoo site's own host (rule 2247).
+  const base = c.data.url.replace(/\/+$/, "");
+  const { md, count } = productsMarkdown(`Product catalog (Odoo, ${new Date().toISOString().slice(0, 10)})`, rows.map((p) => ({ name: p?.name, price: p?.list_price, description: p?.description_sale || "", url: typeof p?.website_url === "string" ? `${base}${p.website_url}` : "" })), new URL(base).hostname);
   await writeFile(email, "products.md", md, "noor");
-  return rows.length;
+  return count;
 }
 
 // ---------- PrestaShop (Webservice key) ----------
@@ -40,12 +45,13 @@ export async function importPrestaShop(email: string, c: Connection) {
   const base = c.data.site.replace(/\/+$/, "");
   const r = await safeFetch(`${base}/api/products?display=[id,name,price,link_rewrite,description_short]&limit=60&output_format=JSON`, { headers: { Authorization: psAuth(c.data) } });
   if (!r.ok) throw new Error(`prestashop ${r.status}`);
-  const j = (await r.json()) as { products?: { id: number; name: string | { value: string }[]; price: string; link_rewrite: string | { value: string }[]; description_short?: string | { value: string }[] }[] };
+  const j = (await responseJson(r, STORE_REPLY_BYTES)) as { products?: { id: number; name: string | { value: string }[]; price: string; link_rewrite: string | { value: string }[]; description_short?: string | { value: string }[] }[] };
   const txt = (v: unknown) => (Array.isArray(v) ? String((v[0] as { value: string })?.value ?? "") : String(v ?? ""));
-  const rows = j.products ?? [];
-  const md = [`# Product catalog (PrestaShop, ${new Date().toISOString().slice(0, 10)})`, "", ...rows.map((p) => `- **${txt(p.name)}** — ${p.price}\n  ${txt(p.description_short).replace(/<[^>]+>/g, "").slice(0, 200)}\n  ${base}/${txt(p.link_rewrite)}`)].join("\n");
+  const rows = Array.isArray(j?.products) ? j.products : [];
+  // The host is the owner's: each field one capped line, and a link only on the shop's own host (rule 2247).
+  const { md, count } = productsMarkdown(`Product catalog (PrestaShop, ${new Date().toISOString().slice(0, 10)})`, rows.map((p) => ({ name: txt(p?.name), price: p?.price, description: txt(p?.description_short), url: `${base}/${encodeURIComponent(txt(p?.link_rewrite))}` })), new URL(base).hostname);
   await writeFile(email, "products.md", md, "noor");
-  return rows.length;
+  return count;
 }
 
 // ---------- Telegram (bot token + channel) ----------

@@ -8,6 +8,7 @@ import type { KeyField } from "@/lib/connectors/registry";
 import { DRIVES, IMPORTS_PRODUCTS, READS_ADS, READS_REFERENCES, isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 import { connectError } from "@/lib/connect-errors";
+import { SALES_PROVIDERS } from "@/lib/connectors/sales";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Scribble from "@/components/Scribble";
 import Badge, { type BadgeTone } from "@/components/ui/Badge";
@@ -78,7 +79,10 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
     const ar = lang === "ar";
     const ok = await ask({
       title: ar ? `فصل ${name}؟` : `Disconnect ${name}?`,
-      message: ar ? "يتوقف النشر والقراءة عبر هذا الربط حتى تربطه من جديد." : "Publishing and reading through this connection stop until you connect it again.",
+      // A store's sales totals go with it (rule 2206), so the owner is told before saying yes.
+      message: (SALES_PROVIDERS as readonly string[]).includes(id)
+        ? (ar ? "تتوقف القراءة عبر هذا الربط، وتُحذف أرقام مبيعات المتجر من التقارير حتى تربطه من جديد وتزامن." : "Reading through this connection stops, and the store's sales totals leave your reports until you connect it again and sync.")
+        : (ar ? "يتوقف النشر والقراءة عبر هذا الربط حتى تربطه من جديد." : "Publishing and reading through this connection stop until you connect it again."),
       confirmLabel: g.disconnect,
       cancelLabel: cancelWord,
       destructive: true,

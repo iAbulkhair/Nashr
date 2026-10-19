@@ -5,6 +5,23 @@ import { appOrigin } from "../origin";
 
 export const REDIRECT = (id: string) => `${appOrigin()}/api/connect/${id}/callback`;
 
+/** Above this an `expires` value is a Unix time in seconds (2001-09-09), below it a lifetime: no token lives 31 years. */
+const UNIX_SECONDS = 1e9;
+
+/**
+ * When a token answer's access token lapses (rule 2176), or undefined when the answer does not say. `expires_in` is
+ * the OAuth field (RFC 6749 §5.1, seconds from now). Salla's documented answer carries `expires` instead, written once
+ * as a Unix time and once as seconds, so both readings are taken. Without this a Salla connection kept no expiry, was
+ * never refreshed early, and was lost when its 14-day token lapsed although its refresh token was still good.
+ */
+export function tokenExpiry(data: Record<string, string>, now = Date.now()): string | undefined {
+  const lifetime = Number(data.expires_in);
+  if (Number.isFinite(lifetime) && lifetime > 0) return new Date(now + lifetime * 1000).toISOString();
+  const expires = Number(data.expires);
+  if (!Number.isFinite(expires) || expires <= 0) return undefined;
+  return new Date(expires > UNIX_SECONDS ? expires * 1000 : now + expires * 1000).toISOString();
+}
+
 export function pkcePair() {
   const verifier = randomBytes(48).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");

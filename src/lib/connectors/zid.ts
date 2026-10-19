@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { pmap } from "../parallel";
@@ -27,8 +28,14 @@ type ZidProduct = {
   is_published?: boolean;
 };
 
+/**
+ * Zid's docs (Authorization, read 2026-10-18) write the field `Authorization`; this code and its tests had `authorization`.
+ * The token answer is stored with each key's case as it arrives (oauth.ts), so either spelling is read (rule 2201).
+ */
+export const zidAuthorization = (c: Pick<Connection, "data">) => c.data.authorization || c.data.Authorization || "";
+
 export function zidHeaders(c: Connection): Record<string, string> {
-  const h: Record<string, string> = { Authorization: `Bearer ${c.data.authorization ?? ""}`, "X-Manager-Token": c.data.access_token ?? "", Role: "Manager", "Accept-Language": "ar", Accept: "application/json" };
+  const h: Record<string, string> = { Authorization: `Bearer ${zidAuthorization(c)}`, "X-Manager-Token": c.data.access_token ?? "", Role: "Manager", "Accept-Language": "ar", Accept: "application/json" };
   if (c.meta?.storeId) h["Store-Id"] = c.meta.storeId;
   return h;
 }
@@ -67,20 +74,15 @@ export async function importZid(email: string, c: Connection) {
   }
   const live = items.filter((p) => zidText(p.name) && p.is_published !== false);
   const store = conn.meta?.account ? ` ${conn.meta.account}` : "";
-  const md = [
-    `# Product catalog (Zid${store}, ${new Date().toISOString().slice(0, 10)})`,
-    "",
-    ...live.map((p) => {
-      const cur = p.currency ? ` ${p.currency}` : "";
-      const reg = p.price == null || p.price === "" ? "" : `${p.price}${cur}`;
-      const sale = p.sale_price == null || p.sale_price === "" || Number(p.sale_price) === Number(p.price) ? "" : `${p.sale_price}${cur}`;
-      const price = sale ? `${sale} (was ${reg})` : reg;
-      const desc = zidText(p.description).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
-      return `- **${zidText(p.name)}** — ${price}${desc ? `\n  ${desc}` : ""}${p.html_url ? `\n  ${p.html_url}` : ""}`;
-    }),
-  ].join("\n");
+  // Each field one capped line, links http(s) only (rule 2247).
+  const { md, count } = productsMarkdown(`Product catalog (Zid${store}, ${new Date().toISOString().slice(0, 10)})`, live.map((p) => {
+    const cur = p.currency ? ` ${p.currency}` : "";
+    const reg = p.price == null || p.price === "" ? "" : `${p.price}${cur}`;
+    const sale = p.sale_price == null || p.sale_price === "" || Number(p.sale_price) === Number(p.price) ? "" : `${p.sale_price}${cur}`;
+    return { name: zidText(p.name), price: sale ? `${sale} (was ${reg})` : reg, description: zidText(p.description), url: p.html_url };
+  }));
   await writeFile(email, "products.md", md, "noor");
-  return live.length;
+  return count;
 }
 
 // ---------- Orders and abandoned carts: totals only ----------

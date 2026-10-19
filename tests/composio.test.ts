@@ -405,6 +405,11 @@ describe("pins and the importer check (rule 749)", () => {
     expect(TOOLKIT_VERSION).toMatchObject({ facebook: "20261008_00", youtube: "20261008_00", linkedin: "20260924_00", tiktok: "20260917_00", snapchat: "20260918_00", linkedin_ads: "20260826_00" });
   });
 
+  it("pins the first staging toolkits to the versions whose schemas were read on 2026-10-18 (rule 2163)", () => {
+    expect(TOOLKIT_VERSION).toMatchObject({ instagram: "20261008_00", whatsapp: "20260915_00", googleads: "20261008_00", tiktok_ads: "20261001_00", google_analytics: "20260924_00", google_search_console: "20260806_00" });
+    expect(Object.values(TOOLKIT_VERSION)).not.toContain("00000000_00");
+  });
+
   it("the importer check also catches a relative import of the adapter (rule 749)", () => {
     expect(IMPORTS_COMPOSIO.test('import { composioRead } from "../connectors/composio";')).toBe(true);
     expect(IMPORTS_COMPOSIO.test('import { composioRead } from "./composio";')).toBe(true);

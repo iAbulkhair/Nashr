@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto";
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
+import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminSignIn, jar, json, newUser, signIn, signOut } from "./helpers/session";
 import { createSession, currentUser, dropSession, sessionKey, sessionKeys, sessionRecord } from "@/lib/auth";
@@ -118,6 +119,18 @@ describe("rules 1343-1344: every outside call has a deadline", () => {
       expect(calls.length, name).toBeGreaterThan(0);
       for (const [i, c] of calls.entries()) expect(c.slice(0, 700), `${name} fetch #${i + 1}`).toMatch(/signal: (providerTimeout\(\)|AbortSignal\.timeout\()/);
     }
+  });
+  it("every direct fetch in every connector file and every connect route carries a deadline too (rule 2241)", () => {
+    const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : []));
+    const files = [...walk("src/lib/connectors"), ...walk("src/app/api/connect")];
+    expect(files).toContain(join("src/app/api/connect/[provider]/key/route.ts"));
+    let seen = 0;
+    for (const f of files) {
+      const calls = read(f).split(/(?<![A-Za-z.])fetch\(/).slice(1);
+      seen += calls.length;
+      for (const [i, c] of calls.entries()) expect(c.slice(0, 700), `${f} fetch #${i + 1}`).toMatch(/signal: (providerTimeout\(\)|AbortSignal\.timeout\()/);
+    }
+    expect(seen).toBeGreaterThan(20);
   });
 });
 

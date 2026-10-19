@@ -2,6 +2,63 @@
 
 > **Dated record (banner added 2026-10-12).** Written when the site ran on Vercel at `nashr-tau.vercel.app`. Since 2026-10-08 thakeen.com runs on Hostinger from the `production` branch, and the Vercel project is retired (`docs/system/architecture.md` section 6, rules 987-990). Read hosts, callback URLs and "Vercel" steps below as history; whether each platform app already has its `thakeen.com` callback is unverified here. Current state: `docs/system/*`.
 
+## Current values (2026-10-18, rule 2164)
+
+Use this section, not the dated packs below, for hosts, callbacks and key names. It is read from
+`src/lib/connectors/registry.ts` and `src/lib/google-signin.ts`; `tests/registration-packs-current.test.ts` fails when
+a platform or a key name changes and this table does not.
+
+- App name: `Thakeen` (Arabic, where asked: `ذكين`). Website `https://thakeen.com`. Privacy `https://thakeen.com/ar/privacy`
+  (English `/en/privacy`). Terms `https://thakeen.com/ar/terms` (English `/en/terms`).
+- Meta's "Data deletion instructions URL" (App settings, Basic, User data deletion): `https://thakeen.com/en/privacy#deletion`.
+  Platforms that ask how a user disconnects or revokes access: `https://thakeen.com/en/privacy#connected-platforms`.
+  These anchors are fixed (rule 2167); the Arabic page has the same ones (`/ar/privacy#deletion`).
+- Keys go straight from the portal into hPanel (Websites, thakeen.com, Node.js app, Environment variables), never into
+  chat or a file. Adding a name to the live site rebuilds it; tell Claude first. The `vercel env add` steps below are history.
+- Staging gets the same callback on `https://staging.thakeen.com` once its own app or redirect is added.
+
+| Platform | Callback (redirect) URL | Key names | Scopes the code asks for |
+|---|---|---|---|
+| X | `https://thakeen.com/api/connect/x/callback` | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `tweet.read tweet.write users.read offline.access` |
+| Shopify | `https://thakeen.com/api/connect/shopify/callback` | `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` | `read_products read_orders write_content` |
+| Meta (Pages, Instagram) | `https://thakeen.com/api/connect/meta/callback` | `META_APP_ID`, `META_APP_SECRET` (optional `META_CONFIG_ID`) | `pages_show_list pages_manage_posts pages_read_engagement instagram_basic instagram_content_publish business_management` |
+| Meta Ads (results), same Meta app | `https://thakeen.com/api/connect/meta_ads/callback` | `META_APP_ID`, `META_APP_SECRET` | `ads_read` |
+| Salla | `https://thakeen.com/api/connect/salla/callback` | `SALLA_CLIENT_ID`, `SALLA_CLIENT_SECRET` | `offline_access` |
+| Zid | `https://thakeen.com/api/connect/zid/callback` | `ZID_CLIENT_ID`, `ZID_CLIENT_SECRET` | none in the URL |
+| Snapchat Ads | `https://thakeen.com/api/connect/snapchat/callback` | `SNAP_CLIENT_ID`, `SNAP_CLIENT_SECRET` | `snapchat-marketing-api` |
+| Google Calendar (Reem) | `https://thakeen.com/api/connect/gcal/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `openid email calendar.calendarlist.readonly calendar.events.owned.readonly` |
+| Outlook Calendar (Reem) | `https://thakeen.com/api/connect/mscal/callback` | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | `openid email offline_access User.Read Calendars.ReadBasic` |
+| Sign in with Google, its own client | `https://thakeen.com/api/auth/google/callback` | `GOOGLE_SIGNIN_CLIENT_ID`, `GOOGLE_SIGNIN_CLIENT_SECRET` | `openid email profile` |
+
+Salla (2026-10-18, read from Salla's Authorization docs): an app published on the Salla App Store must use **Easy
+Mode**, where Salla sends the tokens to a webhook (`app.store.authorize`). Thakeen implements only **Custom Mode** (the
+callback above), which Salla allows for testing. Choose Custom Mode under App Keys and keep the app unpublished (test
+stores and the merchants you add by hand) until Easy Mode is built. Salla access tokens last 14 days and refresh tokens a
+month, single use; Thakeen refreshes early (rule 2176).
+
+Shopify compliance webhooks (rules 2168-2171): Shopify will not list an app without them. In the Shopify app's
+configuration, under **Compliance webhooks**, put `https://thakeen.com/api/shopify/compliance` in all three fields
+(customer data request, customer data erasure, shop data erasure). No new key: Shopify signs them with the same
+`SHOPIFY_CLIENT_SECRET`. Thakeen keeps no Shopify customer data, so the two customer requests are only logged; a shop
+erasure removes that store's connection and sales totals at the next stores cron run. The `app/uninstalled` webhook
+(rule 2203) needs no step here: Thakeen subscribes each store to it through the API when the store connects (stores
+connected earlier are subscribed by the stores cron, rule 2204), and an
+uninstall then removes the connection at the next stores run instead of 48 hours later.
+
+Names in the dated packs and in `docs/Platform_Access_Playbook.md` that the code does not read: `MS_CLIENT_ID` and
+`MS_CLIENT_SECRET` (the code reads `MICROSOFT_CLIENT_*`), `TIKTOK_ADS_APP_ID` and `TIKTOK_ADS_SECRET` (TikTok Ads results
+come through Composio, no app of ours). WhatsApp, YouTube, Google Ads, TikTok Ads, LinkedIn Ads, Google Docs and Sheets,
+Google Drive, Dropbox and OneDrive need no app of ours: they connect through Composio (checklist job `composio`).
+
+LinkedIn, TikTok and the Google connector (Business Profile, GA4, Search Console) also connect through Composio only
+(rule 2175): Thakeen's connect route refuses them without Composio, so `https://thakeen.com/api/connect/linkedin/callback`,
+`/tiktok/callback` and `/google/callback` are never called and `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`,
+`TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` are not needed in hPanel. Their dated packs below are history. A Composio
+auth config that uses a LinkedIn or TikTok developer app of our own takes the redirect URL Composio shows when the auth
+config is created, not a thakeen.com one. The Google client above (`GOOGLE_CLIENT_ID`) is for Reem's calendar; its
+consent screen needs only the calendar scopes in its row, not `business.manage`, `analytics.readonly` or
+`webmasters.readonly`.
+
 Written 2026-09-27 for the owner. One section per platform: which steps come first, what to type into each field,
 and where the keys go. Everything here is registered on the temporary address `https://nashr-tau.vercel.app` (owner
 decision, 2026-09-27); after `nashr.ai` is bought, add the same callback on the new domain to every app.
@@ -59,7 +116,8 @@ by Noor (built 2026-09-28).
    | App name | `Nashr` |
    | App URL | `https://nashr-tau.vercel.app/en/app/integrations` |
    | Allowed redirection URL(s) | `https://nashr-tau.vercel.app/api/connect/shopify/callback` |
-4. **API access / scopes:** `read_products, read_orders, read_checkouts, write_content, read_customers`
+4. **API access / scopes:** `read_products, read_orders, write_content` (2026-10-18, rule 2174: `read_checkouts` and
+   `read_customers` dropped; abandoned checkouts are read with `read_orders`)
    **Protected customer data access** (same app, API access section): request access for **orders** at the first
    level only, with no customer fields (name, email, phone, address). Reason to give: "Totals of the merchant's own
    orders and abandoned checkouts (count, revenue, top products) for their marketing reports; no customer fields are
