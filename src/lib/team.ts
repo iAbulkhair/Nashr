@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { log } from "./log";
 import { pmap } from "./parallel";
+import { withNamedLock } from "./locks";
 import { revokeBook } from "./booking-token";
 import { revokeFeed } from "./feed-token";
 import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
@@ -81,7 +82,6 @@ export type SeatsError = { ok: false; error: "seats"; used: number; limit: numbe
 export type TeamFail = { ok: false; error: TeamError } | SeatsError;
 
 export const INVITE_TTL_SECONDS = 7 * 24 * 3600;
-const LOCK_TTL_SECONDS = 10;
 const TOKEN_RE = /^[a-f0-9]{64}$/;
 
 const memberKey = (email: string) => accountKey.member(email);
@@ -102,21 +102,8 @@ const cleanName = (v: unknown) => {
 };
 const byAge = <T,>(at: (x: T) => string, tie: (x: T) => string) => (a: T, b: T) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : tie(a) < tie(b) ? -1 : 1);
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** Run `fn` under a Redis lock, waiting up to ~3 s for it (the pattern of `withUserLock`). Always released. */
-async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  let got = false;
-  for (let i = 0; i < 60 && !got; i++) {
-    got = await db.lock(key, LOCK_TTL_SECONDS);
-    if (!got) await sleep(50);
-  }
-  if (!got) throw new Error("team_lock_timeout");
-  try {
-    return await fn();
-  } finally {
-    await db.unlock(key);
-  }
-}
+/** Run `fn` under a Redis lock, waiting up to ~3 s for it (`withNamedLock`, src/lib/locks.ts). Always released. */
+const withLock = <T,>(key: string, fn: () => Promise<T>): Promise<T> => withNamedLock(key, fn, "team_lock_timeout");
 /** Login uniqueness across `user:` and `member:`. Signup and accept both create logins under this lock. */
 export const withLoginLock = <T,>(email: string, fn: () => Promise<T>) => withLock(accountKey.loginLock(normalizeEmail(email)), fn);
 /** Read-modify-write of one member record (password, name, role, disabled). Null when the member does not exist. */

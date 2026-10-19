@@ -296,7 +296,11 @@ const STORED_SCOPE: Record<string, number> = {
   "src/lib/auth.ts": 1,
 };
 
-// Multi-workspace membership, release M1 (rule 2137): the two constructors of the branded ids. Empty until the adapter
-// of the later M1 tasks reads a person or an account id back from a record; each call site is listed here, none under src/app.
-const STORED_PERSON_ID: Record<string, number> = {};
-const STORED_ACCOUNT_ID: Record<string, number> = {};
+// Multi-workspace membership, release M1 (rule 2137): the two constructors of the branded ids, called only where a person
+// or an account id is read back from a record; each call site is listed here, none under src/app.
+const STORED_PERSON_ID: Record<string, number> = {
+  "src/lib/membership.ts": 1, // ownerOf: the account record's ownerPid, else acct(u)
+};
+const STORED_ACCOUNT_ID: Record<string, number> = {
+  "src/lib/membership.ts": 4, // listOrgs: an orgs:{pid} entry (re-checked); homeAccountOf: a legacy owner's own id (twice), a legacy memberOf
+};
