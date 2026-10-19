@@ -644,7 +644,7 @@ Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAP
 | `google:{sub}`, `googlesub:{login}` | string | The Google link, both ways (one Google account per login) | `src/lib/google-signin.ts` | none |
 | `rate:gsi:ip:{ip}`, `rate:googlepw:{login}` | int | Google starts per address (30 per 15 min) and wrong unlink passwords (10 per hour) | `api/auth/google/start`, `api/account/google` | window |
 
-`wipeAccount` deletes every one of these for the owner and each member login (rule 1954). Since multi-workspace M1 (2026-10-19, rule 2126 M1 half, `flows.md` section 91 item 7): the owner's pack goes only when the owner person holds nothing else (always, with `MULTI_ORG` off), and a member's goes with its last membership (`deleteMembership` through `wipeMemberships`); a member who still belongs to or owns another account keeps its pack, login index and devices.
+`wipeAccount` deletes every one of these for the owner and each member login (rule 1954). Since multi-workspace M1 (2026-10-19, rule 2126 M1 half, `flows.md` section 91 item 12): the owner's pack goes only when the owner person holds nothing else (always, with `MULTI_ORG` off), and a member's goes with its last membership (`deleteMembership` through `wipeMemberships`); a member who still belongs to or owns another account keeps its pack, login index and devices.
 
 ## 4. Request lifecycles
 
