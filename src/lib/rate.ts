@@ -167,6 +167,8 @@ export async function draftAllowed(email: string): Promise<boolean> {
 /** Failed key checks (POST /api/connect/{provider}/key) one workspace may make, every key provider together (rule 2240). */
 export const KEY_CHECK_FAILS_PER_HOUR = 10;
 export const KEY_CHECK_FAILS_PER_DAY = 30;
+/** OAuth and Composio connect starts (GET /api/connect/{provider}/start) one workspace may make an hour (rule 2242). */
+export const CONNECT_STARTS_PER_HOUR = 20;
 export const BRANDS_PER_HOUR = 10;
 export const BRANDS_PER_DAY = 30;
 /**

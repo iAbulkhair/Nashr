@@ -123,6 +123,8 @@ export const wsKey = {
   adSync: (s: Scope, provider: string) => `adsync:${s}:${provider}`,
   /** bucket name for `allow` (stored as `rate:keycheck:{window}:{scope}`): failed key checks of one workspace (rule 2240). */
   keyCheckBucket: (s: Scope, window: "hour" | "day") => `keycheck:${window}:${s}`,
+  /** bucket name for `allow` (stored as `rate:connectstart:{scope}`): OAuth and Composio connect starts of one workspace (rule 2242). */
+  connectStartBucket: (s: Scope) => `connectstart:${s}`,
 } as const;
 
 export const accountKey = {

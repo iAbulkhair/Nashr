@@ -56,6 +56,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.perfImport(S), `perfimport:${S}`],
     [wsKey.adSync(S, "google_ads"), `adsync:${S}:google_ads`],
     [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
+    [wsKey.connectStartBucket(D), `connectstart:${E}`],
   ];
   const account: [string, string][] = [
     [accountKey.user(E), `user:${E}`],
