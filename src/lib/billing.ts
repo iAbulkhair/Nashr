@@ -311,21 +311,23 @@ async function saveCard(ct: CardTokenEvent | null): Promise<CallbackResult> {
   const ref = await db.get<string>(orderKey(orderId));
   const intent = typeof ref === "string" && REF.test(ref) ? await db.get<PayIntent>(intentKey(ref)) : null;
   if (!intent || normalizeEmail(ct.email) !== normalizeEmail(intentBillingEmail(intent))) return ok("ignored");
-  // Rule 2271: a card token for an order whose payment the founder refunded is not saved again. The refund deleted the
-  // card (`endPlanOnRefund`); a late or replayed callback for that order must not bring it back, or the next checkout
-  // would turn automatic renewal on with it.
-  if (intent.txnId !== undefined && (await db.get(refundedKey(intent.txnId)))) return ok("ignored");
   const card: SavedCard = {
     token, last4: ct.last4, brand: ct.brand || "card",
     expMonth: ct.expMonth, expYear: ct.expYear, savedAt: new Date().toISOString(), orderId,
   };
-  await db.set(cardKey(intentAccount(intent)), card);
-  await withUserLock(intentAccount(intent), async (u) => {
-    if (!u.billing) return;
+  // Rule 2271: a card token for an order whose payment the founder refunded is not saved again. The refund deleted the
+  // card (`endPlanOnRefund`); a late or replayed callback for that order must not bring it back, or the next checkout
+  // would turn automatic renewal on with it. Rule 2280: the refunded check and the write run under the account's lock,
+  // the one `endPlanOnRefund` holds while it deletes the card, so a refund cannot land between the check and the write.
+  const saved = await withUserLock(intentAccount(intent), async (u) => {
+    if (intent.txnId !== undefined && (await db.get(refundedKey(intent.txnId)))) return false;
+    await db.set(cardKey(intentAccount(intent)), card);
+    if (!u.billing) return true;
     u.billing = { ...u.billing, card: { brand: card.brand, last4: card.last4 }, ...(intent.kind === "plan" ? { autoRenew: true } : {}) };
     await saveUser(u);
+    return true;
   });
-  return ok("card_saved");
+  return saved ? ok("card_saved") : ok("ignored");
 }
 
 /**
@@ -594,8 +596,10 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * Rule 2270 (founder decision 2026-10-19): the saved card token (`paymob:card:{acct}`) is deleted too, first, under the
  * same lock, and on a retry as well. A later checkout of the refunded account then finds no card, so it cannot turn
  * automatic renewal back on by itself (`applyPaid` sets `autoRenew` from a saved card); the owner saves a card again on
- * that checkout. `chargeSavedCard` re-reads the card under this lock right before it charges, so a renewal already in
- * flight stops (rule 1956). A pack's refund never reaches here: the plan and its card stay.
+ * that checkout. `chargeSavedCard` re-reads the card under this lock before it charges (rule 1956), so a renewal that has
+ * not yet passed that check stops. The charge itself (`saved.charge`) runs after that lock is released: a refund that
+ * lands in that window still lets that one renewal charge, the existing rule 1956 design. `saveCard` checks the refund
+ * and writes the card under this same lock (rule 2280). A pack's refund never reaches here: the plan and its card stay.
  */
 async function endPlanOnRefund(email: string, paymentId: string, by: string): Promise<boolean> {
   const now = new Date();

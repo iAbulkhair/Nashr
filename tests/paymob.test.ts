@@ -573,6 +573,45 @@ describe("a plan refund deletes the saved card (rules 2270-2272)", () => {
     const next = fake.intents.at(-1)!;
     expect(await (await hook(tokenFor(u.email, next.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
   });
+  it("a refund that lands while the token callback is between its refund check and its write still ends with no card (rule 2280)", async () => {
+    const u = await owner();
+    const { obj, it: intent } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    jar().clear();
+    await adminSignIn();
+    const get = db.get.bind(db);
+    let racing: Promise<Response> | undefined;
+    const spy = vi.spyOn(db, "get").mockImplementation(async (key: string) => {
+      const v = await get(key);
+      if (!racing && key.startsWith("paymob:refunded:")) {
+        // The founder's refund starts right after the callback read "not refunded", and gets every chance to finish
+        // before the callback writes the card. Under the account lock it waits for the callback instead.
+        racing = refund(u.email, { id: paymentIdFor(obj.id) });
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      return v as never;
+    });
+    try {
+      expect(await (await hook(tokenFor(u.email, intent.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+      expect(racing, "the refund started inside the callback's check").toBeDefined();
+      expect(await (await racing!).json()).toMatchObject({ ok: true, planEnded: true });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await db.get(cardKey(u.email)), "the refund deleted the card after the callback wrote it").toBeNull();
+    // A replay of the same callback now sees the refund and saves nothing.
+    expect(await (await hook(tokenFor(u.email, intent.orderId), "TOKEN")).json()).toMatchObject({ result: "ignored" });
+    expect(await db.get(cardKey(u.email))).toBeNull();
+  });
+  it("saveCard reads the refund mark and writes the card inside the account lock (rule 2280)", async () => {
+    const { readFileSync } = await import("fs");
+    const src = readFileSync("src/lib/billing.ts", "utf8");
+    const body = src.slice(src.indexOf("async function saveCard("), src.indexOf("export async function handlePaymobCallback("));
+    const lock = body.indexOf("withUserLock(intentAccount(intent)");
+    expect(lock).toBeGreaterThan(0);
+    expect(body.indexOf("refundedKey(intent.txnId)")).toBeGreaterThan(lock);
+    expect(body.indexOf("db.set(cardKey(")).toBeGreaterThan(lock);
+    expect(body.match(/db\.set\(cardKey\(/g)).toHaveLength(1);
+  });
 });
 
 describe("leaving (rule 719)", () => {

@@ -113,6 +113,27 @@ describe("the daily job moves it to the trial (rule 2274)", () => {
     expect(src.indexOf("endHandPlanIfDue(acct(u))")).toBeGreaterThan(0);
     expect(src.indexOf("endHandPlanIfDue(acct(u))")).toBeLessThan(src.indexOf("renewIfDue(acct(u))"));
   });
+  it("a failing end is reported as hand_plan_failed, the plan is left for the next day's run, and the rest of the run goes on", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-secret-hand-plan");
+    vi.stubEnv("RESEND_API_KEY", "");
+    const u = await account("pro", { handPlan: hand(addDays(today(), -1)), renewedAt: "2000-01", credits: 5 });
+    const other = await account("pro", { renewedAt: "2000-01", credits: 5 });
+    vi.resetModules();
+    vi.doMock("@/lib/hand-plan-end", () => ({ endHandPlanIfDue: async () => { throw new Error("redis down"); } }));
+    try {
+      const { GET } = await import("@/app/api/cron/daily/route");
+      const res = await GET(new Request("https://nashr.test/api/cron/daily", { headers: { authorization: "Bearer cron-secret-hand-plan" } }));
+      expect(res.status).toBe(200);
+      const report = (await res.json()) as { results: Record<string, string> };
+      expect(report.results[u.email]).toMatch(/hand_plan_failed/);
+      expect(report.results[u.email]).not.toMatch(/redis down/);
+      expect((await getUser(u.email))!.plan, "left as it was; the gates already refuse it (rule 2273)").toBe("pro");
+      expect(report.results[other.email], "the next account's day still runs").toMatch(/renewed/);
+    } finally {
+      vi.doUnmock("@/lib/hand-plan-end");
+      vi.resetModules();
+    }
+  });
 });
 
 describe("no new stored field (rule 2275, the expand step of rule 679)", () => {
