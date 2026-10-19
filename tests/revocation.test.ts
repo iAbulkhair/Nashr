@@ -43,7 +43,8 @@ describe("sessions end when the password changes", () => {
     expect((await currentUser())!.email).toBe(u.email);
   });
   it("a reset kills old sessions, legacy ones without an issue time included, and every MCP token", async () => {
-    const u = await newUser("sess");
+    // Pins the legacy shape (multi-org M1): a session from before R1 belongs to a legacy owner.
+    const u = await newUser("sess", { legacy: true });
     const old = await signIn(u.email);
     const legacy = randomBytes(32).toString("hex");
     // Legacy sessions only exist for accounts from before 2026-09-18, which carry no creation stamp in sessionsAfter

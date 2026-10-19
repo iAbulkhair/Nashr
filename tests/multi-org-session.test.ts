@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join as pathJoin } from "node:path";
-import { jar, json, newMember, newUser, signIn, signOut, withHeaders } from "./helpers/session";
+import { jar, json, newMember as helperNewMember, newUser as helperNewUser, signIn, signOut, withHeaders } from "./helpers/session";
 import { trackRounds } from "./helpers/rounds";
 import { acct, currentPerson, currentUser, getUser, saveUser, sc, sessionKey, type User } from "@/lib/auth";
 import { loginIndexOf, newAccountId } from "@/lib/account-id";
@@ -13,6 +13,11 @@ import { ownerOf } from "@/lib/membership";
 import { newPersonId } from "@/lib/multi-org";
 import { getMember, saveMember } from "@/lib/team";
 import * as brandsRoute from "@/app/api/brands/route";
+
+// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
+// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
  * Multi-workspace M1 expand, Task 4 (docs/specs/2026-10-18-multi-org.md sections 7, 8 and 15): `resolveSession` on the

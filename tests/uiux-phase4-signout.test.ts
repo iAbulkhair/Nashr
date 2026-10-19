@@ -49,7 +49,8 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
   });
 
   it("the owner's sign-out stamps devicesAfter, never sessionsAfter, so a feed or booking link made earlier still holds", async () => {
-    const u = await newUser("so4");
+    // Pins the legacy shape (multi-org M1): the stamps are read on the legacy `user:{email}` record.
+    const u = await newUser("so4", { legacy: true });
     const before = (await getUser(u.email))!.sessionsAfter;
     const rec = { login: u.email, scope: u.email, createdAt: new Date().toISOString() };
     await new Promise((r) => setTimeout(r, 5));
@@ -64,7 +65,8 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
 
   it("a member's sign-out stamps the member's devicesAfter only; the member's links stay too", async () => {
     const owner = await newUser("so4");
-    const m = await newMember(owner);
+    // Pins the legacy shape (multi-org M1): the stamps are read on the legacy `member:{email}` record.
+    const m = await newMember(owner, "member", "m", { legacy: true });
     const rec = { login: m.email, scope: owner.email, createdAt: new Date().toISOString() };
     await new Promise((r) => setTimeout(r, 5));
     const other = await signIn(m.email);
@@ -101,7 +103,8 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
 
 describe("rule 1171: the new session is written before the old ones end", () => {
   it("when the stamp cannot be saved the device is still signed in", async () => {
-    const u = await newUser("so4");
+    // Pins the legacy shape (multi-org M1): the failing write is the legacy `user:{email}` record's.
+    const u = await newUser("so4", { legacy: true });
     await signIn(u.email);
     const real = db.set.bind(db);
     vi.spyOn(db, "set").mockImplementation(((key: string, ...rest: unknown[]) => {

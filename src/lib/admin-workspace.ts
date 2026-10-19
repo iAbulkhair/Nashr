@@ -5,7 +5,7 @@ import { listOrgs } from "./membership";
 import { pmap } from "./parallel";
 import { brandCapFor, seatLimit } from "./pricing";
 import { isSuspended, suspensionEnd } from "./suspension";
-import { listMembers, peekInvites } from "./team";
+import { inviterAddress, listMembers, peekInvites } from "./team";
 import { lastActive } from "./track";
 
 /**
@@ -65,8 +65,9 @@ export async function workspaceView(chosen: string): Promise<WorkspaceView | nul
   // The account id, from the stored record (an owner's address is its id while `OPAQUE_IDS` is off).
   const key = acct(owner);
   const [members, invites, brands, ownerSignIn, active] = await Promise.all([listMembers(key), peekInvites(key), listBrands(key), lastSignIn(owner.email), lastActive(owner.email)]);
-  // Each member's last sign-in and other workspaces, in one round.
-  const perMember = await pmap(members, (m) => Promise.all([lastSignIn(m.email), listOrgs(m.pid)]));
+  // Each member's last sign-in, other workspaces and inviter's address (`inviterAddress`: a membership row names its
+  // inviter by person id since multi-workspace M1), in one round.
+  const perMember = await pmap(members, (m) => Promise.all([lastSignIn(m.email), listOrgs(m.pid), inviterAddress(m.invitedBy)]));
   const suspended = isSuspended(owner);
   return {
     owner: {
@@ -79,8 +80,8 @@ export async function workspaceView(chosen: string): Promise<WorkspaceView | nul
       brands: { active: brands.filter((b) => b.status === "active").length, cap: brandCapFor(owner) },
     },
     members: members.map((m, i) => {
-      const [signIn, orgs] = perMember[i];
-      return { email: m.email, name: m.name, role: m.role, invitedBy: m.invitedBy, acceptedAt: m.acceptedAt, paused: !!m.disabled, lastSignInAt: iso(signIn), alsoIn: orgs.filter((o) => o.aid !== key).length };
+      const [signIn, orgs, invitedBy] = perMember[i];
+      return { email: m.email, name: m.name, role: m.role, invitedBy, acceptedAt: m.acceptedAt, paused: !!m.disabled, lastSignInAt: iso(signIn), alsoIn: orgs.filter((o) => o.aid !== key).length };
     }),
     invites: invites.map((v) => ({ email: v.email, role: v.role, invitedBy: v.invitedBy, createdAt: v.createdAt, expiresAt: v.expiresAt })),
     brands: brands.map((b) => ({ id: b.id, name: b.name, status: b.status, createdAt: b.createdAt })),

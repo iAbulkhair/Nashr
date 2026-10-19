@@ -132,7 +132,8 @@ describe("rules 1345-1346: session tokens are stored hashed (expand step)", () =
     expect((await currentUser())?.email).toBe(u.email);
   });
   it("a session written before the change (raw key) still signs in: nobody is signed out", async () => {
-    const u = await newUser("hs2");
+    // Pins the legacy shape (multi-org M1): a session from before R1 belongs to a legacy owner.
+    const u = await newUser("hs2", { legacy: true });
     const legacy = randomBytes(32).toString("hex");
     await db.set(`session:${legacy}`, { email: u.email, at: Date.now() }, 3600);
     signOut();

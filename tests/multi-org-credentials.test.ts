@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
 import { acct, createUser, currentUser, getUser, verifyPassword, type User } from "@/lib/auth";
 import { loginIndexOf, newAccountId } from "@/lib/account-id";
 import { db } from "@/lib/db";
@@ -22,6 +22,11 @@ import * as loginRoute from "@/app/api/auth/login/route";
 import * as signupRoute from "@/app/api/auth/signup/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as verifyCheckRoute from "@/app/api/auth/verify/check/route";
+
+// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
+// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
  * Multi-workspace M1 expand, Task 5 (docs/specs/2026-10-18-multi-org.md sections 2 and 6): every credential write goes
@@ -364,7 +369,8 @@ describe("plan reconciliation 6: a new login's person row is written whole", () 
   });
 
   it("an owner's address move writes the person at the new address whole, with the moved password and birth", async () => {
-    const o = await newUser("mv", { verified: false });
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+    const o = await newUser("mv", { verified: false, shadow: false });
     const to = address("mvto");
     await db.set(personKey.person(storedPersonId(to)), { pid: to, email: to, name: "Leftover", lang: "ar", passHash: await bcrypt.hash("leftover-pass-1", 4), createdAt: T0, sessionsAfter: T0, suspended: true });
     expect(await moveUnverifiedAccount((await getUser(o.email))!, to)).toBe("ok");

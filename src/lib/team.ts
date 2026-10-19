@@ -16,7 +16,7 @@ import { parseStored, type MembershipValue } from "./stored";
 import { aidOf, getMembership, legacyHomeFrom, membershipFromRaw, ownerOf, type Membership } from "./membership";
 import { createPersonRecord, getPerson, withPersonLock } from "./person";
 import { logTeam } from "./teamlog";
-import { MULTI_ORG } from "./multi-org";
+import { MULTI_ORG, PERSON_ID } from "./multi-org";
 import { mfaKeys } from "./mfa";
 import { revokeAllDevices } from "./devices";
 
@@ -397,6 +397,17 @@ export async function listMembers(owner: string): Promise<MemberView[]> {
     };
   });
   return rows.filter((m): m is MemberView => !!m).sort(byAge((m) => m.acceptedAt, (m) => m.email));
+}
+
+/**
+ * The address to show for a membership row's `invitedBy` (multi-workspace M1, Task 9). The row names the inviter by person
+ * id: a legacy person's id is its address and is shown as stored; a `p_` id is read back as that person's address, or
+ * shown as stored when no person holds it any more. The value is always one this app wrote, never a request's.
+ */
+export async function inviterAddress(invitedBy: string): Promise<string> {
+  if (!PERSON_ID.test(invitedBy)) return invitedBy;
+  const p = await getPerson(pidFrom(invitedBy));
+  return p ? normalizeEmail(p.email) : invitedBy;
 }
 
 /** The account's invite index read once: the pending, unexpired invites (oldest first) and the ids that are stale. */

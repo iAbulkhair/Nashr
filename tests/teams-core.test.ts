@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
-import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
 import { adminActor, createUser, currentUser, getLogin, getUser, isAdmin, isAdminCookie, isFounderActor, PLAN_SEATS, saveUser, sc, seatLimit, type Actor, type Plan, type User } from "@/lib/auth";
 import { storedPersonId } from "@/lib/keys";
 import { can, forbid, IMPERSONATION_BLOCKED, roleOf, type Action } from "@/lib/roles";
@@ -10,6 +10,11 @@ import { wipeAccount } from "@/lib/account";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { db } from "@/lib/db";
 import * as users from "@/app/api/admin/users/[email]/route";
+
+// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
+// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 const FOUNDER = "founder-teams@test.example";
 const ownerActor = (u: User): Actor => ({ kind: "owner", pid: storedPersonId(u.email), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" });
@@ -72,8 +77,9 @@ describe("resolving a member session", () => {
   });
   it("refuses a removed member, a disabled member, a suspended owner and a missing owner", async () => {
     const owner = await newUser("own");
-    const a = await newMember(owner);
-    const b = await newMember(owner);
+    // No shadow memberships for a and b: a removed or paused member who holds nothing else signs in nowhere (multi-org M1).
+    const a = await newMember(owner, "member", "m", { shadow: false });
+    const b = await newMember(owner, "member", "m", { shadow: false });
     const c = await newMember(owner);
     expect(await resolveAs(a.email)).not.toBeNull();
     expect((await removeMember(owner, ownerActor(owner), a.email)).ok).toBe(true);
@@ -92,7 +98,8 @@ describe("resolving a member session", () => {
   });
   it("refuses a member record older than the owner record (a re-registered owner address never inherits a team)", async () => {
     const owner = await newUser("own");
-    const m = await newMember(owner);
+    // No shadow membership: a refused member who holds nothing else signs in nowhere (multi-org M1).
+    const m = await newMember(owner, "member", "m", { shadow: false });
     expect(await resolveAs(m.email)).not.toBeNull();
     await saveUser({ ...(await getUser(owner.email))!, createdAt: new Date(Date.now() + 60_000).toISOString() });
     expect(await resolveAs(m.email)).toBeNull();
@@ -435,7 +442,8 @@ describe("roster changes", () => {
   it("setRole is owner only; leave is members only", async () => {
     const owner = await withPlan(await newUser("own"), "agency");
     const admin = await newMember(owner, "admin");
-    const plain = await newMember(owner);
+    // No shadow membership: a member who left its only account signs in nowhere (multi-org M1).
+    const plain = await newMember(owner, "member", "m", { shadow: false });
     const adminU = (await resolveAs(admin.email))!;
     expect(await setRole(adminU, adminU.actor!, plain.email, "admin")).toEqual({ ok: false, error: "forbidden" });
     expect(await setRole(owner, ownerActor(owner), plain.email, "owner")).toEqual({ ok: false, error: "invalid_role" });

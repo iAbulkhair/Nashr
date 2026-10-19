@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
-import { adminSignIn, json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { adminSignIn, json, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
 import { acct, currentUser, getLogin, getUser, saveUser, type Actor, type Plan, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
@@ -28,6 +28,11 @@ import * as accountRoute from "@/app/api/account/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import { moveUnverifiedAccount } from "@/lib/verify-email";
 import { confirmEmailChange, startEmailChange } from "@/lib/email-change";
+
+// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
+// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
  * Multi-workspace M1 expand, Task 6 (docs/specs/2026-10-18-multi-org.md sections 9, 13 and 15): team membership writes on
@@ -106,8 +111,9 @@ describe("rule 2124 (M1 half): leave and removal", () => {
   });
 
   it("a member leaving its last account takes the person and the login with it; the owner cannot leave", async () => {
-    const [A, B] = [await newUser("la"), await newUser("lb")];
-    const p = await newMember(A);
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+    const [A, B] = [await newUser("la", { shadow: false }), await newUser("lb", { shadow: false })];
+    const p = await newMember(A, "member", "m", { shadow: false });
     const pid = storedPersonId(p.email);
     await joinElsewhere(B, pid);
     await db.set(accountKey.googleSub(p.email), "sub-123");
@@ -135,8 +141,9 @@ describe("rule 2124 (M1 half): leave and removal", () => {
   });
 
   it("a removal of a member with no other membership leaves no person, no login and no orgs: entry", async () => {
-    const A = await newUser("rx");
-    const p = await newMember(A, "admin");
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+    const A = await newUser("rx", { shadow: false });
+    const p = await newMember(A, "admin", "m", { shadow: false });
     const pid = storedPersonId(p.email);
     expect(await removeMember(A, ownerActor(A), p.email)).toEqual({ ok: true });
     expect(await getLogin(p.email)).toBeNull();
@@ -327,8 +334,9 @@ describe("rule 2139: the lock order, and no half-written membership under races"
   });
 
   it("a person lock that cannot be had answers busy with nothing deleted and no row; the retry removes the member", async () => {
-    const A = await newUser("lb");
-    const m = await newMember(A);
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+    const A = await newUser("lb", { shadow: false });
+    const m = await newMember(A, "member", "m", { shadow: false });
     const pid = storedPersonId(m.email);
     await signIn(A.email);
     const del = () => memberRoute.DELETE(json("/api/team/member", "DELETE", { email: m.email }));
@@ -350,10 +358,11 @@ describe("rule 2139: the lock order, and no half-written membership under races"
   }, 20_000);
 
   it("accept, removal and leave racing never leave a row without its roster entry, the reverse, or orgs: naming a missing membership", async () => {
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
     for (let i = 0; i < 20; i++) {
-      const A = await withPlan(await newUser("race"), "agency");
+      const A = await withPlan(await newUser("race", { shadow: false }), "agency");
       const aid = aidOf(A);
-      const [p, q] = [await newMember(A), await newMember(A)];
+      const [p, q] = [await newMember(A, "member", "m", { shadow: false }), await newMember(A, "member", "m", { shadow: false })];
       const inv = await invite(A);
       const qu = (await resolveAs(q.email))!;
       const pu = (await resolveAs(p.email))!;
@@ -416,8 +425,9 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
   }, 20_000);
 
   it("an owner's account DELETE with a member's person lock held answers busy with the owner's record, login and users:all intact; the retry wipes", async () => {
-    const A = await newUser("dw");
-    const m = await newMember(A);
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+    const A = await newUser("dw", { shadow: false });
+    const m = await newMember(A, "member", "m", { shadow: false });
     const pid = storedPersonId(m.email);
     await signIn(A.email);
     const del = () => accountRoute.DELETE(json("/api/account", "DELETE", { password: "abc12345" }));
@@ -437,10 +447,11 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
   }, 20_000);
 
   it("the console's delete with a member's person lock held answers busy with the owner's account whole; the retry wipes", async () => {
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
     vi.stubEnv("WAITLIST_ADMIN_KEY", "mo-team-admin-key-0123456789");
     try {
-      const A = await newUser("cw");
-      const m = await newMember(A);
+      const A = await newUser("cw", { shadow: false });
+      const m = await newMember(A, "member", "m", { shadow: false });
       const pid = storedPersonId(m.email);
       signOut();
       await adminSignIn();
@@ -458,10 +469,11 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
   }, 20_000);
 
   it("a login lock held during a removal, a leave or the console's removal answers 409 with the membership whole", async () => {
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
     vi.stubEnv("WAITLIST_ADMIN_KEY", "mo-team-admin-key-0123456789");
     try {
-      const A = await newUser("ll");
-      const m = await newMember(A);
+      const A = await newUser("ll", { shadow: false });
+      const m = await newMember(A, "member", "m", { shadow: false });
       const pid = storedPersonId(m.email);
       const lock = accountKey.loginLock(m.email);
       await signIn(A.email);
@@ -521,7 +533,8 @@ describe("rule 2139: the owner's records go last and first (Task 6 fix round 2)"
   };
 
   it("an owner's DELETE with the owner's own login lock held answers busy with the account whole; the retry wipes", async () => {
-    const A = await newUser("ol");
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+    const A = await newUser("ol", { shadow: false });
     await signIn(A.email);
     const del = () => accountRoute.DELETE(json("/api/account", "DELETE", { password: "abc12345" }));
     const lock = accountKey.loginLock(A.email);
@@ -536,7 +549,8 @@ describe("rule 2139: the owner's records go last and first (Task 6 fix round 2)"
   }, 20_000);
 
   it("the wipe deletes user:{owner} before the owner's login index and before any other key of the account", async () => {
-    const A = await newUser("od");
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+    const A = await newUser("od", { shadow: false });
     const order: string[] = [];
     const real = db.del.bind(db);
     vi.spyOn(db, "del").mockImplementation(async (k: string) => { order.push(k); return real(k); });

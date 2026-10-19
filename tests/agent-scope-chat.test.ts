@@ -53,7 +53,7 @@ import { createMcpToken } from "@/lib/mcp";
 import { saveBrands, setActiveBrand } from "@/lib/brands";
 import { AGENT_SCOPE_REFUSALS_PER_DAY, AGENT_SCOPE_REFUSALS_PER_HOUR, agentScopeCeiling, countAgentScopeRefusal } from "@/lib/rate";
 import { AGENT_SCOPE_KEYS, agentScopePreflight, agentScopeRefusalText, agentScopeSlowText, scopeCheck, type AgentScopeLogEntry, type AgentScopeMode } from "@/lib/agent-scope";
-import { json, newUser, signIn } from "./helpers/session";
+import { json, newUser, signIn, type Fixture } from "./helpers/session";
 import * as chatRoute from "@/app/api/chat/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 
@@ -66,8 +66,8 @@ const logOf = async (email: string) => (await db.lrange(AGENT_SCOPE_KEYS.log(day
 const counter = async (key: string) => Number((await db.get<number | string>(key)) ?? 0);
 
 /** A paid owner (the month's counter), signed in, as the routes read it (`scope` set). */
-async function owner(prefix: string): Promise<User> {
-  const u = await newUser(prefix);
+async function owner(prefix: string, fx: Fixture = {}): Promise<User> {
+  const u = await newUser(prefix, fx);
   await saveUser({ ...u, plan: "starter", credits: 300 });
   await signIn(u.email);
   const back = (await getUser(u.email))!;
@@ -332,7 +332,8 @@ describe("rule 794: the input gate in a chat turn", () => {
   });
 
   it("ceiling is per brand scope", async () => {
-    const u = await owner("asc-ceil-b");
+    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+    const u = await owner("asc-ceil-b", { legacy: true });
     await setModes("enforce");
     await db.set(hourKey(u.email), 20);
     await saveBrands(u.email, [

@@ -29,7 +29,9 @@ const month = new Date().toISOString().slice(0, 7);
  * the type-check here until it is set, and this test then shows whether the profile sends it.
  */
 async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">>> {
-  const u = (await getUser((await newUser("allow")).email))!;
+  // Pins the legacy shape (multi-org M1): the record below names an owner no person holds (`ownerPid`), which only the
+  // legacy resolver reads past; no shadow membership, which sign-in would otherwise pick as the person's only live account.
+  const u = (await getUser((await newUser("allow", { legacy: true, shadow: false })).email))!;
   const full: Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">> = {
     // The account id (rule 1995): storage only, never a profile field.
     id: u.email,
@@ -106,7 +108,8 @@ describe("GET /api/profile sends only the account fields it names (rule 787)", (
   it("a founder acting as the owner gets the same keys; a member gets its own and the summary", async () => {
     const full = await fullAccount();
     vi.stubEnv("ADMIN_EMAILS", "founder-allow@test.example");
-    await signIn(full.email, { imp: "founder-allow@test.example" });
+    // A session from before R1 (pins the legacy shape, multi-org M1): today's ids would name the fixture's absent owner.
+    await signIn(full.email, { imp: "founder-allow@test.example", legacyShape: true });
     const founder = await read();
     expect(Object.keys(founder.body.user).sort()).toEqual(OWNER_KEYS);
     for (const s of [...SECRETS, full.passHash]) expect(founder.raw, s).not.toContain(s);

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeMemberships } from "@/lib/team";
 import * as resetRoute from "@/app/api/auth/reset/route";
@@ -30,6 +30,12 @@ import { appDict } from "@/lib/app-i18n";
 import { CHAT_ALLOWANCE, PLAN_CREDITS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount } from "@/lib/pricing";
 import { BookingView, bookingWords, rowAfterFailedRenew, type BookingState, type BookRow } from "@/components/app/BookingCard";
 import { refusalText } from "@/components/app/useOneWrite";
+
+// Pins the legacy shape (multi-org M1): this file pins R1's booking links, made, listed and revoked by login
+// (`createBook(login)`, the `sec:bookof:{login}` pointers), so its persons are legacy ones; the links of a `p_` person, per
+// `(pid, aid)`, are pinned in tests/multi-org-links.test.ts (rule 2119). Each still holds a shadow membership.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 // Only the outbound fetch is mocked (Calendly's API); the store and everything else is real. The module's other exports stay real.
 vi.mock("@/lib/safe-fetch", async (orig) => ({ ...(await orig<typeof import("@/lib/safe-fetch")>()), safeFetch: vi.fn() }));

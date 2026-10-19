@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
 import { createMember, forceRemoveMember, getMember, leaveTeam, removeMember, saveMember, type Member } from "@/lib/team";
@@ -29,6 +29,12 @@ import { CHAT_ALLOWANCE, PLAN_CREDITS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatC
 import { formatWhen } from "@/lib/secretary-agenda";
 import { FeedView, type FeedState } from "@/components/app/FeedCard";
 import { createFeed, FEED_KEYS, FEED_TOKEN, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, revokeFeeds } from "@/lib/feed-token";
+
+// Pins the legacy shape (multi-org M1): this file pins R1's feed links, made and checked by login (`createFeed(login)`, the
+// `sec:feedof:{login}` pointer, the login's lock, `activebrand:{login}`), so its persons are legacy ones; the links of a
+// `p_` person, per `(pid, aid)`, are pinned in tests/multi-org-links.test.ts (rule 2119). Each still holds a shadow membership.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 const FOUNDER = "founder-feed@test.example";
 type Mem = { kv: Map<string, unknown>; lists: Map<string, unknown>; sets: Map<string, unknown>; hashes?: Map<string, unknown>; zsets?: Map<string, unknown> };

@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { claudeOn } from "./helpers/model";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, type Fixture } from "./helpers/session";
 import { db } from "@/lib/db";
 import { type User } from "@/lib/auth";
 import { storedPersonId } from "@/lib/keys";
@@ -70,8 +70,8 @@ const settings = (p: Partial<SecCalendar>): SecCalendar => ({ v: 1, weekend: nul
 /** An away entry as the page's PUT stores it (Task 7): field `partyKey(label)`, value `{ label, until, by, via, at }`. */
 const awayEntry = (label: string, until: string) => ({ label, until, by: "owner@test.example", via: "web", at: "2026-10-01T00:00:00.000Z" });
 const OWNER: Who & { source: "owner" } = { actor: "owner", via: "web", source: "owner" };
-async function owner(prefix: string, brand: Brand = BRAND): Promise<User> {
-  const u = await newUser(prefix);
+async function owner(prefix: string, brand: Brand = BRAND, fx: Fixture = {}): Promise<User> {
+  const u = await newUser(prefix, fx);
   await saveBrand(u.email, brand);
   return u;
 }
@@ -678,7 +678,8 @@ describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a ses
 
   it("a PUT in brand A never touches brand B's hash, whatever the body names, and a DELETE in A cannot end B's entry", async () => {
     await at(NOW, async () => {
-      const u = await owner("aw483c");
+      // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+      const u = await owner("aw483c", BRAND, { legacy: true });
       const b2 = scopeFor(u.email, "b2");
       await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });
@@ -949,7 +950,8 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
 
   it("a PUT in brand B stores under B's scope alone, whatever the body names, and each brand's GET reads its own", async () => {
     await at(NOW, async () => {
-      const u = await owner("c484b");
+      // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+      const u = await owner("c484b", BRAND, { legacy: true });
       const b2 = scopeFor(u.email, "b2");
       await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });
@@ -1149,7 +1151,8 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
 
   it("the proposal is read only from the caller's scope: another brand's or account's id is 404 and stays open; a malformed id is 404 and a bad action 400 before any proposal is read; anonymous is 401; the rate limit is 429", async () => {
     await at(NOW, async () => {
-      const u = await owner("aw485d");
+      // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+      const u = await owner("aw485d", BRAND, { legacy: true });
       const b2 = scopeFor(u.email, "b2");
       await saveBrands(u.email, [{ id: "default", name: "", createdAt: iso(NOW), status: "active" }, { id: "b2", name: "Two", createdAt: iso(NOW), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });

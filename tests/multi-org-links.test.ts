@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
 import { trackRounds } from "./helpers/rounds";
 import { acct, currentUser, saveUser, sc, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -12,6 +12,11 @@ import { BOOK_KEYS, createBook, getBookStatus, hashBookToken, resolveBook, revok
 import { linkOwner, loginHolds } from "@/lib/secretary-feed";
 import * as feedRoute from "@/app/api/secretary/feed/[token]/route";
 import * as manageRoute from "@/app/api/secretary/feed/route";
+
+// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
+// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
  * Multi-workspace M1 expand, Task 7 (docs/specs/2026-10-18-multi-org.md section 9): the calendar feed and the booking

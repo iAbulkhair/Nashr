@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { isPersonSuspended, isSuspended } from "./suspension";
 import { db } from "./db";
 import { BEARER, TOKEN_PREFIX, grantHoldsAccess, revokeAllGrants, tokenHash } from "./oauth";
-import { emailVerified, getUser, normalizeEmail, type User } from "./auth";
+import { emailVerified, getUser, normalizeEmail, readLoginIndex, type User } from "./auth";
 import type { Action } from "./roles";
 import { accountKey, globalKey, personKey, storedAccountId, storedPersonId } from "./keys";
 import { acct } from "./account-id";
@@ -76,7 +76,9 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   if (!rec) return null;
   const email = rec.email;
   // Tokens (personal and OAuth) are minted by owners only, so a bearer resolves only to an owner account. A token whose
-  // email is a member login is refused, even should an owner record exist at the same address.
+  // email is a member login is refused, even should an owner record exist at the same address: a legacy member record
+  // there, or (multi-workspace M1) a login index naming a person who does not own the account, such as a `p_` member,
+  // who has no legacy record.
   const [{ getMember }, { activeBrandFrom, activeBrandIn, scopeFor }, { getPerson, personFromRaw }, { aidOf, ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./person"), import("./membership")]);
   // A legacy account's owner is the person whose id is the account id (the token record's value, which this app wrote).
   const id = normalizeEmail(email);
@@ -84,9 +86,10 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   const legacyAid = storedAccountId(id);
   // An OAuth access token is accepted only while its grant exists and lists it (revoked, or rotated past, is refused).
   // Read alongside the account, with the owner's person and active brand, so none of them costs an extra round trip.
-  const [u, member, rawPerson, rawActive, rawLegacyActive, granted] = await Promise.all([
+  const [u, member, idx, rawPerson, rawActive, rawLegacyActive, granted] = await Promise.all([
     getUser(email),
     getMember(email),
+    readLoginIndex(id),
     db.get<unknown>(personKey.person(legacyPid)),
     db.get<unknown>(personKey.activeBrand(legacyPid, legacyAid)),
     db.get<unknown>(accountKey.activeBrand(id)),
@@ -96,6 +99,7 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   // not proved the address yet (rule 753), which covers a token minted before the gate or by a not-yet-verified owner.
   if (!u || isSuspended(u) || !emailVerified(u) || member || !granted) return null;
   const pid = ownerOf(u);
+  if (idx && idx.pid !== pid) return null;
   const aid = aidOf(u);
   // The legacy per-login key belongs to the owner's home account: a legacy owner's own account, at its address.
   const homeLogin = u.ownerPid === undefined ? u.email : null;

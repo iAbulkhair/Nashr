@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
-import { jar, json, markVerified, newMember, newOpaqueUser, newUser, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newMember as helperNewMember, newOpaqueUser as helperNewOpaqueUser, newUser as helperNewUser, signIn, signOut } from "./helpers/session";
 import { acct, getLogin, getUser, saveUser, sessionIds, sessionKey, verifyPassword, type User } from "@/lib/auth";
 import { loginIndexOf, newAccountId } from "@/lib/account-id";
 import { db } from "@/lib/db";
@@ -12,6 +12,12 @@ import { getMember, saveMember } from "@/lib/team";
 import * as loginRoute from "@/app/api/auth/login/route";
 import * as signupRoute from "@/app/api/auth/signup/route";
 import * as forgotRoute from "@/app/api/auth/forgot/route";
+
+// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
+// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
+const newOpaqueUser = (prefix?: string, o: Parameters<typeof helperNewOpaqueUser>[1] = {}) => helperNewOpaqueUser(prefix, { legacy: true, ...o });
 
 /**
  * Multi-workspace M1 expand, Task 3 (docs/specs/2026-10-18-multi-org.md section 5): sign-in resolves a person and picks

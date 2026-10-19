@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, type Fixture } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getUser, type User } from "@/lib/auth";
 import { saveBrand, saveTask, updateTask, type Brand, type Task } from "@/lib/brand";
@@ -38,8 +38,8 @@ const patch = (id: string, body: unknown) => itemRoute.PATCH(json(`/api/secretar
 const view = async (q = "") => (await listRoute.GET(json(`/api/secretary${q}`, "GET"))).json();
 const ch = (n: number) => String.fromCharCode(n);
 
-async function owner(prefix = "sec"): Promise<User> {
-  const u = await newUser(prefix);
+async function owner(prefix = "sec", fx: Fixture = {}): Promise<User> {
+  const u = await newUser(prefix, fx);
   await saveBrand(u.email, BRAND);
   await signIn(u.email);
   return u;
@@ -113,7 +113,8 @@ describe("tenant isolation (rule 190)", () => {
   });
 
   it("keeps a second brand's list separate", async () => {
-    const u = await owner("secbrand");
+    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+    const u = await owner("secbrand", { legacy: true });
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await saveBrand(scopeFor(u.email, "b2"), { ...BRAND, name: "Two" });
     const first = await add({ title: "Default brand item" });
@@ -344,7 +345,8 @@ describe("one writer at a time per item, checked against rev (rule 194)", () => 
 
 describe("limits (rule 195)", () => {
   it("allows 200 new items a day per account, across its brands", async () => {
-    const u = await owner("secrate");
+    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+    const u = await owner("secrate", { legacy: true });
     await db.set(`rate:sec:create:${u.email}`, SEC_CREATE_PER_DAY - 1, 86400);
     expect((await create({ title: "The 200th" })).status).toBe(200);
     const over = await create({ title: "The 201st" });
@@ -546,7 +548,8 @@ describe("the agenda read is batched (rule 198)", () => {
 
 describe("account deletion removes the whole list (rule 201)", () => {
   it("deletes every sec:* key of every brand scope", async () => {
-    const u = await owner("secwipe");
+    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+    const u = await owner("secwipe", { legacy: true });
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await saveBrand(scopeFor(u.email, "b2"), { ...BRAND, name: "Two" });
     const open = await add({ title: "Open" });

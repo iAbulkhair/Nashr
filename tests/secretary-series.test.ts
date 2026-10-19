@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, params, signIn } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, type Fixture } from "./helpers/session";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
 import { getUser, saveUser } from "@/lib/auth";
@@ -29,8 +29,8 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 const z = "Asia/Riyadh";
 const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
 const patch = (id: string, body: unknown) => itemRoute.PATCH(json(`/api/secretary/${id}`, "PATCH", body), params({ id }));
-async function login() {
-  const u = await newUser("secser");
+async function login(fx: Fixture = {}) {
+  const u = await newUser("secser", fx);
   await signIn(u.email);
   return u;
 }
@@ -915,9 +915,10 @@ describe("rule 509: the repeat controls and the series view on the to-do page", 
   });
 
   it("an unknown id, another brand's id and a malformed id: not found without reading anything else; malformed counts as absent", async () => {
-    await login();
+    // Pins the legacy shape (multi-org M1): the allowed session reads below are a legacy owner's (no `mbr:` read).
+    await login({ legacy: true });
     const a = await complete((await recurring("Mine")).id);
-    const other = await login();
+    const other = await login({ legacy: true });
     expect(other.email).toBeTruthy();
     const gets = vi.spyOn(db, "get");
     const mgets = vi.spyOn(db, "mget");

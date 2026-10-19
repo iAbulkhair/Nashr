@@ -34,8 +34,9 @@ async function seed(l: string, sub: string) {
 
 describe("rule 1954: deleting an account removes the two-step, address-change, Google and device records of every login", () => {
   it("owner and member keys are gone and neither session opens anything", async () => {
-    const owner = await newUser("wipe");
-    const m = await newMember(owner);
+    // No shadow memberships: this pins persons who hold nothing else, so the deletion takes both logins (multi-org M1).
+    const owner = await newUser("wipe", { shadow: false });
+    const m = await newMember(owner, "member", "m", { shadow: false });
     await Promise.all([seed(owner.email, "gOwnerSub1"), seed(m.email, "gMemberSub1")]);
     await signIn(m.email);
     expect(await currentUser()).not.toBeNull();

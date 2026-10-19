@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { newUser, signIn } from "./helpers/session";
+import { newUser, signIn, type Fixture } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { getTask, listTasks, pendingCount, saveBrand, type Brand } from "@/lib/brand";
 import { getUser } from "@/lib/auth";
@@ -20,8 +20,8 @@ type Result = { result: { isError?: boolean; content: { text: string }[] } };
 const result = async (res: Response) => ((await res.json()) as Result).result;
 const report = async (res: Response) => JSON.parse((await result(res)).content[0].text);
 
-async function owner(prefix = "draft") {
-  const u = await newUser(prefix);
+async function owner(prefix = "draft", fx: Fixture = {}) {
+  const u = await newUser(prefix, fx);
   await saveBrand(u.email, BRAND);
   return { u, token: await createMcpToken(u.email) };
 }
@@ -55,7 +55,8 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
   });
 
   it("writes only to the bearer's own active brand: scope, email or id in the arguments are ignored", async () => {
-    const a = await owner("drafta");
+    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+    const a = await owner("drafta", { legacy: true });
     const b = await owner("draftb");
     const r = await report(await call({ type: "social", body: "قهوة طازجة", scope: b.u.email, email: b.u.email, owner: b.u.email, id: "fixed" }, a.token));
     expect(r.id).not.toBe("fixed");
@@ -126,7 +127,8 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
   });
 
   it(`stops at ${DRAFTS_PER_HOUR} drafts an hour per account, across its brands`, async () => {
-    const { u, token } = await owner("draftrate");
+    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+    const { u, token } = await owner("draftrate", { legacy: true });
     for (let i = 0; i < DRAFTS_PER_HOUR; i++) expect((await result(await call({ type: "social", body: `قهوة ${i}` }, token))).isError).toBeUndefined();
     const over = await result(await call({ type: "social", body: "قهوة أخرى" }, token));
     expect(over.isError).toBe(true);

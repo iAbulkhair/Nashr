@@ -42,7 +42,8 @@ afterEach(() => { vi.unstubAllEnvs(); signOut(); });
 
 describe("rule 1942: the password starts it, the code goes to the new address only, nothing moves before the code", () => {
   it("an owner with an empty account moves to a proved address; the old address gets a notice", async () => {
-    const u = await newUser("em");
+    // Pins the legacy shape (multi-org M1): an address moves only for a legacy person until release M2 moves it with the `p_` person.
+    const u = await newUser("em", { legacy: true });
     await signIn(u.email);
     const before = jar().get("thakeen_session")!;
     const to = addr("new");
@@ -85,7 +86,8 @@ describe("rule 1942: the password starts it, the code goes to the new address on
 describe("rule 1943: a member moves its own login; the team, the active brand and two-step sign-in follow", () => {
   it("the member record, roster entry and enrolment move; the old login is gone", async () => {
     const owner = await newUser("em");
-    const m = await newMember(owner);
+    // Pins the legacy shape (multi-org M1): an address moves only for a legacy person until release M2 moves it with the `p_` person.
+    const m = await newMember(owner, "member", "m", { legacy: true });
     await db.set(`activebrand:${m.email}`, "default");
     await db.set(mfaKey(m.email), { enc: "x", kid: "k", rc: [], at: new Date().toISOString() });
     await Promise.all([db.set(subKey(m.email), "gMoveSub1"), db.set(linkKey("gMoveSub1"), m.email)]);
@@ -191,11 +193,13 @@ describe("rule 1945: taken addresses, the account's own key and a founder impers
   });
 
   it("an address taken between start and confirm is refused and nothing moves", async () => {
-    const u = await newUser("em");
+    // Pins the legacy shape (multi-org M1): an address moves only for a legacy person until release M2 moves it with the `p_` person.
+    const u = await newUser("em", { legacy: true });
     await signIn(u.email);
     const to = addr("race");
     await start(to);
-    const thief = await newUser("em");
+    // Pins the legacy shape (multi-org M1): the copy below is a legacy owner record (no `ownerPid`), found by rule 1981.
+    const thief = await newUser("em", { legacy: true });
     const t = (await getUser(thief.email))!;
     // A copy at the address, stored under it (a record's key is its id, rule 1980); no login index, so the guarded
     // fallback of rule 1981 is what finds it.

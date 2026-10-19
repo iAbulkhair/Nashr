@@ -49,7 +49,8 @@ describe("password reset (rule 9)", () => {
     expect(sent.map((m) => m.to)).toEqual([u.email]);
   });
   it("stores only a hash of the token, accepts it once, then never again", async () => {
-    const u = await newUser("reset");
+    // Pins the legacy shape (multi-org M1): the checks read the hash on the legacy `user:{email}` record.
+    const u = await newUser("reset", { legacy: true });
     await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email }, ip()));
     const token = tokenFrom(sent[0].text);
     expect(await db.get(`pwreset:${token}`)).toBeNull(); // the raw token is not a key
@@ -61,7 +62,8 @@ describe("password reset (rule 9)", () => {
     expect(await verifyPassword((await getUser(u.email))!, "newpass123")).toBe(true);
   });
   it("refuses the token after one hour", async () => {
-    const u = await newUser("reset");
+    // Pins the legacy shape (multi-org M1): the checks read the hash on the legacy `user:{email}` record.
+    const u = await newUser("reset", { legacy: true });
     await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email }, ip()));
     const token = tokenFrom(sent[0].text);
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });

@@ -502,7 +502,8 @@ describe("removal, leaving and roles take effect at the next request", () => {
   it("an admin removes plain members but not another admin", async () => {
     const owner = await withPlan(await newUser("own"), "agency");
     const admin = await newMember(owner, "admin");
-    const admin2 = await newMember(owner, "admin");
+    // Pins the legacy shape (multi-org M1): the check below reads the legacy `member:{email}` record.
+    const admin2 = await newMember(owner, "admin", "m", { legacy: true });
     const plain = await newMember(owner, "member");
     await signIn(admin.email);
     expect((await memberRoute.DELETE(json("/api/team/member", "DELETE", { email: admin2.email }))).status).toBe(403);

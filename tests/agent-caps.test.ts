@@ -424,7 +424,8 @@ describe("model usage per agent (rule 110)", () => {
   });
 
   it("wipeAccount deletes every per-agent counter; the key list is built from KINDS and AGENT_IDS", async () => {
-    const u = await newUser("usage-wipe");
+    // No shadow membership: this pins a person who holds nothing else, so the deletion takes the login too (multi-org M1).
+    const u = await newUser("usage-wipe", { shadow: false });
     await Promise.all(AGENT_IDS.map((a) => meter(u.email, "claude-opus-5-5", "generate", { input_tokens: 5, output_tokens: 5 }, a)));
     expect(await db.get(`usage:${u.email}:${monthKey()}:agent:layan:usd_micro`)).not.toBeNull();
     await wipeAccount(u.email);

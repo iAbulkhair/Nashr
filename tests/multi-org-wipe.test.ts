@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
 import { readFileSync } from "fs";
-import { json, jar, markVerified, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { json, jar, markVerified, newMember as helperNewMember, newUser as helperNewUser, signIn, signOut } from "./helpers/session";
 import { acct, createUser, currentUser, getLogin, getUser, saveUser, type Actor, type Plan, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { accountKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
@@ -21,6 +21,11 @@ import * as webhook from "@/app/api/billing/paymob/webhook/route";
 import * as planRoute from "@/app/api/admin/plan/route";
 import * as sessionsRoute from "@/app/api/account/sessions/route";
 import { TXN_HMAC_FIELDS, hmacString, signHmac } from "@/lib/paymob";
+
+// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
+// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
  * Multi-workspace M1 expand, Task 8 (docs/specs/2026-10-18-multi-org.md sections 9 and 15, plan reconciliation 7):
@@ -70,8 +75,9 @@ async function threeAccounts() {
   await join(B, P.pid);
   await join(C, P.pid);
   await Promise.all([db.set(personKey.activeBrand(P.pid, aidOf(B)), "default"), db.set(personKey.activeBrand(P.pid, aidOf(C)), "default")]);
-  // Someone else on each roster, so the other accounts have a team of their own to keep.
-  const [mB, mC] = [await newMember(B), await newMember(C)];
+  // Someone else on each roster, so the other accounts have a team of their own to keep. No shadow memberships: they
+  // hold nothing else, so `alsoIn` counts 0 for them (multi-org M1).
+  const [mB, mC] = [await newMember(B, "member", "m", { shadow: false }), await newMember(C, "member", "m", { shadow: false })];
   return { P, A: P.owned, B, C, mB, mC };
 }
 const resolveAs = async (email: string, account: User) => { await signIn(email, { acct: acct(account) }); return currentUser(); };
@@ -144,8 +150,9 @@ describe("rule 2126 (M1 half): deleting an account keeps its members' other acco
   }, 20_000);
 
   it("a legacy owner's deletion with one plain member is R1's: the owner and the member login both go", async () => {
-    const O = await newUser("leg");
-    const m = await newMember(O);
+    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+    const O = await newUser("leg", { shadow: false });
+    const m = await newMember(O, "member", "m", { shadow: false });
     await recordDevice(m.email, "session:h:legacy-member");
     await wipeAccount(acct(O));
     for (const e of [O.email, m.email]) {

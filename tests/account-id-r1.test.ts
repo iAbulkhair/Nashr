@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
-import { jar, json, newMember, newOpaqueUser, newUser, signIn, signOut } from "./helpers/session";
+import { jar, json, newMember as helperNewMember, newOpaqueUser as helperNewOpaqueUser, newUser as helperNewUser, signIn, signOut } from "./helpers/session";
 import { accountByLogin, acct, accountOfScope, claimLogin, createSession, createUser, currentUser, getAccount, getLogin, getUser, releaseLogin, saveUser, sc, sessionKey, type User } from "@/lib/auth";
 import { brandOfScope, idForNewAccount, LoginIndex, newAccountId, OPAQUE_ACCOUNT_ID, OPAQUE_IDS } from "@/lib/account-id";
 import { db } from "@/lib/db";
@@ -17,6 +17,12 @@ import * as mcpTokenRoute from "@/app/api/mcp/token/route";
 import { wipeAccount } from "@/lib/account";
 import { dailyRoster } from "@/lib/schedule";
 import { convertAccountIds } from "../scripts/account-ids";
+
+// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
+// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
+const newOpaqueUser = (prefix?: string, o: Parameters<typeof helperNewOpaqueUser>[1] = {}) => helperNewOpaqueUser(prefix, { legacy: true, ...o });
 
 /**
  * Account-id release R1, the expand step (docs/specs/2026-10-17-account-id.md, amended by docs/specs/2026-10-18-multi-org.md
@@ -92,7 +98,8 @@ describe("rule 1981: the legacy fallback accepts user:{e} only when the record i
     expect(await getLogin(u.email)).toMatchObject({ kind: "owner", pid: u.email });
   });
   it("a record at user:{x} that holds another address (a moved account) resolves at neither address", async () => {
-    const u = await newUser("mv");
+    // No shadow membership: a person with no other workspace has no login once the account is gone (multi-org M1).
+    const u = await newUser("mv", { shadow: false });
     const y = addr("moved");
     await stripId(accountKey.user(u.email));
     await db.set(accountKey.user(u.email), { ...(await db.get<User>(accountKey.user(u.email)))!, email: y });
@@ -350,8 +357,9 @@ describe("rule 1996: OPAQUE_IDS is off in R1", () => {
 
 describe("rule 1999: wipeAccount(id) deletes the account's own login indexes and never another person's", () => {
   it("an opaque account with a member: record, users:all entry and both indexes go; the deletion row names id and address", async () => {
-    const o = await newOpaqueUser("wp");
-    const m = await newMember(o);
+    // No shadow memberships: persons who hold nothing else lose their logins with the account (multi-org M1).
+    const o = await newOpaqueUser("wp", { shadow: false });
+    const m = await newMember(o, "member", "m", { shadow: false });
     await wipeAccount(acct(o));
     expect(await db.get(accountKey.user(acct(o)))).toBeNull();
     expect(await db.sismember(globalKey.usersAll(), acct(o))).toBeFalsy();
@@ -372,7 +380,8 @@ describe("rule 1999: wipeAccount(id) deletes the account's own login indexes and
     expect(await index(u.email)).toEqual({ kind: "person", pid: other });
   });
   it("a signup at the address after a wipe is a fresh account", async () => {
-    const u = await newUser("wn");
+    // No shadow membership: an owner who holds nothing else loses the login with the account (multi-org M1).
+    const u = await newUser("wn", { shadow: false });
     await wipeAccount(acct(u));
     expect(await getLogin(u.email)).toBeNull();
     const again = await signupLocked(u.email);

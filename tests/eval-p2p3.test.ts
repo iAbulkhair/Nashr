@@ -94,7 +94,8 @@ describe("chat thumbs belong to the brand the chat ran in", () => {
   });
 
   it("the feedback route writes against the active brand, not the account", async () => {
-    const u = await newUser("fbroute");
+    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+    const u = await newUser("fbroute", { legacy: true });
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
     await setActiveBrand(u.email, "b2");
     await signIn(u.email);

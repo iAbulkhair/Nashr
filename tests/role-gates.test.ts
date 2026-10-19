@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { json, newMember, newUser, params, signIn, signOut, jar } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, jar, type Fixture } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
@@ -632,11 +632,11 @@ const task = (id: string, status: Task["status"], body = "قهوة طازجة"):
 const ctx = <T extends Record<string, string>>(p: T) => params(p);
 
 /** An account with a brand, one plain member and one admin. */
-async function team() {
-  const owner = await newUser("rg");
+async function team(fx: Fixture = {}) {
+  const owner = await newUser("rg", fx);
   await saveBrand(owner.email, BRAND);
-  const member = await newMember(owner, "member", "rgm");
-  const admin = await newMember(owner, "admin", "rga");
+  const member = await newMember(owner, "member", "rgm", fx);
+  const admin = await newMember(owner, "admin", "rga", fx);
   return { owner, member: member.email, admin: admin.email };
 }
 /** Sign in as this login and return what a request resolves to. */
@@ -889,7 +889,8 @@ describe("MCP dispatch uses the same table", () => {
 
 describe("the active brand is per login", () => {
   it("a member switching brand moves only their own active brand, and works in the owner's workspace", async () => {
-    const { owner, member } = await team();
+    // Pins the legacy shape (multi-org M1): `activeBrandId` reads the legacy `activebrand:{login}` key.
+    const { owner, member } = await team({ legacy: true });
     await saveUser({ ...(await getUser(owner.email))!, plan: "agency" });
     await as(owner.email);
     const added = (await (await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" }))).json()) as { brand: { id: string } };
@@ -905,7 +906,8 @@ describe("the active brand is per login", () => {
     expect((await as(owner.email)).scope).toBe(owner.email);
   });
   it("an admin archiving the brand the owner is on sends the owner back to the default brand", async () => {
-    const { owner, admin } = await team();
+    // Pins the legacy shape (multi-org M1): `activeBrandId` reads the legacy `activebrand:{login}` key.
+    const { owner, admin } = await team({ legacy: true });
     await saveUser({ ...(await getUser(owner.email))!, plan: "agency" });
     await as(owner.email);
     const added = (await (await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" }))).json()) as { brand: { id: string } };

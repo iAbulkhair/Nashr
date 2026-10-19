@@ -7,7 +7,7 @@
  * its events and its place in the sync queue, audits `cal_unlink`, and never calls a provider's revoke endpoint (ruling R7).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, type Fixture } from "./helpers/session";
 import { db } from "@/lib/db";
 import { SEC_KEYS } from "@/lib/secretary";
 import { addBrand, setActiveBrand } from "@/lib/brands";
@@ -106,8 +106,8 @@ const list = () => calendars.GET();
 const auditOf = async (scope: string) => (await db.lrange(SEC_KEYS.audit(scope), 0, -1)).map((x) => JSON.parse(x) as { action: string; actor: string; login?: string; diff: string });
 const body = async (res: Response) => (await res.json()) as Record<string, unknown> & { error?: string; link?: Record<string, unknown> | null; calendars?: { choice: number; name: string }[] };
 
-async function owner(prefix = "calrt") {
-  const o = await newUser(prefix);
+async function owner(prefix = "calrt", fx: Fixture = {}) {
+  const o = await newUser(prefix, fx);
   await signIn(o.email);
   return o;
 }
@@ -606,7 +606,8 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
 
   it("another brand's link is not visible, listable, choosable or removable after switching brand", async () => {
     fakeProviders();
-    const o = await owner();
+    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
+    const o = await owner(undefined, { legacy: true });
     await putLink(o.email, seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined }));
     const b = (await addBrand({ ...o, brandCap: 2 }, "Second")) as { id: string };
     await setActiveBrand(o.email, b.id);
