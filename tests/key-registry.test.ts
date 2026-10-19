@@ -23,6 +23,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.task(S, "t1"), `task:${S}:t1`],
     [wsKey.taskLock(S, "t1"), `tasklock:${S}:t1`],
     [wsKey.pending(S), `pending:${S}`],
+    [wsKey.notNow(S), `notnow:${S}`],
     [wsKey.pendingIndex(S), `pendingidx:${S}`],
     [wsKey.taskMonth(S, "2026-10"), `tidx:${S}:2026-10`],
     [wsKey.taskMonths(S), `tidxm:${S}`],

@@ -179,7 +179,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
       // The notification choices, per brand (src/lib/notify-prefs.ts `profileKey`): only the default brand's was deleted.
       profileKey(s),
-      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
+      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
     );
   });
   // Our media copies on disk (rule 1761): every file of every brand, its index entries and the space they held. A disk

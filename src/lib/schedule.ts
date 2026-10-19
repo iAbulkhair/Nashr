@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { isSuspended } from "./suspension";
 import { emailVerified, getUser, trialOver, type User } from "./auth";
-import { getBrand, indexedAt, isAutonomous, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
+import { getBrand, indexedAt, isAutonomous, isWaiting, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
 import { generateBatch } from "./generate-batch";
 import { resolveOnceHolds } from "./credits";
 import { modelState } from "./model";
@@ -16,12 +16,17 @@ import { briefAgenda, type BriefAgenda } from "./secretary-agenda";
 import { agendaFor } from "./secretary";
 import { accountKey, globalKey, scopeParam, wsKey } from "./keys";
 import { acct } from "./account-id";
+import { NOT_NOW_DAYS, moveIdle } from "./not-now";
 
 /**
  * Per-user recurring tasks. Cron hits /api/cron/* → we loop users. `routines` holds the owner's switches for the
  * routines in src/lib/routines.ts: a missing one is on, a stored `false` is the owner's off (`routineOn`, rule 1486); their last runs live in their own keys, not here.
  */
-export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string; routines?: Partial<Record<RoutineId, boolean>> };
+/**
+ * `notNowFrom`: the first daily run after "Not now" shipped in this workspace (rule 2343), stamped by `runDaily` and never
+ * by a request (PUT /api/schedule copies only the switches). No item's 14-day clock starts before it.
+ */
+export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string; routines?: Partial<Record<RoutineId, boolean>>; notNowFrom?: string };
 /** The defaults of the default brand. An added brand's `weeklyPlan` defaults to off (`defaultsFor`). */
 export const DEFAULT_SCHEDULE: Schedule = { weeklyPlan: true, dailyBrief: true, followUps: true };
 
@@ -183,6 +188,18 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadli
   return `ok:${r.tasks.length}`;
 }
 
+/** The one notice of the day's move under "Not now" (rule 2344): once per brand per day, to the inbox's "Not now" chip. */
+async function notifyNotNow(user: User, scope: string, n: number) {
+  const { brandFingerprint, brandTag, notifyItem, withBrand } = await import("./notifications");
+  const ar = user.lang === "ar";
+  const tag = await brandTag(acct(user), scope).catch(() => "");
+  await notifyItem(acct(user), user.lang, {
+    kind: "pending", agent: "noor", href: "?view=notnow",
+    title: withBrand(ar ? `${n} عنصر انتقل إلى «ليس الآن»` : `${n} item(s) moved to Not now`, tag),
+    body: ar ? `لم يتخذ فيها أحد قراراً منذ ${NOT_NOW_DAYS} يوماً. لم يُحذف شيء، وتعيد أي عنصر بضغطة من صندوق الموافقة.` : `Nobody decided them in ${NOT_NOW_DAYS} days. Nothing was deleted; bring any back with one click in the inbox.`,
+  }, brandFingerprint(scope, "notnow:" + new Date().toISOString().slice(0, 10)), 2, scope);
+}
+
 /** Daily brief: no model call, no credits. Pure summary from stored data. */
 export async function runDaily(user: User): Promise<Brief | null> {
   const email = user.scope ?? user.email;
@@ -191,11 +208,19 @@ export async function runDaily(user: User): Promise<Brief | null> {
   // Weekly: rebuild the light index from the tasks themselves, so a write that failed half way cannot stay wrong for long.
   // Daily: reconcile the pending-ids set. Both run whether or not the brief is on (rule 1434): they used to sit after the
   // brief check, so a workspace with the brief switched off never had its index or its approvals badge repaired.
-  const tasks = stamp && Date.now() - new Date(stamp).getTime() < 7 * 864e5 ? await listLite(email) : await rebuildIndex(email);
-  await rebuildPending(email, tasks);
+  const rows = stamp && Date.now() - new Date(stamp).getTime() < 7 * 864e5 ? await listLite(email) : await rebuildIndex(email);
+  // "Not now" (rule 2343): items nobody decided or touched for 14 days leave the waiting list, before the reconcile and
+  // the brief count them. Brief on or off, like the reconcile. The clock never starts before this workspace's first run.
+  const now = Date.now();
+  const from = sched.notNowFrom ?? new Date(now).toISOString();
+  const moved = await moveIdle(email, rows, now, from);
+  const aside = new Set(moved);
+  const tasks = aside.size ? rows.map((t) => (aside.has(t.id) ? { ...t, notNow: { at: new Date(now).toISOString(), by: "auto" as const } } : t)) : rows;
+  await Promise.all([rebuildPending(email, tasks), sched.notNowFrom ? null : saveSchedule(email, { notNowFrom: from })]);
+  if (aside.size) await notifyNotNow(user, email, aside.size).catch(() => {});
   if (!sched.dailyBrief) return null;
   const dayAgo = Date.now() - 7 * 864e5;
-  const pending = tasks.filter((t) => t.status === "pending").length;
+  const pending = tasks.filter(isWaiting).length;
   const approved7d = tasks.filter((t) => t.status === "approved" && new Date(t.createdAt).getTime() > dayAgo).length;
   const seasons = activeSeasons(new Date(), zoneOf(brand)).slice(0, 2).map((s) => `${s.nameAr} (${s.daysLeft} يوم)`);
   const ar = (brand?.languages[0] ?? user.lang) === "ar";

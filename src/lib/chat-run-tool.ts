@@ -4,7 +4,7 @@
 import { agentById, agentForTask } from "./agents";
 import { sc, type User } from "./auth";
 import { wsKey } from "./keys";
-import { getBrand, listLite, type Task, getTask } from "./brand";
+import { getBrand, isWaiting, listLite, type Task, getTask } from "./brand";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType } from "./tasks";
 import { countCost, generateBatch, withheldNote } from "./generate-batch";
 import { CORE_FILES, FileLimitError, MAX_FILES, readFile, safeName, writeFile } from "./files";
@@ -353,7 +353,9 @@ export async function runTool(user: User, name: string, input: Record<string, un
     case "list_inbox": {
       const tasks = await listLite(email, new Date(Date.now() - 90 * 864e5));
       const c = (s: string) => tasks.filter((t) => t.status === s).length;
-      return `Inbox: ${c("pending")} pending, ${c("approved")} approved, ${c("rejected")} rejected. Latest: ${tasks.slice(0, 8).map((t) => `[id=${t.id}] ${t.type}/${t.channel}: ${t.title} [${t.status}]${t.image ? " (has image)" : ""}${t.video ? " (has video)" : ""}`).join("; ")}`;
+      // "Not now" (rule 2340) is counted apart: those items are not waiting for the owner until brought back.
+      const waiting = tasks.filter(isWaiting).length;
+      return `Inbox: ${waiting} pending, ${c("pending") - waiting} set aside under Not now, ${c("approved")} approved, ${c("rejected")} rejected. Latest: ${tasks.slice(0, 8).map((t) => `[id=${t.id}] ${t.type}/${t.channel}: ${t.title} [${t.status === "pending" && t.notNow ? "not now" : t.status}]${t.image ? " (has image)" : ""}${t.video ? " (has video)" : ""}`).join("; ")}`;
     }
     case "import_catalog": {
       // It rewrites products.md, core memory every agent reads, from a URL the model chose: in the app only.

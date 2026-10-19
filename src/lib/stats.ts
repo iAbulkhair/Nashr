@@ -1,4 +1,4 @@
-import { IMAGE_COST, TASK_COST, TASK_COUNT, listLite, type TaskLite, type TaskType } from "./brand";
+import { IMAGE_COST, TASK_COST, TASK_COUNT, isWaiting, listLite, waitingIds, type TaskLite, type TaskType } from "./brand";
 import { db } from "./db";
 import { agentForTask } from "./agents";
 import { cartDataBlock } from "./cart-recovery";
@@ -7,7 +7,6 @@ import { siteDataBlock } from "./site-stats";
 import { socialDataBlock } from "./social-stats";
 import { adDataBlock } from "./ad-stats";
 import { notRead, notReadBlock } from "./not-read";
-import { scopeParam, wsKey } from "./keys";
 
 /** Workspace KPIs for the Reports page and for Dana's prompts. Computed from stored tasks only; no model call. */
 export type Kpis = {
@@ -79,7 +78,7 @@ export function kpiSince(win?: { prevFrom: Date } | null): Date {
 export async function kpis(scope: string, days?: number, win?: { from: Date; to: Date; label: string; prevFrom: Date }, rows?: TaskLite[]): Promise<Kpis> {
   const now = new Date();
   const w = win ?? (days ? rangeWindow(String(days)) : null);
-  const [tasks, pendingIds] = await Promise.all([rows ?? listLite(scope, kpiSince(w)), db.smembers(wsKey.pending(scopeParam(scope)))]);
+  const [tasks, pendingIds] = await Promise.all([rows ?? listLite(scope, kpiSince(w)), waitingIds(scope)]);
   const month = w ? w.label : now.toISOString().slice(0, 7);
   const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
   const inMonth = (t: TaskLite, m: string) => t.createdAt.slice(0, 7) === m;
@@ -103,8 +102,8 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
   const rejected = cur.filter((t) => t.status === "rejected").length;
   const reviewedApproved = cur.filter((t) => t.decidedAt && t.status === "approved").length;
   const reviewedRejected = cur.filter((t) => t.decidedAt && t.status === "rejected").length;
-  // The pending set covers every age; the rows only cover the window.
-  const pending = Math.max(pendingIds.length, tasks.filter((t) => t.status === "pending").length);
+  // The pending set covers every age; the rows only cover the window. "Not now" is left out of both (rule 2342).
+  const pending = Math.max(pendingIds.length, tasks.filter(isWaiting).length);
   const byType: Record<string, number> = {};
   const byChannel: Record<string, number> = {};
   for (const t of cur) {

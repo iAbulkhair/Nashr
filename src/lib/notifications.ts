@@ -2,7 +2,8 @@ import { randomBytes } from "crypto";
 import { db } from "./db";
 import { log } from "./log";
 import type { User } from "./auth";
-import { getBrand, listLite } from "./brand";
+import { getBrand, isWaiting, listLite } from "./brand";
+import { NOT_NOW_DAYS, idleDays, soonNotNow } from "./not-now";
 import { listBrands, scopeFor } from "./brands";
 import { getSchedule } from "./schedule";
 import { agentById, isAgentId, type AgentId } from "./agents";
@@ -167,8 +168,10 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const add = async (n: Omit<Notif, "id" | "at">, fp: string, ttl = 3) => { const x = await pushNotif(acct(user), n, fp, ttl, scope); if (x) out.push(x); };
   // Due items and old approvals belong to this brand: its fingerprint and, on a multi-brand account, its name (#15).
   const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published);
-  const stale = tasks.filter((t) => t.status === "pending" && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
-  const tag = due.length || stale.length ? await brandTag(acct(user), scope) : "";
+  const stale = tasks.filter((t) => isWaiting(t) && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
+  // Items that move under "Not now" within days (rule 2344): told once per set of items, at 75% of the time.
+  const soon = soonNotNow(tasks, Date.now(), sched.notNowFrom);
+  const tag = due.length || stale.length || soon.length ? await brandTag(acct(user), scope) : "";
 
   // 1. Scheduled items due today or tomorrow and not yet published through a connector.
   if (due.length) {
@@ -178,6 +181,12 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   // 2. Approvals waiting more than 48 hours.
   if (stale.length) {
     await add({ kind: "pending", agent: "noor", href: app, title: withBrand(ar ? `${stale.length} عنصر بانتظارك منذ أكثر من يومين` : `${stale.length} item(s) waiting for you for over 2 days`, tag), body: ar ? "اعتمد أو ارفض مع سبب، وتتعلم نور من قرارك." : "Approve or reject with a reason; Noor learns from your decision." }, brandFingerprint(scope, `pending:${Math.floor(stale.length / 5)}`), 3);
+  }
+  // 2b. Items about to move under "Not now": the soonest one sets the number of days.
+  if (soon.length) {
+    const days = Math.max(1, Math.ceil(NOT_NOW_DAYS - Math.max(...soon.map((t) => idleDays(t, Date.now(), sched.notNowFrom)))));
+    const ids = soon.map((t) => t.id).sort().join(",").slice(0, 80);
+    await add({ kind: "pending", agent: "noor", href: app, title: withBrand(ar ? `${soon.length} عنصر ينتقل إلى «ليس الآن» خلال ${days} يوم` : `${soon.length} item(s) move to Not now in ${days} day(s)`, tag), body: ar ? "اعتمدها أو ارفضها أو عدّلها لتبقى بانتظارك. لن يُحذف شيء." : "Approve, reject or edit them to keep them waiting. Nothing is deleted." }, brandFingerprint(scope, "notnow-soon:" + ids), 5);
   }
   // 3. Low credits.
   if (user.credits < 10) {
@@ -189,7 +198,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
     if (left > 0 && left < 864e5) await add({ kind: "trial", href: `${app}/billing`, title: ar ? "تجربتك تنتهي خلال 24 ساعة" : "Your trial ends within 24 hours", body: ar ? "اشترك لتبقى دفعاتك وجدولك تعمل." : "Subscribe to keep your batches and schedule running." }, "trial", 3);
   }
   // 5. Items the judge scored below 70 and still pending.
-  const weak = tasks.filter((t) => t.status === "pending" && typeof t.score === "number" && t.score < 70);
+  const weak = tasks.filter((t) => isWaiting(t) && typeof t.score === "number" && t.score < 70);
   if (weak.length) {
     await add({ kind: "quality", agent: "dana", href: app, title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
   }

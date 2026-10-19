@@ -60,6 +60,8 @@ export const wsKey = {
   taskLock: (s: Scope, id: string) => `tasklock:${s}:${id}`,
   /** set: ids of tasks waiting for approval. */
   pending: (s: Scope) => `pending:${s}`,
+  /** set: ids of pending tasks set aside under "Not now" (a subset of `pending`, rule 2341). */
+  notNow: (s: Scope) => `notnow:${s}`,
   /** string: when the pending set was last rebuilt. */
   pendingIndex: (s: Scope) => `pendingidx:${s}`,
   /** hash: the light task index of one month (`YYYY-MM`). */

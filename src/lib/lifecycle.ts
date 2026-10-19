@@ -1,7 +1,7 @@
 import type { User } from "./auth";
 import { FIRST_MONTH_DISCOUNT_PCT } from "./pricing"; // the day-3 offer (src/lib/partners.ts, rules 394, 410)
 import { earlyOfferLastDay } from "./partner-rules";
-import { getBrand, listLiteDays } from "./brand";
+import { getBrand, isWaiting, listLiteDays } from "./brand";
 import { mailReady, sendOnce, type OncePart } from "./notify";
 import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
 import { appOrigin } from "./origin";
@@ -129,7 +129,7 @@ export async function runLifecycle(u: User): Promise<string[]> {
   // 90 days, not all of history. Every message here goes to an account in its first ten days, so the window cannot
   // change what any of them say; it only stops the read growing with the age of the workspace.
   const tasks = await listLiteDays(u.scope ?? u.email, 90);
-  const ctx = { firstTitle: tasks.at(-1)?.title, pending: tasks.filter((x) => x.status === "pending").length, approved: tasks.filter((x) => x.status === "approved").length, trialEnds: u.trialEnds.slice(0, 10) };
+  const ctx = { firstTitle: tasks.at(-1)?.title, pending: tasks.filter(isWaiting).length, approved: tasks.filter((x) => x.status === "approved").length, trialEnds: u.trialEnds.slice(0, 10) };
   // Marked as sent only when Resend accepted it (src/lib/notify.ts `sendOnce`): a refused note is tried again tomorrow,
   // while its window lasts. The due notes go out side by side; rarely more than one is due.
   const due = plan.filter(([, d]) => d).map(([key]) => key);
