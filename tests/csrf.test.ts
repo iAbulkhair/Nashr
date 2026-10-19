@@ -188,13 +188,15 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   // the MCP route and the cron's schedule.ts reach auth.ts emailVerified, a test of the record it is handed.
   // Account-id R1 (rules 1980-1999) made team.ts and account.ts reach auth.ts getAccount (a record read by id), claimLogin
   // and releaseLogin (the login index of an address they are handed), read on 2026-10-18: no cookie, no session.
+  // The stacked-offer check (rule 2303) made billing.ts reach partners.ts unusedOffer, a test of the record it is handed,
+  // read on 2026-10-19: no cookie, no session.
   // src/lib/cookie-names.ts (rules 1810-1813) holds every cookie name and the helpers that read a jar they are handed;
   // reachable code may import only names that are plain strings (partner-rules.ts and connectors/store.ts re-export
   // two), never readCookie, dropCookie or cookieFromHeader.
   const COOKIE_MODULES: Record<string, ReadonlySet<string>> = {
     // `adminEmails` reads ADMIN_EMAILS only (no cookie): the margin alert and the fair-use stop (rule 1729) tell the founders.
     "src/lib/auth.ts": new Set(["adminEmails", "claimLogin", "emailVerified", "getAccount", "getLogin", "getUser", "normalizeEmail", "normalizePhone", "releaseLogin", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
-    "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "voidPaidTopup", "voidPayment"]),
+    "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "unusedOffer", "voidPaidTopup", "voidPayment"]),
     "src/lib/cookie-names.ts": new Set(["OAUTH_COOKIE", "PARTNER_COOKIE"]),
   };
   const COOKIE_ACCESS = /cookies\(|\.cookies\b|\.get\(\s*["'`]cookie["'`]\s*\)|["']next\/headers["']|["'`](?:nashr|thakeen)_(session|admin|impersonate|return)["'`]/i;

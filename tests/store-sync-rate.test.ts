@@ -145,7 +145,8 @@ describe("the no-key catalog import shares the product import's six an hour (rul
     const site = vi.fn(async () => new Response("", { status: 404 }));
     vi.stubGlobal("fetch", site);
     const actions: string[] = [];
-    const said = await runTool((await currentUser())!, "import_catalog", { url: "https://shop.example" }, actions, [], undefined, { via: "app" });
+    // The owner names the shop in their own message, so the host gate (rule 2304) lets it through to the shared bucket.
+    const said = await runTool((await currentUser())!, "import_catalog", { url: "https://shop.example" }, actions, [], undefined, { via: "app", ownerMsg: "import my products from shop.example" });
     expect(said).toContain("six times in the last hour");
     expect(actions).toEqual([]);
     expect(site).not.toHaveBeenCalled();

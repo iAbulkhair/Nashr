@@ -5,7 +5,7 @@ import { monthKey, withUserLock } from "./credits";
 import { setMonthly } from "./topups";
 import { PLAN_PRICE_SAR, SELF_SERVE_PLANS, VAT_RATE, allowanceOf, firstMonthPriceSar, isTopupPack, topupPriceSar, topupsSold, type SelfServePlan } from "./pricing";
 import { ksaDay } from "./partner-rules";
-import { addPaidTopup, openOffer, paymentsKey, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
+import { addPaidTopup, openOffer, paymentsKey, unusedOffer, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
 import { enforceSeats } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
@@ -198,9 +198,14 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   const card = await db.get<SavedCard>(cardKey(intentAccount(intent)));
   const id = String(txnId);
   let claim: ClaimOutcome | null = null;
-  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing"> => {
+  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing" | "offer_used"> => {
     const b = u.billing;
     if (b?.txns?.includes(id)) return "already";
+    // Rule 2303: the first-month price is read at checkout without reserving the offer, so several checkouts opened before
+    // the first payment all carry it. Only the account's first online plan payment may take it: the offer must still be
+    // unused AND no subscription may exist yet. `billing` is written under this same lock, so of two discounted payments
+    // arriving together the second always sees the first's subscription. Paid but not applied: the founder refunds it.
+    if (intent.kind === "plan" && intent.offer && (!unusedOffer(u) || b)) return "offer_used";
     if (intent.kind === "renewal") {
       if (!b) return "no_billing";
       const next: Billing = { ...b, status: "active", paidThrough: addMonths(b.paidThrough, 1, b.anchor), failures: 0, txns: keepTxns(b.txns, id) };
@@ -233,6 +238,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     return changed ? "changed" : "same";
   });
   if (step === "no_billing") return { ok: false, error: "no_billing" };
+  if (step === "offer_used") return { ok: false, error: "offer_used" };
   const c = claim as ClaimOutcome | null;
   if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
   if (step === "changed") await enforceSeats(intentAccount(intent));
