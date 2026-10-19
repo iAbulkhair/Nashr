@@ -610,12 +610,16 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * and after, then seats are fitted to the trial's: also on that retry (multi-workspace M1 Task 8), so a first try whose
  * `lock:team` wait ran out (409 "busy") still fits them when the founder tries again. `enforceSeats` is idempotent.
  * True when THIS refund ended the plan, also on that retry: the first try writes `paymob:refund_ended:{txnId}` under the
- * lock before the save, and a retry that finds the plan already ended reads it. A refund of a second payment after the
- * plan ended answers false.
+ * lock right after the save. A transaction whose marker exists never ends a plan again (fix round 2): repeating the
+ * refund of an OLD payment after the customer bought a NEW plan answers `planEnded: true` and leaves the new
+ * subscription alone. The marker goes after the save, so a save that throws leaves no marker and the retry ends the plan;
+ * a marker write that fails after the save leaves the plan ended and the retry answers false (reporting only, no money).
+ * A refund of a second payment after the plan ended answers false. Refunds made before this marker existed have none.
  */
 async function endPlanOnRefund(email: string, paymentId: string, by: string, txnId: number): Promise<boolean> {
   const now = new Date();
   const change = await withUserLock(email, async (u) => {
+    if (await db.get(refundEndedKey(txnId))) return "ended_before" as const;
     if (!u.billing && trialOver(u)) return null;
     const before = { plan: String(u.plan), credits: Number(u.credits) || 0, autoRenew: u.billing?.autoRenew ?? false, paidThrough: u.billing?.paidThrough ?? u.handPlan?.paidThrough ?? null };
     // The founding seat and the price lock end with the plan (rule 1708): the refunded account is no longer a paying one.
@@ -627,14 +631,14 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string, txn
     delete u.handPlan;
     delete u.deal;
     setMonthly(u, 0);
-    await db.set(refundEndedKey(txnId), paymentId, DAYS_400);
     await saveUser(u);
+    await db.set(refundEndedKey(txnId), paymentId, DAYS_400);
     return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding };
   });
-  if (change) {
+  if (change && change !== "ended_before") {
     if (change.founding) await freePlaces(email);
     await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
   }
   await enforceSeats(email);
-  return !!change || (await db.get<string>(refundEndedKey(txnId))) === paymentId;
+  return !!change;
 }

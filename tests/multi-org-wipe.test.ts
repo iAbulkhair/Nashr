@@ -372,6 +372,40 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       expect(rows[0].team).toMatchObject({ disabled: [m.email] });
     }, 30_000);
 
+    it("a refit that cannot take a home member's lock:member after the change is saved answers 200 team busy, audited once; a seats-only POST refits", async () => {
+      admin();
+      const [u, control] = [await withPlan(await newUser("cpm"), "pro"), await withPlan(await newUser("cpc"), "pro")];
+      const [m] = [await newMember(u), await newMember(control)];
+      const planRows = async () => (await auditRows()).filter((x) => x.action === "plan" && x.target === u.email);
+      const body = { plan: "starter", addCredits: 7 };
+      // The same change on an account nobody holds a lock of: the credits it should end with.
+      expect((await planPost({ email: control.email, ...body })).status).toBe(200);
+      const expected = (await getUser(control.email))!.credits;
+      const lock = accountKey.memberLock(m.email);
+      expect(await db.lock(lock, 10)).toBe(true);
+      let r: Response;
+      try { r = await planPost({ email: u.email, ...body }); } finally { await db.unlock(lock); }
+      expect(r.status).toBe(200);
+      const res = (await r.json()) as { ok: boolean; team?: unknown; user?: { plan: string } };
+      expect(res).toMatchObject({ ok: true, team: "busy", user: { plan: "starter" } });
+      // The change stands, once: the plan, the credits added exactly once, one audit row saying the team is busy.
+      expect((await getUser(u.email))!.plan).toBe("starter");
+      expect((await getUser(u.email))!.credits).toBe(expected);
+      expect(await planRows()).toHaveLength(1);
+      expect((await planRows())[0]).toMatchObject({ team: "busy" });
+      // `writeMembership` writes the forward row and the legacy mirror in one round: the row (what M1 reads) is paused;
+      // the mirror under the held `lock:member` is not (reported, writeMembership is outside this fix).
+      expect(await disabled(u, m.email)).toBe("seats");
+      // The route has no request idempotency (a repeat of the whole POST would add the credits again), so the documented
+      // follow-up is a seats-only POST: it refits the team (idempotent) and leaves the credits alone.
+      const refit = await planPost({ email: u.email, seats: null });
+      expect(refit.status).toBe(200);
+      expect(await refit.json()).toMatchObject({ ok: true, team: { limit: 1 } });
+      expect(await disabled(u, m.email)).toBe("seats");
+      expect((await getUser(u.email))!.credits).toBe(expected);
+      expect(await planRows()).toHaveLength(2);
+    }, 30_000);
+
     it("the normal path is unchanged: a plan change fits the team; a credits-only change does not wait for lock:team", async () => {
       admin();
       const u = await withPlan(await newUser("cpn"), "pro");

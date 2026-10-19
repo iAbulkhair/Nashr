@@ -196,9 +196,15 @@ export async function POST(req: Request) {
   // The limit moves with a plan, a seat number, or a contract that ends (a plan change or a cleared deal: `seatsReset`).
   // Such a request takes `lock:team` of the account FIRST (team before user, rule 2139) and fits the team inside it: a
   // team lock still held after the wait (`team_lock_timeout`, multi-workspace M1 Task 8) answers 409 "busy" with nothing
-  // written (no plan, no credits, no audit row), so the founder's retry applies the change once.
+  // written (no plan, no credits, no audit row), so the founder's retry applies the change once. Once the change is
+  // saved, a lock the refit itself cannot have (a home member's `lock:member`, held by that member's own credential
+  // write) no longer refuses the request: the change stands, its audit row says `team: "busy"`, the answer is 200 with
+  // `team: "busy"`, and a seats-only POST refits the team later (it is idempotent). Retrying the whole POST is not: it
+  // would add the credits and refill the month again.
   const seatsMove = planGiven || seatsGiven || clearDeal;
   let team = null as Awaited<ReturnType<typeof enforceSeats>> | null;
+  let seatsBusy = false as boolean;
+  let entered = false as boolean;
   const change = () => withUserLock(acct(prev), async (u) => {
     const plan = planGiven ? (b.plan as Plan) : u.plan;
     // Decided on the record as it is under the lock, before anything changes: a refused request writes nothing.
@@ -247,13 +253,23 @@ export async function POST(req: Request) {
   try {
     done = seatsMove
       ? await withAccountTeamLock(aidOf(prev), async () => {
+          entered = true;
           const r = await change();
-          if (typeof r !== "string" && (planGiven || seatsGiven || seatsReset)) team = await enforceSeats(acct(r), { teamLocked: true });
+          if (typeof r !== "string" && (planGiven || seatsGiven || seatsReset)) {
+            // After the commit: only the refit's own lock timeout is caught here, never anything before the save.
+            try {
+              team = await enforceSeats(acct(r), { teamLocked: true });
+            } catch (e) {
+              if (!isTeamLockTimeout(e)) throw e;
+              seatsBusy = true;
+            }
+          }
           return r;
         })
       : await change();
   } catch (e) {
-    if (!isTeamLockTimeout(e)) throw e;
+    // Only the outer `lock:team` wait, before anything was written, is a 409.
+    if (entered || !isTeamLockTimeout(e)) throw e;
     return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
   }
   if (done === "deal_needs_agency" || done === "paid_through_needs_plan") return NextResponse.json({ ok: false, error: done }, { status: 400 });
@@ -272,6 +288,6 @@ export async function POST(req: Request) {
     (user.handPlan?.paidThrough ?? null) !== before.paidThrough ? `paid_through:${user.handPlan?.paidThrough ?? "none"}` : "",
   ].filter(Boolean).join(" ") || "none";
   const teamChange = team && (team.disabled.length || team.enabled.length || team.cancelled.length) ? { disabled: team.disabled, enabled: team.enabled, cancelledInvites: team.cancelled.length } : undefined;
-  await adminAudit({ actor: who, via: viaOf(req), section: "users", action: "plan", target: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video), paidThrough: user.handPlan?.paidThrough ?? null }, reason: b.reason, ...(teamChange ? { extra: { team: teamChange } } : {}) });
-  return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user), chatAllowance: chatAllowanceOf(user), chatOverride: user.chatAllowance ?? null, videoGrant: user.grants?.video ?? null, paidThrough: user.handPlan?.paidThrough ?? null }, ...(team ? { team } : {}) });
+  await adminAudit({ actor: who, via: viaOf(req), section: "users", action: "plan", target: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video), paidThrough: user.handPlan?.paidThrough ?? null }, reason: b.reason, ...(teamChange ? { extra: { team: teamChange } } : seatsBusy ? { extra: { team: "busy" } } : {}) });
+  return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user), chatAllowance: chatAllowanceOf(user), chatOverride: user.chatAllowance ?? null, videoGrant: user.grants?.video ?? null, paidThrough: user.handPlan?.paidThrough ?? null }, ...(team ? { team } : seatsBusy ? { team: "busy" } : {}) });
 }

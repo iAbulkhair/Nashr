@@ -484,6 +484,33 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
     expect((await getUser(u.email))!.credits).toBe(300);
     expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
   });
+  it("refunding an old payment again after the customer bought a new plan leaves the new plan alone (rule 1300, Task 8 fix round 2)", async () => {
+    const u = await owner();
+    const { obj: old } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    jar().clear();
+    await adminSignIn();
+    const id = paymentIdFor(old.id);
+    expect(await (await refund(u.email, { id, reason: "asked" })).json()).toMatchObject({ ok: true, planEnded: true });
+    expect((await getUser(u.email))!.plan).toBe("trial");
+    // The customer buys again: a new subscription.
+    jar().clear();
+    await signIn(u.email);
+    const { answer } = await payAndConfirm({ kind: "plan", plan: "pro" });
+    expect(answer.result).toBe("paid");
+    const bought = (await getUser(u.email))!;
+    expect(bought.plan).toBe("pro");
+    expect(bought.billing).toMatchObject({ plan: "pro", status: "active" });
+    // The founder repeats the OLD refund: `paymob:refund_ended:{txn}` exists, so no plan is ended again.
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id, reason: "asked again" })).json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("pro");
+    expect(after.billing).toEqual(bought.billing);
+    expect(after.credits).toBe(bought.credits);
+    expect(trialOver(after)).toBe(false);
+    expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
+  });
   it("a pack's refund leaves the plan alone (rule 1300)", async () => {
     const u = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter" });
