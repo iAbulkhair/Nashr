@@ -3,6 +3,7 @@
  */
 import { agentById, agentForTask } from "./agents";
 import { sc, type User } from "./auth";
+import { wsKey } from "./keys";
 import { getBrand, listLite, type Task, getTask } from "./brand";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType } from "./tasks";
 import { countCost, generateBatch, withheldNote } from "./generate-batch";
@@ -25,7 +26,7 @@ import { endOfZoneDay, formatWhen } from "./secretary-agenda";
 import { proposeAway } from "./secretary-away";
 import { PROPOSE_REFUSAL, proposeInstruction } from "./instruction-proposals";
 import { needsFileCard, proposeFile } from "./file-proposals";
-import { allow } from "./rate";
+import { CATALOG_IMPORTS_PER_HOUR, WINDOW, allow } from "./rate";
 import { MIN_ROLE, can } from "./roles";
 import { autoItems, createHandoff, parseProposal, proposalText } from "./handoffs";
 import { getGov } from "./governance";
@@ -364,6 +365,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // planted link could fill products.md with someone else's catalog. Code decides: the brand's own site (or a subdomain
       // of it), or a host the person chatting typed in this turn's own message.
       if (!catalogHostAllowed(site, brand?.website, ctx.ownerMsg)) return `Not done: ${hostOf(site) || "that address"} is not this brand's website${brand?.website ? ` (${hostOf(brand.website)})` : ""}, and the person chatting did not name it in their message. Nothing was imported. Ask them to send the store link themselves in the chat, or to set the website on the Brand page.`;
+      // The Files page's and the store import's six an hour per workspace, one bucket (rule 2249).
+      if (!(await allow(wsKey.catalogImportBucket(sc(user)), CATALOG_IMPORTS_PER_HOUR, WINDOW.hour))) return "Not done: this workspace already imported products six times in the last hour. Nothing was changed. Tell the owner to try again later.";
       const r = await importCatalog(email, site);
       actions.push(`catalog:${r.count}`);
       return r.count ? `Imported ${r.count} products into products.md. Examples: ${r.products.slice(0, 5).map((p) => `${p.title}${p.price ? " (" + p.price + ")" : ""}`).join("; ")}` : "Could not find product pages (no sitemap or unusual URLs). Ask the owner for 3-5 product links or a product list.";

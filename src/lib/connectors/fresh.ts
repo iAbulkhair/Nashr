@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { getProvider } from "./registry";
-import { refreshTokens } from "./oauth";
+import { refreshTokens, tokenExpiry } from "./oauth";
 import { getConnection, saveConnection, type Connection } from "./store";
 import { log } from "../log";
 
@@ -61,7 +61,7 @@ export async function getFreshConnection(scope: string, provider: string): Promi
       ...cur,
       // Keep the old refresh token when the platform does not rotate it.
       data: { ...cur.data, ...data, refresh_token: data.refresh_token ?? cur.data.refresh_token },
-      expiresAt: data.expires_in ? new Date(Date.now() + Number(data.expires_in) * 1000).toISOString() : undefined,
+      expiresAt: tokenExpiry(data),
       needsReconnect: undefined,
     };
     await saveConnection(scope, next);

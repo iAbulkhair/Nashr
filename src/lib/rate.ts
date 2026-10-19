@@ -164,6 +164,14 @@ export async function draftAllowed(email: string): Promise<boolean> {
  * by these buckets, a rate checked before the cap. Well above a real agency's onboarding pace, and the onboarding itself
  * stays at three a day per account (src/app/api/onboard/route.ts). Rule 245, tests/brand-guardrails.test.ts.
  */
+/** Failed key checks (POST /api/connect/{provider}/key) one workspace may make, every key provider together (rule 2240). */
+export const KEY_CHECK_FAILS_PER_HOUR = 10;
+export const KEY_CHECK_FAILS_PER_DAY = 30;
+/** OAuth and Composio connect starts (GET /api/connect/{provider}/start) one workspace may make an hour (rule 2242). */
+export const CONNECT_STARTS_PER_HOUR = 20;
+/** Manual store sales syncs and product imports one workspace may ask for in an hour, the team together (rule 2243). */
+export const STORE_SYNCS_PER_HOUR = 6;
+export const CATALOG_IMPORTS_PER_HOUR = 6;
 export const BRANDS_PER_HOUR = 10;
 export const BRANDS_PER_DAY = 30;
 /**

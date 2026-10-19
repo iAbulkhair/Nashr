@@ -63,6 +63,8 @@ export const CROSS_SITE_ERROR = "cross_site";
  * - `/api/billing/paymob/`: the Paymob webhook, `/api/billing/paymob/webhook` (PR #279), posted by Paymob's servers and
  *   proven by Paymob's HMAC. The buyer's return from Paymob's page lands on the billing page (a GET), not here;
  *   `/api/billing/checkout` and `/api/billing/renewal` are cookie routes outside the prefix and stay checked.
+ * - `/api/shopify/compliance`: Shopify's mandatory compliance webhooks (rules 2168-2171), posted by Shopify's servers
+ *   and proven by `X-Shopify-Hmac-Sha256` over the raw body. Exact: nothing else lives under `/api/shopify`.
  * - `/api/cron/`: the cron runner (GET with the CRON_SECRET bearer, which the check never looks at) and POST
  *   `/api/cron/secretary` from our own QStash schedule or with that bearer. They send neither header and would pass
  *   anyway; the entry keeps that true if a cron route ever reads a browser header. No cron handler reads a session.
@@ -77,6 +79,7 @@ export const CROSS_SITE_EXEMPT: readonly string[] = [
   "/api/media/hook/",
   "/api/secretary/booking/",
   "/api/billing/paymob/",
+  "/api/shopify/compliance",
   "/api/cron/",
 ];
 

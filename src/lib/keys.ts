@@ -130,6 +130,14 @@ export const wsKey = {
   fileProposalClaim: (s: Scope, id: string) => `fileprop-claim:${s}:${id}`,
   /** set: the scope's file proposal ids, for `wipeAccount`. */
   fileProposals: (s: Scope) => `fileprops:${s}`,
+  /** bucket name for `allow` (stored as `rate:keycheck:{window}:{scope}`): failed key checks of one workspace (rule 2240). */
+  keyCheckBucket: (s: Scope, window: "hour" | "day") => `keycheck:${window}:${s}`,
+  /** bucket name for `allow` (stored as `rate:connectstart:{scope}`): OAuth and Composio connect starts of one workspace (rule 2242). */
+  connectStartBucket: (s: Scope) => `connectstart:${s}`,
+  /** bucket name for `allow` (stored as `rate:storesync:{scope}`): manual store sales syncs of one workspace (rule 2243). */
+  storeSyncBucket: (s: Scope) => `storesync:${s}`,
+  /** bucket name for `allow` (stored as `rate:catalogimport:{scope}`): product imports from a store of one workspace (rule 2243). */
+  catalogImportBucket: (s: Scope) => `catalogimport:${s}`,
 } as const;
 
 export const accountKey = {
@@ -217,4 +225,10 @@ export const globalKey = {
   rate: (bucket: string) => `rate:${bucket}`,
   /** hash: model spend of everyone in one month. */
   usageAll: (month: string) => `usage:_all:${month}`,
+  /** list: Shopify compliance webhook receipts, topic + store + time only (rule 2169). */
+  shopifyCompliance: () => "shopify:compliance",
+  /** hash: store domain → time of a pending `shop/redact`, applied by the stores cron (rules 2170-2171). */
+  shopifyRedact: () => "shopify:redact",
+  /** json: per-platform connection counts across every workspace, written by the stores cron (rules 2177-2178). */
+  connectionHealth: () => "connections:health",
 } as const;
