@@ -243,7 +243,7 @@ type OfferHolder = Pick<User, "firstMonthOffer" | "firstPaidOn" | "trialEnds">;
 export const offerLastDay = (u: Pick<User, "trialEnds">, offer: Pick<FirstMonthOffer, "kind">): string | null =>
   offer.kind === "early" ? earlyOfferLastDay(u.trialEnds) : null;
 /** The account's first-month offer while no recorded payment took it and it has no first payment, whatever the date. */
-const unusedOffer = (u: OfferHolder): FirstMonthOffer | null =>
+export const unusedOffer = (u: OfferHolder): FirstMonthOffer | null =>
   u.firstMonthOffer && !u.firstMonthOffer.usedAt && !u.firstPaidOn ? u.firstMonthOffer : null;
 /**
  * The account's first-month offer that can still be used today, or null: one per account, whichever came first, unused,
