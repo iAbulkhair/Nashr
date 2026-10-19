@@ -2,10 +2,12 @@ import bcrypt from "bcryptjs";
 import { isSuspended } from "./suspension";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
+import { log } from "./log";
 import { pmap } from "./parallel";
 import { revokeBook } from "./booking-token";
 import { revokeFeed } from "./feed-token";
-import { getUser, normalizeEmail, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
+import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
+import { acct, OPAQUE_IDS } from "./account-id";
 import { can } from "./roles";
 import { teamApprovals } from "./approver-stats";
 import { accountKey, globalKey } from "./keys";
@@ -33,11 +35,17 @@ import { accountKey, globalKey } from "./keys";
 
 export type TeamRole = "admin" | "member";
 export type Member = {
+  /**
+   * The member's person id (multi-org forced change 2): its address when the record was first written, frozen from then
+   * on (in R1 a move still writes a new record, so it is the current address). Optional (expand): a record written
+   * before R1 has none and reads as its `email` (`memberPid`). The login index names it.
+   */
+  id?: string;
   email: string;
   name: string;
   lang: "ar" | "en";
   passHash: string;
-  /** The owner email. */
+  /** The account id (`acct(owner)`): in R1 the owner's first address, as before. */
   memberOf: string;
   role: TeamRole;
   invitedBy: string;
@@ -113,8 +121,22 @@ export async function withMemberLock<T>(email: string, fn: (m: Member) => Promis
   });
 }
 
+/**
+ * A member's person id: the frozen `id`, or the address of a record written before R1. While `OPAQUE_IDS` is off (R1)
+ * every member's person id IS its address: a stored `id` that differs was copied by a rolled-back build's move
+ * (`{id: old, email: new}` at `member:{new}`, with no `login:{new}`) and is ignored, so the member still signs in and
+ * holds the address (security review M1, 2026-10-18).
+ */
+export const memberPid = (m: Pick<Member, "id" | "email">): string => (OPAQUE_IDS ? (m.id ?? normalizeEmail(m.email)) : normalizeEmail(m.email));
+
 export async function getMember(email: string): Promise<Member | null> {
-  return db.get<Member>(memberKey(normalizeEmail(email)));
+  const m = await db.get<Member>(memberKey(normalizeEmail(email)));
+  // The same stale id, corrected in memory so the next save writes the address (as `getAccount` does for owners).
+  if (m && !OPAQUE_IDS && m.id !== undefined && m.id !== normalizeEmail(m.email)) {
+    log.warn("member id differs from its address", { shape: "member.id" });
+    m.id = normalizeEmail(m.email);
+  }
+  return m;
 }
 /** Writes the member record only: never `users:all`, never the roster index. Callers hold `lock:member:{email}`. */
 export async function saveMember(m: Member) {
@@ -128,6 +150,7 @@ export async function saveMember(m: Member) {
 export async function createMember(owner: string, input: { email: string; name: string; password: string; lang: "ar" | "en"; role: TeamRole; invitedBy: string }): Promise<Member> {
   const now = new Date().toISOString();
   const m: Member = {
+    id: normalizeEmail(input.email),
     email: normalizeEmail(input.email),
     name: cleanName(input.name) ?? "",
     lang: input.lang === "en" ? "en" : "ar",
@@ -141,8 +164,9 @@ export async function createMember(owner: string, input: { email: string; name: 
   await insertMember(m);
   return m;
 }
+/** The record, the roster entry and the login index (rule 1983; the caller holds `lock:login` when it must be unique). */
 async function insertMember(m: Member) {
-  await Promise.all([saveMember(m), db.sadd(membersKey(m.memberOf), m.email)]);
+  await Promise.all([saveMember(m), db.sadd(membersKey(m.memberOf), m.email), claimLogin(m.email, memberPid(m))]);
 }
 
 /**
@@ -191,7 +215,7 @@ export async function seatsUsed(owner: string): Promise<number> {
 async function actorStillHolds(owner: User, actor: Actor): Promise<boolean> {
   if (actor.kind !== "member") return actor.email === owner.email;
   const m = await getMember(actor.email);
-  return !!m && m.memberOf === owner.email && !m.disabled && m.role === actor.role;
+  return !!m && m.memberOf === acct(owner) && !m.disabled && m.role === actor.role;
 }
 
 /**
@@ -201,8 +225,9 @@ async function actorStillHolds(owner: User, actor: Actor): Promise<boolean> {
  */
 function inviteHolds(inv: Invite, owner: User, inviter: Member | null): boolean {
   if (!(new Date(inv.createdAt).getTime() >= new Date(owner.createdAt).getTime())) return false;
-  if (inv.invitedBy === owner.email) return true;
-  return !!inviter && inviter.memberOf === owner.email && !inviter.disabled && inviter.role === "admin" && inv.role === "member";
+  // `invitedBy` names a sign-in address; an owner invite written by an account under its id (R2) is the owner's too.
+  if (inv.invitedBy === owner.email || inv.invitedBy === acct(owner)) return true;
+  return !!inviter && inviter.memberOf === acct(owner) && !inviter.disabled && inviter.role === "admin" && inv.role === "member";
 }
 /** Delete these invites of `owner` (record and index entry). Callers hold `lock:team:{owner}`. */
 async function dropInvites(owner: string, ids: string[]) {
@@ -224,9 +249,10 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
   if (e === owner.email || e === normalizeEmail(actor.email)) return fail("unavailable");
   const token = randomBytes(32).toString("hex");
   const id = inviteId(token);
-  return withLock(accountKey.teamLock(owner.email), async () => {
-    const [u, m, members, invites, fresh] = await Promise.all([getUser(e), getMember(e), listMembers(owner.email), listInvites(owner.email), getUser(owner.email)]);
-    if (u || m || invites.some((i) => i.email === e)) return fail("unavailable");
+  return withLock(accountKey.teamLock(acct(owner)), async () => {
+    // Is the address taken? Through the login resolver (rule 1982), not by reading `user:{address}` as an account.
+    const [taken, m, members, invites, fresh] = await Promise.all([getLogin(e), getMember(e), listMembers(acct(owner)), listInvites(acct(owner)), getAccount(acct(owner))]);
+    if (taken || m || invites.some((i) => i.email === e)) return fail("unavailable");
     const limit = seatLimit(fresh ?? owner);
     const used = 1 + members.filter((x) => !x.disabled).length + invites.length;
     if (used + 1 > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
@@ -234,13 +260,13 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
     const invite: Invite = {
       email: e,
       role,
-      owner: owner.email,
+      owner: acct(owner),
       invitedBy: normalizeEmail(actor.email),
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + INVITE_TTL_SECONDS * 1000).toISOString(),
       lang: lang === "en" ? "en" : "ar",
     };
-    await Promise.all([db.set(inviteKey(id), invite, INVITE_TTL_SECONDS), db.sadd(invitesKey(owner.email), id)]);
+    await Promise.all([db.set(inviteKey(id), invite, INVITE_TTL_SECONDS), db.sadd(invitesKey(acct(owner)), id)]);
     return { ok: true as const, token, id, invite };
   });
 }
@@ -251,7 +277,7 @@ export async function peekInvite(token: string): Promise<{ team: string; inviter
   const inv = await db.get<Invite>(inviteKey(inviteId(token)));
   if (!inv || expired(inv)) return null;
   const { getBrand } = await import("./brand");
-  const [owner, inviter, brand] = await Promise.all([getUser(inv.owner), inv.invitedBy === inv.owner ? null : getMember(inv.invitedBy), getBrand(inv.owner)]);
+  const [owner, inviter, brand] = await Promise.all([getAccount(inv.owner), inv.invitedBy === inv.owner ? null : getMember(inv.invitedBy), getBrand(inv.owner)]);
   if (!owner || isSuspended(owner) || !inviteHolds(inv, owner, inviter)) return null;
   return { team: brand?.name || owner.name, inviter: inviter?.name || owner.name, email: inv.email, role: inv.role, expiresAt: inv.expiresAt };
 }
@@ -283,7 +309,7 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
     // account deletion that finished while this request waited for the lock must be seen, never a copy read before it.
     return await withLock(accountKey.teamLock(inv.owner), async () => {
       const [owner, inviter, live, members, invites] = await Promise.all([
-        getUser(inv.owner),
+        getAccount(inv.owner),
         inv.invitedBy === inv.owner ? null : getMember(inv.invitedBy),
         db.get<Invite>(inviteKey(id)),
         listMembers(inv.owner),
@@ -297,22 +323,23 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
       const used = 1 + members.filter((m) => !m.disabled).length + invites.length;
       if (used > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
       return withLoginLock(inv.email, async () => {
-        const [u, m] = await Promise.all([getUser(inv.email), getMember(inv.email)]);
-        if (u || m) return fail("unavailable");
+        const [taken, m] = await Promise.all([getLogin(inv.email), getMember(inv.email)]);
+        if (taken || m) return fail("unavailable");
         const now = new Date().toISOString();
         const member: Member = {
+          id: normalizeEmail(inv.email),
           email: normalizeEmail(inv.email),
           name,
           lang: input.lang === "en" || input.lang === "ar" ? input.lang : inv.lang,
           passHash,
-          memberOf: owner.email,
+          memberOf: acct(owner),
           role: inv.role,
           invitedBy: inv.invitedBy,
           acceptedAt: now,
           sessionsAfter: now,
         };
         await insertMember(member);
-        await dropInvites(owner.email, [id]);
+        await dropInvites(acct(owner), [id]);
         return { ok: true as const, member };
       });
     });
@@ -335,15 +362,15 @@ export async function cancelInvite(owner: User, actor: Actor, id: string): Promi
   if (!can(acting, "team.invite.cancel")) return fail("forbidden");
   if (typeof id !== "string" || !TOKEN_RE.test(id)) return fail("not_found");
   const inv = await db.get<Invite>(inviteKey(id));
-  if (!inv || inv.owner !== owner.email) return fail("not_found");
+  if (!inv || inv.owner !== acct(owner)) return fail("not_found");
   if (inv.role === "admin" && !can(acting, "team.invite.admin")) return fail("forbidden");
   if (!(await actorStillHolds(owner, actor))) return fail("forbidden");
   // Under the team lock, like every other seat change: an accept holding it either finishes first (and this invite is
   // gone: the person joined) or runs after and finds the invite cancelled. Never both "cancelled" and "joined".
-  const done = await withLock(accountKey.teamLock(owner.email), async () => {
+  const done = await withLock(accountKey.teamLock(acct(owner)), async () => {
     const cur = await db.get<Invite>(inviteKey(id));
-    if (!cur || cur.owner !== owner.email) return false;
-    await dropInvites(owner.email, [id]);
+    if (!cur || cur.owner !== acct(owner)) return false;
+    await dropInvites(acct(owner), [id]);
     return true;
   });
   return done ? { ok: true } : fail("not_found");
@@ -362,7 +389,7 @@ async function dropMember(owner: string, email: string, may: (m: Member) => bool
     if (cur.memberOf !== owner) return "not_found" as const;
     if (!may(cur)) return "forbidden" as const;
     const sent = (await listInvites(owner)).filter((i) => i.invitedBy === cur.email).map((i) => i.id);
-    await Promise.all([db.del(memberKey(cur.email)), db.del(accountKey.activeBrand(cur.email)), db.srem(membersKey(owner), cur.email), dropInvites(owner, sent)]);
+    await Promise.all([db.del(memberKey(cur.email)), db.del(accountKey.activeBrand(cur.email)), db.srem(membersKey(owner), cur.email), dropInvites(owner, sent), releaseLogin(cur.email, memberPid(cur))]);
     // The login is gone, so its calendar feed and booking links go too (their records and pointers; the booking claims
     // belong to the brand scope and go with the account). After the record is deleted, so nothing can mint a new one for
     // it any more (`revokeFeed` waits out a create already running). A failed revoke is retried by nothing: the removal
@@ -391,14 +418,16 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
   return withLock(accountKey.teamLock(owner), () => withLoginLock(first, () => withLoginLock(second, async () => {
     const res = await withMemberLock(old, async (cur) => {
       if (cur.memberOf !== owner) return "not_found" as const;
-      const [u, m] = await Promise.all([getUser(to), getMember(to)]);
-      if (u || m) return "exists" as const;
+      const [taken, m] = await Promise.all([getLogin(to), getMember(to)]);
+      if (taken || m) return "exists" as const;
       const [sent, brand] = await Promise.all([listInvites(owner), db.get<string>(accountKey.activeBrand(old))]);
       const { devicesAfter: _d, ...rest } = cur;
-      await saveMember({ ...rest, email: to, sessionsAfter: new Date().toISOString() });
-      await Promise.all([db.sadd(membersKey(owner), to), brand ? db.set(accountKey.activeBrand(to), brand) : Promise.resolve()]);
+      // R1: the record is written again at the new address, so its person id is the new address (the roster and the
+      // other per-login keys name the address). The move in place that keeps the id comes with R2 (spec section 6).
+      await saveMember({ ...rest, id: to, email: to, sessionsAfter: new Date().toISOString() });
+      await Promise.all([db.sadd(membersKey(owner), to), brand ? db.set(accountKey.activeBrand(to), brand) : Promise.resolve(), claimLogin(to, to)]);
       if (carry) await carry(old, to);
-      await Promise.all([db.del(memberKey(old)), db.del(accountKey.activeBrand(old)), db.srem(membersKey(owner), old), dropInvites(owner, sent.filter((i) => i.invitedBy === old).map((i) => i.id))]);
+      await Promise.all([db.del(memberKey(old)), db.del(accountKey.activeBrand(old)), db.srem(membersKey(owner), old), dropInvites(owner, sent.filter((i) => i.invitedBy === old).map((i) => i.id)), releaseLogin(old, memberPid(cur), { locked: true })]);
       await Promise.all([revokeFeed(old), revokeBook(old)]);
       return "ok" as const;
     });
@@ -412,10 +441,10 @@ export async function removeMember(owner: User, actor: Actor, email: string): Pr
   const acting = { ...owner, actor };
   if (!can(acting, "team.remove.member")) return fail("forbidden");
   const m = await getMember(e);
-  if (!m || m.memberOf !== owner.email) return fail("not_found");
+  if (!m || m.memberOf !== acct(owner)) return fail("not_found");
   if (m.role === "admin" && !can(acting, "team.remove.admin")) return fail("forbidden");
   if (!(await actorStillHolds(owner, actor))) return fail("forbidden");
-  const res = await withLock(accountKey.teamLock(owner.email), () => dropMember(owner.email, e, (cur) => cur.role !== "admin" || can(acting, "team.remove.admin")));
+  const res = await withLock(accountKey.teamLock(acct(owner)), () => dropMember(acct(owner), e, (cur) => cur.role !== "admin" || can(acting, "team.remove.admin")));
   return res === "ok" ? { ok: true } : fail(res);
 }
 
@@ -436,16 +465,16 @@ export async function setRole(owner: User, actor: Actor, email: string, role: st
   if (!can({ ...owner, actor }, "team.role")) return fail("forbidden");
   const e = normalizeEmail(typeof email === "string" ? email : "");
   const m = await getMember(e);
-  if (!m || m.memberOf !== owner.email) return fail("not_found");
-  const done = await withLock(accountKey.teamLock(owner.email), () =>
+  if (!m || m.memberOf !== acct(owner)) return fail("not_found");
+  const done = await withLock(accountKey.teamLock(acct(owner)), () =>
     withMemberLock(e, async (cur) => {
-      if (cur.memberOf !== owner.email) return false;
+      if (cur.memberOf !== acct(owner)) return false;
       const demoted = cur.role === "admin" && role !== "admin";
       cur.role = role;
       await saveMember(cur);
       // An admin's invites could never be accepted once the admin is a plain member (`inviteHolds`), yet each would
       // keep holding a seat for up to seven days. They go with the role, as they go with the login in `dropMember`.
-      if (demoted) await dropInvites(owner.email, (await listInvites(owner.email)).filter((i) => i.invitedBy === cur.email).map((i) => i.id));
+      if (demoted) await dropInvites(acct(owner), (await listInvites(acct(owner))).filter((i) => i.invitedBy === cur.email).map((i) => i.id));
       return true;
     }),
   );
@@ -457,8 +486,8 @@ export async function leaveTeam(u: User): Promise<{ ok: true } | TeamFail> {
   const a = u.actor;
   if (!a || a.kind !== "member" || !can(u, "team.leave")) return fail("forbidden");
   const m = await getMember(a.email);
-  if (!m || m.memberOf !== u.email) return fail("not_found");
-  const res = await withLock(accountKey.teamLock(u.email), () => dropMember(u.email, m.email));
+  if (!m || m.memberOf !== acct(u)) return fail("not_found");
+  const res = await withLock(accountKey.teamLock(acct(u)), () => dropMember(acct(u), m.email));
   return res === "ok" ? { ok: true } : fail(res);
 }
 
@@ -470,9 +499,9 @@ export async function leaveTeam(u: User): Promise<{ ok: true } | TeamFail> {
  * brought in after a downgrade is not swapped for one the plan paused earlier.
  */
 export async function enforceSeats(owner: User | string): Promise<{ limit: number; disabled: string[]; enabled: string[]; cancelled: string[] }> {
-  const email = typeof owner === "string" ? normalizeEmail(owner) : owner.email;
+  const email = typeof owner === "string" ? normalizeEmail(owner) : acct(owner);
   return withLock(accountKey.teamLock(email), async () => {
-    const [o, members, invites] = await Promise.all([getUser(email), listMembers(email), listInvites(email)]);
+    const [o, members, invites] = await Promise.all([getAccount(email), listMembers(email), listInvites(email)]);
     const limit = o ? seatLimit(o) : 1;
     const slots = Math.max(0, limit - 1);
     const active = members.filter((m) => !m.disabled);
@@ -515,7 +544,7 @@ export async function wipeTeam(owner: string) {
     await Promise.all([
       pmap(emails, (e) =>
         withMemberLock(e, async (cur) => {
-          if (cur.memberOf === owner) await Promise.all([db.del(memberKey(cur.email)), db.del(accountKey.activeBrand(cur.email)), revokeFeed(cur.email), revokeBook(cur.email)]);
+          if (cur.memberOf === owner) await Promise.all([db.del(memberKey(cur.email)), db.del(accountKey.activeBrand(cur.email)), revokeFeed(cur.email), revokeBook(cur.email), releaseLogin(cur.email, memberPid(cur))]);
         }),
       ),
       pmap([...ids.map(inviteKey), membersKey(owner), invitesKey(owner)], (k) => db.del(k)),
@@ -531,7 +560,7 @@ export async function wipeTeam(owner: string) {
 export async function teamView(u: User) {
   const a = u.actor;
   if (!a) return null;
-  const [members, invites, approvals] = await Promise.all([listMembers(u.email), listInvites(u.email), can(u, "team.approvals.view") ? teamApprovals(u.email) : null]);
+  const [members, invites, approvals] = await Promise.all([listMembers(acct(u)), listInvites(acct(u)), can(u, "team.approvals.view") ? teamApprovals(u) : null]);
   return {
     you: { email: a.email, name: a.name, role: a.role },
     seats: { used: 1 + members.filter((m) => !m.disabled).length + invites.length, limit: seatLimit(u) },

@@ -20,6 +20,7 @@ import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
 import { SKIP_TO_CONTENT } from "@/lib/screen-titles";
 import { ToastProvider } from "@/components/ui/Toast";
+import { acct } from "@/lib/account-id";
 
 /**
  * Paths reachable without a session. `/join` accepts a team invite (the token is in the URL fragment). `/verify` is the
@@ -66,7 +67,7 @@ export default async function AppLayout({ children, params }: { children: React.
   // Rule 1119: the shell's first numbers (bell, approvals badge) are read here, in one round of parallel reads with the
   // brand, so the rail paints with them instead of fetching them again on every navigation. Scope and email are the
   // session's, never the request's.
-  const [brand, notifs, toApprove] = await Promise.all([getBrand(sc(user)), listNotifs(user.email), pendingCount(sc(user))]);
+  const [brand, notifs, toApprove] = await Promise.all([getBrand(sc(user)), listNotifs(acct(user)), pendingCount(sc(user))]);
   const unread = notifs.filter((n) => !n.read).length;
   // `user` is the ACCOUNT (the owner's record); the person acting is `user.actor`. Plan and credits belong to the account,
   // the name, email and role shown are the actor's. The flags only hide controls; the routes enforce the same `can()`.

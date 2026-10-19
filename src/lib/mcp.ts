@@ -2,9 +2,10 @@ import { randomBytes } from "crypto";
 import { isSuspended } from "./suspension";
 import { db } from "./db";
 import { BEARER, TOKEN_PREFIX, grantHoldsAccess, revokeAllGrants, tokenHash } from "./oauth";
-import { emailVerified, getUser, type User } from "./auth";
+import { emailVerified, getUser, normalizeEmail, type User } from "./auth";
 import type { Action } from "./roles";
 import { accountKey, globalKey } from "./keys";
+import { acct } from "./account-id";
 
 /**
  * The role each /api/mcp tool needs, the same action the web route for that work checks (src/lib/roles.ts). A bearer
@@ -72,14 +73,16 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   const [{ getMember }, { activeBrandId, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
   // An OAuth access token is accepted only while its grant exists and lists it (revoked, or rotated past, is refused).
   // Read alongside the account, so it costs no extra round trip.
+  // `email` on a token record is the account id (`acct(u)` when minted, rule 1985); in R1 that is the owner's address.
   const [u, member, brandId, granted] = await Promise.all([getUser(email), getMember(email), activeBrandId(email), rec.grant ? grantHoldsAccess(email, rec.grant, rec.hash) : true]);
   // A suspended account is blocked everywhere, including tokens issued before the suspension; so is an owner who has
   // not proved the address yet (rule 753), which covers a token minted before the gate or by a not-yet-verified owner.
   if (!u || isSuspended(u) || !emailVerified(u) || member || !granted) return null;
   // Same scope resolution as a browser session (src/lib/auth.ts `currentUser`): without it every MCP call read and
   // wrote the default brand even while the owner had another brand active.
-  u.brandId = brandId;
-  u.scope = scopeFor(u.email, brandId);
+  // The active brand is per sign-in address: read again only when the account's id is not its address (none in R1).
+  u.brandId = normalizeEmail(u.email) === email ? brandId : await activeBrandId(u.email);
+  u.scope = scopeFor(acct(u), u.brandId);
   u.actor = { kind: "token", email: u.email, name: u.name, lang: u.lang, role: "owner" };
   return u;
 }

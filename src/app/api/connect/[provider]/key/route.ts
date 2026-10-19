@@ -11,6 +11,7 @@ import { forbid } from "@/lib/roles";
 import { providerTimeout } from "@/lib/fetch-timeout";
 import { wsKey } from "@/lib/keys";
 import { KEY_CHECK_FAILS_PER_DAY, KEY_CHECK_FAILS_PER_HOUR, WINDOW, allow, giveBack, retryLater } from "@/lib/rate";
+import { acct } from "@/lib/account-id";
 
 /** POST key-based credentials → verify → store encrypted. Admin and owner only (src/lib/roles.ts "connectors"). */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
@@ -72,6 +73,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
   const before = storeIdentity(conn) ? await getConnection(sc(u), provider).catch(() => null) : null;
   await saveConnection(sc(u), conn);
   await dropSnapshotIfStoreChanged(sc(u), before, conn);
-  await track(u.email, "connect");
+  await track(acct(u), "connect");
   return NextResponse.json({ ok: true, meta });
 }

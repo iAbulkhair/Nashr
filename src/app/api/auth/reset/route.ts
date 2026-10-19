@@ -12,6 +12,7 @@ import { revokeCalendarLinks } from "@/lib/secretary-gcal";
 import { membersKey, saveMember, withMemberLock } from "@/lib/team";
 import { db } from "@/lib/db";
 import { allow, clientIp, retryLater } from "@/lib/rate";
+import { acct } from "@/lib/account-id";
 
 /** Written by ../forgot/route.ts. Records from before teams carry no `kind`: every login was an owner then. */
 type ResetRecord = { email: string; kind?: "owner" | "member" };
@@ -44,12 +45,12 @@ export async function POST(req: Request) {
 
   if (login.kind === "member") {
     const { member, owner } = login;
-    if (!owner || member.memberOf !== owner.email) return badToken();
+    if (!owner || member.memberOf !== acct(owner)) return badToken();
     if (isSuspended(owner)) return suspendedAnswer(owner);
     // The member record only, under its own lock. Every other device of THIS member is signed out; the owner and the
     // rest of the team are untouched.
     const done = await withMemberLock(member.email, async (m) => {
-      if (m.memberOf !== owner.email) return false;
+      if (m.memberOf !== acct(owner)) return false;
       m.passHash = hash;
       m.sessionsAfter = new Date().toISOString();
       await saveMember(m);
@@ -74,12 +75,12 @@ export async function POST(req: Request) {
   // Rule 769: the link was mailed to this very address and used once, which proves the inbox as well as a code does, so
   // an owner who has not verified yet is verified here (the date is kept when there is one). A member's reset proves the
   // member's address, not the owner's, and never comes here.
-  await withUserLock(owner.email, async (x) => { x.passHash = hash; x.emailVerifiedAt ??= new Date().toISOString(); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
+  await withUserLock(acct(owner), async (x) => { x.passHash = hash; x.emailVerifiedAt ??= new Date().toISOString(); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
   // The owner's calendar feed and booking links and every member's go with the MCP tokens, as every member's session does above (the
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
-  const roster = await db.smembers(membersKey(owner.email));
+  const roster = await db.smembers(membersKey(acct(owner)));
   // The owner's linked marketing calendars (Reem B3) end with them too: whoever holds the account next links their own.
-  await Promise.all([revokeAllMcp(owner.email), revokeFeeds([owner.email, ...roster]), revokeBooks([owner.email, ...roster]), revokeCalendarLinks(owner.email)]);
+  await Promise.all([revokeAllMcp(acct(owner)), revokeFeeds([owner.email, ...roster]), revokeBooks([owner.email, ...roster]), revokeCalendarLinks(owner.email)]);
   await createSession(owner.email);
   return NextResponse.json({ ok: true });
 }

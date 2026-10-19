@@ -68,7 +68,9 @@ function sdk(opts: { genFails?: boolean; state?: "on" | "paused"; hang?: { on: b
     default: class {
       static BadRequestError = class extends Error {};
       constructor() { seen.made++; }
-      beta = { messages: { stream: (p: Params) => ({ finalMessage: async () => { seen.prompts.push(String(p.messages[0].content)); if (opts.genFails) throw new Error("model down"); if (opts.hang?.on) return new Promise<never>(() => {}); return reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])); } }) } };
+      beta = { messages: { stream: (p: Params) => ({ finalMessage: async () => { seen.prompts.push(String(p.messages[0].content)); if (opts.genFails) throw new Error("model down"); if (opts.hang?.on) return new Promise<never>(() => {}); // As many items as the prompt asks for, so no batch is a short one (rule 2276).
+      const n = Number(/Return exactly (\d+) item/.exec(String(p.messages[0].content))?.[1] ?? 1);
+      return reply(JSON.stringify(Array.from({ length: n }, () => ({ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" })))); } }) } };
       messages = {
         chat: () => ({ finalMessage: async () => reply("تمام") }),
         create: async (p: Params) => {
@@ -236,7 +238,8 @@ describe("a routine runs only on real input (rule 113)", () => {
     expect(seen.made).toBe(0);
     expect(await credits(u.email)).toBe(50);
     await db.set(`storesales:${u.email}`, snap(ago(1)));
-    expect(await run(u, "noor_cart_recovery")).toBe("ok:1");
+    // The full batch of five a cart-recovery run asks for.
+    expect(await run(u, "noor_cart_recovery")).toBe("ok:5");
     expect(seen.prompts.at(-1)).toContain("<cart_data>");
     expect(await spend(u.email)).toEqual({ noor: 3 });
     await settle();
@@ -336,7 +339,7 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     expect(seen.made).toBe(0);
     expect(await credits(u.email)).toBe(50);
     await saveGov(u.email, { weeklyCap: 8 });
-    expect(await run(u, "noor_cart_recovery")).toBe("ok:1");
+    expect(await run(u, "noor_cart_recovery")).toBe("ok:5");
     await settle();
   });
 

@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "crypto";
 import { db } from "./db";
 import { activityKey } from "./activity";
-import { getUser, normalizeEmail, validEmail, type User } from "./auth";
+import { acct, getLogin, normalizeEmail, validEmail, type User } from "./auth";
 import { listBrands } from "./brands";
 import { cardKey } from "./billing";
 import { moveGoogleLink } from "./google-signin";
@@ -53,8 +53,8 @@ export type StartRefusal = "invalid_email" | "same_email" | "taken" | "owner_has
  * lists. A key the system writes by itself on an empty account (the daily run's `schedule:`) does not.
  */
 export async function ownerHasData(u: User): Promise<boolean> {
-  const e = u.email;
-  // The owner's default brand: its scope is the account email (`workspaceScope`), from the signed-in record.
+  const e = acct(u);
+  // The owner's default brand: its scope is the account id (`workspaceScope`, rule 1980), from the signed-in record.
   const s = workspaceScope(e, "default");
   if (u.plan !== "trial" || u.paidOnce || u.firstPaidOn || u.billing || u.partnerCode || u.founding || u.priceLock || u.onboardPaid || u.handPlan || (u.topups?.length ?? 0) > 0) return true;
   const lists = [wsKey.tasks(s), wsKey.convs(s), activityKey(e), wsKey.decisions(s), `handoffs:${e}`, SEC_KEYS.notes(e)];
@@ -94,7 +94,8 @@ export async function startEmailChange(u: User, me: Acting, target: unknown, lan
   const to = normalizeEmail(typeof target === "string" ? target : "");
   if (!validEmail(to)) return { ok: false, error: "invalid_email" };
   if (to === me.email) return { ok: false, error: "same_email" };
-  const [owner, member] = await Promise.all([getUser(to), getMember(to)]);
+  // Taken as a sign-in address (rule 1982), not read as an account key.
+  const [owner, member] = await Promise.all([getLogin(to), getMember(to)]);
   if (owner || member) return { ok: false, error: "taken" };
   if (me.kind === "owner") {
     const today = new Date().toISOString().slice(0, 10);
@@ -153,7 +154,7 @@ export async function confirmEmailChange(u: User, me: Acting, typed: unknown, la
   await db.del(triesKey(me.email));
   const to = p.to;
   if (me.kind === "member") {
-    const r = await moveMemberLogin(u.email, me.email, to, carryLogin);
+    const r = await moveMemberLogin(acct(u), me.email, to, carryLogin);
     if (r === "exists") return { ok: false, error: "taken" };
     if (r === "not_found") return { ok: false, error: "not_found" };
   } else {
@@ -165,7 +166,7 @@ export async function confirmEmailChange(u: User, me: Acting, typed: unknown, la
     });
     if (r === "exists") return { ok: false, error: "taken" };
     if (r === "limit") return { ok: false, error: "limit" };
-    if (r === "not_allowed") return { ok: false, error: (await getUser(me.email)) ? "owner_has_data" : "not_found" };
+    if (r === "not_allowed") return { ok: false, error: (await getLogin(me.email))?.kind === "owner" ? "owner_has_data" : "not_found" };
   }
   if (mailReady()) {
     const m = mail(lang).notice(to);

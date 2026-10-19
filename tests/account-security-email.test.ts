@@ -197,7 +197,9 @@ describe("rule 1945: taken addresses, the account's own key and a founder impers
     await start(to);
     const thief = await newUser("em");
     const t = (await getUser(thief.email))!;
-    await saveUser({ ...t, email: to });
+    // A copy at the address, stored under it (a record's key is its id, rule 1980); no login index, so the guarded
+    // fallback of rule 1981 is what finds it.
+    await saveUser({ ...t, id: to, email: to });
     expect(await (await confirm(codeFor(to))).json()).toMatchObject({ error: "taken" });
     expect(await getUser(u.email)).toBeTruthy();
   });

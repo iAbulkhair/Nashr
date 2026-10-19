@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { adminActor, getUser, normalizeEmail, viaOf } from "@/lib/auth";
+import { accountByLogin, adminActor, normalizeEmail, viaOf } from "@/lib/auth";
+import { acct } from "@/lib/account-id";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { adminAudit } from "@/lib/admin-audit";
 import { updateTask } from "@/lib/brand";
@@ -17,7 +18,7 @@ const ID = /^[A-Za-z0-9_-]{1,64}$/;
  * written to `admin:log` as `actor`), else 401.
  *
  * - `email` and `itemId` are required strings (400 `bad_request`); `itemId` must look like a task id. `brandId` defaults to
- *   "default" and must be one of the account's own brands (`listBrands(email)`), else 400 `bad_brand`.
+ *   "default" and must be one of the account's own brands (`listBrands(acct(user))`), else 400 `bad_brand`.
  * - An unknown account is 404 `no_user`; an item not in that brand's workspace is 404 `no_item`.
  * - Under the task lock (`updateTask`) the item gets `agentScopeRelease: {hash: itemHash(t), by, at}`: the release covers that
  *   exact title and text, so an edit afterwards is checked again. Nothing is published here: the owner still presses Publish.
@@ -37,11 +38,13 @@ export async function POST(req: Request) {
   const email = normalizeEmail(body.email);
   const brandId = (body.brandId as string | undefined) ?? "default";
   const itemId = body.itemId;
-  const [user, brands] = await Promise.all([getUser(email), listBrands(email)]);
+  // The address names the account; its brands and scope come from the account's id (rule 1982).
+  const user = await accountByLogin(email);
   if (!user) return NextResponse.json({ ok: false, error: "no_user" }, { status: 404 });
+  const brands = await listBrands(acct(user));
   if (!brands.some((x) => x.id === brandId)) return NextResponse.json({ ok: false, error: "bad_brand" }, { status: 400 });
   const at = new Date().toISOString();
-  const done = await updateTask(scopeFor(email, brandId), itemId, (t) => ({ ...t, agentScopeRelease: { hash: itemHash(t), by: who, at } }));
+  const done = await updateTask(scopeFor(acct(user), brandId), itemId, (t) => ({ ...t, agentScopeRelease: { hash: itemHash(t), by: who, at } }));
   if (!done) return NextResponse.json({ ok: false, error: "no_item" }, { status: 404 });
   await adminAudit({ actor: who, via: viaOf(req), section: "quality", action: "agent_scope_release", target: email, what: "agent_scope_release", extra: { brandId, itemId } });
   return NextResponse.json({ ok: true });

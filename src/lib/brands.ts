@@ -4,6 +4,7 @@ import { brandCapFor } from "./pricing";
 import { log } from "./log";
 import { accountKey, workspaceScope } from "./keys";
 import { ActiveBrandId, brandRows, parseStored } from "./stored";
+import { acct } from "./account-id";
 
 /**
  * Multi-brand workspaces. Every brand-scoped record (brand file, tasks, files, chat, governance,
@@ -89,12 +90,12 @@ export function brandLimitRefusal(u: Pick<User, "plan" | "brandCap">, rows: Bran
  * rate (`brandAddRefusal`). `{ error: "busy" }` when the brand list's lock could not be taken.
  */
 export async function addBrand(u: User, name: string): Promise<BrandMeta | BrandLimit | { error: "busy" }> {
-  const b = await withBrandsLock(u.email, async (rows): Promise<BrandMeta | BrandLimit> => {
+  const b = await withBrandsLock(acct(u), async (rows): Promise<BrandMeta | BrandLimit> => {
     const over = brandLimitRefusal(u, rows);
     if (over) return over;
     const b: BrandMeta = { id: Math.random().toString(36).slice(2, 10), name: name.slice(0, 80) || "…", createdAt: new Date().toISOString(), status: "active" };
     rows.push(b);
-    await saveBrands(u.email, rows);
+    await saveBrands(acct(u), rows);
     return b;
   });
   if (!b) return { error: "busy" };

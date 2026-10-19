@@ -6,6 +6,7 @@ import { advance, getJob, maybeSweep, publicJob } from "@/lib/media/jobs";
 import { mediaDeps } from "@/lib/media/registry";
 import { deadlineFor } from "@/lib/media/keys";
 import { errCode } from "@/lib/media/start";
+import { acct } from "@/lib/account-id";
 
 export const maxDuration = 120;
 
@@ -30,7 +31,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ jobId: string 
     console.error("media poll", errCode(e));
     job = (await getJob(sc(u), jobId).catch(() => null)) ?? found;
   }
-  const [task, acct] = await Promise.all([job.state === "done" ? getTask(sc(u), job.taskId) : null, job.state === "failed" ? getUser(u.email) : null]);
+  const [task, account] = await Promise.all([job.state === "done" ? getTask(sc(u), job.taskId) : null, job.state === "failed" ? getUser(acct(u)) : null]);
   after(() => maybeSweep(mediaDeps(), deadline));
-  return NextResponse.json({ ok: true, job: publicJob(job), ...(task ? { task } : {}), ...(acct ? { credits: acct.credits } : {}) });
+  return NextResponse.json({ ok: true, job: publicJob(job), ...(task ? { task } : {}), ...(account ? { credits: account.credits } : {}) });
 }

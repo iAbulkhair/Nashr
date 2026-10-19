@@ -12,6 +12,7 @@ import { pmap } from "./parallel";
 import { SEC_ID, SEC_KEYS, SEC_PURGE_BATCH, SERIES_ID, audit, fail, stateOf, withLock, zoneFor, type SecFail, type Who } from "./secretary";
 import { arCount, formatWhen, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
+import { accountOfScope, brandOfScope } from "./account-id";
 
 /**
  * The closed copies of recurring series: warned about, then deleted 90 days after their close (spec §5, rulings R43,
@@ -35,8 +36,9 @@ export const SERIES_KEEP_MAX = 500;
 /** At most this many series named in one warning; the rest wait for the next day. */
 const NAMED_MAX = 5;
 
-const accountOf = (scope: string) => scope.split("#")[0];
-const brandIdOf = (scope: string) => (scope.includes("#") ? scope.slice(scope.indexOf("#") + 1) : "default");
+/** The account and the brand behind a scope (rule 1986). */
+const accountOf = accountOfScope;
+const brandIdOf = brandOfScope;
 const closedAt = (it: SecItem, fallback: number) => Date.parse(it.completedAt ?? "") || fallback;
 
 type Copy = { id: string; c: number };

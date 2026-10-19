@@ -410,7 +410,7 @@ describe("rule 1155: GET /api/billing/status and the return page's poll", () => 
     expect(paymobAccountKeys("a@test.example")).toContain(lastCheckoutKey("a@test.example"));
     const src = read("src/app/api/billing/status/route.ts");
     expect(src).toMatch(/export async function GET\(\)/);
-    expect(src).toContain("lastCheckout(u.email)");
+    expect(src).toContain("lastCheckout(acct(u))");
     expect(src).toMatch(/allow\(`billingstatus:\$\{u\.email\}`/);
   });
   it("the poll reads only, says where it is in a live region, and refreshes once on success", () => {
@@ -443,7 +443,7 @@ describe("rule 1156: payment history from the payments already recorded", () => 
     expect(html).not.toMatch(/[٠-٩]/);
     expect(html).toContain("2026-10-02");
     expect(renderToStaticMarkup(h(PaymentHistory, { lang: "en", rows: [], planName: (p) => p }))).toContain("No payments yet"); // Rule 2002: the shared empty state.
-    expect(read("src/app/[lang]/app/settings/billing/page.tsx")).toContain("owner ? paymentHistory(u.email) : Promise.resolve(null)");
+    expect(read("src/app/[lang]/app/settings/billing/page.tsx")).toContain("owner ? paymentHistory(acct(u)) : Promise.resolve(null)");
   });
 });
 

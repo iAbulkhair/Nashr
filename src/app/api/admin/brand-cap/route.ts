@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
-import { adminActor, normalizeEmail, saveUser, viaOf } from "@/lib/auth";
+import { accountByLogin, adminActor, normalizeEmail, saveUser, viaOf } from "@/lib/auth";
+import { acct } from "@/lib/account-id";
 import { withUserLock } from "@/lib/credits";
 import { activeCount, listBrands } from "@/lib/brands";
 import { brandCapFor, isBrandCap } from "@/lib/pricing";
@@ -31,8 +32,11 @@ export async function POST(req: Request) {
   if (!clear && !isBrandCap(b.brandCap)) return NextResponse.json({ ok: false, error: "bad_brand_cap" }, { status: 400 });
   type Cap = { cap: number; override: number | null };
   let done: { before: Cap; after: Cap };
+  // The address names the account; the lock and the save use its id (rule 1982).
+  const account = await accountByLogin(email);
+  if (!account) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   try {
-    done = await withUserLock(email, async (u) => {
+    done = await withUserLock(acct(account), async (u) => {
       const before = { cap: brandCapFor(u), override: u.brandCap ?? null };
       if (clear) delete u.brandCap;
       else u.brandCap = b.brandCap as number;
@@ -43,7 +47,7 @@ export async function POST(req: Request) {
     if (e instanceof Error && e.message === "user_not_found") return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     throw e;
   }
-  const active = activeCount(await listBrands(email));
+  const active = activeCount(await listBrands(acct(account)));
   await adminAudit({ actor: who, via: viaOf(req), section: "users", action: "brand_cap", target: email, what: `brand_cap ${email} ${done.before.cap}→${done.after.cap}`, before: done.before, after: done.after, reason: b.reason });
   return NextResponse.json({ ok: true, user: { email, brandCap: done.after.cap, brandCapOverride: done.after.override, activeBrands: active } });
 }

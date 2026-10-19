@@ -8,9 +8,10 @@
  *   an account) and `storedScope` (a scope read back from our own records) can produce. A raw id, email or value from a
  *   request is a plain `string` and does not type-check here, so a route cannot key a workspace record by what the
  *   caller sent (CLAUDE.md "Tenant isolation").
- * - `accountKey`: records of one account or one login, keyed by the normalized email (the account record, its brand
- *   list, the active brand of a login, the team, usage counters). Sign-in and admin paths look these up by an address
- *   on purpose, so they take a string; the caller normalizes it.
+ * - `accountKey`: records of one account or one login. An account's records take its id (`acct(u)`, src/lib/account-id.ts;
+ *   in R1 every id is still the account's first address, so the bytes are today's); a login's records (`login`, `member`,
+ *   `loginLock`, `activeBrand`, `emailChange`, `googleSub`...) take the normalized sign-in address. Sign-in and admin
+ *   paths look these up by an address on purpose, so they take a string; the caller normalizes it.
  * - `globalKey`: records addressed by a token, an id or nothing (sessions, OAuth state, invites, rate buckets, indexes).
  *
  * Every builder returns the same bytes as the template it replaced: no stored key changes, nothing to migrate.
@@ -132,8 +133,8 @@ export const wsKey = {
 } as const;
 
 export const accountKey = {
-  /** json `User`: the account (owner login). */
-  user: (email: string) => `user:${email}`,
+  /** json `User`: the account, under its id (`acct(u)`). */
+  user: (id: string) => `user:${id}`,
   /** json `BrandMeta[]`: the account's brands. */
   brands: (email: string) => `brands:${email}`,
   /** lock: the brand list's read-modify-write. */
@@ -178,6 +179,11 @@ export const accountKey = {
   invites: (owner: string) => `invites:${owner}`,
   /** lock: the owner's team. */
   teamLock: (owner: string) => `lock:team:${owner}`,
+  /**
+   * json `LoginIndexValue` (src/lib/account-id.ts): the person a sign-in address belongs to (account-id spec R1, rules
+   * 1981-1983). Written only under `loginLock`; the address is normalized by the caller.
+   */
+  login: (login: string) => `login:${login}`,
   /** lock: one login. */
   loginLock: (login: string) => `lock:login:${login}`,
   /** lock: one member record. */
@@ -189,7 +195,7 @@ export const accountKey = {
 } as const;
 
 export const globalKey = {
-  /** set: every account (owner) email. */
+  /** set: every account id (`acct(u)`: in R1 the owner's first address). */
   usersAll: () => "users:all",
   /** list: deletion receipts. */
   deletedAccounts: () => "deleted-accounts",

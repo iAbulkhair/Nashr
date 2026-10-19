@@ -225,7 +225,7 @@ describe("the founder (rules 1729-1731, 1733)", () => {
   });
   it("the write is behind the second factor, right after the founder check", () => {
     const s = src("src/app/api/admin/fair-use/route.ts");
-    const order = ["adminActor(req)", "secondFactorRefusal(req, who)", "reasonRefused(b.reason)", "withUserLock(email", "adminAudit("];
+    const order = ["adminActor(req)", "secondFactorRefusal(req, who)", "reasonRefused(b.reason)", "withUserLock(acct(account)", "adminAudit("];
     const at = order.map((x) => s.indexOf(x));
     expect(at.every((i) => i > 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);

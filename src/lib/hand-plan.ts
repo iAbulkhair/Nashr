@@ -38,8 +38,15 @@ export function parsePaidThrough(v: unknown, today: string): { ok: true; day: st
 }
 
 /**
- * The hand-set plan's paid month is over: no Paymob subscription (that one has its own `paidThrough`), a paid-through
- * day on the record, and `today` (Riyadh) after it. A record without `handPlan` never ends here (the old shape).
+ * The hand-set plan's paid month is over: a paid plan (not the trial), no Paymob subscription (that one has its own
+ * `paidThrough`), a paid-through day on the record, and `today` (Riyadh) after it. A record without `handPlan` never ends
+ * here (the old shape).
+ *
+ * Founder decision 2026-10-19 (rules 2273-2275): from that day the account is in the trial state, not only without its
+ * refill. `trialOver` (src/lib/auth.ts) reads this, so every spending gate refuses from the first minute of the next
+ * Riyadh day, and the daily job writes the trial onto the record (`endHandPlanIfDue`, src/lib/hand-plan-end.ts). The
+ * record keeps `handPlan` after that, so the console still shows the day it ended; once the record says "trial" this
+ * answers false and `trialOver` reads `trialEnds` alone, so a trial the founder extends afterwards works.
  */
-export const handPlanEnded = (u: { handPlan?: HandPlan; billing?: Billing }, today: string): boolean =>
-  !u.billing && !!u.handPlan && typeof u.handPlan.paidThrough === "string" && DAY.test(u.handPlan.paidThrough) && today > u.handPlan.paidThrough;
+export const handPlanEnded = (u: { plan?: string; handPlan?: HandPlan; billing?: Billing }, today: string): boolean =>
+  u.plan !== "trial" && !u.billing && !!u.handPlan && typeof u.handPlan.paidThrough === "string" && DAY.test(u.handPlan.paidThrough) && today > u.handPlan.paidThrough;

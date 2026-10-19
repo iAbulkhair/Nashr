@@ -66,7 +66,11 @@ const nextConfig: NextConfig = {
   // `globalNotFound` (rule 1875): src/app/global-not-found.tsx, a full Arabic right-to-left document, for an address
   // that matches no route at all. `[lang]` takes any first segment, so `/xyz` and `/ar-sa/x` never reach it: the proxy
   // serves those from the language tree's own 404 (rule 1891, `strayPath` in src/proxy.ts). This stays as the fallback.
-  experimental: { proxyClientMaxBodySize: 6 * 1024 * 1024, globalNotFound: true },
+  // `cpus` (rule 2290): build workers are capped at 4. Without it Next starts one worker per CPU less one, and the shared
+  // Hostinger build machine reports 64 CPUs: build 01a152f2 of 2026-10-19 started 63 workers to collect page data, hit
+  // the account's process limit ("OS can't spawn worker thread: Resource temporarily unavailable") and aborted, so the
+  // release never went live. Four is what a CI runner has anyway.
+  experimental: { proxyClientMaxBodySize: 6 * 1024 * 1024, globalNotFound: true, cpus: 4 },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

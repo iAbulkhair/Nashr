@@ -7,6 +7,7 @@ import { allow, clientIp } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 import { cancelInvite, createInvite, discardInvite, type Invite } from "@/lib/team";
 import { rateLimited, teamFail, unauthorized } from "../respond";
+import { acct } from "@/lib/account-id";
 
 /**
  * Invites per account per day (lower on a free trial, which anyone can open with one signup), per IP per hour, and per
@@ -53,7 +54,7 @@ function inviteMail(inv: Invite, inviterEmail: string, link: string) {
 async function tellOwner(u: User, inviter: string, emailed: boolean) {
   const ar = u.lang === "ar";
   try {
-    await notifyItem(u.email, u.lang, {
+    await notifyItem(acct(u), u.lang, {
       kind: "info",
       title: emailed ? (ar ? "أُرسلت دعوة جديدة" : "A new invitation was sent") : ar ? "أُنشئ رابط دعوة جديد" : "A new invitation link was created",
       body: emailed

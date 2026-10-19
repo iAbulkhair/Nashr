@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { adminActor, isAdmin, viaOf } from "@/lib/auth";
+import { accountByLogin, adminActor, isAdmin, viaOf } from "@/lib/auth";
+import { acct } from "@/lib/account-id";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { paymentsView, recordPayment, voidPayment } from "@/lib/partners";
 import { refundPaymobPayment } from "@/lib/billing";
@@ -10,7 +11,9 @@ export const dynamic = "force-dynamic";
 /** GET /api/admin/payments/{email}: the account's recorded payments, first-month offer and partner attribution (rule 396). */
 export async function GET(req: Request, ctx: { params: Promise<{ email: string }> }) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
-  const view = await paymentsView(decodeURIComponent((await ctx.params).email));
+  // The address names the account; its payments are read by the account's id (rule 1982).
+  const account = await accountByLogin(decodeURIComponent((await ctx.params).email));
+  const view = account ? await paymentsView(acct(account)) : null;
   if (!view) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   return NextResponse.json({ ok: true, ...view });
 }
@@ -39,9 +42,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   if (no2fa) return no2fa;
   const email = decodeURIComponent((await ctx.params).email);
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const account = await accountByLogin(email);
+  if (!account) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  const id = acct(account);
   const log = (what: string, reason?: string) => adminAudit({ actor: who, via: viaOf(req), section: "billing", target: email, what, reason });
   if (b.action === "record") {
-    const res = await recordPayment(email, { id: b.id, amountSar: b.amountSar, plan: b.plan, date: b.date, reference: b.reference }, who);
+    const res = await recordPayment(id, { id: b.id, amountSar: b.amountSar, plan: b.plan, date: b.date, reference: b.reference }, who);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "not_found" ? 404 : 400 });
     const p = res.payment;
     if (!res.already) await log(`payment:${p.id} sar:${p.amountSar} plan:${p.plan} date:${p.date}${p.offer ? ` offer:${p.offer}` : ""}${p.commission ? ` commission:${p.commission.sar}` : p.notCounted ? ` not_counted:${p.notCounted}` : ""}${res.reclassified ? ` reclassified:${res.reclassified.join(",")}` : ""}`);
@@ -51,13 +57,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     // The void form asks a reason (rule 1185). "record" and "refund" have no reason form yet, so theirs stays optional.
     const noReason = reasonRefused(b.reason);
     if (noReason) return noReason;
-    const res = await voidPayment(email, b.id, who, b.reason);
+    const res = await voidPayment(id, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "topup_live" ? 409 : 404 });
     await log(`payment:${res.payment.id} void${res.reclassified ? ` reclassified:${res.reclassified.join(",")}` : ""}`, res.payment.voidReason);
     return NextResponse.json(res);
   }
   if (b.action === "refund") {
-    const res = await refundPaymobPayment(email, b.id, who, b.reason);
+    const res = await refundPaymobPayment(id, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "not_paymob" || res.error === "busy" ? 409 : res.error === "paymob_refund_failed" ? 502 : 404 });
     await log(`paymob_refund payment:${res.payment.id}${res.alreadyRefunded ? " already_refunded" : ""}${res.planEnded ? " plan_ended" : ""}`, res.payment.voidReason);
     return NextResponse.json(res);

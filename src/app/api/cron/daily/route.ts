@@ -23,7 +23,11 @@ import { appOrigin } from "@/lib/origin";
 import { paragraphs } from "@/emails";
 import { paymentsEnabled } from "@/lib/payments";
 import { renewPaymob } from "@/lib/billing";
+import { endHandPlanIfDue } from "@/lib/hand-plan-end";
+import { handPlanEnded } from "@/lib/hand-plan";
+import { ksaDay } from "@/lib/partner-rules";
 import { runMarginAlert } from "@/lib/margin";
+import { acct } from "@/lib/account-id";
 
 export const maxDuration = 300;
 
@@ -35,16 +39,30 @@ async function dailyFor(u: User): Promise<string> {
   // `renewPaymob`, rules 710-714). Before the credit renewal, so a locked account gets no new month. Never fatal.
   if ((u.brandId ?? "default") === "default" && u.billing && paymentsEnabled()) {
     try {
-      const r = await renewPaymob(u.email);
+      const r = await renewPaymob(acct(u));
       if (r) out.push(r);
     } catch (e) {
       out.push(`paymob_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
     }
   }
+  // Once per account, on its default brand's entry: a plan set by hand whose paid-through day has passed moves to the
+  // trial state (src/lib/hand-plan-end.ts, rule 2274). Before the credit renewal, which gives such a plan nothing anyway
+  // (rule 1303). The copy in hand only decides whether to take the lock; the lock checks again. Never fatal.
+  if ((u.brandId ?? "default") === "default" && handPlanEnded(u, ksaDay())) {
+    try {
+      if (await endHandPlanIfDue(acct(u))) {
+        out.push("hand_plan_ended");
+        u.plan = "trial";
+      }
+    } catch {
+      // Retried by the next day's run: the lock checks the record again.
+      out.push("hand_plan_failed");
+    }
+  }
   // Monthly credit renewal for paid plans (no-op after the first brand of a multi-brand account).
-  if (await renewIfDue(u.email)) {
+  if (await renewIfDue(acct(u))) {
     out.push("renewed");
-    const fresh = await getUser(u.email);
+    const fresh = await getUser(acct(u));
     if (fresh) u.credits = fresh.credits;
   }
   // Once per account, on its default brand's entry: a top-up pack that expired leaves storage too. `getUser` already
@@ -52,7 +70,7 @@ async function dailyFor(u: User): Promise<string> {
   // under the ledger lock, so an account nobody opens does not keep an expired pack (rule 444).
   if ((u.brandId ?? "default") === "default" && u.topupsDirty) {
     try {
-      const settled = await saveSettledTopups(u.email);
+      const settled = await saveSettledTopups(acct(u));
       u.credits = settled.credits;
       if (settled.saved) out.push("topups_expired");
     } catch (e) {
@@ -77,7 +95,7 @@ async function dailyFor(u: User): Promise<string> {
   // Once per account, on its default brand's entry: the trial's last day grants the 15% first-month offer the day-3 note
   // names, whether or not mail is set up (the billing page shows it). src/lib/partners.ts, rule 394.
   if ((u.brandId ?? "default") === "default" && earlyOfferDue(u)) {
-    try { if (await grantEarlyOffer(u.email, (x) => earlyOfferDue(x))) out.push("offer"); } catch (e) { out.push(`offer_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
+    try { if (await grantEarlyOffer(acct(u), (x) => earlyOfferDue(x))) out.push("offer"); } catch (e) { out.push(`offer_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   }
   // Once per account too: a Sunday plan's charge whose run was killed and never retried in its week is refunded, or its
   // hold dropped when the week's plan exists (src/lib/schedule.ts `sweepWeeklyHolds`, rule 337). Reported, never fatal.

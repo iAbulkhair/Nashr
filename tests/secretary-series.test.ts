@@ -928,8 +928,9 @@ describe("rule 509: the repeat controls and the series view on the to-do page", 
       expect(html).not.toContain("Mine");
       expect(html).not.toContain("Download CSV");
     }
-    // Only the login's own session reads (user, member, active brand, session): no brand file, no calendar, no item.
-    expect(gets.mock.calls.map((c) => String(c[0])).filter((k) => !/^(user|member|activebrand|session):/.test(k))).toEqual([]);
+    // Only the login's own session reads (user, member, active brand, session, and the login index of rule 1984): no brand
+    // file, no calendar, no item.
+    expect(gets.mock.calls.map((c) => String(c[0])).filter((k) => !/^(user|member|activebrand|session|login):/.test(k))).toEqual([]);
     expect(mgets).not.toHaveBeenCalled();
     expect(smembers).not.toHaveBeenCalled();
     gets.mockRestore();

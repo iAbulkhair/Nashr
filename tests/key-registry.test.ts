@@ -85,6 +85,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.members(E), `members:${E}`],
     [accountKey.invites(E), `invites:${E}`],
     [accountKey.teamLock(E), `lock:team:${E}`],
+    [accountKey.login(E), `login:${E}`],
     [accountKey.loginLock(E), `lock:login:${E}`],
     [accountKey.memberLock(E), `lock:member:${E}`],
     [accountKey.usage(E, "2026-10"), `usage:${E}:2026-10`],
@@ -144,7 +145,8 @@ describe("rule 2031: sc(u) is the only way a request reaches a workspace builder
 
   it("src/lib/auth.ts builds the scope from the user record only", () => {
     const src = readFileSync("src/lib/auth.ts", "utf8");
-    expect(src).toMatch(/export const sc = \(u: User\): Scope => storedScope\(u\.scope \?\? u\.email\);/);
+    // Rule 1980: the account part is `acct(u)` (the stored id, or the address of a record from before R1).
+    expect(src).toMatch(/export const sc = \(u: User\): Scope => storedScope\(u\.scope \?\? acct\(u\)\);/);
   });
 });
 

@@ -11,6 +11,7 @@ import { chatRouteFor, chinaConfirmed } from "@/lib/models/overrides";
 import { MODEL_PICKS_PER_HOUR, allow, retryAfter, retryLater } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 import { TASK_COST, type TaskType } from "@/lib/tasks";
+import { acct } from "@/lib/account-id";
 
 /**
  * The customer's model picks (spec 2026-10-08-straitly-model-routing, sections 4, 7 and 8; plan Task 6). What a pick
@@ -96,7 +97,7 @@ export async function PUT(req: Request) {
     if (no) return no;
     if (u.actor?.kind === "founder") return fail("forbidden", 403);
     // Under the user lock, so it cannot undo a balance change saved at the same time. Only this one field changes.
-    await withUserLock(u.email, async (acc) => {
+    await withUserLock(acct(u), async (acc) => {
       acc.chinaHostingOk = true;
       await saveUser(acc);
     });

@@ -10,6 +10,7 @@ import { agentById, agentForTask, type AgentId } from "./agents";
 import { sc, type User } from "./auth";
 import type { TaskType } from "./tasks";
 import { log } from "./log";
+import { acct } from "./account-id";
 
 /**
  * Agent scope, Part B (rules 790-808; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md section 6):
@@ -167,7 +168,7 @@ export const itemHash = (t: { title: string; body: string; editedBody?: string }
 export async function otherBrandNames(user: User): Promise<string[]> {
   const active = user.brandId ?? "default";
   // The default brand by name (`scopeFor(email, "default")`), whichever brand is active: not a read of the active workspace.
-  const [rows, main] = await Promise.all([listBrands(user.email), getBrand(scopeFor(user.email, "default"))]);
+  const [rows, main] = await Promise.all([listBrands(acct(user)), getBrand(scopeFor(acct(user), "default"))]);
   return rows
     .filter((b) => b.id !== active)
     .map((b) => (b.id === "default" ? main?.name || b.name : b.name).trim())

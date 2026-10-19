@@ -6,6 +6,7 @@ import { forbid } from "@/lib/roles";
 import { allow, giveBack, retryLater, WINDOW } from "@/lib/rate";
 import { actingLogin, ownPasswordMatches } from "@/lib/own-password";
 import { getMember, saveMember, withMemberLock } from "@/lib/team";
+import { acct } from "@/lib/account-id";
 
 /** Wrong passwords per login and hour: a wrong password answers 401, and this bounds guessing it here. */
 const SIGN_OUT_OTHERS_PER_HOUR = 10;
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
   const done = await rotateSession(a.email, async (stamp) => {
     if (a.kind === "member") {
       const ok = await withMemberLock(a.email, async (m) => {
-        if (m.memberOf !== u.email) return false;
+        if (m.memberOf !== acct(u)) return false;
         m.devicesAfter = stamp;
         await saveMember(m);
         return true;
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
       return ok === true;
     }
     // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
-    await withUserLock(u.email, async (x) => { x.devicesAfter = stamp; await saveUser(x); });
+    await withUserLock(acct(u), async (x) => { x.devicesAfter = stamp; await saveUser(x); });
     return true;
   });
   if (!done) return NextResponse.json({ ok: false }, { status: 401 });

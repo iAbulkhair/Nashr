@@ -6,6 +6,7 @@ import { getBrand } from "@/lib/brand";
 import { pmap } from "@/lib/parallel";
 import { WINDOW, brandAddRefusal, retryLater } from "@/lib/rate";
 import { can, forbid } from "@/lib/roles";
+import { acct } from "@/lib/account-id";
 
 /** The login whose active brand a switch moves: the person acting, never the account as a whole. */
 const login = (u: User) => u.actor?.email ?? u.email;
@@ -21,9 +22,9 @@ const overCap = (u: User, r: BrandLimit) => NextResponse.json({ ok: false, error
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const rows = await listBrands(u.email);
+  const rows = await listBrands(acct(u));
   // One brand-file read per brand, side by side: an awaited loop cost one Redis round trip each.
-  const files = await pmap(rows, (b) => getBrand(scopeFor(u.email, b.id)));
+  const files = await pmap(rows, (b) => getBrand(scopeFor(acct(u), b.id)));
   const enriched = rows.map((b, i) => ({ ...b, name: b.name || files[i]?.name || (b.id === "default" ? u.email : "…"), hasBrandFile: !!files[i] }));
   return NextResponse.json({ ok: true, brands: enriched, active: u.brandId ?? "default", cap: brandCapFor(u), count: activeCount(rows), canUpgrade: can(u, "billing") });
 }
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
     if (!("error" in r)) return NextResponse.json({ ok: true, brand: r });
     return r.error === "brand_limit" ? overCap(u, r) : NextResponse.json({ ok: false, error: r.error }, { status: 409 });
   }
-  const rows = await listBrands(u.email);
+  const rows = await listBrands(acct(u));
   const target = rows.find((x) => x.id === b.id);
   if (!target) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   if (b.action === "switch") { await setActiveBrand(login(u), target.id); return NextResponse.json({ ok: true }); }
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
   if (b.action !== "rename" && b.action !== "archive") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   // The change is applied to the list as it is under the lock, not to the copy read above: an add that landed in
   // between is kept.
-  const changed = await withBrandsLock(u.email, async (now): Promise<BrandMeta | BrandLimit | undefined> => {
+  const changed = await withBrandsLock(acct(u), async (now): Promise<BrandMeta | BrandLimit | undefined> => {
     const row = now.find((x) => x.id === target.id);
     if (!row) return undefined;
     if (b.action === "rename") row.name = (b.name ?? "").slice(0, 80);
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
       if (over) return over;
       row.status = "active";
     } else row.status = "archived";
-    await saveBrands(u.email, now);
+    await saveBrands(acct(u), now);
     return row;
   });
   if (changed === null) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
