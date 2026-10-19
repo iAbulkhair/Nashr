@@ -639,9 +639,13 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * and only reports `planEnded: true` (reporting, no money); builds before M1 never read the key. Refunds made before
  * this marker existed have none.
  *
- * Rule 2270 (founder decision 2026-10-19): the saved card token (`paymob:card:{acct}`) is deleted too, first, under the
- * same lock, and on a retry or a repeat as well (one delete per call, in the same round as the marker read, before any
- * marker answer). A later checkout of the refunded account then finds no card, so it cannot turn
+ * Rule 2270 (founder decision 2026-10-19): the saved card token (`paymob:card:{acct}`) is deleted too, under the same
+ * lock, only while this transaction has no marker: the first run, or a retry after a first run that stopped before its
+ * marker. A repeat of a refund whose marker exists (either value) keeps the current card: it belongs to whatever the
+ * customer bought since, and deleting it would break that plan's renewal (controller ruling 2026-10-19). Order: read
+ * the marker, then delete the card, then write the marker. The delete always lands before any marker, so a run that
+ * stops anywhere before its marker leaves no marker and the retry deletes the card again (a repeat delete is harmless);
+ * a marker can only exist after its card delete succeeded. A later checkout of the refunded account then finds no card, so it cannot turn
  * automatic renewal back on by itself (`applyPaid` sets `autoRenew` from a saved card); the owner saves a card again on
  * that checkout. `chargeSavedCard` re-reads the card under this lock before it charges (rule 1956), so a renewal that has
  * not yet passed that check stops. The charge itself (`saved.charge`) runs after that lock is released: a refund that
@@ -651,10 +655,12 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
 async function endPlanOnRefund(email: string, paymentId: string, by: string, txnId: number): Promise<boolean> {
   const now = new Date();
   const change = await withUserLock(email, async (u) => {
-    // Rule 2270: the card goes on every call, in the same round as the marker read.
-    const [, mark] = await Promise.all([db.del(cardKey(email)), db.get<string>(refundEndedKey(txnId))]);
+    // A marker (either value) means a run of this refund already finished, card delete included: keep today's card.
+    const mark = await db.get<string>(refundEndedKey(txnId));
     if (mark === "none") return "nothing_before" as const;
     if (mark) return "ended_before" as const;
+    // Rule 2270: the card goes before any marker is written (see above), so no marker exists without its delete.
+    await db.del(cardKey(email));
     // Already an ended trial with no subscription (a retry, or a second refund in one period). Not a hand-set plan whose
     // paid-through day passed: it reads as `trialOver` too (rule 2273), and its refund still ends it.
     if (!u.billing && trialOver(u) && !handPlanEnded(u, ksaDay())) {

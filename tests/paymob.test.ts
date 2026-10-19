@@ -582,7 +582,7 @@ describe("a plan refund deletes the saved card (rules 2270-2272)", () => {
   const refund = (email: string, b: Record<string, unknown>) => adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", { action: "refund", ...b }), params({ email: encodeURIComponent(email) }));
   const card = (email: string) => db.set(cardKey(email), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
   const tokenFor = (email: string, orderId: number) => ({ id: 1, token: "tok" + randomBytes(20).toString("hex"), masked_pan: "xxxx-xxxx-xxxx-4242", merchant_id: 1, card_subtype: "Visa", created_at: "2026-10-19T10:00:00", email, order_id: String(orderId), expiry_month: "01", expiry_year: "38" });
-  it("a refunded plan payment deletes the card token, and a retry deletes one saved since (rule 2270)", async () => {
+  it("a refunded plan payment deletes the card token; a repeat keeps a card saved since (rule 2270)", async () => {
     const u = await owner();
     const { obj } = await payAndConfirm({ kind: "plan", plan: "starter" });
     await card(u.email);
@@ -592,10 +592,103 @@ describe("a plan refund deletes the saved card (rules 2270-2272)", () => {
     expect(await (await refund(u.email, { id })).json()).toMatchObject({ ok: true, planEnded: true });
     expect(await db.get(cardKey(u.email))).toBeNull();
     await card(u.email);
-    // The retry still answers that this refund ended the plan (multi-workspace M1: `paymob:refund_ended:{txn}`, as in
-    // "a refunded plan payment ends the plan at once…" above) and ends nothing more; the card goes on every call.
+    // The repeat still answers that this refund ended the plan (multi-workspace M1: `paymob:refund_ended:{txn}`, as in
+    // "a refunded plan payment ends the plan at once…" above) and ends nothing more. Its card delete ran on the first
+    // run, so the card saved since stays (controller ruling 2026-10-19: a repeated refund is not a new refund).
     expect(await (await refund(u.email, { id })).json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
-    expect(await db.get(cardKey(u.email)), "the retry deletes it too").toBeNull();
+    expect(await db.get(cardKey(u.email)), "the repeat keeps the card saved since").not.toBeNull();
+  });
+  it("repeating an old refund after a new plan bought with a new card keeps that plan and its card (rule 2270)", async () => {
+    const u = await owner();
+    const { obj: old, it: oldIntent } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    expect(await (await hook(tokenFor(u.email, oldIntent.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+    jar().clear();
+    await adminSignIn();
+    const id = paymentIdFor(old.id);
+    expect(await (await refund(u.email, { id, reason: "asked" })).json()).toMatchObject({ ok: true, planEnded: true });
+    expect(await db.get(cardKey(u.email)), "the first run deletes the old card").toBeNull();
+    // The customer buys a new plan and saves a new card on that checkout.
+    jar().clear();
+    await signIn(u.email);
+    const { answer } = await payAndConfirm({ kind: "plan", plan: "pro" });
+    expect(answer.result).toBe("paid");
+    const next = fake.intents.at(-1)!;
+    expect(await (await hook(tokenFor(u.email, next.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+    const bought = (await getUser(u.email))!;
+    const newCard = await db.get(cardKey(u.email));
+    expect(newCard).not.toBeNull();
+    expect(bought.billing).toMatchObject({ plan: "pro", status: "active", autoRenew: true });
+    // The founder repeats the OLD refund: the new plan and its card both stay, so its renewal still has a card.
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id, reason: "asked again" })).json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
+    expect(await db.get(cardKey(u.email))).toEqual(newCard);
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("pro");
+    expect(after.billing).toEqual(bought.billing);
+  });
+  it("repeating a refund that found no plan to end, after a new purchase, keeps the new card (rule 2270)", async () => {
+    const u = await owner();
+    // Two plan payments in one period: the second refund ends the plan, so the first one finds none ("none" marker).
+    const { obj: first } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    const { obj: second } = await payAndConfirm({ kind: "plan", plan: "pro" });
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id: paymentIdFor(second.id), reason: "asked" })).json()).toMatchObject({ ok: true, planEnded: true });
+    await card(u.email);
+    const id = paymentIdFor(first.id);
+    expect(await (await refund(u.email, { id, reason: "asked" })).json()).toMatchObject({ ok: true, planEnded: false });
+    expect(await db.get(`paymob:refund_ended:${first.id}`)).toBe("none");
+    expect(await db.get(cardKey(u.email)), "the first run of this refund deletes the card too").toBeNull();
+    // The customer buys again and saves a new card.
+    jar().clear();
+    await signIn(u.email);
+    await payAndConfirm({ kind: "plan", plan: "pro" });
+    const next = fake.intents.at(-1)!;
+    expect(await (await hook(tokenFor(u.email, next.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+    const newCard = await db.get(cardKey(u.email));
+    expect(newCard).not.toBeNull();
+    // The founder repeats the refund that ended nothing: the card stays.
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id, reason: "asked again" })).json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: false });
+    expect(await db.get(cardKey(u.email))).toEqual(newCard);
+    expect((await getUser(u.email))!.billing).toMatchObject({ plan: "pro", status: "active" });
+  });
+  it("a first run that stops after its card delete and before its marker deletes the card again on the retry (rule 2270)", async () => {
+    const u = await owner();
+    const { obj } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    await card(u.email);
+    jar().clear();
+    await adminSignIn();
+    const id = paymentIdFor(obj.id);
+    const set = db.set.bind(db);
+    const spy = vi.spyOn(db, "set").mockImplementation(async (key: string, ...rest: unknown[]) => {
+      if (key.startsWith("paymob:refund_ended:")) throw new Error("redis down");
+      return (set as (k: string, ...r: unknown[]) => Promise<unknown>)(key, ...rest) as never;
+    });
+    try {
+      await expect(refund(u.email, { id })).rejects.toThrow("redis down");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await db.get(`paymob:refund_ended:${obj.id}`), "no marker after the failed run").toBeNull();
+    await card(u.email);
+    await refund(u.email, { id });
+    expect(await db.get(cardKey(u.email)), "the retry finds no marker and deletes the card").toBeNull();
+    expect(await db.get(`paymob:refund_ended:${obj.id}`)).not.toBeNull();
+  });
+  it("endPlanOnRefund reads the marker before its card delete and deletes the card before any marker write (rule 2270)", async () => {
+    const { readFileSync } = await import("fs");
+    const src = readFileSync("src/lib/billing.ts", "utf8");
+    const body = src.slice(src.indexOf("async function endPlanOnRefund("), src.indexOf("await enforceSeats(email);", src.indexOf("async function endPlanOnRefund(")));
+    const read = body.indexOf("db.get<string>(refundEndedKey(txnId))");
+    const del = body.indexOf("db.del(cardKey(email))");
+    const firstMark = body.indexOf("db.set(refundEndedKey(txnId)");
+    expect(read).toBeGreaterThan(0);
+    expect(del).toBeGreaterThan(read);
+    expect(firstMark).toBeGreaterThan(del);
+    expect(body.match(/db\.del\(cardKey\(/g)).toHaveLength(1);
   });
   it("a renewal payment's refund deletes the card too: nothing renews on it afterwards (rule 2270)", async () => {
     const u = await subscribed({ paidThrough: today() });
