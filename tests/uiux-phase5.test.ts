@@ -177,7 +177,8 @@ describe("rule 1203: the theme is set before the first paint (every page in the 
   it("the root layout sends light, runs the head script and lets only that attribute differ at hydration", () => {
     const layout = read("src/app/[lang]/layout.tsx");
     expect(layout).toMatch(/<html lang=\{lang\} dir=\{t\.dir\} translate="no" data-theme="light" suppressHydrationWarning /);
-    expect(layout).toMatch(/<head>\s*<script dangerouslySetInnerHTML=\{\{ __html: THEME_SCRIPT \}\} \/>\s*<\/head>/);
+    // The script carries the request's CSP nonce since rule 2322.
+    expect(layout).toMatch(/<head>\s*<script nonce=\{nonce\} dangerouslySetInnerHTML=\{\{ __html: THEME_SCRIPT \}\} \/>\s*<\/head>/);
     expect(code("src/app/[lang]/layout.tsx")).not.toMatch(/cookies\(\)/);
   });
 
