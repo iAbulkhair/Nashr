@@ -4,7 +4,7 @@ import { globalKey } from "../keys";
 import { pmap } from "../parallel";
 import { sameSecret } from "../rate";
 import { dropSalesSnapshot } from "../store-sales";
-import { SHOP_HOST, subscribeUninstall, UNINSTALL_HOOK_META } from "./shopify";
+import { SHOP_HOST, subscribeUninstall, UNINSTALL_HOOK_META, UNINSTALL_TRIED_META } from "./shopify";
 import { deleteConnection, getConnection, listConnections, saveConnection } from "./store";
 
 /**
@@ -103,22 +103,28 @@ export type HookBackfill = { due: number; subscribed: number; failed: number };
  * saved only when the store answered and the connection read back is still the same grant (same `connectedAt`, no
  * mark), so a reconnect in between is never overwritten. A failure is retried by the next run. No store is started
  * at or after `deadline` (epoch ms, rule 2208), so a slow platform cannot eat the syncs' time; those wait for a later run.
+ * A failed store gets the time of the attempt (`uninstallHookTried`, same-grant check), and the stores never tried come
+ * first, then the ones tried longest ago (rule 2209), so stores that keep failing cannot take every run's slots.
  */
 export async function backfillUninstallHooks(scopes: readonly string[], origin: string, now = new Date(), deadline = Infinity): Promise<HookBackfill> {
   const lists = await pmap(scopes, (scope) => listConnections(scope));
   const due = scopes.flatMap((scope, i) => {
     const c = (lists[i] ?? []).find((x) => x.provider === "shopify");
-    return c && SHOP_HOST.test(String(c.meta?.shop ?? "")) && !c.meta?.[UNINSTALL_HOOK_META] && !c.needsReconnect && c.meta?.via !== "composio" ? [{ scope, connectedAt: c.connectedAt }] : [];
+    return c && SHOP_HOST.test(String(c.meta?.shop ?? "")) && !c.meta?.[UNINSTALL_HOOK_META] && !c.needsReconnect && c.meta?.via !== "composio" ? [{ scope, connectedAt: c.connectedAt, tried: String(c.meta?.[UNINSTALL_TRIED_META] ?? "") }] : [];
   });
+  // Never tried ("") first, then the oldest attempt; a stable sort keeps the roster's order among equals.
+  due.sort((a, b) => (a.tried < b.tried ? -1 : a.tried > b.tried ? 1 : 0));
   const results = await pmap(due.slice(0, HOOKS_PER_RUN), async ({ scope, connectedAt }) => {
     if (Date.now() >= deadline) return "late" as const;
     const conn = await getConnection(scope, "shopify");
     if (!conn || conn.connectedAt !== connectedAt || conn.meta?.[UNINSTALL_HOOK_META]) return "skip" as const;
-    if (!(await subscribeUninstall(conn, origin))) return "failed" as const;
+    const ok = await subscribeUninstall(conn, origin);
     const again = await getConnection(scope, "shopify");
-    if (!again || again.connectedAt !== connectedAt) return "skip" as const;
-    await saveConnection(scope, { ...again, meta: { ...again.meta, [UNINSTALL_HOOK_META]: now.toISOString() } });
-    return "subscribed" as const;
+    if (!again || again.connectedAt !== connectedAt || again.meta?.[UNINSTALL_HOOK_META]) return ok ? ("skip" as const) : ("failed" as const);
+    const meta = { ...again.meta };
+    delete meta[UNINSTALL_TRIED_META];
+    await saveConnection(scope, { ...again, meta: ok ? { ...meta, [UNINSTALL_HOOK_META]: now.toISOString() } : { ...meta, [UNINSTALL_TRIED_META]: now.toISOString() } });
+    return ok ? ("subscribed" as const) : ("failed" as const);
   }, 6);
   return { due: due.length, subscribed: results.filter((r) => r === "subscribed").length, failed: results.filter((r) => r === "failed").length };
 }

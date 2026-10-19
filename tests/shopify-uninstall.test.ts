@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { globalKey } from "@/lib/keys";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import { applyShopRedactions, backfillUninstallHooks, COMPLIANCE_TOPICS, HOOKS_PER_RUN, isShopHookTopic, UNINSTALL_TOPIC } from "@/lib/connectors/shopify-compliance";
-import { SHOPIFY_HOOK_PATH, subscribeUninstall, UNINSTALL_HOOK_META } from "@/lib/connectors/shopify";
+import { SHOPIFY_HOOK_PATH, subscribeUninstall, UNINSTALL_HOOK_META, UNINSTALL_TRIED_META } from "@/lib/connectors/shopify";
 import * as route from "@/app/api/shopify/compliance/route";
 
 /**
@@ -189,7 +189,7 @@ describe("the stores cron subscribes the Shopify connections without the mark (r
     expect(HOOKS_PER_RUN).toBe(30);
     const src = readFileSync("src/lib/connectors/shopify-compliance.ts", "utf8");
     expect(src).toContain("due.slice(0, HOOKS_PER_RUN)");
-    expect(src).toMatch(/return "subscribed" as const;\n  \}, 6\);/);
+    expect(src).toMatch(/return ok \? \("subscribed" as const\) : \("failed" as const\);\n  \}, 6\);/);
     const cron = readFileSync("src/app/api/cron/stores/route.ts", "utf8");
     const at = cron.indexOf("backfillUninstallHooks(scopes, appOrigin(), now, now.getTime() + HOOKS_DEADLINE_MS)");
     expect(cron.indexOf("applyShopRedactions(scopes)")).toBeLessThan(at);
@@ -197,5 +197,46 @@ describe("the stores cron subscribes the Shopify connections without the mark (r
     expect(at).toBeLessThan(cron.indexOf("runCronBatch({"));
     expect(cron).toMatch(/backfillUninstallHooks\(scopes, appOrigin\(\), now, now\.getTime\(\) \+ HOOKS_DEADLINE_MS\)\.catch\(/);
     expect(cron).toContain("uninstall_hooks: hooks");
+  });
+});
+
+describe("stores that keep failing cannot take every run's slots (rule 2209)", () => {
+  const ORIGIN = "https://thakeen.test";
+  const at = "2026-10-01T00:00:00.000Z";
+
+  it("a failure records the attempt's time on the same grant; a later success marks the store and clears it", async () => {
+    const ws = await newUser("hook-tried").then((u) => u.email);
+    await saveConnection(ws, shopConn("tried.myshopify.com", at));
+    fakeShopify({ fail: ["tried.myshopify.com"] });
+    const first = new Date("2026-10-18T02:00:00.000Z");
+    expect(await backfillUninstallHooks([ws], ORIGIN, first)).toEqual({ due: 1, subscribed: 0, failed: 1 });
+    const failed = await getConnection(ws, "shopify");
+    expect(failed?.meta).toEqual({ shop: "tried.myshopify.com", [UNINSTALL_TRIED_META]: first.toISOString() });
+    expect(failed?.connectedAt).toBe(at);
+    expect(failed?.data.access_token).toBe("shpat_SENTINEL");
+    fakeShopify();
+    const second = new Date("2026-10-18T14:00:00.000Z");
+    expect(await backfillUninstallHooks([ws], ORIGIN, second)).toEqual({ due: 1, subscribed: 1, failed: 0 });
+    expect((await getConnection(ws, "shopify"))?.meta).toEqual({ shop: "tried.myshopify.com", [UNINSTALL_HOOK_META]: second.toISOString() });
+  });
+
+  it("never-tried stores come first, then the oldest attempt, so the store tried last waits when more are due than a run takes", async () => {
+    const n = HOOKS_PER_RUN + 1;
+    const tried = await Promise.all(Array.from({ length: n - 1 }, (_, i) => newUser(`hook-q${i}`).then((u) => u.email)));
+    const fresh = await newUser("hook-fresh").then((u) => u.email);
+    // Attempts one minute apart; the roster lists the fresh store last, the newest attempt first.
+    const stamp = (i: number) => new Date(Date.parse("2026-10-10T00:00:00.000Z") + i * 60_000).toISOString();
+    await Promise.all([
+      ...tried.map((ws, i) => saveConnection(ws, { ...shopConn(`q${i}.myshopify.com`, at), meta: { shop: `q${i}.myshopify.com`, [UNINSTALL_TRIED_META]: stamp(i) } })),
+      saveConnection(fresh, shopConn("fresh.myshopify.com", at)),
+    ]);
+    const calls = fakeShopify();
+    const roster = [...[...tried].reverse(), fresh];
+    expect(await backfillUninstallHooks(roster, ORIGIN, new Date("2026-10-18T02:00:00.000Z"))).toEqual({ due: n, subscribed: HOOKS_PER_RUN, failed: 0 });
+    const hosts = new Set(calls.map((c) => new URL(c.url).host));
+    expect(hosts.has("fresh.myshopify.com")).toBe(true);
+    expect(hosts.has(`q${n - 2}.myshopify.com`)).toBe(false);
+    expect(hosts.has("q0.myshopify.com")).toBe(true);
+    expect((await getConnection(tried[n - 2], "shopify"))?.meta?.[UNINSTALL_TRIED_META]).toBe(stamp(n - 2));
   });
 });

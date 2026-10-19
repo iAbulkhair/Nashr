@@ -77,6 +77,8 @@ const SUBSCRIBE_UNINSTALL = `mutation Subscribe($sub: WebhookSubscriptionInput!)
 
 /** The `meta` field a Shopify connection carries once its store is subscribed to `app/uninstalled` (rule 2204). */
 export const UNINSTALL_HOOK_META = "uninstallHook";
+/** When the stores run last failed to subscribe this store (rule 2209): orders the next runs, cleared on success. */
+export const UNINSTALL_TRIED_META = "uninstallHookTried";
 
 /**
  * Asks the store to tell us when it uninstalls the app (rule 2203), so the stores cron drops the dead connection within
