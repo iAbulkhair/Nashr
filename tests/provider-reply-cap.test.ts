@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { newUser } from "./helpers/session";
+import { sc } from "@/lib/auth";
 import { PROVIDER_REPLY_BYTES, STORE_REPLY_BYTES } from "@/lib/read-capped";
 import { importSalla } from "@/lib/connectors/salla";
 import { refreshTokens } from "@/lib/connectors/oauth";
@@ -43,7 +44,7 @@ describe("replies from fixed-host providers are read up to a cap (rule 2250)", (
   });
 
   it("a Salla catalog page that never ends fails the import, stops at the cap and leaves products.md alone", async () => {
-    const ws = await newUser("provcap").then((u) => u.email);
+    const ws = await newUser("provcap").then(sc);
     const e = endless();
     vi.stubGlobal("fetch", vi.fn(async () => e.res));
     const salla: Connection = { provider: "salla", data: { access_token: "t" }, connectedAt: new Date().toISOString() };
