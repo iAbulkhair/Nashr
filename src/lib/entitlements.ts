@@ -2,6 +2,8 @@ import { AGENT_IDS, type AgentId } from "./agents";
 import { isSuspended } from "./suspension";
 import type { Grant, User } from "./auth";
 import { billingLocked } from "./billing-state";
+import { handPlanEnded } from "./hand-plan";
+import { ksaDay } from "./partner-rules";
 import { chatStatus, type ChatStatus } from "./chat-allowance";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS, type VideoModelId } from "./media-catalog";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "./pricing";
@@ -47,7 +49,7 @@ export type Entitlements = {
 };
 
 /** The part of the user record `entitlements` reads, so a caller may pass a full `User` or a hand-built fixture. */
-export type EntUser = Pick<User, "plan" | "trialEnds" | "suspended" | "billing" | "seats" | "deal" | "chatAllowance" | "grants">;
+export type EntUser = Pick<User, "plan" | "trialEnds" | "suspended" | "billing" | "seats" | "deal" | "chatAllowance" | "grants" | "handPlan">;
 
 /** Every video model, in catalogue order: what a paid plan includes. */
 export const ALL_VIDEO_MODELS: readonly VideoModelId[] = MEDIA_MODELS.filter((m) => m.kind === "video").map((m) => m.id as VideoModelId);
@@ -107,6 +109,8 @@ function inactiveOf(u: EntUser, now: number): Inactive | undefined {
   if (isSuspended(u, now)) return "suspended";
   if (billingLocked(u.billing)) return "billing_locked";
   if (u.plan === "trial" && Date.parse(u.trialEnds) < now) return "trial_over";
+  // A plan set by hand whose paid-through day has passed is in the trial state (rule 2273), as `trialOver` says.
+  if (handPlanEnded(u, ksaDay(now))) return "trial_over";
   return undefined;
 }
 
@@ -156,7 +160,7 @@ export type EntitlementView = {
  * with `monthKey` (rule 712: a locked subscription gets no new month until it pays; a trial's chat and credits do not reset).
  */
 function resetsAtOf(u: EntUser, now: number): string | null {
-  if (u.plan === "trial" || billingLocked(u.billing)) return null;
+  if (u.plan === "trial" || billingLocked(u.billing) || handPlanEnded(u, ksaDay(now))) return null;
   const d = new Date(now);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
 }

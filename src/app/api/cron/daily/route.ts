@@ -23,6 +23,9 @@ import { appOrigin } from "@/lib/origin";
 import { paragraphs } from "@/emails";
 import { paymentsEnabled } from "@/lib/payments";
 import { renewPaymob } from "@/lib/billing";
+import { endHandPlanIfDue } from "@/lib/hand-plan-end";
+import { handPlanEnded } from "@/lib/hand-plan";
+import { ksaDay } from "@/lib/partner-rules";
 import { runMarginAlert } from "@/lib/margin";
 import { acct } from "@/lib/account-id";
 
@@ -40,6 +43,20 @@ async function dailyFor(u: User): Promise<string> {
       if (r) out.push(r);
     } catch (e) {
       out.push(`paymob_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
+    }
+  }
+  // Once per account, on its default brand's entry: a plan set by hand whose paid-through day has passed moves to the
+  // trial state (src/lib/hand-plan-end.ts, rule 2274). Before the credit renewal, which gives such a plan nothing anyway
+  // (rule 1303). The copy in hand only decides whether to take the lock; the lock checks again. Never fatal.
+  if ((u.brandId ?? "default") === "default" && handPlanEnded(u, ksaDay())) {
+    try {
+      if (await endHandPlanIfDue(acct(u))) {
+        out.push("hand_plan_ended");
+        u.plan = "trial";
+      }
+    } catch {
+      // Retried by the next day's run: the lock checks the record again.
+      out.push("hand_plan_failed");
     }
   }
   // Monthly credit renewal for paid plans (no-op after the first brand of a multi-brand account).
