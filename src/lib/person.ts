@@ -26,10 +26,12 @@ import { keptSuspension } from "./suspension";
  *     `suspended` on the row is kept (fail closed: a leftover never lifts a suspension, it can only keep one);
  *   - by `sessionsAfter` (the legacy stamp later than the person's): the same human, changed by a rolled-back build (a
  *     new password, a new address with its verification cleared). EVERY field the legacy record type carries is read
- *     from it, even when the legacy record lacks it (an owner: email, name, lang, passHash, emailVerifiedAt,
- *     sessionsAfter, devicesAfter, createdAt; a member the same without emailVerifiedAt); only the person-only fields
- *     (`suspended`, `trialUsedAt`, and for a member `emailVerifiedAt`) stay from the row. The `PersonRow` defaults
- *     (`name` "", `lang` "ar", `createdAt` "") filled in for a field the legacy record lacks never replace a real value.
+ *     from it, even when the legacy record lacks it (an owner: email, name, lang, passHash, emailVerifiedAt, createdAt;
+ *     a member the same without emailVerifiedAt); only the person-only fields (`suspended`, `trialUsedAt`, and for a
+ *     member `emailVerifiedAt`) stay from the row. The two revocation stamps, `sessionsAfter` and `devicesAfter`, keep
+ *     the LATER of both records (a missing or older legacy stamp never un-revokes a session or a device). The
+ *     `PersonRow` defaults (`name` "", `lang` "ar", `createdAt` "") filled in for a field the legacy record lacks never
+ *     replace a real value.
  * Either way the mismatch is logged as `person stale` (shape only, no values). Every M1 credential write mirrors both
  * records, so in steady state they never differ.
  *
@@ -60,6 +62,8 @@ const newer = (legacy: unknown, current: unknown): boolean => {
   const c = time(current);
   return !Number.isFinite(c) || l > c;
 };
+/** The later of two stamps; a malformed one never wins over a valid one. */
+const later = (a: string | undefined, b: string | undefined): string | undefined => (newer(b, a) ? b : a ?? b);
 
 /** Step 2: the legacy owner record at `user:{pid}`, only when the account's owner IS this person. */
 function fromOwner(pid: PersonId, raw: unknown): Legacy | null {
@@ -129,8 +133,11 @@ export function personFromRaw(pid: PersonId, rawPerson: unknown, rawUser: unknow
     }
     if (legacy && newer(legacy.row.sessionsAfter, row.sessionsAfter)) {
       // The same human, changed by a rolled-back build: the legacy record's own fields, the row's person-only ones.
+      // The two revocation stamps keep the later of both records: a missing or older legacy stamp never un-revokes.
       log.warn("person stale", { shape: "person", source: legacy.source });
-      return { ...legacyOver(row, legacy), pid, source: legacy.source };
+      const merged = legacyOver(row, legacy);
+      const stamps = defined({ sessionsAfter: later(row.sessionsAfter, legacy.row.sessionsAfter), devicesAfter: later(row.devicesAfter, legacy.row.devicesAfter) });
+      return { ...merged, ...stamps, pid, source: legacy.source };
     }
     return { ...row, pid, source: "person" };
   }

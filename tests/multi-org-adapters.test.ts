@@ -143,8 +143,9 @@ describe("rule 2134: getPerson reads person:, then the legacy owner, then the le
     const w = vi.spyOn(log, "warn");
     const p = await getPerson(pid);
     expect(p).toMatchObject({ source: "owner", passHash: "hash-new", sessionsAfter: T2, name: "Owner Name", lang: "en", emailVerifiedAt: T0 });
-    // Every field the owner record carries comes from it (its devicesAfter too); person-only fields stay from the row.
-    expect(p?.devicesAfter).toBe(T0);
+    // Every field the owner record carries comes from it, except the revocation stamps: the later of both records
+    // (the row's devicesAfter T3 beats the owner's older T0). Person-only fields stay from the row.
+    expect(p?.devicesAfter).toBe(T3);
     expect(p?.trialUsedAt).toBe(T1);
     expect(isPersonSuspended(p!)).toBe(true);
     expect(w).toHaveBeenCalledWith("person stale", { shape: "person", source: "owner" });
@@ -195,6 +196,17 @@ describe("rule 2134: getPerson reads person:, then the legacy owner, then the le
     expect(p).toMatchObject({ source: "owner", email: moved.toLowerCase(), sessionsAfter: T2, trialUsedAt: T0, passHash: "hash-owner" });
     expect(p).not.toHaveProperty("emailVerifiedAt");
     expect(p).not.toHaveProperty("devicesAfter");
+  });
+
+  it("the same-human merge keeps the later revocation stamp: a newer legacy record without devicesAfter never un-revokes a device", async () => {
+    const e = address("devices");
+    const pid = storedPersonId(e);
+    await db.set(personKey.person(pid), personRow(e, e, { sessionsAfter: T1, devicesAfter: T3, createdAt: T0 }));
+    await putAccount(account(e, { sessionsAfter: T2, devicesAfter: undefined, passHash: "hash-new" }));
+    expect(await getPerson(pid)).toMatchObject({ source: "owner", passHash: "hash-new", sessionsAfter: T2, devicesAfter: T3 });
+    // An older legacy devicesAfter loses to the row's later one too.
+    await putAccount(account(e, { sessionsAfter: T2, devicesAfter: T1, passHash: "hash-new" }));
+    expect(await getPerson(pid)).toMatchObject({ source: "owner", sessionsAfter: T2, devicesAfter: T3 });
   });
 
   it("the same-human merge never lets a PersonRow default (name, lang, createdAt) replace the row's real value", async () => {
