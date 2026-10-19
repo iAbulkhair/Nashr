@@ -1,5 +1,6 @@
 import type { Connection } from "./store";
 import { providerTimeout } from "../fetch-timeout";
+import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 import { clean, type Row } from "../perf-import";
 
 /**
@@ -36,7 +37,7 @@ export const PAGES = 10;
 
 /** 401/403 in the message make refusedToken (fresh.ts) mark the connection for reconnecting, as for every platform. */
 async function fail(r: Response, who: string, what: string): Promise<Error> {
-  const j = (await r.json().catch(() => ({}))) as { error?: { message?: string; code?: number }; request_status?: string; debug_message?: string; display_message?: string };
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES).catch(() => ({}))) as { error?: { message?: string; code?: number }; request_status?: string; debug_message?: string; display_message?: string };
   const code = j.error?.code;
   const status = code === 190 ? 401 : code === 10 || code === 200 || code === 294 ? 403 : r.status;
   return new Error(`${who} ${what} ${status}: ${(j.error?.message ?? j.debug_message ?? j.display_message ?? "").slice(0, 160)}`);
@@ -44,7 +45,7 @@ async function fail(r: Response, who: string, what: string): Promise<Error> {
 async function get<T>(url: string, token: string, who: string, what: string): Promise<T> {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: providerTimeout() });
   if (!r.ok) throw await fail(r, who, what);
-  return (await r.json()) as T;
+  return (await responseJson(r, PROVIDER_REPLY_BYTES)) as T;
 }
 export const n = (v: unknown): number | null => { const x = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN; return Number.isFinite(x) ? x : null; };
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -77,7 +78,7 @@ export async function metaLongLived(short: string): Promise<{ token: string; exp
     signal: providerTimeout(),
   });
   if (!r.ok) throw await fail(r, "meta_ads", "token");
-  const j = (await r.json()) as { access_token?: string; expires_in?: number };
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as { access_token?: string; expires_in?: number };
   if (!j.access_token) throw new Error("meta_ads token: no access_token");
   return { token: j.access_token, expiresAt: j.expires_in ? new Date(Date.now() + j.expires_in * 1000).toISOString() : undefined };
 }

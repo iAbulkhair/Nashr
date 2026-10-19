@@ -1,6 +1,7 @@
 import { createHmac } from "crypto";
 import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
+import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 import type { Connection } from "./store";
 import { sameSecret } from "../rate";
 
@@ -57,7 +58,7 @@ export async function shopifyGql<T>(c: Connection, query: string, variables: Rec
     });
     if (r.status === 403 && opts.orders) throw new Error(ORDERS_ACCESS_DENIED);
     if (!r.ok) throw new Error(`shopify ${r.status}`);
-    const j = (await r.json()) as GqlResponse<T>;
+    const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as GqlResponse<T>;
     const codes = (j.errors ?? []).map((e) => e.extensions?.code ?? "");
     if (codes.includes("THROTTLED") && attempt < 2) { await (opts.pause ?? wait)(2000); continue; }
     if (codes.includes("ACCESS_DENIED")) throw new Error(opts.orders ? ORDERS_ACCESS_DENIED : "shopify 403");

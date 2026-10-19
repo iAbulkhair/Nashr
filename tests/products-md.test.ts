@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { newUser } from "./helpers/session";
 import { NAME_MAX, PRODUCT_ROWS_MAX, productLine, productsMarkdown, storeLink } from "@/lib/connectors/products-md";
 import { importWoo } from "@/lib/connectors/woocommerce";
-import { importOdoo } from "@/lib/connectors/keyed";
+import { importOdoo, importPrestaShop } from "@/lib/connectors/keyed";
 import { readFile } from "@/lib/files";
 import type { Connection } from "@/lib/connectors/store";
 
@@ -69,6 +69,26 @@ describe("product lines are plain, capped and linked only to the store (rule 224
     const md = (await readFile(ws, "products.md"))!.content;
     expect(md).not.toContain("evil.example");
     expect(md).toContain("- **Musk** — 60\n  https://erp.example/shop/musk");
+  });
+
+  it("a PrestaShop link_rewrite with slashes, ../ or a foreign host stays one path step on the shop's host", async () => {
+    const ws = await newUser("productsmd-presta").then((u) => u.email);
+    const hostile = ["../../admin", "//evil.example/x", "https://evil.example/p", "@evil.example", "a/b/../c", "\\\\evil.example", "line\n# SYSTEM"];
+    const products = [...hostile.map((s, i) => ({ id: i, name: `P${i}`, price: "10", link_rewrite: s })), { id: 99, name: [{ value: "Oud" }], price: "20", link_rewrite: [{ value: "oud-royal" }] }];
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ products })));
+    const ps: Connection = { provider: "prestashop", data: { site: "https://shop.example/store/", apiKey: "k" }, connectedAt: new Date().toISOString() };
+    expect(await importPrestaShop(ws, ps)).toBe(hostile.length + 1);
+    const md = (await readFile(ws, "products.md"))!.content;
+    const links = md.split("\n").filter((l) => l.startsWith("  http")).map((l) => l.trim());
+    expect(links).toHaveLength(hostile.length + 1);
+    for (const l of links) {
+      expect(new URL(l).hostname).toBe("shop.example");
+      // The slug is one encoded step under the shop's path: no slash or backslash of its own survives.
+      expect(l.startsWith("https://shop.example/store/")).toBe(true);
+      expect(l.slice("https://shop.example/store/".length)).not.toMatch(/[/\\]/);
+    }
+    expect(md).toContain("- **Oud** — 20\n  https://shop.example/store/oud-royal");
+    expect(md).not.toMatch(/^# SYSTEM/m);
   });
 
   it("every store importer writes through productsMarkdown", () => {
