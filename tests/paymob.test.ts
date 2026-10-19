@@ -515,6 +515,66 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
   });
 });
 
+describe("a plan refund deletes the saved card (rules 2270-2272)", () => {
+  const refund = (email: string, b: Record<string, unknown>) => adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", { action: "refund", ...b }), params({ email: encodeURIComponent(email) }));
+  const card = (email: string) => db.set(cardKey(email), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
+  const tokenFor = (email: string, orderId: number) => ({ id: 1, token: "tok" + randomBytes(20).toString("hex"), masked_pan: "xxxx-xxxx-xxxx-4242", merchant_id: 1, card_subtype: "Visa", created_at: "2026-10-19T10:00:00", email, order_id: String(orderId), expiry_month: "01", expiry_year: "38" });
+  it("a refunded plan payment deletes the card token, and a retry deletes one saved since (rule 2270)", async () => {
+    const u = await owner();
+    const { obj } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    await card(u.email);
+    jar().clear();
+    await adminSignIn();
+    const id = paymentIdFor(obj.id);
+    expect(await (await refund(u.email, { id })).json()).toMatchObject({ ok: true, planEnded: true });
+    expect(await db.get(cardKey(u.email))).toBeNull();
+    await card(u.email);
+    expect(await (await refund(u.email, { id })).json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: false });
+    expect(await db.get(cardKey(u.email)), "the retry deletes it too").toBeNull();
+  });
+  it("a renewal payment's refund deletes the card too: nothing renews on it afterwards (rule 2270)", async () => {
+    const u = await subscribed({ paidThrough: today() });
+    fake.pay = (orderId, ref) => txnObj({ amount: 34385, orderId, ref });
+    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    const paid = (await payments(u.email))[0];
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id: paid.id })).json()).toMatchObject({ ok: true, planEnded: true });
+    expect(await db.get(cardKey(u.email))).toBeNull();
+    expect((await getUser(u.email))!.billing).toBeUndefined();
+  });
+  it("a pack's refund keeps the card: the plan and its renewal go on (rule 2270)", async () => {
+    const u = await owner();
+    await payAndConfirm({ kind: "plan", plan: "starter" });
+    const { obj } = await payAndConfirm({ kind: "topup", credits: 300 });
+    await card(u.email);
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id: paymentIdFor(obj.id) })).json()).toMatchObject({ ok: true, planEnded: false });
+    expect(await db.get(cardKey(u.email))).not.toBeNull();
+  });
+  it("a card-token callback for the refunded order is ignored, and the next checkout starts with automatic renewal off (rules 2271, 2272)", async () => {
+    const u = await owner();
+    const { obj, it } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    jar().clear();
+    await adminSignIn();
+    await refund(u.email, { id: paymentIdFor(obj.id) });
+    // Paymob sends the token callback late, after the founder refunded the order it belongs to.
+    expect(await (await hook(tokenFor(u.email, it.orderId), "TOKEN")).json()).toMatchObject({ result: "ignored" });
+    expect(await db.get(cardKey(u.email))).toBeNull();
+    jar().clear();
+    await signIn(u.email);
+    await payAndConfirm({ kind: "plan", plan: "starter" });
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("starter");
+    expect(after.billing).toMatchObject({ autoRenew: false });
+    expect(after.billing?.card).toBeUndefined();
+    // A card saved on that new checkout is kept as before (rule 715).
+    const next = fake.intents.at(-1)!;
+    expect(await (await hook(tokenFor(u.email, next.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+  });
+});
+
 describe("leaving (rule 719)", () => {
   it("deleting the account deletes the saved card token", async () => {
     const u = await subscribed();

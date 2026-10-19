@@ -16,7 +16,8 @@ const rt = vi.hoisted(() => ({ asked: [] as { purpose: string; ctx: Record<strin
 const ms = vi.hoisted(() => ({ state: "on" as "on" | "paused" | "mock" }));
 
 vi.mock("@anthropic-ai/sdk", () => {
-  const items = JSON.stringify([{ channel: "instagram", title: "قهوة اليوم", body: "نص تجريبي للعنصر يكفي للمراجعة" }]);
+  // A full batch (10 items, the most any type asks for): a batch of fewer is a short one, charged per item (rule 2276).
+  const items = JSON.stringify(Array.from({ length: 10 }, () => ({ channel: "instagram", title: "قهوة اليوم", body: "نص تجريبي للعنصر يكفي للمراجعة" })));
   const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
   const sysText = (s: unknown): string => (typeof s === "string" ? s : Array.isArray(s) ? String((s[0] as { text?: string } | undefined)?.text ?? "") : "");
   const answer = (model: string, text: string) => ({ model, stop_reason: "end_turn", usage: sdk.usage, content: [{ type: "text", text }] });

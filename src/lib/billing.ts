@@ -15,6 +15,7 @@ import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
 import { log as logger } from "./log";
 import { acct } from "./account-id";
+import { handPlanEnded } from "./hand-plan";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
@@ -310,6 +311,10 @@ async function saveCard(ct: CardTokenEvent | null): Promise<CallbackResult> {
   const ref = await db.get<string>(orderKey(orderId));
   const intent = typeof ref === "string" && REF.test(ref) ? await db.get<PayIntent>(intentKey(ref)) : null;
   if (!intent || normalizeEmail(ct.email) !== normalizeEmail(intentBillingEmail(intent))) return ok("ignored");
+  // Rule 2271: a card token for an order whose payment the founder refunded is not saved again. The refund deleted the
+  // card (`endPlanOnRefund`); a late or replayed callback for that order must not bring it back, or the next checkout
+  // would turn automatic renewal on with it.
+  if (intent.txnId !== undefined && (await db.get(refundedKey(intent.txnId)))) return ok("ignored");
   const card: SavedCard = {
     token, last4: ct.last4, brand: ct.brand || "card",
     expMonth: ct.expMonth, expYear: ct.expYear, savedAt: new Date().toISOString(), orderId,
@@ -569,7 +574,8 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   }
   const v = await voidPayment(e, id, by, why);
   if (!v.ok) return { ok: false, error: "not_found" };
-  // A plan or renewal payment refunded in full ends the plan now (founder decision 2026-10-12, rule 1300). This path
+  // A plan or renewal payment refunded in full ends the plan now (founder decision 2026-10-12, rule 1300) and deletes the
+  // saved card token (founder decision 2026-10-19, rule 2270). This path
   // always refunds the whole transaction (`rec.amountCents` above); a partial refund does not exist here, and one made
   // in Paymob's own dashboard reaches us only as a refunded transaction, which `applyTransaction` ignores: it changes
   // nothing on the account (open question in rule 1301). A pack's payment never reaches this line.
@@ -584,11 +590,20 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * Live top-up packs keep their credits: each is its own payment, refunded on its own. Under the ledger lock, once: a
  * retry finds the ended trial with no subscription and changes nothing. Seats are fitted to the trial's and the change
  * is logged with the balance before and after.
+ *
+ * Rule 2270 (founder decision 2026-10-19): the saved card token (`paymob:card:{acct}`) is deleted too, first, under the
+ * same lock, and on a retry as well. A later checkout of the refunded account then finds no card, so it cannot turn
+ * automatic renewal back on by itself (`applyPaid` sets `autoRenew` from a saved card); the owner saves a card again on
+ * that checkout. `chargeSavedCard` re-reads the card under this lock right before it charges, so a renewal already in
+ * flight stops (rule 1956). A pack's refund never reaches here: the plan and its card stay.
  */
 async function endPlanOnRefund(email: string, paymentId: string, by: string): Promise<boolean> {
   const now = new Date();
   const change = await withUserLock(email, async (u) => {
-    if (!u.billing && trialOver(u)) return null;
+    await db.del(cardKey(email));
+    // Already an ended trial with no subscription (a retry). Not a hand-set plan whose paid-through day passed: it reads
+    // as `trialOver` too (rule 2273), and its refund still ends it.
+    if (!u.billing && trialOver(u) && !handPlanEnded(u, ksaDay())) return null;
     const before = { plan: String(u.plan), credits: Number(u.credits) || 0, autoRenew: u.billing?.autoRenew ?? false, paidThrough: u.billing?.paidThrough ?? u.handPlan?.paidThrough ?? null };
     // The founding seat and the price lock end with the plan (rule 1708): the refunded account is no longer a paying one.
     const founding = endOnRefund(u, by, now.getTime());

@@ -18,8 +18,8 @@ import { readFileSync } from "node:fs";
  * - Empty notes make no classifier call. The classifier reads the first characters of the notes the generator reads
  *   (`GENERATE_NOTES_READ`, one constant), and a notes value that is not a string is dropped, so neither can carry text past the gate.
  *
- * The classifier is mocked (`@/lib/agent-scope-classify`), so a test sets the verdict. The SDK mock answers a generation with one
- * item and counts the generation calls.
+ * The classifier is mocked (`@/lib/agent-scope-classify`), so a test sets the verdict. The SDK mock answers a generation with as many
+ * items as the prompt asks for (no batch is short, rule 2276) and counts the generation calls.
  */
 const sdk = vi.hoisted(() => {
   const reply = (text: string) => ({ model: "claude-opus-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text }] });
@@ -30,7 +30,7 @@ const sdk = vi.hoisted(() => {
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
     static BadRequestError = class extends Error {};
-    beta = { messages: { stream: () => ({ finalMessage: async () => { sdk.gens++; return sdk.reply(JSON.stringify([sdk.item])); } }) } };
+    beta = { messages: { stream: (p: { messages: { content: unknown }[] }) => ({ finalMessage: async () => { sdk.gens++; return sdk.reply(JSON.stringify(Array.from({ length: Number(/Return exactly (\d+) item/.exec(String(p.messages[0].content))?.[1] ?? 1) }, () => sdk.item))); } }) } };
     messages = {
       stream: () => ({ finalMessage: async () => sdk.reply("تمام") }),
       create: async (p: { system: string | { text: string }[] }) => {
@@ -208,10 +208,10 @@ describe("rule 796: POST /api/generate", () => {
     cls.verdict = "personal";
     const res = await post({ type: "social", notes: "remind me of my dentist" });
     expect(res.status).toBe(200);
-    expect(((await res.json()) as WebBody).created).toBe(1);
+    expect(((await res.json()) as WebBody).created).toBe(10);
     expect(sdk.gens).toBe(1);
     expect(await credits(u.email), "charged like any batch").toBe(50 - TASK_COST.social);
-    expect(await listTasks(sc(u))).toHaveLength(1);
+    expect(await listTasks(sc(u))).toHaveLength(10);
     expect(await logOf(u.email)).toEqual([expect.objectContaining({ layer: "input", where: "generate", verdict: "personal", mode: "shadow" })]);
     expect(await counter(hourKey(sc(u))), "shadow never counts").toBe(0);
   });
@@ -380,7 +380,7 @@ describe("rule 796: MCP generate_content", () => {
     cls.verdict = "personal";
     const r = await tool(u.email, { type: "social", notes: "remind me of my dentist" });
     expect(r.isError).toBeUndefined();
-    expect(r.content[0].text).toMatch(/^Created 1 social item\(s\)/);
+    expect(r.content[0].text).toMatch(/^Created 10 social item\(s\)/);
     expect(await credits(u.email)).toBe(50 - TASK_COST.social);
     expect(await logOf(u.email)).toEqual([expect.objectContaining({ where: "mcp_generate", verdict: "personal", mode: "shadow" })]);
     expect(batches.opts[0].agentScope).toEqual({ prompt: "on", input: "shadow", role: "off", output: "off" });
