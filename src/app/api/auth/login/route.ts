@@ -1,13 +1,13 @@
-import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { getLogin, normalizeEmail } from "@/lib/auth";
+import { getLogin, normalizeEmail, verifyPassword } from "@/lib/auth";
 import { finishAnswer, finishLogin } from "@/lib/login-finish";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 
 /**
  * POST {email, password}. An email signs in as whatever login it is (src/lib/auth.ts `getLogin`): an owner account or a
- * member of one. The password is checked against THAT login's own hash, so an owner's password never opens a member
- * login and a member's never opens the owner's. The session is issued for the login email; `currentUser` resolves a
+ * member of one. The password is checked against THAT login's person (`login.person`, multi-workspace M1: the person as
+ * `getPerson` reads it, so a stale `person:` row never beats a newer legacy record), so an owner's password never opens
+ * a member login and a member's never opens the owner's. The session is issued for the login email; `currentUser` resolves a
  * member session to the owner's account on every request.
  *
  * An owner who has not proved the address yet still gets a session, and the answer says `verify: true`: the form then
@@ -25,8 +25,7 @@ export async function POST(req: Request) {
   // Credential stuffing and password guessing: throttle per IP and per targeted login.
   if (!(await allow(`login:ip:${clientIp(req)}`, 20, 900)) || !(await allow(`login:em:${email}`, 8, 900))) return retryLater({ ok: false, error: "slow_down" }, 900);
   const login = email ? await getLogin(email) : null;
-  const hash = !login ? null : login.kind === "owner" ? login.user.passHash : login.member.passHash;
-  if (!hash || !(await bcrypt.compare(password, hash))) return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
+  if (!login || !(await verifyPassword(login.person, password))) return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
 
   // The account checks, the two-step challenge (rule 1934) and the session, shared with the Google sign-in and the code
   // step: src/lib/login-finish.ts.

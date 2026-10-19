@@ -45,7 +45,9 @@ export async function POST(req: Request) {
 
   if (login.kind === "member") {
     const { member, owner } = login;
-    if (!owner || member.memberOf !== acct(owner)) return badToken();
+    // A person known only through membership rows (multi-workspace M1, test persons only) has no legacy record to write:
+    // its credential write comes with `updatePerson`; until then the link does nothing, as for a removed member.
+    if (!member || !owner || member.memberOf !== acct(owner)) return badToken();
     if (isSuspended(owner)) return suspendedAnswer(owner);
     // The member record only, under its own lock. Every other device of THIS member is signed out; the owner and the
     // rest of the team are untouched.

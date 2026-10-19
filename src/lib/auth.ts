@@ -14,7 +14,8 @@ import { signupConsent, type Consent } from "./consent";
 import type { HandPlan } from "./hand-plan";
 import type { FoundingSeat, PriceLock } from "./founding";
 import { SESSION_COOKIE, dropCookie, dropLegacyCookie, namesOf, readCookie } from "./cookie-names";
-import { accountKey, globalKey, storedScope, type Scope } from "./keys";
+import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, storedScope, type AccountId, type PersonId, type Scope } from "./keys";
+import type { Person } from "./person";
 import { acct, idForNewAccount, LoginIndex, loginIndexOf, type LoginIndexValue } from "./account-id";
 import { parseStored } from "./stored";
 
@@ -380,8 +381,13 @@ export async function createUser(input: { email: string; name: string; phone: st
   return u;
 }
 
-export async function verifyPassword(u: User, password: string) {
-  return bcrypt.compare(password, u.passHash);
+/**
+ * Check a typed password against the PERSON's hash (multi-workspace M1, rule 2134): `login.person` from `getLogin`, so a
+ * stale `person:` row never beats a provably newer legacy record (plan reconciliation 5). A person without a hash (a
+ * Google-only person, or a record missing it) never matches.
+ */
+export async function verifyPassword(p: Pick<Person, "passHash">, password: string): Promise<boolean> {
+  return typeof p.passHash === "string" && p.passHash.length > 0 && bcrypt.compare(password, p.passHash);
 }
 
 /**
@@ -487,7 +493,7 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   const now = Date.now();
   // The person and the active account (rule 1984), from the login as it resolves now. No login: neither is written, and
   // the session resolves to nothing anyway.
-  const ids = await sessionIds(email);
+  const ids = await sessionIds(email, { imp: !!opts.imp });
   // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
   const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}), ...(opts.ss ? { ss: opts.ss } : {}), ...ids } : { email, at: now, ...ids };
   // Hashed key only (rule 1345): the raw token is in the cookie and nowhere else.
@@ -503,11 +509,24 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   }
 }
 
-/** The person and active account a new session of this login carries: the owner's own account, or the member's team. */
-async function sessionIds(email: string): Promise<{ pid?: string; acct?: string }> {
-  const l = await getLogin(email).catch(() => null);
-  if (!l) return {};
-  return l.kind === "owner" ? { pid: l.pid, acct: acct(l.user) } : { pid: l.pid, acct: l.member.memberOf };
+/**
+ * The person and the active account a new session of this login carries (rule 1984, multi-workspace spec section 7):
+ * `pid` from `getLogin`, `acct` from `pickAccount` (`lastorg:` while it holds, else the owned account, else the oldest
+ * live membership; a legacy person's home account). With `MULTI_ORG` off the pick is always the home account, the value
+ * R1 wrote: the owner's own account, or the member's `memberOf`. No account: `acct` is absent. An impersonation keeps
+ * R1's shape: the account the address owns and its owner (`ownerOf`, the same person for a legacy owner).
+ */
+export async function sessionIds(email: string, opts: { imp?: boolean } = {}): Promise<{ pid?: string; acct?: string }> {
+  try {
+    const l = await getLogin(email);
+    if (!l) return {};
+    const { ownerOf, pickAccount } = await import("./membership");
+    if (opts.imp) return l.kind === "owner" ? { pid: ownerOf(l.user), acct: l.acct } : { pid: l.pid, ...(l.acct ? { acct: l.acct } : {}) };
+    const a = await pickAccount(l.person);
+    return a ? { pid: l.pid, acct: a } : { pid: l.pid };
+  } catch {
+    return {};
+  }
 }
 
 /** The hashed session key behind this request's cookie (the device list marks it as "this device"), or null. */
@@ -666,9 +685,15 @@ function memberHolds(pid: string, email: string, idx: LoginIndexValue | null): b
 
 /**
  * A login: an owner account, or a member login with the account it belongs to (null when that owner is gone). `pid` is
- * the person (multi-org forced change 1): an owner's person id is its account id, a member's its frozen address.
+ * the person (multi-org forced change 1): an owner's person id is its account id, a member's its frozen address, a person
+ * known only through `person:` and membership rows its `p_` id. `person` is the person as `getPerson` reads it (rule 2134):
+ * the password, the stamps and the address are checked there. `acct` is the account the login stands for: the owned
+ * account, the legacy member's `memberOf`, or the oldest live membership. `member` is the legacy member record, null for
+ * a person known only through `mbr:` rows (test persons in M1, real ones from M2).
  */
-export type Login = { kind: "owner"; user: User; pid: string } | { kind: "member"; member: Member; owner: User | null; pid: string };
+export type Login =
+  | { kind: "owner"; user: User; pid: PersonId; person: Person; acct: AccountId }
+  | { kind: "member"; member: Member | null; owner: User | null; pid: PersonId; person: Person; acct: AccountId | null };
 /**
  * What a SIGN-IN ADDRESS signs in as (rule 1982): only sign-in, signup, forgot/reset password, Google sign-in, the
  * address-change "is it taken" check and the console's lookup by address use this. A pointer that already names an
@@ -679,18 +704,50 @@ export type Login = { kind: "owner"; user: User; pid: string } | { kind: "member
  * matching. An email is unique across `user:` and `member:` (enforced under `lock:login:{email}`); should both ever
  * exist, the owner record wins, as in `currentUser`. A member record that is not on its owner's roster (the owner
  * deleted, or the record outlived a removal) is no login at all: it cannot sign in, and it does not keep the address
- * from signing up. In R1 every index names the address itself, so this is one round, as before; an index naming
- * another id (R2) costs one more read.
+ * from signing up.
+ *
+ * Multi-workspace M1 (plan reconciliation 4): the person is read with the records (`person:` in the same rounds, the
+ * precedence and stale guard of `personFromRaw`), and its address must be this one. When neither legacy record holds,
+ * a person with a `person:` row is an owner when `orgs:{pid}` names an account `ownerOf` gives to them, else a member of
+ * their oldest live membership (`listOrgs`, re-checked on the forward records); with none of them the address is nobody's
+ * (reconciliation 7: exactly today's answer for a removed member).
+ *
+ * Rounds: round 1 as R1 (`login:`, `user:{e}`, `member:{e}`) plus `person:{e}`, one more command in the same round. An
+ * index naming another id costs the one more round R1 already paid, now reading `user:`, `person:` and `member:` of that
+ * id together. A legacy member pays R1's roster round; only a person no legacy record backs pays the `orgs:` rounds.
  */
 export async function getLogin(email: string): Promise<Login | null> {
   const e = normalizeEmail(email);
-  const { getMember, onRoster, memberPid } = await import("./team");
-  const [idx, own, m] = await Promise.all([readLoginIndex(e), getAccount(e), getMember(e)]);
-  const u = idx && idx.pid !== e ? await getAccount(idx.pid) : own;
-  if (u && ownsLogin(u, e, idx)) return { kind: "owner", user: u, pid: acct(u) };
-  if (!m || normalizeEmail(m.email) !== e || !memberHolds(memberPid(m), e, idx)) return null;
-  const [owner, listed] = await Promise.all([getAccount(m.memberOf), onRoster(m.memberOf, e)]);
-  return listed ? { kind: "member", member: m, owner, pid: memberPid(m) } : null;
+  const [{ getMember, onRoster, memberPid }, { personFromRaw }, { listOrgs, ownerOf }] = await Promise.all([import("./team"), import("./person"), import("./membership")]);
+  // The address as a person id (a legacy owner's or member's, while `OPAQUE_IDS` is off), and the id the index names.
+  const self = storedPersonId(e);
+  const [idx, own, m, ownRow] = await Promise.all([readLoginIndex(e), getAccount(e), getMember(e), db.get<unknown>(personKey.person(self))]);
+  const far = idx && idx.pid !== e ? storedPersonId(idx.pid) : null;
+  const [u, row, farMember] = far ? await Promise.all([getAccount(far), db.get<unknown>(personKey.person(far)), db.get<unknown>(accountKey.member(far))]) : [own, ownRow, null];
+  const pid = far ?? self;
+  // The person must hold THIS address: a person row or record that names another one signs nobody in here.
+  const here = (p: Person | null): p is Person => !!p && normalizeEmail(p.email) === e;
+  if (u && ownsLogin(u, e, idx)) {
+    // The owner's own record backs the person (never the member record at the same address).
+    const person = personFromRaw(pid, row, u, null);
+    if (here(person)) return { kind: "owner", user: u, pid, person, acct: storedAccountId(acct(u)) };
+  }
+  if (m && normalizeEmail(m.email) === e && memberHolds(memberPid(m), e, idx)) {
+    const [owner, listed] = await Promise.all([getAccount(m.memberOf), onRoster(m.memberOf, e)]);
+    const person = listed ? personFromRaw(pid, row, null, m) : null;
+    if (here(person)) return { kind: "member", member: m, owner, pid, person, acct: m.memberOf ? storedAccountId(m.memberOf) : null };
+  }
+  // Neither legacy record holds: a person read as `getPerson` reads it, through its forward records only.
+  const person = personFromRaw(pid, row, u, far ? farMember : m);
+  if (!here(person) || person.source !== "person") return null;
+  const orgs = await listOrgs(pid);
+  const owned = orgs.find((o) => o.role === "owner");
+  const first = owned ?? orgs[0];
+  if (!first) return null;
+  const account = await getAccount(first.aid);
+  if (!account || acct(account) !== first.aid) return null;
+  if (owned) return ownerOf(account) === pid ? { kind: "owner", user: account, pid, person, acct: first.aid } : null;
+  return { kind: "member", member: null, owner: account, pid, person, acct: first.aid };
 }
 /**
  * The account a sign-in address owns, or null (a member's address, or nobody's). For the founder console's routes that

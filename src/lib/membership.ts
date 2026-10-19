@@ -109,6 +109,23 @@ export function membershipHolds(u: User, m: Membership): boolean {
   return new Date(m.acceptedAt).getTime() >= new Date(u.createdAt).getTime();
 }
 
+/** An account the person holds now: the owner, or a live membership (`roleIn` and `membershipHolds`), with its date. */
+type Held = { aid: AccountId; role: Role; at: string };
+
+/** Whether `pid` holds `aid` now, on the forward records read in ONE round (the account and the membership). */
+async function holding(aid: AccountId, pid: PersonId): Promise<Held | null> {
+  const [u, m] = await Promise.all([getAccount(aid), getMembership(aid, pid)]);
+  if (!u || acct(u) !== aid) return null;
+  const role = roleIn(u, pid, m);
+  if (!role) return null;
+  if (role === "owner") return { aid, role, at: "" };
+  return m && membershipHolds(u, m) ? { aid, role, at: m.acceptedAt } : null;
+}
+
+/** Owned first, then the oldest membership, then the account id (a stable order for equal dates). */
+const byPick = (a: Held, b: Held): number =>
+  (a.role === "owner") !== (b.role === "owner") ? (a.role === "owner" ? -1 : 1) : a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.aid < b.aid ? -1 : a.aid > b.aid ? 1 : 0;
+
 /**
  * The accounts the person owns or holds a live membership in (rule 2136): `orgs:{pid}`, then ONE `pmap` round of the
  * account and the membership of every entry. An entry that neither `ownerOf` nor a holding membership backs (forged,
@@ -116,18 +133,10 @@ export function membershipHolds(u: User, m: Membership): boolean {
  */
 export async function listOrgs(pid: PersonId): Promise<{ aid: AccountId; role: Role }[]> {
   const entries = await db.smembers(personKey.orgs(pid));
-  const rows = await pmap(entries, async (entry) => {
-    const aid = storedAccountId(entry);
-    const [u, m] = await Promise.all([getAccount(aid), getMembership(aid, pid)]);
-    if (!u || acct(u) !== aid) return null;
-    const role = roleIn(u, pid, m);
-    if (!role) return null;
-    if (role === "owner") return { aid, role, at: "" };
-    return m && membershipHolds(u, m) ? { aid, role, at: m.acceptedAt } : null;
-  });
+  const rows = await pmap(entries, async (entry) => holding(storedAccountId(entry), pid));
   return rows
-    .filter((r): r is { aid: AccountId; role: Role; at: string } => !!r)
-    .sort((a, b) => (a.role === "owner") !== (b.role === "owner") ? (a.role === "owner" ? -1 : 1) : a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.aid < b.aid ? -1 : 1)
+    .filter((r): r is Held => !!r)
+    .sort(byPick)
     .map(({ aid, role }) => ({ aid, role }));
 }
 
@@ -140,6 +149,19 @@ function legacyHome(pid: PersonId, raw: unknown): AccountId | null {
 }
 
 /**
+ * The home account a LEGACY record names for this person, without the reverse index: a legacy owner's own account, a
+ * legacy member's `memberOf`, and for a person read from `person:` the legacy record that still backs them. Null for a
+ * person no legacy record backs (a `p_` person). A pointer only, never checked here.
+ */
+async function legacyHomeOf(p: Person): Promise<AccountId | null> {
+  if (p.source === "owner") return storedAccountId(p.pid);
+  if (p.source === "member") return legacyHome(p.pid, await db.get(accountKey.member(p.pid)));
+  const [u, m] = await Promise.all([db.get<User>(accountKey.user(p.pid)), db.get(accountKey.member(p.pid))]);
+  if (u && typeof u.email === "string" && ownerOf({ ownerPid: u.ownerPid, id: u.id === undefined ? undefined : p.pid, email: u.email }) === p.pid) return storedAccountId(p.pid);
+  return legacyHome(p.pid, m);
+}
+
+/**
  * The person's HOME account: the one the legacy per-login keys (`activebrand:{login}`, `sec:feedof:{login}`,
  * `sec:bookof:{login}:{prov}`) belong to, and the one sign-in picks after an owned account. A legacy owner: their own
  * account (`pid`). A legacy member: the record's `memberOf`. A person read from `person:`: the legacy home when a legacy
@@ -148,9 +170,35 @@ function legacyHome(pid: PersonId, raw: unknown): AccountId | null {
  * caller re-checks the forward records (`getMembership`, `roleIn`) before granting anything.
  */
 export async function homeAccountOf(p: Person): Promise<AccountId | null> {
-  if (p.source === "owner") return storedAccountId(p.pid);
-  if (p.source === "member") return legacyHome(p.pid, await db.get(accountKey.member(p.pid)));
-  const [u, m] = await Promise.all([db.get<User>(accountKey.user(p.pid)), db.get(accountKey.member(p.pid))]);
-  if (u && typeof u.email === "string" && ownerOf({ ownerPid: u.ownerPid, id: u.id === undefined ? undefined : p.pid, email: u.email }) === p.pid) return storedAccountId(p.pid);
-  return legacyHome(p.pid, m) ?? (await listOrgs(p.pid))[0]?.aid ?? null;
+  const home = await legacyHomeOf(p);
+  if (home || p.source !== "person") return home;
+  return (await listOrgs(p.pid))[0]?.aid ?? null;
+}
+
+/**
+ * The account a new session of this person opens (spec section 7, rules 2132, 2136): `prefer`, then `lastorg:{pid}`,
+ * each only while it still holds on the forward records (owner, or a live membership); else the account the person
+ * owns; else the oldest live membership. A legacy person (read from `user:` or `member:`) gets its home account
+ * (`homeAccountOf`), exactly the account release R1 wrote into the session. A person read from `person:` whose accounts
+ * all fail the check gets its legacy home as a pointer (as R1 did for a paused member), or null (no workspace).
+ *
+ * With `MULTI_ORG` false nothing writes `lastorg:` (the M2 switch route does) and no route passes `prefer`, so the pick
+ * is always the home account. Rounds: `lastorg:`, `orgs:` and the legacy record together, then ONE `pmap` round of the
+ * candidates (none for a legacy person without `lastorg:`). The answer is a pointer: `resolveSession` re-checks it on
+ * every request (rule 2111).
+ */
+export async function pickAccount(p: Person, opts: { prefer?: AccountId } = {}): Promise<AccountId | null> {
+  const legacy = p.source !== "person";
+  const [last, entries, home] = await Promise.all([
+    db.get<unknown>(personKey.lastOrg(p.pid)),
+    legacy ? Promise.resolve([] as string[]) : db.smembers(personKey.orgs(p.pid)),
+    legacyHomeOf(p),
+  ]);
+  const asked = [...new Set([opts.prefer, typeof last === "string" && last ? storedAccountId(last) : undefined].filter((a): a is AccountId => !!a))];
+  const pool = [...new Set<AccountId>([...asked, ...entries.map(storedAccountId), ...(legacy || !home ? [] : [home])])];
+  const held = (pool.length ? await pmap(pool, async (aid) => holding(aid, p.pid)) : []).filter((h): h is Held => !!h);
+  const chosen = asked.find((aid) => held.some((h) => h.aid === aid));
+  if (chosen) return chosen;
+  if (legacy) return home;
+  return held.sort(byPick)[0]?.aid ?? home;
 }

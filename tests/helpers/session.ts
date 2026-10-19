@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { vi } from "vitest";
-import { acct, createUser, getUser, saveUser, sessionKey, type User } from "@/lib/auth";
+import { acct, createUser, getUser, saveUser, sessionIds, sessionKey, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createMember } from "@/lib/team";
 
@@ -13,12 +13,18 @@ export const signOut = () => g.__testJar.clear();
 /**
  * Act as this login: a real session record plus its cookie, exactly what login creates. Works for owners and members
  * alike (the record holds the login email). `imp` makes it a founder impersonation session, as the console writes it.
+ *
+ * The record has the M1 shape (multi-workspace M1): `{email, at, pid, acct}` from `sessionIds`, the person and the
+ * account sign-in would pick. `legacyShape` writes a session from before R1, `{email, at}` (rule 2135); `acct` writes
+ * the chosen account instead of the pick (rules 2111, 2119, 2122). An impersonation is written as before.
  */
-export async function signIn(email: string, opts: { imp?: string } = {}) {
+export async function signIn(email: string, opts: { imp?: string; legacyShape?: boolean; acct?: string } = {}) {
   const token = randomBytes(32).toString("hex");
   // A key impersonation is tied to the current key as the console writes it (rule 429); WAITLIST_ADMIN_KEY must be set.
   const bind = opts.imp === "key" ? await (await import("@/lib/auth")).keyImpBinding() : null;
-  await db.set(sessionKey(token), opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(bind ?? {}) } : { email, at: Date.now() }, 3600);
+  const ids = opts.imp || opts.legacyShape ? {} : await sessionIds(email);
+  const plain = { email, at: Date.now(), ...ids, ...(opts.acct && !opts.legacyShape ? { acct: opts.acct } : {}) };
+  await db.set(sessionKey(token), opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(bind ?? {}) } : plain, 3600);
   g.__testJar.clear();
   g.__testJar.set("thakeen_session", token);
   return token;

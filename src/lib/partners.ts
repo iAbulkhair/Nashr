@@ -7,6 +7,7 @@ import { lotsOf, refundUnused, type RefundRequest, type RefundUnusedError, type 
 import { pmap } from "./parallel";
 import { dropCookie, readCookie } from "./cookie-names";
 import { onRoster } from "./team";
+import { ownerOf } from "./membership";
 import { rewardReferrer } from "./referral";
 import { lifecyclePlan } from "./lifecycle";
 import { FIRST_MONTH_DISCOUNT_PCT, SELF_SERVE_PLANS, firstMonthPriceSar, type SelfServePlan } from "./pricing";
@@ -214,10 +215,12 @@ export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: tru
   // account, or an account whose roster lists this owner is a self-referral. The partner's account is found by its
   // address through the login index (rule 1982), never built from it.
   if (normalizeEmail(partner.email) === normalizeEmail(u.email)) return { ok: false, error: "self_referral" };
-  const [a, theirs] = await Promise.all([onRoster(acct(u), partner.email), getLogin(partner.email)]);
+  // The roster holds PERSON ids (multi-workspace M1): the partner's person when the address is a login (a legacy
+  // member's is its address, as before), else the address itself; and this account's owner (`ownerOf`).
+  const theirs = await getLogin(partner.email);
   const partnerAccount = theirs?.kind === "owner" ? acct(theirs.user) : null;
   if (partnerAccount === acct(u)) return { ok: false, error: "self_referral" };
-  const b = partnerAccount ? await onRoster(partnerAccount, u.email) : false;
+  const [a, b] = await Promise.all([onRoster(acct(u), theirs?.pid ?? partner.email), partnerAccount ? onRoster(partnerAccount, ownerOf(u)) : Promise.resolve(false)]);
   if (a || b) return { ok: false, error: "self_referral" };
   const res = await withUserLock(acct(u), async (x): Promise<ClaimError | null> => {
     if (x.referredBy) return "already_attributed";

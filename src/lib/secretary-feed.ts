@@ -105,7 +105,8 @@ export async function loginHolds(rec: Pick<FeedRecord, "login" | "scope" | "crea
     owner = login.user.email;
   } else {
     const { member: m, owner: u } = login;
-    if (!u || isSuspended(u) || !emailVerified(u) || m.disabled) return false;
+    // A person known only through membership rows (multi-workspace M1, test persons only) holds no legacy link.
+    if (!m || !u || isSuspended(u) || !emailVerified(u) || m.disabled) return false;
     if (m.role !== "admin" && m.role !== "member") return false;
     if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === normalizeEmail(rec.login)) return false;
     // NaN on either side (a malformed date) refuses too.

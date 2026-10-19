@@ -32,6 +32,7 @@ import { isSuspended, parseSuspendFor, suspensionEnd, suspensionExpired } from "
 import { endExpiredSuspension } from "@/lib/suspension-server";
 import { accountKey } from "@/lib/keys";
 import { acct } from "@/lib/account-id";
+import { getMembership } from "@/lib/membership";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     // Member logins never enter users:all, so the list cannot show them: an address is looked up here instead, which is
     // how support finds (and can remove, below) a member login holding an address its real owner wants to sign up with.
     const m = await getMember(decodeURIComponent(email));
-    if (!m) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    if (!m) {
+      // A person known only through membership rows (multi-workspace M1: test persons; real ones from M2) has no member
+      // record: shown from the person and the membership sign-in would open, read only. Its person id and its
+      // inviter's are never shown (a `p_` id is not an address).
+      if (login?.kind !== "member" || !login.acct) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+      const ms = await getMembership(login.acct, login.pid);
+      return NextResponse.json({
+        ok: true, kind: "member",
+        member: { email: login.person.email, name: login.person.name, role: ms?.role ?? null, memberOf: login.acct, invitedBy: "", acceptedAt: ms?.acceptedAt ?? "", disabled: ms?.disabled ?? null, ownerExists: !!login.owner, onRoster: !!ms },
+      });
+    }
     const [owner, listed] = await Promise.all([getUser(m.memberOf), onRoster(m.memberOf, m.email)]);
     return NextResponse.json({
       ok: true, kind: "member",
