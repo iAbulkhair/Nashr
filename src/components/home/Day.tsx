@@ -23,6 +23,8 @@ function Cap({ seed, children, className = "" }: { seed: string; children: React
  * Prototype D's strip (rule 516), four panels: the owner at 7:58 under three questions and a price message; the team
  * peeking in to say good morning; every question with the agent who takes it; and the owner's one word. The drawings
  * that carry meaning have a label; the peeking faces and the arms are decoration (the names are written beside them).
+ * From 1040px the owner's word is the strip's splash panel (rule 2314): the first three panels share a row of three and
+ * the word runs the full width under them, so the punchline is the largest panel and the grid has no hole.
  */
 export default function Day({ lang }: { lang: Lang }) {
   const s = SECTIONS.day;
@@ -122,7 +124,7 @@ export default function Day({ lang }: { lang: Lang }) {
             ))}
           </ul>
         </li>
-        <li className={styles.panel}>
+        <li className={`${styles.panel} ${styles.splash}`}>
           <Scribble kind="box" seed="d4" fill="paper" />
           <Cap seed="d4cap">{word.cap[lang]}</Cap>
           <div className={styles.sign}>
