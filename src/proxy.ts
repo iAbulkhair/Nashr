@@ -5,6 +5,7 @@ import { STAGING_COOKIE, hasAccess, stagingOpen } from "@/lib/staging-access";
 import { legacySettingsPath } from "@/lib/settings-nav";
 import { LANG_COOKIE, readCookie } from "@/lib/cookie-names";
 import { REQUEST_ID_HEADER, requestId } from "@/lib/request-id";
+import { NONCE_HEADER, cspNonce, pageCsp, pagePath, reportOnlyCsp } from "@/lib/csp";
 
 type Lang = "ar" | "en";
 
@@ -75,6 +76,18 @@ export function proxy(req: NextRequest) {
   const rid = requestId(req.headers) ?? crypto.randomUUID();
   const reqHeaders = new Headers(req.headers);
   reqHeaders.set(REQUEST_ID_HEADER, rid);
+  // Content-Security-Policy (rules 2320-2329): a fresh nonce for every page request, on the request (Next reads the policy
+  // there and puts the nonce on its scripts; the layout reads NONCE_HEADER for the theme script) and on the response. A
+  // nonce sent by the browser is never kept: both headers are always overwritten here.
+  const nonce = pagePath(pathname) ? cspNonce() : null;
+  const dev = process.env.NODE_ENV === "development";
+  if (nonce) {
+    reqHeaders.set(NONCE_HEADER, nonce);
+    reqHeaders.set("content-security-policy", pageCsp(nonce, dev));
+  } else {
+    reqHeaders.delete(NONCE_HEADER);
+    reqHeaders.delete("content-security-policy");
+  }
   const next = () => NextResponse.next({ request: { headers: reqHeaders } });
 
   // Staging lock (rules 674, 677): without the access cookie every path but the four open ones and `/m/` (rule 1760) is
@@ -111,7 +124,8 @@ export function proxy(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = `/${pickLang(req)}/${STRAY_TARGET}`;
     url.search = "";
-    res = NextResponse.rewrite(url);
+    // The request's headers go along (rule 2321): the nonce and the request id must reach the page it is served from.
+    res = NextResponse.rewrite(url, { request: { headers: reqHeaders } });
     res.headers.set("Vary", "Cookie, Accept-Language");
   } else if (legacySettingsPath(pathname)) {
     // The old account, team, brand and billing pages moved under /app/settings (rule 1141, expand step): a 307 keeps the
@@ -129,6 +143,10 @@ export function proxy(req: NextRequest) {
   }
 
   res.headers.set(REQUEST_ID_HEADER, rid);
+  if (nonce) {
+    res.headers.set("Content-Security-Policy", pageCsp(nonce, dev));
+    res.headers.set("Content-Security-Policy-Report-Only", reportOnlyCsp(nonce, dev));
+  }
 
   if (staging || CONSOLE_PATH.test(pathname)) res.headers.set("x-robots-tag", NOINDEX);
   if (CONSOLE_PATH.test(pathname)) res.headers.set("Cache-Control", "no-store");

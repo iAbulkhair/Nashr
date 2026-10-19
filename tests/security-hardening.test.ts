@@ -42,18 +42,18 @@ describe("rule 1340: no framework banner, a security.txt", () => {
   });
 });
 
-describe("rule 1341: a full CSP, report-only; the enforced one unchanged", () => {
-  const headers = async () => {
+describe("rule 1341: the full CSP stays report-only for everything but scripts (rules 2320-2329 enforce scripts)", () => {
+  it("the API, media and short links keep the four directives of rule 428; pages get theirs from the proxy", async () => {
     const config = (await import("../next.config")).default;
     const rules = await config.headers!();
-    return rules.flatMap((r) => r.headers);
-  };
-  it("the enforced policy is the one customers had", async () => {
-    const h = await headers();
-    expect(h.find((x) => x.key === "Content-Security-Policy")?.value).toBe("frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
+    const all = rules.find((r) => r.source === "/:path*")!.headers;
+    expect(all.find((x) => x.key === "Content-Security-Policy")).toBeUndefined();
+    for (const src of ["/api/:path*", "/m/:path*", "/p/:path*"])
+      expect(rules.find((r) => r.source === src)?.headers.find((x) => x.key === "Content-Security-Policy")?.value, src).toBe("frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
   });
   it("the report-only policy closes the defaults and still lets Turnstile and the media in", async () => {
-    const ro = (await headers()).find((x) => x.key === "Content-Security-Policy-Report-Only")?.value ?? "";
+    const { reportOnlyCsp } = await import("@/lib/csp");
+    const ro = reportOnlyCsp("bm9uY2U=", false);
     const d = (name: string) => ro.split(";").map((x) => x.trim()).find((x) => x.startsWith(`${name} `)) ?? "";
     expect(d("default-src")).toBe("default-src 'self'");
     for (const name of ["script-src", "frame-src", "connect-src"]) expect(d(name), name).toContain("https://challenges.cloudflare.com");

@@ -1,0 +1,13 @@
+# Coverage: enforced nonce-based script policy (rules 2320-2329)
+
+Status on 2026-10-19 on branch `claude/csp-nonce-enforce-f45324` (cut from main 646793f8). Security scan of 2026-10-19, low-severity leftover: the script policy was only report-only and allowed `'unsafe-inline'`. Rules 2327-2329 are held for this work and unused.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 2320 | Every page answer carries an enforced `Content-Security-Policy` whose `script-src` is exactly `'self' 'nonce-{nonce}' 'strict-dynamic' https://challenges.cloudflare.com`: no `'unsafe-inline'`, no `'unsafe-eval'` in production; the four directives of rule 428 stay, `form-action 'self'` included | `tests/csp-nonce.test.ts` ("rule 2320") | — |
+| 2321 | The proxy makes a fresh nonce (16 random bytes, base64) per page request and puts the same one on the request (`x-nonce` and the request's `content-security-policy`) and the response; a nonce or policy the browser sends is overwritten on pages and dropped elsewhere; redirects and the stray-path rewrite carry the policy, and the rewrite hands the request's nonce on to the not-found page it serves | `tests/csp-nonce.test.ts` ("rule 2321") | — |
+| 2322 | Every page renders per request so Next can nonce its scripts: `src/app/[lang]/layout.tsx` reads `x-nonce` and puts it on the theme script; `src/app/global-not-found.tsx` calls `connection()`; `src/app/[lang]/[...rest]/page.tsx` and the OAuth consent page are `force-dynamic`; no page or layout is `force-static` or sets `revalidate` | `tests/csp-nonce.test.ts` ("rule 2322") (source shape); the browser check on home, pricing, sign-in, chat, console and consent in the pull request | an end-to-end test that reads the console for CSP violations on those pages |
+| 2323 | `/api/*`, `/m/*` and `/p/*` get no nonce and no page policy from the proxy; `next.config.ts` sends them the four directives of rule 428 | `tests/csp-nonce.test.ts` ("rule 2323"), `tests/security-hardening.test.ts` ("rule 1341") | — |
+| 2324 | `style-src` is not enforced (React `style` attributes); the report-only twin keeps the full policy of rule 1341 with the same `script-src` as the enforced one | `tests/csp-nonce.test.ts` ("rule 2324"), `tests/security-hardening.test.ts` ("rule 1341") | — |
+| 2325 | Development alone adds `'unsafe-eval'` | `tests/csp-nonce.test.ts` ("rule 2325") | — |
+| 2326 | Every `<script>` in `src/app` and `src/components` is the nonced theme script or a JSON-LD data block; no inline event-handler attributes, no `javascript:` links, no `next/script` without a nonce | `tests/csp-nonce.test.ts` ("rule 2326") | — |
