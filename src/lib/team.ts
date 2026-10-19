@@ -724,18 +724,25 @@ export async function removeMember(owner: User, actor: Actor, email: string): Pr
  * `users:all`, so without this nothing but a hand edit of the store could free such an address. False when there is no
  * member login at `email`. The team log row (when the account still exists) says `via: "console"` and names the
  * account's owner as the actor: staff are never named (rule 2129).
+ *
+ * A person with no member record (a `p_` person, multi-workspace M1 rule 2130) is found through the login: the
+ * membership sign-in opens (`getLogin`, the one the console's GET shows), read in the same round as the legacy record.
+ * Only that membership goes; a person who still holds another workspace keeps the address (`forgetPersonIfAlone`).
  */
 export async function forceRemoveMember(email: string): Promise<boolean> {
-  const m = await getMember(email);
-  if (!m) return false;
-  const aid = aidFrom(m.memberOf);
-  const pid = pidFrom(memberPid(m));
+  const e = normalizeEmail(email);
+  const [m, login] = await Promise.all([getMember(e), getLogin(e)]);
+  const p = !m && login?.kind === "member" && !login.member && login.acct && PERSON_ID.test(login.pid) ? { aid: login.acct, pid: login.pid } : null;
+  if (!m && !p) return false;
+  const aid = m ? aidFrom(m.memberOf) : p!.aid;
+  const pid = m ? pidFrom(memberPid(m)) : p!.pid;
   return withTeamLock(aid, async () => {
     const [cur, account] = await Promise.all([readMembership(aid, pid), getAccount(aid)]);
-    if (!cur.home) return false;
-    await deleteMembership(aid, pid, { home: true, teamLocked: true });
+    // A legacy member: only its home membership (the record); a `p_` person: the membership row on the roster.
+    if (m ? !cur.home : !cur.ms) return false;
+    await deleteMembership(aid, pid, { home: cur.home, teamLocked: true });
     if (account && acct(account) === aid) {
-      await logTeam(aid, { kind: "removed", actor: { pid: ownerOf(account), email: normalizeEmail(account.email) }, target: { pid, email: normalizeEmail(m.email) }, role: cur.ms?.role ?? m.role, via: "console" }, { teamLocked: true });
+      await logTeam(aid, { kind: "removed", actor: { pid: ownerOf(account), email: normalizeEmail(account.email) }, target: { pid, email: e }, role: cur.ms?.role ?? m?.role ?? "member", via: "console" }, { teamLocked: true });
     }
     return true;
   });

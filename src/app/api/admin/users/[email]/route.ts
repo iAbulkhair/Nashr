@@ -137,8 +137,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   };
   if (!u) {
     // A member login: the one action is removing it (the owner's own removal, done by support), which frees the address.
-    const m = await getMember(email);
-    if (!m) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    // A person with no member record (multi-workspace M1, rule 2130) is the membership the login resolves to, as GET shows
+    // it: the record and that membership are read in ONE round.
+    const [m, ms] = await Promise.all([getMember(email), login?.kind === "member" && login.acct ? getMembership(login.acct, login.pid) : null]);
+    const at = m ? { memberOf: m.memberOf, role: m.role } : ms ? { memberOf: ms.aid, role: ms.role } : null;
+    if (!at) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     if (b.action !== "removeMember") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
     // The person left with nothing is deleted under `lock:person:{pid}` (multi-workspace M1): a person, login or member
     // lock timeout is a 409, and a retry finishes the clean-up (every step is a delete). Not `personWrite`: the membership
@@ -151,7 +154,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       throw e;
     }
     if (!removed) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-    await log("removeMember", { memberOf: m.memberOf, role: m.role });
+    await log("removeMember", at);
     return NextResponse.json({ ok: true });
   }
 

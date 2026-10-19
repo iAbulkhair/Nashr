@@ -50,10 +50,10 @@ import { chat, history } from "@/lib/chat";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { createMcpToken } from "@/lib/mcp";
-import { saveBrands, setActiveBrand } from "@/lib/brands";
+import { saveBrands } from "@/lib/brands";
 import { AGENT_SCOPE_REFUSALS_PER_DAY, AGENT_SCOPE_REFUSALS_PER_HOUR, agentScopeCeiling, countAgentScopeRefusal } from "@/lib/rate";
 import { AGENT_SCOPE_KEYS, agentScopePreflight, agentScopeRefusalText, agentScopeSlowText, scopeCheck, type AgentScopeLogEntry, type AgentScopeMode } from "@/lib/agent-scope";
-import { json, newUser, signIn, type Fixture } from "./helpers/session";
+import { json, newUser, signIn, type Fixture, seedActiveBrand } from "./helpers/session";
 import * as chatRoute from "@/app/api/chat/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 
@@ -332,15 +332,14 @@ describe("rule 794: the input gate in a chat turn", () => {
   });
 
   it("ceiling is per brand scope", async () => {
-    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
-    const u = await owner("asc-ceil-b", { legacy: true });
+    const u = await owner("asc-ceil-b");
     await setModes("enforce");
     await db.set(hourKey(u.email), 20);
     await saveBrands(u.email, [
       { id: "default", name: "", createdAt: new Date().toISOString(), status: "active" },
       { id: "b2", name: "Second", createdAt: new Date().toISOString(), status: "active" },
     ]);
-    await setActiveBrand(u.email, "b2");
+    await seedActiveBrand(u.email, "b2");
     cls.verdict = "personal";
     const res = await post("ذكرني بموعد الطبيب");
     expect(res.status, "the default brand's ceiling does not refuse brand b2").toBe(200);

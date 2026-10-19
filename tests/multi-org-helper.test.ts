@@ -47,6 +47,18 @@ async function expectShadowAccount(m: Mods, aid: string) {
   expect(await m.db.sismember(m.keys.globalKey.usersAll(), aid)).toBe(false);
 }
 
+/**
+ * The positive control for `expectHome`: a session pinned to the shadow account reads the same two routes and finds the
+ * marker, so "no answer of the home account contains it" is not vacuous (the marker was written where it is looked for).
+ */
+async function expectShadowVisible(m: Mods, email: string, shadow: string) {
+  await m.h.signIn(email, { acct: shadow });
+  const u = (await m.auth.currentUser())!;
+  expect(m.auth.acct(u)).toBe(shadow);
+  const [tasks, brand] = await Promise.all([m.tasksRoute.GET(m.h.json("/api/tasks", "GET")), m.brandRoute.GET(m.h.json("/api/brand", "GET"))]);
+  for (const r of [tasks, brand]) expect(await r.text()).toContain(m.h.SHADOW_MARKER);
+}
+
 /** Signed in as `email`: the home account, and neither the task list nor the brand of it shows the shadow's marker. */
 async function expectHome(m: Mods, email: string, home: string) {
   await m.h.signIn(email);
@@ -73,6 +85,7 @@ describe("rule 2132 (fixtures): p_ persons by default, each with one shadow memb
     await expectShadowAccount(m, extra[0].aid);
     const row = (await m.membership.getMembership(extra[0].aid, pid))!;
     expect(new Date(row.acceptedAt).getTime()).toBe(new Date(u.createdAt).getTime() + 1000);
+    await expectShadowVisible(m, u.email, extra[0].aid);
     expect((await expectHome(m, u.email, m.auth.acct(u))).actor).toMatchObject({ kind: "owner", pid });
   });
 
@@ -89,6 +102,7 @@ describe("rule 2132 (fixtures): p_ persons by default, each with one shadow memb
     await expectShadowAccount(m, extra[0].aid);
     const shadow = (await m.membership.getMembership(extra[0].aid, mem.pid))!;
     expect(new Date(shadow.acceptedAt).getTime()).toBe(new Date(home.acceptedAt).getTime() + 1000);
+    await expectShadowVisible(m, mem.email, extra[0].aid);
     expect((await expectHome(m, mem.email, m.auth.acct(owner))).actor).toMatchObject({ kind: "member", pid: mem.pid, role: "admin" });
   });
 
@@ -130,6 +144,7 @@ describe("rule 2132 (fixtures): TEST_PERSONS=legacy makes legacy persons, still 
     const extra = await others(m, m.membership.ownerOf(u), m.auth.acct(u));
     expect(extra).toHaveLength(1);
     await expectShadowAccount(m, extra[0].aid);
+    await expectShadowVisible(m, u.email, extra[0].aid);
     await expectHome(m, u.email, m.auth.acct(u));
 
     const mem = await m.h.newMember(u, "member", "hlm");

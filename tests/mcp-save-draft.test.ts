@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { newUser, signIn, type Fixture } from "./helpers/session";
+import { newUser, signIn, type Fixture, seedActiveBrand } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { getTask, listTasks, pendingCount, saveBrand, type Brand } from "@/lib/brand";
 import { getUser } from "@/lib/auth";
 import { createMcpToken } from "@/lib/mcp";
 import { saveGov } from "@/lib/governance";
-import { saveBrands, scopeFor, setActiveBrand } from "@/lib/brands";
+import { saveBrands, scopeFor } from "@/lib/brands";
 import { DRAFTS_PER_HOUR } from "@/lib/rate";
 import { DRAFT_LIMITS, parseDraft } from "@/lib/external-drafts";
 import * as mcpRoute from "@/app/api/mcp/route";
@@ -55,8 +55,7 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
   });
 
   it("writes only to the bearer's own active brand: scope, email or id in the arguments are ignored", async () => {
-    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
-    const a = await owner("drafta", { legacy: true });
+    const a = await owner("drafta");
     const b = await owner("draftb");
     const r = await report(await call({ type: "social", body: "قهوة طازجة", scope: b.u.email, email: b.u.email, owner: b.u.email, id: "fixed" }, a.token));
     expect(r.id).not.toBe("fixed");
@@ -67,7 +66,7 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
     // A second brand active: the draft goes to that brand, not the account's default one.
     await saveBrands(a.u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await saveBrand(scopeFor(a.u.email, "b2"), { ...BRAND, name: "Two" });
-    await setActiveBrand(a.u.email, "b2");
+    await seedActiveBrand(a.u.email, "b2");
     const r2 = await report(await call({ type: "social", body: "قهوة طازجة" }, a.token));
     expect(await getTask(scopeFor(a.u.email, "b2"), r2.id)).not.toBeNull();
     expect(await getTask(a.u.email, r2.id)).toBeNull();
@@ -127,8 +126,7 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
   });
 
   it(`stops at ${DRAFTS_PER_HOUR} drafts an hour per account, across its brands`, async () => {
-    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
-    const { u, token } = await owner("draftrate", { legacy: true });
+    const { u, token } = await owner("draftrate");
     for (let i = 0; i < DRAFTS_PER_HOUR; i++) expect((await result(await call({ type: "social", body: `قهوة ${i}` }, token))).isError).toBeUndefined();
     const over = await result(await call({ type: "social", body: "قهوة أخرى" }, token));
     expect(over.isError).toBe(true);
@@ -137,7 +135,7 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
     // Switching brand does not reset the allowance.
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await saveBrand(scopeFor(u.email, "b2"), BRAND);
-    await setActiveBrand(u.email, "b2");
+    await seedActiveBrand(u.email, "b2");
     expect((await result(await call({ type: "social", body: "قهوة" }, token))).isError).toBe(true);
     expect(await listTasks(scopeFor(u.email, "b2"))).toHaveLength(0);
   });

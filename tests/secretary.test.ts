@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { json, newMember, newUser, params, signIn, signOut, type Fixture } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getUser, type User } from "@/lib/auth";
 import { saveBrand, saveTask, updateTask, type Brand, type Task } from "@/lib/brand";
-import { saveBrands, scopeFor, setActiveBrand } from "@/lib/brands";
+import { saveBrands, scopeFor } from "@/lib/brands";
 import { saveGov } from "@/lib/governance";
 import { wipeAccount } from "@/lib/account";
 import { createMcpToken } from "@/lib/mcp";
@@ -113,18 +113,17 @@ describe("tenant isolation (rule 190)", () => {
   });
 
   it("keeps a second brand's list separate", async () => {
-    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
-    const u = await owner("secbrand", { legacy: true });
+    const u = await owner("secbrand");
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await saveBrand(scopeFor(u.email, "b2"), { ...BRAND, name: "Two" });
     const first = await add({ title: "Default brand item" });
-    await setActiveBrand(u.email, "b2");
+    await seedActiveBrand(u.email, "b2");
     const second = await add({ title: "Second brand item" });
     expect(await getItem(scopeFor(u.email, "b2"), second.id)).not.toBeNull();
     expect(await getItem(u.email, second.id)).toBeNull();
     expect(JSON.stringify(await view())).not.toContain("Default brand item");
     expect((await patch(first.id, { title: "x" })).status).toBe(404);
-    await setActiveBrand(u.email, "default");
+    await seedActiveBrand(u.email, "default");
     expect((await patch(second.id, { title: "x" })).status).toBe(404);
   });
 });
@@ -345,8 +344,7 @@ describe("one writer at a time per item, checked against rev (rule 194)", () => 
 
 describe("limits (rule 195)", () => {
   it("allows 200 new items a day per account, across its brands", async () => {
-    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
-    const u = await owner("secrate", { legacy: true });
+    const u = await owner("secrate");
     await db.set(`rate:sec:create:${u.email}`, SEC_CREATE_PER_DAY - 1, 86400);
     expect((await create({ title: "The 200th" })).status).toBe(200);
     const over = await create({ title: "The 201st" });
@@ -354,7 +352,7 @@ describe("limits (rule 195)", () => {
     expect(over.headers.get("retry-after"), "the day's window (rule 680)").toBe("86400");
     expect(await over.json()).toEqual({ ok: false, error: "too_many" });
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
-    await setActiveBrand(u.email, "b2");
+    await seedActiveBrand(u.email, "b2");
     expect((await create({ title: "Other brand" })).status).toBe(429);
     expect(await db.zcard(SEC_KEYS.open(scopeFor(u.email, "b2")))).toBe(0);
   });
@@ -548,8 +546,7 @@ describe("the agenda read is batched (rule 198)", () => {
 
 describe("account deletion removes the whole list (rule 201)", () => {
   it("deletes every sec:* key of every brand scope", async () => {
-    // Pins the legacy shape (multi-org M1): `setActiveBrand` writes only the legacy `activebrand:{login}` key.
-    const u = await owner("secwipe", { legacy: true });
+    const u = await owner("secwipe");
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await saveBrand(scopeFor(u.email, "b2"), { ...BRAND, name: "Two" });
     const open = await add({ title: "Open" });
@@ -564,7 +561,7 @@ describe("account deletion removes the whole list (rule 201)", () => {
     await Promise.all([db.sadd(SEC_KEYS.seriesKeep(u.email), recDone.series.id), db.setNx(SEC_KEYS.swarn(u.email, recDone.series.id), "1", 3600), db.setNx(SEC_KEYS.spawn(u.email, rec.id), "s0123456789abcdef", 3600), db.zadd(SEC_KEYS.spurge(u.email), Date.now(), rec.id)]);
     const seriesKeys = [SEC_KEYS.series(u.email, recDone.series.id), SEC_KEYS.seriesList(u.email), SEC_KEYS.sdone(u.email), SEC_KEYS.spurge(u.email), SEC_KEYS.seriesKeep(u.email), SEC_KEYS.swarn(u.email, recDone.series.id), SEC_KEYS.spawn(u.email, rec.id)];
     expect(seriesKeys.every((k) => memKeys().includes(k))).toBe(true);
-    await setActiveBrand(u.email, "b2");
+    await seedActiveBrand(u.email, "b2");
     await add({ title: "Second brand" });
     // Absences Reem proposed in chat (rule 485), in both brands: an open one (its record and the index) and a decided one
     // (its outcome and the index). Their keys start "secawayprop", outside "sec:", and are found through the index.

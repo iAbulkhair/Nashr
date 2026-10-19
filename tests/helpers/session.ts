@@ -1,10 +1,11 @@
 import { randomBytes } from "crypto";
 import { vi } from "vitest";
-import { acct, createUser, getUser, normalizeEmail, PLAN_CREDITS, saveUser, sessionIds, sessionKey, type User } from "@/lib/auth";
+import { acct, createUser, getLogin, getUser, normalizeEmail, PLAN_CREDITS, saveUser, sessionIds, sessionKey, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createMember, withAccountTeamLock, writeMembership } from "@/lib/team";
 import { updatePerson } from "@/lib/person";
-import { ownerOf } from "@/lib/membership";
+import { legacyHomeFrom, ownerOf } from "@/lib/membership";
+import { activeBrandIn, setActiveBrandIn } from "@/lib/brands";
 import { newPersonId } from "@/lib/multi-org";
 import { accountKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { saveBrand, saveTask } from "@/lib/brand";
@@ -200,6 +201,28 @@ export async function newMember(owner: User, role: "admin" | "member" = "member"
   const m = await createMember(acct(owner), p ? { ...input, invitedByPid: ownerOf(owner) } : input, p ? { pid } : {});
   if (shadow) await addShadowMembership(pid, m.acceptedAt);
   return { email, password, pid };
+}
+
+/**
+ * The active brand a sign-in address works in (rule 2119), seeded and read the way `resolveSession` reads it: the person
+ * and the account the login resolves to, and the legacy per-login key only when that account is the person's home
+ * (`legacyHomeFrom`). The same answer for a `p_` person and a legacy one, so a brand-scope test runs in both fixture modes.
+ */
+async function brandSeat(email: string): Promise<{ pid: PersonId; aid: AccountId; homeLogin: string | null }> {
+  const l = await getLogin(email);
+  if (!l?.acct) throw new Error("brandSeat: the address signs in to no workspace");
+  const [rawUser, rawMember] = await Promise.all([db.get<unknown>(accountKey.user(l.pid)), db.get<unknown>(accountKey.member(l.pid))]);
+  return { pid: l.pid, aid: l.acct, homeLogin: legacyHomeFrom(l.pid, rawUser, rawMember) === l.acct ? normalizeEmail(email) : null };
+}
+/** Choose the active brand of the address's person in its workspace (`setActiveBrandIn`, as the brands route does). */
+export async function seedActiveBrand(email: string, id: string): Promise<void> {
+  const s = await brandSeat(email);
+  await setActiveBrandIn(s.pid, s.aid, id, s.homeLogin);
+}
+/** The active brand of the address's person in its workspace (`activeBrandIn`). */
+export async function readActiveBrand(email: string): Promise<string> {
+  const s = await brandSeat(email);
+  return activeBrandIn(s.pid, s.aid, s.homeLogin);
 }
 
 /**

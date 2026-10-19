@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, type Fixture } from "./helpers/session";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
-import { getUser, saveUser } from "@/lib/auth";
+import { acct, getUser, saveUser } from "@/lib/auth";
+import { ownerOf } from "@/lib/membership";
+import { accountKey, storedAccountId } from "@/lib/keys";
 import { saveBrands, scopeFor } from "@/lib/brands";
 import { listNotifs, seenKey } from "@/lib/notifications";
 import * as listRoute from "@/app/api/secretary/route";
@@ -915,10 +917,9 @@ describe("rule 509: the repeat controls and the series view on the to-do page", 
   });
 
   it("an unknown id, another brand's id and a malformed id: not found without reading anything else; malformed counts as absent", async () => {
-    // Pins the legacy shape (multi-org M1): the allowed session reads below are a legacy owner's (no `mbr:` read).
-    await login({ legacy: true });
+    await login();
     const a = await complete((await recurring("Mine")).id);
-    const other = await login({ legacy: true });
+    const other = await login();
     expect(other.email).toBeTruthy();
     const gets = vi.spyOn(db, "get");
     const mgets = vi.spyOn(db, "mget");
@@ -931,10 +932,14 @@ describe("rule 509: the repeat controls and the series view on the to-do page", 
     }
     // Only the login's own session reads (user, member, active brand, session, the login index of rule 1984, and since
     // multi-workspace M1 the person and the account's brand list, rule 2135): no brand file, no
-    // calendar, no item.
-    expect(gets.mock.calls.map((c) => String(c[0])).filter((k) => !/^(user|member|activebrand|session|login|person|brands):/.test(k))).toEqual([]);
+    // calendar, no item. A `p_` person's session also reads its own membership in the same round (`getMembership`: the
+    // row `mbr:{aid}:{pid}` and the roster entry, rule 2135): that membership only, never another person's or account's.
+    const aid = storedAccountId(acct(other));
+    const pid = ownerOf(other);
+    const ownRow = accountKey.membership(aid, pid);
+    expect(gets.mock.calls.map((c) => String(c[0])).filter((k) => !/^(user|member|activebrand|session|login|person|brands):/.test(k) && k !== ownRow)).toEqual([]);
     expect(mgets).not.toHaveBeenCalled();
-    expect(smembers).not.toHaveBeenCalled();
+    expect(smembers.mock.calls.filter(([k, m]) => !(k === accountKey.members(aid) && m === pid))).toEqual([]);
     gets.mockRestore();
     for (const bad of ["nope", ["a", "b"], ""]) {
       const html = await render("en", bad as string);
