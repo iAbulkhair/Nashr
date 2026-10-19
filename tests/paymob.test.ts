@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
-import { adminSignIn, jar, json, newMember, newUser, params, signIn } from "./helpers/session";
-import { getUser, saveUser, trialOver, type User } from "@/lib/auth";
+import { adminSignIn, jar, json, newMember, newOpaqueUser, newUser, params, signIn } from "./helpers/session";
+import { acct, getUser, saveUser, trialOver, type User } from "@/lib/auth";
 import { monthKey, renewalDue } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { ksaDay } from "@/lib/partner-rules";
@@ -573,5 +573,38 @@ describe("the billing page (rule 722)", () => {
     const h = await html();
     expect(h).not.toContain("data-paymob-pay");
     expect(h).not.toContain("data-paymob-plan");
+  });
+});
+
+describe("rule 1991: an intent names the account by its id and the billing address apart (account-id R1)", () => {
+  it("an opaque account pays: the intent holds acct and billingEmail, the plan and the card land on user:{id}", async () => {
+    const o = await newOpaqueUser("pmid");
+    await saveUser({ ...(await getUser(acct(o)))!, phone: "+966500000123" });
+    await signIn(o.email);
+    const { it: pi, answer } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    expect(answer.result).toBe("paid");
+    const intent = await db.get<Record<string, unknown>>(`paymob:intent:${pi.ref}`);
+    // `email` keeps the account for an older build reading it; `acct` and `billingEmail` are what R1 reads.
+    expect(intent).toMatchObject({ email: acct(o), acct: acct(o), billingEmail: o.email });
+    expect((await getUser(acct(o)))!.plan).toBe("starter");
+    expect(await db.get(`user:${o.email}`)).toBeNull();
+    expect(await payments(acct(o))).toHaveLength(1);
+    // The card callback carries the billing address Paymob was given, matched against `billingEmail`.
+    const tok = { id: 1, token: "tok" + randomBytes(20).toString("hex"), masked_pan: "xxxx-xxxx-xxxx-4242", merchant_id: 1, card_subtype: "Visa", created_at: "2026-10-08T10:00:00", email: o.email, order_id: String(pi.orderId), expiry_month: "01", expiry_year: "38" };
+    expect(await (await hook({ ...tok, email: acct(o) }, "TOKEN")).json()).toMatchObject({ result: "ignored" });
+    expect(await (await hook(tok, "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+    expect(await db.get(cardKey(acct(o)))).toMatchObject({ last4: "4242" });
+  });
+  it("an intent written before R1 (no acct, no billingEmail) still applies to its email", async () => {
+    const u = await owner("pmold");
+    const res = await pay({ kind: "plan", plan: "starter" });
+    expect(res.status).toBe(200);
+    const pi = fake.intents.at(-1)!;
+    const key = `paymob:intent:${pi.ref}`;
+    const { acct: _a, billingEmail: _b, ...old } = (await db.get<Record<string, unknown>>(key))!;
+    void _a; void _b;
+    await db.set(key, old);
+    expect(await (await hook(txnObj({ amount: pi.amount, orderId: pi.orderId, ref: pi.ref }))).json()).toMatchObject({ result: "paid" });
+    expect((await getUser(u.email))!.plan).toBe("starter");
   });
 });

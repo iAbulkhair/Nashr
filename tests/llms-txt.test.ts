@@ -17,6 +17,7 @@ import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { listPosts } from "@/lib/blog";
 import { LEGAL } from "@/lib/legal";
 import { PARTNER_TERMS } from "@/lib/partner-terms";
+import { HELP } from "@/lib/help";
 import { SITE_DEFAULT } from "@/lib/page-meta";
 
 /**
@@ -50,7 +51,8 @@ const COPY = (() => {
       Object.values(v).forEach(walk);
     }
   };
-  walk([dict, SITE, SITE_DEFAULT, AGENTS, AGENT_PAGES, INDUSTRY_PAGES, COMPARE_PAGE, TOOLS, LEGAL, PARTNER_TERMS, listPosts("ar"), listPosts("en")]);
+  // HELP joined the list with the help topics' pages (rule 2144): the route names each by its title.
+  walk([dict, SITE, SITE_DEFAULT, AGENTS, AGENT_PAGES, INDUSTRY_PAGES, COMPARE_PAGE, TOOLS, LEGAL, PARTNER_TERMS, HELP, listPosts("ar"), listPosts("en")]);
   out.delete("");
   return out;
 })();

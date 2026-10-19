@@ -25,8 +25,8 @@ const files = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
   return statSync(p).isDirectory() ? files(p) : /\.(ts|tsx)$/.test(n) ? [p] : [];
 });
 /** Route params for any page under [lang]: `lang` plus whatever dynamic segment the page has. */
-type Params = { lang: string; agent: string; tool: string; competitor: string; industry: string; slug: string };
-const P = (lang: string, extra: Record<string, string> = {}) => ({ params: Promise.resolve({ lang, agent: "", tool: "", competitor: "", industry: "", slug: "", ...extra } as Params) });
+type Params = { lang: string; agent: string; tool: string; competitor: string; industry: string; slug: string; topic: string };
+const P = (lang: string, extra: Record<string, string> = {}) => ({ params: Promise.resolve({ lang, agent: "", tool: "", competitor: "", industry: "", slug: "", topic: "", ...extra } as Params) });
 
 describe("rule 359: the layout's share card is a fallback that pages fill in", () => {
   it("sets metadataBase from appOrigin(), a large twitter card, and no og title or description of its own", async () => {
@@ -84,6 +84,7 @@ describe("rule 362: every public page with metadata names itself in both languag
     ["/tools", () => import("@/app/[lang]/tools/page")],
     ["/tools/hook-generator", () => import("@/app/[lang]/tools/[tool]/page"), { tool: "hook-generator" }],
     ["/help", () => import("@/app/[lang]/help/page")],
+    ["/help/credits", () => import("@/app/[lang]/help/[topic]/page"), { topic: "credits" }],
     ["/updates", () => import("@/app/[lang]/updates/page")],
     ["/ai-marketing-agent", () => import("@/app/[lang]/ai-marketing-agent/page")],
     ["/compare", () => import("@/app/[lang]/compare/page")],

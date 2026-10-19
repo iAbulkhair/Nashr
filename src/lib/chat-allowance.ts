@@ -8,10 +8,11 @@ import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey } from "./usage";
 import type { ChatTurn } from "./chat";
 import { fairUseGate, fairUseText, type FairUseRefusal } from "./fair-use";
 import { log } from "./log";
+import { acct } from "./account-id";
 
 /**
  * The chat allowance (pricing phase 2, rules 308-310): every owner message (one turn, however many model calls it takes)
- * is counted per account, shared by every seat, brand and connected app (`u.email` is always the account's). A paid plan
+ * is counted per account, shared by every seat, brand and connected app (`acct(u)`, the account's id). A paid plan
  * counts per UTC calendar month (`chatMsgKey`), a trial once for the whole trial (`chatTrialKey`), against
  * `chatAllowanceOf` (src/lib/pricing.ts).
  *
@@ -59,7 +60,8 @@ type Reserved = { ok: true; key: string; units: number; model: string; status: C
 export type ChatGate = (Reserved & { mode: "included" }) | (Reserved & { mode: "overflow"; hold: number }) | Refusal | FairUseStop;
 export type ChatReserved = Extract<ChatGate, { ok: true }>;
 
-const counterKey = (u: Pick<User, "email" | "plan">) => (u.plan === "trial" ? chatTrialKey(u.email) : chatMsgKey(u.email));
+// By account id (rule 1985), like the overflow and credit counters next to it.
+const counterKey = (u: Pick<User, "id" | "email" | "plan">) => (u.plan === "trial" ? chatTrialKey(acct(u)) : chatMsgKey(acct(u)));
 /** "Continue on credits" is offered on paid plans only: the trial's chat is its 30 messages. */
 export const overflowAvailable = (u: Pick<User, "plan">) => u.plan !== "trial";
 const overflowOn = (u: Pick<User, "plan" | "chatOverflow">) => overflowAvailable(u) && u.chatOverflow === true;
@@ -86,7 +88,7 @@ function statusOf(u: Pick<User, "plan" | "chatOverflow" | "chatAllowance">, coun
  */
 export async function chatStatus(u: Pick<User, "email" | "plan" | "chatOverflow" | "chatAllowance">, model: string): Promise<ChatStatus> {
   const trial = u.plan === "trial";
-  const [counted, over, cred] = await Promise.all([db.get<number>(counterKey(u)), trial ? 0 : db.get<number>(chatOverKey(u.email)), trial ? 0 : db.get<number>(chatCredKey(u.email))]);
+  const [counted, over, cred] = await Promise.all([db.get<number>(counterKey(u)), trial ? 0 : db.get<number>(chatOverKey(acct(u))), trial ? 0 : db.get<number>(chatCredKey(acct(u)))]);
   return statusOf(u, num(counted), num(over), num(cred), chatHoldFor(model));
 }
 
@@ -122,8 +124,8 @@ export async function reserveChatTurn(u: User, model: string): Promise<ChatGate>
   // An allowance of 0 is the founder turning chat off for the account: no message, not even on credits.
   if (!overflowOn(u) || allowance === 0) return { ok: false, error: "chat_allowance", status: await chatStatus(u, model), credits };
   if (credits < hold) return { ok: false, error: "chat_credits", status: await chatStatus(u, model), credits, need: hold };
-  const [over, cred] = await Promise.all([db.incrby(chatOverKey(u.email), units), db.get<number>(chatCredKey(u.email))]);
-  return { ok: true, mode: "overflow", key: chatOverKey(u.email), units, model: entry.id, hold, status: statusOf(u, n - units, over, num(cred), hold) };
+  const [over, cred] = await Promise.all([db.incrby(chatOverKey(acct(u)), units), db.get<number>(chatCredKey(acct(u)))]);
+  return { ok: true, mode: "overflow", key: chatOverKey(acct(u)), units, model: entry.id, hold, status: statusOf(u, n - units, over, num(cred), hold) };
 }
 
 /**
@@ -145,9 +147,9 @@ export async function settleChatTurn(u: User, gate: ChatReserved, usd: number | 
       : { status: { ...s, overflow: { ...s.overflow, used: Math.max(0, s.overflow.used - k) } }, charged: 0 };
   }
   if (gate.mode === "included") return { status: s, charged: 0 };
-  const r = await settleChatOverflow(u.email, gate.hold, Math.round(usd * 1e6), creditMicro());
+  const r = await settleChatOverflow(acct(u), gate.hold, Math.round(usd * 1e6), creditMicro());
   u.credits = r.credits;
-  if (r.charged) await db.incrby(chatCredKey(u.email), r.charged);
+  if (r.charged) await db.incrby(chatCredKey(acct(u)), r.charged);
   return { status: { ...s, overflow: { ...s.overflow, credits: s.overflow.credits + r.charged } }, charged: r.charged };
 }
 

@@ -10,7 +10,7 @@ import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
 import { PanelSkeleton } from "@/components/ui/Skeleton";
-import { emptyCopy } from "@/lib/empty-copy";
+import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 
 type Page = { rows: Activity[]; next: string | null };
 
@@ -148,7 +148,7 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
             <PanelSkeleton label={a.loading} shape="rows" />
           ) : rows.length === 0 ? (
             // Rule 2002: the filtered words when a filter is set, else the plain ones.
-            <EmptyState compact title={empty.title} body={empty.body} />
+            <EmptyState compact title={empty.title} body={empty.body} help={agent || kind ? undefined : emptyHelp(lang, "activity")} />
           ) : (
             <ul className="divide-y divide-foreground/10">
               {rows.map((r, i) => (

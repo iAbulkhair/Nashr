@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
-import { adminActor, normalizeEmail, saveUser } from "@/lib/auth";
+import { accountByLogin, adminActor, normalizeEmail, saveUser } from "@/lib/auth";
+import { acct } from "@/lib/account-id";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { fairUseOf } from "@/lib/fair-use";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
@@ -31,8 +32,11 @@ export async function POST(req: Request) {
   const month = monthKey();
   type Lift = { month: string; at: string; by: string } | null;
   let done: { before: Lift; after: Lift; user: Parameters<typeof fairUseOf>[0] };
+  // The address names the account; the lock and the save use its id (rule 1982).
+  const account = await accountByLogin(email);
+  if (!account) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   try {
-    done = await withUserLock(email, async (u) => {
+    done = await withUserLock(acct(account), async (u) => {
       const before = u.fairUseLift ?? null;
       if (action === "lift") u.fairUseLift = { month, at: new Date().toISOString(), by: who };
       else delete u.fairUseLift;

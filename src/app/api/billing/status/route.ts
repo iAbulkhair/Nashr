@@ -4,6 +4,7 @@ import { forbid } from "@/lib/roles";
 import { allow, retryLater, WINDOW } from "@/lib/rate";
 import { paymentsEnabled } from "@/lib/payments";
 import { billingView, lastCheckout } from "@/lib/billing";
+import { acct } from "@/lib/account-id";
 
 /** Reads per account and hour: the return page asks every few seconds for about a minute, so a few returns fit easily. */
 const STATUS_PER_HOUR = 240;
@@ -22,6 +23,6 @@ export async function GET() {
   if (no) return no;
   if (!(await allow(`billingstatus:${u.email}`, STATUS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
   if (!paymentsEnabled()) return NextResponse.json({ ok: true, enabled: false }, { headers: { "Cache-Control": "no-store" } });
-  const last = await lastCheckout(u.email);
+  const last = await lastCheckout(acct(u));
   return NextResponse.json({ ok: true, enabled: true, plan: u.plan, checkout: last, billing: billingView(u.billing) }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { helpTopics } from "@/lib/help";
+import { useEffect, useState } from "react";
+import { helpHref, helpTopics } from "@/lib/help";
 import type { Lang } from "@/lib/i18n";
 import Scribble from "@/components/Scribble";
 import ScribbleStatic from "@/components/ScribbleStatic";
@@ -12,6 +12,17 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
   const [q, setQ] = useState("");
   const [topic, setTopic] = useState("all");
   const [sent, setSent] = useState<"idle" | "busy" | "ok" | "err">("idle");
+  // Rule 2142: `/help#{slug}` opens that answer and scrolls to it, so an answer's anchor works on the index as on its topic page.
+  useEffect(() => {
+    const open = () => {
+      const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+      // Scrolled on the next task: opening the answer moves everything under it, and the router settles the scroll first.
+      if (el instanceof HTMLDetailsElement) { el.open = true; setTimeout(() => el.scrollIntoView({ block: "start" }), 0); }
+    };
+    open();
+    window.addEventListener("hashchange", open);
+    return () => window.removeEventListener("hashchange", open);
+  }, []);
   const norm = (s: string) => s.toLowerCase();
   const shown = HELP.filter((t) => topic === "all" || t.id === topic).map((t) => ({ ...t, items: t.items.filter((i) => !q || norm(i.q[lang] + " " + i.a[lang]).includes(norm(q))) })).filter((t) => t.items.length);
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -50,9 +61,16 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
         {shown.length === 0 && <p className="text-sm text-foreground-muted">{ar ? "لا نتائج. اسأل نور أو راسلنا أدناه." : "No results. Ask Noor or message us below."}</p>}
         {shown.map((t) => (
           <section key={t.id}>
-            <h2 className="font-display text-xl font-bold">{t.title[lang]}</h2>
+            {/* Rule 2140: each topic has its own page; the public index links it, the in-app copy stays in the app. */}
+            <h2 className="font-display text-xl font-bold">{inApp ? t.title[lang] : <a href={helpHref(lang, t.id)} className="hover:underline">{t.title[lang]}</a>}</h2>
             <div className="mt-3 divide-y divide-foreground/15 border-y-[1.5px] border-border-strong">
-              {t.items.map((i) => <details key={i.q.en} className="py-3"><summary className="cursor-pointer font-bold">{i.q[lang]}</summary><p className="mt-2 text-sm leading-relaxed text-foreground-muted" dir="auto">{i.a[lang]}</p></details>)}
+              {t.items.map((i) => (
+                <details key={i.slug} id={i.slug} className="scroll-mt-24 py-3">
+                  <summary className="cursor-pointer font-bold">{i.q[lang]}</summary>
+                  <p className="mt-2 text-sm leading-relaxed text-foreground-muted" dir="auto">{i.a[lang]}</p>
+                  <a href={helpHref(lang, t.id, i.slug)} className="mt-2 inline-block text-xs font-bold text-foreground-muted underline">{ar ? "رابط هذه الإجابة" : "Link to this answer"}</a>
+                </details>
+              ))}
             </div>
           </section>
         ))}

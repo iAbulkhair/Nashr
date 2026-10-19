@@ -31,6 +31,8 @@ const month = new Date().toISOString().slice(0, 7);
 async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">>> {
   const u = (await getUser((await newUser("allow")).email))!;
   const full: Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">> = {
+    // The account id (rule 1995): storage only, never a profile field.
+    id: u.email,
     email: u.email,
     name: "Owner Name",
     phone: "+966500000787",

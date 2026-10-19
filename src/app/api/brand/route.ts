@@ -5,6 +5,7 @@ import { handler } from "@/lib/api-handler";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { isZone } from "@/lib/zones";
 import { withBrandLock } from "@/lib/brand-proposals";
+import { acct } from "@/lib/account-id";
 
 export const GET = handler({ auth: "user" }, async ({ scope }) => NextResponse.json({ ok: true, brand: await getBrand(scope) }));
 
@@ -54,7 +55,7 @@ export const PUT = handler({ auth: "user", role: "brand.write", input: brandBody
       return next;
     });
     if (!brand) return NextResponse.json({ ok: false, error: "exists" }, { status: 409 });
-    await track(u.email, "onboard");
+    await track(acct(u), "onboard");
     return NextResponse.json({ ok: true, brand });
   } catch (e) {
     // Another save of this brand held the lock for its whole wait (about 3 s). Nothing was written.

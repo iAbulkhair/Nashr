@@ -286,7 +286,7 @@ describe("change a mistyped signup email", () => {
     await signIn(old.email);
     const to = addr("fixed");
     // What a crash after the new record was written leaves behind: the copy exists, the old account too.
-    await saveUser({ ...(await getUser(old.email))!, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
+    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
     const res = await move(to);
     expect(res.status).toBe(200);
     expect(await getUser(old.email)).toBeNull();
@@ -311,7 +311,7 @@ describe("change a mistyped signup email", () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("fixed");
-    await saveUser({ ...(await getUser(old.email))!, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
+    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
     const stale = randomBytes(32).toString("hex");
     // Issued after the source account's own window opened, so only the fresh stamp on the moved record can refuse it.
     await db.set(`session:${stale}`, { email: to, at: Date.parse(old.sessionsAfter!) + 1 }, 3600);
@@ -327,7 +327,7 @@ describe("change a mistyped signup email", () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("taken");
-    await saveUser({ ...(await getUser(old.email))!, email: to, createdAt: new Date(Date.now() - 86400000).toISOString() });
+    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, createdAt: new Date(Date.now() - 86400000).toISOString() });
     const res = await move(to);
     expect(res.status).toBe(409);
     expect(await getUser(old.email)).not.toBeNull();
@@ -337,7 +337,7 @@ describe("change a mistyped signup email", () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("taken");
-    await saveUser({ ...(await getUser(old.email))!, email: to, emailVerifiedAt: new Date().toISOString() });
+    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, emailVerifiedAt: new Date().toISOString() });
     expect((await move(to)).status).toBe(409);
     expect(await getUser(old.email)).not.toBeNull();
   });

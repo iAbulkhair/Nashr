@@ -4,6 +4,7 @@ import { mfaActive, openChallenge } from "./mfa";
 import { track } from "./track";
 import { isSuspended, suspensionEnd, suspensionExpired } from "./suspension";
 import { endExpiredSuspension } from "./suspension-server";
+import { acct } from "./account-id";
 
 /**
  * What every sign-in path shares once the person has proved who they are (a password in POST /api/auth/login, a
@@ -26,7 +27,7 @@ export const loginEmail = (l: Login) => (l.kind === "owner" ? l.user.email : l.m
 export function loginRefusal(l: Login): NextResponse | null {
   if (l.kind === "owner") return isSuspended(l.user) ? suspendedAnswer(l.user) : null;
   const { member, owner } = l;
-  if (!owner || member.memberOf !== owner.email || !(new Date(member.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) {
+  if (!owner || member.memberOf !== acct(owner) || !(new Date(member.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
   }
   if (isSuspended(owner)) return suspendedAnswer(owner);
@@ -56,7 +57,7 @@ export type Finish =
 export async function finishLogin(l: Login, { via, next, codeDone = false }: { via: "password" | "google"; next?: string; codeDone?: boolean }): Promise<Finish> {
   // An account whose suspension ended is let in by `isSuspended` already; this clears it and logs the expiry (rule 2073).
   const account = accountOf(l);
-  if (account && suspensionExpired(account)) await endExpiredSuspension(account.email);
+  if (account && suspensionExpired(account)) await endExpiredSuspension(acct(account));
   const refused = loginRefusal(l);
   if (refused) return { kind: "refused", res: refused };
   const email = loginEmail(l);

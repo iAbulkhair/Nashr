@@ -96,6 +96,7 @@ export const BEARER = /^Bearer\s+((?:thakeen|nashr)_[A-Za-z0-9_.-]+)$/;
 // Only tokens minted before hashing were ever stored raw, and all of them start with `nashr_`.
 const isRaw = (t: string) => t.startsWith("nashr_");
 
+/** `email` (on codes, access and refresh records and in grant keys) holds the ACCOUNT id, `acct(u)` (rule 1985); in R1 that is the owner's first address, so the bytes are unchanged. */
 type CodeRec = { client_id: string; redirect_uri: string; challenge: string; email: string; scope: string };
 export async function issueCode(p: CodeRec) {
   const code = randomBytes(24).toString("base64url");

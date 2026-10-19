@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { vi } from "vitest";
-import { createUser, getUser, saveUser, sessionKey, type User } from "@/lib/auth";
+import { acct, createUser, getUser, saveUser, sessionKey, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createMember } from "@/lib/team";
 
@@ -93,13 +93,27 @@ export async function newUser(prefix = "u", { verified = true }: { verified?: bo
 }
 
 /**
+ * An owner account whose id is opaque (`a_…`, rule 1985): the shape every new account has once release R2 turns
+ * `OPAQUE_IDS` on. Its record lives at `user:{id}`, never at its address, so a key built from `u.email` misses it.
+ * Verified like `newUser`.
+ */
+export async function newOpaqueUser(prefix = "o", { verified = true }: { verified?: boolean } = {}): Promise<User> {
+  const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, { opaque: true });
+  if (!verified) return u;
+  const stored = (await getUser(acct(u)))!;
+  stored.emailVerifiedAt = new Date().toISOString();
+  await saveUser(stored);
+  return stored;
+}
+
+/**
  * A real member login in `owner`'s account (src/lib/team.ts `createMember`: member record plus roster entry, no seat
  * check). Sign in with `signIn(email)`.
  */
 export async function newMember(owner: User, role: "admin" | "member" = "member", prefix = "m"): Promise<{ email: string; password: string }> {
   const email = `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`;
   const password = "abc12345";
-  await createMember(owner.email, { email, name: `Member ${n}`, password, lang: "ar", role, invitedBy: owner.email });
+  await createMember(acct(owner), { email, name: `Member ${n}`, password, lang: "ar", role, invitedBy: owner.email });
   return { email, password };
 }
 

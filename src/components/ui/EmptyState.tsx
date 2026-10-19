@@ -1,15 +1,19 @@
 import { Icon, type IconName } from "@/components/app/Icons";
+import HelpLink from "@/components/ui/HelpLink";
+import type { Lang } from "@/lib/i18n";
 
 /**
  * Nothing to show yet (rule 1116): what is missing, in one line, and the one thing to do about it. A plain region, not a
  * status or an alert: it is the screen's content, not news. No directive, so a server page can render it.
  */
-export default function EmptyState({ icon = "spark", title, body, action, compact = false, className = "" }: {
+export default function EmptyState({ icon = "spark", title, body, action, help, compact = false, className = "" }: {
   icon?: IconName;
   title: React.ReactNode;
   body?: React.ReactNode;
   /** A link or a button; the caller picks it, so its words and route are the caller's. */
   action?: React.ReactNode;
+  /** The help answer about this panel (rule 2147), from `emptyHelp` in src/lib/empty-copy.ts. */
+  help?: { lang: Lang; href: string };
   /** Inside a card or a table (rule 2002): less padding, a smaller mark, so the card keeps its size. */
   compact?: boolean;
   className?: string;
@@ -20,6 +24,7 @@ export default function EmptyState({ icon = "spark", title, body, action, compac
       <p className={`font-display font-bold text-foreground ${compact ? "text-sm" : "text-base"}`}>{title}</p>
       {body && <p className="max-w-prose text-sm text-foreground-muted">{body}</p>}
       {action && <div className="mt-2">{action}</div>}
+      {help && <HelpLink lang={help.lang} href={help.href} className="mt-1" />}
     </div>
   );
 }

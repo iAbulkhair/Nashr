@@ -1,3 +1,4 @@
+import { acct } from "./account-id";
 import { CAPS } from "./db";
 import { pmap } from "./parallel";
 import { listBrands, scopeFor } from "./brands";
@@ -34,9 +35,13 @@ export function approverStats(ds: Decision[], owner: string, now: number): Recor
   return Object.fromEntries(out);
 }
 
-/** The owner's team, across every brand of the account: one read per brand, in parallel. The owner's own email only, never a request's. */
-export async function teamApprovals(owner: string, now: number = Date.now()): Promise<Record<string, ApproverStat>> {
-  const brands = await listBrands(owner);
-  const lists = await pmap(brands, (b) => listDecisions(scopeFor(owner, b.id), CAPS.decisions));
-  return approverStats(lists.flat(), owner, now);
+/**
+ * The owner's team, across every brand of the account: one read per brand, in parallel. The account comes from the owner
+ * record (`acct`, rule 1980), never a request's; the owner's own records are keyed by its sign-in address for the page.
+ */
+export async function teamApprovals(owner: { id?: string; email: string }, now: number = Date.now()): Promise<Record<string, ApproverStat>> {
+  const id = acct(owner);
+  const brands = await listBrands(id);
+  const lists = await pmap(brands, (b) => listDecisions(scopeFor(id, b.id), CAPS.decisions));
+  return approverStats(lists.flat(), owner.email, now);
 }

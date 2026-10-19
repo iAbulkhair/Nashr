@@ -11,6 +11,7 @@ import { maybeSweep } from "@/lib/media/jobs";
 import { mediaDeps } from "@/lib/media/registry";
 import { chatItemOf } from "@/lib/handoffs";
 import { decideSpend, getSpendProposal, isSpendProposalId, type SpendRun } from "@/lib/spend-proposals";
+import { acct } from "@/lib/account-id";
 
 export const maxDuration = 300;
 
@@ -63,7 +64,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   if (r.ok) {
     if (r.kind === "dismissed") return NextResponse.json({ ok: true });
-    await track(u.email, "generate");
+    await track(acct(u), "generate");
     if (r.kind === "image") {
       const { status, body, headers } = mediaResponse(r.outcome);
       return NextResponse.json(body, { status, headers });

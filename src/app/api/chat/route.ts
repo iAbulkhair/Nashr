@@ -12,6 +12,7 @@ import { chatRouteFor } from "@/lib/models/overrides";
 import { noteRejectedPick } from "@/lib/usage";
 import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 import { customerModelError } from "@/lib/provider-fault-note";
+import { acct } from "@/lib/account-id";
 
 export const maxDuration = 300;
 
@@ -76,12 +77,12 @@ export async function POST(req: Request) {
   if (!b.stream) {
     try {
       const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected }));
-      await track(u.email, "chat");
+      await track(acct(u), "chat");
       if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
       return NextResponse.json({ ok: true, message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
     } catch (e) {
       console.error("chat failed", e);
-      await track(u.email, "error");
+      await track(acct(u), "error");
       // A provider rate limit, overload or spent balance gets its own message (rule 1477), never the provider's text.
       return NextResponse.json({ ok: false, error: (await customerModelError(e, "chat")) ?? "chat_failed" }, { status: 502 });
     }
@@ -95,12 +96,12 @@ export async function POST(req: Request) {
       const beat = setInterval(() => { try { controller.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
         const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, onStatus: (s) => send({ type: "status", text: s }) }));
-        await track(u.email, "chat");
+        await track(acct(u), "chat");
         if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
         send({ type: "message", message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
       } catch (e) {
         console.error("chat failed", e);
-        await track(u.email, "error");
+        await track(acct(u), "error");
         send({ type: "error", error: (await customerModelError(e, "chat")) ?? "chat_failed" });
       } finally {
         clearInterval(beat);
