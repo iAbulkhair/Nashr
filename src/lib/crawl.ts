@@ -1,5 +1,6 @@
 import { safeFetch } from "./safe-fetch";
 import { appOrigin } from "./origin";
+import { PAGE_PREFIX_BYTES, responsePrefix } from "./read-capped";
 /** Fetch a public site and reduce it to text Noor can read. No JS rendering. */
 export type SiteSnapshot = { url: string; ok: boolean; title: string; description: string; text: string; links: string[]; platform: string; error?: string; /** most frequent hex colours in inline CSS, for brand guidelines */ colors?: string[]; fonts?: string[] };
 
@@ -49,9 +50,10 @@ export async function crawl(input: string): Promise<SiteSnapshot> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 9000);
+    // The deadline covers the body too, and only its first 2 MB are read (rule 2246): a site that drips or never ends
+    // its page cannot hold the request or fill the memory.
     const res = await safeFetch(url, { signal: ctrl.signal, headers: { "User-Agent": `Mozilla/5.0 (compatible; NashrBot/0.1; +${appOrigin()})`, "Accept-Language": "ar,en;q=0.8" } });
-    clearTimeout(t);
-    const html = (await res.text()).slice(0, 600000);
+    const html = await responsePrefix(res, PAGE_PREFIX_BYTES).finally(() => clearTimeout(t)).then((h) => h.slice(0, 600000));
     const title = strip(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").slice(0, 200);
     const description = (html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? "").slice(0, 400);
     const links = [...new Set([...html.matchAll(/href=["']([^"'#?]+)["']/gi)].map((m) => m[1]).filter((l) => /^(https?:)?\/\//.test(l) || l.startsWith("/")).slice(0, 60))];

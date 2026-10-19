@@ -5,6 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { WFile } from "@/lib/files";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { readImportStream } from "./catalogImport";
+import { connectError } from "@/lib/connect-errors";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
@@ -38,6 +39,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   /** Shows a refused call: the role for a 403 stays inline, any other failure is a toast. */
   function fail(res: Response | null, generic: string) {
     if (res?.status === 403) setErr(t.team.errors.forbidden);
+    else if (res?.status === 429) toast.danger(connectError(lang, "slow_down")); // rule 2249
     else toast.danger(generic);
   }
   async function importCatalog() {

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { writeFile } from "./files";
+import { deleteFile, writeFile } from "./files";
 import { listConnections, type Connection } from "./connectors/store";
 import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { sallaSales } from "./connectors/salla";
@@ -16,6 +16,45 @@ const FAIL = (scope: string) => wsKey.storeSyncFail(scopeParam(scope));
 /** The latest store sales snapshot for this workspace, or null if it was never synced. One store per workspace. */
 export async function getSalesSnapshot(scope: string) {
   return db.get<SalesSnapshot>(KEY(scope));
+}
+
+/** The snapshot, its failure note and store-sales.md, when they came from `provider` (a Shopify `shop/redact`, rule 2171). */
+export async function dropSalesSnapshot(scope: string, provider: SalesProvider): Promise<boolean> {
+  if ((await getSalesSnapshot(scope))?.provider !== provider) return false;
+  await Promise.all([db.del(KEY(scope)), db.del(FAIL(scope)), deleteFile(scope, "store-sales.md")]);
+  return true;
+}
+
+const host = (v: string) => {
+  try {
+    return new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).host.toLowerCase();
+  } catch {
+    return v.trim().toLowerCase();
+  }
+};
+
+/**
+ * The store a sales connection points at, as its connect step stored it (rule 2207): Shopify's `meta.shop`, Zid's
+ * `meta.storeId`, the host of Salla's and WooCommerce's `meta.site`. "" when it is not known or not a store.
+ */
+export function storeIdentity(c: Pick<Connection, "provider" | "meta">): string {
+  if (!(SALES_PROVIDERS as readonly string[]).includes(c.provider)) return "";
+  const m = c.meta ?? {};
+  const v = String((c.provider === "shopify" ? m.shop : c.provider === "zid" ? m.storeId : m.site) ?? "").trim();
+  return !v ? "" : c.provider === "zid" ? v : host(v);
+}
+
+/**
+ * A reconnect of the same platform to another store drops the old store's snapshot, failure note and store-sales.md
+ * (rule 2207), so the reports never show one store's totals under another's name; the new store starts from its own
+ * first sync. Unknown on either side, the same store again, or another platform: nothing is dropped.
+ */
+export async function dropSnapshotIfStoreChanged(scope: string, before: Pick<Connection, "provider" | "meta"> | null, after: Pick<Connection, "provider" | "meta">): Promise<boolean> {
+  if (!before || before.provider !== after.provider) return false;
+  const a = storeIdentity(before);
+  const b = storeIdentity(after);
+  if (!a || !b || a === b) return false;
+  return dropSalesSnapshot(scope, after.provider as SalesProvider);
 }
 
 /** Read orders and abandoned carts from the store, keep the totals, and give Noor the same totals as store-sales.md. */

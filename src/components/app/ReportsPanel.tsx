@@ -16,6 +16,7 @@ import { kpiDelta } from "@/lib/kpi-delta";
 import { PLATFORM_METRICS, reportSources, socialRead, type SiteChoices } from "@/lib/report-sources";
 import { PROVIDER_NAME, SALES_PROVIDERS, moneyText, type SalesProvider, type SalesSnapshot } from "@/lib/connectors/sales";
 import { dateFormat } from "@/lib/dates";
+import { connectError } from "@/lib/connect-errors";
 import type { PerfSnapshot } from "@/lib/perf-import";
 import PerformanceImport from "./PerformanceImport";
 import SiteStats from "./SiteStats";
@@ -335,7 +336,7 @@ function StoreSales({ R, refusals, failed, provider, store, failedAt, lang }: { 
     if (j.ok) r.refresh();
     // A store that refused access says what to reconnect: that stays beside the card. Any other failure is a toast.
     else if (j.error === "orders_access_denied" || j.error === "zid_access_denied" || j.error === "woo_access_denied") setErr(j.error === "orders_access_denied" ? R.accessDenied : j.error === "zid_access_denied" ? R.zidDenied : R.wooDenied);
-    else toast.danger(j.error ?? `HTTP ${res.status}`);
+    else toast.danger(j.error === "slow_down" ? connectError(lang, j.error) : j.error ?? `HTTP ${res.status}`);
   }
   const fill = (s: string, v: Record<string, number | string>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
   const name = PROVIDER_NAME[provider];

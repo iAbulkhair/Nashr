@@ -20,6 +20,11 @@ export type Provider = {
     tokenAuth?: "body" | "basic";
     /** Shopify/Salla-style per-store authorize URLs use {shop} placeholder filled from the connect form. */
     needsShop?: boolean;
+    /**
+     * Days a refresh token lives when it is not used (rule 2179). Set only where the platform's docs say so: the stores
+     * cron then refreshes an expired access token even when nothing else uses the connection (connectors/keepalive.ts).
+     */
+    refreshTokenDays?: number;
   };
   keyFields?: KeyField[];
   docs?: string;
@@ -88,7 +93,7 @@ export const PROVIDERS: Provider[] = [
   },
   // ---- OAuth (activate when env keys exist) ----
   { id: "x", name: "X", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://x.com/i/oauth2/authorize", tokenUrl: "https://api.x.com/2/oauth2/token", scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"], clientIdEnv: "X_CLIENT_ID", clientSecretEnv: "X_CLIENT_SECRET", pkce: true, tokenAuth: "basic" } },
-  { id: "shopify", name: "Shopify", kind: "oauth", capabilities: ["products", "orders", "publish_article"], oauth: { authorizeUrl: "https://{shop}/admin/oauth/authorize", tokenUrl: "https://{shop}/admin/oauth/access_token", scopes: ["read_products", "read_orders", "read_checkouts", "write_content", "read_customers"], clientIdEnv: "SHOPIFY_CLIENT_ID", clientSecretEnv: "SHOPIFY_CLIENT_SECRET", scopeSeparator: ",", needsShop: true } },
+  { id: "shopify", name: "Shopify", kind: "oauth", capabilities: ["products", "orders", "publish_article"], oauth: { authorizeUrl: "https://{shop}/admin/oauth/authorize", tokenUrl: "https://{shop}/admin/oauth/access_token", scopes: ["read_products", "read_orders", "write_content"], clientIdEnv: "SHOPIFY_CLIENT_ID", clientSecretEnv: "SHOPIFY_CLIENT_SECRET", scopeSeparator: ",", needsShop: true } },
   { id: "google", name: "Google (Business Profile, GA4, Search Console, YouTube)", kind: "oauth", capabilities: ["publish_post", "analytics"], oauth: { authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth", tokenUrl: "https://oauth2.googleapis.com/token", scopes: ["https://www.googleapis.com/auth/business.manage", "https://www.googleapis.com/auth/analytics.readonly", "https://www.googleapis.com/auth/webmasters.readonly", "openid", "email"], clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET", extraAuthParams: { access_type: "offline", prompt: "consent" } } },
   // Reem's calendar (B3). Read-only scopes, one calendar per brand held in code (spec 2026-10-05-secretary-reem-b3-calendar-read-design.md §3).
   { id: "gcal", name: "Google Calendar (Reem)", kind: "oauth", capabilities: [], secretary: true, oauth: { authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth", tokenUrl: "https://oauth2.googleapis.com/token", scopes: ["openid", "email", "https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.owned.readonly"], clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET", extraAuthParams: { access_type: "offline", prompt: "consent", include_granted_scopes: "false" } } },
@@ -98,7 +103,7 @@ export const PROVIDERS: Provider[] = [
   // A separate connection from the Page one above: `ads_read` needs its own App Review, and asking for it in the
   // publishing flow would make every Page connection fail until Meta approves it. Same app credentials.
   { id: "meta_ads", name: "Meta Ads (results)", kind: "oauth", capabilities: ["ads"], oauth: { authorizeUrl: "https://www.facebook.com/v23.0/dialog/oauth", tokenUrl: "https://graph.facebook.com/v23.0/oauth/access_token", scopes: ["ads_read"], clientIdEnv: "META_APP_ID", clientSecretEnv: "META_APP_SECRET", scopeSeparator: "," } },
-  { id: "salla", name: "Salla (سلة)", kind: "oauth", capabilities: ["products", "orders"], oauth: { authorizeUrl: "https://accounts.salla.sa/oauth2/auth", tokenUrl: "https://accounts.salla.sa/oauth2/token", scopes: ["offline_access"], clientIdEnv: "SALLA_CLIENT_ID", clientSecretEnv: "SALLA_CLIENT_SECRET" } },
+  { id: "salla", name: "Salla (سلة)", kind: "oauth", capabilities: ["products", "orders"], oauth: { authorizeUrl: "https://accounts.salla.sa/oauth2/auth", tokenUrl: "https://accounts.salla.sa/oauth2/token", scopes: ["offline_access"], clientIdEnv: "SALLA_CLIENT_ID", clientSecretEnv: "SALLA_CLIENT_SECRET", refreshTokenDays: 30 } },
   { id: "zid", name: "Zid (زد)", kind: "oauth", capabilities: ["products", "orders"], oauth: { authorizeUrl: "https://oauth.zid.sa/oauth/authorize", tokenUrl: "https://oauth.zid.sa/oauth/token", scopes: [], clientIdEnv: "ZID_CLIENT_ID", clientSecretEnv: "ZID_CLIENT_SECRET" } },
   { id: "linkedin", name: "LinkedIn", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization", tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken", scopes: ["openid", "profile", "w_member_social"], clientIdEnv: "LINKEDIN_CLIENT_ID", clientSecretEnv: "LINKEDIN_CLIENT_SECRET" } },
   { id: "tiktok", name: "TikTok", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/", tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/", scopes: ["user.info.basic", "video.publish", "video.upload"], clientIdEnv: "TIKTOK_CLIENT_KEY", clientSecretEnv: "TIKTOK_CLIENT_SECRET", scopeSeparator: "," } },
@@ -125,7 +130,14 @@ export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;
 }
 /** Providers with no direct publishing code: they connect through Composio or not at all. */
-const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "whatsapp", "youtube", "google_workspace", "google_drive", "dropbox", "onedrive"];
+export const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "whatsapp", "youtube", "google_workspace", "google_drive", "dropbox", "onedrive"];
+
+/**
+ * Rule 2175: the OAuth providers a platform app of ours can connect (the start route refuses the others). Only these
+ * need a thakeen.com callback and `*_CLIENT_*` names; the Composio-only ones keep their `oauth` entry for the token
+ * renewal of a connection made before they moved to Composio.
+ */
+export const isDirectApp = (p: Provider) => !!p.oauth && !COMPOSIO_ONLY.includes(p.id);
 
 /** The provider connects through Composio (COMPOSIO_PROVIDERS names it and the key is set), not its own OAuth app. */
 export const routedViaComposio = (id: string) => composioEnabled(id);

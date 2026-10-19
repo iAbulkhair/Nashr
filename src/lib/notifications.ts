@@ -13,6 +13,8 @@ import type { Zone } from "./zones";
 import { appOrigin } from "./origin";
 import { inAppAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
 import { accountKey } from "./keys";
+import { listConnections } from "./connectors/store";
+import { getProvider } from "./connectors/registry";
 import { acct } from "./account-id";
 import { brandOfScope } from "./account-id";
 
@@ -191,7 +193,17 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   if (weak.length) {
     await add({ kind: "quality", agent: "dana", href: app, title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
   }
-  // 6. Overdue to-dos on Reem's list.
+  // 6. Connections a platform refused (rule 2200): the owner hears it here, not only on the next failed publish.
+  const broken = (await listConnections(scope)).filter((c) => {
+    const p = getProvider(c.provider);
+    return !!c.needsReconnect && !!p && !p.secretary;
+  });
+  if (broken.length) {
+    const names = broken.map((c) => getProvider(c.provider)!.name).sort().join(ar ? "، " : ", ");
+    const fp = ["reconnect", ...broken.map((c) => `${c.provider}@${c.needsReconnect}`).sort()].join(",").slice(0, 130);
+    await add({ kind: "info", href: `${app}/settings/connections`, title: withBrand(ar ? `أعد ربط ${names}` : `Reconnect ${names}`, await brandTag(user.email, scope)), body: ar ? "رفضت المنصة الربط الحالي، فلن ينشر الفريق أو يقرأ منها حتى تربطها من جديد." : "The platform refused the current connection, so the team cannot publish to it or read from it until you connect it again." }, brandFingerprint(scope, fp), 7);
+  }
+  // 7. Overdue to-dos on Reem's list.
   out.push(...(await overdueTodoAlerts(user, scope)));
   return out;
 }

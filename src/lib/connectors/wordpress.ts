@@ -1,5 +1,6 @@
 import type { Connection } from "./store";
 import { safeFetch } from "../safe-fetch";
+import { STORE_REPLY_BYTES, responseBytes, responseJson, responseText } from "../read-capped";
 
 function auth(c: Connection) {
   return "Basic " + Buffer.from(`${c.data.username}:${c.data.appPassword.replace(/\s+/g, "")}`).toString("base64");
@@ -13,7 +14,7 @@ export async function verifyWordPress(data: Record<string, string>): Promise<{ o
   try {
     const r = await safeFetch(`${base(c)}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: auth(c) } });
     if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
-    const j = (await r.json()) as { name?: string; capabilities?: Record<string, boolean> };
+    const j = (await responseJson(r, STORE_REPLY_BYTES)) as { name?: string; capabilities?: Record<string, boolean> };
     if (j.capabilities && !j.capabilities.publish_posts && !j.capabilities.edit_posts) return { ok: false, error: "user cannot publish posts" };
     return { ok: true, name: j.name };
   } catch (e) {
@@ -55,16 +56,16 @@ async function uploadFeaturedImage(c: Connection, imageUrl: string): Promise<num
     const type = (img.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
     const ext = IMAGE_TYPES[type];
     if (!img.ok || !ext) return null;
-    const bytes = Buffer.from(await img.arrayBuffer());
+    const bytes = await responseBytes(img, MAX_IMAGE_BYTES);
     if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return null;
     const r = await safeFetch(`${base(c)}/wp-json/wp/v2/media`, {
       method: "POST",
       headers: { Authorization: auth(c), "Content-Type": type, "Content-Disposition": `attachment; filename="thakeen-${Date.now()}.${ext}"` },
-      body: bytes,
+      body: new Uint8Array(bytes),
       signal: AbortSignal.timeout(20_000),
     });
     if (!r.ok) return null;
-    const j = (await r.json().catch(() => null)) as { id?: unknown } | null;
+    const j = (await responseJson(r, STORE_REPLY_BYTES).catch(() => null)) as { id?: unknown } | null;
     return typeof j?.id === "number" ? j.id : null;
   } catch {
     return null;
@@ -76,7 +77,7 @@ async function canPublishLive(c: Connection): Promise<boolean> {
   try {
     const r = await safeFetch(`${base(c)}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: auth(c) } });
     if (!r.ok) return true; // the publish itself will say what the site refuses
-    const j = (await r.json()) as { capabilities?: Record<string, boolean> };
+    const j = (await responseJson(r, STORE_REPLY_BYTES)) as { capabilities?: Record<string, boolean> };
     return j.capabilities ? !!j.capabilities.publish_posts : true;
   } catch {
     return true;
@@ -111,8 +112,8 @@ export async function publishWordPress(c: Connection, post: WordPressPost): Prom
 
   if (post.updateId && /^\d{1,12}$/.test(post.updateId)) {
     const r = await safeFetch(`${base(c)}/wp-json/wp/v2/posts/${post.updateId}`, { method: "POST", headers, body: JSON.stringify({ title: post.title, content, ...(live ? { status: "publish" } : {}) }) });
-    if (r.ok) return result((await r.json()) as { id: number; link: string; status?: string }, []);
-    if (r.status !== 404) throw new Error(`wordpress ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    if (r.ok) return result((await responseJson(r, STORE_REPLY_BYTES)) as { id: number; link: string; status?: string }, []);
+    if (r.status !== 404) throw new Error(`wordpress ${r.status}: ${(await responseText(r, STORE_REPLY_BYTES)).slice(0, 200)}`);
   }
 
   const notes: string[] = [];
@@ -126,6 +127,6 @@ export async function publishWordPress(c: Connection, post: WordPressPost): Prom
     headers,
     body: JSON.stringify({ title: post.title, content, status: live ? "publish" : "draft", ...(media != null ? { featured_media: media } : {}) }),
   });
-  if (!r.ok) throw new Error(`wordpress ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  return result((await r.json()) as { id: number; link: string; status?: string }, notes);
+  if (!r.ok) throw new Error(`wordpress ${r.status}: ${(await responseText(r, STORE_REPLY_BYTES)).slice(0, 200)}`);
+  return result((await responseJson(r, STORE_REPLY_BYTES)) as { id: number; link: string; status?: string }, notes);
 }

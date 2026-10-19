@@ -1,5 +1,7 @@
 import { writeFile } from "./files";
 import { safeFetch } from "./safe-fetch";
+import { PAGE_PREFIX_BYTES, responsePrefix } from "./read-capped";
+import { DESC_MAX, NAME_MAX, PRICE_MAX, plainLine, productsMarkdown } from "./connectors/products-md";
 
 /** Import a store's products from its sitemap → products.md. No API keys, works for Salla/Zid/Shopify/Woo. */
 export type Product = { url: string; title: string; price?: string; description?: string };
@@ -11,7 +13,8 @@ async function get(url: string, ms = 8000) {
   const t = setTimeout(() => c.abort(), ms);
   try {
     const r = await safeFetch(url, { signal: c.signal, headers: UA });
-    return r.ok ? await r.text() : "";
+    // The first 2 MB only, read inside the same deadline (rule 2246): a sitemap's or page's start is all that is used.
+    return r.ok ? await responsePrefix(r, PAGE_PREFIX_BYTES) : "";
   } catch {
     return "";
   } finally {
@@ -26,7 +29,7 @@ async function resolve(base: string): Promise<{ origin: string; html: string }> 
   try {
     const r = await safeFetch(base, { signal: c.signal, headers: UA });
     const origin = new URL(r.url || base).origin;
-    return { origin, html: r.ok ? await r.text() : "" };
+    return { origin, html: r.ok ? await responsePrefix(r, PAGE_PREFIX_BYTES) : "" };
   } catch {
     return { origin: new URL(base).origin, html: "" };
   } finally {
@@ -36,6 +39,15 @@ async function resolve(base: string): Promise<{ origin: string; html: string }> 
 
 function locs(xml: string) {
   return [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]);
+}
+/** The site's own host or its www twin (rule 2248): a sitemap or robots.txt cannot send the import to another site. */
+function sameSite(u: string, origin: string) {
+  try {
+    const bare = (h: string) => h.toLowerCase().replace(/^www\./, "");
+    return bare(new URL(u).hostname) === bare(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
 }
 const PRODUCT_RX = /\/(products?|p|item|items|product-details|shop|منتج)\/|\/p\d{3,}|\/product\?|productid=|\/[^/]*-p-\d+|\/dp\/|\/catalog\/product\//i;
 
@@ -59,10 +71,10 @@ export async function discoverProductUrls(site: string, limit = 25): Promise<str
     for (const c of children) {
       if (Date.now() > deadline) break;
       const cx = await get(c, 6000);
-      for (const u of locs(cx)) if (PRODUCT_RX.test(u)) urls.add(u);
+      for (const u of locs(cx)) if (PRODUCT_RX.test(u) && sameSite(u, origin)) urls.add(u);
       if (urls.size >= limit) break;
     }
-    for (const u of found) if (PRODUCT_RX.test(u)) urls.add(u);
+    for (const u of found) if (PRODUCT_RX.test(u) && sameSite(u, origin)) urls.add(u);
     if (urls.size >= limit) break;
   }
   if (urls.size === 0) {
@@ -84,14 +96,15 @@ export async function fetchProduct(url: string): Promise<Product | null> {
   const html = await get(url, 7000);
   if (!html) return null;
   const og = (p: string) => html.match(new RegExp(`<meta[^>]+property=["']${p}["'][^>]+content=["']([^"']*)["']`, "i"))?.[1] ?? html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+property=["']${p}["']`, "i"))?.[1];
-  const title = (og("og:title") ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+  const title = plainLine(og("og:title") ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "", NAME_MAX);
   if (!title || /سياسة|الشروط|شروط|policy|terms|privacy|faq|الأسئلة|contact|تواصل/i.test(title)) return null;
   const jsonPrice = html.match(/"price"\s*:\s*"?(\d+(?:[.,]\d+)?)"?/i)?.[1];
   const metaPrice = og("product:price:amount") ?? og("og:price:amount");
   const bodyPrice = text(html).match(/(\d{1,3}(?:[,.]\d{3})*(?:[.,]\d{1,2})?)\s*(?:ر\.?س|ريال|SAR|AED|درهم|KWD|د\.ك)/i)?.[0];
   const price = metaPrice ?? jsonPrice ?? bodyPrice;
-  const description = (og("og:description") ?? html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? "").slice(0, 240);
-  return { url, title, price: price ? String(price).slice(0, 30) : undefined, description: description || undefined };
+  const description = plainLine(og("og:description") ?? html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? "", DESC_MAX);
+  const shown = plainLine(price ?? "", PRICE_MAX);
+  return { url, title, price: shown || undefined, description: description || undefined };
 }
 
 export async function importCatalog(email: string, site: string, onProgress?: (msg: string) => void): Promise<{ count: number; products: Product[] }> {
@@ -105,13 +118,15 @@ export async function importCatalog(email: string, site: string, onProgress?: (m
     for (const p of batch) if (p) products.push(p);
     onProgress?.(`fetched:${products.length}`);
   }
-  const md = [
-    `# Product catalog (imported ${new Date().toISOString().slice(0, 10)} from ${site})`,
-    "",
+  // The same plain, capped lines as every store importer, links only on the site's own host (rule 2248). An import
+  // that found nothing leaves the owner's products.md as it was.
+  const host = urls[0] ? new URL(urls[0]).hostname : undefined;
+  const { md, count } = productsMarkdown(
+    `Product catalog (imported ${new Date().toISOString().slice(0, 10)} from ${site})`,
+    products.map((p) => ({ name: p.title, price: p.price, description: p.description, url: p.url })),
+    host,
     "Noor: use these real products, names and prices in content. Prices below are what the store showed at import time; still confirm offers with the owner.",
-    "",
-    ...products.map((p) => `- **${p.title}**${p.price ? ` — ${p.price}` : ""}${p.description ? `\n  ${p.description}` : ""}\n  ${p.url}`),
-  ].join("\n");
-  await writeFile(email, "products.md", md, "noor");
-  return { count: products.length, products };
+  );
+  if (count) await writeFile(email, "products.md", md, "noor");
+  return { count, products: products.slice(0, count) };
 }

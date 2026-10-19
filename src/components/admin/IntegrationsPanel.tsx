@@ -5,8 +5,10 @@ import Badge, { type BadgeTone } from "@/components/ui/Badge";
 import Callout from "@/components/ui/Callout";
 // Type only: integration-status.ts is server code (it imports model.ts); the type is erased from the bundle (rule 249).
 import type { IntegrationView } from "@/lib/integration-status";
+import type { ComplianceSummary } from "@/lib/connectors/shopify-compliance";
 // Rules 2002 empty state, 2003 skeleton while the panel loads.
 import { PanelSkeleton } from "@/components/ui/Skeleton";
+import { Time } from "@/components/ui/Time";
 
 const S = {
   en: {
@@ -15,7 +17,22 @@ const S = {
     loading: "Loading…", failed: "Could not load the list.",
     status: { on: "On", partial: "Incomplete", off: "Off" },
     required: "needed", optional: "optional", set: "set", missing: "missing", gatedOff: "Off in code", gatedOn: "Code switch",
+    callback: "Callback path to list in the platform app (after this site's address)",
+    webhook: "Webhook path to give the platform app (after this site's address; Shopify: all three compliance fields)",
+    compliance: "Shopify compliance requests",
+    pending: (n: number) => `${n} store erasure${n === 1 ? "" : "s"} waiting for the next stores run`,
+    none: "None received yet.",
+    topic: { "customers/data_request": "Customer data request (nothing held)", "customers/redact": "Customer erasure (nothing held)", "shop/redact": "Store erasure queued", "app/uninstalled": "Store uninstalled the app: removal queued", "shop/redact:done": "Store erasure done" } as Record<string, string>,
+    workspaces: (n: number) => `${n} workspace${n === 1 ? "" : "s"}`,
     summary: (on: number, all: number) => `${on} of ${all} on`,
+    health: "Connections across workspaces",
+    healthNote: (n: number) => `Counted by the stores run over ${n} workspace${n === 1 ? "" : "s"}. Numbers only; no workspace is named.`,
+    healthNone: "Not counted yet: the stores run writes this.",
+    healthCols: { platform: "Platform", connected: "Connected", reconnect: "Must reconnect", composio: "Via Composio" },
+    keepAlive: (k: KeepAlive) => `Token keep-alive: ${k.due} expired, ${k.refreshed} refreshed, ${k.lost} refused, ${k.failed} failed.`,
+    keepAliveNone: "Token keep-alive: not recorded for this run.",
+    hooks: (h: Hooks) => `Shopify uninstall webhook: ${h.due} stores without it, ${h.subscribed} subscribed, ${h.failed} failed.`,
+    hooksNone: "Shopify uninstall webhook: not recorded for this run.",
   },
   ar: {
     title: "التكاملات",
@@ -23,9 +40,29 @@ const S = {
     loading: "جارٍ التحميل…", failed: "تعذّر تحميل القائمة.",
     status: { on: "تعمل", partial: "ناقصة", off: "متوقفة" },
     required: "مطلوب", optional: "اختياري", set: "مضبوط", missing: "غير مضبوط", gatedOff: "متوقفة في الكود", gatedOn: "مفتاح في الكود",
+    callback: "مسار الرجوع الذي يُضاف في تطبيق المنصة (بعد عنوان هذا الموقع)",
+    webhook: "مسار الإشعارات (Webhook) الذي يُعطى لتطبيق المنصة (بعد عنوان هذا الموقع؛ في Shopify: حقول الامتثال الثلاثة)",
+    compliance: "طلبات الامتثال من Shopify",
+    pending: (n: number) => `طلبات حذف متاجر تنتظر تشغيل المتاجر القادم: ${n}`,
+    none: "لم يصل أي طلب بعد.",
+    topic: { "customers/data_request": "طلب بيانات عميل (لا نحتفظ بشيء)", "customers/redact": "حذف بيانات عميل (لا نحتفظ بشيء)", "shop/redact": "طلب حذف بيانات متجر في الانتظار", "app/uninstalled": "ألغى المتجر تثبيت التطبيق: الحذف في الانتظار", "shop/redact:done": "تم حذف بيانات المتجر" } as Record<string, string>,
+    workspaces: (n: number) => `مساحات العمل: ${n}`,
     summary: (on: number, all: number) => `${on} من ${all} تعمل`,
+    health: "الربط عبر مساحات العمل",
+    healthNote: (n: number) => `عدّها تشغيل المتاجر في مساحات العمل: ${n}. أرقام فقط، ولا تُسمّى أي مساحة.`,
+    healthNone: "لم تُعدّ بعد: يكتبها تشغيل المتاجر.",
+    healthCols: { platform: "المنصة", connected: "مربوطة", reconnect: "تحتاج إعادة ربط", composio: "عبر Composio" },
+    keepAlive: (k: KeepAlive) => `تجديد الرموز: منتهية ${k.due}، جُدّدت ${k.refreshed}، رفضتها المنصة ${k.lost}، تعذّرت ${k.failed}.`,
+    keepAliveNone: "تجديد الرموز: غير مسجّل في هذا التشغيل.",
+    hooks: (h: Hooks) => `إشعار إلغاء التثبيت في Shopify: متاجر بلا اشتراك ${h.due}، اشتركت ${h.subscribed}، تعذّر ${h.failed}.`,
+    hooksNone: "إشعار إلغاء التثبيت في Shopify: غير مسجّل في هذا التشغيل.",
   },
 } as const;
+
+/** GET /api/admin/integrations `connections` (rules 2177-2178): the stores run's last count, numbers and names only. */
+type KeepAlive = { due: number; refreshed: number; lost: number; failed: number };
+type Hooks = { due: number; subscribed: number; failed: number };
+type Connections = { at: string; workspaces: number; keepAlive: KeepAlive | null; uninstallHooks: Hooks | null; rows: { id: string; name: string; connected: number; reconnect: number; composio: number }[] };
 
 const TONE: Record<IntegrationView["status"], BadgeTone> = { on: "success", partial: "warning", off: "neutral" };
 
@@ -33,9 +70,16 @@ const TONE: Record<IntegrationView["status"], BadgeTone> = { on: "success", part
 export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
   const L = S[lang];
   const [items, setItems] = useState<IntegrationView[] | null>(null);
+  const [shopify, setShopify] = useState<ComplianceSummary | null>(null);
+  const [connections, setConnections] = useState<Connections | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
-    adminFetch("/api/admin/integrations").then((r) => r.json()).then((j) => (j.ok ? setItems(j.items) : setError(true))).catch(() => setError(true));
+    adminFetch("/api/admin/integrations").then((r) => r.json()).then((j) => {
+      if (!j.ok) return setError(true);
+      setItems(j.items);
+      setShopify(j.shopifyCompliance ?? null);
+      setConnections(j.connections ?? null);
+    }).catch(() => setError(true));
   }, []);
   if (error) return <Callout tone="danger">{L.failed}</Callout>;
   if (!items) return <PanelSkeleton label={L.loading} shape="rows" />;
@@ -68,12 +112,82 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
                 </li>
               ))}
             </ul>
+            {i.callbacks.length > 0 && (
+              <div className="mt-2 text-xs" data-testid={`integration-${i.id}-callbacks`}>
+                <p className="text-foreground-muted">{L.callback}</p>
+                {i.callbacks.map((c) => <p key={c} className="font-mono break-all" dir="ltr">{c}</p>)}
+              </div>
+            )}
+            {i.webhooks.length > 0 && (
+              <div className="mt-2 text-xs" data-testid={`integration-${i.id}-webhooks`}>
+                <p className="text-foreground-muted">{L.webhook}</p>
+                {i.webhooks.map((w) => <p key={w} className="font-mono break-all" dir="ltr">{w}</p>)}
+              </div>
+            )}
+            {i.id === "shopify" && shopify && (
+              <div className="mt-2 text-xs" data-testid="integration-shopify-compliance">
+                <p className="font-semibold">{L.compliance}</p>
+                {shopify.pending.length > 0 && <p className="mt-1"><Badge tone="warning">{L.pending(shopify.pending.length)}</Badge></p>}
+                {shopify.recent.length === 0 ? <p className="text-foreground-muted">{L.none}</p> : (
+                  <ul className="mt-1 grid gap-0.5">
+                    {shopify.recent.map((r, n) => (
+                      <li key={n} className="flex flex-wrap gap-x-2">
+                        <span>{L.topic[r.topic] ?? r.topic}</span>
+                        <span className="font-mono" dir="ltr">{r.shop}</span>
+                        <Time value={r.at} lang={lang} style="datetime" className="tnum text-foreground-muted" />
+                        {typeof r.workspaces === "number" && <span className="text-foreground-muted">{L.workspaces(r.workspaces)}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {i.gates.map((g) => (
               <p key={g.id} className="mt-2 flex items-start gap-2 text-xs text-foreground-muted"><Badge tone={g.off ? "warning" : "neutral"} className="shrink-0">{g.off ? L.gatedOff : L.gatedOn}</Badge><span>{g.label[lang]}</span></p>
             ))}
           </li>
         ))}
       </ul>
+      <section className="card card-sm" data-testid="integrations-connections">
+        <h2 className="font-semibold">{L.health}</h2>
+        {!connections ? <p className="mt-1 text-xs text-foreground-muted">{L.healthNone}</p> : (
+          <>
+            <p className="mt-1 text-xs text-foreground-muted">
+              {L.healthNote(connections.workspaces)} <Time value={connections.at} lang={lang} style="datetime" className="tnum" />
+            </p>
+            <p className="mt-1 text-xs" data-testid="integrations-keepalive">
+              {connections.keepAlive ? L.keepAlive(connections.keepAlive) : <span className="text-foreground-muted">{L.keepAliveNone}</span>}
+              {connections.keepAlive && connections.keepAlive.lost + connections.keepAlive.failed > 0 && <Badge tone="warning" className="ms-2">{connections.keepAlive.lost + connections.keepAlive.failed}</Badge>}
+            </p>
+            <p className="mt-1 text-xs" data-testid="integrations-uninstall-hooks">
+              {connections.uninstallHooks ? L.hooks(connections.uninstallHooks) : <span className="text-foreground-muted">{L.hooksNone}</span>}
+              {connections.uninstallHooks && connections.uninstallHooks.failed > 0 && <Badge tone="warning" className="ms-2">{connections.uninstallHooks.failed}</Badge>}
+            </p>
+            {connections.rows.length > 0 && (
+              <table className="mt-2 w-full text-xs">
+                <thead>
+                  <tr className="text-foreground-muted">
+                    <th className="py-1 text-start font-normal">{L.healthCols.platform}</th>
+                    <th className="py-1 text-end font-normal">{L.healthCols.connected}</th>
+                    <th className="py-1 text-end font-normal">{L.healthCols.reconnect}</th>
+                    <th className="py-1 text-end font-normal">{L.healthCols.composio}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {connections.rows.map((r) => (
+                    <tr key={r.id} className="border-t border-border" data-testid={`integrations-connections-${r.id}`}>
+                      <td className="py-1">{r.name}</td>
+                      <td className="tnum py-1 text-end">{r.connected}</td>
+                      <td className="tnum py-1 text-end">{r.reconnect > 0 ? <Badge tone="warning">{r.reconnect}</Badge> : 0}</td>
+                      <td className="tnum py-1 text-end">{r.composio}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </section>
     </div>
   );
 }

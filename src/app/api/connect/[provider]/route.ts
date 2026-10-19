@@ -7,14 +7,15 @@ import { PartlyRead, holdsSocial, isSocialProvider, readSocialSoon, syncSocialIf
 import { holdsSite, readSiteSoon, syncSiteIfDue } from "@/lib/site-stats";
 import { X_RETRY_DEFAULT_S, dropXStats, refreshX, xForPage } from "@/lib/x-stats";
 import { markOwnerSync } from "@/lib/routines";
-import { WINDOW, allow, retryLater } from "@/lib/rate";
+import { CATALOG_IMPORTS_PER_HOUR, STORE_SYNCS_PER_HOUR, WINDOW, allow, retryLater } from "@/lib/rate";
+import { wsKey } from "@/lib/keys";
 import { byOf } from "@/lib/actor";
 import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
 import { importWoo } from "@/lib/connectors/woocommerce";
 import { importSalla } from "@/lib/connectors/salla";
 import { importZid } from "@/lib/connectors/zid";
-import { syncSales } from "@/lib/store-sales";
+import { dropSalesSnapshot, syncSales } from "@/lib/store-sales";
 import { SALES_PROVIDERS, type SalesProvider } from "@/lib/connectors/sales";
 import { importOdoo, importPrestaShop } from "@/lib/connectors/keyed";
 import { selectPage } from "@/lib/connectors/meta";
@@ -25,6 +26,8 @@ import { getProvider } from "@/lib/connectors/registry";
 import { forbid, type Action } from "@/lib/roles";
 
 export const maxDuration = 120;
+
+const isSalesProvider = (p: string): p is SalesProvider => (SALES_PROVIDERS as readonly string[]).includes(p);
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
@@ -45,8 +48,14 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
     }
   }
   // X's stored read goes with its connection (rule 747): another account connected later must never show this one's
-  // results or history, and its first read is its own.
-  await Promise.all([deleteConnection(sc(u), provider), provider === "x" ? dropXStats(sc(u)) : null]);
+  // results or history, and its first read is its own. A store's sales snapshot, its failure note and store-sales.md go
+  // the same way when they came from this store's platform (rule 2206), so Dana never reports on a store that is gone;
+  // the owner's products.md stays.
+  await Promise.all([
+    deleteConnection(sc(u), provider),
+    provider === "x" ? dropXStats(sc(u)) : null,
+    isSalesProvider(provider) ? dropSalesSnapshot(sc(u), provider) : null,
+  ]);
   return NextResponse.json({ ok: true });
 }
 
@@ -92,6 +101,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     const c = await getFreshConnection(sc(u), provider);
     if (!c) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });
     if (b.action === "import_products") {
+      // Every import reads the whole catalog from the store (a user-supplied host for WooCommerce, Odoo and PrestaShop)
+      // and rewrites products.md, so six an hour per workspace; the click counts even when the store fails (rule 2243).
+      if (!(await allow(wsKey.catalogImportBucket(sc(u)), CATALOG_IMPORTS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
       const n = provider === "shopify" ? await importShopify(sc(u), c) : provider === "woocommerce" ? await importWoo(sc(u), c) : provider === "odoo" ? await importOdoo(sc(u), c) : provider === "prestashop" ? await importPrestaShop(sc(u), c) : provider === "salla" ? await importSalla(sc(u), c) : provider === "zid" ? await importZid(sc(u), c) : 0;
       return NextResponse.json({ ok: true, count: n });
     }
@@ -161,7 +173,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       if (!(await allow(`adrefresh:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
       return NextResponse.json({ ok: true, snapshot: await syncAds(sc(u), provider, c) });
     }
-    if (b.action === "sync_sales" && (SALES_PROVIDERS as readonly string[]).includes(provider)) return NextResponse.json({ ok: true, sales: await syncSales(sc(u), provider as SalesProvider, c) });
+    // Any member may refresh the sales card, and each refresh reads several pages of orders and carts from the store, so six an hour
+    // per workspace, every store together (rule 2243). The stores cron calls syncSales itself and is not counted.
+    if (b.action === "sync_sales" && (SALES_PROVIDERS as readonly string[]).includes(provider)) {
+      if (!(await allow(wsKey.storeSyncBucket(sc(u)), STORE_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
+      return NextResponse.json({ ok: true, sales: await syncSales(sc(u), provider as SalesProvider, c) });
+    }
     // Read only, no model call, no credits: the site's figures or every social part the workspace holds, read at once.
     // Six an hour per workspace, the bucket keyed by scope so the team and every social path share it (rule 735).
     if (b.action === "sync_site" && provider === "google") {

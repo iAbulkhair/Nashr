@@ -1,6 +1,6 @@
 # Nashr — Platform Access Playbook
 
-> **Dated record (banner added 2026-10-12).** Written when the site ran on Vercel at `nashr-tau.vercel.app`. Since 2026-10-08 thakeen.com runs on Hostinger from the `production` branch, and the Vercel project is retired (`docs/system/architecture.md` section 6, rules 987-990). Read hosts, callback URLs and "Vercel" steps below as history; whether each platform app already has its `thakeen.com` callback is unverified here. Current state: `docs/system/*`.
+> **Dated record (banner added 2026-10-12).** Written when the site ran on Vercel at `nashr-tau.vercel.app`. Since 2026-10-08 thakeen.com runs on Hostinger from the `production` branch, and the Vercel project is retired (`docs/system/architecture.md` section 6, rules 987-990). Read hosts, callback URLs and "Vercel" steps below as history; whether each platform app already has its `thakeen.com` callback is unverified here. Current state: `docs/system/*`. Current callback URLs, key names and scopes for every platform app: the Current values table at the top of `docs/Registration_Packs.md` (rule 2164). Two names below are not what the code reads: `MS_CLIENT_ID`/`MS_CLIENT_SECRET` are `MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`, and `TIKTOK_ADS_APP_ID`/`TIKTOK_ADS_SECRET` are not needed (TikTok Ads results come through Composio).
 
 How to get Nashr (Noor) connected to every platform. Each entry: what Noor will do, where you register, what to fill, what to send me, expected wait. Ordered by **impact for Gulf customers ÷ time to get**.
 
@@ -19,7 +19,7 @@ Rules that apply everywhere:
 **Noor will:** read products, orders, abandoned checkouts; publish blog articles; recover carts.
 1. https://partners.shopify.com → Create partner account (company name, email).
 2. Partners dashboard → **Apps → Create app → Create app manually**. Name: `Nashr`. App URL: `https://nashr-tau.vercel.app/ar/app/integrations`. Redirect URL: `https://nashr-tau.vercel.app/api/connect/shopify/callback`.
-3. Under **API access scopes** request: `read_products, read_orders, read_checkouts, write_content, read_customers`.
+3. Under **API access scopes** request: `read_products, read_orders, write_content` (2026-10-18, rule 2174: no `read_checkouts`, no `read_customers`).
 4. Copy **Client ID** and **Client secret**.
 **Send me:** confirm `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` are in Vercel env. Also create a free **development store** in the partner dashboard so we can test.
 **Wait:** none for custom install. Public App Store listing later (2–3 weeks review).

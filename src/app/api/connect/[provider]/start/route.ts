@@ -10,6 +10,8 @@ import { OAUTH_COOKIE, saveState } from "@/lib/connectors/store";
 import { SHOP_HOST } from "@/lib/connectors/shopify";
 import { forbid } from "@/lib/roles";
 import { appOrigin } from "@/lib/origin";
+import { wsKey } from "@/lib/keys";
+import { CONNECT_STARTS_PER_HOUR, WINDOW, allow, retryAfter } from "@/lib/rate";
 
 /**
  * GET /api/connect/{provider}/start?shop=xxx.myshopify.com&lang=ar → redirect to provider.
@@ -28,6 +30,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   if (!isAvailable(p)) return NextResponse.json({ ok: false, error: "provider_not_configured" }, { status: 503 });
   const url = new URL(req.url);
   const lang = url.searchParams.get("lang") === "en" ? "en" : "ar";
+  // Each start writes an OAuth state and, through Composio, opens a pending connection on the one Composio account
+  // every tenant shares: twenty an hour per workspace, every provider together, so a loop cannot spend the others'
+  // allowance (rule 2242). The browser navigated here, so a refusal goes back to the page with a code it shows.
+  if (!(await allow(wsKey.connectStartBucket(sc(u)), CONNECT_STARTS_PER_HOUR, WINDOW.hour))) {
+    return NextResponse.redirect(`${appOrigin()}/${lang}/app/integrations?error=slow_down`, { headers: retryAfter(WINDOW.hour) });
+  }
   if (routedViaComposio(p.id)) {
     // Through Composio (src/lib/connectors/composio.ts): one toolkit per flow, only one this provider lists. The pending
     // account id is kept in the server-side state, so the callback never takes an account id from its query.

@@ -48,22 +48,30 @@ export type StagedFile = { name: string; mimetype: string; s3key: string };
  * composio-catalog.ts matching the schema they were checked against. "00000000_00" is the only version Composio lists
  * for an unversioned toolkit. Every toolkit must have one: the type has no optional keys. googledrive, dropbox and
  * one_drive (rule 1775) are pinned to the `version` `composio tools info` reported for each allowlisted tool on 2026-10-13.
+ * Rule 2163 (2026-10-18): instagram, whatsapp, googleads, tiktok_ads, google_analytics and google_search_console, the
+ * toolkits of the first staging COMPOSIO_PROVIDERS list whose 2026-10-05 pins had never been read, are pinned to the
+ * `version` `composio tools info` reported that day for each of their allowlisted tools, with every allowlisted argument
+ * present and every required argument sent or fixed. whatsapp and the three Google/TikTok ads toolkits now have real
+ * versions, so "00000000_00" is no longer used. twitter and metaads keep their 2026-10-05 pins: neither can connect
+ * until the founder's own developer apps exist (no Composio managed auth); re-read them then. Before changing a pin or
+ * adding a provider to COMPOSIO_PROVIDERS, run scripts/check-composio-pins.ts (rule 2166): it reads each allowlisted
+ * tool at the pinned version, which `composio tools info` (latest only) cannot.
  */
 export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   facebook: "20261008_00",
-  instagram: "20251229_00",
+  instagram: "20261008_00",
   twitter: "20251230_00",
   linkedin: "20260924_00",
   tiktok: "20260917_00",
-  whatsapp: "00000000_00",
+  whatsapp: "20260915_00",
   youtube: "20261008_00",
   metaads: "20251208_00",
   snapchat: "20260918_00",
-  googleads: "00000000_00",
-  tiktok_ads: "00000000_00",
+  googleads: "20261008_00",
+  tiktok_ads: "20261001_00",
   linkedin_ads: "20260826_00",
-  google_analytics: "20251017_00",
-  google_search_console: "00000000_00",
+  google_analytics: "20260924_00",
+  google_search_console: "20260806_00",
   googledocs: "20261008_00",
   googlesheets: "20261001_00",
   googledrive: "20261001_00",
