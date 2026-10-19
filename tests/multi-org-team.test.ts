@@ -499,25 +499,14 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     expect(await db.get(accountKey.member(m.email))).toBeNull();
   }, 20_000);
 
-  it("an owner move never wipes an account with a team: refused before the first write, and on a member again before the wipe, with the copy undone", async () => {
+  it("an owner move never wipes an account with a team: refused before the first write; once the team is gone it moves", async () => {
     const A = await newUser("mt", { verified: false });
     const m = await newMember(A);
     const to = freshEmail("mtto");
     expect(await moveUnverifiedAccount((await getUser(A.email))!, to)).toBe("not_allowed");
     expect(await db.get(accountKey.user(to))).toBeNull();
     expect(await getLogin(to)).toBeNull();
-    // A member that slips in after the first check (the first count is made to read empty) stops the move before the wipe.
-    const real = db.scardMany.bind(db);
-    vi.spyOn(db, "scardMany").mockImplementationOnce(async () => [0, 0]).mockImplementation(real);
-    expect(await moveUnverifiedAccount((await getUser(A.email))!, to)).toBe("not_allowed");
     expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
-    expect(await traces(aidOf(A), storedPersonId(m.email))).toMatchObject({ row: true, listed: true });
-    expect(await getLogin(m.email)).not.toBeNull();
-    expect(await db.get(accountKey.user(to))).toBeNull();
-    expect(await db.get(personKey.person(storedPersonId(to)))).toBeNull();
-    expect(await getLogin(to)).toBeNull();
-    vi.restoreAllMocks();
-    // Once the team is gone, a new move finds the address free and moves the account.
     expect(await removeMember(A, ownerActor(A), m.email)).toEqual({ ok: true });
     expect(await moveUnverifiedAccount((await getUser(A.email))!, to)).toBe("ok");
     expect(await db.get(accountKey.user(acct(A)))).toBeNull();
@@ -564,64 +553,102 @@ describe("rule 2139: the owner's records go last and first (Task 6 fix round 2)"
     /** A fresh code for `to` (no mail on this machine: the test deploy hands the code back). */
     const startFor = async (u: User, to: string) => startEmailChange(u, { kind: "owner", email: u.email }, to, "ar");
     const confirmAs = async (u: User, code: string) => confirmEmailChange((await getUser(u.email))!, { kind: "owner", email: u.email }, code, "ar");
-    /** Run `inject` once, when the move claims `login:{to}`: after the first team check, before the second. */
-    const between = (to: string, inject: () => Promise<unknown>) => {
+    /** Run `inject` once, without waiting for it, when the move claims `login:{to}` (mid-move, under its locks). */
+    const duringMove = (to: string, inject: () => void) => {
       let done = false;
       const real = db.set.bind(db) as (...a: unknown[]) => Promise<unknown>;
       vi.spyOn(db, "set").mockImplementation((async (...a: unknown[]) => {
-        if (!done && a[0] === accountKey.login(to)) { done = true; await inject(); }
+        if (!done && a[0] === accountKey.login(to)) { done = true; inject(); }
         return real(...a);
       }) as typeof db.set);
     };
     const envs = () => { vi.stubEnv("APP_ENV", "test"); vi.stubEnv("RESEND_API_KEY", ""); vi.stubEnv("MAIL_FROM", ""); };
+    /** Nothing at the new address: no account record, `users:all` entry, person, account list or login index. */
+    const nothingAt = async (to: string) => {
+      const toPid = storedPersonId(to);
+      expect(await db.get(accountKey.user(to))).toBeNull();
+      expect(await db.sismember(globalKey.usersAll(), to)).toBeFalsy();
+      expect(await db.get(personKey.person(toPid))).toBeNull();
+      expect(await db.smembers(personKey.orgs(toPid))).toEqual([]);
+      expect(await db.get(accountKey.login(to))).toBeNull();
+    };
 
-    it("an invite created between the two checks: the move completes and the invite is gone", async () => {
+    it("an invite that exists refuses the move before any write", async () => {
       envs();
       try {
         const A = await newUser("pi");
         const to = freshEmail("pito");
         const s1 = await startFor(A, to);
         if (!s1.ok || !s1.devCode) throw new Error("no code");
-        let id = "";
-        between(to, async () => { id = (await invite(A)).id; });
-        expect(await confirmAs(A, s1.devCode)).toEqual({ ok: true, to });
-        vi.restoreAllMocks();
-        expect(id).not.toBe("");
-        expect(await db.smembers(accountKey.invites(acct(A)))).toEqual([]);
-        expect(await db.get(accountKey.user(acct(A)))).toBeNull();
-        expect(await db.get(accountKey.user(to))).not.toBeNull();
+        await invite(A);
+        expect(await confirmAs(A, s1.devCode)).toEqual({ ok: false, error: "owner_has_data" });
+        await nothingAt(to);
+        expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
       } finally {
         vi.unstubAllEnvs();
       }
     }, 20_000);
 
-    it("a member accepted between the two checks: refused, nothing left at the new address, the old account whole, and a new code is not refused as taken", async () => {
+    it("an accept attempted while the move holds lock:team waits and never joins; one account is left, at the new address, with the credits once", async () => {
       envs();
       try {
-        const A = await newUser("pm");
-        const to = freshEmail("pmto");
+        const A = await newUser("pa");
+        const to = freshEmail("pato");
+        const credits = (await getUser(A.email))!.credits;
+        // An invite the move's team check does not see (out of the index), put back while the move runs: the only way
+        // an accept can be attempted mid-move now that no invite can be created during it.
+        const inv = await invite(A);
+        await db.srem(accountKey.invites(acct(A)), inv.id);
+        const s1 = await startFor((await getUser(A.email))!, to);
+        if (!s1.ok || !s1.devCode) throw new Error("no code");
+        let held: boolean | null = null;
+        let accept: Promise<unknown> = Promise.resolve();
+        duringMove(to, () => {
+          accept = (async () => {
+            held = !(await db.lock(accountKey.teamLock(acct(A)), 1));
+            await db.sadd(accountKey.invites(acct(A)), inv.id);
+            return acceptInvite(inv.token, { name: "Late", password: "abc12345" });
+          })().catch((e: unknown) => e);
+        });
+        expect(await confirmAs(A, s1.devCode)).toEqual({ ok: true, to });
+        const r = await accept;
+        vi.restoreAllMocks();
+        expect(held).toBe(true);
+        // Either the wait ran out, or the accept got the lock after the move and found no owner and no invite.
+        expect(r instanceof Error ? r.message : r).toSatisfy((x: unknown) => x === "team_lock_timeout" || (typeof x === "object" && x !== null && (x as { ok?: boolean }).ok === false));
+        expect(await getLogin(inv.invite.email)).toBeNull();
+        expect(await db.get(accountKey.member(inv.invite.email))).toBeNull();
+        expect(await db.get(accountKey.user(acct(A)))).toBeNull();
+        expect(await db.sismember(globalKey.usersAll(), acct(A))).toBeFalsy();
+        expect((await getUser(to))!.credits).toBe(credits);
+        expect(await db.smembers(accountKey.members(acct(A)))).toEqual([]);
+        expect(await db.smembers(accountKey.members(to))).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }, 20_000);
+
+    it("a lock:team that cannot be had at the move's start answers busy with nothing at the new address; a new code is not refused as taken", async () => {
+      envs();
+      try {
+        const A = await newUser("pb");
+        const to = freshEmail("pbto");
         const s1 = await startFor(A, to);
         if (!s1.ok || !s1.devCode) throw new Error("no code");
-        let m = { email: "", password: "" };
-        between(to, async () => { m = await newMember(A); });
-        expect(await confirmAs(A, s1.devCode)).toEqual({ ok: false, error: "owner_has_data" });
-        vi.restoreAllMocks();
-        const toPid = storedPersonId(to);
-        expect(await db.get(accountKey.user(to))).toBeNull();
-        expect(await db.get(personKey.person(toPid))).toBeNull();
-        expect(await db.smembers(personKey.orgs(toPid))).toEqual([]);
-        expect(await db.get(accountKey.login(to))).toBeNull();
-        expect(await db.sismember(globalKey.usersAll(), to)).toBeFalsy();
+        await signIn(A.email);
+        const { POST } = await import("@/app/api/account/email/route");
+        const lock = accountKey.teamLock(acct(A));
+        expect(await db.lock(lock, 10)).toBe(true);
+        let r: Response;
+        try { r = await POST(json("/api/account/email", "POST", { action: "confirm", code: s1.devCode })); } finally { await db.unlock(lock); }
+        expect(r.status).toBe(409);
+        expect(await r.json()).toEqual({ ok: false, error: "busy" });
+        await nothingAt(to);
         expect(await ownerWhole(A)).toEqual({ rec: true, login: true, listed: true });
-        expect(await traces(aidOf(A), storedPersonId(m.email))).toMatchObject({ row: true, listed: true });
-        const u = (await getUser(A.email))!;
-        const again = await startFor(u, to);
-        expect(again).not.toMatchObject({ ok: false, error: "taken" });
-        // Once the team is gone, a fresh code moves the account.
-        expect(await removeMember(A, ownerActor(A), m.email)).toEqual({ ok: true });
-        const s2 = await startFor((await getUser(A.email))!, to);
-        if (!s2.ok || !s2.devCode) throw new Error("no code");
-        expect(await confirmAs(A, s2.devCode)).toEqual({ ok: true, to });
+        const again = await startFor((await getUser(A.email))!, to);
+        expect(again).toMatchObject({ ok: true, to });
+        if (!again.ok || !again.devCode) throw new Error("no code");
+        expect(await confirmAs(A, again.devCode)).toEqual({ ok: true, to });
       } finally {
         vi.unstubAllEnvs();
       }

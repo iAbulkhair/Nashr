@@ -5,6 +5,7 @@ import { confirmEmailChange, pendingEmailChange, startEmailChange } from "@/lib/
 import { actingLogin, ownPasswordMatches } from "@/lib/own-password";
 import { allow, giveBack, retryLater, WINDOW } from "@/lib/rate";
 import { isPersonLockTimeout } from "@/lib/person";
+import { isTeamLockTimeout } from "@/lib/team";
 import { forbid } from "@/lib/roles";
 import { verifySendRefusal } from "@/lib/verify-email";
 
@@ -68,12 +69,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, pending: r.to, ...(r.devCode ? { devCode: r.devCode } : {}) });
   }
   if (b.action === "confirm") {
-    // A member's address move takes both persons' locks (`moveMemberLogin`, multi-workspace M1): a timeout is a 409.
+    // A member's address move takes both persons' locks (`moveMemberLogin`, multi-workspace M1) and an owner's move holds
+    // the account's `lock:team` (`moveOwnerLogin`): a timeout on either is a 409 with nothing moved.
     let r: Awaited<ReturnType<typeof confirmEmailChange>>;
     try {
       r = await confirmEmailChange(u, me, b.code, lang);
     } catch (e) {
-      if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+      if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
       throw e;
     }
     if (!r.ok) return NextResponse.json(r, { status: STATUS[r.error] ?? 400 });

@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "crypto";
 import { db } from "./db";
 import { NextResponse } from "next/server";
-import { acct, claimLogin, getLogin, normalizeEmail, releaseLogin, saveUser, type User } from "./auth";
+import { acct, claimLogin, getLogin, normalizeEmail, saveUser, type User } from "./auth";
 import { wipeAccount } from "./account";
 import { withUserLock } from "./credits";
 import { movePartnerRef } from "./partners";
@@ -9,10 +9,10 @@ import { moveReferral, registerCode } from "./referral";
 import { allow, clientIp, retryLater, sameSecret } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
 import { mailReady, sendEmail } from "./notify";
-import { withLoginLock } from "./team";
+import { withLoginLock, withMoveTeamLock } from "./team";
 import { createPersonRecord, getPerson, laterStamp, updatePerson } from "./person";
 import { ownerOf } from "./membership";
-import { accountKey, globalKey, personKey, storedPersonId } from "./keys";
+import { accountKey, personKey, storedPersonId } from "./keys";
 
 /**
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
@@ -174,7 +174,8 @@ export type MoveResult = "ok" | "exists" | "not_allowed" | "limit";
  *
  * Locks, in a fixed order: the login locks of both addresses (the alphabetically smaller first, so two moves crossing
  * each other cannot deadlock; src/lib/team.ts keeps its own order), then the old account's user lock, re-reading the
- * record inside it, so two moves from one account cannot both succeed. Inside: write the new record, register its
+ * record inside it, so two moves from one account cannot both succeed, then the account's `lock:team` (`moveOwnerLogin`,
+ * so no invite or accept runs during the move). Inside: write the new record, register its
  * referral code, carry the referral and the partner attribution, and only then wipe the old account. A stop before the
  * wipe leaves two records; the retry finds the copy (same createdAt, same password hash, still gated and unverified) and
  * finishes the wipe instead of answering `exists`. Rare residue after a stop: the referrer's list and the partner's set
@@ -189,11 +190,6 @@ export async function moveUnverifiedAccount(from: User, target: string): Promise
 async function hasTeam(id: string): Promise<boolean> {
   const counts = await db.scardMany([accountKey.members(id), accountKey.invites(id)]);
   return counts.some((n) => n > 0);
-}
-/** Does the account have a member (`members:{id}`)? An invite alone is deleted by `wipeTeam` under `lock:team` only. */
-async function hasMembers(id: string): Promise<boolean> {
-  const [n] = await db.scardMany([accountKey.members(id)]);
-  return n > 0;
 }
 
 /**
@@ -214,10 +210,17 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
   if (to === old) return "exists";
   const [first, second] = old < to ? [old, to] : [to, old];
   try {
-    return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(id, async (cur): Promise<MoveResult> => {
+    // Rule 2139: `lock:team:{id}` is taken right inside `lock:user`, before the first read that decides and before any
+    // write, and held until the old account is wiped. This path takes it after `lock:user` (the out-of-order step it
+    // always had through `wipeAccount` → `wipeTeam`, now taken at the start). Under it no invite and no accept of this
+    // account can run, so the one team check below is final: the wipe meets no member and never takes a member's locks
+    // under `lock:user`. A `lock:team` that cannot be had throws `team_lock_timeout` with nothing written (a 409 `busy`
+    // in both routes). `withMoveTeamLock` gives this holder a 60 s expiry (no renewal exists); the login and user locks
+    // keep their 10 s, the bound this move always had.
+    return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(id, (cur) => withMoveTeamLock(id, async (): Promise<MoveResult> => {
       if (!(await opts.may(cur))) return "not_allowed";
-      // An account with a team never moves (both callers refuse one before this): checked again here, before the first
-      // write (a member or an invite refuses), and for members once more after the copy is claimed, below.
+      // An account with a team never moves (both callers refuse one before this): checked again here, under
+      // `lock:team`, before the first write. A member or an invite refuses.
       if (await hasTeam(id)) return "not_allowed";
       const now = Date.now();
       const today = utcDay(now);
@@ -257,26 +260,14 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       ]);
       // The new address's login index (rule 1983: under both login locks, after `getLogin(to)` found nothing or this copy).
       await claimLogin(to, to);
-      // Rule 2139: the wipe below runs inside `lock:user`, so it must find no member (`wipeTeam` would take each member's
-      // `lock:login` and `lock:person` after `lock:user`, inverting the order). An invite created since the first check
-      // is fine: `wipeTeam` deletes it under `lock:team` alone. A member accepted since then (it needs an invite the
-      // first check found absent) refuses the move, and the copy is undone first, under the login locks held here:
-      // `user:{to}` and its `users:all` entry, `person:{to}`, `orgs:{to}` and `login:{to}`. Nothing at the new address
-      // survives the refusal, so a fresh code for it is not refused as `taken`. The check runs before the carry, the
-      // referral code, the referral and partner moves and the code drop, so none of those has to be undone.
-      if (await hasMembers(id)) {
-        await Promise.all([db.del(accountKey.user(to)), db.srem(globalKey.usersAll(), to), db.del(personKey.person(toPid)), db.del(personKey.orgs(toPid))]);
-        await releaseLogin(to, to, { locked: true });
-        return "not_allowed";
-      }
       if (opts.carry) await opts.carry(old, to);
       await registerCode(to);
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
       await dropVerifyCode(old);
-      await wipeAccount(id, { userLocked: true, loginLocked: true });
+      await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true });
       return "ok";
-    })));
+    }))));
   } catch (e) {
     // The account vanished under the lock (a parallel move or a deletion won): nothing here to move.
     if (e instanceof Error && e.message === "user_not_found") return "not_allowed";

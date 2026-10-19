@@ -71,8 +71,9 @@ async function revokeComposio(scopes: Scope[]) {
  * is read from the record (in R1 it equals the id), and its login index goes with the account; another account's index
  * is never deleted (`releaseLogin` deletes only an index that names this account, rule 1999). `loginLocked`: the caller
  * holds `lock:login:{address}` already (the address move), so the release does not take it again (security review L1).
+ * `teamLocked`: the caller holds `lock:team:{id}` (the address move, `withMoveTeamLock`), so `wipeTeam` does not take it.
  */
-export async function wipeAccount(id: string, opts: { userLocked?: boolean; loginLocked?: boolean } = {}) {
+export async function wipeAccount(id: string, opts: { userLocked?: boolean; loginLocked?: boolean; teamLocked?: boolean } = {}) {
   const e = id;
   const login = normalizeEmail((await getAccount(e))?.email ?? e);
   // Rule 1955: no charge after the owner asked to delete. Renewal turns off and the saved card goes under the account
@@ -257,7 +258,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
     if (opts.loginLocked) await owner();
     else await withLoginLock(login, owner);
     await pmap(keys.filter((k) => k !== record), (k) => db.del(k));
-  });
+  }, { teamLocked: opts.teamLocked });
   // The global reminder index names every scope with a reminder: this account's leave it.
   await Promise.all(scopes.map((s) => forgetDueScope(s)));
   // The owner's link once more, now the account is gone: a create that ran between the first revoke and the deletion of

@@ -12,10 +12,14 @@ import { db } from "./db";
 const LOCK_TTL_SECONDS = 10;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function withNamedLock<T>(key: string, fn: () => Promise<T>, timeoutError: string): Promise<T> {
+/**
+ * `ttlSeconds` (default 10) is how long the lock lives if it is never released. Only a holder whose work is known to run
+ * longer passes more (the owner address move's `lock:team`, src/lib/team.ts `withMoveTeamLock`); there is no renewal.
+ */
+export async function withNamedLock<T>(key: string, fn: () => Promise<T>, timeoutError: string, ttlSeconds = LOCK_TTL_SECONDS): Promise<T> {
   let got = false;
   for (let i = 0; i < 60 && !got; i++) {
-    got = await db.lock(key, LOCK_TTL_SECONDS);
+    got = await db.lock(key, ttlSeconds);
     if (!got) await sleep(50);
   }
   if (!got) throw new Error(timeoutError);

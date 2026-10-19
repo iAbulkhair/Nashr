@@ -138,6 +138,16 @@ export const TEAM_LOCK_TIMEOUT = "team_lock_timeout";
 export const isTeamLockTimeout = (e: unknown): boolean => e instanceof Error && e.message === TEAM_LOCK_TIMEOUT;
 /** `lock:team:{aid}`: every seat count and every membership event of the account. */
 const withTeamLock = <T,>(aid: AccountId, fn: () => Promise<T>): Promise<T> => withLock(accountKey.teamLock(aid), fn);
+/**
+ * How long the owner address move's `lock:team` lives (src/lib/verify-email.ts `moveOwnerLogin`). The move holds it from
+ * before its first write until the old account is wiped: about 30-50 Redis round trips, longer than the 10 s every other
+ * holder gets on a slow day. The lock has no renewal, so this holder alone asks a longer expiry. It is always released
+ * when the move ends; the expiry only bounds a crashed process (accepts and invites of that account wait up to 60 s).
+ */
+export const MOVE_TEAM_LOCK_TTL_SECONDS = 60;
+/** `lock:team` of the account an owner address move copies and wipes; a timeout throws `team_lock_timeout`. */
+export const withMoveTeamLock = <T,>(owner: string, fn: () => Promise<T>): Promise<T> =>
+  withNamedLock(accountKey.teamLock(aidFrom(owner)), fn, TEAM_LOCK_TIMEOUT, MOVE_TEAM_LOCK_TTL_SECONDS);
 /** Login uniqueness across `user:` and `member:`. Signup and accept both create logins under this lock. */
 export const withLoginLock = <T,>(email: string, fn: () => Promise<T>) => withLock(accountKey.loginLock(normalizeEmail(email)), fn);
 /** Read-modify-write of one member record (password, name, role, disabled). Null when the member does not exist. */
@@ -809,9 +819,11 @@ export async function enforceSeats(owner: User | string): Promise<{ limit: numbe
  * record is deleted under its own `lock:member`, so a profile or password save in flight cannot restore it. (Task 8
  * renames it `wipeMemberships` and drops the owner's `orgs:` entry.)
  */
-export async function wipeTeam(owner: string, finish?: () => Promise<void>) {
+export async function wipeTeam(owner: string, finish?: () => Promise<void>, opts: { teamLocked?: boolean } = {}) {
   const aid = aidFrom(owner);
-  await withTeamLock(aid, async () => {
+  // The owner address move holds `lock:team` already (`withMoveTeamLock`): the lock is not reentrant.
+  const locked = <T,>(fn: () => Promise<T>) => (opts.teamLocked ? fn() : withTeamLock(aid, fn));
+  await locked(async () => {
     const [pids, ids] = await Promise.all([db.smembers(membersKey(aid)), db.smembers(invitesKey(aid))]);
     await pmap(pids, async (p) => {
       const pid = pidFrom(p);
