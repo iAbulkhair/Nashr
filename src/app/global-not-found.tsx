@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Sans_Arabic } from "next/font/google";
 import localFont from "next/font/local";
 import Link from "next/link";
+import { connection } from "next/server";
 import "./globals.css";
 import Scribble from "@/components/Scribble";
 
@@ -26,8 +27,11 @@ export const metadata: Metadata = {
  * its own `lang`, `dir`, fonts and the global styles. Arabic first and right to left, the English beside it in its own
  * left-to-right block, a link home in each language. Light theme always: the viewer's theme is read only inside the
  * language tree (src/lib/theme.ts, `THEMED_PATH`). The 404 inside the tree stays src/app/[lang]/not-found.tsx.
+ * Rendered per request (rule 2322): Next puts the proxy's CSP nonce on its scripts only then, and the enforced policy
+ * runs no script without it.
  */
-export default function GlobalNotFound() {
+export default async function GlobalNotFound() {
+  await connection();
   return (
     <html lang="ar" dir="rtl" translate="no" data-theme="light" className={`${thmanyah.variable} ${plexArabic.variable}`}>
       <body>

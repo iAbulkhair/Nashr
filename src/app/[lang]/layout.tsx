@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
 import localFont from "next/font/local";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import "../globals.css";
 import { LANGS, dict, isLang } from "@/lib/i18n";
 import { appOrigin } from "@/lib/origin";
 import { SITE_DEFAULT } from "@/lib/page-meta";
 import { THEME_SCRIPT } from "@/lib/theme";
+import { NONCE_HEADER } from "@/lib/csp";
 import ScribbleDir from "@/components/ScribbleDir";
 import ThemeScope from "@/components/ThemeScope";
 import RouteProgress from "@/components/ui/RouteProgress";
@@ -63,15 +65,18 @@ export default async function RootLayout({ children, params }: { children: React
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const t = dict[lang];
+  const nonce = (await headers()).get(NONCE_HEADER) ?? undefined;
   // Theme before the first paint (rules 1203-1204, 1214): the server always sends light; the head script reads the viewer's
   // `thakeen_theme` cookie (or the old `nashr_theme`) and the device setting and sets `data-theme` before the body is parsed, so a dark page never
-  // flashes light and the page stays statically prerendered (no cookies() here). suppressHydrationWarning covers only
-  // that one attribute on <html>. One `ThemeScope` here serves every page in the language, public, app and console.
+  // flashes light. suppressHydrationWarning covers only that one attribute on <html>. The script carries the request's
+  // CSP nonce (rule 2322): the enforced policy runs no inline script without it. Reading the header renders every page per
+  // request, which a nonce needs anyway (Next puts the same nonce on its own scripts only when it renders the page). One
+  // `ThemeScope` here serves every page in the language, public, app and console.
   // `ScribbleDir` hands the page's direction to client scribbles so they draw the right way from the first paint (rule 1869).
   return (
     <html lang={lang} dir={t.dir} translate="no" data-theme="light" suppressHydrationWarning className={`${thmanyah.variable} ${plexArabic.variable} ${plexMono.variable}`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
         <ThemeScope />

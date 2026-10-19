@@ -760,10 +760,15 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", (
   });
 
   it("428: the security headers do not block the Turnstile script or iframe", async () => {
+    // Every enforced policy: the base one in next.config.ts and the pages' nonce policy from the proxy (rule 2320).
     const config = (await import("../next.config")).default;
     const rules = await config.headers!();
-    const csp = rules.flatMap((r) => r.headers).find((h) => h.key.toLowerCase() === "content-security-policy")?.value ?? "";
-    for (const d of ["default-src", "script-src", "script-src-elem", "frame-src", "child-src", "connect-src"]) {
+    const { pageCsp } = await import("@/lib/csp");
+    const policies = [
+      ...rules.flatMap((r) => r.headers).filter((h) => h.key.toLowerCase() === "content-security-policy").map((h) => h.value),
+      pageCsp("bm9uY2U=", false),
+    ];
+    for (const csp of policies) for (const d of ["default-src", "script-src", "script-src-elem", "frame-src", "child-src", "connect-src"]) {
       const directive = csp.split(";").map((x) => x.trim()).find((x) => x.startsWith(`${d} `));
       if (directive) expect(directive, `${d} must allow Turnstile`).toContain("https://challenges.cloudflare.com");
     }
