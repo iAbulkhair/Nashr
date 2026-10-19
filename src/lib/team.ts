@@ -360,14 +360,17 @@ async function insertMember(
   // the stale guard reads the two records as one, and the legacy record exactly as R1 wrote it. Every write runs under
   // `lock:person:{pid}` (rule 2139: inviteuse → team → login → person), taken BEFORE the first one, so a person lock that
   // cannot be had throws with nothing written (no `member:`, no roster entry, no `mbr:`, no login) and a retry starts clean.
-  await withPersonLock(pid, async () => {
+  // A home member's `lock:member:{email}` (next in the order) is taken the same way, BEFORE the first write, and the
+  // membership is written with `putRow` under it, not `writeMembership` (which would take `lock:member` a second time
+  // after the person row, the legacy record and the login were written: a held member lock then left a person who could
+  // not sign in, an address a retry calls "unavailable", and the invite pending). The mirror needs no extra write: the
+  // legacy record was just written with the row's own `role` and `acceptedAt`, byte-compatible with R1.
+  const write = async () => {
     await createPersonRecord({ pid, email, name: member.name, lang: member.lang, passHash: member.passHash, createdAt: now, sessionsAfter: now }, { loginLocked: true, personLocked: true });
     if (home) await saveMember(member);
-    await Promise.all([
-      writeMembership(aid, pid, { aid, pid, role: input.role, acceptedAt: now, invitedBy: input.invitedByPid ?? input.invitedBy }, { home, teamLocked: true }),
-      claimLogin(email, pid),
-    ]);
-  });
+    await Promise.all([putRow(aid, pid, { aid, pid, role: input.role, acceptedAt: now, invitedBy: input.invitedByPid ?? input.invitedBy }), claimLogin(email, pid)]);
+  };
+  await withPersonLock(pid, () => (home ? withLock(accountKey.memberLock(email), write) : write()));
   return member;
 }
 

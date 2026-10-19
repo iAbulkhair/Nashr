@@ -424,6 +424,32 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     expect(await kinds(A)).toEqual(["joined", "invited"]);
   }, 20_000);
 
+  it("accept with the new member's lock:member held answers busy and writes nothing (no person, member:, mbr:, roster, orgs: or login); the invite stays; the retry joins whole", async () => {
+    const A = await newUser("am");
+    const inv = await invite(A);
+    const e = inv.invite.email;
+    const pid = storedPersonId(e);
+    const accept = () => acceptRoute.POST(json("/api/team/accept", "POST", { token: inv.token, name: "Late", password: "abc12345" }));
+    const r = await holding(accountKey.memberLock(e), accept);
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ error: "busy" });
+    expect(await db.get(personKey.person(pid))).toBeNull();
+    expect(await db.get(accountKey.member(e))).toBeNull();
+    expect(await traces(aidOf(A), pid)).toMatchObject({ row: false, listed: false, org: false });
+    expect(await getLogin(e)).toBeNull();
+    expect(await db.get(globalKey.invite(inv.id))).not.toBeNull();
+    expect(await kinds(A)).toEqual(["invited"]);
+    // The retry after the lock frees: everything, in one piece, and the member signs in to A.
+    expect((await accept()).status).toBe(200);
+    expect(await db.get(personKey.person(pid))).not.toBeNull();
+    expect(await db.get(accountKey.member(e))).toMatchObject({ email: e, memberOf: aidOf(A), role: "member" });
+    expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
+    expect(await getMembership(aidOf(A), pid)).toMatchObject({ role: "member" });
+    expect(await getLogin(e)).not.toBeNull();
+    expect(acct((await resolveAs(e))!)).toBe(acct(A));
+    expect(await kinds(A)).toEqual(["joined", "invited"]);
+  }, 20_000);
+
   it("an owner's account DELETE with a member's person lock held answers busy with the owner's record, login and users:all intact; the retry wipes", async () => {
     // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
     const A = await newUser("dw", { shadow: false });
