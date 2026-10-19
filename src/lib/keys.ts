@@ -121,6 +121,8 @@ export const wsKey = {
   perfImport: (s: Scope) => `perfimport:${s}`,
   /** string: one ad account's last read time. */
   adSync: (s: Scope, provider: string) => `adsync:${s}:${provider}`,
+  /** bucket name for `allow` (stored as `rate:keycheck:{window}:{scope}`): failed key checks of one workspace (rule 2240). */
+  keyCheckBucket: (s: Scope, window: "hour" | "day") => `keycheck:${window}:${s}`,
 } as const;
 
 export const accountKey = {
