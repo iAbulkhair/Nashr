@@ -304,10 +304,12 @@ const STORED_PERSON_ID: Record<string, number> = {
   "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy owner's person id (used only when ownerOf agrees)
   "src/lib/verify-email.ts": 2, // moveOwnerLogin: the moved account's id as its legacy owner's person id (compared with ownerOf), and the new address as the new legacy owner's person id
   "src/lib/account.ts": 1, // wipeAccount: the wiped account's id as its legacy owner's person id (the person row createUser wrote)
+  "src/lib/team.ts": 1, // pidFrom (Task 6): a roster entry, a legacy member's address, an invite's inviter or invited address, an address being moved, all read from records
 };
 const STORED_ACCOUNT_ID: Record<string, number> = {
   "src/lib/membership.ts": 6, // aidOf: a resolved account's own id; listOrgs: an orgs:{pid} entry (re-checked); legacyHomeOf/legacyHomeFrom: a legacy owner's own id (twice), a legacy memberOf; pickAccount: lastorg:{pid} (re-checked)
   "src/lib/auth.ts": 3, // getLogin: a legacy owner's own id, a legacy member's memberOf; resolveIds: the session's acct (re-checked against the account record and roleIn)
   "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy account id (used only when aidOf agrees)
   "src/lib/person.ts": 2, // updatePerson: a legacy owner's person id as its own account id (mirror, stampOwned; re-checked with ownerOf)
+  "src/lib/team.ts": 1, // aidFrom (Task 6): an account id from a resolved user or a record (an invite's account, a legacy memberOf, an orgs:{pid} entry)
 };

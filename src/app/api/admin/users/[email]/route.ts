@@ -140,7 +140,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     const m = await getMember(email);
     if (!m) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     if (b.action !== "removeMember") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
-    if (!(await forceRemoveMember(email))) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    // The person left with nothing is deleted under `lock:person:{pid}` (multi-workspace M1): a timeout is a 409, and a
+    // retry finishes the clean-up (every step is a delete). Not `personWrite`: the membership may be gone already.
+    let removed: boolean;
+    try {
+      removed = await forceRemoveMember(email);
+    } catch (e) {
+      if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+      throw e;
+    }
+    if (!removed) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     await log("removeMember", { memberOf: m.memberOf, role: m.role });
     return NextResponse.json({ ok: true });
   }
@@ -252,7 +261,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       return NextResponse.json({ ok: true, resendIn: VERIFY.gap });
     }
     case "delete": {
-      await wipeAccount(id);
+      // Members left with nothing are deleted under `lock:person:{pid}` (`wipeTeam`): a timeout is a 409, a retry runs it again.
+      try {
+        await wipeAccount(id);
+      } catch (e) {
+        if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+        throw e;
+      }
       await log("delete");
       return NextResponse.json({ ok: true });
     }

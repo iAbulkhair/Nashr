@@ -10,6 +10,7 @@ import { createMember, forceRemoveMember, getMember, leaveTeam, removeMember, sa
 import { wipeAccount } from "@/lib/account";
 import { updatePerson } from "@/lib/person";
 import { ownerOf } from "@/lib/membership";
+import { storedPersonId } from "@/lib/keys";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as accountRoute from "@/app/api/account/route";
@@ -643,7 +644,8 @@ describe("feed management (rules 580-581)", () => {
       // The owner's language is the owner PERSON's (multi-workspace M1, rule 2132), mirrored to the account.
       await updatePerson(ownerOf(owner), { lang: ownerLang });
       const member = await newMember(owner, "member");
-      await saveMember({ ...(await getMember(member.email))!, lang: memberLang });
+      // A member's language is its person's too since multi-workspace M1 Task 6 (the accept writes the `person:` row).
+      await updatePerson(storedPersonId(member.email), { lang: memberLang });
       await signIn(member.email);
       expect((await create({})).status).toBe(200);
       expect(langOf(member.email)).toBe(memberLang);

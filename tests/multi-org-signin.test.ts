@@ -124,9 +124,12 @@ describe("rule 2132: a legacy owner and a legacy member sign in exactly as in R1
   it("getLogin keeps R1's kinds and ids, and adds the person and the account", async () => {
     const o = await newUser("go");
     const m = await newMember(o);
-    // The owner's person is read from the `person:` row `createUser` mirrors since Task 5 (rule 2132); a member record
-    // written before Task 6 is still read as the legacy member.
+    // The owner's person is read from the `person:` row `createUser` mirrors since Task 5 (rule 2132), a member's from the
+    // row the accept writes since Task 6; a member record written before Task 6 (no `person:` row) is still read as the
+    // legacy member.
     expect(await getLogin(o.email)).toMatchObject({ kind: "owner", pid: acct(o), acct: acct(o), person: { email: o.email, source: "person" } });
+    expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email, acct: acct(o), member: { email: m.email }, person: { email: m.email, source: "person" } });
+    await db.del(personKey.person(storedPersonId(m.email)));
     expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email, acct: acct(o), member: { email: m.email }, person: { email: m.email, source: "member" } });
   });
 

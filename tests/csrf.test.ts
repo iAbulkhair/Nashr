@@ -196,6 +196,11 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
     "src/lib/auth.ts": new Set(["adminEmails", "claimLogin", "emailVerified", "getAccount", "getLogin", "getUser", "normalizeEmail", "normalizePhone", "releaseLogin", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
     "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "voidPaidTopup", "voidPayment"]),
     "src/lib/cookie-names.ts": new Set(["OAUTH_COOKIE", "PARTNER_COOKIE"]),
+    // Multi-workspace M1 Task 6: team.ts deletes the security pack of a person left with nothing, as wipeAccount does.
+    // Read on 2026-10-19: `mfaKeys` builds two key names from the address it is handed; `revokeAllDevices` deletes the
+    // device list and the sessions it names for the login it is handed. Neither reads a cookie or a session.
+    "src/lib/mfa.ts": new Set(["mfaKeys"]),
+    "src/lib/devices.ts": new Set(["revokeAllDevices"]),
   };
   const COOKIE_ACCESS = /cookies\(|\.cookies\b|\.get\(\s*["'`]cookie["'`]\s*\)|["']next\/headers["']|["'`](?:nashr|thakeen)_(session|admin|impersonate|return)["'`]/i;
   const STATEFUL = /export\s+(async\s+)?(function|const)\s+(POST|PUT|PATCH|DELETE)\b/;

@@ -149,7 +149,8 @@ export const TeamLogRow = z.looseObject({
   kind: z.enum(TEAM_LOG_KINDS),
   actor: z.looseObject({ pid: z.string(), email: z.string() }),
   target: z.looseObject({ pid: z.string().optional(), email: z.string() }),
-  role: z.string().optional(),
+  /** The role the event gave or concerned (`TeamRole`). Tightened in M1 Task 6: nothing read the log before it. */
+  role: z.enum(["admin", "member"]).optional(),
   via: z.enum(["web", "console", "system"]),
 });
 export type TeamLogRowValue = z.output<typeof TeamLogRow>;

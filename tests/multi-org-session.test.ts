@@ -188,7 +188,9 @@ describe("rule 2111: the membership is re-checked on every request", () => {
     const m1 = await newMember(owner, "member", "r11a");
     const m2 = await newMember(owner, "member", "r11b");
     expect((await as(m1.email))?.actor?.kind).toBe("member");
-    await db.del(accountKey.member(m1.email));
+    // A removal deletes the legacy record and, since multi-workspace M1 Task 6, the membership row too (the roster entry
+    // is kept here, to show neither record alone is enough).
+    await Promise.all([db.del(accountKey.member(m1.email)), db.del(accountKey.membership(storedAccountId(acct(owner)), storedPersonId(m1.email)))]);
     expect(await currentUser()).toBeNull();
     expect((await as(m2.email))?.actor?.kind).toBe("member");
     const rec = (await getMember(m2.email))!;

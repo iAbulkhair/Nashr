@@ -11,6 +11,9 @@ export function teamFail(f: TeamFail): Response {
   return Response.json({ error: f.error }, { status });
 }
 
+/** 409 `busy`: a person lock (`lock:person:{pid}`) was not taken in time; nothing was half-applied that a retry cannot finish. */
+export const busy = () => Response.json({ error: "busy" }, { status: 409 });
+
 export const unauthorized = () => Response.json({ error: "unauthorized" }, { status: 401 });
 /** 429 with `Retry-After`: the window, in seconds, of the bucket that refused. */
 export const rateLimited = (windowSeconds: number) => retryLater({ error: "rate_limited" }, windowSeconds);

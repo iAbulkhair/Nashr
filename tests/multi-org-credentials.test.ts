@@ -522,10 +522,22 @@ describe("source scans (rule 2132, credential part)", () => {
     // `createUser` (signup), `resolveGoogle` → `createUser` (the Google callback). The address moves
     // (`moveUnverifiedAccount`, `moveOwnerLogin`) take no person lock (`createPersonRecord` with `userLockHeld`), so their
     // routes are not listed. A new library caller of `updatePerson`/`createUser` adds its route here.
-    const indirect = [join("src", "app", "api", "auth", "signup", "route.ts"), join("src", "app", "api", "auth", "google", "callback", "route.ts")];
+    // Multi-workspace M1 Task 6: src/lib/team.ts writes member persons (`acceptInvite`) and deletes a person left with
+    // nothing (`removeMember`, `leaveTeam`, `forceRemoveMember`, `wipeTeam` through `wipeAccount`, `moveMemberLogin`
+    // through `confirmEmailChange`) under the person lock.
+    const indirect = [
+      join("src", "app", "api", "auth", "signup", "route.ts"),
+      join("src", "app", "api", "auth", "google", "callback", "route.ts"),
+      join("src", "app", "api", "team", "accept", "route.ts"),
+      join("src", "app", "api", "team", "member", "route.ts"),
+      join("src", "app", "api", "team", "leave", "route.ts"),
+      join("src", "app", "api", "account", "route.ts"),
+      join("src", "app", "api", "account", "email", "route.ts"),
+      join("src", "app", "api", "admin", "users", "[email]", "route.ts"),
+    ];
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
-    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/verify-email.ts"]);
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/team.ts", "src/lib/verify-email.ts"]);
     expect([...direct, ...indirect].filter((f) => !/isPersonLockTimeout|PERSON_LOCK_TIMEOUT/.test(readFileSync(f, "utf8")))).toEqual([]);
   });
 });
