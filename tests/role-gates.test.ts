@@ -216,6 +216,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/account/google": g("member", "google.manage"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
+  "PUT /api/notifications/digest": g("owner", "profile.account"),
   "POST /api/team/leave": g("member", "team.leave"),
   "POST /api/chat": "member",
   "POST /api/chat/feedback": "member",
@@ -404,6 +405,8 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/r
   "POST /api/files/proposals/[id]",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
+  // The digest email choice (rule 2355).
+  "PUT /api/notifications/digest",
   // Chat spend cards (rule 1512): each Run is a paid batch or render.
   "POST /api/chat/spend/[id]",
   // Cloud drives and the media library (rule 1785): every write has its own hourly bucket per workspace.

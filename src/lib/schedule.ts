@@ -190,11 +190,11 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadli
 
 /** The one notice of the day's move under "Not now" (rule 2344): once per brand per day, to the inbox's "Not now" chip. */
 async function notifyNotNow(user: User, scope: string, n: number) {
-  const { brandFingerprint, brandTag, notifyItem, withBrand } = await import("./notifications");
+  const { aboutKey, brandFingerprint, brandTag, notifyItem, withBrand } = await import("./notifications");
   const ar = user.lang === "ar";
   const tag = await brandTag(acct(user), scope).catch(() => "");
   await notifyItem(acct(user), user.lang, {
-    kind: "pending", agent: "noor", href: "?view=notnow",
+    kind: "pending", agent: "noor", href: "?view=notnow", about: aboutKey("notnow", scope),
     title: withBrand(ar ? `${n} عنصر انتقل إلى «ليس الآن»` : `${n} item(s) moved to Not now`, tag),
     body: ar ? `لم يتخذ فيها أحد قراراً منذ ${NOT_NOW_DAYS} يوماً. لم يُحذف شيء، وتعيد أي عنصر بضغطة من صندوق الموافقة.` : `Nobody decided them in ${NOT_NOW_DAYS} days. Nothing was deleted; bring any back with one click in the inbox.`,
   }, brandFingerprint(scope, "notnow:" + new Date().toISOString().slice(0, 10)), 2, scope);

@@ -219,6 +219,10 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // their suffix cannot be enumerated (the ones that can, per brand, are deleted above).
   keys.push(
     accountKey.notifications(e),
+    // The digest choice, its window and its claim (rule 2357); the account leaves the tick's set below.
+    accountKey.digest(e),
+    accountKey.digestLast(e),
+    accountKey.digestLock(e),
     accountKey.referrals(e),
     accountKey.referredBy(e),
     `ref:${codeFor(e)}`,
@@ -248,5 +252,5 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // `user:{owner}` could have written a new one.
   await Promise.all(logins.map((l) => revokeAllDevices(l)));
   // The owner's login index (members' go in `wipeTeam`), and the deletion row names the id and the address (rule 1999).
-  await Promise.all([revokeFeed(login), revokeBook(login), releaseLogin(login, e, { locked: opts.loginLocked }), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
+  await Promise.all([revokeFeed(login), revokeBook(login), releaseLogin(login, e, { locked: opts.loginLocked }), db.srem(globalKey.usersAll(), e), db.srem(globalKey.digests(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
 }
