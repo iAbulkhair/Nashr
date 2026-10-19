@@ -1,6 +1,6 @@
 # Coverage: home first screen, one sign-up label, no em-dash (rules 2310-2313)
 
-Status on 2026-10-19 on branch `claude/thakeen-frontend-eval-49730a` (cut from main 53961842). These are the first fixes from the design review of the live home and pricing pages, which used three rubrics: tasteskill v2, its v2-experimental pre-flight list, and the Stitch design-system lens. At 1440x900 the cover's button ended at 972px, and at 768x1024 the cast wrapped into two rows that pushed it down to 1289px. The form stays under the team, as rule 1892 keeps it. The team takes less room instead. Rules 2314-2319 are held for the next fixes from the same review and are unused.
+Status on 2026-10-19 on branch `claude/thakeen-frontend-eval-49730a` (cut from main 53961842). These are the first fixes from the design review of the live home and pricing pages, which used three rubrics: tasteskill v2, its v2-experimental pre-flight list, and the Stitch design-system lens. At 1440x900 the cover's button ended at 972px, and at 768x1024 the cast wrapped into two rows that pushed it down to 1289px. The form stays under the team, as rule 1892 keeps it. The team takes less room instead. Rules 2314-2319 are the next fixes from the same review, in `2314-panels-corners-pricing.md`.
 
 Measured in a browser on the local dev server after the change. Arabic: the button ends at 873px at 1440x900 and at 775px at 768x1024. English: it ends at 860px at 1440x900. A two-line thought can reach over the "AI agents" label line, but it never reaches the masthead or the form.
 

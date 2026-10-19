@@ -442,6 +442,15 @@
 .cast > li { position: relative; }
 
 /* Rules */
+/*
+ * The page's one colour band (rule 2315): Lilac Wash under the Rules section from edge to edge. The border image paints
+ * past the section's sides without widening it, and the home's own clip stops it at the screen.
+ */
+.band {
+  padding-block: 48px 64px;
+  border-image: linear-gradient(var(--color-background-muted) 0 0) fill 0 / / 0 100vmax;
+}
+@media (min-width: 700px) { .band { padding-block: 64px 84px; } }
 .mini { min-height: 250px; }
 .talk { display: grid; gap: 12px; }
 .l { display: flex; align-items: flex-end; gap: 10px; }
@@ -521,6 +530,15 @@
 }
 @keyframes thump { 0% { transform: rotate(-9deg) translateY(-6px) scale(1.25); } 100% { transform: rotate(-9deg) scale(1); } }
 .capEnd { margin: 0; margin-inline-start: auto; margin-block-end: -34px; }
+/* The splash (rule 2314): from 1040px three panels to a row and the owner's word across the whole row under them. */
+@media (min-width: 1040px) {
+  .strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .strip > .splash { grid-column: 1 / -1; min-height: 0; }
+  .splash .sign { width: min(100%, 680px); margin-inline: auto; align-items: center; justify-content: center; gap: 56px; }
+  .splash .signFig { width: 120px; }
+  .splash .bigstamp { position: static; font-size: clamp(44px, 4.6vw, 64px) !important; padding: 10px 34px; }
+  .splash .bigstamp:lang(en) { font-size: clamp(40px, 4vw, 56px) !important; }
+}
 
 /* Steps */
 .st { padding-block-end: 18px; }
