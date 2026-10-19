@@ -1408,7 +1408,7 @@ describe("booking revocation (rule 598)", () => {
     spy.mockRestore();
     expect(await getBookStatus(owner.email)).toEqual([]);
     expect(await db.get(BOOK_KEYS.of(owner.email, "calcom"))).toBeNull();
-    // wipeMemberships (Task 8's name for wipeTeam) on its own deletes the members' links (a member added after the roster
+    // wipeMemberships (multi-workspace M1's name for wipeTeam) on its own deletes the members' links (a member added after the roster
     // read of the first step).
     const o2 = await newUser("book598t");
     const m = await newMember(o2, "member");

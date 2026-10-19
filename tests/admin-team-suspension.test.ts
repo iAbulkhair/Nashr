@@ -336,7 +336,7 @@ describe("rules 2077, 2079-2082: the read-only workspace view", () => {
     const lib = read("src/lib/admin-workspace.ts");
     expect(lib).not.toMatch(/\bdb\.|saveUser|saveMember|listInvites\(|withUserLock|srem|sadd/);
     expect(lib).toContain("peekInvites(key)");
-    // Multi-workspace M1 Task 8: the account is found as a sign-in finds it (`getLogin`, then the stored account its login
+    // Multi-workspace M1: the account is found as a sign-in finds it (`getLogin`, then the stored account its login
     // stands for), no longer from `getUser(m.memberOf)`: a `p_` member has no legacy member record.
     expect(lib).toContain("const login = await getLogin(email);");
     expect(lib).toContain("await getAccount(login.acct)");

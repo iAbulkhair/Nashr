@@ -136,21 +136,43 @@ function recordDb() {
 
 /**
  * The key families whose id parts name a PERSON or a login: `person:{pid}`, `orgs:{pid}`, `mbr:{aid}:{pid}`,
- * `activebrand:{pid}:{aid}`, the login index, rate buckets per login (`rate:sec:read:{login}`), and a legacy person's records (a legacy owner's
- * person id is its account id, so its credential record is `user:{pid}` and its legacy active brand
- * `activebrand:{login}`). In these the session person's own id or address is the person, not an account; the account
- * part that remains (the `aid` of `mbr:{aid}:{pid}`) is checked like any other. `user:` counts as the person's record
- * for reads only: a write there writes the account.
+ * `activebrand:{pid}:{aid}`, the login index, rate buckets per login (`rate:sec:read:{login}`), and a legacy person's
+ * records (`member:{login}`, and `user:{pid}` for a legacy owner, whose person id is its own account id).
  */
 const PERSON_FAMILIES = /^(rate:)?(person|lock:person|orgs|lastorg|mbr|activebrand|sec:feedof|sec:bookof|lock:feed|lock:book|login|lock:login|member|lock:member|sec:read|sec:feed|user):/;
 
-/** The accounts a key names: its `:`/`#` parts that are account ids of the graph, less the session person's own parts. */
-const namedAccounts = (t: Touch, p: Person): AccountId[] => {
-  let parts = t.key.split(":").flatMap((x) => x.split("#"));
-  if (PERSON_FAMILIES.test(t.key) && (!t.key.startsWith("user:") || READS.has(t.op))) {
-    const self = parts.findIndex((x) => x === p.pid || x === p.email);
-    if (self >= 0) parts = parts.filter((_, i) => i !== self);
+/**
+ * The accounts a key names: its `:`/`#` parts that are account ids of the graph, less the session person's own slot.
+ *
+ * The exact rule. Only the PERSON SLOT of a person family is dropped, and only when it holds the session person's id or
+ * address: the part right after the family prefix (`person:{pid}`, `activebrand:{pid}:{aid}`, `sec:feedof:{pid}:{aid}`,
+ * `rate:sec:read:{login}`), except `mbr:{aid}:{pid}`, whose person slot is the LAST part. Every other part is checked
+ * as an account. A legacy owner's person id IS its own account id, so without the slot rule `mbr:{ownAid}:{x}` or
+ * `activebrand:{x}:{ownAid}` read while the session is active in ANOTHER account would hide the own account; with it,
+ * those are flagged like any other account.
+ *
+ * `user:{pid}` is the one key that is both: a legacy owner's credential record and its own account record. A READ of it
+ * counts as the person's credential record only as often as the request read `person:{pid}` (every person read, in
+ * `resolveIds`, `getPerson` and `sessionPerson`, reads the row and its legacy record together, once each), passed in as
+ * `credentialReads`; a further read, or any write, of `user:{ownAid}` while active elsewhere names the own account and
+ * is flagged.
+ */
+const namedAccounts = (t: Touch, p: Person, budget: { credentialReads: number }): AccountId[] => {
+  let segs = t.key.split(":");
+  const fam = PERSON_FAMILIES.exec(t.key);
+  if (fam) {
+    const rest = t.key.slice(fam[0].length).split(":");
+    const slot = fam[2] === "mbr" ? rest.length - 1 : 0;
+    const prefixParts = fam[0].split(":").length - 1;
+    const mine = rest[slot] === p.pid || rest[slot] === p.email;
+    let drop = mine;
+    if (mine && fam[2] === "user") {
+      drop = READS.has(t.op) && budget.credentialReads > 0;
+      if (drop) budget.credentialReads--;
+    }
+    if (drop) segs = segs.filter((_, i) => i !== prefixParts + slot);
   }
+  const parts = segs.flatMap((x) => x.split("#"));
   return accounts.filter((a) => parts.includes(a.aid)).map((a) => a.aid);
 };
 /** The reads `resolveSession` makes to check the session's account `aid` for person `pid`; nothing else of it is read. */
@@ -235,7 +257,8 @@ async function mutate(p: Person, active: AccountId): Promise<string> {
 // Requests: ids, scopes and account and person ids from other accounts
 // ---------------------------------------------------------------------------------------------------------------------
 
-type Call = { name: string; run: () => Promise<Response> };
+/** `writes`: a valid write whose answer, when the person holds the active account, must be 200 (the write path ran). */
+type Call = { name: string; run: () => Promise<Response>; writes?: true };
 function requestFor(p: Person, active: AccountId): Call {
   const others = accounts.filter((a) => a.aid !== active);
   const o = pick(others);
@@ -253,7 +276,8 @@ function requestFor(p: Person, active: AccountId): Call {
     { name: "files DELETE foreign name", run: () => filesRoute.DELETE(json(`/api/files?name=${o.file}&${qs}`, "DELETE", undefined, headers)) },
     { name: "conversations GET", run: () => convRoute.GET(json(`/api/conversations?${qs}`, "GET", undefined, headers)) },
     { name: "conversations search", run: () => convRoute.GET(json(`/api/conversations?q=ACCT&${qs}`, "GET", undefined, headers)) },
-    { name: "conversations POST", run: () => convRoute.POST(json("/api/conversations", "POST", { title: "new", ...forged }, headers)) },
+    // A valid body (the schema needs `agent`), so a held session reaches createConversation with the forged fields beside it.
+    { name: "conversations POST", writes: true, run: () => convRoute.POST(json("/api/conversations", "POST", { title: "new", agent: "noor", ...forged }, headers)) },
     { name: "conversations PATCH foreign id", run: () => convRoute.PATCH(json("/api/conversations", "PATCH", { id: o.conv, title: "renamed", ...forged }, headers)) },
     { name: "conversations DELETE foreign id", run: () => convRoute.DELETE(json(`/api/conversations?id=${o.conv}&${qs}`, "DELETE", undefined, headers)) },
     { name: "brand GET", run: () => brandRoute.GET(json(`/api/brand?${qs}`, "GET", undefined, headers)) },
@@ -298,10 +322,12 @@ describe("rule 2110: the isolation property over random graphs, sessions and for
       }
       const at = `seed ${SEED}, request ${i} (${call.name}) by ${p.pid} in ${active}, held ${held}, mutation ${did}`;
       if (held ? status === 401 : status !== 401) problems.push(`${at}: status ${status}`);
+      if (held && call.writes && status !== 200) problems.push(`${at}: the write answered ${status}, not 200`);
       if (status >= 500) problems.push(`${at}: status ${status} ${text.slice(0, 200)}`);
       held ? resolved++ : refused++;
+      const budget = { credentialReads: touched.filter((t) => READS.has(t.op) && t.key === personKey.person(p.pid)).length };
       for (const t of touched) {
-        for (const aid of namedAccounts(t, p)) {
+        for (const aid of namedAccounts(t, p, budget)) {
           if (held && aid === active) continue;
           if (aid === active && checkRead(t, active, p.pid)) continue;
           problems.push(`${at}: ${t.op} ${t.key}`);

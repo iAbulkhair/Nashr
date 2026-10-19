@@ -19,7 +19,7 @@ const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) =
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
- * Multi-workspace M1 expand, Task 7 (docs/specs/2026-10-18-multi-org.md section 9): the calendar feed and the booking
+ * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md section 9): the calendar feed and the booking
  * links per (person, account). Rules 2119 (a link lives in one account and dies with its membership, even when the
  * revoke is skipped), 2131 (a person suspension ends every link, an account suspension only that account's), 2132 (a home
  * link keeps R1's legacy pointer; a link made before M1 still resolves and is revoked) and 2139 (the feed and booking
@@ -215,7 +215,7 @@ describe("rule 2132: R1 still reads the home link; links made before M1 keep wor
   });
 });
 
-describe("rule 2132: rollback and status (fix round 1)", () => {
+describe("rule 2132: rollback and status", () => {
   it("R1 re-creates while an M1 home record exists: the M1 record is dead, the R1 link live, status shows the R1 link; a later M1 create cleans up", async () => {
     const t = await twoAccounts();
     const m1 = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;

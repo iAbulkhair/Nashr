@@ -20,7 +20,7 @@ const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Paramete
 const newOpaqueUser = (prefix?: string, o: Parameters<typeof helperNewOpaqueUser>[1] = {}) => helperNewOpaqueUser(prefix, { legacy: true, ...o });
 
 /**
- * Multi-workspace M1 expand, Task 3 (docs/specs/2026-10-18-multi-org.md section 5): sign-in resolves a person and picks
+ * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md section 5): sign-in resolves a person and picks
  * the account the session stands for. Rule 2132 (sign-in part): a legacy owner and a legacy member sign in exactly as
  * in R1. Rule 2136 (the pick order): `lastorg:` while it still holds, else the owned account, else the oldest live
  * membership. Plan reconciliation 5 (a stale `person:` row never beats a newer legacy record) and 7 (a person with no
@@ -130,9 +130,9 @@ describe("rule 2132: a legacy owner and a legacy member sign in exactly as in R1
   it("getLogin keeps R1's kinds and ids, and adds the person and the account", async () => {
     const o = await newUser("go");
     const m = await newMember(o);
-    // The owner's person is read from the `person:` row `createUser` mirrors since Task 5 (rule 2132), a member's from the
-    // row the accept writes since Task 6; a member record written before Task 6 (no `person:` row) is still read as the
-    // legacy member.
+    // The owner's person is read from the `person:` row `createUser` mirrors in multi-workspace M1 (rule 2132), a
+    // member's from the row the accept writes in M1; a member record written before M1 (no `person:` row) is still read
+    // as the legacy member.
     expect(await getLogin(o.email)).toMatchObject({ kind: "owner", pid: acct(o), acct: acct(o), person: { email: o.email, source: "person" } });
     expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email, acct: acct(o), member: { email: m.email }, person: { email: m.email, source: "person" } });
     await db.del(personKey.person(storedPersonId(m.email)));
@@ -239,7 +239,7 @@ describe("rule 2136: a p_ person signs in to the account the pick order names", 
   });
 });
 
-describe("forgot password: a person no legacy record backs gets its link like a legacy login (Task 5, rule 2132)", () => {
+describe("forgot password: a person no legacy record backs gets its link like a legacy login (multi-workspace M1, rule 2132)", () => {
   it("a p_ owner, a p_ member and a legacy owner each get the same answer and a link at their own address", async () => {
     vi.stubEnv("RESEND_API_KEY", "test-key");
     vi.stubEnv("MAIL_FROM", "Noor <noor@mail.nashr.test>");

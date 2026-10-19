@@ -35,7 +35,7 @@ const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) =
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
- * Multi-workspace M1 expand, Task 6 (docs/specs/2026-10-18-multi-org.md sections 9, 13 and 15): team membership writes on
+ * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md sections 9, 13 and 15): team membership writes on
  * the new shapes. Rules 2118 (seats per account), 2124 (M1 half: leave and removal), 2125 (an admin of one account is
  * nobody in another), 2129 (write half: one team log row per event, never a token, an invite id or a password), 2132
  * (a legacy reader still sees R1's bytes) and 2139 (the lock order, and no half-written membership under races).
@@ -391,7 +391,7 @@ describe("rule 2139: the lock order, and no half-written membership under races"
   }, 120_000);
 });
 
-describe("rule 2139: a lock that cannot be had writes nothing, and the retry finishes (Task 6 fix round 1)", () => {
+describe("rule 2139: a lock that cannot be had writes nothing, and the retry finishes", () => {
   /** Run `fn` while `key` is held by someone else, then release it. */
   const holding = async <T,>(key: string, fn: () => Promise<T>): Promise<T> => {
     expect(await db.lock(key, 10)).toBe(true);
@@ -526,7 +526,7 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
   }, 20_000);
 });
 
-describe("rule 2139: the owner's records go last and first (Task 6 fix round 2)", () => {
+describe("rule 2139: the owner's records go last and first", () => {
   const ownerWhole = async (o: User) => {
     const [rec, login, listed] = await Promise.all([db.get(accountKey.user(acct(o))), getLogin(o.email), db.sismember(globalKey.usersAll(), acct(o))]);
     return { rec: rec !== null, login: login !== null, listed: !!listed };

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Rule 2132 (fixture part, multi-workspace M1 Task 9): the test helper's persons. By default (`TEST_PERSONS` unset) every
+ * Rule 2132 (fixture part, multi-workspace M1): the test helper's persons. By default (`TEST_PERSONS` unset) every
  * owner and member `tests/helpers/session.ts` makes is a `p_` person, the shape release M2 signs up; with
  * `TEST_PERSONS=legacy` they are today's legacy persons. In both modes each one also holds one shadow membership: a plain
  * `member` seat in a fresh, unrelated account that is not in `users:all`, accepted one second after the home membership,

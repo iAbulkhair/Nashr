@@ -477,14 +477,14 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
     const log = await logRows(u.email, "refund_plan_ended");
     expect(log).toHaveLength(1);
     expect(JSON.parse(log[0])).toMatchObject({ section: "billing", before: { plan: "starter", credits: 600, autoRenew: false, paidThrough: addMonths(today(), 1) }, after: { plan: "trial", credits: 300, autoRenew: false, paidThrough: null } });
-    // The retry changes nothing more, and still says truthfully that this refund ended the plan (multi-workspace M1
-    // Task 8 fix round 1: `paymob:refund_ended:{txn}`, so a retry after a "busy" answer reads the same).
+    // The retry changes nothing more, and still says truthfully that this refund ended the plan (multi-workspace M1:
+    // `paymob:refund_ended:{txn}`, so a retry after a "busy" answer reads the same).
     const again = await refund(u.email, { id });
     expect(await again.json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
     expect((await getUser(u.email))!.credits).toBe(300);
     expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
   });
-  it("refunding an old payment again after the customer bought a new plan leaves the new plan alone (rule 1300, Task 8 fix round 2)", async () => {
+  it("refunding an old payment again after the customer bought a new plan leaves the new plan alone (rule 1300)", async () => {
     const u = await owner();
     const { obj: old } = await payAndConfirm({ kind: "plan", plan: "starter" });
     jar().clear();

@@ -28,7 +28,7 @@ const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) =
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
- * Multi-workspace M1 expand, Task 8 (docs/specs/2026-10-18-multi-org.md sections 9 and 15, plan reconciliation 7):
+ * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md sections 9 and 15, plan reconciliation 7):
  * deleting an account removes its memberships through `wipeMemberships` and keeps every member's other accounts (rule
  * 2126, M1 half); the founder console's workspace view finds the account as a sign-in does and shows a member's other
  * workspaces as a count only (rule 2130's read-only part, rule 2079); a team lock timeout is "busy" wherever a caller
@@ -341,10 +341,10 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       expect((await getUser(u.email))!.plan).toBe("trial");
       expect(await disabled(u, m.email)).toBeUndefined();
       // The trial seats three like Pro, so a one-seat limit set now shows whether the retry fits the seats at all (the
-      // plan already ended: before Task 8 the retry returned without refitting).
+      // plan already ended: before multi-workspace M1 the retry returned without refitting).
       await saveUser({ ...(await getUser(u.email))!, seats: 1 });
       const second = await refundPaymobPayment(u.email, pay.id, "founder@test.example", "test refund");
-      // This refund ended the plan, on its first try: the retry says so (fix round 1, Minor 2).
+      // This refund ended the plan, on its first try: the retry says so.
       expect(second).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
       expect(await disabled(u, m.email)).toBe("seats");
       expect((await auditRows()).filter((x) => x.action === "refund_plan_ended" && x.target === u.email)).toHaveLength(1);

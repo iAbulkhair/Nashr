@@ -650,7 +650,7 @@ describe("feed management (rules 580-581)", () => {
       // The owner's language is the owner PERSON's (multi-workspace M1, rule 2132), mirrored to the account.
       await updatePerson(ownerOf(owner), { lang: ownerLang });
       const member = await newMember(owner, "member");
-      // A member's language is its person's too since multi-workspace M1 Task 6 (the accept writes the `person:` row).
+      // A member's language is its person's too since multi-workspace M1 (the accept writes the `person:` row).
       await updatePerson(storedPersonId(member.email), { lang: memberLang });
       await signIn(member.email);
       expect((await create({})).status).toBe(200);

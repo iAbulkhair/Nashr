@@ -20,7 +20,7 @@ const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) =
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
- * Multi-workspace M1 expand, Task 4 (docs/specs/2026-10-18-multi-org.md sections 7, 8 and 15): `resolveSession` on the
+ * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md sections 7, 8 and 15): `resolveSession` on the
  * person and the membership, `currentPerson`, the active brand per (person, account), and the MCP bearer's person.
  *
  * Rules 2111 (the membership is re-checked on every request), 2112 (partly: the account comes only from the session),
@@ -193,7 +193,7 @@ describe("rule 2111: the membership is re-checked on every request", () => {
     const m1 = await newMember(owner, "member", "r11a");
     const m2 = await newMember(owner, "member", "r11b");
     expect((await as(m1.email))?.actor?.kind).toBe("member");
-    // A removal deletes the legacy record and, since multi-workspace M1 Task 6, the membership row too (the roster entry
+    // A removal deletes the legacy record and, since multi-workspace M1, the membership row too (the roster entry
     // is kept here, to show neither record alone is enough).
     await Promise.all([db.del(accountKey.member(m1.email)), db.del(accountKey.membership(storedAccountId(acct(owner)), storedPersonId(m1.email)))]);
     expect(await currentUser()).toBeNull();

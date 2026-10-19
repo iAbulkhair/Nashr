@@ -43,6 +43,8 @@ afterEach(() => {
 type Ws = { name: "A" | "B" | "C"; u: User; aid: AccountId };
 let person: User;
 let A: Ws, B: Ws, C: Ws;
+/** B's and C's money right after the setup wrote it, before any other write touched them (see beforeAll). */
+let moneyAtSetup: string[];
 
 const task = (id: string, title: string): Task => ({ id, type: "social", channel: "instagram", title, body: title, status: "pending", createdAt: new Date().toISOString(), lang: "ar" });
 const ws = (name: Ws["name"], u: User): Ws => ({ name, u, aid: storedAccountId(acct(u)) });
@@ -64,9 +66,6 @@ beforeAll(async () => {
   C = ws("C", await newUser("rt-c", { shadow: false }));
   const pid = ownerOf(person);
   const at = new Date().toISOString();
-  for (const w of [B, C]) {
-    await withAccountTeamLock(w.aid, () => writeMembership(w.aid, pid, { aid: w.aid, pid, role: "admin", acceptedAt: at, invitedBy: w.u.email }, { home: false, teamLocked: true }));
-  }
   // B and C hold money state worth protecting: a paid plan with billing, holds, an agent counter and a saved card.
   const month = new Date().toISOString().slice(0, 7);
   await Promise.all(
@@ -84,6 +83,15 @@ beforeAll(async () => {
       await db.set(cardKey(w.aid), { token: `tok_${randomBytes(8).toString("hex")}`, last4: "4242", brand: "visa", expMonth: "01", expYear: "38", savedAt: at, orderId: 1 });
     }),
   );
+  // The money snapshot comes here: right after the money state is written and before every other write that touches B
+  // or C (the memberships, the brands, and the round trip's brand, file and task writes in each account). Before the
+  // money state there is nothing to protect, so this is the earliest point the snapshot means anything. Test 3 compares
+  // it at its start (so the setup's own non-money rows and the writes of tests 1 and 2 moved no money) and again after
+  // the charge in A.
+  moneyAtSetup = await Promise.all([money(B), money(C)]);
+  for (const w of [B, C]) {
+    await withAccountTeamLock(w.aid, () => writeMembership(w.aid, pid, { aid: w.aid, pid, role: "admin", acceptedAt: at, invitedBy: w.u.email }, { home: false, teamLocked: true }));
+  }
   // A second brand in each account, so a scope with `#` is in play too.
   await Promise.all([A, B, C].map((w) => saveBrands(w.aid, [{ id: "default", name: `RT-${w.name}`, createdAt: at, status: "active" }, { id: `b${w.name.toLowerCase()}2`, name: `RT-${w.name} second`, createdAt: at, status: "active" }])));
 });
@@ -122,7 +130,9 @@ describe("rule 2122: a person in three accounts, a round trip", () => {
   });
 
   it("a credit charged in A moves A only; B's and C's money is byte-equal before and after", async () => {
+    // Everything since the setup (memberships, brands, the writes of test 1) left B's and C's money as written.
     const before = await Promise.all([money(B), money(C)]);
+    expect(before).toEqual(moneyAtSetup);
     const aBefore = (await getUser(A.aid))!;
     await into(A);
     const u = (await currentUser())!;
@@ -132,7 +142,7 @@ describe("rule 2122: a person in three accounts, a round trip", () => {
     const aAfter = (await getUser(A.aid))!;
     expect(aAfter.credits).toBe(aBefore.credits - 1);
     expect(aAfter.agentSpend?.by[sc(u)]?.noor).toBe(1);
-    expect(await Promise.all([money(B), money(C)])).toEqual(before);
+    expect(await Promise.all([money(B), money(C)])).toEqual(moneyAtSetup);
     // The same from inside B: a charge there moves B, never A or C.
     const aMoney = await money(A);
     const cMoney = await money(C);

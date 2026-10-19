@@ -16,8 +16,8 @@ import { MULTI_ORG } from "@/lib/multi-org";
  *   `lock:person:`, `orgs:`, `lastorg:`, `mbr:` or `teamlog:` template or string; the legacy per-login `activebrand:`,
  *   `sec:feedof:`, `sec:bookof:`, `lock:feed:` and `lock:book:` templates outside keys.ts keep their legacy placeholder
  *   count, so none of them builds the per-(person, account) shape. The files the raw-key ratchet lists
- *   (tests/key-registry-ratchet.test.ts `RAW_KEYS`) are all in the scan, and the ratchet total is the number it had
- *   before release M1.
+ *   (tests/key-registry-ratchet.test.ts `RAW_KEYS`) are all in the scan, and the ratchet total is at most the number it had
+ *   before release M1, equal to the count in the tree.
  * - Rule 2132: `MULTI_ORG` is false and only src/lib/team.ts and src/lib/membership.ts may branch on it; `p_` person
  *   ids are made only in src/lib/auth.ts (`createUser` with `person: "p"`) and src/lib/team.ts (`createMember` with
  *   `pid`), and no product code passes either option.
@@ -70,24 +70,85 @@ const REQUEST_PARTS = /^(params|searchParams|query|input|body)$/;
  */
 const NOT_A_THAKEEN_ID: { file: string; name: string; only: RegExp }[] = [
   { file: "src/app/api/connect/[provider]/route.ts", name: "accountId", only: /^selectAdAccount\(c, String\(b\.accountId \?\? ""\)\)$/ },
+  // Composio's id for the pending connection, returned by Composio when the flow starts and kept in the server-side
+  // OAuth state; the toolkit argument is one this provider lists (`PROVIDER_TOOLKITS`), so the request only chooses
+  // among the server's own toolkits.
+  { file: "src/app/api/connect/[provider]/start/route.ts", name: "accountId", only: /^await composioConnect\(sc\(u\), toolkit, state\)$/ },
 ];
 
+/**
+ * A call that receives the request or its parts as an argument: `bodyOf(req)`, `readCapped(req, MAX)`,
+ * `parse(searchParams)`. Its result is request data, whatever the helper is called.
+ */
+const REQUEST_CALL = /\b[\w$.]+\(\s*(?:await\s+)?(?:req|request|params|searchParams)\b/;
+/**
+ * Calls that take the request only to authenticate it (a session, the founder's key, an MCP bearer) or to limit its
+ * rate: their result is a checked identity or a yes/no, never data the caller typed, so it is not request data.
+ */
+const AUTH_CALL = /^(?:await\s+)?(?:currentUser|currentUserUnverified|currentPerson|isAdmin|isAdminCookie|adminActor|adminKeySession|userFromBearer|bearerUser|limit|rateLimit|allow|ipOf|clientIp|sameOrigin|checkOrigin)\(/;
+/**
+ * Reads of a record this app wrote, looked up by a request value (the console's lookup by address, rule 1982; a reset
+ * link's record by its token's hash; an OAuth flow's server-side state by its random id). The ids inside such a record
+ * were written by this app and are re-checked by its readers, so taint stops at the lookup. The lookup's own argument is
+ * still scanned: `getMembership(body.acct, …)` is a hit on `body.acct`.
+ */
+const STORED_LOOKUP = /^(?:await\s+)?(?:db\.get(?:<[^>]*>)?|getLogin|getMember|getMembership|getAccount|getUser|readLoginIndex|takeState)\(/;
+
+/** A stored lookup, alone or as every element of a `Promise.all([...])` round (a `cond ? lookup : null` element counts). */
+function storedLookup(e: ts.Expression, sf: ts.SourceFile): boolean {
+  let x: ts.Expression = e;
+  while (ts.isAwaitExpression(x) || ts.isParenthesizedExpression(x)) x = x.expression;
+  if (STORED_LOOKUP.test(x.getText(sf))) return true;
+  if (ts.isCallExpression(x) && x.expression.getText(sf) === "Promise.all" && x.arguments.length === 1 && ts.isArrayLiteralExpression(x.arguments[0])) {
+    return x.arguments[0].elements.every((el) => {
+      const branches = ts.isConditionalExpression(el) ? [el.whenTrue, el.whenFalse] : [el];
+      return branches.every((b) => b.kind === ts.SyntaxKind.NullKeyword || STORED_LOOKUP.test(b.getText(sf)));
+    });
+  }
+  return false;
+}
+
 function requestIdReads(sf: ts.SourceFile): { at: string; name: string; text: string; calls: string[] }[] {
-  // Every variable this file initializes from the request, by name (scoping ignored: over-approximates on purpose).
+  // Every variable this file sets from the request, by name (scoping ignored: over-approximates on purpose). Taint:
+  // a declaration is request data when its initializer reads the request directly (`FROM_REQUEST`), when it calls a
+  // helper with the request or its parts (`REQUEST_CALL`, unless the helper only authenticates), or when it mentions a
+  // variable already tainted (`const c = raw`, `JSON.parse(raw)`, `{ data } = b`). Repeated to a fixed point, so an
+  // alias of an alias is caught however the declarations are ordered.
   const fromRequest = new Set<string>();
+  const decls: { names: string[]; init: ts.Expression }[] = [];
   walk(sf, (n) => {
-    if (ts.isVariableDeclaration(n) && n.initializer && FROM_REQUEST.test(n.initializer.getText(sf))) {
-      if (ts.isIdentifier(n.name)) fromRequest.add(n.name.text);
+    if (ts.isVariableDeclaration(n) && n.initializer) {
+      const names: string[] = [];
+      walk(n.name, (b) => {
+        if (ts.isIdentifier(b) && !(ts.isBindingElement(b.parent) && b.parent.propertyName === b)) names.push(b.text);
+      });
+      decls.push({ names, init: n.initializer });
     }
     if (ts.isParameter(n) && ts.isIdentifier(n.name) && /^(params|searchParams|ctx|context|props)$/.test(n.name.text)) fromRequest.add(n.name.text);
   });
-  const sourced = (e: ts.Expression): boolean => {
-    const t = e.getText(sf);
-    if (FROM_REQUEST.test(t)) return true;
-    let x: ts.Expression = e;
-    while (ts.isParenthesizedExpression(x) || ts.isAwaitExpression(x) || ts.isAsExpression(x) || ts.isNonNullExpression(x)) x = x.expression;
-    return ts.isIdentifier(x) && fromRequest.has(x.text);
+  const mentionsTainted = (e: ts.Node): boolean => {
+    let found = false;
+    walk(e, (x) => {
+      if (!found && ts.isIdentifier(x) && fromRequest.has(x.text) && !(ts.isPropertyAccessExpression(x.parent) && x.parent.name === x)) found = true;
+    });
+    return found;
   };
+  const direct = (e: ts.Expression): boolean => {
+    const t = e.getText(sf);
+    if (AUTH_CALL.test(t) || storedLookup(e, sf)) return false;
+    return FROM_REQUEST.test(t) || REQUEST_CALL.test(t);
+  };
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const d of decls) {
+      if (d.names.every((x) => fromRequest.has(x))) continue;
+      const t = d.init.getText(sf);
+      if (direct(d.init) || (!AUTH_CALL.test(t) && !storedLookup(d.init, sf) && mentionsTainted(d.init))) {
+        for (const x of d.names) if (!fromRequest.has(x)) { fromRequest.add(x); changed = true; }
+      }
+    }
+  }
+  const sourced = (e: ts.Expression): boolean => direct(e) || mentionsTainted(e);
   /** The calls the read sits in, innermost first, up to its statement. */
   const enclosingCalls = (n: ts.Node): string[] => {
     const found: string[] = [];
@@ -110,7 +171,7 @@ function requestIdReads(sf: ts.SourceFile): { at: string; name: string; text: st
     if (ts.isVariableDeclaration(n) && ts.isObjectBindingPattern(n.name) && n.initializer && sourced(n.initializer)) {
       for (const el of n.name.elements) {
         const key = el.propertyName && ts.isIdentifier(el.propertyName) ? el.propertyName.text : ts.isIdentifier(el.name) ? el.name.text : "";
-        if (ID_NAMES.has(key)) hit(el, key);
+        if (ID_NAMES.has(key)) out.push({ at: where(sf, el), name: key, text: el.getText(sf), calls: [n.initializer.getText(sf)] });
       }
     }
     // the wrapper's ({ input: { acct }, query: { pid } }) or a page's ({ params: { aid } }) in a signature
@@ -169,6 +230,19 @@ describe("rule 2112 (scan half): no route or page reads a person or an account i
     expect(probe(`export const GET = handler({ auth: "user" }, async ({ u, query }) => query.pid);`)).toEqual(["pid"]);
     expect(probe(`export const PUT = handler({ auth: "user" }, async ({ input }) => { const b = input as { aid?: string }; return b.aid; });`)).toEqual(["aid"]);
     expect(probe(`export async function GET() { const u = await currentUser(); return u.acct ?? who.pid; }`)).toEqual([]);
+    // Through a helper or an alias (taint followed to a fixed point).
+    expect(probe(`export async function PUT(req: Request) { const b = await bodyOf(req); if (!b) return; return b.acct; }`)).toEqual(["acct"]);
+    expect(probe(`export async function POST(req: Request) { const raw = await readCapped(req, MAX).catch(() => null); return JSON.parse(raw).aid; }`)).toEqual(["aid"]);
+    expect(probe(`export async function POST(req: Request) { const raw = await req.json(); const c = raw; const d = c; return d.pid; }`)).toEqual(["pid"]);
+    expect(probe(`export async function POST(req: Request) { const parsed = JSON.parse(await readCapped(req, MAX)); const { accountId } = parsed; return accountId; }`)).toEqual(["accountId"]);
+    expect(probe(`export async function GET(req: Request) { const q = parseQuery(new URL(req.url)); const { data } = q; return data.ownerPid; }`)).toEqual(["ownerPid"]);
+    // A record this app stored, looked up by a request value, is not request data; the lookup's own argument still is.
+    expect(probe(`export async function GET(_r: Request, ctx: { params: Promise<{ email: string }> }) { const { email } = await ctx.params; const login = await getLogin(email); return login.acct; }`)).toEqual([]);
+    expect(probe(`export async function POST(req: Request) { const b = await req.json(); const ms = await getMembership(b.acct, me); return ms; }`)).toEqual(["acct"]);
+    expect(probe(`export async function GET(req: Request) { const e = (await req.json()).email; const [m, ms] = await Promise.all([getMember(e), ok ? getMembership(a, p) : null]); return ms.aid; }`)).toEqual([]);
+    expect(probe(`export async function GET(req: Request) { const b = await req.json(); const [x] = await Promise.all([parse(b)]); return x.aid; }`)).toEqual(["aid"]);
+    // A call that only authenticates the request is not request data.
+    expect(probe(`export async function GET(req: Request) { const u = await userFromBearer(req); return u.actor.pid; }`)).toEqual([]);
   });
 });
 
@@ -233,10 +307,12 @@ describe("rule 2137 (producer scan): the new key families come only from src/lib
     expect(raw).toEqual([]);
   });
 
-  it("the raw-key ratchet total is unchanged by release M1, in the list and in the tree", () => {
-    expect(Object.values(RAW_KEYS).reduce((a, b) => a + b, 0)).toBe(RAW_TOTAL_BEFORE_M1);
+  it("the raw-key ratchet never grows past its total before release M1, and the list matches the tree", () => {
+    // A ratchet only goes down: a later release that removes raw keys lowers both numbers and this still holds.
+    const listed = Object.values(RAW_KEYS).reduce((a, b) => a + b, 0);
     const inTree = OUTSIDE.reduce((n, f) => n + (readFileSync(f, "utf8").match(RAW) ?? []).length, 0);
-    expect(inTree).toBe(RAW_TOTAL_BEFORE_M1);
+    expect(listed).toBeLessThanOrEqual(RAW_TOTAL_BEFORE_M1);
+    expect(inTree).toBe(listed);
   });
 
   it("keys.ts itself builds each new family from branded ids", () => {

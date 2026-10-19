@@ -29,7 +29,7 @@ const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) =
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
- * Multi-workspace M1 expand, Task 5 (docs/specs/2026-10-18-multi-org.md sections 2 and 6): every credential write goes
+ * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md sections 2 and 6): every credential write goes
  * through `updatePerson` (or `createPersonRecord` for a new login). Rule 2132 (credential part): the person row and the
  * legacy record it mirrors agree after every write, so a build rolled back to R1 reads the new credentials, and the
  * stale guard never fires; a `p_` person writes `person:` only. Rule 2139 (credential part): `lock:person` before
@@ -173,7 +173,7 @@ describe("rule 2132 (credential part): a legacy login's writes land on the perso
   });
 });
 
-describe("rule 2132 (fix round 1): a revocation stamp never moves backwards", () => {
+describe("rule 2132: a revocation stamp never moves backwards", () => {
   /** A newer `devicesAfter` written to the legacy record only, as R1's "sign out other devices" does (rule 1170). */
   async function r1SignOutOthers(key: string): Promise<string> {
     await tick();
@@ -259,7 +259,7 @@ describe("rule 2132 (fix round 1): a revocation stamp never moves backwards", ()
   });
 });
 
-describe("plan reconciliation 6 (fix round 1): a new login's row is written under lock:person", () => {
+describe("plan reconciliation 6: a new login's row is written under lock:person", () => {
   it("createPersonRecord waits for a held person lock, then writes", async () => {
     const e = address("cpl");
     const pid = storedPersonId(e);
@@ -528,7 +528,7 @@ describe("source scans (rule 2132, credential part)", () => {
     // `createUser` (signup), `resolveGoogle` → `createUser` (the Google callback). The address moves
     // (`moveUnverifiedAccount`, `moveOwnerLogin`) take no person lock (`createPersonRecord` with `userLockHeld`), so their
     // routes are not listed. A new library caller of `updatePerson`/`createUser` adds its route here.
-    // Multi-workspace M1 Task 6: src/lib/team.ts writes member persons (`acceptInvite`) and deletes a person left with
+    // Multi-workspace M1: src/lib/team.ts writes member persons (`acceptInvite`) and deletes a person left with
     // nothing (`removeMember`, `leaveTeam`, `forceRemoveMember`, `wipeMemberships` through `wipeAccount`, `moveMemberLogin`
     // through `confirmEmailChange`) under the person lock.
     const indirect = [
