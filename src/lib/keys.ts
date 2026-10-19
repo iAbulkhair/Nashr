@@ -269,6 +269,6 @@ export const globalKey = {
   rate: (bucket: string) => `rate:${bucket}`,
   /** hash: model spend of everyone in one month. */
   usageAll: (month: string) => `usage:_all:${month}`,
-  /** string: the payment id whose Paymob refund ended the plan (`endPlanOnRefund`, src/lib/billing.ts). */
+  /** string: the payment id whose Paymob refund ended the plan, or `none` when it found no plan to end (`endPlanOnRefund`, src/lib/billing.ts). */
   paymobRefundEnded: (txnId: number) => `paymob:refund_ended:${txnId}`,
 } as const;

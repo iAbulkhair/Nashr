@@ -162,6 +162,27 @@ describe("rule 2126 (M1 half): deleting an account keeps its members' other acco
       expect(await lastSignIn(e), e).toBeNull();
     }
   }, 20_000);
+
+  it("the account's team log goes with it (its rows hold member addresses); another account's log is unchanged", async () => {
+    const [O, other] = [await withPlan(await newUser("tlog", { shadow: false }), "pro"), await withPlan(await newUser("tlo", { shadow: false }), "pro")];
+    // A member joins through an invite (`invited`, then `joined`), and one invite stays pending (`invited`).
+    const inv = await createInvite(O, ownerActor(O), address("join"), "member", "en");
+    if (!inv.ok) throw new Error(inv.error);
+    const joined = await acceptRoute.POST(json("/api/team/accept", "POST", { token: inv.token, name: "Joiner", password: "abc12345", lang: "en" }, { "x-forwarded-for": `203.0.113.${1 + (Date.now() % 200)}` }));
+    expect(joined.status).toBe(200);
+    expect((await createInvite(O, ownerActor(O), address("wait"), "member", "en")).ok).toBe(true);
+    expect((await createInvite(other, ownerActor(other), address("keep"), "member", "en")).ok).toBe(true);
+    expect((await readTeamLog(aidOf(O))).map((r) => r.kind).sort()).toEqual(["invited", "invited", "joined"]);
+    const kept = await db.lrange(accountKey.teamLog(aidOf(other)), 0, -1);
+    expect(kept).toHaveLength(1);
+    const needles = [`teamlog:${acct(other)}`];
+    const before = snapshot(needles);
+    await wipeAccount(acct(O));
+    expect(await db.get(accountKey.user(acct(O)))).toBeNull();
+    expect(await db.lrange(accountKey.teamLog(aidOf(O)), 0, -1)).toEqual([]);
+    expect(await db.lrange(accountKey.teamLog(aidOf(other)), 0, -1)).toEqual(kept);
+    expect(snapshot(needles)).toEqual(before);
+  }, 30_000);
 });
 
 describe("rule 2130 (read-only part): the workspace view finds the account as a sign-in does and counts other workspaces", () => {
@@ -379,37 +400,39 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       expect(rows[0].team).toMatchObject({ disabled: [m.email] });
     }, 30_000);
 
-    it("a refit that cannot take a home member's lock:member after the change is saved answers 200 team busy, audited once; a seats-only POST refits", async () => {
+    it("a refit that cannot take a home member's lock:member after the change is saved answers 200 team busy, audited once, with neither the row nor the mirror paused; a seats-only POST refits both", async () => {
       admin();
-      const [u, control] = [await withPlan(await newUser("cpm"), "pro"), await withPlan(await newUser("cpc"), "pro")];
-      const [m] = [await newMember(u), await newMember(control)];
+      const u = await withPlan(await newUser("cpm"), "pro");
+      const m = await newMember(u);
       const planRows = async () => (await auditRows()).filter((x) => x.action === "plan" && x.target === u.email);
-      const body = { plan: "starter", addCredits: 7 };
-      // The same change on an account nobody holds a lock of: the credits it should end with.
-      expect((await planPost({ email: control.email, ...body })).status).toBe(200);
-      const expected = (await getUser(control.email))!.credits;
+      // The two records `writeMembership` keeps together: the forward row (what M1 reads) and the legacy mirror (what R1 reads).
+      const row = async () => ((await db.get(accountKey.membership(aidOf(u), storedPersonId(m.email)))) as { disabled?: string } | null)?.disabled;
+      const mirror = async () => ((await db.get(accountKey.member(m.email))) as { disabled?: string } | null)?.disabled;
+      // No plan change: a plan change resets the month's credits, which would hide a doubled `addCredits`.
+      const before = (await getUser(u.email))!.credits;
       const lock = accountKey.memberLock(m.email);
       expect(await db.lock(lock, 10)).toBe(true);
       let r: Response;
-      try { r = await planPost({ email: u.email, ...body }); } finally { await db.unlock(lock); }
+      try { r = await planPost({ email: u.email, seats: 1, addCredits: 7 }); } finally { await db.unlock(lock); }
       expect(r.status).toBe(200);
       const res = (await r.json()) as { ok: boolean; team?: unknown; user?: { plan: string } };
-      expect(res).toMatchObject({ ok: true, team: "busy", user: { plan: "starter" } });
-      // The change stands, once: the plan, the credits added exactly once, one audit row saying the team is busy.
-      expect((await getUser(u.email))!.plan).toBe("starter");
-      expect((await getUser(u.email))!.credits).toBe(expected);
+      expect(res).toMatchObject({ ok: true, team: "busy", user: { plan: "pro" } });
+      // The change stands, once: the credits added exactly once, one audit row saying the team is busy.
+      expect((await getUser(u.email))!.credits).toBe(before + 7);
       expect(await planRows()).toHaveLength(1);
       expect((await planRows())[0]).toMatchObject({ team: "busy" });
-      // `writeMembership` writes the forward row and the legacy mirror in one round: the row (what M1 reads) is paused;
-      // the mirror under the held `lock:member` is not (reported, writeMembership is outside this fix).
-      expect(await disabled(u, m.email)).toBe("seats");
+      // `writeMembership` writes the row and the mirror in one round under `lock:member`: the held lock wrote neither.
+      expect(await row()).toBeUndefined();
+      expect(await mirror()).toBeUndefined();
+      expect(await disabled(u, m.email)).toBeUndefined();
       // The route has no request idempotency (a repeat of the whole POST would add the credits again), so the documented
       // follow-up is a seats-only POST: it refits the team (idempotent) and leaves the credits alone.
-      const refit = await planPost({ email: u.email, seats: null });
+      const refit = await planPost({ email: u.email, seats: 1 });
       expect(refit.status).toBe(200);
       expect(await refit.json()).toMatchObject({ ok: true, team: { limit: 1 } });
-      expect(await disabled(u, m.email)).toBe("seats");
-      expect((await getUser(u.email))!.credits).toBe(expected);
+      expect(await row()).toBe("seats");
+      expect(await mirror()).toBe("seats");
+      expect((await getUser(u.email))!.credits).toBe(before + 7);
       expect(await planRows()).toHaveLength(2);
     }, 30_000);
 

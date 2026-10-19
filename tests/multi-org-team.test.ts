@@ -524,6 +524,29 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     expect(await db.get(accountKey.user(acct(A)))).toBeNull();
     expect(await db.get(accountKey.user(to))).not.toBeNull();
   }, 20_000);
+  it("writeMembership writes the row and the legacy mirror under one lock:member: held, a role change or a seat pause writes neither; the retry writes both", async () => {
+    const A = await withPlan(await newUser("wm"), "pro");
+    const m = await newMember(A, "member", "m");
+    const pid = storedPersonId(m.email);
+    /** The forward row (what M1 reads) and the legacy mirror (what R1 reads), raw. */
+    const both = async () => {
+      const [row, mirror] = await Promise.all([db.get(accountKey.membership(aidOf(A), pid)), db.get(accountKey.member(m.email))]);
+      const r = row as { role?: string; disabled?: string } | null, l = mirror as { role?: string; disabled?: string } | null;
+      return { row: { role: r?.role, disabled: r?.disabled }, mirror: { role: l?.role, disabled: l?.disabled } };
+    };
+    const start = await both();
+    expect(start).toEqual({ row: { role: "member", disabled: undefined }, mirror: { role: "member", disabled: undefined } });
+    const lock = accountKey.memberLock(m.email);
+    await expect(holding(lock, () => setRole(A, ownerActor(A), m.email, "admin"))).rejects.toThrow("team_lock_timeout");
+    expect(await both()).toEqual(start);
+    await saveUser({ ...(await getUser(A.email))!, seats: 1 });
+    await expect(holding(lock, () => enforceSeats(A.email))).rejects.toThrow("team_lock_timeout");
+    expect(await both()).toEqual(start);
+    expect(await setRole(A, ownerActor(A), m.email, "admin")).toEqual({ ok: true });
+    expect(await both()).toEqual({ row: { role: "admin", disabled: undefined }, mirror: { role: "admin", disabled: undefined } });
+    expect((await enforceSeats(A.email)).disabled).toEqual([m.email]);
+    expect(await both()).toEqual({ row: { role: "admin", disabled: "seats" }, mirror: { role: "admin", disabled: "seats" } });
+  }, 30_000);
 });
 
 describe("rule 2139: the owner's records go last and first", () => {

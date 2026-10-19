@@ -38,7 +38,11 @@ const doneKey = (txnId: number) => `paymob:done:${txnId}`;
 const txLockKey = (txnId: number) => `paymob:txlock:${txnId}`;
 const refundedKey = (txnId: number) => `paymob:refunded:${txnId}`;
 const refundLockKey = (txnId: number) => `paymob:refundlock:${txnId}`;
-/** The payment id whose refund ended the plan (`endPlanOnRefund`), so a retry still answers `planEnded: true`. */
+/**
+ * What a refund of this transaction did to the plan (`endPlanOnRefund`): the payment id when it ended the plan (a retry
+ * still answers `planEnded: true`), or `"none"` when it found no plan to end (a later repeat never ends one and answers
+ * false). Either value means this transaction never ends a plan again.
+ */
 const refundEndedKey = globalKey.paymobRefundEnded;
 const attemptKey = (email: string, day: string) => `paymob:attempt:${email}:${day}`;
 export const cardKey = (email: string) => `paymob:card:${email}`;
@@ -614,13 +618,23 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * refund of an OLD payment after the customer bought a NEW plan answers `planEnded: true` and leaves the new
  * subscription alone. The marker goes after the save, so a save that throws leaves no marker and the retry ends the plan;
  * a marker write that fails after the save leaves the plan ended and the retry answers false (reporting only, no money).
- * A refund of a second payment after the plan ended answers false. Refunds made before this marker existed have none.
+ * A refund that finds no plan to end (an ended trial with no subscription: the second of two refunds in one period, or
+ * a refund after the plan already ended) writes `"none"` under the same lock with the same 400-day expiry, so repeating
+ * it after the customer bought a new plan answers `planEnded: false` and leaves the new plan alone. A build from before
+ * this value (an earlier M1 build) reads any value as "ended before": it never ends a plan for that transaction either
+ * and only reports `planEnded: true` (reporting, no money); builds before M1 never read the key. Refunds made before
+ * this marker existed have none.
  */
 async function endPlanOnRefund(email: string, paymentId: string, by: string, txnId: number): Promise<boolean> {
   const now = new Date();
   const change = await withUserLock(email, async (u) => {
-    if (await db.get(refundEndedKey(txnId))) return "ended_before" as const;
-    if (!u.billing && trialOver(u)) return null;
+    const mark = await db.get<string>(refundEndedKey(txnId));
+    if (mark === "none") return "nothing_before" as const;
+    if (mark) return "ended_before" as const;
+    if (!u.billing && trialOver(u)) {
+      await db.set(refundEndedKey(txnId), "none", DAYS_400);
+      return null;
+    }
     const before = { plan: String(u.plan), credits: Number(u.credits) || 0, autoRenew: u.billing?.autoRenew ?? false, paidThrough: u.billing?.paidThrough ?? u.handPlan?.paidThrough ?? null };
     // The founding seat and the price lock end with the plan (rule 1708): the refunded account is no longer a paying one.
     const founding = endOnRefund(u, by, now.getTime());
@@ -635,10 +649,10 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string, txn
     await db.set(refundEndedKey(txnId), paymentId, DAYS_400);
     return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding };
   });
-  if (change && change !== "ended_before") {
+  if (change && typeof change === "object") {
     if (change.founding) await freePlaces(email);
     await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
   }
   await enforceSeats(email);
-  return !!change;
+  return change === "ended_before" || (!!change && typeof change === "object");
 }

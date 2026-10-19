@@ -511,6 +511,40 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
     expect(trialOver(after)).toBe(false);
     expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
   });
+  it("a refund that found no plan to end, repeated after a new purchase, leaves the new plan alone (rule 1300)", async () => {
+    const u = await owner();
+    // Two plan payments in one period: the second refund ends the plan, so the first one finds none to end.
+    const { obj: first } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    const { obj: second } = await payAndConfirm({ kind: "plan", plan: "pro" });
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id: paymentIdFor(second.id), reason: "asked" })).json()).toMatchObject({ ok: true, planEnded: true });
+    const ended = (await getUser(u.email))!;
+    expect(ended.billing).toBeUndefined();
+    expect(trialOver(ended)).toBe(true);
+    const id = paymentIdFor(first.id);
+    expect(await (await refund(u.email, { id, reason: "asked" })).json()).toMatchObject({ ok: true, planEnded: false });
+    // The marker says this transaction ended nothing (multi-workspace M1 final review, I2).
+    expect(await db.get(`paymob:refund_ended:${first.id}`)).toBe("none");
+    expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
+    // The customer buys again: a new subscription.
+    jar().clear();
+    await signIn(u.email);
+    const { answer } = await payAndConfirm({ kind: "plan", plan: "pro" });
+    expect(answer.result).toBe("paid");
+    const bought = (await getUser(u.email))!;
+    expect(bought.billing).toMatchObject({ plan: "pro", status: "active" });
+    // The founder repeats the refund that ended nothing: it still ends nothing.
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id, reason: "asked again" })).json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: false });
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("pro");
+    expect(after.billing).toEqual(bought.billing);
+    expect(after.credits).toBe(bought.credits);
+    expect(trialOver(after)).toBe(false);
+    expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
+  });
   it("a pack's refund leaves the plan alone (rule 1300)", async () => {
     const u = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter" });

@@ -84,10 +84,27 @@ const REQUEST_CALL = /\b[\w$.]+\(\s*(?:await\s+)?(?:req|request|params|searchPar
 /**
  * Calls that take the request only to authenticate it (a session, the founder's key, an MCP bearer) or to limit its
  * rate: their result is a checked identity or a yes/no, never data the caller typed, so it is not request data.
- * `exchangeCode` (src/lib/google-signin.ts) trades the OAuth code with the PKCE verifier and returns only an ID token
- * Google signed, verified with `verifyIdToken` against the client id and the flow's nonce: a checked identity too.
  */
-const AUTH_CALL = /^(?:currentUser|currentUserUnverified|currentPerson|isAdmin|isAdminCookie|adminActor|adminKeySession|userFromBearer|bearerUser|limit|rateLimit|allow|ipOf|clientIp|sameOrigin|checkOrigin|exchangeCode)$/;
+const AUTH_CALL = /^(?:currentUser|currentUserUnverified|currentPerson|isAdmin|isAdminCookie|adminActor|adminKeySession|userFromBearer|bearerUser|limit|rateLimit|allow|ipOf|clientIp|sameOrigin|checkOrigin)$/;
+/**
+ * Google sign-in's `exchangeCode` (src/lib/google-signin.ts) trades the OAuth code with the PKCE verifier and returns
+ * only an ID token Google signed, verified with `verifyIdToken` against the client id and the flow's nonce: a checked
+ * identity. It is exempt ONLY in a file that imports that very function under its own name from `@/lib/google-signin`
+ * (the Google callback). The connectors' `exchangeCode` (src/lib/connectors/oauth.ts) returns the provider's token
+ * response, which is provider data: anywhere else the name is an ordinary call and its result keeps the taint.
+ */
+const GOOGLE_SIGNIN = "@/lib/google-signin";
+function importsGoogleExchange(sf: ts.SourceFile): boolean {
+  return sf.statements.some(
+    (st) =>
+      ts.isImportDeclaration(st) &&
+      ts.isStringLiteral(st.moduleSpecifier) &&
+      st.moduleSpecifier.text === GOOGLE_SIGNIN &&
+      !!st.importClause?.namedBindings &&
+      ts.isNamedImports(st.importClause.namedBindings) &&
+      st.importClause.namedBindings.elements.some((el) => el.name.text === "exchangeCode" && (!el.propertyName || el.propertyName.text === "exchangeCode")),
+  );
+}
 /**
  * Reads of a record this app wrote, looked up by a request value (the console's lookup by address, rule 1982; a reset
  * link's record by its token's hash; an OAuth flow's server-side state by its random id). The ids inside such a record
@@ -120,7 +137,8 @@ function storedLookup(e: ts.Expression, sf: ts.SourceFile): boolean {
   return false;
 }
 /** The value is a checked identity or an app-written record: taint stops here (the call's own arguments are still scanned). */
-const exempt = (e: ts.Expression, sf: ts.SourceFile): boolean => isCallTo(e, AUTH_CALL, sf) || storedLookup(e, sf);
+const exempt = (e: ts.Expression, sf: ts.SourceFile): boolean =>
+  isCallTo(e, AUTH_CALL, sf) || (importsGoogleExchange(sf) && isCallTo(e, /^exchangeCode$/, sf)) || storedLookup(e, sf);
 
 /** The identifiers a binding or an assignment target names, without property names (`{ a: x }` names `x`). */
 function targetNames(t: ts.Node): string[] {
@@ -277,8 +295,15 @@ describe("rule 2112 (scan half): no route or page reads a person or an account i
     expect(probe(`export async function GET(req: Request) { const b = await req.json(); const [x] = await Promise.all([parse(b)]); return x.aid; }`)).toEqual(["aid"]);
     // A call that only authenticates the request is not request data.
     expect(probe(`export async function GET(req: Request) { const u = await userFromBearer(req); return u.actor.pid; }`)).toEqual([]);
-    expect(probe(`export async function GET(req: Request) { const q = new URL(req.url).searchParams; const id = await exchangeCode(q.get("code"), st); let res; res = await resolveGoogle(id, "login", "ar"); return res.login.pid; }`)).toEqual([]);
-    expect(probe(`export async function GET(req: Request) { const q = new URL(req.url).searchParams; const id = (await exchangeCode(q.get("code"), st)) ?? q; return id.pid; }`)).toEqual(["pid"]);
+    // Google sign-in's `exchangeCode` is exempt only where it is imported from `@/lib/google-signin` under its own name.
+    const google = `import { exchangeCode } from "@/lib/google-signin";\n`;
+    const signInCall = `export async function GET(req: Request) { const q = new URL(req.url).searchParams; const id = await exchangeCode(q.get("code"), st); let res; res = await resolveGoogle(id, "login", "ar"); return res.login.pid; }`;
+    expect(probe(google + signInCall)).toEqual([]);
+    expect(probe(google + `export async function GET(req: Request) { const q = new URL(req.url).searchParams; const id = (await exchangeCode(q.get("code"), st)) ?? q; return id.pid; }`)).toEqual(["pid"]);
+    // The same call is request data with no import, with the connectors' `exchangeCode`, or with another name renamed to it.
+    expect(probe(signInCall)).toEqual(["pid"]);
+    expect(probe(`import { exchangeCode } from "@/lib/connectors/oauth";\n` + signInCall)).toEqual(["pid"]);
+    expect(probe(`import { takeState as exchangeCode } from "@/lib/google-signin";\n` + signInCall)).toEqual(["pid"]);
     // Assignments are followed like declarations.
     expect(probe(`export async function POST(req: Request) { let b; b = await req.json(); return b.acct; }`)).toEqual(["acct"]);
     expect(probe(`export async function POST(req: Request) { const raw = await req.text(); let b: unknown = null; try { b = JSON.parse(raw); } catch {} let x; x = b; return (x as { pid?: string }).pid; }`)).toEqual(["pid"]);
@@ -303,6 +328,27 @@ describe("rule 2112 (scan half): no route or page reads a person or an account i
     expect(scan(real)).toEqual([]);
     expect(scan(real.replace(anchor, `${anchor}  const forged = b.acct;\n`))).toEqual(["acct"]);
     expect(scan(real.replace(anchor, `${anchor}  const { pid } = b as { pid?: string };\n`))).toEqual(["pid"]);
+  });
+
+  it("only the Google callback's exchangeCode is exempt; the connectors' callback result is request data (mutation probe, in memory)", () => {
+    // Exactly one route imports Google sign-in's `exchangeCode`: the Google callback.
+    expect(APP.filter((f) => importsGoogleExchange(tree(f)))).toEqual(["src/app/api/auth/google/callback/route.ts"]);
+    // src/app/api/connect/{provider}/callback/route.ts calls the connectors' `exchangeCode` (src/lib/connectors/oauth.ts)
+    // with the request's `code`: its token response is provider data. An id read from it, added in memory only, is flagged.
+    const f = "src/app/api/connect/[provider]/callback/route.ts";
+    const real = readFileSync(f, "utf8");
+    expect(importsGoogleExchange(tree(f))).toBe(false);
+    const anchor = "    const data = await exchangeCode(p, code, { shop, verifier: st.verifier || undefined });\n";
+    expect(real.includes(anchor), `${f} changed: move the mutation anchor`).toBe(true);
+    const scan = (code: string) => requestIdReads(ts.createSourceFile(f, code, ts.ScriptTarget.Latest, true)).map((r) => r.name);
+    expect(scan(real)).toEqual([]);
+    expect(scan(real.replace(anchor, `${anchor}    const forged = data.acct;\n`))).toEqual(["acct"]);
+    // The Google callback, with the same read added after its `exchangeCode`, is not flagged: a checked identity.
+    const g = "src/app/api/auth/google/callback/route.ts";
+    const greal = readFileSync(g, "utf8");
+    const ganchor = "  const id = await exchangeCode(q.get(\"code\"), st);\n";
+    expect(greal.includes(ganchor), `${g} changed: move the mutation anchor`).toBe(true);
+    expect(requestIdReads(ts.createSourceFile(g, greal.replace(ganchor, `${ganchor}  const fromId = id?.pid;\n`), ts.ScriptTarget.Latest, true)).map((r) => r.name)).toEqual([]);
   });
 });
 

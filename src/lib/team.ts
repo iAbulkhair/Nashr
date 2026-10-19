@@ -207,27 +207,31 @@ async function putRow(aid: AccountId, pid: PersonId, row: MembershipValue): Prom
 }
 
 /**
- * Write one membership (rule 2132): `SET mbr:{aid}:{pid}`, the roster entry and `orgs:{pid}` in one round, and for the
- * person's HOME membership the legacy `member:{email}` fields (`role`, `acceptedAt`, `disabled`) under `lock:member`, so
- * a build rolled back to R1 reads the same membership. The legacy record is changed in place (`Object.assign` keeps its
- * field order, a resume deletes `disabled` as R1 did) and only when a field differs, so a home record stays exactly what
- * R1 wrote; `invitedBy` and `memberOf` never change after an accept and are left as R1 wrote them (the row's `invitedBy`
- * is the inviter's person id, the legacy record's their address). The caller holds `lock:team:{aid}` (`teamLocked`).
+ * Write one membership (rule 2132): `SET mbr:{aid}:{pid}`, the roster entry and `orgs:{pid}`, and for the person's HOME
+ * membership the legacy `member:{email}` fields (`role`, `acceptedAt`, `disabled`), so a build rolled back to R1 reads
+ * the same membership. For a home membership both writes run in ONE round under `lock:member`: a lock timeout throws
+ * before either is written, so the row and the mirror never disagree (a pause on the row only would come back unpaused
+ * after a rollback). Without a legacy record (a `p_` person, or one already gone) the row is written alone, after the
+ * lock. The legacy record is changed in place (`Object.assign` keeps its field order, a resume deletes `disabled` as R1
+ * did) and only when a field differs, so a home record stays exactly what R1 wrote; `invitedBy` and `memberOf` never
+ * change after an accept and are left as R1 wrote them (the row's `invitedBy` is the inviter's person id, the legacy
+ * record's their address). The caller holds `lock:team:{aid}` (`teamLocked`); `lock:member` comes after `lock:team`,
+ * `lock:login` and `lock:person` in rule 2139's order.
  */
 export async function writeMembership(aid: AccountId, pid: PersonId, row: MembershipValue, opts: { home: boolean; teamLocked: true }): Promise<void> {
-  await Promise.all([
-    putRow(aid, pid, row),
-    opts.home
-      ? withMemberLock(pid, async (m) => {
-          if (!isHome(m, aid, pid)) return;
-          if (m.role === row.role && m.acceptedAt === row.acceptedAt && m.disabled === row.disabled) return;
-          Object.assign(m, { role: row.role, acceptedAt: row.acceptedAt });
-          if (row.disabled) m.disabled = row.disabled;
-          else delete m.disabled;
-          await saveMember(m);
-        })
-      : null,
-  ]);
+  if (!opts.home) return putRow(aid, pid, row);
+  const done = await withMemberLock(pid, async (m) => {
+    const mirror = isHome(m, aid, pid) && !(m.role === row.role && m.acceptedAt === row.acceptedAt && m.disabled === row.disabled);
+    if (mirror) {
+      Object.assign(m, { role: row.role, acceptedAt: row.acceptedAt });
+      if (row.disabled) m.disabled = row.disabled;
+      else delete m.disabled;
+    }
+    await Promise.all([putRow(aid, pid, row), mirror ? saveMember(m) : null]);
+    return true;
+  });
+  // No legacy record: nothing to mirror.
+  if (done === null) await putRow(aid, pid, row);
 }
 
 /**
@@ -866,7 +870,7 @@ export async function rosterLinks(aid: AccountId, roster: readonly string[]): Pr
  * Account deletion (src/lib/account.ts `wipeAccount`, plan reconciliation 7, rule 2126): every membership of the account
  * (`deleteMembership`: the row, the roster and `orgs:` entries, the per-(person, account) active brand and links, for a
  * home membership the legacy member record and its per-login keys, and the person only when nothing else is left), then
- * every invite and both indexes, then `finish` (the account's own records, `user:{owner}` among them), then the owner's
+ * every invite, both indexes and the team log (`teamlog:{aid}`: its rows hold member addresses), then `finish` (the account's own records, `user:{owner}` among them), then the owner's
  * `orgs:` entry, all under `lock:team:{aid}`: an accept already holding it finishes first and its member is deleted here,
  * and one that takes it afterwards re-reads the owner and finds none. A person who belongs elsewhere keeps every key of
  * the other accounts and keeps signing in there.
@@ -888,7 +892,7 @@ export async function wipeMemberships(aid: AccountId, opts: { teamLocked?: boole
       const pid = pidFrom(p);
       await deleteMembership(aid, pid, { home: isHome(await getMember(pid), aid, pid), teamLocked: true });
     });
-    await pmap([...ids.map(inviteKey), membersKey(aid), invitesKey(aid)], (k) => db.del(k));
+    await pmap([...ids.map(inviteKey), membersKey(aid), invitesKey(aid), accountKey.teamLog(aid)], (k) => db.del(k));
     if (opts.finish) await opts.finish();
     // The owner is no membership row (rule 2115): its `orgs:` entry for this account is the last trace of it here.
     if (account && acct(account) === aid) await db.srem(personKey.orgs(ownerOf(account)), aid);
