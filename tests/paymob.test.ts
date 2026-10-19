@@ -655,6 +655,29 @@ describe("a plan refund deletes the saved card (rules 2270-2272)", () => {
     expect(await db.get(cardKey(u.email))).toEqual(newCard);
     expect((await getUser(u.email))!.billing).toMatchObject({ plan: "pro", status: "active" });
   });
+  it("a refund still ends a hand-set plan whose paid-through day has passed, though it already reads as an ended trial (rule 2273)", async () => {
+    const u = await owner();
+    const { obj } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    // A plan set by hand (no subscription) three days past its paid-through day: `trialOver` is already true for it
+    // (rule 2273), so only the `!handPlanEnded` exception in `endPlanOnRefund` lets the refund end it.
+    const { billing: _billing, ...rest } = (await getUser(u.email))!;
+    await saveUser({ ...rest, plan: "pro", handPlan: { paidThrough: addDays(today(), -3), by: "key", at: new Date().toISOString() } });
+    expect(trialOver((await getUser(u.email))!)).toBe(true);
+    await card(u.email);
+    jar().clear();
+    await adminSignIn();
+    const id = paymentIdFor(obj.id);
+    expect(await (await refund(u.email, { id, reason: "asked" })).json()).toMatchObject({ ok: true, planEnded: true });
+    const ended = (await getUser(u.email))!;
+    expect(ended.plan).toBe("trial");
+    expect(ended.handPlan).toBeUndefined();
+    expect(await db.get(cardKey(u.email))).toBeNull();
+    expect(await db.get(`paymob:refund_ended:${obj.id}`)).toBe(id);
+    // The repeat keeps a card saved since, as for any other plan.
+    await card(u.email);
+    expect(await (await refund(u.email, { id, reason: "asked again" })).json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
+    expect(await db.get(cardKey(u.email))).not.toBeNull();
+  });
   it("a first run that stops after its card delete and before its marker deletes the card again on the retry (rule 2270)", async () => {
     const u = await owner();
     const { obj } = await payAndConfirm({ kind: "plan", plan: "starter" });

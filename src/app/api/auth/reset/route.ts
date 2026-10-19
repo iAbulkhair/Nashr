@@ -74,7 +74,8 @@ export async function POST(req: Request) {
     }
     if (!p) return badToken();
     // The member's own calendar feed and booking links end with the password they were made under, as an owner's MCP
-    // tokens do. Only this login's: the owner's links and the rest of the team's are untouched.
+    // tokens do, and so does the login's Google link (rule 2301). Only this login's: the owner's links and the rest of
+    // the team's are untouched.
     await Promise.all([revokeFeed(p.email), revokeBook(p.email), unlinkGoogle(p.email)]);
     // A seat-paused member gets the new password but no session: `currentUser` refuses it until the owner has room.
     if (m.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
