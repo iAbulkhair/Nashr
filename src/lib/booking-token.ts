@@ -153,7 +153,8 @@ export async function resolveBook(token: string): Promise<BookRecord | null> {
  * The live links, one per provider, and when each was made. Never returns a token, a hash or a scope. With `scope` (the
  * caller's own `sc(u)`), each row also says whether the link was made in that brand (`sameBrand`): the record's own
  * scope is compared here and never returned. Without it, `sameBrand` is true. `who` from M1: the `(pid, aid)` link of
- * each provider, else for the home account the link the legacy pointer names. Two rounds: every pointer, then every record.
+ * each provider, else for the home account the link the legacy pointer names. Two rounds: every pointer, then every record
+ * (three when a home record is seen by an actor that is not home in it).
  */
 export async function getBookStatus(who: LinkOwner | string, scope?: string): Promise<{ provider: BookRecord["provider"]; createdAt: string; sameBrand: boolean }[]> {
   const row = (provider: BookRecord["provider"], rec: BookRecord | null) => (rec ? { provider, createdAt: rec.createdAt, sameBrand: scope === undefined || rec.scope === scope } : null);
@@ -172,8 +173,16 @@ export async function getBookStatus(who: LinkOwner | string, scope?: string): Pr
   const hashes = distinct(ptrs.flat());
   const recs = await Promise.all(hashes.map((h) => db.get<BookRecord>(BOOK_KEYS.rec(h))));
   const byHash = new Map(hashes.map((h, i) => [h, recs[i]] as const));
+  // A home record seen by an actor that is not home in it: read the legacy pointers those records name, as
+  // `resolveBook` does, so status and resolve agree (one more round, in that case only).
+  const homeOf = (i: number) => (who.home ? null : (byHash.get(ptrs[i][0] ?? "") ?? null));
+  const flipped = BOOK_PROVIDERS.some((_, i) => homeOf(i)?.home === true);
+  const legacies = flipped
+    ? await Promise.all(BOOK_PROVIDERS.map((p, i) => { const r = homeOf(i); return r?.home === true && typeof r.login === "string" ? db.get<string>(BOOK_KEYS.of(r.login, p)) : Promise.resolve(null); }))
+    : ptrs.map(([, l]) => l);
   const rows = BOOK_PROVIDERS.map((provider, i) => {
-    const [mine, legacy] = ptrs[i];
+    const [mine] = ptrs[i];
+    const legacy = legacies[i];
     const live = distinct([mine, legacy])
       .map((h) => [h, byHash.get(h) ?? null] as const)
       .find(([h, rec]) => !!rec && rec.provider === provider && belongsTo(rec, who) && linkLive(h, rec, { mine, legacy }));
@@ -185,7 +194,7 @@ export async function getBookStatus(who: LinkOwner | string, scope?: string): Pr
 /**
  * Kill one provider's link. Waits for each lock up to 20 tries 50 ms apart, then revokes anyway. `who` from M1: the new
  * lock, then for the home account the legacy one; both pointers and the records they name. A plain login: the legacy
- * lock, pointer and record, and that record's `(pid, aid)` pointer when M1 wrote it (the home link).
+ * lock, pointer and record, and that record's `(pid, aid)` pointer when M1 wrote it (the home link) and it still names it.
  */
 async function revokeOne(who: LinkOwner | string, provider: BookRecord["provider"]): Promise<void> {
   const ids = typeof who === "string" ? null : who;
@@ -206,10 +215,13 @@ async function revokeOne(who: LinkOwner | string, provider: BookRecord["provider
     const [mine, legacy] = await Promise.all([ids ? db.get<string>(personKey.bookOf(ids.pid, ids.aid, provider)) : null, home ? db.get<string>(BOOK_KEYS.of(login, provider)) : null]);
     const named = !ids && legacy ? await db.get<BookRecord>(BOOK_KEYS.rec(legacy)) : null;
     const theirs = named ? linkIds(named) : null;
+    // Only while it still names this record (as `revokeFeed`): a newer link of the same person stays.
+    const theirKey = theirs && theirs !== "legacy" ? personKey.bookOf(theirs.pid, theirs.aid, provider) : null;
+    const theirPtr = theirKey ? await db.get<string>(theirKey) : null;
     const pointers = [
       ...(ids ? [personKey.bookOf(ids.pid, ids.aid, provider)] : []),
       ...(home ? [BOOK_KEYS.of(login, provider)] : []),
-      ...(theirs && theirs !== "legacy" ? [personKey.bookOf(theirs.pid, theirs.aid, provider)] : []),
+      ...(theirKey && theirPtr === legacy ? [theirKey] : []),
     ];
     await Promise.all([...distinct([mine, legacy]).map((h) => db.del(BOOK_KEYS.rec(h))), ...pointers.map((k) => db.del(k))]);
   } finally {

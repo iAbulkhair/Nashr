@@ -11,7 +11,8 @@ import { applyBooking, parseCalcom, parseCalendly, verifyCalcomSignature, verify
  * client IP, answered with the same empty 404 over the limit or not (spec B2-R6 as amended: providers deliver every
  * customer's webhooks from a few shared addresses, so a stranger's misses must never refuse a live link); 120 an hour
  * per link; the record's shape; the validity check
- * (`loginHolds`: the login still active and the scope still one of its account's active brands); the signature, picked by
+ * (`loginHolds`: the login still active and the scope still one of its account's active brands; for a record made from
+ * multi-workspace M1, the person, the account and the membership, rules 2119 and 2131); the signature, picked by
  * `rec.provider` and keyed by `bookingKey(hash)` (Cal.com `x-cal-signature-256`, Calendly `Calendly-Webhook-Signature`,
  * a header over 512 characters refused unread); the JSON (400 when malformed: the sender is authenticated); the parser;
  * `applyBooking`, which acts on `rec.scope` only.

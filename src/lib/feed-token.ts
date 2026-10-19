@@ -19,7 +19,7 @@ import { personKey, storedAccountId, storedPersonId, type AccountId, type Person
  * Every function also takes a plain login (`string`): the pre-M1 form, exactly as before (a record without `pid`, the
  * legacy pointer only), kept for the callers that still revoke by address (password reset, console suspension, account
  * deletion) and for the tests that pin R1's behaviour. Revoking by address also drops the `(pid, aid)` pointer of the
- * home record it names, so it still ends the home link whole.
+ * home record it names (while that pointer still names it), so it still ends the home link whole.
  */
 
 /** 32 random bytes in base64url: exactly 43 characters, no padding. */
@@ -157,7 +157,8 @@ export async function resolveFeed(token: string): Promise<{ hash: string; rec: F
  * Whether there is a live link, and when it was made. Never returns the token or its hash. With `scope` (the caller's
  * own `sc(u)`), the answer also says whether the link was made in that brand (`sameBrand`; true when there is no link):
  * the record's own scope is compared here and never returned. `who` from M1: the `(pid, aid)` link, else for the home
- * account the link the legacy pointer names (one made before M1). Two rounds: the pointers, then their records.
+ * account the link the legacy pointer names (one made before M1). Two rounds: the pointers, then their records (three
+ * when a home record is seen by an actor that is not home in it).
  */
 export async function getFeedStatus(who: LinkOwner | string, scope?: string): Promise<{ exists: boolean; createdAt: string | null; sameBrand?: boolean }> {
   let rec: FeedRecord | null;
@@ -165,9 +166,13 @@ export async function getFeedStatus(who: LinkOwner | string, scope?: string): Pr
     const hash = await db.get<string>(FEED_KEYS.of(who));
     rec = hash ? await db.get<FeedRecord>(FEED_KEYS.rec(hash)) : null;
   } else {
-    const [mine, legacy] = await Promise.all([db.get<string>(personKey.feedOf(who.pid, who.aid)), who.home ? db.get<string>(FEED_KEYS.of(who.login)) : null]);
-    const hashes = distinct([mine, legacy]);
+    const [mine, legacyOfWho] = await Promise.all([db.get<string>(personKey.feedOf(who.pid, who.aid)), who.home ? db.get<string>(FEED_KEYS.of(who.login)) : null]);
+    const hashes = distinct([mine, legacyOfWho]);
     const recs = await Promise.all(hashes.map((h) => db.get<FeedRecord>(FEED_KEYS.rec(h))));
+    // A home record seen by an actor that is not home in it (the home flag of this (pid, aid) flipped): read the legacy
+    // pointer the record names, as `resolveFeed` does, so status and resolve agree. A third round in that case only.
+    const first = recs[0];
+    const legacy = !who.home && first?.home === true && typeof first.login === "string" ? await db.get<string>(FEED_KEYS.of(first.login)) : legacyOfWho;
     const at = hashes.findIndex((h, i) => !!recs[i] && belongsTo(recs[i]!, who) && linkLive(h, recs[i]!, { mine, legacy }));
     rec = at < 0 ? null : recs[at];
   }
@@ -179,7 +184,8 @@ export async function getFeedStatus(who: LinkOwner | string, scope?: string): Pr
  * Kill the link. Idempotent. Waits for each lock up to 20 tries 50 ms apart, then revokes anyway: a held lock never keeps
  * a link alive (B1-R10). `who` from M1: `lock:feed:{pid}:{aid}`, then for the home account `lock:feed:{login}`; deletes
  * both pointers and the records they name. A plain login (the pre-M1 form): `lock:feed:{login}`; deletes the legacy
- * pointer, the record it names, and that record's `(pid, aid)` pointer when M1 wrote it (the home link).
+ * pointer, the record it names, and that record's `(pid, aid)` pointer when M1 wrote it (the home link) and it still
+ * names that record.
  */
 export async function revokeFeed(who: LinkOwner | string): Promise<void> {
   const ids = typeof who === "string" ? null : who;
@@ -201,10 +207,14 @@ export async function revokeFeed(who: LinkOwner | string): Promise<void> {
     // By address only: the home record M1 wrote is also named by its (pid, aid) pointer, which goes with it.
     const named = !ids && legacy ? await db.get<FeedRecord>(FEED_KEYS.rec(legacy)) : null;
     const theirs = named ? linkIds(named) : null;
+    // That pointer goes only while it still names this record: a newer link of the same person stays (fail closed either
+    // way). One more dependent read, on a revoke by address only.
+    const theirKey = theirs && theirs !== "legacy" ? personKey.feedOf(theirs.pid, theirs.aid) : null;
+    const theirPtr = theirKey ? await db.get<string>(theirKey) : null;
     const pointers = [
       ...(ids ? [personKey.feedOf(ids.pid, ids.aid)] : []),
       ...(home ? [FEED_KEYS.of(login)] : []),
-      ...(theirs && theirs !== "legacy" ? [personKey.feedOf(theirs.pid, theirs.aid)] : []),
+      ...(theirKey && theirPtr === legacy ? [theirKey] : []),
     ];
     await Promise.all([...distinct([mine, legacy]).map((h) => db.del(FEED_KEYS.rec(h))), ...pointers.map((k) => db.del(k))]);
   } finally {

@@ -301,8 +301,8 @@ export async function deleteMembership(aid: AccountId, pid: PersonId, opts: { ho
     // (`revokeFeed` waits out a create already running); a link that outlives a skipped revoke is refused at read time
     // anyway, since the membership no longer holds (`loginHolds`). The feed and booking locks are leaves (rule 2139):
     // taken here under lock:team, lock:login and lock:person, and they take nothing else.
-    const who = { pid, aid, login: email ?? "", home: opts.home && !!email };
-    await Promise.all([revokeFeed(who), revokeBook(who)]);
+    const link = { pid, aid, login: email ?? "", home: opts.home && !!email };
+    await Promise.all([revokeFeed(link), revokeBook(link)]);
     if (email) await forgetPersonIfAlone(pid, email, aid, { loginLocked: true, personLocked: true });
   };
   // No address (a roster entry with no person and no legacy record): nothing signs in, so no login or person to lock.

@@ -142,8 +142,8 @@ async function personHolds(rec: Pick<FeedRecord, "scope" | "createdAt">, pid: Pe
 }
 
 /**
- * A record made before M1 (no `pid`), R1's check unchanged: the login exists and is active, and `rec.scope` is one of its
- * account's active brands. An owner must not be suspended
+ * A record made before M1 (no `pid`), R1's check plus the person suspension (rule 2131): the login exists and is active,
+ * its person is not suspended, and `rec.scope` is one of its account's active brands. An owner must not be suspended
  * and must have verified the address (rule 756), and the same holds for the owner behind a member.
  * A member must be on the owner's roster (`getLogin` checks it), not disabled, an admin or member, joined after the owner
  * record was made, and the owner must exist and not be suspended. The scope is compared with the owner's stored email
@@ -160,6 +160,8 @@ async function personHolds(rec: Pick<FeedRecord, "scope" | "createdAt">, pid: Pe
 async function legacyHolds(rec: Pick<FeedRecord, "login" | "scope" | "createdAt">): Promise<boolean> {
   const login = await getLogin(rec.login);
   if (!login) return false;
+  // Rule 2131: a person suspension ends every link, a link made before M1 too (`getLogin` already read the person).
+  if (isPersonSuspended(login.person)) return false;
   let owner: string;
   if (login.kind === "owner") {
     if (isSuspended(login.user) || !emailVerified(login.user)) return false;

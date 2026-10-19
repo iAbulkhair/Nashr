@@ -196,11 +196,71 @@ describe("rule 2132: R1 still reads the home link; links made before M1 keep wor
     // A second pre-M1 link (an R1 build's create), then the home membership is deleted: both kinds end.
     const old2 = (await createFeed(t.email, sc(t.uH), "ar")) as string;
     expect(await live(old2)).toBe(200);
+    const book2 = (await createBook(t.whoH, sc(t.uH), "calendly", "ar")) as string;
+    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calendly"))).toBe(hashBookToken(book2));
     await deleteMembership(aidOf(t.H), t.pid, { home: true, teamLocked: true });
+    expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBeNull();
+    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calendly"))).toBeNull();
+    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calcom"))).toBeNull();
+    expect(await resolveBook(book2)).toBeNull();
     expect(await resolveFeed(old2)).toBeNull();
     expect(await resolveBook(oldBook)).toBeNull();
     expect(await db.get(FEED_KEYS.of(t.email))).toBeNull();
     expect(await db.get(BOOK_KEYS.of(t.email, "calcom"))).toBeNull();
+  });
+});
+
+describe("rule 2132: rollback and status (fix round 1)", () => {
+  it("R1 re-creates while an M1 home record exists: the M1 record is dead, the R1 link live, status shows the R1 link; a later M1 create cleans up", async () => {
+    const t = await twoAccounts();
+    const m1 = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
+    const m1Rec = (await resolveFeed(m1))!.rec;
+    // R1's create: the per-login lock, a pid-less record, the legacy pointer, then the old record deleted.
+    const r1 = (await createFeed(t.email, sc(t.uH), "en")) as string;
+    expect(await resolveFeed(m1)).toBeNull();
+    expect(await live(r1)).toBe(200);
+    const r1Rec = (await resolveFeed(r1))!.rec;
+    expect(r1Rec.pid).toBeUndefined();
+    expect((await getFeedStatus(t.whoH, sc(t.uH))).createdAt).toBe(r1Rec.createdAt);
+    // R1's delete of the M1 record failed: the record is back, named by the (pid, aid) pointer only, and still dead.
+    await db.set(FEED_KEYS.rec(hashFeedToken(m1)), m1Rec);
+    expect(await resolveFeed(m1)).toBeNull();
+    expect(await live(m1)).toBe(404);
+    expect((await getFeedStatus(t.whoH, sc(t.uH))).createdAt).toBe(r1Rec.createdAt);
+    // The next M1 create deletes both old records.
+    const again = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
+    expect(await db.get(FEED_KEYS.rec(hashFeedToken(m1)))).toBeNull();
+    expect(await db.get(FEED_KEYS.rec(hashFeedToken(r1)))).toBeNull();
+    expect(await live(again)).toBe(200);
+  });
+
+  it("status agrees with resolve when a home record is seen by an actor that is not home in it, for the feed and booking", async () => {
+    const t = await twoAccounts();
+    const f = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
+    const b = (await createBook(t.whoH, sc(t.uH), "calcom", "ar")) as string;
+    const flipped: LinkOwner = { ...t.whoH, home: false };
+    expect(await resolveFeed(f)).not.toBeNull();
+    expect((await getFeedStatus(flipped, sc(t.uH))).exists).toBe(true);
+    expect((await getBookStatus(flipped, sc(t.uH))).map((r) => r.provider)).toEqual(["calcom"]);
+    // With the legacy pointer gone the record is dead for resolve, and status says so too.
+    await Promise.all([db.del(FEED_KEYS.of(t.email)), db.del(BOOK_KEYS.of(t.email, "calcom"))]);
+    expect(await resolveFeed(f)).toBeNull();
+    expect(await resolveBook(b)).toBeNull();
+    expect((await getFeedStatus(flipped, sc(t.uH))).exists).toBe(false);
+    expect(await getBookStatus(flipped, sc(t.uH))).toEqual([]);
+  });
+
+  it("a revoke by address deletes the home record's (pid, aid) pointer only while it still names that record", async () => {
+    const t = await twoAccounts();
+    const h = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
+    const b = (await createBook(t.whoH, sc(t.uH), "calcom", "ar")) as string;
+    const newer = "f".repeat(64);
+    await Promise.all([db.set(personKey.feedOf(t.pid, aidOf(t.H)), newer), db.set(personKey.bookOf(t.pid, aidOf(t.H), "calcom"), newer)]);
+    await Promise.all([revokeFeed(t.email), revokeBook(t.email)]);
+    expect(await db.get(FEED_KEYS.rec(hashFeedToken(h)))).toBeNull();
+    expect(await db.get(BOOK_KEYS.rec(hashBookToken(b)))).toBeNull();
+    expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBe(newer);
+    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calcom"))).toBe(newer);
   });
 });
 
@@ -219,9 +279,24 @@ describe("rule 2131: suspensions", () => {
   it("an account suspension ends only that account's links", async () => {
     const t = await twoAccounts();
     const [h, o] = [await routeFeed(t.email, t.O), await routeFeed(t.email, t.H)].reverse();
+    const [bo, bh] = [(await createBook(t.whoO, sc(t.uO), "calcom", "ar")) as string, (await createBook(t.whoH, sc(t.uH), "calcom", "ar")) as string];
     await saveUser({ ...t.O, suspended: true } as User);
     expect(await live(o)).toBe(404);
     expect(await live(h)).toBe(200);
+    expect(await loginHolds((await resolveBook(bo))!)).toBe(false);
+    expect(await loginHolds((await resolveBook(bh))!)).toBe(true);
+  });
+
+  it("a person suspension ends a feed link and a booking link made before M1 (no pid) too", async () => {
+    const t = await twoAccounts();
+    const f = (await createFeed(t.email, sc(t.uH), "ar")) as string;
+    const b = (await createBook(t.email, sc(t.uH), "calcom", "ar")) as string;
+    expect(await live(f)).toBe(200);
+    expect(await loginHolds((await resolveBook(b))!)).toBe(true);
+    const { source: _s, ...person } = (await getPerson(t.pid))!;
+    await db.set(personKey.person(t.pid), { ...person, suspended: true });
+    expect(await live(f)).toBe(404);
+    expect(await loginHolds((await resolveBook(b))!)).toBe(false);
   });
 });
 
