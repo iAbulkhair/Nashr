@@ -122,6 +122,14 @@ export const wsKey = {
   perfImport: (s: Scope) => `perfimport:${s}`,
   /** string: one ad account's last read time. */
   adSync: (s: Scope, provider: string) => `adsync:${s}:${provider}`,
+  /** json `FileProposal`: a core-file rewrite waiting for the owner's Apply (src/lib/file-proposals.ts, rule 2306). */
+  fileProposal: (s: Scope, id: string) => `fileprop:${s}:${id}`,
+  /** string: how a file proposal was decided (`applied`, `dismissed`, `stale`). */
+  fileProposalDone: (s: Scope, id: string) => `fileprop-done:${s}:${id}`,
+  /** lock: one file proposal's answer (60 s). */
+  fileProposalClaim: (s: Scope, id: string) => `fileprop-claim:${s}:${id}`,
+  /** set: the scope's file proposal ids, for `wipeAccount`. */
+  fileProposals: (s: Scope) => `fileprops:${s}`,
 } as const;
 
 export const accountKey = {

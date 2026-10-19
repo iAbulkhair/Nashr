@@ -34,6 +34,7 @@ import { AD_STATS_SOURCES, ADSTATS_KEY } from "./ad-stats";
 import { XSTATS_KEY } from "./social-read/common";
 import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
 import { instructionProposalKeys } from "./instruction-proposals";
+import { fileProposalKeys } from "./file-proposals";
 import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
 import { log } from "./log";
@@ -106,9 +107,9 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s), fileProposalKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals, fileProposals] = perScope[i];
     keys.push(
       ...taskIds.map((id) => wsKey.task(s, id)),
       ...files.map((f) => wsKey.file(s, f.name)),
@@ -145,6 +146,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...instrProposals,
       // Paid work waiting on a chat card (rule 1511): the proposal, its outcome and claim, and the index.
       ...spendProposals,
+      // Core-file rewrites waiting on a chat card (rule 2306): the proposal with its full text, outcome, claim and index.
+      ...fileProposals,
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),

@@ -173,6 +173,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/instructions/test": g("admin", "instructions.test"),
   // Applying or dismissing an instruction an agent proposed in chat (rules 953-954): the owner's click is the only approval.
   "POST /api/instructions/proposals/[id]": g("admin", "instructions.write"),
+  // Core-file rewrite cards (rule 2306): Apply writes a file every agent reads.
+  "POST /api/files/proposals/[id]": g("admin", "files.core.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
@@ -397,6 +399,8 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
 const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
   // Agent instructions (rules 930-959).
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
+  // Core-file rewrite cards (rule 2306).
+  "POST /api/files/proposals/[id]",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // Chat spend cards (rule 1512): each Run is a paid batch or render.

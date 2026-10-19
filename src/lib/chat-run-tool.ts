@@ -2,7 +2,7 @@
  * The chat: `runTool`, the one place a model tool call is carried out.
  */
 import { agentById, agentForTask } from "./agents";
-import type { User } from "./auth";
+import { sc, type User } from "./auth";
 import { getBrand, listLite, type Task, getTask } from "./brand";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType } from "./tasks";
 import { countCost, generateBatch, withheldNote } from "./generate-batch";
@@ -24,6 +24,7 @@ import { runProposeMeetingTasks } from "./secretary-meeting";
 import { endOfZoneDay, formatWhen } from "./secretary-agenda";
 import { proposeAway } from "./secretary-away";
 import { PROPOSE_REFUSAL, proposeInstruction } from "./instruction-proposals";
+import { needsFileCard, proposeFile } from "./file-proposals";
 import { allow } from "./rate";
 import { MIN_ROLE, can } from "./roles";
 import { autoItems, createHandoff, parseProposal, proposalText } from "./handoffs";
@@ -34,8 +35,33 @@ import { isRegulated } from "./regulated";
 import { fairUseText } from "./fair-use";
 import { itemHash, publishScopeCheck, readAgentScopeModes } from "./agent-scope";
 import { CHAT_MAX_DURATION_S, CHAT_RENDER_MIN_MS, cleanName } from "./chat-reply";
-import { AWAY_CARDS_PER_REPLY, BRAND_CARDS_PER_REPLY, INSTRUCTION_CARDS_PER_REPLY, REEM_ONLY_REFUSAL, TOOL_ACTION, type ToolCtx, batchRefused, capReached, roleGate, scopeOf, spendGate } from "./chat-gates";
+import { AWAY_CARDS_PER_REPLY, BRAND_CARDS_PER_REPLY, FILE_CARDS_PER_REPLY, INSTRUCTION_CARDS_PER_REPLY, REEM_ONLY_REFUSAL, TOOL_ACTION, type ToolCtx, batchRefused, capReached, roleGate, scopeOf, spendGate } from "./chat-gates";
 import { CHAT_IMAGE_CREDITS, EDITABLE_BRAND_FIELDS, type EditableBrandField, toolsFor } from "./chat-tools";
+
+/** The host of a URL the model or the brand gave, lower case and without a leading "www.", or "" when it is not one. */
+export function hostOf(url: string): string {
+  try {
+    const h = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`).hostname.toLowerCase();
+    return h.replace(/^www\./, "").replace(/\.$/, "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Rule 2304: may import_catalog fetch `site`? Yes when its host is the brand website's host or a subdomain of it (a
+ * store at shop.example.com for example.com), or when the person chatting wrote that host in this turn's own message
+ * (`ownerMsg`, the human's text, never a tool result or a crawled page). No to anything else.
+ */
+export function catalogHostAllowed(site: string, website: string | undefined, ownerMsg: string | undefined): boolean {
+  const host = hostOf(site);
+  if (!host) return false;
+  const own = website ? hostOf(website) : "";
+  if (own && (host === own || host.endsWith(`.${own}`))) return true;
+  // Whole hosts only: "store.example" is not named by a message that says "mystore.example".
+  const named = (ownerMsg ?? "").match(/(?:[\p{L}\p{N}-]+\.)+[\p{L}]{2,}/gu) ?? [];
+  return named.some((n) => hostOf(n) === host);
+}
 
 /**
  * Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop.
@@ -173,6 +199,19 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // Over MCP the words come from another assistant, which may have read any page: core memory is written in the app.
       if (CORE_FILES.includes(target) && ctx.via === "mcp") return `Not done: ${target} is core memory that every agent reads, and it is not written over MCP. Nothing was changed. Save the text under a different file name, or ask the owner to change it in the app.`;
       if (CORE_FILES.includes(target) && !can(user, "files.core.write")) return `Not done: ${target} is core memory that every agent reads, and writing it needs the owner or an admin of this account; the person chatting is neither. Nothing was changed. Tell them plainly, and offer to save the text under a different file name instead.`;
+      // Rule 2306: replacing the text of a core file an agent wrote is a brand change too, and the model may be repeating a
+      // crawled page. Code holds it on a card under the reply (src/lib/file-proposals.ts); only the owner's Apply writes it.
+      // A new or empty core file is still written at once, and an owner-written one is never replaced (`writeFile`).
+      if (CORE_FILES.includes(target)) {
+        const content = String(input.content ?? "");
+        const existing = await readFile(email, target);
+        if (needsFileCard(existing, content)) {
+          if ((ctx.fileProposed?.length ?? 0) >= FILE_CARDS_PER_REPLY) return `Not proposed: this reply already carries ${FILE_CARDS_PER_REPLY} core-file cards, the most one reply shows. Nothing was stored; ask the owner to apply or dismiss those first.`;
+          const p = await proposeFile(sc(user), existing, content, ctx.agent, await who());
+          ctx.fileProposed?.push(p);
+          return `Not saved yet: ${target} is core memory that every agent reads, and replacing its text is the owner's call. The new text (${p.content.length} chars) is on a card under this reply for the owner or an admin to apply or dismiss. Tell them so in one line, and do not write it again.`;
+        }
+      }
       // The workspace has a file ceiling. Tell the agent plainly rather than throwing out of the turn: it can then
       // say so to the owner, or overwrite an existing file, instead of the message failing with nothing shown.
       let f;
@@ -321,6 +360,10 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const brand = await getBrand(email);
       const site = String(input.url ?? "") || brand?.website;
       if (!site) return "No store URL known. Ask the owner for it.";
+      // Rule 2304: the model picks the URL, and crawled pages, catalogs, uploads and teammates' notes reach the model, so a
+      // planted link could fill products.md with someone else's catalog. Code decides: the brand's own site (or a subdomain
+      // of it), or a host the person chatting typed in this turn's own message.
+      if (!catalogHostAllowed(site, brand?.website, ctx.ownerMsg)) return `Not done: ${hostOf(site) || "that address"} is not this brand's website${brand?.website ? ` (${hostOf(brand.website)})` : ""}, and the person chatting did not name it in their message. Nothing was imported. Ask them to send the store link themselves in the chat, or to set the website on the Brand page.`;
       const r = await importCatalog(email, site);
       actions.push(`catalog:${r.count}`);
       return r.count ? `Imported ${r.count} products into products.md. Examples: ${r.products.slice(0, 5).map((p) => `${p.title}${p.price ? " (" + p.price + ")" : ""}`).join("; ")}` : "Could not find product pages (no sitemap or unusual URLs). Ask the owner for 3-5 product links or a product list.";
