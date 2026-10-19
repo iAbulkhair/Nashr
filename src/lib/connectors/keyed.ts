@@ -2,7 +2,7 @@ import type { Connection } from "./store";
 import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
 import { safeFetch } from "../safe-fetch";
-import { STORE_REPLY_BYTES, responseJson } from "../read-capped";
+import { PROVIDER_REPLY_BYTES, STORE_REPLY_BYTES, responseJson } from "../read-capped";
 import { productsMarkdown } from "./products-md";
 
 /** Key-based connectors that need no partner registration: Odoo, PrestaShop, Telegram, Brevo. */
@@ -58,7 +58,7 @@ export async function importPrestaShop(email: string, c: Connection) {
 export async function verifyTelegram(d: Record<string, string>) {
   try {
   const r = await fetch(`https://api.telegram.org/bot${d.botToken}/getChat?chat_id=${encodeURIComponent(d.chatId)}`, { signal: providerTimeout() });
-  const j = (await r.json()) as { ok: boolean; result?: { title?: string; username?: string }; description?: string };
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as { ok: boolean; result?: { title?: string; username?: string }; description?: string };
   return j.ok ? { ok: true, name: j.result?.title ?? j.result?.username } : { ok: false, error: j.description ?? "bot cannot see this chat (add the bot as channel admin)" };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "unreachable" };
@@ -69,7 +69,7 @@ export async function postTelegram(c: Connection, text: string): Promise<{ id: s
   const r = await fetch(`https://api.telegram.org/bot${c.data.botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c.data.chatId, text: text.slice(0, 4000) }), signal: AbortSignal.timeout(45_000) });
   // The status goes into the error so a publish can tell a refusal (4xx: the post was not made) from a server error or
   // an unreadable answer (it may have been), src/lib/publish-once.ts.
-  const j = (await r.json().catch(() => null)) as { ok: boolean; error_code?: number; result?: { message_id: number; chat: { username?: string; id: number } }; description?: string } | null;
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES).catch(() => null)) as { ok: boolean; error_code?: number; result?: { message_id: number; chat: { username?: string; id: number } }; description?: string } | null;
   if (!j) throw new Error(`telegram ${r.status}: unreadable answer`);
   if (!j.ok || !j.result) throw new Error(`telegram ${j.error_code ?? r.status}: ${j.description ?? "failed"}`);
   const u = j.result.chat.username;
@@ -82,7 +82,7 @@ export async function postTelegram(c: Connection, text: string): Promise<{ id: s
 const EMAIL_TIMEOUT_MS = 20_000;
 
 async function jsonOf(r: Response): Promise<Record<string, unknown> | null> {
-  return (await r.json().catch(() => null)) as Record<string, unknown> | null;
+  return (await responseJson(r, PROVIDER_REPLY_BYTES).catch(() => null)) as Record<string, unknown> | null;
 }
 
 export async function draftBrevoCampaign(c: Connection, d: { name: string; subject: string; html: string }): Promise<{ id: string; url: string }> {
@@ -120,7 +120,7 @@ export async function verifyBrevo(d: Record<string, string>) {
   try {
     const r = await fetch("https://api.brevo.com/v3/account", { headers: { "api-key": d.apiKey }, signal: providerTimeout() });
     if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
-    const j = (await r.json()) as { companyName?: string; email?: string };
+    const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as { companyName?: string; email?: string };
     return { ok: true, name: j.companyName ?? j.email };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "unreachable" };

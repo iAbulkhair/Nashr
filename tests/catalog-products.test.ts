@@ -37,6 +37,20 @@ describe("the catalog import stays on the store's site and writes plain lines (r
     expect(hits.some((h) => h.includes("evil.example"))).toBe(false);
   });
 
+  it("sitemaps named by robots.txt or a sitemap index are fetched only on the site's host or its www twin (rule 2251)", async () => {
+    const hits = site({
+      "https://shop.example/": "<html></html>",
+      "https://shop.example/robots.txt": "User-agent: *\nSitemap: https://victim.example/sitemap.xml\nSitemap: https://www.shop.example/robots-map.xml\n",
+      "https://www.shop.example/robots-map.xml": "<urlset><loc>https://shop.example/products/amber</loc></urlset>",
+      "https://shop.example/sitemap.xml": "<sitemapindex><loc>https://victim.example/a.xml</loc><loc>https://cdn.evil.example/b.xml.gz</loc><loc>https://shop.example/sitemap-products.xml</loc></sitemapindex>",
+      "https://shop.example/sitemap-products.xml": "<urlset><loc>https://shop.example/products/oud</loc></urlset>",
+    });
+    const urls = await discoverProductUrls("shop.example", 10);
+    expect(urls).toEqual(expect.arrayContaining(["https://shop.example/products/amber", "https://shop.example/products/oud"]));
+    expect(hits.filter((h) => !new URL(h).hostname.endsWith("shop.example"))).toEqual([]);
+    expect(hits).toContain("https://www.shop.example/robots-map.xml");
+  });
+
   it("titles and descriptions with newlines or tags become one plain line each; the note stays Thakeen's", async () => {
     const ws = await newUser("catalog-plain").then((u) => u.email);
     site({

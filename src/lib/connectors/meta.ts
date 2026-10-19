@@ -1,5 +1,6 @@
 import type { Connection } from "./store";
 import { providerTimeout } from "../fetch-timeout";
+import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 
 /**
  * Facebook Pages and Instagram professional accounts through the Graph API. The host is fixed; nothing about a request
@@ -23,7 +24,7 @@ export type MetaPage = { id: string; name: string; token: string; igId?: string;
  * Those are reported as 401 and 403 so refusedToken asks the owner to reconnect, as it does for every other platform.
  */
 async function graphError(r: Response, what: string): Promise<Error> {
-  const j = (await r.json().catch(() => ({}))) as GraphError;
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES).catch(() => ({}))) as GraphError;
   const code = j.error?.code;
   const status = code === 190 ? 401 : code === 10 || code === 200 ? 403 : r.status;
   return new Error(`meta ${what} ${status}: ${(j.error?.message ?? "").slice(0, 160)}`);
@@ -34,7 +35,7 @@ async function graph<T>(path: string, token: string, init?: { body: Record<strin
     ? { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(init.body), signal: providerTimeout() }
     : { headers: { Authorization: `Bearer ${token}` }, signal: providerTimeout() });
   if (!r.ok) throw await graphError(r, path.split("?")[0].split("/").pop() || "call");
-  return (await r.json()) as T;
+  return (await responseJson(r, PROVIDER_REPLY_BYTES)) as T;
 }
 
 /** Short-lived user token → long-lived (about 60 days), with the app credentials in the POST body, never a URL. */
@@ -46,7 +47,7 @@ export async function longLivedToken(short: string): Promise<string> {
     body: new URLSearchParams({ grant_type: "fb_exchange_token", client_id: process.env.META_APP_ID ?? "", client_secret: process.env.META_APP_SECRET ?? "", fb_exchange_token: short }),
   });
   if (!r.ok) throw await graphError(r, "token");
-  const j = (await r.json()) as { access_token?: string };
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as { access_token?: string };
   if (!j.access_token) throw new Error("meta token: no access_token");
   return j.access_token;
 }
