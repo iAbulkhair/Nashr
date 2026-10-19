@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
-import { sc } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { globalKey, wsKey } from "@/lib/keys";
 import { CATALOG_IMPORTS_PER_HOUR, STORE_SYNCS_PER_HOUR } from "@/lib/rate";
 import { saveConnection, type Connection } from "@/lib/connectors/store";
 import { connectError } from "@/lib/connect-errors";
 import * as connectRoute from "@/app/api/connect/[provider]/route";
+import * as catalogRoute from "@/app/api/catalog/route";
+import { runTool } from "@/lib/chat-run-tool";
 
 /**
  * Rule 2243 (docs/system/tests/2240-key-check-rate.md): a manual sales sync (any member) and a product import each read
@@ -104,5 +106,61 @@ describe("manual store syncs and product imports are limited per workspace (rule
     const panel = readFileSync("src/components/app/ReportsPanel.tsx", "utf8");
     expect(panel).toContain('j.error === "slow_down" ? connectError(lang, j.error)');
     expect(connectError("en", "slow_down")).toBe("Too many tries. Wait a little, then try again.");
+  });
+});
+
+/**
+ * Rule 2249: the no-key catalog import (the Files page's POST /api/catalog and chat's import_catalog) reads up to some
+ * forty pages of a site the caller names, so it shares the product import's bucket: six an hour per workspace, whichever
+ * way it was started. Over the limit nothing is fetched and products.md is not touched.
+ */
+describe("the no-key catalog import shares the product import's six an hour (rule 2249)", () => {
+  const catalog = () => catalogRoute.POST(json("/api/catalog", "POST", { url: "https://shop.example" }));
+
+  it("the Files page's import is refused with 429 slow_down once the workspace's six are spent, and fetches nothing", async () => {
+    const u = await newUser("catalograte");
+    await signIn(u.email);
+    const site = vi.fn(async () => new Response("", { status: 404 }));
+    vi.stubGlobal("fetch", site);
+    for (let i = 0; i < CATALOG_IMPORTS_PER_HOUR; i++) {
+      const r = await catalog();
+      expect(r.status).toBe(200);
+      await r.text();
+    }
+    const seen = site.mock.calls.length;
+    const refused = await catalog();
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("Retry-After")).toBe("3600");
+    expect(await refused.json()).toEqual({ ok: false, error: "slow_down" });
+    expect(site.mock.calls.length).toBe(seen);
+  });
+
+  it("one bucket: store imports spend the Files page's and chat's allowance, and chat says why it did nothing", async () => {
+    const u = await newUser("catalograte-chat");
+    await saveConnection(sc(u), salla());
+    await signIn(u.email);
+    emptyStore();
+    for (let i = 0; i < CATALOG_IMPORTS_PER_HOUR; i++) expect((await act("import_products")).status).toBe(200);
+    expect((await catalog()).status).toBe(429);
+    const site = vi.fn(async () => new Response("", { status: 404 }));
+    vi.stubGlobal("fetch", site);
+    const actions: string[] = [];
+    const said = await runTool((await currentUser())!, "import_catalog", { url: "https://shop.example" }, actions, [], undefined, { via: "app" });
+    expect(said).toContain("six times in the last hour");
+    expect(actions).toEqual([]);
+    expect(site).not.toHaveBeenCalled();
+  });
+
+  it("a request without a site, or from a role that may not import, costs nothing; the Files page shows the slow_down words", async () => {
+    const u = await newUser("catalograte-free");
+    const m = await newMember(u, "member");
+    await signIn(m.email);
+    expect((await catalog()).status).toBe(403);
+    signOut();
+    await signIn(u.email);
+    expect((await catalogRoute.POST(json("/api/catalog", "POST", {}))).status).toBe(400);
+    expect(await db.get(globalKey.rate(wsKey.catalogImportBucket(sc(u))))).toBeNull();
+    const panel = readFileSync("src/components/app/FilesPanel.tsx", "utf8");
+    expect(panel).toContain('res?.status === 429) toast.danger(connectError(lang, "slow_down"))');
   });
 });

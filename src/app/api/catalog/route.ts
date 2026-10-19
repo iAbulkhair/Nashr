@@ -1,6 +1,8 @@
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { importCatalog } from "@/lib/catalog";
+import { wsKey } from "@/lib/keys";
+import { CATALOG_IMPORTS_PER_HOUR, WINDOW, allow, retryLater } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 
 export const maxDuration = 300;
@@ -14,6 +16,9 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { url?: string };
   const site = b.url || (await getBrand(sc(u)))?.website;
   if (!site) return new Response("no_site", { status: 400 });
+  // Each import reads up to some forty pages of a site the caller names: the same six an hour per workspace as a store's
+  // product import, in the same bucket (rule 2249).
+  if (!(await allow(wsKey.catalogImportBucket(sc(u)), CATALOG_IMPORTS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
   const enc = new TextEncoder();
   const stream = new ReadableStream({
     async start(ctrl) {
