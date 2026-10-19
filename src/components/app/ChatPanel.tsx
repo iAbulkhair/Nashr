@@ -8,6 +8,7 @@ import type { HandoffItemStatus, HandoffView } from "@/lib/handoffs";
 import type { BrandProposal } from "@/lib/brand-proposals";
 import type { AwayProposal } from "@/lib/secretary-away";
 import type { InstructionProposalCard as InstructionProposalCardData } from "@/lib/instruction-proposals";
+import type { FileProposalCard as FileProposalCardData } from "@/lib/file-proposals";
 import type { SpendProposalCard as SpendProposalCardData } from "@/lib/spend-proposals";
 import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
@@ -332,6 +333,59 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
           <span className="ms-auto flex gap-1.5">
             <button disabled={state === "saving"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{ar ? "تجاهل" : "Dismiss"}</button>
             <button disabled={state === "saving"} onClick={() => decide("apply")} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{ar ? "احفظ في ملف العلامة" : "Save to brand file"}</button>
+          </span>
+        )}
+      </footer>
+    </article>
+  );
+}
+
+/**
+ * A rewrite of a core file an agent asked for in chat (`write_file`, src/lib/file-proposals.ts, rule 2306): nothing is
+ * written yet. The card shows the file, the new length and the opening of the new text as plain text (a React text node,
+ * never markup); Apply writes it as the owner's click (POST /api/files/proposals/{id}, `files.core.write`, the same
+ * admin level as `brand.write`, so the page's `canBrand` decides who sees the buttons), Dismiss drops it.
+ */
+export function FileProposalCard({ p, t, lang, canWrite = true }: { p: FileProposalCardData; t: AppDict; lang: "ar" | "en"; canWrite?: boolean }) {
+  const ar = lang === "ar";
+  const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "stale" | "gone" | "forbidden" | "busy" | "slow" | "error">(p.state === "applied" || p.state === "dismissed" || p.state === "stale" ? p.state : p.state === "expired" ? "gone" : "open");
+  async function decide(decision: "apply" | "dismiss") {
+    setState("saving");
+    const r = await fetch(`/api/files/proposals/${p.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) }).catch(() => null);
+    if (!r) return setState("error");
+    if (r.ok) return setState(decision === "apply" ? "applied" : "dismissed");
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    setState(r.status === 403 ? "forbidden" : r.status === 404 || r.status === 410 ? "gone" : r.status === 429 ? "slow" : j.error === "stale" ? "stale" : j.error === "claim_busy" ? "busy" : "error");
+  }
+  const words: Partial<Record<typeof state, string>> = {
+    applied: ar ? "حُفظ النص الجديد في الملف." : "The new text is saved in the file.",
+    dismissed: ar ? "تجاهلته. الملف كما هو." : "Dismissed. The file is unchanged.",
+    stale: ar ? "تغيّر الملف بعد هذا الاقتراح، فلم يُكتب شيء. اطلب من الوكيل إعادة الكتابة إن أردت." : "The file changed after this proposal, so nothing was written. Ask the agent again if you still want it.",
+    gone: ar ? "انتهت صلاحية هذا الاقتراح أو حُسم من قبل." : "This proposal has expired or was already decided.",
+    forbidden: t.team.errors.forbidden,
+    busy: ar ? "يُحفظ هذا الاقتراح الآن. حاول بعد لحظة." : "This proposal is being saved right now. Try again in a moment.",
+    slow: t.handoff.errors.slow_down,
+    error: ar ? "تعذّر ذلك. حاول مرة أخرى." : "That did not work. Try again.",
+  };
+  const closed = state === "applied" || state === "dismissed" || state === "stale" || state === "gone";
+  const more = p.chars > p.preview.length;
+  return (
+    <article className="mt-3 overflow-hidden rounded-xl border border-lemon/40 bg-surface text-foreground">
+      <header className="flex items-center gap-2 border-b border-foreground/5 px-3 py-2 text-xs font-semibold">
+        <Icon name="shield" className="h-4 w-4 text-foreground" />{canWrite ? (ar ? "تعديل ملف أساسي ينتظر موافقتك" : "A core file rewrite waiting for your Apply") : (ar ? "تعديل ملف أساسي ينتظر قرار المالك أو المشرف" : "A core file rewrite waiting for the owner or an admin")}<span className="font-normal text-foreground-muted" dir="ltr">· {p.name}</span>
+      </header>
+      <div className="grid gap-2 px-4 py-3 text-sm">
+        <p className="min-w-0 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-foreground/5 p-2" dir="auto">{p.preview}{more ? "…" : ""}</p>
+        <p className="text-xs text-foreground-muted">{ar ? `يحل النص الجديد (${p.chars} حرفًا) محل محتوى الملف كله، وكل الوكلاء يقرؤونه.` : `The new text (${p.chars} characters) replaces the whole file, which every agent reads.`}</p>
+      </div>
+      <footer className="flex flex-wrap items-center gap-2 border-t border-foreground/5 px-3 py-2 text-xs">
+        {words[state] && <span role="status" className={state === "applied" || state === "dismissed" ? "text-foreground" : "text-danger"}>{words[state]}</span>}
+        {state === "applied" && <Link href={`/${lang}/app/files`} className="underline">{ar ? "افتح الملفات" : "Open Files"}</Link>}
+        {!closed && !canWrite && <span className="ms-auto text-foreground-muted">{t.inbox.waitAdmin}</span>}
+        {!closed && canWrite && (
+          <span className="ms-auto flex gap-1.5">
+            <button disabled={state === "saving"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{ar ? "تجاهل" : "Dismiss"}</button>
+            <button disabled={state === "saving"} onClick={() => decide("apply")} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{ar ? "اكتب في الملف" : "Write to the file"}</button>
           </span>
         )}
       </footer>
@@ -839,7 +893,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           </div>
         )}
         {msgs.map((m, i) => (
-          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length || m.spendProposals?.length)}>
+          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length || m.spendProposals?.length || m.fileProposals?.length)}>
             {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
             {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
             {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
@@ -848,6 +902,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
             {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
             {m.instructionProposals && m.instructionProposals.length > 0 && <div className="mt-1">{m.instructionProposals.map((p) => <InstructionProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canInstructions} />)}</div>}
+            {m.fileProposals && m.fileProposals.length > 0 && <div className="mt-1">{m.fileProposals.map((p) => <FileProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canBrand} />)}</div>}
             {m.spendProposals && m.spendProposals.length > 0 && <div className="mt-1">{m.spendProposals.map((p) => <SpendProposalCard key={p.id} p={p} t={t} lang={lang} canRun={canRun} onCredits={setCredits} />)}</div>}
             {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-foreground-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
             {m.role === "assistant" && m.switchTo && isAgentId(m.switchTo) && m.switchTo !== agent && (

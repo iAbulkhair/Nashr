@@ -1,7 +1,8 @@
 import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc, trialOver } from "@/lib/auth";
-import { chat, chatRefusedText, history, type ChatRefused } from "@/lib/chat";
+import { chat, chatRefusedText, type ChatRefused } from "@/lib/chat";
+import { historyFor } from "@/lib/chat-history";
 import { getConversation, touchConversation } from "@/lib/conversations";
 import { isAgentId } from "@/lib/agents";
 import { entitlements } from "@/lib/entitlements";
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const conv = new URL(req.url).searchParams.get("conv") ?? undefined;
   const record = conv && conv !== "default" ? getConversation(sc(u), conv) : Promise.resolve(null);
-  const [messages, status] = await Promise.all([history(sc(u), conv), record.then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
+  const [messages, status] = await Promise.all([historyFor(sc(u), conv), record.then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
   return NextResponse.json({ ok: true, messages, chat: status });
 }
 

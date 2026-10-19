@@ -100,9 +100,12 @@ describe("rule 1589: Arabic words where English had slipped in", () => {
     const src = read("src/app/oauth/authorize/page.tsx");
     expect(src).toContain('<html lang={lang} dir={lang === "ar" ? "rtl" : "ltr"}>');
     expect(src).toMatch(/allow: "اسمح",\s*deny: "ارفض"/);
-    expect(src).toContain("{t.allow}</button>");
-    expect(src).toContain("{t.deny}</button>");
-    expect(src).not.toMatch(/>(Allow|Deny)<\/button>/);
+    // The buttons live in the consent form since rule 2305; the page hands it the words of the screen's language.
+    expect(src).toContain("allow={t.allow} deny={t.deny}");
+    const form = read("src/app/oauth/authorize/ConsentForm.tsx");
+    expect(form).toContain("{allow}</button>");
+    expect(form).toContain("{deny}</button>");
+    for (const f of [src, form]) expect(f).not.toMatch(/>(Allow|Deny)<\/button>/);
   });
   it("public forms and the main menu label their fields in Arabic on Arabic pages", () => {
     for (const f of ["src/components/HelpCenter.tsx", "src/components/AffiliateForm.tsx"]) expect(read(f), f).not.toMatch(/placeholder="Email"|aria-label="Email"/);

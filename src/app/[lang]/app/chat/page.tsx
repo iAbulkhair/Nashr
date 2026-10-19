@@ -4,7 +4,7 @@ import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand, getTask, listLite } from "@/lib/brand";
-import { history } from "@/lib/chat";
+import { historyFor } from "@/lib/chat-history";
 import ChatPanel from "@/components/app/ChatPanel";
 import HomeSide from "@/components/app/HomeSide";
 import { kpis, kpiSince } from "@/lib/stats";
@@ -48,7 +48,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
     if (!can(u, "onboard")) redirect(`/${lang}/app/start`);
     // First run: the workspace is built inside the "Getting started" thread, not on a form, and only from the site the
     // owner confirmed on the start page. A `?onboard=` from a link goes back there as the pre-filled value to review.
-    const [onboard, initial, chat] = await Promise.all([confirmedOnboard(sc(u)), history(sc(u)), chatStatus(u, route("chat").model)]);
+    const [onboard, initial, chat] = await Promise.all([confirmedOnboard(sc(u)), historyFor(sc(u)), chatStatus(u, route("chat").model)]);
     if (!onboard) {
       const asked = onboardUrl(sp.onboard);
       redirect(`/${lang}/app/start${asked.length >= 4 ? `?url=${encodeURIComponent(asked)}` : ""}`);
@@ -69,7 +69,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   // The active conversation's record, read once: its pick sets the allowance line's ceiling and the model picker's
   // selection (the sidebar's list holds only the newest hundred, so an older conversation opened by link needs its own).
   const record = getConversation(sc(u), conv);
-  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(acct(u)), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(wsKey.onboardPlan(sc(u))), loadJourney(sc(u), u.email), record.then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
+  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([historyFor(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(acct(u)), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(wsKey.onboardPlan(sc(u))), loadJourney(sc(u), u.email), record.then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
   const active = await record;
   const firstPending = rows.find((x) => x.status === "pending");
   // Majed's handoff cards in this thread (every one it names: the thread holds at most 40 messages, one card each), read

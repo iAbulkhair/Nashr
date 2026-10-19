@@ -64,7 +64,7 @@ const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format
 
 /**
  * The SDK, replaced, with Claude switched on: `made` counts clients, so "before any model call" is a number. Generation
- * returns one item (or fails), the reviewer passes, the judge scores, an image prompt is a sentence, onboarding parts are
+ * returns a full batch, 10 items, the most any type asks for, so no batch is a short one (rule 2276) (or fails), the reviewer passes, the judge scores, an image prompt is a sentence, onboarding parts are
  * empty objects, and a chat call answers with `chat(params)` when given.
  */
 function sdk(opts: { genFails?: boolean; chat?: (p: Params) => unknown } = {}) {
@@ -76,7 +76,7 @@ function sdk(opts: { genFails?: boolean; chat?: (p: Params) => unknown } = {}) {
     default: class {
       static BadRequestError = class extends Error {};
       constructor() { made.n++; }
-      beta = { messages: { stream: () => ({ finalMessage: async () => { if (opts.genFails) throw new Error("model down"); return reply(JSON.stringify([{ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" }])); } }) } };
+      beta = { messages: { stream: () => ({ finalMessage: async () => { if (opts.genFails) throw new Error("model down"); return reply(JSON.stringify(Array.from({ length: 10 }, () => ({ channel: "doc", title: "t", body: "نص تجريبي للعنصر يكفي للمراجعة" })))); } }) } };
       messages = {
         chat: (p: Params) => ({ finalMessage: async () => (p.output_config?.format ? reply("{}") : opts.chat ? opts.chat(p) : reply("تمام")) }),
         create: async (p: Params) => {

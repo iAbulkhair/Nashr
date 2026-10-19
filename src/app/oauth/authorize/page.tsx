@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getClient, validRedirectUri } from "@/lib/oauth";
 import { can } from "@/lib/roles";
+import ConsentForm from "./ConsentForm";
 // Renders its own document outside the [lang] layout, so it loads the D tokens itself and never writes a colour value.
 import "../../tokens.css";
 
@@ -25,6 +26,7 @@ const T = {
     warn: "أي مطوّر يستطيع تسجيل تطبيق بأي اسم. تابع فقط إذا كنت تعرف هذا العنوان.",
     allow: "اسمح",
     deny: "ارفض",
+    failed: "تعذّر إتمام الربط. حدّث الصفحة وجرّب مرة ثانية.",
     revoke: "تستطيع إلغاء الوصول متى شئت من ذكين ← MCP ← إلغاء، أو بإنشاء رمز شخصي جديد.",
   },
   en: {
@@ -39,6 +41,7 @@ const T = {
     warn: "Any developer can register an app under any name. Only continue if you recognise that address.",
     allow: "Allow",
     deny: "Deny",
+    failed: "Connecting did not finish. Refresh the page and try again.",
     revoke: "You can revoke access any time from Thakeen → MCP → Revoke, or by generating a new personal token.",
   },
 };
@@ -77,13 +80,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                 <br />
                 <span style={{ color: "var(--color-muted)", fontSize: 12 }}>{t.warn}</span>
               </p>
-              <form method="post" action="/api/oauth/approve">
-                {(["client_id", "redirect_uri", "state", "scope", "code_challenge", "code_challenge_method"] as const).map((k) => <input key={k} type="hidden" name={k} value={q[k] ?? ""} />)}
-                <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-                  <button name="decision" value="allow" style={{ flex: 1, background: "var(--color-ink)", color: "var(--color-paper)", border: 0, borderRadius: 999, padding: "12px 16px", fontWeight: 600, cursor: "pointer" }}>{t.allow}</button>
-                  <button name="decision" value="deny" style={{ flex: 1, background: "var(--color-paper)", color: "var(--color-ink)", border: "1.5px solid var(--color-ink)", borderRadius: 999, padding: "12px 16px", cursor: "pointer" }}>{t.deny}</button>
-                </div>
-              </form>
+              <ConsentForm fields={Object.fromEntries((["client_id", "redirect_uri", "state", "scope", "code_challenge", "code_challenge_method"] as const).map((k) => [k, q[k] ?? ""]))} allow={t.allow} deny={t.deny} failed={t.failed} />
               <p style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 16 }}>{t.revoke}</p>
             </>
           )}

@@ -15,7 +15,7 @@ import { mediaCostKey, meterRender, usageMonthKeys } from "@/lib/usage";
 import { MARGIN_ALERT_PCT, MARGIN_DAY_TTL_S, MARGIN_LAST_KEY, accountMargins, alertText, marginAlertedKey, marginDayKey, marginPct, runMarginAlert, underFloor } from "@/lib/margin";
 import { INTEGRATIONS, gatesOf, integrationNames, integrationsView, statusOf } from "@/lib/integration-status";
 import { ADMIN_LABEL, ADMIN_SECTIONS } from "@/lib/admin-gate";
-import { PROVIDERS } from "@/lib/connectors/registry";
+import { PROVIDERS, isDirectApp } from "@/lib/connectors/registry";
 import { TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { adminSignIn, json, newUser, signOut } from "./helpers/session";
 import * as integrationsRoute from "@/app/api/admin/integrations/route";
@@ -256,7 +256,8 @@ describe("Integrations: presence only (rules 1540-1544)", () => {
     const doc = src("docs/system/variables.md");
     const names = integrationNames();
     for (const n of [...names, "MEDIA_MODELS_ON", "PAYMOB_LIVE", "LLM_PROVIDER", "COMPOSIO_PROVIDERS"]) expect(doc, n).toContain(n);
-    for (const p of PROVIDERS) if (p.oauth) for (const n of [p.oauth.clientIdEnv, p.oauth.clientSecretEnv]) expect(names, `${p.id} ${n}`).toContain(n);
+    // Rule 2175: a platform app's names only for the providers an app of ours connects; Composio-only ones are covered by their toolkit's auth name below.
+    for (const p of PROVIDERS.filter(isDirectApp)) for (const n of [p.oauth!.clientIdEnv, p.oauth!.clientSecretEnv]) expect(names, `${p.id} ${n}`).toContain(n);
     for (const t of Object.values(TOOLKITS)) expect(names, t.authEnv).toContain(t.authEnv);
     expect(new Set(INTEGRATIONS.map((i) => i.id)).size).toBe(INTEGRATIONS.length);
     for (const i of INTEGRATIONS) for (const l of ["ar", "en"] as const) expect(i.name[l] && i.what[l], `${i.id} ${l}`).toBeTruthy();

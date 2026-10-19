@@ -14,7 +14,7 @@
  *   paths look these up by an address on purpose, so they take a string; the caller normalizes it.
  * - `globalKey`: records addressed by a token, an id or nothing (sessions, OAuth state, invites, rate buckets, indexes).
  * - `personKey`: records of one person, or of one person in one account (multi-workspace membership, release M1, rules
- *   2110-2139, docs/system/flows.md section 89). Each builder takes a `PersonId` and, for a per-account record, an
+ *   2110-2139, docs/system/flows.md section 91). Each builder takes a `PersonId` and, for a per-account record, an
  *   `AccountId`: branded strings that only a stored record can produce (`storedPersonId`, `storedAccountId`), so a plain
  *   `string` from a request does not type-check (rule 2137). `accountKey.membership` and `accountKey.teamLog` take the
  *   same brands. Nothing reads or writes these keys until the adapter code of the later M1 tasks.
@@ -153,6 +153,22 @@ export const wsKey = {
   perfImport: (s: Scope) => `perfimport:${s}`,
   /** string: one ad account's last read time. */
   adSync: (s: Scope, provider: string) => `adsync:${s}:${provider}`,
+  /** json `FileProposal`: a core-file rewrite waiting for the owner's Apply (src/lib/file-proposals.ts, rule 2306). */
+  fileProposal: (s: Scope, id: string) => `fileprop:${s}:${id}`,
+  /** string: how a file proposal was decided (`applied`, `dismissed`, `stale`). */
+  fileProposalDone: (s: Scope, id: string) => `fileprop-done:${s}:${id}`,
+  /** lock: one file proposal's answer (60 s). */
+  fileProposalClaim: (s: Scope, id: string) => `fileprop-claim:${s}:${id}`,
+  /** set: the scope's file proposal ids, for `wipeAccount`. */
+  fileProposals: (s: Scope) => `fileprops:${s}`,
+  /** bucket name for `allow` (stored as `rate:keycheck:{window}:{scope}`): failed key checks of one workspace (rule 2240). */
+  keyCheckBucket: (s: Scope, window: "hour" | "day") => `keycheck:${window}:${s}`,
+  /** bucket name for `allow` (stored as `rate:connectstart:{scope}`): OAuth and Composio connect starts of one workspace (rule 2242). */
+  connectStartBucket: (s: Scope) => `connectstart:${s}`,
+  /** bucket name for `allow` (stored as `rate:storesync:{scope}`): manual store sales syncs of one workspace (rule 2243). */
+  storeSyncBucket: (s: Scope) => `storesync:${s}`,
+  /** bucket name for `allow` (stored as `rate:catalogimport:{scope}`): product imports from a store of one workspace (rule 2243). */
+  catalogImportBucket: (s: Scope) => `catalogimport:${s}`,
 } as const;
 
 export const personKey = {
@@ -271,4 +287,10 @@ export const globalKey = {
   usageAll: (month: string) => `usage:_all:${month}`,
   /** string: the payment id whose Paymob refund ended the plan, or `none` when it found no plan to end (`endPlanOnRefund`, src/lib/billing.ts). */
   paymobRefundEnded: (txnId: number) => `paymob:refund_ended:${txnId}`,
+  /** list: Shopify compliance webhook receipts, topic + store + time only (rule 2169). */
+  shopifyCompliance: () => "shopify:compliance",
+  /** hash: store domain → time of a pending `shop/redact`, applied by the stores cron (rules 2170-2171). */
+  shopifyRedact: () => "shopify:redact",
+  /** json: per-platform connection counts across every workspace, written by the stores cron (rules 2177-2178). */
+  connectionHealth: () => "connections:health",
 } as const;

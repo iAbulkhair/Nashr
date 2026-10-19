@@ -15,6 +15,10 @@ import type { Dict, Lang } from "@/lib/i18n";
  *
  * Drawn as prototype D (rule 518): a scribbled card per plan, the highlighted plan on lilac with the ink pill, the
  * others with the lemon ghost pill. The title's underline is drawn once on the server in the page's direction.
+ *
+ * The design review of 2026-10-19: no eyebrow label over the title (rule 2317), the credit costs in the body face with
+ * tabular figures instead of monospace and rows parted by space instead of ruled lines (rule 2318), and on /pricing alone
+ * the plan cards rise in once (rule 2319, `plans-rise` in globals.css).
  */
 export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: Lang; headingLevel?: 1 | 2 }) {
   const p = t.pricing;
@@ -23,7 +27,6 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
   return (
     <section id="pricing" className="scroll-mt-20">
       <div className="section-wrap">
-        <p className="eyebrow">{p.eyebrow}</p>
         <Heading className="section-title">
           <span className="s-ul">
             <ScribbleStatic kind="underline" seed="pricing-h" rtl={lang === "ar"} />
@@ -38,18 +41,18 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
           </span>
         </div>
 
-        <div className="mt-12">
+        <div className={headingLevel === 1 ? "plans-rise mt-12" : "mt-12"}>
           <PlanList plans={p.plans} lang={lang} level={headingLevel === 1 ? 2 : 3} />
         </div>
 
         <div className="mt-14 max-w-lg">
           <Sub id="pricing-credits-h" className="font-display text-xl font-bold">{p.creditsTitle}</Sub>
           <table className="mt-3 w-full text-sm" aria-labelledby="pricing-credits-h">
-            <tbody className="divide-y divide-foreground/15 border-y-[1.5px] border-border-strong">
+            <tbody>
               {p.credits.map((c) => (
                 <tr key={c.action}>
-                  <th scope="row" className="py-2 text-start font-normal">{c.action}</th>
-                  <td className="py-2 text-end font-mono font-bold" dir="ltr">
+                  <th scope="row" className="py-2.5 text-start font-normal">{c.action}</th>
+                  <td className="py-2.5 text-end font-bold tabular-nums" dir="ltr">
                     {c.cost}
                   </td>
                 </tr>

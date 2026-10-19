@@ -87,6 +87,7 @@ export const APP: string[] = [
   "src/components/app/TopupCard.tsx",
   "src/components/admin/WishlistPanel.tsx",
   "src/app/oauth/authorize/page.tsx",
+  "src/app/oauth/authorize/ConsentForm.tsx",
   // Email verification (rule 754).
   "src/app/[lang]/app/verify/page.tsx",
   "src/components/app/VerifyForm.tsx",
@@ -125,7 +126,10 @@ describe("app screens are quiet D (rule 519)", () => {
     const src = read("src/app/oauth/authorize/page.tsx");
     expect(src).toMatch(/^import "\.\.\/\.\.\/tokens\.css";$/m);
     expect(src).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(src).toMatch(/background: "var\(--color-ink\)", color: "var\(--color-paper\)"/);
+    // The buttons moved into the consent form (rule 2305), which renders inside this page and so shares its tokens.
+    const form = read("src/app/oauth/authorize/ConsentForm.tsx");
+    expect(form).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(form).toMatch(/background: "var\(--color-ink\)", color: "var\(--color-paper\)"/);
   });
 
   it("a disabled pill keeps its label readable: lilac fill under ink text (the background-muted and foreground roles since rule 1202)", () => {

@@ -1,5 +1,7 @@
 import { createHmac } from "crypto";
+import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
+import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 import type { Connection } from "./store";
 import { sameSecret } from "../rate";
 
@@ -56,12 +58,45 @@ export async function shopifyGql<T>(c: Connection, query: string, variables: Rec
     });
     if (r.status === 403 && opts.orders) throw new Error(ORDERS_ACCESS_DENIED);
     if (!r.ok) throw new Error(`shopify ${r.status}`);
-    const j = (await r.json()) as GqlResponse<T>;
+    const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as GqlResponse<T>;
     const codes = (j.errors ?? []).map((e) => e.extensions?.code ?? "");
     if (codes.includes("THROTTLED") && attempt < 2) { await (opts.pause ?? wait)(2000); continue; }
     if (codes.includes("ACCESS_DENIED")) throw new Error(opts.orders ? ORDERS_ACCESS_DENIED : "shopify 403");
     if (j.errors?.length || !j.data) throw new Error(`shopify graphql: ${(j.errors?.[0]?.message ?? "no data").slice(0, 160)}`);
     return j.data;
+  }
+}
+
+/** The one webhook URL of ours Shopify calls: compliance topics and `app/uninstalled` (rules 2168, 2203). */
+export const SHOPIFY_HOOK_PATH = "/api/shopify/compliance";
+
+const FIND_UNINSTALL = `query FindUninstall($uri: String!) {
+  webhookSubscriptions(first: 1, topics: [APP_UNINSTALLED], uri: $uri) { nodes { id } }
+}`;
+const SUBSCRIBE_UNINSTALL = `mutation Subscribe($sub: WebhookSubscriptionInput!) {
+  webhookSubscriptionCreate(topic: APP_UNINSTALLED, webhookSubscription: $sub) { userErrors { message } }
+}`;
+
+/** The `meta` field a Shopify connection carries once its store is subscribed to `app/uninstalled` (rule 2204). */
+export const UNINSTALL_HOOK_META = "uninstallHook";
+/** When the stores run last failed to subscribe this store (rule 2209): orders the next runs, cleared on success. */
+export const UNINSTALL_TRIED_META = "uninstallHookTried";
+
+/**
+ * Asks the store to tell us when it uninstalls the app (rule 2203), so the stores cron drops the dead connection within
+ * hours instead of the 48 that `shop/redact` takes. Needs no scope. A store already subscribed to our URL (a reconnect,
+ * or a second try) answers true without a second subscription (rule 2204). Best effort: false on any failure or
+ * userError, never a throw, so a connect never fails because of it.
+ */
+export async function subscribeUninstall(c: Connection, origin: string): Promise<boolean> {
+  try {
+    const uri = `${origin}${SHOPIFY_HOOK_PATH}`;
+    const found = await shopifyGql<{ webhookSubscriptions: { nodes: { id: string }[] } }>(c, FIND_UNINSTALL, { uri });
+    if (found.webhookSubscriptions.nodes.length) return true;
+    const d = await shopifyGql<{ webhookSubscriptionCreate: { userErrors: { message: string }[] } }>(c, SUBSCRIBE_UNINSTALL, { sub: { uri } });
+    return !d.webhookSubscriptionCreate.userErrors.length;
+  } catch {
+    return false;
   }
 }
 
@@ -74,19 +109,14 @@ type ProductsData = { products: { nodes: { title: string; handle: string; descri
 
 export async function importShopify(email: string, c: Connection) {
   const d = await shopifyGql<ProductsData>(c, PRODUCTS, { first: 50 });
-  const products = d.products.nodes;
-  const md = [
-    `# Product catalog (Shopify ${c.meta?.shop}, ${new Date().toISOString().slice(0, 10)})`,
-    "",
-    ...products.map((p) => {
-      const m = p.priceRangeV2?.minVariantPrice;
-      const price = m ? `${m.amount} ${m.currencyCode}` : "";
-      const desc = (p.description ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
-      return `- **${p.title}** — ${price}${desc ? `\n  ${desc}` : ""}\n  ${p.onlineStoreUrl ?? `https://${c.meta?.shop}/products/${p.handle}`}`;
-    }),
-  ].join("\n");
+  const products = Array.isArray(d.products?.nodes) ? d.products.nodes : [];
+  // Each field one capped line, links http(s) only (rule 2247).
+  const { md, count } = productsMarkdown(`Product catalog (Shopify ${c.meta?.shop}, ${new Date().toISOString().slice(0, 10)})`, products.map((p) => {
+    const m = p.priceRangeV2?.minVariantPrice;
+    return { name: p.title, price: m ? `${m.amount} ${m.currencyCode}` : "", description: p.description, url: p.onlineStoreUrl ?? `https://${c.meta?.shop}/products/${p.handle}` };
+  }));
   await writeFile(email, "products.md", md, "noor");
-  return products.length;
+  return count;
 }
 
 const BLOG = `query Blog { shop { name } blogs(first: 1) { nodes { id handle } } }`;

@@ -55,6 +55,15 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.storeSyncFail(S), `storesyncfail:${S}`],
     [wsKey.perfImport(S), `perfimport:${S}`],
     [wsKey.adSync(S, "google_ads"), `adsync:${S}:google_ads`],
+    // Core-file rewrite cards (rule 2306): new keys, written first under the registry.
+    [wsKey.fileProposal(S, "ab12"), `fileprop:${S}:ab12`],
+    [wsKey.fileProposalDone(S, "ab12"), `fileprop-done:${S}:ab12`],
+    [wsKey.fileProposalClaim(S, "ab12"), `fileprop-claim:${S}:ab12`],
+    [wsKey.fileProposals(S), `fileprops:${S}`],
+    [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
+    [wsKey.connectStartBucket(D), `connectstart:${E}`],
+    [wsKey.storeSyncBucket(D), `storesync:${E}`],
+    [wsKey.catalogImportBucket(D), `catalogimport:${E}`],
   ];
   const account: [string, string][] = [
     [accountKey.user(E), `user:${E}`],
@@ -103,6 +112,9 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.rate("files:x"), "rate:files:x"],
     [globalKey.usageAll("2026-10"), "usage:_all:2026-10"],
     [globalKey.paymobRefundEnded(123456), "paymob:refund_ended:123456"],
+    [globalKey.shopifyCompliance(), "shopify:compliance"],
+    [globalKey.shopifyRedact(), "shopify:redact"],
+    [globalKey.connectionHealth(), "connections:health"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));

@@ -188,6 +188,8 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   // the MCP route and the cron's schedule.ts reach auth.ts emailVerified, a test of the record it is handed.
   // Account-id R1 (rules 1980-1999) made team.ts and account.ts reach auth.ts getAccount (a record read by id), claimLogin
   // and releaseLogin (the login index of an address they are handed), read on 2026-10-18: no cookie, no session.
+  // The stacked-offer check (rule 2303) made billing.ts reach partners.ts unusedOffer, a test of the record it is handed,
+  // read on 2026-10-19: no cookie, no session.
   // src/lib/cookie-names.ts (rules 1810-1813) holds every cookie name and the helpers that read a jar they are handed;
   // reachable code may import only names that are plain strings (partner-rules.ts and connectors/store.ts re-export
   // two), never readCookie, dropCookie or cookieFromHeader.
@@ -196,7 +198,7 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
     // `readLoginIndex` (multi-workspace M1, read on 2026-10-19) reads `login:{email}` for the address it is handed:
     // the MCP bearer refuses a token whose address signs in as a person who does not own the account.
     "src/lib/auth.ts": new Set(["adminEmails", "claimLogin", "emailVerified", "getAccount", "getLogin", "getUser", "normalizeEmail", "normalizePhone", "readLoginIndex", "releaseLogin", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
-    "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "voidPaidTopup", "voidPayment"]),
+    "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "unusedOffer", "voidPaidTopup", "voidPayment"]),
     "src/lib/cookie-names.ts": new Set(["OAUTH_COOKIE", "PARTNER_COOKIE"]),
     // Multi-workspace M1: team.ts deletes the security pack of a person left with nothing, as wipeAccount does.
     // Read on 2026-10-19: `mfaKeys` builds two key names from the address it is handed; `revokeAllDevices` deletes the
@@ -267,6 +269,7 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
       join("src/app/api/media/hook/[provider]/route.ts"),
       join("src/app/api/secretary/booking/[token]/route.ts"),
       join("src/app/api/billing/paymob/webhook/route.ts"),
+      join("src/app/api/shopify/compliance/route.ts"),
       join("src/app/api/cron/secretary/route.ts"),
     ]));
   });

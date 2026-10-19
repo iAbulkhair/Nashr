@@ -578,6 +578,107 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
   });
 });
 
+describe("a plan refund deletes the saved card (rules 2270-2272)", () => {
+  const refund = (email: string, b: Record<string, unknown>) => adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", { action: "refund", ...b }), params({ email: encodeURIComponent(email) }));
+  const card = (email: string) => db.set(cardKey(email), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
+  const tokenFor = (email: string, orderId: number) => ({ id: 1, token: "tok" + randomBytes(20).toString("hex"), masked_pan: "xxxx-xxxx-xxxx-4242", merchant_id: 1, card_subtype: "Visa", created_at: "2026-10-19T10:00:00", email, order_id: String(orderId), expiry_month: "01", expiry_year: "38" });
+  it("a refunded plan payment deletes the card token, and a retry deletes one saved since (rule 2270)", async () => {
+    const u = await owner();
+    const { obj } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    await card(u.email);
+    jar().clear();
+    await adminSignIn();
+    const id = paymentIdFor(obj.id);
+    expect(await (await refund(u.email, { id })).json()).toMatchObject({ ok: true, planEnded: true });
+    expect(await db.get(cardKey(u.email))).toBeNull();
+    await card(u.email);
+    // The retry still answers that this refund ended the plan (multi-workspace M1: `paymob:refund_ended:{txn}`, as in
+    // "a refunded plan payment ends the plan at once…" above) and ends nothing more; the card goes on every call.
+    expect(await (await refund(u.email, { id })).json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
+    expect(await db.get(cardKey(u.email)), "the retry deletes it too").toBeNull();
+  });
+  it("a renewal payment's refund deletes the card too: nothing renews on it afterwards (rule 2270)", async () => {
+    const u = await subscribed({ paidThrough: today() });
+    fake.pay = (orderId, ref) => txnObj({ amount: 34385, orderId, ref });
+    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    const paid = (await payments(u.email))[0];
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id: paid.id })).json()).toMatchObject({ ok: true, planEnded: true });
+    expect(await db.get(cardKey(u.email))).toBeNull();
+    expect((await getUser(u.email))!.billing).toBeUndefined();
+  });
+  it("a pack's refund keeps the card: the plan and its renewal go on (rule 2270)", async () => {
+    const u = await owner();
+    await payAndConfirm({ kind: "plan", plan: "starter" });
+    const { obj } = await payAndConfirm({ kind: "topup", credits: 300 });
+    await card(u.email);
+    jar().clear();
+    await adminSignIn();
+    expect(await (await refund(u.email, { id: paymentIdFor(obj.id) })).json()).toMatchObject({ ok: true, planEnded: false });
+    expect(await db.get(cardKey(u.email))).not.toBeNull();
+  });
+  it("a card-token callback for the refunded order is ignored, and the next checkout starts with automatic renewal off (rules 2271, 2272)", async () => {
+    const u = await owner();
+    const { obj, it } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    jar().clear();
+    await adminSignIn();
+    await refund(u.email, { id: paymentIdFor(obj.id) });
+    // Paymob sends the token callback late, after the founder refunded the order it belongs to.
+    expect(await (await hook(tokenFor(u.email, it.orderId), "TOKEN")).json()).toMatchObject({ result: "ignored" });
+    expect(await db.get(cardKey(u.email))).toBeNull();
+    jar().clear();
+    await signIn(u.email);
+    await payAndConfirm({ kind: "plan", plan: "starter" });
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("starter");
+    expect(after.billing).toMatchObject({ autoRenew: false });
+    expect(after.billing?.card).toBeUndefined();
+    // A card saved on that new checkout is kept as before (rule 715).
+    const next = fake.intents.at(-1)!;
+    expect(await (await hook(tokenFor(u.email, next.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+  });
+  it("a refund that lands while the token callback is between its refund check and its write still ends with no card (rule 2280)", async () => {
+    const u = await owner();
+    const { obj, it: intent } = await payAndConfirm({ kind: "plan", plan: "starter" });
+    jar().clear();
+    await adminSignIn();
+    const get = db.get.bind(db);
+    let racing: Promise<Response> | undefined;
+    const spy = vi.spyOn(db, "get").mockImplementation(async (key: string) => {
+      const v = await get(key);
+      if (!racing && key.startsWith("paymob:refunded:")) {
+        // The founder's refund starts right after the callback read "not refunded", and gets every chance to finish
+        // before the callback writes the card. Under the account lock it waits for the callback instead.
+        racing = refund(u.email, { id: paymentIdFor(obj.id) });
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      return v as never;
+    });
+    try {
+      expect(await (await hook(tokenFor(u.email, intent.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+      expect(racing, "the refund started inside the callback's check").toBeDefined();
+      expect(await (await racing!).json()).toMatchObject({ ok: true, planEnded: true });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await db.get(cardKey(u.email)), "the refund deleted the card after the callback wrote it").toBeNull();
+    // A replay of the same callback now sees the refund and saves nothing.
+    expect(await (await hook(tokenFor(u.email, intent.orderId), "TOKEN")).json()).toMatchObject({ result: "ignored" });
+    expect(await db.get(cardKey(u.email))).toBeNull();
+  });
+  it("saveCard reads the refund mark and writes the card inside the account lock (rule 2280)", async () => {
+    const { readFileSync } = await import("fs");
+    const src = readFileSync("src/lib/billing.ts", "utf8");
+    const body = src.slice(src.indexOf("async function saveCard("), src.indexOf("export async function handlePaymobCallback("));
+    const lock = body.indexOf("withUserLock(intentAccount(intent)");
+    expect(lock).toBeGreaterThan(0);
+    expect(body.indexOf("refundedKey(intent.txnId)")).toBeGreaterThan(lock);
+    expect(body.indexOf("db.set(cardKey(")).toBeGreaterThan(lock);
+    expect(body.match(/db\.set\(cardKey\(/g)).toHaveLength(1);
+  });
+});
+
 describe("leaving (rule 719)", () => {
   it("deleting the account deletes the saved card token", async () => {
     const u = await subscribed();
@@ -669,5 +770,51 @@ describe("rule 1991: an intent names the account by its id and the billing addre
     await db.set(key, old);
     expect(await (await hook(txnObj({ amount: pi.amount, orderId: pi.orderId, ref: pi.ref }))).json()).toMatchObject({ result: "paid" });
     expect((await getUser(u.email))!.plan).toBe("starter");
+  });
+});
+
+describe("the first-month offer pays once (rule 2303)", () => {
+  /** A trial owner holding an unused 15% partner offer. */
+  async function offerOwner(): Promise<User> {
+    const u = await owner("pmoffer");
+    await saveUser({ ...(await getUser(u.email))!, firstMonthOffer: { kind: "partner", pct: 15, at: new Date().toISOString() } });
+    return (await getUser(u.email))!;
+  }
+  const confirm = (it: { amount: number; orderId: number; ref: string }) => hook(txnObj({ amount: it.amount, orderId: it.orderId, ref: it.ref }));
+
+  it("two checkouts opened before the first payment both carry the offer; only the first one paid applies, the second is left for a refund", async () => {
+    const u = await offerOwner();
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const [a, b] = fake.intents.slice(-2);
+    expect(a.amount).toBe(b.amount);
+    expect(a.amount).toBe(priceFor("plan", { plan: "starter" }, true)!.amountCents);
+    expect(await (await confirm(a)).json()).toMatchObject({ result: "paid" });
+    expect(await (await confirm(b)).json()).toMatchObject({ result: "unapplied" });
+    const after = (await getUser(u.email))!;
+    expect(after.billing!.paidThrough).toBe(addMonths(today(), 1));
+    expect(after.billing!.txns).toHaveLength(1);
+    expect(await payments(u.email)).toHaveLength(1);
+  });
+  it("an offer checkout paid after the offer was used elsewhere does not apply", async () => {
+    const u = await offerOwner();
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const it = fake.intents.at(-1)!;
+    const cur = (await getUser(u.email))!;
+    await saveUser({ ...cur, firstMonthOffer: { ...cur.firstMonthOffer!, usedAt: new Date().toISOString(), paymentId: "manual-1" } });
+    expect(await (await confirm(it)).json()).toMatchObject({ result: "unapplied" });
+    const after = (await getUser(u.email))!;
+    expect(after.plan).toBe("trial");
+    expect(after.billing).toBeUndefined();
+  });
+  it("a checkout without the offer still applies on an account that already paid", async () => {
+    const u = await offerOwner();
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    expect(await (await confirm(fake.intents.at(-1)!)).json()).toMatchObject({ result: "paid" });
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const full = fake.intents.at(-1)!;
+    expect(full.amount).toBe(priceFor("plan", { plan: "starter" })!.amountCents);
+    expect(await (await confirm(full)).json()).toMatchObject({ result: "paid" });
+    expect((await getUser(u.email))!.billing!.paidThrough).toBe(addMonths(addMonths(today(), 1), 1, Number(today().slice(8, 10))));
   });
 });

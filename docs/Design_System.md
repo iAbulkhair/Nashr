@@ -36,8 +36,15 @@ Defined in `globals.css` under `@layer components`. Use these instead of repeati
 Sizes: `btn-xs` (pill, 12px), `btn-pill` (pill, 14px), `btn-sm` (rounded, 14px), default (rounded, 14px, 12px/20px padding), `btn-lg` (pill, 16px).
 Focus: global `:focus-visible` outline in `--color-ring` (ink), 2px (`--stroke-focus`), offset 2px.
 
+### Corners (rule 2316)
+One rule for every corner, product and site:
+- **Drawn frames are drawn, never rounded.** A `Scribble` box, stamp, bubble or pill takes the shape its kind draws; the element under it has no `border-radius`.
+- **Controls are 8px:** buttons (`--button-radius`) and inputs (`--input-radius`), both `--primitive-radius-md`.
+- **Surfaces are 12px:** cards, menus and popovers (`--radius-card`, `--primitive-radius-lg`). There is no second card radius: the unused `--card-radius` (6px) was removed.
+- **Full round is for small things only:** `btn-xs`, `btn-pill`, `btn-lg`, badges, chips, the home page's pause switch, the chat composer, faces and dots.
+
 ### Cards `.card`
-Paper bg, 1.5px ink border at 15%, radius sm, no shadow, padding 20px. `card-sm` 16px padding. `card-inverse` for the ink surface. `card-title` for the heading.
+Paper bg, 1.5px ink border at 15%, 12px corners (`--radius-card`), no shadow, padding 20px. `card-sm` 16px padding. `card-inverse` for the ink surface. `card-title` for the heading.
 
 ### Inputs `.input`
 Full width, paper bg, 1.5px ink border at 55% (3:1 against white), radius md, 12px/16px padding, 14px text, muted placeholder. Hover 80% border; focus ink border + 2px ink outline; disabled 60% opacity; `aria-invalid="true"` danger border. Add `rounded-full` for the chat composer.

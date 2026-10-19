@@ -1,9 +1,27 @@
 import { createHash, randomBytes } from "crypto";
 import { providerTimeout } from "../fetch-timeout";
+import { PROVIDER_REPLY_BYTES, responseJson, responseText } from "../read-capped";
 import type { Provider } from "./registry";
 import { appOrigin } from "../origin";
 
 export const REDIRECT = (id: string) => `${appOrigin()}/api/connect/${id}/callback`;
+
+/** Above this an `expires` value is a Unix time in seconds (2001-09-09), below it a lifetime: no token lives 31 years. */
+const UNIX_SECONDS = 1e9;
+
+/**
+ * When a token answer's access token lapses (rule 2176), or undefined when the answer does not say. `expires_in` is
+ * the OAuth field (RFC 6749 §5.1, seconds from now). Salla's documented answer carries `expires` instead, written once
+ * as a Unix time and once as seconds, so both readings are taken. Without this a Salla connection kept no expiry, was
+ * never refreshed early, and was lost when its 14-day token lapsed although its refresh token was still good.
+ */
+export function tokenExpiry(data: Record<string, string>, now = Date.now()): string | undefined {
+  const lifetime = Number(data.expires_in);
+  if (Number.isFinite(lifetime) && lifetime > 0) return new Date(now + lifetime * 1000).toISOString();
+  const expires = Number(data.expires);
+  if (!Number.isFinite(expires) || expires <= 0) return undefined;
+  return new Date(expires > UNIX_SECONDS ? expires * 1000 : now + expires * 1000).toISOString();
+}
 
 export function pkcePair() {
   const verifier = randomBytes(48).toString("base64url");
@@ -52,12 +70,15 @@ async function tokenRequest(p: Provider, body: URLSearchParams, shop?: string): 
   else if (p.id === "tiktok") { body.set("client_key", id); body.set("client_secret", secret); }
   else { body.set("client_id", id); body.set("client_secret", secret); }
   const res = await fetch(url, { method: "POST", headers, body, signal: providerTimeout() });
-  const text = await res.text();
   // The provider, the status and the OAuth error code only (rule 1354): the rest of a refused exchange's body is the
   // provider's own text, which reaches the logs and can echo what was sent. The code (RFC 6749 §5.2, such as
-  // `invalid_grant`) is a fixed word, and the calendar sync reads it to tell a lost link from a passing failure.
-  if (!res.ok) throw new Error(`${p.id} token ${res.status}${oauthErrorCode(text)}`);
-  const j = JSON.parse(text) as Record<string, unknown>;
+  // `invalid_grant`) is a fixed word, and the calendar sync reads it to tell a lost link from a passing failure. A
+  // refusal too large to read keeps its status (rule 2250).
+  if (!res.ok) {
+    const text = await responseText(res, PROVIDER_REPLY_BYTES).catch(() => "");
+    throw new Error(`${p.id} token ${res.status}${oauthErrorCode(text)}`);
+  }
+  const j = await responseJson<Record<string, unknown>>(res, PROVIDER_REPLY_BYTES);
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(j)) if (v != null && typeof v !== "object") out[k] = String(v);
   if (typeof j.data === "object" && j.data) for (const [k, v] of Object.entries(j.data as Record<string, unknown>)) if (v != null && typeof v !== "object") out[k] = String(v); // TikTok wraps

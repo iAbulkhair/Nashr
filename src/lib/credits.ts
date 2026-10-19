@@ -371,6 +371,44 @@ export async function refundOnce(email: string, claim: string): Promise<{ credit
 }
 
 /**
+ * What is left of a charge's top-up receipt once `n` of it was given back: `returnCredits` (src/lib/topups.ts) puts
+ * credits back into the packs last-taken first, then into the month's credits, so the same order comes off here.
+ */
+function trimReceipt(from: Receipt, n: number): Receipt {
+  let rest = Math.max(0, Math.trunc(n));
+  const lots = from.lots.map((l) => ({ ...l }));
+  for (const l of [...lots].reverse()) {
+    const k = Math.min(Math.max(0, Math.trunc(l.n)), rest);
+    l.n -= k;
+    rest -= k;
+  }
+  const monthly = Math.max(0, Math.trunc(from.monthly) - rest);
+  return { monthly, lots: lots.filter((l) => l.n > 0) };
+}
+
+/**
+ * Give back `n` credits of the charge held for `claim` and lower the hold by what was given back, in one save (rule
+ * 2278: a claim's batch that delivered fewer items than asked). The hold stays, now holding what the batch is paid, so a
+ * later `refundOnce` (its own run's failure, or the daily sweep) gives back only the rest and never the same credits
+ * twice, and a retry priced at the full batch finds a hold of another price, which `chargeOnce` swaps in one save. No
+ * hold (already refunded): nothing is given back. At most the hold's credits.
+ */
+export async function refundOncePart(email: string, claim: string, n: number): Promise<{ credits: number; refunded: number }> {
+  if (!Number.isSafeInteger(n) || n < 0) throw new Error("invalid_delta");
+  return withUserLock(email, async (u) => {
+    const hold = u.paidOnce?.[claim];
+    const balance = Number.isFinite(u.credits) ? u.credits : 0;
+    if (!hold || n === 0) return { credits: balance, refunded: 0 };
+    const m = Math.min(n, heldCredits(hold));
+    if (!m) return { credits: balance, refunded: 0 };
+    giveBack(u, m, hold);
+    u.paidOnce = { ...u.paidOnce, [claim]: { ...hold, credits: heldCredits(hold) - m, ...(hold.from ? { from: trimReceipt(hold.from, m) } : {}) } };
+    await saveUser(u);
+    return { credits: u.credits, refunded: m };
+  });
+}
+
+/**
  * The daily sweep of the account's paid-once holds (rule 337, src/lib/schedule.ts `sweepWeeklyHolds`): `kept[claim]` says
  * whether the claim's work exists. A kept claim's hold is dropped (its charge stands); any other is refunded, a run killed
  * after its charge that no later run retried (the last catch-up, a "Run now" nobody pressed again). One save under the

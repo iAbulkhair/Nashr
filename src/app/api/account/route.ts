@@ -10,12 +10,15 @@ import { forbid } from "@/lib/roles";
 import { ownPasswordMatches as matches } from "@/lib/own-password";
 import { acct } from "@/lib/account-id";
 import { isTeamLockTimeout } from "@/lib/team";
+import { unlinkGoogle } from "@/lib/google-signin";
 
 /**
  * PATCH {currentPassword, newPassword}: the acting login changes ITS OWN password, on its person (`updatePerson`, which
  * mirrors the member record or the legacy owner's account). Both sign out only their own other devices; the owner also
  * loses every MCP token and grant.
  * Refused while a founder impersonates. DELETE {password}: wipe the account, owner only.
+ * Rule 2301: the acting login's Google link goes with the old password, as its other devices do: a password change is
+ * how a login takes back control, and a Google account someone else linked while signed in must not stay a way in.
  */
 export async function PATCH(req: Request) {
   const u = await currentUser();
@@ -42,13 +45,13 @@ export async function PATCH(req: Request) {
   }
   if (!me) return NextResponse.json({ ok: false }, { status: 401 });
   if (a.kind === "member") {
-    // This member's own calendar feed and booking links end with the old password; the owner's hash, sessions, MCP
-    // token and connected apps, and the other members' links, stay.
-    await Promise.all([revokeFeed(a.email), revokeBook(a.email)]);
+    // This member's own calendar feed, booking links and Google link (rule 2301) end with the old password; the owner's
+    // hash, sessions, MCP token and connected apps, and the other members' links, stay.
+    await Promise.all([revokeFeed(a.email), revokeBook(a.email), unlinkGoogle(a.email)]);
   } else {
     // Every MCP token and connected app dies with the old password, exactly as in the reset route: a stolen bearer token
-    // must not outlive the password it was obtained with.
-    await Promise.all([revokeAllMcp(acct(u)), revokeFeed(u.email), revokeBook(u.email)]);
+    // must not outlive the password it was obtained with. The owner's Google link goes too (rule 2301).
+    await Promise.all([revokeAllMcp(acct(u)), revokeFeed(u.email), revokeBook(u.email), unlinkGoogle(u.email)]);
   }
   // This device stays signed in, as the same login that made the change.
   await destroySession();

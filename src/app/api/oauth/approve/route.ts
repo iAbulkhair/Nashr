@@ -4,8 +4,16 @@ import { acct } from "@/lib/account-id";
 import { SCOPES, getClient, issueCode, validRedirectUri } from "@/lib/oauth";
 import { forbid } from "@/lib/roles";
 
+/** The address back to the client: a 303 for a plain form post, or JSON for the consent page's own request. */
+const sendBack = (req: Request, to: URL) =>
+  (req.headers.get("accept") ?? "").includes("application/json") ? NextResponse.json({ ok: true, redirect: to.toString() }) : NextResponse.redirect(to.toString(), 303);
+
 /**
  * Consent form POST → authorization code → redirect back to the client.
+ *
+ * Rule 2305: the consent page asks with `Accept: application/json` and gets `{ok, redirect}` instead of the 303, then
+ * navigates there itself. Chrome applies the enforced CSP's `form-action 'self'` to a form POST's redirect and blocked the
+ * 303 to the client's (other-origin) redirect_uri. Same address either way; only who follows it changes.
  *
  * Owner only, and never while a founder impersonates (src/lib/roles.ts "oauth.approve"): the code becomes tokens that
  * act as the whole account and outlive any session, so a member or a two-hour impersonation must not mint them.
@@ -25,11 +33,11 @@ export async function POST(req: Request) {
   if (f.decision !== "allow") {
     u2.searchParams.set("error", "access_denied");
     if (f.state) u2.searchParams.set("state", f.state);
-    return NextResponse.redirect(u2.toString(), 303);
+    return sendBack(req, u2);
   }
   if (!f.code_challenge || f.code_challenge_method !== "S256") return NextResponse.json({ error: "invalid_request", error_description: "PKCE S256 required" }, { status: 400 });
   const code = await issueCode({ client_id: client.client_id, redirect_uri: f.redirect_uri, challenge: f.code_challenge, email: acct(u), scope: SCOPES.includes(f.scope) ? f.scope : SCOPES[0] }); // only scopes this server defines are ever written into a token
   u2.searchParams.set("code", code);
   if (f.state) u2.searchParams.set("state", f.state);
-  return NextResponse.redirect(u2.toString(), 303);
+  return sendBack(req, u2);
 }

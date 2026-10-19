@@ -5,7 +5,7 @@ import { monthKey, withUserLock } from "./credits";
 import { setMonthly } from "./topups";
 import { PLAN_PRICE_SAR, SELF_SERVE_PLANS, VAT_RATE, allowanceOf, firstMonthPriceSar, isTopupPack, topupPriceSar, topupsSold, type SelfServePlan } from "./pricing";
 import { ksaDay } from "./partner-rules";
-import { addPaidTopup, openOffer, paymentsKey, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
+import { addPaidTopup, openOffer, paymentsKey, unusedOffer, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
 import { enforceSeats, isTeamLockTimeout } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
@@ -16,6 +16,7 @@ import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseH
 import { log as logger } from "./log";
 import { acct } from "./account-id";
 import { globalKey } from "./keys";
+import { handPlanEnded } from "./hand-plan";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
@@ -204,9 +205,14 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   const card = await db.get<SavedCard>(cardKey(intentAccount(intent)));
   const id = String(txnId);
   let claim: ClaimOutcome | null = null;
-  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing"> => {
+  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing" | "offer_used"> => {
     const b = u.billing;
     if (b?.txns?.includes(id)) return "already";
+    // Rule 2303: the first-month price is read at checkout without reserving the offer, so several checkouts opened before
+    // the first payment all carry it. Only the account's first online plan payment may take it: the offer must still be
+    // unused AND no subscription may exist yet. `billing` is written under this same lock, so of two discounted payments
+    // arriving together the second always sees the first's subscription. Paid but not applied: the founder refunds it.
+    if (intent.kind === "plan" && intent.offer && (!unusedOffer(u) || b)) return "offer_used";
     if (intent.kind === "renewal") {
       if (!b) return "no_billing";
       const next: Billing = { ...b, status: "active", paidThrough: addMonths(b.paidThrough, 1, b.anchor), failures: 0, txns: keepTxns(b.txns, id) };
@@ -239,6 +245,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     return changed ? "changed" : "same";
   });
   if (step === "no_billing") return { ok: false, error: "no_billing" };
+  if (step === "offer_used") return { ok: false, error: "offer_used" };
   const c = claim as ClaimOutcome | null;
   if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
   // Seats fit the new plan. Also on a plan transaction already applied (multi-workspace M1, 2026-10-19): a first try whose
@@ -335,13 +342,19 @@ async function saveCard(ct: CardTokenEvent | null): Promise<CallbackResult> {
     token, last4: ct.last4, brand: ct.brand || "card",
     expMonth: ct.expMonth, expYear: ct.expYear, savedAt: new Date().toISOString(), orderId,
   };
-  await db.set(cardKey(intentAccount(intent)), card);
-  await withUserLock(intentAccount(intent), async (u) => {
-    if (!u.billing) return;
+  // Rule 2271: a card token for an order whose payment the founder refunded is not saved again. The refund deleted the
+  // card (`endPlanOnRefund`); a late or replayed callback for that order must not bring it back, or the next checkout
+  // would turn automatic renewal on with it. Rule 2280: the refunded check and the write run under the account's lock,
+  // the one `endPlanOnRefund` holds while it deletes the card, so a refund cannot land between the check and the write.
+  const saved = await withUserLock(intentAccount(intent), async (u) => {
+    if (intent.txnId !== undefined && (await db.get(refundedKey(intent.txnId)))) return false;
+    await db.set(cardKey(intentAccount(intent)), card);
+    if (!u.billing) return true;
     u.billing = { ...u.billing, card: { brand: card.brand, last4: card.last4 }, ...(intent.kind === "plan" ? { autoRenew: true } : {}) };
     await saveUser(u);
+    return true;
   });
-  return ok("card_saved");
+  return saved ? ok("card_saved") : ok("ignored");
 }
 
 /**
@@ -590,7 +603,8 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   }
   const v = await voidPayment(e, id, by, why);
   if (!v.ok) return { ok: false, error: "not_found" };
-  // A plan or renewal payment refunded in full ends the plan now (founder decision 2026-10-12, rule 1300). This path
+  // A plan or renewal payment refunded in full ends the plan now (founder decision 2026-10-12, rule 1300) and deletes the
+  // saved card token (founder decision 2026-10-19, rule 2270). This path
   // always refunds the whole transaction (`rec.amountCents` above); a partial refund does not exist here, and one made
   // in Paymob's own dashboard reaches us only as a refunded transaction, which `applyTransaction` ignores: it changes
   // nothing on the account (open question in rule 1301). A pack's payment never reaches this line.
@@ -624,14 +638,26 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * this value (an earlier M1 build) reads any value as "ended before": it never ends a plan for that transaction either
  * and only reports `planEnded: true` (reporting, no money); builds before M1 never read the key. Refunds made before
  * this marker existed have none.
+ *
+ * Rule 2270 (founder decision 2026-10-19): the saved card token (`paymob:card:{acct}`) is deleted too, first, under the
+ * same lock, and on a retry or a repeat as well (one delete per call, in the same round as the marker read, before any
+ * marker answer). A later checkout of the refunded account then finds no card, so it cannot turn
+ * automatic renewal back on by itself (`applyPaid` sets `autoRenew` from a saved card); the owner saves a card again on
+ * that checkout. `chargeSavedCard` re-reads the card under this lock before it charges (rule 1956), so a renewal that has
+ * not yet passed that check stops. The charge itself (`saved.charge`) runs after that lock is released: a refund that
+ * lands in that window still lets that one renewal charge, the existing rule 1956 design. `saveCard` checks the refund
+ * and writes the card under this same lock (rule 2280). A pack's refund never reaches here: the plan and its card stay.
  */
 async function endPlanOnRefund(email: string, paymentId: string, by: string, txnId: number): Promise<boolean> {
   const now = new Date();
   const change = await withUserLock(email, async (u) => {
-    const mark = await db.get<string>(refundEndedKey(txnId));
+    // Rule 2270: the card goes on every call, in the same round as the marker read.
+    const [, mark] = await Promise.all([db.del(cardKey(email)), db.get<string>(refundEndedKey(txnId))]);
     if (mark === "none") return "nothing_before" as const;
     if (mark) return "ended_before" as const;
-    if (!u.billing && trialOver(u)) {
+    // Already an ended trial with no subscription (a retry, or a second refund in one period). Not a hand-set plan whose
+    // paid-through day passed: it reads as `trialOver` too (rule 2273), and its refund still ends it.
+    if (!u.billing && trialOver(u) && !handPlanEnded(u, ksaDay())) {
       await db.set(refundEndedKey(txnId), "none", DAYS_400);
       return null;
     }

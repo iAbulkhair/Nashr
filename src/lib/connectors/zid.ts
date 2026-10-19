@@ -1,5 +1,7 @@
 import type { Connection } from "./store";
+import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
+import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 import { writeFile } from "../files";
 import { pmap } from "../parallel";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
@@ -27,8 +29,14 @@ type ZidProduct = {
   is_published?: boolean;
 };
 
+/**
+ * Zid's docs (Authorization, read 2026-10-18) write the field `Authorization`; this code and its tests had `authorization`.
+ * The token answer is stored with each key's case as it arrives (oauth.ts), so either spelling is read (rule 2201).
+ */
+export const zidAuthorization = (c: Pick<Connection, "data">) => c.data.authorization || c.data.Authorization || "";
+
 export function zidHeaders(c: Connection): Record<string, string> {
-  const h: Record<string, string> = { Authorization: `Bearer ${c.data.authorization ?? ""}`, "X-Manager-Token": c.data.access_token ?? "", Role: "Manager", "Accept-Language": "ar", Accept: "application/json" };
+  const h: Record<string, string> = { Authorization: `Bearer ${zidAuthorization(c)}`, "X-Manager-Token": c.data.access_token ?? "", Role: "Manager", "Accept-Language": "ar", Accept: "application/json" };
   if (c.meta?.storeId) h["Store-Id"] = c.meta.storeId;
   return h;
 }
@@ -40,7 +48,7 @@ export const zidText = (t: Text): string => (t == null ? "" : typeof t === "stri
 export async function zidStore(c: Connection): Promise<{ id?: string; name?: string; url?: string } | null> {
   const r = await fetch(`${ZID_API}/managers/account/profile`, { headers: zidHeaders(c), signal: providerTimeout() });
   if (!r.ok) return null;
-  const j = (await r.json().catch(() => null)) as { user?: { store?: { id?: number | string; title?: Text; url?: string } } } | null;
+  const j = (await responseJson(r, PROVIDER_REPLY_BYTES).catch(() => null)) as { user?: { store?: { id?: number | string; title?: Text; url?: string } } } | null;
   const s = j?.user?.store;
   if (!s) return null;
   return { id: s.id == null ? undefined : String(s.id), name: zidText(s.title) || undefined, url: s.url };
@@ -61,26 +69,21 @@ export async function importZid(email: string, c: Connection) {
     const r = await fetch(`${ZID_API}/products/?page=${page}&page_size=${PER_PAGE}`, { headers: zidHeaders(conn), signal: providerTimeout() });
     // 403 is a permission the app was not granted: a new connection cannot fix it, so it must not ask for one.
     if (!r.ok) throw new Error(r.status === 403 ? ZID_ACCESS_DENIED : `zid ${r.status}`);
-    const j = (await r.json()) as { results?: ZidProduct[]; next?: string | null };
+    const j = (await responseJson(r, PROVIDER_REPLY_BYTES)) as { results?: ZidProduct[]; next?: string | null };
     items.push(...(j.results ?? []));
     if (!j.next || !j.results?.length) break;
   }
   const live = items.filter((p) => zidText(p.name) && p.is_published !== false);
   const store = conn.meta?.account ? ` ${conn.meta.account}` : "";
-  const md = [
-    `# Product catalog (Zid${store}, ${new Date().toISOString().slice(0, 10)})`,
-    "",
-    ...live.map((p) => {
-      const cur = p.currency ? ` ${p.currency}` : "";
-      const reg = p.price == null || p.price === "" ? "" : `${p.price}${cur}`;
-      const sale = p.sale_price == null || p.sale_price === "" || Number(p.sale_price) === Number(p.price) ? "" : `${p.sale_price}${cur}`;
-      const price = sale ? `${sale} (was ${reg})` : reg;
-      const desc = zidText(p.description).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
-      return `- **${zidText(p.name)}** — ${price}${desc ? `\n  ${desc}` : ""}${p.html_url ? `\n  ${p.html_url}` : ""}`;
-    }),
-  ].join("\n");
+  // Each field one capped line, links http(s) only (rule 2247).
+  const { md, count } = productsMarkdown(`Product catalog (Zid${store}, ${new Date().toISOString().slice(0, 10)})`, live.map((p) => {
+    const cur = p.currency ? ` ${p.currency}` : "";
+    const reg = p.price == null || p.price === "" ? "" : `${p.price}${cur}`;
+    const sale = p.sale_price == null || p.sale_price === "" || Number(p.sale_price) === Number(p.price) ? "" : `${p.sale_price}${cur}`;
+    return { name: zidText(p.name), price: sale ? `${sale} (was ${reg})` : reg, description: zidText(p.description), url: p.html_url };
+  }));
   await writeFile(email, "products.md", md, "noor");
-  return live.length;
+  return count;
 }
 
 // ---------- Orders and abandoned carts: totals only ----------
@@ -138,7 +141,7 @@ class ZidStatus extends Error {
 async function zidGet<T>(c: Connection, path: string): Promise<T> {
   const r = await fetch(`${ZID_API}${path}`, { headers: zidHeaders(c), signal: providerTimeout() });
   if (!r.ok) throw new ZidStatus(r.status);
-  return (await r.json()) as T;
+  return (await responseJson(r, PROVIDER_REPLY_BYTES)) as T;
 }
 
 /** Last 30 days of orders and the open abandoned carts, reduced to totals. */
