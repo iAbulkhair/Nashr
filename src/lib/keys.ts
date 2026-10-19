@@ -125,6 +125,10 @@ export const wsKey = {
   keyCheckBucket: (s: Scope, window: "hour" | "day") => `keycheck:${window}:${s}`,
   /** bucket name for `allow` (stored as `rate:connectstart:{scope}`): OAuth and Composio connect starts of one workspace (rule 2242). */
   connectStartBucket: (s: Scope) => `connectstart:${s}`,
+  /** bucket name for `allow` (stored as `rate:storesync:{scope}`): manual store sales syncs of one workspace (rule 2243). */
+  storeSyncBucket: (s: Scope) => `storesync:${s}`,
+  /** bucket name for `allow` (stored as `rate:catalogimport:{scope}`): product imports from a store of one workspace (rule 2243). */
+  catalogImportBucket: (s: Scope) => `catalogimport:${s}`,
 } as const;
 
 export const accountKey = {
