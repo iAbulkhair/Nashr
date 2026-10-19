@@ -7,7 +7,7 @@ import { withBrandLock } from "@/lib/brand-proposals";
 import { db } from "@/lib/db";
 import { withUserLock } from "@/lib/credits";
 import { can, forbid, type Action } from "@/lib/roles";
-import { PERSON_LOCK_TIMEOUT, updatePerson, withPersonLock } from "@/lib/person";
+import { defined, PERSON_LOCK_TIMEOUT, updatePerson, withPersonLock } from "@/lib/person";
 import { aidOf, ownerOf } from "@/lib/membership";
 import { actingLogin } from "@/lib/own-password";
 import { chatStatus } from "@/lib/chat-allowance";
@@ -16,9 +16,6 @@ import { openLots, topupBalance } from "@/lib/topups";
 import { acct } from "@/lib/account-id";
 
 export type EmailPrefs = "all" | "important" | "none";
-
-/** The object without its `undefined` fields: a field the form did not send is never written. */
-const defined = <T extends Record<string, unknown>>(o: T): Partial<T> => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 
 const SOCIAL = ["instagram", "snapchat", "tiktok", "x", "linkedin"] as const;
 /** Brand-file fields this form edits (admin and owner: `brand.write`). */

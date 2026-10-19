@@ -3,14 +3,14 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
-import { acct, createUser, getUser, verifyPassword, type User } from "@/lib/auth";
+import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { acct, createUser, currentUser, getUser, verifyPassword, type User } from "@/lib/auth";
 import { loginIndexOf, newAccountId } from "@/lib/account-id";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { accountKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { ownerOf } from "@/lib/membership";
-import { getPerson, updatePerson } from "@/lib/person";
+import { createPersonRecord, getPerson, personFromRaw, updatePerson } from "@/lib/person";
 import { newPersonId } from "@/lib/multi-org";
 import { resolveGoogle } from "@/lib/google-signin";
 import { issueVerifyCode, markVerified as verifyAddress, moveUnverifiedAccount } from "@/lib/verify-email";
@@ -65,6 +65,9 @@ async function expectAgree(pid: string, kind: "owner" | "member") {
   expect(row!.createdAt).toBe(kind === "owner" ? legacy!.createdAt : legacy!.acceptedAt);
   if (kind === "member") expect(legacy).not.toHaveProperty("emailVerifiedAt");
 }
+const tick = () => new Promise((r) => setTimeout(r, 5));
+/** Act with a session token issued earlier (as a second browser holding it would). */
+const useSession = (token: string) => { jar().clear(); jar().set("thakeen_session", token); };
 const staleLogs = (warn: { mock: { calls: unknown[][] } }) => warn.mock.calls.filter((c) => c[0] === "person stale");
 
 /** A `p_` person at `email` (raw writes): its row and the login index naming it. */
@@ -165,6 +168,135 @@ describe("rule 2132 (credential part): a legacy login's writes land on the perso
   });
 });
 
+describe("rule 2132 (fix round 1): a revocation stamp never moves backwards", () => {
+  /** A newer `devicesAfter` written to the legacy record only, as R1's "sign out other devices" does (rule 1170). */
+  async function r1SignOutOthers(key: string): Promise<string> {
+    await tick();
+    const at = new Date().toISOString();
+    const rec = (await db.get<Record<string, unknown>>(key))!;
+    await db.set(key, { ...rec, devicesAfter: at });
+    await tick();
+    return at;
+  }
+
+  it("owner: a rolled-back sign-out survives a name change and a password change, on both records", async () => {
+    const o = await newUser("rb");
+    const pid = storedPersonId(acct(o));
+    await updatePerson(pid, { devicesAfter: new Date().toISOString() }); // an M1 sign-out: the row holds an older stamp
+    await tick();
+    const before = await signIn(o.email);
+    const at = await r1SignOutOthers(accountKey.user(acct(o)));
+    // Read: the newer legacy stamp already ends the session issued before it.
+    expect((await getPerson(pid))!.devicesAfter).toBe(at);
+    useSession(before);
+    expect(await currentUser()).toBeNull();
+    // A name change (no session stamp moves) keeps it on both records, and the session stays ended.
+    await signIn(o.email);
+    expect((await saveProfile({ name: "Still Out", phone: "+966500002141" })).status).toBe(200);
+    expect((await db.get<User>(accountKey.user(acct(o))))!.devicesAfter).toBe(at);
+    expect((await db.get<{ devicesAfter?: string }>(personKey.person(pid)))!.devicesAfter).toBe(at);
+    useSession(before);
+    expect(await currentUser()).toBeNull();
+    // A password change likewise.
+    await signIn(o.email);
+    expect((await changePassword("abc12345")).status).toBe(200);
+    expect((await db.get<User>(accountKey.user(acct(o))))!.devicesAfter).toBe(at);
+    expect((await db.get<{ devicesAfter?: string }>(personKey.person(pid)))!.devicesAfter).toBe(at);
+    await expectAgree(acct(o), "owner");
+    useSession(before);
+    expect(await currentUser()).toBeNull();
+  });
+
+  it("member: a rolled-back sign-out survives a name change and a password change, on both records", async () => {
+    const o = await newUser("rbo");
+    const m = await newMember(o);
+    const pid = storedPersonId(m.email);
+    await updatePerson(pid, { devicesAfter: new Date().toISOString() });
+    await tick();
+    const before = await signIn(m.email);
+    const at = await r1SignOutOthers(accountKey.member(m.email));
+    useSession(before);
+    expect(await currentUser()).toBeNull();
+    await signIn(m.email);
+    expect((await saveProfile({ name: "Member Still Out" })).status).toBe(200);
+    expect((await changePassword(m.password)).status).toBe(200);
+    expect((await db.get<{ devicesAfter?: string }>(accountKey.member(m.email)))!.devicesAfter).toBe(at);
+    expect((await db.get<{ devicesAfter?: string }>(personKey.person(pid)))!.devicesAfter).toBe(at);
+    await expectAgree(m.email, "member");
+    useSession(before);
+    expect(await currentUser()).toBeNull();
+  });
+
+  it("a patch never moves a stamp backwards either, and the read keeps the later of both records", async () => {
+    const o = await newUser("rbp");
+    const pid = storedPersonId(acct(o));
+    const late = new Date(Date.now() + 60_000).toISOString();
+    await updatePerson(pid, { devicesAfter: late });
+    await updatePerson(pid, { devicesAfter: T0, sessionsAfter: T0 });
+    const p = (await getPerson(pid))!;
+    expect(p.devicesAfter).toBe(late);
+    expect(p.sessionsAfter).toBe(o.sessionsAfter);
+    // The pure reader: the row wins, but each stamp is the later of the row and the legacy record.
+    const row = { pid, email: o.email, name: "R", lang: "ar", createdAt: o.createdAt, sessionsAfter: T1, devicesAfter: T0 };
+    const legacy = { ...(await db.get<User>(accountKey.user(acct(o))))!, sessionsAfter: T0, devicesAfter: T1 };
+    expect(personFromRaw(pid, row, legacy, null)).toMatchObject({ source: "person", name: "R", sessionsAfter: T1, devicesAfter: T1 });
+  });
+
+  it("an address move writes the same device stamp on the moved account and the person", async () => {
+    const o = await newUser("mvd", { verified: false });
+    const pid = storedPersonId(acct(o));
+    await updatePerson(pid, { devicesAfter: new Date().toISOString() });
+    const at = await r1SignOutOthers(accountKey.user(acct(o)));
+    const to = address("mvdto");
+    expect(await moveUnverifiedAccount((await getUser(o.email))!, to)).toBe("ok");
+    expect((await db.get<User>(accountKey.user(to)))!.devicesAfter).toBe(at);
+    await expectAgree(to, "owner");
+  });
+});
+
+describe("plan reconciliation 6 (fix round 1): a new login's row is written under lock:person", () => {
+  it("createPersonRecord waits for a held person lock, then writes", async () => {
+    const e = address("cpl");
+    const pid = storedPersonId(e);
+    await db.lock(personKey.lock(pid), 10);
+    let done = false;
+    const pending = createPersonRecord({ pid, email: e, name: "N", lang: "ar", createdAt: T0, sessionsAfter: T0 }, { loginLocked: true }).then(() => { done = true; });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(done).toBe(false);
+    await db.unlock(personKey.lock(pid));
+    await pending;
+    expect((await db.get<{ name: string }>(personKey.person(pid)))!.name).toBe("N");
+  });
+
+  it("signup with the person lock held past the wait answers 409 busy and writes nothing", async () => {
+    const e = address("cps");
+    const pid = storedPersonId(e);
+    await db.lock(personKey.lock(pid), 10);
+    try {
+      const res = await signupRoute.POST(json("/api/auth/signup", "POST", { email: e, password: "abc12345", name: "Busy", lang: "en" }, ip()));
+      expect(await answer(res)).toEqual({ status: 409, body: { ok: false, error: "busy" } });
+    } finally {
+      await db.unlock(personKey.lock(pid));
+    }
+    expect(await db.get(accountKey.user(e))).toBeNull();
+    expect(await db.get(accountKey.login(e))).toBeNull();
+    expect(await db.get(personKey.person(pid))).toBeNull();
+  }, 30_000);
+
+  it("a Google sign-up with the person lock held past the wait throws person_lock_timeout and writes nothing", async () => {
+    const e = address("ggl");
+    await db.lock(personKey.lock(storedPersonId(e)), 10);
+    try {
+      await expect(resolveGoogle({ sub: `sub-${randomBytes(6).toString("hex")}`, email: e, name: "G" }, "signup", "en")).rejects.toThrow("person_lock_timeout");
+    } finally {
+      await db.unlock(personKey.lock(storedPersonId(e)));
+    }
+    expect(await db.get(accountKey.user(e))).toBeNull();
+    expect(await db.get(personKey.person(storedPersonId(e)))).toBeNull();
+    expect(await db.get(accountKey.login(e))).toBeNull();
+  }, 30_000);
+});
+
 describe("rule 2132 (credential part): a p_ person writes person: only", () => {
   it("a p_ owner's reset: the new password is on the person, never on the account record", async () => {
     const e = address("po");
@@ -185,6 +317,18 @@ describe("rule 2132 (credential part): a p_ person writes person: only", () => {
     expect(await db.get(accountKey.member(pid))).toBeNull();
     signOut();
     expect(await answer(await login(e, NEW))).toEqual({ status: 200, body: { ok: true, verify: false } });
+  });
+
+  it("a p_ owner's reset stamps an unverified owned account with the person's EXISTING proof date", async () => {
+    const e = address("pre");
+    const pid = await putPerson(e, "pw-person-1", { emailVerifiedAt: T0 });
+    const home = await putAccount({ email: e, ownerPid: pid, emailVerifiedAt: T0 });
+    const fresh = await putAccount({ ownerPid: pid, emailVerifiedAt: undefined });
+    await Promise.all([home, fresh].map((x) => db.sadd(personKey.orgs(pid), x)));
+    expect((await resetWith(e, "owner")).status).toBe(200);
+    expect((await getPerson(pid))!.emailVerifiedAt).toBe(T0);
+    expect((await db.get<User>(accountKey.user(fresh)))!.emailVerifiedAt).toBe(T0);
+    expect((await db.get<User>(accountKey.user(home)))!.emailVerifiedAt).toBe(T0);
   });
 
   it("a p_ member's reset: the person only, no member record appears, and the new password signs in", async () => {
@@ -371,9 +515,17 @@ describe("source scans (rule 2132, credential part)", () => {
     expect(files(join("src", "app")).filter((f) => /person:\s*["']p["']/.test(readFileSync(f, "utf8")))).toEqual([]);
   });
 
-  it("every route that writes through updatePerson answers a held person lock with busy", () => {
-    const routes = files(join("src", "app")).filter((f) => /\bupdatePerson\(|\bmarkVerified\(/.test(readFileSync(f, "utf8")));
-    expect(routes.length).toBeGreaterThanOrEqual(6);
-    expect(routes.filter((f) => !/isPersonLockTimeout|PERSON_LOCK_TIMEOUT/.test(readFileSync(f, "utf8")))).toEqual([]);
+  it("every route that takes the person lock, directly or through a library writer, answers its timeout with busy", () => {
+    const direct = files(join("src", "app")).filter((f) => /\bupdatePerson\(|\bwithPersonLock\(|\bmarkVerified\(/.test(readFileSync(f, "utf8")));
+    expect(direct.length).toBeGreaterThanOrEqual(6);
+    // Routes that reach the person lock only through a library writer, which a call-name scan of the route cannot see:
+    // `createUser` (signup), `resolveGoogle` → `createUser` (the Google callback). The address moves
+    // (`moveUnverifiedAccount`, `moveOwnerLogin`) take no person lock (`createPersonRecord` with `userLockHeld`), so their
+    // routes are not listed. A new library caller of `updatePerson`/`createUser` adds its route here.
+    const indirect = [join("src", "app", "api", "auth", "signup", "route.ts"), join("src", "app", "api", "auth", "google", "callback", "route.ts")];
+    const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
+    // The library files that call a person writer, so a new one fails here until its routes are listed above.
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/verify-email.ts"]);
+    expect([...direct, ...indirect].filter((f) => !/isPersonLockTimeout|PERSON_LOCK_TIMEOUT/.test(readFileSync(f, "utf8")))).toEqual([]);
   });
 });

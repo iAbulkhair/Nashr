@@ -2,8 +2,6 @@ import { createHash, createPublicKey, randomBytes, verify as verifySig, type Jso
 import { cookies } from "next/headers";
 import { db } from "./db";
 import { createUser, getLogin, normalizeEmail, validEmail, type Login } from "./auth";
-import { updatePerson } from "./person";
-import { ownerOf } from "./membership";
 import { appOrigin } from "./origin";
 import { sameSecret } from "./rate";
 import { safeNext } from "./safe-next";
@@ -201,9 +199,10 @@ export async function resolveGoogle(id: GoogleIdentity, mode: "login" | "signup"
     if (await getMember(id.email)) return { kind: "refused", error: "google_not_linked" };
     if (mode !== "signup") return { kind: "refused", error: "google_no_account" };
     // No password (multi-workspace M1, rule 2132): the person has no hash, so it signs in with Google, or sets a password
-    // with "forgot password". Google proved the address: the person and the account it owns are stamped (reconciliation 11).
-    const u = await createUser({ email: id.email, name: id.name, phone: "", lang });
-    await updatePerson(ownerOf(u), { emailVerifiedAt: new Date().toISOString() });
+    // with "forgot password". Google proved the address: the person and the account it owns are stamped in the same
+    // write, under `lock:person` (reconciliation 11); a held person lock throws `person_lock_timeout` with nothing
+    // written, which the callback answers as it answers a failed sign-in.
+    await createUser({ email: id.email, name: id.name, phone: "", lang, emailVerifiedAt: new Date().toISOString() });
     await writeLink(id.email, id.sub);
     // The new login as every sign-in reads it (its person included), still under the login lock.
     const login = await getLogin(id.email);

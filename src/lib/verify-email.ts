@@ -10,7 +10,7 @@ import { allow, clientIp, retryLater, sameSecret } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
 import { mailReady, sendEmail } from "./notify";
 import { withLoginLock } from "./team";
-import { createPersonRecord, getPerson, updatePerson } from "./person";
+import { createPersonRecord, getPerson, laterStamp, updatePerson } from "./person";
 import { ownerOf } from "./membership";
 import { personKey, storedPersonId } from "./keys";
 
@@ -221,18 +221,23 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       // owner, a removed member, this owner's own devices after A to B to A) must never resolve to the moved account. The
       // session the route opens right after has `at >= sessionsAfter` (the check is a strict `<`), so it still resolves.
       const fresh = new Date(now).toISOString();
-      if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh });
-      else await saveUser({ ...cur, id: to, email: to, sessionsAfter: fresh, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
+      // The device stamp is the later of the moved person's and the record written (a stamp never moves backwards), the
+      // same on both records.
+      const dev = laterStamp(me.devicesAfter, (unfinished ? login.user : cur).devicesAfter);
+      const devices = dev ? { devicesAfter: dev } : {};
+      if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh, ...devices });
+      else await saveUser({ ...cur, id: to, email: to, sessionsAfter: fresh, ...devices, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
       // The person at the new address (multi-workspace M1, rule 2132), written whole (reconciliation 6: a leftover row at
       // `person:{to}` lends nothing): the moved owner's password, the account's birth, the fresh session stamp, and the
       // proof only when this move proved the address (or a stopped run's copy already carried one). Under both login
-      // locks: nothing else can write this person.
+      // locks, without `lock:person` (`userLockHeld`: this runs inside `lock:user`, which comes after it in rule 2139's
+      // order); the address is claimed only below, so nothing else can write this person.
       const copy = unfinished ? login.user : null;
       const toPid = storedPersonId(to);
       await Promise.all([
         createPersonRecord(
-          { pid: toPid, email: to, name: me.name, lang: me.lang, passHash: me.passHash, createdAt: cur.createdAt, sessionsAfter: fresh, emailVerifiedAt: copy ? copy.emailVerifiedAt : opts.proved ? fresh : undefined },
-          { loginLocked: true },
+          { pid: toPid, email: to, name: me.name, lang: me.lang, passHash: me.passHash, createdAt: cur.createdAt, sessionsAfter: fresh, devicesAfter: dev, emailVerifiedAt: copy ? copy.emailVerifiedAt : opts.proved ? fresh : undefined },
+          { loginLocked: true, userLockHeld: true },
         ),
         db.sadd(personKey.orgs(toPid), to),
       ]);

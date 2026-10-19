@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSession, currentUser } from "@/lib/auth";
 import { exchangeCode, googleSignInOn, linkGoogle, resolveGoogle, takeState } from "@/lib/google-signin";
 import { finishLogin } from "@/lib/login-finish";
+import { isPersonLockTimeout } from "@/lib/person";
 import { actingLogin } from "@/lib/own-password";
 import { appOrigin } from "@/lib/origin";
 import { afterSignup, signupPartner } from "@/lib/partners";
@@ -41,7 +42,15 @@ export async function GET(req: Request) {
 
   // A new account is throttled per address as the signup route is (trial credits and a free onboarding run).
   if (st.mode === "signup" && !(await allow(`signup:ip:${clientIp(req)}`, 5, 3600))) return fail("slow_down", "signup");
-  const res = await resolveGoogle(id, st.mode, lang);
+  // A sign-up writes the new person under `lock:person` (rule 2139): a lock held past the wait wrote nothing, and the
+  // person is sent back to try again, as for any failed Google sign-in.
+  let res: Awaited<ReturnType<typeof resolveGoogle>>;
+  try {
+    res = await resolveGoogle(id, st.mode, lang);
+  } catch (e) {
+    if (isPersonLockTimeout(e)) return fail("google_failed", st.mode === "signup" ? "signup" : "login");
+    throw e;
+  }
   if (res.kind === "refused") return fail(res.error, st.mode === "signup" ? "signup" : "login");
   if (res.kind === "created") {
     // The new account's id is its person id (rule 1985); the address only signs in.

@@ -55,8 +55,8 @@ const DEFAULTED: ReadonlySet<LegacyField> = new Set(["name", "lang", "createdAt"
 type Legacy = { row: PersonRowValue; given: Partial<Record<LegacyField, unknown>>; fields: readonly LegacyField[]; source: "owner" | "member" };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
-/** The object without its `undefined` fields, so an absent legacy field never hides a person's value. */
-const defined = <T extends Record<string, unknown>>(o: T): Partial<T> => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+/** The object without its `undefined` fields, so an absent legacy field never hides a person's value (and a field a form did not send is never written). */
+export const defined = <T extends Record<string, unknown>>(o: T): Partial<T> => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 const time = (v: unknown): number => (typeof v === "string" ? Date.parse(v) : NaN);
 /** `legacy` is a valid moment later than `current` (an absent or malformed `current` counts as never). */
 const newer = (legacy: unknown, current: unknown): boolean => {
@@ -67,6 +67,14 @@ const newer = (legacy: unknown, current: unknown): boolean => {
 };
 /** The later of two stamps; a malformed one never wins over a valid one. */
 const later = (a: string | undefined, b: string | undefined): string | undefined => (newer(b, a) ? b : a ?? b);
+/** The revocation stamps a session is checked against (`resolveSession`). */
+const STAMPS = ["sessionsAfter", "devicesAfter"] as const;
+/**
+ * Each revocation stamp as the latest of the given records (absent ones skipped): a stamp never moves backwards, so a
+ * "sign out" written by any build, to either record, keeps its effect (fix round 1 of Task 5, rule 2132).
+ */
+const latestStamps = (...recs: (Partial<Record<(typeof STAMPS)[number], unknown>> | null | undefined)[]): { sessionsAfter?: string; devicesAfter?: string } =>
+  defined(Object.fromEntries(STAMPS.map((k) => [k, recs.reduce<string | undefined>((acc, r) => later(acc, typeof r?.[k] === "string" ? (r[k] as string) : undefined), undefined)])));
 
 /** Step 2: the legacy owner record at `user:{pid}`, only when the account's owner IS this person. */
 function fromOwner(pid: PersonId, raw: unknown): Legacy | null {
@@ -147,7 +155,9 @@ function resolvePerson(pid: PersonId, rawPerson: unknown, rawUser: unknown, rawM
       const stamps = defined({ sessionsAfter: later(row.sessionsAfter, legacy.row.sessionsAfter), devicesAfter: later(row.devicesAfter, legacy.row.devicesAfter) });
       return { person: { ...merged, ...stamps, pid, source: legacy.source }, legacy };
     }
-    return { person: { ...row, pid, source: "person" }, legacy };
+    // The row wins, but a revocation stamp keeps the later of both records: R1's "sign out other devices" moves only the
+    // legacy `devicesAfter` (rule 1170), and a rolled-back build's sign-out must still end those sessions.
+    return { person: { ...row, ...latestStamps(row, legacy?.row), pid, source: "person" }, legacy };
   }
   return legacy ? { person: { ...legacy.row, pid, source: legacy.source }, legacy } : null;
 }
@@ -201,14 +211,15 @@ async function mirror(pid: PersonId, legacy: Legacy, row: PersonRowValue, held: 
   if (legacy.source === "owner") {
     await onAccount(storedAccountId(pid), held, async (x) => {
       if (ownerOf(x) !== pid) return;
-      // A proof date already on the account is never moved (as `markVerified` and the reset keep the first date).
-      await saveUser(Object.assign(x, values, x.emailVerifiedAt ? { emailVerifiedAt: x.emailVerifiedAt } : {}));
+      // A proof date already on the account is never moved (as `markVerified` and the reset keep the first date), and a
+      // revocation stamp on the record as it is NOW never moves backwards.
+      await saveUser(Object.assign(x, values, latestStamps(values, x), x.emailVerifiedAt ? { emailVerifiedAt: x.emailVerifiedAt } : {}));
     });
     return;
   }
   await withMemberLock(pid, async (m) => {
     if (memberPid(m) !== pid) return;
-    await saveMember(Object.assign(m, values));
+    await saveMember(Object.assign(m, values, latestStamps(values, m)));
   });
 }
 
@@ -254,7 +265,8 @@ export async function updatePerson(pid: PersonId, patch: PersonPatch, opts: { pe
     const changes: PersonPatch = defined(patch);
     if (changes.emailVerifiedAt && view.emailVerifiedAt) delete changes.emailVerifiedAt;
     const birth = legacy && valid(legacy.row.createdAt) ? legacy.row.createdAt : valid(view.createdAt) ? view.createdAt : new Date().toISOString();
-    const row = { ...view, ...changes, pid, createdAt: birth } as PersonRowValue;
+    // A revocation stamp is the latest of the row, the legacy record and the patch: a write never un-revokes a session.
+    const row = { ...view, ...changes, ...latestStamps(view, legacy?.row, changes), pid, createdAt: birth } as PersonRowValue;
     if (legacy) await mirror(pid, legacy, row, opts.userLocked);
     await db.set(personKey.person(pid), row);
     if (patch.emailVerifiedAt && row.emailVerifiedAt) await stampOwned(pid, row.emailVerifiedAt, legacy?.source === "owner", opts.userLocked);
@@ -266,12 +278,25 @@ export async function updatePerson(pid: PersonId, patch: PersonPatch, opts: { pe
 /**
  * A new login's person row (plan reconciliation 6): `SET person:{pid}` whole, so a leftover row of a deleted account at
  * the same id (an address registered again) lends it nothing. The caller holds `lock:login` of the address and has
- * checked it is free, so no other write of this person can be running.
+ * checked it is free. The write runs under `lock:person:{pid}` (`lock:login` → `lock:person`, rule 2139), so an
+ * `updatePerson` that read the leftover row can never write it back over the new one; a held lock throws
+ * `person_lock_timeout` before anything is written.
+ *
+ * - `personLocked`: the caller already holds `lock:person:{pid}` (`createUser` takes it before its first write, so a
+ *   timeout leaves no account without its person).
+ * - `userLockHeld`: the caller holds a `lock:user` (the address move, `moveOwnerLogin`), which comes AFTER `lock:person`
+ *   in the order, so taking the person lock here would invert it. No lock is taken: the address is still unclaimed
+ *   (`claimLogin` runs after this write, under the same login lock), so no session, reset link or route can resolve
+ *   this person and no `updatePerson` of it can be running.
  */
 export async function createPersonRecord(
-  input: { pid: PersonId; email: string; name: string; lang: "ar" | "en"; passHash?: string; createdAt: string; sessionsAfter: string; emailVerifiedAt?: string },
-  opts: { loginLocked: true },
+  input: { pid: PersonId; email: string; name: string; lang: "ar" | "en"; passHash?: string; createdAt: string; sessionsAfter: string; devicesAfter?: string; emailVerifiedAt?: string },
+  opts: { loginLocked: true; personLocked?: true; userLockHeld?: true },
 ): Promise<void> {
-  void opts;
-  await db.set(personKey.person(input.pid), defined({ ...input, email: normalizeEmail(input.email) }));
+  const write = async () => { await db.set(personKey.person(input.pid), defined({ ...input, email: normalizeEmail(input.email) })); };
+  if (opts.personLocked || opts.userLockHeld) return write();
+  return withPersonLock(input.pid, write);
 }
+
+/** The later of two revocation stamps (a malformed one never wins over a valid one). */
+export const laterStamp = later;

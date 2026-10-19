@@ -375,10 +375,11 @@ export async function releaseLogin(email: string, pid: string, opts: { locked?: 
  * 6: a leftover row of a deleted account at this id lends nothing), with the same hash, birth and session stamp, and
  * `orgs:{id}` names the account. Without a password (a Google sign-up) the person has no hash, and the account keeps a
  * hash of random bytes only so a build rolled back to R1, which compares `user.passHash`, never meets a record without
- * one. `person: "p"` (tests only, rule 2132; a source scan pins that no route passes it) makes the M2 shape: a `p_`
+ * one. `emailVerifiedAt` (a Google sign-up, which proved the address) is written on the person and the account in the
+ * same locked write (reconciliation 11: the only account the new person owns). `person: "p"` (tests only, rule 2132; a source scan pins that no route passes it) makes the M2 shape: a `p_`
  * person holding the credentials, and an account without them that names it in `ownerPid`.
  */
-export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en" }, opts: { opaque?: boolean; person?: "p" } = {}): Promise<User> {
+export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en"; emailVerifiedAt?: string }, opts: { opaque?: boolean; person?: "p" } = {}): Promise<User> {
   const email = normalizeEmail(input.email);
   const now = new Date();
   const stamp = now.toISOString();
@@ -397,18 +398,23 @@ export async function createUser(input: { email: string; name: string; phone: st
     // What the signup notice under the form named, from the versions in code (rule 1325).
     consent: signupConsent(input.lang, now),
   };
-  const [{ createPersonRecord }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
+  const [{ createPersonRecord, withPersonLock }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
   const pid = storedPersonId(opts.person === "p" ? newPersonId() : acct(account));
   // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
   // session issued before this person existed: a re-registered address never inherits an old login.
-  const person = { pid, email, name: account.name, lang: account.lang, passHash, createdAt: stamp, sessionsAfter: stamp };
+  const proved = input.emailVerifiedAt ? { emailVerifiedAt: input.emailVerifiedAt } : {};
+  const person = { pid, email, name: account.name, lang: account.lang, passHash, createdAt: stamp, sessionsAfter: stamp, ...proved };
   const u: User =
     opts.person === "p"
-      ? { ...account, ownerPid: pid }
-      : { ...account, passHash: passHash ?? (await bcrypt.hash(randomBytes(32).toString("base64url"), 10)), sessionsAfter: stamp };
-  await saveUser(u);
-  await Promise.all([createPersonRecord(person, { loginLocked: true }), db.sadd(personKey.orgs(pid), acct(u))]);
-  await claimLogin(email, pid);
+      ? { ...account, ...proved, ownerPid: pid }
+      : { ...account, ...proved, passHash: passHash ?? (await bcrypt.hash(randomBytes(32).toString("base64url"), 10)), sessionsAfter: stamp };
+  // `lock:login` (the caller's) → `lock:person` (rule 2139), taken before the first write: a held person lock throws
+  // `person_lock_timeout` with nothing written, and the signup routes answer it 409 `busy`.
+  await withPersonLock(pid, async () => {
+    await saveUser(u);
+    await Promise.all([createPersonRecord(person, { loginLocked: true, personLocked: true }), db.sadd(personKey.orgs(pid), acct(u))]);
+    await claimLogin(email, pid);
+  });
   return u;
 }
 
