@@ -83,3 +83,73 @@ export const ConversationRecord = z.looseObject({
   agent: z.string().optional().catch(undefined),
   model: z.string().optional().catch(undefined),
 });
+
+/**
+ * Multi-workspace membership (docs/specs/2026-10-18-multi-org.md section 6, release M1 "expand", rules 2110-2139). Read
+ * through `parseStored`; every schema is a `looseObject`, so a read-modify-write never strips a field a later release adds.
+ * No code reads or writes these shapes before the adapter of the later M1 tasks.
+ */
+
+/**
+ * Rule 2134: `person:{pid}`, the credentials and profile of one person. `pid` and `email` (the normalized sign-in
+ * address) are required; `name` absent reads as "" and `lang` as "ar". `passHash` is absent for a Google-only person.
+ * `suspended` is person-level (section 14): `true`, or `{ until }`.
+ */
+export const PersonRow = z.looseObject({
+  pid: z.string().min(1),
+  email: z.string().min(3),
+  name: z.string().catch(""),
+  lang: z.enum(["ar", "en"]).catch("ar"),
+  passHash: z.string().optional(),
+  emailVerifiedAt: z.string().optional(),
+  sessionsAfter: z.string().optional(),
+  devicesAfter: z.string().optional(),
+  suspended: z.union([z.literal(true), z.looseObject({ until: z.string() })]).optional(),
+  trialUsedAt: z.string().optional(),
+  createdAt: z.string().catch(""),
+});
+export type PersonRowValue = z.output<typeof PersonRow>;
+
+/**
+ * Rules 2115, 2134: `mbr:{aid}:{pid}`, one person's membership in one account. `role` is `admin` or `member`, never
+ * `owner` (the owner is named only by `ownerOf`): a row claiming `owner` does not parse, `parseStored` logs the shape
+ * without values, and the reader gets "no membership", which grants nothing. `invitedBy` is a PersonId, "" when unknown.
+ */
+export const MembershipRow = z.looseObject({
+  aid: z.string().min(1),
+  pid: z.string().min(1),
+  role: z.enum(["admin", "member"]),
+  acceptedAt: z.string().min(1),
+  invitedBy: z.string().catch(""),
+  disabled: z.literal("seats").optional(),
+});
+export type MembershipValue = z.output<typeof MembershipRow>;
+
+/** The membership events of `teamlog:{aid}` (spec section 13). */
+export const TEAM_LOG_KINDS = [
+  "invited",
+  "invite_cancelled",
+  "joined",
+  "role_changed",
+  "removed",
+  "left",
+  "paused_for_seats",
+  "resumed",
+  "ownership_offered",
+  "ownership_transferred",
+  "workspace_created",
+] as const;
+
+/**
+ * Rule 2129: one row of `teamlog:{aid}`. `actor` and `target` carry the person id and the address of the day; the row
+ * never holds a token, an invite id or a password, and for a console action `via` is `console` and staff are not named.
+ */
+export const TeamLogRow = z.looseObject({
+  at: z.string().min(1),
+  kind: z.enum(TEAM_LOG_KINDS),
+  actor: z.looseObject({ pid: z.string(), email: z.string() }),
+  target: z.looseObject({ pid: z.string().optional(), email: z.string() }),
+  role: z.string().optional(),
+  via: z.enum(["web", "console", "system"]),
+});
+export type TeamLogRowValue = z.output<typeof TeamLogRow>;

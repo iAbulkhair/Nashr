@@ -61,7 +61,14 @@ export type Invite = {
   email: string;
   role: TeamRole;
   owner: string;
+  /**
+   * The account the invite is for (multi-workspace membership, release M1 expand): the same value as `owner`, written
+   * beside it. Read as `inv.aid ?? inv.owner`, so an invite written before M1 still works.
+   */
+  aid?: string;
   invitedBy: string;
+  /** The inviter's person id, beside `invitedBy` (their address). Absent on an invite written before M1. */
+  invitedByPid?: string;
   createdAt: string;
   expiresAt: string;
   lang: "ar" | "en";

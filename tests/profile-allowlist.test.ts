@@ -18,7 +18,7 @@ const OWNER_KEYS = ["createdAt", "credits", "deal", "email", "lang", "name", "ph
 /** A member's `user`: its own name, email, language and role, and the account summary every seat shares. */
 const MEMBER_KEYS = ["createdAt", "credits", "email", "lang", "name", "plan", "renewedAt", "role", "topups", "trialEnds"];
 /** Strings stored in fields the customer must never be sent. None may appear anywhere in the answer. */
-const SECRETS = ["founder-fairuse@test.example", "founder-seat@test.example", "founder-lock@test.example", "founder-deal@test.example", "founder-grant@test.example", "SECRET-GRANT-NOTE", "SECRET-BANK-REF", "founder-topup@test.example", "SECRET-INTENT-REF", "SECRET-TXN", "partner-owner@test.example", "SECRET-PARTNER-REF", "pay_7870000000000000", "founder-hand@test.example"];
+const SECRETS = ["founder-fairuse@test.example", "founder-seat@test.example", "founder-lock@test.example", "founder-deal@test.example", "founder-grant@test.example", "SECRET-GRANT-NOTE", "SECRET-BANK-REF", "founder-topup@test.example", "SECRET-INTENT-REF", "SECRET-TXN", "partner-owner@test.example", "SECRET-PARTNER-REF", "pay_7870000000000000", "founder-hand@test.example", "p_ownerpidaaaaaaaaaaaaaaaa"];
 
 const DAY = 86400_000;
 const iso = (days: number) => new Date(Date.now() + days * DAY).toISOString();
@@ -33,6 +33,8 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
   const full: Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">> = {
     // The account id (rule 1995): storage only, never a profile field.
     id: u.email,
+    // The owning person (multi-workspace membership, rule 1995): storage only, never a profile field.
+    ownerPid: "p_ownerpidaaaaaaaaaaaaaaaa",
     email: u.email,
     name: "Owner Name",
     phone: "+966500000787",

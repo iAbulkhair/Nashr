@@ -71,6 +71,12 @@ export type User = {
    * to the browser (`GET /api/profile` names its fields, rule 1995).
    */
   id?: string;
+  /**
+   * The person who owns this account (multi-workspace membership, docs/specs/2026-10-18-multi-org.md, rules 2110-2139).
+   * Absent on every account in production during M1 (a legacy owner's person id is `acct(u)`); a test fixture may set a
+   * `p_...` id. Read only through `ownerOf`, which falls back to `acct(u)`; never compared or keyed directly.
+   */
+  ownerPid?: string;
   /** The sign-in and contact address: mail goes here, display uses it. Never a key: keys go through `acct(u)`. */
   email: string;
   name: string;

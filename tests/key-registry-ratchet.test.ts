@@ -68,6 +68,15 @@ describe("rule 2033: scopeParam and storedScope calls only go down, and never ap
   it("storedScope", () => {
     expect(ratchet("storedScope calls", count(/\bstoredScope\(/g), STORED_SCOPE)).toEqual([]);
   });
+  it("storedPersonId and storedAccountId (rule 2137)", () => {
+    expect(ratchet("storedPersonId calls", count(/\bstoredPersonId\(/g), STORED_PERSON_ID)).toEqual([]);
+    expect(ratchet("storedAccountId calls", count(/\bstoredAccountId\(/g), STORED_ACCOUNT_ID)).toEqual([]);
+  });
+  it("no route or page converts a string into a person or an account id (rule 2137)", () => {
+    const app = FILES.filter((f) => f.startsWith(join("src", "app")));
+    const offenders = app.filter((f) => /\b(storedPersonId|storedAccountId)\(/.test(readFileSync(f, "utf8")));
+    expect(offenders).toEqual([]);
+  });
   it("no route or page converts a string into a scope", () => {
     const app = FILES.filter((f) => f.startsWith(join("src", "app")));
     const offenders = app.filter((f) => /\b(scopeParam|storedScope|workspaceScope)\(/.test(readFileSync(f, "utf8")));
@@ -286,3 +295,8 @@ const SCOPE_PARAM: Record<string, number> = {
 const STORED_SCOPE: Record<string, number> = {
   "src/lib/auth.ts": 1,
 };
+
+// Multi-workspace membership, release M1 (rule 2137): the two constructors of the branded ids. Empty until the adapter
+// of the later M1 tasks reads a person or an account id back from a record; each call site is listed here, none under src/app.
+const STORED_PERSON_ID: Record<string, number> = {};
+const STORED_ACCOUNT_ID: Record<string, number> = {};
