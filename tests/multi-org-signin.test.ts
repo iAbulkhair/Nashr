@@ -11,6 +11,7 @@ import { newPersonId } from "@/lib/multi-org";
 import { getMember, saveMember } from "@/lib/team";
 import * as loginRoute from "@/app/api/auth/login/route";
 import * as signupRoute from "@/app/api/auth/signup/route";
+import * as forgotRoute from "@/app/api/auth/forgot/route";
 
 /**
  * Multi-workspace M1 expand, Task 3 (docs/specs/2026-10-18-multi-org.md section 5): sign-in resolves a person and picks
@@ -21,7 +22,10 @@ import * as signupRoute from "@/app/api/auth/signup/route";
  * builders, never through the code under test.
  */
 
-afterEach(() => { vi.restoreAllMocks(); signOut(); });
+const mailed: string[] = [];
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: unknown) => { mailed.push(String(to)); return true; } }));
+
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); signOut(); mailed.length = 0; });
 
 let ipN = 0;
 const ip = () => ({ "x-forwarded-for": `203.0.113.${(++ipN % 250) + 1}` });
@@ -221,6 +225,24 @@ describe("rule 2136: a p_ person signs in to the account the pick order names", 
     await join(await putAccount(), pid);
     expect(await answer(await login(e, "pw-person-1"))).toEqual({ status: 403, body: { ok: false, error: "suspended" } });
     expect(jar().get("thakeen_session")).toBeFalsy();
+  });
+});
+
+describe("forgot password: a person no legacy record backs gets no link until its credential write exists (Task 5)", () => {
+  it("a p_ owner and a p_ member get the same answer and no mail; a legacy owner still gets its link", async () => {
+    vi.stubEnv("RESEND_API_KEY", "test-key");
+    vi.stubEnv("MAIL_FROM", "Noor <noor@mail.nashr.test>");
+    const forgot = (email: string) => forgotRoute.POST(json("/api/auth/forgot", "POST", { email, lang: "en" }, ip()));
+    const po = address("fo");
+    await own(await putPerson(po));
+    const pm = address("fm");
+    await join(await putAccount(), await putPerson(pm));
+    const o = await newUser("fl");
+    expect(await answer(await forgot(po))).toEqual({ status: 200, body: { ok: true, mail: true } });
+    expect(await answer(await forgot(pm))).toEqual({ status: 200, body: { ok: true, mail: true } });
+    expect(mailed).toEqual([]);
+    expect(await answer(await forgot(o.email))).toEqual({ status: 200, body: { ok: true, mail: true } });
+    expect(mailed).toEqual([o.email]);
   });
 });
 

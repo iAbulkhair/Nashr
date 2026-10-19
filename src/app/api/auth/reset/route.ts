@@ -71,6 +71,9 @@ export async function POST(req: Request) {
   }
 
   const owner = login.user;
+  // An account owned by a person under another id (multi-workspace M1, test persons only): the password lives on the
+  // person, whose write comes with `updatePerson`; until then the link does nothing.
+  if (login.pid !== acct(owner)) return badToken();
   if (isSuspended(owner)) return suspendedAnswer(owner);
   // A reset is what an owner does after losing control of the account: the owner's sessions, every member's session
   // (each signs back in with their own password) and every MCP token die with the old password.
