@@ -523,7 +523,7 @@ describe("source scans (rule 2132, credential part)", () => {
     // (`moveUnverifiedAccount`, `moveOwnerLogin`) take no person lock (`createPersonRecord` with `userLockHeld`), so their
     // routes are not listed. A new library caller of `updatePerson`/`createUser` adds its route here.
     // Multi-workspace M1 Task 6: src/lib/team.ts writes member persons (`acceptInvite`) and deletes a person left with
-    // nothing (`removeMember`, `leaveTeam`, `forceRemoveMember`, `wipeTeam` through `wipeAccount`, `moveMemberLogin`
+    // nothing (`removeMember`, `leaveTeam`, `forceRemoveMember`, `wipeMemberships` through `wipeAccount`, `moveMemberLogin`
     // through `confirmEmailChange`) under the person lock.
     const indirect = [
       join("src", "app", "api", "auth", "signup", "route.ts"),

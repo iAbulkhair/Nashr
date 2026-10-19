@@ -212,7 +212,7 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
   try {
     // Rule 2139: `lock:team:{id}` is taken right inside `lock:user`, before the first read that decides and before any
     // write, and held until the old account is wiped. This path takes it after `lock:user` (the out-of-order step it
-    // always had through `wipeAccount` → `wipeTeam`, now taken at the start). Under it no invite and no accept of this
+    // always had through `wipeAccount` → `wipeMemberships`, now taken at the start). Under it no invite and no accept of this
     // account can run, so the one team check below is final: the wipe meets no member and never takes a member's locks
     // under `lock:user`. A `lock:team` that cannot be had throws `team_lock_timeout` with nothing written (a 409 `busy`
     // in both routes). `withMoveTeamLock` gives this holder a 60 s expiry (no renewal exists); the login and user locks

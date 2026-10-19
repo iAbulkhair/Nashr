@@ -2,7 +2,7 @@ import { createSession, destroySession, getUser } from "@/lib/auth";
 import { notifyItem } from "@/lib/notifications";
 import { isPersonLockTimeout } from "@/lib/person";
 import { allow, clientIp } from "@/lib/rate";
-import { acceptInvite, peekInvite, type Member } from "@/lib/team";
+import { acceptInvite, isTeamLockTimeout, peekInvite, type Member } from "@/lib/team";
 import { busy, rateLimited, teamFail } from "../respond";
 import { acct } from "@/lib/account-id";
 
@@ -49,12 +49,13 @@ export async function POST(req: Request) {
   }
 
   if (!(await allow(`team:accept:ip:${ip}`, ACCEPTS, 900))) return rateLimited(900);
-  // The new person is written under `lock:person:{pid}` (multi-workspace M1, rule 2139): a timeout there is a 409, not a 500.
+  // The new person is written under `lock:team:{aid}` → `lock:person:{pid}` (multi-workspace M1, rule 2139): a timeout on
+  // either, taken before the first write, is a 409 "try again", not a 500.
   let res: Awaited<ReturnType<typeof acceptInvite>>;
   try {
     res = await acceptInvite(token, { name: b.name, password: b.password, lang: b.lang });
   } catch (e) {
-    if (isPersonLockTimeout(e)) return busy();
+    if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return busy();
     throw e;
   }
   if (!res.ok) return teamFail(res);

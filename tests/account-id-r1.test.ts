@@ -453,7 +453,7 @@ describe("security review of R1 (M1, M2, L1)", () => {
   it("L1: callers that already hold the login lock say so, so nothing waits on itself", () => {
     expect(read("src/lib/auth.ts")).toMatch(/withLoginLock\(email, drop\)/);
     expect(read("src/lib/team.ts")).toContain("releaseLogin(old, memberPid(cur), { locked: true })");
-    // Multi-workspace M1 Task 6 fix round 2: `wipeAccount` releases the owner's login inside `wipeTeam`'s finish, under the
+    // Multi-workspace M1 Task 6 fix round 2: `wipeAccount` releases the owner's login inside `wipeMemberships`'s finish, under the
     // login lock it takes itself unless the caller (the address move) says it holds it already.
     const account = read("src/lib/account.ts");
     expect(account).toContain("releaseLogin(login, e, { locked: true })");

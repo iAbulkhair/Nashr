@@ -64,7 +64,7 @@ export async function DELETE(req: Request) {
   if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { password?: string };
   if (!(await matches(u, b.password))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
-  // Each member left with nothing is deleted under `lock:person:{pid}` (`wipeTeam`, multi-workspace M1): a timeout (person,
+  // Each member left with nothing is deleted under `lock:person:{pid}` (`wipeMemberships`, multi-workspace M1): a timeout (person,
   // login or member lock) stops the wipe with a 409 before `user:{owner}` and the owner's login are touched, and the
   // owner's retry runs it again.
   try {

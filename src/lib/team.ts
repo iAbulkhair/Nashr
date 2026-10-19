@@ -6,7 +6,7 @@ import { log } from "./log";
 import { pmap } from "./parallel";
 import { withNamedLock } from "./locks";
 import { revokeBook } from "./booking-token";
-import { revokeFeed } from "./feed-token";
+import { revokeFeed, type LinkOwner } from "./feed-token";
 import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
 import { acct, LoginIndex, OPAQUE_IDS } from "./account-id";
 import { can } from "./roles";
@@ -228,9 +228,10 @@ export async function writeMembership(aid: AccountId, pid: PersonId, row: Member
 /**
  * Does the person still hold anything outside `aid`: an account they own, or a membership (paused ones count: the person
  * is kept for them)? Read from `orgs:{pid}` AND the legacy records (a legacy member accepted before M1 has no `orgs:`
- * entry), each re-checked on the forward records (`ownerOf`, `getMembership`). Two rounds.
+ * entry), each re-checked on the forward records (`ownerOf`, `getMembership`). Two rounds. Also asked by `wipeAccount`
+ * (src/lib/account.ts) for the deleted account's OWNER, under the owner's `lock:login`.
  */
-async function holdsElsewhere(pid: PersonId, aid: AccountId): Promise<boolean> {
+export async function holdsElsewhere(pid: PersonId, aid: AccountId): Promise<boolean> {
   const [entries, rawUser, rawMember] = await Promise.all([db.smembers(personKey.orgs(pid)), db.get(accountKey.user(pid)), db.get(accountKey.member(pid))]);
   const home = legacyHomeFrom(pid, rawUser, rawMember);
   const pool = [...new Set<AccountId>([...entries.map(aidFrom), ...(home ? [home] : [])])].filter((a) => a !== aid);
@@ -472,8 +473,11 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
   return withTeamLock(aid, async () => {
     // Is the address taken? Through the login resolver (rule 1982), not by reading `user:{address}` as an account.
     const [taken, m, members, invites, fresh] = await Promise.all([getLogin(e), getMember(e), listMembers(aid), listInvites(aid), getAccount(aid)]);
+    // The account re-read under the lock: one deleted while this request waited (`wipeAccount` holds `lock:team` until
+    // `user:{owner}` is gone) gets no invite, no index entry and no team log row.
+    if (!fresh) return fail("forbidden");
     if (taken || m || invites.some((i) => i.email === e)) return fail("unavailable");
-    const limit = seatLimit(fresh ?? owner);
+    const limit = seatLimit(fresh);
     const used = 1 + members.filter((x) => !x.disabled).length + invites.length;
     if (used + 1 > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
     const now = new Date();
@@ -815,27 +819,52 @@ export async function enforceSeats(owner: User | string): Promise<{ limit: numbe
 }
 
 /**
- * Account deletion (src/lib/account.ts `wipeAccount`): every membership (`deleteMembership`: the row, the roster and
- * `orgs:` entries, the legacy member record and both active brands, the links, and the person when nothing else is
- * left), then every invite and both indexes, then `finish` (the account's own records, `user:{owner}` among them), all
- * under `lock:team`: an accept already holding it finishes first and its member is deleted here, and one that takes it
- * afterwards re-reads the owner and finds none. The members go FIRST: a member lock that cannot be had throws before any
- * invite, index or `finish` write, so the owner's account is still whole and a retry runs the wipe again. Each legacy
- * record is deleted under its own `lock:member`, so a profile or password save in flight cannot restore it. (Task 8
- * renames it `wipeMemberships` and drops the owner's `orgs:` entry.)
+ * The calendar feed and booking link owner of every roster entry of `aid` (`roster`: `members:{aid}` as the caller read
+ * it), in ONE `pmap` round of the person and the legacy record: exactly what `deleteMembership` revokes, the (person,
+ * account) pointers and, for a HOME membership only, the legacy per-login ones. A membership in an account that is not
+ * the person's home never reaches the legacy pointers, which belong to that home. `wipeAccount` revokes these first, before
+ * anything slow can fail (rule 598); `deleteMembership` revokes them again under its locks.
  */
-export async function wipeTeam(owner: string, finish?: () => Promise<void>, opts: { teamLocked?: boolean } = {}) {
-  const aid = aidFrom(owner);
-  // The owner address move holds `lock:team` already (`withMoveTeamLock`): the lock is not reentrant.
+export async function rosterLinks(aid: AccountId, roster: readonly string[]): Promise<LinkOwner[]> {
+  return pmap(roster, async (p) => {
+    const pid = pidFrom(p);
+    const [person, m] = await Promise.all([getPerson(pid), getMember(pid)]);
+    const home = isHome(m, aid, pid);
+    const email = person ? normalizeEmail(person.email) : home ? pid : null;
+    return { pid, aid, login: email ?? "", home: home && !!email };
+  });
+}
+
+/**
+ * Account deletion (src/lib/account.ts `wipeAccount`, plan reconciliation 7, rule 2126): every membership of the account
+ * (`deleteMembership`: the row, the roster and `orgs:` entries, the per-(person, account) active brand and links, for a
+ * home membership the legacy member record and its per-login keys, and the person only when nothing else is left), then
+ * every invite and both indexes, then `finish` (the account's own records, `user:{owner}` among them), then the owner's
+ * `orgs:` entry, all under `lock:team:{aid}`: an accept already holding it finishes first and its member is deleted here,
+ * and one that takes it afterwards re-reads the owner and finds none. A person who belongs elsewhere keeps every key of
+ * the other accounts and keeps signing in there.
+ *
+ * Order: the members go FIRST (one `pmap` round; each `home` is read from the legacy record in the same round): a login,
+ * person or member lock that cannot be had throws before any invite, index or `finish` write, so the owner's account is
+ * still whole and a retry runs the wipe again (the 409 of DELETE /api/account and the console's delete is true). The
+ * owner's `orgs:` entry goes after `finish`, so a `finish` that throws leaves a `p_` owner (signed in through `orgs:`
+ * only) able to sign in to the account that is still there.
+ *
+ * `teamLocked`: the caller holds `lock:team:{aid}` already (the owner address move, `withMoveTeamLock`): the lock is not
+ * reentrant. No `userLocked`: nothing here takes `lock:user` (the account record is read, never written).
+ */
+export async function wipeMemberships(aid: AccountId, opts: { teamLocked?: boolean; finish?: () => Promise<void> } = {}): Promise<void> {
   const locked = <T,>(fn: () => Promise<T>) => (opts.teamLocked ? fn() : withTeamLock(aid, fn));
   await locked(async () => {
-    const [pids, ids] = await Promise.all([db.smembers(membersKey(aid)), db.smembers(invitesKey(aid))]);
+    const [pids, ids, account] = await Promise.all([db.smembers(membersKey(aid)), db.smembers(invitesKey(aid)), getAccount(aid)]);
     await pmap(pids, async (p) => {
       const pid = pidFrom(p);
       await deleteMembership(aid, pid, { home: isHome(await getMember(pid), aid, pid), teamLocked: true });
     });
     await pmap([...ids.map(inviteKey), membersKey(aid), invitesKey(aid)], (k) => db.del(k));
-    if (finish) await finish();
+    if (opts.finish) await opts.finish();
+    // The owner is no membership row (rule 2115): its `orgs:` entry for this account is the last trace of it here.
+    if (account && acct(account) === aid) await db.srem(personKey.orgs(ownerOf(account)), aid);
   });
 }
 

@@ -5,11 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
-import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeTeam } from "@/lib/team";
+import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeMemberships } from "@/lib/team";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as accountRoute from "@/app/api/account/route";
 import { db } from "@/lib/db";
+import { storedAccountId } from "@/lib/keys";
 import * as rate from "@/lib/rate";
 import * as bookingRoute from "@/app/api/secretary/booking/[token]/route";
 import * as manageRoute from "@/app/api/secretary/booking/route";
@@ -1389,7 +1390,7 @@ describe("booking revocation (rule 598)", () => {
     expect(await db.get(`sec:book:ext:${bystander.email}:calcom:bk_keep598`)).not.toBeNull();
   });
 
-  it("rule 598: a link made while the wipe runs is revoked by its last step (the owner's) and by wipeTeam (a member's)", async () => {
+  it("rule 598: a link made while the wipe runs is revoked by its last step (the owner's) and by wipeMemberships (a member's)", async () => {
     const owner = await newUser("book598r");
     // The owner's link appears after the first revoke, as a create already running would leave it: the wipe's last step ends it.
     const real = db.lrange.bind(db);
@@ -1401,11 +1402,12 @@ describe("booking revocation (rule 598)", () => {
     spy.mockRestore();
     expect(await getBookStatus(owner.email)).toEqual([]);
     expect(await db.get(BOOK_KEYS.of(owner.email, "calcom"))).toBeNull();
-    // wipeTeam on its own deletes the members' links (a member added after the roster read of the first step).
+    // wipeMemberships (Task 8's name for wipeTeam) on its own deletes the members' links (a member added after the roster
+    // read of the first step).
     const o2 = await newUser("book598t");
     const m = await newMember(o2, "member");
     const t = await live(m.email, o2.email);
-    await wipeTeam(o2.email);
+    await wipeMemberships(storedAccountId(o2.email));
     expect(await getMember(m.email)).toBeNull();
     for (const p of PROVIDERS) expect(await resolveBook(t[p])).toBeNull();
     expect(await getBookStatus(m.email)).toEqual([]);

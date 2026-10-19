@@ -11,7 +11,7 @@ import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
-import { enforceSeats } from "@/lib/team";
+import { enforceSeats, isTeamLockTimeout } from "@/lib/team";
 import { MAX_SEAT_OVERRIDE, allowanceOf, brandCapFor, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 import { parseVideoGrant } from "@/lib/entitlements";
@@ -239,7 +239,18 @@ export async function POST(req: Request) {
   if (done === "paid_through_paymob") return NextResponse.json({ ok: false, error: done }, { status: 409 });
   const user = done;
   // Every change to the seat limit, up or down, refits the team: paused members come back oldest-first when it grows.
-  const team = planGiven || seatsGiven || seatsReset ? await enforceSeats(acct(user)) : null;
+  // A team lock still held after the wait (`team_lock_timeout`, multi-workspace M1 Task 8): the plan is saved and logged
+  // below, and the answer is 409 "busy" instead of a 500; a later plan or seat change fits the team.
+  let team: Awaited<ReturnType<typeof enforceSeats>> | null = null;
+  let seatsBusy = false;
+  if (planGiven || seatsGiven || seatsReset) {
+    try {
+      team = await enforceSeats(acct(user));
+    } catch (e) {
+      if (!isTeamLockTimeout(e)) throw e;
+      seatsBusy = true;
+    }
+  }
   const dealAfter = dealLabel(user.deal);
   const what = [
     planGiven ? `plan:${b.plan}` : "",
@@ -253,6 +264,7 @@ export async function POST(req: Request) {
     (user.handPlan?.paidThrough ?? null) !== before.paidThrough ? `paid_through:${user.handPlan?.paidThrough ?? "none"}` : "",
   ].filter(Boolean).join(" ") || "none";
   const teamChange = team && (team.disabled.length || team.enabled.length || team.cancelled.length) ? { disabled: team.disabled, enabled: team.enabled, cancelledInvites: team.cancelled.length } : undefined;
-  await adminAudit({ actor: who, via: viaOf(req), section: "users", action: "plan", target: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video), paidThrough: user.handPlan?.paidThrough ?? null }, reason: b.reason, ...(teamChange ? { extra: { team: teamChange } } : {}) });
+  await adminAudit({ actor: who, via: viaOf(req), section: "users", action: "plan", target: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter, video: videoLabel(user.grants?.video), paidThrough: user.handPlan?.paidThrough ?? null }, reason: b.reason, ...(teamChange ? { extra: { team: teamChange } } : seatsBusy ? { extra: { team: "busy" } } : {}) });
+  if (seatsBusy) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
   return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user), chatAllowance: chatAllowanceOf(user), chatOverride: user.chatAllowance ?? null, videoGrant: user.grants?.video ?? null, paidThrough: user.handPlan?.paidThrough ?? null }, ...(team ? { team } : {}) });
 }

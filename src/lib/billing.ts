@@ -6,7 +6,7 @@ import { setMonthly } from "./topups";
 import { PLAN_PRICE_SAR, SELF_SERVE_PLANS, VAT_RATE, allowanceOf, firstMonthPriceSar, isTopupPack, topupPriceSar, topupsSold, type SelfServePlan } from "./pricing";
 import { ksaDay } from "./partner-rules";
 import { addPaidTopup, openOffer, paymentsKey, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
-import { enforceSeats } from "./team";
+import { enforceSeats, isTeamLockTimeout } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
 import { GRACE_DAYS, addDays, addMonths, billingLocked, paymobRenewalDue, type Billing } from "./billing-state";
@@ -234,7 +234,10 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   if (step === "no_billing") return { ok: false, error: "no_billing" };
   const c = claim as ClaimOutcome | null;
   if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
-  if (step === "changed") await enforceSeats(intentAccount(intent));
+  // Seats fit the new plan. Also on a plan transaction already applied (multi-workspace M1 Task 8): a first try whose
+  // `lock:team` wait ran out (`team_lock_timeout`, answered 409 by `applyTransaction`) saved the plan and its id, so the
+  // retry finds it "already" and fits the seats then. `enforceSeats` is idempotent: an account that fits is not changed.
+  if (step === "changed" || (step === "already" && intent.kind === "plan")) await enforceSeats(intentAccount(intent));
   const rec = await recordPayment(intentAccount(intent), { id: paymentId, amountSar: baseSar, plan, date: today, reference: `paymob:${txnId}` }, "paymob");
   if (!rec.ok) return { ok: false, error: rec.error };
   return { ok: true, already: step === "already" || !!rec.already, payment: rec.payment };
@@ -245,7 +248,9 @@ const ok = (result: string): CallbackResult => ({ status: 200, result });
 
 /**
  * A transaction, from a verified callback or from our own pay call (spec 4.4). Exactly once per transaction id: a done
- * marker, a short lock, and idempotent steps inside; a failure throws so the caller answers 500 and Paymob retries.
+ * marker, a short lock, and idempotent steps inside; a failure throws so the caller answers 500 and Paymob retries. A
+ * team lock still held after the wait (`team_lock_timeout`, seats being fitted) is 409 "busy": nothing is marked done,
+ * and the retry fits the seats (`applyPaid`).
  */
 export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promise<CallbackResult> {
   // A refund or void made in Paymob's dashboard, full or partial, arrives here as a child or refunded transaction and
@@ -277,7 +282,13 @@ export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promi
     }
     const paymentId = paymentIdFor(t.id);
     await db.set(txnKey(t.id), { ref: intent.ref, email: intentAccount(intent), acct: intentAccount(intent), kind: intent.kind, amountCents: t.amountCents, paymentId } satisfies TxnRecord, DAYS_400);
-    const applied = await applyPaid(intent, t.id, paymentId);
+    let applied: Applied;
+    try {
+      applied = await applyPaid(intent, t.id, paymentId);
+    } catch (e) {
+      if (isTeamLockTimeout(e)) return { status: 409, result: "busy" };
+      throw e;
+    }
     if (!applied.ok) {
       // Paid but not applicable (a pack for an account no longer on a paid plan, a renewal with no subscription): the
       // founder refunds it from the console. Not retried: retrying cannot change the answer.
@@ -439,7 +450,7 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
   // Our own call's answer over TLS: the reference is ours even when the answer does not echo it, but the order must match.
   if (txn.orderId !== null && txn.orderId !== orderId) return "pending";
   const r = await applyTransaction(p, { ...txn, ref: txn.ref ?? ref });
-  return txn.success && (r.result === "paid" || r.result === "already") ? "paid" : r.status === 503 ? "pending" : "declined";
+  return txn.success && (r.result === "paid" || r.result === "already") ? "paid" : r.status === 503 || r.status === 409 ? "pending" : "declined";
 }
 
 /**
@@ -573,7 +584,14 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   // always refunds the whole transaction (`rec.amountCents` above); a partial refund does not exist here, and one made
   // in Paymob's own dashboard reaches us only as a refunded transaction, which `applyTransaction` ignores: it changes
   // nothing on the account (open question in rule 1301). A pack's payment never reaches this line.
-  const planEnded = await endPlanOnRefund(e, id, by);
+  // A team lock still held after the wait (seats being fitted) is "busy" (409 in the console): the retry finishes it.
+  let planEnded: boolean;
+  try {
+    planEnded = await endPlanOnRefund(e, id, by);
+  } catch (err) {
+    if (isTeamLockTimeout(err)) return { ok: false, error: "busy" };
+    throw err;
+  }
   return { ok: true, payment: v.payment, alreadyRefunded, planEnded };
 }
 
@@ -582,8 +600,9 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * spending gate refuses exactly as after a trial), the online subscription is removed (nothing renews: automatic renewal
  * is off with it), a hand-set paid-through day and an Agency deal go too, and the month's plan credits are set to 0.
  * Live top-up packs keep their credits: each is its own payment, refunded on its own. Under the ledger lock, once: a
- * retry finds the ended trial with no subscription and changes nothing. Seats are fitted to the trial's and the change
- * is logged with the balance before and after.
+ * retry finds the ended trial with no subscription and changes nothing. The change is logged with the balance before
+ * and after, then seats are fitted to the trial's: also on that retry (multi-workspace M1 Task 8), so a first try whose
+ * `lock:team` wait ran out (409 "busy") still fits them when the founder tries again. `enforceSeats` is idempotent.
  */
 async function endPlanOnRefund(email: string, paymentId: string, by: string): Promise<boolean> {
   const now = new Date();
@@ -602,8 +621,10 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string): Pr
     await saveUser(u);
     return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding };
   });
-  if (!change) return false;
-  await Promise.all([enforceSeats(email), change.founding ? freePlaces(email) : null]);
-  await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
-  return true;
+  if (change) {
+    if (change.founding) await freePlaces(email);
+    await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
+  }
+  await enforceSeats(email);
+  return !!change;
 }

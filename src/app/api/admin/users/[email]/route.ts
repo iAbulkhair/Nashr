@@ -262,7 +262,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       return NextResponse.json({ ok: true, resendIn: VERIFY.gap });
     }
     case "delete": {
-      // Members left with nothing are deleted under `lock:person:{pid}` (`wipeTeam`): a person, login or member lock timeout is a 409 with the owner's account still whole, a retry runs it again.
+      // Members left with nothing are deleted under `lock:person:{pid}` (`wipeMemberships`): a person, login or member lock timeout is a 409 with the owner's account still whole, a retry runs it again.
       try {
         await wipeAccount(id);
       } catch (e) {
