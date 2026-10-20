@@ -1,5 +1,7 @@
 import { db } from "./db";
 import { log } from "./log";
+import { globalKey } from "./keys";
+import type { CronReport } from "./cron-batch";
 
 /**
  * Cron heartbeats (rule 1014). Every cron route writes `cronbeat:{job}` = the time of its last finished run, and the
@@ -40,16 +42,18 @@ export async function recordCronRun(job: CronJob, now = Date.now()): Promise<voi
 }
 
 /** `waiting`: no heartbeat stored yet (a fresh deploy, or an emptied store); it is not counted as stale. */
-export type CronStatus = { job: CronJob; status: "ok" | "stale" | "waiting"; lastRunAt: string | null; ageSec: number | null; maxAgeSec: number };
+export type CronStatus = { job: CronJob; status: "ok" | "stale" | "waiting"; lastRunAt: string | null; ageSec: number | null; maxAgeSec: number; /** the last hop's counts, for the per-user batch jobs (rule 2485) */ report?: CronReport };
 
-/** Every job's state, read with one store command. */
+/** Every job's state and its last report, read with one store command. */
 export async function cronStatuses(now = Date.now()): Promise<CronStatus[]> {
-  const stored = await db.mget<number | string>(CRON_JOBS.map(key));
+  const stored = await db.mget<unknown>([...CRON_JOBS.map(key), ...CRON_JOBS.map((j) => globalKey.cronReport(j))]);
   return CRON_JOBS.map((job, i) => {
     const maxAgeSec = CRON_MAX_AGE_SEC[job];
     const at = Number(stored[i]);
-    if (stored[i] === null || !Number.isFinite(at) || at <= 0) return { job, status: "waiting", lastRunAt: null, ageSec: null, maxAgeSec };
+    const rep = stored[CRON_JOBS.length + i];
+    const report = rep && typeof rep === "object" ? { report: rep as CronReport } : {};
+    if (stored[i] === null || !Number.isFinite(at) || at <= 0) return { job, status: "waiting", lastRunAt: null, ageSec: null, maxAgeSec, ...report };
     const ageSec = Math.max(0, Math.round((now - at) / 1000));
-    return { job, status: ageSec > maxAgeSec ? "stale" : "ok", lastRunAt: new Date(at).toISOString(), ageSec, maxAgeSec };
+    return { job, status: ageSec > maxAgeSec ? "stale" : "ok", lastRunAt: new Date(at).toISOString(), ageSec, maxAgeSec, ...report };
   });
 }

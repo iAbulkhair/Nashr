@@ -6,6 +6,7 @@ import { isBy, publicBy, type By } from "./actor";
 import { recordActivity } from "./activity";
 import { log } from "./log";
 import { scopeParam, wsKey } from "./keys";
+import { TOOL_CAPS, authorityOf, fullPolicy, mergePolicy, type AuthorityMode, type ToolPolicy } from "./tool-authority";
 
 export type Governance = {
   autoApprove: Partial<Record<TaskType, boolean>>; // skip inbox for these types
@@ -29,14 +30,20 @@ export type Governance = {
    * a restore) needs an explicit confirmation in the request (`govRefusal`). A record without it reads it as off.
    */
   majedAutoHandoff: boolean;
+  /**
+   * What each agent may do from a conversation (rules 2430-2439, src/lib/tool-authority.ts): per agent and capability,
+   * `ask` or `off`; anything absent is `on`. A record saved before 2026-10-20 has no value and reads as all on, which is
+   * what every turn did before. Enforced in `runTool`, `toolsFor` and the spend card's Run, never only in a prompt.
+   */
+  toolPolicy: ToolPolicy;
 };
 
-export const DEFAULT_GOV: Governance = { autoApprove: {}, weeklyCap: 20, learning: true, reviewer: true, noEmDash: false, notifyMinutes: 60, agentCaps: {}, crossReview: true, majedAutoHandoff: false };
+export const DEFAULT_GOV: Governance = { autoApprove: {}, weeklyCap: 20, learning: true, reviewer: true, noEmDash: false, notifyMinutes: 60, agentCaps: {}, crossReview: true, majedAutoHandoff: false, toolPolicy: {} };
 /** Highest monthly cap an owner can set for one agent. */
 export const AGENT_CAP_MAX = 100000;
 
 /** What the governance PUT may send: `null` or "" for an agent's cap removes it. */
-export type GovPatch = Partial<Omit<Governance, "agentCaps">> & { agentCaps?: Partial<Record<AgentId, number | null | "">> };
+export type GovPatch = Partial<Omit<Governance, "agentCaps" | "toolPolicy">> & { agentCaps?: Partial<Record<AgentId, number | null | "">>; /** `on`, null or "" puts a capability back to the default */ toolPolicy?: Partial<Record<AgentId, Partial<Record<string, AuthorityMode | null | "">>>> };
 
 export async function getGov(email: string): Promise<Governance> {
   return { ...DEFAULT_GOV, ...((await db.get<Partial<Governance>>(wsKey.gov(scopeParam(email)))) ?? {}) };
@@ -115,6 +122,8 @@ function mergeGov(cur: Governance, patch: GovPatch): Governance {
     crossReview: typeof g.crossReview === "boolean" ? g.crossReview : cur.crossReview !== false,
     // The same rule, the other default: only `true` itself is on, so a missing or malformed value is off.
     majedAutoHandoff: typeof g.majedAutoHandoff === "boolean" ? g.majedAutoHandoff : cur.majedAutoHandoff === true,
+    // Checked both ways (`mergePolicy`): the stored value is read again, never trusted, and the patch's entries win.
+    toolPolicy: mergePolicy(cur.toolPolicy, g.toolPolicy),
   };
   return next;
 }
@@ -122,7 +131,7 @@ function mergeGov(cur: Governance, patch: GovPatch): Governance {
 /**
  * Governance history: one record per save that changed something, newest first in `govhist:{scope}` (capped at
  * CAPS.govHistory). `before` and `after` are whole, checked settings, so any record can be restored, and `changed`
- * names what moved as dotted paths ("reviewer", "autoApprove.social", "agentCaps.razan"). `by` is the login behind it
+ * names what moved as dotted paths ("reviewer", "autoApprove.social", "agentCaps.razan", "toolPolicy.noor.produce"). `by` is the login behind it
  * (`byOf(u)`, src/lib/actor.ts), never a request field. A restore is a new record (`rollbackOf`): nothing is deleted.
  */
 export type GovRevision = { id: string; at: string; by: By; changed: string[]; before: Governance; after: Governance; rollbackOf?: string };
@@ -146,6 +155,9 @@ export function govDiff(before: Governance, after: Governance): string[] {
       const x = (isObj(a) ? a : {}) as Record<string, unknown>, y = (isObj(b) ? b : {}) as Record<string, unknown>;
       const norm = (v: unknown) => (k === "autoApprove" ? v === true : num(v) ? v : null);
       for (const s of [...new Set([...Object.keys(x), ...Object.keys(y)])].sort()) if (norm(x[s]) !== norm(y[s])) out.push(`${k}.${s}`);
+    } else if (k === "toolPolicy") {
+      // Per agent and capability, compared as modes: an absent entry and `on` are the same setting.
+      for (const ag of AGENT_IDS) for (const c of TOOL_CAPS) if (authorityOf(a, ag, c) !== authorityOf(b, ag, c)) out.push(`toolPolicy.${ag}.${c}`);
     } else if (JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)) out.push(k);
   }
   return out;
@@ -229,6 +241,7 @@ export function restorePatch(snapshot: Partial<Governance>): GovPatch {
   for (const k of Object.keys(DEFAULT_GOV) as (keyof Governance)[]) {
     if (k === "autoApprove") patch[k] = Object.fromEntries(TASK_TYPES.map((t) => [t, aa[t] === true]));
     else if (k === "agentCaps") patch[k] = Object.fromEntries(AGENT_IDS.map((a) => [a, num(caps[a]) ? caps[a] : null]));
+    else if (k === "toolPolicy") patch[k] = fullPolicy(g.toolPolicy);
     else patch[k] = g[k];
   }
   return patch as GovPatch;
@@ -245,12 +258,13 @@ export async function rollbackGov(scope: string, id: string, by: By, opts: { con
   return saveGovAs(scope, restorePatch(rev.before), by, rev.id, opts);
 }
 
-/** One changed setting as the Governance page shows it: on or off, a number, or no cap (`null`). */
-export type GovValue = boolean | number | null;
+/** One changed setting as the Governance page shows it: on or off, a number, no cap (`null`), or an agent's authority mode. */
+export type GovValue = boolean | number | null | AuthorityMode;
 export type GovHistoryEntry = { id: string; at: string; by: By; rollbackOf?: string; changes: { path: string; before: GovValue; after: GovValue }[] };
 
 function valueAt(g: Governance, path: string): GovValue {
-  const [head, sub] = path.split(".", 2) as [keyof Governance, string | undefined];
+  const [head, sub, cap] = path.split(".", 3) as [keyof Governance, string | undefined, string | undefined];
+  if (head === "toolPolicy") return isAgentId(sub) && (TOOL_CAPS as readonly string[]).includes(cap ?? "") ? authorityOf(g.toolPolicy, sub, cap as (typeof TOOL_CAPS)[number]) : null;
   const v: unknown = sub === undefined ? g[head] : (isObj(g[head]) ? (g[head] as Record<string, unknown>)[sub] : undefined);
   if (head === "autoApprove") return v === true;
   return typeof v === "boolean" || num(v) ? v : null;

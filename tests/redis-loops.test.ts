@@ -23,6 +23,7 @@ const REVIEWED: Record<string, string> = {
   "src/lib/staff.ts withStaffLock": "lock retry",
   "src/lib/staff-admin.ts withNamedLock": "lock retry",
   "src/lib/feed-token.ts revokeFeed": "lock retry",
+  "src/lib/files.ts writeFileChecked": "lock retry",
   "src/lib/governance.ts saveGovAs": "lock retry",
   "src/lib/handoffs.ts withShortLock": "lock retry",
   "src/lib/instructions-store.ts withLock": "lock retry",

@@ -89,6 +89,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       else if (b.version !== taskVersion(t)) gate.changed = true;
       if (gate.missing || gate.changed) return null;
     }
+    // Rule 2440: a text edit carries the version of the card it was made from (the inbox sends it with every change), and
+    // is saved only while that is still the item's version, so a member's edit never silently replaces another person's
+    // or an agent's newer text. An edit without a version (an older page) is saved as before: expand step, rule 679.
+    if (rewrites && typeof b.version === "string" && b.version !== taskVersion(t)) {
+      gate.changed = true;
+      return null;
+    }
     // A person acting on the item without deciding it restarts its "Not now" clock (rule 2345, src/lib/not-now.ts).
     const touched = b.scheduledFor === null || (typeof b.scheduledFor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.scheduledFor)) || (typeof b.editedBody === "string" && b.editedBody !== t.body);
     if (b.scheduledFor === null) delete t.scheduledFor;

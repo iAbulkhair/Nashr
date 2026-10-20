@@ -16,6 +16,8 @@ import { briefAgenda, type BriefAgenda } from "./secretary-agenda";
 import { agendaFor } from "./secretary";
 import { accountKey, globalKey, scopeParam, wsKey } from "./keys";
 import { acct } from "./account-id";
+import { beginRun, clearRun, deliverRun, refundedRun } from "./run-receipt";
+import { tellHeld } from "./run-held";
 import { NOT_NOW_DAYS, moveIdle } from "./not-now";
 
 /**
@@ -101,7 +103,7 @@ const WEEKLY_NOTE = "This is the automatic Sunday plan. Reference strategy.md ph
  * role may, POST /api/schedule), and the cron's run is the system's. `deadline`: when the caller's request or cron
  * invocation ends (epoch ms), which bounds the generation so its refund runs before the platform's kill.
  */
-export async function runWeekly(user: User, by: By = systemBy("cron"), opts: { deadline?: number } = {}): Promise<string> {
+export async function runWeekly(user: User, by: By = systemBy("cron"), opts: { deadline?: number; resume?: boolean } = {}): Promise<string> {
   const email = user.scope ?? user.email;
   const brand = await getBrand(email);
   if (!brand) return "no_brand";
@@ -116,7 +118,7 @@ export async function runWeekly(user: User, by: By = systemBy("cron"), opts: { d
   // What happened, for the activity log, like a routine's; a throw is "error" (the charge was refunded first).
   let outcome = "error";
   try {
-    outcome = await weeklyFor(user, email, brand, by, opts.deadline);
+    outcome = await weeklyFor(user, email, brand, by, opts.deadline, opts.resume === true);
     return outcome;
   } finally {
     await Promise.all([
@@ -141,6 +143,11 @@ export const ONCE_HOLD_SETTLE_MS = 10 * 60e3;
  * already refunded its own hold and removed its tasks (rule 334). Returns null when there is nothing to resolve.
  */
 export async function sweepWeeklyHolds(u: Pick<User, "email" | "paidOnce">, now = Date.now()) {
+  const kept = await weeklyKept(u, now);
+  return kept ? resolveOnceHolds(u.email, kept) : null;
+}
+/** The weekly holds `sweepWeeklyHolds` resolves and whether each week's plan exists, or null when none is due. */
+export async function weeklyKept(u: Pick<User, "paidOnce">, now = Date.now()): Promise<Record<string, boolean> | null> {
   const thisWeek = weekStartUtc(new Date(now));
   const stale = Object.entries(u.paidOnce ?? {}).flatMap(([claim, hold]) => {
     const week = /^weekly:.+:(\d{4}-\d{2}-\d{2})$/.exec(claim)?.[1];
@@ -149,14 +156,16 @@ export async function sweepWeeklyHolds(u: Pick<User, "email" | "paidOnce">, now 
   });
   if (!stale.length) return null;
   const rows = await Promise.all(stale.map((h) => listLite(h.scope, new Date(`${h.week}T00:00:00Z`))));
-  const kept = Object.fromEntries(stale.map((h, i) => {
+  return Object.fromEntries(stale.map((h, i) => {
     const end = weekStartUtc(new Date(Date.parse(`${h.week}T00:00:00Z`) + 7 * 864e5));
     return [h.claim, rows[i].some((t) => t.type === "weekly_plan" && isAutonomous(t) && t.createdAt.slice(0, 10) >= h.week && t.createdAt.slice(0, 10) < end)];
   }));
-  return resolveOnceHolds(u.email, kept);
 }
 
-async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadline?: number): Promise<string> {
+/** How long a week's run receipt lives: the week and its catch-up days. */
+const WEEKLY_RECEIPT_S = 8 * 86400;
+
+async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadline: number | undefined, resume: boolean): Promise<string> {
   const gov = await getGov(email);
   if (trialOver(user)) return "trial_over";
   // weekly cap: count items the team created on its own in the last 7 days (`isAutonomous`: the Sunday plan, the
@@ -173,12 +182,28 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadli
   // written inside the batch's refund guard (`commit`, rule 334): a failure before it refunds once, and a retry after it
   // stops at `ranThisWeek`.
   const week = weekStartUtc();
+  const claim = weeklyClaim(email, week);
+  // The run receipt (rules 2476-2479, src/lib/run-receipt.ts), before the charge, under the week's lock. A cron that finds
+  // a run of this week killed after it began holds it for the owner instead of planning the week a second time; the
+  // owner's "Run now" (`resume`) runs it, on the same claim, so a charge the killed run took is reused, never taken twice.
+  const gate = await beginRun(claim, WEEKLY_RECEIPT_S, { resume });
+  if (gate === "delivered") {
+    // Delivered but its marker was lost with the run: the marker is put back and nothing runs.
+    await saveSchedule(email, { lastWeekly: new Date().toISOString() });
+    return "already_this_week";
+  }
+  if (gate === "in_flight") return "retry:in_flight";
+  if (gate === "held_now") await tellHeld(user, email, { claim, agent: "noor", what: { ar: "خطة الأسبوع", en: "This week's plan" } });
+  if (gate === "held" || gate === "held_now") return "held";
   const r = await generateBatch(user, email, {
     type: "weekly_plan", notes: WEEKLY_NOTE, brief: WEEKLY_NOTE, source: "scheduled", via: "weekly", gov, brand, by,
-    once: weeklyClaim(email, week), commit: () => saveSchedule(email, { lastWeekly: new Date().toISOString() }),
+    once: claim,
+    commit: (tasks) => Promise.all([saveSchedule(email, { lastWeekly: new Date().toISOString() }), deliverRun(claim, WEEKLY_RECEIPT_S, tasks.map((t) => t.id))]),
     ...(deadline !== undefined ? { deadline } : {}),
   });
   if (!r.ok) {
+    // Refunded: a later run may plan the week. Refused before any charge: as if this run never began.
+    await (r.reason === "failed" ? refundedRun(claim, WEEKLY_RECEIPT_S) : clearRun(claim));
     if (r.reason === "failed") throw r.error;
     return r.reason === "paused" ? "retry:paused" : r.reason;
   }

@@ -2,7 +2,9 @@ import { randomBytes } from "crypto";
 import { db } from "./db";
 import { sc, type User } from "./auth";
 import type { By } from "./actor";
-import type { AgentId } from "./agents";
+import { isAgentId, type AgentId } from "./agents";
+import { getGov } from "./governance";
+import { authorityOf } from "./tool-authority";
 import { getBrand, getTask, type Task } from "./brand";
 import { isDraftType, isTaskType, type TaskType } from "./tasks";
 import { BATCH_RUN_MIN_MS, generateBatch, type BatchRefusal } from "./generate-batch";
@@ -20,7 +22,12 @@ import { renderImage, type ImageOutcome } from "./media/start";
  * (`spendprop-done:`, 24 hours) and the index of ids (`spendprops:`), which lets `wipeAccount` find every proposal.
  */
 export type SpendKind = "batch" | "draft" | "image";
-export type SpendProposal = { id: string; kind: SpendKind; type: TaskType; count?: number; brief: string; taskId?: string; title?: string; credits: number; agent?: AgentId; at: string; by: By };
+/**
+ * `reason` (rule 2433): "ask" when the owner set this capability to ask first for the talking agent, so the card says
+ * that rather than "your message did not ask for this". Absent on every card saved before it existed, which reads as the
+ * spend gate's own reason. A new optional field: code without it ignores it.
+ */
+export type SpendProposal = { id: string; kind: SpendKind; type: TaskType; count?: number; brief: string; taskId?: string; title?: string; credits: number; agent?: AgentId; reason?: "ask"; at: string; by: By };
 export type SpendProposalState = "open" | "ran" | "dismissed" | "expired";
 /** What the reply's card carries and the browser reads: the proposal without `by`, and where it stands now (filled in when a thread is read, never stored). */
 export type SpendProposalCard = Omit<SpendProposal, "by"> & { state?: SpendProposalState };
@@ -77,7 +84,7 @@ export type SpendRun =
   | { ok: true; kind: "batch" | "draft"; tasks: Task[]; credits: number }
   | { ok: true; kind: "image"; outcome: ImageOutcome }
   | { ok: true; kind: "dismissed" }
-  | { ok: false; error: "not_found" | "gone" | "claim_busy" | "too_late" | "item_gone" | "bad_proposal" }
+  | { ok: false; error: "not_found" | "gone" | "claim_busy" | "too_late" | "item_gone" | "bad_proposal" | "revoked" }
   | { ok: false; error: "refused"; refusal: BatchRefusal }
   | { ok: false; error: "image"; outcome: ImageOutcome };
 
@@ -86,6 +93,9 @@ export type SpendRun =
  * - `not_found`: no such proposal in this scope (another workspace's id lands here too: only this scope's keys are read).
  * - `gone`: decided already, so a second click or a second tab runs nothing.
  * - `claim_busy`: another click for it is running.
+ * - `revoked` (rule 2434): the owner has since switched this capability off for the agent the card came from
+ *   (src/lib/tool-authority.ts). Checked at Run, from the setting read now, so a card made before the change never
+ *   runs past it. Nothing is charged and the card stays open, so switching it back on lets the owner run it.
  * - Run: the batch through `generateBatch` (its credit, cap, trial and brand checks, the refund on failure), or the render
  *   through `renderImage` (the default model, the charge and refund in the media engine). A refusal or a failure leaves the
  *   proposal open, so the owner can top up and press Run again, or dismiss it. Only a batch that saved its items, or a
@@ -110,6 +120,8 @@ export async function decideSpend(u: User, id: string, decision: "run" | "dismis
     }
     // The stored record is checked again, never trusted: a type that is no longer a task type is refused before any charge.
     if (!isTaskType(p.type) || (p.kind === "draft" && !isDraftType(p.type))) return { ok: false, error: "bad_proposal" };
+    // The approval is checked against today's settings, not the ones it was made under (rule 2434).
+    if (p.agent && isAgentId(p.agent) && authorityOf((await getGov(scope)).toolPolicy, p.agent, p.kind === "image" ? "images" : "produce") === "off") return { ok: false, error: "revoked" };
     if (p.kind === "image") {
       const [brand, t] = await Promise.all([getBrand(scope), p.taskId ? getTask(scope, p.taskId) : null]);
       if (!brand || !t) return { ok: false, error: "item_gone" };
