@@ -6,8 +6,10 @@ import { scopeParam, wsKey } from "./keys";
 /** Workspace files = Noor's memory. Markdown the user can read, edit, delete. */
 export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user" };
 
-const SET = (e: string) => wsKey.files(scopeParam(e));
-const KEY = (e: string, n: string) => wsKey.file(scopeParam(e), n);
+/** The one place this module turns a scope string into a `Scope`; every key below is built from it (rule 2033). */
+const ws = (e: string) => scopeParam(e);
+const SET = (e: string) => wsKey.files(ws(e));
+const KEY = (e: string, n: string) => wsKey.file(ws(e), n);
 /** The key of one workspace file, for a reader that fetches several in one `mget` (`agent-instructions.ts`). */
 export const fileKey = KEY;
 
@@ -104,7 +106,7 @@ export async function writeFile(email: string, name: string, content: string, by
 export type CheckedWrite = { ok: true; file: WFile } | { ok: false; error: "stale" | "exists"; file: WFile | null } | { ok: false; error: "busy" };
 export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null): Promise<CheckedWrite> {
   const n = safeName(name);
-  const lock = wsKey.fileLock(scopeParam(email), n);
+  const lock = wsKey.fileLock(ws(email), n);
   let got = false;
   for (let i = 0; i < 20 && !got; i++) {
     got = await db.lock(lock, 10);
@@ -148,7 +150,7 @@ export const CORE_FILES: readonly string[] = ["brand.md", "products.md", "store-
 export async function memoryBlock(email: string) {
   const wanted = ["brand.md", "products.md", "store-sales.md", "performance-learnings.md", "strategy.md", "market-research.md", "preferences.md"];
   // One round trip per file, read together, keep the fixed order (stable text also helps prompt caching).
-  const [files, plan] = await Promise.all([Promise.all(wanted.map((n) => readFile(email, n))), db.get<{ goal?: string }>(wsKey.onboardPlan(scopeParam(email)))]);
+  const [files, plan] = await Promise.all([Promise.all(wanted.map((n) => readFile(email, n))), db.get<{ goal?: string }>(wsKey.onboardPlan(ws(email)))]);
   const goal = goalLine(plan?.goal);
   const head = goal ? `--- OWNER GOAL (output target agreed at onboarding; not a file) ---\n${goal}` : "";
   return [head, ...wanted

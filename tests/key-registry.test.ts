@@ -30,6 +30,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.adCodes(S), `adcodes:${S}`],
     [wsKey.files(S), `files:${S}`],
     [wsKey.file(S, "notes.md"), `file:${S}:notes.md`],
+    [wsKey.fileLock(S, "notes.md"), `filelock:${S}:notes.md`],
     [wsKey.onboardPlan(S), `onboardplan:${S}`],
     [wsKey.onboardOk(S), `onboardok:${S}`],
     [wsKey.onboardLock(S), `onboardlock:${S}`],

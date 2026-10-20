@@ -269,7 +269,7 @@ const SCOPE_PARAM: Record<string, number> = {
   "src/lib/decisions.ts": 1,
   "src/lib/evals.ts": 2,
   "src/lib/feedback.ts": 1,
-  "src/lib/files.ts": 3,
+  "src/lib/files.ts": 1,
   "src/lib/governance.ts": 5,
   "src/lib/handoffs.ts": 1,
   "src/lib/onboard-confirm.ts": 2,
