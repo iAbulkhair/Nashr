@@ -18,7 +18,8 @@ import { getPerson } from "@/lib/person";
 import { getMember, saveMember } from "@/lib/team";
 import { track } from "@/lib/track";
 import { appDict } from "@/lib/app-i18n";
-import { LoginForm, showPasskeyButton } from "@/components/app/AuthForm";
+import { AUTOFILL_BACKOFF_MS, AUTOFILL_MAX_FAILURES, AUTOFILL_PATIENT_MS, AUTOFILL_REFRESH_MS, LoginForm, nextAutofill, showPasskeyButton } from "@/components/app/AuthForm";
+import { PASSKEY_CHALLENGE_TTL } from "@/lib/passkey-limits";
 import * as optionsRoute from "@/app/api/auth/passkey/options/route";
 import * as verifyRoute from "@/app/api/auth/passkey/verify/route";
 import * as loginRoute from "@/app/api/auth/login/route";
@@ -327,11 +328,14 @@ describe("rule 2419: every gate of the password path", () => {
   it("a suspended person", async () => {
     const u = await owner();
     const pid = (await getLogin(u.email))!.pid;
-    const row = await db.get<Record<string, unknown>>(personKey.person(pid));
-    // A legacy person has no person-level suspension (the field lives on the account): both paths then sign in.
-    if (row) await db.set(personKey.person(pid), { ...row, suspended: true });
+    // The person row is written in both fixture modes (a legacy person gets one from its account), so the person-level
+    // suspension (rule 2131) is really there and the answer is pinned, not just "both the same".
+    const person: Record<string, unknown> = { ...(await getPerson(pid))! };
+    delete person.source;
+    await db.set(personKey.person(pid), { ...person, suspended: true });
+    expect(await db.get(personKey.person(pid))).toMatchObject({ suspended: true });
     const { pw, pk } = await both(u.email);
-    if (row) expect(pw.status).toBe(403);
+    expect(pw).toEqual({ status: 403, body: { ok: false, error: "suspended" } });
     expect(pk).toEqual(pw);
   });
 
@@ -352,10 +356,11 @@ describe("rule 2419: every gate of the password path", () => {
 
   it("a member paused by the seat limit", async () => {
     const o = await owner();
-    const m = await newMember(o);
-    const mem = await getMember(m.email);
-    if (mem) await saveMember({ ...mem, disabled: "seats" });
+    // A legacy member record in both fixture modes: `disabled` lives on it, and `loginRefusal` reads it there.
+    const m = await newMember(o, "member", "m", { legacy: true });
+    await saveMember({ ...(await getMember(m.email))!, disabled: "seats" });
     const { pw, pk } = await both(m.email, m.password);
+    expect(pw).toEqual({ status: 403, body: { ok: false, error: "disabled" } });
     expect(pk).toEqual(pw);
   });
 
@@ -495,6 +500,53 @@ describe("rule 2426 (sign-in half): the off switch", () => {
       expect(on).toContain('autoComplete="username webauthn"');
       for (const html of [off, on]) expect(html).not.toContain(appDict[lang].login.passkey);
     }
+  });
+});
+
+describe("rule 2426 (sign-in half): the autofill is armed again after it settles", () => {
+  it("a sign-in re-arms nothing and clears the count", () => {
+    expect(nextAutofill(2, true, 1_000)).toEqual({ failures: 0, rearmIn: null });
+    expect(nextAutofill(0, true, 100_000)).toEqual({ failures: 0, rearmIn: null });
+  });
+
+  it("quick failures in a row back off, doubling, and stop at the limit: never a tight loop", () => {
+    let failures = 0;
+    const waits: (number | null)[] = [];
+    for (let i = 0; i < AUTOFILL_MAX_FAILURES + 2; i++) {
+      const step = nextAutofill(failures, false, 0);
+      failures = step.failures;
+      waits.push(step.rearmIn);
+      if (step.rearmIn === null) break;
+    }
+    expect(waits).toEqual([AUTOFILL_BACKOFF_MS, AUTOFILL_BACKOFF_MS * 2, null]);
+    expect(AUTOFILL_MAX_FAILURES).toBe(3);
+    expect(AUTOFILL_BACKOFF_MS).toBeGreaterThanOrEqual(1_000);
+    for (const w of waits) if (w !== null) expect(w).toBeGreaterThan(0);
+  });
+
+  it("a ceremony that waited (the person, or the browser's own timeout) starts the count again", () => {
+    expect(nextAutofill(2, false, AUTOFILL_PATIENT_MS)).toEqual({ failures: 1, rearmIn: AUTOFILL_BACKOFF_MS });
+    expect(nextAutofill(2, false, AUTOFILL_PATIENT_MS - 1)).toEqual({ failures: 3, rearmIn: null });
+  });
+
+  it("the refresh comes before the challenge and its cookie expire", () => {
+    expect(AUTOFILL_REFRESH_MS).toBeLessThan(PASSKEY_CHALLENGE_TTL * 1000);
+    expect(AUTOFILL_REFRESH_MS).toBeGreaterThanOrEqual(PASSKEY_CHALLENGE_TTL * 1000 - 60_000);
+  });
+
+  it("the effect re-arms on a counter, refreshes on a timer, and its cleanup cancels the options call and the ceremony", async () => {
+    const { readFileSync } = await import("fs");
+    const src = readFileSync("src/components/app/AuthForm.tsx", "utf8");
+    const effect = src.slice(src.indexOf("useEffect(() => {\n    if (!passkeys"), src.indexOf("}, [passkeys, mfa, busy, leaving, arm]);"));
+    expect(effect).toContain("setTimeout(again, AUTOFILL_REFRESH_MS)");
+    expect(effect).toContain("new AbortController()");
+    expect(effect).toMatch(/return \(\) => \{[^}]*live = false;[^}]*options\.abort\(\);[^}]*WebAuthnAbortService\.cancelCeremony\(\);/);
+    // `live` is checked after every await of the run.
+    expect(effect).toMatch(/await browserSupportsWebAuthnAutofill\(\);\s*if \(!live\) return;/);
+    expect(effect).toMatch(/const settle = [\s\S]*?=> \{\s*if \(!live\) return;/);
+    // The button's `finally` arms it again.
+    const button = src.slice(src.indexOf("async function onPasskey()"), src.indexOf("const onAutofill"));
+    expect(button).toMatch(/finally \{[^}]*setArm\(\(n\) => n \+ 1\);/);
   });
 });
 

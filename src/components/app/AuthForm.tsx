@@ -189,15 +189,41 @@ export const showPasskeyButton = (passkeysEnabled: boolean, supported: boolean |
 /** The browser's own "no": the person dismissed the prompt, or a newer ceremony replaced this one. Never shown. */
 const declined = (e: unknown): boolean => e instanceof Error && (e.name === "NotAllowedError" || e.name === "AbortError");
 
+/** The waiting autofill is replaced with fresh options this often, inside the challenge's 300 s life (rule 2408). */
+export const AUTOFILL_REFRESH_MS = 270_000;
+/** Settles in a row (each quicker than `AUTOFILL_PATIENT_MS`) after which the autofill stops until the button is used. */
+export const AUTOFILL_MAX_FAILURES = 3;
+/** The wait before the first re-arm after a failure; it doubles with each failure in a row. */
+export const AUTOFILL_BACKOFF_MS = 2_000;
+/** A ceremony that waited at least this long ended by the person or the browser's own timeout, not by a tight loop. */
+export const AUTOFILL_PATIENT_MS = 30_000;
+
+/**
+ * What the log-in form does after its autofill ceremony settles (fix round 1 of rule 2426's conditional UI). A sign-in
+ * navigates away, so nothing is re-armed. Any other end (a dismissal, a browser error, a refused options or verify call)
+ * re-arms after a back-off that doubles with each failure in a row, and stops after `AUTOFILL_MAX_FAILURES`, so a browser
+ * that refuses conditional requests at once never loops. A ceremony that waited `AUTOFILL_PATIENT_MS` or more starts the
+ * count again: that wait was the person's, not a loop. `rearmIn` is null when the autofill stops.
+ */
+export function nextAutofill(failures: number, signedIn: boolean, waitedMs: number): { failures: number; rearmIn: number | null } {
+  if (signedIn) return { failures: 0, rearmIn: null };
+  const inRow = (waitedMs >= AUTOFILL_PATIENT_MS ? 0 : failures) + 1;
+  return { failures: inRow, rearmIn: inRow >= AUTOFILL_MAX_FAILURES ? null : AUTOFILL_BACKOFF_MS * 2 ** (inRow - 1) };
+}
+
 /**
  * One passkey sign-in (spec flow C): fresh options (which set the `thakeen_pk` cookie), the browser's ceremony, then the
  * verify route. `autofill` waits for the person to pick a passkey from the address field's suggestions (conditional UI).
- * `stage` says which request answered, so the autofill can stay silent when the options are refused.
+ * `stage` says which request answered, so the autofill can stay silent when the options are refused. `signal` cancels
+ * the options request (the autofill's cleanup); the verify request is never cancelled, so a sign-in the server finished
+ * is never cut in half. `picked` runs once the person chose a passkey, before the verify request.
  */
-async function passkeyCeremony(autofill: boolean): Promise<{ stage: "options" | "verify"; p: Posted }> {
-  const o = await postJson("/api/auth/passkey/options", {});
+async function passkeyCeremony(autofill: boolean, signal?: AbortSignal, picked?: () => void): Promise<{ stage: "options" | "verify"; p: Posted }> {
+  const o = await postJson("/api/auth/passkey/options", {}, (url, init) => fetch(url, { ...init, signal }));
+  if (signal?.aborted) throw new DOMException("The options request was cancelled.", "AbortError");
   if (!succeeded(o)) return { stage: "options", p: o };
   const response = await startAuthentication({ optionsJSON: o.body.options as PublicKeyCredentialRequestOptionsJSON, useBrowserAutofill: autofill });
+  picked?.();
   return { stage: "verify", p: await postJson("/api/auth/passkey/verify", { response }) };
 }
 
@@ -213,7 +239,12 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
   const [mfa, setMfa] = useState(sp.get("mfa") === "1");
   const M = MFA[lang];
   const supported = useSyncExternalStore(noChange, browserSupportsWebAuthn, unknownOnServer);
+  // The autofill ceremony is re-armed by bumping `arm` (an effect dependency); `leaving` stops it once a sign-in navigates.
+  const [arm, setArm] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  const autofillFailures = useRef(0);
   function arrive(p: { body: Record<string, unknown> }) {
+    setLeaving(true);
     // An owner who has not proved the address goes to the code page first, carrying the destination (rule 754), so a
     // `next` outside the app (the OAuth consent page) is reached after the code instead of looping back here.
     if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || `/${lang}/app`)}`); return; }
@@ -248,38 +279,68 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
     setBusy(true);
     setErr("");
     try {
-      // Starting this ceremony aborts the autofill one still waiting (the library allows one at a time); that one ends silently.
+      // `busy` ends the waiting autofill (its effect's cleanup), so the two ceremonies never race for the cookie.
       afterPasskey((await passkeyCeremony(false)).p);
     } catch (e) {
       if (!declined(e)) setErr(t.login.passkeyFailed);
     } finally {
       setBusy(false);
+      // The button counts as a fresh start: the autofill is armed again (not once the sign-in navigates, `leaving`).
+      autofillFailures.current = 0;
+      setArm((n) => n + 1);
     }
   }
   // Conditional UI (rule 2426): offered only when passkeys are on and the browser can suggest passkeys in the address
-  // field. It waits in the background and never blocks the password form; a refused options call or a dismissed prompt
-  // says nothing.
-  const onAutofill = useEffectEvent((r: { stage: "options" | "verify"; p: Posted }) => {
-    if (r.stage === "verify") afterPasskey(r.p);
+  // field. It waits in the background and never blocks the password form. Once it settles it is armed again (after a
+  // back-off, `nextAutofill`), and it is replaced with fresh options before the 300 s challenge expires. A refused
+  // options call and a dismissed prompt say nothing; a `passkey_failed` answer says nothing while the autofill re-arms,
+  // and is shown when it stops, so a passkey that keeps failing is never met with silence.
+  const onAutofill = useEffectEvent((r: { stage: "options" | "verify"; p: Posted } | null, waitedMs: number): number | null => {
+    const signedIn = r?.stage === "verify" && succeeded(r.p);
+    const step = nextAutofill(autofillFailures.current, signedIn, waitedMs);
+    autofillFailures.current = step.failures;
+    // A sign-in navigates; another verify answer is shown, except a `passkey_failed` that is re-armed silently.
+    if (r?.stage === "verify" && (signedIn || failureCode(r.p) !== "passkey_failed" || step.rearmIn === null)) afterPasskey(r.p);
+    return step.rearmIn;
   });
   useEffect(() => {
-    if (!passkeys || mfa) return;
+    if (!passkeys || mfa || busy || leaving || autofillFailures.current >= AUTOFILL_MAX_FAILURES) return;
     let live = true;
+    const started = Date.now();
+    const options = new AbortController();
+    const again = () => setArm((n) => n + 1);
+    let backoff: ReturnType<typeof setTimeout> | undefined;
+    // Fresh options before the challenge (and its cookie) expire: the bump re-runs this effect, whose cleanup cancels.
+    const refresh = setTimeout(again, AUTOFILL_REFRESH_MS);
+    const settle = (r: { stage: "options" | "verify"; p: Posted } | null) => {
+      if (!live) return;
+      clearTimeout(refresh);
+      const rearmIn = onAutofill(r, Date.now() - started);
+      if (rearmIn !== null) backoff = setTimeout(again, rearmIn);
+    };
     void (async () => {
+      let r: { stage: "options" | "verify"; p: Posted };
       try {
-        if (!(await browserSupportsWebAuthnAutofill())) return;
-        const r = await passkeyCeremony(true);
-        if (live) onAutofill(r);
+        const can = await browserSupportsWebAuthnAutofill();
+        if (!live) return;
+        if (!can) return clearTimeout(refresh);
+        // Once a passkey is picked the refresh must not cut the verify request off.
+        r = await passkeyCeremony(true, options.signal, () => clearTimeout(refresh));
       } catch {
-        // Aborted by the button, by leaving the page, or dismissed: the password form is still there.
+        // Dismissed, refused by the browser, or cancelled by this effect's cleanup (then `live` is false and nothing runs).
+        return settle(null);
       }
+      settle(r);
     })();
-    // Leaving the page or switching to the code step ends the waiting ceremony, so the browser stops offering passkeys.
+    // Leaving the page, switching to the code step, the button or a re-arm ends the waiting ceremony and its options call.
     return () => {
       live = false;
+      clearTimeout(refresh);
+      clearTimeout(backoff);
+      options.abort();
       WebAuthnAbortService.cancelCeremony();
     };
-  }, [passkeys, mfa]);
+  }, [passkeys, mfa, busy, leaving, arm]);
   async function onCode(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
