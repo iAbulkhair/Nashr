@@ -972,3 +972,31 @@ describe("Task 3 fix round 2: resume, cut order, add failure, typed answers", ()
     expect(await movePasskeys(mover, live, { personLocked: true })).toBe("kept_to");
   });
 });
+
+describe("Task 6 (parked A): a resumed move re-stamps `to` with the destination's current birth", () => {
+  it("run 1 stamps the old birth, the destination person is re-created before the retry: the retry rewrites `to` with the new birth, the same uid and credentials", async () => {
+    const [from, to] = await Promise.all([person(pidOf()), person(pidOf("p"), TO_BORN)]);
+    const uid = uidOf(await ensureUid(from, BORN));
+    const ids = await fill(from, 2);
+    // Run 1 writes `to` (born TO_BORN) and both entries, then fails deleting the `from` set.
+    const orig = db.del.bind(db);
+    vi.spyOn(db, "del").mockImplementation((async (...a: Parameters<typeof db.del>) => {
+      if (String(a[0]) === personKey.passkeys(from)) throw new Error("store down");
+      return orig(...a);
+    }) as never);
+    await expect(movePasskeys(from, to, { personLocked: true })).rejects.toThrow("store down");
+    vi.restoreAllMocks();
+    expect(await rawSet(to)).toMatchObject({ uid, born: TO_BORN });
+    // Between the runs the destination person row gets another birth (re-created at that address).
+    const NEW_BORN = "2026-10-12T00:00:00.000Z";
+    await person(to, NEW_BORN);
+    expect(await readSet(to, NEW_BORN)).toBeNull();
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("moved");
+    const set = (await rawSet(to))!;
+    expect(set).toMatchObject({ uid, born: NEW_BORN });
+    expect(set.creds.map((c) => c.id)).toEqual(ids);
+    expect(await readSet(to, NEW_BORN)).not.toBeNull();
+    expect(await Promise.all(ids.map(reverse))).toEqual([to, to]);
+    expect(await rawSet(from)).toBeNull();
+  });
+});

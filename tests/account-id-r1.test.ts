@@ -395,7 +395,7 @@ describe("the owner move in R1 is still a copy: the new record lives under the n
     const src = read("src/lib/verify-email.ts");
     expect(src).toMatch(/saveUser\(\{ \.\.\.cur, id: to, email: to,/);
     expect(src).toContain("await claimLogin(to, to);");
-    expect(src).toContain("await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true });");
+    expect(src).toContain("await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true, ...(pk === \"skipped\" ? { keepPasskeys: true } : {}) });");
   });
   it("a member move claims the new index and releases the old one", () => {
     const team = read("src/lib/team.ts");

@@ -18,6 +18,7 @@ import { createPersonRecord, getPerson, withPersonLock } from "./person";
 import { logTeam } from "./teamlog";
 import { MULTI_ORG, PERSON_ID } from "./multi-org";
 import { mfaKeys } from "./mfa";
+import { movePasskeys, passkeyKeys } from "./passkeys";
 import { revokeAllDevices } from "./devices";
 
 /**
@@ -255,7 +256,8 @@ export async function holdsElsewhere(pid: PersonId, aid: AccountId): Promise<boo
  * Plan reconciliation 7: with `MULTI_ORG` off, a person with no owned account and no other membership left is deleted as
  * R1 deleted a removed member's login: `person:{pid}`, its account list and last pick, and, while the login index still
  * names this person (an address taken by someone else since keeps everything), the login index, two-step sign-in, the
- * waiting address change, the Google link both ways and every device session. The caller holds `lock:login:{email}` →
+ * waiting address change, the Google link both ways and every device session; its passkeys (set, reverse entries naming
+ * it, open registration) go in every case. The caller holds `lock:login:{email}` →
  * `lock:person:{pid}` (rule 2139: `deleteMembership` takes them before its first write), so an accept or a credential
  * write of the same person waits for it.
  */
@@ -263,11 +265,13 @@ async function forgetPersonIfAlone(pid: PersonId, email: string, aid: AccountId,
   void opts;
   if (MULTI_ORG) return;
   if (await holdsElsewhere(pid, aid)) return;
-  const [rawIdx, sub] = await Promise.all([db.get<unknown>(accountKey.login(email)), db.get<unknown>(accountKey.googleSub(email))]);
+  const [rawIdx, sub, passkeys] = await Promise.all([db.get<unknown>(accountKey.login(email)), db.get<unknown>(accountKey.googleSub(email)), passkeyKeys(pid)]);
   const idx = parseStored("login", LoginIndex, rawIdx, null);
   const own = !idx || idx.pid === pid;
   const google = typeof sub === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(sub) ? [globalKey.googleAccount(sub)] : [];
-  const keys = [personKey.person(pid), personKey.orgs(pid), personKey.lastOrg(pid), ...(own ? [...mfaKeys(email), accountKey.emailChange(email), accountKey.emailChangeTries(email), accountKey.googleSub(email), ...google] : [])];
+  // The person's passkeys go with the person whoever holds the address now (rule 2425, pre-flight ruling 6): they are
+  // keyed by pid, and `passkeyKeys` lists only reverse entries that still name this pid.
+  const keys = [personKey.person(pid), personKey.orgs(pid), personKey.lastOrg(pid), ...passkeys, ...(own ? [...mfaKeys(email), accountKey.emailChange(email), accountKey.emailChangeTries(email), accountKey.googleSub(email), ...google] : [])];
   await Promise.all([...keys.map((k) => db.del(k)), own ? revokeAllDevices(email) : null, releaseLogin(email, pid, { locked: true })]);
 }
 
@@ -647,7 +651,8 @@ async function memberByEmail(aid: AccountId, email: string): Promise<MemberView 
  * must hold no owner or member record at all, the record is written at the new address with a fresh session window
  * (every device signs in again, an old session issued for the target address never resolves to it), the membership row,
  * the roster, `orgs:` and the active brand follow the new person id, `carry` moves what other modules keep per login
- * (two-step sign-in), and only then the old record, its membership row, roster and `orgs:` entries, its `person:` row
+ * (two-step sign-in), the passkeys move to the new person id (`movePasskeys`, rule 2424: same user handle, every reverse
+ * entry rewritten), and only then the old record, its membership row, roster and `orgs:` entries, its passkey keys, its `person:` row
  * (and any leftover row at the new address: the person is read from the new legacy record until its next credential
  * write), its pending invites and its feed and booking links go. No team log row: the membership is the same.
  */
@@ -678,8 +683,15 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
         claimLogin(to, to),
       ]);
       if (carry) await carry(old, to);
+      // The passkeys follow the person (rule 2424): both person locks are held here. Then whatever passkey key the old pid
+      // still has (an open registration, an entry still naming it) goes with it, unless the move could not run (a person
+      // unreadable: the keys stay, inert under rules 2402 and 2405, and the reason is logged).
+      const pk = await movePasskeys(oldPid, toPid, { personLocked: true });
+      if (pk === "skipped") log.warn("member move kept passkeys", { reason: "passkey_move_skipped" });
+      const oldPasskeys = pk === "skipped" ? [] : await passkeyKeys(oldPid);
       const mine = sent.filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === oldPid : normalizeEmail(i.invitedBy) === old)).map((i) => i.id);
       await Promise.all([
+        ...oldPasskeys.map((k) => db.del(k)),
         db.del(memberKey(old)),
         db.del(accountKey.activeBrand(old)),
         db.del(accountKey.membership(aid, oldPid)),

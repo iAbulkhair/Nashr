@@ -84,7 +84,7 @@ describe("rule 1955: deletion first turns renewal off and drops the saved card, 
     await db.set(cardKey(u.email), { token: "tok_test" });
     await withUserLock(u.email, async () => { await stopRenewals(u.email, { userLocked: true }); });
     expect(await db.get(cardKey(u.email))).toBeNull();
-    expect(read("src/lib/verify-email.ts")).toContain("await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true });");
+    expect(read("src/lib/verify-email.ts")).toContain("await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true, ...(pk === \"skipped\" ? { keepPasskeys: true } : {}) });");
   });
 
   it("wipeAccount calls it before anything else of the account is touched", async () => {

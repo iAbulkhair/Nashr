@@ -525,9 +525,9 @@ describe("source scans (rule 2132, credential part)", () => {
     const direct = files(join("src", "app")).filter((f) => /\bupdatePerson\(|\bwithPersonLock\(|\bmarkVerified\(/.test(readFileSync(f, "utf8")));
     expect(direct.length).toBeGreaterThanOrEqual(6);
     // Routes that reach the person lock only through a library writer, which a call-name scan of the route cannot see:
-    // `createUser` (signup), `resolveGoogle` → `createUser` (the Google callback). The address moves
-    // (`moveUnverifiedAccount`, `moveOwnerLogin`) take no person lock (`createPersonRecord` with `userLockHeld`), so their
-    // routes are not listed. A new library caller of `updatePerson`/`createUser` adds its route here.
+    // `createUser` (signup), `resolveGoogle` → `createUser` (the Google callback), and the owner address moves
+    // (`moveUnverifiedAccount`, `moveOwnerLogin`), which take both person locks before `lock:user` (passkeys Task 6, rule
+    // 2414). A new library caller of `updatePerson`/`createUser` adds its route here.
     // Multi-workspace M1: src/lib/team.ts writes member persons (`acceptInvite`) and deletes a person left with
     // nothing (`removeMember`, `leaveTeam`, `forceRemoveMember`, `wipeMemberships` through `wipeAccount`, `moveMemberLogin`
     // through `confirmEmailChange`) under the person lock.
@@ -539,6 +539,7 @@ describe("source scans (rule 2132, credential part)", () => {
       join("src", "app", "api", "team", "leave", "route.ts"),
       join("src", "app", "api", "account", "route.ts"),
       join("src", "app", "api", "account", "email", "route.ts"),
+      join("src", "app", "api", "auth", "verify", "email", "route.ts"),
       join("src", "app", "api", "admin", "users", "[email]", "route.ts"),
       // Customer passkeys (rule 2414): `ensureUid`, `addPasskey`, `renamePasskey`, `removePasskey` take the person lock.
       join("src", "app", "api", "account", "passkeys", "route.ts"),

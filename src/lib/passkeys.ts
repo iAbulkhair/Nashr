@@ -288,12 +288,14 @@ export type PasskeyMove = "moved" | "nothing" | "dropped" | "kept_to" | "skipped
  * and `pkreg:`. A failure at any step leaves the `from` set in place, so a retry finds `to` holding the same `uid`: then
  * `to` is authoritative (ruling N1). It is not rewritten; only the entries of credentials it lists that still name `from`
  * are pointed at it, and the rest of `from` goes with its entries that still name `from`. A passkey removed at `to`
- * between the two runs never comes back (one added only at `from` in between is lost; the person adds it again).
+ * between the two runs never comes back (one added only at `from` in between is lost; the person adds it again). When the
+ * destination person was written again between the runs, `to` is re-stamped with its current birth (same `uid`, same
+ * credentials).
  *
  * A live `to` (it carries the destination's birth, another `uid` and at least one passkey) or a broken one is never
  * overwritten: the `from` set is dropped with the reverse entries that still name `from` (the person adds those passkeys
  * again). A stale or empty `to` is replaced. With `personLocked: false` both person locks are taken, the smaller pid
- * first; the moves pass `true` (the member move holds both, the owner move its `userLockHeld` exception, rule 2414).
+ * first; both address moves pass `true` (each already holds both person locks, rule 2414).
  */
 export async function movePasskeys(from: PersonId, to: PersonId, opts: { personLocked: boolean }): Promise<PasskeyMove> {
   if (from === to) return "nothing";
@@ -333,6 +335,10 @@ export async function movePasskeys(from: PersonId, to: PersonId, opts: { personL
       // 1. Release the replaced `to` set's own entries, then write `to`.
       await Promise.all(staleTo.filter((id) => named.get(id) === to).map((id) => db.del(revKey(id))));
       await db.set(setKey(to), { v: 1, uid: carried.uid, born: pTo.createdAt, creds: carried.creds } satisfies PasskeySetValue);
+    } else if (toSet && toSet.born !== pTo.createdAt) {
+      // 1'. A resume whose destination person was written again between the runs (another birth): `to` keeps its uid and
+      //     credentials and takes the current birth, or reads would ignore it (Task 6, parked minor A).
+      await db.set(setKey(to), { ...toSet, born: pTo.createdAt } satisfies PasskeySetValue);
     }
     // 2. Point the reverse entries at `to` (an absent one is re-claimed only on a first run: on a resume it may be a
     //    remove at `to` half done).

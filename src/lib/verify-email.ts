@@ -10,7 +10,9 @@ import { allow, clientIp, retryLater, sameSecret } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
 import { mailReady, sendEmail } from "./notify";
 import { withLoginLock, withMoveTeamLock } from "./team";
-import { createPersonRecord, getPerson, laterStamp, updatePerson } from "./person";
+import { createPersonRecord, getPerson, laterStamp, updatePerson, withPersonLock } from "./person";
+import { movePasskeys } from "./passkeys";
+import { log } from "./log";
 import { ownerOf } from "./membership";
 import { accountKey, personKey, storedPersonId } from "./keys";
 
@@ -197,8 +199,8 @@ async function hasTeam(id: string): Promise<boolean> {
  * change of a proved address (rules 1942-1945, src/lib/email-change.ts, `proved: true`). `may` is re-checked on the
  * record read under the user lock; `isCopy` tells a copy an earlier stopped run already wrote at the target (same
  * createdAt and password hash) from someone else's login. `proved` stamps the new address as verified now, since its
- * code was just checked. `carry` moves what other modules keep per login (two-step sign-in) before the old account is
- * wiped.
+ * code was just checked. `carry` moves what other modules keep per login (two-step sign-in), and the passkeys move to
+ * the new person id (`movePasskeys`, rule 2424), before the old account is wiped.
  */
 export async function moveOwnerLogin(from: User, target: string, opts: { may: (cur: User) => boolean | Promise<boolean>; isCopy: (copy: User) => boolean; proved?: boolean; carry?: (from: string, to: string) => Promise<void> }): Promise<MoveResult> {
   const old = from.email;
@@ -217,7 +219,15 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
     // under `lock:user`. A `lock:team` that cannot be had throws `team_lock_timeout` with nothing written (a 409 `busy`
     // in both routes). `withMoveTeamLock` gives this holder a 60 s expiry (no renewal exists); the login and user locks
     // keep their 10 s, the bound this move always had.
-    return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(id, (cur) => withMoveTeamLock(id, async (): Promise<MoveResult> => {
+    //
+    // Both person locks (rule 2414, Task 6): the moved account's legacy owner person (`fromPid`, the only pid the check
+    // below lets move) and the new address's (`toPid`), the smaller first, between the login locks and `lock:user` as
+    // rule 2139 orders them. So an `addPasskey`, `updatePerson` or sign-in counter write of either person waits for the
+    // move, and the passkeys move under both locks. A held person lock throws `person_lock_timeout` before anything is
+    // read or written (a 409 `busy` in both routes).
+    const [fromPid, toPid] = [storedPersonId(id), storedPersonId(to)];
+    const [pa, pb] = fromPid < toPid ? [fromPid, toPid] : [toPid, fromPid];
+    return await withLoginLock(first, () => withLoginLock(second, () => withPersonLock(pa, () => withPersonLock(pb, () => withUserLock(id, (cur) => withMoveTeamLock(id, async (): Promise<MoveResult> => {
       if (!(await opts.may(cur))) return "not_allowed";
       // An account with a team never moves (both callers refuse one before this): checked again here, under
       // `lock:team`, before the first write. A member or an invite refuses.
@@ -229,7 +239,7 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       // The owner's credentials are the PERSON's (rule 2132). The move copies a legacy owner's account to the new address;
       // an account a `p_` person owns moves with the person (release M2), never here.
       const pid = ownerOf(cur);
-      if (pid !== storedPersonId(id)) return "not_allowed";
+      if (pid !== fromPid) return "not_allowed";
       const [login, me] = await Promise.all([getLogin(to), getPerson(pid)]);
       if (!me) return "not_allowed";
       const unfinished = login?.kind === "owner" && opts.isCopy(login.user) && login.user.createdAt === cur.createdAt && login.person.passHash === me.passHash;
@@ -247,14 +257,12 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       // The person at the new address (multi-workspace M1, rule 2132), written whole (reconciliation 6: a leftover row at
       // `person:{to}` lends nothing): the moved owner's password, the account's birth, the fresh session stamp, and the
       // proof only when this move proved the address (or a stopped run's copy already carried one). Under both login
-      // locks, without `lock:person` (`userLockHeld`: this runs inside `lock:user`, which comes after it in rule 2139's
-      // order); the address is claimed only below, so nothing else can write this person.
+      // locks and both person locks (taken above, before `lock:user`); the address is claimed only below.
       const copy = unfinished ? login.user : null;
-      const toPid = storedPersonId(to);
       await Promise.all([
         createPersonRecord(
           { pid: toPid, email: to, name: me.name, lang: me.lang, passHash: me.passHash, createdAt: cur.createdAt, sessionsAfter: fresh, devicesAfter: dev, emailVerifiedAt: copy ? copy.emailVerifiedAt : opts.proved ? fresh : undefined },
-          { loginLocked: true, userLockHeld: true },
+          { loginLocked: true, personLocked: true },
         ),
         db.sadd(personKey.orgs(toPid), to),
       ]);
@@ -265,9 +273,13 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
       await dropVerifyCode(old);
-      await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true });
+      // The passkeys follow the person (rule 2424) before the old person is wiped. A move that could not run (a person
+      // unreadable) keeps them under the old pid (inert: rules 2402, 2405) instead of the wipe deleting the only copy.
+      const pk = await movePasskeys(pid, toPid, { personLocked: true });
+      if (pk === "skipped") log.warn("owner move kept passkeys", { reason: "passkey_move_skipped" });
+      await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true, ...(pk === "skipped" ? { keepPasskeys: true } : {}) });
       return "ok";
-    }))));
+    }))))));
   } catch (e) {
     // The account vanished under the lock (a parallel move or a deletion won): nothing here to move.
     if (e instanceof Error && e.message === "user_not_found") return "not_allowed";

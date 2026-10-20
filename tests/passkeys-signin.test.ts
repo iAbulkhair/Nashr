@@ -368,18 +368,24 @@ describe("rule 2419: every gate of the password path", () => {
   // A `p_` member has no legacy record: the pause lives on its membership row, and `getLogin` then finds no live
   // workspace (no shadow membership, which would sign in instead). The password path answers 401 `invalid`; the
   // passkey path refuses before `finishLogin` (`resolvePasskeyLogin` finds no login), so it gives rule 2423's one
-  // refusal, 401 `passkey_failed`. Neither signs in. p_ fixtures only.
+  // refusal, 401 `passkey_failed`. Neither signs in. p_ fixtures only. Control (Task 6): the same passkey signs in before
+  // the pause, so the refusal after it comes from the pause alone (the second assertion's counter is higher, so the
+  // counter check would pass too).
   it.runIf(PERSONS === "p")("a p_ member paused by the seat limit (membership row, no shadow)", async () => {
     const o = await owner();
     const m = await newMember(o, "member", "m", { shadow: false });
     const k = await enrolKey(m.email);
+    expect(await answer(await signInWith(k, {}, 1))).toEqual({ status: 200, body: { ok: true } });
+    expect(jar().get(SESSION_COOKIE)).toBeDefined();
+    signOut();
+    expect(jar().get(SESSION_COOKIE)).toBeUndefined();
     const row = await db.get<Record<string, unknown>>(accountKey.membership(aidOf(o), m.pid));
     expect(row).toMatchObject({ pid: m.pid });
     await db.set(accountKey.membership(aidOf(o), m.pid), { ...row, disabled: "seats" });
     const pw = await answer(await loginRoute.POST(json("/api/auth/login", "POST", { email: m.email, password: m.password }, ip())));
     expect(jar().get(SESSION_COOKIE)).toBeUndefined();
     signOut();
-    const pk = await signInWith(k);
+    const pk = await signInWith(k, {}, 2);
     expect(jar().get(SESSION_COOKIE)).toBeUndefined();
     expect(pw).toEqual({ status: 401, body: { ok: false, error: "invalid" } });
     await refused(pk);
