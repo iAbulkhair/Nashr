@@ -131,7 +131,11 @@ describe("rule 1141: the old routes redirect for one release; the rail and the a
     expect(html).toContain('href="/en/app/settings"');
     for (const old of ["team", "integrations", "governance", "profile", "billing", "onboarding", "brands"]) expect(html, old).not.toContain(`href="/en/app/${old}"`);
     expect(html).toContain('href="/en/app/settings/billing"');
-    expect(html).toContain('href="/en/app/settings/brands"');
+    // The brand button is the switcher (rule 893): a menu whose «Manage brands» row, like the account menu's, links to the
+    // brands page; both render only when opened, so the rows are pinned in the source.
+    expect(html).toContain('aria-label="Switch brand: Your brand"');
+    expect(read("src/components/app/BrandSwitcher.tsx")).toMatch(/settingsHref\(lang, "brands"\)/);
+    expect(read("src/components/app/Sidebar.tsx")).toMatch(/\[settingsHref\(lang, "brands"\), N\.brands\]/);
   });
 });
 
