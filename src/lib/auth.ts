@@ -632,14 +632,15 @@ async function readSession(): Promise<Session | null> {
 
 /**
  * The page's brand selector (rule 886, brand id in the URL): the `x-thakeen-brand` request header, set by the browser's
- * fetch wrapper (src/lib/brand-fetch.ts) from the page's `/b/{id}` segment and by the proxy from a page path. Undefined when absent. A value that is not
+ * fetch wrapper (src/lib/brand-fetch.ts) from the page's `/b/{id}` segment and by the proxy from a page path. Undefined when absent
+ * or empty (an empty value is no header, as in the proxy and the brand guard). A value that is not
  * a brand id (`isBrandId`: no `/`, `%`, `.`, `#`, `:`, at most 64 characters) is Next's 404 here, before any store read.
  * It is only a SELECTOR: `resolveSession` accepts it when it is one of the session account's own active brands, and
  * builds the scope from that brand list, never from the header.
  */
 async function brandSelector(): Promise<string | undefined> {
   const v = (await headers()).get(BRAND_HEADER);
-  if (v === null) return undefined;
+  if (!v) return undefined;
   if (!isBrandId(v)) notFound();
   return v;
 }
@@ -1185,12 +1186,23 @@ export function markFreshCode(req: Request): void {
 }
 
 /**
+ * The session's account for the console checks only: `currentUser` WITHOUT the page's brand selector (rule 886). Who
+ * holds the console is a property of the session, not of a brand, so a stale or forged `x-thakeen-brand` on an admin
+ * request (a wrong value is Next's 404 in `currentUser`) must not turn a staff, key or founder session away. The brand
+ * is not read from the result: only `isFounderActor` is.
+ */
+async function sessionAccountForConsole(): Promise<User | null> {
+  const s = await readSession();
+  return s ? resolveSession(s) : null;
+}
+
+/**
  * Whether the founder's own customer session still opens the console: an expand-only path (rule 1649) that a staff
  * owner can switch off at runtime (rule 1650, `staff:config.customerPathOff`) and the contract release removes.
  */
 async function founderSessionConsole(): Promise<{ email: string } | null> {
   const { customerPathOff } = await import("./staff");
-  const [off, u] = await Promise.all([customerPathOff(), currentUser()]);
+  const [off, u] = await Promise.all([customerPathOff(), sessionAccountForConsole()]);
   return !off && isFounderActor(u) ? { email: u!.actor!.email } : null;
 }
 

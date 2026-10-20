@@ -102,6 +102,9 @@ export const BRAND_API: readonly string[] = [
  * file that calls `sc(` or uses `handler({ auth: "user" ... })`; these are the ones it takes that are not brand data.
  */
 export const ACCOUNT_SC_API: Readonly<Record<string, string>> = {
+  // Account-scoped on purpose: the privacy export is the whole ACCOUNT's copy and lists every brand the account holds,
+  // whichever page asked, so a brand header would change nothing and a missing one is no mistake. It is reached by a
+  // plain link from the account settings (DangerZone, a GET that can carry no header) and changes no state.
   "/api/account/export": "GET: exports every brand of the account; sc(u) only marks which one is active (src/lib/privacy-export.ts).",
   "/api/wishlist/suggest": "handler({ auth: \"user\" }) for the session only: a suggestion is keyed by the login's email, no brand data is read.",
   "/api/wishlist/vote": "handler({ auth: \"user\" }) for the session only: a vote is keyed by the voter's account, no brand data is read.",

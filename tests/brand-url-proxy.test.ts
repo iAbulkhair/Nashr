@@ -45,6 +45,21 @@ describe("rule 887: a page request carries only the brand its path names", () =>
     }
   });
 
+  it("the stray-path rewrite and a public page really override the request headers without the brand (fix round item 9)", () => {
+    // Without x-middleware-override-headers Next forwards the browser's headers as they came, the forged one included;
+    // with it, only the listed headers reach the page, and the brand header is not among them.
+    for (const p of ["/xyz/abc", "/ar/pricing"]) {
+      const res = proxy(req(p, { headers: { [BRAND_HEADER]: "evil", "x-other": "kept" } }));
+      const override = res.headers.get("x-middleware-override-headers");
+      expect(override, p).not.toBeNull();
+      const names = override!.split(",").map((h) => h.trim());
+      expect(names, p).toContain("x-other");
+      expect(names, p).not.toContain(BRAND_HEADER);
+      expect(res.headers.get("x-middleware-request-x-other"), p).toBe("kept");
+    }
+    expect(proxy(req("/xyz/abc")).headers.get("x-middleware-rewrite")).not.toBeNull();
+  });
+
   it("leaves a header on an /api/ request untouched", () => {
     expect(proxy(req("/api/tasks", { headers: { [BRAND_HEADER]: "b2" } })).headers.get(FORWARDED)).toBe("b2");
     expect(proxy(req("/api/tasks", { method: "POST", headers: { [BRAND_HEADER]: "b2", ...SESSION } })).headers.get(FORWARDED)).toBe("b2");
@@ -76,6 +91,10 @@ describe("rule 887: a brand query value is the header for a GET or HEAD /api/ re
     expect(proxy(req("/api/activity/export?brand=%E2%82%AC")).headers.get(FORWARDED)).toBe("?");
   });
 
+  it("an empty brand header counts as none: the query value is copied (fix round item 11)", () => {
+    expect(proxy(req("/api/activity/export?brand=b2", { headers: { [BRAND_HEADER]: "" } })).headers.get(FORWARDED)).toBe("b2");
+  });
+
   it("does nothing without a query value, and never on a page", () => {
     expect(proxy(req("/api/activity/export")).headers.get(FORWARDED)).toBeNull();
     expect(proxy(req("/api/activity/export?brand=")).headers.get(FORWARDED)).toBeNull();
@@ -104,6 +123,13 @@ describe("rule 888: a browser mutation to a brand route without the brand header
 
   it("lets a request with the header through", () => {
     expect(brandMissingRefusal(post("/api/tasks", { ...SESSION, [BRAND_HEADER]: "b2" }), "enforce")).toBeNull();
+  });
+
+  it("an empty header is no header: refused in enforce mode, logged in log mode (fix round item 11)", () => {
+    expect(brandMissingRefusal(post("/api/tasks", { ...SESSION, [BRAND_HEADER]: "" }), "enforce")?.status).toBe(409);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(brandMissingRefusal(post("/api/tasks", { ...SESSION, [BRAND_HEADER]: "" }), "log")).toBeNull();
+    expect(warn.mock.calls.filter((c) => c[0] === "brand_missing")).toHaveLength(1);
   });
 
   it("lets a read through", () => {
@@ -183,6 +209,51 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
     expect(scoped.length).toBeGreaterThan(40);
     const unlisted = scoped.filter((p) => !BRAND_API.includes(p) && !(p in ACCOUNT_SC_API));
     expect(unlisted, "add the route to BRAND_API, or to ACCOUNT_SC_API with its reason").toEqual([]);
+  });
+
+  it("every mutating route that calls currentUser() but has no sc( literal is classified (fix round item 8)", () => {
+    // These routes read the session but scope no data through `sc(u)` in their own file: either their data is the
+    // account's (or the login's, or nobody's), or they reach the brand through a helper. A new such route fails here until
+    // it is put in BRAND_API, in ACCOUNT_SC_API, or below with its reason.
+    const EXEMPT: Readonly<Record<string, string>> = {
+      "/api/account": "the account record itself (name, language, deletion), not a brand",
+      "/api/account/2fa": "the login's second factor",
+      "/api/account/email": "the login's address change",
+      "/api/account/google": "the login's Google sign-in link",
+      "/api/account/sessions": "the login's sessions",
+      "/api/auth/verify/check": "the owner's address verification",
+      "/api/auth/verify/email": "the owner's address verification",
+      "/api/auth/verify/send": "the owner's address verification",
+      "/api/billing/chat-overflow": "the account's plan and credits",
+      "/api/billing/checkout": "the account's plan and payment",
+      "/api/billing/renewal": "the account's plan renewal",
+      "/api/brands": "the account's brand list and the switch itself (rule 892); the brand is the body's id, checked against the list",
+      "/api/integrations": "a request for a new integration, logged with the login's address, no brand data",
+      "/api/mcp/grants": "the account's MCP grants (acct(u))",
+      "/api/mcp/token": "the account's MCP token (acct(u))",
+      "/api/notifications": "the account's bell, keyed by the account's address",
+      "/api/notifications/digest": "the account's digest setting (acct(u))",
+      "/api/oauth/approve": "an OAuth grant for the account",
+      "/api/partner": "the account's partner record",
+      "/api/partner/code": "the account's partner code",
+      "/api/referral/share": "the account's share credits (acct(u))",
+      "/api/support": "a support ticket with the login's address, no brand data",
+      "/api/team/invite": "the account's team",
+      "/api/team/leave": "the account's team",
+      "/api/team/member": "the account's team",
+      "/api/tools/[tool]": "a public tool, rate-limited by the login's address, no brand data",
+    };
+    const CALLS_CURRENT_USER = /\bcurrentUser(?:Unverified)?\(/;
+    const found = ROUTES.filter((r) => MUTATING.test(r.src) && CALLS_CURRENT_USER.test(r.src) && !CALLS_SC.test(r.src) && !HANDLER_USER.test(r.src)).map((r) => r.path).sort();
+    expect(found.length).toBeGreaterThan(20);
+    const unclassified = found.filter((p) => !BRAND_API.includes(p) && !(p in ACCOUNT_SC_API) && !(p in EXEMPT));
+    expect(unclassified, "put the route in BRAND_API, ACCOUNT_SC_API, or EXEMPT with its reason").toEqual([]);
+    // The list stays exact: an exempt entry that no longer matches (gone, or now calls sc() and is held by the test above) goes.
+    expect(Object.keys(EXEMPT).filter((p) => !found.includes(p))).toEqual([]);
+    expect(Object.keys(EXEMPT).filter((p) => BRAND_API.includes(p) || p in ACCOUNT_SC_API)).toEqual([]);
+    for (const [p, why] of Object.entries(EXEMPT)) expect(why.length, p).toBeGreaterThan(10);
+    // The one brand route found this way (scoped through a helper) is guarded.
+    expect(found.filter((p) => BRAND_API.includes(p))).toEqual(["/api/secretary/calendar-link"]);
   });
 
   it("the handler-only routes of R-C11 and the mixed profile route (R-C12), a per-brand preference route and a helper-scoped route are guarded", () => {
