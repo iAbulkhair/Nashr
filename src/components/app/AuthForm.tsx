@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill, startAuthentication, WebAuthnAbortService, type PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import PartnerCodeField from "./PartnerCodeField";
 import { PLAN_CREDITS } from "@/lib/pricing";
-import { authMessage, failureCode, passwordChecks, postJson, succeeded, unmetRules } from "@/lib/auth-client";
+import { authMessage, failureCode, passwordChecks, postJson, succeeded, unmetRules, type Posted } from "@/lib/auth-client";
 import { suspendedMessage } from "@/lib/suspension";
 import { PasswordRules } from "./PasswordRules";
 import PasswordField from "./PasswordField";
@@ -175,7 +176,32 @@ const MFA = {
   en: { title: "Sign-in code", sub: "Open the authenticator app on your phone and type the code it shows for Thakeen. Lost your phone? Type one of your recovery codes.", code: "Code", submit: "Sign in", back: "Back", bad_code: "That code is wrong or expired. Try the next one.", mfa_expired: "Time ran out. Type your password again." },
 } as const;
 
-export function LoginForm({ t, lang, google = false }: { t: AppDict; lang: Lang; google?: boolean }) {
+/** WebAuthn support never changes while the page is open, so nothing is ever signalled. */
+const noChange = () => () => {};
+const unknownOnServer = (): boolean | null => null;
+
+/**
+ * Whether "Sign in with a passkey" is drawn (rules 2426, 2429): passkeys on and the browser's WebAuthn support known and
+ * true. `null` (always on the server and during hydration) draws nothing, so server and browser HTML agree.
+ */
+export const showPasskeyButton = (passkeysEnabled: boolean, supported: boolean | null): boolean => passkeysEnabled && supported === true;
+
+/** The browser's own "no": the person dismissed the prompt, or a newer ceremony replaced this one. Never shown. */
+const declined = (e: unknown): boolean => e instanceof Error && (e.name === "NotAllowedError" || e.name === "AbortError");
+
+/**
+ * One passkey sign-in (spec flow C): fresh options (which set the `thakeen_pk` cookie), the browser's ceremony, then the
+ * verify route. `autofill` waits for the person to pick a passkey from the address field's suggestions (conditional UI).
+ * `stage` says which request answered, so the autofill can stay silent when the options are refused.
+ */
+async function passkeyCeremony(autofill: boolean): Promise<{ stage: "options" | "verify"; p: Posted }> {
+  const o = await postJson("/api/auth/passkey/options", {});
+  if (!succeeded(o)) return { stage: "options", p: o };
+  const response = await startAuthentication({ optionsJSON: o.body.options as PublicKeyCredentialRequestOptionsJSON, useBrowserAutofill: autofill });
+  return { stage: "verify", p: await postJson("/api/auth/passkey/verify", { response }) };
+}
+
+export function LoginForm({ t, lang, google = false, passkeys = false }: { t: AppDict; lang: Lang; google?: boolean; passkeys?: boolean }) {
   const r = useRouter();
   const sp = useSearchParams();
   const nextParam = sp.get("next") ?? "";
@@ -186,6 +212,7 @@ export function LoginForm({ t, lang, google = false }: { t: AppDict; lang: Lang;
   // sign-in that needs the code comes back here with `?mfa=1` and the challenge cookie already set.
   const [mfa, setMfa] = useState(sp.get("mfa") === "1");
   const M = MFA[lang];
+  const supported = useSyncExternalStore(noChange, browserSupportsWebAuthn, unknownOnServer);
   function arrive(p: { body: Record<string, unknown> }) {
     // An owner who has not proved the address goes to the code page first, carrying the destination (rule 754), so a
     // `next` outside the app (the OAuth consent page) is reached after the code instead of looping back here.
@@ -210,6 +237,49 @@ export function LoginForm({ t, lang, google = false }: { t: AppDict; lang: Lang;
       setBusy(false);
     }
   }
+  /** A passkey answer: the password path's redirect on success (the `verify` flag included), otherwise one line. */
+  function afterPasskey(p: Posted) {
+    if (succeeded(p)) return arrive(p);
+    const code = failureCode(p);
+    setErr(authMessage(code, lang, { passkey_failed: t.login.passkeyFailed, invalid: t.login.passkeyFailed, suspended: suspendedMessage(p.body.until, lang, t.login.suspended) }));
+  }
+  async function onPasskey() {
+    if (busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      // Starting this ceremony aborts the autofill one still waiting (the library allows one at a time); that one ends silently.
+      afterPasskey((await passkeyCeremony(false)).p);
+    } catch (e) {
+      if (!declined(e)) setErr(t.login.passkeyFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+  // Conditional UI (rule 2426): offered only when passkeys are on and the browser can suggest passkeys in the address
+  // field. It waits in the background and never blocks the password form; a refused options call or a dismissed prompt
+  // says nothing.
+  const onAutofill = useEffectEvent((r: { stage: "options" | "verify"; p: Posted }) => {
+    if (r.stage === "verify") afterPasskey(r.p);
+  });
+  useEffect(() => {
+    if (!passkeys || mfa) return;
+    let live = true;
+    void (async () => {
+      try {
+        if (!(await browserSupportsWebAuthnAutofill())) return;
+        const r = await passkeyCeremony(true);
+        if (live) onAutofill(r);
+      } catch {
+        // Aborted by the button, by leaving the page, or dismissed: the password form is still there.
+      }
+    })();
+    // Leaving the page or switching to the code step ends the waiting ceremony, so the browser stops offering passkeys.
+    return () => {
+      live = false;
+      WebAuthnAbortService.cancelCeremony();
+    };
+  }, [passkeys, mfa]);
   async function onCode(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
@@ -246,10 +316,12 @@ export function LoginForm({ t, lang, google = false }: { t: AppDict; lang: Lang;
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{t.login.title}</span></h1>
       {google && <div className="mt-6"><GoogleButton lang={lang} mode="login" next={next} /></div>}
       <form onSubmit={onSubmit} className={google ? "mt-3 grid gap-3" : "mt-6 grid gap-3"}>
-        <Field label={t.login.email}><Input name="email" required type="email" autoComplete="username" /></Field>
+        {/* `webauthn` lets the browser offer saved passkeys in the address field's suggestions (conditional UI). */}
+        <Field label={t.login.email}><Input name="email" required type="email" autoComplete={passkeys ? "username webauthn" : "username"} /></Field>
         <Field label={t.login.password}><PasswordField lang={lang} name="password" required autoComplete="current-password" /></Field>
         {err && <Callout tone="danger">{err}</Callout>}
         <Button type="submit" variant="pill" seed="authform-b2" loading={busy}>{t.login.submit}</Button>
+        {showPasskeyButton(passkeys, supported) && <Button type="button" variant="secondary" block onClick={onPasskey}>{t.login.passkey}</Button>}
         <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-foreground-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
       </form>
       <p className="mt-4 text-sm text-foreground-muted">

@@ -75,6 +75,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/auth/login": "public",
   // The second sign-in step (rule 1934): the challenge cookie names the login, rate limited with the login buckets.
   "POST /api/auth/login/mfa": "public",
+  // Passkey sign-in (rules 2417, 2418): the sign-in nonce cookie carries the challenge; limited per IP and per credential.
+  "POST /api/auth/passkey/options": "public",
+  "POST /api/auth/passkey/verify": "public",
   "POST /api/auth/signup": "public",
   "POST /api/auth/forgot": "public",
   "POST /api/auth/reset": "public",

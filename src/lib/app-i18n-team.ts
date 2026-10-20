@@ -104,7 +104,7 @@ export const arTeam = {
     saving: "يحفظ…",
     defaultName: "مفتاح مرور",
     rename: "أعد التسمية",
-    renameNamed: "أعد تسمية {name}",
+    renameNamed: "أعد التسمية {name}",
     renameSave: "احفظ الاسم",
     remove: "احذف",
     removeNamed: "احذف {name}",

@@ -542,7 +542,13 @@ describe("source scans (rule 2132, credential part)", () => {
       join("src", "app", "api", "admin", "users", "[email]", "route.ts"),
       // Customer passkeys (rule 2414): `ensureUid`, `addPasskey`, `renamePasskey`, `removePasskey` take the person lock.
       join("src", "app", "api", "account", "passkeys", "route.ts"),
+      // Passkey sign-in (rules 2414, 2422): `recordUse` writes the counter under the person lock.
+      join("src", "app", "api", "auth", "passkey", "verify", "route.ts"),
     ];
+    // The sign-in options route (rule 2417) reads no person and takes no lock: it stays off the list, and this pins that
+    // it still imports no person writer, so a lock added to it later lands here first.
+    const optionsSrc = readFileSync(join("src", "app", "api", "auth", "passkey", "options", "route.ts"), "utf8");
+    expect(optionsSrc).not.toMatch(/@\/lib\/(passkeys|person|team)"|\b(updatePerson|withPersonLock|createUser|markVerified)\(/);
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
     expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/team.ts", "src/lib/verify-email.ts"]);

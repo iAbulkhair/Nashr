@@ -585,6 +585,12 @@ describe("rule 2429 (settings half): copy in both languages; the card and the ad
     expect(appDict.en.passkeys.renameNamed).toBe("Rename {name}");
     expect(appDict.en.passkeys.removeNamed).toBe("Remove {name}");
     for (const l of ["ar", "en"] as const) for (const k of ["renameNamed", "removeNamed"] as const) expect(appDict[l].passkeys[k]).toContain("{name}");
+    // WCAG 2.5.3 (label in name): the accessible name starts with the visible label, in both languages.
+    expect(appDict.ar.passkeys.renameNamed).toBe("أعد التسمية {name}");
+    for (const l of ["ar", "en"] as const) {
+      expect(appDict[l].passkeys.renameNamed.startsWith(`${appDict[l].passkeys.rename} `)).toBe(true);
+      expect(appDict[l].passkeys.removeNamed.startsWith(`${appDict[l].passkeys.remove} `)).toBe(true);
+    }
     const src = readFileSync("src/components/app/settings/PasskeySettings.tsx", "utf8");
     expect(src).toContain('aria-label={fill(T.renameNamed, "name", p.name)}');
     expect(src).toContain('aria-label={fill(T.removeNamed, "name", p.name)}');
