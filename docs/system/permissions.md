@@ -432,6 +432,8 @@ All four new pages are `noindex` (`staffScreenMeta`) and every `/{lang}/admin` p
 
 10. Account id (2026-10-18, rules 1980-1986). Account keys are built from `acct(u)` only, scopes are parsed only by `accountOfScope`/`brandOfScope`, and an account is read by id (`getAccount`) from the session, a stored pointer or `users:all`, never from the request. A sign-in address finds its person through `login:{email}` (`getLogin`), which accepts an account only while its `email` is still that address.
 
+11. Brand selector (2026-10-20, rule 886, branch only). The `x-thakeen-brand` request header is the one request value that picks a scope, and only as a SELECTOR: `resolveSession` accepts it when it is "default" or an active brand of the session account's own `brands:{acct}` list, and builds `u.scope` from that row (`selectedBrand` in `src/lib/auth.ts`). A malformed, archived, unknown or foreign id, or an unreadable list, is a 404 from `currentUser()`/`currentUserUnverified()`; the account never changes, and the stored choice is not written. Callers that wrap `currentUser()` in a `try` must `unstable_rethrow(e)` first in the `catch` (none on 2026-10-20). Tests: `tests/brand-url-session.test.ts`.
+
 ### 3.2 Routes that accept an id, email or other locator from the request
 
 | Route | Locator | Binding to the caller |
