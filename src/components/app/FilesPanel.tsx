@@ -10,6 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
+import { Time } from "@/components/ui/Time";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 
 /**
@@ -148,7 +149,8 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
               </div>
               {editing && conflict?.name === cur.name && (
                 <div role="alert" className="mt-4 rounded-lg border border-border-strong p-3 text-sm">
-                  <p>{conflict.file ? f.stale.replace("{when}", conflict.file.updatedAt.slice(0, 16).replace("T", " ")).replace("{who}", f.by[conflict.file.by]) : f.staleGone}</p>
+                  <p>{conflict.file ? f.stale.replace("{who}", f.staleBy[conflict.file.by]) : f.staleGone}</p>
+                  {conflict.file && <p className="mt-1 text-xs text-foreground-muted">{f.staleAt} <Time value={conflict.file.updatedAt} lang={lang} style="datetime" /></p>}
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button type="button" onClick={() => save(cur.name, draft, conflict.file?.updatedAt ?? null)} className="btn btn-primary btn-sm">{f.overwrite}</button>
                     <button type="button" onClick={() => { setConflict(null); setEditing(false); r.refresh(); }} className="btn btn-secondary btn-sm">{f.loadLatest}</button>

@@ -250,10 +250,18 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
           <h2 className="font-display font-medium">{g.authority}</h2>
           <p className="mt-1 text-sm text-foreground-muted">{g.authoritySub}</p>
           <ul className="mt-3 divide-y divide-foreground/10">
-            {AGENT_IDS.map((id) => (
-              <li key={id} className="py-3">
-                <p className="font-medium">{t.agents[id].name} <span className="text-sm font-normal text-foreground-muted">· {t.agents[id].role}</span></p>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {AGENT_IDS.map((id) => {
+              // One collapsible row per agent: 8 agents × 5 selects ran to about 2,000 px on a phone. The summary counts
+              // this agent's limits, so a closed row still says what is restricted.
+              const n = TOOL_CAPS.filter((cap) => authorityOf(gov.toolPolicy, id, cap) !== "on").length;
+              return (
+              <li key={id} className="py-1">
+                <details className="group">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-2">
+                  <span className="font-medium">{t.agents[id].name} <span className="text-sm font-normal text-foreground-muted">· {t.agents[id].role}</span></span>
+                  <span className={`badge ${n ? "badge-warning" : "badge-neutral"} shrink-0`}>{n === 0 ? g.allAllowed : n === 1 ? g.limits1 : n === 2 ? g.limits2 : fill(g.limits, { n })}</span>
+                </summary>
+                <div className="mb-2 grid gap-2 sm:grid-cols-2">
                   {TOOL_CAPS.map((cap) => (
                     <label key={cap} className="flex min-w-0 items-center justify-between gap-2 text-sm">
                       <span className="min-w-0 text-foreground-muted">{g.caps[cap]}</span>
@@ -265,8 +273,10 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
                     </label>
                   ))}
                 </div>
+                </details>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </div>
         {/* After the caps it depends on. Off for a record saved before the switch existed. Turning it on asks first. */}
