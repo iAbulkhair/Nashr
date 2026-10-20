@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
+import { inputError } from "@/lib/admin-input";
+import { useAdminForm } from "./AdminForm";
 import Badge, { type BadgeTone } from "@/components/ui/Badge";
 import Callout from "@/components/ui/Callout";
 // Type only: integration-status.ts is server code (it imports model.ts); the type is erased from the bundle (rule 249).
@@ -13,7 +15,7 @@ import { Time } from "@/components/ui/Time";
 const S = {
   en: {
     title: "Integrations",
-    note: "Each service and whether it is set up, decided only by whether its environment variable names exist on the server. No value is read out or sent to this page. Read-only: change a variable in the host (hPanel) and redeploy.",
+    note: "Each service and whether it is set up, decided only by whether its environment variable names exist on the server. No value is read out or sent to this page. The service list is read-only: change a variable in the host (hPanel) and redeploy. The Passkeys row below is a runtime switch a console owner can change here.",
     loading: "Loading…", failed: "Could not load the list.",
     status: { on: "On", partial: "Incomplete", off: "Off" },
     required: "needed", optional: "optional", set: "set", missing: "missing", gatedOff: "Off in code", gatedOn: "Code switch",
@@ -36,7 +38,7 @@ const S = {
   },
   ar: {
     title: "التكاملات",
-    note: "كل خدمة وهل هي مُعدّة، ويُحكم بذلك فقط من وجود أسماء متغيرات البيئة على الخادم. لا تُقرأ أي قيمة ولا تُرسل إلى هذه الصفحة. للاطلاع فقط: غيّر المتغير في الاستضافة (hPanel) ثم أعد النشر.",
+    note: "كل خدمة وهل هي مُعدّة، ويُحكم بذلك فقط من وجود أسماء متغيرات البيئة على الخادم. لا تُقرأ أي قيمة ولا تُرسل إلى هذه الصفحة. قائمة الخدمات للاطلاع فقط: غيّر المتغير في الاستضافة (hPanel) ثم أعد النشر. صف «مفاتيح المرور» أدناه مفتاح تشغيل وإيقاف وقت التشغيل يغيّره مالك لوحة التحكم من هنا.",
     loading: "جارٍ التحميل…", failed: "تعذّر تحميل القائمة.",
     status: { on: "تعمل", partial: "ناقصة", off: "متوقفة" },
     required: "مطلوب", optional: "اختياري", set: "مضبوط", missing: "غير مضبوط", gatedOff: "متوقفة في الكود", gatedOn: "مفتاح في الكود",
@@ -65,6 +67,132 @@ type Hooks = { due: number; subscribed: number; failed: number };
 type Connections = { at: string; workspaces: number; keepAlive: KeepAlive | null; uninstallHooks: Hooks | null; rows: { id: string; name: string; connected: number; reconnect: number; composio: number }[] };
 
 const TONE: Record<IntegrationView["status"], BadgeTone> = { on: "success", partial: "warning", off: "neutral" };
+
+/** The Passkeys row's words (rule 2426); the same keys in both languages. */
+export const PASSKEYS_SWITCH_COPY = {
+  en: {
+    title: "Passkeys",
+    what: "Customer sign-in with a passkey, and adding one in Settings > Security. A runtime switch, not an environment variable. Passwords keep working either way, so turning it off locks nobody out.",
+    on: "On", off: "Off",
+    onNow: "On: customers can sign in with a passkey and add new ones.",
+    offNow: "Off: the passkey button and autofill are hidden and adding is stopped. Stored passkeys are kept, and customers can still list, rename and remove them.",
+    turnOff: "Turn passkeys off", turnOn: "Turn passkeys on",
+    offTitle: "Turn passkeys off?", onTitle: "Turn passkeys on?",
+    offMessage: "Passkey sign-in and adding stop at once for every customer. No stored passkey is changed or deleted; turning it on again brings them all back.",
+    onMessage: "Customers can sign in with their stored passkeys and add new ones again.",
+    loadFailed: "Could not read the passkeys switch.",
+    failed: "Could not change the switch.",
+    forbidden: "Only a console owner can change this switch.",
+    ownerOnly: "Only a console owner can change this switch; your role can see it only.",
+    retry: "Try again",
+  },
+  ar: {
+    title: "مفاتيح المرور",
+    what: "دخول العملاء بمفتاح مرور، وإضافة مفتاح من الإعدادات > الأمان. مفتاح تشغيل وإيقاف وقت التشغيل، وليس متغير بيئة. كلمات المرور تعمل في الحالتين، فالإيقاف لا يمنع أحدًا من الدخول.",
+    on: "تعمل", off: "متوقفة",
+    onNow: "تعمل: يستطيع العملاء الدخول بمفتاح مرور وإضافة مفاتيح جديدة.",
+    offNow: "متوقفة: زر مفتاح المرور والملء التلقائي مخفيان والإضافة متوقفة. المفاتيح المحفوظة باقية، ويستطيع العملاء عرضها وإعادة تسميتها وحذفها.",
+    turnOff: "إيقاف مفاتيح المرور", turnOn: "تشغيل مفاتيح المرور",
+    offTitle: "إيقاف مفاتيح المرور؟", onTitle: "تشغيل مفاتيح المرور؟",
+    offMessage: "يتوقف الدخول بمفتاح المرور وإضافته فورًا لكل العملاء. لا يُغيَّر ولا يُحذف أي مفتاح محفوظ، وإعادة التشغيل تعيدها كلها.",
+    onMessage: "يعود العملاء للدخول بمفاتيحهم المحفوظة وإضافة مفاتيح جديدة.",
+    loadFailed: "تعذّرت قراءة حالة مفاتيح المرور.",
+    failed: "تعذّر تغيير الحالة.",
+    forbidden: "لا يغيّر هذا المفتاح إلا مالك لوحة التحكم.",
+    ownerOnly: "لا يغيّر هذا المفتاح إلا مالك لوحة التحكم؛ دورك يتيح لك رؤيته فقط.",
+    retry: "أعد المحاولة",
+  },
+} as const;
+
+/**
+ * The Passkeys row (rule 2426, spec flow E): GET /api/admin/passkeys for the state and `may` (whether this console role
+ * may flip it); the toggle opens the console's reason form, then POSTs `{on, reason}` through `adminFetch`, which asks
+ * the second factor when the server wants it and sends the request again. Only a console owner may flip it: for anyone
+ * else the toggle is disabled with the "owner only" line, and the server answers 403 all the same. A failed read shows
+ * a retry button. `initial` (and `initialMay`, default true) skip the read (tests render the row without a server).
+ */
+export function PasskeysSwitch({ lang, initial, initialMay }: { lang: "ar" | "en"; initial?: boolean; initialMay?: boolean }) {
+  const C = PASSKEYS_SWITCH_COPY[lang];
+  const [on, setOn] = useState<boolean | null>(initial ?? null);
+  const [may, setMay] = useState(initialMay ?? true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reads, setReads] = useState(0);
+  const [askForm, formDialog] = useAdminForm(lang);
+  useEffect(() => {
+    if (initial !== undefined) return;
+    let live = true;
+    const failed = () => { if (live) setLoadFailed(true); };
+    adminFetch("/api/admin/passkeys").then((r) => r.json()).then((j) => {
+      if (!live) return;
+      if (j.ok && typeof j.on === "boolean") {
+        setOn(j.on);
+        setMay(j.may === true);
+        setLoadFailed(false);
+      } else failed();
+    }).catch(failed);
+    return () => { live = false; };
+  }, [initial, lang, reads]);
+  function retry() {
+    setLoadFailed(false);
+    setReads((n) => n + 1);
+  }
+
+  async function toggle() {
+    if (on === null || !may) return;
+    const next = !on;
+    setMsg("");
+    const v = await askForm({
+      title: next ? C.onTitle : C.offTitle,
+      message: next ? C.onMessage : C.offMessage,
+      submitLabel: next ? C.turnOn : C.turnOff,
+      destructive: !next,
+      fields: [],
+      parse: () => ({ ok: true, value: {} }),
+    });
+    if (!v) return;
+    setBusy(true);
+    try {
+      const r = await adminFetch("/api/admin/passkeys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: next, reason: v.reason }) });
+      const j = await r.json().catch(() => ({}));
+      if (j.ok && typeof j.on === "boolean") setOn(j.on);
+      else if (j.error === "forbidden" || j.error === "read_only") setMsg(C.forbidden);
+      else setMsg(typeof j.error === "string" && j.error.startsWith("reason_") ? inputError(lang, j.error) : C.failed);
+    } catch {
+      setMsg(C.failed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card card-sm" data-testid="integration-passkeys" aria-labelledby="integration-passkeys-title">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 id="integration-passkeys-title" className="font-semibold">{C.title}</h2>
+          <p className="text-xs text-foreground-muted">{C.what}</p>
+        </div>
+        {on !== null && <Badge tone={on ? "success" : "warning"} className="shrink-0">{on ? C.on : C.off}</Badge>}
+      </div>
+      {on !== null && (
+        <>
+          <p role="status" className="mt-2 text-xs">{on ? C.onNow : C.offNow}</p>
+          <button type="button" disabled={busy || !may} aria-describedby={may ? undefined : "integration-passkeys-owner-only"} onClick={() => void toggle()} className={`btn btn-sm mt-2 ${on ? "btn-danger" : "btn-primary"}`}>{on ? C.turnOff : C.turnOn}</button>
+          {!may && <p id="integration-passkeys-owner-only" className="mt-1 text-xs text-foreground-muted">{C.ownerOnly}</p>}
+        </>
+      )}
+      {loadFailed && (
+        <p role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-danger">
+          <span>{C.loadFailed}</span>
+          <button type="button" onClick={retry} className="btn btn-sm">{C.retry}</button>
+        </p>
+      )}
+      {msg && <p role="alert" className="mt-2 text-xs text-danger">{msg}</p>}
+      {formDialog}
+    </section>
+  );
+}
 
 /** Founder console, Integrations (rule 1540): GET /api/admin/integrations, names and booleans only. */
 export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
@@ -148,6 +276,7 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
           </li>
         ))}
       </ul>
+      <PasskeysSwitch lang={lang} />
       <section className="card card-sm" data-testid="integrations-connections">
         <h2 className="font-semibold">{L.health}</h2>
         {!connections ? <p className="mt-1 text-xs text-foreground-muted">{L.healthNone}</p> : (
