@@ -17,7 +17,7 @@ Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`: built after the fo
 | 2480 | A short batch's partial refund is in the commit's ledger save | `tests/paid-cron-held.test.ts` ("rule 2480") | — |
 | 2481 | No partial-refund path is logged-only | not pinned: `oweRun` on a failed partial refund needs a ledger that throws mid-batch | `tests/paid-cron-held.test.ts` |
 | 2482 | A held-items refund under a claim is refunded whole (as today) | unchanged behaviour, pinned by the existing agent-scope tests | — |
-| 2483 | A period that only answered `retry:*` gets one `run_missed` row from the next period's first run | **not built** (flows section 98 item 6) | `tests/paid-cron-held.test.ts` |
+| 2483 | A period that only answered `retry:*` gets one `run_missed` row from the next period's first run | **not built** (flows section 98 item 7) | `tests/paid-cron-held.test.ts` |
 | 2484 | `cronreport:{job}:{period}` holds counts only, never an email or scope | `tests/paid-cron-held.test.ts` ("rules 2484-2485") | — |
 | 2485 | The admin overview shows the last report beside the heartbeat | `tests/paid-cron-held.test.ts` ("rules 2484-2485": `cronStatuses`); the Usage page line is not render-tested | — |
 | 2486 | `scripts/lost-scheduled-charges.ts` lists, read only, the scheduled charges lost before this release (a routine period's unsettled charges less the one its recorded run delivered; a handoff item left `running` past its lock, marked "check"), and never lists one the new sweep handles (a receipt or a claim hold) | `tests/lost-charges.test.ts` ("rule 2486") | — |
