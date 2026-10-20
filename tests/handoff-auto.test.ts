@@ -799,9 +799,10 @@ describe("the routines cron runs one auto-run item per brand a day (rule 291)", 
     // The handoff items are listed before the routines, so they start in the first wave.
     const src = readFileSync("src/app/api/cron/routines/route.ts", "utf8");
     expect(src).toMatch(/const items: Item\[\] = \[\.\.\.handoffs\.map/);
-    // Both kinds of item get the invocation's deadline.
-    expect(src).toMatch(/runRoutine\(x\.user, x\.id, deadline\)/);
-    expect(src).toMatch(/autoRunHandoff\(x\.user, x\.id, x\.item, deadline\)/);
+    // Both kinds of item get the invocation's deadline, and run on the account read again at their start (rule 2506).
+    expect(src).toMatch(/runAsAccount\(x\.ref, \(u\) => /);
+    expect(src).toMatch(/runRoutine\(u, x\.id, deadline\)/);
+    expect(src).toMatch(/autoRunHandoff\(u, x\.id, x\.item, deadline\)/);
     await settle();
   });
 
