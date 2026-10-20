@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import * as listRoute from "@/app/api/workspaces/route";
 import * as switchRoute from "@/app/api/workspaces/switch/route";
@@ -9,6 +10,7 @@ import { getPerson, updatePerson } from "@/lib/person";
 import { deleteMembership, withAccountTeamLock } from "@/lib/team";
 import { OWNED_CAP } from "@/lib/workspaces";
 import { wsHandle } from "@/lib/ws-handle";
+import { switchTarget } from "@/lib/ws-path";
 import { addShadowMembership, json, newMember, newUser, signIn } from "./helpers/session";
 
 vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
@@ -190,5 +192,30 @@ describe("rule 2112: switch", () => {
     const before = await session(token);
     expect((await doSwitch(wsHandle(shadow.aid))).status).toBe(401);
     expect(await session(token)).toEqual(before);
+  });
+});
+
+describe("rule 2112: the switcher", () => {
+  const h = "w_aaaaaaaaaaaaaaaa";
+  const to = "/ar/app/w/w_bbbbbbbbbbbbbbbb";
+  it("goes to the same page of the new workspace; a record's query and a person page fall back", () => {
+    expect(switchTarget(to, `/ar/app/w/${h}/tasks`)).toBe(`${to}/tasks`);
+    expect(switchTarget(to, `/ar/app/w/${h}/settings/brands`)).toBe(`${to}/settings/brands`);
+    expect(switchTarget(to, `/ar/app/w/${h}`)).toBe(to);
+    // usePathname() carries no query: a conversation (?conv=) opens the chat section, never the other account's record.
+    expect(switchTarget(to, `/ar/app/w/${h}/chat`)).toBe(`${to}/chat`);
+    expect(switchTarget(to, "/ar/app/workspaces")).toBe(to);
+    expect(switchTarget(to, "/ar/app/tasks")).toBe(to);
+  });
+
+  it("is drawn only in a shell with a handle and two workspaces or more, switches through the route and a full load", () => {
+    const src = readFileSync("src/components/app/WorkspaceSwitcher.tsx", "utf8");
+    expect(src).toContain('if (!handle || !rows || rows.length < 2) return null;');
+    expect(src).toContain('fetch("/api/workspaces/switch"');
+    expect(src).toContain("window.location.assign(switchTarget(j.href, path))");
+    expect(src).toContain("j.href.startsWith(appHref(lang))");
+    expect(src).not.toMatch(/router\.(push|replace)/);
+    const rail = readFileSync("src/components/app/Sidebar.tsx", "utf8");
+    expect(rail).toMatch(/const top = \(bell: boolean\) => \(\s*<>[\s\S]*?<WorkspaceSwitcher t=\{t\.workspaces\}/);
   });
 });

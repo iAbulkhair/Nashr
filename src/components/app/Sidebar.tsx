@@ -17,6 +17,7 @@ import { settingsHref } from "@/lib/settings-nav";
 import Sheet from "@/components/ui/Sheet";
 import Menu from "@/components/ui/Menu";
 import NotificationCenter from "./NotificationCenter";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import { useAppHref, useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
 
 /** An agent's avatar sits on the agent's own colour; Faris and Majed are dark fills, so their letter is paper. */
@@ -93,6 +94,9 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   // The rail is drawn twice (the desktop aside, and the phone sheet while open), so every id carries the copy's prefix `p`.
   /** The brand you work on, and the bell beside it (outside the scrolling list, so its panel is never clipped). In the sheet the bell stays in the phone header. */
   const top = (bell: boolean) => (
+    <>
+    {/* Above the brand: the workspace switcher (multi-workspace M2), drawn only with two workspaces or more. */}
+    <WorkspaceSwitcher t={t.workspaces} lang={lang} onNavigate={() => setOpen(false)} />
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
       <Link href={settingsHref(to, "brands")} onClick={() => setOpen(false)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 hover:bg-background-muted/60">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[1.5px] border-border-strong bg-background-muted font-display text-lg font-bold text-foreground" aria-hidden>{initial}</span>
@@ -100,6 +104,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
       </Link>
       {bell && <NotificationCenter t={t} lang={lang} align="start" />}
     </div>
+    </>
   );
 
   const nav = (p: string) => (

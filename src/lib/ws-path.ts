@@ -162,3 +162,14 @@ export function inWorkspace(href: string, handle: string | null | undefined): st
   if (!m || !asHandle(handle) || splitWsPath(`/${m[1]}/app${m[2] ?? ""}`)) return href;
   return appHref(m[1], (m[2] ?? "") + (m[3] ?? ""), handle);
 }
+
+/**
+ * Where the switcher goes after a switch (spec sections 7 "Switching" and 16): the new workspace's link `href` (as the
+ * switch route answered it) at the page now on show. Record ids ride in the query (`?conv=`, `?task=`), never in the
+ * path, so the query is dropped and a page showing a record falls back to its section; a person page or any path
+ * outside `w/{handle}` opens the workspace's home.
+ */
+export function switchTarget(href: string, pathname: string): string {
+  const rest = splitWsPath(pathname)?.rest ?? "";
+  return href + rest;
+}
