@@ -61,14 +61,15 @@ type Store = {
   /**
    * SET key value NX EX ttl: stores the value only when the key is absent, in one command. True when this caller wrote
    * it, so of two overlapping writers exactly one wins (a "seen" marker claimed, not read then written). Without a TTL
-   * (or 0) the key gets no expiry (the passkey reverse index, rule 2404).
+   * (`undefined` only) the key gets no expiry (the passkey reverse index, rule 2404). A TTL of 0, NaN, a negative or an
+   * infinite number throws: a claim marker whose TTL was mis-computed fails loud instead of becoming permanent.
    */
   setNx(key: string, value: unknown, ttlSeconds?: number): Promise<boolean>;
   /**
    * SET key value XX EX ttl: overwrites the value only while the key exists, in one command. True when it wrote. A writer
    * that read a record before someone deleted it cannot bring the record back (a handoff pushed off its capped index).
-   * Without a TTL (or 0) the value is written with no expiry, clearing any it had, as SET XX without EX does (the passkey
-   * set's counter write, rule 2422).
+   * Without a TTL (`undefined` only) the value is written with no expiry, clearing any it had, as SET XX without EX does
+   * (the passkey set's counter write, rule 2422). A TTL of 0, NaN, a negative or an infinite number throws, as `setNx`.
    */
   setXx(key: string, value: unknown, ttlSeconds?: number): Promise<boolean>;
   unlock(key: string): Promise<void>;
@@ -91,6 +92,16 @@ type Store = {
 };
 
 /** A lock owner's token. Never valid JSON (the Upstash client parses what it reads back), never guessable. */
+/**
+ * The optional TTL of `setNx`/`setXx`: `undefined` is "no expiry"; anything else must be a positive finite number of
+ * seconds, else it throws before the store is touched (Task 3 review minor 6: a 0 or NaN never silently means forever).
+ */
+function optTtl(ttl: number | undefined): number | undefined {
+  if (ttl === undefined) return undefined;
+  if (typeof ttl !== "number" || !Number.isFinite(ttl) || ttl <= 0) throw new Error("db_bad_ttl");
+  return ttl;
+}
+
 const lockToken = () => `lk_${randomBytes(12).toString("hex")}`;
 /** Compare-and-delete in one step on the server: GET then DEL from here could delete a lock someone took in between. */
 const UNLOCK_OWNED = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end return 0`;
@@ -207,10 +218,12 @@ function upstash(): Store | null {
       return (await r.set(key, "1", { nx: true, ex: ttl })) === "OK";
     },
     async setNx(key, value, ttl) {
-      return (await r.set(key, value, ttl ? { nx: true, ex: ttl } : { nx: true })) === "OK";
+      const ex = optTtl(ttl);
+      return (await r.set(key, value, ex === undefined ? { nx: true } : { nx: true, ex })) === "OK";
     },
     async setXx(key, value, ttl) {
-      return (await r.set(key, value, ttl ? { xx: true, ex: ttl } : { xx: true })) === "OK";
+      const ex = optTtl(ttl);
+      return (await r.set(key, value, ex === undefined ? { xx: true } : { xx: true, ex })) === "OK";
     },
     async unlock(key) {
       await r.del(key);
@@ -401,20 +414,22 @@ function memory(): Store {
     },
     async setNx(key, value, ttl) {
       // Check and write with no await between them: one caller wins, as with Redis.
+      const ex = optTtl(ttl);
       live(key);
       if (m.kv.has(key)) return false;
       m.kv.set(key, copy(value));
-      if (ttl) exp.set(key, Date.now() + ttl * 1000);
+      if (ex !== undefined) exp.set(key, Date.now() + ex * 1000);
       else exp.delete(key);
       return true;
     },
     async setXx(key, value, ttl) {
       // Check and write with no await between them, as with Redis.
+      const ex = optTtl(ttl);
       live(key);
       if (!m.kv.has(key)) return false;
       m.kv.set(key, copy(value));
       owners.delete(key);
-      if (ttl) exp.set(key, Date.now() + ttl * 1000);
+      if (ex !== undefined) exp.set(key, Date.now() + ex * 1000);
       else exp.delete(key);
       return true;
     },
