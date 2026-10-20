@@ -63,7 +63,7 @@ describe("rule 2550: what one activity row says about its agent", () => {
     expect(rowState(row("handoff_run", { outcome: "failed:timeout" }))).toBe("stuck");
     expect(rowState(row("handoff_run"))).toBe("done");
     for (const k of ["generated", "published", "render_done", "routine_ran", "file_written"] as const) expect(rowState(row(k))).toBe("done");
-    expect(rowState(row("approved"))).toBeNull();
+    expect(rowState(row("decision"))).toBeNull();
   });
 });
 
@@ -147,7 +147,7 @@ describe("rule 2557: the page reads the state in its one round of reads", () => 
   it("adds the activity rows to the existing Promise.all under sc(u) and renders the board before the inbox", () => {
     const page = read("src/app/[lang]/app/page.tsx");
     expect(page).toMatch(/await Promise\.all\(\[listTasks\(sc\(u\)\)[^\n]*recentActivity\(sc\(u\), STATUS_ROWS\)\]\)/);
-    expect(page).toMatch(/agentStatuses\(activity, tasks\.filter\(isWaiting\), Date\.now\(\)\)/);
+    expect(page).toMatch(/agentStatuses\(activity, tasks\.filter\(isWaiting\)\)/);
     expect(page.indexOf("<AgentStatusBoard")).toBeLessThan(page.indexOf("<Inbox"));
   });
 });
@@ -296,7 +296,7 @@ describe("rules 2565-2566: who gets a push, for what, and how often", () => {
     const memberEp = ep();
     await sub(memberEp);
     await seenRoute.POST(); // the member has the app open
-    expect(await pushForActivity(s, [row("published"), row("image_started"), row("approved")])).toBe(0);
+    expect(await pushForActivity(s, [row("published"), row("image_started"), row("decision")])).toBe(0);
     expect(safeFetch).not.toHaveBeenCalled();
     expect(await pushForActivity(s, [row("generated")])).toBe(1);
     expect(safeFetch.mock.calls.map((c) => c[0])).toEqual([ownerEp]);

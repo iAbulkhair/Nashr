@@ -94,7 +94,7 @@ export function deriveStatus(agent: AgentId, rows: readonly Activity[], waiting:
  * are the brand's newest activity rows in any order; `waitingTasks` the brand's drafts that wait for the owner
  * (`isWaiting`), each counted for the agent that owns its type.
  */
-export function agentStatuses(rows: readonly Activity[], waitingTasks: readonly { type: TaskType }[], now: number): AgentStatus[] {
+export function agentStatuses(rows: readonly Activity[], waitingTasks: readonly { type: TaskType }[], now: number = Date.now()): AgentStatus[] {
   const sorted = [...rows].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const waiting = new Map<AgentId, number>();
   for (const t of waitingTasks) {

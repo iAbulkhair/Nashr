@@ -34,7 +34,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // instinct as the project's rule against `await db.*` inside a loop, just without the loop.
   const [tasks, brief, connections, journey, off, activity] = await Promise.all([listTasks(sc(u)), latestBrief(sc(u)), listConnections(sc(u)), loadJourney(sc(u), u.email, { brand }), offModels(), recentActivity(sc(u), STATUS_ROWS)]);
   // Each agent's state (rules 2550-2555): derived from the activity rows and the waiting drafts read above, never stored.
-  const statuses = agentStatuses(activity, tasks.filter(isWaiting), Date.now());
+  const statuses = agentStatuses(activity, tasks.filter(isWaiting));
   // The device switch shows only while push is on and for a person's own session (never a founder's view, rule 2562).
   const publicKey = u.actor?.kind === "owner" || u.actor?.kind === "member" ? pushPublicKey() : null;
   // The media models on offer (keys, Blob store, MEDIA_MODELS_ON, not switched off by the breaker) and the pause, read

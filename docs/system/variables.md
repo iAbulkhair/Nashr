@@ -154,7 +154,7 @@ The ops agent (agents/thakeen-ops/, docs/system/flows.md section 99) runs on Cla
 
 ## 5c. Phone notifications (Web Push, 2026-10-20, branch `claude/agent-status-push-0d7320`, rules 2560-2568)
 
-Phone notifications when an agent waits for the owner or is stuck and the owner is away from the app (docs/system/flows.md section 101). Both names are read per request by `pushConfig` in `src/lib/push.ts` and must form one P-256 key pair; with either missing, malformed or not matching, push is off: no switch on the app page, no heartbeat, `POST /api/push` answers 503 and nothing is ever sent. They add two names to the count in section 6.
+Phone notifications when an agent waits for the owner or is stuck and the owner is away from the app (docs/system/flows.md section 103). Both names are read per request by `pushConfig` in `src/lib/push.ts` and must form one P-256 key pair; with either missing, malformed or not matching, push is off: no switch on the app page, no heartbeat, `POST /api/push` answers 503 and nothing is ever sent. They add two names to the count in section 6.
 
 | Name | Enables | Read in | Without it | Secret |
 |---|---|---|---|---|
