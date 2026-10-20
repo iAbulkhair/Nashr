@@ -265,6 +265,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/media/hook/[provider]": "public",
   "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
   "POST /api/shopify/compliance": "public", // Shopify compliance webhooks: HMAC only, rules 2168-2171
+  // The ops agent (rules 2380-2389): no session; per-IP allow() first, then a sameSecret token (OPS_AGENT_TOKEN, or
+  // Telegram's webhook secret), 401 while unset. The summary is counts only; the press runs only OPS_ACTIONS, once.
+  "POST /api/ops/telegram": "public",
+  "POST /api/ops/telegram/callback": "public",
 };
 
 /**
@@ -372,6 +376,7 @@ const READS: Record<string, Gate> = {
   "GET /api/oauth/resource": "public-read",
   "GET /llms.txt": "public-read", // site copy for language models, static at build time (rule 698)
   "GET /api/founding/seats": "public-read", // seats left only, closed while payment is off; rate limited per IP (rule 1711)
+  "GET /api/ops/summary": "public-read", // the ops agent's counts (rules 2380-2382): OPS_AGENT_TOKEN bearer (sameSecret) after a per-IP allow(); no email, name or workspace
   "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
   "GET /api/staging-access": "public-read", // a bare 404, so the door shows nothing off staging (rule 675)
   "HEAD /api/staging-access": "public-read",

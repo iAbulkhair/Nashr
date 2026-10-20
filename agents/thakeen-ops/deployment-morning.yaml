@@ -1,0 +1,21 @@
+# The morning report, 07:00 Riyadh time every day (rule 2390). Always sends one report. Each run's session is capped at
+# $1 (100 US cents) of list cost.
+name: thakeen-ops-morning
+agent: ./agent.md
+environment_id: ./environment.yaml
+vault_ids: []          # the vlt_... id from claude-lock.json after the first apply (README.md, step 3)
+schedule:
+  type: cron
+  expression: "0 7 * * *"
+  timezone: Asia/Riyadh
+budget:
+  type: limit
+  max_list_cost:
+    amount: "100"
+    currency: USD
+initial_events:
+  - type: user.message
+    content:
+      - type: text
+        text: |
+          نوع التشغيل: تقرير الصباح. نفّذ الفحوصات كلها، واقرأ قائمة مهام المالك، وأرسل تقرير الصباح.
