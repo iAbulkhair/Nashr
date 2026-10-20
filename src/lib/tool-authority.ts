@@ -1,7 +1,7 @@
 import { AGENT_IDS, isAgentId, type AgentId } from "./agents";
 
 /**
- * Agent tool authority (rules 2330-2339): what each agent may do from a conversation, set by the owner on the Governance
+ * Agent tool authority (rules 2430-2439): what each agent may do from a conversation, set by the owner on the Governance
  * page and enforced in code. The idea is OpenDots' per-agent tool switches ("Enabled" and "Ask first", CopilotKit/OpenDots
  * src/client/ConnectionsSection.tsx), fitted to Thakeen: the switches group the chat tools that act into five
  * capabilities, and "ask" reuses the spend card (src/lib/spend-proposals.ts) instead of a second approval system.

@@ -36,7 +36,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   // A 403 refusal (rule 2001) stays on the page for the person to act on; a plain failure is a toast.
   const [err, setErr] = useState("");
   const [ask, confirmDialog] = useConfirm();
-  // Rule 2341: a save refused because the file changed (or was deleted) since the editor opened. The typed text stays in
+  // Rule 2441: a save refused because the file changed (or was deleted) since the editor opened. The typed text stays in
   // the editor; the person saves it over the newer file (with that file's time as the new base) or drops it.
   const [conflict, setConflict] = useState<{ name: string; file: WFile | null } | null>(null);
   const isLocked = (name: string) => locked.includes(name);
@@ -74,7 +74,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   }
 
   /**
-   * `baseAt` (rule 2341): the time of the file the editor opened, or null for a new file, so the server writes only while
+   * `baseAt` (rule 2441): the time of the file the editor opened, or null for a new file, so the server writes only while
    * that is still so. A refused save keeps the editor open with the text in it.
    */
   async function save(name: string, content: string, baseAt: string | null) {

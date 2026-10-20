@@ -152,7 +152,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
-      // The Sunday plan's run receipts (rule 2376) for this week and the last: they name the scope and live 8 days.
+      // The Sunday plan's run receipts (rule 2476) for this week and the last: they name the scope and live 8 days.
       ...[0, 7].map((d) => globalKey.runReceipt(weeklyClaim(s, weekStartUtc(new Date(Date.now() - d * 864e5))))),
       // When someone last pressed Refresh on the site or social results, which Dana's routine counts (8 days, rule 747).
       OWNER_SYNC_KEY(s),

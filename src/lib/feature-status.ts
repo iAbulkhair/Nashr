@@ -2,7 +2,7 @@ import { CLAUDE_PAUSED } from "./model";
 import { integrationsView, type IntegrationView } from "./integration-status";
 
 /**
- * Rules 2350-2352: what Thakeen has switched on for every customer, shown on the customer's Connections page, so a
+ * Rules 2450-2452: what Thakeen has switched on for every customer, shown on the customer's Connections page, so a
  * feature that is not on yet says so before the owner tries it (OpenDots' setup state, docs/OpenDots_Adoption.md). Built
  * from the founder page's own presence checks (`integrationsView`, src/lib/integration-status.ts): on or off only. A
  * customer never sees a variable name, a partial state or a gate's wording; those stay on the founder page.

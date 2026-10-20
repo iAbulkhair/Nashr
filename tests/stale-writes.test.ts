@@ -8,7 +8,7 @@ import * as filesRoute from "@/app/api/files/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
 
 /**
- * Rules 2340-2341: a person's edit made from an older view never silently replaces newer text (OpenDots'
+ * Rules 2440-2441: a person's edit made from an older view never silently replaces newer text (OpenDots'
  * `expectedRevision`, docs/OpenDots_Adoption.md). The inbox's text edit carries the card's version; the Files page's save
  * carries the time of the file it opened, or null for a new file. Without them both routes behave as before.
  */
@@ -27,7 +27,7 @@ async function owner(prefix: string): Promise<User> {
   return u;
 }
 
-describe("rule 2340: an inbox text edit sent with the card's version is saved only while that is still the item's version", () => {
+describe("rule 2440: an inbox text edit sent with the card's version is saved only while that is still the item's version", () => {
   it("a stale version is 409 changed with the item as it is now; the current version saves; no version saves as before", async () => {
     const u = await owner("sw-task");
     const t: Task = { id: "b1b2c3d4e5f60718", type: "social", channel: "instagram", title: "قهوة", body: "النص الأول", status: "pending", createdAt: new Date().toISOString(), lang: "ar" };
@@ -47,7 +47,7 @@ describe("rule 2340: an inbox text edit sent with the card's version is saved on
   });
 });
 
-describe("rule 2341: a Files save sent with a base is written only while the file is still that one", () => {
+describe("rule 2441: a Files save sent with a base is written only while the file is still that one", () => {
   it("stale when it changed since, exists when a new name is taken, and the current base saves", async () => {
     const u = await owner("sw-file");
     const first = await put({ name: "notes.md", content: "v1", baseAt: null });

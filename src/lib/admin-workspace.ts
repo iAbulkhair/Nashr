@@ -27,7 +27,7 @@ import { lastActive } from "./track";
 export type WorkspaceMember = { email: string; name: string; role: "admin" | "member"; invitedBy: string; acceptedAt: string; paused: boolean; lastSignInAt: string | null };
 export type WorkspaceInvite = { email: string; role: "admin" | "member"; invitedBy: string; createdAt: string; expiresAt: string };
 /**
- * `limits` (rule 2360): the brand's agent tool authority (src/lib/tool-authority.ts) as its restrictions only, each agent
+ * `limits` (rule 2460): the brand's agent tool authority (src/lib/tool-authority.ts) as its restrictions only, each agent
  * and capability that is `ask` or `off`; empty means every agent may do everything. Read from the brand's own stored
  * scope, so support can answer "why won't Noor publish?" without impersonating.
  */

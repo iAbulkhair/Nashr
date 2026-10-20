@@ -118,7 +118,7 @@ export const isRoutineId = (v: unknown): v is RoutineId => typeof v === "string"
 export const routineOn = (s: Pick<Schedule, "routines">, id: RoutineId): boolean => s.routines?.[id] !== false;
 
 /** What the Scheduled tasks page shows per routine; the page renders it on the server. */
-export type RoutineView = { id: RoutineId; agent: AgentId; type: TaskType; cadence: Cadence; last?: string; /** this period's run was held for the owner (rule 2379) */ held?: boolean };
+export type RoutineView = { id: RoutineId; agent: AgentId; type: TaskType; cadence: Cadence; last?: string; /** this period's run was held for the owner (rule 2479) */ held?: boolean };
 
 const lastKey = (scope: string, id: RoutineId) => `routinelast:${scope}:${id}`;
 const lockKey = (scope: string, id: RoutineId) => `routinelock:${scope}:${id}`;
@@ -165,7 +165,7 @@ export const routineSkipKeys = (scope: string) => ROUTINES.flatMap((r) => recent
 /** The run notifications' fingerprints that can still be alive for one brand scope, for `wipeAccount`. */
 export const routineFingerprints = (scope: string) => ROUTINES.flatMap((r) => recentPeriods(r.cadence).flatMap((p) => [runFingerprint(scope, r.id, p), runClaim.heldNotice(routineClaim(scope, r.id, p))]));
 
-/** The routines whose run of this period the cron held for the owner (rule 2379), in one round. */
+/** The routines whose run of this period the cron held for the owner (rule 2479), in one round. */
 export async function routinesHeld(scope: string, now: Date = new Date()): Promise<Partial<Record<RoutineId, true>>> {
   const rows = await readRuns(ROUTINES.map((r) => routineClaim(scope, r.id, periodOf(r.cadence, now))));
   return Object.fromEntries(ROUTINES.flatMap((r, i) => (rows[i]?.state === "held" ? [[r.id, true as const]] : [])));
@@ -224,7 +224,7 @@ export async function runRoutine(user: User, id: RoutineId, deadline?: number, o
   // What happened, for the activity log; a throw is "error" (the charge was refunded first, see routineFor).
   let outcome = "error";
   try {
-    // The owner's Run (rule 2379) is only for a run the cron held: any other routine waits for its schedule.
+    // The owner's Run (rule 2479) is only for a run the cron held: any other routine waits for its schedule.
     if (opts.resume && (await readRun(routineClaim(scope, id, periodOf(r.cadence))))?.state !== "held") return (outcome = "not_held");
     outcome = await routineFor(user, scope, brand, r, deadline, opts.resume === true);
     return outcome;
@@ -270,7 +270,7 @@ export async function holdBatch(scope: string, hold: string, count: number, cap:
 }
 
 /**
- * The claim one routine's run in one period is charged under (rules 2370, 2376): `chargeOnce` takes it at most once, a
+ * The claim one routine's run in one period is charged under (rules 2470, 2476): `chargeOnce` takes it at most once, a
  * run killed after its charge leaves a hold the daily sweep resolves, and the run receipt is kept under the same claim.
  */
 export const routineClaim = (scope: string, id: RoutineId, period: string) => runClaim.routine(scope, id, period);
@@ -288,7 +288,7 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine, d
   const period = periodOf(r.cadence, new Date(now));
   const ttl = periodDays(r.cadence) * 86400;
   const claim = routineClaim(scope, r.id, period);
-  // The run receipt (rules 2376-2379), before the weekly-cap hold and the charge, under the routine's lock. A run of this
+  // The run receipt (rules 2476-2479), before the weekly-cap hold and the charge, under the routine's lock. A run of this
   // period killed after it began is held for the owner, never run again by the cron; the owner's Run (`resume`) uses the
   // same claim, so a charge it took is reused.
   const run = await beginRun(claim, ttl, { resume });
@@ -320,7 +320,7 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine, d
   const note = routineNote(r);
   // Charged to the agent that owns the type (r.agent, pinned equal in tests/routines.test.ts), under its cap; a refusal
   // or a refund settles the attempt above.
-  // Charged once per claim (rule 2370). The last-run marker and the receipt are written inside the batch's refund guard
+  // Charged once per claim (rule 2470). The last-run marker and the receipt are written inside the batch's refund guard
   // (`commit`), with its items: a run killed before them is refunded or held, one killed after them never runs again.
   const b = await generateBatch(user, scope, { ...(deadline !== undefined ? { deadline } : {}),
     type: r.type, notes: note, brief: r.id, source: "scheduled", via: "routine", gov, brand, settle, once: claim,

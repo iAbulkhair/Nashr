@@ -35,7 +35,7 @@ export async function PUT(req: Request) {
   return NextResponse.json({ ok: true, schedule: await saveSchedule(sc(u), patch) });
 }
 /**
- * POST {run: "weekly"|"daily"} → run now; {run: "routine", id} → run a routine the cron held (rule 2379). Both paid runs are
+ * POST {run: "weekly"|"daily"} → run now; {run: "routine", id} → run a routine the cron held (rule 2479). Both paid runs are
  * the login's explicit request (`resume`): a run of this period that was killed after it began runs on its own claim, so a
  * charge it took is reused and never taken twice. A routine that was not held answers `not_held` and runs nothing.
  */

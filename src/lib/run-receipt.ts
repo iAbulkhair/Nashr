@@ -2,7 +2,7 @@ import { db } from "./db";
 import { globalKey } from "./keys";
 
 /**
- * Run receipts for paid scheduled work (rules 2376-2379, spec docs/superpowers/specs/2026-10-20-paid-cron-held-for-review-design.md
+ * Run receipts for paid scheduled work (rules 2476-2479, spec docs/superpowers/specs/2026-10-20-paid-cron-held-for-review-design.md
  * section 2.3). OpenDots marks a background run whose lease ran out `interrupted` and never retries it on its own; Thakeen
  * does the same with one receipt per claim (`weekly:{scope}:{week}`, `routine:{scope}:{id}:{period}`):
  *
@@ -15,7 +15,7 @@ import { globalKey } from "./keys";
  *   when nobody ran it (src/lib/hold-sweep.ts).
  *
  * `owed`: credits a delivered batch should have given back (a short batch's share, rule 2276) whose refund could not be
- * written; the daily sweep gives them back from the claim's hold before keeping it (rule 2380).
+ * written; the daily sweep gives them back from the claim's hold before keeping it (rule 2480).
  *
  * The key is built from the claim, which code builds from the caller's own scope, never from a request.
  */
@@ -66,7 +66,7 @@ export const refundedRun = (claim: string, ttlS: number) => db.set(key(claim), {
 export const clearRun = (claim: string) => db.del(key(claim));
 
 /**
- * Credits a delivered batch owes back (rule 2380): its partial refund could not be written. Added to the receipt for the
+ * Credits a delivered batch owes back (rule 2480): its partial refund could not be written. Added to the receipt for the
  * daily sweep; never throws (it is the fallback of a failed refund). A claim without a receipt (a handoff item) gets one
  * that holds only what is owed.
  */

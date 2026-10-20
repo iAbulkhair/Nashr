@@ -485,7 +485,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     } catch (e) {
       // The error's name and where the charge was booked (agent, month, the top-up lots' ids), never the owner's email or text.
       log.error(held > 0 ? "agent scope partial refund failed" : "short batch refund failed", { error: e, agent: receipt.agent, month: receipt.month, lots: receipt.from?.lots.map((l) => l.id) ?? [], share, ...(short ? short : {}) });
-      // Rule 2380: a claim's share is not lost. The run's receipt records it, and the daily sweep gives it back from the
+      // Rule 2480: a claim's share is not lost. The run's receipt records it, and the daily sweep gives it back from the
       // claim's hold before keeping the hold (src/lib/hold-sweep.ts). A batch without a claim keeps today's behaviour.
       if (opts.once) await oweRun(opts.once, share, OWED_TTL_S);
     }

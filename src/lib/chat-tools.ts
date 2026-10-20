@@ -162,7 +162,7 @@ const FREE_SLOTS_DEF = SEC_TOOL_DEFS.find((d) => d.name === "free_slots")!;
 export const FREE_SLOTS_TOOL: Anthropic.Tool = { name: FREE_SLOTS_DEF.name, description: FREE_SLOTS_DEF.description, input_schema: FREE_SLOTS_DEF.schema };
 /**
  * The tools of one agent's turn: every agent's, plus the lead's proposal tool when Majed is talking and Reem's away card,
- * meeting follow-up and open times when she is. With the owner's `policy` (Governance, rule 2331), a tool whose capability
+ * meeting follow-up and open times when she is. With the owner's `policy` (Governance, rule 2431), a tool whose capability
  * is `off` for this agent is not offered at all; `runTool` refuses it too, from the setting read at the moment of the call.
  * Without a policy (the offered-tool check in `runTool`, tests) it is the agent's full list.
  */

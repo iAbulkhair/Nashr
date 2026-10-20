@@ -260,7 +260,7 @@ describe("rule 1018: no store command in a loop", () => {
   it("the heartbeats are read with one mget and written with one set per job", () => {
     const src = readFileSync("src/lib/cron-heartbeat.ts", "utf8");
     expect(src.match(/await db\./g)?.length).toBe(2);
-    // One mget for every heartbeat and, since rule 2385, every job's last report in the same command.
+    // One mget for every heartbeat and, since rule 2485, every job's last report in the same command.
     expect(src).toMatch(/db\.mget<[^>]+>\(\[\.\.\.CRON_JOBS\.map\(key\), \.\.\.CRON_JOBS\.map\(/);
     const route = readFileSync("src/app/api/health/route.ts", "utf8");
     expect(route).not.toMatch(/for \(|\.map\(async|forEach/);

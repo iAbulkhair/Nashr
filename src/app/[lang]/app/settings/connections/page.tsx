@@ -19,7 +19,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!u) redirect(`/${lang}/app/login`);
   // Connecting, disconnecting, keys, page and ad-account choice and product import are owner/admin (the /api/connect
   // routes check the same `can()`); asking for an integration is open to every role.
-  // Rule 2351: what Thakeen has switched on for every account, on or not yet, from presence checks only (no names).
+  // Rule 2451: what Thakeen has switched on for every account, on or not yet, from presence checks only (no names).
   return (
     <>
       <FeatureStatus lang={lang} features={customerFeatures()} />

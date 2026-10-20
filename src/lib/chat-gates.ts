@@ -54,7 +54,7 @@ export const scopeOf = (ctx: ToolCtx): { agentScope?: AgentScopeModes } => (ctx.
  * (src/lib/spend-proposals.ts), at most `SPEND_CARDS_PER_REPLY` a reply; over MCP, where no card can be shown, it is
  * refused. A call outside a chat turn (no `ownerMsg`: tests, the onboarding run) keeps its answer. Null: run the tool.
  *
- * `ask` (rule 2333): the owner set this capability to "ask first" for the talking agent (src/lib/tool-authority.ts). Then
+ * `ask` (rule 2433): the owner set this capability to "ask first" for the talking agent (src/lib/tool-authority.ts). Then
  * the owner's words do not matter: nothing runs from the model's call, in or outside a chat turn. In the app the card is
  * stored (with `reason: "ask"`, so it says why); over MCP, or with no card list, it is refused.
  */

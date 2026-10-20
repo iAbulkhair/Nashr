@@ -113,7 +113,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     // The owner's tool authority, in the workspace block (the brand file's block): one line naming what is off or ask-first.
     const authority = policyNote(gov.toolPolicy, agentId);
     if (authority) sys[1] = { ...sys[1], text: sys[1].text + authority };
-    // The owner's tool authority (rule 2331): a capability switched off for this agent is not offered in this turn.
+    // The owner's tool authority (rule 2431): a capability switched off for this agent is not offered in this turn.
     const tools = toolsFor(agentId, gov.toolPolicy);
     // The per-message ceiling (CHAT_TURN_MAX_USD), checked in code before every call (src/lib/chat-budget.ts). The first
     // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a

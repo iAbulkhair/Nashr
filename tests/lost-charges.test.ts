@@ -10,14 +10,14 @@ import { TASK_COST } from "@/lib/tasks";
 import { lostCharges } from "../scripts/lost-scheduled-charges";
 
 /**
- * Rule 2386: the founder's read-only list of scheduled charges lost before the claim-and-receipt release (founder decision
+ * Rule 2486: the founder's read-only list of scheduled charges lost before the claim-and-receipt release (founder decision
  * 2026-10-20: refund by hand, no scan that writes). A period's unsettled routine charges, less the one its recorded run
  * delivered, and a handoff item left running past its lock; anything the new release's sweep handles (a receipt or a claim
  * hold) is never listed, so it cannot be refunded twice.
  */
 const mem = () => (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown> } }).__nashrMem;
 
-describe("rule 2386: the lost scheduled charges list", () => {
+describe("rule 2486: the lost scheduled charges list", () => {
   it("lists undelivered routine charges and stale running handoff items, skips what the sweep handles, and writes nothing", async () => {
     const u = await newUser("lost");
     const week = periodOf("weekly");

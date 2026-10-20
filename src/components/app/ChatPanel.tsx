@@ -545,7 +545,7 @@ export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p:
     if (r.status === 404 || r.status === 410) return setState("gone");
     if (r.status === 429) return setState("slow");
     if (j.error === "claim_busy") return setState("busy");
-    // The owner switched this off for the agent in Governance since the card was made (rule 2334): nothing ran.
+    // The owner switched this off for the agent in Governance since the card was made (rule 2434): nothing ran.
     if (j.error === "revoked") return setState("revoked");
     if (j.error === "model_paused" || j.error === "too_late") return setState("paused");
     // Credits, the trial or an agent's cap: the app's own limit dialog, as for any batch. The card stays open.
@@ -581,7 +581,7 @@ export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p:
         <dd className="tnum min-w-0" dir="auto">{ar ? `${p.credits} كريدت` : `${p.credits} credit${p.credits === 1 ? "" : "s"}`}</dd>
       </dl>
       <p className="px-4 pb-2 text-xs text-foreground-muted">{p.reason === "ask"
-        // Rule 2333: the owner set this to ask first for the agent in Governance, whatever the message said.
+        // Rule 2433: the owner set this to ask first for the agent in Governance, whatever the message said.
         ? (ar ? "لم يُنفَّذ شيء ولم يُخصم أي كريدت: ضبطتَ في الحوكمة أن يستأذنك هذا الوكيل قبل هذا العمل. اضغط «نفّذ» إن كنت تريده." : "Nothing ran and no credits were used: in Governance you set this agent to ask you first for this work. Press Run if you want it.")
         : (ar ? "لم يُنفَّذ شيء ولم يُخصم أي كريدت لأن رسالتك لم تطلب هذا صراحةً. اضغط «نفّذ» إن كنت تريده." : "Nothing ran and no credits were used, because your message did not ask for this in words. Press Run if you want it.")}</p>
       <footer className="flex flex-wrap items-center gap-2 border-t border-foreground/5 px-3 py-2 text-xs">

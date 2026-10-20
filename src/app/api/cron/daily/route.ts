@@ -100,7 +100,7 @@ async function dailyFor(u: User): Promise<string> {
   }
   // Once per account too: every paid-once hold (the Sunday plan's, a routine's, a handoff item's) whose run was killed and
   // never retried is refunded, or its hold dropped when the work exists (src/lib/hold-sweep.ts `sweepHolds`, rules 337
-  // and 2373-2375). Reported, never fatal.
+  // and 2473-2475). Reported, never fatal.
   if ((u.brandId ?? "default") === "default" && u.paidOnce) {
     try {
       const swept = await sweepHolds(u);

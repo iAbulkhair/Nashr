@@ -396,7 +396,7 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     await settle();
   });
 
-  it("a run the platform kills after the charge is charged once: the next day's cron holds it, the owner's Run reuses the charge (rules 2370, 2378)", async () => {
+  it("a run the platform kills after the charge is charged once: the next day's cron holds it, the owner's Run reuses the charge (rules 2470, 2478)", async () => {
     const hang = { on: true };
     const seen = sdk({ hang });
     const { runRoutine: run } = await load();
@@ -509,7 +509,7 @@ describe("data blocks and deletion (rules 113, 115)", () => {
     const scopes = [u.email, scopeFor(u.email, second.id)];
     const keys = scopes.flatMap((s) => routineKeys(s));
     // Per brand: the cap lock, and per routine its last run, lock, hold, and for two periods the attempt count and the run
-    // receipt (rule 2376).
+    // receipt (rule 2476).
     expect(keys).toHaveLength(2 * (1 + ROUTINE_IDS.length * 7));
     for (const s of scopes) {
       expect(keys).toEqual(expect.arrayContaining([`routinecap:${s}`, `routinehold:${s}:noor_cart_recovery`, `routinetry:${s}:razan_cash_forecast:${periodOf("monthly")}`, `routinetry:${s}:dana_weekly_report:${periodOf("weekly")}`, `runrec:routine:${s}:dana_weekly_report:${periodOf("weekly")}`]));

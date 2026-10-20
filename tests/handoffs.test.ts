@@ -932,7 +932,7 @@ describe("the handoffs go with the account (rule 282)", () => {
     const b = await createHandoff(s2, { proposal: { items: [{ type: "prd", brief: "b" }] }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
     await db.lock(`handofflock:${s2}:${b.id}`, 60);
     // Each item's auto-run attempt counter too (rule 283 onwards, tests/handoff-auto.test.ts), one per possible item.
-    // And each item's run receipt, written only when a delivered item owed credits back (rule 2380).
+    // And each item's run receipt, written only when a delivered item owed credits back (rule 2480).
     expect(await handoffKeys(s2)).toEqual([`handoff:${s2}:${b.id}`, `handofflock:${s2}:${b.id}`, ...[0, 1, 2].map((n) => `handofftry:${s2}:${b.id}:${n}`), ...[0, 1, 2].map((n) => `runrec:handoff:${s2}:${b.id}:${n}`), `handoffs:${s2}`]);
     await wipeAccount(u.email);
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]> } }).__nashrMem;

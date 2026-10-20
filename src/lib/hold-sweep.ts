@@ -10,12 +10,12 @@ import { log } from "./log";
 import { runClaim } from "./keys";
 
 /**
- * The daily sweep of every paid-once hold of one account (rules 2373-2375 and 2380; spec
+ * The daily sweep of every paid-once hold of one account (rules 2473-2475 and 2480; spec
  * docs/superpowers/specs/2026-10-20-paid-cron-held-for-review-design.md section 2.2), once per account from the daily
  * cron, replacing the weekly-only sweep there:
  *
  * - `weekly:` claims as before (`weeklyKept`, rule 337): an ended week's hold is kept when its plan exists.
- * - `routine:` and `handoff:` claims (rules 2370-2371) whose hold is older than `RUN_STALE_MS` (no run of them can still
+ * - `routine:` and `handoff:` claims (rules 2470-2471) whose hold is older than `RUN_STALE_MS` (no run of them can still
  *   be in flight): kept when the run delivered (the routine's receipt says `delivered`; the handoff item is `done`),
  *   refunded otherwise: a run killed after its charge that nobody ran again, or a held run the owner did not run.
  * - A kept claim whose receipt records credits it owes back (a short batch's share whose refund failed) gives them back
@@ -29,7 +29,7 @@ export async function sweepHolds(u: Pick<User, "email" | "paidOnce" | "lang">, n
   const settled = (at: string) => !(now - Date.parse(at) < RUN_STALE_MS);
   const runs = Object.entries(u.paidOnce ?? {}).filter(([claim, hold]) => /^(routine|handoff):/.test(claim) && settled(hold.at));
   // This week's Sunday-plan holds are not `weeklyKept`'s (it waits for the week to end); one whose run the cron held is
-  // refunded now, as the held notice promises (rule 2374). The owner's Run later in the week is charged afresh.
+  // refunded now, as the held notice promises (rule 2474). The owner's Run later in the week is charged afresh.
   const thisWeek = Object.entries(u.paidOnce ?? {}).filter(([claim, hold]) => claim.startsWith("weekly:") && !(claim in weekly) && settled(hold.at)).map(([c]) => c);
   const claims = [...Object.keys(weekly), ...runs.map(([c]) => c), ...thisWeek];
   if (!claims.length) return null;

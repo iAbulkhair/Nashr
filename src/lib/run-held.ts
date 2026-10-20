@@ -7,7 +7,7 @@ import { log } from "./log";
 import { runClaim } from "./keys";
 
 /**
- * Rule 2378: the owner's one notice, and one activity row, when a cron finds a paid scheduled run that was killed after
+ * Rule 2478: the owner's one notice, and one activity row, when a cron finds a paid scheduled run that was killed after
  * it began (src/lib/run-receipt.ts `held_now`). Nothing new was charged; a charge the killed run took is reused if the
  * owner runs it, and given back by the daily sweep if nobody does. The notice says so plainly and sends the owner to
  * Scheduled tasks, where the run waits for their Run. Never throws: the cron answers "held" either way.

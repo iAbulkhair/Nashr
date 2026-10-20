@@ -17,7 +17,7 @@ import { systemBy } from "@/lib/actor";
 import * as scheduleRoute from "@/app/api/schedule/route";
 
 /**
- * Rules 2370-2385 (spec docs/superpowers/specs/2026-10-20-paid-cron-held-for-review-design.md): paid scheduled work is
+ * Rules 2470-2485 (spec docs/superpowers/specs/2026-10-20-paid-cron-held-for-review-design.md): paid scheduled work is
  * charged once per claim, an undelivered hold is refunded by the daily sweep, a run killed after it began is held for the
  * owner instead of run again, and the founder sees each batch's counts. The end-to-end kill and resume of a routine and of
  * the Sunday plan are in tests/routines.test.ts and tests/weekly-money.test.ts.
@@ -36,7 +36,7 @@ async function held(u: User, claim: string, agent: "dana" | "sami" = "dana") {
   await db.set(`user:${u.email}`, { ...rec, paidOnce: { ...rec.paidOnce, [claim]: { ...rec.paidOnce![claim], at: old } } });
 }
 
-describe("rules 2376-2377: the run receipt", () => {
+describe("rules 2476-2477: the run receipt", () => {
   it("started, in flight, delivered; a stale start is held once; only the owner's resume runs over a hold", async () => {
     const c = "routine:rr@test.example:dana_weekly_report:2026-10-18";
     expect(await beginRun(c, 600)).toBe("go");
@@ -52,7 +52,7 @@ describe("rules 2376-2377: the run receipt", () => {
   });
 });
 
-describe("rules 2370-2371: routines and handoff items are charged under a claim", () => {
+describe("rules 2470-2471: routines and handoff items are charged under a claim", () => {
   it("both pass `once` to generateBatch, and a second charge of the same claim takes nothing", async () => {
     expect(readFileSync("src/lib/routines.ts", "utf8")).toMatch(/generateBatch\(user, scope, \{[^;]*once: claim,/);
     expect(readFileSync("src/lib/handoffs.ts", "utf8")).toContain("once: handoffClaim(scope, id, n)");
@@ -65,7 +65,7 @@ describe("rules 2370-2371: routines and handoff items are charged under a claim"
   });
 });
 
-describe("rules 2373-2375: the daily sweep resolves every scheduled hold", () => {
+describe("rules 2473-2475: the daily sweep resolves every scheduled hold", () => {
   it("a routine hold is refunded when its run never delivered, and kept when it did; one row and one notice per refund", async () => {
     const u = await owner("pc-sweep");
     const start = await credits(u.email);
@@ -100,7 +100,7 @@ describe("rules 2373-2375: the daily sweep resolves every scheduled hold", () =>
     expect(await credits(u.email)).toBe(start - COST);
   });
 
-  it("this week's Sunday-plan hold is refunded when its run was held, and left alone otherwise (rule 2374)", async () => {
+  it("this week's Sunday-plan hold is refunded when its run was held, and left alone otherwise (rule 2474)", async () => {
     const { weeklyClaim } = await import("@/lib/schedule");
     const u = await owner("pc-weekheld");
     const start = await credits(u.email);
@@ -120,7 +120,7 @@ describe("rules 2373-2375: the daily sweep resolves every scheduled hold", () =>
   });
 });
 
-describe("rule 2380: a delivered run's owed share is given back in the sweep's own save", () => {
+describe("rule 2480: a delivered run's owed share is given back in the sweep's own save", () => {
   it("the owed credits come back and the hold is dropped together; a second sweep gives nothing", async () => {
     const u = await owner("pc-owed");
     const start = await credits(u.email);
@@ -136,7 +136,7 @@ describe("rule 2380: a delivered run's owed share is given back in the sweep's o
   });
 });
 
-describe("rule 2379: the owner's Run of a held routine", () => {
+describe("rule 2479: the owner's Run of a held routine", () => {
   it("the route takes only a routine id and asks for a resume; a routine that was not held runs nothing", async () => {
     const u = await owner("pc-route");
     await signIn(u.email);
@@ -160,7 +160,7 @@ describe("rule 2379: the owner's Run of a held routine", () => {
   });
 });
 
-describe("rules 2384-2385: the founder sees each batch's counts beside the heartbeat", () => {
+describe("rules 2484-2485: the founder sees each batch's counts beside the heartbeat", () => {
   it("runCronBatch stores counts only, held included, and cronStatuses returns them", async () => {
     const req = new Request("https://x.test/api/cron/routines");
     await runCronBatch({ job: "routines", period: "2026-10-20", items: ["a@x.test", "b@x.test", "c@x.test"], id: (s) => s, run: async (s) => (s.startsWith("a") ? "held" : s.startsWith("b") ? "ok:2" : "retry:paused"), concurrency: 2, startBudgetMs: 60e3, markerTtlSeconds: 60, req });

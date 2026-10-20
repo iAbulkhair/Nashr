@@ -546,7 +546,7 @@ export type RunOpts = {
  * by the time the item is marked running (pushed off the index) is "not_found", before any charge.
  */
 /**
- * The claim one handoff item is charged under (rule 2371), on every run of it, the owner's and the auto-run's: a run
+ * The claim one handoff item is charged under (rule 2471), on every run of it, the owner's and the auto-run's: a run
  * killed after its charge leaves a hold, the owner's Run of that item reuses it instead of charging again, and the daily
  * sweep refunds it when the item never became `done` (src/lib/hold-sweep.ts). A failed run gives the hold back, so the
  * owner's next Run is charged afresh.
@@ -636,7 +636,7 @@ export async function handoffKeys(scope: string, seen?: (fingerprint: string) =>
   const ids = (await db.lrange(indexKey(scope), 0, -1)).filter(isHandoffId);
   const items = Array.from({ length: HANDOFF_MAX_ITEMS }, (_, n) => n);
   return [
-    // `runrec:` of each item's claim: written only when a delivered item owed credits back (rule 2380).
+    // `runrec:` of each item's claim: written only when a delivered item owed credits back (rule 2480).
     ...ids.flatMap((id) => [key(scope, id), lockKey(scope, id), ...items.map((n) => autoTryKey(scope, id, n)), ...items.map((n) => globalKey.runReceipt(handoffClaim(scope, id, n))), ...(seen ? items.map((n) => seen(handoffFingerprint(scope, id, n))) : [])]),
     indexKey(scope),
   ];

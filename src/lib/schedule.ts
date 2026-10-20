@@ -178,7 +178,7 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadli
   // stops at `ranThisWeek`.
   const week = weekStartUtc();
   const claim = weeklyClaim(email, week);
-  // The run receipt (rules 2376-2379, src/lib/run-receipt.ts), before the charge, under the week's lock. A cron that finds
+  // The run receipt (rules 2476-2479, src/lib/run-receipt.ts), before the charge, under the week's lock. A cron that finds
   // a run of this week killed after it began holds it for the owner instead of planning the week a second time; the
   // owner's "Run now" (`resume`) runs it, on the same claim, so a charge the killed run took is reused, never taken twice.
   const gate = await beginRun(claim, WEEKLY_RECEIPT_S, { resume });

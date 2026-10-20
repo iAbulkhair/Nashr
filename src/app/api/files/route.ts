@@ -13,7 +13,7 @@ export const GET = handler({ auth: "user", query: z.object({ name: z.string().op
 /** A file is capped at 40,000 characters by writeFile; this rejects an oversized body before it is parsed. */
 const MAX_BODY_BYTES = 200_000;
 /**
- * `baseAt` (rule 2341, expand): the `updatedAt` of the file the editor opened, or null for a new file. When sent, the
+ * `baseAt` (rule 2441, expand): the `updatedAt` of the file the editor opened, or null for a new file. When sent, the
  * save is refused with 409 `stale` (changed or deleted since) or `exists` (the new name is taken) and the file as it is
  * now; 503 `busy` when another checked save of it holds the lock. Without it the save is as before (uploads, older pages).
  */

@@ -149,7 +149,7 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
                   <Badge tone={b.status === "active" ? "success" : "neutral"}>{b.status === "active" ? W.active : W.archived}</Badge>
                   <span className="text-foreground-muted">{W.created}: <Time value={b.createdAt} lang={lang} /></span>
                 </span>
-                {/* Rule 2360: the brand's agent tool authority, restrictions only. */}
+                {/* Rule 2460: the brand's agent tool authority, restrictions only. */}
                 <p className="w-full text-foreground-muted" data-limits={b.id}>
                   {W.limits}: {(b.limits ?? []).length === 0 ? W.allAllowed : (b.limits ?? []).map((l) => `${agentById(l.agent).name[lang]} · ${W.capNames[l.cap]} · ${W.modeNames[l.mode]}`).join(lang === "ar" ? "؛ " : "; ")}
                 </p>

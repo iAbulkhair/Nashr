@@ -82,7 +82,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
   const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;
   // `todo.write` is held by every login of the account (members too), so for it the refusal is for a chat with no acting login.
   if (needs && !can(user, needs)) return MIN_ROLE[needs] === "member" ? `Not done: ${name} needs a signed-in login of this account with access to its to-do list, and this chat has none. Nothing was changed. Tell the owner plainly and do not try another way around it.` : `Not done: ${name} needs the owner or an admin of this account, and the person chatting is neither. Nothing was changed. Tell them plainly that the account owner or an admin can do this, and do not try another way around it.`;
-  // The owner's tool authority (rule 2332, src/lib/tool-authority.ts), after the role gate and before any read, charge or
+  // The owner's tool authority (rule 2432, src/lib/tool-authority.ts), after the role gate and before any read, charge or
   // write. Read at the moment of the call, not from the turn's start: a capability switched off mid-turn holds for the
   // next call. Keyed by the talking agent only; a call with no agent (tests, onboarding) keeps each tool's own answer.
   const cap = ctx.agent ? capOfTool(name) : null;

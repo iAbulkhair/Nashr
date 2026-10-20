@@ -31,7 +31,7 @@ export type Governance = {
    */
   majedAutoHandoff: boolean;
   /**
-   * What each agent may do from a conversation (rules 2330-2339, src/lib/tool-authority.ts): per agent and capability,
+   * What each agent may do from a conversation (rules 2430-2439, src/lib/tool-authority.ts): per agent and capability,
    * `ask` or `off`; anything absent is `on`. A record saved before 2026-10-20 has no value and reads as all on, which is
    * what every turn did before. Enforced in `runTool`, `toolsFor` and the spend card's Run, never only in a prompt.
    */

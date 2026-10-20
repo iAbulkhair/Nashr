@@ -2,7 +2,7 @@ import type { Feature } from "@/lib/feature-status";
 import Badge from "@/components/ui/Badge";
 
 /**
- * Rule 2351: the Connections page's "What Thakeen has switched on" card. Server-rendered from `customerFeatures()`; on or
+ * Rule 2451: the Connections page's "What Thakeen has switched on" card. Server-rendered from `customerFeatures()`; on or
  * not yet, with a text badge (never colour alone), and no variable names.
  */
 export default function FeatureStatus({ lang, features }: { lang: "ar" | "en"; features: Feature[] }) {

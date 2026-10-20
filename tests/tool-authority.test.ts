@@ -3,7 +3,7 @@ import type { User } from "@/lib/auth";
 import type { Task } from "@/lib/brand";
 
 /**
- * Rules 2330-2336: agent tool authority, what each agent may do from a conversation (src/lib/tool-authority.ts). The
+ * Rules 2430-2436: agent tool authority, what each agent may do from a conversation (src/lib/tool-authority.ts). The
  * owner sets it in Governance; `toolsFor` stops offering what is off, `runTool` refuses it from the setting read at the
  * call, "ask first" leaves the spend card whatever the owner wrote, and the card's Run checks the setting again.
  * `generateBatch` and `renderImage` are recorders, as in tests/spend-gate.test.ts, so each test sees exactly when a paid
@@ -58,7 +58,7 @@ const ASKED = "اكتب لي 10 منشورات لليوم الوطني";
 
 beforeEach(() => { g.batch = []; g.renders = []; });
 
-describe("rule 2330: the policy names real tools and is read and stored only in its checked shape", () => {
+describe("rule 2430: the policy names real tools and is read and stored only in its checked shape", () => {
   it("every governed tool is a chat tool, and no tool is governed twice", () => {
     const all = TOOL_CAPS.flatMap((c) => CAP_TOOLS[c]);
     expect(new Set(all).size).toBe(all.length);
@@ -78,7 +78,7 @@ describe("rule 2330: the policy names real tools and is read and stored only in 
   });
 });
 
-describe("rule 2331: a capability switched off is not offered in that agent's turn, and the prompt says why", () => {
+describe("rule 2431: a capability switched off is not offered in that agent's turn, and the prompt says why", () => {
   it("toolsFor drops it for that agent only; without a policy the list is whole", () => {
     const policy = { noor: { publish: "off" as const, produce: "off" as const } };
     const names = toolsFor("noor", policy).map((t) => t.name);
@@ -93,7 +93,7 @@ describe("rule 2331: a capability switched off is not offered in that agent's tu
   });
 });
 
-describe("rule 2332: runTool refuses a switched-off tool from the setting read at the call, before any read, charge or write", () => {
+describe("rule 2432: runTool refuses a switched-off tool from the setting read at the call, before any read, charge or write", () => {
   it("off refuses with no batch; switching it back on lets the next call run", async () => {
     const u = await owner("ta-off");
     await saveGov(sc(u), { toolPolicy: { noor: { produce: "off" } } });
@@ -117,7 +117,7 @@ describe("rule 2332: runTool refuses a switched-off tool from the setting read a
   });
 });
 
-describe("rule 2333: ask first leaves the card whatever the owner wrote, and is refused over MCP", () => {
+describe("rule 2433: ask first leaves the card whatever the owner wrote, and is refused over MCP", () => {
   it("an explicit request still stores a card with reason ask, and runs nothing", async () => {
     const u = await owner("ta-ask");
     await saveGov(sc(u), { toolPolicy: { noor: { produce: "ask", images: "ask" } } });
@@ -143,7 +143,7 @@ describe("rule 2333: ask first leaves the card whatever the owner wrote, and is 
   });
 });
 
-describe("rule 2334: the card's Run is checked against today's setting, not the one it was made under", () => {
+describe("rule 2434: the card's Run is checked against today's setting, not the one it was made under", () => {
   it("switched off after the card was made: 409 revoked, nothing charged, the card stays open; back on, it runs", async () => {
     const u = await owner("ta-revoke");
     await saveGov(sc(u), { toolPolicy: { noor: { produce: "ask" } } });
@@ -162,7 +162,7 @@ describe("rule 2334: the card's Run is checked against today's setting, not the 
   });
 });
 
-describe("rule 2335: Governance stores, records and restores the policy like every other setting", () => {
+describe("rule 2435: Governance stores, records and restores the policy like every other setting", () => {
   it("a record saved before the field existed reads as all on; a save records each changed capability; restore puts it back", async () => {
     const u = await owner("ta-gov");
     await db.set(`gov:${sc(u)}`, { weeklyCap: 5 });
@@ -186,7 +186,7 @@ describe("rule 2335: Governance stores, records and restores the policy like eve
   });
 });
 
-describe("rule 2360: the founder's read-only workspace view lists each brand's agent limits", () => {
+describe("rule 2460: the founder's read-only workspace view lists each brand's agent limits", () => {
   it("restrictions only, from the brand's own scope; none reads as an empty list", async () => {
     const u = await owner("ta-ws");
     expect((await workspaceView(u.email))?.brands.find((b) => b.id === "default")?.limits).toEqual([]);

@@ -1,6 +1,6 @@
 # Paid scheduled work: charge once, refund always, hold for review (design)
 
-Status: **built** on 2026-10-20 after the founder's yes to all three recommendations in section 7 (flows section 95; rule 2383 not built). Written 2026-10-20 on branch `claude/lucid-faraday-kq261a` from main `70d1675`. Item 4 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2370-2389** are reserved for this work. It changes when owners are charged and refunded, so it needs the founder's yes before code (section 7).
+Status: **built** on 2026-10-20 after the founder's yes to all three recommendations in section 7 (flows section 95; rule 2483 not built). Written 2026-10-20 on branch `claude/lucid-faraday-kq261a` from main `70d1675`. Item 4 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2470-2489** are reserved for this work. It changes when owners are charged and refunded, so it needs the founder's yes before code (section 7).
 
 ## 1. Why
 
@@ -80,16 +80,16 @@ A receipt in state `delivered` makes any retry a no-op (W3, W5). Ids are random 
 - **Contract.** None needed: nothing old is removed.
 - **No data conversion.** Routine charges made before the release have no hold, so the sweep cannot see them. W1 charges from before the release stay as they are, and the founder can refund them by hand from the console. (I'm not sure how many exist; `usage:` does not tell a delivered routine charge from an undelivered one.)
 
-## 4. Tests to write (rules 2370-2389)
+## 4. Tests to write (rules 2470-2489)
 
 | Rule | Pins |
 |---|---|
-| 2370-2372 | Routine and auto-run pass a claim; a second attempt with the same claim charges nothing; a refund that throws leaves the hold (W1, W2, W4) |
-| 2373-2375 | The sweep keeps a delivered hold, refunds an undelivered one once, and writes a row and a notice for each refund |
-| 2376-2379 | The receipt: `started` → `delivered` in the commit's round; a retry over `delivered` is a no-op; over a stale `started` it becomes `held` and runs nothing; the card's Run uses the same claim |
-| 2380-2382 | Short-batch refund in the commit's ledger save; no path leaves it logged-only |
-| 2383-2385 | `missed` is written once for a period that only answered `retry:*`; `cronreport:` holds counts only, no email |
-| 2386-2389 | Held for the build's own findings |
+| 2470-2472 | Routine and auto-run pass a claim; a second attempt with the same claim charges nothing; a refund that throws leaves the hold (W1, W2, W4) |
+| 2473-2475 | The sweep keeps a delivered hold, refunds an undelivered one once, and writes a row and a notice for each refund |
+| 2476-2479 | The receipt: `started` → `delivered` in the commit's round; a retry over `delivered` is a no-op; over a stale `started` it becomes `held` and runs nothing; the card's Run uses the same claim |
+| 2480-2482 | Short-batch refund in the commit's ledger save; no path leaves it logged-only |
+| 2483-2485 | `missed` is written once for a period that only answered `retry:*`; `cronreport:` holds counts only, no email |
+| 2486-2489 | Held for the build's own findings |
 
 A kill cannot be simulated by a thrown error: `finally` would run. The tests stop the fake `db` after the step under test, the way `tests/publish-once.test.ts` models a lost answer.
 

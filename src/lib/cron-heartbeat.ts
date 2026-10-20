@@ -42,7 +42,7 @@ export async function recordCronRun(job: CronJob, now = Date.now()): Promise<voi
 }
 
 /** `waiting`: no heartbeat stored yet (a fresh deploy, or an emptied store); it is not counted as stale. */
-export type CronStatus = { job: CronJob; status: "ok" | "stale" | "waiting"; lastRunAt: string | null; ageSec: number | null; maxAgeSec: number; /** the last hop's counts, for the per-user batch jobs (rule 2385) */ report?: CronReport };
+export type CronStatus = { job: CronJob; status: "ok" | "stale" | "waiting"; lastRunAt: string | null; ageSec: number | null; maxAgeSec: number; /** the last hop's counts, for the per-user batch jobs (rule 2485) */ report?: CronReport };
 
 /** Every job's state and its last report, read with one store command. */
 export async function cronStatuses(now = Date.now()): Promise<CronStatus[]> {

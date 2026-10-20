@@ -91,7 +91,7 @@ describe("a paid account is renewed before the Sunday plan charges it (rule 332)
 });
 
 describe("the Sunday plan is charged once per brand and week (rule 333)", () => {
-  it("a run killed after its charge: the cron holds it (rule 2378); the owner's Run reuses the charge, one credit drop and one plan", async () => {
+  it("a run killed after its charge: the cron holds it (rule 2478); the owner's Run reuses the charge, one credit drop and one plan", async () => {
     const u = await owner("wk-kill");
     h.mode = "hang";
     void runWeekly(u);
@@ -119,7 +119,7 @@ describe("the Sunday plan is charged once per brand and week (rule 333)", () => 
     expect(await runWeekly(u)).toBe("ok:1");
     expect(await runWeekly((await getUser(u.email))!)).toBe("already_this_week");
     expect(await credits(u.email)).toBe(PLAN_CREDITS.trial - COST);
-    // The marker lost (an older week's record, a cleared key): the delivered receipt (rule 2377) stops the run and puts the
+    // The marker lost (an older week's record, a cleared key): the delivered receipt (rule 2477) stops the run and puts the
     // marker back, so the week is neither charged nor planned again.
     await saveSchedule(u.email, { lastWeekly: undefined });
     expect(await runWeekly((await getUser(u.email))!)).toBe("already_this_week");

@@ -95,7 +95,7 @@ export async function writeFile(email: string, name: string, content: string, by
   return f;
 }
 /**
- * Rule 2341: a person's save that says what it was made from. `baseAt` is the `updatedAt` of the file the editor showed,
+ * Rule 2441: a person's save that says what it was made from. `baseAt` is the `updatedAt` of the file the editor showed,
  * or null for "a new file": the text is written only while that is still so, read under a short per-file lock, so two
  * tabs, two members, or a member and an agent's write in between never lose one another's text without a word
  * (OpenDots' `expectedRevision`, docs/OpenDots_Adoption.md). Otherwise nothing is written and the file as it is now

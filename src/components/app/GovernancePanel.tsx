@@ -245,7 +245,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
             })}
           </ul>
         </div>
-        {/* Rule 2335: what each agent may do from a conversation. A record saved before it existed reads as all allowed. */}
+        {/* Rule 2435: what each agent may do from a conversation. A record saved before it existed reads as all allowed. */}
         <div className="card">
           <h2 className="font-display font-medium">{g.authority}</h2>
           <p className="mt-1 text-sm text-foreground-muted">{g.authoritySub}</p>

@@ -44,7 +44,7 @@ function RoutineRow({ t, r, on, saving, onToggle, readOnly, busy, onRunHeld }: {
         <p className="mt-1 text-xs text-foreground-muted">{r.cadence === "weekly" ? k.routineWeekly : k.routineMonthly} · {k.routineCost.replace("{n}", String(TASK_COST[r.type]))}</p>
         <p className="mt-1 text-xs text-foreground-muted">{k.routineWhen[r.id]}</p>
         <p className="mt-1 font-mono text-xs text-foreground-muted" dir="ltr">{k.lastRun}: {r.last ? r.last.slice(0, 16).replace("T", " ") : k.never}</p>
-        {/* Rule 2379: a run the cron held for the owner. "Run now" is an explicit request, open to every role like the cards'. */}
+        {/* Rule 2479: a run the cron held for the owner. "Run now" is an explicit request, open to every role like the cards'. */}
         {r.held && (
           <div className="mt-2 rounded-lg border border-border-strong p-2 text-xs" data-held={r.id}>
             <p>{k.held}</p>
@@ -85,7 +85,7 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
   }
   const toggle = (key: ScheduleKey) => put({ [key]: !s[key] }, key);
   const toggleRoutine = (id: RoutineId, on: boolean) => put({ routines: { [id]: on } }, id);
-  /** The owner's Run of a held routine (rule 2379): the server runs it on its own claim, so it is never charged twice. */
+  /** The owner's Run of a held routine (rule 2479): the server runs it on its own claim, so it is never charged twice. */
   async function runHeld(id: RoutineId) {
     setBusy(id);
     setMsg("");

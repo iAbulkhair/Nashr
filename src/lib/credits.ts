@@ -411,7 +411,7 @@ export async function refundOncePart(email: string, claim: string, n: number): P
 /**
  * The daily sweep of the account's paid-once holds (rule 337, src/lib/hold-sweep.ts `sweepHolds`): `kept[claim]` says
  * whether the claim's work exists. A kept claim's hold is dropped (its charge stands); any other is refunded, a run killed
- * after its charge that no later run retried (the last catch-up, a "Run now" nobody pressed again). A number (rule 2380)
+ * after its charge that no later run retried (the last catch-up, a "Run now" nobody pressed again). A number (rule 2480)
  * is a kept claim that owes that many credits back (a delivered batch whose partial refund could not be written): they
  * are given back from the hold, at most its credits, and the hold dropped, in the same save, so the share can never be
  * given back twice. One save under the ledger's lock; a hold already gone (refunded by its own run's failure, or reused
