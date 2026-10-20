@@ -603,3 +603,15 @@ describe("rule 2429 (log-in half): the strings", () => {
     expect(appDict.ar.login.passkey).toContain("مفتاح مرور");
   });
 });
+
+describe("rule 2406 (route half): the passkey routes derive no origin or RP ID from the request", () => {
+  it("the sign-in and manage routes read no request header or URL themselves (the client IP goes through clientIp)", async () => {
+    const { readFileSync } = await import("fs");
+    for (const f of ["src/app/api/auth/passkey/options/route.ts", "src/app/api/auth/passkey/verify/route.ts", "src/app/api/account/passkeys/route.ts"]) {
+      const src = readFileSync(f, "utf8");
+      expect(src, f).not.toMatch(/req\.(headers|url|nextUrl)\b/);
+      expect(src, f).not.toMatch(/["'](host|origin|x-forwarded-host|x-forwarded-proto)["']/i);
+      expect(src, f).not.toMatch(/process\.env/);
+    }
+  });
+});
