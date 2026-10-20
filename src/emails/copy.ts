@@ -66,7 +66,7 @@ export const COPY: Record<Lang, EmailCopy> = {
     passkey: {
       title: "أُضيف مفتاح مرور إلى حسابك",
       body: "أُضيف مفتاح المرور «{name}» إلى حسابك في ذكين.",
-      when: "وقت الإضافة: {time}.",
+      when: "وقت الإضافة: {time} بتوقيت الرياض.",
       notYou: "إذا لم تضفه أنت فاحذفه من إعدادات الأمان، ثم اخرج من الأجهزة الأخرى.",
       action: "افتح إعدادات الأمان",
     },
@@ -106,7 +106,7 @@ export const COPY: Record<Lang, EmailCopy> = {
     passkey: {
       title: "A passkey was added to your account",
       body: "The passkey “{name}” was added to your Thakeen account.",
-      when: "Added at: {time}.",
+      when: "Added at: {time} (Riyadh time).",
       notYou: "If you did not add it, remove it in Security settings, then sign out your other devices.",
       action: "Open Security settings",
     },

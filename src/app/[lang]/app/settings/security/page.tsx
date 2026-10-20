@@ -26,7 +26,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!u) redirect(`/${lang}/app/login`);
   const t = appDict[lang];
   const S = SETTINGS_COPY[lang].sections.security;
-  const enabled = await passkeysOn();
+  // A read error on the switch must not break password change and two-step: adding shows as off (fails closed).
+  const enabled = await passkeysOn().catch(() => false);
   return (
     <div className="grid gap-6">
       <PageHeader lang={lang} title={S.name} sub={S.sub} seed="settings-security" actions={<HelpLink lang={lang} href={helpHref(lang, "privacy", "two-step-and-devices")} />} />

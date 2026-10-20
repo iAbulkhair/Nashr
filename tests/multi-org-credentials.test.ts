@@ -551,6 +551,11 @@ describe("source scans (rule 2132, credential part)", () => {
     const passkeyRoutes = files(join("src", "app")).filter((f) => /from "@\/lib\/passkeys"/.test(readFileSync(f, "utf8")));
     expect(passkeyRoutes.length).toBeGreaterThanOrEqual(1);
     expect(passkeyRoutes.filter((f) => !indirect.includes(f) && !direct.includes(f))).toEqual([]);
-    expect([...direct, ...indirect].filter((f) => !/isPersonLockTimeout|PERSON_LOCK_TIMEOUT/.test(readFileSync(f, "utf8")))).toEqual([]);
+    // A call, not a name: an import line alone does not answer the timeout (Task 4 review minor 5). PERSON_LOCK_TIMEOUT
+    // counts only when it is used past its import (src/app/api/profile/route.ts keeps it in a set of lock codes).
+    const answersTimeout = (src: string) => /\bisPersonLockTimeout\(/.test(src) || (src.match(/\bPERSON_LOCK_TIMEOUT\b/g)?.length ?? 0) >= 2;
+    expect([...direct, ...indirect].filter((f) => !answersTimeout(readFileSync(f, "utf8")))).toEqual([]);
+    expect(answersTimeout('import { isPersonLockTimeout } from "@/lib/person";')).toBe(false);
+    expect(answersTimeout('import { PERSON_LOCK_TIMEOUT } from "@/lib/person";')).toBe(false);
   });
 });

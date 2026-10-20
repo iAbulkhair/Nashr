@@ -17,16 +17,17 @@ type Proof = "password" | "code" | "none";
 type List = { items: Item[]; max: number; enabled: boolean; proof: Proof };
 type Answer = { ok?: boolean; error?: string; items?: Item[]; max?: number; enabled?: boolean; proof?: Proof; options?: PublicKeyCredentialCreationOptionsJSON; item?: Item };
 
-/**
- * Whether the card is rendered (rule 2429): only once the browser's WebAuthn support has been read, in an effect, and is
- * true. `null` (not read yet, and always on the server) renders nothing, so server and browser HTML agree (pre-flight
- * ruling 15).
- */
 /** WebAuthn support never changes while the page is open, so nothing is ever signalled. */
 const noChange = () => () => {};
 const unknownOnServer = (): boolean | null => null;
 
-export const showPasskeyCard = (supported: boolean | null): boolean => supported === true;
+/**
+ * Whether the card is rendered (rule 2429): once the browser's WebAuthn support is known, true or false. `null` (always on
+ * the server and during hydration) renders nothing, so server and browser HTML agree (pre-flight ruling 15). A browser
+ * without WebAuthn still lists, renames and removes, so a lost device's passkey can be removed from any browser; only
+ * adding needs support.
+ */
+export const showPasskeyCard = (supported: boolean | null): boolean => supported !== null;
 /** Whether the add button is offered: the browser supports WebAuthn and the off switch is not set (rules 2426, 2429). */
 export const showAddButton = (enabled: boolean, supported: boolean | null): boolean => enabled && supported === true;
 
@@ -57,8 +58,8 @@ async function readList(): Promise<List | null> {
  * The list shows each passkey's name, when it was added and last used, and a "synced" badge; never a credential id.
  * Adding asks for the password (or a code when two-step sign-in is on) first, then the browser's passkey prompt, then a
  * name that defaults to the device. Renaming is inline and needs no proof; removing asks for the proof again. With the
- * off switch set the add button gives way to a short line and the list stays. The card is not rendered at all when the
- * browser has no WebAuthn, and support is read only after mount.
+ * off switch set, or in a browser without WebAuthn, the add button gives way to a short line of its own and the list,
+ * rename and remove stay. Support is read only on the client; the server renders nothing.
  */
 export default function PasskeySettings({ lang, T, enabled, forbidden }: { lang: Lang; T: Copy; enabled: boolean; forbidden: string }) {
   // Support is a browser fact: null on the server and during hydration (nothing rendered), then the client's answer.
@@ -77,7 +78,7 @@ export default function PasskeySettings({ lang, T, enabled, forbidden }: { lang:
   const show = (v: List | null) => { setUnread(!v); if (v) setData(v); };
   const load = async () => show(await readList());
   useEffect(() => {
-    if (supported) void readList().then(show);
+    if (supported !== null) void readList().then(show);
   }, [supported]);
 
   if (!showPasskeyCard(supported)) return null;
@@ -182,8 +183,8 @@ export default function PasskeySettings({ lang, T, enabled, forbidden }: { lang:
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => { setRemoving(null); setEditing({ ref: p.ref, name: p.name }); }}>{T.rename}</Button>
-                    <Button variant="ghost" size="sm" onClick={() => { reset(); setEditing(null); setRemoving(removing === p.ref ? null : p.ref); }}>{T.remove}</Button>
+                    <Button variant="ghost" size="sm" aria-label={fill(T.renameNamed, "name", p.name)} onClick={() => { setRemoving(null); setEditing({ ref: p.ref, name: p.name }); }}>{T.rename}</Button>
+                    <Button variant="ghost" size="sm" aria-label={fill(T.removeNamed, "name", p.name)} aria-expanded={removing === p.ref} onClick={() => { reset(); setEditing(null); setRemoving(removing === p.ref ? null : p.ref); }}>{T.remove}</Button>
                   </div>
                 </div>
               )}
@@ -203,8 +204,10 @@ export default function PasskeySettings({ lang, T, enabled, forbidden }: { lang:
         </ul>
       )}
 
-      {!showAddButton(data.enabled && enabled, supported) ? (
+      {!(data.enabled && enabled) ? (
         <p className="text-sm text-foreground-muted">{T.off}</p>
+      ) : !showAddButton(true, supported) ? (
+        <p className="text-sm text-foreground-muted">{T.unsupported}</p>
       ) : full ? (
         <p className="text-sm text-foreground-muted">{fill(T.full, "max", String(data.max))}</p>
       ) : step === "name" ? (

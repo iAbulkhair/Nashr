@@ -4,6 +4,7 @@ import { z } from "zod";
 import { COPY } from "@/emails/copy";
 import { currentSessionKey, currentUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { dateFormat } from "@/lib/dates";
 import type { Lang } from "@/lib/i18n";
 import { accountKey, personKey, type PersonId } from "@/lib/keys";
 import { log } from "@/lib/log";
@@ -32,7 +33,7 @@ import { registrationOptions, verifyRegistration } from "@/lib/webauthn";
  *   register-verify {response, name}: takes the challenge (`getdel`), verifies through the seam, stores the passkey
  *     under the person lock (rule 2414), then sends the notice email after the lock (rule 2415).
  *   rename {ref, name}: the session only (rule 2411).
- *   remove {ref, password? | code?}: the proof again, in this request (rule 2411).
+ *   remove {ref, password? | code?}: an unknown ref is 404 first, then the proof again, in this request (rule 2411).
  *
  * Owner or member, each for their OWN person (`actingLogin`, rule 2412): refused while a founder impersonates
  * (`passkeys.manage` is in IMPERSONATION_BLOCKED, checked before anything is read) and for a token (`currentUser` reads
@@ -93,8 +94,17 @@ async function freshProof(req: Request, u: User, me: Me, b: { password?: string;
   return null;
 }
 
+/** `YYYY-MM-DD HH:MM` in Asia/Riyadh, the zone the card shows dates in; the copy labels it as Riyadh time. */
+function riyadhTime(d: Date): string {
+  const parts = Object.fromEntries(
+    dateFormat("en", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, "Asia/Riyadh")
+      .formatToParts(d).map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
 /**
- * The notice after an add (rule 2415): one email in the person's language naming the passkey and the time, pointing to
+ * The notice after an add (rule 2415): one email in the person's language naming the passkey and the time (Asia/Riyadh, labelled), pointing to
  * Security settings, without credential data. Called after the person lock is released; a failure is logged without
  * values and never undoes the add.
  */
@@ -102,7 +112,7 @@ async function passkeyNotice(me: Me, name: string): Promise<void> {
   try {
     const lang: Lang = me.person.lang === "en" ? "en" : "ar";
     const c = COPY[lang].passkey;
-    const time = `${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`;
+    const time = riyadhTime(new Date());
     // Function replacements: a name holding `$&` or `$1` is kept as typed.
     const paragraphs = [c.body.replace("{name}", () => name), c.when.replace("{time}", () => time), c.notYou];
     const href = `${appOrigin()}/${lang}/app/settings/security`;
@@ -172,6 +182,9 @@ export async function POST(req: Request) {
       if (r === "invalid") return no(400, "invalid");
       return r === "ok" ? NextResponse.json({ ok: true }) : no(404, "not_found");
     }
+    // An unknown ref is 404 before the proof, so a stale ref never spends a recovery code or a try. Refs are looked up in
+    // the caller's own set only, so this says nothing about anyone else's; the locked remove stays the authority.
+    if (!(await listPasskeys(me.pid, me.born)).some((p) => p.ref === b.ref)) return no(404, "not_found");
     const proof = await freshProof(req, u, me, b);
     if (proof) return proof;
     return (await removePasskey(me.pid, me.born, b.ref)) === "ok" ? NextResponse.json({ ok: true }) : no(404, "not_found");

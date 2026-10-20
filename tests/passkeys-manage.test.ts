@@ -8,6 +8,7 @@ import { codeAt } from "./helpers/staff";
 import { softAuthenticator } from "./helpers/soft-authenticator";
 import { currentUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { log } from "@/lib/log";
 import { accountKey, globalKey, personKey, type PersonId } from "@/lib/keys";
 import { createMcpToken } from "@/lib/mcp";
 import { actingLogin } from "@/lib/own-password";
@@ -32,13 +33,14 @@ import * as loginRoute from "@/app/api/auth/login/route";
  * overrides one call with `mockResolvedValueOnce`, so the end-to-end case below runs real crypto through the real seam.
  */
 
-const mail = vi.hoisted(() => ({ sent: [] as unknown[], fail: false }));
+const mail = vi.hoisted(() => ({ sent: [] as unknown[], fail: false, refuse: false }));
 vi.mock("@/lib/notify", async () => {
   const real = await vi.importActual<typeof import("@/lib/notify")>("@/lib/notify");
   return {
     ...real,
     sendEmail: vi.fn(async (m: unknown) => {
       if (mail.fail) throw new Error("mail down");
+      if (mail.refuse) return false;
       mail.sent.push(m);
       return true;
     }),
@@ -103,6 +105,7 @@ beforeEach(() => {
   vi.stubEnv("APP_ORIGIN", LIVE);
   mail.sent.length = 0;
   mail.fail = false;
+  mail.refuse = false;
 });
 afterEach(async () => {
   signOut();
@@ -280,6 +283,16 @@ describe("rule 2410: adding needs the password, or a code when two-step is on, c
     expect(u.email).toBeTruthy();
   });
 
+  it("a recovery code works once: the same code again is 400 bad_code", async () => {
+    await owner();
+    const { codes } = await enrol();
+    expect((await post({ action: "register-options", code: codes[0] })).status).toBe(200);
+    expect(await answer(await post({ action: "register-options", code: codes[0] }))).toEqual({ status: 400, body: { ok: false, error: "bad_code" } });
+    const ref = (await (await add("A", { code: codes[1] })).res.json()).item.ref;
+    expect(await answer(await post({ action: "remove", ref, code: codes[1] }))).toEqual({ status: 400, body: { ok: false, error: "bad_code" } });
+    expect((await answer(await list())).body.items).toHaveLength(1);
+  });
+
   it("the eleventh wrong proof in an hour is 429 slow_down with Retry-After, even with the right password", async () => {
     const u = await owner();
     for (let i = 0; i < 10; i++) expect((await post({ action: "register-options", password: `wrong-${i}` })).status).toBe(401);
@@ -316,6 +329,16 @@ describe("rule 2411: remove needs the proof, rename only the session; no passwor
     expect((await post({ action: "remove", ref, password: PASSWORD })).status).toBe(400);
     expect((await post({ action: "remove", ref, code: codes[1] })).status).toBe(200);
     expect((await answer(await list())).body.items).toEqual([]);
+  });
+
+  it("an unknown ref is 404 before the proof: no recovery code spent, no try counted", async () => {
+    const u = await owner();
+    const { codes } = await enrol();
+    const stale = randomBytes(8).toString("hex");
+    expect(await answer(await post({ action: "remove", ref: stale, code: codes[0] }))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await db.get(`rate:${accountKey.passkeyProofBucket(u.email)}`)).toBeNull();
+    // The code was not spent: it still opens a registration.
+    expect((await post({ action: "register-options", code: codes[0] })).status).toBe(200);
   });
 
   it("a Google-only person (no password, two-step off) gets 403 reauth_unavailable for add and remove", async () => {
@@ -457,6 +480,38 @@ describe("rule 2415: a successful add sends one notice email in the person's lan
     expect(m.context.cta?.href).toBe(`${LIVE}/en/app/settings/security`);
   });
 
+  it("the time line is Asia/Riyadh and says so, in both languages", async () => {
+    await owner();
+    const { pid } = await me();
+    // The clock stands still at mid-minute, so the minute cannot roll between the add and the expectation. Riyadh is UTC+3
+    // all year (no daylight saving), which the expectation computes on its own.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = Math.floor(Date.now() / 60_000) * 60_000 + 30_000;
+    vi.setSystemTime(now);
+    const riyadh = new Date(now + 3 * 3600_000).toISOString().slice(0, 16).replace("T", " ");
+    await add("A");
+    const ar = mail.sent[0] as Mail;
+    expect(ar.context.paragraphs).toContain(`وقت الإضافة: ${riyadh} بتوقيت الرياض.`);
+    expect(ar.text).toContain(`${riyadh} بتوقيت الرياض`);
+    expect(ar.text).not.toContain("UTC");
+    await updatePerson(pid, { lang: "en" });
+    mail.sent.length = 0;
+    await add("B");
+    expect((mail.sent[0] as Mail).context.paragraphs).toContain(`Added at: ${riyadh} (Riyadh time).`);
+  });
+
+  it("a send that answers false is logged without values and the add stands", async () => {
+    await owner();
+    mail.refuse = true;
+    const warn = vi.spyOn(log, "warn");
+    const { res } = await add("Secret name");
+    expect(await answer(res)).toMatchObject({ status: 200, body: { ok: true } });
+    expect((await answer(await list())).body.items).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith("passkey notice failed");
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("Secret name");
+    warn.mockRestore();
+  });
+
   it("a failed or throwing send never undoes the add", async () => {
     await owner();
     mail.fail = true;
@@ -503,14 +558,36 @@ describe("rule 2429 (settings half): copy in both languages; the card and the ad
     expect(strings(appDict.ar.passkeys).length).toBeGreaterThan(20);
   });
 
-  it("the card shows only once support is known and true; the add button also needs the switch on", () => {
+  it("the card shows once support is known, true or false; only the add button needs WebAuthn and the switch on", () => {
     expect(showPasskeyCard(null)).toBe(false);
-    expect(showPasskeyCard(false)).toBe(false);
+    // Without WebAuthn the list, rename and remove stay, so a lost device's passkey can be removed from any browser.
+    expect(showPasskeyCard(false)).toBe(true);
     expect(showPasskeyCard(true)).toBe(true);
     expect(showAddButton(true, true)).toBe(true);
     expect(showAddButton(false, true)).toBe(false);
     expect(showAddButton(true, false)).toBe(false);
     expect(showAddButton(true, null)).toBe(false);
+  });
+
+  it("without WebAuthn the add button gives way to its own line, not the switch-off line", () => {
+    for (const l of ["ar", "en"] as const) {
+      expect(appDict[l].passkeys.unsupported).not.toBe(appDict[l].passkeys.off);
+      expect(appDict[l].passkeys.unsupported.length).toBeGreaterThan(10);
+    }
+    expect(appDict.en.passkeys.unsupported).toMatch(/browser/i);
+    const src = readFileSync("src/components/app/settings/PasskeySettings.tsx", "utf8");
+    expect(src).toMatch(/!\(data\.enabled && enabled\) \? \(\s*<p[^>]*>\{T\.off\}<\/p>\s*\) : !showAddButton\(true, supported\) \? \(\s*<p[^>]*>\{T\.unsupported\}<\/p>/);
+    expect(src).toMatch(/if \(supported !== null\) void readList\(\)/);
+    expect(src).not.toMatch(/if \(!showPasskeyCard\(supported\)\) return null;[\s\S]*if \(!supported\)/);
+  });
+
+  it("each row's Rename and Remove buttons carry the passkey's name in their accessible name", () => {
+    expect(appDict.en.passkeys.renameNamed).toBe("Rename {name}");
+    expect(appDict.en.passkeys.removeNamed).toBe("Remove {name}");
+    for (const l of ["ar", "en"] as const) for (const k of ["renameNamed", "removeNamed"] as const) expect(appDict[l].passkeys[k]).toContain("{name}");
+    const src = readFileSync("src/components/app/settings/PasskeySettings.tsx", "utf8");
+    expect(src).toContain('aria-label={fill(T.renameNamed, "name", p.name)}');
+    expect(src).toContain('aria-label={fill(T.removeNamed, "name", p.name)}');
   });
 
   it("the default name is a device label from the user agent, else the fallback", () => {
