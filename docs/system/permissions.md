@@ -729,3 +729,15 @@ Rules 1930-1956; routes rows 242-248; flows in docs/system/flows.md "Customer tw
 - The workspace view (row 249) is read only and has no write action anywhere. Each open is one audit row. It never shows password hashes, session or device details, invite ids or tokens, brand files, tasks or conversations.
 - Suspension (`POST /api/admin/users/{email}` `suspend`, row 81) takes `for` (`indefinite`, `7`, `30` or `date`) and `date` (`YYYY-MM-DD`, the account opens at the start of that day in Riyadh, at most 365 days away); anything else is 400 `bad_until` and nothing changes. Without `for` it is indefinite as before. The audit rows of `suspend` and `unsuspend` carry `before` and `after` as `{suspended, until}`.
 - An ended suspension stops blocking at read time (`isSuspended`): `currentUser`, sign-in, password reset, MCP, team, entitlements and every cron that skips suspended accounts read it through that one function. The first sign-in of the account (or a member) or staff opening the account after the end clears the field and writes `suspension.expired` (actor `system`).
+
+## Agent tool authority (2026-10-20, branch `claude/lucid-faraday-kq261a`, rules 2330-2336)
+
+What each agent may do from a conversation, set by the owner and checked in code (flows.md section 91, `src/lib/tool-authority.ts`).
+
+1. Who sets it. Only `governance.write` (the owner), through `PUT /api/governance` and `POST /api/governance/rollback` (rows 18 and 104), into `gov:{sc(u)}` like every governance field, with a history row per changed capability (`toolPolicy.{agent}.{capability}`). Members and admins read it on the Governance page with the controls disabled. No chat tool, MCP tool, instruction or prompt reads or writes it except through those routes.
+2. What it keys on. The talking agent of the turn (`ctx.agent`, set by chat() from the route's checked agent id), never a request field. A call with no agent (tests, onboarding) is not governed.
+3. Off. The tool is not offered in that agent's turn (`toolsFor(agent, policy)`), and `runTool` refuses a call that names it anyway from the setting read at the moment of the call, after the role gate and before any read, charge or write (rule 2332). Over MCP (`ask_noor`, Noor's turn) the same.
+4. Ask first (only `produce` and `images`). The model's call never runs: in the app a spend card is stored with `reason: "ask"` whatever the owner's message said; over MCP and outside a chat turn it is refused (rule 2333). The owner's Run (`POST /api/chat/spend/{id}`, `generate`) is the approval.
+5. Revalidated at Run (rule 2334). `decideSpend` reads the setting again for the card's agent before any charge; if the capability is now off the answer is 409 `revoked`, nothing is charged and the card stays open.
+6. Not governed here: reading tools, the secretary's tools, and proposals that already wait for a person (brand, instruction, away, handoff, core-file cards). Scheduled work (weekly plan, routines, Majed's auto-run) and the Generate page are governed by the caps and switches above them, not by this policy. MCP's own `generate_content` and `save_draft` (not a chat turn) are not governed by it either.
+

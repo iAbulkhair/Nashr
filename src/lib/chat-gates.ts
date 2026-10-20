@@ -53,16 +53,26 @@ export const scopeOf = (ctx: ToolCtx): { agentScope?: AgentScopeModes } => (ctx.
  * Otherwise nothing runs and nothing is charged: in the app the spend is stored as a card the owner runs with one tap
  * (src/lib/spend-proposals.ts), at most `SPEND_CARDS_PER_REPLY` a reply; over MCP, where no card can be shown, it is
  * refused. A call outside a chat turn (no `ownerMsg`: tests, the onboarding run) keeps its answer. Null: run the tool.
+ *
+ * `ask` (rule 2333): the owner set this capability to "ask first" for the talking agent (src/lib/tool-authority.ts). Then
+ * the owner's words do not matter: nothing runs from the model's call, in or outside a chat turn. In the app the card is
+ * stored (with `reason: "ask"`, so it says why); over MCP, or with no card list, it is refused.
  */
-export async function spendGate(user: User, ctx: ToolCtx, actions: string[], p: Omit<SpendProposal, "id" | "at" | "by">): Promise<string | null> {
-  if (ctx.ownerMsg === undefined || spendIntent(ctx.ownerMsg, p.kind === "image" ? "image" : "content")) return null;
+export async function spendGate(user: User, ctx: ToolCtx, actions: string[], p: Omit<SpendProposal, "id" | "at" | "by">, opts: { ask?: boolean } = {}): Promise<string | null> {
+  const ask = opts.ask === true;
+  if (!ask && (ctx.ownerMsg === undefined || spendIntent(ctx.ownerMsg, p.kind === "image" ? "image" : "content"))) return null;
   const what = p.kind === "image" ? `an image for "${p.title ?? ""}"` : p.kind === "draft" ? `${p.count ?? 1} ${p.type} draft(s)` : `a ${p.type} batch`;
-  if (ctx.via === "mcp" || !ctx.spendProposed) return `Not done: this would spend about ${creditWord(p.credits)} on ${what}, and the person's latest message did not ask for paid work in words. Nothing was created and no credits were used. Politely ask them, in their language, to say plainly what to make (for example "write 3 posts about the new menu"), then call again.`;
+  // The spend gate's two sentences are kept word for word (rules 1510-1511): "the person's" over MCP, "the owner's" on the card.
+  const why = ask ? "the owner set this to ask first for you in Governance" : "the person's latest message did not ask for paid work in words";
+  const cardWhy = ask ? why : "the owner's latest message did not ask for paid work in words";
+  if (ctx.via === "mcp" || !ctx.spendProposed) return ask
+    ? `Not done: this would spend about ${creditWord(p.credits)} on ${what}, and ${why}, so it runs only from a card the owner presses Run on in the Thakeen app chat. Nothing was created and no credits were used. Tell them so plainly, in their language.`
+    : `Not done: this would spend about ${creditWord(p.credits)} on ${what}, and ${why}. Nothing was created and no credits were used. Politely ask them, in their language, to say plainly what to make (for example "write 3 posts about the new menu"), then call again.`;
   if (ctx.spendProposed.length >= SPEND_CARDS_PER_REPLY) return `Not done: this reply already carries ${SPEND_CARDS_PER_REPLY} cards waiting for the owner's Run. Nothing was created and no credits were used. Do not propose more paid work in this reply.`;
-  const prop = await proposeSpend(sc(user), { ...p, by: ctx.by ?? byOf(user) });
+  const prop = await proposeSpend(sc(user), { ...p, ...(ask ? { reason: "ask" as const } : {}), by: ctx.by ?? byOf(user) });
   ctx.spendProposed.push(prop);
   actions.push(`spendprop:${prop.id}`);
-  return `Not started: the owner's latest message did not ask for paid work in words, so nothing ran and no credits were used. A card under your reply offers ${what} for about ${creditWord(p.credits)}; the owner runs it with one tap, or dismisses it. Tell the owner politely, in their language and in one sentence, that the card is waiting for their Run, and do not call a paid tool again for this in this reply.`;
+  return `Not started: ${cardWhy}, so nothing ran and no credits were used. A card under your reply offers ${what} for about ${creditWord(p.credits)}; the owner runs it with one tap, or dismisses it. Tell the owner politely, in their language and in one sentence, that the card is waiting for their Run, and do not call a paid tool again for this in this reply.`;
 }
 
 /** The tool result when an agent's monthly cap stops a charge: a plain sentence for the model to relay. */

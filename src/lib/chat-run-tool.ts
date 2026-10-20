@@ -30,6 +30,7 @@ import { CATALOG_IMPORTS_PER_HOUR, WINDOW, allow } from "./rate";
 import { MIN_ROLE, can } from "./roles";
 import { autoItems, createHandoff, parseProposal, proposalText } from "./handoffs";
 import { getGov } from "./governance";
+import { authorityOf, capOfTool, offRefusal } from "./tool-authority";
 import { entitlements } from "./entitlements";
 import { MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
 import { isRegulated } from "./regulated";
@@ -81,6 +82,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
   const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;
   // `todo.write` is held by every login of the account (members too), so for it the refusal is for a chat with no acting login.
   if (needs && !can(user, needs)) return MIN_ROLE[needs] === "member" ? `Not done: ${name} needs a signed-in login of this account with access to its to-do list, and this chat has none. Nothing was changed. Tell the owner plainly and do not try another way around it.` : `Not done: ${name} needs the owner or an admin of this account, and the person chatting is neither. Nothing was changed. Tell them plainly that the account owner or an admin can do this, and do not try another way around it.`;
+  // The owner's tool authority (rule 2332, src/lib/tool-authority.ts), after the role gate and before any read, charge or
+  // write. Read at the moment of the call, not from the turn's start: a capability switched off mid-turn holds for the
+  // next call. Keyed by the talking agent only; a call with no agent (tests, onboarding) keeps each tool's own answer.
+  const cap = ctx.agent ? capOfTool(name) : null;
+  const authority = cap && ctx.agent ? authorityOf((await getGov(email)).toolPolicy, ctx.agent, cap) : "on";
+  if (authority === "off" && ctx.agent) return offRefusal(agentById(ctx.agent).name.en, name);
+  const askFirst = { ask: authority === "ask" };
   const who = async () => ctx.by ?? (await byOf(user));
   // Agents' handoff notes (src/lib/secretary-handoff.ts), not Majed's handoffs: the sender is this turn's agent; over MCP
   // the words come from another assistant, so none is left. Tagged `note:`, never `handoff:`: that tag is Majed's
@@ -106,7 +114,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const type = input.type;
       const wrong = await roleGate(user, ctx, type, String(input.notes ?? ""), actions);
       if (wrong) return wrong;
-      const held = await spendGate(user, ctx, actions, { kind: "batch", type, brief: String(input.notes ?? ""), credits: TASK_COST[type], ...(ctx.agent ? { agent: ctx.agent } : {}) });
+      const held = await spendGate(user, ctx, actions, { kind: "batch", type, brief: String(input.notes ?? ""), credits: TASK_COST[type], ...(ctx.agent ? { agent: ctx.agent } : {}) }, askFirst);
       if (held) return held;
       const r = await generateBatch(user, email, { type, notes: String(input.notes ?? ""), source: "chat", via: "chat", by: ctx.by, deadline, ...scopeOf(ctx) });
       if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}. Tell the owner plainly. ${NO_CREDITS_HINT}`);
@@ -128,7 +136,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const wrong = await roleGate(user, ctx, type, String(input.brief ?? ""), actions);
       if (wrong) return wrong;
       const count = Math.max(1, Math.min(3, Number(input.count) || 1));
-      const held = await spendGate(user, ctx, actions, { kind: "draft", type, count, brief: String(input.brief ?? ""), credits: countCost(type, count), ...(ctx.agent ? { agent: ctx.agent } : {}) });
+      const held = await spendGate(user, ctx, actions, { kind: "draft", type, count, brief: String(input.brief ?? ""), credits: countCost(type, count), ...(ctx.agent ? { agent: ctx.agent } : {}) }, askFirst);
       if (held) return held;
       const r = await generateBatch(user, email, { type, notes: String(input.brief ?? ""), count, source: "chat", via: "chat", by: ctx.by, deadline, ...scopeOf(ctx) });
       if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}. ${NO_CREDITS_HINT}`);
@@ -375,7 +383,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const [brand, t] = await Promise.all([getBrand(email), getTask(email, String(input.task_id))]);
       if (!brand || !t) return "Item not found.";
       if (!IMAGE_TYPES.includes(t.type)) return `Images are only for these item types: ${IMAGE_TYPES.join(", ")}.`;
-      const held = await spendGate(user, ctx, actions, { kind: "image", type: t.type, taskId: t.id, title: t.title.slice(0, 120), brief: "", credits: CHAT_IMAGE_CREDITS, ...(ctx.agent ? { agent: ctx.agent } : {}) });
+      const held = await spendGate(user, ctx, actions, { kind: "image", type: t.type, taskId: t.id, title: t.title.slice(0, 120), brief: "", credits: CHAT_IMAGE_CREDITS, ...(ctx.agent ? { agent: ctx.agent } : {}) }, askFirst);
       if (held) return held;
       // The default model only (spec A2): the model never chooses how much of the owner's money a render costs. The
       // engine charges before the render, to the agent that owns the item and under the owner's monthly cap for that

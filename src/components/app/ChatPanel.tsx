@@ -527,7 +527,7 @@ export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; 
  */
 export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p: SpendProposalCardData; t: AppDict; lang: "ar" | "en"; /** `can(u, "generate")` */ canRun?: boolean; onCredits?: (n: number) => void }) {
   const ar = lang === "ar";
-  const [state, setState] = useState<"open" | "running" | "ran" | "dismissed" | "gone" | "busy" | "slow" | "forbidden" | "paused" | "failed" | "error">(p.state === "ran" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
+  const [state, setState] = useState<"open" | "running" | "ran" | "dismissed" | "gone" | "busy" | "slow" | "forbidden" | "paused" | "failed" | "revoked" | "error">(p.state === "ran" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
   const [made, setMade] = useState<number | null>(null);
   async function decide(decision: "run" | "dismiss") {
     setState("running");
@@ -545,6 +545,8 @@ export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p:
     if (r.status === 404 || r.status === 410) return setState("gone");
     if (r.status === 429) return setState("slow");
     if (j.error === "claim_busy") return setState("busy");
+    // The owner switched this off for the agent in Governance since the card was made (rule 2334): nothing ran.
+    if (j.error === "revoked") return setState("revoked");
     if (j.error === "model_paused" || j.error === "too_late") return setState("paused");
     // Credits, the trial or an agent's cap: the app's own limit dialog, as for any batch. The card stays open.
     if (limitFromError(j.error)) return setState("open");
@@ -561,6 +563,7 @@ export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p:
     forbidden: t.team.errors.forbidden,
     paused: ar ? "التوليد متوقف مؤقتاً. لم يُخصم أي كريدت، حاول لاحقاً." : "Generation is paused for now. No credits were used; try again later.",
     failed: ar ? "تعذّر التنفيذ، وأُعيدت الكريدتات. حاول مرة أخرى." : "It could not be done, and the credits were returned. Try again.",
+    revoked: ar ? "أوقف المالك هذا لهذا الوكيل في صفحة الحوكمة، فلم يُنفَّذ شيء ولم يُخصم أي كريدت." : "The owner switched this off for this agent on the Governance page, so nothing ran and no credits were used.",
     error: ar ? "لم يُنفَّذ. حاول مرة أخرى." : "Not done. Try again.",
   };
   const closed = state === "ran" || state === "dismissed" || state === "gone";
@@ -577,7 +580,10 @@ export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p:
         <dt className="text-xs text-foreground-muted">{ar ? "التكلفة التقديرية" : "Estimated cost"}</dt>
         <dd className="tnum min-w-0" dir="auto">{ar ? `${p.credits} كريدت` : `${p.credits} credit${p.credits === 1 ? "" : "s"}`}</dd>
       </dl>
-      <p className="px-4 pb-2 text-xs text-foreground-muted">{ar ? "لم يُنفَّذ شيء ولم يُخصم أي كريدت لأن رسالتك لم تطلب هذا صراحةً. اضغط «نفّذ» إن كنت تريده." : "Nothing ran and no credits were used, because your message did not ask for this in words. Press Run if you want it."}</p>
+      <p className="px-4 pb-2 text-xs text-foreground-muted">{p.reason === "ask"
+        // Rule 2333: the owner set this to ask first for the agent in Governance, whatever the message said.
+        ? (ar ? "لم يُنفَّذ شيء ولم يُخصم أي كريدت: ضبطتَ في الحوكمة أن يستأذنك هذا الوكيل قبل هذا العمل. اضغط «نفّذ» إن كنت تريده." : "Nothing ran and no credits were used: in Governance you set this agent to ask you first for this work. Press Run if you want it.")
+        : (ar ? "لم يُنفَّذ شيء ولم يُخصم أي كريدت لأن رسالتك لم تطلب هذا صراحةً. اضغط «نفّذ» إن كنت تريده." : "Nothing ran and no credits were used, because your message did not ask for this in words. Press Run if you want it.")}</p>
       <footer className="flex flex-wrap items-center gap-2 border-t border-foreground/5 px-3 py-2 text-xs">
         {done[state] && (state === "ran" || state === "dismissed" ? <span role="status" className="text-foreground">{done[state]}</span> : <span role="alert" className="text-danger">{done[state]}</span>)}
         {state === "ran" && <Link href={`/${lang}/app`} className="underline">{ar ? "افتح صندوق الموافقات" : "Open approvals"}</Link>}

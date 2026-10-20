@@ -8,6 +8,7 @@ import type { By } from "@/lib/actor";
 import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "@/lib/agents";
 import { TASK_COST, isTaskType, type TaskType } from "@/lib/tasks";
 import { dateFormat } from "@/lib/dates";
+import { ASKABLE, TOOL_CAPS, authorityOf, fullPolicy, isToolCap, type AuthorityMode, type ToolCap } from "@/lib/tool-authority";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
@@ -103,7 +104,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       const agentCaps: Partial<Record<AgentId, number | null>> = {};
       for (const id of CAPPED) agentCaps[id] = caps[id].trim() === "" ? null : Number(caps[id].trim());
       const confirm = gov.majedAutoHandoff === true && autoConfirmed ? { confirmAutoHandoff: true } : {};
-      const res = await fetch("/api/governance", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...gov, agentCaps, ...confirm }) });
+      // Every agent and capability, `on` included: the server keeps a stored entry the patch does not name.
+      const res = await fetch("/api/governance", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...gov, agentCaps, toolPolicy: fullPolicy(gov.toolPolicy), ...confirm }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; governance?: Governance; entry?: GovHistoryEntry | null };
       if (!res.ok || !j.ok || !j.governance) {
         // rule 2001: a plain failure is a toast; a typed refusal (busy, cap, confirm) stays inline, the owner acts on it.
@@ -181,14 +183,21 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
   }
   const when = dateFormat(lang, { dateStyle: "medium", timeStyle: "short" });
   const who = (b: By) => (b.kind === "member" ? `${g.byMember}${b.email ? ` · ${b.email}` : ""}` : b.kind === "founder" ? g.byFounder : b.kind === "token" ? g.byToken : b.kind === "system" ? g.bySystem : g.byOwner);
+  /** One agent's mode for one capability, set in the page's state; `on` removes the stored value. */
+  const setMode = (id: AgentId, cap: ToolCap, m: AuthorityMode) => setGov((cur) => {
+    const row = { ...(cur.toolPolicy?.[id] ?? {}) };
+    if (m === "on") delete row[cap]; else row[cap] = m;
+    return { ...cur, toolPolicy: { ...(cur.toolPolicy ?? {}), [id]: row } };
+  });
   const label = (path: string) => {
-    const [head, sub] = path.split(".", 2);
+    const [head, sub, cap] = path.split(".", 3);
+    if (head === "toolPolicy" && isAgentId(sub) && isToolCap(cap)) return `${g.authorityShort}: ${fill(g.authorityFor, { cap: g.caps[cap], name: t.agents[sub].name })}`;
     if (head === "autoApprove" && isTaskType(sub)) return `${g.autoApproveShort}: ${t.generate.types[sub].t}`;
     if (head === "agentCaps" && isAgentId(sub)) return `${g.capShort}: ${t.agents[sub].name}`;
     const top: Record<string, string> = { reviewer: g.reviewer, crossReview: g.crossReview, learning: g.learning, noEmDash: g.noEmDash, weeklyCap: g.weeklyCap, notifyMinutes: g.notify, majedAutoHandoff: g.autoHandoff };
     return Object.hasOwn(top, head) ? top[head] : path;
   };
-  const value = (path: string, v: GovValue) => (v === null ? (path.startsWith("agentCaps.") ? g.noCap : "—") : typeof v === "boolean" ? (v ? g.on : g.off) : String(v));
+  const value = (path: string, v: GovValue) => (v === null ? (path.startsWith("agentCaps.") ? g.noCap : "—") : typeof v === "boolean" ? (v ? g.on : g.off) : typeof v === "string" ? g.modes[v] : String(v));
   return (
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="governancepanel-t1" />{g.title}</span></h1>
@@ -234,6 +243,30 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
                 </li>
               );
             })}
+          </ul>
+        </div>
+        {/* Rule 2335: what each agent may do from a conversation. A record saved before it existed reads as all allowed. */}
+        <div className="card">
+          <h2 className="font-display font-medium">{g.authority}</h2>
+          <p className="mt-1 text-sm text-foreground-muted">{g.authoritySub}</p>
+          <ul className="mt-3 divide-y divide-foreground/10">
+            {AGENT_IDS.map((id) => (
+              <li key={id} className="py-3">
+                <p className="font-medium">{t.agents[id].name} <span className="text-sm font-normal text-foreground-muted">· {t.agents[id].role}</span></p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {TOOL_CAPS.map((cap) => (
+                    <label key={cap} className="flex min-w-0 items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 text-foreground-muted">{g.caps[cap]}</span>
+                      <select className="input w-40 shrink-0 py-1 text-sm" value={authorityOf(gov.toolPolicy, id, cap)} onChange={(e) => setMode(id, cap, e.target.value as AuthorityMode)} aria-label={fill(g.authorityFor, { cap: g.caps[cap], name: t.agents[id].name })}>
+                        <option value="on">{g.modes.on}</option>
+                        {ASKABLE.includes(cap) && <option value="ask">{g.modes.ask}</option>}
+                        <option value="off">{g.modes.off}</option>
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </li>
+            ))}
           </ul>
         </div>
         {/* After the caps it depends on. Off for a record saved before the switch existed. Turning it on asks first. */}

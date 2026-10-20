@@ -31,6 +31,8 @@ import { CAPPED_REPLY, CHAT_MAX_DURATION_S, CUT_NOTE, type ChatOpts, type ChatTu
 import { type ChatMsg, deliver, history, push } from "./chat-history";
 import { statusFor, system } from "./chat-prompt";
 import { toolsFor } from "./chat-tools";
+import { getGov } from "./governance";
+import { policyNote } from "./tool-authority";
 import { runTool } from "./chat-run-tool";
 
 export { history, push } from "./chat-history";
@@ -80,10 +82,10 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call. The last
   // two are for the agent-scope input gate below: the modes (the route's copy when it passed one) and the names of the
   // account's other brands. A store error on the brand names must not cost the owner the turn: the gate reads none.
-  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId]), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
+  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands, gov] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId]), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
     log.error("agent scope brand names failed", e);
     return [];
-  })]);
+  }), getGov(email)]);
   // The agent-scope input gate (rule 794; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md 4.2),
   // after the paused return and the brand reads and before the first model call. The owner's message is already saved
   // above, so an enforced refusal saves only its reply: the thread reads the same as "message, then refusal".
@@ -108,7 +110,11 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     // The brand's own weekend (its Working days settings, else its country's): the NOW line names the week start from it.
     const weekend = calendarOf(workDays, zoneOf(brand), Date.now()).weekend;
     const sys = system(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock(notes), weekend, layers, { prompt: scopeModes.prompt === "on", roleEnforced: scopeModes.role === "enforce" });
-    const tools = toolsFor(agentId);
+    // The owner's tool authority, in the workspace block (the brand file's block): one line naming what is off or ask-first.
+    const authority = policyNote(gov.toolPolicy, agentId);
+    if (authority) sys[1] = { ...sys[1], text: sys[1].text + authority };
+    // The owner's tool authority (rule 2331): a capability switched off for this agent is not offered in this turn.
+    const tools = toolsFor(agentId, gov.toolPolicy);
     // The per-message ceiling (CHAT_TURN_MAX_USD), checked in code before every call (src/lib/chat-budget.ts). The first
     // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
     // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)

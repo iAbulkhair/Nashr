@@ -32,6 +32,10 @@ export const arWorkspace = {
     history: "سجل التغييرات", historySub: "آخر 100 حفظ غيّر إعداداً تُسجَّل هنا: متى، ومن، وما الذي تغيّر. «استرجع» تعيد كل الإعدادات كما كانت قبل ذلك التغيير، ويُسجَّل الاسترجاع تغييراً جديداً.", historyEmpty: "لا تغييرات مسجلة بعد.",
     byOwner: "المالك", byMember: "عضو", byFounder: "دعم ذكين", byToken: "تطبيق متصل", bySystem: "تلقائي",
     on: "مفعّل", off: "متوقف", arrow: "←", autoApproveShort: "اعتماد تلقائي", capShort: "الحد الشهري", restoreOf: "استرجاع لتغيير سابق",
+    authority: "ما يفعله كل وكيل في المحادثة", authoritySub: "لكل وكيل ولكل نوع عمل: «مسموح» يعمل كالمعتاد بكل ضوابطه، و«يستأذنك أولاً» لا يبدأ أبداً من طلب الوكيل بل يترك بطاقة تضغط عليها «نفّذ» أو تتجاهلها، و«غير مسموح» يُسحب من الوكيل فلا يستطيعه في المحادثة ولا عبر MCP. التطبيق يتحقق من هذا في كل استدعاء، ويتحقق منه مرة أخرى عند ضغطك «نفّذ» على بطاقة قديمة. لا يغيّر المهام المجدولة ولا ما تبدؤه أنت من صفحة التوليد.",
+    authorityShort: "الصلاحية", authorityFor: "{cap} لـ {name}",
+    caps: { produce: "إنشاء المحتوى (يخصم كريدت)", images: "الصور (يخصم كريدت)", files: "كتابة ملفات مساحة العمل", publish: "النشر على المنصات المربوطة", catalog: "استيراد كتالوج المنتجات" },
+    modes: { on: "مسموح", ask: "يستأذنك أولاً", off: "غير مسموح" },
     restore: "استرجع", restoring: "جارٍ الاسترجاع…", restoreConfirm: "إعادة كل الإعدادات إلى ما كانت عليه قبل هذا التغيير؟ ما تغيّر بعده يُلغى أيضاً، ويبقى السجل كاملاً.", restored: "تم الاسترجاع", restoreNoop: "الإعدادات مطابقة لما كانت عليه، فلا شيء يُسترجع.", restoreFailed: "تعذّر الاسترجاع، حاول مرة أخرى.", restoreGone: "هذا التغيير لم يعد في السجل، فلا يمكن استرجاعه. أعد تحميل الصفحة.",
   },
   instructions: {
@@ -211,6 +215,10 @@ export const enWorkspace: typeof arWorkspace = {
     history: "Change history", historySub: "The latest 100 saves that changed a setting are kept here: when, who, and what changed. Restore puts every setting back as it was before that change, and the restore is recorded as a new change.", historyEmpty: "No changes recorded yet.",
     byOwner: "Owner", byMember: "Member", byFounder: "Thakeen support", byToken: "Connected app", bySystem: "Automatic",
     on: "On", off: "Off", arrow: "→", autoApproveShort: "Auto-approve", capShort: "Monthly cap", restoreOf: "Restore of an earlier change",
+    authority: "What each agent may do in chat", authoritySub: "Per agent and per kind of work: Allowed runs as usual under all its checks; Ask first never starts from the agent's call and leaves a card you Run or dismiss; Not allowed takes it away from that agent, in the app chat and over MCP. The app checks this on every call, and again when you press Run on an older card. It does not change scheduled tasks or what you start yourself from the Generate page.",
+    authorityShort: "Authority", authorityFor: "{cap} for {name}",
+    caps: { produce: "Create content (uses credits)", images: "Images (uses credits)", files: "Write workspace files", publish: "Publish to connected platforms", catalog: "Import the product catalog" },
+    modes: { on: "Allowed", ask: "Ask first", off: "Not allowed" },
     restore: "Restore", restoring: "Restoring…", restoreConfirm: "Put every setting back as it was before this change? Changes made after it are undone too. The history keeps every entry.", restored: "Restored", restoreNoop: "The settings already match, so there was nothing to restore.", restoreFailed: "Could not restore. Try again.", restoreGone: "This change is no longer in the history, so it cannot be restored. Reload the page.",
   },
   instructions: {
