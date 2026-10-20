@@ -82,6 +82,54 @@ describe("rule 2426 (console half): only the console owner flips the switch", ()
     expect(await switchRows()).toEqual([]);
   });
 
+  it("a signed-in customer and a founder impersonating one are not console actors: GET and POST answer 401, nothing written", async () => {
+    const u = await newUser("pkswc");
+    await signIn(u.email);
+    expect((await read({})).status).toBe(401);
+    expect((await flip({ on: false, reason: REASON }, {})).status).toBe(401);
+    // A founder impersonating the customer, by the founder's own session and by the key.
+    const founder = "pksw-founder@test.example";
+    vi.stubEnv("ADMIN_EMAILS", founder);
+    for (const imp of [founder, "key"]) {
+      await signIn(u.email, { imp });
+      expect((await read({})).status, imp).toBe(401);
+      expect((await flip({ on: false, reason: REASON }, {})).status, imp).toBe(401);
+    }
+    expect(await stored()).toBeNull();
+    expect(await switchRows()).toEqual([]);
+  });
+
+  it("GET tells the caller whether it may flip: the key and an owner staff member yes, a support staff member no", async () => {
+    expect((await (await read()).json()).may).toBe(true);
+    const { openStaffSession } = await import("@/lib/staff-session");
+    const { staff: support } = await enrolledStaff({ role: "support" });
+    await openStaffSession(support.email);
+    expect(await answer(await read({}))).toEqual({ status: 200, body: { ok: true, on: true, may: false } });
+    signOut();
+    const { staff: owner } = await enrolledStaff({ role: "owner" });
+    await openStaffSession(owner.email);
+    expect(await answer(await read({}))).toEqual({ status: 200, body: { ok: true, on: true, may: true } });
+  });
+
+  it("an owner staff session with a right code flips it; the row names the staff member and via staff", async () => {
+    const { staff, secret } = await enrolledStaff({ role: "owner" });
+    const { openStaffSession } = await import("@/lib/staff-session");
+    await openStaffSession(staff.email);
+    expect(await answer(await flip({ on: false, reason: REASON }, { ...ip(), "x-admin-otp": codeAt(secret) }))).toEqual({ status: 200, body: { ok: true, on: false } });
+    expect(String(await stored())).toBe("1");
+    const rows = await switchRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ section: "system", action: "passkeys.off", actor: staff.email, via: "staff", before: { on: true }, after: { on: false }, reason: REASON });
+  });
+
+  it("a secret-looking reason is masked in the switch's audit row", async () => {
+    const leaked = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv";
+    expect((await flip({ on: false, reason: `rotate ${leaked} after the incident` })).status).toBe(200);
+    const [row] = await switchRows();
+    expect(row.reason).toContain("[redacted]");
+    expect(JSON.stringify(row)).not.toContain(leaked);
+  });
+
   it("a support staff session gets 403 forbidden; nothing is written", async () => {
     const { staff } = await enrolledStaff({ role: "support" });
     const { openStaffSession } = await import("@/lib/staff-session");
@@ -126,9 +174,9 @@ describe("rule 2426 (console half): only the console owner flips the switch", ()
   });
 
   it("GET reads the switch, default on (fail-open by design), and writes no audit row", async () => {
-    expect(await answer(await read())).toEqual({ status: 200, body: { ok: true, on: true } });
+    expect(await answer(await read())).toEqual({ status: 200, body: { ok: true, on: true, may: true } });
     await setPasskeysOn(false);
-    expect(await answer(await read())).toEqual({ status: 200, body: { ok: true, on: false } });
+    expect(await answer(await read())).toEqual({ status: 200, body: { ok: true, on: false, may: true } });
     expect((await read()).headers.get("cache-control")).toBe("no-store");
     expect(await switchRows()).toEqual([]);
   });
@@ -224,12 +272,25 @@ describe("rule 2426: the route's gate order and the panel's toggle", () => {
       const off = renderToStaticMarkup(createElement(PasskeysSwitch, { lang, initial: false }));
       expect(off).toContain(C.offNow);
       expect(off).toContain(C.turnOn);
+      // A role that may not flip it sees the toggle disabled with the owner-only line; an owner does not see the line.
+      expect(on).not.toContain(C.ownerOnly);
+      const seen = renderToStaticMarkup(createElement(PasskeysSwitch, { lang, initial: true, initialMay: false }));
+      expect(seen).toContain(C.ownerOnly);
+      expect(seen).toMatch(/<button[^>]*disabled=""[^>]*aria-describedby="integration-passkeys-owner-only"/);
     }
     const src = readFileSync("src/components/admin/IntegrationsPanel.tsx", "utf8");
     expect(src).toContain('adminFetch("/api/admin/passkeys"');
     expect(src).toContain("useAdminForm(lang)");
     expect(src).toMatch(/JSON\.stringify\(\{ on: next, reason: v\.reason \}\)/);
     expect(src).toContain("<PasskeysSwitch lang={lang} />");
+    // The read answers `may`; a failed read shows a retry that reads again.
+    expect(src).toContain("setMay(j.may === true)");
+    expect(src).toMatch(/onClick=\{retry\}[^>]*>\{C\.retry\}/);
+    expect(src).toContain("setReads((n) => n + 1)");
+    expect(src).toContain("if (on === null || !may) return;");
+    // The page header no longer calls the whole page read-only.
+    expect(src).not.toContain("redeploy.\",\n");
+    expect(src).toContain("The Passkeys row below is a runtime switch a console owner can change here.");
     expect(src).not.toMatch(/@\/lib\/passkey-switch"/);
   });
 });

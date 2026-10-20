@@ -14,14 +14,17 @@ export const dynamic = "force-dynamic";
  * renaming and removing keep working, and no stored passkey is read, changed or deleted here. Passwords keep working, so
  * switching off locks nobody out.
  *
- * GET -> `{ ok, on }` for the Integrations page toggle: any console actor (`adminActor`, else 401); a read, so no second
- * factor and no audit row.
+ * GET -> `{ ok, on, may }` for the Integrations page toggle: any console actor (`adminActor`, else 401); a read, so no
+ * second factor and no audit row. `may` says whether this caller may flip it (`staffMay(consoleRole(req),
+ * "passkeys.switch")`, the same check POST runs), so a support or read-only staff member sees a disabled toggle instead
+ * of learning it after typing a reason. It only shapes the page: POST checks again.
  */
 export async function GET(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
   const on = await passkeysOn();
-  return NextResponse.json({ ok: true, on }, { headers: { "cache-control": "no-store" } });
+  const may = staffMay(consoleRole(req), "passkeys.switch");
+  return NextResponse.json({ ok: true, on, may }, { headers: { "cache-control": "no-store" } });
 }
 
 /**

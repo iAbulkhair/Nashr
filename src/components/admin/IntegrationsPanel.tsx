@@ -15,7 +15,7 @@ import { Time } from "@/components/ui/Time";
 const S = {
   en: {
     title: "Integrations",
-    note: "Each service and whether it is set up, decided only by whether its environment variable names exist on the server. No value is read out or sent to this page. Read-only: change a variable in the host (hPanel) and redeploy.",
+    note: "Each service and whether it is set up, decided only by whether its environment variable names exist on the server. No value is read out or sent to this page. The service list is read-only: change a variable in the host (hPanel) and redeploy. The Passkeys row below is a runtime switch a console owner can change here.",
     loading: "Loading…", failed: "Could not load the list.",
     status: { on: "On", partial: "Incomplete", off: "Off" },
     required: "needed", optional: "optional", set: "set", missing: "missing", gatedOff: "Off in code", gatedOn: "Code switch",
@@ -38,7 +38,7 @@ const S = {
   },
   ar: {
     title: "التكاملات",
-    note: "كل خدمة وهل هي مُعدّة، ويُحكم بذلك فقط من وجود أسماء متغيرات البيئة على الخادم. لا تُقرأ أي قيمة ولا تُرسل إلى هذه الصفحة. للاطلاع فقط: غيّر المتغير في الاستضافة (hPanel) ثم أعد النشر.",
+    note: "كل خدمة وهل هي مُعدّة، ويُحكم بذلك فقط من وجود أسماء متغيرات البيئة على الخادم. لا تُقرأ أي قيمة ولا تُرسل إلى هذه الصفحة. قائمة الخدمات للاطلاع فقط: غيّر المتغير في الاستضافة (hPanel) ثم أعد النشر. صف «مفاتيح المرور» أدناه مفتاح تشغيل وإيقاف وقت التشغيل يغيّره مالك لوحة التحكم من هنا.",
     loading: "جارٍ التحميل…", failed: "تعذّر تحميل القائمة.",
     status: { on: "تعمل", partial: "ناقصة", off: "متوقفة" },
     required: "مطلوب", optional: "اختياري", set: "مضبوط", missing: "غير مضبوط", gatedOff: "متوقفة في الكود", gatedOn: "مفتاح في الكود",
@@ -83,6 +83,8 @@ export const PASSKEYS_SWITCH_COPY = {
     loadFailed: "Could not read the passkeys switch.",
     failed: "Could not change the switch.",
     forbidden: "Only a console owner can change this switch.",
+    ownerOnly: "Only a console owner can change this switch; your role can see it only.",
+    retry: "Try again",
   },
   ar: {
     title: "مفاتيح المرور",
@@ -97,31 +99,48 @@ export const PASSKEYS_SWITCH_COPY = {
     loadFailed: "تعذّرت قراءة حالة مفاتيح المرور.",
     failed: "تعذّر تغيير الحالة.",
     forbidden: "لا يغيّر هذا المفتاح إلا مالك لوحة التحكم.",
+    ownerOnly: "لا يغيّر هذا المفتاح إلا مالك لوحة التحكم؛ دورك يتيح لك رؤيته فقط.",
+    retry: "أعد المحاولة",
   },
 } as const;
 
 /**
- * The Passkeys row (rule 2426, spec flow E): GET /api/admin/passkeys for the state; the toggle opens the console's reason
- * form, then POSTs `{on, reason}` through `adminFetch`, which asks the second factor when the server wants it and sends
- * the request again. Only a console owner may flip it (the server answers 403 to anyone else). `initial` skips the read
- * (tests render the row without a server).
+ * The Passkeys row (rule 2426, spec flow E): GET /api/admin/passkeys for the state and `may` (whether this console role
+ * may flip it); the toggle opens the console's reason form, then POSTs `{on, reason}` through `adminFetch`, which asks
+ * the second factor when the server wants it and sends the request again. Only a console owner may flip it: for anyone
+ * else the toggle is disabled with the "owner only" line, and the server answers 403 all the same. A failed read shows
+ * a retry button. `initial` (and `initialMay`, default true) skip the read (tests render the row without a server).
  */
-export function PasskeysSwitch({ lang, initial }: { lang: "ar" | "en"; initial?: boolean }) {
+export function PasskeysSwitch({ lang, initial, initialMay }: { lang: "ar" | "en"; initial?: boolean; initialMay?: boolean }) {
   const C = PASSKEYS_SWITCH_COPY[lang];
   const [on, setOn] = useState<boolean | null>(initial ?? null);
+  const [may, setMay] = useState(initialMay ?? true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reads, setReads] = useState(0);
   const [askForm, formDialog] = useAdminForm(lang);
   useEffect(() => {
     if (initial !== undefined) return;
+    let live = true;
+    const failed = () => { if (live) setLoadFailed(true); };
     adminFetch("/api/admin/passkeys").then((r) => r.json()).then((j) => {
-      if (j.ok && typeof j.on === "boolean") setOn(j.on);
-      else setMsg(PASSKEYS_SWITCH_COPY[lang].loadFailed);
-    }).catch(() => setMsg(PASSKEYS_SWITCH_COPY[lang].loadFailed));
-  }, [initial, lang]);
+      if (!live) return;
+      if (j.ok && typeof j.on === "boolean") {
+        setOn(j.on);
+        setMay(j.may === true);
+        setLoadFailed(false);
+      } else failed();
+    }).catch(failed);
+    return () => { live = false; };
+  }, [initial, lang, reads]);
+  function retry() {
+    setLoadFailed(false);
+    setReads((n) => n + 1);
+  }
 
   async function toggle() {
-    if (on === null) return;
+    if (on === null || !may) return;
     const next = !on;
     setMsg("");
     const v = await askForm({
@@ -159,8 +178,15 @@ export function PasskeysSwitch({ lang, initial }: { lang: "ar" | "en"; initial?:
       {on !== null && (
         <>
           <p role="status" className="mt-2 text-xs">{on ? C.onNow : C.offNow}</p>
-          <button type="button" disabled={busy} onClick={() => void toggle()} className={`btn btn-sm mt-2 ${on ? "btn-danger" : "btn-primary"}`}>{on ? C.turnOff : C.turnOn}</button>
+          <button type="button" disabled={busy || !may} aria-describedby={may ? undefined : "integration-passkeys-owner-only"} onClick={() => void toggle()} className={`btn btn-sm mt-2 ${on ? "btn-danger" : "btn-primary"}`}>{on ? C.turnOff : C.turnOn}</button>
+          {!may && <p id="integration-passkeys-owner-only" className="mt-1 text-xs text-foreground-muted">{C.ownerOnly}</p>}
         </>
+      )}
+      {loadFailed && (
+        <p role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-danger">
+          <span>{C.loadFailed}</span>
+          <button type="button" onClick={retry} className="btn btn-sm">{C.retry}</button>
+        </p>
       )}
       {msg && <p role="alert" className="mt-2 text-xs text-danger">{msg}</p>}
       {formDialog}
