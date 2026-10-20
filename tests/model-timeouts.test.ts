@@ -246,7 +246,8 @@ describe("every charged model call ends by its caller's deadline, so the refund 
     for (const f of ["src/app/api/chat/route.ts", "src/app/api/mcp/route.ts"]) for (const l of chatCalls(f)) expect(l, f).toMatch(/\bdeadline\b/);
     expect(src("src/app/api/onboard/route.ts")).toMatch(/buildFromSite\([\s\S]*?, deadline\);/);
     expect(src("src/app/api/cron/weekly/route.ts")).toMatch(/runWeekly\(u, systemBy\("cron"\), \{ deadline \}\)/);
-    expect(src("src/app/api/schedule/route.ts")).toMatch(/runWeekly\(u, byOf\(u\), \{ deadline \}\)/);
+    // The login's Run now also resumes a held run (rule 2379); the deadline is still handed on.
+    expect(src("src/app/api/schedule/route.ts")).toMatch(/runWeekly\(u, byOf\(u\), \{ deadline, resume: true \}\)/);
     // deadlineFor keeps 15 s for the refund and the answer.
     const t0 = Date.now();
     expect(deadlineFor(300, t0) - t0).toBe(285_000);

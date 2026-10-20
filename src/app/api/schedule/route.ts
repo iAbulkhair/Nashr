@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getSchedule, runDaily, runWeekly, saveSchedule, type Schedule } from "@/lib/schedule";
-import { isRoutineId, type RoutineId } from "@/lib/routines";
+import { isRoutineId, runRoutine, type RoutineId } from "@/lib/routines";
 import { byOf } from "@/lib/actor";
 import { deadlineFor } from "@/lib/media/keys";
 import { forbid } from "@/lib/roles";
@@ -34,15 +34,24 @@ export async function PUT(req: Request) {
   }
   return NextResponse.json({ ok: true, schedule: await saveSchedule(sc(u), patch) });
 }
-/** POST {run: "weekly"|"daily"} → run now */
+/**
+ * POST {run: "weekly"|"daily"} → run now; {run: "routine", id} → run a routine the cron held (rule 2379). Both paid runs are
+ * the login's explicit request (`resume`): a run of this period that was killed after it began runs on its own claim, so a
+ * charge it took is reused and never taken twice. A routine that was not held answers `not_held` and runs nothing.
+ */
 export async function POST(req: Request) {
   // A weekly "Run now" ends its model calls by this request's deadline (rule 336).
   const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { run?: string };
+  const b = (await req.json().catch(() => ({}))) as { run?: string; id?: unknown };
   // A login's own "Run now" (any role): its activity rows name that login (or the founder), not the cron.
-  if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, byOf(u), { deadline }) });
+  if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, byOf(u), { deadline, resume: true }) });
+  // Only an id from the closed list; the scope is the caller's own (`runRoutine` reads `u.scope`).
+  if (b.run === "routine") {
+    if (!isRoutineId(b.id)) return NextResponse.json({ ok: false, error: "bad_routine" }, { status: 400 });
+    return NextResponse.json({ ok: true, result: await runRoutine(u, b.id, deadline, { resume: true }) });
+  }
   if (b.run === "daily") return NextResponse.json({ ok: true, brief: await runDaily(u) });
   return NextResponse.json({ ok: false, error: "bad_run" }, { status: 400 });
 }

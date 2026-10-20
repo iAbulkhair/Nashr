@@ -3,6 +3,7 @@ import { db } from "./db";
 import { appOrigin } from "./origin";
 import { pmap } from "./parallel";
 import { log } from "./log";
+import { globalKey } from "./keys";
 
 /**
  * Runs a per-user cron job so that EVERY user is served, whatever the count.
@@ -86,8 +87,16 @@ export async function runCronBatch<T>(o: {
     // `after` needs a request scope; outside one (scripts, tests) fire the request directly, as judge.ts does.
     try { after(kick); } catch { void kick(); }
   }
-  return { job: o.job, period: o.period, chain, total: o.items.length, alreadyDone: state.filter((s) => s.done).length, processed, failed, remaining, chained, results };
+  const report = { job: o.job, period: o.period, chain, total: o.items.length, alreadyDone: state.filter((s) => s.done).length, processed, failed, remaining, chained, results };
+  // Rule 2384: the founder's view of this hop, counts only (no address, scope or result text), beside the heartbeat.
+  const held = Object.values(results).filter((r) => r === "held").length;
+  await db.set(globalKey.cronReport(o.job), { at: new Date().toISOString(), period: o.period, chain, total: report.total, alreadyDone: report.alreadyDone, processed, failed, held, remaining } satisfies CronReport, REPORT_TTL_S).catch((e) => log.error("cron report failed", e));
+  return report;
 }
+
+/** The last hop of a per-user cron job, as the founder's overview shows it (rule 2384). Counts only. */
+export type CronReport = { at: string; period: string; chain: number; total: number; alreadyDone: number; processed: number; failed: number; held: number; remaining: number };
+const REPORT_TTL_S = 14 * 86400;
 
 /** Date (UTC) of the most recent Sunday: the weekly plan period, stable through the Monday and Tuesday catch-up runs. */
 export function lastSundayUtc(now = new Date()): string {

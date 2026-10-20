@@ -207,6 +207,13 @@ export const accountKey = {
 export const globalKey = {
   /** set: every account id (`acct(u)`: in R1 the owner's first address). */
   usersAll: () => "users:all",
+  /**
+   * json `RunReceipt`: one paid scheduled run's receipt (src/lib/run-receipt.ts, rules 2376-2379), keyed by its claim
+   * (`weekly:{scope}:{week}`, `routine:{scope}:{id}:{period}`), which code builds from the caller's own scope.
+   */
+  runReceipt: (claim: string) => `runrec:${claim}`,
+  /** json: the last report of a per-user cron batch, counts only (src/lib/cron-batch.ts, rule 2384). */
+  cronReport: (job: string) => `cronreport:${job}`,
   /** list: deletion receipts. */
   deletedAccounts: () => "deleted-accounts",
   /** json: a session, under the SHA-256 of its token. */
@@ -234,3 +241,20 @@ export const globalKey = {
   /** json: per-platform connection counts across every workspace, written by the stores cron (rules 2177-2178). */
   connectionHealth: () => "connections:health",
 } as const;
+
+/**
+ * The claims a paid scheduled run is charged under (`chargeOnce`, src/lib/credits.ts; rules 2370-2371) and the notice
+ * fingerprints built from them (rules 2375, 2378). Not keys on their own: each becomes part of a key (`User.paidOnce`,
+ * `runrec:`, `notifseen:`), so they are built here with the keys. The scope is the caller's own, never a request's.
+ */
+export const runClaim = {
+  /** One routine's run in one period. */
+  routine: (scope: string, id: string, period: string) => `routine:${scope}:${id}:${period}`,
+  /** One item of one of Majed's handoffs. */
+  handoff: (scope: string, id: string, n: number) => `handoff:${scope}:${id}:${n}`,
+  /** The owner's one notice for a run held for them. */
+  heldNotice: (claim: string) => `held:${claim}`,
+  /** The owner's one notice for a day's sweep refunds. */
+  sweepNotice: (day: string) => `holdsweep:${day}`,
+};
+

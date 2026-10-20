@@ -396,28 +396,34 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     await settle();
   });
 
-  it("a run the platform kills after the charge is charged at most twice in its period, not once a day", async () => {
+  it("a run the platform kills after the charge is charged once: the next day's cron holds it, the owner's Run reuses the charge (rules 2370, 2378)", async () => {
     const hang = { on: true };
     const seen = sdk({ hang });
     const { runRoutine: run } = await load();
     const u = await owner("rt-killed", { dana_weekly_report: true });
     await saveTask(u.email, item("n1"), true);
-    // Each "day": the cron starts the run, the generation outlives the function, and the platform ends it. Nothing is
-    // refunded or saved and no last run is recorded; the lock and the hold expire before the next day's cron.
-    for (const day of [1, 2]) {
-      void run(u, "dana_weekly_report");
-      await vi.waitFor(() => expect(seen.prompts).toHaveLength(day));
-      await Promise.all([db.unlock(`routinelock:${u.email}:dana_weekly_report`), db.del(`routinehold:${u.email}:dana_weekly_report`)]);
-      expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report * day);
-    }
-    expect(await dueRoutines([u]), "still due: it never ran").toHaveLength(1);
+    // Day 1: the cron starts the run, the generation outlives the function, and the platform ends it. Nothing is refunded
+    // or saved and no last run is recorded; the lock and the hold expire before the next day's cron.
+    void run(u, "dana_weekly_report");
+    await vi.waitFor(() => expect(seen.prompts).toHaveLength(1));
+    await Promise.all([db.unlock(`routinelock:${u.email}:dana_weekly_report`), db.del(`routinehold:${u.email}:dana_weekly_report`)]);
+    expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report);
+    // Day 2: the receipt is a killed run's. The cron does not run it again: it is held for the owner, charged nothing.
+    const { routineClaim, periodOf } = await import("@/lib/routines");
+    const claim = routineClaim(u.email, "dana_weekly_report", periodOf("weekly"));
+    await db.set(`runrec:${claim}`, { state: "started", at: new Date(Date.now() - 11 * 60e3).toISOString() });
     hang.on = false;
-    expect(await run(u, "dana_weekly_report")).toBe("attempts_exhausted");
-    expect(await run(u, "dana_weekly_report")).toBe("attempts_exhausted");
-    expect(seen.prompts, "no third generation").toHaveLength(2);
-    expect(await credits(u.email)).toBe(50 - 2 * TASK_COST.weekly_report);
-    expect(await spend(u.email)).toEqual({ dana: 2 * TASK_COST.weekly_report });
+    expect(await run(u, "dana_weekly_report")).toBe("held");
+    expect(await run(u, "dana_weekly_report"), "still held, never run by the cron").toBe("held");
+    expect(seen.prompts, "no second generation").toHaveLength(1);
+    expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report);
+    // The owner's Run: on the same claim, so the day-1 charge is reused, never taken twice.
+    expect(await run(u, "dana_weekly_report", undefined, { resume: true })).toMatch(/^ok:/);
+    expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report);
+    expect(await spend(u.email)).toEqual({ dana: TASK_COST.weekly_report });
+    expect(await run(u, "dana_weekly_report", undefined, { resume: true }), "nothing left to resume").toBe("already_this_period");
   });
+
 });
 
 describe("the owner's switches and the cron (rule 115)", () => {
@@ -502,10 +508,11 @@ describe("data blocks and deletion (rules 113, 115)", () => {
     if ("error" in second) throw new Error(second.error);
     const scopes = [u.email, scopeFor(u.email, second.id)];
     const keys = scopes.flatMap((s) => routineKeys(s));
-    // Per brand: the cap lock, and per routine its last run, lock, hold and the attempt counts of two periods.
-    expect(keys).toHaveLength(2 * (1 + ROUTINE_IDS.length * 5));
+    // Per brand: the cap lock, and per routine its last run, lock, hold, and for two periods the attempt count and the run
+    // receipt (rule 2376).
+    expect(keys).toHaveLength(2 * (1 + ROUTINE_IDS.length * 7));
     for (const s of scopes) {
-      expect(keys).toEqual(expect.arrayContaining([`routinecap:${s}`, `routinehold:${s}:noor_cart_recovery`, `routinetry:${s}:razan_cash_forecast:${periodOf("monthly")}`, `routinetry:${s}:dana_weekly_report:${periodOf("weekly")}`]));
+      expect(keys).toEqual(expect.arrayContaining([`routinecap:${s}`, `routinehold:${s}:noor_cart_recovery`, `routinetry:${s}:razan_cash_forecast:${periodOf("monthly")}`, `routinetry:${s}:dana_weekly_report:${periodOf("weekly")}`, `runrec:routine:${s}:dana_weekly_report:${periodOf("weekly")}`]));
     }
     // The run notices name the brand and live 8 or 35 days: a new account at the same address must get its own.
     const seen = scopes.flatMap((s) => ROUTINES.map((r) => `notifseen:${u.email}:routine:${s}:${r.id}:${periodOf(r.cadence)}`));

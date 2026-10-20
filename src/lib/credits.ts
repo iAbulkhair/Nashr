@@ -409,24 +409,34 @@ export async function refundOncePart(email: string, claim: string, n: number): P
 }
 
 /**
- * The daily sweep of the account's paid-once holds (rule 337, src/lib/schedule.ts `sweepWeeklyHolds`): `kept[claim]` says
+ * The daily sweep of the account's paid-once holds (rule 337, src/lib/hold-sweep.ts `sweepHolds`): `kept[claim]` says
  * whether the claim's work exists. A kept claim's hold is dropped (its charge stands); any other is refunded, a run killed
- * after its charge that no later run retried (the last catch-up, a "Run now" nobody pressed again). One save under the
- * ledger's lock; a hold already gone (refunded by its own run's failure, or reused and refunded since) is skipped, so
- * nothing is given back twice.
+ * after its charge that no later run retried (the last catch-up, a "Run now" nobody pressed again). A number (rule 2380)
+ * is a kept claim that owes that many credits back (a delivered batch whose partial refund could not be written): they
+ * are given back from the hold, at most its credits, and the hold dropped, in the same save, so the share can never be
+ * given back twice. One save under the ledger's lock; a hold already gone (refunded by its own run's failure, or reused
+ * and refunded since) is skipped, so nothing is given back twice. Each refund names its claim.
  */
-export async function resolveOnceHolds(email: string, kept: Readonly<Record<string, boolean>>): Promise<{ refunded: HoldRefund[]; dropped: string[]; credits: number }> {
+export type ClaimRefund = HoldRefund & { claim: string; partial?: true };
+export async function resolveOnceHolds(email: string, kept: Readonly<Record<string, boolean | number>>): Promise<{ refunded: ClaimRefund[]; dropped: string[]; credits: number }> {
   return withUserLock(email, async (u) => {
-    const done = { refunded: [] as HoldRefund[], dropped: [] as string[] };
+    const done = { refunded: [] as ClaimRefund[], dropped: [] as string[] };
     const left = { ...(u.paidOnce ?? {}) };
     for (const [claim, keep] of Object.entries(kept)) {
       const hold = left[claim];
       if (!hold) continue;
-      if (keep) done.dropped.push(claim);
-      else {
-        const n = Number.isFinite(hold.credits) ? Math.max(0, Math.trunc(hold.credits)) : 0;
+      const n = Number.isFinite(hold.credits) ? Math.max(0, Math.trunc(hold.credits)) : 0;
+      if (keep === true) done.dropped.push(claim);
+      else if (typeof keep === "number") {
+        const owed = Number.isFinite(keep) ? Math.min(n, Math.max(0, Math.trunc(keep))) : 0;
+        if (owed > 0) {
+          giveBack(u, owed, hold);
+          done.refunded.push({ claim, scope: hold.scope, agent: hold.agent, credits: owed, partial: true });
+        }
+        done.dropped.push(claim);
+      } else {
         giveBack(u, n, hold);
-        done.refunded.push({ scope: hold.scope, agent: hold.agent, credits: n });
+        done.refunded.push({ claim, scope: hold.scope, agent: hold.agent, credits: n });
       }
       delete left[claim];
     }

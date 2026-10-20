@@ -1475,3 +1475,26 @@ Item 2 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4): O
 
 Item 3 of the OpenDots adoption order. The account sheet's Workspace tab (section 84, read only, one audit row per open) now lists, under each brand, that brand's agent tool authority (section 91) as its restrictions only: "Noor · publish · not allowed". An empty list reads "Every agent may do everything". Each brand's governance is read from `scopeFor(owner.email, brand.id)`, both from stored records, in the same `pmap` round as the members' last sign-ins. Nothing is written and nothing else is shown. Coverage in `docs/system/tests/2360-workspace-limits.md`; rules 2361-2369 are held.
 
+## 95. Paid scheduled work: charge once, refund always, hold for review (2026-10-20, branch `claude/lucid-faraday-kq261a`, rules 2370-2389)
+
+Item 4 of the OpenDots adoption order, built after the founder's yes on 2026-10-20 to the spec's three recommendations (`docs/superpowers/specs/2026-10-20-paid-cron-held-for-review-design.md` section 7): charge once and refund automatically; a held run waits for the owner's Run; charges lost before the release are refunded by hand, no scan. Coverage in `docs/system/tests/2370-paid-cron-held.md`.
+
+1. Claims (rules 2370-2371). Routines charge under `routine:{scope}:{id}:{period}` and every handoff item run (the owner's and the auto-run's) under `handoff:{scope}:{id}:{n}`, through `chargeOnce`, as the Sunday plan already did. A retry with the same claim reuses the hold; a failure gives it back once. The routine's last-run marker and its receipt, and the handoff item's `done` with its tasks, are now written inside the batch's refund guard (`commit`).
+2. The receipt (rules 2376-2378). Before the charge, under the run's lock, `beginRun(claim)`:
+   - `delivered`: nothing runs (the lost marker is put back);
+   - `started` under 10 minutes old: `retry:in_flight`;
+   - `started` older: the cron marks it `held`, tells the owner once (an in-app notice to Scheduled tasks, a `run_held` row) and answers `held`, which the batch counts as done for the day;
+   - otherwise `started`, and the run goes on.
+
+   A refusal before the charge clears the receipt; a refunded failure marks it `refunded`. The handoff item's own status (`proposed`, `running`, `done`, `failed`) is its receipt: the auto-run never starts a `running` item.
+3. The owner's Run (rule 2379). The weekly card's "Run now" and, for a held routine, the Run button under it on Scheduled tasks (`POST /api/schedule {run: "routine", id}`) resume the held run on its claim: a charge the killed run took is reused. Only a held routine can be run this way (`not_held` otherwise).
+4. The sweep (rules 2373-2375, 2380). The daily cron's `sweepHolds` (src/lib/hold-sweep.ts) replaces the weekly-only sweep:
+   - Weekly holds of ended weeks are resolved as before; a hold of this week whose run the cron held is refunded the next day, as the held notice promises.
+   - Routine and handoff holds older than 10 minutes are kept when the run delivered (receipt `delivered`, item `done`) and refunded otherwise. A held run nobody ran is refunded the next day, so the notice's "comes back within a day" holds.
+   - A delivered run's owed share (a short batch's refund that failed, recorded by `generateBatch` through `oweRun`) is given back in the same ledger save that drops its hold.
+
+   Each refund writes a `run_refunded` row in its brand, and the owner gets one notice for the day's refunds. The cron report counts `weekly_*` and `run_*` refunds and settles.
+5. The founder (rules 2384-2385). `runCronBatch` stores its last hop's counts in `cronreport:{job}` (no address, scope or result text), and the Usage page shows them under each heartbeat: done, ran, held, failed, left.
+6. Not built. Rule 2383 (a `run_missed` row for a period whose run only ever answered `retry:*`) is not built: it needs a record of every routine's periods, and the case (the model paused or a lock held for a whole week or month) is rare. Rules 2386-2389 are held.
+7. Shapes (rule 679, expand). New keys `runrec:` and `cronreport:`; new claim prefixes in `User.paidOnce` (older code reads the map only by exact claim); new activity kinds `run_held` and `run_refunded`; `RoutineView.held`. No conversion: routine and handoff charges made before the release have no hold, and the founder refunds any of them by hand (founder decision 3).
+

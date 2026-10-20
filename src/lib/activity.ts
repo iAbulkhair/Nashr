@@ -22,6 +22,8 @@ export const ACTIVITY_KINDS = [
   "generated", "judged", "autofail", "published", "decision", "image_started", "render_done", "render_failed", "routine_ran", "routine_skipped",
   "cap_reached", "no_credits", "external_draft", "brand_changed", "file_written", "gov_changed", "gov_rollback", "onboard_charged", "onboard_refunded",
   "cross_reviewed",
+  // Paid scheduled work (rules 2375, 2378): a run killed after it began, held for the owner; a charge the daily sweep gave back.
+  "run_held", "run_refunded",
   // Majed's handoffs (src/lib/handoffs.ts): the proposal in chat, an item run from its card, items declined.
   "handoff_proposed", "handoff_run", "handoff_declined",
   // A connection setting the owner changed that decides where posts go (LinkedIn: as the member or as the page).

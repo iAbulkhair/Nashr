@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { after } from "next/server";
-import { dailyRoster, runDaily, sweepWeeklyHolds } from "@/lib/schedule";
+import { dailyRoster, runDaily } from "@/lib/schedule";
+import { sweepHolds } from "@/lib/hold-sweep";
 import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
 import { recordCronRun } from "@/lib/cron-heartbeat";
@@ -97,18 +98,21 @@ async function dailyFor(u: User): Promise<string> {
   if ((u.brandId ?? "default") === "default" && earlyOfferDue(u)) {
     try { if (await grantEarlyOffer(acct(u), (x) => earlyOfferDue(x))) out.push("offer"); } catch (e) { out.push(`offer_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   }
-  // Once per account too: a Sunday plan's charge whose run was killed and never retried in its week is refunded, or its
-  // hold dropped when the week's plan exists (src/lib/schedule.ts `sweepWeeklyHolds`, rule 337). Reported, never fatal.
+  // Once per account too: every paid-once hold (the Sunday plan's, a routine's, a handoff item's) whose run was killed and
+  // never retried is refunded, or its hold dropped when the work exists (src/lib/hold-sweep.ts `sweepHolds`, rules 337
+  // and 2373-2375). Reported, never fatal.
   if ((u.brandId ?? "default") === "default" && u.paidOnce) {
     try {
-      const swept = await sweepWeeklyHolds(u);
+      const swept = await sweepHolds(u);
       if (swept) {
         u.credits = swept.credits;
-        if (swept.refunded.length) out.push(`weekly_refunded:${swept.refunded.length}`);
-        if (swept.dropped.length) out.push(`weekly_settled:${swept.dropped.length}`);
+        const weekly = (c: string) => c.startsWith("weekly:");
+        const nRefW = swept.refunded.filter((x) => weekly(x.claim)).length, nSetW = swept.dropped.filter(weekly).length;
+        const counts: [string, number][] = [["weekly_refunded", nRefW], ["weekly_settled", nSetW], ["run_refunded", swept.refunded.length - nRefW], ["run_settled", swept.dropped.length - nSetW]];
+        for (const [label, n] of counts) if (n) out.push(`${label}:${n}`);
       }
     } catch (e) {
-      out.push(`weekly_sweep_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
+      out.push(`hold_sweep_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
     }
   }
   // Reem's list, for every scope with or without a brand: purge items deleted over 30 days ago, close the ones whose

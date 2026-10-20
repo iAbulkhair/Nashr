@@ -393,7 +393,8 @@ describe("a Sunday plan's paid-once hold keeps its top-up receipt (rule 458)", (
 
     await chargeOnce(email, 3, meta, `weekly:${email}:W2`);
     const swept = await resolveOnceHolds(email, { [`weekly:${email}:W2`]: false });
-    expect(swept.refunded).toEqual([{ scope: email, agent: "noor", credits: 3 }]);
+    // Each refund names its claim since rule 2375 (src/lib/hold-sweep.ts writes one activity row per refund).
+    expect(swept.refunded).toEqual([{ claim: `weekly:${email}:W2`, scope: email, agent: "noor", credits: 3 }]);
     u = (await getUser(email))!;
     expect([monthlyCredits(u), lotsOf(u)[0].left]).toEqual([1, 100]);
     // A pack voided since: its share comes back as plan credits (founder decision of 2026-10-02, rule 461).

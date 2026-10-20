@@ -114,7 +114,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/app/api/chat/feedback/route.ts": 1,
   "src/app/api/chat/spend/[id]/route.ts": 1,
   "src/app/api/connect/[provider]/route.ts": 8,
-  "src/app/api/cron/daily/route.ts": 19,
+  "src/app/api/cron/daily/route.ts": 17,
   "src/app/api/cron/secretary/route.ts": 1,
   "src/app/api/drives/route.ts": 2,
   "src/app/api/founding/seats/route.ts": 1,

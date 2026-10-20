@@ -16,8 +16,10 @@ import { pmap } from "./parallel";
 import { appDict } from "./app-i18n";
 import { actSkipKey, recordRun } from "./activity";
 import { systemBy } from "./actor";
-import { scopeParam, wsKey } from "./keys";
+import { globalKey, runClaim, scopeParam, wsKey } from "./keys";
 import { acct } from "./account-id";
+import { beginRun, clearRun, deliverRun, readRun, readRuns, refundedRun } from "./run-receipt";
+import { tellHeld } from "./run-held";
 
 /**
  * Routines: recurring work for agents other than Noor's Sunday plan, each ON by default for every brand, added brands
@@ -116,7 +118,7 @@ export const isRoutineId = (v: unknown): v is RoutineId => typeof v === "string"
 export const routineOn = (s: Pick<Schedule, "routines">, id: RoutineId): boolean => s.routines?.[id] !== false;
 
 /** What the Scheduled tasks page shows per routine; the page renders it on the server. */
-export type RoutineView = { id: RoutineId; agent: AgentId; type: TaskType; cadence: Cadence; last?: string };
+export type RoutineView = { id: RoutineId; agent: AgentId; type: TaskType; cadence: Cadence; last?: string; /** this period's run was held for the owner (rule 2379) */ held?: boolean };
 
 const lastKey = (scope: string, id: RoutineId) => `routinelast:${scope}:${id}`;
 const lockKey = (scope: string, id: RoutineId) => `routinelock:${scope}:${id}`;
@@ -151,7 +153,7 @@ function recentPeriods(cadence: Cadence, now = new Date(), back = 1) {
 /** Every key the routines keep for one brand scope, for `wipeAccount`. */
 export const routineKeys = (scope: string) => [
   capLockKey(scope),
-  ...ROUTINES.flatMap((r) => [lastKey(scope, r.id), lockKey(scope, r.id), holdKey(scope, r.id), ...recentPeriods(r.cadence).map((p) => tryKey(scope, r.id, p))]),
+  ...ROUTINES.flatMap((r) => [lastKey(scope, r.id), lockKey(scope, r.id), holdKey(scope, r.id), ...recentPeriods(r.cadence).flatMap((p) => [tryKey(scope, r.id, p), globalKey.runReceipt(routineClaim(scope, r.id, p))])]),
 ];
 /**
  * The "nothing new" markers of the activity log (`recordRun`) that can still be alive for one brand scope, for
@@ -161,7 +163,13 @@ export const routineKeys = (scope: string) => [
  */
 export const routineSkipKeys = (scope: string) => ROUTINES.flatMap((r) => recentPeriods(r.cadence, new Date(), 2).map((p) => actSkipKey(scope, r.id, p)));
 /** The run notifications' fingerprints that can still be alive for one brand scope, for `wipeAccount`. */
-export const routineFingerprints = (scope: string) => ROUTINES.flatMap((r) => recentPeriods(r.cadence).map((p) => runFingerprint(scope, r.id, p)));
+export const routineFingerprints = (scope: string) => ROUTINES.flatMap((r) => recentPeriods(r.cadence).flatMap((p) => [runFingerprint(scope, r.id, p), runClaim.heldNotice(routineClaim(scope, r.id, p))]));
+
+/** The routines whose run of this period the cron held for the owner (rule 2379), in one round. */
+export async function routinesHeld(scope: string, now: Date = new Date()): Promise<Partial<Record<RoutineId, true>>> {
+  const rows = await readRuns(ROUTINES.map((r) => routineClaim(scope, r.id, periodOf(r.cadence, now))));
+  return Object.fromEntries(ROUTINES.flatMap((r, i) => (rows[i]?.state === "held" ? [[r.id, true as const]] : [])));
+}
 
 /** The last run of every routine in one scope, in one round. */
 export async function routineLastRuns(scope: string): Promise<Partial<Record<RoutineId, string>>> {
@@ -200,7 +208,7 @@ const routineNote = (r: Routine) =>
  * charge keeps it and saves nothing, and "retry:late" hands the routine to the chain's next hop (src/lib/cron-batch.ts).
  * The same deadline bounds the batch's cross-agent review.
  */
-export async function runRoutine(user: User, id: RoutineId, deadline?: number): Promise<string> {
+export async function runRoutine(user: User, id: RoutineId, deadline?: number, opts: { resume?: boolean } = {}): Promise<string> {
   const r = ROUTINES.find((x) => x.id === id);
   if (!r) return "unknown_routine";
   const scope = user.scope ?? user.email;
@@ -216,7 +224,9 @@ export async function runRoutine(user: User, id: RoutineId, deadline?: number): 
   // What happened, for the activity log; a throw is "error" (the charge was refunded first, see routineFor).
   let outcome = "error";
   try {
-    outcome = await routineFor(user, scope, brand, r, deadline);
+    // The owner's Run (rule 2379) is only for a run the cron held: any other routine waits for its schedule.
+    if (opts.resume && (await readRun(routineClaim(scope, id, periodOf(r.cadence))))?.state !== "held") return (outcome = "not_held");
+    outcome = await routineFor(user, scope, brand, r, deadline, opts.resume === true);
     return outcome;
   } finally {
     // The hold goes only after the batch is saved: until then the brand's other routines count it, and after it the items.
@@ -259,7 +269,13 @@ export async function holdBatch(scope: string, hold: string, count: number, cap:
   }
 }
 
-async function routineFor(user: User, scope: string, brand: Brand, r: Routine, deadline?: number): Promise<string> {
+/**
+ * The claim one routine's run in one period is charged under (rules 2370, 2376): `chargeOnce` takes it at most once, a
+ * run killed after its charge leaves a hold the daily sweep resolves, and the run receipt is kept under the same claim.
+ */
+export const routineClaim = (scope: string, id: RoutineId, period: string) => runClaim.routine(scope, id, period);
+
+async function routineFor(user: User, scope: string, brand: Brand, r: Routine, deadline: number | undefined, resume: boolean): Promise<string> {
   if (trialOver(user)) return "trial_over";
   const now = Date.now();
   // The last run is read again under the lock: a run that finished between the check above and the lock has set it.
@@ -269,28 +285,56 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine, d
   if (gate) return gate;
   // Before the hold and the charge: a batch started this late could be killed after it is charged.
   if (deadline !== undefined && deadline - Date.now() < BATCH_RUN_MIN_MS) return "retry:late";
+  const period = periodOf(r.cadence, new Date(now));
+  const ttl = periodDays(r.cadence) * 86400;
+  const claim = routineClaim(scope, r.id, period);
+  // The run receipt (rules 2376-2379), before the weekly-cap hold and the charge, under the routine's lock. A run of this
+  // period killed after it began is held for the owner, never run again by the cron; the owner's Run (`resume`) uses the
+  // same claim, so a charge it took is reused.
+  const run = await beginRun(claim, ttl, { resume });
+  if (run === "delivered") {
+    // Delivered, but its last-run marker was lost with the run: put back, nothing runs.
+    await db.set(lastKey(scope, r.id), new Date().toISOString());
+    return "already_this_period";
+  }
+  if (run === "in_flight") return "retry:in_flight";
+  if (run === "held_now") await tellHeld(user, scope, { claim, agent: r.agent, what: { ar: `${agentById(r.agent).name.ar}: ${appDict.ar.generate.types[r.type].t}`, en: `${agentById(r.agent).name.en}: ${appDict.en.generate.types[r.type].t}` } });
+  if (run === "held" || run === "held_now") return "held";
+  // Every way out before the batch ends without a charge: no trace, so the next attempt runs as if this one never began.
+  const unstarted = async (outcome: string) => {
+    await clearRun(claim);
+    return outcome;
+  };
   const held = await holdBatch(scope, holdKey(scope, r.id), TASK_COUNT[r.type], gov.weeklyCap);
-  if (held) return held;
+  if (held) return unstarted(held);
   // A platform timeout kills a run without throwing: its charge is neither refunded nor turned into items, no last run
   // is recorded, and the cron's own attempt count starts again every day. So every charge is counted per routine and
   // period before it is made and given back when it is refused or refunded, and after two that were neither, the
   // routine waits for its next period instead of being charged again every day.
-  const tries = tryKey(scope, r.id, periodOf(r.cadence, new Date(now)));
-  const ttl = periodDays(r.cadence) * 86400;
+  // The owner's Run of a held run is not counted: its claim already stops a second charge.
+  const tries = tryKey(scope, r.id, period);
   const attempt = await db.incrby(tries, 1);
   await db.set(tries, attempt, ttl); // incrby alone leaves the counter without an expiry
-  if (attempt > MAX_UNSETTLED) return "attempts_exhausted";
+  if (attempt > MAX_UNSETTLED && !resume) return unstarted("attempts_exhausted");
   const settle = () => db.set(tries, attempt - 1, ttl);
   const note = routineNote(r);
   // Charged to the agent that owns the type (r.agent, pinned equal in tests/routines.test.ts), under its cap; a refusal
   // or a refund settles the attempt above.
-  const b = await generateBatch(user, scope, { type: r.type, notes: note, brief: r.id, source: "scheduled", via: "routine", gov, brand, settle, ...(deadline !== undefined ? { deadline } : {}) });
+  // Charged once per claim (rule 2370). The last-run marker and the receipt are written inside the batch's refund guard
+  // (`commit`), with its items: a run killed before them is refunded or held, one killed after them never runs again.
+  const b = await generateBatch(user, scope, { ...(deadline !== undefined ? { deadline } : {}),
+    type: r.type, notes: note, brief: r.id, source: "scheduled", via: "routine", gov, brand, settle, once: claim,
+    commit: (tasks) => Promise.all([db.set(lastKey(scope, r.id), new Date().toISOString()), deliverRun(claim, ttl, tasks.map((t) => t.id))]),
+  });
   if (!b.ok) {
-    if (b.reason === "failed") throw b.error;
+    if (b.reason === "failed") {
+      await refundedRun(claim, ttl);
+      throw b.error;
+    }
+    await clearRun(claim);
     return b.reason === "paused" ? "retry:paused" : b.reason === "missing_data" ? "no_data" : b.reason;
   }
   const created = b.tasks;
-  await db.set(lastKey(scope, r.id), new Date().toISOString());
   // The batch is saved and paid for by now, so an unexpected language on an old record must not throw here.
   const ul = user.lang === "en" ? "en" : "ar";
   const ar = ul === "ar";
