@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handler } from "@/lib/api-handler";
 import { CORE_FILES, FileLimitError, MAX_FILES, deleteFile, listFiles, readFile, safeName, writeFile, writeFileChecked } from "@/lib/files";
+import { fileSrc } from "@/lib/ref-provenance";
 import { WINDOW } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 
@@ -31,8 +32,8 @@ export const PUT = handler(
       if (no) return no;
     }
     try {
-      if (b.baseAt === undefined) return NextResponse.json({ ok: true, file: await writeFile(scope, b.name, b.content, "user") });
-      const r = await writeFileChecked(scope, b.name, b.content, "user", b.baseAt);
+      if (b.baseAt === undefined) return NextResponse.json({ ok: true, file: await writeFile(scope, b.name, b.content, "user", { src: fileSrc("owner") }) });
+      const r = await writeFileChecked(scope, b.name, b.content, "user", b.baseAt, fileSrc("owner"));
       if (r.ok) return NextResponse.json({ ok: true, file: r.file });
       if (r.error === "busy") return NextResponse.json({ ok: false, error: "busy" }, { status: 503 });
       return NextResponse.json({ ok: false, error: r.error, file: r.file }, { status: 409 });

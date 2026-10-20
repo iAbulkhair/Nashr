@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { deleteFile, writeFile } from "./files";
+import { fileSrc } from "./ref-provenance";
 import { listConnections, type Connection } from "./connectors/store";
 import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { sallaSales } from "./connectors/salla";
@@ -62,7 +63,7 @@ export async function syncSales(scope: string, provider: SalesProvider, c: Conne
   const snap = provider === "shopify" ? await shopifySales(c) : provider === "zid" ? await zidSales(c) : provider === "woocommerce" ? await wooSales(c) : await sallaSales(c);
   const store = provider === "shopify" ? c.meta?.shop : provider === "woocommerce" ? wooHost(c) : c.meta?.account;
   // A good read replaces the snapshot and clears the note of an earlier failed automatic sync.
-  await Promise.all([db.set(KEY(scope), snap), db.del(FAIL(scope)), writeFile(scope, "store-sales.md", salesMarkdown(snap, store), "noor")]);
+  await Promise.all([db.set(KEY(scope), snap), db.del(FAIL(scope)), writeFile(scope, "store-sales.md", salesMarkdown(snap, store), "noor", { src: fileSrc("store") })]);
   return snap;
 }
 

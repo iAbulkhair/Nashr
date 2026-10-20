@@ -1,6 +1,7 @@
 import type { AppDict } from "./app-i18n";
 import type { Draft, Instruction, Layer, Target } from "./instructions-store";
 import { AGENT_IDS } from "./agents";
+import type { Provenance } from "./ref-provenance";
 
 /**
  * What the customer instructions page and its editor share with their tests (agent skills portal, spec 8.1, rule 957).
@@ -132,3 +133,13 @@ export function parseTestResult(j: Record<string, unknown>): { before: TestItem;
 
 /** What a platform row can be pointed at: the eight agents and the media group a customer sees, plus the reviewer and the judge (the founder console only). */
 export const PLATFORM_TARGETS: readonly Target[] = [...AGENT_IDS, "media", "reviewer", "judge"];
+
+/** How many distinct files the rows attach that are out of date (rule 2529): the page's note above the list. */
+export const staleRefs = (rows: Draft[], info: Record<string, Provenance>): number =>
+  new Set(rows.flatMap((d) => d.refs ?? []).filter((n) => Object.hasOwn(info, n) && info[n].stale)).size;
+
+/** The age an owner reads under an attached file: today, N days ago, or unknown. */
+export function refAgeText(I: Pick<AppDict["instructions"], "refToday" | "refAge" | "refAgeUnknown">, p: Pick<Provenance, "days">): string {
+  if (p.days === null) return I.refAgeUnknown;
+  return p.days === 0 ? I.refToday : fill(I.refAge, { n: p.days });
+}
