@@ -1,6 +1,6 @@
 # Coverage: skill stubs, on-demand references and provenance (rules 2523-2549)
 
-Status on 2026-10-20 on branch `claude/skills-stub-provenance-79a1f1`: built (Fizzy/Orca study pattern 7, Orca's skill layout for the agent skills portal of rules 930-959); expand step only (rule 679), no contract step and no conversion script; flows in `docs/system/flows.md` section 103. Rules 2533-2549 are held unused. The block was given as 2520-2549; rules 2520-2522 are taken by the file locks of `claude/agent-file-lock` (#412), so this change starts at 2523.
+Status on 2026-10-20 on branch `claude/skills-stub-provenance-79a1f1`: built (Fizzy/Orca study pattern 7, Orca's skill layout for the agent skills portal of rules 930-959); expand step only (rule 679), no contract step and no conversion script; flows in `docs/system/flows.md` section 104. Rules 2533-2549 are held unused. The block was given as 2520-2549; rules 2520-2522 are taken by the file locks of `claude/agent-file-lock` (#412), so this change starts at 2523.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

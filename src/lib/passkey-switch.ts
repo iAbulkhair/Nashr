@@ -27,8 +27,18 @@ export async function passkeysOn(): Promise<boolean> {
   return String(await db.get(globalKey.passkeysOff())) !== "1";
 }
 
-/** Turns passkeys on (deletes the key) or off (writes `"1"`). Only the console owner route calls it (rule 2426). */
-export async function setPasskeysOn(on: boolean): Promise<void> {
-  if (on) await db.del(globalKey.passkeysOff());
-  else await db.set(globalKey.passkeysOff(), "1");
+/**
+ * Turns passkeys on (deletes the key) or off (writes `"1"`) and answers whether they were on just before, read by the
+ * write itself so the audit row's `before` is the state this write replaced, not one read a command earlier (rule 2426).
+ * On: GETDEL, one command. Off: SET NX, one command when the key was absent (it was on); when the key is already there
+ * it holds "1" (only this function writes it, so it was off) or, should anything else ever have written it, a value
+ * `passkeysOn` reads as on, which is then overwritten with "1". Only the console owner route calls it.
+ */
+export async function setPasskeysOn(on: boolean): Promise<boolean> {
+  const k = globalKey.passkeysOff();
+  if (on) return String(await db.getdel(k)) !== "1";
+  if (await db.setNx(k, "1")) return true;
+  if (String(await db.get(k)) === "1") return false;
+  await db.set(k, "1");
+  return true;
 }
