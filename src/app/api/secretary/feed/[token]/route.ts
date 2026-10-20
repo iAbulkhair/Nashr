@@ -10,7 +10,8 @@ import { appOrigin } from "@/lib/origin";
  * token in the path is the credential, a founder-approved narrow exception to "no secret in a URL" (spec section 6). One
  * trailing `.ics` is stripped. A value of the wrong shape is a 404 before any rate count or store read. Then, in order:
  * 120 an hour per client IP, the record (`resolveFeed`), 60 an hour per link, and the validity check (`feedHolds`: the
- * login still active and the scope still one of its account's active brands). Items are read with the record's own scope
+ * login still active and the scope still one of its account's active brands; for a record made from multi-workspace M1,
+ * the person, the account and the membership, rules 2119 and 2131). Items are read with the record's own scope
  * only, never a value from the request. Every failure is the same empty 404, so a probe learns nothing, except the two
  * rate refusals: both are 429 with `Retry-After`, and the per-link one shows a holder of a live token that the record
  * exists (a named, accepted exception). Writes only the rate counters and `listOpenItems`' removal of ghost ids from the

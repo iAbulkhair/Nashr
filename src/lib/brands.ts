@@ -2,9 +2,10 @@ import { db } from "./db";
 import type { User } from "./auth";
 import { brandCapFor } from "./pricing";
 import { log } from "./log";
-import { accountKey, workspaceScope } from "./keys";
+import { accountKey, personKey, workspaceScope, type AccountId, type PersonId } from "./keys";
 import { ActiveBrandId, brandRows, parseStored } from "./stored";
 import { acct } from "./account-id";
+import { aidOf, ownerOf } from "./membership";
 
 /**
  * Multi-brand workspaces. Every brand-scoped record (brand file, tasks, files, chat, governance,
@@ -23,8 +24,12 @@ import { acct } from "./account-id";
 export type BrandMeta = { id: string; name: string; createdAt: string; status: "active" | "archived" };
 
 export async function listBrands(email: string): Promise<BrandMeta[]> {
+  return brandsFromRaw(await db.get<unknown>(accountKey.brands(email)));
+}
+/** `listBrands` over a raw `brands:{aid}` value a caller read in its own round (`resolveSession`). */
+export function brandsFromRaw(raw: unknown): BrandMeta[] {
   // Checked row by row (rule 2036): a row without an id is left out and logged, never thrown on.
-  const rows: BrandMeta[] = brandRows(await db.get<unknown>(accountKey.brands(email)));
+  const rows: BrandMeta[] = brandRows(raw);
   if (!rows.find((b) => b.id === "default")) rows.unshift({ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" });
   return rows;
 }
@@ -56,17 +61,63 @@ export async function withBrandsLock<T>(email: string, fn: (rows: BrandMeta[]) =
 }
 
 /**
- * The active brand is per LOGIN (`activebrand:{loginEmail}`): the owner's key is unchanged, and each member has their
- * own, so one person switching brands never moves the owner, the other members or the owner's MCP token. Pass the
- * actor's email (`u.actor?.email ?? u.email`), never the account email for a member. `currentUser` validates a member's
- * value against the owner's active brands.
+ * LEGACY, for the session written before R1 only (`resolveSession`'s legacy-shape path, rule 2135): the active brand
+ * per LOGIN, `activebrand:{loginEmail}`. Every other caller uses `activeBrandIn` / `setActiveBrandIn`, which key the
+ * choice by person AND account (rule 2119) and still read and write this key for the person's home account, so a
+ * legacy session and a rollback see the current choice.
  */
 export async function activeBrandId(email: string) {
   // Rule 2037: a missing or malformed value is the default brand; a numeric-looking id read back as a number is text again.
   return parseStored("activebrand", ActiveBrandId, await db.get<unknown>(accountKey.activeBrand(email)), "default");
 }
+/** LEGACY writer of `activebrand:{loginEmail}`, kept for its tests only; product code calls `setActiveBrandIn`. */
 export async function setActiveBrand(email: string, id: string) {
   await db.set(accountKey.activeBrand(email), id);
+}
+
+/**
+ * The active brand of one person in one account (multi-workspace membership, rules 2119, 2132), pure over the raw
+ * values. In the person's HOME account (`home`: a legacy owner's own account, a legacy member's `memberOf`) the legacy
+ * `activebrand:{login}` when it holds a valid id, else `activebrand:{pid}:{aid}`; in any other account only
+ * `activebrand:{pid}:{aid}`; else "default". A brand chosen in B is never read in A, and the legacy key is never read
+ * for an account that is not home. In the home account `setActiveBrandIn` writes both keys with the same value, so they
+ * differ only when a build before M1 (a rollback) wrote the legacy key afterwards: that later choice wins, and a roll
+ * forward never brings back the older one. The caller still checks the id is an active brand of the account.
+ */
+export function activeBrandFrom(rawNew: unknown, rawLegacy: unknown, home: boolean): string {
+  const legacy = home ? parseStored("activebrand", ActiveBrandId, rawLegacy, null) : null;
+  return legacy ?? parseStored("activebrand", ActiveBrandId, rawNew, "default");
+}
+/**
+ * `activeBrandFrom` over its keys, in ONE round. `homeLogin` is the person's sign-in address when `aid` is their home
+ * account (a legacy owner's own account, a legacy member's `memberOf`: `brandChooser`, `ownerChooser`), else null.
+ */
+export async function activeBrandIn(pid: PersonId, aid: AccountId, homeLogin: string | null): Promise<string> {
+  const [fresh, legacy] = await Promise.all([db.get<unknown>(personKey.activeBrand(pid, aid)), homeLogin ? db.get<unknown>(accountKey.activeBrand(homeLogin)) : Promise.resolve(null)]);
+  return activeBrandFrom(fresh, legacy, homeLogin !== null);
+}
+/**
+ * Choose the active brand of one person in one account: `activebrand:{pid}:{aid}`, and for the home account the legacy
+ * `activebrand:{homeLogin}` beside it in the same round, so a session written before R1 and a rolled-back build read
+ * the same choice. Never another account's key.
+ */
+export async function setActiveBrandIn(pid: PersonId, aid: AccountId, id: string, homeLogin: string | null): Promise<void> {
+  await Promise.all([db.set(personKey.activeBrand(pid, aid), id), ...(homeLogin ? [db.set(accountKey.activeBrand(homeLogin), id)] : [])]);
+}
+/**
+ * Whose active brand a request moves: the acting person in the active account, with the legacy key's login when that
+ * account is their home (`Actor.home`). A user with no actor (a server job holding the account) is the owner: a legacy
+ * owner's home is their own account, a `p_` owner has no legacy key.
+ */
+export function brandChooser(u: User): { pid: PersonId; aid: AccountId; homeLogin: string | null } {
+  const aid = aidOf(u);
+  if (u.actor) return { pid: u.actor.pid, aid, homeLogin: u.actor.home ? u.actor.email : null };
+  return ownerChooser(u);
+}
+/** The OWNER's active brand in this account (the archive path resets it when a member archives it). */
+export function ownerChooser(u: User): { pid: PersonId; aid: AccountId; homeLogin: string | null } {
+  // A legacy owner (no `ownerPid`) is the person `acct(u)`, and this account is their home: its address is the login.
+  return { pid: ownerOf(u), aid: aidOf(u), homeLogin: u.ownerPid === undefined ? u.email : null };
 }
 /** Plain-string form of `workspaceScope` (src/lib/keys.ts), for code that compares scopes as strings. Keys take the branded one. */
 export function scopeFor(email: string, brandId: string): string {
@@ -100,7 +151,8 @@ export async function addBrand(u: User, name: string): Promise<BrandMeta | Brand
   });
   if (!b) return { error: "busy" };
   if ("error" in b) return b;
-  // The new brand becomes active for whoever added it (the acting login), not for the whole account.
-  await setActiveBrand(u.actor?.email ?? u.email, b.id);
+  // The new brand becomes active for whoever added it (the acting person, in this account), not for the whole account.
+  const who = brandChooser(u);
+  await setActiveBrandIn(who.pid, who.aid, b.id, who.homeLogin);
   return b;
 }

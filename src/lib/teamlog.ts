@@ -1,0 +1,58 @@
+import { CAPS, db, pushCapped } from "./db";
+import { accountKey, type AccountId } from "./keys";
+import { TeamLogRow, type TeamLogRowValue } from "./stored";
+
+/**
+ * The team log of an account (multi-workspace membership, release M1, rule 2129; spec section 13): `teamlog:{aid}`, a
+ * capped list (`CAPS.teamLog`, 500), newest first. Every membership event of src/lib/team.ts writes exactly one row,
+ * under the same `lock:team:{aid}` as the change it records, and a refused action writes none.
+ *
+ * A row names people by person id and address only (`actor`, `target`), the role when it matters, and `via`: "web" for a
+ * person acting in the app, "console" for the founder console (staff are never named: `actor` is the account's owner),
+ * "system" for a plan change (`enforceSeats`). It never holds an invite token, an invite id or a password hash: the
+ * writer below builds the row from named fields only, so a caller cannot pass one through.
+ *
+ * M1 writes the log and nothing reads it in a route (the owner's view comes with M3); `readTeamLog` is for tests and that
+ * later view.
+ */
+
+/**
+ * The fields of a row the writer takes (`TeamLogRowValue` without `at`, spelled out: the stored shape is a loose object,
+ * so `Omit` of it would accept any extra field, and an extra field is how a token or an invite id would get in).
+ */
+export type TeamLogInput = {
+  kind: TeamLogRowValue["kind"];
+  actor: { pid: string; email: string };
+  target: { pid?: string; email: string };
+  role?: "admin" | "member";
+  via: TeamLogRowValue["via"];
+};
+
+/** Append one row. The caller holds `lock:team:{aid}` (`teamLocked`), the same lock as the change it records. */
+export async function logTeam(aid: AccountId, row: TeamLogInput, opts: { teamLocked: true }): Promise<void> {
+  void opts;
+  const value: TeamLogRowValue = {
+    at: new Date().toISOString(),
+    kind: row.kind,
+    actor: { pid: row.actor.pid, email: row.actor.email },
+    target: row.target.pid === undefined ? { email: row.target.email } : { pid: row.target.pid, email: row.target.email },
+    ...(row.role === undefined ? {} : { role: row.role }),
+    via: row.via,
+  };
+  await pushCapped(accountKey.teamLog(aid), JSON.stringify(value), CAPS.teamLog);
+}
+
+/** The account's log, newest first. A row that fails `TeamLogRow` is skipped (logged without values). */
+export async function readTeamLog(aid: AccountId): Promise<TeamLogRowValue[]> {
+  const rows = await db.lrange(accountKey.teamLog(aid), 0, CAPS.teamLog - 1);
+  return rows.flatMap((s) => {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(s);
+    } catch {
+      return [];
+    }
+    const r = TeamLogRow.safeParse(raw);
+    return r.success ? [r.data] : [];
+  });
+}

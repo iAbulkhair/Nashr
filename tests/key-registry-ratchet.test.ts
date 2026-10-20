@@ -68,6 +68,15 @@ describe("rule 2033: scopeParam and storedScope calls only go down, and never ap
   it("storedScope", () => {
     expect(ratchet("storedScope calls", count(/\bstoredScope\(/g), STORED_SCOPE)).toEqual([]);
   });
+  it("storedPersonId and storedAccountId (rule 2137)", () => {
+    expect(ratchet("storedPersonId calls", count(/\bstoredPersonId\(/g), STORED_PERSON_ID)).toEqual([]);
+    expect(ratchet("storedAccountId calls", count(/\bstoredAccountId\(/g), STORED_ACCOUNT_ID)).toEqual([]);
+  });
+  it("no route or page converts a string into a person or an account id (rule 2137)", () => {
+    const app = FILES.filter((f) => f.startsWith(join("src", "app")));
+    const offenders = app.filter((f) => /\b(storedPersonId|storedAccountId)\(/.test(readFileSync(f, "utf8")));
+    expect(offenders).toEqual([]);
+  });
   it("no route or page converts a string into a scope", () => {
     const app = FILES.filter((f) => f.startsWith(join("src", "app")));
     const offenders = app.filter((f) => /\b(scopeParam|storedScope|workspaceScope)\(/.test(readFileSync(f, "utf8")));
@@ -114,7 +123,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/app/api/chat/feedback/route.ts": 1,
   "src/app/api/chat/spend/[id]/route.ts": 1,
   "src/app/api/connect/[provider]/route.ts": 8,
-  "src/app/api/cron/daily/route.ts": 19,
+  "src/app/api/cron/daily/route.ts": 17,
   "src/app/api/cron/secretary/route.ts": 1,
   "src/app/api/drives/route.ts": 2,
   "src/app/api/founding/seats/route.ts": 1,
@@ -263,13 +272,13 @@ const RAW_KEYS: Record<string, number> = {
 };
 
 const SCOPE_PARAM: Record<string, number> = {
-  "src/lib/brand.ts": 38,
+  "src/lib/brand.ts": 26,
   "src/lib/connectors/store.ts": 7,
   "src/lib/conversations.ts": 15,
   "src/lib/decisions.ts": 1,
   "src/lib/evals.ts": 2,
   "src/lib/feedback.ts": 1,
-  "src/lib/files.ts": 3,
+  "src/lib/files.ts": 1,
   "src/lib/governance.ts": 5,
   "src/lib/handoffs.ts": 1,
   "src/lib/onboard-confirm.ts": 2,
@@ -279,10 +288,31 @@ const SCOPE_PARAM: Record<string, number> = {
   "src/lib/site-stats.ts": 1,
   "src/lib/social-read/common.ts": 1,
   "src/lib/social-stats.ts": 1,
-  "src/lib/stats.ts": 1,
   "src/lib/store-sales.ts": 2,
 };
 
 const STORED_SCOPE: Record<string, number> = {
   "src/lib/auth.ts": 1,
+};
+
+// Multi-workspace membership, release M1 (rule 2137): the two constructors of the branded ids, called only where a person
+// or an account id is read back from a record; each call site is listed here, none under src/app.
+const STORED_PERSON_ID: Record<string, number> = {
+  "src/lib/membership.ts": 1, // ownerOf: the account record's ownerPid, else acct(u)
+  "src/lib/auth.ts": 6, // getLogin: the sign-in address as a legacy person id, and the person id the login index names; sessionPerson: the session's pid (index-checked); resolveIds: the session's pid (index-checked); resolveLegacy: the legacy member's pid; createUser: the new account's id (or a new p_ id) as its owner's person id
+  "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy owner's person id (used only when ownerOf agrees)
+  "src/lib/verify-email.ts": 2, // moveOwnerLogin: the moved account's id as its legacy owner's person id (compared with ownerOf, and its person lock), and the new address as the new legacy owner's person id (its person lock and row)
+  "src/lib/account.ts": 1, // wipeAccount: the wiped account's id as its legacy owner's person id (the person row createUser wrote), used only when the record is gone (else ownerOf)
+  "src/lib/team.ts": 1, // pidFrom (multi-workspace M1): a roster entry, a legacy member's address, an invite's inviter or invited address, an address being moved, all read from records
+  "src/lib/feed-token.ts": 1, // linkIds (multi-workspace M1): a feed or booking link record's pid, written by createFeed/createBook from the session's actor
+  "src/lib/passkeys.ts": 1, // resolvePasskeyLogin (customer passkeys, pre-flight ruling 3): the pid a `pkcred:` reverse entry names, written by addPasskey/movePasskeys, forward-checked (getPerson, getLogin(person.email).pid, the credential in that pid's set)
+};
+const STORED_ACCOUNT_ID: Record<string, number> = {
+  "src/lib/membership.ts": 6, // aidOf: a resolved account's own id; listOrgs: an orgs:{pid} entry (re-checked); legacyHomeOf/legacyHomeFrom: a legacy owner's own id (twice), a legacy memberOf; pickAccount: lastorg:{pid} (re-checked)
+  "src/lib/auth.ts": 3, // getLogin: a legacy owner's own id, a legacy member's memberOf; resolveIds: the session's acct (re-checked against the account record and roleIn)
+  "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy account id (used only when aidOf agrees)
+  "src/lib/person.ts": 2, // updatePerson: a legacy owner's person id as its own account id (mirror, stampOwned; re-checked with ownerOf)
+  "src/lib/team.ts": 1, // aidFrom (multi-workspace M1): an account id from a resolved user or a record (an invite's account, a legacy memberOf, an orgs:{pid} entry)
+  "src/lib/feed-token.ts": 1, // linkIds (multi-workspace M1): a feed or booking link record's aid, written by createFeed/createBook from the session's account (re-checked by loginHolds)
+  "src/lib/account.ts": 1, // wipeAccount (multi-workspace M1): the wiped account's id as its callers hold it (acct(u) of a resolved account, or the console's lookup by address)
 };

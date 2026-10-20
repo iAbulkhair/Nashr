@@ -1,0 +1,5 @@
+# The container for the ops agent's two credentials (rule 2390). No secret is ever written here: the founder adds both
+# credentials from his own terminal (README.md, step 2), each as an environment_variable injected in headers only and
+# limited to its hosts.
+type: vault
+display_name: thakeen-ops

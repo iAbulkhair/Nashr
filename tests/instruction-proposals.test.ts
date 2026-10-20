@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
 import { currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
-import { addBrand, scopeFor, setActiveBrand } from "@/lib/brands";
+import { addBrand, scopeFor } from "@/lib/brands";
 import { db } from "@/lib/db";
 import { CHAT_TOOL_NAMES, TOOL_ACTION, history, push, runTool, statusFor, system, toolsFor, type ToolCtx } from "@/lib/chat";
 import { AGENT_IDS } from "@/lib/agents";
@@ -26,8 +26,8 @@ type Body = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 const call = async (res: Response) => ({ status: res.status, retry: res.headers.get("retry-after"), body: (await res.json()) as Body });
 const decide = (id: string, body: unknown) => proposalRoute.POST(json(`/api/instructions/proposals/${id}`, "POST", body), params({ id })).then(call);
 
-const owner = async (prefix: string, plan: User["plan"] = "agency") => {
-  const u = await newUser(prefix);
+const owner = async (prefix: string, plan: User["plan"] = "agency", fx: Fixture = {}) => {
+  const u = await newUser(prefix, fx);
   await saveUser({ ...u, plan });
   await signIn(u.email);
   return (await currentUser())!;
@@ -394,11 +394,11 @@ describe("rule 954: the owner's click applies a proposal", () => {
   });
 
   it("rule 954: another workspace's id is 404: another account's, and another brand of the same account", async () => {
-    const a = await owner("apply-a");
+    const a = await owner("apply-a", "agency");
     const p = await make(a);
     const second = await addBrand((await getUser(a.email))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    await setActiveBrand(a.email, second.id);
+    await seedActiveBrand(a.email, second.id);
     await signIn(a.email);
     expect(sc((await currentUser())!)).toBe(scopeFor(a.email, second.id));
     const crossBrand = await decide(p.id, { decision: "apply" });

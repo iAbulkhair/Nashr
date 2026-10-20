@@ -5,6 +5,7 @@ import { json, newMember, newUser, params, signOut, withHeaders } from "./helper
 import { enrolledStaff } from "./helpers/staff";
 import { db } from "@/lib/db";
 import { getUser, saveUser, type Actor, type User } from "@/lib/auth";
+import { storedPersonId } from "@/lib/keys";
 import { isSuspended, parseSuspendFor, suspendedMessage, suspensionEnd, suspensionExpired, SUSPEND_MAX_DAYS, SUSPENDED_UNTIL } from "@/lib/suspension";
 import { endExpiredSuspension } from "@/lib/suspension-server";
 import { staffMay, STAFF_MAY } from "@/lib/roles";
@@ -190,7 +191,8 @@ describe("rule 2075: the customer sees the end date in their language", () => {
     expect(suspendedMessage(until, "en", "fallback")).toContain("November");
     for (const v of [undefined, null, "", "nope", 12]) expect(suspendedMessage(v, "en", "fallback")).toBe("fallback");
     expect(SUSPENDED_UNTIL.ar("X")).toMatch(/[؀-ۿ]/);
-    expect(read("src/components/app/AuthForm.tsx").match(/suspendedMessage\(p\.body\.until/g)?.length).toBe(3);
+    // The password, two-step code and passkey (rule 2419) answers of the log-in form, and the reset form's.
+    expect(read("src/components/app/AuthForm.tsx").match(/suspendedMessage\(p\.body\.until/g)?.length).toBe(4);
   });
 });
 
@@ -242,7 +244,7 @@ describe("rules 2077, 2079-2082: the read-only workspace view", () => {
     await store(owner.email, { seats: 5, brandCap: 3 });
     const o = (await getUser(owner.email))!;
     const [m1, m2] = await Promise.all([newMember(o, "admin", "wsa"), newMember(o, "member", "wsm")]);
-    const actor: Actor = { kind: "owner", email: o.email, name: o.name, lang: o.lang, role: "owner" };
+    const actor: Actor = { kind: "owner", pid: storedPersonId(o.email), home: true, email: o.email, name: o.name, lang: o.lang, role: "owner" };
     const inv = await createInvite(o, actor, `invitee-${Date.now()}@test.example`, "member", "ar");
     if (!inv.ok) throw new Error(JSON.stringify(inv));
     const b = await addBrand(o, "Second brand");
@@ -335,7 +337,10 @@ describe("rules 2077, 2079-2082: the read-only workspace view", () => {
     const lib = read("src/lib/admin-workspace.ts");
     expect(lib).not.toMatch(/\bdb\.|saveUser|saveMember|listInvites\(|withUserLock|srem|sadd/);
     expect(lib).toContain("peekInvites(key)");
-    expect(lib).toContain("getUser(m.memberOf)");
+    // Multi-workspace M1: the account is found as a sign-in finds it (`getLogin`, then the stored account its login
+    // stands for), no longer from `getUser(m.memberOf)`: a `p_` member has no legacy member record.
+    expect(lib).toContain("const login = await getLogin(email);");
+    expect(lib).toContain("await getAccount(login.acct)");
     // Every list is read in one round: no await inside a loop.
     expect(lib).not.toMatch(/for \([^)]*\)\s*\{?[^}]*await /);
   });

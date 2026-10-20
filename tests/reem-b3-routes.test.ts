@@ -7,10 +7,10 @@
  * its events and its place in the sync queue, audits `cal_unlink`, and never calls a provider's revoke endpoint (ruling R7).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
 import { db } from "@/lib/db";
 import { SEC_KEYS } from "@/lib/secretary";
-import { addBrand, setActiveBrand } from "@/lib/brands";
+import { addBrand } from "@/lib/brands";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { getLink, openTokens, putEvents, putLink, scheduleSync, sealTokens, type CalLink } from "@/lib/secretary-cal-link";
 import * as link from "@/app/api/secretary/calendar-link/route";
@@ -106,8 +106,8 @@ const list = () => calendars.GET();
 const auditOf = async (scope: string) => (await db.lrange(SEC_KEYS.audit(scope), 0, -1)).map((x) => JSON.parse(x) as { action: string; actor: string; login?: string; diff: string });
 const body = async (res: Response) => (await res.json()) as Record<string, unknown> & { error?: string; link?: Record<string, unknown> | null; calendars?: { choice: number; name: string }[] };
 
-async function owner(prefix = "calrt") {
-  const o = await newUser(prefix);
+async function owner(prefix = "calrt", fx: Fixture = {}) {
+  const o = await newUser(prefix, fx);
   await signIn(o.email);
   return o;
 }
@@ -606,16 +606,16 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
 
   it("another brand's link is not visible, listable, choosable or removable after switching brand", async () => {
     fakeProviders();
-    const o = await owner();
+    const o = await owner(undefined);
     await putLink(o.email, seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined }));
     const b = (await addBrand({ ...o, brandCap: 2 }, "Second")) as { id: string };
-    await setActiveBrand(o.email, b.id);
+    await seedActiveBrand(o.email, b.id);
     expect(await body(await get())).toEqual({ ok: true, link: null });
     expect((await list()).status).toBe(404);
     expect((await put({ choice: 0, declare: true, rev: 1 })).status).toBe(404);
     expect((await del()).status).toBe(404);
     expect(await getLink(o.email)).toMatchObject({ state: "ok", calendarId: CAL1 });
-    await setActiveBrand(o.email, "default");
+    await seedActiveBrand(o.email, "default");
     expect(((await body(await get())).link as { state: string }).state).toBe("ok");
   });
 });

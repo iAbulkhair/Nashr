@@ -3,13 +3,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { claudeOn } from "./helpers/model";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
 import { db } from "@/lib/db";
 import { type User } from "@/lib/auth";
+import { storedPersonId } from "@/lib/keys";
 import { AGENT_IDS } from "@/lib/agents";
 import { appDict } from "@/lib/app-i18n";
 import { saveBrand, type Brand } from "@/lib/brand";
-import { saveBrands, scopeFor, setActiveBrand } from "@/lib/brands";
+import { saveBrands, scopeFor } from "@/lib/brands";
 import { wipeAccount } from "@/lib/account";
 import { CHAT_TOOL_NAMES, CONTACT_AWAY_TOOL, history, push, runTool, statusFor, system, toolsFor, type ToolCtx } from "@/lib/chat";
 import {
@@ -69,8 +70,8 @@ const settings = (p: Partial<SecCalendar>): SecCalendar => ({ v: 1, weekend: nul
 /** An away entry as the page's PUT stores it (Task 7): field `partyKey(label)`, value `{ label, until, by, via, at }`. */
 const awayEntry = (label: string, until: string) => ({ label, until, by: "owner@test.example", via: "web", at: "2026-10-01T00:00:00.000Z" });
 const OWNER: Who & { source: "owner" } = { actor: "owner", via: "web", source: "owner" };
-async function owner(prefix: string, brand: Brand = BRAND): Promise<User> {
-  const u = await newUser(prefix);
+async function owner(prefix: string, brand: Brand = BRAND, fx: Fixture = {}): Promise<User> {
+  const u = await newUser(prefix, fx);
   await saveBrand(u.email, brand);
   return u;
 }
@@ -677,16 +678,16 @@ describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a ses
 
   it("a PUT in brand A never touches brand B's hash, whatever the body names, and a DELETE in A cannot end B's entry", async () => {
     await at(NOW, async () => {
-      const u = await owner("aw483c");
+      const u = await owner("aw483c", BRAND);
       const b2 = scopeFor(u.email, "b2");
       await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });
       await signIn(u.email);
-      await setActiveBrand(u.email, "b2");
+      await seedActiveBrand(u.email, "b2");
       expect((await awayPut({ label: "Sara", until: "2026-10-09", scope: u.email })).status).toBe(200);
       expect(await awayKeys(b2)).toEqual(["sara"]);
       expect(await awayKeys(u.email)).toEqual([]);
-      await setActiveBrand(u.email, "default");
+      await seedActiveBrand(u.email, "default");
       expect((await awayDel({ label: "Sara", scope: b2 })).status).toBe(404);
       expect((await (await awayGet()).json()).entries).toEqual([]);
       expect((await db.hgetall<{ until: string }>(SEC_KEYS.away(b2))).sara.until).toBe("2026-10-09");
@@ -948,12 +949,12 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
 
   it("a PUT in brand B stores under B's scope alone, whatever the body names, and each brand's GET reads its own", async () => {
     await at(NOW, async () => {
-      const u = await owner("c484b");
+      const u = await owner("c484b", BRAND);
       const b2 = scopeFor(u.email, "b2");
       await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });
       await signIn(u.email);
-      await setActiveBrand(u.email, "b2");
+      await seedActiveBrand(u.email, "b2");
       expect((await calPut({ weekend: [5], scope: u.email })).status).toBe(400);
       expect(await Promise.all([storedCal(u.email), storedCal(b2)])).toEqual([null, null]);
       expect((await calPut({ weekend: [5] })).status).toBe(200);
@@ -962,7 +963,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       expect((await (await calGet()).json()).calendar.weekend).toEqual([5]);
       expect((await auditLines(b2)).map((l) => l.action)).toEqual(["calendar"]);
       expect(await auditLines(u.email)).toEqual([]);
-      await setActiveBrand(u.email, "default");
+      await seedActiveBrand(u.email, "default");
       const j = await (await calGet()).json();
       expect(j.calendar).toBeNull();
       expect(j.effective.weekend).toEqual([5, 6]);
@@ -1148,7 +1149,7 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
 
   it("the proposal is read only from the caller's scope: another brand's or account's id is 404 and stays open; a malformed id is 404 and a bad action 400 before any proposal is read; anonymous is 401; the rate limit is 429", async () => {
     await at(NOW, async () => {
-      const u = await owner("aw485d");
+      const u = await owner("aw485d", BRAND);
       const b2 = scopeFor(u.email, "b2");
       await saveBrands(u.email, [{ id: "default", name: "", createdAt: iso(NOW), status: "active" }, { id: "b2", name: "Two", createdAt: iso(NOW), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });
@@ -1180,7 +1181,7 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       expect(reads.mock.calls.flat(2).filter((k) => String(k).startsWith("secawayprop"))).toEqual([]);
       reads.mockRestore();
       // In brand B the same id saves, into B's list alone.
-      await setActiveBrand(u.email, "b2");
+      await seedActiveBrand(u.email, "b2");
       expect((await propPost(inB2.id, { action: "save" })).status).toBe(200);
       expect(await awayKeys(b2)).toEqual(["sara"]);
       expect(await awayKeys(u.email)).toEqual([]);
@@ -1357,7 +1358,7 @@ describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for
   it("runTool refuses it for Noor, for another agent, for a turn with no agent, over MCP and for a token (in ctx.by or on the user), and writes nothing", async () => {
     await at(NOW, async () => {
       const u = await owner("aw486a");
-      const token = { kind: "token" as const, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
+      const token = { kind: "token" as const, pid: storedPersonId(u.email), home: true, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
       const cases: [string, User, Partial<ToolCtx>][] = [
         ["noor", u, { agent: "noor", via: "app" }],
         ["majed", u, { agent: "majed", via: "app" }],

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSession, currentUserUnverified, destroySession, normalizeEmail, validEmail } from "@/lib/auth";
 import { allow, clientIp, retryLater } from "@/lib/rate";
+import { isPersonLockTimeout } from "@/lib/person";
+import { isTeamLockTimeout } from "@/lib/team";
 import { devCodeExposed, moveUnverifiedAccount, secondsToUtcMidnight, sendVerifyCode, verifySendRefusal } from "@/lib/verify-email";
 
 /**
@@ -23,7 +25,15 @@ export async function POST(req: Request) {
   if (to === u.email) return NextResponse.json({ ok: false, error: "same_email" }, { status: 400 });
   // Every attempt counts, taken or not: the 409 `exists` answer is otherwise an address oracle for a long-lived session.
   if (!(await allow(`verifymove:acct:${u.email}`, 10, 86400))) return retryLater({ ok: false, error: "slow_down" }, 86400);
-  const r = await moveUnverifiedAccount(u, to);
+  // The move holds the account's `lock:team` (multi-workspace M1, rule 2139) and both person locks (rule 2414): either
+  // timeout is a 409 with nothing moved.
+  let r: Awaited<ReturnType<typeof moveUnverifiedAccount>>;
+  try {
+    r = await moveUnverifiedAccount(u, to);
+  } catch (e) {
+    if (isTeamLockTimeout(e) || isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+    throw e;
+  }
   if (r === "not_allowed") return NextResponse.json({ ok: false, error: "not_allowed" }, { status: 403 });
   if (r === "exists") return NextResponse.json({ ok: false, error: "exists" }, { status: 409 });
   if (r === "limit") return retryLater({ ok: false, error: "slow_down" }, secondsToUtcMidnight());

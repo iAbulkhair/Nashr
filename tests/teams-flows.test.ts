@@ -9,6 +9,9 @@ import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { listNotifs } from "@/lib/notifications";
 import { day } from "@/lib/track";
 import { db } from "@/lib/db";
+import { acct } from "@/lib/account-id";
+import { storedAccountId } from "@/lib/keys";
+import { getMembership, listOrgs } from "@/lib/membership";
 
 const sent: { to: string; subject: string; text: string }[] = [];
 /** Switched off to play a provider that refuses the message (a rate limit, a quota, a rejected recipient). */
@@ -248,6 +251,31 @@ describe("signup", () => {
     const log = (await db.lrange("admin:log", 0, 0)).map((x) => JSON.parse(x) as { what: string; email: string; actor: string });
     expect(log[0]).toMatchObject({ what: "removeMember", email: m, actor: "key" });
     expect((await signup.POST(json("/api/auth/signup", "POST", { email: m, password: "abc12345", name: "Real owner" }, ip()))).status).toBe(200);
+  });
+  it("the founder console removes a member that the fixture mode builds (a p_ person has no member record, rule 2130)", async () => {
+    const owner = await newUser("own");
+    const aid = storedAccountId(acct(owner));
+    const byKey = { "x-admin-key": ADMIN_KEY };
+    const remove = (email: string) => adminUsers.POST(json(`/api/admin/users/${email}`, "POST", { action: "removeMember", reason: "address owner asked" }, byKey), { params: Promise.resolve({ email }) });
+    // A member who holds nothing else: removal frees the address.
+    const lone = await newMember(owner, "member", "m", { shadow: false });
+    const found = await adminUsers.GET(new Request(`https://nashr.test/api/admin/users/${lone.email}`, { headers: byKey }), { params: Promise.resolve({ email: encodeURIComponent(lone.email) }) });
+    expect(await found.json()).toMatchObject({ ok: true, kind: "member", member: { email: lone.email, memberOf: aid, onRoster: true } });
+    expect((await remove(lone.email)).status).toBe(200);
+    expect(await getMembership(aid, lone.pid)).toBeNull();
+    expect(await db.sismember(`members:${aid}`, lone.pid)).toBe(false);
+    const log = (await db.lrange("admin:log", 0, 0)).map((x) => JSON.parse(x) as { what: string; email: string; actor: string });
+    expect(log[0]).toMatchObject({ what: "removeMember", email: lone.email, actor: "key" });
+    expect((await signup.POST(json("/api/auth/signup", "POST", { email: lone.email, password: "abc12345", name: "Real owner" }, ip()))).status).toBe(200);
+    // A member who also holds another workspace: only the membership the console shows goes; the other one stays.
+    const held = await newMember(owner);
+    const before = await listOrgs(held.pid);
+    expect(before.map((o) => o.aid)).toContain(aid);
+    expect((await remove(held.email)).status).toBe(200);
+    expect(await getMembership(aid, held.pid)).toBeNull();
+    const after = await listOrgs(held.pid);
+    expect(after.map((o) => o.aid)).toEqual(before.map((o) => o.aid).filter((a) => a !== aid));
+    expect(after).toHaveLength(1);
   });
 });
 
@@ -502,7 +530,8 @@ describe("removal, leaving and roles take effect at the next request", () => {
   it("an admin removes plain members but not another admin", async () => {
     const owner = await withPlan(await newUser("own"), "agency");
     const admin = await newMember(owner, "admin");
-    const admin2 = await newMember(owner, "admin");
+    // Pins the legacy shape (multi-org M1): the check below reads the legacy `member:{email}` record.
+    const admin2 = await newMember(owner, "admin", "m", { legacy: true });
     const plain = await newMember(owner, "member");
     await signIn(admin.email);
     expect((await memberRoute.DELETE(json("/api/team/member", "DELETE", { email: admin2.email }))).status).toBe(403);

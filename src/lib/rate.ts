@@ -319,3 +319,12 @@ export { sameSecret } from "./secret";
  * few connectors stays far below this. Rule 1353.
  */
 export const INTEGRATION_REQUESTS_PER_HOUR = 30;
+
+/**
+ * The ops agent's routes (rules 2380-2389, src/lib/ops.ts). Per IP before the token is checked, so a guesser is slowed
+ * whatever it sends; then one bucket for the whole relay (one founder, one agent): about nine runs a day send a message
+ * or two each, so the ceilings sit far above normal use and far below a flood.
+ */
+export const OPS_CALLS_PER_IP_PER_MINUTE = 30;
+export const OPS_RELAY_PER_HOUR = 30;
+export const OPS_PROPOSALS_PER_DAY = 20;

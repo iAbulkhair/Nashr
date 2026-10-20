@@ -50,10 +50,10 @@ import { chat, history } from "@/lib/chat";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { createMcpToken } from "@/lib/mcp";
-import { saveBrands, setActiveBrand } from "@/lib/brands";
+import { saveBrands } from "@/lib/brands";
 import { AGENT_SCOPE_REFUSALS_PER_DAY, AGENT_SCOPE_REFUSALS_PER_HOUR, agentScopeCeiling, countAgentScopeRefusal } from "@/lib/rate";
 import { AGENT_SCOPE_KEYS, agentScopePreflight, agentScopeRefusalText, agentScopeSlowText, scopeCheck, type AgentScopeLogEntry, type AgentScopeMode } from "@/lib/agent-scope";
-import { json, newUser, signIn } from "./helpers/session";
+import { json, newUser, signIn, type Fixture, seedActiveBrand } from "./helpers/session";
 import * as chatRoute from "@/app/api/chat/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 
@@ -66,8 +66,8 @@ const logOf = async (email: string) => (await db.lrange(AGENT_SCOPE_KEYS.log(day
 const counter = async (key: string) => Number((await db.get<number | string>(key)) ?? 0);
 
 /** A paid owner (the month's counter), signed in, as the routes read it (`scope` set). */
-async function owner(prefix: string): Promise<User> {
-  const u = await newUser(prefix);
+async function owner(prefix: string, fx: Fixture = {}): Promise<User> {
+  const u = await newUser(prefix, fx);
   await saveUser({ ...u, plan: "starter", credits: 300 });
   await signIn(u.email);
   const back = (await getUser(u.email))!;
@@ -339,7 +339,7 @@ describe("rule 794: the input gate in a chat turn", () => {
       { id: "default", name: "", createdAt: new Date().toISOString(), status: "active" },
       { id: "b2", name: "Second", createdAt: new Date().toISOString(), status: "active" },
     ]);
-    await setActiveBrand(u.email, "b2");
+    await seedActiveBrand(u.email, "b2");
     cls.verdict = "personal";
     const res = await post("ذكرني بموعد الطبيب");
     expect(res.status, "the default brand's ceiling does not refuse brand b2").toBe(200);

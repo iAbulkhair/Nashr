@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
-import { currentSessionKey, currentUser, rotateSession, saveUser, type User } from "@/lib/auth";
+import { currentSessionKey, currentUser, rotateSession, type User } from "@/lib/auth";
 import { listDevices, revokeDevice } from "@/lib/devices";
-import { withUserLock } from "@/lib/credits";
+import { getPerson, isPersonLockTimeout, updatePerson } from "@/lib/person";
+import type { PersonId } from "@/lib/keys";
 import { forbid } from "@/lib/roles";
 import { allow, giveBack, retryLater, WINDOW } from "@/lib/rate";
 import { actingLogin, ownPasswordMatches } from "@/lib/own-password";
-import { getMember, saveMember, withMemberLock } from "@/lib/team";
-import { acct } from "@/lib/account-id";
 
 /** Wrong passwords per login and hour: a wrong password answers 401, and this bounds guessing it here. */
 const SIGN_OUT_OTHERS_PER_HOUR = 10;
 
 /**
  * POST /api/account/sessions {password} (rules 1150, 1170-1171): sign out every OTHER browser session of the acting
- * login, and keep this one. It stamps `devicesAfter` (the member record for a member, the account for the owner; a
- * member's sign-out never touches the owner's sessions or the other members'), a stamp only `resolveSession` reads.
+ * login, and keep this one. It stamps the person's `devicesAfter` (`updatePerson`, mirrored to the member record or the
+ * legacy owner's account; a member's sign-out never touches the owner's sessions or the other members'), a stamp only
+ * `resolveSession` reads.
  * GET lists the login's devices and DELETE ends one of them (rules 1938-1941, src/lib/devices.ts).
  *
  * What stays: MCP tokens, connected apps, the calendar feed and booking links. They follow `sessionsAfter` (`loginHolds`
@@ -40,29 +40,28 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { password?: unknown };
   if (!(await ownPasswordMatches(u, b.password))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
   await giveBack(bucket);
+  // The stamp is the PERSON's (multi-workspace M1, rule 2132): `updatePerson` writes `person:` and mirrors the member
+  // record or the legacy owner's account. A held person lock answers 409 `busy`; `rotateSession` then puts this device's
+  // old session back, so nothing changed.
+  let busy = false;
   const done = await rotateSession(a.email, async (stamp) => {
-    if (a.kind === "member") {
-      const ok = await withMemberLock(a.email, async (m) => {
-        if (m.memberOf !== acct(u)) return false;
-        m.devicesAfter = stamp;
-        await saveMember(m);
-        return true;
-      });
-      return ok === true;
+    try {
+      return !!(await updatePerson(a.pid, { devicesAfter: stamp }));
+    } catch (e) {
+      if (!isPersonLockTimeout(e)) throw e;
+      busy = true;
+      return false;
     }
-    // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
-    await withUserLock(acct(u), async (x) => { x.devicesAfter = stamp; await saveUser(x); });
-    return true;
   });
+  if (busy) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
   if (!done) return NextResponse.json({ ok: false }, { status: 401 });
   return NextResponse.json({ ok: true });
 }
 
-/** The revocation stamps that apply to the acting login's sessions (as `resolveSession` reads them). */
-async function stampsOf(u: User, me: { kind: "owner" | "member"; email: string }): Promise<(string | undefined)[]> {
-  if (me.kind === "owner") return [u.sessionsAfter, u.devicesAfter];
-  const m = await getMember(me.email);
-  return [m?.sessionsAfter, m?.devicesAfter, u.teamSessionsAfter];
+/** The revocation stamps that apply to the acting login's sessions (as `resolveSession` reads them): the person's, and for a member the account's team stamp. */
+async function stampsOf(u: User, me: { kind: "owner" | "member"; pid: PersonId }): Promise<(string | undefined)[]> {
+  const p = await getPerson(me.pid);
+  return me.kind === "owner" ? [p?.sessionsAfter, p?.devicesAfter] : [p?.sessionsAfter, p?.devicesAfter, u.teamSessionsAfter];
 }
 
 /**

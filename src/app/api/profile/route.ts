@@ -7,7 +7,9 @@ import { withBrandLock } from "@/lib/brand-proposals";
 import { db } from "@/lib/db";
 import { withUserLock } from "@/lib/credits";
 import { can, forbid, type Action } from "@/lib/roles";
-import { saveMember, withMemberLock } from "@/lib/team";
+import { defined, PERSON_LOCK_TIMEOUT, updatePerson, withPersonLock } from "@/lib/person";
+import { aidOf, ownerOf } from "@/lib/membership";
+import { actingLogin } from "@/lib/own-password";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { openLots, topupBalance } from "@/lib/topups";
@@ -135,37 +137,41 @@ export async function PUT(req: Request) {
 
   // The writes, in order: the person's record (under its own lock), the email preference, the brand file. With brand
   // fields the whole save runs inside the brand lock, taken BEFORE the first write: a lock that cannot be taken is the
-  // only throw this route expects, and it can now only happen before anything is written (the brand lock outside, the
-  // user or member lock as the first write inside), so `busy` below is true when it says nothing was saved.
+  // only throw this route expects, and it can now only happen before anything is written (the brand lock outside, then
+  // the person lock and the user or member lock before the first write inside), so `busy` below is true when it says
+  // nothing was saved.
   const run = async () => {
     let me = { name: a.name, email: a.email, lang: a.lang };
     let account: { phone: string } | undefined;
     if (a.kind === "member") {
-      // The member's own record, under its own lock. The owner's name and language are the account's, not theirs.
+      // The member's own PERSON (multi-workspace M1, rule 2132: `updatePerson`, mirrored to the member record), while it
+      // still holds a membership of this account. The owner's name and language are the account's, not theirs.
       if (name || lang) {
-        const done = await withMemberLock(a.email, async (m) => {
-          if (m.memberOf !== acct(u)) return false;
-          if (name) m.name = name;
-          if (lang) m.lang = lang;
-          await saveMember(m);
-          me = { name: m.name, email: a.email, lang: m.lang };
-          return true;
-        });
-        if (!done) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+        if (!(await actingLogin(u))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+        const p = await updatePerson(a.pid, defined({ name, lang }));
+        if (!p) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+        me = { name: p.name, email: a.email, lang: p.lang };
       }
     } else if (name !== undefined || phone !== undefined || lang) {
       // Inside the lock, on the record as it is NOW. `saveUser` writes the whole user, so mutating the copy this request
       // read at its start would put that request's stale `credits` back over any charge committed in between — the work
       // would be delivered and the charge silently reversed. Same shape as /api/account.
-      await withUserLock(acct(u), async (x) => {
-        if (name !== undefined) x.name = name;
-        if (phone !== undefined) x.phone = phone;
-        if (lang) x.lang = lang;
-        await saveUser(x);
-        // The owner (or the founder acting as the owner) sees the account's name and language as their own.
-        me = { name: x.name, email: a.email, lang: x.lang };
-        account = { phone: x.phone ?? "" };
-      });
+      // The owner's name and language are also the owner PERSON's (rule 2132): the person lock first, then the user lock
+      // (rule 2139), both taken before the first write; `updatePerson` writes `person:` and, for a legacy owner, the
+      // account it already holds (`userLocked`).
+      const pid = ownerOf(u);
+      await withPersonLock(pid, () =>
+        withUserLock(acct(u), async (x) => {
+          if (name !== undefined) x.name = name;
+          if (phone !== undefined) x.phone = phone;
+          if (lang) x.lang = lang;
+          await saveUser(x);
+          if (name !== undefined || lang) await updatePerson(pid, defined({ name, lang }), { personLocked: true, userLocked: aidOf(x) });
+          // The owner (or the founder acting as the owner) sees the account's name and language as their own.
+          me = { name: x.name, email: a.email, lang: x.lang };
+          account = { phone: x.phone ?? "" };
+        }),
+      );
     }
     let emails: EmailPrefs | undefined;
     if (b.emails && ["all", "important", "none"].includes(b.emails)) { await db.set(`profile:${sc(u)}`, { emails: b.emails }); emails = b.emails; }
@@ -205,5 +211,5 @@ export async function PUT(req: Request) {
   }
 }
 
-/** What `withBrandLock`, `withUserLock` and `withMemberLock` throw when their lock stays taken. */
-const LOCK_TIMEOUTS = new Set(["brand_lock_timeout", "user_lock_timeout", "team_lock_timeout"]);
+/** What `withBrandLock`, `withUserLock`, `withMemberLock` and `withPersonLock` throw when their lock stays taken. */
+const LOCK_TIMEOUTS = new Set(["brand_lock_timeout", "user_lock_timeout", "team_lock_timeout", PERSON_LOCK_TIMEOUT]);
