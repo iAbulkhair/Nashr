@@ -4,6 +4,7 @@ import { COPY } from "./copy";
 import { html, type SafeHtml, type Slot } from "./html";
 import { appLink } from "./link";
 import { COLORS, FONT } from "./tokens";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * The one layout every email shares: the document, the wordmark, a paper card on the ground colour and a short footer.
@@ -72,7 +73,7 @@ export function layout(p: { lang: Lang; title: string; preheader: string; body: 
   const { lang } = p;
   const f = FLOW[lang];
   const copy = COPY[lang];
-  const home = appLink(`${appOrigin()}/${lang}/app`);
+  const home = appLink(`${appOrigin()}${appHref(lang)}`);
   const wordmark = html`<span style="border-bottom:2px solid ${COLORS.gold};padding-bottom:2px;">${copy.wordmark}</span>`;
   const footer = html`${copy.footer} <a href="${home}" target="_blank" style="color:${COLORS.muted};text-decoration:underline;"><span dir="ltr">${appHost()}</span></a>`;
   const card = table(lang, "width:100%;max-width:560px;margin:0 auto;", [

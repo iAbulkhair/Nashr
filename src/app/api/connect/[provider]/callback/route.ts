@@ -25,6 +25,8 @@ import { appOrigin } from "@/lib/origin";
 import { dropSnapshotIfStoreChanged, storeIdentity } from "@/lib/store-sales";
 import { connectCalendar } from "@/lib/secretary-gcal";
 import type { CalProvider } from "@/lib/connectors/registry";
+import { appHrefIn } from "@/lib/app-href";
+import { appHref } from "@/lib/ws-path";
 
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const { provider } = await ctx.params;
@@ -44,7 +46,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   // A calendar for Reem (`secretary`) goes back to the Todo page with a fixed `cal_error` code, never to Integrations and
   // never with the provider's text. Decided by the provider in the URL, which is how a bad state is still answered there.
   const cal = !!p?.secretary;
-  const back = (q: string) => NextResponse.redirect(`${origin}/${lang}/app/${cal ? "todo" : "integrations"}?${q}`);
+  const back = (q: string) => NextResponse.redirect(`${origin}${st ? appHrefIn(st.email, lang, `/${cal ? "todo" : "integrations"}?${q}`) : appHref(lang, `/${cal ? "todo" : "integrations"}?${q}`)}`);
   // A Composio flow comes back with no code: the account was created at start and is verified below.
   if (!st || (!code && (cal || st.via !== "composio"))) {
     const err = url.searchParams.get("error");

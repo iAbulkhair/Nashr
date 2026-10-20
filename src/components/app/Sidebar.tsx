@@ -17,7 +17,7 @@ import { settingsHref } from "@/lib/settings-nav";
 import Sheet from "@/components/ui/Sheet";
 import Menu from "@/components/ui/Menu";
 import NotificationCenter from "./NotificationCenter";
-import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useAppHref, useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
 
 /** An agent's avatar sits on the agent's own colour; Faris and Majed are dark fills, so their letter is paper. */
 const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id})` }, tone: id === "faris" || id === "majed" ? "text-inverse-foreground" : "text-accent-foreground" });
@@ -41,7 +41,8 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const sp = useSearchParams();
   const r = useRouter();
   const ws = useWorkspace();
-  const base = `/${lang}/app`;
+  const to = useAppHref(lang);
+  const base = to();
   const N = t.nav;
   const X = t.ux.nav;
   const [open, setOpen] = useState(false);
@@ -93,7 +94,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   /** The brand you work on, and the bell beside it (outside the scrolling list, so its panel is never clipped). In the sheet the bell stays in the phone header. */
   const top = (bell: boolean) => (
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
-      <Link href={settingsHref(lang, "brands")} onClick={() => setOpen(false)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 hover:bg-background-muted/60">
+      <Link href={settingsHref(to, "brands")} onClick={() => setOpen(false)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 hover:bg-background-muted/60">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[1.5px] border-border-strong bg-background-muted font-display text-lg font-bold text-foreground" aria-hidden>{initial}</span>
         <span className="min-w-0"><span className="clip block text-sm font-semibold text-foreground" dir="auto">{brandName || (lang === "ar" ? "علامتك" : "Your brand")}</span><span className="block text-xs text-foreground-muted">{N.workspace}</span></span>
       </Link>
@@ -164,7 +165,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
       {group(`${p}-account`, X.workspace, <>
         {/* One row for the whole settings area (rule 1141): members, integrations, governance, billing and the rest live
             under /settings, so the row is current on every settings page and no other row is. */}
-        <li>{row(settingsHref(lang), N.settings, "settings")}</li>
+        <li>{row(settingsHref(to), N.settings, "settings")}</li>
         {show.refer && <li>{row(`${base}/refer`, N.refer, "gift")}</li>}
         {show.partner && <li>{row(`${base}/partner`, PARTNER_COPY[lang].nav, "growth")}</li>}
       </>)}
@@ -180,7 +181,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   // The account menu. Members moved to the rail's "Account and team" group (it was listed twice); the account pages
   // point into the settings area (rule 1141).
   const links = [
-    [settingsHref(lang, "account"), N.profile], [`${base}/notifications`, N.notifications], [`${base}/tasks`, N.tasks], [`${base}/generate`, N.generate], [settingsHref(lang, "billing"), N.billing], [settingsHref(lang, "brand"), N.brand], [settingsHref(lang, "brands"), N.brands],
+    [settingsHref(to, "account"), N.profile], [`${base}/notifications`, N.notifications], [`${base}/tasks`, N.tasks], [`${base}/generate`, N.generate], [settingsHref(to, "billing"), N.billing], [settingsHref(to, "brand"), N.brand], [settingsHref(to, "brands"), N.brands],
     ...(show.mcp ? [[`${base}/mcp`, "MCP"]] : []), [`${base}/help`, N.help],
     // Founder accounts only: the console has its own shell at /{lang}/admin (rules 871, 873), never a main-nav row.
     ...(admin ? [[adminHref(lang, "overview"), N.adminPanel]] : []),
@@ -216,7 +217,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
         <Link href={`${base}/chat`} className="font-display text-xl font-bold"><Wordmark lang={lang} name={t.appName} /></Link>
         <div className="flex items-center gap-1">
           <NotificationCenter t={t} lang={lang} align="end" />
-          <Link href={settingsHref(lang, "billing")} title={show.owner ? undefined : N.sharedCredits} className="tnum inline-flex min-h-[var(--hit-min)] items-center px-2 text-xs font-semibold text-foreground">{credits} {N.credits}</Link>
+          <Link href={settingsHref(to, "billing")} title={show.owner ? undefined : N.sharedCredits} className="tnum inline-flex min-h-[var(--hit-min)] items-center px-2 text-xs font-semibold text-foreground">{credits} {N.credits}</Link>
           <button type="button" onClick={() => setOpen(true)} aria-label={N.menu} aria-expanded={open} aria-haspopup="dialog" className="icon-btn border-[1.5px] border-border-strong text-foreground"><Icon name="menu" className="h-5 w-5" /></button>
         </div>
       </header>

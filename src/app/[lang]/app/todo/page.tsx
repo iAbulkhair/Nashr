@@ -17,6 +17,7 @@ import { fill } from "@/lib/fill";
 import TodoPanel, { type TodoRow, type TodoSection } from "@/components/app/TodoPanel";
 import WorkingDaysPanel from "@/components/app/WorkingDaysPanel";
 import SeriesPanel, { type SeriesRow } from "@/components/app/SeriesPanel";
+import { pageHref } from "@/lib/page-href";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
+  const href = await pageHref(lang);
   const scope = sc(u);
   const t = appDict[lang];
   const T = t.todo;
@@ -68,7 +70,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       id: it.id, title: it.title, due: it.dueAt ? fmt(it.dueAt, it.allDay) : null, closedAt: it.completedAt ? fmt(it.completedAt) : null,
       result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : resultText(it.result, lang), closedBy: closedByOf(it),
     }));
-    return <SeriesPanel t={t} id={series.id} rows={rows} total={series.total} kept={series.kept} canWrite={can(u, "todo.write")} canClose={can(u, "todo.close")} backHref={`/${lang}/app/todo`} exportHref={`/api/secretary/series/${series.id}/export?lang=${lang}`} />;
+    return <SeriesPanel t={t} id={series.id} rows={rows} total={series.total} kept={series.kept} canWrite={can(u, "todo.write")} canClose={can(u, "todo.close")} backHref={href("/todo")} exportHref={`/api/secretary/series/${series.id}/export?lang=${lang}`} />;
   }
   const { now, zone, agenda, done, deleted, facts, tonight, timed, brand, working: cal, awayRows } = await todoPage(scope);
   const awayList = awayListOf(awayRows, now, zone);
@@ -143,7 +145,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       t={t}
       zoneLabel={zoneTimeLabel(zone, lang)}
       sections={sections}
-      approvals={agenda.approvals ? { line: approvalsLine(agenda.approvals, lang), href: `/${lang}/app` } : null}
+      approvals={agenda.approvals ? { line: approvalsLine(agenda.approvals, lang), href: href() } : null}
       snoozed={agenda.snoozed}
       allClear={agenda.open > 0 && !agenda.counts.overdue && !agenda.counts.today}
       empty={agenda.open === 0}
@@ -152,11 +154,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       tonight={tonight}
       canClose={can(u, "todo.close")}
       canWrite={can(u, "todo.write")}
-      todoHref={`/${lang}/app/todo`}
+      todoHref={href("/todo")}
       timed={timed}
       briefAt={brief}
       lang={lang}
-      inboxHref={`/${lang}/app`}
+      inboxHref={href()}
       away={{ entries: awayList, labels, canEdit: can(u, "todo.write"), today, last: addDays(today, AWAY_AHEAD_DAYS) }}
       canLinkCalendar={can(u, "calendar.link")}
       calProviders={{ gcal: calReady("gcal"), mscal: calReady("mscal") }}

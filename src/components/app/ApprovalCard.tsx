@@ -11,7 +11,7 @@ import CopyButton from "@/components/ui/CopyButton";
 import Badge from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { Icon, channelIcon } from "./Icons";
-import { WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useAppHref, WORKSPACE_EVENTS } from "./WorkspaceContext";
 
 /** A string from the dictionary with its {placeholders} filled. */
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
@@ -30,6 +30,7 @@ const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w
  * that; with `demo` the card is a sample whose buttons write nothing.
  */
 export default function ApprovalCard({ item, t, lang, onApproved, canApprove = true, demo = false }: { item: ChatItem; t: ApprovalDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean; /** the home page's gallery (rule 1222): Approve and Undo change only this card, nothing is sent or saved */ demo?: boolean }) {
+  const href = useAppHref(lang);
   const [open, setOpen] = useState(true);
   const [status, setStatus] = useState(item.status);
   const [err, setErr] = useState("");
@@ -91,14 +92,14 @@ export default function ApprovalCard({ item, t, lang, onApproved, canApprove = t
         <span id={`${id}-count`} className={`tnum ${over ? "font-semibold text-foreground" : "text-foreground-muted"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
         {over && <Badge id={`${id}-over`} tone="danger">{ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit"}</Badge>}
         {err && <span role="alert" className="text-danger">{err}</span>}
-        {held.length > 0 && <span role="alert" id={`${id}-held`} className="flex items-center gap-1 font-semibold text-danger"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={`/${lang}/app`} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
+        {held.length > 0 && <span role="alert" id={`${id}-held`} className="flex items-center gap-1 font-semibold text-danger"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={href()} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
         {undoAt > 0 && status === "approved" && <span role="status" className="flex items-center gap-2 text-foreground"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button type="button" onClick={() => setState("pending")} className="min-h-[var(--hit-min)] underline pointer-fine:min-h-0">{t.chat.undo}</button></span>}
         {flagged && <Badge tone="warning">{t.chat.xflagHint}</Badge>}
         <span className="ms-auto flex flex-wrap gap-1.5">
           <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={`${id}-body`} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>
           <CopyButton text={item.body} lang={lang} label={status === "approved" ? `${t.chat.copyTo} ${chName}` : t.inbox.copy} />
           {status !== "approved" && !canApprove && <span className="self-center text-foreground-muted">{t.inbox.waitAdmin}</span>}
-          {flagged && canApprove && <Link href={`/${lang}/app`} className="btn btn-primary btn-xs">{t.chat.readNotes}</Link>}
+          {flagged && canApprove && <Link href={href()} className="btn btn-primary btn-xs">{t.chat.readNotes}</Link>}
           {status !== "approved" && canApprove && !flagged && <button type="button" onClick={() => setState("approved")} disabled={blocked || saving} aria-busy={saving || undefined} aria-describedby={over ? `${id}-over` : held.length > 0 ? `${id}-held` : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
         </span>
       </footer>

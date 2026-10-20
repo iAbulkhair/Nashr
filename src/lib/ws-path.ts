@@ -149,3 +149,16 @@ export function oldAppTarget(lang: string, browserPath: string, search: string, 
   if (browserPath.startsWith(base + "/w/")) return null;
   return appHref(lang, browserPath.slice(base.length) + search, handle);
 }
+
+const APP_HREF = /^\/([^/?#]+)\/app(\/[^?#]*)?([?#].*)?$/;
+
+/**
+ * A stored or server-made app link (a notification's `href`, a link a route answered) moved into `handle`'s workspace,
+ * the query and hash kept. Any other link, one already inside `w/`, a person page or a missing handle comes back
+ * unchanged, so with `MULTI_ORG` off (no handle) nothing changes.
+ */
+export function inWorkspace(href: string, handle: string | null | undefined): string {
+  const m = APP_HREF.exec(href);
+  if (!m || !asHandle(handle) || splitWsPath(`/${m[1]}/app${m[2] ?? ""}`)) return href;
+  return appHref(m[1], (m[2] ?? "") + (m[3] ?? ""), handle);
+}

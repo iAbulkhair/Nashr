@@ -73,7 +73,7 @@ describe("rule 1392: GET answers the cap, the count and who may upgrade; the pan
     const src = readFileSync("src/components/app/BrandsPanel.tsx", "utf8");
     expect(src).toMatch(/const full = cap > 0 && activeCount >= cap;/);
     expect(src).toMatch(/\{manage && !full && \(\s*<form/);
-    expect(src).toContain("/app/settings/billing");
+    expect(src).toContain('href("/settings/billing")');
     expect(src).toContain('j.error === "brand_limit"');
   });
 });

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { levelFor, type Journey, type LevelId, type MilestoneId } from "@/lib/journey";
 import { Icon } from "./Icons";
 import { JOURNEY_KEY, readStored, writeStored } from "@/lib/cookie-names";
+import { useAppHref } from "@/components/app/WorkspaceContext";
 
 const STR = {
   ar: {
@@ -61,8 +62,9 @@ function Confetti({ burst }: { burst: number }) {
 }
 
 export default function JourneyCard({ journey, lang, compact = false }: { journey: Journey; lang: "ar" | "en"; compact?: boolean }) {
+  const href = useAppHref(lang);
   const S = STR[lang];
-  const base = `/${lang}/app`;
+  const base = href();
   const [extra, setExtra] = useState<MilestoneId[]>([]);
   const [toast, setToast] = useState<{ kind: "milestone" | "level"; text: string } | null>(null);
   const [burst, setBurst] = useState(0);

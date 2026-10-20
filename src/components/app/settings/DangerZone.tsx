@@ -10,6 +10,7 @@ import DeleteAccountDialog from "../DeleteAccountDialog";
 import LogoutButton from "../LogoutButton";
 import ReadOnlyNote from "../ReadOnlyNote";
 import SettingsCard from "./SettingsCard";
+import { useAppHref } from "../WorkspaceContext";
 
 const COPY = {
   ar: {
@@ -42,6 +43,7 @@ const COPY = {
 export default function DangerZone({ lang, email, canDelete, canExport = false, impersonating, owner, logoutLabel, failText }: { lang: Lang; email: string; canDelete: boolean; canExport?: boolean; impersonating: boolean; owner: boolean; logoutLabel: string; failText: { forbidden: string; failed: string } }) {
   const r = useRouter();
   const T = COPY[lang];
+  const href = useAppHref(lang);
   const [deleting, setDeleting] = useState(false);
   return (
     <div className="grid gap-4">
@@ -75,7 +77,7 @@ export default function DangerZone({ lang, email, canDelete, canExport = false, 
         </SettingsCard>
       ) : (
         <SettingsCard title={T.leave} sub={T.leaveSub}>
-          <div><Link href={settingsHref(lang, "members")} className={buttonClass({ variant: "secondary", size: "sm" })}>{T.leaveBtn}</Link></div>
+          <div><Link href={settingsHref(href, "members")} className={buttonClass({ variant: "secondary", size: "sm" })}>{T.leaveBtn}</Link></div>
         </SettingsCard>
       )}
     </div>

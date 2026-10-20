@@ -9,6 +9,7 @@ import type { PublicJob } from "@/lib/media/types";
 import { IMAGE_TYPES, VIDEO_TYPES } from "@/lib/tasks";
 import { limitFromError } from "./LimitModal";
 import { topupsSold, type Plan } from "@/lib/pricing";
+import { useAppHref } from "@/components/app/WorkspaceContext";
 
 /**
  * The image and video buttons of one inbox card: a model picker per kind with the price on every choice, a
@@ -111,6 +112,7 @@ export default function MediaControls({ task, lang, t, available, included, cred
    */
   onChanged(): void;
 }) {
+  const href = useAppHref(lang);
   const i = t.inbox;
   const uid = useId();
   const [pick, setPick] = useState<Partial<Record<MediaKind, MediaModelId>>>({});
@@ -288,7 +290,7 @@ export default function MediaControls({ task, lang, t, available, included, cred
         {n && (
           <p role="alert" className="text-xs text-danger">
             {n.text}
-            {n.billing && <> <Link href={`/${lang}/app/settings/billing${n.topup ? "#topup" : ""}`} className="font-semibold underline">{n.topup ? i.topupLink : i.billingLink}</Link></>}
+            {n.billing && <> <Link href={href(`/settings/billing${n.topup ? "#topup" : ""}`)} className="font-semibold underline">{n.topup ? i.topupLink : i.billingLink}</Link></>}
           </p>
         )}
         {!rendering && !n && last && <p className="text-xs text-danger">{plural(i.mediaLastFailed, last.credits)} {errText(last.error)}</p>}

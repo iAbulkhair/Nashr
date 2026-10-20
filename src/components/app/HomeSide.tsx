@@ -4,6 +4,7 @@ import type { Lang } from "@/lib/i18n";
 import type { Kpis } from "@/lib/stats";
 import type { Notif } from "@/lib/notifications";
 import { Icon } from "./Icons";
+import { useAppHref } from "@/components/app/WorkspaceContext";
 
 type Props = {
   t: AppDict; lang: Lang; k: Kpis;
@@ -45,8 +46,9 @@ function ago(iso: string | undefined, lang: Lang) {
 
 /** Right-hand home panel (Enrich-style): metrics, channels, task feed with live status and latest run, brand assets. Server component. */
 export default function HomeSide({ t, lang, k, connections, schedule, files, brief, action }: Props) {
+  const href = useAppHref(lang);
   const H = t.home;
-  const base = `/${lang}/app`;
+  const base = href();
   const week = k.weeks[k.weeks.length - 1] ?? { created: 0, approved: 0 };
   const tiles = [
     { l: H.created7, v: week.created, href: base },

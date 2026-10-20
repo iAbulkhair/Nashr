@@ -19,6 +19,7 @@ import { connectedSources, liNeedsPage, siteChoices, socialRefreshPath, xDirect 
 import ReportsPanel from "@/components/app/ReportsPanel";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
+import { pageHref } from "@/lib/page-href";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,8 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
+  const href = await pageHref(lang);
+  if (!(await getBrand(sc(u)))) redirect(href("/start"));
   const tasks = await listLite(sc(u), kpiSince(win));
   const [k, quality, connections, store, syncFailure, perf, site, social, xStats, ads] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), win), listConnections(sc(u)), getSalesSnapshot(sc(u)), getSyncFailure(sc(u)), getPerf(sc(u)), getSiteSnapshot(sc(u)), getSocialSnapshot(sc(u)), getXStats(sc(u)), getAdStats(sc(u))]);
   // The not-read list from the reads this page already holds, so one round reads each key once (rule 738).

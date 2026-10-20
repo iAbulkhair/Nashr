@@ -13,6 +13,7 @@ import { usePrompt } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
+import { useAppHref } from "@/components/app/WorkspaceContext";
 
 type B = { id: string; name: string; createdAt: string; status: "active" | "archived"; hasBrandFile: boolean };
 
@@ -28,6 +29,7 @@ type B = { id: string; name: string; createdAt: string; status: "active" | "arch
  * off until switched on (rule 247).
  */
 export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: { lang: Lang; manage?: boolean; readOnlyNote?: string }) {
+  const href = useAppHref(lang);
   const ar = lang === "ar";
   const r = useRouter();
   const [brands, setBrands] = useState<B[]>([]);
@@ -68,7 +70,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
         return;
       }
       setErr("");
-      if (body.action === "add") { r.push(`/${lang}/app/start`); r.refresh(); return; }
+      if (body.action === "add") { r.push(href("/start")); r.refresh(); return; }
       await load(); r.refresh();
     } finally {
       setBusy(false);
@@ -90,7 +92,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
         {manage && full && (
           <p className="text-sm">
             {canUpgrade
-              ? <>{ar ? "خطتك تشمل هذا العدد من العلامات. " : "Your plan includes this many brands. "}<Link href={`/${lang}/app/settings/billing`} className="font-semibold underline">{ar ? "رقِّ الخطة لإضافة علامة" : "Upgrade to add a brand"}</Link></>
+              ? <>{ar ? "خطتك تشمل هذا العدد من العلامات. " : "Your plan includes this many brands. "}<Link href={href("/settings/billing")} className="font-semibold underline">{ar ? "رقِّ الخطة لإضافة علامة" : "Upgrade to add a brand"}</Link></>
               : (ar ? "خطة الحساب تشمل هذا العدد من العلامات. اطلب من مالك الحساب ترقية الخطة لإضافة علامة." : "The account's plan includes this many brands. Ask the account owner to upgrade the plan to add one.")}
           </p>
         )}

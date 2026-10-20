@@ -26,6 +26,7 @@ import RouteProgress from "@/components/ui/RouteProgress";
 import { canonicalHref, historyFor, queryHref, type QueryCodec } from "@/lib/url-query";
 import { DEFAULT_USER_QUERY, parseUserQuery, userQueryParams, type UserQuery } from "@/lib/admin-users";
 import { appDict } from "@/lib/app-i18n";
+import { appHref } from "@/lib/ws-path";
 
 const read = (f: string) => readFileSync(f, "utf8");
 const walk = (d: string): string[] => readdirSync(d).flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(n) ? [p] : []; });
@@ -201,9 +202,9 @@ describe("rule 2006: settings in two groups", () => {
       expect(ws).toBeGreaterThan(you);
       expect(html).toContain('aria-labelledby="settings-group-you"');
       const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
-      expect(hrefs).toEqual(SETTINGS_SECTIONS.map((s) => settingsHref(lang, s)));
-      expect(html.indexOf(settingsHref(lang, "notifications"))).toBeLessThan(ws);
-      expect(html.indexOf(settingsHref(lang, "brand"))).toBeGreaterThan(ws);
+      expect(hrefs).toEqual(SETTINGS_SECTIONS.map((s) => settingsHref((p) => appHref(lang, p), s)));
+      expect(html.indexOf(settingsHref((p) => appHref(lang, p), "notifications"))).toBeLessThan(ws);
+      expect(html.indexOf(settingsHref((p) => appHref(lang, p), "brand"))).toBeGreaterThan(ws);
     }
   });
 

@@ -1,4 +1,5 @@
 import type { Lang } from "./i18n";
+import { appHref } from "./ws-path";
 
 /**
  * The settings area (UI/UX phase 3, rules 1140-1142): one place for the account, its security, notifications, the brand
@@ -24,8 +25,11 @@ export const groupOf = (s: SettingsSection): SettingsGroup => SETTINGS_GROUPS.fi
 
 export const isSettingsSection = (v: unknown): v is SettingsSection => typeof v === "string" && (SETTINGS_SECTIONS as readonly string[]).includes(v);
 
-/** `/{lang}/app/settings` or one section of it. */
-export const settingsHref = (lang: Lang, section?: SettingsSection) => `/${lang}/app/settings${section ? `/${section}` : ""}`;
+/** `/settings` or one section of it, what follows `/app`. */
+export const settingsPath = (section?: SettingsSection) => `/settings${section ? `/${section}` : ""}`;
+
+/** The link to the settings area or one section, made by the caller's app-link builder (`useAppHref`, `pageHref`). */
+export const settingsHref = (href: (path: string) => string, section?: SettingsSection) => href(settingsPath(section));
 
 /**
  * The old scattered routes and the section that replaced each (rule 1141). Expand step: for one release the proxy
@@ -51,7 +55,7 @@ const LEGACY_PATH = new RegExp(`^/(ar|en)/app/(${Object.keys(LEGACY_SETTINGS).jo
 export function legacySettingsPath(pathname: string): string | null {
   const m = LEGACY_PATH.exec(pathname);
   if (!m) return null;
-  return settingsHref(m[1] as Lang, LEGACY_SETTINGS[m[2]]);
+  return settingsHref((p) => appHref(m[1], p), LEGACY_SETTINGS[m[2]]);
 }
 
 /** Each section's name and one line of what it holds, in both languages. */

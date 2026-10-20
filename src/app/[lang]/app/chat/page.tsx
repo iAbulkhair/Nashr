@@ -27,6 +27,7 @@ import { chatRouteFor } from "@/lib/models/overrides";
 import { getConversation } from "@/lib/conversations";
 import { wsKey } from "@/lib/keys";
 import { acct } from "@/lib/account-id";
+import { pageHref } from "@/lib/page-href";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
+  const href = await pageHref(lang);
   // The WhatsApp prompt saves the ACCOUNT's phone (owner only: "profile.account"), so no other role is asked for it.
   const needPhone = !u.phone && can(u, "profile.account");
   // The model picker's one-time consent to China-hosted models is the owner's own, never given while a founder
@@ -45,13 +47,13 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const canConfirmChina = can(u, "profile.account") && u.actor?.kind !== "founder";
   if (!(await getBrand(sc(u)))) {
     // Building the workspace is admin and owner only ("onboard"): anyone else waits on the start page, which says so.
-    if (!can(u, "onboard")) redirect(`/${lang}/app/start`);
+    if (!can(u, "onboard")) redirect(href("/start"));
     // First run: the workspace is built inside the "Getting started" thread, not on a form, and only from the site the
     // owner confirmed on the start page. A `?onboard=` from a link goes back there as the pre-filled value to review.
     const [onboard, initial, chat] = await Promise.all([confirmedOnboard(sc(u)), historyFor(sc(u)), chatStatus(u, route("chat").model)]);
     if (!onboard) {
       const asked = onboardUrl(sp.onboard);
-      redirect(`/${lang}/app/start${asked.length >= 4 ? `?url=${encodeURIComponent(asked)}` : ""}`);
+      redirect(href(`/start${asked.length >= 4 ? `?url=${encodeURIComponent(asked)}` : ""}`));
     }
     return (
       <div className="grid min-h-0 flex-1">

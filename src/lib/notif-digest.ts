@@ -5,6 +5,7 @@ import { pmap } from "./parallel";
 import { sendEmail } from "./notify";
 import { appOrigin } from "./origin";
 import { COUNT_MAX, listNotifs, type Notif } from "./notifications";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * The digest email the owner chooses (rules 2352-2357, pattern 2 of docs/reports/2026-10-19-PRD-fizzy-orca_AR.md, after
@@ -73,7 +74,7 @@ export function digestMail(lang: "ar" | "en", every: Exclude<DigestEvery, "off">
   const tail = more > 0 ? [ar ? `و${more} غيرها في صفحة التنبيهات.` : `And ${more} more on the notifications page.`] : [];
   const foot = ar ? "تغيّر وقت هذا الملخص أو توقفه من الإعدادات، التنبيهات." : "Change or stop this digest in Settings, Notifications.";
   const paragraphs = [head, ...lines, ...tail, foot];
-  return { subject, paragraphs, text: paragraphs.join("\n\n"), href: `${appOrigin()}/${lang}/app/notifications` };
+  return { subject, paragraphs, text: paragraphs.join("\n\n"), href: `${appOrigin()}${appHref(lang, "/notifications")}` };
 }
 
 export type DigestOutcome = "off" | "start" | "wait" | "busy" | "empty" | "sent" | "failed" | "late";

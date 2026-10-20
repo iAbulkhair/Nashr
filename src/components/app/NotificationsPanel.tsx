@@ -8,9 +8,10 @@ import Button from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-class";
 import EmptyState from "@/components/ui/EmptyState";
 import { Time } from "@/components/ui/Time";
-import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useAppHref, useWorkspace, useWsHandle, WORKSPACE_EVENTS } from "./WorkspaceContext";
 import { Times, markOneRead } from "./NotificationCenter";
 import { SETTINGS_COPY, settingsHref } from "@/lib/settings-nav";
+import { inWorkspace } from "@/lib/ws-path";
 
 /**
  * Every notification (rule 1123). Unread ones carry a dot, a bold title and the word "unread" for screen readers, and
@@ -22,6 +23,8 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
   const N = t.notifications;
   const U = t.ux.notif;
   const ws = useWorkspace();
+  const href = useAppHref(lang);
+  const handle = useWsHandle();
   const [items, setItems] = useState(initial);
   const [said, setSaid] = useState("");
   const [failed, setFailed] = useState(false);
@@ -54,7 +57,7 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Rule 1144: what reaches the bell and the inbox is chosen in Settings, Notifications. */}
-          <Link href={settingsHref(lang, "notifications")} className={buttonClass({ variant: "ghost", size: "sm" })}>{SETTINGS_COPY[lang].prefsLink}</Link>
+          <Link href={settingsHref(href, "notifications")} className={buttonClass({ variant: "ghost", size: "sm" })}>{SETTINGS_COPY[lang].prefsLink}</Link>
           {unread > 0 && <Button variant="secondary" size="sm" onClick={markAll}>{U.markAll}</Button>}
         </div>
       </div>
@@ -78,7 +81,7 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {!n.read && <button type="button" onClick={() => void readOne(n, true)} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full px-3 text-xs text-foreground underline-offset-2 hover:underline pointer-fine:min-h-8">{U.markOne}</button>}
-                <Link href={n.href} onClick={() => void readOne(n, false)} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-border-input px-3 text-xs text-foreground hover:bg-inverse hover:text-inverse-muted pointer-fine:min-h-8">{N.open}</Link>
+                <Link href={inWorkspace(n.href, handle)} onClick={() => void readOne(n, false)} className="inline-flex min-h-[var(--hit-min)] items-center rounded-full border border-border-input px-3 text-xs text-foreground hover:bg-inverse hover:text-inverse-muted pointer-fine:min-h-8">{N.open}</Link>
               </div>
             </li>
           ))}

@@ -35,6 +35,7 @@ import {
   type StartResult, type StatusResult, type SubmitResult, type SweepReport,
 } from "./types";
 import { log } from "../log";
+import { appHrefIn } from "@/lib/app-href";
 
 /** One render per task and kind at a time, a little longer than that kind's max age. */
 export const FLIGHT_TTL_S: Record<MediaKind, number> = { image: 15 * 60, video: 35 * 60 };
@@ -667,7 +668,7 @@ async function notifyOwner(j: MediaJob, t: Task | null, own: Promise<boolean> = 
       ? { title: video ? `لم يكتمل الفيديو لـ«${title}»` : `لم تكتمل الصورة لـ«${title}»`, body: `أُعيدت ${j.credits} كريدت.` }
       : { title: `The ${video ? "video" : "image"} for “${title}” did not finish`, body: j.credits === 1 ? "1 credit was returned." : `${j.credits} credits were returned.` };
   } else return;
-  await pushNotif(j.email, { kind: "info", ...n, href: `/${j.lang}/app` });
+  await pushNotif(j.email, { kind: "info", ...n, href: appHrefIn(j.email, j.lang) });
 }
 
 /**

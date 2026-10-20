@@ -219,7 +219,7 @@ describe("a routine runs only on real input (rule 113)", () => {
     expect(last && Date.now() - Date.parse(last)).toBeLessThan(60_000);
     const notes = (await listNotifs(u.email)).filter((n) => n.agent === "dana");
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ kind: "pending", title: "التقرير الأسبوعي من دانة في صندوق الموافقة", href: "/ar/app/" });
+    expect(notes[0]).toMatchObject({ kind: "pending", title: "التقرير الأسبوعي من دانة في صندوق الموافقة", href: "/ar/app" });
     expect(await db.get(`notifseen:${u.email}:routine:${u.email}:dana_weekly_report:${periodOf("weekly")}`)).toBe(1);
     await settle();
   });

@@ -11,8 +11,10 @@ import { limitFromError, raiseLimit } from "./LimitModal";
 import Scribble from "@/components/Scribble";
 import EmptyState from "@/components/ui/EmptyState";
 import { emptyCopy } from "@/lib/empty-copy";
+import { useAppHref } from "@/components/app/WorkspaceContext";
 
 export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Inspo[] }) {
+  const href = useAppHref(lang);
   const r = useRouter();
   const p = t.inspo;
   const E = emptyCopy(lang, "inspo");
@@ -44,7 +46,7 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
       else if (!limitFromError(j.error) && typeof j.message?.content === "string") setRefusal(j.message.content);
       return;
     }
-    r.push(`/${lang}/app/chat`);
+    r.push(href("/chat"));
   }
   const Pill = ({ v, cur, set, label }: { v: string; cur: string; set: (s: string) => void; label: string }) => (
     <button onClick={() => set(v)} className={`rounded-full px-3 py-1 text-xs ${cur === v ? "bg-inverse text-inverse-muted" : "bg-background-muted"}`}>{label}</button>

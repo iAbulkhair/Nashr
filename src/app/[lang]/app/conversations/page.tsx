@@ -8,6 +8,7 @@ import { listConversations, searchConversations } from "@/lib/conversations";
 import { listLite } from "@/lib/brand";
 import { kpiSince } from "@/lib/stats";
 import Scribble from "@/components/Scribble";
+import { pageHref } from "@/lib/page-href";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
+  const href = await pageHref(lang);
   const t = appDict[lang];
   // Bounded to the same 90-day window every other KPI on the site uses. Unbounded, this read pulled every task the
   // workspace had ever created — every month of the light index, megabytes over HTTP — to render a single integer.
@@ -41,14 +43,14 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
       {hits && (
         <div className="mt-6 card">
           <p className="text-xs text-foreground-muted">“{q}” · {hits.length}</p>
-          <ul className="mt-2 divide-y divide-foreground/10">{hits.map((h, i) => <li key={i} className="py-2 text-sm"><Link href={`/${lang}/app/chat?conv=${h.conversationId}`} className="font-medium hover:text-foreground" dir="auto">{h.title}</Link><p className="text-xs text-foreground-muted" dir="auto">…{h.snippet}…</p></li>)}</ul>
+          <ul className="mt-2 divide-y divide-foreground/10">{hits.map((h, i) => <li key={i} className="py-2 text-sm"><Link href={href(`/chat?conv=${h.conversationId}`)} className="font-medium hover:text-foreground" dir="auto">{h.title}</Link><p className="text-xs text-foreground-muted" dir="auto">…{h.snippet}…</p></li>)}</ul>
         </div>
       )}
       <ul className="mt-6 divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-surface">
-        <li className="flex items-center justify-between px-4 py-3 text-sm"><Link href={`/${lang}/app/chat`} className="font-medium hover:text-foreground">{t.history.gettingStarted}</Link><span className="text-xs text-foreground-muted">{t.agents.noor.name}</span></li>
+        <li className="flex items-center justify-between px-4 py-3 text-sm"><Link href={href("/chat")} className="font-medium hover:text-foreground">{t.history.gettingStarted}</Link><span className="text-xs text-foreground-muted">{t.agents.noor.name}</span></li>
         {convs.map((c) => (
           <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-            <Link href={`/${lang}/app/chat?conv=${c.id}`} className="min-w-0 truncate font-medium hover:text-foreground" dir="auto">{c.title || "…"}</Link>
+            <Link href={href(`/chat?conv=${c.id}`)} className="min-w-0 truncate font-medium hover:text-foreground" dir="auto">{c.title || "…"}</Link>
             <span className="shrink-0 text-xs text-foreground-muted">{t.agents[c.agent ?? "noor"].name} · <span dir="ltr">{c.count}</span> · <span className="font-mono" dir="ltr">{c.updatedAt.slice(0, 10)}</span></span>
           </li>
         ))}

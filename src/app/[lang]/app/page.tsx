@@ -13,6 +13,7 @@ import { loadJourney } from "@/lib/journey-load";
 import { can } from "@/lib/roles";
 import { availableModels, offModels } from "@/lib/media/config";
 import { modelState } from "@/lib/model";
+import { pageHref } from "@/lib/page-href";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
+  const href = await pageHref(lang);
   const brand = await getBrand(sc(u));
-  if (!brand) redirect(`/${lang}/app/start`);
+  if (!brand) redirect(href("/start"));
   // One round, not three. These were three awaits in argument position, so they ran one after another — the same
   // instinct as the project's rule against `await db.*` inside a loop, just without the loop.
   const [tasks, brief, connections, journey, off] = await Promise.all([listTasks(sc(u)), latestBrief(sc(u)), listConnections(sc(u)), loadJourney(sc(u), u.email, { brand }), offModels()]);

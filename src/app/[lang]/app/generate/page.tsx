@@ -7,6 +7,7 @@ import { getBrand } from "@/lib/brand";
 import GeneratePanel from "@/components/app/GeneratePanel";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
+import { pageHref } from "@/lib/page-href";
 
 export const generateMetadata = appScreenMeta("generate");
 
@@ -15,6 +16,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
+  const href = await pageHref(lang);
+  if (!(await getBrand(sc(u)))) redirect(href("/start"));
   return <GeneratePanel t={appDict[lang]} lang={lang} credits={u.credits} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
 }

@@ -13,6 +13,7 @@ import { fill } from "./fill";
 import { listOpenItems } from "./secretary";
 import { addDays, isSnoozed, partyName, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * The calendar file of one brand's open dated to-dos (Reem phase 3 B1, spec section 2 and 7), and `feedHolds`, the
@@ -198,7 +199,7 @@ export function buildIcs(items: SecItem[], o: { lang: "ar" | "en"; zone: Zone; o
   // The two "who acts" phrases are the page's words (`todo.feed`), one source for the card and the file.
   const feedWords = appDict[o.lang].todo.feed;
   // The origin is caller-supplied: cleaned like a text value, but not escaped, since `URL` is a URI.
-  const url = clean(`${o.origin}/${o.lang}/app/todo`);
+  const url = clean(`${o.origin}${appHref(o.lang, "/todo")}`);
   const out: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",

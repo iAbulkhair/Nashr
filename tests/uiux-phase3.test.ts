@@ -27,6 +27,7 @@ import Sidebar from "@/components/app/Sidebar";
 import * as sessionsRoute from "@/app/api/account/sessions/route";
 import * as prefsRoute from "@/app/api/notifications/prefs/route";
 import * as statusRoute from "@/app/api/billing/status/route";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * UI/UX phase 3, Settings and Billing (rules 1140-1158, docs/system/tests/1140-uiux-phase3.md): the settings area and its
@@ -60,8 +61,8 @@ describe("rule 1140: one settings area, one page per section, its own navigation
     for (const s of SETTINGS_SECTIONS) expect(existsSync(`src/app/[lang]/app/settings/${s}/page.tsx`), s).toBe(true);
     expect(existsSync("src/app/[lang]/app/settings/page.tsx")).toBe(true);
     expect(read("src/app/[lang]/app/settings/layout.tsx")).toMatch(/<SettingsNav lang=\{lang\} \/>/);
-    expect(settingsHref("ar")).toBe("/ar/app/settings");
-    expect(settingsHref("en", "billing")).toBe("/en/app/settings/billing");
+    expect(settingsHref((p) => appHref("ar", p))).toBe("/ar/app/settings");
+    expect(settingsHref((p) => appHref("en", p), "billing")).toBe("/en/app/settings/billing");
   });
   it("the old pages left: the proxy answers their paths", () => {
     for (const old of Object.keys(LEGACY_SETTINGS)) expect(existsSync(`src/app/[lang]/app/${old}/page.tsx`), old).toBe(false);
@@ -366,7 +367,7 @@ describe("rule 1154: plan cards, the summary and the VAT note", () => {
   it("the page sums up plan, credits, seats and the next date, and states VAT next to the prices", () => {
     const page = read("src/app/[lang]/app/settings/billing/page.tsx");
     expect(page).toContain("data-billing-summary");
-    expect(page).toContain('href={settingsHref(lang, "members")}');
+    expect(page).toContain('href={settingsHref(link, "members")}');
     expect(page).toContain("data-vat-note");
     expect(page).toMatch(/<PlanCard key=\{k\} lang=\{lang\} id=\{k\}/);
   });

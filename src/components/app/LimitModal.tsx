@@ -5,6 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { chatOverflowHold, formatCount } from "@/lib/pricing";
+import { useAppHref } from "@/components/app/WorkspaceContext";
 
 /**
  * `credits`: the balance (the month's plan credits and any top-up pack) does not cover the work; the way out is a top-up
@@ -73,6 +74,7 @@ export function noCreditsText(g: AppDict["generate"], may: boolean, topups: bool
  * to ask the account owner rather than sent to a page they cannot change.
  */
 export default function LimitModal({ t, lang, owner = true, governs = true, topups = true }: { t: AppDict; lang: Lang; owner?: boolean; governs?: boolean; topups?: boolean }) {
+  const href = useAppHref(lang);
   const [open, setOpen] = useState<Open | null>(null);
   useEffect(() => {
     const on = (e: Event) => setOpen((e as CustomEvent<Open>).detail);
@@ -101,7 +103,7 @@ export default function LimitModal({ t, lang, owner = true, governs = true, topu
         <p className="page-sub">{body}</p>
         <div className="mt-6 flex justify-center gap-3">
           <button id="limit-later" onClick={() => setOpen(null)} className={`btn ${act ? "btn-secondary" : "btn-primary"}`}>{act ? L.later : L.ok}</button>
-          {!act ? null : kind === "agent_cap" ? <Link href={`/${lang}/app/settings/governance`} className="btn btn-primary">{L.governance}</Link> : <Link href={`/${lang}/app/settings/billing${topup ? "#topup" : ""}`} className="btn btn-primary">{cta}</Link>}
+          {!act ? null : kind === "agent_cap" ? <Link href={href("/settings/governance")} className="btn btn-primary">{L.governance}</Link> : <Link href={href(`/settings/billing${topup ? "#topup" : ""}`)} className="btn btn-primary">{cta}</Link>}
         </div>
       </div>
     </div>

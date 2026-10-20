@@ -7,6 +7,7 @@ import { START_COPY, noSiteBrand, type GameAnswers } from "@/lib/dictionary";
 import { Icon } from "./Icons";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { useToast } from "@/components/ui/Toast";
+import { useAppHref } from "@/components/app/WorkspaceContext";
 
 const STR = {
   ar: {
@@ -38,6 +39,7 @@ const STR = {
  * could not save the brand file.
  */
 export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCost = 0, setupPaid = false, credits = 0 }: { t: AppDict; lang: Lang; answers: GameAnswers; initialUrl?: string; setupCost?: number; setupPaid?: boolean; credits?: number }) {
+  const href = useAppHref(lang);
   const r = useRouter();
   const s = t.start;
   const S = STR[lang];
@@ -62,7 +64,7 @@ export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCo
     const site = url.trim().slice(0, 300);
     const res = await fetch("/api/onboard/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: site, answers }) }).catch(() => null);
     // 409: this workspace already has a brand, so the chat opens as usual and onboarding does not run again.
-    if (res && (res.ok || res.status === 409)) { r.push(`/${lang}/app/chat?onboard=${encodeURIComponent(site)}`); return; }
+    if (res && (res.ok || res.status === 409)) { r.push(href(`/chat?onboard=${encodeURIComponent(site)}`)); return; }
     setBusy(false);
     // 402: an added brand's setup the balance cannot cover, or a trial that ended. Nothing was charged.
     if (res?.status === 402) {
@@ -80,7 +82,7 @@ export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCo
     setBusy(true); setErr("");
     const res = await fetch("/api/brand", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(noSiteBrand(answers, products, audience)) }).catch(() => null);
     // 409: a brand was built meanwhile (another tab); the save is create-only, so the workspace opens with that brand.
-    if (res && (res.ok || res.status === 409)) { r.push(`/${lang}/app`); r.refresh(); return; }
+    if (res && (res.ok || res.status === 409)) { r.push(href()); r.refresh(); return; }
     setBusy(false);
     toast.danger(s.steps.error);
   }

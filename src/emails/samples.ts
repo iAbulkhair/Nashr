@@ -1,6 +1,7 @@
 import type { Lang } from "../lib/i18n";
 import { appOrigin } from "../lib/origin";
 import { EMAIL_TEMPLATES, type EmailContext, type EmailTemplateId } from "./index";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * Fixed sample values for every registered template (rule 1964): the founder console's mail preview renders these, and
@@ -14,12 +15,12 @@ export function emailSamples(lang: Lang): { [T in EmailTemplateId]: EmailContext
   return {
     resetPassword: { link: `${o}/${lang}/app/reset#t=${"a".repeat(64)}` },
     teamInvite: { inviterEmail: "owner@test.example", role: "admin", link: `${o}/${lang}/app/join#t=${"b".repeat(64)}` },
-    notice: { title: ar ? "تذكير من ريم" : "Reminder from Reem", paragraphs: [ar ? "مثال على مهمة\nموعدها اليوم" : "A sample task\ndue today", ar ? "سطر ثانٍ" : "A second line"], cta: { href: `${o}/${lang}/app/todo` } },
+    notice: { title: ar ? "تذكير من ريم" : "Reminder from Reem", paragraphs: [ar ? "مثال على مهمة\nموعدها اليوم" : "A sample task\ndue today", ar ? "سطر ثانٍ" : "A second line"], cta: { href: `${o}${appHref(lang, "/todo")}` } },
     verifyCode: { code: "123456" },
     dailyBrief: {
       date: ar ? "الخميس 16 أكتوبر" : "Thursday 16 October",
       body: ar ? "صباح الخير.\n\nمنشوران بانتظار موافقتك.\n\n• مثال على متابعة\n  نص المتابعة" : "Good morning.\n\nTwo posts wait for your approval.\n\n• A sample follow-up\n  Its text",
-      href: `${o}/${lang}/app`,
+      href: `${o}${appHref(lang)}`,
     },
   };
 }

@@ -1,12 +1,14 @@
 import Link from "next/link";
 import type { Lang } from "@/lib/i18n";
 import { plural } from "@/lib/format";
+import { useAppHref } from "@/components/app/WorkspaceContext";
 
 /**
  * Persistent activation strip for trial accounts: days left + what the plan does + Activate. Only the owner can
  * subscribe, so everyone else sees the same countdown with "ask the account owner" instead of the button.
  */
 export default function TrialBanner({ lang, days, plan, industry, owner = true }: { lang: Lang; /** whole days left, from trialDaysLeft() in the server layout */ days: number; plan: string; industry?: string; /** the acting person may subscribe (`can(u, "billing")`) */ owner?: boolean }) {
+  const href = useAppHref(lang);
   if (plan !== "trial") return null;
   const ar = lang === "ar";
   const promise = ar
@@ -23,7 +25,7 @@ export default function TrialBanner({ lang, days, plan, industry, owner = true }
         <p className="mt-0.5 text-foreground-muted">{promise}{industry ? "" : ""}</p>
       </div>
       {owner ? (
-        <Link href={`/${lang}/app/settings/billing`} className="btn btn-primary shrink-0 rounded-full px-5 py-2">{ar ? "فعّل نور" : "Activate Noor"}</Link>
+        <Link href={href("/settings/billing")} className="btn btn-primary shrink-0 rounded-full px-5 py-2">{ar ? "فعّل نور" : "Activate Noor"}</Link>
       ) : (
         <p className="shrink-0 text-foreground-muted">{ar ? "لتفعيل الاشتراك اطلب من مالك الحساب." : "Ask the account owner to activate."}</p>
       )}
