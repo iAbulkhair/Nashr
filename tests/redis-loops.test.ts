@@ -12,7 +12,7 @@ import { join, relative } from "node:path";
 const REVIEWED: Record<string, string> = {
   // Lock spin-waits: SET NX (or the owned form) retried with a short sleep until the lock is free. Sequential by design:
   // the next try only makes sense after the last one failed.
-  "src/app/api/tasks/[id]/route.ts appendPreferences": "lock retry",
+  "src/lib/task-notes.ts appendPreferences": "lock retry",
   "src/lib/booking-token.ts revokeOne": "lock retry",
   "src/lib/brand-proposals.ts withBrandLock": "lock retry",
   "src/lib/brand.ts updateTask": "lock retry",

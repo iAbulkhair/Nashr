@@ -168,7 +168,6 @@ const RAW_KEYS: Record<string, number> = {
   "src/app/api/secretary/series/[seriesId]/keep/route.ts": 1,
   "src/app/api/secretary/walk/route.ts": 2,
   "src/app/api/support/route.ts": 1,
-  "src/app/api/tasks/[id]/route.ts": 1,
   "src/app/api/team/accept/route.ts": 2,
   "src/app/api/team/invite/route.ts": 3,
   "src/app/api/tools/[tool]/route.ts": 3,

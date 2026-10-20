@@ -32,6 +32,8 @@ export const ACTIVITY_KINDS = [
   "instructions_changed",
   // A paid "test this instruction" (src/app/api/instructions/test/route.ts): `credits` is what was taken, `count` the two items written.
   "instructions_tested",
+  // Line notes on a draft sent in one revision (src/lib/revise.ts, rule 2496): `credits` is the draft's price, `count` the notes.
+  "revised",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 /** Where it happened. Not a task's `source`: chat and MCP batches are both `source: "chat"`. */
