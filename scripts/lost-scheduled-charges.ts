@@ -25,6 +25,7 @@ import { pmap } from "../src/lib/parallel";
 import { globalKey } from "../src/lib/keys";
 import type { User } from "../src/lib/auth";
 import { listBrands, scopeFor } from "../src/lib/brands";
+import { acct } from "../src/lib/account-id";
 import { ROUTINES, periodOf, routineClaim, type RoutineId } from "../src/lib/routines";
 import { HANDOFF_RUN_LOCK_S, getHandoffs, handoffClaim } from "../src/lib/handoffs";
 import { TASK_COST, isTaskType } from "../src/lib/tasks";
@@ -49,7 +50,8 @@ function periods(cadence: "weekly" | "monthly", now: Date): { period: string; ne
 export async function lostCharges(now = new Date()): Promise<LostCharge[]> {
   const ids = await db.smembers(globalKey.usersAll());
   const users = (await mgetChunked<User>(ids.map((id) => `user:${id}`))).filter((u): u is User => !!u && typeof u.email === "string");
-  const scopes = (await pmap(users, async (u) => (await listBrands(u.email)).map((b) => ({ account: u, scope: scopeFor(u.email, b.id) })), 20)).flat();
+  // Brands and scopes by the account id (rule 1980), as every charge was taken; the address is only printed.
+  const scopes = (await pmap(users, async (u) => (await listBrands(acct(u))).map((b) => ({ account: u, scope: scopeFor(acct(u), b.id) })), 20)).flat();
   const rows = await pmap(scopes, async ({ account, scope }) => {
     const out: LostCharge[] = [];
     const holds = account.paidOnce ?? {};

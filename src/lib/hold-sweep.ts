@@ -24,7 +24,7 @@ import { runClaim } from "./keys";
  * Each refund leaves a `run_refunded` row in its brand's activity log, and the owner gets one notice for the sweep.
  * Null when there is nothing to resolve.
  */
-export async function sweepHolds(u: Pick<User, "email" | "paidOnce" | "lang">, now = Date.now()) {
+export async function sweepHolds(u: Pick<User, "id" | "email" | "paidOnce" | "lang">, now = Date.now()) {
   const weekly = (await weeklyKept(u, now)) ?? {};
   const settled = (at: string) => !(now - Date.parse(at) < RUN_STALE_MS);
   const runs = Object.entries(u.paidOnce ?? {}).filter(([claim, hold]) => /^(routine|handoff):/.test(claim) && settled(hold.at));
@@ -57,13 +57,14 @@ export async function sweepHolds(u: Pick<User, "email" | "paidOnce" | "lang">, n
   });
   for (const claim of thisWeek) if (receipt.get(claim)?.state === "held") kept[claim] = false;
   if (!Object.keys(kept).length) return null;
-  const r = await resolveOnceHolds(u.email, kept);
+  // The account record, where every hold was charged (`chargeOnce(acct(user), …)`, rule 1980), never the address.
+  const r = await resolveOnceHolds(acct(u), kept);
   if (r.refunded.length) await tell(u, r.refunded);
   return r;
 }
 
 /** One activity row per refund in its brand, and one notice for the sweep. Never throws: the credits are back already. */
-async function tell(u: Pick<User, "email" | "paidOnce" | "lang">, refunded: ClaimRefund[]) {
+async function tell(u: Pick<User, "id" | "email" | "lang">, refunded: ClaimRefund[]) {
   const at = new Date().toISOString();
   const ar = u.lang === "ar";
   const total = refunded.reduce((s, x) => s + x.credits, 0);
@@ -73,7 +74,7 @@ async function tell(u: Pick<User, "email" | "paidOnce" | "lang">, refunded: Clai
     const { notifyItem } = await import("./notifications");
     await Promise.all([
       ...[...byScope].map(([scope, xs]) => recordActivity(scope, xs.map((x) => ({ at, kind: "run_refunded" as const, agent: x.agent, by: systemBy("cron"), via: "cron" as const, credits: x.credits, outcome: x.claim.split(":")[0] + (x.partial ? ":partial" : "") })))),
-      total > 0 ? notifyItem(acct(u as User), u.lang, {
+      total > 0 ? notifyItem(acct(u), u.lang, {
         kind: "credits", href: "activity",
         title: ar ? `أعدنا ${total} كريدت لعمل مجدول لم يكتمل` : `We returned ${total} credits for scheduled work that did not finish`,
         body: ar ? "توقف تشغيل مجدول قبل أن يكتمل، أو لم يُعِد جزءاً من كلفته، فأعدنا الكريدت إلى رصيدك. التفاصيل في سجل النشاط." : "A scheduled run stopped before it finished, or did not give back part of its cost, so the credits are back in your balance. Details are in the activity log.",

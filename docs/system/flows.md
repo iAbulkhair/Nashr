@@ -1573,7 +1573,7 @@ Item 4 of the OpenDots adoption order, built after the founder's yes on 2026-10-
 
    A refusal before the charge clears the receipt; a refunded failure marks it `refunded`. The handoff item's own status (`proposed`, `running`, `done`, `failed`) is its receipt: the auto-run never starts a `running` item.
 3. The owner's Run (rule 2479). The weekly card's "Run now" and, for a held routine, the Run button under it on Scheduled tasks (`POST /api/schedule {run: "routine", id}`) resume the held run on its claim: a charge the killed run took is reused. Only a held routine can be run this way (`not_held` otherwise).
-4. The sweep (rules 2473-2475, 2480). The daily cron's `sweepHolds` (src/lib/hold-sweep.ts) replaces the weekly-only sweep:
+4. The sweep (rules 2473-2475, 2480). The daily cron's `sweepHolds` (src/lib/hold-sweep.ts) replaces the weekly-only sweep. It resolves the holds on the account record the charges were taken from, `acct(u)` (rule 1980), never the owner's address, so an account with an opaque id is refunded too (the 2026-10-20 integration check found both sweeps reading the address):
    - Weekly holds of ended weeks are resolved as before; a hold of this week whose run the cron held is refunded the next day, as the held notice promises.
    - Routine and handoff holds older than 10 minutes are kept when the run delivered (receipt `delivered`, item `done`) and refunded otherwise. A held run nobody ran is refunded the next day, so the notice's "comes back within a day" holds.
    - A delivered run's owed share (a short batch's refund that failed, recorded by `generateBatch` through `oweRun`) is given back in the same ledger save that drops its hold.
