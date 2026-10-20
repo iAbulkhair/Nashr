@@ -646,6 +646,21 @@ Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAP
 
 `wipeAccount` deletes every one of these for the owner and each member login (rule 1954). Since multi-workspace M1 (2026-10-19, rule 2126 M1 half, `flows.md` section 91 item 12): the owner's pack goes only when the owner person holds nothing else (always, with `MULTI_ORG` off), and a member's goes with its last membership (`deleteMembership` through `wipeMemberships`); a member who still belongs to or owns another account keeps its pack, login index and devices.
 
+### 3.y Customer passkey keys (2026-10-20, branch `claude/wave3c-passkeys`, rules 2400-2429, `docs/specs/2026-10-20-passkeys.md`)
+
+Built by `src/lib/keys.ts` (`personKey` for the pid-keyed families, `globalKey` for the hash-keyed ones and the IP and credential buckets, `accountKey` for the login bucket); release step expand (rule 679): new keys only, an older build ignores them. Shapes in `src/lib/stored.ts` (`PasskeySet`, `PasskeyCred`), limits in the import-free `src/lib/passkey-limits.ts` (10 passkeys, names of 40 characters, 300 s challenges). Task 2 adds the builders, the shape and the switch reader `src/lib/passkey-switch.ts` (`passkeysOn`, `setPasskeysOn`); nothing writes the keys until the store and the routes of the later tasks.
+
+| Key | Type | Purpose | Written by | TTL |
+|---|---|---|---|---|
+| `passkeys:{pid}` | json | `PasskeySet` `{v: 1, uid, born?, creds: [{id, pk, counter, transports, name, createdAt, lastUsedAt?, aaguid, backedUp?}]}`, at most 10 credentials; `uid` is the WebAuthn user handle (32 random bytes, never the pid or the address), `born` the person's `createdAt` when the set was created (a set with another `born` is ignored, rule 2402). A record that does not parse reads as no passkeys (rule 2401). Keyed only by a pid from our own records (rule 2400) | `personKey.passkeys`; the passkey store under `lock:person:{pid}` (rule 2414) | none |
+| `pkcred:{sha256(credId)}` | string | The pid holding a credential id: a reverse index written with `SET NX` (a held id is refused, rule 2404) and forward-checked against the set and the login before it grants anything (rule 2405) | `globalKey.passkeyCred`; the passkey store | none |
+| `pkreg:{pid}` | json | One open registration `{challenge, sess, at}`, `sess` the SHA-256 of the session key that opened it; taken with `getdel` (rule 2407) | `personKey.passkeyReg`; the manage route | 300 s |
+| `pkauth:{sha256(nonce)}` | json | One sign-in challenge `{challenge, at}`, the nonce in the `thakeen_pk` cookie; taken with `getdel`, names no person (rule 2408) | `globalKey.passkeyAuth`; the sign-in options route | 300 s |
+| `passkeys:off` | string | The off switch: `"1"` = passkey sign-in and adding off, absent = on (the default); read back as the number 1, so compared as text; a read error is a 500, never "on" (rule 2426). Never equal to `passkeys:{pid}`: a pid is an address (`@`) or a `p_` id | `globalKey.passkeysOff`; `src/lib/passkey-switch.ts`, flipped only by the console owner | none |
+| `rate:pk:ip:{ip}`, `rate:pkv:ip:{ip}`, `rate:pkv:cred:{sha256(credId)}`, `rate:pkpw:{login}` | int | Sign-in options per IP (60 per 15 min), verifies per IP (20 per 15 min) and per credential (10 per 15 min), wrong add or remove proofs per login (10 per hour, one given back after a right one) (rules 2410, 2417, 2418) | `globalKey.passkeyIpBucket`, `passkeyVerifyIpBucket`, `passkeyCredBucket`, `accountKey.passkeyProofBucket`; `allow` | window |
+
+The cookie `thakeen_pk` holds the sign-in nonce (32 random bytes, base64url): `httpOnly`, `Secure` in production, `SameSite=Lax`, `maxAge=300`; only its SHA-256 is stored, and the verify route reads and clears it first, so every outcome clears it (rule 2408). The nonce, the challenge, the credential id and the public key are never logged.
+
 ## 4. Request lifecycles
 
 ### (a) Marketing page

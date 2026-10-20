@@ -194,6 +194,10 @@ export const personKey = {
   feedLock: (p: PersonId, a: AccountId) => `lock:feed:${p}:${a}`,
   /** lock: one person's booking link for one provider in one account (src/lib/booking-token.ts). A leaf lock, as `feedLock`. */
   bookLock: (p: PersonId, a: AccountId, prov: string) => `lock:book:${p}:${a}:${prov}`,
+  /** json `PasskeySet` (src/lib/stored.ts): the person's passkeys, written under `lock`; no TTL (customer passkeys, rules 2400-2402). */
+  passkeys: (p: PersonId) => `passkeys:${p}`,
+  /** json `{ challenge, sess, at }`: the person's one open passkey registration, taken with `getdel`; 300 s (rule 2407). */
+  passkeyReg: (p: PersonId) => `pkreg:${p}`,
 } as const;
 
 export const accountKey = {
@@ -260,6 +264,8 @@ export const accountKey = {
   usage: (email: string, month: string) => `usage:${email}:${month}`,
   /** counter: the trial's chat messages. */
   chatTrial: (email: string) => `chatm:${email}:trial`,
+  /** bucket name for `allow` (stored as `rate:pkpw:{login}`): passkey add and remove proofs of one login, 10 per hour (rule 2410). */
+  passkeyProofBucket: (login: string) => `pkpw:${login}`,
 } as const;
 
 export const globalKey = {
@@ -293,4 +299,19 @@ export const globalKey = {
   shopifyRedact: () => "shopify:redact",
   /** json: per-platform connection counts across every workspace, written by the stores cron (rules 2177-2178). */
   connectionHealth: () => "connections:health",
+  /**
+   * string pid: the passkey reverse index, under the SHA-256 hex of a credential id; no TTL. A hint only, forward-checked
+   * against the person's set and login before it grants anything (rules 2404, 2405).
+   */
+  passkeyCred: (credHash: string) => `pkcred:${credHash}`,
+  /** json `{ challenge, at }`: a passkey sign-in challenge under the SHA-256 hex of the `thakeen_pk` nonce, taken with `getdel`; 300 s (rule 2408). */
+  passkeyAuth: (nonceHash: string) => `pkauth:${nonceHash}`,
+  /** string: the passkey off switch, `"1"` = off, absent = on; no TTL; written only by the console owner (rule 2426). */
+  passkeysOff: () => "passkeys:off",
+  /** bucket name for `allow` (stored as `rate:pk:ip:{ip}`): passkey sign-in options per IP, 60 per 15 min (rule 2417). */
+  passkeyIpBucket: (ip: string) => `pk:ip:${ip}`,
+  /** bucket name for `allow` (stored as `rate:pkv:ip:{ip}`): passkey sign-in verifies per IP, 20 per 15 min (rule 2418). */
+  passkeyVerifyIpBucket: (ip: string) => `pkv:ip:${ip}`,
+  /** bucket name for `allow` (stored as `rate:pkv:cred:{hash}`): passkey sign-in verifies per credential hash, 10 per 15 min (rule 2418). */
+  passkeyCredBucket: (credHash: string) => `pkv:cred:${credHash}`,
 } as const;
