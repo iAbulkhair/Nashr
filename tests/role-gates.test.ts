@@ -211,6 +211,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "DELETE /api/account/sessions": g("member", "sessions.revoke"),
   // The login's own two-step sign-in (rules 1930-1937).
   "POST /api/account/2fa": g("member", "mfa.manage"),
+  // The login's own passkeys (customer passkeys, rule 2412): member-level, refused while impersonating.
+  "POST /api/account/passkeys": g("member", "passkeys.manage"),
   "POST /api/account/email": g("member", "email.change"),
   "POST /api/account/google": g("member", "google.manage"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
@@ -286,6 +288,8 @@ const READS: Record<string, Gate> = {
   "GET /api/account/export": g("owner", "account.export"),
   // The login's own two-step status and device list (rules 1930, 1938): a session, nothing written.
   "GET /api/account/2fa": "member",
+  // The passkey list (rule 2412): refused while impersonating, so no founder reads a customer's passkeys.
+  "GET /api/account/passkeys": g("member", "passkeys.manage"),
   "GET /api/auth/google/start": "public",
   "GET /api/auth/google/callback": "public",
   "GET /api/account/email": g("member", "email.change"),

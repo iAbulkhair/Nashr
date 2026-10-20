@@ -22,6 +22,12 @@ export type EmailCopy = {
   verify: { title: string; intro: string; expiry: string; ignore: string; preheader: string };
   /** Noor's daily brief (./daily-brief.ts, rule 1961). `{date}` is the brief's own date line. */
   brief: { title: string; preheader: string; action: string };
+  /**
+   * The notice after a passkey is added (customer passkeys, rule 2415), sent through `notice`. `{name}` is the passkey's
+   * cleaned name, `{time}` the UTC time it was added. No credential data. Rendered by `passkeyNotice` in
+   * src/app/api/account/passkeys/route.ts, which fills both slots with plain text.
+   */
+  passkey: { title: string; body: string; when: string; notYou: string; action: string };
 };
 
 export const COPY: Record<Lang, EmailCopy> = {
@@ -57,6 +63,13 @@ export const COPY: Record<Lang, EmailCopy> = {
       preheader: "رمز التحقق في ذكين صالح لمدة 15 دقيقة.",
     },
     brief: { title: "ملخص نور — {date}", preheader: "ملخص نور لليوم وما ينتظر قرارك.", action: "افتح ذكين" },
+    passkey: {
+      title: "أُضيف مفتاح مرور إلى حسابك",
+      body: "أُضيف مفتاح المرور «{name}» إلى حسابك في ذكين.",
+      when: "وقت الإضافة: {time}.",
+      notYou: "إذا لم تضفه أنت فاحذفه من إعدادات الأمان، ثم اخرج من الأجهزة الأخرى.",
+      action: "افتح إعدادات الأمان",
+    },
   },
   en: {
     wordmark: "Thakeen",
@@ -90,5 +103,12 @@ export const COPY: Record<Lang, EmailCopy> = {
       preheader: "Your Thakeen code works for 15 minutes.",
     },
     brief: { title: "Noor's brief — {date}", preheader: "Noor's brief for today and what waits for your decision.", action: "Open Thakeen" },
+    passkey: {
+      title: "A passkey was added to your account",
+      body: "The passkey “{name}” was added to your Thakeen account.",
+      when: "Added at: {time}.",
+      notYou: "If you did not add it, remove it in Security settings, then sign out your other devices.",
+      action: "Open Security settings",
+    },
   },
 };

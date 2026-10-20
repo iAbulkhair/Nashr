@@ -540,12 +540,17 @@ describe("source scans (rule 2132, credential part)", () => {
       join("src", "app", "api", "account", "route.ts"),
       join("src", "app", "api", "account", "email", "route.ts"),
       join("src", "app", "api", "admin", "users", "[email]", "route.ts"),
+      // Customer passkeys (rule 2414): `ensureUid`, `addPasskey`, `renamePasskey`, `removePasskey` take the person lock.
+      join("src", "app", "api", "account", "passkeys", "route.ts"),
     ];
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
-    // src/lib/passkeys.ts (customer passkeys, rule 2414) has no route yet: the manage and sign-in routes (passkeys tasks
-    // 4 and 5) are added to `indirect` when they are written.
     expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/team.ts", "src/lib/verify-email.ts"]);
+    // src/lib/passkeys.ts: every route that imports the store is listed, so a new one (the sign-in verify route) fails
+    // here until it is, and then must answer the lock timeout (Task 3 review minor 7).
+    const passkeyRoutes = files(join("src", "app")).filter((f) => /from "@\/lib\/passkeys"/.test(readFileSync(f, "utf8")));
+    expect(passkeyRoutes.length).toBeGreaterThanOrEqual(1);
+    expect(passkeyRoutes.filter((f) => !indirect.includes(f) && !direct.includes(f))).toEqual([]);
     expect([...direct, ...indirect].filter((f) => !/isPersonLockTimeout|PERSON_LOCK_TIMEOUT/.test(readFileSync(f, "utf8")))).toEqual([]);
   });
 });
