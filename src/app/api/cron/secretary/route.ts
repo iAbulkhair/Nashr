@@ -5,6 +5,7 @@ import { recordCronRun } from "@/lib/cron-heartbeat";
 import { verifyQstash } from "@/lib/qstash";
 import { SWEEP_BUDGET_TICK_MS, sweepReminders } from "@/lib/secretary-remind";
 import { sweepCalendars } from "@/lib/secretary-gcal";
+import { sweepDigests } from "@/lib/notif-digest";
 import { zonesDue } from "@/lib/secretary-evening";
 
 export const maxDuration = 60;
@@ -85,6 +86,11 @@ export async function POST(req: Request) {
     const kick = () => fetch(url, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
     try { after(kick); } catch { void kick(); }
   }
+  // The owners' digest emails (rule 2354): each account whose window closed on this tick, with what time is left.
+  const digests = await sweepDigests(now, deadline).catch((e) => {
+    console.error("digest sweep failed", e instanceof Error ? e.name : "error");
+    return {};
+  });
   await recordCronRun("secretary");
-  return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, calendars, evening: zones.length && secret ? zones.length : 0 });
+  return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, calendars, digests, evening: zones.length && secret ? zones.length : 0 });
 }

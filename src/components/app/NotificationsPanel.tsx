@@ -9,7 +9,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import EmptyState from "@/components/ui/EmptyState";
 import { Time } from "@/components/ui/Time";
 import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
-import { markOneRead } from "./NotificationCenter";
+import { Times, markOneRead } from "./NotificationCenter";
 import { SETTINGS_COPY, settingsHref } from "@/lib/settings-nav";
 
 /**
@@ -72,7 +72,7 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
                     {n.agent && <span>{t.agents[n.agent].name}</span>}
                     <Time value={n.at} lang={lang} style="datetime" className="tnum" />
                   </p>
-                  <p className={`mt-1 ${n.read ? "font-medium" : "font-bold"}`} dir="auto">{n.title}{!n.read && <span className="sr-only"> ({U.unread})</span>}</p>
+                  <p className={`mt-1 ${n.read ? "font-medium" : "font-bold"}`} dir="auto">{n.title}<Times count={n.count} label={U.times} />{!n.read && <span className="sr-only"> ({U.unread})</span>}</p>
                   <p className="whitespace-pre-line text-sm text-foreground-muted" dir="auto">{n.body}</p>
                 </div>
               </div>

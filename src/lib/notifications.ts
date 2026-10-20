@@ -2,7 +2,8 @@ import { randomBytes } from "crypto";
 import { db } from "./db";
 import { log } from "./log";
 import type { User } from "./auth";
-import { getBrand, listLite } from "./brand";
+import { getBrand, isWaiting, listLite } from "./brand";
+import { NOT_NOW_DAYS, idleDays, soonNotNow } from "./not-now";
 import { listBrands, scopeFor } from "./brands";
 import { getSchedule } from "./schedule";
 import { agentById, isAgentId, type AgentId } from "./agents";
@@ -24,7 +25,12 @@ import { brandOfScope } from "./account-id";
  * fingerprint so the owner is nudged once per situation, not every day.
  */
 export type NotifKind = "due" | "pending" | "weekly" | "credits" | "trial" | "quality" | "info" | "todo";
-export type Notif = { id: string; kind: NotifKind; title: string; body: string; href: string; at: string; read?: boolean; agent?: AgentId };
+/**
+ * `about` and `count` (rules 2350-2351, pattern 2 of docs/reports/2026-10-19-PRD-fizzy-orca_AR.md): the subject an entry is
+ * about (`aboutKey`) and how many notices about it arrived while it stayed unread. Both optional (rule 679): older entries
+ * have neither, and older code ignores them and shows the entry as it always did.
+ */
+export type Notif = { id: string; kind: NotifKind; title: string; body: string; href: string; at: string; read?: boolean; agent?: AgentId; about?: string; count?: number };
 
 const KEY = (email: string) => accountKey.notifications(email);
 const MAX = 50;
@@ -107,6 +113,35 @@ export const withBrand = (title: string, tag: string) => (tag ? `${title} — ${
 /** The 80% warning's fingerprint: one per brand scope, agent and month. */
 export const agentCapFingerprint = (scope: string, agent: AgentId, month: string) => `agentcap80:${scope}:${agent}:${month}`;
 
+/**
+ * One subject per bell entry (rule 2350): a brand's inbox nudges, its due list, its Not now notices, one to-do. A plain
+ * label inside the account's own list, never a Redis key, and built from our own values (a scope, an item id).
+ */
+export const aboutKey = (what: "due" | "pending" | "notnow" | "quality" | "reconnect" | "todo", scope: string, id?: string) => [what, scope, ...(id ? [id] : [])].join(":");
+/** The bell's cap on how many arrivals a counter shows: past it the entry reads "99+". */
+export const COUNT_MAX = 99;
+
+/**
+ * The bell after `fresh` lands on `all` (rule 2351): a fresh entry with an `about` replaces every older entry about the
+ * same subject, so the bell holds one entry per subject. Its `count` is the replaced entry's (1 when it had none) plus
+ * one while that entry was unread, else it starts again at 1; read entries leave no count behind. Newest first, capped.
+ */
+export function collapse(fresh: Notif[], all: Notif[]): Notif[] {
+  const out: Notif[] = [];
+  const seen = new Map<string, Notif>();
+  // Oldest fresh entry first, so a second entry about one subject in the same push counts the first.
+  for (const n of [...fresh].reverse()) {
+    if (!n.about) { out.unshift(n); continue; }
+    const prev = seen.get(n.about) ?? all.find((x) => x.about === n.about);
+    const count = prev && !prev.read ? Math.min(COUNT_MAX + 1, (prev.count ?? 1) + 1) : 1;
+    const next = count > 1 ? { ...n, count } : n;
+    if (seen.has(n.about)) out.splice(out.indexOf(seen.get(n.about)!), 1);
+    seen.set(n.about, next);
+    out.unshift(next);
+  }
+  return [...out, ...all.filter((x) => !x.about || !seen.has(x.about))].slice(0, MAX);
+}
+
 /** `scope`: the brand the entry is about, whose notification preferences apply (the account's when left out). */
 export type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number; scope?: string };
 /**
@@ -135,7 +170,7 @@ export async function pushNotifs(email: string, entries: Push[], known?: Map<str
   try {
     await withBellLock(email, async () => {
       const all = await listNotifs(email);
-      await db.set(KEY(email), [...items, ...all].slice(0, MAX));
+      await db.set(KEY(email), collapse(items, all));
     });
   } catch (e) {
     const mine = entries.filter((x, i) => won[i] && x.fingerprint).map((x) => seenKey(email, x.fingerprint!));
@@ -167,17 +202,25 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const add = async (n: Omit<Notif, "id" | "at">, fp: string, ttl = 3) => { const x = await pushNotif(acct(user), n, fp, ttl, scope); if (x) out.push(x); };
   // Due items and old approvals belong to this brand: its fingerprint and, on a multi-brand account, its name (#15).
   const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published);
-  const stale = tasks.filter((t) => t.status === "pending" && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
-  const tag = due.length || stale.length ? await brandTag(acct(user), scope) : "";
+  const stale = tasks.filter((t) => isWaiting(t) && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
+  // Items that move under "Not now" within days (rule 2344): told once per set of items, at 75% of the time.
+  const soon = soonNotNow(tasks, Date.now(), sched.notNowFrom);
+  const tag = due.length || stale.length || soon.length ? await brandTag(acct(user), scope) : "";
 
   // 1. Scheduled items due today or tomorrow and not yet published through a connector.
   if (due.length) {
     const titles = due.slice(0, 3).map((t) => t.title).join(" · ");
-    await add({ kind: "due", agent: "noor", href: `${app}/calendar`, title: withBrand(ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, tag), body: ar ? `انشرها الآن، فلا شيء يُنشر تلقائياً: ${titles}` : `Publish now; nothing goes out automatically: ${titles}` }, brandFingerprint(scope, `due:${today}`), 2);
+    await add({ kind: "due", agent: "noor", href: `${app}/calendar`, about: aboutKey("due", scope), title: withBrand(ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, tag), body: ar ? `انشرها الآن، فلا شيء يُنشر تلقائياً: ${titles}` : `Publish now; nothing goes out automatically: ${titles}` }, brandFingerprint(scope, `due:${today}`), 2);
   }
   // 2. Approvals waiting more than 48 hours.
   if (stale.length) {
-    await add({ kind: "pending", agent: "noor", href: app, title: withBrand(ar ? `${stale.length} عنصر بانتظارك منذ أكثر من يومين` : `${stale.length} item(s) waiting for you for over 2 days`, tag), body: ar ? "اعتمد أو ارفض مع سبب، وتتعلم نور من قرارك." : "Approve or reject with a reason; Noor learns from your decision." }, brandFingerprint(scope, `pending:${Math.floor(stale.length / 5)}`), 3);
+    await add({ kind: "pending", agent: "noor", href: app, about: aboutKey("pending", scope), title: withBrand(ar ? `${stale.length} عنصر بانتظارك منذ أكثر من يومين` : `${stale.length} item(s) waiting for you for over 2 days`, tag), body: ar ? "اعتمد أو ارفض مع سبب، وتتعلم نور من قرارك." : "Approve or reject with a reason; Noor learns from your decision." }, brandFingerprint(scope, `pending:${Math.floor(stale.length / 5)}`), 3);
+  }
+  // 2b. Items about to move under "Not now": the soonest one sets the number of days.
+  if (soon.length) {
+    const days = Math.max(1, Math.ceil(NOT_NOW_DAYS - Math.max(...soon.map((t) => idleDays(t, Date.now(), sched.notNowFrom)))));
+    const ids = soon.map((t) => t.id).sort().join(",").slice(0, 80);
+    await add({ kind: "pending", agent: "noor", href: app, about: aboutKey("notnow", scope), title: withBrand(ar ? `${soon.length} عنصر ينتقل إلى «ليس الآن» خلال ${days} يوم` : `${soon.length} item(s) move to Not now in ${days} day(s)`, tag), body: ar ? "اعتمدها أو ارفضها أو عدّلها لتبقى بانتظارك. لن يُحذف شيء." : "Approve, reject or edit them to keep them waiting. Nothing is deleted." }, brandFingerprint(scope, "notnow-soon:" + ids), 5);
   }
   // 3. Low credits.
   if (user.credits < 10) {
@@ -189,9 +232,9 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
     if (left > 0 && left < 864e5) await add({ kind: "trial", href: `${app}/billing`, title: ar ? "تجربتك تنتهي خلال 24 ساعة" : "Your trial ends within 24 hours", body: ar ? "اشترك لتبقى دفعاتك وجدولك تعمل." : "Subscribe to keep your batches and schedule running." }, "trial", 3);
   }
   // 5. Items the judge scored below 70 and still pending.
-  const weak = tasks.filter((t) => t.status === "pending" && typeof t.score === "number" && t.score < 70);
+  const weak = tasks.filter((t) => isWaiting(t) && typeof t.score === "number" && t.score < 70);
   if (weak.length) {
-    await add({ kind: "quality", agent: "dana", href: app, title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
+    await add({ kind: "quality", agent: "dana", href: app, about: aboutKey("quality", scope), title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
   }
   // 6. Connections a platform refused (rule 2200): the owner hears it here, not only on the next failed publish.
   const broken = (await listConnections(scope)).filter((c) => {
@@ -201,7 +244,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   if (broken.length) {
     const names = broken.map((c) => getProvider(c.provider)!.name).sort().join(ar ? "، " : ", ");
     const fp = ["reconnect", ...broken.map((c) => `${c.provider}@${c.needsReconnect}`).sort()].join(",").slice(0, 130);
-    await add({ kind: "info", href: `${app}/settings/connections`, title: withBrand(ar ? `أعد ربط ${names}` : `Reconnect ${names}`, await brandTag(user.email, scope)), body: ar ? "رفضت المنصة الربط الحالي، فلن ينشر الفريق أو يقرأ منها حتى تربطها من جديد." : "The platform refused the current connection, so the team cannot publish to it or read from it until you connect it again." }, brandFingerprint(scope, fp), 7);
+    await add({ kind: "info", href: `${app}/settings/connections`, about: aboutKey("reconnect", scope), title: withBrand(ar ? `أعد ربط ${names}` : `Reconnect ${names}`, await brandTag(user.email, scope)), body: ar ? "رفضت المنصة الربط الحالي، فلن ينشر الفريق أو يقرأ منها حتى تربطها من جديد." : "The platform refused the current connection, so the team cannot publish to it or read from it until you connect it again." }, brandFingerprint(scope, fp), 7);
   }
   // 7. Overdue to-dos on Reem's list.
   out.push(...(await overdueTodoAlerts(user, scope)));
@@ -289,7 +332,7 @@ async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
     else body = ar ? "أنجزها أو أجّلها أو غيّر موعدها." : "Do it, snooze it or reschedule it.";
     return {
       n: {
-        kind: "todo", agent: "reem", href: `/${lang}/app/todo`,
+        kind: "todo", agent: "reem", href: `/${lang}/app/todo`, about: aboutKey("todo", scope, it.id),
         title: late ? (ar ? `متأخرة: ${t}` : `Overdue: ${t}`) : ar ? `حان وقت المتابعة: ${t}` : `Time to follow up: ${t}`,
         body: body + last,
       },
@@ -303,7 +346,7 @@ export function notifEmailText(user: User, items: Notif[]) {
 }
 
 /** Helper for other modules (weekly cron, judge). */
-export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string }, fp?: string, ttl?: number, scope?: string) {
+export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string; about?: string }, fp?: string, ttl?: number, scope?: string) {
   return pushNotif(email, { ...n, href: n.href.startsWith("/") ? n.href : `/${lang}/app/${n.href}` }, fp, ttl, scope);
 }
 

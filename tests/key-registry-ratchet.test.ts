@@ -272,7 +272,7 @@ const RAW_KEYS: Record<string, number> = {
 };
 
 const SCOPE_PARAM: Record<string, number> = {
-  "src/lib/brand.ts": 38,
+  "src/lib/brand.ts": 26,
   "src/lib/connectors/store.ts": 7,
   "src/lib/conversations.ts": 15,
   "src/lib/decisions.ts": 1,
@@ -288,7 +288,6 @@ const SCOPE_PARAM: Record<string, number> = {
   "src/lib/site-stats.ts": 1,
   "src/lib/social-read/common.ts": 1,
   "src/lib/social-stats.ts": 1,
-  "src/lib/stats.ts": 1,
   "src/lib/store-sales.ts": 2,
 };
 
