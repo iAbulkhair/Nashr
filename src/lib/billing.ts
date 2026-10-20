@@ -6,7 +6,7 @@ import { setMonthly } from "./topups";
 import { PLAN_PRICE_SAR, SELF_SERVE_PLANS, VAT_RATE, allowanceOf, firstMonthPriceSar, isTopupPack, topupPriceSar, topupsSold, type SelfServePlan } from "./pricing";
 import { ksaDay } from "./partner-rules";
 import { addPaidTopup, openOffer, paymentsKey, unusedOffer, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
-import { enforceSeats } from "./team";
+import { enforceSeats, isTeamLockTimeout } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
 import { GRACE_DAYS, addDays, addMonths, billingLocked, paymobRenewalDue, type Billing } from "./billing-state";
@@ -15,6 +15,7 @@ import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
 import { log as logger } from "./log";
 import { acct } from "./account-id";
+import { globalKey } from "./keys";
 import { handPlanEnded } from "./hand-plan";
 
 /**
@@ -38,6 +39,12 @@ const doneKey = (txnId: number) => `paymob:done:${txnId}`;
 const txLockKey = (txnId: number) => `paymob:txlock:${txnId}`;
 const refundedKey = (txnId: number) => `paymob:refunded:${txnId}`;
 const refundLockKey = (txnId: number) => `paymob:refundlock:${txnId}`;
+/**
+ * What a refund of this transaction did to the plan (`endPlanOnRefund`): the payment id when it ended the plan (a retry
+ * still answers `planEnded: true`), or `"none"` when it found no plan to end (a later repeat never ends one and answers
+ * false). Either value means this transaction never ends a plan again.
+ */
+const refundEndedKey = globalKey.paymobRefundEnded;
 const attemptKey = (email: string, day: string) => `paymob:attempt:${email}:${day}`;
 export const cardKey = (email: string) => `paymob:card:${email}`;
 /**
@@ -241,10 +248,15 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   if (step === "offer_used") return { ok: false, error: "offer_used" };
   const c = claim as ClaimOutcome | null;
   if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
-  if (step === "changed") await enforceSeats(intentAccount(intent));
+  // Seats fit the new plan. Also on a plan transaction already applied (multi-workspace M1, 2026-10-19): a first try whose
+  // `lock:team` wait ran out (`team_lock_timeout`, answered 503 "busy" by `applyTransaction`) saved the plan and its id,
+  // so the retry finds it "already" and fits the seats then. `enforceSeats` is idempotent: a team that fits is not changed.
+  if (step === "changed" || (step === "already" && intent.kind === "plan")) await enforceSeats(intentAccount(intent));
   const rec = await recordPayment(intentAccount(intent), { id: paymentId, amountSar: baseSar, plan, date: today, reference: `paymob:${txnId}` }, "paymob");
   if (!rec.ok) return { ok: false, error: rec.error };
-  return { ok: true, already: step === "already" || !!rec.already, payment: rec.payment };
+  // `already` is the payment record's own: the plan step of a retry after a busy answer is "already", but its payment
+  // is recorded (and `paymob_paid` logged) only now, once.
+  return { ok: true, already: !!rec.already, payment: rec.payment };
 }
 
 export type CallbackResult = { status: number; result: string };
@@ -252,7 +264,10 @@ const ok = (result: string): CallbackResult => ({ status: 200, result });
 
 /**
  * A transaction, from a verified callback or from our own pay call (spec 4.4). Exactly once per transaction id: a done
- * marker, a short lock, and idempotent steps inside; a failure throws so the caller answers 500 and Paymob retries.
+ * marker, a short lock, and idempotent steps inside; a failure throws so the caller answers 500 and Paymob retries. A
+ * team lock still held after the wait (`team_lock_timeout`, seats being fitted) is 503 "busy", the same retry contract
+ * as the transaction lock: nothing is marked done, no payment, invoice or paid status is written, and the retry fits the
+ * seats and finishes the rest once (`applyPaid`).
  */
 export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promise<CallbackResult> {
   // A refund or void made in Paymob's dashboard, full or partial, arrives here as a child or refunded transaction and
@@ -284,7 +299,13 @@ export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promi
     }
     const paymentId = paymentIdFor(t.id);
     await db.set(txnKey(t.id), { ref: intent.ref, email: intentAccount(intent), acct: intentAccount(intent), kind: intent.kind, amountCents: t.amountCents, paymentId } satisfies TxnRecord, DAYS_400);
-    const applied = await applyPaid(intent, t.id, paymentId);
+    let applied: Applied;
+    try {
+      applied = await applyPaid(intent, t.id, paymentId);
+    } catch (e) {
+      if (isTeamLockTimeout(e)) return { status: 503, result: "busy" };
+      throw e;
+    }
     if (!applied.ok) {
       // Paid but not applicable (a pack for an account no longer on a paid plan, a renewal with no subscription): the
       // founder refunds it from the console. Not retried: retrying cannot change the answer.
@@ -587,7 +608,14 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   // always refunds the whole transaction (`rec.amountCents` above); a partial refund does not exist here, and one made
   // in Paymob's own dashboard reaches us only as a refunded transaction, which `applyTransaction` ignores: it changes
   // nothing on the account (open question in rule 1301). A pack's payment never reaches this line.
-  const planEnded = await endPlanOnRefund(e, id, by);
+  // A team lock still held after the wait (seats being fitted) is "busy" (409 in the console): the retry finishes it.
+  let planEnded: boolean;
+  try {
+    planEnded = await endPlanOnRefund(e, id, by, txnId);
+  } catch (err) {
+    if (isTeamLockTimeout(err)) return { ok: false, error: "busy" };
+    throw err;
+  }
   return { ok: true, payment: v.payment, alreadyRefunded, planEnded };
 }
 
@@ -596,24 +624,49 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * spending gate refuses exactly as after a trial), the online subscription is removed (nothing renews: automatic renewal
  * is off with it), a hand-set paid-through day and an Agency deal go too, and the month's plan credits are set to 0.
  * Live top-up packs keep their credits: each is its own payment, refunded on its own. Under the ledger lock, once: a
- * retry finds the ended trial with no subscription and changes nothing. Seats are fitted to the trial's and the change
- * is logged with the balance before and after.
+ * retry finds the ended trial with no subscription and changes nothing. The change is logged with the balance before
+ * and after, then seats are fitted to the trial's: also on that retry (multi-workspace M1, 2026-10-19), so a first try whose
+ * `lock:team` wait ran out (409 "busy") still fits them when the founder tries again. `enforceSeats` is idempotent.
+ * True when THIS refund ended the plan, also on that retry: the first try writes `paymob:refund_ended:{txnId}` under the
+ * lock right after the save. A transaction whose marker exists never ends a plan again (multi-workspace M1, 2026-10-19): repeating the
+ * refund of an OLD payment after the customer bought a NEW plan answers `planEnded: true` and leaves the new
+ * subscription alone. The marker goes after the save, so a save that throws leaves no marker and the retry ends the plan;
+ * a marker write that fails after the save leaves the plan ended and the retry answers false (reporting only, no money).
+ * A refund that finds no plan to end (an ended trial with no subscription: the second of two refunds in one period, or
+ * a refund after the plan already ended) writes `"none"` under the same lock with the same 400-day expiry, so repeating
+ * it after the customer bought a new plan answers `planEnded: false` and leaves the new plan alone. A build from before
+ * this value (an earlier M1 build) reads any value as "ended before": it never ends a plan for that transaction either
+ * and only reports `planEnded: true` (reporting, no money); builds before M1 never read the key. Refunds made before
+ * this marker existed have none.
  *
- * Rule 2270 (founder decision 2026-10-19): the saved card token (`paymob:card:{acct}`) is deleted too, first, under the
- * same lock, and on a retry as well. A later checkout of the refunded account then finds no card, so it cannot turn
+ * Rule 2270 (founder decision 2026-10-19): the saved card token (`paymob:card:{acct}`) is deleted too, under the same
+ * lock, only while this transaction has no marker: the first run, or a retry after a first run that stopped before its
+ * marker. A repeat of a refund whose marker exists (either value) keeps the current card: it belongs to whatever the
+ * customer bought since, and deleting it would break that plan's renewal (controller ruling 2026-10-19). Order: read
+ * the marker, then delete the card, then write the marker. The delete always lands before any marker, so a run that
+ * stops anywhere before its marker leaves no marker and the retry deletes the card again (a repeat delete is harmless);
+ * a marker can only exist after its card delete succeeded. A later checkout of the refunded account then finds no card, so it cannot turn
  * automatic renewal back on by itself (`applyPaid` sets `autoRenew` from a saved card); the owner saves a card again on
  * that checkout. `chargeSavedCard` re-reads the card under this lock before it charges (rule 1956), so a renewal that has
  * not yet passed that check stops. The charge itself (`saved.charge`) runs after that lock is released: a refund that
  * lands in that window still lets that one renewal charge, the existing rule 1956 design. `saveCard` checks the refund
  * and writes the card under this same lock (rule 2280). A pack's refund never reaches here: the plan and its card stay.
  */
-async function endPlanOnRefund(email: string, paymentId: string, by: string): Promise<boolean> {
+async function endPlanOnRefund(email: string, paymentId: string, by: string, txnId: number): Promise<boolean> {
   const now = new Date();
   const change = await withUserLock(email, async (u) => {
+    // A marker (either value) means a run of this refund already finished, card delete included: keep today's card.
+    const mark = await db.get<string>(refundEndedKey(txnId));
+    if (mark === "none") return "nothing_before" as const;
+    if (mark) return "ended_before" as const;
+    // Rule 2270: the card goes before any marker is written (see above), so no marker exists without its delete.
     await db.del(cardKey(email));
-    // Already an ended trial with no subscription (a retry). Not a hand-set plan whose paid-through day passed: it reads
-    // as `trialOver` too (rule 2273), and its refund still ends it.
-    if (!u.billing && trialOver(u) && !handPlanEnded(u, ksaDay())) return null;
+    // Already an ended trial with no subscription (a retry, or a second refund in one period). Not a hand-set plan whose
+    // paid-through day passed: it reads as `trialOver` too (rule 2273), and its refund still ends it.
+    if (!u.billing && trialOver(u) && !handPlanEnded(u, ksaDay())) {
+      await db.set(refundEndedKey(txnId), "none", DAYS_400);
+      return null;
+    }
     const before = { plan: String(u.plan), credits: Number(u.credits) || 0, autoRenew: u.billing?.autoRenew ?? false, paidThrough: u.billing?.paidThrough ?? u.handPlan?.paidThrough ?? null };
     // The founding seat and the price lock end with the plan (rule 1708): the refunded account is no longer a paying one.
     const founding = endOnRefund(u, by, now.getTime());
@@ -625,10 +678,13 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string): Pr
     delete u.deal;
     setMonthly(u, 0);
     await saveUser(u);
+    await db.set(refundEndedKey(txnId), paymentId, DAYS_400);
     return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding };
   });
-  if (!change) return false;
-  await Promise.all([enforceSeats(email), change.founding ? freePlaces(email) : null]);
-  await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
-  return true;
+  if (change && typeof change === "object") {
+    if (change.founding) await freePlaces(email);
+    await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
+  }
+  await enforceSeats(email);
+  return change === "ended_before" || (!!change && typeof change === "object");
 }

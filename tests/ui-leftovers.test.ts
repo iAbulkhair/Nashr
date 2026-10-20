@@ -162,7 +162,8 @@ describe("rule 1810: one home for every cookie and storage name, the new `thakee
   });
 
   it("a browser holding only the old session cookie stays signed in", async () => {
-    const u = await newUser("legacy");
+    // Pins the legacy shape (multi-org M1): a session record without `pid`/`acct` was written before R1, for a legacy owner.
+    const u = await newUser("legacy", { legacy: true });
     const token = randomBytes(32).toString("hex");
     await db.set(sessionKey(token), { email: u.email, at: Date.now() }, 3600);
     jar().clear();
@@ -221,8 +222,9 @@ describe("rule 1811: sign-out, stop viewing and a used OAuth state clear both na
   });
 
   it("a customer view opened before the release (old cookie names) stops cleanly and hands the founder back", async () => {
-    const founder = await newUser("imp-founder");
-    const customer = await newUser("imp-customer");
+    // Pins the legacy shape (multi-org M1): a session record without `pid`/`acct` was written before R1, for a legacy owner.
+    const founder = await newUser("imp-founder", { legacy: true });
+    const customer = await newUser("imp-customer", { legacy: true });
     const mine = randomBytes(32).toString("hex"), temp = randomBytes(32).toString("hex");
     await Promise.all([
       db.set(sessionKey(mine), { email: founder.email, at: Date.now() }, 3600),

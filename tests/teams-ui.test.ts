@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PLAN_SEATS, type User } from "@/lib/auth";
+import { storedPersonId } from "@/lib/keys";
 import { PLAN_PRICE_SAR } from "@/lib/pricing";
 import { appDict } from "@/lib/app-i18n";
 import { dict } from "@/lib/i18n";
@@ -119,7 +120,7 @@ describe("invite links keep the token in the URL fragment", () => {
 
 describe("Members page permissions come from can()", () => {
   const as = (actor: User["actor"]) => ({ ...owner, actor }) as User;
-  const base = { name: "X", lang: "ar" as const };
+  const base = { pid: storedPersonId("x@test.example"), home: true, name: "X", lang: "ar" as const };
   it("owner: everything but leaving", () => {
     expect(teamPerms(as({ ...base, kind: "owner", email: owner.email, role: "owner" }))).toEqual({ inviteMember: true, inviteAdmin: true, changeRole: true, removeMember: true, removeAdmin: true, viewInvites: true, cancelInvite: true, leave: false, impersonating: false });
   });

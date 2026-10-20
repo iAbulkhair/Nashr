@@ -1,8 +1,9 @@
 import { dateFormat } from "./dates";
+import type { PersonRowValue } from "./stored";
 
 /**
  * Account suspension with an optional end date (rules 2070-2076, docs/system/flows.md section 84). Client-safe: only
- * `dates.ts`, which imports nothing, so the console and the log-in form can use it.
+ * `dates.ts`, which imports nothing (and a type from `stored.ts`, erased at build), so the console and the log-in form can use it.
  *
  * Stored shape, an expand (rule 679), in the account's existing `suspended` field:
  * - absent or `false`: not suspended (as before);
@@ -49,6 +50,20 @@ export function isSuspended(u: HasSuspension, now: number = Date.now()): boolean
   const end = suspensionEnd(u);
   return end === null ? true : Date.parse(end) > now;
 }
+
+/**
+ * Is the PERSON blocked now (multi-workspace membership, rule 2131)? `person:{pid}.suspended` has the account field's
+ * shape and meaning (`true`, or `{ until }`, failing closed on anything else), read through the same function. A legacy
+ * person (no `person:` record) has no person-level suspension: the account's own field stays an ACCOUNT field.
+ */
+export const isPersonSuspended = (p: Pick<PersonRowValue, "suspended">, now: number = Date.now()): boolean => isSuspended(p, now);
+
+/**
+ * A person's stored suspension, carried as stored when the person is rebuilt from a legacy record (`getPerson`'s stale
+ * guard, rule 2134): a set value only, so a rebuild never drops a suspension (fails closed) and never invents one. It
+ * lives here because this module is the only reader of the field (rule 2071).
+ */
+export const keptSuspension = (p: Pick<PersonRowValue, "suspended">): Pick<PersonRowValue, "suspended"> => (p.suspended ? { suspended: p.suspended } : {});
 
 /** Stored as suspended, but its end date has passed: what `endExpiredSuspension` tidies and writes to the log. */
 export const suspensionExpired = (u: HasSuspension, now: number = Date.now()): boolean => !!u?.suspended && !isSuspended(u, now);

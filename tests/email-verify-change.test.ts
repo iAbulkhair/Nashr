@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
-import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { jar, json, newMember as helperNewMember, newUser as helperNewUser, signIn, signOut } from "./helpers/session";
 import { currentUserUnverified, getUser, saveUser, sessionRecord, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { applyReferral, codeFor, ownerOf, referralStats, registerCode } from "@/lib/referral";
@@ -16,6 +16,11 @@ vi.mock("@/lib/notify", async (orig) => ({
 
 import * as change from "@/app/api/auth/verify/email/route";
 import * as check from "@/app/api/auth/verify/check/route";
+
+// Pins the legacy shape (multi-org M1): the typo fix moves a legacy owner's records by address; an account a `p_` person
+// owns moves with the person in release M2 (`moveOwnerLogin` refuses it). Each person still holds a shadow membership.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 let ipN = 0;
 /** Never repeats within a run, and never meets the IPs of the other verify test files. */

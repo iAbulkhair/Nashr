@@ -123,7 +123,8 @@ describe("share-for-credits is granted once (P1: credit minting)", () => {
 
 describe("deleting an account leaves nothing behind (P1: re-registering inherits data)", () => {
   it("no key anywhere in the store still mentions the address", async () => {
-    const u = await newUser("wipe-all");
+    // No shadow membership: this pins a person who holds nothing else, so the deletion takes the login too (multi-org M1).
+    const u = await newUser("wipe-all", { shadow: false });
     const email = u.email;
 
     // Exercise the account across the features that write account-level keys, not just brand-scoped ones.

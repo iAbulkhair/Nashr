@@ -73,7 +73,8 @@ describe("email verification: tokens, links and jobs (rules 753, 755, 756)", () 
 
     // A member's link is refused while the owner behind it is unverified.
     const owner = await newUser("lnkown");
-    const m = await newMember(owner);
+    // Pins the legacy shape (multi-org M1): a link record without `pid`/`aid` was made before M1, by a legacy member.
+    const m = await newMember(owner, "member", "m", { legacy: true });
     const mrec = { login: m.email, scope: owner.email, createdAt: later() };
     expect(await loginHolds(mrec)).toBe(true);
     await saveUser({ ...(await getUser(owner.email))!, emailVerifiedAt: undefined });

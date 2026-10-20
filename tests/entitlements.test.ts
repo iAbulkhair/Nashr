@@ -230,7 +230,8 @@ describe("entitlementView (rule 784)", () => {
     const owner = await stored({ plan: "pro" });
     expect((await entitlementView(owner, NOW)).used.seats).toBe(1);   // the owner alone
     await newMember(owner);
-    const paused = await newMember(owner);
+    // Pins the legacy shape (multi-org M1): `saveMember` pauses through the legacy `member:{email}` record.
+    const paused = await newMember(owner, "member", "m", { legacy: true });
     await saveMember({ ...(await getMember(paused.email))!, disabled: "seats" });   // what enforceSeats does when a plan shrinks
     const v = await entitlementView(owner, NOW);
     expect(v.used.seats).toBe(await seatsUsed(owner.email));

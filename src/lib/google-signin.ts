@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, randomBytes, verify as verifySig, type JsonWebKey } from "crypto";
 import { cookies } from "next/headers";
 import { db } from "./db";
-import { acct, createUser, getLogin, normalizeEmail, saveUser, validEmail, type Login } from "./auth";
+import { createUser, getLogin, normalizeEmail, validEmail, type Login } from "./auth";
 import { appOrigin } from "./origin";
 import { sameSecret } from "./rate";
 import { safeNext } from "./safe-next";
@@ -186,7 +186,8 @@ export async function resolveGoogle(id: GoogleIdentity, mode: "login" | "signup"
   return withLoginLock(id.email, async (): Promise<Resolution> => {
     const l = await getLogin(id.email);
     if (l?.kind === "owner") {
-      if (!l.user.emailVerifiedAt) return { kind: "refused", error: "google_unverified_owner" };
+      // The address is proved on the PERSON (multi-workspace M1: `login.person`; for a legacy owner the account's own stamp).
+      if (!l.person.emailVerifiedAt) return { kind: "refused", error: "google_unverified_owner" };
       const other = await db.get<string>(subKey(id.email));
       if (other && other !== id.sub) return { kind: "refused", error: "google_taken" };
       await writeLink(id.email, id.sub);
@@ -197,12 +198,16 @@ export async function resolveGoogle(id: GoogleIdentity, mode: "login" | "signup"
     const { getMember } = await import("./team");
     if (await getMember(id.email)) return { kind: "refused", error: "google_not_linked" };
     if (mode !== "signup") return { kind: "refused", error: "google_no_account" };
-    // A random password nobody knows: the account signs in with Google, or sets a password with "forgot password".
-    const u = await createUser({ email: id.email, name: id.name, phone: "", password: b64url(randomBytes(32)), lang });
-    const proved = { ...u, emailVerifiedAt: new Date().toISOString() };
-    await saveUser(proved);
+    // No password (multi-workspace M1, rule 2132): the person has no hash, so it signs in with Google, or sets a password
+    // with "forgot password". Google proved the address: the person and the account it owns are stamped in the same
+    // write, under `lock:person` (reconciliation 11); a held person lock throws `person_lock_timeout` with nothing
+    // written, which the callback answers as it answers a failed sign-in.
+    await createUser({ email: id.email, name: id.name, phone: "", lang, emailVerifiedAt: new Date().toISOString() });
     await writeLink(id.email, id.sub);
-    return { kind: "created", login: { kind: "owner", user: proved, pid: acct(proved) }, email: id.email };
+    // The new login as every sign-in reads it (its person included), still under the login lock.
+    const login = await getLogin(id.email);
+    if (login?.kind !== "owner") throw new Error("google signup: the new account does not resolve");
+    return { kind: "created", login, email: id.email };
   });
 }
 

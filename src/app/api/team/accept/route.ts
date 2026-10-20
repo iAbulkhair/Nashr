@@ -1,8 +1,9 @@
 import { createSession, destroySession, getUser } from "@/lib/auth";
 import { notifyItem } from "@/lib/notifications";
+import { isPersonLockTimeout } from "@/lib/person";
 import { allow, clientIp } from "@/lib/rate";
-import { acceptInvite, peekInvite, type Member } from "@/lib/team";
-import { rateLimited, teamFail } from "../respond";
+import { acceptInvite, isTeamLockTimeout, peekInvite, type Member } from "@/lib/team";
+import { busy, rateLimited, teamFail } from "../respond";
 import { acct } from "@/lib/account-id";
 
 /** Per IP, per 15 minutes. The token is 256 bits, so these bound load and noise, not guessing. */
@@ -48,7 +49,15 @@ export async function POST(req: Request) {
   }
 
   if (!(await allow(`team:accept:ip:${ip}`, ACCEPTS, 900))) return rateLimited(900);
-  const res = await acceptInvite(token, { name: b.name, password: b.password, lang: b.lang });
+  // The new person is written under `lock:team:{aid}` → `lock:person:{pid}` (multi-workspace M1, rule 2139): a timeout on
+  // either, taken before the first write, is a 409 "try again", not a 500.
+  let res: Awaited<ReturnType<typeof acceptInvite>>;
+  try {
+    res = await acceptInvite(token, { name: b.name, password: b.password, lang: b.lang });
+  } catch (e) {
+    if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return busy();
+    throw e;
+  }
   if (!res.ok) return teamFail(res);
   // Whoever was signed in on this device is signed out: from here the browser is the new member.
   await destroySession();

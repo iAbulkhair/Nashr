@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, type User } from "@/lib/auth";
-import { activeBrandId, activeCount, addBrand, brandLimitRefusal, listBrands, saveBrands, scopeFor, setActiveBrand, withBrandsLock, type BrandLimit, type BrandMeta } from "@/lib/brands";
+import { activeBrandIn, activeCount, addBrand, brandChooser, brandLimitRefusal, listBrands, ownerChooser, saveBrands, scopeFor, setActiveBrandIn, withBrandsLock, type BrandLimit, type BrandMeta } from "@/lib/brands";
 import { brandCapFor } from "@/lib/pricing";
 import { getBrand } from "@/lib/brand";
 import { pmap } from "@/lib/parallel";
@@ -8,8 +8,14 @@ import { WINDOW, brandAddRefusal, retryLater } from "@/lib/rate";
 import { can, forbid } from "@/lib/roles";
 import { acct } from "@/lib/account-id";
 
-/** The login whose active brand a switch moves: the person acting, never the account as a whole. */
-const login = (u: User) => u.actor?.email ?? u.email;
+/**
+ * Whose active brand a switch moves: the person acting, in this account only (`activebrand:{pid}:{aid}`, rule 2119), and
+ * the legacy per-login key beside it when this account is their home. Never the account as a whole, never another account.
+ */
+const choose = (u: User, id: string) => {
+  const who = brandChooser(u);
+  return setActiveBrandIn(who.pid, who.aid, id, who.homeLogin);
+};
 /** The cap refusal as the route answers it: 402, the cap and the plan, nothing written (rule 1391). */
 const overCap = (u: User, r: BrandLimit) => NextResponse.json({ ok: false, error: r.error, cap: r.cap, plan: u.plan }, { status: 402 });
 
@@ -31,7 +37,7 @@ export async function GET() {
 /**
  * POST {action:"add",name} | {action:"switch",id} | {action:"rename",id,name} | {action:"archive",id}
  *
- * Switching is anyone's (it moves only the caller's own active brand, `activebrand:{login}`). Adding, renaming and
+ * Switching is anyone's (it moves only the caller's own active brand in this account, `activebrand:{pid}:{aid}`). Adding, renaming and
  * archiving change the account's brand list, so they need admin or owner (src/lib/roles.ts "brands.manage").
  *
  * Adding is bounded by a creation rate per account, checked first (src/lib/rate.ts `brandAddRefusal`: 429 `slow_down`
@@ -58,7 +64,7 @@ export async function POST(req: Request) {
   const rows = await listBrands(acct(u));
   const target = rows.find((x) => x.id === b.id);
   if (!target) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  if (b.action === "switch") { await setActiveBrand(login(u), target.id); return NextResponse.json({ ok: true }); }
+  if (b.action === "switch") { await choose(u, target.id); return NextResponse.json({ ok: true }); }
   if (b.action === "archive" && target.id === "default") return NextResponse.json({ ok: false, error: "cannot_archive_default" }, { status: 400 });
   if (b.action !== "rename" && b.action !== "archive") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   // The change is applied to the list as it is under the lock, not to the copy read above: an add that landed in
@@ -80,10 +86,11 @@ export async function POST(req: Request) {
   if (!changed) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   if ("error" in changed) return overCap(u, changed);
   if (b.action === "archive") {
-    // The caller leaves the brand they just archived. The owner's own key is reset too when an admin archives the brand
-    // the owner is on: a member's key is validated on every request (src/lib/auth.ts), the owner's is not.
-    if ((u.brandId ?? "default") === changed.id) await setActiveBrand(login(u), "default");
-    if (changed.status === "archived" && login(u) !== u.email && (await activeBrandId(u.email)) === changed.id) await setActiveBrand(u.email, "default");
+    // The caller leaves the brand they just archived. The owner's own choice in this account is reset too when an admin
+    // archives the brand the owner is on: a session written before R1 does not validate the owner's (src/lib/auth.ts).
+    if ((u.brandId ?? "default") === changed.id) await choose(u, "default");
+    const owner = ownerChooser(u);
+    if (changed.status === "archived" && brandChooser(u).pid !== owner.pid && (await activeBrandIn(owner.pid, owner.aid, owner.homeLogin)) === changed.id) await setActiveBrandIn(owner.pid, owner.aid, "default", owner.homeLogin);
   }
   return NextResponse.json({ ok: true });
 }
