@@ -3,7 +3,9 @@ import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";
 import { STAGING_COOKIE, hasAccess, stagingOpen } from "@/lib/staging-access";
 import { legacySettingsPath } from "@/lib/settings-nav";
-import { LANG_COOKIE, readCookie } from "@/lib/cookie-names";
+import { LANG_COOKIE, SESSION_COOKIE, readCookie } from "@/lib/cookie-names";
+import { MULTI_ORG } from "@/lib/multi-org";
+import { WS_HEADER, splitWsPath, stripWs, workspaceMissing } from "@/lib/ws-path";
 import { REQUEST_ID_HEADER, requestId } from "@/lib/request-id";
 import { NONCE_HEADER, cspNonce, pageCsp, pagePath, reportOnlyCsp } from "@/lib/csp";
 
@@ -88,7 +90,12 @@ export function proxy(req: NextRequest) {
     reqHeaders.delete(NONCE_HEADER);
     reqHeaders.delete("content-security-policy");
   }
+  // The workspace in the link (multi-workspace M2, rules 2112-2113): a page's workspace comes only from its own path, so
+  // a value the browser sent is never kept on a page path. An API request keeps the one its page sent
+  // (src/lib/api-client.ts); `resolveSession` treats it as a selector among the caller's own accounts.
+  if (MULTI_ORG && !pathname.startsWith("/api/")) reqHeaders.delete(WS_HEADER);
   const next = () => NextResponse.next({ request: { headers: reqHeaders } });
+  const ws = MULTI_ORG ? splitWsPath(pathname) : null;
 
   // Staging lock (rules 674, 677): without the access cookie every path but the four open ones and `/m/` (rule 1760) is
   // a bare 404, and with no STAGING_ACCESS_KEY nobody gets in. The proxy sees every path, so this runs before anything else.
@@ -101,7 +108,28 @@ export function proxy(req: NextRequest) {
     // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), else pass it
     // on untouched. The exempt paths (webhooks, crons, MCP, OAuth token) pass inside crossSiteRefusal. The language and
     // x-pathname logic below is for pages only.
-    res = crossSiteRefusal(req) ?? next();
+    // Multi-workspace M2 (rule 2113): a state-changing request with the session cookie that names no workspace answers
+    // 409 `workspace_missing` before the route runs, so it can never save into the workspace the session chose last.
+    const missing = MULTI_ORG && workspaceMissing(req.method, pathname, !!readCookie(req.cookies, SESSION_COOKIE), req.headers.get(WS_HEADER));
+    res = crossSiteRefusal(req) ?? (missing ? NextResponse.json({ ok: false, error: "workspace_missing" }, { status: 409 }) : next());
+  } else if (ws) {
+    // `/{lang}/app/w/{handle}/…` (multi-workspace M2): served, without moving the address bar, by the page folder at
+    // `/{lang}/app/…`, with the handle in `x-thakeen-ws` and the address the browser shows in `x-pathname`. A legacy
+    // settings path inside it moves as it does outside (rule 1141), keeping the handle.
+    const inner = stripWs(pathname);
+    const moved = legacySettingsPath(inner);
+    if (moved) {
+      const url = req.nextUrl.clone();
+      url.pathname = `/${ws.lang}/app/w/${ws.handle}${moved.slice(`/${ws.lang}/app`.length)}`;
+      url.search = search;
+      res = NextResponse.redirect(url, 307);
+    } else {
+      reqHeaders.set(WS_HEADER, ws.handle);
+      reqHeaders.set("x-pathname", pathname);
+      const url = req.nextUrl.clone();
+      url.pathname = inner;
+      res = NextResponse.rewrite(url, { request: { headers: reqHeaders } });
+    }
   } else if (pathname === "/" || pathname === "/app") {
     // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
     // (src/app/manifest.ts, rule 681): the same choice, into the app.

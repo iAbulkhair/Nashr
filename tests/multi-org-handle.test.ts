@@ -119,7 +119,7 @@ describe("rule 2113: the pure guard", () => {
 
   it("free paths pass: person-level, sign-in, console, OAuth, staging, public forms, crons, webhooks, MCP", () => {
     for (const p of [
-      "/api/auth/login", "/api/auth/signup", "/api/workspaces", "/api/workspaces/", "/api/workspaces/switch",
+      "/api/auth/login", "/api/auth/signup", "/api/workspaces", "/api/workspaces/", "/api/workspaces/switch", "/api/auth/verify/send", "/api/secretary/booking/tok",
       "/api/team/accept", "/api/account/2fa", "/api/account/sessions", "/api/account/email", "/api/account/google",
       "/api/admin/users/x", "/api/oauth/approve", "/api/staging-access", "/api/waitlist", "/api/affiliates",
       "/api/ops/telegram", "/api/mcp", "/api/cron/daily", "/api/media/hook/kie", "/api/billing/paymob/webhook",
@@ -130,7 +130,7 @@ describe("rule 2113: the pure guard", () => {
   });
 
   it("a look-alike of a free path is guarded", () => {
-    for (const p of ["/api/account", "/api/team/acceptx", "/api/team/invite", "/api/workspacesx", "/api/mcpx", "/api/brand"]) {
+    for (const p of ["/api/account", "/api/secretary/booking", "/api/mcp/token", "/api/mcp/grants", "/api/team/acceptx", "/api/team/invite", "/api/workspacesx", "/api/mcpx", "/api/brand"]) {
       expect(workspaceFree(p)).toBe(false);
     }
   });

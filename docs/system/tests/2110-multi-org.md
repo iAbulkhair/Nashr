@@ -41,7 +41,7 @@ Pinned: 2111, 2115, 2118, 2120 (MCP tokens), 2121, 2122, 2125, 2132, 2134, 2136,
 
 ## Release M2 (enable, behind `MULTI_ORG`)
 
-Branch `claude/wave3-m2-workspace-url-8776d4` (plan `docs/superpowers/plans/2026-10-20-multi-org-m2.md`). `MULTI_ORG` stays `false`; the M2 test files turn it on per file with `vi.mock("@/lib/multi-org", …)`, and the M1 files keep proving the switch-off behaviour. Test files: `tests/multi-org-handle.test.ts` (handles, paths, the pure guard), `tests/multi-org-handle-session.test.ts` (the request's account from the handle).
+Branch `claude/wave3-m2-workspace-url-8776d4` (plan `docs/superpowers/plans/2026-10-20-multi-org-m2.md`). `MULTI_ORG` stays `false`; the M2 test files turn it on per file with `vi.mock("@/lib/multi-org", …)`, and the M1 files keep proving the switch-off behaviour. Test files: `tests/multi-org-handle.test.ts` (handles, paths, the pure guard), `tests/multi-org-handle-session.test.ts` (the request's account from the handle, the route wrapper's 409 and JSON 404), `tests/multi-org-proxy.test.ts` (the rewrite, the header strip, the proxy's 409), `tests/multi-org-guard-coverage.test.ts` (every workspace route inside the guard), `tests/multi-org-flag-off.test.ts` (every M2 path gives M1's answer while the switch is off).
 
 ## Fixtures
 

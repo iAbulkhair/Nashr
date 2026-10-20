@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { addShadowMembership, newMember, newUser, signIn, withHeaders } from "./helpers/session";
+import { addShadowMembership, json, newMember, newUser, params, signIn, withHeaders } from "./helpers/session";
+import * as proposalRoute from "@/app/api/brand/proposals/[id]/route";
 import { trackRounds } from "./helpers/rounds";
 import { acct, currentUser, currentUserUnverified, sc, sessionKey } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -133,5 +134,30 @@ describe("rule 2135: rounds", () => {
     const r = await rounds(wsHandle(shadow.aid));
     expect(acct(r.v!)).toBe(shadow.aid);
     expect(r.n).toBe(3);
+  });
+});
+
+describe("rule 2113: the route wrapper checks the workspace too", () => {
+  const post = (headers: Record<string, string>) =>
+    proposalRoute.POST(json("/api/brand/proposals/p1", "POST", { action: "dismiss" }, headers), params({ id: "p1" }));
+
+  it("no handle: 409 workspace_missing before anything runs", async () => {
+    const { u } = await ownerWithTwo();
+    await signIn(u.email);
+    const r = await post({});
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ ok: false, error: "workspace_missing" });
+  });
+
+  it("a foreign handle: 404 not_found as JSON; the own handle reaches the route", async () => {
+    const { u } = await ownerWithTwo();
+    const stranger = await newUser("st", { shadow: false });
+    await signIn(u.email);
+    const r = await withHeaders({ [WS_HEADER]: wsHandle(acct(stranger)) }, () => post({ [WS_HEADER]: wsHandle(acct(stranger)) }));
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ ok: false, error: "not_found" });
+    const own = await withHeaders({ [WS_HEADER]: wsHandle(acct(u)) }, () => post({ [WS_HEADER]: wsHandle(acct(u)) }));
+    expect(own.status).toBe(404); // the proposal does not exist: the route ran, in the caller's own workspace
+    expect((await own.json()).error).toBe("not_found");
   });
 });

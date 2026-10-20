@@ -111,7 +111,7 @@ export const WORKSPACE_FREE: readonly string[] = [
 /** Whether an API path is outside the second guard. A trailing slash is ignored. */
 export function workspaceFree(pathname: string): boolean {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  return WORKSPACE_FREE.some((e) => (e.endsWith("/") ? path.startsWith(e) || path === e.slice(0, -1) : path === e));
+  return WORKSPACE_FREE.some((e) => (e.endsWith("/") ? path.startsWith(e) : path === e));
 }
 
 const STATE_CHANGING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -127,3 +127,12 @@ export function workspaceMissing(method: string, pathname: string, hasSession: b
   if (!pathname.startsWith("/api/") || workspaceFree(pathname)) return false;
   return !asHandle(handle);
 }
+
+/**
+ * True for the error `notFound()` throws (its digest is `NEXT_HTTP_ERROR_FALLBACK;404`), so the route wrapper can answer
+ * a foreign handle with the JSON `not_found` body instead of the 404 page.
+ */
+export const isNotFoundError = (e: unknown): boolean => {
+  const d = (e as { digest?: unknown } | null)?.digest;
+  return typeof d === "string" && d.startsWith("NEXT_HTTP_ERROR_FALLBACK;404");
+};
