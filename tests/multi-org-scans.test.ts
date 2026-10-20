@@ -471,9 +471,12 @@ describe("rule 2132 (scan): the switch is off and nothing in product code makes 
     expect(MULTI_ORG).toBe(false);
   });
 
-  it("only src/lib/team.ts and src/lib/membership.ts branch on MULTI_ORG (its definition is in src/lib/multi-org.ts)", () => {
+  // M2 (docs/superpowers/plans/2026-10-20-multi-org-m2.md): the files that build the enable step branch on the switch
+  // too, each falling back to M1's behaviour while it is off. A new file here is a new place the flip changes.
+  const BRANCHES = ["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts", "src/lib/auth.ts"];
+  it("only the listed M1 and M2 files branch on MULTI_ORG (its definition is in src/lib/multi-org.ts)", () => {
     const users = ALL.filter((f) => identifiers(tree(f), "MULTI_ORG").length > 0);
-    expect(users.filter((f) => !["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts"].includes(f))).toEqual([]);
+    expect(users.filter((f) => !BRANCHES.includes(f))).toEqual([]);
   });
 
   it("newPersonId is called only by createUser in src/lib/auth.ts, under person: \"p\"", () => {

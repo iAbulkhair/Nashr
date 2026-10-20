@@ -19,6 +19,10 @@ import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, stor
 import type { Person } from "./person";
 import { acct, idForNewAccount, LoginIndex, loginIndexOf, type LoginIndexValue } from "./account-id";
 import { parseStored } from "./stored";
+import { notFound } from "next/navigation";
+import { MULTI_ORG } from "./multi-org";
+import { WS_HEADER, asHandle } from "./ws-path";
+import { handleOf, matchHandle, wsHandle } from "./ws-handle";
 
 export { acct, accountOfScope } from "./account-id";
 
@@ -629,7 +633,17 @@ async function readSession(): Promise<Session | null> {
 
 export async function currentUser(): Promise<User | null> {
   const s = await readSession();
-  return s ? resolveSession(s) : null;
+  return s ? resolveSession(s, { handle: await requestHandle() }) : null;
+}
+
+/**
+ * The request's workspace handle (`x-thakeen-ws`, src/lib/ws-path.ts), read only while `MULTI_ORG` is on: undefined
+ * when the request names no workspace, the raw value otherwise (a malformed one answers 404 in `resolveSession`). The
+ * proxy sets it for pages from their own path and strips any value the browser sent; the client sends it for APIs.
+ */
+async function requestHandle(): Promise<string | undefined> {
+  if (!MULTI_ORG) return undefined;
+  return (await headers()).get(WS_HEADER) ?? undefined;
 }
 
 /**
@@ -639,7 +653,7 @@ export async function currentUser(): Promise<User | null> {
  */
 export async function currentUserUnverified(): Promise<User | null> {
   const s = await readSession();
-  return s ? resolveSession(s, { unverified: true }) : null;
+  return s ? resolveSession(s, { unverified: true, handle: await requestHandle() }) : null;
 }
 
 /**
@@ -688,8 +702,50 @@ async function sessionPerson(s: Session): Promise<Person | null> {
  * parallel round after the session read, for owners and members alike (rule 2135). A session without them (written
  * before R1) resolves exactly as before (`resolveLegacy`) and is never rewritten on read.
  */
-async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): Promise<User | null> {
-  return typeof s.pid === "string" && s.pid && typeof s.acct === "string" && s.acct ? resolveIds(s, s.pid, s.acct, opts) : resolveLegacy(s, opts);
+async function resolveSession(s: Session, opts: { unverified?: boolean; handle?: string } = {}): Promise<User | null> {
+  const ids = typeof s.pid === "string" && !!s.pid && typeof s.acct === "string" && !!s.acct;
+  const h = opts.handle;
+  if (h === undefined) return ids ? resolveIds(s, s.pid!, s.acct!, opts) : resolveLegacy(s, opts);
+  return resolveInHandle(s, ids, h, opts);
+}
+
+/**
+ * The account a request names by its workspace handle (multi-workspace release M2, spec section 7 "Workspace in the
+ * link", rules 2112, 2135). The handle is only a selector among the person's own accounts, re-checked on every request:
+ *
+ * - the handle of the session's `acct`, computed locally: the same two rounds as without a handle;
+ * - any other handle: ONE round reads `orgs:{pid}` (a hint) and the legacy `user:`/`member:` of `pid` (a legacy owner's
+ *   or member's home has no `orgs:` entry), each candidate's handle is computed and the match goes through `resolveIds`,
+ *   every forward check included (three rounds in all);
+ * - a session without `pid`/`acct` (written before R1) and an impersonation reach only their own account's handle.
+ *
+ * Any miss (a malformed, made-up, foreign or stale handle, a membership gone since) answers 404 through `notFound()`,
+ * the same answer for every case, so a handle never tells whether an account exists. Nothing is written: visiting a link
+ * moves neither the session's `acct` nor `lastorg:`.
+ */
+async function resolveInHandle(s: Session, ids: boolean, h: string, opts: { unverified?: boolean }): Promise<User | null> {
+  if (!asHandle(h)) notFound();
+  if (ids && wsHandle(s.acct!) === h) return resolveIds(s, s.pid!, s.acct!, opts);
+  if (!ids) {
+    const u = await resolveLegacy(s, opts);
+    if (!u) return null;
+    if (handleOf(u) !== h) notFound();
+    return u;
+  }
+  if (s.imp) notFound();
+  const pid = storedPersonId(s.pid!);
+  const [{ legacyHomeFrom }, entries, rawUser, rawMember] = await Promise.all([
+    import("./membership"),
+    db.smembers(personKey.orgs(pid)),
+    db.get<unknown>(accountKey.user(pid)),
+    db.get<unknown>(accountKey.member(pid)),
+  ]);
+  const home = legacyHomeFrom(pid, rawUser, rawMember);
+  const aid = matchHandle(h, [...new Set([...entries, pid as string, ...(home ? [home as string] : [])])]);
+  if (!aid) notFound();
+  const u = await resolveIds(s, pid, aid, opts);
+  if (!u) notFound();
+  return u;
 }
 
 /** `resolveIds`'s marker for a brand list the store failed to answer. */
