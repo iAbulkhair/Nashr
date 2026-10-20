@@ -25,7 +25,7 @@ import * as brandRoute from "@/app/api/brand/route";
 /**
  * Rules 892, 893, 895 and 896 (brand id in the URL, Part C; plan docs/superpowers/plans/2026-10-20-brand-url.md Task 7):
  * the page's brand is a selector and never a write (892), the switcher in the rail (893), the rules text (895) and two
- * tabs on two brands of one account (896). Rules 890 and 894 are Task 8's.
+ * tabs on two brands of one account (896). Rule 890 is Task 8's.
  */
 
 afterEach(() => { vi.restoreAllMocks(); signOut(); });

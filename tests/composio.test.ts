@@ -164,7 +164,7 @@ describe("connecting (rule 648)", () => {
 
     redirect = "https://evil.example/phish";
     const bad = await start.GET(new Request("https://app.test/api/connect/x/start?lang=en"), ctx("x"));
-    expect(new URL(bad.headers.get("location")!).pathname, "back to the page, not raw JSON").toBe("/en/app/integrations");
+    expect(new URL(bad.headers.get("location")!).pathname, "back to the page, not raw JSON").toBe("/en/app/b/default/settings/connections");
     expect(new URL(bad.headers.get("location")!).searchParams.get("error")).toBe("connect_failed");
     expect(calls.deleted).toEqual(["ca_new"]);
   });

@@ -38,7 +38,7 @@ describe("connect starts are limited per workspace (rule 2242)", () => {
     const refused = await go("x", "lang=ar");
     expect(refused.status).toBe(307);
     const back = new URL(refused.headers.get("location")!);
-    expect(back.pathname).toBe("/ar/app/integrations");
+    expect(back.pathname).toBe("/ar/app/b/default/settings/connections");
     expect(back.searchParams.get("error")).toBe("slow_down");
     expect(back.searchParams.has("state")).toBe(false);
     expect(refused.headers.get("Retry-After")).toBe("3600");
@@ -115,7 +115,7 @@ describe("connect starts are limited per workspace (rule 2242)", () => {
       await db.set(bucket(sc(u)), CONNECT_STARTS_PER_HOUR, 3600);
       jar().delete(OAUTH_COOKIE);
       const refused = new URL((await go("x", "lang=ar")).headers.get("location")!);
-      expect(refused.pathname).toBe("/ar/app/integrations");
+      expect(refused.pathname).toBe("/ar/app/b/default/settings/connections");
       expect(refused.searchParams.get("error")).toBe("slow_down");
       expect(links).toHaveLength(1);
       expect(jar().get(OAUTH_COOKIE)).toBeUndefined();
