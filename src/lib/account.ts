@@ -202,6 +202,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
       // The notification choices, per brand (src/lib/notify-prefs.ts `profileKey`): only the default brand's was deleted.
       profileKey(s),
+      // The devices that get phone notifications for this brand (rule 2571).
+      wsKey.pushSubs(s),
       wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
     );
   });
@@ -263,6 +265,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
     accountKey.shared(e),
     ...["x", "linkedin", "whatsapp", "instagram"].map((p) => accountKey.shared(e, p)), // pre-set markers
     accountKey.lastSeen(e),
+    // The owner's "tab open" marker and last phone notification text (rule 2571); a member's expire on their own (5 minutes, a day).
+    accountKey.tabSeen(login), accountKey.pushLast(login),
     accountKey.weeklyLock(e),
     ...EVENTS.flatMap((ev) => [accountKey.event(e, ev), accountKey.eventFirst(e, ev), accountKey.eventFirst0(e, ev)]),
     // Model-spend counters for the months this account could have been active (the monthly chat messages among them),
