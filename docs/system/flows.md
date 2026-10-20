@@ -1462,3 +1462,12 @@ Item 1 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4): O
 3. Shapes (rule 679, expand). Both fields are optional request fields; no stored shape changes. A request without them is saved as before: uploads from the Library page, agents' `write_file`, imports, and pages loaded before the release. The contract step, making `baseAt` required on the Files page's route, is optional and not planned: other writers rightly send none.
 4. Not covered. Agents' writes do not take the file lock, so an agent write landing between the check and the write is not caught; the window is one Redis round trip. Rules 2342-2349 are held.
 
+## 93. What Thakeen has switched on, for customers (2026-10-20, branch `claude/lucid-faraday-kq261a`, rules 2350-2359)
+
+Item 2 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4): OpenDots computes what is missing on the server and shows it before a feature is tried. Thakeen showed it to the founder only (section 69, `integration-status.ts`). Coverage in `docs/system/tests/2350-feature-status.md`.
+
+1. Source (rule 2350). `customerFeatures()` (src/lib/feature-status.ts) maps six customer features to the founder page's integrations: the team (Anthropic, or Straitly with `LLM_PROVIDER`), images (fal.ai), higher-quality images and video (kie.ai or Higgsfield with `MEDIA_MODELS_ON`), email notices (Resend), card payments (Paymob with `PAYMOB_LIVE`), LinkedIn/TikTok/ads connections (Composio). A feature is on only when `integrationsView` says `on` and none of its code switches is off. Presence only, as on the founder page.
+2. Page (rule 2351). The customer's Connections page (`/app/settings/connections`) opens with "What Thakeen has switched on": each feature, one line on what it does, and a text badge (On / Not on yet). Server-rendered; no request, no route.
+3. Names (rule 2352). No variable name, partial state or gate wording reaches the customer; the founder page keeps them.
+4. Not changed. Each surface's own message when a feature is off (the image placeholder label in the inbox, the chat's "not available right now", the billing page's payment links) stays as it is. Rules 2353-2359 are held.
+
