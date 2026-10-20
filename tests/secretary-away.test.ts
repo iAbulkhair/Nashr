@@ -32,7 +32,7 @@ import { AwayProposalCard, awayCardRefusal } from "@/components/app/ChatPanel";
 import { awayCall } from "@/components/app/AwayPanel";
 import { calBody, withAdded, withEid, withHolidayOff, withHours, withWeekend, yearlyValue } from "@/components/app/WorkingDaysPanel";
 import { localDay } from "@/components/app/useOneWrite";
-import Page from "@/app/[lang]/app/todo/page";
+import Page from "@/app/[lang]/app/b/[brand]/todo/page";
 
 // The app router only exists inside Next: the to-do page's client components get a router whose refresh does nothing.
 vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next/navigation")>()), useRouter: () => ({ refresh: () => {}, push: () => {} }) }));

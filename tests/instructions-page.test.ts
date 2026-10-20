@@ -34,7 +34,7 @@ vi.mock("@/lib/noor", async (orig) => ({
   ...(await orig<typeof import("@/lib/noor")>()),
   generate: async () => [{ channel: "instagram", title: "t", body: "b" }],
 }));
-import Page from "@/app/[lang]/app/instructions/page";
+import Page from "@/app/[lang]/app/b/[brand]/instructions/page";
 
 /**
  * Rule 957: the customer page `/{lang}/app/instructions` (agent skills portal, spec 8.1, task 10). The server renders

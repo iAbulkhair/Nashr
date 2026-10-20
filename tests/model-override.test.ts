@@ -1000,7 +1000,7 @@ describe("the allowance is priced for the routed model, named by every caller", 
     const chatSrc = readFileSync("src/app/api/chat/route.ts", "utf8");
     expect(chatSrc).toMatch(/const routed = chatRouteFor\(u, /);
     expect(chatSrc).toMatch(/reserveChatTurn\(u, routed\.model\)/);
-    for (const f of ["src/app/api/chat/route.ts", "src/app/api/mcp/route.ts", "src/app/api/admin/plan/route.ts", "src/app/api/admin/users/[email]/route.ts", "src/app/api/profile/route.ts", "src/app/api/billing/chat-overflow/route.ts", "src/app/[lang]/app/chat/page.tsx", "src/app/[lang]/app/settings/billing/page.tsx"]) {
+    for (const f of ["src/app/api/chat/route.ts", "src/app/api/mcp/route.ts", "src/app/api/admin/plan/route.ts", "src/app/api/admin/users/[email]/route.ts", "src/app/api/profile/route.ts", "src/app/api/billing/chat-overflow/route.ts", "src/app/[lang]/app/b/[brand]/chat/page.tsx", "src/app/[lang]/app/settings/billing/page.tsx"]) {
       const src = readFileSync(f, "utf8");
       const calls = src.match(/chatStatus\([^()]*(\([^()]*\))?[^()]*\)/g) ?? [];
       for (const c of calls) expect(c, f).toMatch(/chatStatus\(\w+, /);

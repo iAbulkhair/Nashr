@@ -14,7 +14,7 @@ import * as exportRoute from "@/app/api/secretary/series/[seriesId]/export/route
 import { createElement } from "react";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { appDict } from "@/lib/app-i18n";
-import Page from "@/app/[lang]/app/todo/page";
+import Page from "@/app/[lang]/app/b/[brand]/todo/page";
 import TodoPanel, { type TodoRow } from "@/components/app/TodoPanel";
 import { SEC_KEYS, newSecId, newSeriesId, purgeExpired, secretaryDaily, secretaryKeys, type Who } from "@/lib/secretary";
 import { SERIES_KEEP_MAX, purgeSeries, requeueSeries, seriesRows, setSeriesKeep, warnSeries } from "@/lib/secretary-series";

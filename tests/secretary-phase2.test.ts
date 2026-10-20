@@ -40,7 +40,7 @@ import * as tickRoute from "@/app/api/cron/secretary/route";
 import * as eveningRoute from "@/app/api/cron/evening/route";
 import * as dailyRoute from "@/app/api/cron/daily/route";
 import * as mcpRoute from "@/app/api/mcp/route";
-import Page from "@/app/[lang]/app/todo/page";
+import Page from "@/app/[lang]/app/b/[brand]/todo/page";
 
 const BRAND: Brand = { name: "Rif", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-09-30" };
 const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
@@ -693,7 +693,7 @@ describe("a they-owe contact's WhatsApp number: the owner's, in the app, never a
     const href = /href="(https:\/\/wa\.me\/966501234567\?text=[^"]+)"/.exec(await render("en"))![1].replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
     expect(decodeURIComponent(href.slice(href.indexOf("?text=") + 6))).toBe(`Hi ${name}, following up on: ${title}. Thank you.`);
     expect(fill("{a}-{b}-{c}", { a: "$&", b: "{a}" })).toBe("$&-{a}-{c}");
-    expect(readFileSync("src/app/[lang]/app/todo/page.tsx", "utf8")).not.toMatch(/\.replace\("\{/);
+    expect(readFileSync("src/app/[lang]/app/b/[brand]/todo/page.tsx", "utf8")).not.toMatch(/\.replace\("\{/);
   });
 });
 

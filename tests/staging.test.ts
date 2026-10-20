@@ -94,8 +94,9 @@ describe("the staging lock (rules 674, 677)", () => {
     // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
       "src/proxy.ts": ["@/lib/app-href", "@/lib/brand-guard", "@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "next/server"],
-      // The settings redirect map (rule 1141): plain data; its one import is a type, erased at build (pinned below).
-      "src/lib/settings-nav.ts": ["./i18n"],
+      // The settings redirect map (rule 1141): plain data; a type import, erased at build, and the pure brand path helpers
+      // (rule 885: a brand settings section is linked under /b/{id}), themselves import-free but for a type (pinned below).
+      "src/lib/settings-nav.ts": ["./i18n", "./app-href"],
       "src/lib/csrf.ts": ["@/lib/origin", "next/server"],
       "src/lib/origin.ts": [],
       "src/lib/staging-access.ts": ["@/lib/deploy-env", "@/lib/secret", "node:crypto"],
@@ -117,7 +118,8 @@ describe("the staging lock (rules 674, 677)", () => {
     for (const [f, ok] of Object.entries(allowed))
       expect(specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)), f).toEqual([]);
     expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(/^import type \{ Lang \} from "\.\/i18n";$/m);
-    expect(readFileSync("src/lib/settings-nav.ts", "utf8").match(/^import /gm)).toHaveLength(1);
+    expect(readFileSync("src/lib/settings-nav.ts", "utf8").match(/^import /gm)).toHaveLength(2);
+    expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(/^import \{ appHref, isBrandPath \} from "\.\/app-href";$/m);
     expect(readFileSync("src/lib/app-href.ts", "utf8")).toMatch(/^import type \{ Lang \} from "\.\/i18n";$/m);
     expect(readFileSync("src/lib/app-href.ts", "utf8").match(/^import /gm)).toHaveLength(1);
     // And the lock gets sameSecret from the module with no store behind it, through no other path.

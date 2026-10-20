@@ -102,7 +102,7 @@ describe("rule 2353: the digest choice", () => {
     for (const v of ["4h", "day", "week"]) expect(html).toContain(`name="digest" value="${v}"`);
     expect(html).toContain('name="digest" checked="" value="off"');
     expect(read("src/components/app/settings/NotifyPrefsSettings.tsx")).toContain('"/api/notifications/digest"');
-    expect(read("src/app/[lang]/app/settings/notifications/page.tsx")).toContain("getDigest(acct(u))");
+    expect(read("src/app/[lang]/app/b/[brand]/settings/notifications/page.tsx")).toContain("getDigest(acct(u))");
   });
 });
 

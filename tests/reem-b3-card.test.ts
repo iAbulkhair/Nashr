@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { newMember, newUser, signIn } from "./helpers/session";
 import { appDict } from "@/lib/app-i18n";
-import Page from "@/app/[lang]/app/todo/page";
+import Page from "@/app/[lang]/app/b/[brand]/todo/page";
 import TodoPanel from "@/components/app/TodoPanel";
 import { CalendarLinkView, sinceText, type CalState, type LinkInfo } from "@/components/app/CalendarLinkCard";
 import { CAL_DECLARATION_V } from "@/lib/secretary-cal-proof";
@@ -285,7 +285,7 @@ describe("who sees the card (rule 923)", () => {
   });
 
   it("the page passes can(u, \"calendar.link\") and the two providers' availability from the registry", () => {
-    const src = readFileSync("src/app/[lang]/app/todo/page.tsx", "utf8");
+    const src = readFileSync("src/app/[lang]/app/b/[brand]/todo/page.tsx", "utf8");
     expect(src).toContain('canLinkCalendar={can(u, "calendar.link")}');
     expect(src).toContain('calProviders={{ gcal: calReady("gcal"), mscal: calReady("mscal") }}');
     expect(src).toMatch(/import \{ getProvider, isAvailable \} from "@\/lib\/connectors\/registry"/);

@@ -42,6 +42,9 @@ describe("rule 890: brand paths and appHref", () => {
     }
     expect(isBrandPath("/")).toBe(true);
     expect(isBrandPath("/settings/billing")).toBe(false);
+    // The four brand settings sections (R-C6, R-C10); the others stay on the account.
+    for (const s of ["brand", "connections", "governance", "notifications"]) expect(isBrandPath(`/settings/${s}`), s).toBe(true);
+    for (const s of ["account", "security", "brands", "members", "danger"]) expect(isBrandPath(`/settings/${s}`), s).toBe(false);
     expect(isBrandPath("/settings")).toBe(false);
     expect(isBrandPath("/chatter")).toBe(false);
     expect(isBrandPath("/b/x")).toBe(false);

@@ -43,6 +43,8 @@ export const BRAND_SECTIONS: readonly string[] = [
   "settings/brand",
   "settings/connections",
   "settings/governance",
+  // Per-brand notification preferences (`profile:{sc(u)}`), R-C10.
+  "settings/notifications",
 ];
 
 /** `rest` with no query or hash, a leading `/` or empty, and no trailing `/`. */

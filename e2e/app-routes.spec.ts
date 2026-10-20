@@ -45,7 +45,7 @@ for (const lang of LANGS) {
  * truth, so these assert the behaviour that type buys.
  */
 test.describe("repeated query parameters", () => {
-  for (const path of ["/en/app/conversations?q=one&q=two", "/en/app/reports?range=7&range=30", "/en/app/chat?conv=a&conv=b"]) {
+  for (const path of ["/en/app/b/default/conversations?q=one&q=two", "/en/app/b/default/reports?range=7&range=30", "/en/app/b/default/chat?conv=a&conv=b"]) {
     test(`${path} is answered, not crashed`, async ({ page, failures }) => {
       void failures;
       const res = await open(page, path);
