@@ -62,6 +62,11 @@ async function orphans(pid: PersonId, ids: string[]): Promise<string[]> {
   const vals = await Promise.all(ids.map(reverse));
   return ids.filter((id, i) => vals[i] === pid && !listed.has(id));
 }
+/** The uid of an `ensureUid` answer; the union makes the caller split off `invalid` (ruling N4). */
+const uidOf = (r: { uid: string } | "invalid"): string => {
+  if (r === "invalid") throw new Error("ensureUid answered invalid");
+  return r.uid;
+};
 const rawSet = (pid: PersonId) => db.get<PasskeySetValue>(personKey.passkeys(pid));
 const reverse = (id: string) => db.get<string>(globalKey.passkeyCred(credHash(id)));
 
@@ -206,7 +211,7 @@ describe("rule 2402: a set stamped with another birth", () => {
     const old = (await rawSet(pid))!;
     const other = pidOf();
     await db.set(globalKey.passkeyCred(credHash(taken)), other); // since taken over by another person
-    const uid = await ensureUid(pid, "2026-10-02T00:00:00.000Z");
+    const uid = uidOf(await ensureUid(pid, "2026-10-02T00:00:00.000Z"));
     expect(uid).not.toBe(old.uid);
     expect(await rawSet(pid)).toEqual({ v: 1, uid, born: "2026-10-02T00:00:00.000Z", creds: [] });
     expect(await reverse(mine)).toBeNull();
@@ -234,18 +239,18 @@ describe("rule 2402: a set stamped with another birth", () => {
 describe("rule 2403: the user handle", () => {
   it("is 43 base64url characters, differs per person and survives add and remove", async () => {
     const [a, b] = [pidOf(), pidOf("p")];
-    const ua = await ensureUid(a, BORN);
-    const ub = await ensureUid(b, BORN);
+    const ua = uidOf(await ensureUid(a, BORN));
+    const ub = uidOf(await ensureUid(b, BORN));
     expect(ua).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(ub).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(ua).not.toBe(ub);
     expect(ua).not.toContain(a);
-    expect(await ensureUid(a, BORN)).toBe(ua);
+    expect(await ensureUid(a, BORN)).toEqual({ uid: ua });
     const [id] = await fill(a, 1);
     expect((await rawSet(a))!.uid).toBe(ua);
     expect(await removePasskey(a, BORN, refOf(id))).toBe("ok");
     expect((await rawSet(a))!.uid).toBe(ua);
-    expect(await ensureUid(a, BORN)).toBe(ua);
+    expect(await ensureUid(a, BORN)).toEqual({ uid: ua });
   });
 
   it("addPasskey on a person with no set creates one with a fresh uid and the given birth", async () => {
@@ -342,8 +347,7 @@ describe("rule 2414: every write under lock:person:{pid}", () => {
   it("add, rename, remove, recordUse and ensureUid write only while the person lock is held", async () => {
     const pid = pidOf();
     const { writes, locks } = recordWrites(pid);
-    const uid = await ensureUid(pid, BORN);
-    expect(uid).toBeTruthy();
+    expect(uidOf(await ensureUid(pid, BORN))).toBeTruthy();
     const c = cred();
     await addPasskey(pid, BORN, c, "Key");
     await renamePasskey(pid, BORN, refOf(c.id), "Renamed");
@@ -542,7 +546,7 @@ describe("rules 2424, 2425 (store half): moves and wipes", () => {
     const ids = await fill(from, 3);
     await db.set(personKey.passkeyReg(from), { challenge: "c", sess: "s", at: Date.now() }, 300);
     const uid = (await rawSet(from))!.uid;
-    await movePasskeys(from, to, { personLocked: true });
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("moved");
     expect(await rawSet(from)).toBeNull();
     expect(await db.get(personKey.passkeyReg(from))).toBeNull();
     const set = (await rawSet(to))!;
@@ -561,9 +565,9 @@ describe("rules 2424, 2425 (store half): moves and wipes", () => {
     const after = await rawSet(to);
     const empty = await person(pidOf());
     const { writes } = recordWrites(to);
-    await movePasskeys(from, to, { personLocked: true });
-    await movePasskeys(to, to, { personLocked: true });
-    await movePasskeys(empty, to, { personLocked: true });
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("nothing");
+    expect(await movePasskeys(to, to, { personLocked: true })).toBe("nothing");
+    expect(await movePasskeys(empty, to, { personLocked: true })).toBe("nothing");
     expect(writes).toEqual([]);
     expect(await rawSet(to)).toEqual(after);
     expect(await Promise.all(ids.map(reverse))).toEqual([to, to]);
@@ -583,7 +587,7 @@ describe("rules 2424, 2425 (store half): moves and wipes", () => {
     const [id, taken] = await fill(from, 2, "2020-01-01T00:00:00.000Z");
     const other = pidOf();
     await db.set(globalKey.passkeyCred(credHash(taken)), other);
-    await movePasskeys(from, to, { personLocked: true });
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("dropped");
     expect(await rawSet(from)).toBeNull();
     expect(await rawSet(to)).toBeNull();
     expect(await reverse(id)).toBeNull();
@@ -701,10 +705,10 @@ describe("Task 3 fix round 1: the move's births, order, retry and destination", 
     const before = await rawSet(from);
     const ghost = pidOf("p");
     const { writes } = recordWrites(from);
-    await movePasskeys(from, ghost, { personLocked: true });
+    expect(await movePasskeys(from, ghost, { personLocked: true })).toBe("skipped");
     const orphanFrom = pidOf();
     await db.set(personKey.passkeys(orphanFrom), before);
-    await movePasskeys(orphanFrom, await person(pidOf("p")), { personLocked: true });
+    expect(await movePasskeys(orphanFrom, await person(pidOf("p")), { personLocked: true })).toBe("skipped");
     expect(writes.filter((w) => w.key !== personKey.passkeys(orphanFrom) && !w.key.startsWith("person:"))).toEqual([]);
     expect(await rawSet(from)).toEqual(before);
     expect(await rawSet(ghost)).toBeNull();
@@ -728,7 +732,7 @@ describe("Task 3 fix round 1: the move's births, order, retry and destination", 
     expect(order).toEqual(["set passkeys:to", "replaceIf pkcred", "replaceIf pkcred", "del passkeys:from", "del pkreg:from"]);
   });
 
-  it("a failed write of to deletes nothing; a move that fails after it leaves from in place, and the retry converges (merging a passkey added in between)", async () => {
+  it("a failed write of to deletes nothing; a move that fails after it leaves from in place, and the retry converges (`to` authoritative: a passkey added there in between stays)", async () => {
     const [from, to] = await Promise.all([person(pidOf()), person(pidOf("p"), TO_BORN)]);
     const ids = await fill(from, 3);
     await db.set(personKey.passkeyReg(from), { challenge: "c", sess: "s", at: Date.now() }, 300);
@@ -777,7 +781,7 @@ describe("Task 3 fix round 1: the move's births, order, retry and destination", 
     await db.set(globalKey.passkeyCred(credHash(taken)), third);
     const [theirs] = await fill(to, 1, TO_BORN);
     const kept = await rawSet(to);
-    await movePasskeys(from, to, { personLocked: true });
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("kept_to");
     expect(await rawSet(to)).toEqual(kept);
     expect(await rawSet(from)).toBeNull();
     expect(await reverse(mine)).toBeNull();
@@ -790,7 +794,7 @@ describe("Task 3 fix round 1: the move's births, order, retry and destination", 
     const [id] = await fill(from, 1);
     const broken = { v: 2, uid: "short", creds: [] };
     await db.set(personKey.passkeys(to), broken);
-    await movePasskeys(from, to, { personLocked: true });
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("kept_to");
     expect(await rawSet(to)).toEqual(broken);
     expect(await rawSet(from)).toBeNull();
     expect(await reverse(id)).toBeNull();
@@ -798,8 +802,8 @@ describe("Task 3 fix round 1: the move's births, order, retry and destination", 
     const [from2, to2] = await Promise.all([person(pidOf()), person(pidOf("p"), TO_BORN)]);
     const [id2] = await fill(from2, 1);
     const uid = (await rawSet(from2))!.uid;
-    expect(await ensureUid(to2, TO_BORN)).not.toBe(uid);
-    await movePasskeys(from2, to2, { personLocked: true });
+    expect(uidOf(await ensureUid(to2, TO_BORN))).not.toBe(uid);
+    expect(await movePasskeys(from2, to2, { personLocked: true })).toBe("moved");
     expect(await rawSet(to2)).toMatchObject({ uid, born: TO_BORN });
     expect(await reverse(id2)).toBe(to2);
   });
@@ -857,5 +861,114 @@ describe("Task 3 fix round 1: no orphaned reverse entry after a failed write", (
     await expect(addPasskey(pid, "2026-10-02T00:00:00.000Z", cred(), "Key")).rejects.toThrow("store down");
     vi.restoreAllMocks();
     expect(await orphans(pid, ids)).toEqual([]);
+  });
+});
+
+describe("Task 3 fix round 2: resume, cut order, add failure, typed answers", () => {
+  /** Makes `op` throw for keys `match` picks, the first `times` times; the rest pass through. */
+  const failOn = (op: "del" | "replaceIf" | "set", match: (key: string) => boolean, times = Number.POSITIVE_INFINITY) => {
+    const orig = (db[op] as (...a: unknown[]) => Promise<unknown>).bind(db);
+    let left = times;
+    return vi.spyOn(db, op).mockImplementation((async (...a: unknown[]) => {
+      if (match(String(a[0])) && left-- > 0) throw new Error("store down");
+      return orig(...a);
+    }) as never);
+  };
+
+  it("N1: on a resumed move `to` is authoritative: a passkey removed at `to` between the runs never comes back", async () => {
+    const [from, to] = await Promise.all([person(pidOf()), person(pidOf("p"), TO_BORN)]);
+    const [x, y] = await fill(from, 2);
+    // Run 1 writes `to` and both entries, then fails deleting the `from` set.
+    failOn("del", (k) => k === personKey.passkeys(from));
+    await expect(movePasskeys(from, to, { personLocked: true })).rejects.toThrow("store down");
+    vi.restoreAllMocks();
+    expect(await Promise.all([x, y].map(reverse))).toEqual([to, to]);
+    // The person removes X at the new address (a lost device).
+    expect(await removePasskey(to, TO_BORN, refOf(x))).toBe("ok");
+    expect(await reverse(x)).toBeNull();
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("moved");
+    expect((await rawSet(to))!.creds.map((c) => c.id)).toEqual([y]);
+    expect(await reverse(x)).toBeNull();
+    expect(await resolvePasskeyLogin(credHash(x))).toBeNull();
+    expect(await rawSet(from)).toBeNull();
+    expect(await orphans(to, [x, y])).toEqual([]);
+  });
+
+  it("N1 + N2: an entry still naming `from` for a passkey removed at `to` is deleted, before the `from` set, and a failure there keeps `from` for the retry", async () => {
+    const [from, to] = await Promise.all([person(pidOf()), person(pidOf("p"), TO_BORN)]);
+    const [x, y] = await fill(from, 2);
+    // Run 1 writes `to`, then fails re-pointing X: X's entry still names `from`.
+    failOn("replaceIf", (k) => k === globalKey.passkeyCred(credHash(x)));
+    await expect(movePasskeys(from, to, { personLocked: true })).rejects.toThrow("store down");
+    vi.restoreAllMocks();
+    expect(await reverse(x)).toBe(from);
+    expect(await removePasskey(to, TO_BORN, refOf(x))).toBe("ok");
+    expect(await reverse(x)).toBe(from); // not `to`'s to delete
+    // The retry fails deleting X's leftover entry: the `from` set must still be there to list it.
+    failOn("del", (k) => k === globalKey.passkeyCred(credHash(x)));
+    await expect(movePasskeys(from, to, { personLocked: true })).rejects.toThrow("store down");
+    vi.restoreAllMocks();
+    expect(await rawSet(from)).not.toBeNull();
+    expect(await passkeyKeys(from)).toContain(globalKey.passkeyCred(credHash(x)));
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("moved");
+    expect(await rawSet(from)).toBeNull();
+    expect(await reverse(x)).toBeNull();
+    expect(await reverse(y)).toBe(to);
+    expect((await rawSet(to))!.creds.map((c) => c.id)).toEqual([y]);
+    expect(await orphans(from, [x, y])).toEqual([]);
+    expect(await orphans(to, [x, y])).toEqual([]);
+  });
+
+  it("N3: an add whose set write landed before the error keeps its reverse entry; one whose re-read fails too releases it", async () => {
+    const pid = pidOf();
+    const c = cred();
+    const set = db.set.bind(db);
+    vi.spyOn(db, "set").mockImplementation((async (key: string, ...rest: unknown[]) => {
+      await (set as (...a: unknown[]) => Promise<void>)(key, ...rest);
+      if (key === personKey.passkeys(pid)) throw new Error("timeout after apply");
+    }) as never);
+    await expect(addPasskey(pid, BORN, c, "Key")).rejects.toThrow("timeout after apply");
+    vi.restoreAllMocks();
+    expect((await rawSet(pid))!.creds.map((x) => x.id)).toEqual([c.id]);
+    expect(await reverse(c.id)).toBe(pid);
+
+    const other = pidOf();
+    const d = cred();
+    failOn("set", (k) => k === personKey.passkeys(other));
+    const get = db.get.bind(db);
+    let reads = 0;
+    vi.spyOn(db, "get").mockImplementation((async (key: string) => {
+      if (key === personKey.passkeys(other) && ++reads > 1) throw new Error("store down");
+      return get(key);
+    }) as never);
+    await expect(addPasskey(other, BORN, d, "Key")).rejects.toThrow("store down");
+    vi.restoreAllMocks();
+    expect(await reverse(d.id)).toBeNull();
+  });
+
+  it("N4: ensureUid answers { uid } or invalid, never a bare string", async () => {
+    const r = await ensureUid(pidOf(), BORN);
+    // @ts-expect-error: the union keeps "invalid" apart from a uid, so a caller cannot use it as a string unchecked.
+    const asString: string = r;
+    expect(typeof asString).toBe("object");
+    expect(r).toEqual({ uid: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
+  });
+
+  it("N5: movePasskeys answers what it did, and skipped leaves the from set for the retry", async () => {
+    const [from, to] = await Promise.all([person(pidOf()), person(pidOf("p"))]);
+    await fill(from, 1);
+    expect(await movePasskeys(from, from, { personLocked: true })).toBe("nothing");
+    const ghost = pidOf("p");
+    expect(await movePasskeys(from, ghost, { personLocked: true })).toBe("skipped");
+    expect(await rawSet(from)).not.toBeNull();
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("moved");
+    expect(await movePasskeys(from, to, { personLocked: true })).toBe("nothing");
+    const stale = await person(pidOf());
+    await fill(stale, 1, "2020-01-01T00:00:00.000Z");
+    expect(await movePasskeys(stale, await person(pidOf("p")), { personLocked: true })).toBe("dropped");
+    const [mover, live] = await Promise.all([person(pidOf()), person(pidOf("p"))]);
+    await fill(mover, 1);
+    await fill(live, 1);
+    expect(await movePasskeys(mover, live, { personLocked: true })).toBe("kept_to");
   });
 });

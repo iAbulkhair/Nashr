@@ -135,15 +135,15 @@ async function currentSet(pid: PersonId, born: string | undefined): Promise<{ se
 
 /**
  * The person's WebAuthn user handle, creating the set (`{ v: 1, uid, born, creds: [] }`) when it is absent or stale
- * (rules 2402, 2403); `invalid` when the stored set does not fit the shape (it is left as it is). Under the person lock
- * unless the caller holds it.
+ * (rules 2402, 2403), as `{ uid }`; `invalid` when the stored set does not fit the shape (it is left as it is). The
+ * result is a union the compiler makes the caller split (ruling N4). Under the person lock unless the caller holds it.
  */
-export async function ensureUid(pid: PersonId, born: string | undefined, opts: Opts = {}): Promise<string | "invalid"> {
+export async function ensureUid(pid: PersonId, born: string | undefined, opts: Opts = {}): Promise<{ uid: string } | "invalid"> {
   return run(pid, opts, async () => {
     const cur = await currentSet(pid, born);
     if (cur === "invalid") return cur;
     if (!cur.written) await db.set(setKey(pid), cur.set);
-    return cur.set.uid;
+    return { uid: cur.set.uid };
   });
 }
 
@@ -152,7 +152,7 @@ export async function ensureUid(pid: PersonId, born: string | undefined, opts: O
  * before anything is locked or written: one that does not fit answers `invalid`. Under the person lock: the set re-read
  * (a stale one replaced, a broken one left as it is: `invalid`), the cap of 10, the reverse entry claimed with SET NX
  * (held by anyone, this pid included: `credential_taken`, nothing stored), then the credential appended. When that last
- * write throws, the claimed entry is released (best effort) and the error rethrown.
+ * write throws, the set is re-read and the claimed entry released (best effort) unless the set lists it; then rethrown.
  */
 export async function addPasskey(
   pid: PersonId,
@@ -187,7 +187,11 @@ export async function addPasskey(
     try {
       await db.set(setKey(pid), { ...set, creds: [...set.creds, entry] });
     } catch (e) {
-      await db.del(rev).catch(() => undefined);
+      // The write may have landed before the error (an HTTP timeout): release the claim only when the set does not list
+      // the credential (ruling N3). When even the re-read fails, release it: a listed passkey without its entry fails
+      // closed and the person can remove it, while an entry no set lists would block that credential id for good.
+      const raw = await db.get(setKey(pid)).catch(() => undefined);
+      if (raw === undefined || !idsOf(raw).includes(entry.id)) await db.del(rev).catch(() => undefined);
       throw e;
     }
     return { ok: true as const, item: itemOf(entry) };
@@ -263,6 +267,15 @@ export async function passkeyKeys(pid: PersonId): Promise<string[]> {
 }
 
 /**
+ * What a move did (Task 3 fix round 2, ruling N5). `moved`: the set is at `to` (or a resumed move finished). `nothing`:
+ * equal pids or no set under `from`. `dropped`: the `from` set was not the mover's (another birth, or broken) and went
+ * with its own reverse entries. `kept_to`: `to` already held a live or broken set, which was kept, and the `from` set
+ * went with its own reverse entries. `skipped`: a person could not be read and nothing was written; the caller must not
+ * wipe `from` (the move is unfinished and a retry finishes it).
+ */
+export type PasskeyMove = "moved" | "nothing" | "dropped" | "kept_to" | "skipped";
+
+/**
  * Moves the set of `from` to `to` on an address move (rule 2424): the same `uid`, every reverse entry that names `from`
  * rewritten to `to` (compare-and-set, so an entry naming a third pid is never taken over, and an absent one is re-claimed
  * with SET NX), then `passkeys:{from}` and `pkreg:{from}` deleted. Both births are read here, inside the move: the set is
@@ -270,25 +283,26 @@ export async function passkeyKeys(pid: PersonId): Promise<string[]> {
  * destination person, already written by the move: spec flow D). A move is the end of `from`, so a `from` set that is
  * not carried (another birth: a leftover of someone else, or a broken one) is dropped with its own reverse entries.
  *
- * Order (Task 3 fix round 1): `to` is written first (its stale entries released before it is overwritten), then the
- * reverse entries rewritten, and only then is anything under `from` deleted. A failure at any step leaves `from` in place
- * and a retry finishes the job: it finds `to` holding the same `uid` and merges into it (the `to` entries win, capped at
- * 10). A no-op when both pids are equal or `from` holds no set (a retried move whose first run finished, pre-flight ruling
- * 21), and when either person cannot be read (nothing is lost; the next run retries).
+ * Order (Task 3 fix rounds 1 and 2): `to` is written first (its stale entries released before it is overwritten), then
+ * the reverse entries rewritten, then the reverse entries of `from` that `to` does not list, and only then the `from` set
+ * and `pkreg:`. A failure at any step leaves the `from` set in place, so a retry finds `to` holding the same `uid`: then
+ * `to` is authoritative (ruling N1). It is not rewritten; only the entries of credentials it lists that still name `from`
+ * are pointed at it, and the rest of `from` goes with its entries that still name `from`. A passkey removed at `to`
+ * between the two runs never comes back (one added only at `from` in between is lost; the person adds it again).
  *
  * A live `to` (it carries the destination's birth, another `uid` and at least one passkey) or a broken one is never
  * overwritten: the `from` set is dropped with the reverse entries that still name `from` (the person adds those passkeys
  * again). A stale or empty `to` is replaced. With `personLocked: false` both person locks are taken, the smaller pid
  * first; the moves pass `true` (the member move holds both, the owner move its `userLockHeld` exception, rule 2414).
  */
-export async function movePasskeys(from: PersonId, to: PersonId, opts: { personLocked: boolean }): Promise<void> {
-  if (from === to) return;
-  const move = async () => {
+export async function movePasskeys(from: PersonId, to: PersonId, opts: { personLocked: boolean }): Promise<PasskeyMove> {
+  if (from === to) return "nothing";
+  const move = async (): Promise<PasskeyMove> => {
     const [rawFrom, rawTo, pFrom, pTo] = await Promise.all([db.get(setKey(from)), db.get(setKey(to)), getPerson(from), getPerson(to)]);
-    if (rawFrom === null || rawFrom === undefined) return;
+    if (rawFrom === null || rawFrom === undefined) return "nothing";
     if (!pFrom || !pTo) {
       log.warn("passkey move skipped", { reason: pFrom ? "to_person" : "from_person" });
-      return;
+      return "skipped";
     }
     const fromSet = parseSet(rawFrom);
     const toSet = parseSet(rawTo);
@@ -296,40 +310,41 @@ export async function movePasskeys(from: PersonId, to: PersonId, opts: { personL
     const resumed = !!fromSet && !!toSet && toSet.uid === fromSet.uid;
     const carried = fromSet && (resumed || fits(fromSet, pFrom.createdAt)) ? fromSet : null;
     const keepTo = hasTo && !resumed && (!toSet || (fits(toSet, pTo.createdAt) && toSet.creds.length > 0));
-    const dropFrom = async () => {
-      const owned = await ownedReverse(from, idsOf(rawFrom));
-      await Promise.all(owned.map((k) => db.del(k)));
+    /** The `from` set and `pkreg:` go last, after every reverse entry of `from` that must go (no orphan if a delete fails). */
+    const endFrom = async (gone: string[]) => {
+      await Promise.all(gone.map((k) => db.del(k)));
       await Promise.all([db.del(setKey(from)), db.del(personKey.passkeyReg(from))]);
     };
-    if (!carried || keepTo) return dropFrom();
+    if (!carried || keepTo) {
+      await endFrom(await ownedReverse(from, idsOf(rawFrom)));
+      return carried ? "kept_to" : "dropped";
+    }
 
-    // Carry: on a resumed move the `to` entries win (their counters may be newer), the rest of `from` follows, capped.
-    const base = resumed && toSet ? toSet.creds : [];
-    const merged = [...base, ...carried.creds.filter((c) => !base.some((b) => b.id === c.id))].slice(0, PASSKEYS_MAX);
-    const kept = new Set(merged.map((c) => c.id));
-    const cut = carried.creds.map((c) => c.id).filter((id) => !kept.has(id));
-    const staleTo = resumed ? [] : idsOf(rawTo).filter((id) => !kept.has(id));
-    const ids = [...kept];
-    const all = [...ids, ...cut, ...staleTo];
+    // The credentials `to` holds after the move: on a resumed move exactly what `to` lists (it is authoritative).
+    const ids = (resumed && toSet ? toSet.creds : carried.creds).map((c) => c.id);
+    const listed = new Set(ids);
+    const leftover = carried.creds.map((c) => c.id).filter((id) => !listed.has(id));
+    const staleTo = resumed ? [] : idsOf(rawTo).filter((id) => !listed.has(id));
+    const all = [...ids, ...leftover, ...staleTo];
     const vals = all.length ? await db.mget<unknown>(all.map(revKey)) : [];
     const named = new Map(all.map((id, i) => [id, vals[i] === null || vals[i] === undefined ? null : String(vals[i])]));
 
-    // 1. Release the replaced `to` set's own entries, then write `to`.
-    await Promise.all(staleTo.filter((id) => named.get(id) === to).map((id) => db.del(revKey(id))));
-    await db.set(setKey(to), { v: 1, uid: carried.uid, born: pTo.createdAt, creds: merged } satisfies PasskeySetValue);
-    // 2. Point the reverse entries at `to`.
+    if (!resumed) {
+      // 1. Release the replaced `to` set's own entries, then write `to`.
+      await Promise.all(staleTo.filter((id) => named.get(id) === to).map((id) => db.del(revKey(id))));
+      await db.set(setKey(to), { v: 1, uid: carried.uid, born: pTo.createdAt, creds: carried.creds } satisfies PasskeySetValue);
+    }
+    // 2. Point the reverse entries at `to` (an absent one is re-claimed only on a first run: on a resume it may be a
+    //    remove at `to` half done).
     await Promise.all(
       ids.flatMap((id) => {
         const v = named.get(id);
-        return v === from ? [db.replaceIf(revKey(id), from, to)] : v === null ? [db.setNx(revKey(id), to)] : [];
+        return v === from ? [db.replaceIf(revKey(id), from, to)] : v === null && !resumed ? [db.setNx(revKey(id), to)] : [];
       }),
     );
-    // 3. Only now: nothing of `from` is left (an entry cut by the cap goes while it still names `from`).
-    await Promise.all([
-      ...cut.filter((id) => named.get(id) === from).map((id) => db.del(revKey(id))),
-      db.del(setKey(from)),
-      db.del(personKey.passkeyReg(from)),
-    ]);
+    // 3. Only now: the entries of `from` that `to` does not list, then the `from` set and `pkreg:`.
+    await endFrom(leftover.filter((id) => named.get(id) === from).map(revKey));
+    return "moved";
   };
   if (opts.personLocked) return move();
   const [a, b] = from < to ? [from, to] : [to, from];
