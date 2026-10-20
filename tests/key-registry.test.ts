@@ -24,6 +24,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.taskLock(S, "t1"), `tasklock:${S}:t1`],
     [wsKey.pending(S), `pending:${S}`],
     [wsKey.notNow(S), `notnow:${S}`],
+    [wsKey.pushSubs(S), `pushsubs:${S}`],
+    [wsKey.pushSent(S, "noor", "stuck"), `pushsent:${S}:noor:stuck`],
     [wsKey.pendingIndex(S), `pendingidx:${S}`],
     [wsKey.taskMonth(S, "2026-10"), `tidx:${S}:2026-10`],
     [wsKey.taskMonths(S), `tidxm:${S}`],
@@ -106,6 +108,11 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.teamLog(storedAccountId(E)), `teamlog:${E}`],
     // Customer passkeys (rules 2400-2429): a new family, no old template; the bytes are pinned by tests/passkeys-keys.test.ts.
     [accountKey.passkeyProofBucket(E), `pkpw:${E}`],
+    // Agent status and phone notifications (rules 2560-2573): new families, no old template.
+    [accountKey.tabSeen(E), `tabseen:${E}`],
+    [accountKey.pushLast(E), `pushlast:${E}`],
+    [accountKey.pushBucket(E), `push:${E}`],
+    [accountKey.seenBucket(E), `tabbeat:${E}`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
