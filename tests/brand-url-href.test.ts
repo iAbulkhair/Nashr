@@ -35,6 +35,21 @@ describe("rule 890: brand paths and appHref", () => {
     }
     expect(ActiveBrandId.safeParse("a/b").success).toBe(false);
     expect(ActiveBrandId.parse(12345678)).toBe("12345678");
+    // A number is turned back into text and that text must be a brand id too (fix round item 2).
+    for (const v of [1.5, -0.5, 1e21, 2 ** 70]) expect(ActiveBrandId.safeParse(v).success, String(v)).toBe(false);
+  });
+
+  it("appHref never lets a . or .. segment through, encoded or not (fix round item 3)", () => {
+    expect(appHref("ar", "/tasks/../settings/billing", { brand: "b2" })).toBe("/ar/app/settings/billing");
+    expect(appHref("ar", "/../../en/admin", { brand: "b2" })).toBe("/ar/app/en/admin");
+    expect(appHref("ar", "/files/./x/%2e%2E/y?z=1#h", { brand: "b2" })).toBe("/ar/app/b/b2/files/y?z=1#h");
+    expect(appHref("ar", "/tasks/..", { brand: "b2" })).toBe("/ar/app/b/b2");
+    expect(appHref("en", "/chat/.%2E/./", { brand: "b2" })).toBe("/en/app/b/b2");
+    expect(appHref("en", "tasks//x", { brand: "b2" })).toBe("/en/app/b/b2/tasks/x");
+    for (const rest of ["/a/../../..", "/./tasks/.", "/%2e/%2E%2e/tasks", "/tasks/x/..%2f"]) {
+      const h = appHref("ar", rest, { brand: "b2" });
+      expect(h.split("?")[0].split("/").some((seg) => /^(?:\.|%2e){1,2}$/i.test(seg)), `${rest} -> ${h}`).toBe(false);
+    }
   });
 
   it("isBrandPath names a section or a path under one", () => {
@@ -82,6 +97,17 @@ describe("rule 890: brand paths and appHref", () => {
     expect(switchBrandPath("/ar/app/b/x/tasks?id=1", "y")).toBe("/ar/app/b/y/tasks");
     expect(switchBrandPath("/ar/app/settings/billing", "y")).toBe("/ar/app/b/y");
     expect(switchBrandPath("/en/app/tasks", "y")).toBe("/en/app/b/y");
+  });
+
+  it("switchBrandPath takes app and a handle only as whole segments (fix round item 1)", () => {
+    // /apple and /appx are not the app: no handle or section is read from them.
+    expect(switchBrandPath("/en/apple/b/x/tasks", "y")).toBe("/en/app/b/y");
+    expect(switchBrandPath("/en/appx/w/w_abcdefghijklmnop/b/x/tasks", "y")).toBe("/en/app/b/y");
+    // A handle with more characters after it is no handle, so it is not kept.
+    expect(switchBrandPath("/en/app/w/w_abcdefghijklmnopq/b/x/tasks", "y")).toBe("/en/app/b/y");
+    // The real ones still work, with a query or a hash right after the segment.
+    expect(switchBrandPath("/en/app?x=1", "y")).toBe("/en/app/b/y");
+    expect(switchBrandPath("/en/app/w/w_abcdefghijklmnop?x=1", "y")).toBe("/en/app/w/w_abcdefghijklmnop/b/y");
   });
 });
 
@@ -167,6 +193,79 @@ describe("rule 889: the fetch wrapper carries the page's brand", () => {
       await win.fetch(new Request("https://thakeen.com/api/chat", { headers: { [BRAND_HEADER]: "viaReq" } }));
       expect(sent(real).get(BRAND_HEADER)).toBe("viaReq");
     });
+
+    const brandPage = async () => {
+      vi.resetModules();
+      const mod = await import("@/lib/brand-fetch");
+      const real = vi.fn(async (..._a: unknown[]) => new Response("{}"));
+      const win = { fetch: real as unknown as typeof fetch, location: { pathname: "/ar/app/b/b2/chat", origin: "https://thakeen.com" } };
+      vi.stubGlobal("window", win);
+      return { mod, real, win };
+    };
+
+    it("a Request with POST and a body and no brand header keeps its method and body and gets the header (fix round item 15)", async () => {
+      const { mod, real, win } = await brandPage();
+      mod.installBrandFetch();
+      await win.fetch(new Request("https://thakeen.com/api/chat", { method: "POST", body: '{"a":1}', headers: { "content-type": "application/json" } }));
+      const [input, init] = real.mock.calls[0] as unknown as [Request, RequestInit];
+      // What the real fetch does with (Request, init): the init's headers replace the Request's, the rest is the Request's.
+      const merged = new Request(input, init);
+      expect(merged.method).toBe("POST");
+      expect(await merged.text()).toBe('{"a":1}');
+      expect(merged.headers.get(BRAND_HEADER)).toBe("b2");
+      expect(merged.headers.get("content-type")).toBe("application/json");
+    });
+
+    it("init.headers as a Headers instance and as array pairs are kept, and the header is added (fix round item 15)", async () => {
+      const { mod, real, win } = await brandPage();
+      mod.installBrandFetch();
+      await win.fetch("/api/chat", { method: "PUT", headers: new Headers({ "content-type": "application/json", "x-a": "1" }) });
+      await win.fetch("/api/chat", { headers: [["content-type", "text/plain"], ["x-b", "2"]] });
+      const h0 = new Headers((real.mock.calls[0] as unknown as [string, RequestInit])[1].headers);
+      const h1 = new Headers((real.mock.calls[1] as unknown as [string, RequestInit])[1].headers);
+      expect([h0.get(BRAND_HEADER), h0.get("content-type"), h0.get("x-a")]).toEqual(["b2", "application/json", "1"]);
+      expect((real.mock.calls[0] as unknown as [string, RequestInit])[1].method).toBe("PUT");
+      expect([h1.get(BRAND_HEADER), h1.get("content-type"), h1.get("x-b")]).toEqual(["b2", "text/plain", "2"]);
+    });
+
+    it("an empty brand header the caller set counts as none: the page's brand replaces it (fix round item 11)", async () => {
+      const { mod, real, win } = await brandPage();
+      mod.installBrandFetch();
+      await win.fetch("/api/chat", { headers: { [BRAND_HEADER]: "" } });
+      expect(sent(real).get(BRAND_HEADER)).toBe("b2");
+    });
+
+    it("wraps once across module instances (HMR) and under another wrapper installed after it (fix round item 17)", async () => {
+      const { mod, real, win } = await brandPage();
+      mod.installBrandFetch();
+      const ours = win.fetch;
+      // A second copy of the module (hot reload): the mark on the function, not a module flag, stops a second wrap.
+      vi.resetModules();
+      const again = await import("@/lib/brand-fetch");
+      again.installBrandFetch();
+      expect(win.fetch).toBe(ours);
+      // Another wrapper (#418's installWorkspaceFetch) wraps ours; a fresh module copy still does not wrap a third time.
+      const other = vi.fn((input: RequestInfo | URL, init?: RequestInit) => ours(input, init));
+      win.fetch = other as unknown as typeof fetch;
+      vi.resetModules();
+      const third = await import("@/lib/brand-fetch");
+      third.installBrandFetch();
+      expect(win.fetch).toBe(other);
+      await win.fetch("/api/chat");
+      expect(real).toHaveBeenCalledTimes(1);
+      expect(sent(real).get(BRAND_HEADER)).toBe("b2");
+    });
+
+    it("wraps another wrapper that was installed before it (the mark is ours only)", async () => {
+      const { mod, real, win } = await brandPage();
+      const other = vi.fn((input: RequestInfo | URL, init?: RequestInit) => (real as unknown as typeof fetch)(input, init));
+      win.fetch = other as unknown as typeof fetch;
+      mod.installBrandFetch();
+      expect(win.fetch).not.toBe(other);
+      await win.fetch("/api/chat");
+      expect(other).toHaveBeenCalledTimes(1);
+      expect(sent(real).get(BRAND_HEADER)).toBe("b2");
+    });
   });
 
   describe("withBrandQuery and apiHref (R-C13: navigations cannot carry a header)", () => {
@@ -243,6 +342,34 @@ describe("rule 889: the fetch wrapper carries the page's brand", () => {
       // Account navigations stay unchanged.
       expect(read("src/components/app/settings/DangerZone.tsx")).not.toMatch(/apiHref/);
       expect(read("src/components/app/AuthForm.tsx")).not.toMatch(/apiHref/);
+    });
+
+    it("no navigation names an /api/ route by a bare literal unless it is an account, admin, auth or staging route (fix round item 16)", () => {
+      // A link, a download, `location.assign`, `location.href =` or `window.open` cannot carry the header: a brand GET route
+      // goes through apiHref / useApiHref / withBrandQuery (R-C13). Only these routes may be named bare.
+      const ALLOWED = ["/api/account/", "/api/admin/", "/api/auth/", "/api/staging"];
+      const NAV = /(?:\bhref\s*=\s*\{?|location\.assign\(|location\.href\s*=|window\.open\()\s*(["'`])(\/api\/[^"'`?$#]*)/g;
+      const files: string[] = [];
+      const walk = (d: string) => { for (const n of readdirSync(d)) { const f = join(d, n); if (f === join("src", "app", "api")) continue; statSync(f).isDirectory() ? walk(f) : /\.tsx?$/.test(n) && files.push(f); } };
+      walk("src/components");
+      walk("src/app");
+      const bare: string[] = [];
+      for (const f of files) for (const m of read(f).matchAll(NAV)) bare.push(`${f}: ${m[2]}`);
+      // The scan sees the bare account and admin links that exist today, so it is not matching nothing.
+      expect(bare.some((b) => b.endsWith("/api/account/export"))).toBe(true);
+      expect(bare.some((b) => b.includes("/api/admin/"))).toBe(true);
+      expect(bare.filter((b) => !ALLOWED.some((a) => b.split(": ")[1].startsWith(a)))).toEqual([]);
+    });
+
+    it("CalendarLinkView reads only its props; the card builds the start link with useApiHref (fix round item 19)", () => {
+      const src = read("src/components/app/CalendarLinkCard.tsx");
+      const view = src.slice(src.indexOf("export function CalendarLinkView("), src.indexOf("export default function CalendarLinkCard("));
+      expect(view.length).toBeGreaterThan(100);
+      expect(view).not.toMatch(/\buse[A-Z]\w*\(/);
+      expect(view).toMatch(/href=\{startHref\(p\)\}/);
+      const card = src.slice(src.indexOf("export default function CalendarLinkCard("));
+      expect(card).toMatch(/const apiHref = useApiHref\(\)/);
+      expect(card).toMatch(/startHref=\{\(p\) => apiHref\(startPath\(p, lang\)\)\}/);
     });
 
     it("the shell sends the session's brand on the two account-page mutations (R-C12)", () => {

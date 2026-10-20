@@ -11,6 +11,10 @@ import { BRAND_HEADER, brandFromPath, isBrandId } from "./brand-path";
  * `installWorkspaceFetch`. The two wrappers stack and each adds its own header. Navigations (a link, a download, a
  * redirect to a connector) cannot send a header: `apiHref` puts the brand in the query and the proxy copies it into the
  * header on GET and HEAD (R-C13).
+ *
+ * The brand is read from `window.location` when the request is SENT, not when the work that sends it was scheduled: a
+ * timer, a retry or a promise chain that outlives a soft navigation to another brand's page sends the new page's brand.
+ * A screen whose late request must stay with the brand it started on sets the header itself (the wrapper keeps it).
  */
 
 /** The brand a request to `input` should carry from a page at `pagePath`, or null (another site, not `/api/`, no brand). */
@@ -25,24 +29,37 @@ export function brandHeaderFor(input: RequestInfo | URL, pagePath: string, origi
   return brandFromPath(pagePath);
 }
 
-/** `init` with the brand header added, unless the caller set one already (on `init` or on a `Request`). */
+/**
+ * `init` with the brand header added, unless the caller set one already (on `init` or on a `Request`). An empty value is
+ * no header (fix round item 11: empty counts as absent in the proxy, the guard and `currentUser` too), so it is replaced.
+ */
 function withBrandHeader(input: RequestInfo | URL, init: RequestInit | undefined, brand: string): RequestInit {
   const headers = new Headers(init?.headers ?? (typeof input === "object" && "headers" in input ? input.headers : undefined));
-  if (!headers.has(BRAND_HEADER)) headers.set(BRAND_HEADER, brand);
+  if (!headers.get(BRAND_HEADER)) headers.set(BRAND_HEADER, brand);
   return { ...init, headers };
 }
 
-let installed = false;
+/**
+ * The mark on our wrapper and on the window it wrapped. `Symbol.for`, not a module flag: a second copy of this module (a
+ * hot reload) sees the same symbol, so it neither wraps our wrapper again nor wraps a wrapper that another one (#418's
+ * `installWorkspaceFetch`) put around ours.
+ */
+const WRAPPED = Symbol.for("thakeen.brandFetch");
+type Marked = { [WRAPPED]?: true };
 
 /** Wrap `window.fetch` once so app requests name their page's brand. Idempotent; a no-op on the server. Always on (not behind `MULTI_ORG`). */
 export function installBrandFetch(): void {
-  if (installed || typeof window === "undefined") return;
-  installed = true;
-  const real = window.fetch.bind(window);
-  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-    const brand = brandHeaderFor(input, window.location.pathname, window.location.origin);
+  if (typeof window === "undefined") return;
+  const win = window as typeof window & Marked;
+  if (win[WRAPPED] || (win.fetch as typeof fetch & Marked)[WRAPPED]) return;
+  const real = win.fetch.bind(win);
+  const wrapped = (input: RequestInfo | URL, init?: RequestInit) => {
+    const brand = brandHeaderFor(input, win.location.pathname, win.location.origin);
     return brand ? real(input, withBrandHeader(input, init, brand)) : real(input, init);
   };
+  (wrapped as typeof wrapped & Marked)[WRAPPED] = true;
+  win.fetch = wrapped as typeof fetch;
+  win[WRAPPED] = true;
 }
 
 /**

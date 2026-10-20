@@ -47,12 +47,24 @@ export const BRAND_SECTIONS: readonly string[] = [
   "settings/notifications",
 ];
 
-/** `rest` with no query or hash, a leading `/` or empty, and no trailing `/`. */
+/** A `.` or `..` segment, also percent-encoded (`%2e`, `.%2E`): the browser's URL parser treats those as dots too. */
+const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
+
+/**
+ * `rest` with no query or hash, a leading `/` or empty, and no trailing `/`. Dot segments are resolved and never kept:
+ * `.` and empty segments go, `..` drops the segment before it and stops at the root, so a built link can never step out
+ * of `/{lang}/app` or out of its brand once the browser normalises it.
+ */
 function cleanPath(rest: string): string {
   const cut = rest.search(/[?#]/);
   const p = cut === -1 ? rest : rest.slice(0, cut);
-  const trimmed = p.replace(/\/+$/, "");
-  return trimmed === "" || trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const out: string[] = [];
+  for (const seg of p.split("/")) {
+    if (seg === "" || !DOT_SEGMENT.test(seg)) {
+      if (seg !== "") out.push(seg);
+    } else if (seg.replace(/%2e/gi, ".") === "..") out.pop();
+  }
+  return out.length ? `/${out.join("/")}` : "";
 }
 
 /** The section a path belongs to ("" for the inbox, null when it is not a brand path). The longest match wins. */
@@ -110,8 +122,10 @@ export function appHref(lang: Lang, rest: string, ctx?: { brand?: string | null;
  * since the record belongs to the old brand; the query is dropped; a non-brand path goes to the inbox of `to`.
  */
 export function switchBrandPath(pathname: string, to: string): string {
-  const m = /^\/(ar|en)\/app(?:\/w\/(w_[a-z2-7]{16}))?(\/[^?#]*)?/.exec(pathname);
-  const lang: Lang = m && m[1] === "en" ? "en" : "ar";
+  // `app` and the handle end at a segment boundary: `/en/apple` or `/en/appx` is no app path, and a handle with more
+  // characters after it is no handle (it is not kept).
+  const m = /^\/(ar|en)\/app(?=[/?#]|$)(?:\/w\/(w_[a-z2-7]{16})(?=[/?#]|$))?(\/[^?#]*)?/.exec(pathname);
+  const lang: Lang = (m?.[1] ?? /^\/(ar|en)(?=[/?#]|$)/.exec(pathname)?.[1]) === "en" ? "en" : "ar";
   const handle = m?.[2] ?? null;
   const rest = m?.[3] ?? "";
   const inBrand = /^\/b\/([^/]+)(\/.*)?$/.exec(rest);

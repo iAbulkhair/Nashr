@@ -51,9 +51,9 @@ export function brandRows(raw: unknown): z.output<typeof BrandRow>[] {
 
 /**
  * Rule 2037: `activebrand:{login}`, a brand id. The Redis client reads a stored value that looks like a number back as
- * a number (a brand id is eight base-36 characters, so "12345678" can happen), so a number is turned back into its text. The text shape is `BRAND_ID_RE` from `brand-path.ts`, the same one `isBrandId` checks.
+ * a number (a brand id is eight base-36 characters, so "12345678" can happen), so a number is turned back into its text. The text shape is `BRAND_ID_RE` from `brand-path.ts`, the same one `isBrandId` checks, for the text of a number too (`1.5` or `1e+21` is no brand id).
  */
-export const ActiveBrandId = z.union([z.string().regex(BRAND_ID_RE), z.number().transform((n) => String(n))]);
+export const ActiveBrandId = z.union([z.string().regex(BRAND_ID_RE), z.number().transform((n) => String(n)).pipe(z.string().regex(BRAND_ID_RE))]);
 
 /**
  * Rule 2038: `conn:{scope}:{provider}`, one connection with its credentials sealed in `enc`. `provider` and `enc` are

@@ -36,7 +36,7 @@ const link = (over: Partial<LinkInfo> = {}): LinkInfo => ({
   provider: "gcal", account: "owner@brand.example", calendarName: "Brand marketing", proof: "domain", state: "ok", rev: 3, today: [], ...over,
 });
 const view = (state: CalState, lang: "ar" | "en" = "en", extra: Partial<Parameters<typeof CalendarLinkView>[0]> = {}) =>
-  renderToStaticMarkup(createElement(CalendarLinkView, { t: appDict[lang], lang, providers: { gcal: true, mscal: true }, state, now: Date.parse("2026-10-10T10:00:00Z"), ...extra }));
+  renderToStaticMarkup(createElement(CalendarLinkView, { t: appDict[lang], lang, providers: { gcal: true, mscal: true }, state, now: Date.parse("2026-10-10T10:00:00Z"), startHref: (p) => `/api/connect/${p}/start?lang=${lang}`, ...extra }));
 /** The markup writes an apostrophe as an entity. */
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#x27;");
 const text = (html: string) => html.replace(/<[^>]*>/g, "\n").replace(/\s+/g, " ");
@@ -292,7 +292,7 @@ describe("who sees the card (rule 923)", () => {
   });
 
   it("the owner's page has the card; an admin's and a member's page do not", async () => {
-    const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }) }))).text();
+    const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang, brand: "default" }) }))).text();
     const o = await newUser("calcard");
     await signIn(o.email);
     expect(await render("en")).toContain('id="todo-calendar"');

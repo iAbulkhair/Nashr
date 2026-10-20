@@ -95,7 +95,9 @@ export function useWorkspace(): Workspace | null {
 /**
  * The brand the session is acting in (`user.brandId`, set by the layout), or null outside the provider. On a `/b/{id}` page
  * it is the page's brand; on an account page it is the brand the session falls back to. A shell component on an account
- * page that mutates a brand route sends it explicitly (`sessionBrandHeaders`, R-C12).
+ * page that mutates a brand route sends it explicitly (`sessionBrandHeaders`, R-C12). It is the brand the layout was
+ * rendered with, so it may lag after a soft navigation to another brand's page until the layout renders again; a request
+ * from a `/b/{id}` page takes the page's brand from the path (`installBrandFetch`), never from here.
  */
 export function useBrandId(): string | null {
   return useContext(BrandCtx);

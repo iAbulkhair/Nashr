@@ -48,7 +48,7 @@ const patch = (id: string, body: unknown) => itemRoute.PATCH(json(`/api/secretar
 /** Riyadh wall time of an instant, as the datetime-local input sends it. */
 const local = (ms: number) => zoneLocalInput(ms, "Asia/Riyadh");
 const H = 3600e3;
-const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }) }))).text();
+const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang, brand: "default" }) }))).text();
 
 async function owner(prefix: string, brand: Brand = BRAND): Promise<User> {
   const u = await newUser(prefix);

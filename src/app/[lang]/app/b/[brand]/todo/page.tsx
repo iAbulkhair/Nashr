@@ -50,7 +50,7 @@ const calReady = (id: "gcal" | "mscal") => {
  */
 export const generateMetadata = appScreenMeta("todo");
 
-export default async function Page({ params, searchParams }: { params: Promise<{ lang: string; brand?: string }>; searchParams?: Promise<{ series?: string | string[] }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ lang: string; brand: string }>; searchParams?: Promise<{ series?: string | string[] }> }) {
   const { lang, brand: routeBrand } = await params;
   if (!isLang(lang)) notFound();
   const u = await currentUser();

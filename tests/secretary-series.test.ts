@@ -835,7 +835,7 @@ describe("rule 507: the CSV export", () => {
 });
 
 describe("rule 509: the repeat controls and the series view on the to-do page", () => {
-  const render = async (lang: "ar" | "en", series?: string | string[]) => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }), ...(series === undefined ? {} : { searchParams: Promise.resolve({ series }) }) }))).text();
+  const render = async (lang: "ar" | "en", series?: string | string[]) => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang, brand: "default" }), ...(series === undefined ? {} : { searchParams: Promise.resolve({ series }) }) }))).text();
   const ARABIC_INDIC = /[٠-٩۰-۹]/;
   const switchesOf = (html: string) => [...html.matchAll(/<button[^>]*role="switch"[^>]*>/g)].map((m) => m[0]);
   const timesOf = (html: string) => [...html.matchAll(/<input[^>]*type="time"[^>]*>/g)].map((m) => m[0]);

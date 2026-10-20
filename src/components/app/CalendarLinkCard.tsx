@@ -44,7 +44,8 @@ export type CalState =
   | { kind: "linked"; link: LinkInfo }
   | { kind: "reconnect"; link: LinkInfo };
 
-const startHref = (p: CalProviderId, lang: "ar" | "en", apiHref: (path: string) => string) => apiHref(`/api/connect/${p}/start?lang=${lang}`);
+/** The connector start link for `p`, with the page's brand in the query (R-C13: a navigation cannot carry the header). */
+const startPath = (p: CalProviderId, lang: "ar" | "en") => `/api/connect/${p}/start?lang=${lang}`;
 const isProvider = (p: unknown): p is CalProviderId => p === "gcal" || p === "mscal";
 
 /** «قبل 4 دقائق» / "4 minutes ago" in Latin digits, from an ISO time; "" when the time does not parse. */
@@ -61,20 +62,20 @@ export function sinceText(iso: string, lang: "ar" | "en", now: number): string {
 /**
  * The card's markup for one state (no fetching, so a test can render each state). `busy` names the running write (`save`,
  * `unlink`, `change`), `confirming` shows the inline "Disconnect?" question, `picked` the chosen calendar index and `declared` the
- * ticked box. `fromError` is the provider's return error code, shown above the card's body.
+ * ticked box. `fromError` is the provider's return error code, shown above the card's body. `startHref` builds the Connect and
+ * Reconnect links (the card passes them with the page's brand, `useApiHref`), so the view reads nothing but its props.
  */
-export function CalendarLinkView({ t, lang, providers, state, now, busy = null, error = null, confirming = false, picked = null, declared = false, fromError = null, onPick, onDeclare, onSave, onChange, onBack, onRefresh, onConfirmUnlink, onUnlink, onRetry }: {
-  t: AppDict; lang: "ar" | "en"; providers: CalProviders; state: CalState; now: number; busy?: string | null; error?: string | null; confirming?: boolean;
+export function CalendarLinkView({ t, lang, providers, state, now, startHref, busy = null, error = null, confirming = false, picked = null, declared = false, fromError = null, onPick, onDeclare, onSave, onChange, onBack, onRefresh, onConfirmUnlink, onUnlink, onRetry }: {
+  t: AppDict; lang: "ar" | "en"; providers: CalProviders; state: CalState; now: number; startHref: (p: CalProviderId) => string; busy?: string | null; error?: string | null; confirming?: boolean;
   picked?: number | null; declared?: boolean; fromError?: CalErrorCode | null;
   onPick?: (choice: number) => void; onDeclare?: (on: boolean) => void; onSave?: () => void; onChange?: () => void; onBack?: () => void; onRefresh?: () => void;
   onConfirmUnlink?: (on: boolean) => void; onUnlink?: () => void; onRetry?: () => void;
 }) {
   const T = t.todo.calLink;
   const off = !!busy;
-  const apiHref = useApiHref();
   const connect = (p: CalProviderId, label: string) =>
     providers[p] ? (
-      <a href={startHref(p, lang, apiHref)} className="btn btn-primary btn-sm">{label}</a>
+      <a href={startHref(p)} className="btn btn-primary btn-sm">{label}</a>
     ) : (
       <span className="btn btn-secondary btn-sm opacity-60" aria-disabled="true">{label} · {T.soon}</span>
     );
@@ -211,7 +212,7 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
           {!confirming && (
             <div className="flex flex-wrap items-center gap-2">
               {providers[state.link.provider] ? (
-                <a href={startHref(state.link.provider, lang, apiHref)} className="btn btn-primary btn-sm">{T.reconnect}</a>
+                <a href={startHref(state.link.provider)} className="btn btn-primary btn-sm">{T.reconnect}</a>
               ) : (
                 <span className="btn btn-secondary btn-sm opacity-60" aria-disabled="true">{T.reconnect} · {T.soon}</span>
               )}
@@ -242,6 +243,7 @@ function linkOf(j: { link?: unknown }): LinkInfo | null | undefined {
  */
 export default function CalendarLinkCard({ t, lang, providers }: { t: AppDict; lang: "ar" | "en"; providers: CalProviders }) {
   const T = t.todo.calLink;
+  const apiHref = useApiHref();
   const [state, setState] = useState<CalState>({ kind: "loading" });
   const [picked, setPicked] = useState<number | null>(null);
   const [declared, setDeclared] = useState(false);
@@ -358,7 +360,7 @@ export default function CalendarLinkCard({ t, lang, providers }: { t: AppDict; l
 
   return (
     <CalendarLinkView
-      t={t} lang={lang} providers={providers} state={state} now={now} busy={busy} error={error?.text ?? null} confirming={confirming}
+      t={t} lang={lang} providers={providers} state={state} now={now} startHref={(p) => apiHref(startPath(p, lang))} busy={busy} error={error?.text ?? null} confirming={confirming}
       picked={picked} declared={declared} fromError={fromError}
       onPick={setPicked} onDeclare={setDeclared} onSave={save} onChange={change} onRefresh={() => state.kind === "choose" && void listCalendars(state.link, state.back)}
       onBack={() => { if (state.kind === "choose") { setPicked(null); setDeclared(false); retry(); } }}

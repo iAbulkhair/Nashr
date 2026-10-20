@@ -51,6 +51,10 @@ function walk(dir: string): string[] {
 const pageFile = (section: string, root: string) => (section === "" ? `${root}/page.tsx` : `${root}/${section}/page.tsx`);
 
 describe("rule 885: brand pages live under /{lang}/app/b/[brand], account pages stay put", () => {
+  it("the to-do page's route brand is required in its params type (fix round item 20)", () => {
+    expect(readFileSync(`${BRAND_DIR}/todo/page.tsx`, "utf8")).toMatch(/params: Promise<\{ lang: string; brand: string \}>/);
+  });
+
   it("BRAND_SECTIONS holds the four brand settings sections (R-C6, R-C10)", () => {
     for (const s of ["settings/brand", "settings/connections", "settings/governance", "settings/notifications"]) expect(BRAND_SECTIONS, s).toContain(s);
   });
@@ -173,7 +177,9 @@ describe("rule 891: /app goes to the last chosen brand, the b/[brand] layout hol
     const integ = await go("ar", ["integrations"], { error: "denied" });
     expect(integ.url.pathname + integ.url.search).toBe("/ar/app/b/b2/settings/connections?error=denied");
     expect((await go("ar", ["governance"])).url.pathname).toBe("/ar/app/b/b2/settings/governance");
-    expect((await go("ar", ["chat"], { conv: "c1" })).url.pathname + "?conv=c1").toBe("/ar/app/b/b2/chat?conv=c1");
+    const chat = await go("ar", ["chat"], { conv: "c1" });
+    expect(chat.url.pathname).toBe("/ar/app/b/b2/chat");
+    expect([...chat.url.searchParams]).toEqual([["conv", "c1"]]);
     expect((await go("ar", ["todo", "x"])).url.pathname).toBe("/ar/app/b/b2/todo/x");
   });
 
@@ -185,6 +191,17 @@ describe("rule 891: /app goes to the last chosen brand, the b/[brand] layout hol
       await expect(run("ar", legacy), legacy.join("/")).rejects.toMatchObject(NOT_FOUND);
     }
     await expect(run("xx", ["tasks"])).rejects.toMatchObject(NOT_FOUND);
+  });
+
+  it('an empty, "." or ".." segment is a 404, never a redirect that walks out of its section (fix round item 12)', async () => {
+    const { default: Legacy } = await import("@/app/[lang]/app/[...legacy]/page");
+    await ownerOnB2("ld");
+    const run = (legacy: string[]) => Legacy({ params: Promise.resolve({ lang: "ar", legacy }), searchParams: Promise.resolve({}) });
+    for (const legacy of [["tasks", ".."], ["tasks", "."], ["tasks", ""], ["..", "tasks"], [".", "chat"], ["", "tasks"], ["settings", "..", "brand"], ["files", "x", ".."]]) {
+      await expect(run(legacy), JSON.stringify(legacy)).rejects.toMatchObject(NOT_FOUND);
+    }
+    // A segment that only contains dots among other characters is an ordinary record id.
+    expect((await redirected(run(["files", "a..b"]))).url.pathname).toBe("/ar/app/b/b2/files/a..b");
   });
 
   it("signed out, an old brand path goes to login", async () => {

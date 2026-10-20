@@ -20,7 +20,7 @@ vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next
 import Page from "@/app/[lang]/app/b/[brand]/todo/page";
 
 const BRAND: Brand = { name: "Rif", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-09-29" };
-const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }) }))).text();
+const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang, brand: "default" }) }))).text();
 const add = async (body: Record<string, unknown>) => (await (await listRoute.POST(json("/api/secretary", "POST", body))).json()).item;
 const patch = (id: string, body: unknown) => itemRoute.PATCH(json(`/api/secretary/${id}`, "PATCH", body), { params: Promise.resolve({ id }) });
 

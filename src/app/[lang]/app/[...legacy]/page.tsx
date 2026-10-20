@@ -36,6 +36,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const u = await currentUser();
   if (!u) redirect(appHref(lang, "/login"));
   if (!isBrandId(u.brandId)) notFound();
+  // An empty, "." or ".." segment names no page: it would only walk the redirect into another section.
+  if (legacy.some((seg) => seg === "" || seg === "." || seg === "..")) notFound();
   const query = queryOf(sp);
   const name = legacy.length === 1 ? legacy[0] : "";
   if (name && Object.hasOwn(LEGACY_SETTINGS, name)) redirect(settingsHref(lang, LEGACY_SETTINGS[name], u.brandId) + query);
