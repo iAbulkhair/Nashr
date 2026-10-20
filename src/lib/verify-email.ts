@@ -10,7 +10,7 @@ import { allow, clientIp, retryLater, sameSecret } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
 import { mailReady, sendEmail } from "./notify";
 import { withLoginLock, withMoveTeamLock } from "./team";
-import { createPersonRecord, getPerson, laterStamp, updatePerson, withPersonLock } from "./person";
+import { createPersonRecord, getPerson, laterStamp, updatePerson, withMovePersonLock } from "./person";
 import { movePasskeys } from "./passkeys";
 import { log } from "./log";
 import { ownerOf } from "./membership";
@@ -224,10 +224,11 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
     // below lets move) and the new address's (`toPid`), the smaller first, between the login locks and `lock:user` as
     // rule 2139 orders them. So an `addPasskey`, `updatePerson` or sign-in counter write of either person waits for the
     // move, and the passkeys move under both locks. A held person lock throws `person_lock_timeout` before anything is
-    // read or written (a 409 `busy` in both routes).
+    // read or written (a 409 `busy` in both routes). Both expire after 60 s like the move's `lock:team`
+    // (`withMovePersonLock`), not the shared 10 s.
     const [fromPid, toPid] = [storedPersonId(id), storedPersonId(to)];
     const [pa, pb] = fromPid < toPid ? [fromPid, toPid] : [toPid, fromPid];
-    return await withLoginLock(first, () => withLoginLock(second, () => withPersonLock(pa, () => withPersonLock(pb, () => withUserLock(id, (cur) => withMoveTeamLock(id, async (): Promise<MoveResult> => {
+    return await withLoginLock(first, () => withLoginLock(second, () => withMovePersonLock(pa, () => withMovePersonLock(pb, () => withUserLock(id, (cur) => withMoveTeamLock(id, async (): Promise<MoveResult> => {
       if (!(await opts.may(cur))) return "not_allowed";
       // An account with a team never moves (both callers refuse one before this): checked again here, under
       // `lock:team`, before the first write. A member or an invite refuses.

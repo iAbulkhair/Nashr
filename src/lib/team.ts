@@ -14,7 +14,7 @@ import { teamApprovals } from "./approver-stats";
 import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "./keys";
 import { parseStored, type MembershipValue } from "./stored";
 import { aidOf, getMembership, legacyHomeFrom, membershipFromRaw, ownerOf, type Membership } from "./membership";
-import { createPersonRecord, getPerson, withPersonLock } from "./person";
+import { createPersonRecord, getPerson, withMovePersonLock, withPersonLock } from "./person";
 import { logTeam } from "./teamlog";
 import { MULTI_ORG, PERSON_ID } from "./multi-org";
 import { mfaKeys } from "./mfa";
@@ -647,7 +647,8 @@ async function memberByEmail(aid: AccountId, email: string): Promise<MemberView 
  * A member moves its own login to a new address it has proved (rules 1942-1945, src/lib/email-change.ts). R1's copy
  * semantics: the record is written again at the new address, so its person id is the new address. Locks in the
  * documented order (rule 2139): `lock:team:{aid}`, both login locks (the smaller address first, as in
- * `moveUnverifiedAccount`), both person locks (the same order), then the old member record's lock. Inside: the target
+ * `moveUnverifiedAccount`), both person locks (the same order; 60 s expiry, `withMovePersonLock`, as they span the whole
+ * move), then the old member record's lock. Inside: the target
  * must hold no owner or member record at all, the record is written at the new address with a fresh session window
  * (every device signs in again, an old session issued for the target address never resolves to it), the membership row,
  * the roster, `orgs:` and the active brand follow the new person id, `carry` moves what other modules keep per login
@@ -663,7 +664,7 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
   const aid = aidFrom(owner);
   const [oldPid, toPid] = [pidFrom(old), pidFrom(to)];
   const [first, second] = old < to ? [old, to] : [to, old];
-  return withTeamLock(aid, () => withLoginLock(first, () => withLoginLock(second, () => withPersonLock(pidFrom(first), () => withPersonLock(pidFrom(second), async () => {
+  return withTeamLock(aid, () => withLoginLock(first, () => withLoginLock(second, () => withMovePersonLock(pidFrom(first), () => withMovePersonLock(pidFrom(second), async () => {
     const res = await withMemberLock(old, async (cur) => {
       if (cur.memberOf !== aid) return "not_found" as const;
       const [taken, m, read] = await Promise.all([getLogin(to), getMember(to), readMembership(aid, oldPid)]);

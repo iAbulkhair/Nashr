@@ -176,6 +176,16 @@ export const withPersonLock = <T,>(pid: PersonId, fn: () => Promise<T>): Promise
 
 /** What `withPersonLock` throws when the lock stays taken; routes answer it 409 `busy` (nothing was written). */
 export const PERSON_LOCK_TIMEOUT = "person_lock_timeout";
+
+/**
+ * The address moves' person locks expire after 60 s, not 10 s (passkeys Task 6 fix round 1), the same as their
+ * `lock:team` (`MOVE_TEAM_LOCK_TTL_SECONDS` in src/lib/team.ts): a move holds them across the user and team lock waits,
+ * the carry, the passkey move and the old person's wipe, and the shared lock has no renewal. A held lock still throws
+ * `person_lock_timeout` after the same wait; released as soon as the move ends.
+ */
+export const MOVE_PERSON_LOCK_TTL_SECONDS = 60;
+export const withMovePersonLock = <T,>(pid: PersonId, fn: () => Promise<T>): Promise<T> =>
+  withNamedLock(personKey.lock(pid), fn, PERSON_LOCK_TIMEOUT, MOVE_PERSON_LOCK_TTL_SECONDS);
 export const isPersonLockTimeout = (e: unknown): boolean => e instanceof Error && e.message === PERSON_LOCK_TIMEOUT;
 
 /** The credential and profile fields a write may change (`updatePerson`). */

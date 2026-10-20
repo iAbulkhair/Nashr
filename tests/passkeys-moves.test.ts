@@ -133,12 +133,13 @@ describe("rule 2424: an address move carries the set to the new pid", () => {
 function watchLocks() {
   const held = new Set<string>();
   const order: string[] = [];
+  const ttls = new Map<string, number | undefined>();
   const writes: { key: string; held: string[] }[] = [];
   const lock = db.lock.bind(db);
   const unlock = db.unlock.bind(db);
   vi.spyOn(db, "lock").mockImplementation(async (key, ttl) => {
     const got = await lock(key, ttl);
-    if (got) { held.add(key); order.push(key); }
+    if (got) { held.add(key); order.push(key); ttls.set(key, ttl); }
     return got;
   });
   vi.spyOn(db, "unlock").mockImplementation(async (key) => {
@@ -153,7 +154,7 @@ function watchLocks() {
       return orig(...a);
     }) as never);
   }
-  return { order, writes };
+  return { order, ttls, writes };
 }
 
 describe("rule 2414: both moves write passkey keys only under both person locks, taken in rule 2139's order", () => {
@@ -169,6 +170,8 @@ describe("rule 2414: both moves write passkey keys only under both person locks,
     const both = [personKey.lock(e.pid), personKey.lock(storedPersonId(to))].sort();
     expect(w.writes.length).toBeGreaterThan(0);
     for (const x of w.writes) expect(x.held, x.key).toEqual(both);
+    // Fix round 1: the move's person locks expire after 60 s (`withMovePersonLock`), not the shared 10 s.
+    expect(both.map((k) => w.ttls.get(k))).toEqual([60, 60]);
   });
 
   it("the owner move: both person locks after both login locks and before lock:user, and every passkey write holds them", async () => {
@@ -184,6 +187,8 @@ describe("rule 2414: both moves write passkey keys only under both person locks,
     expect(at(accountKey.teamLock(acct(u)))).toBeGreaterThan(at(`lock:user:${acct(u)}`));
     expect(w.writes.length).toBeGreaterThan(0);
     for (const x of w.writes) expect(x.held, x.key).toEqual(persons);
+    expect(persons.map((k) => w.ttls.get(k))).toEqual([60, 60]);
+    expect(w.ttls.get(accountKey.teamLock(acct(u)))).toBe(60);
     expect(passkeyResidue(e.pid)).toEqual([]);
   });
 
@@ -203,11 +208,24 @@ describe("rule 2414: both moves write passkey keys only under both person locks,
       if (key === personKey.passkeys(e.pid)) { parked(); await gate; }
       return (set as (...a: unknown[]) => Promise<unknown>)(key, ...rest);
     }) as never);
+    // Fix round 1 (no sleep): the gate opens only once the move has tried lock:person:{old} and been refused, so the
+    // test always runs the wait it claims to.
+    let refusedOnce!: () => void;
+    const refused = new Promise<void>((r) => { refusedOnce = r; });
+    const lock = db.lock.bind(db);
+    vi.spyOn(db, "lock").mockImplementation(async (key, ttl) => {
+      const got = await lock(key, ttl);
+      if (key === personKey.lock(e.pid) && !got) refusedOnce();
+      return got;
+    });
     const add = addPasskey(e.pid, e.born, { id: late.credId, pk: late.cosePublicKey, counter: 0, transports: ["internal"], aaguid: "00000000-0000-0000-0000-000000000000", backedUp: true }, "Late");
     await isParked;
     const to = addr("pkracenew");
     const move = moveUnverifiedAccount((await currentUserOf(u.email))!, to);
-    await new Promise((r) => setTimeout(r, 300));
+    await refused;
+    // The move is waiting: nothing is written at the new address yet.
+    expect(await getLogin(to)).toBeNull();
+    expect(await rawSet(storedPersonId(to))).toBeNull();
     release();
     expect(await add).toMatchObject({ ok: true });
     expect(await move).toBe("ok");

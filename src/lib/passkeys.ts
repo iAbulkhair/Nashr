@@ -270,8 +270,11 @@ export async function passkeyKeys(pid: PersonId): Promise<string[]> {
  * What a move did (Task 3 fix round 2, ruling N5). `moved`: the set is at `to` (or a resumed move finished). `nothing`:
  * equal pids or no set under `from`. `dropped`: the `from` set was not the mover's (another birth, or broken) and went
  * with its own reverse entries. `kept_to`: `to` already held a live or broken set, which was kept, and the `from` set
- * went with its own reverse entries. `skipped`: a person could not be read and nothing was written; the caller must not
- * wipe `from` (the move is unfinished and a retry finishes it).
+ * went with its own reverse entries. `skipped`: a person could not be read and nothing was written. Both address moves
+ * then log it, finish the rest of the move and keep `from`'s passkey keys (the member move skips their delete, the owner
+ * move passes `keepPasskeys` to `wipeAccount`). Nothing retries the move, so they stay for good, inert: no login names the
+ * old pid (rule 2405) and a later person there has another birth (rule 2402). Unreachable in practice: both persons are
+ * read or written by the move just before.
  */
 export type PasskeyMove = "moved" | "nothing" | "dropped" | "kept_to" | "skipped";
 
