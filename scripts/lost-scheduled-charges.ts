@@ -1,5 +1,5 @@
 // Lists scheduled work that was charged and never delivered before the claim-and-receipt release (rules 2470-2486,
-// docs/system/flows.md section 95), so the founder can refund each owner by hand from the console: founder decision
+// docs/system/flows.md section 98), so the founder can refund each owner by hand from the console: founder decision
 // 2026-10-20, "refund by hand case by case, no scan that writes". This script never writes anything.
 //
 // Usage:  npx --no-install jiti scripts/lost-scheduled-charges.ts

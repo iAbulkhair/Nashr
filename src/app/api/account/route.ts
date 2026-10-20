@@ -1,20 +1,21 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { createSession, currentUser, destroySession, revokeSessions, saveUser, strongPassword } from "@/lib/auth";
-import { withUserLock } from "@/lib/credits";
+import { createSession, currentUser, destroySession, strongPassword } from "@/lib/auth";
+import { isPersonLockTimeout, updatePerson } from "@/lib/person";
 import { wipeAccount } from "@/lib/account";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBook } from "@/lib/booking-token";
 import { revokeFeed } from "@/lib/feed-token";
 import { forbid } from "@/lib/roles";
-import { saveMember, withMemberLock } from "@/lib/team";
 import { ownPasswordMatches as matches } from "@/lib/own-password";
 import { acct } from "@/lib/account-id";
+import { isTeamLockTimeout } from "@/lib/team";
 import { unlinkGoogle } from "@/lib/google-signin";
 
 /**
- * PATCH {currentPassword, newPassword}: the acting login changes ITS OWN password. A member rewrites the member record
- * and signs out only its own other devices; the owner rewrites the account's and also loses every MCP token and grant.
+ * PATCH {currentPassword, newPassword}: the acting login changes ITS OWN password, on its person (`updatePerson`, which
+ * mirrors the member record or the legacy owner's account). Both sign out only their own other devices; the owner also
+ * loses every MCP token and grant.
  * Refused while a founder impersonates. DELETE {password}: wipe the account, owner only.
  * Rule 2301: the acting login's Google link goes with the old password, as its other devices do: a password change is
  * how a login takes back control, and a Google account someone else linked while signed in must not stay a way in.
@@ -31,24 +32,25 @@ export async function PATCH(req: Request) {
   if (!(await matches(u, b.currentPassword))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
   const hash = await bcrypt.hash(pw, 10);
 
+  // The PERSON's password (multi-workspace M1, rule 2132): `updatePerson` writes `person:` and mirrors the legacy record
+  // (the member record for a member, the account for a legacy owner) under the person lock, then the record's own.
+  // Every other device of this person is signed out (`sessionsAfter`). A held person lock answers 409 `busy`: the lock
+  // is taken before the first write, so nothing was written.
+  let me;
+  try {
+    me = await updatePerson(a.pid, { passHash: hash, sessionsAfter: new Date().toISOString() });
+  } catch (e) {
+    if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+    throw e;
+  }
+  if (!me) return NextResponse.json({ ok: false }, { status: 401 });
   if (a.kind === "member") {
-    // The member record only, under its own lock. Every other device of this member is signed out; the owner's hash,
-    // sessions, MCP token and connected apps are not touched.
-    const done = await withMemberLock(a.email, async (m) => {
-      if (m.memberOf !== acct(u)) return false;
-      m.passHash = hash;
-      m.sessionsAfter = new Date().toISOString();
-      await saveMember(m);
-      return true;
-    });
-    if (!done) return NextResponse.json({ ok: false }, { status: 401 });
-    // This member's own calendar feed and booking links end with the old password; the owner's and the others' stay.
+    // This member's own calendar feed, booking links and Google link (rule 2301) end with the old password; the owner's
+    // hash, sessions, MCP token and connected apps, and the other members' links, stay.
     await Promise.all([revokeFeed(a.email), revokeBook(a.email), unlinkGoogle(a.email)]);
   } else {
-    // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
-    await withUserLock(acct(u), async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
-    // Every other device is signed out, and every MCP token and connected app dies with the old password, exactly as in
-    // the reset route: a stolen bearer token must not outlive the password it was obtained with.
+    // Every MCP token and connected app dies with the old password, exactly as in the reset route: a stolen bearer token
+    // must not outlive the password it was obtained with. The owner's Google link goes too (rule 2301).
     await Promise.all([revokeAllMcp(acct(u)), revokeFeed(u.email), revokeBook(u.email), unlinkGoogle(u.email)]);
   }
   // This device stays signed in, as the same login that made the change.
@@ -65,7 +67,15 @@ export async function DELETE(req: Request) {
   if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { password?: string };
   if (!(await matches(u, b.password))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
-  await wipeAccount(acct(u));
+  // Each member left with nothing is deleted under `lock:person:{pid}` (`wipeMemberships`, multi-workspace M1): a timeout (person,
+  // login or member lock) stops the wipe with a 409 before `user:{owner}` and the owner's login are touched, and the
+  // owner's retry runs it again.
+  try {
+    await wipeAccount(acct(u));
+  } catch (e) {
+    if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+    throw e;
+  }
   await destroySession();
   return NextResponse.json({ ok: true });
 }

@@ -12,6 +12,7 @@ import { runLifecycle } from "@/lib/lifecycle";
 import { renewIfDue, saveSettledTopups } from "@/lib/credits";
 import { earlyOfferDue, grantEarlyOffer } from "@/lib/partners";
 import { followUps, notifEmailText } from "@/lib/notifications";
+import { getDigest } from "@/lib/notif-digest";
 import { emailAllowed, readPrefs } from "@/lib/notify-prefs";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
@@ -155,18 +156,20 @@ async function dailyFor(u: User): Promise<string> {
   const fu = await followUps(u, u.scope ?? u.email);
   if (fu.length) out.push(`followups:${fu.length}`);
   // Noor's brief email: every day, only when something waits, or never (Settings, Notifications; the old field reads the same, rule 1147).
-  const prefs = await readPrefs(u.scope ?? u.email, u.email);
+  const [prefs, digest] = await Promise.all([readPrefs(u.scope ?? u.email, u.email), getDigest(acct(u))]);
+  // With a digest on (rule 2356), the follow-ups reach the owner's email there, once, and not here as well.
+  const mailed = digest === "off" ? fu : [];
   if (brief) {
     out.push("brief");
     // "important": something waits for a decision, a follow-up fired, or a to-do is overdue or due today.
     const worth = emailAllowed(prefs, "brief", brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0);
-    const extra = fu.length ? `\n\n${notifEmailText(u, fu)}` : "";
+    const extra = mailed.length ? `\n\n${notifEmailText(u, mailed)}` : "";
     const app = `${appOrigin()}/${u.lang}/app`;
     const text = brief.text + extra + `\n\n${app}`;
     // The HTML part is the same text in the shared layout (rule 1961): the model's brief is untrusted, so `dailyBrief`
     // escapes every paragraph and links only the button.
     if (worth && (await sendEmail({ to: u.email, subject: u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, text, template: "dailyBrief", context: { date: brief.date, body: text, href: app }, locale: u.lang }))) out.push("email");
-  } else if (fu.length && prefs.brief !== "none") {
+  } else if (mailed.length && prefs.brief !== "none") {
     const subject = u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team";
     const text = notifEmailText(u, fu);
     if (await sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}/${u.lang}/app` } }, locale: u.lang })) out.push("email");

@@ -1,6 +1,6 @@
 # Paid scheduled work: charge once, refund always, hold for review (design)
 
-Status: **built** on 2026-10-20 after the founder's yes to all three recommendations in section 7 (flows section 95; rule 2483 not built). Written 2026-10-20 on branch `claude/lucid-faraday-kq261a` from main `70d1675`. Item 4 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2470-2489** are reserved for this work. It changes when owners are charged and refunded, so it needs the founder's yes before code (section 7).
+Status: **built** on 2026-10-20 after the founder's yes to all three recommendations in section 7 (flows section 98; rule 2483 not built). Written 2026-10-20 on branch `claude/lucid-faraday-kq261a` from main `70d1675`. Item 4 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2470-2489** are reserved for this work. It changes when owners are charged and refunded, so it needs the founder's yes before code (section 7).
 
 ## 1. Why
 

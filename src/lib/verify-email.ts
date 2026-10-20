@@ -9,7 +9,10 @@ import { moveReferral, registerCode } from "./referral";
 import { allow, clientIp, retryLater, sameSecret } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
 import { mailReady, sendEmail } from "./notify";
-import { withLoginLock } from "./team";
+import { withLoginLock, withMoveTeamLock } from "./team";
+import { createPersonRecord, getPerson, laterStamp, updatePerson } from "./person";
+import { ownerOf } from "./membership";
+import { accountKey, personKey, storedPersonId } from "./keys";
 
 /**
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
@@ -78,12 +81,11 @@ export async function hasPendingCode(email: string): Promise<boolean> {
 
 /** Stamp the address as proved (kept if it already is, so a repeat never moves the date) and drop the code and its counter. */
 export async function markVerified(email: string): Promise<void> {
-  await withUserLock(email, async (u) => {
-    if (!u.emailVerifiedAt) {
-      u.emailVerifiedAt = new Date().toISOString();
-      await saveUser(u);
-    }
-  });
+  // The proof is the PERSON's (multi-workspace M1, reconciliation 11): `updatePerson` stamps `person:`, mirrors a legacy
+  // owner's account and stamps every account the person owns, each only when unset. Only an owner proves an address here.
+  const login = await getLogin(email);
+  if (login?.kind !== "owner") throw new Error("user_not_found");
+  await updatePerson(login.pid, { emailVerifiedAt: new Date().toISOString() });
   await Promise.all([db.del(codeKey(email)), db.del(triesKey(email))]);
 }
 
@@ -172,7 +174,8 @@ export type MoveResult = "ok" | "exists" | "not_allowed" | "limit";
  *
  * Locks, in a fixed order: the login locks of both addresses (the alphabetically smaller first, so two moves crossing
  * each other cannot deadlock; src/lib/team.ts keeps its own order), then the old account's user lock, re-reading the
- * record inside it, so two moves from one account cannot both succeed. Inside: write the new record, register its
+ * record inside it, so two moves from one account cannot both succeed, then the account's `lock:team` (`moveOwnerLogin`,
+ * so no invite or accept runs during the move). Inside: write the new record, register its
  * referral code, carry the referral and the partner attribution, and only then wipe the old account. A stop before the
  * wipe leaves two records; the retry finds the copy (same createdAt, same password hash, still gated and unverified) and
  * finishes the wipe instead of answering `exists`. Rare residue after a stop: the referrer's list and the partner's set
@@ -181,6 +184,12 @@ export type MoveResult = "ok" | "exists" | "not_allowed" | "limit";
 export async function moveUnverifiedAccount(from: User, target: string): Promise<MoveResult> {
   const gated = (x: User) => x.gatedSignup === true && !x.emailVerifiedAt;
   return moveOwnerLogin(from, target, { may: gated, isCopy: gated });
+}
+
+/** Does the account have a member or a pending invite (`members:{id}`, `invites:{id}`)? */
+async function hasTeam(id: string): Promise<boolean> {
+  const counts = await db.scardMany([accountKey.members(id), accountKey.invites(id)]);
+  return counts.some((n) => n > 0);
 }
 
 /**
@@ -201,21 +210,54 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
   if (to === old) return "exists";
   const [first, second] = old < to ? [old, to] : [to, old];
   try {
-    return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(id, async (cur): Promise<MoveResult> => {
+    // Rule 2139: `lock:team:{id}` is taken right inside `lock:user`, before the first read that decides and before any
+    // write, and held until the old account is wiped. This path takes it after `lock:user` (the out-of-order step it
+    // always had through `wipeAccount` → `wipeMemberships`, now taken at the start). Under it no invite and no accept of this
+    // account can run, so the one team check below is final: the wipe meets no member and never takes a member's locks
+    // under `lock:user`. A `lock:team` that cannot be had throws `team_lock_timeout` with nothing written (a 409 `busy`
+    // in both routes). `withMoveTeamLock` gives this holder a 60 s expiry (no renewal exists); the login and user locks
+    // keep their 10 s, the bound this move always had.
+    return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(id, (cur) => withMoveTeamLock(id, async (): Promise<MoveResult> => {
       if (!(await opts.may(cur))) return "not_allowed";
+      // An account with a team never moves (both callers refuse one before this): checked again here, under
+      // `lock:team`, before the first write. A member or an invite refuses.
+      if (await hasTeam(id)) return "not_allowed";
       const now = Date.now();
       const today = utcDay(now);
       const used = cur.emailMoves && cur.emailMoves.day === today ? cur.emailMoves.n : 0;
       if (used >= VERIFY.movesPerDay) return "limit";
-      const login = await getLogin(to);
-      const unfinished = login?.kind === "owner" && opts.isCopy(login.user) && login.user.createdAt === cur.createdAt && login.user.passHash === cur.passHash;
+      // The owner's credentials are the PERSON's (rule 2132). The move copies a legacy owner's account to the new address;
+      // an account a `p_` person owns moves with the person (release M2), never here.
+      const pid = ownerOf(cur);
+      if (pid !== storedPersonId(id)) return "not_allowed";
+      const [login, me] = await Promise.all([getLogin(to), getPerson(pid)]);
+      if (!me) return "not_allowed";
+      const unfinished = login?.kind === "owner" && opts.isCopy(login.user) && login.user.createdAt === cur.createdAt && login.person.passHash === me.passHash;
       if (login && !unfinished) return "exists";
       // A fresh session window (as `createUser` stamps): a session issued earlier for the TARGET address (a deleted former
       // owner, a removed member, this owner's own devices after A to B to A) must never resolve to the moved account. The
       // session the route opens right after has `at >= sessionsAfter` (the check is a strict `<`), so it still resolves.
       const fresh = new Date(now).toISOString();
-      if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh });
-      else await saveUser({ ...cur, id: to, email: to, sessionsAfter: fresh, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
+      // The device stamp is the later of the moved person's and the record written (a stamp never moves backwards), the
+      // same on both records.
+      const dev = laterStamp(me.devicesAfter, (unfinished ? login.user : cur).devicesAfter);
+      const devices = dev ? { devicesAfter: dev } : {};
+      if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh, ...devices });
+      else await saveUser({ ...cur, id: to, email: to, sessionsAfter: fresh, ...devices, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
+      // The person at the new address (multi-workspace M1, rule 2132), written whole (reconciliation 6: a leftover row at
+      // `person:{to}` lends nothing): the moved owner's password, the account's birth, the fresh session stamp, and the
+      // proof only when this move proved the address (or a stopped run's copy already carried one). Under both login
+      // locks, without `lock:person` (`userLockHeld`: this runs inside `lock:user`, which comes after it in rule 2139's
+      // order); the address is claimed only below, so nothing else can write this person.
+      const copy = unfinished ? login.user : null;
+      const toPid = storedPersonId(to);
+      await Promise.all([
+        createPersonRecord(
+          { pid: toPid, email: to, name: me.name, lang: me.lang, passHash: me.passHash, createdAt: cur.createdAt, sessionsAfter: fresh, devicesAfter: dev, emailVerifiedAt: copy ? copy.emailVerifiedAt : opts.proved ? fresh : undefined },
+          { loginLocked: true, userLockHeld: true },
+        ),
+        db.sadd(personKey.orgs(toPid), to),
+      ]);
       // The new address's login index (rule 1983: under both login locks, after `getLogin(to)` found nothing or this copy).
       await claimLogin(to, to);
       if (opts.carry) await opts.carry(old, to);
@@ -223,9 +265,9 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
       await dropVerifyCode(old);
-      await wipeAccount(id, { userLocked: true, loginLocked: true });
+      await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true });
       return "ok";
-    })));
+    }))));
   } catch (e) {
     // The account vanished under the lock (a parallel move or a deletion won): nothing here to move.
     if (e instanceof Error && e.message === "user_not_found") return "not_allowed";

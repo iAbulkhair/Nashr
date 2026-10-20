@@ -13,9 +13,9 @@ import { chatTrialKey, usageMonthKeys } from "./usage";
 import { OWNER_SYNC_KEY, autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
-import { membersKey, wipeTeam } from "./team";
-import { revokeBook, revokeBooks } from "./booking-token";
-import { revokeFeed, revokeFeeds } from "./feed-token";
+import { holdsElsewhere, membersKey, rosterLinks, wipeMemberships, withLoginLock } from "./team";
+import { revokeBook } from "./booking-token";
+import { revokeFeed } from "./feed-token";
 import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
 import { revokeCalendarLinks } from "./secretary-gcal";
@@ -38,8 +38,9 @@ import { fileProposalKeys } from "./file-proposals";
 import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
 import { log } from "./log";
-import { type Scope, accountKey, globalKey, workspaceScope, wsKey } from "./keys";
+import { type Scope, accountKey, globalKey, personKey, storedAccountId, storedPersonId, workspaceScope, wsKey } from "./keys";
 import { weekStartUtc, weeklyClaim } from "./schedule";
+import { ownerOf } from "./membership";
 import { getAccount, normalizeEmail, releaseLogin } from "./auth";
 
 /**
@@ -66,28 +67,45 @@ async function revokeComposio(scopes: Scope[]) {
 
 /**
  * Wipe every record of an account: all brand scopes, files, tasks, chats, connections, tokens, the user itself, and the
- * team (every member login, member active brand, invite and both indexes, `wipeTeam`). Without the team cascade a
- * member login would point at an email that anyone can register again, and inherit that new account.
+ * team (every membership, invite and both indexes, `wipeMemberships`). Without the team cascade a member login would point
+ * at an email that anyone can register again, and inherit that new account.
+ *
+ * Persons (multi-workspace M1, plan reconciliation 7, rule 2126): a member who belongs to another account, or owns one,
+ * keeps signing in there, and every key of that account stays; a member with nothing left goes as R1 deleted a member
+ * login (`deleteMembership`). The OWNER person's per-login security pack (two-step sign-in, a waiting address change, the
+ * Google link both ways, every device session), person row, account list, last pick and login index go only when the
+ * owner holds nothing else, decided under the owner's `lock:login`; with `MULTI_ORG` off a legacy owner never does, so
+ * this is exactly R1's deletion. Member addresses are no longer listed here: their pack goes in `deleteMembership`.
  *
  * `id` is the account id (`acct(u)`, rule 1980): every account key below is built from it. The owner's sign-in address
  * is read from the record (in R1 it equals the id), and its login index goes with the account; another account's index
  * is never deleted (`releaseLogin` deletes only an index that names this account, rule 1999). `loginLocked`: the caller
  * holds `lock:login:{address}` already (the address move), so the release does not take it again (security review L1).
+ * `teamLocked`: the caller holds `lock:team:{id}` (the address move, `withMoveTeamLock`), so `wipeMemberships` does not
+ * take it.
  */
-export async function wipeAccount(id: string, opts: { userLocked?: boolean; loginLocked?: boolean } = {}) {
+export async function wipeAccount(id: string, opts: { userLocked?: boolean; loginLocked?: boolean; teamLocked?: boolean } = {}) {
   const e = id;
-  const login = normalizeEmail((await getAccount(e))?.email ?? e);
+  // The account id as the callers hold it (`acct(u)`, read from a resolved account or the console's lookup by address).
+  const aid = storedAccountId(e);
+  const account = await getAccount(e);
+  const login = normalizeEmail(account?.email ?? e);
+  // The owner person: `ownerOf` the record, else (a retry after the record went) the legacy owner, whose id is the account's.
+  const self = account ? ownerOf(account) : storedPersonId(e);
   // Rule 1955: no charge after the owner asked to delete. Renewal turns off and the saved card goes under the account
   // lock before anything slow can fail, so a retry after a failed wipe still finds nothing to charge, and a renewal
   // already running stops at its own re-check under that lock (src/lib/billing.ts `chargeSavedCard`). A caller already
   // inside `withUserLock(email)` (the address move, `moveOwnerLogin`) says so: the lock is not reentrant.
   await stopRenewals(e, opts);
   // Calendar feed and booking links first, before anything slow can fail and before the roster is deleted: the owner's and every roster
-  // member's (`members:{owner}`). A member added after this read is revoked by `wipeTeam` under `lock:team`. A failure
-  // stops the wipe (a retry runs it again) rather than leaving a working link behind a half-wiped account.
-  const logins = [login, ...(await db.smembers(membersKey(e)))];
+  // member's (`members:{owner}`), each in THIS account only (`rosterLinks`: the (person, account) pointers, and the legacy
+  // per-login ones only for a person whose home this account is, so a member's links in its other accounts stay). A member
+  // added after this read is revoked by `wipeMemberships` under `lock:team`. A failure stops the wipe (a retry runs it
+  // again) rather than leaving a working link behind a half-wiped account.
+  const roster = await db.smembers(membersKey(e));
+  const links = [{ pid: self, aid, login, home: true }, ...(await rosterLinks(aid, roster))];
   // The owner's linked marketing calendars (Reem B3), every brand's: only our side is dropped, the owner removes access at the provider.
-  await Promise.all([revokeFeeds(logins), revokeBooks(logins), revokeCalendarLinks(e)]);
+  await Promise.all([pmap(links, (w) => revokeFeed(w)), pmap(links, (w) => revokeBook(w)), revokeCalendarLinks(e)]);
   // The account's own brand list, read under its owner email: the scopes come from our records, never from a request.
   const scopes = (await listBrands(e)).map((b) => workspaceScope(e, b.id));
   // Each conversation goes through the writer lock first (`deleteConversation`: its record, its thread and its id in the
@@ -182,7 +200,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
       // The notification choices, per brand (src/lib/notify-prefs.ts `profileKey`): only the default brand's was deleted.
       profileKey(s),
-      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
+      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
     );
   });
   // Our media copies on disk (rule 1761): every file of every brand, its index entries and the space they held. A disk
@@ -196,12 +214,17 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // The saved Paymob card token (src/lib/billing.ts): it charges the card, so it never outlives the account. The intents,
   // transaction records and done markers stay to their TTL: they hold no card data, and the founder may still refund.
   keys.push(...paymobAccountKeys(e));
-  // The account security pack (rule 1954; rules 1930-1956), for the owner and every member login: two-step sign-in (the enrolment
-  // and a setup in progress), a waiting address change (src/lib/email-change.ts) and the Google link both ways
-  // (src/lib/google-signin.ts). The device lists and the sessions they name go below, with `revokeAllDevices`.
-  keys.push(...logins.flatMap((l) => [...mfaKeys(l), accountKey.emailChange(l), accountKey.emailChangeTries(l), accountKey.googleSub(l)]));
-  const subs = await db.mget<string>(logins.map((l) => accountKey.googleSub(l)));
-  keys.push(...subs.filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(s)).map((s) => globalKey.googleAccount(s)));
+  // The account security pack (rule 1954; rules 1930-1956) of the OWNER's login: two-step sign-in (the enrolment and a
+  // setup in progress), a waiting address change (src/lib/email-change.ts) and the Google link both ways
+  // (src/lib/google-signin.ts), with the owner's person row, account list and last pick. Deleted in `finish` only when the
+  // owner holds nothing else (`alone`); the device lists and the sessions they name go below, with `revokeAllDevices`. A
+  // member's pack goes with its last membership (`deleteMembership`, src/lib/team.ts).
+  const sub = await db.get<string>(accountKey.googleSub(login));
+  const personal = [
+    ...mfaKeys(login), accountKey.emailChange(login), accountKey.emailChangeTries(login), accountKey.googleSub(login),
+    ...[sub].filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(s)).map((s) => globalKey.googleAccount(s)),
+    personKey.person(self), personKey.orgs(self), personKey.lastOrg(self),
+  ];
   // A founding seat and a price-lock place (src/lib/founding.ts, rule 1712): the account's email leaves both counted sets.
   await freePlaces(e);
 
@@ -214,7 +237,9 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // code, the referral set and the ledger. The account also leaves its own partner's referral set.
   keys.push(...(await forgetPartnerData(e, login)));
   keys.push(accountKey.mcpGrants(e));
-  keys.push(`profile:${e}`, accountKey.mcpTokenOf(e), accountKey.brands(e), accountKey.activeBrand(login), accountKey.user(e));
+  // The owner's active brand here: the legacy per-login key (this account is the owner's home) and the per-(person,
+  // account) one (multi-workspace M1).
+  keys.push(`profile:${e}`, accountKey.mcpTokenOf(e), accountKey.brands(e), accountKey.activeBrand(login), personKey.activeBrand(self, aid), accountKey.user(e));
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
   // referral graph, share-bonus markers and activity history behind, so re-registering the same address inherited
   // them. The other `notifseen:` markers are not listed: they live a week at most after their last write (Reem's to-do
@@ -222,6 +247,10 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // their suffix cannot be enumerated (the ones that can, per brand, are deleted above).
   keys.push(
     accountKey.notifications(e),
+    // The digest choice, its window and its claim (rule 2357); the account leaves the tick's set below.
+    accountKey.digest(e),
+    accountKey.digestLast(e),
+    accountKey.digestLock(e),
     accountKey.referrals(e),
     accountKey.referredBy(e),
     `ref:${codeFor(e)}`,
@@ -239,17 +268,47 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
     // Lifetime thumbs counters from before the feedback log replaced them. No longer written, but never deleted either.
     ...AGENTS.flatMap((a) => [`fb:${e}:${a.id}:up`, `fb:${e}:${a.id}:down`]),
   );
-  // The account record goes first, then the team under its lock: an invite accepted while this runs either finished
-  // before `wipeTeam` took `lock:team` (and its member is deleted there) or re-reads the owner after it and finds none.
   // The founder feed of instruction changes holds this account's email: its rows leave with it (a busy lock stops the wipe, a retry runs it again).
   await removeFeedRowsFor(e);
-  await pmap(keys, (k) => db.del(k));
+  // The team first, then the account record, both under `lock:team` (`wipeMemberships` runs the deletes below as its
+  // `finish`): an invite accepted while this runs either finished before `wipeMemberships` took the lock (and its member
+  // is deleted there) or re-reads the owner after it and finds none. A member's lock that cannot be had stops the wipe
+  // BEFORE `user:{owner}`, the owner's login index and `users:all` are touched, so the account still signs in and a retry
+  // runs it again (the 409 "try again" of DELETE /api/account and the console's delete is true).
+  // Inside `finish`, the owner's `lock:login` is taken first (team → login is in rule 2139's order; the address move holds
+  // it already), so a timeout there also stops the wipe with nothing of the owner deleted. Under it `user:{owner}` goes
+  // FIRST (an accept that takes an expired `lock:team` while the bulk deletes run then finds no owner), then, when the owner
+  // person holds nothing else, the owner's login index (a legacy owner's names the account id, a `p_` owner's its person
+  // id); the rest of the account's keys follow outside the login lock. Under that lock nothing can give the owner a new
+  // membership (an accept takes the invited address's `lock:login`; with `MULTI_ORG` off it refuses an address that signs
+  // in) or take one away (`deleteMembership` takes the person's `lock:login` too), so `alone` stays true.
+  // No `MULTI_ORG` guard here, unlike `forgetPersonIfAlone` (src/lib/team.ts), on purpose: with the flag off an owner
+  // can hold nothing else (that accept refuses it), so `alone` is always true and this is R1's deletion either way. With
+  // it on, the two differ in who asked: a removed member did not ask to lose their sign-in, so M2 keeps that person; this
+  // owner asked to delete the account, and an owner person left with nothing would keep a login index that names a
+  // deleted account (a legacy owner's names the account id itself). Holding anything else keeps everything (`alone`).
+  const record = accountKey.user(e);
+  let alone = false;
+  const finish = async () => {
+    const owner = async () => {
+      await db.del(record);
+      alone = !(await holdsElsewhere(self, aid));
+      if (!alone) return;
+      await releaseLogin(login, e, { locked: true });
+      if (self !== e) await releaseLogin(login, self, { locked: true });
+    };
+    if (opts.loginLocked) await owner();
+    else await withLoginLock(login, owner);
+    await pmap([...keys.filter((k) => k !== record), ...(alone ? personal : [])], (k) => db.del(k));
+  };
+  await wipeMemberships(aid, { finish, teamLocked: opts.teamLocked });
   // The global reminder index names every scope with a reminder: this account's leave it.
   await Promise.all(scopes.map((s) => forgetDueScope(s)));
-  await wipeTeam(e);
-  // The owner's link once more, now the account is gone: a create that ran between the first revoke and the deletion of
-  // `user:{owner}` could have written a new one.
-  await Promise.all(logins.map((l) => revokeAllDevices(l)));
-  // The owner's login index (members' go in `wipeTeam`), and the deletion row names the id and the address (rule 1999).
-  await Promise.all([revokeFeed(login), revokeBook(login), releaseLogin(login, e, { locked: opts.loginLocked }), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
+  // The owner's device sessions once more, now the account is gone: a sign-in that ran between the first revoke and the
+  // deletion of `user:{owner}` could have recorded a new one. Kept for an owner who still signs in to another account.
+  if (alone) await revokeAllDevices(login);
+  // The owner's links once more (a create that ran between the first revoke and the deletion of `user:{owner}`); the
+  // owner's login index went in `finish` above (members' in `wipeMemberships`); the deletion row names the id and the
+  // address (rule 1999).
+  await Promise.all([revokeFeed(links[0]), revokeBook(links[0]), db.srem(globalKey.usersAll(), e), db.srem(globalKey.digests(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
 }

@@ -1,6 +1,6 @@
 # Coverage: agent tool authority (rules 2430-2439)
 
-Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a` (cut from main 70d1675). First piece adopted from the CopilotKit/OpenDots study (`docs/OpenDots_Adoption.md`); flows in `docs/system/flows.md` section 91, permissions in `docs/system/permissions.md` "Agent tool authority". Rules 2437-2439 are held for this work and unused.
+Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a` (cut from main 70d1675). First piece adopted from the CopilotKit/OpenDots study (`docs/OpenDots_Adoption.md`); flows in `docs/system/flows.md` section 94, permissions in `docs/system/permissions.md` "Agent tool authority". Rules 2437-2439 are held for this work and unused.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

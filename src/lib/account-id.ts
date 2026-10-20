@@ -47,8 +47,8 @@ export function brandOfScope(scope: string): string {
 }
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
-/** RFC 4648 base32, lower case, no padding. */
-function base32lower(buf: Buffer): string {
+/** RFC 4648 base32, lower case, no padding. Exported for `newPersonId` (src/lib/multi-org.ts). */
+export function base32lower(buf: Buffer): string {
   let bits = 0;
   let value = 0;
   let out = "";

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getLogin, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf, actorInfo } from "@/lib/auth";
+import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getLogin, getUser, isAdmin, keyImpBinding, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie, sessionRecord, viaOf, actorInfo } from "@/lib/auth";
 import { sha } from "@/lib/staff";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
@@ -19,11 +19,12 @@ import { listConnections } from "@/lib/connectors/store";
 import { listBrands, scopeFor } from "@/lib/brands";
 import { listConversations } from "@/lib/conversations";
 import { withUserLock } from "@/lib/credits";
+import { isPersonLockTimeout, updatePerson, withPersonLock } from "@/lib/person";
 import { wipeAccount } from "@/lib/account";
 import { db } from "@/lib/db";
 import { listActivity } from "@/lib/activity";
 import { cookies } from "next/headers";
-import { forceRemoveMember, getMember, membersKey, onRoster } from "@/lib/team";
+import { forceRemoveMember, getMember, isTeamLockTimeout, membersKey, onRoster } from "@/lib/team";
 import { unfinishedRefunds } from "@/lib/partners";
 import { sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
 import { TRIAL_EXTEND_MAX_DAYS, parseImpersonateMinutes } from "@/lib/admin-input";
@@ -32,6 +33,7 @@ import { isSuspended, parseSuspendFor, suspensionEnd, suspensionExpired } from "
 import { endExpiredSuspension } from "@/lib/suspension-server";
 import { accountKey } from "@/lib/keys";
 import { acct } from "@/lib/account-id";
+import { aidOf, getMembership, ownerOf } from "@/lib/membership";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +49,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     // Member logins never enter users:all, so the list cannot show them: an address is looked up here instead, which is
     // how support finds (and can remove, below) a member login holding an address its real owner wants to sign up with.
     const m = await getMember(decodeURIComponent(email));
-    if (!m) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    if (!m) {
+      // A person known only through membership rows (multi-workspace M1: test persons; real ones from M2) has no member
+      // record: shown from the person and the membership sign-in would open, read only. Its person id and its
+      // inviter's are never shown (a `p_` id is not an address).
+      if (login?.kind !== "member" || !login.acct) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+      const ms = await getMembership(login.acct, login.pid);
+      return NextResponse.json({
+        ok: true, kind: "member",
+        member: { email: login.person.email, name: login.person.name, role: ms?.role ?? null, memberOf: login.acct, invitedBy: "", acceptedAt: ms?.acceptedAt ?? "", disabled: ms?.disabled ?? null, ownerExists: !!login.owner, onRoster: !!ms },
+      });
+    }
     const [owner, listed] = await Promise.all([getUser(m.memberOf), onRoster(m.memberOf, m.email)]);
     return NextResponse.json({
       ok: true, kind: "member",
@@ -90,6 +102,20 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
 
 type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember" | "resendVerification"; days?: number; lang?: "ar" | "en"; reason?: string; minutes?: unknown; for?: unknown; date?: unknown };
 
+/**
+ * Run a write that takes the person lock: a lock held for the whole wait answers 409 `busy` (the lock is taken before the
+ * first write, so nothing was written); null when the write ran.
+ */
+async function personWrite(fn: () => Promise<unknown>): Promise<NextResponse | null> {
+  try {
+    await fn();
+    return null;
+  } catch (e) {
+    if (isPersonLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+    throw e;
+  }
+}
+
 /** POST actions on one user. Every action is logged to admin:log with WHO did it: the founder's email, or "key". */
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
   const who = await adminActor(req);
@@ -111,11 +137,24 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   };
   if (!u) {
     // A member login: the one action is removing it (the owner's own removal, done by support), which frees the address.
-    const m = await getMember(email);
-    if (!m) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    // A person with no member record (multi-workspace M1, rule 2130) is the membership the login resolves to, as GET shows
+    // it: the record and that membership are read in ONE round.
+    const [m, ms] = await Promise.all([getMember(email), login?.kind === "member" && login.acct ? getMembership(login.acct, login.pid) : null]);
+    const at = m ? { memberOf: m.memberOf, role: m.role } : ms ? { memberOf: ms.aid, role: ms.role } : null;
+    if (!at) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     if (b.action !== "removeMember") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
-    if (!(await forceRemoveMember(email))) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-    await log("removeMember", { memberOf: m.memberOf, role: m.role });
+    // The person left with nothing is deleted under `lock:person:{pid}` (multi-workspace M1): a person, login or member
+    // lock timeout is a 409, and a retry finishes the clean-up (every step is a delete). Not `personWrite`: the membership
+    // may be gone already.
+    let removed: boolean;
+    try {
+      removed = await forceRemoveMember(email);
+    } catch (e) {
+      if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+      throw e;
+    }
+    if (!removed) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    await log("removeMember", at);
     return NextResponse.json({ ok: true });
   }
 
@@ -150,7 +189,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     case "resetPassword": {
       const temp = randomBytes(6).toString("base64url").slice(0, 10) + "!";
       // The owner's sessions and every member's: a founder reset answers "someone else has this account".
-      await withUserLock(id, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
+      // The password and the owner's session stamp are the owner PERSON's (multi-workspace M1, rule 2132: `updatePerson`,
+      // mirrored to a legacy owner's account); the team stamp is the account's. Person lock, then user lock (rule 2139).
+      const pid = ownerOf(u);
+      const passHash = await bcrypt.hash(temp, 10);
+      const held = await personWrite(() => withPersonLock(pid, () => withUserLock(id, async (x) => {
+        revokeTeamSessions(x);
+        await saveUser(x);
+        await updatePerson(pid, { passHash, sessionsAfter: new Date().toISOString() }, { personLocked: true, userLocked: aidOf(x) });
+      })));
+      if (held) return held;
       // The owner's calendar feed and booking links and every member's, as every member's session just ended.
       const roster = await db.smembers(membersKey(id));
       await Promise.all([revokeAllMcp(id), revokeFeeds([u.email, ...roster]), revokeBooks([u.email, ...roster]), revokeCalendarLinks(id)]);
@@ -161,7 +209,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     case "setLang": {
       if (b.lang !== "ar" && b.lang !== "en") return NextResponse.json({ ok: false, error: "bad_lang" }, { status: 400 });
       const was = u.lang;
-      await withUserLock(id, async (x) => { x.lang = b.lang!; await saveUser(x); });
+      // The account's language and its owner person's (rule 2132), person lock first (rule 2139).
+      const pid = ownerOf(u);
+      const lang = b.lang;
+      const held = await personWrite(() => withPersonLock(pid, () => withUserLock(id, async (x) => {
+        x.lang = lang;
+        await saveUser(x);
+        await updatePerson(pid, { lang }, { personLocked: true, userLocked: aidOf(x) });
+      })));
+      if (held) return held;
       await log(`setLang ${b.lang}`, { before: { lang: was }, after: { lang: b.lang } });
       return NextResponse.json({ ok: true });
     }
@@ -209,7 +265,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       return NextResponse.json({ ok: true, resendIn: VERIFY.gap });
     }
     case "delete": {
-      await wipeAccount(id);
+      // Members left with nothing are deleted under `lock:person:{pid}` (`wipeMemberships`): a person, login or member lock timeout is a 409 with the owner's account still whole, a retry runs it again.
+      try {
+        await wipeAccount(id);
+      } catch (e) {
+        if (isPersonLockTimeout(e) || isTeamLockTimeout(e)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+        throw e;
+      }
       await log("delete");
       return NextResponse.json({ ok: true });
     }

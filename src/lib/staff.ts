@@ -177,7 +177,8 @@ export async function passwordRefusal(email: string, pw: unknown): Promise<Passw
   if (passwordBytes(pw) > STAFF_PASSWORD_MAX) return "password_long";
   if (COMMON_PASSWORDS.has(pw.toLowerCase())) return "password_common";
   const login = await getLogin(email);
-  const customerHash = login?.kind === "owner" ? login.user.passHash : login?.kind === "member" ? login.member.passHash : "";
+  // The person's hash (multi-workspace M1: `login.person`, the record a sign-in checks).
+  const customerHash = login?.person.passHash ?? "";
   if (typeof customerHash === "string" && customerHash && (await bcrypt.compare(pw, customerHash))) return "password_customer";
   return null;
 }

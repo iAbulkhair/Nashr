@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
-import { getBrand, getTask, listLite } from "@/lib/brand";
+import { getBrand, getTask, isWaiting, listLite } from "@/lib/brand";
 import { historyFor } from "@/lib/chat-history";
 import ChatPanel from "@/components/app/ChatPanel";
 import HomeSide from "@/components/app/HomeSide";
@@ -71,7 +71,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const record = getConversation(sc(u), conv);
   const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([historyFor(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(acct(u)), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(wsKey.onboardPlan(sc(u))), loadJourney(sc(u), u.email), record.then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
   const active = await record;
-  const firstPending = rows.find((x) => x.status === "pending");
+  const firstPending = rows.find(isWaiting);
   // Majed's handoff cards in this thread (every one it names: the thread holds at most 40 messages, one card each), read
   // here with their stored state: the records in one MGET, the tasks they made in another, the settings once. A card
   // whose record is gone (180 days, or pushed off the index) is sent as null, so the page shows "no longer available"

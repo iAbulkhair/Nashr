@@ -338,7 +338,8 @@ describe("noteRejectedPick", () => {
 describe("no account-linked key gains model, provider or pickreject", () => {
   it("usageMonthKeys has none, a metered account has none, and wipeAccount leaves the global counters alone", async () => {
     pin("2031-08-10T12:00:00Z");
-    const u = await newUser("um-keys");
+    // No shadow membership: this pins a person who holds nothing else, so the deletion takes the login too (multi-org M1).
+    const u = await newUser("um-keys", { shadow: false });
     await meter(u.email, OPUS, "generate", U_OPUS, "faris", "straitly");
     await meter(u.email, "mystery-model", "chat", U_SMALL, "sami");
     await noteRejectedPick("chat", "unknown");

@@ -1,6 +1,6 @@
 # Coverage: what Thakeen has switched on, for customers (rules 2450-2459)
 
-Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`. Item 2 of the OpenDots adoption order (`docs/OpenDots_Adoption.md`); flows in `docs/system/flows.md` section 93. Rules 2453-2459 are held for this work and unused.
+Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`. Item 2 of the OpenDots adoption order (`docs/OpenDots_Adoption.md`); flows in `docs/system/flows.md` section 96. Rules 2453-2459 are held for this work and unused.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

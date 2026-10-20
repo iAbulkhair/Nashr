@@ -7,7 +7,7 @@ import { trialOver } from "@/lib/auth";
 import { entitlements } from "@/lib/entitlements";
 import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { fairUseText } from "@/lib/fair-use";
-import { getBrand, listTasks } from "@/lib/brand";
+import { getBrand, isWaiting, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generateBatch, withheldNote } from "@/lib/generate-batch";
@@ -35,7 +35,7 @@ const SCOPE_SENTENCE = "Scope: only marketing, sales, growth, finance and analyt
 const TOOLS = [
   { name: "ask_noor", description: `Talk to Noor, the Gulf marketing agent for this account. She knows the brand, products, seasons and inbox, and can create content, update the brand file, and read/write workspace files. Over MCP she never publishes and never rewrites core memory files, and a change to the offers or removing a banned word waits for the owner's Save in the app. ${SCOPE_SENTENCE}`, inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } },
   { name: "generate_content", description: `Create items in the approval inbox. Marketing (Noor): weekly_plan | social (10 posts) | article | whatsapp (3) | ads (5) | gbp (3) | cart_recovery (5, needs a synced Salla or Shopify store). Sales (Sami): sales_script | lead_qualifier | followup_seq. Finance (Razan): pricing_review | unit_economics | cash_forecast. Growth (Faris): gtm_plan | growth_experiments | retention_play. Reports (Dana): weekly_report | board_deck | dashboard_spec. Executive (Majed): strategy_review | okrs | decision_memo. Product (Layan): prd | roadmap | feedback_synthesis | onboarding_flow. Deducts credits. ${SCOPE_SENTENCE}`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string" } }, required: ["type"] } },
-  { name: "list_inbox", description: "List inbox items with status.", inputSchema: { type: "object", properties: { status: { type: "string", enum: ["pending", "approved", "rejected", "all"] } } } },
+  { name: "list_inbox", description: "List inbox items with status. \"pending\" is what waits for a decision now; \"not_now\" is what the owner, or the 14-day rule, set aside.", inputSchema: { type: "object", properties: { status: { type: "string", enum: ["pending", "not_now", "approved", "rejected", "all"] } } } },
   { name: "read_file", description: "Read a workspace file (brand.md, products.md, strategy.md, market-research.md, preferences.md).", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
   { name: "list_files", description: "List workspace files.", inputSchema: { type: "object", properties: {} } },
   { name: "get_brand_rules", description: "The active brand's rules as structured data: name, dialect and languages, tone, audience, products, offers, preferred words, channels, and the banned words Thakeen enforces in code. Call this before writing anything for this brand in any tool, and write to it. Free, no credits.", inputSchema: { type: "object", properties: {} } },
@@ -150,8 +150,9 @@ export async function POST(req: Request) {
       }
       case "list_inbox": {
         const status = String(args.status ?? "pending");
-        const tasks = (await listTasks((user.scope ?? user.email))).filter((t) => status === "all" || t.status === status).slice(0, 30);
-        return ok(id, text(tasks.length ? tasks.map((t) => `[${t.id}] ${t.status} · ${t.type}/${t.channel} · ${t.title}\n${(t.editedBody ?? t.body).slice(0, 300)}`).join("\n\n") : "Inbox empty."));
+        // "Not now" (rule 2340): set aside, still pending in the record, never listed as waiting.
+        const tasks = (await listTasks((user.scope ?? user.email))).filter((t) => status === "all" || (status === "pending" ? isWaiting(t) : status === "not_now" ? t.status === "pending" && !!t.notNow : t.status === status)).slice(0, 30);
+        return ok(id, text(tasks.length ? tasks.map((t) => `[${t.id}] ${t.status === "pending" && t.notNow ? "not_now" : t.status} · ${t.type}/${t.channel} · ${t.title}\n${(t.editedBody ?? t.body).slice(0, 300)}`).join("\n\n") : "Inbox empty."));
       }
       case "read_file": {
         const f = await readFile((user.scope ?? user.email), String(args.name ?? ""));

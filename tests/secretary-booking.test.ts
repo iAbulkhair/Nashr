@@ -3,13 +3,14 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
-import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeTeam } from "@/lib/team";
+import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeMemberships } from "@/lib/team";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as accountRoute from "@/app/api/account/route";
 import { db } from "@/lib/db";
+import { storedAccountId } from "@/lib/keys";
 import * as rate from "@/lib/rate";
 import * as bookingRoute from "@/app/api/secretary/booking/[token]/route";
 import * as manageRoute from "@/app/api/secretary/booking/route";
@@ -29,6 +30,12 @@ import { appDict } from "@/lib/app-i18n";
 import { CHAT_ALLOWANCE, PLAN_CREDITS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount } from "@/lib/pricing";
 import { BookingView, bookingWords, rowAfterFailedRenew, type BookingState, type BookRow } from "@/components/app/BookingCard";
 import { refusalText } from "@/components/app/useOneWrite";
+
+// Pins the legacy shape (multi-org M1): this file pins R1's booking links, made, listed and revoked by login
+// (`createBook(login)`, the `sec:bookof:{login}` pointers), so its persons are legacy ones; the links of a `p_` person, per
+// `(pid, aid)`, are pinned in tests/multi-org-links.test.ts (rule 2119). Each still holds a shadow membership.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 // Only the outbound fetch is mocked (Calendly's API); the store and everything else is real. The module's other exports stay real.
 vi.mock("@/lib/safe-fetch", async (orig) => ({ ...(await orig<typeof import("@/lib/safe-fetch")>()), safeFetch: vi.fn() }));
@@ -1389,7 +1396,7 @@ describe("booking revocation (rule 598)", () => {
     expect(await db.get(`sec:book:ext:${bystander.email}:calcom:bk_keep598`)).not.toBeNull();
   });
 
-  it("rule 598: a link made while the wipe runs is revoked by its last step (the owner's) and by wipeTeam (a member's)", async () => {
+  it("rule 598: a link made while the wipe runs is revoked by its last step (the owner's) and by wipeMemberships (a member's)", async () => {
     const owner = await newUser("book598r");
     // The owner's link appears after the first revoke, as a create already running would leave it: the wipe's last step ends it.
     const real = db.lrange.bind(db);
@@ -1401,11 +1408,12 @@ describe("booking revocation (rule 598)", () => {
     spy.mockRestore();
     expect(await getBookStatus(owner.email)).toEqual([]);
     expect(await db.get(BOOK_KEYS.of(owner.email, "calcom"))).toBeNull();
-    // wipeTeam on its own deletes the members' links (a member added after the roster read of the first step).
+    // wipeMemberships (multi-workspace M1's name for wipeTeam) on its own deletes the members' links (a member added after the roster
+    // read of the first step).
     const o2 = await newUser("book598t");
     const m = await newMember(o2, "member");
     const t = await live(m.email, o2.email);
-    await wipeTeam(o2.email);
+    await wipeMemberships(storedAccountId(o2.email));
     expect(await getMember(m.email)).toBeNull();
     for (const p of PROVIDERS) expect(await resolveBook(t[p])).toBeNull();
     expect(await getBookStatus(m.email)).toEqual([]);

@@ -27,12 +27,12 @@ const REVIEWED: Record<string, string> = {
   "src/lib/governance.ts saveGovAs": "lock retry",
   "src/lib/handoffs.ts withShortLock": "lock retry",
   "src/lib/instructions-store.ts withLock": "lock retry",
+  "src/lib/locks.ts withNamedLock": "lock retry (team.ts and person.ts locks)",
   "src/lib/notifications.ts withBellLock": "lock retry",
   "src/lib/partners.ts withLock": "lock retry",
   "src/lib/routines.ts holdBatch": "lock retry",
   "src/lib/secretary-gcal.ts withCalLock": "lock retry",
   "src/lib/secretary-store.ts withLock": "lock retry",
-  "src/lib/team.ts withLock": "lock retry",
   // A worker inside a bounded pool: each worker records its attempt before the work, in order; the pool runs the workers
   // side by side (`concurrency`), so the cost is bounded by the pool, not by the list.
   "src/lib/cron-batch.ts runCronBatch": "bounded worker pool",

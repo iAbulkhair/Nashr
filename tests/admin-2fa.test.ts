@@ -46,7 +46,8 @@ async function enrol(now = T0): Promise<{ secret: string; recovery: string }> {
 
 /** A founder signed in as themselves (ADMIN_EMAILS): a 30-day session, unlike the key session's 15 idle minutes. */
 async function asFounder(): Promise<string> {
-  const founder = await newUser("founder");
+  // Pins the legacy shape (multi-org M1): the 30-day record below has no `pid`/`acct`, as a session from before R1.
+  const founder = await newUser("founder", { legacy: true });
   vi.stubEnv("ADMIN_EMAILS", founder.email);
   const token = await signIn(founder.email);
   // The helper's record lives an hour; a real sign-in lives 30 days, and the 12-hour test needs that.
