@@ -31,8 +31,13 @@ import { appOrigin } from "./origin";
 export const rp = () => ({ id: new URL(appOrigin()).hostname, origin: appOrigin(), name: "Thakeen" });
 
 const B64U = /^[A-Za-z0-9_-]+$/;
-/** A `uid` is 32 random bytes in base64url (43 characters, no padding); the WebAuthn `user.id` is those 32 bytes. */
+/**
+ * A `uid` is 32 random bytes in base64url (43 characters, no padding); the WebAuthn `user.id` is those 32 bytes. It must
+ * also be canonical: the last character carries 2 spare bits, and a uid with them set decodes to bytes that re-encode to
+ * another string, so `options.user.id` (and every later `userHandle`) would never equal the stored uid.
+ */
 const UID = /^[A-Za-z0-9_-]{43}$/;
+const canonicalUid = (uid: string) => UID.test(uid) && Buffer.from(uid, "base64url").toString("base64url") === uid;
 /** A credential id as the authenticator gave it, base64url (the `PasskeyCred.id` shape). */
 const CRED_ID = /^[A-Za-z0-9_-]{16,1366}$/;
 
@@ -42,7 +47,7 @@ const ALGORITHMS = [-7, -8, -257];
 export type RegOptionsIn = { uid: string; userName: string; displayName: string; exclude: { id: string; transports: string[] }[] };
 
 export async function registrationOptions(i: RegOptionsIn): Promise<{ options: PublicKeyCredentialCreationOptionsJSON; challenge: string }> {
-  if (!UID.test(i.uid)) throw new Error("webauthn: uid must be 32 bytes of base64url");
+  if (!canonicalUid(i.uid)) throw new Error("webauthn: uid must be 32 bytes of base64url");
   const r = rp();
   const options = await generateRegistrationOptions({
     rpName: r.name,
@@ -74,6 +79,9 @@ export async function verifyRegistration(response: unknown, challenge: string): 
     });
     const info = v.verified ? v.registrationInfo : null;
     if (!info || !info.userVerified || !CRED_ID.test(info.credential.id)) throw new Error("not verified");
+    // The library does not compare the response's id with the credential id inside the authenticator data; the store
+    // keeps the latter, so both must be the same id the client believes it registered.
+    if (responseId(response) !== info.credential.id) throw new Error("credential mismatch");
     return {
       ok: true,
       cred: {

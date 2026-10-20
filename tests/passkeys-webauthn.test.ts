@@ -30,11 +30,11 @@ afterEach(() => {
 });
 
 /** Register a soft authenticator through the seam and return what a store would keep. */
-async function enrolled(origin = LIVE, rpId = new URL(origin).hostname) {
+async function enrolled() {
   const auth = softAuthenticator();
   const handle = uid();
   const { challenge } = await registrationOptions({ uid: handle, userName: "a@example.com", displayName: "A", exclude: [] });
-  const r = await verifyRegistration(auth.makeAttestation({ challenge, origin, rpId, userHandle: handle }), challenge);
+  const r = await verifyRegistration(auth.makeAttestation({ challenge, origin: LIVE, rpId: "thakeen.com", userHandle: handle }), challenge);
   if (!r.ok) throw new Error("enrolment failed");
   return { auth, handle, cred: { id: r.cred.id, pk: r.cred.pk, transports: r.cred.transports } };
 }
@@ -61,6 +61,15 @@ describe("rule 2409: registration options and verification (real crypto)", () =>
     await expect(registrationOptions({ uid: "a@example.com", userName: "a@example.com", displayName: "A", exclude: [] })).rejects.toThrow();
   });
 
+  it("a non-canonical 43-character uid (padding bits set, so it decodes to another string) is refused", async () => {
+    const odd = `${"A".repeat(42)}B`;
+    expect(odd).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(Buffer.from(odd, "base64url").toString("base64url")).not.toBe(odd);
+    await expect(registrationOptions({ uid: odd, userName: "a@example.com", displayName: "A", exclude: [] })).rejects.toThrow();
+    const canonical = `${"A".repeat(42)}A`;
+    expect((await registrationOptions({ uid: canonical, userName: "a@example.com", displayName: "A", exclude: [] })).options.user.id).toBe(canonical);
+  });
+
   it("an attestation with the right challenge, origin and RP ID verifies and returns the credential", async () => {
     const auth = softAuthenticator();
     const { challenge } = await registrationOptions({ uid: uid(), userName: "a@example.com", displayName: "A", exclude: [] });
@@ -80,6 +89,16 @@ describe("rule 2409: registration options and verification (real crypto)", () =>
     const auth = softAuthenticator();
     const { challenge } = await registrationOptions({ uid: uid(), userName: "a@example.com", displayName: "A", exclude: [] });
     const resp = auth.makeAttestation({ challenge, origin: LIVE, rpId: "thakeen.com", ...bend });
+    expect(await verifyRegistration(resp, challenge)).toEqual({ ok: false, reason: "invalid" });
+  });
+
+  it("a registration whose response id differs from the credential id in the authenticator data is refused", async () => {
+    const auth = softAuthenticator();
+    const { challenge } = await registrationOptions({ uid: uid(), userName: "a@example.com", displayName: "A", exclude: [] });
+    const resp = auth.makeAttestation({ challenge, origin: LIVE, rpId: "thakeen.com" });
+    const other = randomBytes(32).toString("base64url");
+    resp.id = other;
+    resp.rawId = other;
     expect(await verifyRegistration(resp, challenge)).toEqual({ ok: false, reason: "invalid" });
   });
 
@@ -165,7 +184,7 @@ describe("rule 2409: sign-in options and assertion verification (real crypto)", 
     const { challenge } = await authenticationOptions();
     const resp: AssertionJSON = auth.makeAssertion({ challenge, origin: LIVE, rpId: "thakeen.com", counter: 1 });
     const cd = JSON.parse(Buffer.from(resp.response.clientDataJSON, "base64url").toString("utf8")) as Record<string, unknown>;
-    resp.response.clientDataJSON = Buffer.from(JSON.stringify({ ...cd, tokenBinding: { status: "supported" }, extra: "x" }), "utf8").toString("base64url");
+    resp.response.clientDataJSON = Buffer.from(JSON.stringify({ ...cd, extra: "x" }), "utf8").toString("base64url");
     warn.mockClear();
     expect(await verifyAuthentication(resp, challenge, cred)).toEqual({ ok: false, reason: "invalid" });
     expect(warn.mock.calls).toEqual([["webauthn auth invalid"]]);
