@@ -48,6 +48,32 @@ async function call(method: "GET" | "POST", body?: unknown): Promise<{ status: n
   return { status: res?.status ?? 0, j: ((await res?.json().catch(() => ({}))) ?? {}) as Answer };
 }
 
+/** What one add attempt came to. `stage` says which request refused, so the card keeps the form after a wrong proof. */
+export type AddOutcome = { kind: "added" } | { kind: "cancelled" } | { kind: "refused"; stage: "options" | "verify"; status: number; error?: string };
+type Post = (body: Record<string, unknown>) => Promise<{ status: number; j: Answer }>;
+type Register = (optionsJSON: PublicKeyCredentialCreationOptionsJSON) => Promise<RegistrationResponseJSON>;
+
+/**
+ * One add, flow A steps 1-3 back to back (rules 2407, 2429): `register-options` with the proof, the browser's ceremony,
+ * then `register-verify` with the name the user already chose. The name is asked before this runs, so no user step sits
+ * between the ceremony and verify: a credential the authenticator has just stored always reaches the server at once,
+ * and cancelling before the ceremony leaves nothing on the device. A ceremony the browser refuses or the user cancels
+ * sends no verify. `onVerify` runs between the ceremony and the verify request (the card's busy label), nothing else.
+ */
+export async function runAdd(proof: { password?: string; code?: string }, name: string, post: Post, register: Register, onVerify?: () => void): Promise<AddOutcome> {
+  const o = await post({ action: "register-options", ...proof });
+  if (!o.j.ok || !o.j.options) return { kind: "refused", stage: "options", status: o.status, error: o.j.error };
+  let response: RegistrationResponseJSON;
+  try {
+    response = await register(o.j.options);
+  } catch {
+    return { kind: "cancelled" };
+  }
+  onVerify?.();
+  const v = await post({ action: "register-verify", response, name });
+  return v.j.ok ? { kind: "added" } : { kind: "refused", stage: "verify", status: v.status, error: v.j.error };
+}
+
 async function readList(): Promise<List | null> {
   const { j } = await call("GET");
   return j.ok && Array.isArray(j.items) ? { items: j.items, max: j.max ?? 10, enabled: !!j.enabled, proof: j.proof ?? "password" } : null;
@@ -56,8 +82,8 @@ async function readList(): Promise<List | null> {
 /**
  * Settings, Security: the acting login's own passkeys (customer passkeys, flows A and B, rules 2410-2416, 2426, 2429).
  * The list shows each passkey's name, when it was added and last used, and a "synced" badge; never a credential id.
- * Adding asks for the password (or a code when two-step sign-in is on) first, then the browser's passkey prompt, then a
- * name that defaults to the device. Renaming is inline and needs no proof; removing asks for the proof again. With the
+ * Adding asks for a name (prefilled with the device) and the password (or a code when two-step sign-in is on) first;
+ * only then come the browser's passkey prompt and, straight after it, the save (`runAdd`). Renaming is inline and needs no proof; removing asks for the proof again. With the
  * off switch set, or in a browser without WebAuthn, the add button gives way to a short line of its own and the list,
  * rename and remove stay. Support is read only on the client; the server renders nothing.
  */
@@ -66,9 +92,8 @@ export default function PasskeySettings({ lang, T, enabled, forbidden }: { lang:
   const supported = useSyncExternalStore(noChange, browserSupportsWebAuthn, unknownOnServer);
   const [data, setData] = useState<List | null>(null);
   const [unread, setUnread] = useState(false);
-  const [step, setStep] = useState<"" | "proof" | "name">("");
+  const [step, setStep] = useState<"" | "proof">("");
   const [proof, setProof] = useState("");
-  const [response, setResponse] = useState<RegistrationResponseJSON | null>(null);
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<{ ref: string; name: string } | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -90,31 +115,25 @@ export default function PasskeySettings({ lang, T, enabled, forbidden }: { lang:
     : e === "expired" ? T.expired : e === "credential_taken" ? T.taken : e === "invalid" ? T.invalid : e === "busy" ? T.busy : e === "not_found" ? T.notFound
     : e === "limit" ? fill(T.full, "max", String(data?.max ?? 10)) : e === "unavailable" ? T.off : T.failed;
   const proofBody = (typed: string) => (data?.proof === "code" ? { code: typed } : { password: typed });
-  const reset = () => { setStep(""); setProof(""); setResponse(null); setName(""); };
+  const reset = () => { setStep(""); setProof(""); setName(""); };
+  /** Opens the add form: the name is asked here, before any ceremony, prefilled with the device family. */
+  const begin = () => {
+    setStatus(null); setRemoving(null);
+    setName(deviceLabel(navigator.userAgent, T.defaultName).slice(0, PASSKEY_NAME_MAX));
+    setStep("proof");
+  };
 
-  async function options() {
+  async function add() {
     setBusy("options"); setStatus(null);
-    const { status: s, j } = await call("POST", { action: "register-options", ...proofBody(proof) });
+    const typed = proofBody(proof);
     setProof("");
-    if (!j.ok || !j.options) { setBusy(""); setStatus({ tone: "error", text: err(s, j.error) }); return; }
-    try {
-      const r = await startRegistration({ optionsJSON: j.options });
-      setResponse(r);
-      setName(deviceLabel(navigator.userAgent, T.defaultName).slice(0, PASSKEY_NAME_MAX));
-      setStep("name");
-    } catch {
-      reset();
-      setStatus({ tone: "error", text: T.cancelled });
-    }
+    const r = await runAdd(typed, name, (body) => call("POST", body), (optionsJSON) => startRegistration({ optionsJSON }), () => setBusy("verify"));
     setBusy("");
-  }
-  async function verify() {
-    if (!response) return;
-    setBusy("verify"); setStatus(null);
-    const { status: s, j } = await call("POST", { action: "register-verify", response, name });
-    setBusy("");
+    // A refused proof keeps the form (and the name) for another try; anything after the ceremony ends the attempt.
+    if (r.kind === "refused" && r.stage === "options") { setStatus({ tone: "error", text: err(r.status, r.error) }); return; }
     reset();
-    setStatus(j.ok ? { tone: "ok", text: T.addedOk } : { tone: "error", text: err(s, j.error) });
+    if (r.kind === "cancelled") { setStatus({ tone: "error", text: T.cancelled }); return; }
+    setStatus(r.kind === "added" ? { tone: "ok", text: T.addedOk } : { tone: "error", text: err(r.status, r.error) });
     await load();
   }
   async function rename() {
@@ -210,29 +229,24 @@ export default function PasskeySettings({ lang, T, enabled, forbidden }: { lang:
         <p className="text-sm text-foreground-muted">{T.unsupported}</p>
       ) : full ? (
         <p className="text-sm text-foreground-muted">{fill(T.full, "max", String(data.max))}</p>
-      ) : step === "name" ? (
-        <div className="grid gap-3">
-          <Field label={T.nameLabel} hint={T.nameHint} required className="sm:max-w-sm">
-            <Input name="passkeyName" maxLength={PASSKEY_NAME_MAX} value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="primary" size="sm" loading={busy === "verify"} loadingText={T.saving} aria-disabled={!name.trim() || !!busy || undefined} onClick={() => { if (name.trim() && !busy) void verify(); }}>{T.save}</Button>
-            <Button variant="ghost" size="sm" onClick={reset}>{T.cancel}</Button>
-          </div>
-        </div>
       ) : step === "proof" ? (
         <div className="grid gap-3">
+          {data.proof !== "none" && (
+            <Field label={T.nameLabel} hint={T.nameHint} required className="sm:max-w-sm">
+              <Input name="passkeyName" maxLength={PASSKEY_NAME_MAX} value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+          )}
           {proofField("add")}
           <div className="flex flex-wrap gap-3">
             {data.proof !== "none" && (
-              <Button variant="primary" size="sm" loading={busy === "options"} loadingText={T.checking} aria-disabled={!proof || !!busy || undefined} onClick={() => { if (proof && !busy) void options(); }}>{T.next}</Button>
+              <Button variant="primary" size="sm" loading={busy === "options" || busy === "verify"} loadingText={busy === "verify" ? T.saving : T.checking} aria-disabled={!proof || !name.trim() || !!busy || undefined} onClick={() => { if (proof && name.trim() && !busy) void add(); }}>{T.next}</Button>
             )}
             <Button variant="ghost" size="sm" onClick={reset}>{T.cancel}</Button>
           </div>
         </div>
       ) : (
         <div>
-          <Button variant="secondary" size="sm" onClick={() => { setStatus(null); setRemoving(null); setStep("proof"); }}>{T.add}</Button>
+          <Button variant="secondary" size="sm" onClick={begin}>{T.add}</Button>
         </div>
       )}
     </SettingsCard>

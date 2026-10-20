@@ -21,7 +21,7 @@ import { appDict } from "@/lib/app-i18n";
 import { COPY } from "@/emails/copy";
 import { sendEmail, type TemplateMail } from "@/lib/notify";
 import { verifyRegistration, type RegisteredCred } from "@/lib/webauthn";
-import PasskeySettings, { deviceLabel, showAddButton, showPasskeyCard } from "@/components/app/settings/PasskeySettings";
+import PasskeySettings, { deviceLabel, runAdd, showAddButton, showPasskeyCard } from "@/components/app/settings/PasskeySettings";
 import * as route from "@/app/api/account/passkeys/route";
 import * as twoFaRoute from "@/app/api/account/2fa/route";
 import * as loginRoute from "@/app/api/auth/login/route";
@@ -613,6 +613,74 @@ describe("rule 2429 (settings half): copy in both languages; the card and the ad
     const html = renderToStaticMarkup(createElement(PasskeySettings, { lang: "en", T: appDict.en.passkeys, enabled: true, forbidden: "x" }));
     expect(html).toBe("");
     expect(src).not.toMatch(/from "@\/lib\/(passkeys|passkey-switch|db|webauthn)"/);
+  });
+});
+
+describe("rules 2407 and 2429 (card half): the name comes first; register-verify follows the ceremony with no user step", () => {
+  // A credential the authenticator stores but the server never hears of would sit in the device's passkey list and fail
+  // every sign-in (final review, Important 1). So the card asks the name before register-options, and `runAdd` sends
+  // register-verify straight after `startRegistration` resolves.
+  const fakeOptions = { challenge: "c", rp: { name: "Thakeen" }, user: { id: "u", name: "a@b.c", displayName: "A" }, pubKeyCredParams: [] };
+  const fakeResponse = { id: "cred", rawId: "cred", type: "public-key", response: { clientDataJSON: "x", attestationObject: "y" }, clientExtensionResults: {} };
+  const harness = (answers: { options?: { status: number; j: Record<string, unknown> }; verify?: { status: number; j: Record<string, unknown> }; ceremony?: "ok" | "throw" }) => {
+    const order: string[] = [];
+    const bodies: Record<string, unknown>[] = [];
+    const post = async (body: Record<string, unknown>) => {
+      order.push(`post:${String(body.action)}`);
+      bodies.push(body);
+      const a = body.action === "register-options" ? (answers.options ?? { status: 200, j: { ok: true, options: fakeOptions } }) : (answers.verify ?? { status: 200, j: { ok: true } });
+      return a as { status: number; j: never };
+    };
+    const register = async (o: unknown) => {
+      order.push("ceremony");
+      expect(o).toEqual(fakeOptions);
+      if (answers.ceremony === "throw") throw new Error("NotAllowedError");
+      return fakeResponse as never;
+    };
+    const onVerify = () => order.push("busy:verify");
+    return { order, bodies, post, register, onVerify };
+  };
+
+  it("options, then the ceremony, then verify with the chosen name and the ceremony's response, back to back", async () => {
+    const h = harness({});
+    expect(await runAdd({ password: "pw" }, "Work Mac", h.post, h.register, h.onVerify)).toEqual({ kind: "added" });
+    expect(h.order).toEqual(["post:register-options", "ceremony", "busy:verify", "post:register-verify"]);
+    expect(h.bodies[0]).toEqual({ action: "register-options", password: "pw" });
+    expect(h.bodies[1]).toEqual({ action: "register-verify", response: fakeResponse, name: "Work Mac" });
+  });
+
+  it("a cancelled or refused ceremony sends no verify; a refused proof never starts the ceremony", async () => {
+    const cancelled = harness({ ceremony: "throw" });
+    expect(await runAdd({ code: "123456" }, "Phone", cancelled.post, cancelled.register)).toEqual({ kind: "cancelled" });
+    expect(cancelled.order).toEqual(["post:register-options", "ceremony"]);
+    const wrong = harness({ options: { status: 401, j: { ok: false, error: "wrong_password" } } });
+    expect(await runAdd({ password: "x" }, "Phone", wrong.post, wrong.register)).toEqual({ kind: "refused", stage: "options", status: 401, error: "wrong_password" });
+    expect(wrong.order).toEqual(["post:register-options"]);
+  });
+
+  it("a refused verify is reported with its stage, after exactly one verify", async () => {
+    const h = harness({ verify: { status: 410, j: { ok: false, error: "expired" } } });
+    expect(await runAdd({ password: "pw" }, "Phone", h.post, h.register)).toEqual({ kind: "refused", stage: "verify", status: 410, error: "expired" });
+    expect(h.order.filter((x) => x === "post:register-verify")).toHaveLength(1);
+  });
+
+  it("the card asks the name in the proof step, prefilled from the device, and adds only through runAdd", () => {
+    const src = readFileSync("src/components/app/settings/PasskeySettings.tsx", "utf8");
+    // No step after the ceremony and no response kept in state waiting for the user.
+    expect(src).not.toMatch(/step === "name"|"name"\s*\|/);
+    expect(src).not.toMatch(/useState<RegistrationResponseJSON/);
+    expect(src).not.toMatch(/setResponse\b/);
+    // The name is prefilled when the form opens, before any request.
+    expect(src).toMatch(/const begin = \(\) => \{[\s\S]*?setName\(deviceLabel\(navigator\.userAgent, T\.defaultName\)\.slice\(0, PASSKEY_NAME_MAX\)\);[\s\S]*?setStep\("proof"\);/);
+    expect(src).toContain("onClick={begin}");
+    // The name field sits in the proof step, ahead of the proof, and Continue needs both.
+    expect(src).toMatch(/step === "proof" \? \([\s\S]*?name="passkeyName"[\s\S]*?proofField\("add"\)[\s\S]*?aria-disabled=\{!proof \|\| !name\.trim\(\)/);
+    // The ceremony is reached only through runAdd, once.
+    expect(src.match(/startRegistration\(/g)).toHaveLength(1);
+    expect(src).toMatch(/runAdd\(typed, name, \(body\) => call\("POST", body\), \(optionsJSON\) => startRegistration\(\{ optionsJSON \}\)/);
+    expect(src.match(/action: "register-verify"/g)).toHaveLength(1);
+    // The copy that only served the old order is gone.
+    for (const l of ["ar", "en"] as const) expect(appDict[l].passkeys).not.toHaveProperty("save");
   });
 });
 
