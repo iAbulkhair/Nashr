@@ -3,6 +3,7 @@ import { composioEnabled, composioReady, composioRead, composioStageFile, compos
 import { PROVIDER_TOOLKITS, type Toolkit } from "./connectors/composio-catalog";
 import { findKey, isComposio } from "./connectors/composio-shape";
 import { FileLimitError, safeName, writeFile } from "./files";
+import { fileSrc } from "./ref-provenance";
 import { LIBRARY_MAX, SOURCE_CAP_BYTES, download, listLibrary, mediaEntryOf, sniff, toJpeg, writeToStore, type LibrarySource } from "./media/store";
 import { storeConfigured } from "./media/config";
 import { StoreError } from "./media/types";
@@ -220,7 +221,7 @@ export async function importFromDrive(scope: string, d: DriveId, id: string, raw
     // Always `drive-…`: an import never lands on a core memory file (brand.md, products.md…), which a member may not write.
     const base = name.replace(/\.[^.]+$/, "");
     try {
-      const f = await writeFile(scope, safeName(`drive-${base}.${extOf(name) === "csv" ? "csv" : "md"}`), content, "user");
+      const f = await writeFile(scope, safeName(`drive-${base}.${extOf(name) === "csv" ? "csv" : "md"}`), content, "user", fileSrc("drive"));
       return { kind: "text", file: f.name };
     } catch (e) {
       throw new DriveFail(e instanceof FileLimitError ? "files_full" : "upstream");

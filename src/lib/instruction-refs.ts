@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { csvSafe } from "./admin-stats";
 import { FileLimitError, listFileNames, safeName, writeFile } from "./files";
+import { fileSrc } from "./ref-provenance";
 import { getConnection } from "./connectors/store";
 import { composioEnabled, composioRead } from "./connectors/composio";
 import { findKey, isComposio, listOf } from "./connectors/composio-shape";
@@ -188,7 +189,7 @@ export async function importRef(scope: string, src: { kind: RefKind; id: string;
       if (!name) throw new RefFail("files_full");
     }
     try {
-      await writeFile(scope, name, body, "user");
+      await writeFile(scope, name, body, "user", fileSrc(source));
     } catch (e) {
       if (e instanceof FileLimitError) throw new RefFail("files_full");
       throw e;

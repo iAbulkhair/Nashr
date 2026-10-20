@@ -3,7 +3,8 @@ import type { AppDict } from "@/lib/app-i18n";
 import { isAgentId } from "@/lib/agents";
 import type { Draft, Target } from "@/lib/instructions-store";
 import { MAX_REFS, WORKSPACE_ITEMS } from "@/lib/instructions-safety";
-import { agentsControl, fill, showRefs } from "@/lib/instructions-ui";
+import { agentsControl, fill, refAgeText, showRefs } from "@/lib/instructions-ui";
+import type { Provenance } from "@/lib/ref-provenance";
 import EmptyState from "@/components/ui/EmptyState";
 import { emptyCopy } from "@/lib/empty-copy";
 
@@ -34,10 +35,11 @@ export const targetLabel = (t: Pick<AppDict, "agents" | "instructions">, target:
  * - `refsOn` / `files`: whether the plan applies reference files, and the workspace file names a row may attach (up to `MAX_REFS`). A name that is no longer a file is flagged. Without `refsOn` an attached file still shows with its remove button (the fix `refs_plan` asks for), and nothing can be added.
  * - `allowLock`: the platform's "customers cannot override" flag; never offered to a customer.
  * - `errors`: the reason a save refused a row, shown under it. `refTitles`: the imported file's title by its file name.
+ * - `refInfo`: where each attached file came from and when it was last refreshed (rule 2529), with the out-of-date flag.
  *
  * Every text is rendered as a value of a form field or as plain React text: an instruction or an imported title never becomes HTML.
  */
-export default function InstructionEditor({ t, items, onChange, maxChars, targets, perAgent, refsOn, files, allowLock, readOnly, errors = {}, refTitles = {}, maxItems = WORKSPACE_ITEMS }: { t: Pick<AppDict, "agents" | "files" | "instructions" | "lang">; items: Draft[]; onChange: (items: Draft[]) => void; maxChars: number; targets: Target[]; perAgent: boolean; refsOn: boolean; files: string[]; allowLock: boolean; readOnly: boolean; errors?: RowErrors; refTitles?: Record<string, string>; maxItems?: number }) {
+export default function InstructionEditor({ t, items, onChange, maxChars, targets, perAgent, refsOn, files, allowLock, readOnly, errors = {}, refTitles = {}, refInfo = {}, maxItems = WORKSPACE_ITEMS }: { t: Pick<AppDict, "agents" | "files" | "instructions" | "lang">; items: Draft[]; onChange: (items: Draft[]) => void; maxChars: number; targets: Target[]; perAgent: boolean; refsOn: boolean; files: string[]; allowLock: boolean; readOnly: boolean; errors?: RowErrors; refTitles?: Record<string, string>; refInfo?: Record<string, Provenance>; maxItems?: number }) {
   const I = t.instructions;
   const E = emptyCopy(t.lang, "instructions");
   const set = (i: number, patch: Partial<Draft>) => onChange(items.map((d, j) => (j === i ? { ...d, ...patch } : d)));
@@ -108,6 +110,8 @@ export default function InstructionEditor({ t, items, onChange, maxChars, target
                       <span key={name} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs">
                         <bdi title={name}>{refTitles[name] || name}</bdi>
                         {!files.includes(name) && <span className="badge badge-danger">{I.refsMissing}</span>}
+                        {files.includes(name) && Object.hasOwn(refInfo, name) && <span className="text-foreground-muted">· {I.refSource[refInfo[name].source]} · {refAgeText(I, refInfo[name])}</span>}
+                        {files.includes(name) && Object.hasOwn(refInfo, name) && refInfo[name].stale && <span className="badge badge-warning" title={I.refStaleHint}>{I.refStale}</span>}
                         {!readOnly && <button type="button" aria-label={fill(I.refsRemove, { name: refTitles[name] || name })} onClick={() => set(i, { refs: refs.filter((r) => r !== name) })} className="px-0.5 hover:text-danger">×</button>}
                       </span>
                     ))}

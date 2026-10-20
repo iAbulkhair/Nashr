@@ -5,6 +5,7 @@ import { addPreference, getBrand, updateTask } from "@/lib/brand";
 import { gateTask, type Violation } from "@/lib/brand-rules";
 import { getGov } from "@/lib/governance";
 import { readFile, writeFile } from "@/lib/files";
+import { fileSrc } from "@/lib/ref-provenance";
 import { decisionOf, recordDecisions, type DecisionAction } from "@/lib/decisions";
 import { editPctOf } from "@/lib/similarity";
 import { byOf } from "@/lib/actor";
@@ -40,7 +41,7 @@ async function appendPreferences(scope: string, lines: string) {
   if (!token) throw new Error("prefs_lock_timeout");
   try {
     const f = await readFile(scope, "preferences.md");
-    await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor");
+    await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor", fileSrc("builtin"));
   } finally {
     await db.unlockOwned(key, token).catch((e) => console.error("prefs lock release failed", e instanceof Error ? e.name : "error"));
   }

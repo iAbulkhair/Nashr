@@ -749,3 +749,8 @@ What each agent may do from a conversation, set by the owner and checked in code
 5. Revalidated at Run (rule 2434). `decideSpend` reads the setting again for the card's agent before any charge; if the capability is now off the answer is 409 `revoked`, nothing is charged and the card stays open.
 6. Not governed here: reading tools, the secretary's tools, and proposals that already wait for a person (brand, instruction, away, handoff, core-file cards). Scheduled work (weekly plan, routines, Majed's auto-run) and the Generate page are governed by the caps and switches above them, not by this policy. MCP's own `generate_content` and `save_draft` (not a chat turn) are not governed by it either.
 
+## Reference files: on-demand reading and provenance (2026-10-20, branch `claude/skills-stub-provenance-79a1f1`, rules 2523-2532)
+
+1. Reading a reference in the chat. `read_file` stays a free reading tool for every role that can chat (owner, admin, member): it is not in `TOOL_ACTION`, charges nothing and writes nothing, and reads only the workspace of the turn (`sc(u)`). The agent reads a file only inside a chat turn the person started, after the input gate.
+2. Provenance on the instructions page. Every signed-in role that opens the page sees each attached file's source and age and the out-of-date badge; it is read from `sc(u)` only, and the write controls stay behind `instructions.write`.
+3. Who sets the source. Only code: each writer passes its own kind. No request field, instruction, tool or prompt sets `WFile.src`; the files route always stores `owner`.

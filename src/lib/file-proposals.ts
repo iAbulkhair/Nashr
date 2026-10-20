@@ -3,6 +3,7 @@ import { db } from "./db";
 import type { AgentId } from "./agents";
 import type { By } from "./actor";
 import { readFile, safeName, writeFile, type WFile } from "./files";
+import { fileSrc } from "./ref-provenance";
 import { wsKey, type Scope } from "./keys";
 
 /**
@@ -113,7 +114,7 @@ export async function decideFileProposal(scope: Scope, id: string, decision: "ap
       await close("stale");
       return { ok: false, error: "stale" };
     }
-    const file = await writeFile(scope, p.name, p.content, cur?.by ?? "noor");
+    const file = await writeFile(scope, p.name, p.content, cur?.by ?? "noor", fileSrc("agent"));
     await close("applied");
     return { ok: true, file, ...(p.agent ? { agent: p.agent } : {}) };
   } finally {

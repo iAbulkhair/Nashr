@@ -5,6 +5,7 @@ import { buildFromSite } from "@/lib/onboard";
 import { getBrand, saveBrand } from "@/lib/brand";
 import { allow, retryLater } from "@/lib/rate";
 import { readFile, writeFile } from "@/lib/files";
+import { fileSrc } from "@/lib/ref-provenance";
 import { push, type ChatMsg } from "@/lib/chat";
 import { db } from "@/lib/db";
 import { modelState } from "@/lib/model";
@@ -179,14 +180,14 @@ export async function POST(req: Request) {
         await saveBrand(scope, r.brand);
         brandSaved = true;
         const [saved, prefs] = await Promise.all([
-          Promise.all(r.files.map((f) => writeFile(scope, f.name, f.content, "noor"))),
+          Promise.all(r.files.map((f) => writeFile(scope, f.name, f.content, "noor", fileSrc("crawl", url)))),
           readFile(scope, "preferences.md"),
           db.set(wsKey.onboardPlan(scope), { goal: r.goal, plan: r.plan, at: new Date().toISOString() }),
           clearOnboard(scope),
           held ? settleOnboard(acct(u), scope) : Promise.resolve(),
         ]);
         const files = saved.map((f) => ({ name: f.name, content: f.content }));
-        if (!prefs) await writeFile(scope, "preferences.md", "# Preferences learned from the owner\n", "noor");
+        if (!prefs) await writeFile(scope, "preferences.md", "# Preferences learned from the owner\n", "noor", fileSrc("builtin"));
         await say({ content: t.filesMsg, files });
         await say({ content: `**${t.planTitle}**\n\n${r.summary}`, plan: r.plan });
         send({ type: "done", brand: r.brand.name, goal: r.goal, credits: u.credits });

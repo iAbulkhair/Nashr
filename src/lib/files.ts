@@ -2,9 +2,13 @@ import { createHash } from "crypto";
 import { db } from "./db";
 import { pmap } from "./parallel";
 import { scopeParam, wsKey } from "./keys";
+import type { FileSrc } from "./ref-provenance";
 
-/** Workspace files = Noor's memory. Markdown the user can read, edit, delete. */
-export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user" };
+/**
+ * Workspace files = Noor's memory. Markdown the user can read, edit, delete. `src` (rule 2523, expand only) says where the
+ * text came from; a file written without it has its source worked out by `provenanceOf` (src/lib/ref-provenance.ts).
+ */
+export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user"; src?: FileSrc };
 
 /** The one place this module turns a scope string into a `Scope`; every key below is built from it (rule 2033). */
 const ws = (e: string) => scopeParam(e);
@@ -70,7 +74,8 @@ export class FileLimitError extends Error {
   constructor() { super("file_limit"); this.name = "FileLimitError"; }
 }
 
-export async function writeFile(email: string, name: string, content: string, by: WFile["by"] = "noor") {
+/** `src` is where the text came from (rule 2523); a write without it stores none, and the reader falls back to `by` and the name. */
+export async function writeFile(email: string, name: string, content: string, by: WFile["by"] = "noor", src?: FileSrc) {
   let n = safeName(name);
   // The agent must not destroy what the owner wrote by hand. import_catalog and write_file are chosen by the model,
   // and crawled pages and catalogs reach that model, so an ordinary chat turn could replace a curated products.md —
@@ -89,7 +94,7 @@ export async function writeFile(email: string, name: string, content: string, by
   if (!(await db.get<WFile>(KEY(email, n)))) {
     if ((await db.smembers(SET(email))).length >= MAX_FILES) throw new FileLimitError();
   }
-  const f: WFile = { name: n, content: content.slice(0, 40000), updatedAt: new Date().toISOString(), by };
+  const f: WFile = { name: n, content: content.slice(0, 40000), updatedAt: new Date().toISOString(), by, ...(src ? { src } : {}) };
   await db.set(KEY(email, n), f);
   await db.sadd(SET(email), n);
   return f;
@@ -104,7 +109,7 @@ export async function writeFile(email: string, name: string, content: string, by
  * over every writer.
  */
 export type CheckedWrite = { ok: true; file: WFile } | { ok: false; error: "stale" | "exists"; file: WFile | null } | { ok: false; error: "busy" };
-export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null): Promise<CheckedWrite> {
+export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null, src?: FileSrc): Promise<CheckedWrite> {
   const n = safeName(name);
   const lock = wsKey.fileLock(ws(email), n);
   let got = false;
@@ -117,7 +122,7 @@ export async function writeFileChecked(email: string, name: string, content: str
     const cur = await db.get<WFile>(KEY(email, n));
     if (baseAt === null && cur) return { ok: false, error: "exists", file: cur };
     if (baseAt !== null && cur?.updatedAt !== baseAt) return { ok: false, error: "stale", file: cur };
-    return { ok: true, file: await writeFile(email, n, content, by) };
+    return { ok: true, file: await writeFile(email, n, content, by, src) };
   } finally {
     await db.unlock(lock).catch(() => {});
   }

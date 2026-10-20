@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { adCodeIndex } from "./brand";
 import { deleteFile, writeFile } from "./files";
+import { fileSrc } from "./ref-provenance";
 import { analyze, learningsMarkdown, type PerfSnapshot } from "./perf-import";
 import { ADSTATS_KEY, adStatsFrom, totalsOf, type AdPrev } from "./ad-stats";
 import { AD_PROVIDERS, adRows, prevNow, type AdProvider, type AdPull } from "./connectors/ads";
@@ -21,7 +22,7 @@ export async function getPerf(scope: string) {
 
 /** Keep the findings and hand Noor the same findings as performance-learnings.md, which her memory reads. */
 export async function savePerf(scope: string, snap: PerfSnapshot) {
-  await Promise.all([db.set(KEY(scope), snap), writeFile(scope, LEARNINGS_FILE, learningsMarkdown(snap), "noor")]);
+  await Promise.all([db.set(KEY(scope), snap), writeFile(scope, LEARNINGS_FILE, learningsMarkdown(snap), "noor", fileSrc("builtin"))]);
 }
 
 export async function clearPerf(scope: string) {

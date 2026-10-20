@@ -1,6 +1,7 @@
 import type { Connection } from "./store";
 import { providerTimeout } from "../fetch-timeout";
 import { writeFile } from "../files";
+import { fileSrc } from "../ref-provenance";
 import { safeFetch } from "../safe-fetch";
 import { PROVIDER_REPLY_BYTES, STORE_REPLY_BYTES, responseJson } from "../read-capped";
 import { productsMarkdown } from "./products-md";
@@ -27,7 +28,7 @@ export async function importOdoo(email: string, c: Connection) {
   // The host is the owner's: each field one capped line, and a link only on the Odoo site's own host (rule 2247).
   const base = c.data.url.replace(/\/+$/, "");
   const { md, count } = productsMarkdown(`Product catalog (Odoo, ${new Date().toISOString().slice(0, 10)})`, rows.map((p) => ({ name: p?.name, price: p?.list_price, description: p?.description_sale || "", url: typeof p?.website_url === "string" ? `${base}${p.website_url}` : "" })), new URL(base).hostname);
-  await writeFile(email, "products.md", md, "noor");
+  await writeFile(email, "products.md", md, "noor", fileSrc("store"));
   return count;
 }
 
@@ -50,7 +51,7 @@ export async function importPrestaShop(email: string, c: Connection) {
   const rows = Array.isArray(j?.products) ? j.products : [];
   // The host is the owner's: each field one capped line, and a link only on the shop's own host (rule 2247).
   const { md, count } = productsMarkdown(`Product catalog (PrestaShop, ${new Date().toISOString().slice(0, 10)})`, rows.map((p) => ({ name: txt(p?.name), price: p?.price, description: txt(p?.description_short), url: `${base}/${encodeURIComponent(txt(p?.link_rewrite))}` })), new URL(base).hostname);
-  await writeFile(email, "products.md", md, "noor");
+  await writeFile(email, "products.md", md, "noor", fileSrc("store"));
   return count;
 }
 

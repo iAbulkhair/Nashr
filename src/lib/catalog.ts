@@ -1,4 +1,5 @@
 import { writeFile } from "./files";
+import { fileSrc } from "./ref-provenance";
 import { safeFetch } from "./safe-fetch";
 import { PAGE_PREFIX_BYTES, responsePrefix } from "./read-capped";
 import { DESC_MAX, NAME_MAX, PRICE_MAX, plainLine, productsMarkdown } from "./connectors/products-md";
@@ -131,6 +132,6 @@ export async function importCatalog(email: string, site: string, onProgress?: (m
     host,
     "Noor: use these real products, names and prices in content. Prices below are what the store showed at import time; still confirm offers with the owner.",
   );
-  if (count) await writeFile(email, "products.md", md, "noor");
+  if (count) await writeFile(email, "products.md", md, "noor", fileSrc("crawl", site));
   return { count, products: products.slice(0, count) };
 }

@@ -20,6 +20,7 @@ export function validShopifyHmac(query: URLSearchParams, secret: string | undefi
   return sameSecret(createHmac("sha256", secret).update(msg).digest("hex"), given);
 }
 import { writeFile } from "../files";
+import { fileSrc } from "../ref-provenance";
 import { mdToHtml } from "./wordpress";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type SalesSnapshot } from "./sales";
 
@@ -115,7 +116,7 @@ export async function importShopify(email: string, c: Connection) {
     const m = p.priceRangeV2?.minVariantPrice;
     return { name: p.title, price: m ? `${m.amount} ${m.currencyCode}` : "", description: p.description, url: p.onlineStoreUrl ?? `https://${c.meta?.shop}/products/${p.handle}` };
   }));
-  await writeFile(email, "products.md", md, "noor");
+  await writeFile(email, "products.md", md, "noor", fileSrc("store"));
   return count;
 }
 
