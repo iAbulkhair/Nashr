@@ -23,6 +23,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.task(S, "t1"), `task:${S}:t1`],
     [wsKey.taskLock(S, "t1"), `tasklock:${S}:t1`],
     [wsKey.pending(S), `pending:${S}`],
+    [wsKey.notNow(S), `notnow:${S}`],
     [wsKey.pendingIndex(S), `pendingidx:${S}`],
     [wsKey.taskMonth(S, "2026-10"), `tidx:${S}:2026-10`],
     [wsKey.taskMonths(S), `tidxm:${S}`],
@@ -73,6 +74,10 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.mcpTokenOf(E), `mcptoken-of:${E}`],
     [accountKey.mcpGrants(E), `mcpgrants:${E}`],
     [accountKey.notifications(E), `notifs:${E}`],
+    [accountKey.digest(E), `notifydigest:${E}`],
+    [accountKey.digestLast(E), `digestlast:${E}`],
+    [accountKey.digestLock(E), `digestlock:${E}`],
+    [accountKey.digestBucket(E), `digestsave:${E}`],
     [accountKey.referrals(E), `referrals:${E}`],
     [accountKey.referredBy(E), `referredBy:${E}`],
     [accountKey.shared(E), `shared:${E}`],
@@ -98,6 +103,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
+    [globalKey.digests(), "notifydigests"],
     [globalKey.deletedAccounts(), "deleted-accounts"],
     [globalKey.session("abc"), "session:h:abc"],
     [globalKey.sessionLegacy("tok"), "session:tok"],

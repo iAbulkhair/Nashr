@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import { taskVersion } from "@/lib/task-version";
 import { acct } from "@/lib/account-id";
 
-type Patch = { status?: string; editedBody?: string; note?: unknown; scheduledFor?: string | null; version?: unknown };
+type Patch = { status?: string; editedBody?: string; note?: unknown; scheduledFor?: string | null; version?: unknown; notNow?: unknown };
 
 /** The longest reason a person may give for an edit or a rejection. */
 const NOTE_MAX = 300;
@@ -57,7 +57,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // inside the task lock below, on the task as stored now, so an approval landing mid-request is judged correctly.
   const no = forbid(u, "drafts");
   if (no) return no;
-  const gate = { refused: false, missing: false, changed: false };
+  const gate = { refused: false, missing: false, changed: false, notPending: false };
   // Who decides is worked out from the session's actor (`byOf`), never from the body.
   const [raw, gov, brand, by] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope), byOf(u)]);
   const b: Patch = raw && typeof raw === "object" ? raw : {};
@@ -89,6 +89,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       else if (b.version !== taskVersion(t)) gate.changed = true;
       if (gate.missing || gate.changed) return null;
     }
+    // A person acting on the item without deciding it restarts its "Not now" clock (rule 2345, src/lib/not-now.ts).
+    const touched = b.scheduledFor === null || (typeof b.scheduledFor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.scheduledFor)) || (typeof b.editedBody === "string" && b.editedBody !== t.body);
     if (b.scheduledFor === null) delete t.scheduledFor;
     else if (typeof b.scheduledFor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.scheduledFor)) t.scheduledFor = b.scheduledFor;
     if (typeof b.editedBody === "string" && b.editedBody !== t.body) {
@@ -108,6 +110,17 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       if (b.status === "rejected") events.push("reject");
       if (b.status === "rejected" && note) notes.push(`Owner rejected a ${t.type} item (${t.channel}). Reason: ${note}`);
     }
+    // "Not now" (rule 2345): set aside or brought back, only while pending, by any member who may handle drafts. It is no
+    // decision: no decidedAt, no decision record, nothing learned. A decision or a reopen takes the item out of "Not now".
+    if (b.notNow === true || b.notNow === false) {
+      if (t.status !== "pending") { gate.notPending = true; return null; }
+      if (b.notNow) t.notNow = { at: now, by: "owner" };
+      else { delete t.notNow; t.touchedAt = now; }
+    } else if (b.status === "approved" || b.status === "rejected" || b.status === "pending") {
+      if (t.notNow) t.touchedAt = now;
+      delete t.notNow;
+    }
+    if (touched || (b.status === "pending" && decided.some((d) => d.action === "reopen"))) t.touchedAt = now;
     // An admin or owner who rewrites an item that stays approved has decided it (the role check above needed "publish"):
     // an item only auto-approval had passed becomes theirs, so the judge's veto and the chat's "nobody reviewed it" no
     // longer apply to it (src/lib/judge.ts, chat.ts publish_item).
@@ -124,6 +137,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (gate.refused) return forbid(u, "publish") ?? NextResponse.json({ error: "forbidden" }, { status: 403 });
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   if (gate.missing) return NextResponse.json({ ok: false, error: "version_required" }, { status: 400 });
+  if (gate.notPending) return NextResponse.json({ ok: false, error: "not_pending", task: t }, { status: 409 });
   // The item as stored now goes back, so the card shows what changed before anyone decides again.
   if (gate.changed) return NextResponse.json({ ok: false, error: "changed", task: t }, { status: 409 });
   if (violations.length) return NextResponse.json({ ok: false, error: "brand_violation", violations }, { status: 409 });
