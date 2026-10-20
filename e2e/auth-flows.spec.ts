@@ -250,7 +250,7 @@ test.describe("a shared onboarding link", () => {
     expect(onboardCalls, "a link reads nothing on its own").toEqual([]);
 
     // The server says the same without the page: nobody confirmed this URL for this workspace.
-    const res = await page.request.post("/api/onboard", { data: { url: "attacker.example" } });
+    const res = await page.request.post("/api/onboard", { data: { url: "attacker.example" }, headers: { "x-thakeen-brand": "default" } });
     expect(res.status()).toBe(403);
     expect(await res.text()).toBe("unconfirmed");
   });
