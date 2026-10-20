@@ -540,10 +540,13 @@ describe("source scans (rule 2132, credential part)", () => {
       join("src", "app", "api", "account", "route.ts"),
       join("src", "app", "api", "account", "email", "route.ts"),
       join("src", "app", "api", "admin", "users", "[email]", "route.ts"),
+      // Multi-workspace M2: create a workspace (`createWorkspace`, src/lib/workspaces.ts) and the signed-in accept
+      // (`acceptInviteAsPerson` → `joinInviteAsPerson`, the accept route above) take the person lock.
+      join("src", "app", "api", "workspaces", "route.ts"),
     ];
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
-    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/team.ts", "src/lib/verify-email.ts"]);
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/team.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
     expect([...direct, ...indirect].filter((f) => !/isPersonLockTimeout|PERSON_LOCK_TIMEOUT/.test(readFileSync(f, "utf8")))).toEqual([]);
   });
 });

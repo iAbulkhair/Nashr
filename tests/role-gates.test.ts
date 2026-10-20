@@ -61,12 +61,14 @@ type Role = "owner" | "admin" | "member";
 /**
  * public: no session (rate limited per IP when it writes). public-read: a GET, HEAD or OPTIONS with no session that
  * serves only public metadata, a static list or a CORS preflight, and writes nothing. bearer: the MCP token.
+ * person-session: the multi-workspace M2 routes behind `currentPerson()` (spec section 7, "no workspace" state): a signed-in
+ * person with or without a workspace; the handler must read `currentPerson` and refuse without it (rule 2112).
  * unverified-session: the email-verification routes, called by an owner who `currentUser` still reads as signed out (rule 751): the handler must read `currentUserUnverified` and be rate limited (allow).
  * admin-console: the founder console. cron: the CRON_SECRET bearer. owner / admin / member: a session, and at least
  * that role, checked with forbid()/can() for the listed actions of src/lib/roles.ts (a bare "member" needs only the
  * session).
  */
-type Gate = "public" | "public-read" | "cron" | "admin-console" | "bearer" | "unverified-session" | "member" | { role: Role; actions: Action[] };
+type Gate = "public" | "public-read" | "cron" | "admin-console" | "bearer" | "unverified-session" | "person-session" | "member" | { role: Role; actions: Action[] };
 const g = (role: Role, ...actions: Action[]): Gate => ({ role, actions });
 
 /** Every POST, PUT, PATCH and DELETE handler anywhere under src/app. */
@@ -85,6 +87,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/auth/verify/check": "unverified-session",
   "POST /api/auth/verify/email": "unverified-session",
   "POST /api/team/accept": "public",
+  // Multi-workspace M2: create a workspace and switch the session's workspace (the person, not one account's role).
+  "POST /api/workspaces": "person-session",
+  "POST /api/workspaces/switch": "person-session",
   "POST /api/support": "public",
   "POST /api/affiliates": "public",
   "POST /api/waitlist": "public",
@@ -286,6 +291,8 @@ const READS: Record<string, Gate> = {
   // A partner link: sets the 30-day partner cookie for a valid code, so it is a public write with a rate limit (rule 391).
   "GET /p/[code]": "public",
   "GET /api/team": g("member", "team.view"),
+  // Multi-workspace M2: the person's own workspaces (handles, names and roles only).
+  "GET /api/workspaces": "person-session",
   "GET /api/profile": g("member", "read"),
   // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
   "GET /api/account/export": g("owner", "account.export"),
@@ -490,6 +497,7 @@ function violations(h: Handler, gate: Gate): string[] {
   }
   if (gate === "cron") return /sameSecret\(/.test(h.body) || w?.auth === "cron" ? [] : ["cron handler without the sameSecret bearer check"];
   if (gate === "unverified-session") return /\bcurrentUserUnverified\(/.test(h.body) && /\b(?:allow|verifySendRefusal)\(/.test(h.body) ? [] : ["verify handler without currentUserUnverified and allow (or verifySendRefusal)"];
+  if (gate === "person-session") return /\bcurrentPerson\(/.test(h.body) && /\bunauthorized\(|status:\s*401/.test(h.body) ? [] : ["person handler without currentPerson and its 401"];
   if (gate === "bearer") return /userFromBearer\(/.test(h.body) ? [] : ["bearer handler without userFromBearer"];
   if (gate === "admin-console") return /\b(?:isAdmin|adminActor)\(/.test(h.body) || w?.auth === "admin" || CONSOLE_SELF[h.key] ? [] : ["console handler without isAdmin/adminActor"];
   if (!/\bcurrentUser\(/.test(h.body) && w?.auth !== "user") out.push("no session read (currentUser)");

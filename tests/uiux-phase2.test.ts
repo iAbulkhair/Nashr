@@ -181,7 +181,8 @@ describe("rule 1119: the shell's counts are read once on the server and shared",
     const layout = read("src/app/[lang]/app/layout.tsx");
     // Since rule 1177 the impersonation banner reads the session's founder actor, so the cookie read left this round.
     expect(layout).toMatch(/await Promise\.all\(\[getBrand\(sc\(user\)\), listNotifs\(acct\(user\)\), pendingCount\(sc\(user\)\)\]\)/);
-    expect(layout).toMatch(/<WorkspaceProvider initial=\{\{ credits: user\.credits, unread, pending: toApprove \}\}>/);
+    // With the page's workspace handle and the switch since multi-workspace M2.
+    expect(layout).toMatch(/<WorkspaceProvider initial=\{\{ credits: user\.credits, unread, pending: toApprove \}\} handle=\{handle\} multiOrg=\{MULTI_ORG\}>/);
   });
   it("counts are re-read only when 30 seconds old or a screen announces a change", () => {
     expect(WORKSPACE_STALE_MS).toBe(30_000);

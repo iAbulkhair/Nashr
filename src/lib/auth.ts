@@ -94,6 +94,11 @@ export type User = {
    * `p_...` id. Read only through `ownerOf`, which falls back to `acct(u)`; never compared or keyed directly.
    */
   ownerPid?: string;
+  /**
+   * The name a person gave a workspace they created (multi-workspace M2, `POST /api/workspaces`). Shown by the switcher
+   * when the account has no brand name yet. Optional and new (expand): older code ignores it.
+   */
+  workspaceName?: string;
   /** The sign-in and contact address: mail goes here, display uses it. Never a key: keys go through `acct(u)`. */
   email: string;
   name: string;
@@ -573,6 +578,25 @@ export async function sessionIds(email: string, opts: { imp?: boolean } = {}): P
   } catch {
     return {};
   }
+}
+
+/**
+ * Point this device's session at account `aid` (multi-workspace M2, spec section 7 "Switching"): the switch, create and
+ * accept routes call it after checking that `pid` holds `aid`. `SET XX` on the record's own key with its TTL kept, so a
+ * session signed out meanwhile stays gone. An impersonation, or a session of another person, is never moved. False when
+ * nothing was written. Reads the record and its TTL in one round.
+ */
+export async function setSessionAccount(pid: string, aid: string): Promise<boolean> {
+  const token = readCookie(await cookies(), COOKIE);
+  if (!token) return false;
+  const rows = await Promise.all(sessionKeys(token).map(async (k) => {
+    const [rec, ttl] = await Promise.all([db.get<SessionRec>(k), db.ttl(k)]);
+    return { k, rec, ttl };
+  }));
+  const hit = rows.find((r) => r.rec);
+  const s = sessionOf(hit?.rec ?? null);
+  if (!hit || !s || s.imp || hit.ttl <= 0 || (s.pid !== undefined && s.pid !== pid)) return false;
+  return db.setXx(hit.k, { ...s, pid, acct: aid } satisfies Session, hit.ttl);
 }
 
 /** The hashed session key behind this request's cookie (the device list marks it as "this device"), or null. */

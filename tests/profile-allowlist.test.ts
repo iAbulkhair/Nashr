@@ -37,6 +37,8 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     id: u.email,
     // The owning person (multi-workspace membership, rule 1995): storage only, never a profile field.
     ownerPid: "p_ownerpidaaaaaaaaaaaaaaaa",
+    // The name given at create (multi-workspace M2): the switcher reads it, the profile does not send it.
+    workspaceName: "WORKSPACE-NAME",
     email: u.email,
     name: "Owner Name",
     phone: "+966500000787",

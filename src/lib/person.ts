@@ -179,7 +179,7 @@ export const PERSON_LOCK_TIMEOUT = "person_lock_timeout";
 export const isPersonLockTimeout = (e: unknown): boolean => e instanceof Error && e.message === PERSON_LOCK_TIMEOUT;
 
 /** The credential and profile fields a write may change (`updatePerson`). */
-export type PersonPatch = Partial<Pick<PersonRowValue, "name" | "lang" | "passHash" | "sessionsAfter" | "devicesAfter" | "emailVerifiedAt">>;
+export type PersonPatch = Partial<Pick<PersonRowValue, "name" | "lang" | "passHash" | "sessionsAfter" | "devicesAfter" | "emailVerifiedAt" | "trialUsedAt">>;
 
 const valid = (v: unknown): v is string => Number.isFinite(time(v));
 

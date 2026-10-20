@@ -66,8 +66,8 @@ describe("rule 961: every app and founder console screen has its own title", () 
   // notifications and danger sections came; a settings section's title comes from `settingsScreenMeta`. 46 with the
   // agent instructions page and the console's skills section (rules 957-958). 47 with the console's Integrations
   // section (rule 1540). 51 with the staff sign-in, setup, staff and account pages (rules 1631, 1638, `staffScreenMeta`).
-  it("finds all 52 pages and each exports generateMetadata from the shared helper", () => {
-    expect(pages.length).toBe(52); // 52 since the mail preview (rule 1964).
+  it("finds all 53 pages and each exports generateMetadata from the shared helper", () => {
+    expect(pages.length).toBe(53); // 52 since the mail preview (rule 1964), 53 with the workspaces page (multi-workspace M2).
     for (const p of pages) expect(read(p), p).toMatch(/export const generateMetadata = (?:app|admin|settings|staff)ScreenMeta\("[a-z]+"\);/);
   });
 
@@ -106,7 +106,8 @@ describe("rule 962: the chat panel is keyed by its thread", () => {
 
   it("puts a new thread in the address, so a link back to the old one is a new key", () => {
     expect(panel).toMatch(/if \(!j\.ok\) return;\n\s*setConvs/);
-    expect(panel).toMatch(/router\.replace\(`\/\$\{lang\}\/app\/chat\?conv=\$\{j\.conversation\.id\}/);
+    // Through the workspace link helper since multi-workspace M2 (`href` from `useAppHref`).
+    expect(panel).toMatch(/router\.replace\(href\(`\/chat\?conv=\$\{j\.conversation\.id\}/);
   });
 });
 

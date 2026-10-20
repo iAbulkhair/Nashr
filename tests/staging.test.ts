@@ -93,9 +93,13 @@ describe("the staging lock (rules 674, 677)", () => {
     // A closed list: proxy -> {cookie-names, csrf, deploy-env, staging-access}; cookie-names -> nothing; csrf -> origin; staging-access -> {secret, deploy-env};
     // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
-      "src/proxy.ts": ["@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "next/server"],
+      "src/proxy.ts": ["@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/multi-org", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "@/lib/ws-path", "next/server"],
+      // Multi-workspace M2: the switch and the link's handle (rule 2113). The handle's shape only; no store, no secret.
+      "src/lib/multi-org.ts": ["crypto", "./account-id"],
+      "src/lib/ws-path.ts": [],
       // The settings redirect map (rule 1141): plain data; its one import is a type, erased at build (pinned below).
-      "src/lib/settings-nav.ts": ["./i18n"],
+      // Since multi-workspace M2 also the link helper `appHref`, import-free.
+      "src/lib/settings-nav.ts": ["./i18n", "./ws-path"],
       "src/lib/csrf.ts": ["@/lib/origin", "next/server"],
       "src/lib/origin.ts": [],
       "src/lib/staging-access.ts": ["@/lib/deploy-env", "@/lib/secret", "node:crypto"],
@@ -111,7 +115,9 @@ describe("the staging lock (rules 674, 677)", () => {
     for (const [f, ok] of Object.entries(allowed))
       expect(specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)), f).toEqual([]);
     expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(/^import type \{ Lang \} from "\.\/i18n";$/m);
-    expect(readFileSync("src/lib/settings-nav.ts", "utf8").match(/^import /gm)).toHaveLength(1);
+    expect(readFileSync("src/lib/settings-nav.ts", "utf8").match(/^import /gm)).toHaveLength(2);
+    // The proxy reaches account-id.ts through multi-org.ts: crypto and zod only (its prose names `sc(u)`, which the spec reader would take for an import).
+    expect(readFileSync("src/lib/account-id.ts", "utf8").match(/^import .*$/gm)).toEqual(['import { randomBytes } from "crypto";', 'import { z } from "zod";']);
     // And the lock gets sameSecret from the module with no store behind it, through no other path.
     expect(specs(readFileSync("src/lib/staging-access.ts", "utf8"))).toContain("@/lib/secret");
     expect(specs(readFileSync("src/proxy.ts", "utf8"))).toContain("@/lib/staging-access");

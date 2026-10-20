@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { isSuspended } from "./suspension";
+import { isPersonSuspended, isSuspended } from "./suspension";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { log } from "./log";
@@ -14,9 +14,9 @@ import { teamApprovals } from "./approver-stats";
 import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "./keys";
 import { parseStored, type MembershipValue } from "./stored";
 import { aidOf, getMembership, legacyHomeFrom, membershipFromRaw, ownerOf, type Membership } from "./membership";
-import { createPersonRecord, getPerson, withPersonLock } from "./person";
+import { createPersonRecord, getPerson, withPersonLock, type Person } from "./person";
 import { logTeam } from "./teamlog";
-import { MULTI_ORG, PERSON_ID } from "./multi-org";
+import { MULTI_ORG, newPersonId, PERSON_ID } from "./multi-org";
 import { mfaKeys } from "./mfa";
 import { revokeAllDevices } from "./devices";
 
@@ -93,7 +93,12 @@ export type Invite = {
 /** A pending invite with its id (the SHA-256 of the token, which is what DELETE /api/team/invite takes). */
 export type PendingInvite = Invite & { id: string };
 
-export type TeamError = "invalid_email" | "invalid_role" | "forbidden" | "unavailable" | "not_found" | "invalid" | "weak_password" | "invalid_name";
+/**
+ * `already_member` and `signin_required` exist only while `MULTI_ORG` is on (multi-workspace M2, rule 2116): the
+ * address is the owner or a member of THIS account (nothing outside the inviter's own team is revealed), and an invite
+ * for an address that already signs in is accepted by signing in, never with a new password.
+ */
+export type TeamError = "invalid_email" | "invalid_role" | "forbidden" | "unavailable" | "not_found" | "invalid" | "weak_password" | "invalid_name" | "already_member" | "signin_required";
 export type SeatsError = { ok: false; error: "seats"; used: number; limit: number };
 export type TeamFail = { ok: false; error: TeamError } | SeatsError;
 
@@ -479,6 +484,9 @@ const who = (a: Pick<Actor, "pid" | "email">) => ({ pid: a.pid as string, email:
  * Invite `email` into `owner`'s account as `role`. The owner may invite either role; an admin only plain members; a
  * founder impersonating never. The owner's own address, an existing login (owner or member anywhere) and a pending
  * invite in this team all get the same "unavailable", so the route cannot be used to probe who has an account.
+ * With `MULTI_ORG` on (rule 2116) an address that signs in elsewhere is invited like a new one: only the owner, a
+ * member of THIS account (paused ones too) and the inviter themself get `already_member`, and a pending invite in this
+ * team "unavailable", so the answer still says nothing about other accounts.
  * The seat check runs under `lock:team:{aid}`. Returns the token ONCE: only its SHA-256 is stored. The invite names the
  * account (`aid`, beside `owner`) and the inviter's person id (`invitedByPid`, beside their address); the team log gets
  * an "invited" row.
@@ -489,7 +497,7 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
   if (!validEmail(e)) return fail("invalid_email");
   if (!can({ ...owner, actor }, role === "admin" ? "team.invite.admin" : "team.invite.member")) return fail("forbidden");
   if (!(await actorStillHolds(owner, actor))) return fail("forbidden");
-  if (e === owner.email || e === normalizeEmail(actor.email)) return fail("unavailable");
+  if (e === owner.email || e === normalizeEmail(actor.email)) return fail(MULTI_ORG ? "already_member" : "unavailable");
   const token = randomBytes(32).toString("hex");
   const id = inviteId(token);
   const aid = aidOf(owner);
@@ -499,7 +507,12 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
     // The account re-read under the lock: one deleted while this request waited (`wipeAccount` holds `lock:team` until
     // `user:{owner}` is gone) gets no invite, no index entry and no team log row.
     if (!fresh) return fail("forbidden");
-    if (taken || m || invites.some((i) => i.email === e)) return fail("unavailable");
+    if (MULTI_ORG) {
+      // Only this account's own people: the owner person's address (an address move updates it) and the roster.
+      const owned = taken && taken.pid === ownerOf(fresh);
+      if (owned || members.some((x) => x.email === e)) return fail("already_member");
+      if (invites.some((i) => i.email === e)) return fail("unavailable");
+    } else if (taken || m || invites.some((i) => i.email === e)) return fail("unavailable");
     const limit = seatLimit(fresh);
     const used = 1 + members.filter((x) => !x.disabled).length + invites.length;
     if (used + 1 > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
@@ -524,8 +537,12 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
   });
 }
 
-/** What the join page shows before anything is consumed. Null for an unknown, expired or orphaned invite, or one `acceptInvite` would refuse for its inviter. */
-export async function peekInvite(token: string): Promise<{ team: string; inviter: string; email: string; role: TeamRole; expiresAt: string } | null> {
+/**
+ * What the join page shows before anything is consumed. Null for an unknown, expired or orphaned invite, or one
+ * `acceptInvite` would refuse for its inviter. With `MULTI_ORG` on, `signIn` says the invited address already signs in,
+ * so the page asks for a sign-in instead of a password (rule 2116); only the token's holder, the invitee, sees it.
+ */
+export async function peekInvite(token: string): Promise<{ team: string; inviter: string; email: string; role: TeamRole; expiresAt: string; signIn?: boolean } | null> {
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return null;
   const inv = await db.get<Invite>(inviteKey(inviteId(token)));
   if (!inv || expired(inv)) return null;
@@ -533,8 +550,8 @@ export async function peekInvite(token: string): Promise<{ team: string; inviter
   const { getBrand } = await import("./brand");
   const [owner, inviter, brand] = await Promise.all([getAccount(aid), getMembership(aid, inviterPid(inv)), getBrand(aid)]);
   if (!owner || isSuspended(owner) || !inviteHolds(inv, owner, inviter)) return null;
-  const by = inviter ? await getPerson(inviter.pid) : null;
-  return { team: brand?.name || owner.name, inviter: by?.name || owner.name, email: inv.email, role: inv.role, expiresAt: inv.expiresAt };
+  const [by, login] = await Promise.all([inviter ? getPerson(inviter.pid) : null, MULTI_ORG ? getLogin(inv.email) : null]);
+  return { team: brand?.name || owner.name, inviter: by?.name || owner.name, email: inv.email, role: inv.role, expiresAt: inv.expiresAt, ...(MULTI_ORG ? { signIn: !!login } : {}) };
 }
 
 /**
@@ -546,6 +563,9 @@ export async function peekInvite(token: string): Promise<{ team: string; inviter
  * `MULTI_ORG` off an address that already signs in is refused, as in R1). `insertMember` takes `lock:person` and
  * `lock:member` inside (rule 2139). Never runs createUser, a referral code, a referral bonus or signup tracking. The
  * caller signs the new member in with `createSession(member.email)`. One "joined" team log row.
+ * With `MULTI_ORG` on (rule 2117) the new member is a `p_` person with a membership row and no legacy record: no
+ * account, no credits, not in `users:all`. An address that already signs in gets `signin_required` and the invite
+ * stays: an existing person joins through `acceptInviteAsPerson`, never with a new password (rule 2116).
  */
 export async function acceptInvite(token: string, input: { name: unknown; password: unknown; lang?: unknown }): Promise<{ ok: true; member: Member } | TeamFail> {
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return fail("invalid");
@@ -576,9 +596,9 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
       if (used > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
       return withLoginLock(inv.email, async () => {
         const [taken, m] = await Promise.all([getLogin(inv.email), getMember(inv.email)]);
-        if (taken || m) return fail("unavailable");
+        if (taken || m) return fail(MULTI_ORG ? "signin_required" : "unavailable");
         const lang = input.lang === "en" || input.lang === "ar" ? input.lang : inv.lang;
-        const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid }, {});
+        const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid }, MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {});
         const pid = pidFrom(memberPid(member));
         await Promise.all([
           dropInvites(aid, [id]),
@@ -590,6 +610,61 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
   } finally {
     await db.unlock(use);
   }
+}
+
+/**
+ * Accept an invite as the signed-in person (multi-workspace M2, spec section 9, rule 2116). `person` is the one
+ * `currentPerson()` resolved from the session, never an address or an id from the request, and the invite must be for
+ * that person's VERIFIED address: no membership is ever created by address alone, and no password is asked or written.
+ * Under `inviteuse` → `lock:team:{aid}` → `lock:person:{pid}` (rule 2139) the invite (record and index), the account,
+ * the inviter, the seats and the person are read again; a person already holding this account (owner or member, paused
+ * too) gets `already_member` and the invite stays. Then the membership row, the roster entry and `orgs:{pid}`
+ * (`writeMembership`; never the legacy record, which is the person's home elsewhere), the invite dropped and one
+ * "joined" team log row. The role comes from the invite only (decision 5). The caller, `acceptInviteAsPerson` in
+ * src/lib/workspaces.ts, then moves this device's session (this file reaches no session or cookie). Off while
+ * `MULTI_ORG` is off.
+ */
+export async function joinInviteAsPerson(token: string, person: Person): Promise<{ ok: true; member: { name: string; email: string; role: TeamRole; memberOf: AccountId } } | TeamFail> {
+  if (!MULTI_ORG) return fail("invalid");
+  if (typeof token !== "string" || !TOKEN_RE.test(token)) return fail("invalid");
+  const id = inviteId(token);
+  const first = await db.get<Invite>(inviteKey(id));
+  if (!first || expired(first)) return fail("invalid");
+  if (!person.emailVerifiedAt || normalizeEmail(person.email) !== normalizeEmail(first.email)) return fail("invalid");
+  const pid = pidFrom(person.pid);
+  const use = globalKey.inviteUse(id);
+  if (!(await db.lock(use, 30))) return fail("invalid"); // being accepted right now
+  let done: { aid: AccountId; role: TeamRole; name: string; email: string } | TeamFail;
+  try {
+    const inv = await db.get<Invite>(inviteKey(id));
+    if (!inv || expired(inv) || !isTeamRole(inv.role)) return fail("invalid");
+    const aid = aidFrom(inviteAccount(inv));
+    done = await withTeamLock(aid, async () => {
+      const [owner, inviter, live, members, invites] = await Promise.all([getAccount(aid), getMembership(aid, inviterPid(inv)), db.get<Invite>(inviteKey(id)), listMembers(aid), listInvites(aid)]);
+      if (!live || expired(live) || !invites.some((i) => i.id === id)) return fail("invalid");
+      if (!owner || isSuspended(owner) || !inviteHolds(inv, owner, inviter)) return fail("invalid");
+      const limit = seatLimit(owner);
+      const used = 1 + members.filter((m) => !m.disabled).length + invites.length;
+      if (used > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
+      return withPersonLock(pid, async () => {
+        // The person as it is now: the same address, still verified, not suspended (a change since the request began).
+        const [fresh, held] = await Promise.all([getPerson(pid), getMembership(aid, pid)]);
+        if (!fresh || !fresh.emailVerifiedAt || isPersonSuspended(fresh) || normalizeEmail(fresh.email) !== normalizeEmail(inv.email)) return fail("invalid");
+        if (held || ownerOf(owner) === pid) return fail("already_member");
+        const now = new Date().toISOString();
+        await writeMembership(aid, pid, { aid, pid, role: inv.role, acceptedAt: now, invitedBy: inv.invitedByPid ?? inv.invitedBy }, { home: false, teamLocked: true });
+        await Promise.all([
+          dropInvites(aid, [id]),
+          logTeam(aid, { kind: "joined", actor: { pid, email: fresh.email }, target: { pid, email: fresh.email }, role: inv.role, via: "web" }, { teamLocked: true }),
+        ]);
+        return { aid, role: inv.role, name: fresh.name, email: normalizeEmail(fresh.email) };
+      });
+    });
+  } finally {
+    await db.unlock(use);
+  }
+  if ("ok" in done) return done;
+  return { ok: true, member: { name: done.name, email: done.email, role: done.role, memberOf: done.aid } };
 }
 
 /**

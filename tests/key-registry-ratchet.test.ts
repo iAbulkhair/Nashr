@@ -238,7 +238,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/lib/prompt-stamp.ts": 1,
   "src/lib/provider-fault-note.ts": 1,
   "src/lib/publish-once.ts": 2,
-  "src/lib/rate.ts": 13,
+  "src/lib/rate.ts": 14,
   "src/lib/referral.ts": 5,
   "src/lib/routines.ts": 9,
   "src/lib/safe-fetch.ts": 1,
