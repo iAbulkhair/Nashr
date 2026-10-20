@@ -106,12 +106,17 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     // Multi-workspace membership (rules 2110-2139, release M1): the two account builders of the new families.
     [accountKey.membership(storedAccountId(E), storedPersonId("p1")), `mbr:${E}:p1`],
     [accountKey.teamLog(storedAccountId(E)), `teamlog:${E}`],
+    // Customer passkeys (rules 2400-2429): a new family, no old template; the bytes are pinned by tests/passkeys-keys.test.ts.
+    [accountKey.passkeyProofBucket(E), `pkpw:${E}`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
     [globalKey.runReceipt("routine:a@b.example:dana_weekly_report:2026-10-18"), "runrec:routine:a@b.example:dana_weekly_report:2026-10-18"],
     [globalKey.cronReport("weekly"), "cronreport:weekly"],
     [globalKey.digests(), "notifydigests"],
+    [globalKey.eventDay("2026-10-20", "signup"), "ev:2026-10-20:signup"],
+    [globalKey.opsProposal("abc"), "ops:proposal:abc"],
+    [globalKey.opsAlert("cron:media"), "ops:alert:cron:media"],
     [globalKey.deletedAccounts(), "deleted-accounts"],
     [globalKey.session("abc"), "session:h:abc"],
     [globalKey.sessionLegacy("tok"), "session:tok"],
@@ -126,6 +131,13 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.shopifyCompliance(), "shopify:compliance"],
     [globalKey.shopifyRedact(), "shopify:redact"],
     [globalKey.connectionHealth(), "connections:health"],
+    // Customer passkeys (rules 2400-2429): new families, no old template; the bytes are pinned by tests/passkeys-keys.test.ts.
+    [globalKey.passkeyCred("h1"), "pkcred:h1"],
+    [globalKey.passkeyAuth("h1"), "pkauth:h1"],
+    [globalKey.passkeysOff(), "passkeys:off"],
+    [globalKey.passkeyIpBucket("1.2.3.4"), "pk:ip:1.2.3.4"],
+    [globalKey.passkeyVerifyIpBucket("1.2.3.4"), "pkv:ip:1.2.3.4"],
+    [globalKey.passkeyCredBucket("h1"), "pkv:cred:h1"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));

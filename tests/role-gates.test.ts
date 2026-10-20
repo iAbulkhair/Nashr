@@ -75,6 +75,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/auth/login": "public",
   // The second sign-in step (rule 1934): the challenge cookie names the login, rate limited with the login buckets.
   "POST /api/auth/login/mfa": "public",
+  // Passkey sign-in (rules 2417, 2418): the sign-in nonce cookie carries the challenge; limited per IP and per credential.
+  "POST /api/auth/passkey/options": "public",
+  "POST /api/auth/passkey/verify": "public",
   "POST /api/auth/signup": "public",
   "POST /api/auth/forgot": "public",
   "POST /api/auth/reset": "public",
@@ -135,6 +138,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/agent-scope/release": "admin-console",
   // Agent scope (rule 1412): the switches and the paid test set.
   "POST /api/admin/agent-scope/modes": "admin-console",
+  // Customer passkeys off switch (rule 2426): the console owner only (staffMay "passkeys.switch"), second factor, reason, audit.
+  "POST /api/admin/passkeys": "admin-console",
   "POST /api/admin/agent-scope/eval": "admin-console",
 
   // Owner only.
@@ -213,6 +218,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "DELETE /api/account/sessions": g("member", "sessions.revoke"),
   // The login's own two-step sign-in (rules 1930-1937).
   "POST /api/account/2fa": g("member", "mfa.manage"),
+  // The login's own passkeys (customer passkeys, rule 2412): member-level, refused while impersonating.
+  "POST /api/account/passkeys": g("member", "passkeys.manage"),
   "POST /api/account/email": g("member", "email.change"),
   "POST /api/account/google": g("member", "google.manage"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
@@ -267,6 +274,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/media/hook/[provider]": "public",
   "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
   "POST /api/shopify/compliance": "public", // Shopify compliance webhooks: HMAC only, rules 2168-2171
+  // The ops agent (rules 2380-2389): no session; per-IP allow() first, then a sameSecret token (OPS_AGENT_TOKEN, or
+  // Telegram's webhook secret), 401 while unset. The summary is counts only; the press runs only OPS_ACTIONS, once.
+  "POST /api/ops/telegram": "public",
+  "POST /api/ops/telegram/callback": "public",
 };
 
 /**
@@ -289,6 +300,8 @@ const READS: Record<string, Gate> = {
   "GET /api/account/export": g("owner", "account.export"),
   // The login's own two-step status and device list (rules 1930, 1938): a session, nothing written.
   "GET /api/account/2fa": "member",
+  // The passkey list (rule 2412): refused while impersonating, so no founder reads a customer's passkeys.
+  "GET /api/account/passkeys": g("member", "passkeys.manage"),
   "GET /api/auth/google/start": "public",
   "GET /api/auth/google/callback": "public",
   "GET /api/account/email": g("member", "email.change"),
@@ -324,6 +337,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/wishlist": "admin-console",
   "GET /api/admin/skills": "admin-console",
   "GET /api/admin/integrations": "admin-console",
+  "GET /api/admin/passkeys": "admin-console", // rule 2426: the switch state for the Integrations page toggle
   "GET /api/admin/leads": "admin-console",
   "GET /api/admin/client-ip": "admin-console",
   "GET /api/admin/log": "admin-console",
@@ -374,6 +388,7 @@ const READS: Record<string, Gate> = {
   "GET /api/oauth/resource": "public-read",
   "GET /llms.txt": "public-read", // site copy for language models, static at build time (rule 698)
   "GET /api/founding/seats": "public-read", // seats left only, closed while payment is off; rate limited per IP (rule 1711)
+  "GET /api/ops/summary": "public-read", // the ops agent's counts (rules 2380-2382): OPS_AGENT_TOKEN bearer (sameSecret) after a per-IP allow(); no email, name or workspace
   "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
   "GET /api/staging-access": "public-read", // a bare 404, so the door shows nothing off staging (rule 675)
   "HEAD /api/staging-access": "public-read",

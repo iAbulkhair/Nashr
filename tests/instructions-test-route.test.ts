@@ -333,8 +333,8 @@ describe("rule 952: one charge per click", () => {
   it("rule 952: the claim key is skilltest:{scope}:{nonce} (the caller's scope) and expires after 600 seconds", async () => {
     const u = await owner();
     const n = nonce();
-    const seen: { key: string; ttl: number }[] = [];
-    const spy = vi.spyOn(db, "setNx").mockImplementation(async (key: string, _v: unknown, ttl: number) => { seen.push({ key, ttl }); return true; });
+    const seen: { key: string; ttl?: number }[] = [];
+    const spy = vi.spyOn(db, "setNx").mockImplementation(async (key: string, _v: unknown, ttl?: number) => { seen.push({ key, ttl }); return true; });
     try {
       expect((await run({ nonce: n })).status).toBe(200);
     } finally {

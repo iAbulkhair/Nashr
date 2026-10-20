@@ -191,7 +191,8 @@ describe("rule 2075: the customer sees the end date in their language", () => {
     expect(suspendedMessage(until, "en", "fallback")).toContain("November");
     for (const v of [undefined, null, "", "nope", 12]) expect(suspendedMessage(v, "en", "fallback")).toBe("fallback");
     expect(SUSPENDED_UNTIL.ar("X")).toMatch(/[؀-ۿ]/);
-    expect(read("src/components/app/AuthForm.tsx").match(/suspendedMessage\(p\.body\.until/g)?.length).toBe(3);
+    // The password, two-step code and passkey (rule 2419) answers of the log-in form, and the reset form's.
+    expect(read("src/components/app/AuthForm.tsx").match(/suspendedMessage\(p\.body\.until/g)?.length).toBe(4);
   });
 });
 

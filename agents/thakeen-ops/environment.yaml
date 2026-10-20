@@ -1,0 +1,13 @@
+# The sandbox the ops agent runs in (rule 2390). Limited networking: these three hosts and nothing else, no package
+# managers, no MCP servers. Each vault credential is scoped to the same hosts again (README.md, step 2).
+name: thakeen-ops-env
+config:
+  type: cloud
+  networking:
+    type: limited
+    allow_package_managers: false
+    allow_mcp_servers: false
+    allowed_hosts:
+      - thakeen.com
+      - www.thakeen.com
+      - api.github.com
