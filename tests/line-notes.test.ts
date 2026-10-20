@@ -59,7 +59,9 @@ import { creditsFor } from "@/lib/models/credits";
 import { draftCredits } from "@/lib/task-costs";
 import { REVISE_MAX_NOTES, linesOf, parseNotes, revisePrice } from "@/lib/revise";
 import { reviseDraft } from "@/lib/noor";
-import { LINE_NOTES, MAX_NOTES, NOTE_MAX as UI_NOTE_MAX, errorOf } from "@/components/app/LineNotes";
+import LineNotes, { LINE_NOTES, MAX_NOTES, NOTE_MAX as UI_NOTE_MAX, errorOf, sendOutcome } from "@/components/app/LineNotes";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { NOTE_MAX } from "@/lib/task-notes";
 import { acct } from "@/lib/account-id";
 import * as reviseRoute from "@/app/api/tasks/[id]/revise/route";
@@ -372,5 +374,41 @@ describe("rule 2498: the inbox's copy and error mapping", () => {
     const r = await reviseDraft("social", brand, [], { channel: "instagram", title: "t", body: "b" }, [{ line: 0, quote: "b", note: "x" }], { model: "claude-sonnet-5-5" });
     expect(r.body).toBe("b\n\nDEV MOCK revision: 1 note(s) applied.");
     expect(h.calls).toHaveLength(0);
+  });
+});
+
+describe("rule 2498: the panel", () => {
+  const noop = () => {};
+  const render = (lang: "ar" | "en", body: string, price: number) =>
+    renderToStaticMarkup(createElement(LineNotes, { task: taskOf({ body }), body, lang, price, onDone: noop, onChanged: noop, onCancel: noop }));
+
+  it("shows every line, a + only on a line with text, the price on the send button and the count, disabled until a note exists", () => {
+    const html = render("en", "first line\n\nthird line", 7);
+    expect(html).toContain("first line");
+    expect(html).toContain("third line");
+    expect(html.match(new RegExp(`aria-label="${LINE_NOTES.en.add}"`, "g"))).toHaveLength(2);
+    expect(html).toContain(LINE_NOTES.en.send.replace("{c}", "7"));
+    expect(html).toContain(LINE_NOTES.en.count.replace("{n}", "0").replace("{max}", String(MAX_NOTES)));
+    expect(html).toMatch(/<button type="button" disabled=""[^>]*>Send to the agent/);
+    expect(html).not.toContain("dangerouslySetInnerHTML");
+  });
+
+  it("escapes the draft's text and speaks Arabic in Arabic", () => {
+    const html = render("ar", "<img src=x onerror=alert(1)>", 3);
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+    expect(html).toContain(LINE_NOTES.ar.send.replace("{c}", "3"));
+  });
+
+  it("a refusal (402, 409, 429, a failure) keeps the typed notes and says why; only a saved revision clears them", () => {
+    const t = taskOf();
+    expect(sendOutcome("en", 200, { ok: true, task: t })).toEqual({ clear: true, task: t });
+    expect(sendOutcome("en", 402, { error: "no_credits" })).toEqual({ clear: false, error: LINE_NOTES.en.errors.no_credits });
+    expect(sendOutcome("ar", 402, { error: "agent_cap" })).toEqual({ clear: false, error: LINE_NOTES.ar.errors.agent_cap });
+    expect(sendOutcome("en", 409, { error: "changed", task: t })).toEqual({ clear: false, error: LINE_NOTES.en.errors.changed, changed: t });
+    expect(sendOutcome("en", 429, {})).toEqual({ clear: false, error: LINE_NOTES.en.errors.slow_down });
+    expect(sendOutcome("en", 502, { error: "failed" })).toEqual({ clear: false, error: LINE_NOTES.en.errors.failed });
+    expect(sendOutcome("en", 200, { ok: false })).toMatchObject({ clear: false });
+    expect(sendOutcome("en", 422, { error: "agent_scope", message: "Held by the scope check." })).toEqual({ clear: false, error: "Held by the scope check." });
   });
 });

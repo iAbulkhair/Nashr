@@ -81,6 +81,17 @@ export const errorOf = (status: number, error?: string): ErrorKey => {
   return error && Object.hasOwn(LINE_NOTES.en.errors, error) ? (error as ErrorKey) : "failed";
 };
 
+/**
+ * What one answer of the revise route does to the panel: only a saved revision clears the notes; any refusal or failure keeps
+ * them and shows its words. A 409 that carries the item as it is now also hands it to the card.
+ */
+export type SendOutcome = { clear: true; task: Task } | { clear: false; error: string; changed?: Task };
+export function sendOutcome(lang: Lang, status: number, j: { ok?: boolean; task?: Task; error?: string; message?: string }): SendOutcome {
+  if (status >= 200 && status < 300 && j.ok && j.task) return { clear: true, task: j.task };
+  const error = j.message ?? LINE_NOTES[lang].errors[errorOf(status, j.error)];
+  return status === 409 && j.task ? { clear: false, error, changed: j.task } : { clear: false, error };
+}
+
 export default function LineNotes({ task, body, lang, price, onDone, onChanged, onCancel }: { task: Task; body: string; lang: Lang; price: number; onDone: (t: Task) => void; onChanged: (t: Task) => void; onCancel: () => void }) {
   const L = LINE_NOTES[lang];
   const toast = useToast();
@@ -116,15 +127,16 @@ export default function LineNotes({ task, body, lang, price, onDone, onChanged, 
     try {
       const res = await fetch(`/api/tasks/${task.id}/revise`, { method: "POST", headers: { "Content-Type": "application/json", "x-lang": lang }, body: JSON.stringify({ version: taskVersion(task), notes: list }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; task?: Task; error?: string; message?: string };
-      if (res.ok && j.ok && j.task) {
+      const out = sendOutcome(lang, res.status, j);
+      if (out.clear) {
         setNotes({});
         toast.success(L.done);
-        onDone(j.task);
+        onDone(out.task);
         return;
       }
       // The item as it is now: the card shows it, and the notes stay for a second look.
-      if (res.status === 409 && j.task) onChanged(j.task);
-      setError(j.message ?? L.errors[errorOf(res.status, j.error)]);
+      if (out.changed) onChanged(out.changed);
+      setError(out.error);
     } catch {
       setError(L.errors.failed);
     } finally {
