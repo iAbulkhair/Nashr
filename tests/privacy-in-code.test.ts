@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveBrands } from "@/lib/brands";
@@ -40,8 +40,8 @@ const download = async (): Promise<{ res: Response; body: AccountExport }> => {
 };
 
 /** An owner with a brand, an added brand, tasks past the inbox's 200, a file, a conversation and a connection. */
-async function seededOwner(prefix: string): Promise<User> {
-  const u = await newUser(prefix);
+async function seededOwner(prefix: string, fx: Fixture = {}): Promise<User> {
+  const u = await newUser(prefix, fx);
   const e = u.email;
   await saveBrands(e, [{ id: "default", name: "Main", createdAt: "2026-10-01T00:00:00.000Z", status: "active" }, { id: "b2", name: "Second", createdAt: "2026-10-02T00:00:00.000Z", status: "active" }]);
   await db.set(`brand:${e}`, { name: `brand-of-${prefix}`, website: "https://example.test" });
@@ -94,7 +94,7 @@ describe("rule 1321: only the signed-in account's data, whatever another account
 
   it("the active brand is the session's scope (sc(u)), and every brand of the account is exported under its own scope", async () => {
     const u = await seededOwner("pxsc");
-    await db.set(`activebrand:${u.email}`, "b2");
+    await seedActiveBrand(u.email, "b2");
     await signIn(u.email);
     const { body } = await download();
     expect(body.brands.map((b) => [b.id, b.active])).toEqual([["default", false], ["b2", true]]);

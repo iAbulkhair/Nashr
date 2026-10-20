@@ -1,5 +1,5 @@
 ---
-# The Thakeen ops agent (rules 2380-2390, docs/system/flows.md section 91). It reads and reports; it never acts.
+# The Thakeen ops agent (rules 2380-2390, docs/system/flows.md section 99). It reads and reports; it never acts.
 # The only action it can lead to, opening a GitHub issue, runs inside the app after the founder presses «موافق».
 name: thakeen-ops
 description: Watches thakeen.com and the Nashr repository, sends alerts and a morning report to the founder on Telegram.

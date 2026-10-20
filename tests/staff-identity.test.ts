@@ -2,6 +2,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { getUser } from "@/lib/auth";
+import { updatePerson } from "@/lib/person";
+import { ownerOf } from "@/lib/membership";
 import { newTotpSecret } from "@/lib/totp";
 import {
   COMMON_PASSWORDS, DUMMY_HASH, RECOVERY_CODES, STAFF_BCRYPT_COST, canWrite, getStaff, hashStaffPassword, listStaff, newRecoveryCodes,
@@ -59,7 +61,8 @@ describe("staff passwords (rule 1641)", () => {
   it("refused when it equals the customer password of the same address", async () => {
     const u = await newUser("dual");
     const same = "customer password twelve";
-    await db.set(`user:${u.email}`, { ...(await getUser(u.email))!, passHash: await bcrypt.hash(same, 10) });
+    // The customer password is the owner PERSON's (multi-workspace M1, rule 2132), mirrored to the account.
+    await updatePerson(ownerOf(u), { passHash: await bcrypt.hash(same, 10) });
     expect(await passwordRefusal(u.email, same)).toBe("password_customer");
     expect(await passwordRefusal(u.email, "a different long phrase")).toBeNull();
   });

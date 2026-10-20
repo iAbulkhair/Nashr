@@ -6,10 +6,10 @@ import { summarize, type GoldenResult, type GoldenRun } from "@/lib/golden";
 import { kpiDelta } from "@/lib/kpi-delta";
 import { asData } from "@/lib/json";
 import { saveUser } from "@/lib/auth";
-import { saveBrands, scopeFor, setActiveBrand } from "@/lib/brands";
+import { saveBrands, scopeFor } from "@/lib/brands";
 import { appDict } from "@/lib/app-i18n";
 import type { AgentId } from "@/lib/agents";
-import { json, newUser, signIn } from "./helpers/session";
+import { json, newUser, signIn, seedActiveBrand } from "./helpers/session";
 import { claudeOn } from "./helpers/model";
 
 /** The second round of the eval audit: the P2 and P3 findings that survived re-verification against main. */
@@ -96,7 +96,7 @@ describe("chat thumbs belong to the brand the chat ran in", () => {
   it("the feedback route writes against the active brand, not the account", async () => {
     const u = await newUser("fbroute");
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
-    await setActiveBrand(u.email, "b2");
+    await seedActiveBrand(u.email, "b2");
     await signIn(u.email);
     const route = await import("@/app/api/chat/feedback/route");
     expect((await route.POST(json("/api/chat/feedback", "POST", { agent: "noor", value: -1, reason: "too long" }))).status).toBe(200);

@@ -1,6 +1,6 @@
 # Coverage: the ops agent's routes and files (rules 2380-2390)
 
-Status on 2026-10-20 on branch `claude/thakeen-ops-agent` (cut from main 70d16757), flows.md section 91. Rules 2391-2399 are held for this work and unused. Every rule below is pinned in `tests/ops-agent.test.ts` (the rule number is in the `describe` name); the three new keys are also pinned in `tests/key-registry.test.ts`.
+Status on 2026-10-20 on branch `claude/thakeen-ops-agent` (cut from main 70d16757), flows.md section 99. Rules 2391-2399 are held for this work and unused. Every rule below is pinned in `tests/ops-agent.test.ts` (the rule number is in the `describe` name); the three new keys are also pinned in `tests/key-registry.test.ts`.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

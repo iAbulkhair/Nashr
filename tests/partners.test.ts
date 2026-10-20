@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, getUser, saveUser, type User } from "@/lib/auth";
+import { storedPersonId } from "@/lib/keys";
 import { db } from "@/lib/db";
 import { codeFor } from "@/lib/referral";
 import { wipeAccount } from "@/lib/account";
@@ -628,7 +629,7 @@ describe("rule 399: the partner page shows no customer PII; bank details are the
     await signIn(m.email);
     const page = await html(PartnerPage);
     expect(page).not.toContain(a.code);
-    const owner = { ...a.user, actor: { kind: "owner" as const, email: a.user.email, name: "P", lang: "en" as const, role: "owner" as const } };
+    const owner = { ...a.user, actor: { kind: "owner" as const, pid: storedPersonId(a.user.email), home: true, email: a.user.email, name: "P", lang: "en" as const, role: "owner" as const } };
     const founder = { ...owner, actor: { ...owner.actor, kind: "founder" as const, impersonating: FOUNDER } };
     expect(can(owner, "partner")).toBe(true);
     expect(can(owner, "partner.bank")).toBe(true);

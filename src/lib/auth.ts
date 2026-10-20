@@ -1,5 +1,5 @@
 import { cookies, headers } from "next/headers";
-import { isSuspended, type StoredSuspension } from "./suspension";
+import { isPersonSuspended, isSuspended, type StoredSuspension } from "./suspension";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
@@ -15,7 +15,8 @@ import { handPlanEnded, type HandPlan } from "./hand-plan";
 import { ksaDay } from "./partner-rules";
 import type { FoundingSeat, PriceLock } from "./founding";
 import { SESSION_COOKIE, dropCookie, dropLegacyCookie, namesOf, readCookie } from "./cookie-names";
-import { accountKey, globalKey, storedScope, type Scope } from "./keys";
+import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, storedScope, type AccountId, type PersonId, type Scope } from "./keys";
+import type { Person } from "./person";
 import { acct, idForNewAccount, LoginIndex, loginIndexOf, type LoginIndexValue } from "./account-id";
 import { parseStored } from "./stored";
 
@@ -35,6 +36,17 @@ export type Role = "owner" | "admin" | "member";
 export type Actor = {
   /** founder = a founder impersonating this account (the session carries `imp`). */
   kind: "owner" | "member" | "token" | "founder";
+  /**
+   * The person acting (multi-workspace membership, rule 2115): the session's person for owner, member and founder (the
+   * owner's person behind an impersonation), the account's owner (`ownerOf`) for a token. Every resolver sets it.
+   */
+  pid: PersonId;
+  /**
+   * The active account is this person's HOME account (a legacy owner's own account, a legacy member's `memberOf`): the
+   * legacy per-login keys (`activebrand:{login}`, the feed and booking pointers) belong to it and are read and written
+   * beside the per-(person, account) keys. False for any other account and for a `p_` person (rule 2119).
+   */
+  home: boolean;
   /** The login that is acting: the member's own email for members, the owner email for owner, token and founder. */
   email: string;
   name: string;
@@ -72,11 +84,22 @@ export type User = {
    * to the browser (`GET /api/profile` names its fields, rule 1995).
    */
   id?: string;
+  /**
+   * The person who owns this account (multi-workspace membership, docs/specs/2026-10-18-multi-org.md, rules 2110-2139).
+   * Absent on every account in production during M1 (a legacy owner's person id is `acct(u)`); a test fixture may set a
+   * `p_...` id. Read only through `ownerOf`, which falls back to `acct(u)`; never compared or keyed directly.
+   */
+  ownerPid?: string;
   /** The sign-in and contact address: mail goes here, display uses it. Never a key: keys go through `acct(u)`. */
   email: string;
   name: string;
   phone: string;
-  passHash: string;
+  /**
+   * The owner's password hash, a MIRROR of the person's (multi-workspace M1, rule 2132): written only by `createUser`
+   * and `updatePerson`, read by nobody in this build (the person is read: `login.person`, `getPerson`). Kept so a build
+   * rolled back to R1 still signs the owner in. Absent on an account a `p_` person owns: its password is on the person.
+   */
+  passHash?: string;
   plan: Plan;
   credits: number;
   trialEnds: string; // ISO
@@ -352,35 +375,61 @@ export async function releaseLogin(email: string, pid: string, opts: { locked?: 
  * A new owner account. Callers hold `lock:login:{email}` and have checked `getLogin(email)` is null under it. The id is
  * the address while `OPAQUE_IDS` is off (rule 1996); `opaque` is for tests that need id ≠ email (rule 1985). The login
  * index is written with the record: the person is the account's owner, whose person id is the account id.
+ *
+ * Multi-workspace M1 (rule 2132): the person row `person:{id}` is written fresh beside the account (plan reconciliation
+ * 6: a leftover row of a deleted account at this id lends nothing), with the same hash, birth and session stamp, and
+ * `orgs:{id}` names the account. Without a password (a Google sign-up) the person has no hash, and the account keeps a
+ * hash of random bytes only so a build rolled back to R1, which compares `user.passHash`, never meets a record without
+ * one. `emailVerifiedAt` (a Google sign-up, which proved the address) is written on the person and the account in the
+ * same locked write (reconciliation 11: the only account the new person owns). `person: "p"` (tests only, rule 2132; a source scan pins that no route passes it) makes the M2 shape: a `p_`
+ * person holding the credentials, and an account without them that names it in `ownerPid`.
  */
-export async function createUser(input: { email: string; name: string; phone: string; password: string; lang: "ar" | "en" }, opts: { opaque?: boolean } = {}): Promise<User> {
+export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en"; emailVerifiedAt?: string }, opts: { opaque?: boolean; person?: "p" } = {}): Promise<User> {
   const email = normalizeEmail(input.email);
   const now = new Date();
-  const u: User = {
+  const stamp = now.toISOString();
+  const passHash = input.password ? await bcrypt.hash(input.password, 10) : undefined;
+  const account: User = {
     id: idForNewAccount(email, opts.opaque),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",
-    passHash: await bcrypt.hash(input.password, 10),
     plan: "trial",
     credits: PLAN_CREDITS.trial,
     trialEnds: new Date(now.getTime() + 3 * 864e5).toISOString(),
-    createdAt: now.toISOString(),
+    createdAt: stamp,
     lang: input.lang,
-    // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
-    // session issued before this account existed: a re-registered address never inherits an old login.
-    sessionsAfter: now.toISOString(),
     gatedSignup: true,
     // What the signup notice under the form named, from the versions in code (rule 1325).
     consent: signupConsent(input.lang, now),
   };
-  await saveUser(u);
-  await claimLogin(email, acct(u));
+  const [{ createPersonRecord, withPersonLock }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
+  const pid = storedPersonId(opts.person === "p" ? newPersonId() : acct(account));
+  // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
+  // session issued before this person existed: a re-registered address never inherits an old login.
+  const proved = input.emailVerifiedAt ? { emailVerifiedAt: input.emailVerifiedAt } : {};
+  const person = { pid, email, name: account.name, lang: account.lang, passHash, createdAt: stamp, sessionsAfter: stamp, ...proved };
+  const u: User =
+    opts.person === "p"
+      ? { ...account, ...proved, ownerPid: pid }
+      : { ...account, ...proved, passHash: passHash ?? (await bcrypt.hash(randomBytes(32).toString("base64url"), 10)), sessionsAfter: stamp };
+  // `lock:login` (the caller's) → `lock:person` (rule 2139), taken before the first write: a held person lock throws
+  // `person_lock_timeout` with nothing written, and the signup routes answer it 409 `busy`.
+  await withPersonLock(pid, async () => {
+    await saveUser(u);
+    await Promise.all([createPersonRecord(person, { loginLocked: true, personLocked: true }), db.sadd(personKey.orgs(pid), acct(u))]);
+    await claimLogin(email, pid);
+  });
   return u;
 }
 
-export async function verifyPassword(u: User, password: string) {
-  return bcrypt.compare(password, u.passHash);
+/**
+ * Check a typed password against the PERSON's hash (multi-workspace M1, rule 2134): `login.person` from `getLogin`, so a
+ * stale `person:` row never beats a provably newer legacy record (plan reconciliation 5). A person without a hash (a
+ * Google-only person, or a record missing it) never matches.
+ */
+export async function verifyPassword(p: Pick<Person, "passHash">, password: string): Promise<boolean> {
+  return typeof p.passHash === "string" && p.passHash.length > 0 && bcrypt.compare(password, p.passHash);
 }
 
 /**
@@ -486,7 +535,7 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   const now = Date.now();
   // The person and the active account (rule 1984), from the login as it resolves now. No login: neither is written, and
   // the session resolves to nothing anyway.
-  const ids = await sessionIds(email);
+  const ids = await sessionIds(email, { imp: !!opts.imp });
   // An impersonation carries its end (`exp`, rule 1177), the same moment its TTL ends.
   const rec: Session = opts.imp ? { email, at: now, imp: opts.imp, exp: now + ttlSeconds * 1000, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}), ...(opts.ss ? { ss: opts.ss } : {}), ...ids } : { email, at: now, ...ids };
   // Hashed key only (rule 1345): the raw token is in the cookie and nowhere else.
@@ -502,11 +551,24 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
   }
 }
 
-/** The person and active account a new session of this login carries: the owner's own account, or the member's team. */
-async function sessionIds(email: string): Promise<{ pid?: string; acct?: string }> {
-  const l = await getLogin(email).catch(() => null);
-  if (!l) return {};
-  return l.kind === "owner" ? { pid: l.pid, acct: acct(l.user) } : { pid: l.pid, acct: l.member.memberOf };
+/**
+ * The person and the active account a new session of this login carries (rule 1984, multi-workspace spec section 7):
+ * `pid` from `getLogin`, `acct` from `pickAccount` (`lastorg:` while it holds, else the owned account, else the oldest
+ * live membership; a legacy person's home account). With `MULTI_ORG` off the pick is always the home account, the value
+ * R1 wrote: the owner's own account, or the member's `memberOf`. No account: `acct` is absent. An impersonation keeps
+ * R1's shape: the account the address owns and its owner (`ownerOf`, the same person for a legacy owner).
+ */
+export async function sessionIds(email: string, opts: { imp?: boolean } = {}): Promise<{ pid?: string; acct?: string }> {
+  try {
+    const l = await getLogin(email);
+    if (!l) return {};
+    const { ownerOf, pickAccount } = await import("./membership");
+    if (opts.imp) return l.kind === "owner" ? { pid: ownerOf(l.user), acct: l.acct } : { pid: l.pid, ...(l.acct ? { acct: l.acct } : {}) };
+    const a = await pickAccount(l.person);
+    return a ? { pid: l.pid, acct: a } : { pid: l.pid };
+  } catch {
+    return {};
+  }
 }
 
 /** The hashed session key behind this request's cookie (the device list marks it as "this device"), or null. */
@@ -581,17 +643,148 @@ export async function currentUserUnverified(): Promise<User | null> {
 }
 
 /**
- * Turn a session into the ACCOUNT record with `actor` set (docs/superpowers/specs/2026-09-29-teams-design.md §3).
+ * The PERSON behind this request's session (multi-workspace membership, spec section 7, "no workspace" state): a valid
+ * session with a valid person, with or without a valid account. `acct` is the session's active account when it still
+ * resolves for this person (`resolveSession`), else null. The person checks are `resolveSession`'s: the login index still
+ * names the person, the person holds the address, is not suspended, and the session is not older than its stamps. A
+ * session written before R1 finds its person through `getLogin`. An impersonation never resolves a person (the founder
+ * is not that person). Only the M2 workspace pages and routes, the join flow, the person's own security settings and
+ * sign-out may call it (pinned like rule 752 by tests/multi-org-session.test.ts; no caller under src/app in M1).
+ */
+export async function currentPerson(): Promise<{ person: Person; acct: AccountId | null } | null> {
+  const s = await readSession();
+  if (!s || s.imp) return null;
+  const [person, u, { aidOf }] = await Promise.all([sessionPerson(s), resolveSession(s), import("./membership")]);
+  if (!person) return null;
+  return { person, acct: u && u.actor?.pid === person.pid ? aidOf(u) : null };
+}
+
+/** The session's person, checked as `resolveSession` checks it; null when the session names nobody who still signs in. */
+async function sessionPerson(s: Session): Promise<Person | null> {
+  const email = normalizeEmail(s.email);
+  let person: Person | null;
+  if (typeof s.pid === "string" && s.pid) {
+    const pid = storedPersonId(s.pid);
+    const { getPerson } = await import("./person");
+    const [idx, p] = await Promise.all([readLoginIndex(email), getPerson(pid)]);
+    if (idx ? idx.pid !== pid : pid !== email) return null;
+    person = p;
+  } else {
+    person = (await getLogin(email))?.person ?? null;
+  }
+  if (!person || normalizeEmail(person.email) !== email || isPersonSuspended(person)) return null;
+  if (issuedBefore(s.at, person.sessionsAfter) || issuedBefore(s.at, person.devicesAfter)) return null;
+  return person;
+}
+
+/**
+ * Turn a session into the ACCOUNT record with `actor` set (docs/superpowers/specs/2026-09-29-teams-design.md §3,
+ * docs/specs/2026-10-18-multi-org.md section 7).
  *
  * The account is always the owner's `User`, so every `sc(u)`, charge and plan check keeps working unchanged. Scope is
- * built from the OWNER email: a member's own address never becomes a workspace key. A member is refused when disabled,
- * when the session predates their own or the team's revocation stamp, when the owner is gone, suspended or has not
- * verified the address (rule 767), when the member is not on the owner's roster (`members:{owner}`), or when the member record predates the owner record (a
- * re-registered owner address never inherits an old team).
+ * built from the ACCOUNT id: a member's own address never becomes a workspace key.
+ *
+ * A session with `pid` and `acct` (written from R1 on) resolves on the person and the membership (`resolveIds`): one
+ * parallel round after the session read, for owners and members alike (rule 2135). A session without them (written
+ * before R1) resolves exactly as before (`resolveLegacy`) and is never rewritten on read.
  */
 async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): Promise<User | null> {
+  return typeof s.pid === "string" && s.pid && typeof s.acct === "string" && s.acct ? resolveIds(s, s.pid, s.acct, opts) : resolveLegacy(s, opts);
+}
+
+/** `resolveIds`'s marker for a brand list the store failed to answer. */
+const BRANDS_UNREAD = Symbol("brands unread");
+
+/**
+ * A session that names its person and its ACTIVE account (rules 1984, 2111, 2131, 2135). ONE parallel round reads the
+ * person (`person:`, `user:` and `member:` of `pid`, for `personFromRaw`), the login index, the account (`user:{acct}`,
+ * the same command when `acct` is `pid`), the membership (`mbr:{acct}:{pid}`, the legacy `member:{pid}`, the roster
+ * entry; the row and the roster not when `acct` is `pid`, the person's own account), the account's brands and the active brand (`activebrand:{pid}:{acct}`, the legacy `activebrand:{email}`).
+ *
+ * It resolves only when: the index still names `pid` (no index: `pid` is the address, a legacy person); the person
+ * exists, holds this address, is not suspended, and the session is not older than its `sessionsAfter`/`devicesAfter`;
+ * the account exists under `acct`, is not suspended, and is verified (rule 751: an owner passes through
+ * `currentUserUnverified` and an impersonation; rule 767: a member never does); `roleIn` gives a role on these records,
+ * and for a membership `membershipHolds` (accepted no earlier than the account was created) and the session is not
+ * older than the account's `teamSessionsAfter`. An impersonation resolves only as the owner, and only until its `exp`.
+ * Nothing is taken from the request: `acct` is the session's, re-checked here on every request.
+ */
+async function resolveIds(s: Session, rawPid: string, rawAcct: string, opts: { unverified?: boolean }): Promise<User | null> {
   const email = normalizeEmail(s.email);
-  const [{ getMember, onRoster, memberPid }, { activeBrandId, listBrands, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
+  const pid = storedPersonId(rawPid);
+  const aid = storedAccountId(rawAcct);
+  const [{ personFromRaw }, { membershipFromRaw, roleIn, membershipHolds, legacyHomeFrom }, { brandsFromRaw, activeBrandFrom, scopeFor }] = await Promise.all([import("./person"), import("./membership"), import("./brands")]);
+  const same = (aid as string) === (pid as string);
+  const [rawPerson, rawUser, rawMember, idx, account, rawMbr, listed, rawBrands, rawActive, rawLegacyActive] = await Promise.all([
+    db.get<unknown>(personKey.person(pid)),
+    same ? Promise.resolve(null) : db.get<unknown>(accountKey.user(pid)),
+    db.get<unknown>(accountKey.member(pid)),
+    readLoginIndex(email),
+    getAccount(aid),
+    // `acct` equal to `pid` is the person's own account (a legacy owner, an opaque owner): it can only be held as its
+    // owner, so the membership and the roster are not read (`roleIn` refuses should `ownerOf` disagree).
+    same ? Promise.resolve(null) : db.get<unknown>(accountKey.membership(aid, pid)),
+    same ? Promise.resolve(false) : db.sismember(accountKey.members(aid), pid),
+    // A store error on the brand list alone does not end the request: the stored choice is used unchecked, as an
+    // owner's always was before R1 (the scope stays inside this account either way).
+    db.get<unknown>(accountKey.brands(aid)).catch((e: unknown) => { log.error("session brand list read failed", e); return BRANDS_UNREAD; }),
+    db.get<unknown>(personKey.activeBrand(pid, aid)),
+    db.get<unknown>(accountKey.activeBrand(email)),
+  ]);
+  // The login must still name the session's person: an address that moved on, or was taken by someone else, ends it.
+  if (idx ? idx.pid !== pid : pid !== email) return null;
+  const legacyRecord = same ? account : rawUser;
+  const person = personFromRaw(pid, rawPerson, legacyRecord, rawMember);
+  if (!person || normalizeEmail(person.email) !== email) return null;
+  if (isPersonSuspended(person)) return null; // person suspension (rule 2131): every account, every resolver
+  if (issuedBefore(s.at, person.sessionsAfter)) return null; // issued before the last password change (or before the person existed)
+  if (issuedBefore(s.at, person.devicesAfter)) return null; // issued before the last "sign out other devices" (rule 1170)
+  if (!account || acct(account) !== aid || isSuspended(account)) return null; // account suspension: this account only
+  const membership = membershipFromRaw(aid, pid, rawMbr, rawMember, listed);
+  const role = roleIn(account, pid, membership);
+  if (!role) return null;
+  if (role === "owner") {
+    if (s.imp && typeof s.exp === "number" && Date.now() >= s.exp) return null; // the founder's chosen length is over (rule 1177)
+    // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
+    // `currentUserUnverified`. A founder impersonation passes (support must reach the account).
+    if (!emailVerified(account) && !s.imp && !opts.unverified) return null;
+  } else {
+    // Impersonation sessions are only ever issued for owner accounts.
+    if (s.imp || !membership || !membershipHolds(account, membership)) return null;
+    // Rule 767: while the owner has not proved the address the account spends nothing, so its members are signed out
+    // too, in both resolvers (a member has no address of the owner's to prove).
+    if (!emailVerified(account)) return null;
+    if (issuedBefore(s.at, account.teamSessionsAfter)) return null;
+  }
+  // The person's active brand in THIS account (rule 2119), the legacy per-login key only for their home account, and
+  // only while it is one of this account's active brands.
+  const home = legacyHomeFrom(pid, legacyRecord, rawMember) === aid;
+  const chosen = activeBrandFrom(rawActive, rawLegacyActive, home);
+  const bid = rawBrands === BRANDS_UNREAD || brandsFromRaw(rawBrands).some((b) => b.id === chosen && b.status === "active") ? chosen : "default";
+  account.brandId = bid;
+  account.scope = scopeFor(acct(account), bid);
+  const base = { pid, home, email: person.email, name: person.name, lang: person.lang === "en" ? ("en" as const) : ("ar" as const), role };
+  account.actor =
+    role !== "owner"
+      ? { ...base, kind: "member" }
+      : s.imp
+        ? { ...base, kind: "founder", impersonating: s.imp, since: s.at, until: typeof s.exp === "number" ? s.exp : s.at + IMPERSONATION_LEGACY_MS }
+        : { ...base, kind: "owner" };
+  return account;
+}
+
+/**
+ * A session written before R1 (no `pid` or no `acct`): today's rounds and checks, unchanged (rules 2132, 2135). An owner
+ * resolves in one round after the session read, a member in two. A member is refused when disabled, when the session
+ * predates their own or the team's revocation stamp, when the owner is gone, suspended or has not verified the address
+ * (rule 767), when the member is not on the owner's roster (`members:{owner}`), or when the member record predates the
+ * owner record (a re-registered owner address never inherits an old team). The person and the account it stands for are
+ * derived from the legacy records (an owner: `acct(u)`; a member: its `memberOf`), both the person's home; the active
+ * brand is the legacy per-login `activebrand:{email}`, which `setActiveBrandIn` keeps writing for the home account.
+ */
+async function resolveLegacy(s: Session, opts: { unverified?: boolean }): Promise<User | null> {
+  const email = normalizeEmail(s.email);
+  const [{ getMember, onRoster, memberPid }, { activeBrandId, listBrands, scopeFor }, { ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./membership")]);
   // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records, and so
   // is the login index (rule 1984): one more command, no more rounds. A session without `acct` (written before R1) reads
   // the account at its own address, exactly the record it read before.
@@ -612,7 +805,8 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
     if (!emailVerified(u) && !s.imp && !opts.unverified) return null;
     u.brandId = brandId;
     u.scope = scopeFor(acct(u), brandId);
-    const base = { email: u.email, name: u.name, lang: u.lang, role: "owner" as const };
+    // A legacy owner's person is the account's owner, and the account is their home.
+    const base = { pid: ownerOf(u), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" as const };
     if (s.imp && typeof s.exp === "number" && Date.now() >= s.exp) return null; // the founder's chosen length is over (rule 1177)
     u.actor = s.imp
       ? { ...base, kind: "founder", impersonating: s.imp, since: s.at, until: typeof s.exp === "number" ? s.exp : s.at + IMPERSONATION_LEGACY_MS }
@@ -644,7 +838,8 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   const bid = brands.some((b) => b.id === brandId && b.status === "active") ? brandId : "default";
   owner.brandId = bid;
   owner.scope = scopeFor(acct(owner), bid);
-  owner.actor = { kind: "member", email: m.email, name: m.name, lang: m.lang === "en" ? "en" : "ar", role: m.role };
+  // A legacy member's person id is its frozen address (`memberPid`), and `memberOf` is its home account.
+  owner.actor = { kind: "member", pid: storedPersonId(memberPid(m)), home: true, email: m.email, name: m.name, lang: m.lang === "en" ? "en" : "ar", role: m.role };
   return owner;
 }
 
@@ -665,9 +860,15 @@ function memberHolds(pid: string, email: string, idx: LoginIndexValue | null): b
 
 /**
  * A login: an owner account, or a member login with the account it belongs to (null when that owner is gone). `pid` is
- * the person (multi-org forced change 1): an owner's person id is its account id, a member's its frozen address.
+ * the person (multi-org forced change 1): an owner's person id is its account id, a member's its frozen address, a person
+ * known only through `person:` and membership rows its `p_` id. `person` is the person as `getPerson` reads it (rule 2134):
+ * the password, the stamps and the address are checked there. `acct` is the account the login stands for: the owned
+ * account, the legacy member's `memberOf`, or the oldest live membership. `member` is the legacy member record, null for
+ * a person known only through `mbr:` rows (test persons in M1, real ones from M2).
  */
-export type Login = { kind: "owner"; user: User; pid: string } | { kind: "member"; member: Member; owner: User | null; pid: string };
+export type Login =
+  | { kind: "owner"; user: User; pid: PersonId; person: Person; acct: AccountId }
+  | { kind: "member"; member: Member | null; owner: User | null; pid: PersonId; person: Person; acct: AccountId | null };
 /**
  * What a SIGN-IN ADDRESS signs in as (rule 1982): only sign-in, signup, forgot/reset password, Google sign-in, the
  * address-change "is it taken" check and the console's lookup by address use this. A pointer that already names an
@@ -678,18 +879,54 @@ export type Login = { kind: "owner"; user: User; pid: string } | { kind: "member
  * matching. An email is unique across `user:` and `member:` (enforced under `lock:login:{email}`); should both ever
  * exist, the owner record wins, as in `currentUser`. A member record that is not on its owner's roster (the owner
  * deleted, or the record outlived a removal) is no login at all: it cannot sign in, and it does not keep the address
- * from signing up. In R1 every index names the address itself, so this is one round, as before; an index naming
- * another id (R2) costs one more read.
+ * from signing up.
+ *
+ * Multi-workspace M1 (plan reconciliation 4): the person is read with the records (`person:` in the same rounds, the
+ * precedence and stale guard of `personFromRaw`), and its address must be this one. When neither legacy record holds,
+ * a person with a `person:` row is an owner when `orgs:{pid}` names an account `ownerOf` gives to them, else a member of
+ * their oldest live membership (`listOrgs`, re-checked on the forward records); with none of them the address is nobody's
+ * (reconciliation 7: exactly today's answer for a removed member).
+ *
+ * Rounds: round 1 as R1 (`login:`, `user:{e}`, `member:{e}`) plus `person:{e}`, one more command in the same round. An
+ * index naming another id costs the one more round R1 already paid, now reading `user:`, `person:` and `member:` of that
+ * id together. A legacy member pays R1's roster round; only a person no legacy record backs pays the `orgs:` rounds.
  */
 export async function getLogin(email: string): Promise<Login | null> {
   const e = normalizeEmail(email);
-  const { getMember, onRoster, memberPid } = await import("./team");
-  const [idx, own, m] = await Promise.all([readLoginIndex(e), getAccount(e), getMember(e)]);
-  const u = idx && idx.pid !== e ? await getAccount(idx.pid) : own;
-  if (u && ownsLogin(u, e, idx)) return { kind: "owner", user: u, pid: acct(u) };
-  if (!m || normalizeEmail(m.email) !== e || !memberHolds(memberPid(m), e, idx)) return null;
-  const [owner, listed] = await Promise.all([getAccount(m.memberOf), onRoster(m.memberOf, e)]);
-  return listed ? { kind: "member", member: m, owner, pid: memberPid(m) } : null;
+  const [{ getMember, onRoster, memberPid }, { personFromRaw }, { legacyHomeFrom, listOrgs, ownerOf }] = await Promise.all([import("./team"), import("./person"), import("./membership")]);
+  // The address as a person id (a legacy owner's or member's, while `OPAQUE_IDS` is off), and the id the index names.
+  const self = storedPersonId(e);
+  const [idx, own, m, ownRow] = await Promise.all([readLoginIndex(e), getAccount(e), getMember(e), db.get<unknown>(personKey.person(self))]);
+  const far = idx && idx.pid !== e ? storedPersonId(idx.pid) : null;
+  const [u, row, farMember] = far ? await Promise.all([getAccount(far), db.get<unknown>(personKey.person(far)), db.get<unknown>(accountKey.member(far))]) : [own, ownRow, null];
+  const pid = far ?? self;
+  // The person must hold THIS address: a person row or record that names another one signs nobody in here.
+  const here = (p: Person | null): p is Person => !!p && normalizeEmail(p.email) === e;
+  if (u && ownsLogin(u, e, idx)) {
+    // The owner's own record backs the person (never the member record at the same address).
+    const person = personFromRaw(pid, row, u, null);
+    if (here(person)) return { kind: "owner", user: u, pid, person, acct: storedAccountId(acct(u)) };
+  }
+  if (m && normalizeEmail(m.email) === e && memberHolds(memberPid(m), e, idx)) {
+    const [owner, listed] = await Promise.all([getAccount(m.memberOf), onRoster(m.memberOf, e)]);
+    const person = listed ? personFromRaw(pid, row, null, m) : null;
+    if (here(person)) return { kind: "member", member: m, owner, pid, person, acct: m.memberOf ? storedAccountId(m.memberOf) : null };
+  }
+  // Neither legacy record holds: a person read as `getPerson` reads it, through its forward records only. Only a person
+  // no legacy record backs (a `p_` person) signs in this way: a legacy owner or member whose own record no longer holds
+  // the address (an account that moved, a member removed from the roster) gets nothing, as in R1, even though its
+  // credentials are mirrored on a `person:` row (rule 2132).
+  const legacyRec = far ? farMember : m;
+  const person = personFromRaw(pid, row, u, legacyRec);
+  if (!here(person) || person.source !== "person" || legacyHomeFrom(pid, u, legacyRec)) return null;
+  const orgs = await listOrgs(pid);
+  const owned = orgs.find((o) => o.role === "owner");
+  const first = owned ?? orgs[0];
+  if (!first) return null;
+  const account = await getAccount(first.aid);
+  if (!account || acct(account) !== first.aid) return null;
+  if (owned) return ownerOf(account) === pid ? { kind: "owner", user: account, pid, person, acct: first.aid } : null;
+  return { kind: "member", member: null, owner: account, pid, person, acct: first.aid };
 }
 /**
  * The account a sign-in address owns, or null (a member's address, or nobody's). For the founder console's routes that

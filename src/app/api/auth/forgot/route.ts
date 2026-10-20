@@ -38,8 +38,10 @@ export async function POST(req: Request) {
   if (refused) return refused;
   if (!(await allow(`forgot:em:${email}`, 3, 900))) return NextResponse.json({ ok: true, mail });
   const login = await getLogin(email);
-  // A member whose account is gone has nothing to sign in to: no link, and the same answer as an unknown address.
-  const target: ResetRecord | null = !login ? null : login.kind === "owner" ? { email: login.user.email, kind: "owner" } : login.owner ? { email: login.member.email, kind: "member" } : null;
+  // A member whose account is gone has nothing to sign in to: no link, and the same answer as an unknown address. The link
+  // names the PERSON's address (multi-workspace M1, rule 2132): the reset route writes the person's password with
+  // `updatePerson`, for a legacy login and a `p_` person alike.
+  const target: ResetRecord | null = !login ? null : login.kind === "owner" ? { email: login.person.email, kind: "owner" } : login.owner ? { email: login.person.email, kind: "member" } : null;
   if (target && mail) {
     const token = randomBytes(32).toString("hex");
     await db.set(`pwreset:${createHash("sha256").update(token).digest("hex")}`, target, 3600);

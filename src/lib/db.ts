@@ -523,4 +523,4 @@ export async function mgetChunked<T = unknown>(keys: readonly string[], size = 1
   return (await pmap(chunks, (ch) => db.mget<T>(ch), 4)).flat();
 }
 /** Caps for the lists above. Reads never look past these, so trimming loses nothing a page shows. */
-export const CAPS = { chat: 400, adminLog: 5000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, govHistory: 100, activity: 2000, secDone: 200, secAudit: 500, handoffs: 200, skillsHistory: 100, skillsWsHistory: 50, skillsFeed: 500, agentScopeLog: 5000 } as const;
+export const CAPS = { chat: 400, adminLog: 5000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, govHistory: 100, activity: 2000, secDone: 200, secAudit: 500, handoffs: 200, skillsHistory: 100, skillsWsHistory: 50, skillsFeed: 500, agentScopeLog: 5000, teamLog: 500 } as const;

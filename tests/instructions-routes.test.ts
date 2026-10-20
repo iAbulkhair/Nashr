@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
 import { getUser, saveUser, type User } from "@/lib/auth";
-import { addBrand, scopeFor, setActiveBrand } from "@/lib/brands";
+import { addBrand, scopeFor } from "@/lib/brands";
 import { can } from "@/lib/roles";
 import { currentUser, sc } from "@/lib/auth";
 import { INSTRUCTION_WRITES_PER_HOUR } from "@/lib/rate";
@@ -29,8 +29,8 @@ const restore = (body: unknown) => restoreRoute.POST(json("/api/instructions/res
 const history = (q = "") => historyRoute.GET(new Request(`https://nashr.test/api/instructions/history${q}`)).then(call);
 const item = (text: string, extra: Body = {}) => ({ text, agents: "all", on: true, ...extra });
 
-const owner = async (prefix: string, plan: User["plan"] = "agency") => {
-  const u = await newUser(prefix);
+const owner = async (prefix: string, plan: User["plan"] = "agency", fx: Fixture = {}) => {
+  const u = await newUser(prefix, fx);
   await saveUser({ ...u, plan });
   await signIn(u.email);
   return u;
@@ -174,12 +174,12 @@ describe("rule 949: the workspace is the caller's own", () => {
   });
 
   it("rule 949: another brand of the same account, and another account, never see this brand's layer", async () => {
-    const u = await owner("instr-brands");
+    const u = await owner("instr-brands", "agency");
     await put({ items: [item("Brand one only.")] });
     await activate();
     const second = await addBrand((await getUser(u.email))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    await setActiveBrand(u.email, second.id);
+    await seedActiveBrand(u.email, second.id);
     await signIn(u.email);
     const other = await get();
     expect(other.status).toBe(200);

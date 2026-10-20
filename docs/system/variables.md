@@ -142,7 +142,7 @@ Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `g
 
 ## 5b. Ops agent and Telegram (2026-10-20, branch `claude/thakeen-ops-agent`, rules 2380-2390)
 
-The ops agent (agents/thakeen-ops/, docs/system/flows.md section 91) runs on Claude Managed Agents and reaches the app through three routes (src/lib/ops.ts). Every name below is read at call time and fails closed: unset, the route answers 401 or sends nothing. None of them is set on the agent's side: the agent holds its own copy of `OPS_AGENT_TOKEN` and a separate read-only GitHub token in its Managed Agents vault (agents/thakeen-ops/README.md), never in a file.
+The ops agent (agents/thakeen-ops/, docs/system/flows.md section 99) runs on Claude Managed Agents and reaches the app through three routes (src/lib/ops.ts). Every name below is read at call time and fails closed: unset, the route answers 401 or sends nothing. None of them is set on the agent's side: the agent holds its own copy of `OPS_AGENT_TOKEN` and a separate read-only GitHub token in its Managed Agents vault (agents/thakeen-ops/README.md), never in a file.
 
 | Name | Enables | Read in | Without it | Secret |
 |---|---|---|---|---|

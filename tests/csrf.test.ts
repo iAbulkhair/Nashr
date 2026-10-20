@@ -195,9 +195,16 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   // two), never readCookie, dropCookie or cookieFromHeader.
   const COOKIE_MODULES: Record<string, ReadonlySet<string>> = {
     // `adminEmails` reads ADMIN_EMAILS only (no cookie): the margin alert and the fair-use stop (rule 1729) tell the founders.
-    "src/lib/auth.ts": new Set(["adminEmails", "claimLogin", "emailVerified", "getAccount", "getLogin", "getUser", "normalizeEmail", "normalizePhone", "releaseLogin", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
+    // `readLoginIndex` (multi-workspace M1, read on 2026-10-19) reads `login:{email}` for the address it is handed:
+    // the MCP bearer refuses a token whose address signs in as a person who does not own the account.
+    "src/lib/auth.ts": new Set(["adminEmails", "claimLogin", "emailVerified", "getAccount", "getLogin", "getUser", "normalizeEmail", "normalizePhone", "readLoginIndex", "releaseLogin", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
     "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "unusedOffer", "voidPaidTopup", "voidPayment"]),
     "src/lib/cookie-names.ts": new Set(["OAUTH_COOKIE", "PARTNER_COOKIE"]),
+    // Multi-workspace M1: team.ts deletes the security pack of a person left with nothing, as wipeAccount does.
+    // Read on 2026-10-19: `mfaKeys` builds two key names from the address it is handed; `revokeAllDevices` deletes the
+    // device list and the sessions it names for the login it is handed. Neither reads a cookie or a session.
+    "src/lib/mfa.ts": new Set(["mfaKeys"]),
+    "src/lib/devices.ts": new Set(["revokeAllDevices"]),
   };
   const COOKIE_ACCESS = /cookies\(|\.cookies\b|\.get\(\s*["'`]cookie["'`]\s*\)|["']next\/headers["']|["'`](?:nashr|thakeen)_(session|admin|impersonate|return)["'`]/i;
   const STATEFUL = /export\s+(async\s+)?(function|const)\s+(POST|PUT|PATCH|DELETE)\b/;

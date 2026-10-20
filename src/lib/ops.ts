@@ -8,7 +8,7 @@ import { sameSecret } from "./secret";
 import { log } from "./log";
 
 /**
- * The Thakeen ops agent's side of the app (rules 2380-2389, docs/system/flows.md section 91). The agent itself runs on
+ * The Thakeen ops agent's side of the app (rules 2380-2389, docs/system/flows.md section 99). The agent itself runs on
  * Claude Managed Agents (agents/thakeen-ops/): it reads, reports and proposes, and never acts. Three routes serve it:
  *
  * - GET /api/ops/summary: counts only (health, crons, today's and yesterday's event counters, the margin run, the

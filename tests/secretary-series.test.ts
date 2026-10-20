@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, params, signIn } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, type Fixture } from "./helpers/session";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
-import { getUser, saveUser } from "@/lib/auth";
+import { acct, getUser, saveUser } from "@/lib/auth";
+import { ownerOf } from "@/lib/membership";
+import { accountKey, storedAccountId } from "@/lib/keys";
 import { saveBrands, scopeFor } from "@/lib/brands";
 import { listNotifs, seenKey } from "@/lib/notifications";
 import * as listRoute from "@/app/api/secretary/route";
@@ -29,8 +31,8 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 const z = "Asia/Riyadh";
 const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
 const patch = (id: string, body: unknown) => itemRoute.PATCH(json(`/api/secretary/${id}`, "PATCH", body), params({ id }));
-async function login() {
-  const u = await newUser("secser");
+async function login(fx: Fixture = {}) {
+  const u = await newUser("secser", fx);
   await signIn(u.email);
   return u;
 }
@@ -928,11 +930,16 @@ describe("rule 509: the repeat controls and the series view on the to-do page", 
       expect(html).not.toContain("Mine");
       expect(html).not.toContain("Download CSV");
     }
-    // Only the login's own session reads (user, member, active brand, session, and the login index of rule 1984): no brand
-    // file, no calendar, no item.
-    expect(gets.mock.calls.map((c) => String(c[0])).filter((k) => !/^(user|member|activebrand|session|login):/.test(k))).toEqual([]);
+    // Only the login's own session reads (user, member, active brand, session, the login index of rule 1984, and since
+    // multi-workspace M1 the person and the account's brand list, rule 2135): no brand file, no
+    // calendar, no item. A `p_` person's session also reads its own membership in the same round (`getMembership`: the
+    // row `mbr:{aid}:{pid}` and the roster entry, rule 2135): that membership only, never another person's or account's.
+    const aid = storedAccountId(acct(other));
+    const pid = ownerOf(other);
+    const ownRow = accountKey.membership(aid, pid);
+    expect(gets.mock.calls.map((c) => String(c[0])).filter((k) => !/^(user|member|activebrand|session|login|person|brands):/.test(k) && k !== ownRow)).toEqual([]);
     expect(mgets).not.toHaveBeenCalled();
-    expect(smembers).not.toHaveBeenCalled();
+    expect(smembers.mock.calls.filter(([k, m]) => !(k === accountKey.members(aid) && m === pid))).toEqual([]);
     gets.mockRestore();
     for (const bad of ["nope", ["a", "b"], ""]) {
       const html = await render("en", bad as string);

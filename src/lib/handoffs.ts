@@ -43,7 +43,7 @@ import { getGov, type Governance } from "./governance";
 import { estimateBatch } from "./task-costs";
 import { maxCostPerCreditUsd } from "./pricing";
 import { log } from "./log";
-import { scopeParam, wsKey } from "./keys";
+import { scopeParam, wsKey, globalKey, runClaim } from "./keys";
 
 /** A handoff id: 16 hex characters, checked before any key is built from it. */
 export const HANDOFF_ID = /^[a-f0-9]{16}$/;
@@ -545,6 +545,14 @@ export type RunOpts = {
  * refunded by `generateBatch` and marks it failed. One `handoff_run` row for a run that charged. A record that is gone
  * by the time the item is marked running (pushed off the index) is "not_found", before any charge.
  */
+/**
+ * The claim one handoff item is charged under (rule 2471), on every run of it, the owner's and the auto-run's: a run
+ * killed after its charge leaves a hold, the owner's Run of that item reuses it instead of charging again, and the daily
+ * sweep refunds it when the item never became `done` (src/lib/hold-sweep.ts). A failed run gives the hold back, so the
+ * owner's next Run is charged afresh.
+ */
+export const handoffClaim = (scope: string, id: string, n: number) => runClaim.handoff(scope, id, n);
+
 export async function runItemLocked(user: User, scope: string, h: Handoff, n: number, o: RunOpts): Promise<RunResult> {
   const id = h.id;
   const it = h.items[n];
@@ -555,7 +563,13 @@ export async function runItemLocked(user: User, scope: string, h: Handoff, n: nu
   const parent = { handoff: id, item: n, ...(h.conv ? { conv: h.conv } : {}), ...(o.auto ? { auto: true as const } : {}) };
   let r: BatchResult;
   try {
-    r = await generateBatch(user, scope, { type: it.type, leadBrief: it.brief, source: "handoff", via: "handoff", parent, by: o.by, ...(o.auto ? { forcePending: true } : {}), ...(o.gov ? { gov: o.gov } : {}), ...(o.settle ? { settle: o.settle } : {}), ...(o.deadline !== undefined ? { deadline: o.deadline } : {}) });
+    // The item is marked done with its tasks inside the batch's refund guard (`commit`), so a run killed after its items are
+    // saved is `done` and the sweep keeps its charge; the cost is written again below once the batch's net is known.
+    r = await generateBatch(user, scope, { ...(o.deadline !== undefined ? { deadline: o.deadline } : {}),
+      type: it.type, leadBrief: it.brief, source: "handoff", via: "handoff", parent, by: o.by, once: handoffClaim(scope, id, n),
+      commit: (tasks) => save(scope, withItem(h, n, { ...it, status: "done", tasks: tasks.map((t) => t.id), cost: TASK_COST[it.type], ranBy: o.by, at: new Date().toISOString() })),
+      ...(o.auto ? { forcePending: true } : {}), ...(o.gov ? { gov: o.gov } : {}), ...(o.settle ? { settle: o.settle } : {}),
+    });
   } catch (e) {
     // Unexpected (generateBatch refunds its own failures): the item did not complete, and the owner may run it again.
     await save(scope, withItem(h, n, { ...it, status: "failed", ranBy: o.by, at: new Date().toISOString() })).catch(() => {});
@@ -622,7 +636,8 @@ export async function handoffKeys(scope: string, seen?: (fingerprint: string) =>
   const ids = (await db.lrange(indexKey(scope), 0, -1)).filter(isHandoffId);
   const items = Array.from({ length: HANDOFF_MAX_ITEMS }, (_, n) => n);
   return [
-    ...ids.flatMap((id) => [key(scope, id), lockKey(scope, id), ...items.map((n) => autoTryKey(scope, id, n)), ...(seen ? items.map((n) => seen(handoffFingerprint(scope, id, n))) : [])]),
+    // `runrec:` of each item's claim: written only when a delivered item owed credits back (rule 2480).
+    ...ids.flatMap((id) => [key(scope, id), lockKey(scope, id), ...items.map((n) => autoTryKey(scope, id, n)), ...items.map((n) => globalKey.runReceipt(handoffClaim(scope, id, n))), ...(seen ? items.map((n) => seen(handoffFingerprint(scope, id, n))) : [])]),
     indexKey(scope),
   ];
 }

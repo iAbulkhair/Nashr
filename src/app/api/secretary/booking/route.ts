@@ -6,11 +6,14 @@ import { BOOK_PROVIDERS, bookingKey, createBook, getBookStatus, hashBookToken, r
 import { calendlySubscribe } from "@/lib/secretary-booking";
 import { appOrigin } from "@/lib/origin";
 import { SEC_READS_PER_HOUR } from "@/lib/secretary";
+import { linkOwner } from "@/lib/secretary-feed";
 
 /**
  * One's own booking links (Reem phase 3 B2a): the address a booking tool (Cal.com, Calendly) calls when someone books,
- * managed by a signed-in login. The record belongs to the login that is acting (the member's own address for a member, the
- * account address for an owner) and to `sc(u)`; neither is taken from the request. Authenticates and checks the role first.
+ * managed by a signed-in login. The link belongs to the acting person in the ACTIVE account (`linkOwner`: `u.actor.pid` and
+ * the session's account, multi-workspace M1, rule 2119) and to `sc(u)`; in the person's home account also to the acting
+ * login's legacy pointer (the member's own address for a member, the account address for an owner), so a link made before
+ * M1 keeps working there. None of them is taken from the request. Authenticates and checks the role first.
  * GET: which providers have a live link, since when, and whether each belongs to the brand shown now (`sameBrand`; `read`),
  * never a link, key, hash or scope. POST (`booking.manage`, refused while a founder impersonates): `{ provider: "calcom", lang? }`
  * mints a link, replacing the old one, and answers `{ url, secret }` once, `Cache-Control: no-store`: the url to paste into Cal.com and the signing
@@ -38,7 +41,9 @@ export async function GET() {
   if (no) return no;
   const login = loginOf(u);
   if (!(await allow(`sec:read:${login}`, SEC_READS_PER_HOUR, 3600))) return tooMany();
-  const links = await getBookStatus(login, sc(u));
+  const who = linkOwner(u);
+  if (!who) return unauthorized();
+  const links = await getBookStatus(who, sc(u));
   return NextResponse.json({ ok: true, links }, { headers: NO_STORE });
 }
 
@@ -56,7 +61,9 @@ export async function POST(req: Request) {
   const pat = body.token;
   if (provider === "calendly" && (typeof pat !== "string" || !pat.trim() || pat.length > MAX_TOKEN)) return bad("bad_token");
   const lang: "ar" | "en" = body.lang === "ar" || body.lang === "en" ? body.lang : (u.actor?.lang ?? u.lang) === "en" ? "en" : "ar";
-  const token = await createBook(login, sc(u), provider, lang);
+  const who = linkOwner(u);
+  if (!who) return unauthorized();
+  const token = await createBook(who, sc(u), provider, lang);
   if (token === "busy") return NextResponse.json({ ok: false, error: "busy" }, { status: 409, headers: NO_STORE });
   const url = `${appOrigin()}/api/secretary/booking/${token}`;
   const secret = bookingKey(hashBookToken(token));
@@ -64,7 +71,7 @@ export async function POST(req: Request) {
   // The record exists first, so the address Calendly will call and the key it will sign with are the real ones; any failure removes it.
   const done = await calendlySubscribe((pat as string).trim(), url, secret).catch(() => ({ ok: false, error: "calendly_rejected" }) as const);
   if (!done.ok) {
-    await revokeBook(login, "calendly");
+    await revokeBook(who, "calendly");
     return NextResponse.json({ ok: false, error: done.error }, { status: 422, headers: NO_STORE });
   }
   return NextResponse.json({ ok: true }, { headers: NO_STORE });
@@ -79,6 +86,8 @@ export async function DELETE(req: Request) {
   if (!(await allow(`sec:book:${login}`, PER_HOUR, 3600))) return tooMany();
   const provider = providerOf(new URL(req.url).searchParams.get("provider"));
   if (!provider) return bad("bad_provider");
-  await revokeBook(login, provider);
+  const who = linkOwner(u);
+  if (!who) return unauthorized();
+  await revokeBook(who, provider);
   return NextResponse.json({ ok: true }, { headers: NO_STORE });
 }

@@ -92,6 +92,11 @@ const verdictsOf = (x: Pick<Task, "source" | "crossReview">) => (x.source === "e
 const noSubscribe = () => () => {};
 const shareSheet = () => typeof navigator.canShare === "function";
 /** Our Blob store answers ?download=1 with an attachment header, so the link saves the clip instead of playing it. */
+/** The inbox chips. "notnow" holds pending items set aside (rule 2346); "pending" holds only what waits for a decision now. */
+const CHIPS = ["pending", "notnow", "approved", "rejected", "all"] as const;
+type Chip = (typeof CHIPS)[number];
+/** The client copy of `isWaiting` (src/lib/brand.ts reaches the store and is never imported here as a value). */
+const inChip = (x: Pick<Task, "status" | "notNow">, f: Chip) => (f === "all" ? true : f === "pending" ? x.status === "pending" && !x.notNow : f === "notnow" ? x.status === "pending" && !!x.notNow : x.status === f);
 const saveLink = (url: string) => (isOurMediaUrl(url) ? `${url}?download=1` : url);
 
 /**
@@ -102,7 +107,7 @@ const saveLink = (url: string) => (isOurMediaUrl(url) ? `${url}?download=1` : ur
  * `included` is `entitlements(u).media.video` from the page (rule 781): the video models the plan includes. It arrives as a
  * prop because src/lib/entitlements.ts reaches the store and must not be imported here.
  */
-export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], included, credits = 0, plan, paused, canPublish = true, owner = true }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; included: readonly VideoModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean; owner?: boolean }) {
+export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], included, credits = 0, plan, paused, canPublish = true, owner = true, initialFilter }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; included: readonly VideoModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean; owner?: boolean; /** `?view=notnow` from the "moved to Not now" notice (rule 2346). */ initialFilter?: "notnow" }) {
   const i = t.inbox;
   const toast = useToast();
   const E = emptyCopy(lang, "inbox");
@@ -120,7 +125,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   const [again, setAgain] = useState<{ id: string; provider: string; kind: "already" | "unknown" | "busy" | "duplicate" | "earlier"; url?: string } | null>(null);
   const [refused, setRefused] = useState<Record<string, Violation[]>>({});
   const r = useRouter();
-  const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
+  const [filter, setFilter] = useState<Chip>(initialFilter ?? "pending");
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [rejecting, setRejecting] = useState<string | null>(null);
@@ -224,7 +229,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
     }
   }
 
-  const shown = view.filter((x) => filter === "all" || x.status === filter);
+  const shown = view.filter((x) => inChip(x, filter));
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const dayLabel = (iso: string) => dateFormat(lang, { weekday: "long", month: "long", day: "numeric" }).format(new Date(iso));
   async function share(x: Task, body: string) {
@@ -238,7 +243,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   async function patch(id: string, body: Record<string, unknown>) {
     const before = view.find((x) => x.id === id);
     if (!before) return;
-    const guess: Task = { ...before, ...(typeof body.status === "string" ? { status: body.status as Task["status"] } : {}), ...(typeof body.editedBody === "string" ? { editedBody: body.editedBody } : {}), ...("scheduledFor" in body ? { scheduledFor: (body.scheduledFor as string | null) ?? undefined } : {}) };
+    const guess: Task = { ...before, ...(typeof body.status === "string" ? { status: body.status as Task["status"] } : {}), ...(typeof body.editedBody === "string" ? { editedBody: body.editedBody } : {}), ...("scheduledFor" in body ? { scheduledFor: (body.scheduledFor as string | null) ?? undefined } : {}), ...(body.notNow === true ? { notNow: { at: new Date().toISOString(), by: "owner" as const } } : body.notNow === false || typeof body.status === "string" ? { notNow: undefined } : {}) };
     setLocal((p) => ({ ...p, [id]: guess }));
     setEditing(null);
     setRejecting(null);
@@ -292,9 +297,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="inbox-t1" />{i.title}</span></h1>
         <div className="flex gap-1 text-sm">
-          {(["pending", "approved", "rejected", "all"] as const).map((f) => (
+          {CHIPS.map((f) => (
             <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-3 py-1 ${filter === f ? "bg-inverse text-inverse-muted" : "bg-background-muted"}`}>
-              {i[f]} {f !== "all" && <span className="font-mono text-xs">({view.filter((x) => x.status === f).length})</span>}
+              {i[f]} {f !== "all" && <span className="font-mono text-xs">({view.filter((x) => inChip(x, f)).length})</span>}
             </button>
           ))}
         </div>
@@ -473,6 +478,14 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   {x.status === "pending" && !canPublish && <p className="w-full text-xs text-foreground-muted">{i.waitAdmin}</p>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
                   {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
+                  {/* "Not now" (rule 2346): set aside without deciding, or bring back. Any member who may edit may do it. */}
+                  {x.status === "pending" && !x.notNow && <button onClick={() => patch(x.id, { notNow: true })} className="btn btn-secondary btn-pill">{i.notNowBtn}</button>}
+                  {x.status === "pending" && x.notNow && (
+                    <>
+                      <button onClick={() => patch(x.id, { notNow: false })} className="btn btn-secondary btn-pill">{i.bringBack}</button>
+                      <p className="w-full text-xs text-foreground-muted" suppressHydrationWarning>{(x.notNow.by === "auto" ? i.notNowAuto : i.notNowOwner).replace("{date}", dayLabel(x.notNow.at))}</p>
+                    </>
+                  )}
                   {x.type === "board_deck" && (
                     <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-pill">{i.pptx}</a>
                   )}

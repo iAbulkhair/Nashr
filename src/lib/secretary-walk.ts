@@ -20,7 +20,7 @@
 import { db } from "./db";
 import { can, type Action } from "./roles";
 import type { User } from "./auth";
-import { getBrand, pendingIds, type Task } from "./brand";
+import { getBrand, isWaiting, waitingIds, type Task } from "./brand";
 import { explain, gateTask } from "./brand-rules";
 import { appDict } from "./app-i18n";
 import { isAgentId } from "./agents";
@@ -147,14 +147,14 @@ async function oldestFirst(scope: string, cand: string[]): Promise<string[]> {
  * `WALK_APPROVALS_MAX` candidates; then one MGET of at most `WALK_APPROVALS_MAX` of the oldest candidates.
  */
 export async function walkNext(scope: string, now: number, opts: { viewer: User; lang: "ar" | "en" }): Promise<Walk> {
-  const [agenda, skips, pending, brand] = await Promise.all([agendaFor(scope, now, { actor: "rule", via: "web" }), readSkips(scope, now), pendingIds(scope), getBrand(scope)]);
+  const [agenda, skips, pending, brand] = await Promise.all([agendaFor(scope, now, { actor: "rule", via: "web" }), readSkips(scope, now), waitingIds(scope), getBrand(scope)]);
   const c: Ctx = { lang: opts.lang, now, zone: agenda.zone, facts: agenda.facts };
   const todos = BUCKETS.flatMap((b) => agenda.buckets[b].map((e) => todoCard(e, c))).filter((d) => !(d.key in skips));
   const cand = await oldestFirst(scope, pending.filter((id) => TASK_ID.test(id) && !(`task:${id}` in skips)));
   const ids = cand.slice(0, WALK_APPROVALS_MAX);
   const rows = await db.mget<Task>(ids.map((id) => `task:${scope}:${id}`));
   const tasks = rows
-    .filter((t): t is Task => !!t && t.status === "pending")
+    .filter((t): t is Task => !!t && isWaiting(t))
     .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : a.createdAt < b.createdAt ? -1 : 1));
   // Every candidate counts, less the ones this read showed are no longer waiting.
   const left = todos.length + cand.length - (ids.length - tasks.length);

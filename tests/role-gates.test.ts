@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { json, newMember, newUser, params, signIn, signOut, jar } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut, jar, type Fixture, readActiveBrand } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
@@ -11,7 +11,6 @@ import { getSchedule } from "@/lib/schedule";
 import { MCP_TOOL_ACTION, createMcpToken, getMcpToken } from "@/lib/mcp";
 import { tokenHash } from "@/lib/oauth";
 import { CORE_FILES, readFile, writeFile } from "@/lib/files";
-import { activeBrandId } from "@/lib/brands";
 import { OAUTH_COOKIE, getConnection, saveConnection, saveState } from "@/lib/connectors/store";
 import { MIN_ROLE, type Action } from "@/lib/roles";
 import { TOOL_ACTION as CHAT_TOOL_ACTION, runTool } from "@/lib/chat";
@@ -216,6 +215,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/account/google": g("member", "google.manage"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
+  "PUT /api/notifications/digest": g("owner", "profile.account"),
   "POST /api/team/leave": g("member", "team.leave"),
   "POST /api/chat": "member",
   "POST /api/chat/feedback": "member",
@@ -409,6 +409,8 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/r
   "POST /api/files/proposals/[id]",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
+  // The digest email choice (rule 2355).
+  "PUT /api/notifications/digest",
   // Chat spend cards (rule 1512): each Run is a paid batch or render.
   "POST /api/chat/spend/[id]",
   // Cloud drives and the media library (rule 1785): every write has its own hourly bucket per workspace.
@@ -642,11 +644,11 @@ const task = (id: string, status: Task["status"], body = "قهوة طازجة"):
 const ctx = <T extends Record<string, string>>(p: T) => params(p);
 
 /** An account with a brand, one plain member and one admin. */
-async function team() {
-  const owner = await newUser("rg");
+async function team(fx: Fixture = {}) {
+  const owner = await newUser("rg", fx);
   await saveBrand(owner.email, BRAND);
-  const member = await newMember(owner, "member", "rgm");
-  const admin = await newMember(owner, "admin", "rga");
+  const member = await newMember(owner, "member", "rgm", fx);
+  const admin = await newMember(owner, "admin", "rga", fx);
   return { owner, member: member.email, admin: admin.email };
 }
 /** Sign in as this login and return what a request resolves to. */
@@ -904,12 +906,12 @@ describe("the active brand is per login", () => {
     await as(owner.email);
     const added = (await (await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" }))).json()) as { brand: { id: string } };
     await brandsRoute.POST(json("/api/brands", "POST", { action: "switch", id: "default" }));
-    expect(await activeBrandId(owner.email)).toBe("default");
+    expect(await readActiveBrand(owner.email)).toBe("default");
 
     const u = await as(member);
     expect(await status(brandsRoute.POST(json("/api/brands", "POST", { action: "switch", id: added.brand.id })))).toBe(200);
-    expect(await activeBrandId(member)).toBe(added.brand.id);
-    expect(await activeBrandId(owner.email)).toBe("default");
+    expect(await readActiveBrand(member)).toBe(added.brand.id);
+    expect(await readActiveBrand(owner.email)).toBe("default");
     expect(u.email).toBe(owner.email);
     expect((await as(member)).scope).toBe(`${owner.email}#${added.brand.id}`);
     expect((await as(owner.email)).scope).toBe(owner.email);
@@ -919,10 +921,10 @@ describe("the active brand is per login", () => {
     await saveUser({ ...(await getUser(owner.email))!, plan: "agency" });
     await as(owner.email);
     const added = (await (await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" }))).json()) as { brand: { id: string } };
-    expect(await activeBrandId(owner.email)).toBe(added.brand.id);
+    expect(await readActiveBrand(owner.email)).toBe(added.brand.id);
     await as(admin);
     expect(await status(brandsRoute.POST(json("/api/brands", "POST", { action: "archive", id: added.brand.id })))).toBe(200);
-    expect(await activeBrandId(owner.email)).toBe("default");
+    expect(await readActiveBrand(owner.email)).toBe("default");
   });
 });
 

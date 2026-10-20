@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { newUser } from "./helpers/session";
 import { sc, type User } from "@/lib/auth";
 import { scopeFor } from "@/lib/brands";
-import { accountKey, globalKey, scopeParam, storedScope, workspaceScope, wsKey, type Scope } from "@/lib/keys";
+import { accountKey, globalKey, scopeParam, storedAccountId, storedPersonId, storedScope, workspaceScope, wsKey, type Scope } from "@/lib/keys";
 
 /**
  * Rules 2030-2033: the Redis key registry (src/lib/keys.ts). Every builder returns the exact bytes of the template it
@@ -23,6 +23,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.task(S, "t1"), `task:${S}:t1`],
     [wsKey.taskLock(S, "t1"), `tasklock:${S}:t1`],
     [wsKey.pending(S), `pending:${S}`],
+    [wsKey.notNow(S), `notnow:${S}`],
     [wsKey.pendingIndex(S), `pendingidx:${S}`],
     [wsKey.taskMonth(S, "2026-10"), `tidx:${S}:2026-10`],
     [wsKey.taskMonths(S), `tidxm:${S}`],
@@ -30,6 +31,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.adCodes(S), `adcodes:${S}`],
     [wsKey.files(S), `files:${S}`],
     [wsKey.file(S, "notes.md"), `file:${S}:notes.md`],
+    [wsKey.fileLock(S, "notes.md"), `filelock:${S}:notes.md`],
     [wsKey.onboardPlan(S), `onboardplan:${S}`],
     [wsKey.onboardOk(S), `onboardok:${S}`],
     [wsKey.onboardLock(S), `onboardlock:${S}`],
@@ -73,6 +75,10 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.mcpTokenOf(E), `mcptoken-of:${E}`],
     [accountKey.mcpGrants(E), `mcpgrants:${E}`],
     [accountKey.notifications(E), `notifs:${E}`],
+    [accountKey.digest(E), `notifydigest:${E}`],
+    [accountKey.digestLast(E), `digestlast:${E}`],
+    [accountKey.digestLock(E), `digestlock:${E}`],
+    [accountKey.digestBucket(E), `digestsave:${E}`],
     [accountKey.referrals(E), `referrals:${E}`],
     [accountKey.referredBy(E), `referredBy:${E}`],
     [accountKey.shared(E), `shared:${E}`],
@@ -95,9 +101,15 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.memberLock(E), `lock:member:${E}`],
     [accountKey.usage(E, "2026-10"), `usage:${E}:2026-10`],
     [accountKey.chatTrial(E), `chatm:${E}:trial`],
+    // Multi-workspace membership (rules 2110-2139, release M1): the two account builders of the new families.
+    [accountKey.membership(storedAccountId(E), storedPersonId("p1")), `mbr:${E}:p1`],
+    [accountKey.teamLog(storedAccountId(E)), `teamlog:${E}`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
+    [globalKey.runReceipt("routine:a@b.example:dana_weekly_report:2026-10-18"), "runrec:routine:a@b.example:dana_weekly_report:2026-10-18"],
+    [globalKey.cronReport("weekly"), "cronreport:weekly"],
+    [globalKey.digests(), "notifydigests"],
     [globalKey.eventDay("2026-10-20", "signup"), "ev:2026-10-20:signup"],
     [globalKey.opsProposal("abc"), "ops:proposal:abc"],
     [globalKey.opsAlert("cron:media"), "ops:alert:cron:media"],
@@ -111,6 +123,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.inviteUse("i1"), "inviteuse:i1"],
     [globalKey.rate("files:x"), "rate:files:x"],
     [globalKey.usageAll("2026-10"), "usage:_all:2026-10"],
+    [globalKey.paymobRefundEnded(123456), "paymob:refund_ended:123456"],
     [globalKey.shopifyCompliance(), "shopify:compliance"],
     [globalKey.shopifyRedact(), "shopify:redact"],
     [globalKey.connectionHealth(), "connections:health"],
