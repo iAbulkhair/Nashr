@@ -1,6 +1,6 @@
 # Coverage: paid scheduled work, charge once, refund always, hold for review (rules 2370-2389)
 
-Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`: built after the founder's yes to the spec's three recommendations (`docs/superpowers/specs/2026-10-20-paid-cron-held-for-review-design.md`); flows in `docs/system/flows.md` section 95. Rules 2386-2389 are held.
+Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`: built after the founder's yes to the spec's three recommendations (`docs/superpowers/specs/2026-10-20-paid-cron-held-for-review-design.md`); flows in `docs/system/flows.md` section 95. Rule 2386 is the founder's read-only list of earlier losses; rules 2387-2389 are held.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
@@ -20,3 +20,4 @@ Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`: built after the fo
 | 2383 | A period that only answered `retry:*` gets one `run_missed` row from the next period's first run | **not built** (flows section 95 item 6) | `tests/paid-cron-held.test.ts` |
 | 2384 | `cronreport:{job}:{period}` holds counts only, never an email or scope | `tests/paid-cron-held.test.ts` ("rules 2384-2385") | — |
 | 2385 | The admin overview shows the last report beside the heartbeat | `tests/paid-cron-held.test.ts` ("rules 2384-2385": `cronStatuses`); the Usage page line is not render-tested | — |
+| 2386 | `scripts/lost-scheduled-charges.ts` lists, read only, the scheduled charges lost before this release (a routine period's unsettled charges less the one its recorded run delivered; a handoff item left `running` past its lock, marked "check"), and never lists one the new sweep handles (a receipt or a claim hold) | `tests/lost-charges.test.ts` ("rule 2386") | — |
