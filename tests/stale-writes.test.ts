@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { json, newUser, params, signIn } from "./helpers/session";
 import { sc, type User } from "@/lib/auth";
 import { getTask, saveTask, type Task } from "@/lib/brand";
-import { readFile, writeFile } from "@/lib/files";
+import { readFile, writeFile, writeFileChecked } from "@/lib/files";
+import { db } from "@/lib/db";
+import { scopeParam, wsKey } from "@/lib/keys";
 import { taskVersion } from "@/lib/task-version";
 import * as filesRoute from "@/app/api/files/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
@@ -77,5 +79,65 @@ describe("rule 2441: a Files save sent with a base is written only while the fil
     expect(r.body).toMatchObject({ error: "stale", file: null });
     expect((await put({ name: "gone.md", content: "a" })).status).toBe(200);
     expect((await put({ name: "gone.md", content: "b" })).body.file?.content).toBe("b");
+  });
+});
+
+describe("rules 2520-2522: every writer of a file takes its lock, so nothing lands between a checked save's check and its write", () => {
+  const lockOf = (scope: string, name: string) => wsKey.fileLock(scopeParam(scope), name);
+  const later = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("rule 2520: an agent's write waits while a person's save holds the file", async () => {
+    const s = sc(await newUser("sw-wait"));
+    await writeFile(s, "products.md", "agent v1", "noor");
+    const lock = lockOf(s, "products.md");
+    expect(await db.lock(lock, 10)).toBe(true);
+    let done = false;
+    const w = writeFile(s, "products.md", "agent v2", "noor").then((f) => ((done = true), f));
+    await later(200);
+    expect(done, "still waiting for the lock").toBe(false);
+    expect((await readFile(s, "products.md"))?.content).toBe("agent v1");
+    await db.unlock(lock);
+    expect((await w).content).toBe("agent v2");
+  });
+
+  it("rule 2520: a person's save from the version they opened and an agent's write at the same moment never lose the agent's text silently", async () => {
+    for (let i = 0; i < 12; i++) {
+      const s = sc(await newUser(`sw-race${i}`));
+      const opened = await writeFile(s, "products.md", "agent v1", "noor");
+      const [mine] = await Promise.all([writeFileChecked(s, "products.md", "mine", "user", opened.updatedAt), writeFile(s, "products.md", "agent v2", "noor")]);
+      const [main, sibling] = await Promise.all([readFile(s, "products.md"), readFile(s, "products-imported.md")]);
+      if (mine.ok) {
+        // The person's save went first: the agent's write found a person's file and went to the sibling.
+        expect(main?.content, `run ${i}`).toBe("mine");
+        expect(sibling?.content, `run ${i}: the agent's text is kept`).toBe("agent v2");
+      } else {
+        // The agent's write went first: the person is told, with the file as it is now.
+        expect(mine.error, `run ${i}`).toBe("stale");
+        expect(main?.content, `run ${i}`).toBe("agent v2");
+      }
+    }
+  });
+
+  it("rule 2521: a lock nobody releases delays a writer about 2 s, never fails it", async () => {
+    const s = sc(await newUser("sw-stuck"));
+    expect(await db.lock(lockOf(s, "notes.md"), 10)).toBe(true);
+    const t0 = Date.now();
+    expect((await writeFile(s, "notes.md", "synced", "noor")).content).toBe("synced");
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(1900);
+    expect(Date.now() - t0).toBeLessThan(4000);
+  }, 10_000);
+
+  it("rule 2522: an agent's write sent to the sibling of a person's file takes the sibling's lock too", async () => {
+    const s = sc(await newUser("sw-sib"));
+    await writeFile(s, "products.md", "curated by hand", "user");
+    const lock = lockOf(s, "products-imported.md");
+    expect(await db.lock(lock, 10)).toBe(true);
+    let done = false;
+    const w = writeFile(s, "products.md", "scraped", "noor").then((f) => ((done = true), f));
+    await later(200);
+    expect(done, "waits for the sibling, not only for products.md").toBe(false);
+    await db.unlock(lock);
+    expect((await w).name).toBe("products-imported.md");
+    expect((await readFile(s, "products.md"))?.content).toBe("curated by hand");
   });
 });

@@ -22,7 +22,7 @@ const render = (lang: "en" | "ar") => {
   return renderToStaticMarkup(createElement(Fragment, null,
     createElement(AccountSettings, { lang, forbidden: t.team.errors.forbidden, initial: { name: "Test", email: "o@test.example", lang, phone: "+966500000123", owner: true } }),
     createElement(BrandExtras, { lang, readOnly: false, forbidden: t.team.errors.forbidden, initial: { social: { instagram: "@roastery" }, valueProp: "", sitemap: "" } }),
-    createElement(SecuritySettings, { lang, rules: t.join.rules, may: true, owner: true, forbidden: t.team.errors.forbidden }),
+    createElement(SecuritySettings, { lang, rules: t.join.rules, may: true, owner: true, forbidden: t.team.errors.forbidden, passkeys: { T: t.passkeys, enabled: true } }),
   ));
 };
 const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");

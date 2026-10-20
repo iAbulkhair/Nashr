@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { newUser } from "./helpers/session";
+import { newOpaqueUser, newUser } from "./helpers/session";
+import { acct } from "@/lib/account-id";
 import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { chargeOnce } from "@/lib/credits";
@@ -48,5 +49,14 @@ describe("rule 2486: the lost scheduled charges list", () => {
       { account: u.email, scope: u.email, kind: "handoff", what: `${h.id}#0:sales_script`, period: old.slice(0, 10), charges: 1, credits: TASK_COST.sales_script, sure: false },
     ]);
     expect((await getUser(u.email))!.paidOnce, "holds untouched").toBeTruthy();
+  });
+
+  it("finds an account with an opaque id by that id, not by its address (rule 1980)", async () => {
+    const o = await newOpaqueUser("lost-opaque");
+    const id = acct(o);
+    const week = periodOf("weekly");
+    await db.set(`routinetry:${id}:dana_weekly_report:${week}`, 1);
+    const rows = (await lostCharges()).filter((r) => r.account === o.email);
+    expect(rows).toEqual([{ account: o.email, scope: id, kind: "routine", what: "dana_weekly_report", period: week, charges: 1, credits: TASK_COST.weekly_report, sure: true }]);
   });
 });
