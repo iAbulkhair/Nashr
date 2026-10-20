@@ -74,6 +74,8 @@ export const wsKey = {
   files: (s: Scope) => `files:${s}`,
   /** json: one workspace file. */
   file: (s: Scope, name: string) => `file:${s}:${name}`,
+  /** lock: one workspace file's checked save (`writeFileChecked`, rule 2341), 10 s. */
+  fileLock: (s: Scope, name: string) => `filelock:${s}:${name}`,
   /** json: the onboarding plan (`{ goal?, ... }`). */
   onboardPlan: (s: Scope) => `onboardplan:${s}`,
   /** json: the owner's confirmed site. */

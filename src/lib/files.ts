@@ -92,6 +92,34 @@ export async function writeFile(email: string, name: string, content: string, by
   await db.sadd(SET(email), n);
   return f;
 }
+/**
+ * Rule 2341: a person's save that says what it was made from. `baseAt` is the `updatedAt` of the file the editor showed,
+ * or null for "a new file": the text is written only while that is still so, read under a short per-file lock, so two
+ * tabs, two members, or a member and an agent's write in between never lose one another's text without a word
+ * (OpenDots' `expectedRevision`, docs/OpenDots_Adoption.md). Otherwise nothing is written and the file as it is now
+ * comes back: `stale` when it changed or was deleted since, `exists` when a "new" name is taken. Writes that send no
+ * base (agents, imports, uploads, older pages) keep `writeFile` as it is: the check is the editor's, not a transaction
+ * over every writer.
+ */
+export type CheckedWrite = { ok: true; file: WFile } | { ok: false; error: "stale" | "exists"; file: WFile | null } | { ok: false; error: "busy" };
+export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null): Promise<CheckedWrite> {
+  const n = safeName(name);
+  const lock = wsKey.fileLock(scopeParam(email), n);
+  let got = false;
+  for (let i = 0; i < 20 && !got; i++) {
+    got = await db.lock(lock, 10);
+    if (!got) await new Promise((r) => setTimeout(r, 50));
+  }
+  if (!got) return { ok: false, error: "busy" };
+  try {
+    const cur = await db.get<WFile>(KEY(email, n));
+    if (baseAt === null && cur) return { ok: false, error: "exists", file: cur };
+    if (baseAt !== null && cur?.updatedAt !== baseAt) return { ok: false, error: "stale", file: cur };
+    return { ok: true, file: await writeFile(email, n, content, by) };
+  } finally {
+    await db.unlock(lock).catch(() => {});
+  }
+}
 export async function deleteFile(email: string, name: string) {
   const n = safeName(name);
   // Both halves: the record and its name in the index. Leaving the name behind made every listFiles pay a read for a

@@ -35,6 +35,9 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   // A 403 refusal (rule 2001) stays on the page for the person to act on; a plain failure is a toast.
   const [err, setErr] = useState("");
   const [ask, confirmDialog] = useConfirm();
+  // Rule 2341: a save refused because the file changed (or was deleted) since the editor opened. The typed text stays in
+  // the editor; the person saves it over the newer file (with that file's time as the new base) or drops it.
+  const [conflict, setConflict] = useState<{ name: string; file: WFile | null } | null>(null);
   const isLocked = (name: string) => locked.includes(name);
   /** Shows a refused call: the role for a 403 stays inline, any other failure is a toast. */
   function fail(res: Response | null, generic: string) {
@@ -69,11 +72,21 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
     }
   }
 
-  async function save(name: string, content: string) {
+  /**
+   * `baseAt` (rule 2341): the time of the file the editor opened, or null for a new file, so the server writes only while
+   * that is still so. A refused save keeps the editor open with the text in it.
+   */
+  async function save(name: string, content: string, baseAt: string | null) {
     setErr("");
-    const res = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content }) }).catch(() => null);
-    // A refused save keeps the editor open with the text in it.
+    const res = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content, baseAt }) }).catch(() => null);
+    if (res?.status === 409) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string; file?: WFile | null };
+      if (j.error === "exists") { toast.danger(f.exists); setOpen(name); r.refresh(); return; }
+      if (j.error === "stale") { setConflict({ name, file: j.file ?? null }); return; }
+    }
+    if (res?.status === 503) { toast.danger(f.busy); return; }
     if (!res?.ok) { fail(res, t.team.errors.failed); return; }
+    setConflict(null);
     setEditing(false);
     r.refresh();
   }
@@ -102,14 +115,14 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
           <ul className="grid gap-1">
             {files.map((x) => (
               <li key={x.name}>
-                <button onClick={() => { setOpen(x.name); setEditing(false); }} className={`w-full rounded-lg px-3 py-2 text-start text-sm ${open === x.name ? "bg-inverse text-inverse-muted" : "hover:bg-background-muted"}`} dir="ltr">
+                <button onClick={() => { setOpen(x.name); setEditing(false); setConflict(null); }} className={`w-full rounded-lg px-3 py-2 text-start text-sm ${open === x.name ? "bg-inverse text-inverse-muted" : "hover:bg-background-muted"}`} dir="ltr">
                   <span className="font-mono">{x.name}</span>
                   <span className={`block text-xs ${open === x.name ? "text-inverse-muted/75" : "text-foreground-muted"}`}>{x.updatedAt.slice(0, 10)} · {f.by[x.by]}</span>
                 </button>
               </li>
             ))}
           </ul>
-          <form onSubmit={(e) => { e.preventDefault(); if (newName) void save(newName.endsWith(".md") ? newName : newName + ".md", "# " + newName + "\n"); setNewName(""); }} className="mt-3 flex gap-1">
+          <form onSubmit={(e) => { e.preventDefault(); if (newName) void save(newName.endsWith(".md") ? newName : newName + ".md", "# " + newName + "\n", null); setNewName(""); }} className="mt-3 flex gap-1">
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={f.newFile} dir="ltr" className="min-w-0 flex-1 rounded border border-border px-2 py-1 text-xs" />
             <button className="rounded bg-inverse px-2 text-xs text-inverse-muted">+</button>
           </form>
@@ -122,8 +135,8 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
                 <div className="flex gap-2 text-sm">
                   {editing ? (
                     <>
-                      <button onClick={() => save(cur.name, draft)} className="btn btn-primary btn-pill">{f.save}</button>
-                      <button onClick={() => setEditing(false)} className="btn btn-secondary btn-pill">{f.cancel}</button>
+                      <button onClick={() => save(cur.name, draft, cur.updatedAt)} className="btn btn-primary btn-pill">{f.save}</button>
+                      <button onClick={() => { setEditing(false); setConflict(null); }} className="btn btn-secondary btn-pill">{f.cancel}</button>
                     </>
                   ) : isLocked(cur.name) ? null : (
                     <>
@@ -133,6 +146,15 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
                   )}
                 </div>
               </div>
+              {editing && conflict?.name === cur.name && (
+                <div role="alert" className="mt-4 rounded-lg border border-border-strong p-3 text-sm">
+                  <p>{conflict.file ? f.stale.replace("{when}", conflict.file.updatedAt.slice(0, 16).replace("T", " ")).replace("{who}", f.by[conflict.file.by]) : f.staleGone}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => save(cur.name, draft, conflict.file?.updatedAt ?? null)} className="btn btn-primary btn-sm">{f.overwrite}</button>
+                    <button type="button" onClick={() => { setConflict(null); setEditing(false); r.refresh(); }} className="btn btn-secondary btn-sm">{f.loadLatest}</button>
+                  </div>
+                </div>
+              )}
               {editing ? (
                 <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={24} dir="auto" className="mt-4 w-full rounded-lg border border-border p-3 font-body text-sm leading-relaxed" />
               ) : (
