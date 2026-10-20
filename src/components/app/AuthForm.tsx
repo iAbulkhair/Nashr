@@ -202,12 +202,15 @@ export const AUTOFILL_PATIENT_MS = 30_000;
  * What the log-in form does after its autofill ceremony settles (fix round 1 of rule 2426's conditional UI). A sign-in
  * navigates away, so nothing is re-armed. Any other end (a dismissal, a browser error, a refused options or verify call)
  * re-arms after a back-off that doubles with each failure in a row, and stops after `AUTOFILL_MAX_FAILURES`, so a browser
- * that refuses conditional requests at once never loops. A ceremony that waited `AUTOFILL_PATIENT_MS` or more starts the
- * count again: that wait was the person's, not a loop. `rearmIn` is null when the autofill stops.
+ * that refuses conditional requests at once never loops. A ceremony that ended with no verify answer (`"ended"`: a
+ * dismissal, a browser error or timeout, refused options) after waiting `AUTOFILL_PATIENT_MS` or more starts the count
+ * again: that wait was the person's or the browser's, not a loop. A verify answer that refused (`"refused"`) always
+ * counts, however long the person waited first, so a passkey that keeps failing reaches the stop (and its message).
+ * `rearmIn` is null when the autofill stops.
  */
-export function nextAutofill(failures: number, signedIn: boolean, waitedMs: number): { failures: number; rearmIn: number | null } {
-  if (signedIn) return { failures: 0, rearmIn: null };
-  const inRow = (waitedMs >= AUTOFILL_PATIENT_MS ? 0 : failures) + 1;
+export function nextAutofill(failures: number, end: "signed_in" | "refused" | "ended", waitedMs: number): { failures: number; rearmIn: number | null } {
+  if (end === "signed_in") return { failures: 0, rearmIn: null };
+  const inRow = (end === "ended" && waitedMs >= AUTOFILL_PATIENT_MS ? 0 : failures) + 1;
   return { failures: inRow, rearmIn: inRow >= AUTOFILL_MAX_FAILURES ? null : AUTOFILL_BACKOFF_MS * 2 ** (inRow - 1) };
 }
 
@@ -297,7 +300,7 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
   // and is shown when it stops, so a passkey that keeps failing is never met with silence.
   const onAutofill = useEffectEvent((r: { stage: "options" | "verify"; p: Posted } | null, waitedMs: number): number | null => {
     const signedIn = r?.stage === "verify" && succeeded(r.p);
-    const step = nextAutofill(autofillFailures.current, signedIn, waitedMs);
+    const step = nextAutofill(autofillFailures.current, signedIn ? "signed_in" : r?.stage === "verify" ? "refused" : "ended", waitedMs);
     autofillFailures.current = step.failures;
     // A sign-in navigates; another verify answer is shown, except a `passkey_failed` that is re-armed silently.
     if (r?.stage === "verify" && (signedIn || failureCode(r.p) !== "passkey_failed" || step.rearmIn === null)) afterPasskey(r.p);

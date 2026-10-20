@@ -2,14 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash, randomBytes } from "crypto";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { jar, json, newMember, newUser, PERSONS, signIn, signOut } from "./helpers/session";
 import { codeAt } from "./helpers/staff";
 import { softAuthenticator, type AssertionJSON, type SoftAuthenticator } from "./helpers/soft-authenticator";
 import { getLogin, getUser, saveUser, sessionIds, sessionKey, type User } from "@/lib/auth";
 import { SESSION_COOKIE } from "@/lib/cookie-names";
 import { db } from "@/lib/db";
 import { devicesKey } from "@/lib/devices";
-import { globalKey, personKey, storedPersonId, type PersonId } from "@/lib/keys";
+import { accountKey, globalKey, personKey, storedPersonId, type PersonId } from "@/lib/keys";
+import { aidOf } from "@/lib/membership";
 import type { FinishVia } from "@/lib/login-finish";
 import type { Challenge } from "@/lib/mfa";
 import { addPasskey, credHash, ensureUid, readSet } from "@/lib/passkeys";
@@ -364,6 +365,26 @@ describe("rule 2419: every gate of the password path", () => {
     expect(pk).toEqual(pw);
   });
 
+  // A `p_` member has no legacy record: the pause lives on its membership row, and `getLogin` then finds no live
+  // workspace (no shadow membership, which would sign in instead). The password path answers 401 `invalid`; the
+  // passkey path refuses before `finishLogin` (`resolvePasskeyLogin` finds no login), so it gives rule 2423's one
+  // refusal, 401 `passkey_failed`. Neither signs in. p_ fixtures only.
+  it.runIf(PERSONS === "p")("a p_ member paused by the seat limit (membership row, no shadow)", async () => {
+    const o = await owner();
+    const m = await newMember(o, "member", "m", { shadow: false });
+    const k = await enrolKey(m.email);
+    const row = await db.get<Record<string, unknown>>(accountKey.membership(aidOf(o), m.pid));
+    expect(row).toMatchObject({ pid: m.pid });
+    await db.set(accountKey.membership(aidOf(o), m.pid), { ...row, disabled: "seats" });
+    const pw = await answer(await loginRoute.POST(json("/api/auth/login", "POST", { email: m.email, password: m.password }, ip())));
+    expect(jar().get(SESSION_COOKIE)).toBeUndefined();
+    signOut();
+    const pk = await signInWith(k);
+    expect(jar().get(SESSION_COOKIE)).toBeUndefined();
+    expect(pw).toEqual({ status: 401, body: { ok: false, error: "invalid" } });
+    await refused(pk);
+  });
+
   it("a live member signs in, and the session names the member's own pid", async () => {
     const o = await owner();
     const m = await newMember(o);
@@ -505,28 +526,42 @@ describe("rule 2426 (sign-in half): the off switch", () => {
 
 describe("rule 2426 (sign-in half): the autofill is armed again after it settles", () => {
   it("a sign-in re-arms nothing and clears the count", () => {
-    expect(nextAutofill(2, true, 1_000)).toEqual({ failures: 0, rearmIn: null });
-    expect(nextAutofill(0, true, 100_000)).toEqual({ failures: 0, rearmIn: null });
+    expect(nextAutofill(2, "signed_in", 1_000)).toEqual({ failures: 0, rearmIn: null });
+    expect(nextAutofill(0, "signed_in", 100_000)).toEqual({ failures: 0, rearmIn: null });
   });
 
   it("quick failures in a row back off, doubling, and stop at the limit: never a tight loop", () => {
+    for (const end of ["ended", "refused"] as const) {
+      let failures = 0;
+      const waits: (number | null)[] = [];
+      for (let i = 0; i < AUTOFILL_MAX_FAILURES + 2; i++) {
+        const step = nextAutofill(failures, end, 0);
+        failures = step.failures;
+        waits.push(step.rearmIn);
+        if (step.rearmIn === null) break;
+      }
+      expect(waits).toEqual([AUTOFILL_BACKOFF_MS, AUTOFILL_BACKOFF_MS * 2, null]);
+    }
+    expect(AUTOFILL_MAX_FAILURES).toBe(3);
+    expect(AUTOFILL_BACKOFF_MS).toBeGreaterThanOrEqual(1_000);
+  });
+
+  it("a ceremony that waited and ended with no verify answer (the person, or the browser's timeout) starts the count again", () => {
+    expect(nextAutofill(2, "ended", AUTOFILL_PATIENT_MS)).toEqual({ failures: 1, rearmIn: AUTOFILL_BACKOFF_MS });
+    expect(nextAutofill(2, "ended", AUTOFILL_PATIENT_MS - 1)).toEqual({ failures: 3, rearmIn: null });
+  });
+
+  it("a refused verify answer always counts, however long the person waited, so a failing passkey reaches the stop (fix round 2, N1)", () => {
     let failures = 0;
     const waits: (number | null)[] = [];
     for (let i = 0; i < AUTOFILL_MAX_FAILURES + 2; i++) {
-      const step = nextAutofill(failures, false, 0);
+      const step = nextAutofill(failures, "refused", 10 * 60_000);
       failures = step.failures;
       waits.push(step.rearmIn);
       if (step.rearmIn === null) break;
     }
     expect(waits).toEqual([AUTOFILL_BACKOFF_MS, AUTOFILL_BACKOFF_MS * 2, null]);
-    expect(AUTOFILL_MAX_FAILURES).toBe(3);
-    expect(AUTOFILL_BACKOFF_MS).toBeGreaterThanOrEqual(1_000);
-    for (const w of waits) if (w !== null) expect(w).toBeGreaterThan(0);
-  });
-
-  it("a ceremony that waited (the person, or the browser's own timeout) starts the count again", () => {
-    expect(nextAutofill(2, false, AUTOFILL_PATIENT_MS)).toEqual({ failures: 1, rearmIn: AUTOFILL_BACKOFF_MS });
-    expect(nextAutofill(2, false, AUTOFILL_PATIENT_MS - 1)).toEqual({ failures: 3, rearmIn: null });
+    expect(nextAutofill(2, "refused", AUTOFILL_PATIENT_MS)).toEqual({ failures: 3, rearmIn: null });
   });
 
   it("the refresh comes before the challenge and its cookie expire", () => {
@@ -544,6 +579,8 @@ describe("rule 2426 (sign-in half): the autofill is armed again after it settles
     // `live` is checked after every await of the run.
     expect(effect).toMatch(/await browserSupportsWebAuthnAutofill\(\);\s*if \(!live\) return;/);
     expect(effect).toMatch(/const settle = [\s\S]*?=> \{\s*if \(!live\) return;/);
+    // A verify answer that is not a sign-in is "refused" (always counted); anything else is "ended".
+    expect(src).toContain('signedIn ? "signed_in" : r?.stage === "verify" ? "refused" : "ended"');
     // The button's `finally` arms it again.
     const button = src.slice(src.indexOf("async function onPasskey()"), src.indexOf("const onAutofill"));
     expect(button).toMatch(/finally \{[^}]*setArm\(\(n\) => n \+ 1\);/);

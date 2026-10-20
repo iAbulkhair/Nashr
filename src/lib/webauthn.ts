@@ -9,6 +9,7 @@ import {
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { log } from "./log";
+import { PASSKEY_CHALLENGE_TTL } from "./passkey-limits";
 import { appOrigin } from "./origin";
 
 /**
@@ -100,7 +101,9 @@ export async function verifyRegistration(response: unknown, challenge: string): 
 }
 
 export async function authenticationOptions(): Promise<{ options: PublicKeyCredentialRequestOptionsJSON; challenge: string }> {
-  const options = await generateAuthenticationOptions({ rpID: rp().id, allowCredentials: [], userVerification: "required" });
+  // The browser may end a waiting conditional request at `timeout` (the library's default is 60 s). The challenge lives
+  // 300 s, so the log-in form's autofill is refreshed before then and never ended early by the browser (rule 2408).
+  const options = await generateAuthenticationOptions({ rpID: rp().id, allowCredentials: [], userVerification: "required", timeout: PASSKEY_CHALLENGE_TTL * 1000 });
   return { options, challenge: options.challenge };
 }
 

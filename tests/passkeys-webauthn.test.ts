@@ -125,6 +125,8 @@ describe("rule 2409: sign-in options and assertion verification (real crypto)", 
     expect(options.userVerification).toBe("required");
     expect(options.rpId).toBe("thakeen.com");
     expect(options.challenge).toBe(challenge);
+    // As long as the challenge lives, so the browser never ends a waiting conditional request first (fix round 2, N4).
+    expect(options.timeout).toBe(300_000);
   });
 
   it("an assertion signed by the registered key verifies with the new counter and the user handle", async () => {
