@@ -214,6 +214,8 @@ export function forbid(u: User | null | undefined, action: Action): Response | n
 export const STAFF_MAY = {
   /** Open one customer workspace read-only (GET /api/admin/users/{email}/workspace): members, invites, brands, plan. */
   "workspace.view": ["owner", "support"],
+  /** Turn customer passkey sign-in and adding off or on (POST /api/admin/passkeys, rule 2426); stored passkeys are untouched. */
+  "passkeys.switch": ["owner"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type StaffAction = keyof typeof STAFF_MAY;

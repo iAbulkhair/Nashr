@@ -138,6 +138,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/agent-scope/release": "admin-console",
   // Agent scope (rule 1412): the switches and the paid test set.
   "POST /api/admin/agent-scope/modes": "admin-console",
+  // Customer passkeys off switch (rule 2426): the console owner only (staffMay "passkeys.switch"), second factor, reason, audit.
+  "POST /api/admin/passkeys": "admin-console",
   "POST /api/admin/agent-scope/eval": "admin-console",
 
   // Owner only.
@@ -328,6 +330,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/wishlist": "admin-console",
   "GET /api/admin/skills": "admin-console",
   "GET /api/admin/integrations": "admin-console",
+  "GET /api/admin/passkeys": "admin-console", // rule 2426: the switch state for the Integrations page toggle
   "GET /api/admin/leads": "admin-console",
   "GET /api/admin/client-ip": "admin-console",
   "GET /api/admin/log": "admin-console",
