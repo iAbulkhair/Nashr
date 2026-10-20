@@ -4,7 +4,7 @@ import { isSuspended } from "./suspension";
 import { acct, accountOfScope } from "./account-id";
 
 /**
- * Background jobs carry the workspace they act for (rules 2500-2519, docs/system/tests/2500-jobs-carry-account.md;
+ * Background jobs carry the workspace they act for (rules 2500-2509, docs/system/tests/2500-jobs-carry-account.md;
  * Fizzy's `Current.account` serialized into each job and restored when it runs).
  *
  * A per-user cron lists its roster once per hop, then starts items for up to four minutes (src/lib/cron-batch.ts). The

@@ -21,7 +21,7 @@ vi.mock("@/lib/notify", async (orig) => ({
 }));
 
 /**
- * Rules 2500-2519: every background job carries the account it acts for and reads it again when it runs (pattern 6 of
+ * Rules 2500-2509: every background job carries the account it acts for and reads it again when it runs (pattern 6 of
  * docs/reports/2026-10-19-PRD-fizzy-orca_AR.md, after Fizzy's jobs restoring `Current.account`).
  * docs/system/tests/2500-jobs-carry-account.md lists what each test pins.
  */
