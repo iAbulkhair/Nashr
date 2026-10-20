@@ -392,14 +392,21 @@ export async function releaseLogin(email: string, pid: string, opts: { locked?: 
  * one. `emailVerifiedAt` (a Google sign-up, which proved the address) is written on the person and the account in the
  * same locked write (reconciliation 11: the only account the new person owns). `person: "p"` (tests only, rule 2132; a source scan pins that no route passes it) makes the M2 shape: a `p_`
  * person holding the credentials, and an account without them that names it in `ownerPid`.
+ *
+ * Multi-workspace M2 (rule 2117, sign-up half; spec section 10, decision 11): with `MULTI_ORG` on every sign-up, the
+ * password form and Google alike, makes that shape with an opaque `a_` account id, and the person's one trial is
+ * spent on it (`trialUsedAt`, read by `createWorkspace`). With it off nothing changes.
  */
-export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en"; emailVerifiedAt?: string }, opts: { opaque?: boolean; person?: "p" } = {}): Promise<User> {
+export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en"; emailVerifiedAt?: string }, opts: { opaque?: boolean; person?: "p" | "legacy" } = {}): Promise<User> {
   const email = normalizeEmail(input.email);
   const now = new Date();
   const stamp = now.toISOString();
   const passHash = input.password ? await bcrypt.hash(input.password, 10) : undefined;
+  const [{ createPersonRecord, withPersonLock }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
+  // Tests may pick the shape (`"p"`, or `"legacy"` for a legacy owner while `MULTI_ORG` is mocked on); a route never does.
+  const split = opts.person ? opts.person === "p" : MULTI_ORG;
   const account: User = {
-    id: idForNewAccount(email, opts.opaque),
+    id: idForNewAccount(email, opts.opaque || (split && MULTI_ORG)),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",
@@ -412,14 +419,13 @@ export async function createUser(input: { email: string; name: string; phone: st
     // What the signup notice under the form named, from the versions in code (rule 1325).
     consent: signupConsent(input.lang, now),
   };
-  const [{ createPersonRecord, withPersonLock }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
-  const pid = storedPersonId(opts.person === "p" ? newPersonId() : acct(account));
+  const pid = storedPersonId(split ? newPersonId() : acct(account));
   // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
   // session issued before this person existed: a re-registered address never inherits an old login.
   const proved = input.emailVerifiedAt ? { emailVerifiedAt: input.emailVerifiedAt } : {};
-  const person = { pid, email, name: account.name, lang: account.lang, passHash, createdAt: stamp, sessionsAfter: stamp, ...proved };
+  const person = { pid, email, name: account.name, lang: account.lang, passHash, createdAt: stamp, sessionsAfter: stamp, ...proved, ...(split ? { trialUsedAt: stamp } : {}) };
   const u: User =
-    opts.person === "p"
+    split
       ? { ...account, ...proved, ownerPid: pid }
       : { ...account, ...proved, passHash: passHash ?? (await bcrypt.hash(randomBytes(32).toString("base64url"), 10)), sessionsAfter: stamp };
   // `lock:login` (the caller's) → `lock:person` (rule 2139), taken before the first write: a held person lock throws
@@ -1002,7 +1008,11 @@ export async function getLogin(email: string): Promise<Login | null> {
   const orgs = await listOrgs(pid);
   const owned = orgs.find((o) => o.role === "owner");
   const first = owned ?? orgs[0];
-  if (!first) return null;
+  // Multi-workspace M2 (rules 2124, 2126; spec section 7 "no workspace"): a `p_` person whose last workspace was left,
+  // removed or deleted still signs in, with no account, and picks or creates one on the workspaces page; the address
+  // stays taken, so a sign-up or an invite accept cannot claim it again. With `MULTI_ORG` off such a person was deleted
+  // with its last membership (plan reconciliation 7) and nothing reaches here.
+  if (!first) return MULTI_ORG ? { kind: "member", member: null, owner: null, pid, person, acct: null } : null;
   const account = await getAccount(first.aid);
   if (!account || acct(account) !== first.aid) return null;
   if (owned) return ownerOf(account) === pid ? { kind: "owner", user: account, pid, person, acct: first.aid } : null;

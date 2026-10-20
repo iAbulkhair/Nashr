@@ -473,14 +473,15 @@ describe("rule 2132 (scan): the switch is off and nothing in product code makes 
 
   // M2 (docs/superpowers/plans/2026-10-20-multi-org-m2.md): the files that build the enable step branch on the switch
   // too, each falling back to M1's behaviour while it is off. A new file here is a new place the flip changes.
-  const BRANCHES = ["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts", "src/lib/auth.ts", "src/lib/api-handler.ts", "src/proxy.ts", "src/app/[lang]/app/layout.tsx", "src/lib/app-href.ts", "src/lib/page-href.ts", "src/app/api/workspaces/route.ts", "src/app/api/workspaces/switch/route.ts", "src/app/api/team/accept/route.ts", "src/app/[lang]/app/join/page.tsx", "src/app/[lang]/app/workspaces/page.tsx"];
+  const BRANCHES = ["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts", "src/lib/auth.ts", "src/lib/api-handler.ts", "src/proxy.ts", "src/app/[lang]/app/layout.tsx", "src/lib/app-href.ts", "src/lib/page-href.ts", "src/app/api/workspaces/route.ts", "src/app/api/workspaces/switch/route.ts", "src/app/api/team/accept/route.ts", "src/app/[lang]/app/join/page.tsx", "src/app/[lang]/app/workspaces/page.tsx", "src/lib/login-finish.ts"];
   it("only the listed M1 and M2 files branch on MULTI_ORG (its definition is in src/lib/multi-org.ts)", () => {
     const users = ALL.filter((f) => identifiers(tree(f), "MULTI_ORG").length > 0);
     expect(users.filter((f) => !BRANCHES.includes(f))).toEqual([]);
   });
 
-  // M2 adds the invite accept (rule 2117): a new member is a `p_` person, under `MULTI_ORG` only.
-  it("newPersonId is called only by createUser (under person: \"p\") and the invite accept (under MULTI_ORG)", () => {
+  // M2 adds the invite accept and the sign-up (rule 2117): a new member or owner is a `p_` person, under `MULTI_ORG`
+  // only (the sign-up's `split` is `MULTI_ORG` or the test-only `person: "p"`).
+  it("newPersonId is called only by createUser (under MULTI_ORG, or a test's person: \"p\") and the invite accept (under MULTI_ORG)", () => {
     const callers = ALL.filter((f) => calls(tree(f), "newPersonId").length > 0);
     expect(callers).toEqual(["src/lib/auth.ts", "src/lib/team.ts"]);
     const condition = (f: string) => {
@@ -489,7 +490,8 @@ describe("rule 2132 (scan): the switch is off and nothing in product code makes 
       while (p && !ts.isConditionalExpression(p)) p = p.parent;
       return p && ts.isConditionalExpression(p) ? p.condition.getText(tree(f)) : "";
     };
-    expect(condition("src/lib/auth.ts")).toBe('opts.person === "p"');
+    expect(condition("src/lib/auth.ts")).toBe("split");
+    expect(readFileSync("src/lib/auth.ts", "utf8")).toContain('const split = opts.person ? opts.person === "p" : MULTI_ORG;');
     expect(condition("src/lib/team.ts")).toBe("MULTI_ORG");
   });
 

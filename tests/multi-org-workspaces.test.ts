@@ -2,16 +2,18 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import * as listRoute from "@/app/api/workspaces/route";
 import * as switchRoute from "@/app/api/workspaces/switch/route";
-import { acct, getUser, PLAN_CREDITS, sessionKey } from "@/lib/auth";
+import * as signupRoute from "@/app/api/auth/signup/route";
+import { resolveGoogle } from "@/lib/google-signin";
+import { acct, currentUser, getLogin, getUser, PLAN_CREDITS, sessionKey, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { globalKey, personKey, storedAccountId } from "@/lib/keys";
+import { accountKey, globalKey, personKey, storedAccountId } from "@/lib/keys";
 import { ownerOf } from "@/lib/membership";
 import { getPerson, updatePerson } from "@/lib/person";
 import { deleteMembership, withAccountTeamLock } from "@/lib/team";
 import { OWNED_CAP } from "@/lib/workspaces";
 import { wsHandle } from "@/lib/ws-handle";
 import { switchTarget } from "@/lib/ws-path";
-import { addShadowMembership, json, newMember, newUser, signIn } from "./helpers/session";
+import { addShadowMembership, json, markVerified, newMember, newUser, signIn } from "./helpers/session";
 
 vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
@@ -217,5 +219,69 @@ describe("rule 2112: the switcher", () => {
     expect(src).not.toMatch(/router\.(push|replace)/);
     const rail = readFileSync("src/components/app/Sidebar.tsx", "utf8");
     expect(rail).toMatch(/const top = \(bell: boolean\) => \(\s*<>[\s\S]*?<WorkspaceSwitcher t=\{t\.workspaces\}/);
+  });
+});
+
+describe("rule 2117 (sign-up half): a new sign-up is a p_ person and an a_ account", () => {
+  let n = 0;
+  const address = (p: string) => `${p}-${Date.now().toString(36)}-${n++}@test.example`;
+
+  it("the password form: the credentials and trialUsedAt on the person, the account without them names it, the session in it", async () => {
+    const e = address("su");
+    const r = await signupRoute.POST(json("/api/auth/signup", "POST", { email: e, password: "abc12345", name: "New Owner", lang: "ar" }, { "x-forwarded-for": `10.21.${n % 250}.7` }));
+    expect(r.status).toBe(200);
+    const login = (await getLogin(e))!;
+    expect(login.kind).toBe("owner");
+    const pid = login.pid;
+    expect(pid).toMatch(/^p_/);
+    expect(login.acct).toMatch(/^a_[a-z2-7]{24}$/);
+    const [person, account, index, orgs, all] = await Promise.all([
+      db.get<Record<string, unknown>>(personKey.person(pid)),
+      db.get<User>(accountKey.user(login.acct!)),
+      db.get<{ pid?: string }>(accountKey.login(e)),
+      db.smembers(personKey.orgs(pid)),
+      db.sismember(globalKey.usersAll(), login.acct!),
+    ]);
+    expect(typeof person!.passHash).toBe("string");
+    expect(person!.trialUsedAt).toBeTruthy();
+    expect(ownerOf(account!)).toBe(pid);
+    expect(account).not.toHaveProperty("passHash");
+    expect(account).not.toHaveProperty("sessionsAfter");
+    expect(account!.credits).toBe(PLAN_CREDITS.trial);
+    expect(index?.pid).toBe(pid);
+    expect(orgs).toEqual([login.acct]);
+    expect(all).toBeTruthy();
+    // No legacy records at the address.
+    expect(await db.get(accountKey.user(e))).toBeNull();
+    // The sign-up's own session, once the address is proved (an unverified owner reads as signed out, rule 751).
+    await markVerified(e);
+    const me = (await currentUser())!;
+    expect(acct(me)).toBe(login.acct);
+    expect(me.actor?.pid).toBe(pid);
+  });
+
+  it("Google: the same shape with no password, proved, and the trial spent", async () => {
+    const e = address("sg");
+    const r = await resolveGoogle({ sub: `sub-${Date.now().toString(36)}-${n++}`, email: e, name: "Google Owner" }, "signup", "en");
+    expect(r.kind).toBe("created");
+    const login = (await getLogin(e))!;
+    expect(login.pid).toMatch(/^p_/);
+    const person = (await getPerson(login.pid))!;
+    expect(person).not.toHaveProperty("passHash");
+    expect(person.emailVerifiedAt).toBeTruthy();
+    expect(person.trialUsedAt).toBeTruthy();
+    const account = (await getUser(login.acct!))!;
+    expect(acct(account)).toMatch(/^a_/);
+    expect(account).not.toHaveProperty("passHash");
+    expect(account.emailVerifiedAt).toBe(person.emailVerifiedAt);
+  });
+
+  it("the trial is spent at sign-up: a second workspace starts without credits", async () => {
+    const e = address("st");
+    const r = await resolveGoogle({ sub: `sub-${Date.now().toString(36)}-${n++}`, email: e, name: "Trial Owner" }, "signup", "ar");
+    expect(r.kind).toBe("created");
+    const token = await signIn(e);
+    expect((await create("Second")).status).toBe(200);
+    expect((await getUser((await session(token)).acct!))!.credits).toBe(0);
   });
 });
