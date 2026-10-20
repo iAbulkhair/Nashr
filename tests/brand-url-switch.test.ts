@@ -80,9 +80,10 @@ describe("rule 892: the page's brand is a selector, only the switch writes the s
   it("a switch to a brand that is archived or not the account's is a 404 and writes nothing", async () => {
     const owner = await ownerWithBrands("sw");
     const set = vi.spyOn(db, "set");
-    for (const id of ["nope", "../x"]) {
+    // "old" is the fixture's archived brand: archived is refused like unknown (fix round item 21).
+    for (const id of ["old", "nope", "../x"]) {
       const res = await brandsRoute.POST(json("/api/brands", "POST", { action: "switch", id }));
-      expect(res.status).toBe(404);
+      expect(res.status, id).toBe(404);
     }
     expect(choiceWrites(set)).toEqual([]);
     expect(await readActiveBrand(owner.email)).toBe("default");
@@ -174,6 +175,15 @@ describe("rule 893: the brand switcher", () => {
     expect(sidebar).not.toMatch(/<Link href=\{settingsHref\(lang, "brands"\)\} onClick=\{\(\) => setOpen\(false\)\} className="flex min-w-0 flex-1/);
     const panel = read("src/components/app/BrandsPanel.tsx");
     expect(panel).toMatch(/switchBrandPath\(/);
+  });
+
+  it("the rail loads the brand list once per mount, again only after a pick or a failed read (fix round item 23)", () => {
+    const sidebar = read("src/components/app/Sidebar.tsx");
+    const load = sidebar.slice(sidebar.indexOf("const loadBrands = useCallback("), sidebar.indexOf("}, [user.role]);"));
+    expect(load).toMatch(/if \(brandsAsked\.current\) return;\s*brandsAsked\.current = true;/);
+    expect(load).toMatch(/catch \{[^}]*brandsAsked\.current = false;/);
+    expect(sidebar).toMatch(/const brandsAsked = useRef\(false\)/);
+    expect(sidebar).toMatch(/onOpen=\{loadBrands\} onPicked=\{\(\) => \{ setOpen\(false\); brandsAsked\.current = false; \}\}/);
   });
 
   it("the rail's new conversation goes to the brand it was created in (ruling P10)", () => {

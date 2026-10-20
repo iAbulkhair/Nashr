@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import type { Role } from "@/lib/auth";
@@ -62,14 +62,19 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     // another tab may have changed (ruling P10).
     if (j.ok) { setOpen(false); window.dispatchEvent(new Event(WORKSPACE_EVENTS.convs)); r.push(appHref(lang, `/chat?conv=${j.conversation.id}`, { brand: brandFromPath(path) ?? sessionBrand })); }
   }
-  // The brand switcher's list (rule 893), asked for when the menu is opened: the brands, whether this login may add one
-  // (owner or admin under the plan's cap; display only, POST /api/brands is the check).
+  // The brand switcher's list (rule 893), asked for when the menu is first opened: the brands, whether this login may add
+  // one (owner or admin under the plan's cap; display only, POST /api/brands is the check). Once per mount, not on every
+  // open; a pick (the list or the cap may have changed) and a failed read let the next open ask again.
   const [brandList, setBrandList] = useState<{ brands: SwitcherBrand[]; canAdd: boolean } | null>(null);
+  const brandsAsked = useRef(false);
   const loadBrands = useCallback(async () => {
+    if (brandsAsked.current) return;
+    brandsAsked.current = true;
     try {
       const j = await (await fetch("/api/brands")).json();
       if (j.ok) setBrandList({ brands: j.brands, canAdd: (user.role === "owner" || user.role === "admin") && Number(j.count) < Number(j.cap) });
-    } catch { /* the menu keeps showing the current brand */ }
+      else brandsAsked.current = false;
+    } catch { brandsAsked.current = false; /* the menu keeps showing the current brand */ }
   }, [user.role]);
   // The row for the screen on show (rule 968), marked with `aria-current="page"` as well as the tint. A link with a query
   // (a conversation) matches its path and every parameter it names; the plain chat row only while no conversation or
@@ -108,7 +113,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   /** The brand you work on, and the bell beside it (outside the scrolling list, so its panel is never clipped). In the sheet the bell stays in the phone header. */
   const top = (bell: boolean) => (
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
-      <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} onOpen={loadBrands} onPicked={() => setOpen(false)} />
+      <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />
       {bell && <NotificationCenter t={t} lang={lang} align="start" />}
     </div>
   );

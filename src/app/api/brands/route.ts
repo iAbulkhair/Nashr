@@ -64,7 +64,13 @@ export async function POST(req: Request) {
   const rows = await listBrands(acct(u));
   const target = rows.find((x) => x.id === b.id);
   if (!target) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  if (b.action === "switch") { await choose(u, target.id); return NextResponse.json({ ok: true }); }
+  if (b.action === "switch") {
+    // Only to an active brand: an archived one has no pages (`b/[brand]` answers 404 for it, rule 886) and the session
+    // would fall back to "default" anyway, so the choice is refused and nothing is written (rule 892).
+    if (target.status !== "active") return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    await choose(u, target.id);
+    return NextResponse.json({ ok: true });
+  }
   if (b.action === "archive" && target.id === "default") return NextResponse.json({ ok: false, error: "cannot_archive_default" }, { status: 400 });
   if (b.action !== "rename" && b.action !== "archive") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   // The change is applied to the list as it is under the lock, not to the copy read above: an add that landed in
