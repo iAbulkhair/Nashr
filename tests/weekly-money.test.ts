@@ -32,6 +32,8 @@ import { listLite, listTasks, type Brand } from "@/lib/brand";
 import { PAID_ONCE_MS, chargeOnce, refundOnce, renewIfDue } from "@/lib/credits";
 import { generateBatch } from "@/lib/generate-batch";
 import { ONCE_HOLD_SETTLE_MS, getSchedule, runWeekly, saveSchedule, sweepWeeklyHolds, weeklyClaim } from "@/lib/schedule";
+import { RUN_STALE_MS } from "@/lib/run-receipt";
+import { systemBy } from "@/lib/actor";
 import { PLAN_CREDITS } from "@/lib/pricing";
 import { TASK_COST } from "@/lib/tasks";
 import { newUser, settle } from "./helpers/session";
@@ -89,7 +91,7 @@ describe("a paid account is renewed before the Sunday plan charges it (rule 332)
 });
 
 describe("the Sunday plan is charged once per brand and week (rule 333)", () => {
-  it("a run killed after its charge: the retry reuses the charge, one credit drop and one plan", async () => {
+  it("a run killed after its charge: the cron holds it (rule 2478); the owner's Run reuses the charge, one credit drop and one plan", async () => {
     const u = await owner("wk-kill");
     h.mode = "hang";
     void runWeekly(u);
@@ -99,7 +101,15 @@ describe("the Sunday plan is charged once per brand and week (rule 333)", () => 
     // Its lock would expire at 300 s; the retry comes after that.
     await db.del(`weeklylock:${u.email}`);
     h.mode = "ok";
-    expect(await runWeekly((await getUser(u.email))!)).toBe("ok:1");
+    // Within RUN_STALE_MS the run may still be alive: the cron waits.
+    expect(await runWeekly((await getUser(u.email))!)).toBe("retry:in_flight");
+    // Later, the receipt is a killed run's: the cron holds it for the owner instead of planning the week again.
+    const claim = weeklyClaim(u.email);
+    await db.set(`runrec:${claim}`, { state: "started", at: new Date(Date.now() - RUN_STALE_MS - 1000).toISOString() });
+    expect(await runWeekly((await getUser(u.email))!)).toBe("held");
+    expect(await plans(u.email)).toHaveLength(0);
+    // The owner's Run now resumes it on the same claim: the killed run's charge is reused.
+    expect(await runWeekly((await getUser(u.email))!, systemBy("cron"), { resume: true })).toBe("ok:1");
     expect(await credits(u.email), "charged once for one plan, not twice").toBe(PLAN_CREDITS.trial - COST);
     expect(await plans(u.email)).toHaveLength(1);
   });
@@ -109,10 +119,13 @@ describe("the Sunday plan is charged once per brand and week (rule 333)", () => 
     expect(await runWeekly(u)).toBe("ok:1");
     expect(await runWeekly((await getUser(u.email))!)).toBe("already_this_week");
     expect(await credits(u.email)).toBe(PLAN_CREDITS.trial - COST);
-    // The marker lost (an older week's record, a cleared key): the claim still holds this week's charge.
+    // The marker lost (an older week's record, a cleared key): the delivered receipt (rule 2477) stops the run and puts the
+    // marker back, so the week is neither charged nor planned again.
     await saveSchedule(u.email, { lastWeekly: undefined });
-    expect(await runWeekly((await getUser(u.email))!)).toBe("ok:1");
+    expect(await runWeekly((await getUser(u.email))!)).toBe("already_this_week");
     expect(await credits(u.email)).toBe(PLAN_CREDITS.trial - COST);
+    expect(await plans(u.email)).toHaveLength(1);
+    expect((await getSchedule(u.email)).lastWeekly).toBeTruthy();
   });
 
   it("the ledger: concurrent charges of one claim debit once; a refund gives it back once; old holds are dropped", async () => {

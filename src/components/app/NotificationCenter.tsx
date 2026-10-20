@@ -12,6 +12,16 @@ import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
 /** The badge's text: the count up to 99, then "99+", so a long backlog never widens the bell. Pure for the tests. */
 export const bellCount = (n: number) => (n > 99 ? "99+" : String(Math.max(0, Math.floor(n))));
 
+/**
+ * How many notices one entry stands for (rule 2352): "×3" next to the title once a second notice about the same subject
+ * arrived while it was unread, with the number said in words for screen readers. Nothing for an entry of one.
+ */
+export function Times({ count, label }: { count?: number; label: string }) {
+  if (!count || count < 2) return null;
+  const k = bellCount(count);
+  return <span className="ms-1.5 inline-block rounded-full bg-background-muted px-1.5 text-xs font-medium tnum text-foreground" title={label.replace("{n}", k)}><span aria-hidden>×{k}</span><span className="sr-only">{label.replace("{n}", k)}</span></span>;
+}
+
 /** How many notifications the popover lists; the page lists them all. */
 export const BELL_LIST = 8;
 
@@ -107,7 +117,7 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
                   <Link href={n.href} onClick={() => { setOpen(false); void readOne(n); }} className="flex gap-2 px-3 py-2.5 hover:bg-background-muted/60">
                     <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-foreground"}`} />
                     <span className="min-w-0 flex-1">
-                      <span className={`block text-sm ${n.read ? "" : "font-semibold"}`} dir="auto">{n.title}{!n.read && <span className="sr-only"> ({U.unread})</span>}</span>
+                      <span className={`block text-sm ${n.read ? "" : "font-semibold"}`} dir="auto">{n.title}<Times count={n.count} label={U.times} />{!n.read && <span className="sr-only"> ({U.unread})</span>}</span>
                       <span className="block text-xs text-foreground-muted"><span>{t.notifications.kinds[n.kind]}</span> · <Time value={n.at} lang={lang} style="datetime" /></span>
                     </span>
                   </Link>

@@ -40,6 +40,7 @@ import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
 import { log } from "./log";
 import { type Scope, accountKey, globalKey, personKey, storedAccountId, storedPersonId, workspaceScope, wsKey } from "./keys";
+import { weekStartUtc, weeklyClaim } from "./schedule";
 import { ownerOf } from "./membership";
 import { getAccount, normalizeEmail, releaseLogin } from "./auth";
 
@@ -171,6 +172,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
+      // The Sunday plan's run receipts (rule 2476) for this week and the last: they name the scope and live 8 days.
+      ...[0, 7].map((d) => globalKey.runReceipt(weeklyClaim(s, weekStartUtc(new Date(Date.now() - d * 864e5))))),
       // When someone last pressed Refresh on the site or social results, which Dana's routine counts (8 days, rule 747).
       OWNER_SYNC_KEY(s),
       // Follow-up markers that name this brand and live for weeks: the 80% cap warning (35 days) and a routine's run
@@ -199,7 +202,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
       // The notification choices, per brand (src/lib/notify-prefs.ts `profileKey`): only the default brand's was deleted.
       profileKey(s),
-      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
+      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
     );
   });
   // Our media copies on disk (rule 1761): every file of every brand, its index entries and the space they held. A disk
@@ -248,6 +251,10 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // their suffix cannot be enumerated (the ones that can, per brand, are deleted above).
   keys.push(
     accountKey.notifications(e),
+    // The digest choice, its window and its claim (rule 2357); the account leaves the tick's set below.
+    accountKey.digest(e),
+    accountKey.digestLast(e),
+    accountKey.digestLock(e),
     accountKey.referrals(e),
     accountKey.referredBy(e),
     `ref:${codeFor(e)}`,
@@ -307,5 +314,5 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // The owner's links once more (a create that ran between the first revoke and the deletion of `user:{owner}`); the
   // owner's login index went in `finish` above (members' in `wipeMemberships`); the deletion row names the id and the
   // address (rule 1999).
-  await Promise.all([revokeFeed(links[0]), revokeBook(links[0]), db.srem(globalKey.usersAll(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
+  await Promise.all([revokeFeed(links[0]), revokeBook(links[0]), db.srem(globalKey.usersAll(), e), db.srem(globalKey.digests(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
 }

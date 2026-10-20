@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { after } from "next/server";
-import { dailyRoster, runDaily, sweepWeeklyHolds } from "@/lib/schedule";
+import { dailyRoster, runDaily } from "@/lib/schedule";
+import { sweepHolds } from "@/lib/hold-sweep";
 import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
 import { recordCronRun } from "@/lib/cron-heartbeat";
@@ -11,6 +12,7 @@ import { runLifecycle } from "@/lib/lifecycle";
 import { renewIfDue, saveSettledTopups } from "@/lib/credits";
 import { earlyOfferDue, grantEarlyOffer } from "@/lib/partners";
 import { followUps, notifEmailText } from "@/lib/notifications";
+import { getDigest } from "@/lib/notif-digest";
 import { emailAllowed, readPrefs } from "@/lib/notify-prefs";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
@@ -97,18 +99,21 @@ async function dailyFor(u: User): Promise<string> {
   if ((u.brandId ?? "default") === "default" && earlyOfferDue(u)) {
     try { if (await grantEarlyOffer(acct(u), (x) => earlyOfferDue(x))) out.push("offer"); } catch (e) { out.push(`offer_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   }
-  // Once per account too: a Sunday plan's charge whose run was killed and never retried in its week is refunded, or its
-  // hold dropped when the week's plan exists (src/lib/schedule.ts `sweepWeeklyHolds`, rule 337). Reported, never fatal.
+  // Once per account too: every paid-once hold (the Sunday plan's, a routine's, a handoff item's) whose run was killed and
+  // never retried is refunded, or its hold dropped when the work exists (src/lib/hold-sweep.ts `sweepHolds`, rules 337
+  // and 2473-2475). Reported, never fatal.
   if ((u.brandId ?? "default") === "default" && u.paidOnce) {
     try {
-      const swept = await sweepWeeklyHolds(u);
+      const swept = await sweepHolds(u);
       if (swept) {
         u.credits = swept.credits;
-        if (swept.refunded.length) out.push(`weekly_refunded:${swept.refunded.length}`);
-        if (swept.dropped.length) out.push(`weekly_settled:${swept.dropped.length}`);
+        const weekly = (c: string) => c.startsWith("weekly:");
+        const nRefW = swept.refunded.filter((x) => weekly(x.claim)).length, nSetW = swept.dropped.filter(weekly).length;
+        const counts: [string, number][] = [["weekly_refunded", nRefW], ["weekly_settled", nSetW], ["run_refunded", swept.refunded.length - nRefW], ["run_settled", swept.dropped.length - nSetW]];
+        for (const [label, n] of counts) if (n) out.push(`${label}:${n}`);
       }
     } catch (e) {
-      out.push(`weekly_sweep_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
+      out.push(`hold_sweep_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
     }
   }
   // Reem's list, for every scope with or without a brand: purge items deleted over 30 days ago, close the ones whose
@@ -151,18 +156,20 @@ async function dailyFor(u: User): Promise<string> {
   const fu = await followUps(u, u.scope ?? u.email);
   if (fu.length) out.push(`followups:${fu.length}`);
   // Noor's brief email: every day, only when something waits, or never (Settings, Notifications; the old field reads the same, rule 1147).
-  const prefs = await readPrefs(u.scope ?? u.email, u.email);
+  const [prefs, digest] = await Promise.all([readPrefs(u.scope ?? u.email, u.email), getDigest(acct(u))]);
+  // With a digest on (rule 2356), the follow-ups reach the owner's email there, once, and not here as well.
+  const mailed = digest === "off" ? fu : [];
   if (brief) {
     out.push("brief");
     // "important": something waits for a decision, a follow-up fired, or a to-do is overdue or due today.
     const worth = emailAllowed(prefs, "brief", brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0);
-    const extra = fu.length ? `\n\n${notifEmailText(u, fu)}` : "";
+    const extra = mailed.length ? `\n\n${notifEmailText(u, mailed)}` : "";
     const app = `${appOrigin()}/${u.lang}/app`;
     const text = brief.text + extra + `\n\n${app}`;
     // The HTML part is the same text in the shared layout (rule 1961): the model's brief is untrusted, so `dailyBrief`
     // escapes every paragraph and links only the button.
     if (worth && (await sendEmail({ to: u.email, subject: u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, text, template: "dailyBrief", context: { date: brief.date, body: text, href: app }, locale: u.lang }))) out.push("email");
-  } else if (fu.length && prefs.brief !== "none") {
+  } else if (mailed.length && prefs.brief !== "none") {
     const subject = u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team";
     const text = notifEmailText(u, fu);
     if (await sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}/${u.lang}/app` } }, locale: u.lang })) out.push("email");

@@ -11,6 +11,7 @@ import { MEETING_TOOL_DEF } from "./secretary-meeting";
 import { AWAY_AHEAD_DAYS } from "./secretary-away";
 import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES } from "./handoffs";
 import { INSTRUCTION_CHARS } from "./instructions-safety";
+import { authorityOf, capOfTool, type ToolPolicy } from "./tool-authority";
 
 /**
  * Brand fields a tool call may propose a change to: every one of them is a plain string on `Brand`. No tool call writes
@@ -159,5 +160,17 @@ export const PROPOSE_MEETING_TASKS_TOOL: Anthropic.Tool = { name: MEETING_TOOL_D
  */
 const FREE_SLOTS_DEF = SEC_TOOL_DEFS.find((d) => d.name === "free_slots")!;
 export const FREE_SLOTS_TOOL: Anthropic.Tool = { name: FREE_SLOTS_DEF.name, description: FREE_SLOTS_DEF.description, input_schema: FREE_SLOTS_DEF.schema };
-/** The tools of one agent's turn: every agent's, plus the lead's proposal tool when Majed is talking and Reem's away card, meeting follow-up and open times when she is. */
-export const toolsFor = (agentId: AgentId): Anthropic.Tool[] => (agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL, PROPOSE_MEETING_TASKS_TOOL, FREE_SLOTS_TOOL] : TOOLS);
+/**
+ * The tools of one agent's turn: every agent's, plus the lead's proposal tool when Majed is talking and Reem's away card,
+ * meeting follow-up and open times when she is. With the owner's `policy` (Governance, rule 2431), a tool whose capability
+ * is `off` for this agent is not offered at all; `runTool` refuses it too, from the setting read at the moment of the call.
+ * Without a policy (the offered-tool check in `runTool`, tests) it is the agent's full list.
+ */
+export const toolsFor = (agentId: AgentId, policy?: ToolPolicy): Anthropic.Tool[] => {
+  const all = agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL, PROPOSE_MEETING_TASKS_TOOL, FREE_SLOTS_TOOL] : TOOLS;
+  if (!policy) return all;
+  return all.filter((t) => {
+    const cap = capOfTool(t.name);
+    return !cap || authorityOf(policy, agentId, cap) !== "off";
+  });
+};

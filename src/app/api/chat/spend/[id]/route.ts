@@ -23,7 +23,8 @@ export const maxDuration = 300;
  *
  * The proposal is read only from the caller's own scope (`sc(u)`): another account's id is 404, and no body field names a
  * scope. Answers: `{ ok: true, items, credits }` for a batch, the image route's own body for a render, `{ ok: true }` for
- * dismiss; 410 `gone` once decided; 409 `claim_busy` while another click runs; the batch refusals with the codes the app
+ * dismiss; 410 `gone` once decided; 409 `claim_busy` while another click runs; 409 `revoked` when the owner has since
+ * switched this capability off for the card's agent in Governance (rule 2434); the batch refusals with the codes the app
  * already raises its limit dialog for (402 `no_credits`, `trial_over`, `agent_cap`), and 502 for a failed batch (refunded
  * by `generateBatch`). A refused or failed run leaves the card open.
  */
@@ -82,6 +83,8 @@ function refusal(r: Extract<SpendRun, { ok: false }>): [number, Record<string, u
     case "gone": return [410, { error: "gone" }];
     case "claim_busy": return [409, { error: "claim_busy" }];
     case "bad_proposal": return [409, { error: "bad_proposal" }];
+    // The owner switched this capability off for the card's agent since it was made (rule 2434): nothing ran.
+    case "revoked": return [409, { error: "revoked" }];
     case "too_late": return [503, { error: "too_late" }];
     case "image": {
       const { status, body } = mediaResponse(r.outcome);

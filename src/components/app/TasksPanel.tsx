@@ -33,7 +33,7 @@ function Card({ k, busy, title, desc, on, last, which, onToggle, onRun, readOnly
 }
 
 /** One routine: who, what it produces, how often, what a run costs, when it skips, and its switch. */
-function RoutineRow({ t, r, on, saving, onToggle, readOnly }: { t: AppDict; r: RoutineView; on: boolean; saving: boolean; onToggle: (id: RoutineId, on: boolean) => void; readOnly: boolean }) {
+function RoutineRow({ t, r, on, saving, onToggle, readOnly, busy, onRunHeld }: { t: AppDict; r: RoutineView; on: boolean; saving: boolean; onToggle: (id: RoutineId, on: boolean) => void; readOnly: boolean; busy: string; onRunHeld: (id: RoutineId) => void }) {
   const k = t.tasks;
   const what = t.generate.types[r.type];
   return (
@@ -44,6 +44,13 @@ function RoutineRow({ t, r, on, saving, onToggle, readOnly }: { t: AppDict; r: R
         <p className="mt-1 text-xs text-foreground-muted">{r.cadence === "weekly" ? k.routineWeekly : k.routineMonthly} · {k.routineCost.replace("{n}", String(TASK_COST[r.type]))}</p>
         <p className="mt-1 text-xs text-foreground-muted">{k.routineWhen[r.id]}</p>
         <p className="mt-1 font-mono text-xs text-foreground-muted" dir="ltr">{k.lastRun}: {r.last ? r.last.slice(0, 16).replace("T", " ") : k.never}</p>
+        {/* Rule 2479: a run the cron held for the owner. "Run now" is an explicit request, open to every role like the cards'. */}
+        {r.held && (
+          <div className="mt-2 rounded-lg border border-border-strong p-2 text-xs" data-held={r.id}>
+            <p>{k.held}</p>
+            <button type="button" disabled={!!busy} onClick={() => onRunHeld(r.id)} className="btn btn-secondary btn-xs mt-2 disabled:opacity-50">{busy === r.id ? "…" : k.runHeld}</button>
+          </div>
+        )}
       </div>
       <Switch checked={on} label={`${t.agents[r.agent].name}: ${what.t}`} disabled={saving || readOnly} onChange={(next) => onToggle(r.id, next)} />
     </li>
@@ -78,6 +85,27 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
   }
   const toggle = (key: ScheduleKey) => put({ [key]: !s[key] }, key);
   const toggleRoutine = (id: RoutineId, on: boolean) => put({ routines: { [id]: on } }, id);
+  /** The owner's Run of a held routine (rule 2479): the server runs it on its own claim, so it is never charged twice. */
+  async function runHeld(id: RoutineId) {
+    setBusy(id);
+    setMsg("");
+    try {
+      const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run: "routine", id }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: string };
+      const outcome = j.result ?? "";
+      if (!res.ok || !j.ok) toast.danger(t.generate.failed);
+      else if (outcome.startsWith("ok:")) toast.success(`${k.heldRan}: ${outcome}`);
+      else if (outcome === "not_held") toast.danger(k.heldNotHeld);
+      else if (outcome === "retry:paused") setMsg(t.generate.paused);
+      else if (outcome === "agent_cap") setMsg(t.limit.agentCapTitle);
+      else toast.danger(`${t.generate.failed} (${outcome})`);
+    } catch {
+      toast.danger(t.generate.failed);
+    } finally {
+      setBusy("");
+      r.refresh();
+    }
+  }
   async function run(which: "weekly" | "daily") {
     setBusy(which);
     setMsg("");
@@ -118,7 +146,7 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
           <h2 className="font-display text-lg font-medium">{k.routines}</h2>
           <p className="mt-1 text-sm text-foreground-muted">{k.routinesSub}</p>
           <ul className="mt-3 divide-y divide-foreground/10">
-            {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] !== false /* on unless the owner switched it off, as `routineOn` in routines.ts (rule 1486) */} saving={!!saving} onToggle={toggleRoutine} readOnly={readOnly} />)}
+            {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] !== false /* on unless the owner switched it off, as `routineOn` in routines.ts (rule 1486) */} saving={!!saving} onToggle={toggleRoutine} readOnly={readOnly} busy={busy} onRunHeld={runHeld} />)}
           </ul>
         </div>
       </div>

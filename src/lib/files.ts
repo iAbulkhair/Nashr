@@ -6,8 +6,10 @@ import { scopeParam, wsKey } from "./keys";
 /** Workspace files = Noor's memory. Markdown the user can read, edit, delete. */
 export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user" };
 
-const SET = (e: string) => wsKey.files(scopeParam(e));
-const KEY = (e: string, n: string) => wsKey.file(scopeParam(e), n);
+/** The one place this module turns a scope string into a `Scope`; every key below is built from it (rule 2033). */
+const ws = (e: string) => scopeParam(e);
+const SET = (e: string) => wsKey.files(ws(e));
+const KEY = (e: string, n: string) => wsKey.file(ws(e), n);
 /** The key of one workspace file, for a reader that fetches several in one `mget` (`agent-instructions.ts`). */
 export const fileKey = KEY;
 
@@ -92,6 +94,34 @@ export async function writeFile(email: string, name: string, content: string, by
   await db.sadd(SET(email), n);
   return f;
 }
+/**
+ * Rule 2441: a person's save that says what it was made from. `baseAt` is the `updatedAt` of the file the editor showed,
+ * or null for "a new file": the text is written only while that is still so, read under a short per-file lock, so two
+ * tabs, two members, or a member and an agent's write in between never lose one another's text without a word
+ * (OpenDots' `expectedRevision`, docs/OpenDots_Adoption.md). Otherwise nothing is written and the file as it is now
+ * comes back: `stale` when it changed or was deleted since, `exists` when a "new" name is taken. Writes that send no
+ * base (agents, imports, uploads, older pages) keep `writeFile` as it is: the check is the editor's, not a transaction
+ * over every writer.
+ */
+export type CheckedWrite = { ok: true; file: WFile } | { ok: false; error: "stale" | "exists"; file: WFile | null } | { ok: false; error: "busy" };
+export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null): Promise<CheckedWrite> {
+  const n = safeName(name);
+  const lock = wsKey.fileLock(ws(email), n);
+  let got = false;
+  for (let i = 0; i < 20 && !got; i++) {
+    got = await db.lock(lock, 10);
+    if (!got) await new Promise((r) => setTimeout(r, 50));
+  }
+  if (!got) return { ok: false, error: "busy" };
+  try {
+    const cur = await db.get<WFile>(KEY(email, n));
+    if (baseAt === null && cur) return { ok: false, error: "exists", file: cur };
+    if (baseAt !== null && cur?.updatedAt !== baseAt) return { ok: false, error: "stale", file: cur };
+    return { ok: true, file: await writeFile(email, n, content, by) };
+  } finally {
+    await db.unlock(lock).catch(() => {});
+  }
+}
 export async function deleteFile(email: string, name: string) {
   const n = safeName(name);
   // Both halves: the record and its name in the index. Leaving the name behind made every listFiles pay a read for a
@@ -120,7 +150,7 @@ export const CORE_FILES: readonly string[] = ["brand.md", "products.md", "store-
 export async function memoryBlock(email: string) {
   const wanted = ["brand.md", "products.md", "store-sales.md", "performance-learnings.md", "strategy.md", "market-research.md", "preferences.md"];
   // One round trip per file, read together, keep the fixed order (stable text also helps prompt caching).
-  const [files, plan] = await Promise.all([Promise.all(wanted.map((n) => readFile(email, n))), db.get<{ goal?: string }>(wsKey.onboardPlan(scopeParam(email)))]);
+  const [files, plan] = await Promise.all([Promise.all(wanted.map((n) => readFile(email, n))), db.get<{ goal?: string }>(wsKey.onboardPlan(ws(email)))]);
   const goal = goalLine(plan?.goal);
   const head = goal ? `--- OWNER GOAL (output target agreed at onboarding; not a file) ---\n${goal}` : "";
   return [head, ...wanted

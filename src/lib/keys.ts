@@ -14,7 +14,7 @@
  *   paths look these up by an address on purpose, so they take a string; the caller normalizes it.
  * - `globalKey`: records addressed by a token, an id or nothing (sessions, OAuth state, invites, rate buckets, indexes).
  * - `personKey`: records of one person, or of one person in one account (multi-workspace membership, release M1, rules
- *   2110-2139, docs/system/flows.md section 91). Each builder takes a `PersonId` and, for a per-account record, an
+ *   2110-2139, docs/system/flows.md section 93). Each builder takes a `PersonId` and, for a per-account record, an
  *   `AccountId`: branded strings that only a stored record can produce (`storedPersonId`, `storedAccountId`), so a plain
  *   `string` from a request does not type-check (rule 2137). `accountKey.membership` and `accountKey.teamLog` take the
  *   same brands. Nothing reads or writes these keys until the adapter code of the later M1 tasks.
@@ -91,6 +91,8 @@ export const wsKey = {
   taskLock: (s: Scope, id: string) => `tasklock:${s}:${id}`,
   /** set: ids of tasks waiting for approval. */
   pending: (s: Scope) => `pending:${s}`,
+  /** set: ids of pending tasks set aside under "Not now" (a subset of `pending`, rule 2341). */
+  notNow: (s: Scope) => `notnow:${s}`,
   /** string: when the pending set was last rebuilt. */
   pendingIndex: (s: Scope) => `pendingidx:${s}`,
   /** hash: the light task index of one month (`YYYY-MM`). */
@@ -105,6 +107,8 @@ export const wsKey = {
   files: (s: Scope) => `files:${s}`,
   /** json: one workspace file. */
   file: (s: Scope, name: string) => `file:${s}:${name}`,
+  /** lock: one workspace file's checked save (`writeFileChecked`, rule 2441), 10 s. */
+  fileLock: (s: Scope, name: string) => `filelock:${s}:${name}`,
   /** json: the onboarding plan (`{ goal?, ... }`). */
   onboardPlan: (s: Scope) => `onboardplan:${s}`,
   /** json: the owner's confirmed site. */
@@ -219,6 +223,14 @@ export const accountKey = {
   mcpGrants: (email: string) => `mcpgrants:${email}`,
   /** list: in-app notifications. */
   notifications: (email: string) => `notifs:${email}`,
+  /** json `StoredDigest` (src/lib/notif-digest.ts): how often the account's digest email goes, and to whom (rule 2353). */
+  digest: (id: string) => `notifydigest:${id}`,
+  /** string: when the account's digest window last closed, ISO (rule 2354). */
+  digestLast: (id: string) => `digestlast:${id}`,
+  /** marker: one digest send in progress or just made, 10 minutes (rule 2354). */
+  digestLock: (id: string) => `digestlock:${id}`,
+  /** bucket name for `allow` (stored as `rate:digestsave:{login}`): saves of the digest choice (rule 2355). */
+  digestBucket: (login: string) => `digestsave:${login}`,
   /** set: friends this account referred. */
   referrals: (email: string) => `referrals:${email}`,
   /** string: who referred this account. */
@@ -269,8 +281,17 @@ export const accountKey = {
 } as const;
 
 export const globalKey = {
+  /** set: account ids whose digest email is on, read by Reem's tick (rule 2354). */
+  digests: () => "notifydigests",
   /** set: every account id (`acct(u)`: in R1 the owner's first address). */
   usersAll: () => "users:all",
+  /**
+   * json `RunReceipt`: one paid scheduled run's receipt (src/lib/run-receipt.ts, rules 2476-2479), keyed by its claim
+   * (`weekly:{scope}:{week}`, `routine:{scope}:{id}:{period}`), which code builds from the caller's own scope.
+   */
+  runReceipt: (claim: string) => `runrec:${claim}`,
+  /** json: the last report of a per-user cron batch, counts only (src/lib/cron-batch.ts, rule 2484). */
+  cronReport: (job: string) => `cronreport:${job}`,
   /** list: deletion receipts. */
   deletedAccounts: () => "deleted-accounts",
   /** json: a session, under the SHA-256 of its token. */
@@ -315,3 +336,20 @@ export const globalKey = {
   /** bucket name for `allow` (stored as `rate:pkv:cred:{hash}`): passkey sign-in verifies per credential hash, 10 per 15 min (rule 2418). */
   passkeyCredBucket: (credHash: string) => `pkv:cred:${credHash}`,
 } as const;
+
+/**
+ * The claims a paid scheduled run is charged under (`chargeOnce`, src/lib/credits.ts; rules 2470-2471) and the notice
+ * fingerprints built from them (rules 2475, 2478). Not keys on their own: each becomes part of a key (`User.paidOnce`,
+ * `runrec:`, `notifseen:`), so they are built here with the keys. The scope is the caller's own, never a request's.
+ */
+export const runClaim = {
+  /** One routine's run in one period. */
+  routine: (scope: string, id: string, period: string) => `routine:${scope}:${id}:${period}`,
+  /** One item of one of Majed's handoffs. */
+  handoff: (scope: string, id: string, n: number) => `handoff:${scope}:${id}:${n}`,
+  /** The owner's one notice for a run held for them. */
+  heldNotice: (claim: string) => `held:${claim}`,
+  /** The owner's one notice for a day's sweep refunds. */
+  sweepNotice: (day: string) => `holdsweep:${day}`,
+};
+

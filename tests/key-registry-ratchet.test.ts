@@ -123,7 +123,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/app/api/chat/feedback/route.ts": 1,
   "src/app/api/chat/spend/[id]/route.ts": 1,
   "src/app/api/connect/[provider]/route.ts": 8,
-  "src/app/api/cron/daily/route.ts": 19,
+  "src/app/api/cron/daily/route.ts": 17,
   "src/app/api/cron/secretary/route.ts": 1,
   "src/app/api/drives/route.ts": 2,
   "src/app/api/founding/seats/route.ts": 1,
@@ -272,13 +272,13 @@ const RAW_KEYS: Record<string, number> = {
 };
 
 const SCOPE_PARAM: Record<string, number> = {
-  "src/lib/brand.ts": 38,
+  "src/lib/brand.ts": 26,
   "src/lib/connectors/store.ts": 7,
   "src/lib/conversations.ts": 15,
   "src/lib/decisions.ts": 1,
   "src/lib/evals.ts": 2,
   "src/lib/feedback.ts": 1,
-  "src/lib/files.ts": 3,
+  "src/lib/files.ts": 1,
   "src/lib/governance.ts": 5,
   "src/lib/handoffs.ts": 1,
   "src/lib/onboard-confirm.ts": 2,
@@ -288,7 +288,6 @@ const SCOPE_PARAM: Record<string, number> = {
   "src/lib/site-stats.ts": 1,
   "src/lib/social-read/common.ts": 1,
   "src/lib/social-stats.ts": 1,
-  "src/lib/stats.ts": 1,
   "src/lib/store-sales.ts": 2,
 };
 
