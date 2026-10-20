@@ -609,7 +609,19 @@ describe("rule 2406 (route half): the passkey routes derive no origin or RP ID f
     const { readFileSync } = await import("fs");
     for (const f of ["src/app/api/auth/passkey/options/route.ts", "src/app/api/auth/passkey/verify/route.ts", "src/app/api/account/passkeys/route.ts"]) {
       const src = readFileSync(f, "utf8");
-      expect(src, f).not.toMatch(/req\.(headers|url|nextUrl)\b/);
+      // Every name a request travels under: `req` and `request` by convention, each handler's first parameter, and any
+      // parameter typed Request or NextRequest (helpers such as freshProof). None may read headers, the URL or nextUrl,
+      // directly or by destructuring.
+      const names = new Set(["req", "request"]);
+      for (const m of src.matchAll(/export\s+(?:async\s+)?function\s+(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*(\w+)/g)) names.add(m[1]);
+      for (const m of src.matchAll(/\b(\w+)\s*:\s*(?:Next)?Request\b/g)) names.add(m[1]);
+      for (const n of names) {
+        expect(src, `${f}: ${n}`).not.toMatch(new RegExp(`\\b${n}\\s*\\??\\.\\s*(headers|url|nextUrl)\\b`));
+        expect(src, `${f}: ${n}`).not.toMatch(new RegExp(`\\{[^}]*\\b(headers|url|nextUrl)\\b[^}]*\\}\\s*=\\s*${n}\\b`));
+      }
+      // `headers()` from next/headers, under its own name or an alias: only `cookies` may come from there.
+      expect(src, f).not.toMatch(/import\s*\{[^}]*\bheaders\b[^}]*\}\s*from\s*["']next\/headers["']/);
+      expect(src, f).not.toMatch(/\bheaders\s*\(\s*\)/);
       expect(src, f).not.toMatch(/["'](host|origin|x-forwarded-host|x-forwarded-proto)["']/i);
       expect(src, f).not.toMatch(/process\.env/);
     }

@@ -283,14 +283,24 @@ describe("rule 2426: the route's gate order and the panel's toggle", () => {
     expect(src).toContain("useAdminForm(lang)");
     expect(src).toMatch(/JSON\.stringify\(\{ on: next, reason: v\.reason \}\)/);
     expect(src).toContain("<PasskeysSwitch lang={lang} />");
-    // The read answers `may`; a failed read shows a retry that reads again.
+    // The read answers `may`; a failed read shows a retry that reads again. Pinned by source only: the unit suite runs
+    // in node with no DOM (no jsdom or testing-library in the repo), so the effect cannot run here; the browser half
+    // belongs with the e2e suite.
     expect(src).toContain("setMay(j.may === true)");
     expect(src).toMatch(/onClick=\{retry\}[^>]*>\{C\.retry\}/);
     expect(src).toContain("setReads((n) => n + 1)");
     expect(src).toContain("if (on === null || !may) return;");
-    // The page header no longer calls the whole page read-only.
-    expect(src).not.toContain("redeploy.\",\n");
-    expect(src).toContain("The Passkeys row below is a runtime switch a console owner can change here.");
+    // The page header, in both languages, calls only the service list read-only and names the Passkeys row as the one
+    // thing a console owner can change here (read from the copy itself, not from how the line happens to end).
+    const notes = [...src.matchAll(/^\s*note: "([^"]*)",$/gm)].map((m) => m[1]);
+    expect(notes).toHaveLength(2);
+    const [en, ar] = notes;
+    expect(en).not.toMatch(/(^|\. )Read-only:/);
+    expect(en).toContain("The service list is read-only:");
+    expect(en).toMatch(/The Passkeys row below is a runtime switch a console owner can change here\.$/);
+    expect(ar).not.toMatch(/(^|\. )للاطلاع فقط:/);
+    expect(ar).toContain("قائمة الخدمات للاطلاع فقط:");
+    expect(ar).toContain("صف «مفاتيح المرور» أدناه");
     expect(src).not.toMatch(/@\/lib\/passkey-switch"/);
   });
 });

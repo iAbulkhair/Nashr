@@ -24,8 +24,8 @@ export type EmailCopy = {
   brief: { title: string; preheader: string; action: string };
   /**
    * The notice after a passkey is added (customer passkeys, rule 2415), sent through `notice`. `{name}` is the passkey's
-   * cleaned name, `{time}` the UTC time it was added. No credential data. Rendered by `passkeyNotice` in
-   * src/app/api/account/passkeys/route.ts, which fills both slots with plain text.
+   * cleaned name, `{time}` the time it was added in Riyadh time (Asia/Riyadh, labelled so in the copy). No credential
+   * data. Rendered by `passkeyNotice` in src/app/api/account/passkeys/route.ts, which fills both slots with plain text.
    */
   passkey: { title: string; body: string; when: string; notYou: string; action: string };
 };
