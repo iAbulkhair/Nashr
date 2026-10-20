@@ -30,7 +30,7 @@ import { emailVerified, getUser, type User } from "./auth";
 import { listBrands, scopeFor } from "./brands";
 import { SEC_KEYS, fireReminder, zoneFor } from "./secretary";
 import { formatWhen, type SecItem } from "./secretary-agenda";
-import { pushNotifs, type Push } from "./notifications";
+import { aboutKey, pushNotifs, type Push } from "./notifications";
 import { emailAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
 import { log } from "./log";
 import { sendEmail } from "./notify";
@@ -91,7 +91,7 @@ function notifFor(scope: string, zone: Zone, item: SecItem, user: Pick<User, "la
   const due = item.dueAt ? formatWhen(item.dueAt, item.allDay, user.lang, now, zone) : "";
   return {
     n: {
-      kind: "todo", agent: "reem", href: `/${user.lang}/app/todo`,
+      kind: "todo", agent: "reem", href: `/${user.lang}/app/todo`, about: aboutKey("todo", scope, item.id),
       title: ar ? `تذكير: ${t}` : `Reminder: ${t}`,
       body: ar ? `طلبت أن أذكّرك بهذه المهمة.${due ? ` موعدها: ${due}.` : ""}` : `You asked to be reminded of this.${due ? ` Due: ${due}.` : ""}`,
     },

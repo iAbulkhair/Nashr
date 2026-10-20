@@ -1,6 +1,6 @@
 # Coverage: agent limits in the founder's workspace view (rules 2460-2469)
 
-Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`. Item 3 of the OpenDots adoption order (`docs/OpenDots_Adoption.md`); flows in `docs/system/flows.md` section 94. Rules 2461-2469 are held for this work and unused.
+Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`. Item 3 of the OpenDots adoption order (`docs/OpenDots_Adoption.md`); flows in `docs/system/flows.md` section 96. Rules 2461-2469 are held for this work and unused.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

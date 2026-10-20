@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { Lang } from "@/lib/i18n";
 import type { EmailLevel, EmailTopic, InAppTopic, NotifyPrefs } from "@/lib/notify-prefs";
+import type { DigestEvery } from "@/lib/notif-digest";
 import Switch from "@/components/ui/Switch";
 import ReadOnlyNote from "../ReadOnlyNote";
 import SettingsCard, { type CardStatus } from "./SettingsCard";
@@ -25,6 +26,8 @@ const COPY = {
       updates: ["تحديثات الفريق", "الجودة، وانتهاء صورة أو فيديو، وانضمام عضو."],
       account: ["الحساب والرصيد", "الرصيد المنخفض ونهاية التجربة. تصل دائماً."],
     } as Record<string, [string, string]>,
+    digest: "ملخص التنبيهات بالبريد", digestSub: "رسالة واحدة بما وصل إلى الجرس ولم تقرأه، بدل رسالة لكل تنبيه. تصل إلى بريد مالك الحساب.",
+    every: { off: ["لا", "لا يصلك ملخص للتنبيهات. يبقى ملخص نور الصباحي كما اخترته أعلاه."], "4h": ["كل 4 ساعات", "مرة كل أربع ساعات، فقط إن وصل شيء جديد."], day: ["كل يوم", "مرة في اليوم، فقط إن وصل شيء جديد."], week: ["كل أسبوع", "مرة في الأسبوع، فقط إن وصل شيء جديد."] } as Record<DigestEvery, [string, string]>,
     memberNote: "يختار مالك الحساب هذه التنبيهات، وتصل إلى بريده.",
     feed: "كل التنبيهات",
   },
@@ -43,6 +46,8 @@ const COPY = {
       updates: ["Team updates", "Quality notes, a finished image or video, a member joining."],
       account: ["Account and credits", "Low credits and the trial's end. Always sent."],
     } as Record<string, [string, string]>,
+    digest: "Notifications digest by email", digestSub: "One email with what reached the bell and you have not read, instead of one email per notice. It goes to the account owner's address.",
+    every: { off: ["Never", "No digest of notifications. Noor's morning brief stays as you chose above."], "4h": ["Every 4 hours", "Once every four hours, only when something new arrived."], day: ["Every day", "Once a day, only when something new arrived."], week: ["Every week", "Once a week, only when something new arrived."] } as Record<DigestEvery, [string, string]>,
     memberNote: "The account owner chooses these notifications; they reach the owner's email.",
     feed: "All notifications",
   },
@@ -66,13 +71,30 @@ const same = (a: NotifyPrefs, b: NotifyPrefs) => JSON.stringify(a) === JSON.stri
  * its own card's changes on top of what is stored, so one card never saves the other's unsaved edits. `canEdit`: the
  * owner (`profile.account`); anyone else sees the choices and who makes them.
  */
-export default function NotifyPrefsSettings({ lang, initial, canEdit }: { lang: Lang; initial: NotifyPrefs; canEdit: boolean }) {
+export default function NotifyPrefsSettings({ lang, initial, canEdit, digest: digestInitial = "off" }: { lang: Lang; initial: NotifyPrefs; canEdit: boolean; digest?: DigestEvery }) {
   const T = COPY[lang];
   const [stored, setStored] = useState(initial);
   const [brief, setBrief] = useState<EmailLevel>(initial.brief);
   const [grid, setGrid] = useState({ email: initial.email, inApp: initial.inApp });
-  const [busy, setBusy] = useState<"" | "brief" | "grid">("");
-  const [status, setStatus] = useState<{ brief: CardStatus; grid: CardStatus }>({ brief: null, grid: null });
+  const [busy, setBusy] = useState<"" | "brief" | "grid" | "digest">("");
+  const [status, setStatus] = useState<{ brief: CardStatus; grid: CardStatus; digest: CardStatus }>({ brief: null, grid: null, digest: null });
+  const [digestStored, setDigestStored] = useState<DigestEvery>(digestInitial);
+  const [digest, setDigest] = useState<DigestEvery>(digestInitial);
+
+  /** The digest has its own record and route (rule 2355): the account's, not the brand's. */
+  async function saveDigestChoice() {
+    setBusy("digest"); setStatus((s) => ({ ...s, digest: null }));
+    const res = await fetch("/api/notifications/digest", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ every: digest }) }).catch(() => null);
+    const j = ((await res?.json().catch(() => ({}))) ?? {}) as { ok?: boolean; every?: DigestEvery };
+    setBusy("");
+    if (res?.ok && j.ok && j.every) {
+      setDigestStored(j.every);
+      setStatus((s) => ({ ...s, digest: { tone: "ok", text: T.saved } }));
+      return;
+    }
+    const text = res?.status === 403 ? T.forbidden : res?.status === 429 ? T.slow : T.failed;
+    setStatus((s) => ({ ...s, digest: { tone: "error", text } }));
+  }
 
   async function save(card: "brief" | "grid") {
     const next: NotifyPrefs = card === "brief" ? { ...stored, brief } : { ...stored, email: grid.email, inApp: grid.inApp };
@@ -141,6 +163,17 @@ export default function NotifyPrefsSettings({ lang, initial, canEdit }: { lang: 
             </tbody>
           </table>
         </div>
+      </SettingsCard>
+      <SettingsCard title={T.digest} sub={T.digestSub} onSave={canEdit ? saveDigestChoice : undefined} dirty={digest !== digestStored} busy={busy === "digest"} status={status.digest} saveLabel={T.save} savingLabel={T.saving}>
+        <fieldset disabled={!canEdit} className="grid gap-2">
+          <legend className="sr-only">{T.digest}</legend>
+          {(["off", "4h", "day", "week"] as const).map((v) => (
+            <label key={v} className="flex min-h-[var(--hit-min)] cursor-pointer items-start gap-3 rounded-lg border border-border p-3 has-[:checked]:border-border-strong">
+              <input type="radio" name="digest" value={v} checked={digest === v} onChange={() => setDigest(v)} className="mt-1" />
+              <span><span className="block font-semibold text-foreground">{T.every[v][0]}</span><span className="block text-sm text-foreground-muted">{T.every[v][1]}</span></span>
+            </label>
+          ))}
+        </fieldset>
       </SettingsCard>
       <p className="text-sm"><Link href={`/${lang}/app/notifications`} className="font-medium text-foreground underline underline-offset-4">{T.feed}</Link></p>
     </div>

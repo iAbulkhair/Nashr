@@ -1,6 +1,6 @@
 # Coverage: edits from an older view (rules 2440-2449)
 
-Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`. Item 1 of the OpenDots adoption order (`docs/OpenDots_Adoption.md`); flows in `docs/system/flows.md` section 92. Rules 2442-2449 are held for this work and unused.
+Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`. Item 1 of the OpenDots adoption order (`docs/OpenDots_Adoption.md`); flows in `docs/system/flows.md` section 94. Rules 2442-2449 are held for this work and unused.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

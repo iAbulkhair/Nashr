@@ -35,7 +35,7 @@ Status key: **Done** (shipped on this branch), **Next** (recommended, sized belo
 
 ## 3. What shipped on this branch
 
-Rules 2430-2436; coverage in `docs/system/tests/2430-agent-tool-authority.md`; `docs/system/flows.md` section 91; `docs/system/permissions.md` "Agent tool authority".
+Rules 2430-2436; coverage in `docs/system/tests/2430-agent-tool-authority.md`; `docs/system/flows.md` section 93; `docs/system/permissions.md` "Agent tool authority".
 
 - **Owner control.** Governance → "What each agent may do in chat". Each of Noor, Sami, Razan, Faris, Dana, Majed, Layan and Reem gets Allowed / Ask first / Not allowed for: create content, images, write workspace files, publish, import the catalog. Ask first exists only where a card can run the exact stored request (content and images).
 - **Enforced in code, in four places.** The tool is not offered (`toolsFor`); a call naming it is refused from the setting read at that moment (`runTool`); Ask first always leaves a card, even when the owner's message asked for the work (`spendGate`); the card's Run re-reads the setting and answers 409 `revoked` if it was switched off since (`decideSpend`).

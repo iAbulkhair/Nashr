@@ -110,6 +110,14 @@ export type Task = {
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;
   /**
+   * Set aside under "Not now" (rule 2340): still `pending`, out of the badge, the pending chip, the nudges and Reem's
+   * walk until someone brings it back. `by: "auto"` when the daily job moved it after `NOT_NOW_DAYS` untouched
+   * (src/lib/not-now.ts). Rule 679 expand: new and optional; older code ignores it and shows the item as pending.
+   */
+  notNow?: { at: string; by: "owner" | "auto" };
+  /** The last time a person acted on this item without deciding it (edit, date, reopen, bring back): the auto-move's clock. */
+  touchedAt?: string;
+  /**
    * The founder let this exact text through the publish check (rule 1411, `POST /api/admin/agent-scope/release`): `hash` is
    * `itemHash` of the item when released, so any later edit is checked again. Set only by that route. Rule 679 expand: new
    * and optional; older code ignores it.
@@ -227,7 +235,7 @@ export async function listTasks(email: string): Promise<Task[]> {
  * Redis hash per workspace per creation month (`tidx:{scope}:{YYYY-MM}`), so a page costs one command per month it looks
  * at instead of one per task, and nothing falls off after the 200 newest tasks.
  */
-export type TaskLite = Pick<Task, "id" | "type" | "channel" | "title" | "status" | "createdAt" | "lang" | "source" | "scheduledFor" | "decidedAt" | "parent"> & {
+export type TaskLite = Pick<Task, "id" | "type" | "channel" | "title" | "status" | "createdAt" | "lang" | "source" | "scheduledFor" | "decidedAt" | "parent" | "notNow" | "touchedAt"> & {
   /** First 200 characters of the current text (edited text when the owner edited it). */
   preview: string;
   edited: boolean;
@@ -256,6 +264,9 @@ export function liteOf(t: Task): TaskLite {
     id: t.id, type: t.type, channel: t.channel, title: t.title, status: t.status, createdAt: t.createdAt, lang: t.lang, source: t.source, scheduledFor: t.scheduledFor, decidedAt: t.decidedAt,
     // The handoff item a task was made for, so the lists can say so without loading the task.
     ...(t.parent ? { parent: t.parent } : {}),
+    // "Not now" and the auto-move's clock (rule 2340), so the counts, nudges and the daily move need no task bodies.
+    ...(t.notNow ? { notNow: t.notNow } : {}),
+    ...(t.touchedAt ? { touchedAt: t.touchedAt } : {}),
     preview: (t.editedBody ?? t.body ?? "").slice(0, 200),
     edited,
     editPct: edited ? editPctOf(t.body, t.editedBody!) : undefined,
@@ -288,13 +299,16 @@ export async function saveTask(email: string, t: Task, isNew = false) {
   if (isNew && !t.adCode && hasAdCode(t.type)) t.adCode = newAdCode();
   // Every path that changes a task goes through here, and each write below is idempotent, so the pending set and the
   // light index cannot drift the way a +1/-1 counter would. One round of parallel commands instead of a chain.
+  const s = scopeParam(email);
   await Promise.all([
-    db.set(wsKey.task(scopeParam(email), t.id), t),
-    isNew ? db.lpush(wsKey.tasks(scopeParam(email)), t.id) : null,
-    t.status === "pending" ? db.sadd(wsKey.pending(scopeParam(email)), t.id) : db.srem(wsKey.pending(scopeParam(email)), t.id),
-    db.hset(wsKey.taskMonth(scopeParam(email), month), t.id, liteOf(t)),
-    db.sadd(wsKey.taskMonths(scopeParam(email)), month),
-    isNew && t.adCode ? db.hset(wsKey.adCodes(scopeParam(email)), t.adCode, t.id) : null,
+    db.set(wsKey.task(s, t.id), t),
+    isNew ? db.lpush(wsKey.tasks(s), t.id) : null,
+    t.status === "pending" ? db.sadd(wsKey.pending(s), t.id) : db.srem(wsKey.pending(s), t.id),
+    // The "Not now" subset (rule 2341): a pending task set aside, and nothing else.
+    t.status === "pending" && t.notNow ? db.sadd(wsKey.notNow(s), t.id) : db.srem(wsKey.notNow(s), t.id),
+    db.hset(wsKey.taskMonth(s, month), t.id, liteOf(t)),
+    db.sadd(wsKey.taskMonths(s), month),
+    isNew && t.adCode ? db.hset(wsKey.adCodes(s), t.adCode, t.id) : null,
   ]);
 }
 
@@ -304,12 +318,14 @@ export async function saveTask(email: string, t: Task, isNew = false) {
  * Each is idempotent, so a task whose save never landed, or landed in part, is removed all the same.
  */
 export async function dropTasks(email: string, tasks: readonly Task[]): Promise<void> {
+  const s = scopeParam(email);
   await Promise.all(tasks.flatMap((t) => [
-    db.del(wsKey.task(scopeParam(email), t.id)),
-    db.lrem(wsKey.tasks(scopeParam(email)), t.id),
-    db.srem(wsKey.pending(scopeParam(email)), t.id),
-    db.hdel(wsKey.taskMonth(scopeParam(email), monthOf(t.createdAt)), t.id),
-    t.adCode ? db.hdel(wsKey.adCodes(scopeParam(email)), t.adCode) : null,
+    db.del(wsKey.task(s, t.id)),
+    db.lrem(wsKey.tasks(s), t.id),
+    db.srem(wsKey.pending(s), t.id),
+    db.srem(wsKey.notNow(s), t.id),
+    db.hdel(wsKey.taskMonth(s, monthOf(t.createdAt)), t.id),
+    t.adCode ? db.hdel(wsKey.adCodes(s), t.adCode) : null,
   ]));
 }
 
@@ -350,19 +366,39 @@ export async function listLite(email: string, since?: Date): Promise<TaskLite[]>
 /** Light rows created in the last `days` days (server components may not read the clock themselves). */
 export const listLiteDays = (email: string, days: number) => listLite(email, new Date(Date.now() - days * 864e5));
 
-/** Rebuild the pending set from the task list (first use on an existing workspace, and the daily reconcile). */
-export async function rebuildPending(email: string, tasks?: Pick<Task, "id" | "status">[]): Promise<number> {
+/**
+ * Rebuild the pending set and its "Not now" subset from the task list (first use on an existing workspace, and the daily
+ * reconcile). The subset is rebuilt with it (rule 2341), so an id older code left behind (it never writes `notnow:`) is
+ * gone by the next morning. Returns the size of the pending set, set-aside items included.
+ */
+export async function rebuildPending(email: string, tasks?: Pick<Task, "id" | "status" | "notNow">[]): Promise<number> {
   const list = tasks ?? (await listLite(email));
+  const s = scopeParam(email);
   const want = new Set(list.filter((t) => t.status === "pending").map((t) => t.id));
-  const have = await db.smembers(wsKey.pending(scopeParam(email)));
-  await Promise.all([...have.filter((id) => !want.has(id)).map((id) => db.srem(wsKey.pending(scopeParam(email)), id)), ...[...want].filter((id) => !have.includes(id)).map((id) => db.sadd(wsKey.pending(scopeParam(email)), id))]);
-  await db.set(wsKey.pendingIndex(scopeParam(email)), new Date().toISOString());
+  const wantAside = new Set(list.filter((t) => t.status === "pending" && t.notNow).map((t) => t.id));
+  const [have, haveAside] = await Promise.all([db.smembers(wsKey.pending(s)), db.smembers(wsKey.notNow(s))]);
+  const sync = (key: string, want: Set<string>, have: string[]) => [...have.filter((id) => !want.has(id)).map((id) => db.srem(key, id)), ...[...want].filter((id) => !have.includes(id)).map((id) => db.sadd(key, id))];
+  await Promise.all([...sync(wsKey.pending(s), want, have), ...sync(wsKey.notNow(s), wantAside, haveAside)]);
+  await db.set(wsKey.pendingIndex(s), new Date().toISOString());
   return want.size;
 }
 
-/** Number of items waiting for the owner's approval: one read once the workspace has been indexed. */
+/** Waiting for a decision now: pending and not set aside under "Not now" (rule 2340). Every count of the inbox uses this. */
+export const isWaiting = (t: Pick<Task, "status" | "notNow">): boolean => t.status === "pending" && !t.notNow;
+
+/**
+ * Ids waiting for a decision now: the pending set without its "Not now" subset, read in one round (rule 2341). The badge,
+ * Reem's walk and the agenda read this; the inbox reads `pendingIds`, so a set-aside item stays reachable under its chip.
+ */
+export async function waitingIds(email: string): Promise<string[]> {
+  const [pending, aside] = await Promise.all([pendingIds(email), db.smembers(wsKey.notNow(scopeParam(email)))]);
+  const skip = new Set(aside);
+  return pending.filter((id) => !skip.has(id));
+}
+
+/** Number of items waiting for the owner's decision now ("Not now" left out): two reads in one round once indexed. */
 export async function pendingCount(email: string): Promise<number> {
-  return (await pendingIds(email)).length;
+  return (await waitingIds(email)).length;
 }
 export async function getTask(email: string, id: string) {
   return db.get<Task>(wsKey.task(scopeParam(email), id));
