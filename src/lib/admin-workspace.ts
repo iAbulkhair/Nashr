@@ -1,5 +1,8 @@
 import { emailVerified, getUser, normalizeEmail, type User } from "./auth";
-import { listBrands } from "./brands";
+import { listBrands, scopeFor } from "./brands";
+import { getGov } from "./governance";
+import { TOOL_CAPS, authorityOf, type StoredMode, type ToolCap } from "./tool-authority";
+import { AGENT_IDS, type AgentId } from "./agents";
 import { lastSignIn } from "./devices";
 import { pmap } from "./parallel";
 import { brandCapFor, seatLimit } from "./pricing";
@@ -23,7 +26,13 @@ import { lastActive } from "./track";
 
 export type WorkspaceMember = { email: string; name: string; role: "admin" | "member"; invitedBy: string; acceptedAt: string; paused: boolean; lastSignInAt: string | null };
 export type WorkspaceInvite = { email: string; role: "admin" | "member"; invitedBy: string; createdAt: string; expiresAt: string };
-export type WorkspaceBrand = { id: string; name: string; status: "active" | "archived"; createdAt: string };
+/**
+ * `limits` (rule 2360): the brand's agent tool authority (src/lib/tool-authority.ts) as its restrictions only, each agent
+ * and capability that is `ask` or `off`; empty means every agent may do everything. Read from the brand's own stored
+ * scope, so support can answer "why won't Noor publish?" without impersonating.
+ */
+export type WorkspaceLimit = { agent: AgentId; cap: ToolCap; mode: StoredMode };
+export type WorkspaceBrand = { id: string; name: string; status: "active" | "archived"; createdAt: string; limits: WorkspaceLimit[] };
 export type WorkspaceView = {
   owner: { email: string; name: string; lang: "ar" | "en"; createdAt: string; verified: boolean; suspended: boolean; suspendedUntil: string | null; lastSignInAt: string | null; lastActiveAt: string | null };
   plan: { plan: User["plan"]; trialEnds: string; credits: number; seats: { used: number; limit: number }; brands: { active: number; cap: number } };
@@ -54,7 +63,8 @@ export async function workspaceView(chosen: string): Promise<WorkspaceView | nul
   const { owner, openedFrom } = found;
   const key = owner.email;
   const [members, invites, brands, ownerSignIn, active] = await Promise.all([listMembers(key), peekInvites(key), listBrands(key), lastSignIn(key), lastActive(key)]);
-  const memberSignIns = await pmap(members, (m) => lastSignIn(m.email));
+  // Each brand's governance from its own stored scope (the owner record's email and the stored brand id), in one round.
+  const [memberSignIns, govs] = await Promise.all([pmap(members, (m) => lastSignIn(m.email)), pmap(brands, (b) => getGov(scopeFor(key, b.id)))]);
   const suspended = isSuspended(owner);
   return {
     owner: {
@@ -68,7 +78,10 @@ export async function workspaceView(chosen: string): Promise<WorkspaceView | nul
     },
     members: members.map((m, i) => ({ email: m.email, name: m.name, role: m.role, invitedBy: m.invitedBy, acceptedAt: m.acceptedAt, paused: !!m.disabled, lastSignInAt: iso(memberSignIns[i]) })),
     invites: invites.map((v) => ({ email: v.email, role: v.role, invitedBy: v.invitedBy, createdAt: v.createdAt, expiresAt: v.expiresAt })),
-    brands: brands.map((b) => ({ id: b.id, name: b.name, status: b.status, createdAt: b.createdAt })),
+    brands: brands.map((b, i) => ({ id: b.id, name: b.name, status: b.status, createdAt: b.createdAt, limits: AGENT_IDS.flatMap((agent) => TOOL_CAPS.flatMap((cap): WorkspaceLimit[] => {
+      const mode = authorityOf(govs[i].toolPolicy, agent, cap);
+      return mode === "on" ? [] : [{ agent, cap, mode }];
+    })) })),
     openedFrom,
   };
 }

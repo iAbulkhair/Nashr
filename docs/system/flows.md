@@ -1471,3 +1471,7 @@ Item 2 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4): O
 3. Names (rule 2352). No variable name, partial state or gate wording reaches the customer; the founder page keeps them.
 4. Not changed. Each surface's own message when a feature is off (the image placeholder label in the inbox, the chat's "not available right now", the billing page's payment links) stays as it is. Rules 2353-2359 are held.
 
+## 94. Agent limits in the founder's workspace view (2026-10-20, branch `claude/lucid-faraday-kq261a`, rules 2360-2369)
+
+Item 3 of the OpenDots adoption order. The account sheet's Workspace tab (section 84, read only, one audit row per open) now lists, under each brand, that brand's agent tool authority (section 91) as its restrictions only: "Noor · publish · not allowed". An empty list reads "Every agent may do everything". Each brand's governance is read from `scopeFor(owner.email, brand.id)`, both from stored records, in the same `pmap` round as the members' last sign-ins. Nothing is written and nothing else is shown. Coverage in `docs/system/tests/2360-workspace-limits.md`; rules 2361-2369 are held.
+

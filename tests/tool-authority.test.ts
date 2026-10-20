@@ -39,6 +39,7 @@ import { ASKABLE, CAP_TOOLS, TOOL_CAPS, authorityOf, capOfTool, fullPolicy, merg
 import { AGENT_IDS } from "@/lib/agents";
 import * as spendRoute from "@/app/api/chat/spend/[id]/route";
 import * as govRoute from "@/app/api/governance/route";
+import { workspaceView } from "@/lib/admin-workspace";
 
 type Body = Record<string, unknown>;
 const decide = async (id: string, body: unknown) => {
@@ -184,3 +185,14 @@ describe("rule 2335: Governance stores, records and restores the policy like eve
     expect(j.governance.toolPolicy).toEqual({ noor: { files: "off" } });
   });
 });
+
+describe("rule 2360: the founder's read-only workspace view lists each brand's agent limits", () => {
+  it("restrictions only, from the brand's own scope; none reads as an empty list", async () => {
+    const u = await owner("ta-ws");
+    expect((await workspaceView(u.email))?.brands.find((b) => b.id === "default")?.limits).toEqual([]);
+    await saveGov(sc(u), { toolPolicy: { noor: { publish: "off", produce: "ask" }, dana: { files: "off" } } });
+    const limits = (await workspaceView(u.email))?.brands.find((b) => b.id === "default")?.limits;
+    expect(limits).toEqual([{ agent: "noor", cap: "produce", mode: "ask" }, { agent: "noor", cap: "publish", mode: "off" }, { agent: "dana", cap: "files", mode: "off" }]);
+  });
+});
+

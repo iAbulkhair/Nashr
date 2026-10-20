@@ -9,6 +9,7 @@ import { adminFetch } from "@/lib/admin-fetch";
 import { formatCount } from "@/lib/pricing";
 import { formatSuspensionEnd } from "@/lib/suspension";
 import type { WorkspaceView } from "@/lib/admin-workspace";
+import { agentById } from "@/lib/agents";
 import { STR, type Lang } from "./shared";
 import { USERS_COPY } from "./users-copy";
 
@@ -148,6 +149,10 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
                   <Badge tone={b.status === "active" ? "success" : "neutral"}>{b.status === "active" ? W.active : W.archived}</Badge>
                   <span className="text-foreground-muted">{W.created}: <Time value={b.createdAt} lang={lang} /></span>
                 </span>
+                {/* Rule 2360: the brand's agent tool authority, restrictions only. */}
+                <p className="w-full text-foreground-muted" data-limits={b.id}>
+                  {W.limits}: {(b.limits ?? []).length === 0 ? W.allAllowed : (b.limits ?? []).map((l) => `${agentById(l.agent).name[lang]} · ${W.capNames[l.cap]} · ${W.modeNames[l.mode]}`).join(lang === "ar" ? "؛ " : "; ")}
+                </p>
               </li>
             ))}
           </ul>
