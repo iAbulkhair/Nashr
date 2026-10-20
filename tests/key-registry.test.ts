@@ -98,6 +98,9 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
+    [globalKey.eventDay("2026-10-20", "signup"), "ev:2026-10-20:signup"],
+    [globalKey.opsProposal("abc"), "ops:proposal:abc"],
+    [globalKey.opsAlert("cron:media"), "ops:alert:cron:media"],
     [globalKey.deletedAccounts(), "deleted-accounts"],
     [globalKey.session("abc"), "session:h:abc"],
     [globalKey.sessionLegacy("tok"), "session:tok"],

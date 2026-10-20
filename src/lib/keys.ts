@@ -231,4 +231,10 @@ export const globalKey = {
   shopifyRedact: () => "shopify:redact",
   /** json: per-platform connection counts across every workspace, written by the stores cron (rules 2177-2178). */
   connectionHealth: () => "connections:health",
+  /** counter: how many times `event` was tracked on UTC day `day` (src/lib/track.ts `track`); read by the ops summary (rule 2380). */
+  eventDay: (day: string, event: string) => `ev:${day}:${event}`,
+  /** json `OpsProposal`: one action the ops agent proposed, waiting for the founder's press on Telegram (rules 2386-2389). */
+  opsProposal: (id: string) => `ops:proposal:${id}`,
+  /** marker: an ops alert with this key was sent in the last 12 hours (rule 2384). */
+  opsAlert: (key: string) => `ops:alert:${key}`,
 } as const;
