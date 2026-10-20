@@ -306,6 +306,7 @@ const STORED_PERSON_ID: Record<string, number> = {
   "src/lib/account.ts": 1, // wipeAccount: the wiped account's id as its legacy owner's person id (the person row createUser wrote), used only when the record is gone (else ownerOf)
   "src/lib/team.ts": 1, // pidFrom (multi-workspace M1): a roster entry, a legacy member's address, an invite's inviter or invited address, an address being moved, all read from records
   "src/lib/feed-token.ts": 1, // linkIds (multi-workspace M1): a feed or booking link record's pid, written by createFeed/createBook from the session's actor
+  "src/lib/passkeys.ts": 1, // resolvePasskeyLogin (customer passkeys, pre-flight ruling 3): the pid a `pkcred:` reverse entry names, written by addPasskey/movePasskeys, forward-checked (getPerson, getLogin(person.email).pid, the credential in that pid's set)
 };
 const STORED_ACCOUNT_ID: Record<string, number> = {
   "src/lib/membership.ts": 6, // aidOf: a resolved account's own id; listOrgs: an orgs:{pid} entry (re-checked); legacyHomeOf/legacyHomeFrom: a legacy owner's own id (twice), a legacy memberOf; pickAccount: lastorg:{pid} (re-checked)

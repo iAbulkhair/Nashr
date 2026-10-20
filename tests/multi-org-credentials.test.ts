@@ -543,7 +543,9 @@ describe("source scans (rule 2132, credential part)", () => {
     ];
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
-    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/team.ts", "src/lib/verify-email.ts"]);
+    // src/lib/passkeys.ts (customer passkeys, rule 2414) has no route yet: the manage and sign-in routes (passkeys tasks
+    // 4 and 5) are added to `indirect` when they are written.
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/team.ts", "src/lib/verify-email.ts"]);
     expect([...direct, ...indirect].filter((f) => !/isPersonLockTimeout|PERSON_LOCK_TIMEOUT/.test(readFileSync(f, "utf8")))).toEqual([]);
   });
 });
