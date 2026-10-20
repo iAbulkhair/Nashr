@@ -233,7 +233,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // say so to the owner, or overwrite an existing file, instead of the message failing with nothing shown.
       let f;
       try {
-        f = await writeFile(email, String(input.name), String(input.content), "noor", fileSrc("agent"));
+        f = await writeFile(email, String(input.name), String(input.content), "noor", { src: fileSrc("agent") });
       } catch (e) {
         if (e instanceof FileLimitError) return `This workspace already holds ${MAX_FILES} files, the maximum. Ask the owner to delete one from the Files page, or write to a file that already exists.`;
         throw e;

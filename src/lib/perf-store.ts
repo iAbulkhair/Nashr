@@ -22,7 +22,7 @@ export async function getPerf(scope: string) {
 
 /** Keep the findings and hand Noor the same findings as performance-learnings.md, which her memory reads. */
 export async function savePerf(scope: string, snap: PerfSnapshot) {
-  await Promise.all([db.set(KEY(scope), snap), writeFile(scope, LEARNINGS_FILE, learningsMarkdown(snap), "noor", fileSrc("builtin"))]);
+  await Promise.all([db.set(KEY(scope), snap), writeFile(scope, LEARNINGS_FILE, learningsMarkdown(snap), "noor", { src: fileSrc("builtin") })]);
 }
 
 export async function clearPerf(scope: string) {

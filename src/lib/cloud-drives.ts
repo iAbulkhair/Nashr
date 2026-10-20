@@ -221,7 +221,7 @@ export async function importFromDrive(scope: string, d: DriveId, id: string, raw
     // Always `drive-…`: an import never lands on a core memory file (brand.md, products.md…), which a member may not write.
     const base = name.replace(/\.[^.]+$/, "");
     try {
-      const f = await writeFile(scope, safeName(`drive-${base}.${extOf(name) === "csv" ? "csv" : "md"}`), content, "user", fileSrc("drive"));
+      const f = await writeFile(scope, safeName(`drive-${base}.${extOf(name) === "csv" ? "csv" : "md"}`), content, "user", { src: fileSrc("drive") });
       return { kind: "text", file: f.name };
     } catch (e) {
       throw new DriveFail(e instanceof FileLimitError ? "files_full" : "upstream");

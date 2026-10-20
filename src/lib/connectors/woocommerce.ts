@@ -40,7 +40,7 @@ export async function importWoo(email: string, c: Connection) {
   // The host is the owner's: each field one capped line, and a permalink only on the store's own host (rule 2247).
   const host = new URL((c.data as WooKey).site).hostname;
   const { md, count } = productsMarkdown(`Product catalog (WooCommerce, ${new Date().toISOString().slice(0, 10)})`, (items as { name?: unknown; price?: unknown; permalink?: unknown; short_description?: unknown }[]).map((p) => ({ name: p?.name, price: p?.price, description: p?.short_description, url: p?.permalink })), host);
-  await writeFile(email, "products.md", md, "noor", fileSrc("store"));
+  await writeFile(email, "products.md", md, "noor", { src: fileSrc("store") });
   return count;
 }
 

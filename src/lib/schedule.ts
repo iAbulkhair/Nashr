@@ -142,9 +142,9 @@ export const ONCE_HOLD_SETTLE_MS = 10 * 60e3;
  * team made on its own, `isAutonomous`, created in that week: the run saved its work, so the charge stands), refunded otherwise. A failed run
  * already refunded its own hold and removed its tasks (rule 334). Returns null when there is nothing to resolve.
  */
-export async function sweepWeeklyHolds(u: Pick<User, "email" | "paidOnce">, now = Date.now()) {
+export async function sweepWeeklyHolds(u: Pick<User, "id" | "email" | "paidOnce">, now = Date.now()) {
   const kept = await weeklyKept(u, now);
-  return kept ? resolveOnceHolds(u.email, kept) : null;
+  return kept ? resolveOnceHolds(acct(u), kept) : null;
 }
 /** The weekly holds `sweepWeeklyHolds` resolves and whether each week's plan exists, or null when none is due. */
 export async function weeklyKept(u: Pick<User, "paidOnce">, now = Date.now()): Promise<Record<string, boolean> | null> {

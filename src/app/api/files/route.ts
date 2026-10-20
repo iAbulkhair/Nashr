@@ -32,7 +32,7 @@ export const PUT = handler(
       if (no) return no;
     }
     try {
-      if (b.baseAt === undefined) return NextResponse.json({ ok: true, file: await writeFile(scope, b.name, b.content, "user", fileSrc("owner")) });
+      if (b.baseAt === undefined) return NextResponse.json({ ok: true, file: await writeFile(scope, b.name, b.content, "user", { src: fileSrc("owner") }) });
       const r = await writeFileChecked(scope, b.name, b.content, "user", b.baseAt, fileSrc("owner"));
       if (r.ok) return NextResponse.json({ ok: true, file: r.file });
       if (r.error === "busy") return NextResponse.json({ ok: false, error: "busy" }, { status: 503 });

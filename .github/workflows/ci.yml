@@ -22,8 +22,10 @@ jobs:
     # Pull requests report the check under this name; a required check or ruleset names it, so keep it stable.
     name: Nashr CI
     runs-on: ubuntu-latest
-    # Rule 1211: unit tests take about 7 minutes and the end-to-end suite about 14, so a passing run ends near 24 minutes; 35 leaves room without hiding a hang for long.
-    timeout-minutes: 35
+    # Rule 1211, raised by rule 2511: unit tests take about 7 minutes, their second pass in production's person shape
+    # (ready pull requests only) about 7 more and the end-to-end suite about 14, so a passing ready run ends near 31
+    # minutes; 40 leaves room without hiding a hang for long. A draft run is unchanged.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -110,6 +112,15 @@ jobs:
         if: steps.scope.outputs.build == 'true'
         run: npx eslint
       - name: Unit tests
+        run: npx vitest run
+      # Rule 2510: the same unit tests with the person shape every production login has until multi-workspace M2
+      # (`TEST_PERSONS=legacy`, tests/helpers/session.ts). The step above runs the `p_` shape M2 will sign up; a site
+      # that reads one shape wrongly passes there and fails here. On ready pull requests only (the run before every
+      # merge), so a draft push costs what it did.
+      - name: Unit tests (production person shape)
+        if: steps.scope.outputs.e2e == 'true'
+        env:
+          TEST_PERSONS: legacy
         run: npx vitest run
       # Playwright's browsers, keyed on the installed Playwright version. A cache saved by a pull request serves only
       # that PR, so a PR's first end-to-end run downloads them (about 30 seconds) and its later runs restore them.

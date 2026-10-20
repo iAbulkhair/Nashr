@@ -114,7 +114,7 @@ export async function decideFileProposal(scope: Scope, id: string, decision: "ap
       await close("stale");
       return { ok: false, error: "stale" };
     }
-    const file = await writeFile(scope, p.name, p.content, cur?.by ?? "noor", fileSrc("agent"));
+    const file = await writeFile(scope, p.name, p.content, cur?.by ?? "noor", { src: fileSrc("agent") });
     await close("applied");
     return { ok: true, file, ...(p.agent ? { agent: p.agent } : {}) };
   } finally {

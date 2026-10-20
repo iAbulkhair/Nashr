@@ -132,6 +132,6 @@ export async function importCatalog(email: string, site: string, onProgress?: (m
     host,
     "Noor: use these real products, names and prices in content. Prices below are what the store showed at import time; still confirm offers with the owner.",
   );
-  if (count) await writeFile(email, "products.md", md, "noor", fileSrc("crawl", site));
+  if (count) await writeFile(email, "products.md", md, "noor", { src: fileSrc("crawl", site) });
   return { count, products: products.slice(0, count) };
 }

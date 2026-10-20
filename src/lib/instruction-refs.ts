@@ -189,7 +189,7 @@ export async function importRef(scope: string, src: { kind: RefKind; id: string;
       if (!name) throw new RefFail("files_full");
     }
     try {
-      await writeFile(scope, name, body, "user", fileSrc(source));
+      await writeFile(scope, name, body, "user", { src: fileSrc(source) });
     } catch (e) {
       if (e instanceof FileLimitError) throw new RefFail("files_full");
       throw e;

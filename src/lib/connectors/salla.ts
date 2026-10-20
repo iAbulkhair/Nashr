@@ -65,7 +65,7 @@ export async function importSalla(email: string, c: Connection) {
     const sale = money(p.sale_price);
     return { name: p.name, price: sale && sale !== money(p.price) ? `${sale} (was ${money(p.price)})` : money(p.price), description: p.description, url: p.urls?.customer ?? p.url };
   }));
-  await writeFile(email, "products.md", md, "noor", fileSrc("store"));
+  await writeFile(email, "products.md", md, "noor", { src: fileSrc("store") });
   return count;
 }
 

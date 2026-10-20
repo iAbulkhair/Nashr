@@ -41,7 +41,7 @@ async function appendPreferences(scope: string, lines: string) {
   if (!token) throw new Error("prefs_lock_timeout");
   try {
     const f = await readFile(scope, "preferences.md");
-    await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor", fileSrc("builtin"));
+    await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor", { src: fileSrc("builtin") });
   } finally {
     await db.unlockOwned(key, token).catch((e) => console.error("prefs lock release failed", e instanceof Error ? e.name : "error"));
   }

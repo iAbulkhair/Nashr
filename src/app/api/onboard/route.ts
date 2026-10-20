@@ -180,14 +180,14 @@ export async function POST(req: Request) {
         await saveBrand(scope, r.brand);
         brandSaved = true;
         const [saved, prefs] = await Promise.all([
-          Promise.all(r.files.map((f) => writeFile(scope, f.name, f.content, "noor", fileSrc("crawl", url)))),
+          Promise.all(r.files.map((f) => writeFile(scope, f.name, f.content, "noor", { src: fileSrc("crawl", url) }))),
           readFile(scope, "preferences.md"),
           db.set(wsKey.onboardPlan(scope), { goal: r.goal, plan: r.plan, at: new Date().toISOString() }),
           clearOnboard(scope),
           held ? settleOnboard(acct(u), scope) : Promise.resolve(),
         ]);
         const files = saved.map((f) => ({ name: f.name, content: f.content }));
-        if (!prefs) await writeFile(scope, "preferences.md", "# Preferences learned from the owner\n", "noor", fileSrc("builtin"));
+        if (!prefs) await writeFile(scope, "preferences.md", "# Preferences learned from the owner\n", "noor", { src: fileSrc("builtin") });
         await say({ content: t.filesMsg, files });
         await say({ content: `**${t.planTitle}**\n\n${r.summary}`, plan: r.plan });
         send({ type: "done", brand: r.brand.name, goal: r.goal, credits: u.credits });

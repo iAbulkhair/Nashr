@@ -83,7 +83,7 @@ export async function importZid(email: string, c: Connection) {
     const sale = p.sale_price == null || p.sale_price === "" || Number(p.sale_price) === Number(p.price) ? "" : `${p.sale_price}${cur}`;
     return { name: zidText(p.name), price: sale ? `${sale} (was ${reg})` : reg, description: zidText(p.description), url: p.html_url };
   }));
-  await writeFile(email, "products.md", md, "noor", fileSrc("store"));
+  await writeFile(email, "products.md", md, "noor", { src: fileSrc("store") });
   return count;
 }
 

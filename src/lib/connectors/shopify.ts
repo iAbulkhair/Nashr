@@ -116,7 +116,7 @@ export async function importShopify(email: string, c: Connection) {
     const m = p.priceRangeV2?.minVariantPrice;
     return { name: p.title, price: m ? `${m.amount} ${m.currencyCode}` : "", description: p.description, url: p.onlineStoreUrl ?? `https://${c.meta?.shop}/products/${p.handle}` };
   }));
-  await writeFile(email, "products.md", md, "noor", fileSrc("store"));
+  await writeFile(email, "products.md", md, "noor", { src: fileSrc("store") });
   return count;
 }
 
