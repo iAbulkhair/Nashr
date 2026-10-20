@@ -17,7 +17,8 @@ import { fill } from "@/lib/fill";
 import TodoPanel, { type TodoRow, type TodoSection } from "@/components/app/TodoPanel";
 import WorkingDaysPanel from "@/components/app/WorkingDaysPanel";
 import SeriesPanel, { type SeriesRow } from "@/components/app/SeriesPanel";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
+import { withBrandQuery } from "@/lib/brand-fetch";
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +50,8 @@ const calReady = (id: "gcal" | "mscal") => {
  */
 export const generateMetadata = appScreenMeta("todo");
 
-export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams?: Promise<{ series?: string | string[] }> }) {
-  const { lang } = await params;
+export default async function Page({ params, searchParams }: { params: Promise<{ lang: string; brand?: string }>; searchParams?: Promise<{ series?: string | string[] }> }) {
+  const { lang, brand: routeBrand } = await params;
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(appHref(lang, "/login"));
@@ -69,7 +70,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       id: it.id, title: it.title, due: it.dueAt ? fmt(it.dueAt, it.allDay) : null, closedAt: it.completedAt ? fmt(it.completedAt) : null,
       result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : resultText(it.result, lang), closedBy: closedByOf(it),
     }));
-    return <SeriesPanel t={t} id={series.id} rows={rows} total={series.total} kept={series.kept} canWrite={can(u, "todo.write")} canClose={can(u, "todo.close")} backHref={`/${lang}/app/todo`} exportHref={`/api/secretary/series/${series.id}/export?lang=${lang}`} />;
+    return <SeriesPanel t={t} id={series.id} rows={rows} total={series.total} kept={series.kept} canWrite={can(u, "todo.write")} canClose={can(u, "todo.close")} backHref={`/${lang}/app/todo`} exportHref={withBrandQuery(`/api/secretary/series/${series.id}/export?lang=${lang}`, routeBrand)} />;
   }
   const { now, zone, agenda, done, deleted, facts, tonight, timed, brand, working: cal, awayRows } = await todoPage(scope);
   const awayList = awayListOf(awayRows, now, zone);

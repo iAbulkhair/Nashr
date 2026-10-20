@@ -5,7 +5,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser } from "@/lib/auth";
 import { INSPO } from "@/lib/inspo";
 import InspoPanel from "@/components/app/InspoPanel";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 export const generateMetadata = appScreenMeta("inspo");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {

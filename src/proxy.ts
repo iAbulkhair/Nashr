@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { BRAND_HEADER, brandFromPath } from "@/lib/app-href";
+import { BRAND_HEADER, brandFromPath } from "@/lib/brand-path";
 import { brandMissingRefusal } from "@/lib/brand-guard";
 import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";

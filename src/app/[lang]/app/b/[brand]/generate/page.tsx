@@ -7,7 +7,7 @@ import { getBrand } from "@/lib/brand";
 import GeneratePanel from "@/components/app/GeneratePanel";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const generateMetadata = appScreenMeta("generate");
 

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { currentUser } from "@/lib/auth";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 /**
  * Every brand page (rule 891, brand id in the URL "Part C"). The proxy gave this request `x-thakeen-brand` from the

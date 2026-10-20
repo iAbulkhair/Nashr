@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { BRAND_HEADER, isBrandId } from "./app-href";
+import { BRAND_HEADER, isBrandId } from "./brand-path";
 import type { BrandMeta } from "./brands";
 import { isPersonSuspended, isSuspended, type StoredSuspension } from "./suspension";
 import bcrypt from "bcryptjs";
@@ -632,7 +632,7 @@ async function readSession(): Promise<Session | null> {
 
 /**
  * The page's brand selector (rule 886, brand id in the URL): the `x-thakeen-brand` request header, set by the browser's
- * `api()` from the page's `/b/{id}` segment and by the proxy from a page path. Undefined when absent. A value that is not
+ * fetch wrapper (src/lib/brand-fetch.ts) from the page's `/b/{id}` segment and by the proxy from a page path. Undefined when absent. A value that is not
  * a brand id (`isBrandId`: no `/`, `%`, `.`, `#`, `:`, at most 64 characters) is Next's 404 here, before any store read.
  * It is only a SELECTOR: `resolveSession` accepts it when it is one of the session account's own active brands, and
  * builds the scope from that brand list, never from the header.

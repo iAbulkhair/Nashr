@@ -8,7 +8,7 @@ import { listConversations, searchConversations } from "@/lib/conversations";
 import { listLite } from "@/lib/brand";
 import { kpiSince } from "@/lib/stats";
 import Scribble from "@/components/Scribble";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
 

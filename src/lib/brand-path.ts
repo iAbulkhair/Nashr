@@ -8,7 +8,7 @@ import type { Lang } from "./i18n";
  * imports `BRAND_ID_RE` from this file, so `isBrandId` and the `ActiveBrandId` schema cannot drift apart.
  */
 
-/** Header the browser `api()` helper sets from the page's `/b/{id}` segment. The server still checks the brand against the caller's scope. */
+/** Header the browser fetch wrapper (`installBrandFetch`) sets from the page's `/b/{id}` segment. The server still checks the brand against the caller's scope. */
 export const BRAND_HEADER = "x-thakeen-brand";
 
 /**
@@ -73,18 +73,22 @@ export function isBrandPath(rest: string): boolean {
   return sectionOf(rest) !== null;
 }
 
-/** The id in `/{lang}/app/b/{id}(/...)`, only when it is a brand id. The segment is not decoded, so an encoded trick is no id. */
+/**
+ * The workspace handle segment draft PR #418 (multi-workspace) puts after `/app`: `/{lang}/app/w/{handle}/…`. Part C does
+ * not read or issue handles; it only tolerates the segment and keeps it, so the two features compose without a rewrite.
+ * Same shape as #418's handle (`w_` and sixteen base-32 characters).
+ */
+const HANDLE_RE = /^w_[a-z2-7]{16}$/;
+
+/** The id in `/{lang}/app/b/{id}(/...)` or `/{lang}/app/w/{handle}/b/{id}(/...)`, only when it is a brand id. The segment is not decoded, so an encoded trick is no id. */
 export function brandFromPath(pathname: string): string | null {
-  const m = /^\/(?:ar|en)\/app\/b\/([^/?#]+)(?:[/?#]|$)/.exec(pathname);
+  const m = /^\/(?:ar|en)\/app(?:\/w\/w_[a-z2-7]{16})?\/b\/([^/?#]+)(?:[/?#]|$)/.exec(pathname);
   return m && isBrandId(m[1]) ? m[1] : null;
 }
 
-/**
- * The one place that builds the `/{lang}/app` prefix. When workspaces get a handle in the URL (M2), `/w/{handle}` is
- * inserted here and nowhere else.
- */
-function appPrefix(lang: Lang): string {
-  return `/${lang}/app`;
+/** The one place that builds the `/{lang}/app` prefix, with `/w/{handle}` after it when a handle is kept (see HANDLE_RE). */
+function appPrefix(lang: Lang, handle?: string | null): string {
+  return typeof handle === "string" && HANDLE_RE.test(handle) ? `/${lang}/app/w/${handle}` : `/${lang}/app`;
 }
 
 /**
@@ -92,13 +96,13 @@ function appPrefix(lang: Lang): string {
  * brand becomes `/{lang}/app/b/{brand}{rest}` (inbox: `/{lang}/app/b/{brand}`); a brand section without one, or any
  * other path, stays on `/{lang}/app{rest}` (the legacy path, which redirects to the brand path).
  */
-export function appHref(lang: Lang, rest: string, ctx?: { brand?: string | null }): string {
+export function appHref(lang: Lang, rest: string, ctx?: { brand?: string | null; handle?: string | null }): string {
   const cut = rest.search(/[?#]/);
   const suffix = cut === -1 ? "" : rest.slice(cut);
   const path = cleanPath(rest);
   const brand = ctx?.brand;
-  if (isBrandId(brand) && isBrandPath(path)) return `${appPrefix(lang)}/b/${brand}${path}${suffix}`;
-  return `${appPrefix(lang)}${path}${suffix}`;
+  if (isBrandId(brand) && isBrandPath(path)) return `${appPrefix(lang, ctx?.handle)}/b/${brand}${path}${suffix}`;
+  return `${appPrefix(lang, ctx?.handle)}${path}${suffix}`;
 }
 
 /**
@@ -106,11 +110,12 @@ export function appHref(lang: Lang, rest: string, ctx?: { brand?: string | null 
  * since the record belongs to the old brand; the query is dropped; a non-brand path goes to the inbox of `to`.
  */
 export function switchBrandPath(pathname: string, to: string): string {
-  const m = /^\/(ar|en)\/app(\/[^?#]*)?/.exec(pathname);
+  const m = /^\/(ar|en)\/app(?:\/w\/(w_[a-z2-7]{16}))?(\/[^?#]*)?/.exec(pathname);
   const lang: Lang = m && m[1] === "en" ? "en" : "ar";
-  const rest = m?.[2] ?? "";
+  const handle = m?.[2] ?? null;
+  const rest = m?.[3] ?? "";
   const inBrand = /^\/b\/([^/]+)(\/.*)?$/.exec(rest);
-  if (!inBrand || !isBrandId(inBrand[1])) return appHref(lang, "", { brand: to });
+  if (!inBrand || !isBrandId(inBrand[1])) return appHref(lang, "", { brand: to, handle });
   const section = sectionOf(inBrand[2] ?? "");
-  return appHref(lang, section ? `/${section}` : "", { brand: to });
+  return appHref(lang, section ? `/${section}` : "", { brand: to, handle });
 }

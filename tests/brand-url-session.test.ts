@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { newMember, newUser, PERSONS, readActiveBrand, seedActiveBrand, signIn, signOut, withHeaders } from "./helpers/session";
 import { trackRounds } from "./helpers/rounds";
 import { acct, currentPerson, currentUser, currentUserUnverified, sc, type User } from "@/lib/auth";
-import { BRAND_HEADER } from "@/lib/app-href";
+import { BRAND_HEADER } from "@/lib/brand-path";
 import { saveBrands, scopeFor, type BrandMeta } from "@/lib/brands";
 import { db } from "@/lib/db";
 import { accountKey, personKey, storedAccountId } from "@/lib/keys";

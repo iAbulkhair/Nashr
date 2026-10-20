@@ -7,7 +7,7 @@ import { getSchedule } from "@/lib/schedule";
 import { ROUTINES, routineLastRuns, routinesHeld } from "@/lib/routines";
 import { can } from "@/lib/roles";
 import TasksPanel from "@/components/app/TasksPanel";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 export const dynamic = "force-dynamic";
 export const generateMetadata = appScreenMeta("tasks");
 

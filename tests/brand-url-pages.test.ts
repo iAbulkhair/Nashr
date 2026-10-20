@@ -5,7 +5,7 @@ import { getSortedRoutes } from "next/dist/shared/lib/router/utils/sorted-routes
 import { getRouteRegex } from "next/dist/shared/lib/router/utils/route-regex";
 import { newUser, seedActiveBrand, signIn, signOut, withHeaders } from "./helpers/session";
 import { acct, type User } from "@/lib/auth";
-import { BRAND_HEADER, BRAND_SECTIONS, isBrandPath } from "@/lib/app-href";
+import { BRAND_HEADER, BRAND_SECTIONS, isBrandPath } from "@/lib/brand-path";
 import { saveBrands, type BrandMeta } from "@/lib/brands";
 import { LEGACY_SETTINGS, SETTINGS_SECTIONS, legacySettingsPath, settingsHref } from "@/lib/settings-nav";
 

@@ -23,6 +23,7 @@ import { CHANNEL_LIMITS } from "@/lib/channel-limits";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
+import { useApiHref } from "./useBrandHref";
 
 const GUARD = {
   ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", heldPh: "فيه خانات لم تُعبّأ بعد (مثل [رقم] أو [date])، فلا يُعتمد ولا يُنشر حتى تضع القيمة الحقيقية مكانها أو تحذفها:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة ولا خانات فارغة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", rulePh: "قاعدة الخانات الفارغة", editBrand: "ملف العلامة" },
@@ -109,6 +110,7 @@ const saveLink = (url: string) => (isOurMediaUrl(url) ? `${url}?download=1` : ur
  */
 export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], included, credits = 0, plan, paused, canPublish = true, owner = true, initialFilter }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; included: readonly VideoModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean; owner?: boolean; /** `?view=notnow` from the "moved to Not now" notice (rule 2346). */ initialFilter?: "notnow" }) {
   const i = t.inbox;
+  const apiHref = useApiHref();
   const toast = useToast();
   const E = emptyCopy(lang, "inbox");
   const G = GUARD[lang];
@@ -487,7 +489,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                     </>
                   )}
                   {x.type === "board_deck" && (
-                    <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-pill">{i.pptx}</a>
+                    <a href={apiHref(`/api/tasks/${x.id}/pptx`)} className="btn btn-accent btn-pill">{i.pptx}</a>
                   )}
                   {/* Model pickers, image and video buttons, and the polling of a running render. It drops the local copy
                       for the reason given in publish() above; the refresh also re-renders the sidebar balance. */}

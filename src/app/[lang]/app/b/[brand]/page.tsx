@@ -13,7 +13,7 @@ import { loadJourney } from "@/lib/journey-load";
 import { can } from "@/lib/roles";
 import { availableModels, offModels } from "@/lib/media/config";
 import { modelState } from "@/lib/model";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
 

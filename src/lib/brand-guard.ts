@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { BRAND_HEADER } from "@/lib/app-href";
+import { BRAND_HEADER } from "@/lib/brand-path";
 import { SESSION_COOKIE, readCookie } from "@/lib/cookie-names";
 import { CROSS_SITE_METHODS } from "@/lib/csrf";
 import { log } from "@/lib/log";
@@ -7,7 +7,7 @@ import { log } from "@/lib/log";
 /**
  * The brand guard (rule 888, brand id in the URL "Part C", R-C2 and R-C4 in docs/superpowers/plans/2026-10-20-brand-url.md).
  *
- * A page under `/{lang}/app/b/{id}` makes its API calls with `x-thakeen-brand: {id}` (`api()` in src/lib/api-client.ts),
+ * A page under `/{lang}/app/b/{id}` makes its API calls with `x-thakeen-brand: {id}` (the `window.fetch` wrapper in src/lib/brand-fetch.ts),
  * and `resolveSession` takes that header as a selector among the session account's own active brands. A browser
  * mutation to a brand route that carries no header would act on the brand the session falls back to, which is how one
  * tab of a two-brand person writes to the other tab's brand. The guard notices exactly that request: a state-changing

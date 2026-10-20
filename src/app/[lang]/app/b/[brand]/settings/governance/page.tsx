@@ -9,7 +9,7 @@ import { CAPS } from "@/lib/db";
 import { can } from "@/lib/roles";
 import GovernancePanel from "@/components/app/GovernancePanel";
 import { autoQueue } from "@/lib/handoff-auto";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
 

@@ -1,5 +1,5 @@
 import type { Lang } from "./i18n";
-import { appHref, isBrandPath } from "./app-href";
+import { appHref, isBrandPath } from "./brand-path";
 
 /**
  * The settings area (UI/UX phase 3, rules 1140-1142): one place for the account, its security, notifications, the brand
@@ -28,7 +28,7 @@ export const isSettingsSection = (v: unknown): v is SettingsSection => typeof v 
 /**
  * A section whose page shows or saves the brand's data (`sc(u)`), so it lives under `/{lang}/app/b/{id}/settings/{section}`
  * (R-C6, R-C10: brand, connections, governance, notifications). It asks `isBrandPath`, which reads the one list of brand
- * sections in app-href.ts, so the two cannot drift.
+ * sections in brand-path.ts, so the two cannot drift.
  */
 export const isBrandSettings = (s: SettingsSection): boolean => isBrandPath(`/settings/${s}`);
 

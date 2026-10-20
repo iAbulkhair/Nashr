@@ -5,7 +5,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand, listLiteDays } from "@/lib/brand";
 import CalendarPanel, { type CalendarRow } from "@/components/app/CalendarPanel";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 export const dynamic = "force-dynamic";
 export const generateMetadata = appScreenMeta("calendar");
 

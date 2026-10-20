@@ -7,7 +7,7 @@ import { CORE_FILES, listFiles } from "@/lib/files";
 import { can } from "@/lib/roles";
 import FilesPanel from "@/components/app/FilesPanel";
 import LibraryPanel from "@/components/app/LibraryPanel";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
 

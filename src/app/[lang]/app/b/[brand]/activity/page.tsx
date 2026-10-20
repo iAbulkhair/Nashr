@@ -5,7 +5,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { listActivity, publicActivity } from "@/lib/activity";
 import ActivityPanel from "@/components/app/ActivityPanel";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
 

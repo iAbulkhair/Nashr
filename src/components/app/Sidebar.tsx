@@ -17,7 +17,8 @@ import { settingsHref } from "@/lib/settings-nav";
 import Sheet from "@/components/ui/Sheet";
 import Menu from "@/components/ui/Menu";
 import NotificationCenter from "./NotificationCenter";
-import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useBrandId, useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { sessionBrandHeaders } from "@/lib/brand-fetch";
 
 /** An agent's avatar sits on the agent's own colour; Faris and Majed are dark fills, so their letter is paper. */
 const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id})` }, tone: id === "faris" || id === "majed" ? "text-inverse-foreground" : "text-accent-foreground" });
@@ -41,6 +42,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const sp = useSearchParams();
   const r = useRouter();
   const ws = useWorkspace();
+  const sessionBrand = useBrandId();
   const base = `/${lang}/app`;
   const N = t.nav;
   const X = t.ux.nav;
@@ -52,7 +54,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const convs = ws?.convs ?? [];
 
   async function newThread(agent: AgentId) {
-    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent }) })).json();
+    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json", ...sessionBrandHeaders(sessionBrand) }, body: JSON.stringify({ title: "…", agent }) })).json();
     if (j.ok) { setOpen(false); window.dispatchEvent(new Event(WORKSPACE_EVENTS.convs)); r.push(`${base}/chat?conv=${j.conversation.id}`); }
   }
   // The row for the screen on show (rule 968), marked with `aria-current="page"` as well as the tint. A link with a query

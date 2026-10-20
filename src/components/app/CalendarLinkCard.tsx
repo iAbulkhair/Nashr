@@ -5,6 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import { fill } from "@/lib/fill";
 import { refusalText, useOneWrite } from "./useOneWrite";
 import { PanelSkeleton } from "@/components/ui/Skeleton";
+import { useApiHref } from "./useBrandHref";
 
 /**
  * «تقويم التسويق» / "Marketing calendar" on My to-dos (Reem B3, spec 2026-10-05-secretary-reem-b3-calendar-read-design.md §2): the
@@ -43,7 +44,7 @@ export type CalState =
   | { kind: "linked"; link: LinkInfo }
   | { kind: "reconnect"; link: LinkInfo };
 
-const startHref = (p: CalProviderId, lang: "ar" | "en") => `/api/connect/${p}/start?lang=${lang}`;
+const startHref = (p: CalProviderId, lang: "ar" | "en", apiHref: (path: string) => string) => apiHref(`/api/connect/${p}/start?lang=${lang}`);
 const isProvider = (p: unknown): p is CalProviderId => p === "gcal" || p === "mscal";
 
 /** «قبل 4 دقائق» / "4 minutes ago" in Latin digits, from an ISO time; "" when the time does not parse. */
@@ -70,9 +71,10 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
 }) {
   const T = t.todo.calLink;
   const off = !!busy;
+  const apiHref = useApiHref();
   const connect = (p: CalProviderId, label: string) =>
     providers[p] ? (
-      <a href={startHref(p, lang)} className="btn btn-primary btn-sm">{label}</a>
+      <a href={startHref(p, lang, apiHref)} className="btn btn-primary btn-sm">{label}</a>
     ) : (
       <span className="btn btn-secondary btn-sm opacity-60" aria-disabled="true">{label} · {T.soon}</span>
     );
@@ -209,7 +211,7 @@ export function CalendarLinkView({ t, lang, providers, state, now, busy = null, 
           {!confirming && (
             <div className="flex flex-wrap items-center gap-2">
               {providers[state.link.provider] ? (
-                <a href={startHref(state.link.provider, lang)} className="btn btn-primary btn-sm">{T.reconnect}</a>
+                <a href={startHref(state.link.provider, lang, apiHref)} className="btn btn-primary btn-sm">{T.reconnect}</a>
               ) : (
                 <span className="btn btn-secondary btn-sm opacity-60" aria-disabled="true">{T.reconnect} · {T.soon}</span>
               )}

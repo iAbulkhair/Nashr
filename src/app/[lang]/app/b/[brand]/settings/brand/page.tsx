@@ -8,7 +8,7 @@ import { can } from "@/lib/roles";
 import BrandForm from "@/components/app/BrandForm";
 import { helpHref } from "@/lib/help";
 import BrandExtras from "@/components/app/settings/BrandExtras";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const generateMetadata = settingsScreenMeta("brand");
 

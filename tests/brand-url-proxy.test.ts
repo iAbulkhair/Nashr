@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { BRAND_HEADER } from "@/lib/app-href";
+import { BRAND_HEADER } from "@/lib/brand-path";
 import { ACCOUNT_SC_API, BRAND_API, BRAND_GUARD_MODE, brandMissingRefusal } from "@/lib/brand-guard";
 import { CROSS_SITE_METHODS } from "@/lib/csrf";
 import { proxy } from "@/proxy";

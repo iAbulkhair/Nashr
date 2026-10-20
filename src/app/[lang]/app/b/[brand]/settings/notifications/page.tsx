@@ -9,7 +9,7 @@ import { acct } from "@/lib/account-id";
 import { SETTINGS_COPY } from "@/lib/settings-nav";
 import PageHeader from "@/components/ui/PageHeader";
 import NotifyPrefsSettings from "@/components/app/settings/NotifyPrefsSettings";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
 export const generateMetadata = settingsScreenMeta("notifications");

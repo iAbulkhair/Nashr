@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { currentUser } from "@/lib/auth";
-import { appHref, isBrandId, isBrandPath } from "@/lib/app-href";
+import { appHref, isBrandId, isBrandPath } from "@/lib/brand-path";
 import { LEGACY_SETTINGS, settingsHref } from "@/lib/settings-nav";
 
 export const dynamic = "force-dynamic";

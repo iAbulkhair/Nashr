@@ -10,7 +10,7 @@ import { can } from "@/lib/roles";
 import DictionaryStart from "@/components/app/DictionaryStart";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import Scribble from "@/components/Scribble";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const generateMetadata = appScreenMeta("start");
 

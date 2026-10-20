@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
 import { PanelSkeleton } from "@/components/ui/Skeleton";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
+import { useApiHref } from "./useBrandHref";
 
 type Page = { rows: Activity[]; next: string | null };
 
@@ -21,6 +22,7 @@ type Page = { rows: Activity[]; next: string | null };
  */
 export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t: AppDict; lang: "ar" | "en"; initial: Activity[]; next: string | null }) {
   const a = t.activity;
+  const apiHref = useApiHref();
   const toast = useToast();
   const [rows, setRows] = useState<Activity[]>(initial);
   const [next, setNext] = useState<string | null>(firstNext);
@@ -140,7 +142,7 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
               {kinds.map((k) => <option key={k} value={k}>{a.kinds[k]}</option>)}
             </select>
           </label>
-          <a href="/api/activity/export" download className="btn btn-secondary btn-sm ms-auto">{a.export}</a>
+          <a href={apiHref("/api/activity/export")} download className="btn btn-secondary btn-sm ms-auto">{a.export}</a>
         </div>
         {slow && <p role="alert" className="text-sm text-danger">{a.slow}</p>}
         <section className="card" aria-busy={busy}>

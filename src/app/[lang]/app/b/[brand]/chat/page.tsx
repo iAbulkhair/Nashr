@@ -27,7 +27,7 @@ import { chatRouteFor } from "@/lib/models/overrides";
 import { getConversation } from "@/lib/conversations";
 import { wsKey } from "@/lib/keys";
 import { acct } from "@/lib/account-id";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
 

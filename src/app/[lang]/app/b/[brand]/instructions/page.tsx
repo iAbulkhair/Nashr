@@ -14,7 +14,7 @@ import { publicLayer, publicRevision } from "@/lib/instructions-http";
 import { testOptionsFor } from "@/lib/instructions-test";
 import { can } from "@/lib/roles";
 import InstructionsPanel from "@/components/app/InstructionsPanel";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
 export const generateMetadata = appScreenMeta("instructions");

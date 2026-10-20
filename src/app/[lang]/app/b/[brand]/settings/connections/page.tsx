@@ -10,7 +10,7 @@ import IntegrationsPanel from "@/components/app/IntegrationsPanel";
 import { helpHref } from "@/lib/help";
 import FeatureStatus from "@/components/app/FeatureStatus";
 import { customerFeatures } from "@/lib/feature-status";
-import { appHref } from "@/lib/app-href";
+import { appHref } from "@/lib/brand-path";
 export const generateMetadata = settingsScreenMeta("connections");
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
