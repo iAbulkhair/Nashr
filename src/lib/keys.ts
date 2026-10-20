@@ -335,6 +335,12 @@ export const globalKey = {
   passkeyVerifyIpBucket: (ip: string) => `pkv:ip:${ip}`,
   /** bucket name for `allow` (stored as `rate:pkv:cred:{hash}`): passkey sign-in verifies per credential hash, 10 per 15 min (rule 2418). */
   passkeyCredBucket: (credHash: string) => `pkv:cred:${credHash}`,
+  /** counter: how many times `event` was tracked on UTC day `day` (src/lib/track.ts `track`); read by the ops summary (rule 2380). */
+  eventDay: (day: string, event: string) => `ev:${day}:${event}`,
+  /** json `OpsProposal`: one action the ops agent proposed, waiting for the founder's press on Telegram (rules 2386-2389). */
+  opsProposal: (id: string) => `ops:proposal:${id}`,
+  /** marker: an ops alert with this key was sent in the last 12 hours (rule 2384). */
+  opsAlert: (key: string) => `ops:alert:${key}`,
 } as const;
 
 /**

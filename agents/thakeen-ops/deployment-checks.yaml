@@ -1,0 +1,21 @@
+# Every three hours, Riyadh time (rule 2390). The run stays silent when everything is fine and sends one alert when
+# something is wrong. Each run's session is capped at $1 (100 US cents) of list cost.
+name: thakeen-ops-checks
+agent: ./agent.md
+environment_id: ./environment.yaml
+vault_ids: []          # the vlt_... id from claude-lock.json after the first apply (README.md, step 3)
+schedule:
+  type: cron
+  expression: "0 */3 * * *"
+  timezone: Asia/Riyadh
+budget:
+  type: limit
+  max_list_cost:
+    amount: "100"
+    currency: USD
+initial_events:
+  - type: user.message
+    content:
+      - type: text
+        text: |
+          نوع التشغيل: فحص. نفّذ الفحوصات كلها. إذا كل شيء سليم لا ترسل شيئاً. إذا فيه مشكلة أرسل تنبيهاً واحداً.
