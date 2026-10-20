@@ -163,8 +163,10 @@ export function proxy(req: NextRequest) {
     url.search = search;
     res = NextResponse.redirect(url, 307);
   } else if (APP_PATH.test(pathname)) {
-    // App routes: forward the pathname to server components.
+    // App routes: forward the pathname to server components, and with the workspace in the link (M2) the query too, so
+    // an old address keeps it on its 307 into `w/{handle}`.
     reqHeaders.set("x-pathname", pathname);
+    if (MULTI_ORG) reqHeaders.set("x-search", search);
     res = next();
   } else {
     res = next();

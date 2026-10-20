@@ -136,3 +136,16 @@ export const isNotFoundError = (e: unknown): boolean => {
   const d = (e as { digest?: unknown } | null)?.digest;
   return typeof d === "string" && d.startsWith("NEXT_HTTP_ERROR_FALLBACK;404");
 };
+
+/**
+ * Where an old app address goes (spec section 7 "Old URLs"): `/{lang}/app/…` without `w/` answers 307 to the same page
+ * of the session's workspace, the query kept, so bookmarks and old mails keep working. Null when nothing moves: a path
+ * already inside `w/{handle}`, a person-level page, a path outside the app, or no valid handle (never a redirect loop).
+ */
+export function oldAppTarget(lang: string, browserPath: string, search: string, handle: string | null): string | null {
+  const base = `/${lang}/app`;
+  if (!asHandle(handle) || splitWsPath(browserPath) || personPage(browserPath)) return null;
+  if (browserPath !== base && !browserPath.startsWith(base + "/")) return null;
+  if (browserPath.startsWith(base + "/w/")) return null;
+  return appHref(lang, browserPath.slice(base.length) + search, handle);
+}

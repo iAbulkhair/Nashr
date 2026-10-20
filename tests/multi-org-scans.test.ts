@@ -473,7 +473,7 @@ describe("rule 2132 (scan): the switch is off and nothing in product code makes 
 
   // M2 (docs/superpowers/plans/2026-10-20-multi-org-m2.md): the files that build the enable step branch on the switch
   // too, each falling back to M1's behaviour while it is off. A new file here is a new place the flip changes.
-  const BRANCHES = ["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts", "src/lib/auth.ts", "src/lib/api-handler.ts", "src/proxy.ts"];
+  const BRANCHES = ["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts", "src/lib/auth.ts", "src/lib/api-handler.ts", "src/proxy.ts", "src/app/[lang]/app/layout.tsx"];
   it("only the listed M1 and M2 files branch on MULTI_ORG (its definition is in src/lib/multi-org.ts)", () => {
     const users = ALL.filter((f) => identifiers(tree(f), "MULTI_ORG").length > 0);
     expect(users.filter((f) => !BRANCHES.includes(f))).toEqual([]);

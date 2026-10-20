@@ -470,7 +470,17 @@ describe("currentPerson: the person behind a session, with or without a valid ac
     expect(await currentPerson()).toBeNull();
   });
 
-  it("no route or page calls currentPerson in M1 (its callers are listed in the spec, section 7)", () => {
+  // The callers the spec lists (section 7 "No workspace" state), built in M2: the app layout (it sends a person without a
+  // workspace to the workspaces page), that page, its routes, the join page and the accept route.
+  const PERSON_CALLERS = [
+    "src/app/[lang]/app/layout.tsx",
+    "src/app/[lang]/app/workspaces/page.tsx",
+    "src/app/api/workspaces/route.ts",
+    "src/app/api/workspaces/switch/route.ts",
+    "src/app/[lang]/app/join/page.tsx",
+    "src/app/api/team/accept/route.ts",
+  ];
+  it("only the listed pages and routes call currentPerson (spec section 7, pinned like rule 752)", () => {
     const files: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
@@ -481,7 +491,8 @@ describe("currentPerson: the person behind a session, with or without a valid ac
     };
     walk(pathJoin("src", "app"));
     expect(files.length).toBeGreaterThan(50);
-    expect(files.filter((f) => /\bcurrentPerson\(/.test(readFileSync(f, "utf8")))).toEqual([]);
+    const callers = files.filter((f) => /\bcurrentPerson\(/.test(readFileSync(f, "utf8"))).map((f) => f.split("\\").join("/"));
+    expect(callers.filter((f) => !PERSON_CALLERS.includes(f))).toEqual([]);
   });
 });
 

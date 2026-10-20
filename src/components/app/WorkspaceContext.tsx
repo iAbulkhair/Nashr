@@ -2,6 +2,8 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
+import { installWorkspaceFetch } from "@/lib/api-client";
+import { appHref } from "@/lib/ws-path";
 
 /** A conversation as the rail lists it (GET /api/conversations). */
 export type RailConv = { id: string; title: string; agent?: AgentId; updatedAt: string };
@@ -42,7 +44,10 @@ const Ctx = createContext<Workspace | null>(null);
  * to 100 reads. Now a navigation reads the counts again only when they are older than WORKSPACE_STALE_MS, and a screen that
  * changes one says so with its window event, which reads that one at once.
  */
-export function WorkspaceProvider({ initial, children }: { initial: WorkspaceCounts; children: React.ReactNode }) {
+export function WorkspaceProvider({ initial, handle = null, multiOrg = false, children }: { initial: WorkspaceCounts; handle?: string | null; multiOrg?: boolean; children: React.ReactNode }) {
+  // Multi-workspace M2 (rule 2113): requests name this tab's workspace. Installed during the first render, before any
+  // screen's effect fetches; idempotent. With `MULTI_ORG` off the layout passes `multiOrg` false and nothing changes.
+  if (multiOrg) installWorkspaceFetch();
   const [credits, setCredits] = useState(initial.credits);
   const [unread, setUnread] = useState(initial.unread);
   const [pending, setPending] = useState(initial.pending);
@@ -80,7 +85,25 @@ export function WorkspaceProvider({ initial, children }: { initial: WorkspaceCou
   }, [loadPending, loadUnread, loadConvs]);
 
   const value = useMemo<Workspace>(() => ({ credits, unread, pending, convs, setCredits, setUnread }), [credits, unread, pending, convs]);
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <HandleCtx.Provider value={handle}>
+      <Ctx.Provider value={value}>{children}</Ctx.Provider>
+    </HandleCtx.Provider>
+  );
+}
+
+/** This tab's workspace handle (multi-workspace M2), from the layout; null with `MULTI_ORG` off or outside the shell. */
+const HandleCtx = createContext<string | null>(null);
+
+/** The workspace handle the shell was rendered for, or null. */
+export function useWsHandle(): string | null {
+  return useContext(HandleCtx);
+}
+
+/** `appHref` bound to this tab's workspace: `useAppHref(lang)("/tasks")`. Without a handle, today's `/{lang}/app/tasks`. */
+export function useAppHref(lang: string): (path?: string) => string {
+  const handle = useContext(HandleCtx);
+  return useCallback((path = "") => appHref(lang, path, handle), [lang, handle]);
 }
 
 /** The shell's numbers, or null outside the provider (a test rendering the rail alone): the caller falls back to its props. */
