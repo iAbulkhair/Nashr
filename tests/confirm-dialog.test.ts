@@ -18,7 +18,8 @@ const PHYSICAL = /(?<![\w-])-?(?:ml|mr|pl|pr|left|right|rounded-l|rounded-r|bord
 
 describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in the app's own dialog, never the browser's confirm()", () => {
   // GovernancePanel: the restore question, and the auto-run question it asks from two places through askAutoHandoff.
-  const PANELS = { TeamPanel: 3, FilesPanel: 1, GovernancePanel: 2, WishlistPanel: 1 } as const;
+  // TeamPanel's fourth: offering the account's ownership (multi-workspace M3, rule 2750).
+  const PANELS = { TeamPanel: 4, FilesPanel: 1, GovernancePanel: 2, WishlistPanel: 1 } as const;
 
   it("no panel calls the browser's confirm, and each asks through useConfirm and renders its dialog", () => {
     for (const [name, asks] of Object.entries(PANELS)) {
@@ -36,6 +37,7 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
     expect(team).toContain("message: fill(T.confirmRemove, { name: label })");
     expect(team).toContain("message: fill(T.confirmCancel, { email: inv.email })");
     expect(team).toContain("message: T.confirmLeave");
+    expect(team).toContain("message: fill(T.confirmTransfer, { email: xTo })");
     expect(app("FilesPanel")).toContain("message: `${f.delete} ${name}?`");
     expect(app("WishlistPanel")).toContain("message: L.confirmDel");
     const gov = app("GovernancePanel");
@@ -45,7 +47,7 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
 
   it("the action still runs only after a yes, and a seeded wish still hides without asking", () => {
     const team = app("TeamPanel");
-    for (const fn of ["remove", "cancel", "leave"]) {
+    for (const fn of ["remove", "cancel", "leave", "offerTransfer"]) {
       const body = team.slice(team.indexOf(`function ${fn}(`));
       expect(body.slice(0, 400), fn).toMatch(/if \(!\(await ask\(\{[^\n]*\}\)\)\) return;/);
     }

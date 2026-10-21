@@ -12,8 +12,8 @@ import { TeamLogRow, type TeamLogRowValue } from "./stored";
  * "system" for a plan change (`enforceSeats`). It never holds an invite token, an invite id or a password hash: the
  * writer below builds the row from named fields only, so a caller cannot pass one through.
  *
- * M1 writes the log and nothing reads it in a route (the owner's view comes with M3); `readTeamLog` is for tests and that
- * later view.
+ * M1 writes the log; M3 reads it for the owner and admins of the account (`teamLogView`, GET /api/team/log, action
+ * `team.log.view`), without the person ids. `readTeamLog` returns the stored rows, ids included, for tests.
  */
 
 /**
@@ -55,4 +55,30 @@ export async function readTeamLog(aid: AccountId): Promise<TeamLogRowValue[]> {
     const r = TeamLogRow.safeParse(raw);
     return r.success ? [r.data] : [];
   });
+}
+
+/** One row of the Team log tab: who, what, to whom, how. People by address only: never a person id, a token or an invite id. */
+export type TeamLogViewRow = {
+  at: string;
+  kind: TeamLogRowValue["kind"];
+  actor: { email: string };
+  target: { email: string };
+  role?: "admin" | "member";
+  via: TeamLogRowValue["via"];
+};
+
+/**
+ * The Team log tab (multi-workspace M3, spec section 13; rule 2129 read half): the account's rows, newest first, rebuilt
+ * from named fields so nothing but the address of each person, the kind, the role and `via` leaves (a loose stored row
+ * could carry anything). `aid` is the caller's own account (`acct(u)`), never one from the request.
+ */
+export async function teamLogView(aid: AccountId): Promise<TeamLogViewRow[]> {
+  return (await readTeamLog(aid)).map((r) => ({
+    at: r.at,
+    kind: r.kind,
+    actor: { email: r.actor.email },
+    target: { email: r.target.email },
+    ...(r.role === undefined ? {} : { role: r.role }),
+    via: r.via,
+  }));
 }

@@ -243,6 +243,7 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
       "/api/team/invite": "the account's team",
       "/api/team/leave": "the account's team",
       "/api/team/member": "the account's team",
+      "/api/team/transfer": "the account's ownership offer (aidOf(u)), no brand data",
       "/api/tools/[tool]": "a public tool, rate-limited by the login's address, no brand data",
     };
     const CALLS_CURRENT_USER = /\bcurrentUser(?:Unverified)?\(/;

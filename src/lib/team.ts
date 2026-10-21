@@ -484,10 +484,11 @@ function inviteHolds(inv: Invite, owner: User, inviter: Membership | null): bool
  */
 async function dropInvites(owner: string, items: readonly (string | Pick<PendingInvite, "id" | "email">)[]) {
   await Promise.all(
-    items.flatMap((x) => {
-      const id = typeof x === "string" ? x : x.id;
-      return [db.del(inviteKey(id)), db.srem(invitesKey(owner), id), typeof x === "string" ? null : db.srem(accountKey.invitesFor(normalizeEmail(x.email)), id)];
-    }),
+    items.flatMap((x) =>
+      typeof x === "string"
+        ? [db.del(inviteKey(x)), db.srem(invitesKey(owner), x)]
+        : [db.del(inviteKey(x.id)), db.srem(invitesKey(owner), x.id), db.srem(accountKey.invitesFor(normalizeEmail(x.email)), x.id)],
+    ),
   );
 }
 

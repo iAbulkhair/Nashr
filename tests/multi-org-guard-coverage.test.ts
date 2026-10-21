@@ -43,6 +43,7 @@ const PERSON_LEVEL = new Set([
   "/api/team/accept", // currentPerson(): joins the invite's account (rule 2116)
   "/api/workspaces", // currentPerson(): list and create (rule 2123)
   "/api/workspaces/switch", // currentPerson(): the switch (rule 2112)
+  "/api/workspaces/transfer", // currentPerson(): accept an ownership offer, the workspace by handle among the person's own (M3, rule 2751)
 ]);
 
 describe("rule 2113: every workspace route is inside the second guard", () => {

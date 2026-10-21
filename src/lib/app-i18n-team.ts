@@ -23,7 +23,12 @@ export const arTeam = {
     changeRole: "دور {name}", remove: "أزل", confirmRemove: "إزالة {name} من الحساب؟ يُسجَّل خروجه فوراً ولا يعود إلا بدعوة جديدة.",
     leave: "غادر الحساب", leaveSub: "تخرج من هذا الحساب ويُسجَّل خروجك. تحتاج دعوة جديدة للعودة.", confirmLeave: "مغادرة هذا الحساب الآن؟",
     readOnly: "فقط المالك والمديرون يدعون الأشخاص أو يزيلونهم.", impersonating: "الدعوات وتغيير الأدوار والإزالة موقوفة أثناء التصفح كمستخدم.",
-    errors: { invalid_email: "البريد غير صحيح.", invalid_role: "اختر دوراً صحيحاً.", forbidden: "دورك لا يسمح بهذا.", unavailable: "لا يمكن دعوة هذا البريد. قد يكون مسجّلاً بالفعل أو لديه دعوة معلّقة.", seats: "لا مقعد متاح ({used} من {limit}).", rate_limited: "محاولات كثيرة في وقت قصير. حاول بعد قليل.", send_failed: "تعذّر إرسال بريد الدعوة، فلم تُنشأ الدعوة. حاول بعد قليل.", not_found: "لم نجده. حدّث الصفحة.", already_member: "هذا البريد في هذا الحساب بالفعل.", failed: "تعذّر التنفيذ، حاول مرة أخرى." },
+    /** Multi-workspace M3 (rules 2129, 2750): the Team log section and the ownership transfer section, both behind MULTI_ORG. */
+    log: "سجل الفريق", logSub: "من انضم ومن غادر ومن تغيّر دوره، الأحدث أولاً.", logShow: "اعرض السجل", logEmpty: "لا أحداث مسجّلة بعد.",
+    logKinds: { invited: "{actor} دعا {target}", invite_cancelled: "{actor} ألغى دعوة {target}", joined: "{target} انضم إلى الحساب", role_changed: "{actor} غيّر دور {target}", removed: "{actor} أزال {target}", left: "{target} غادر الحساب", paused_for_seats: "توقّف دخول {target} لأن المقاعد لا تكفي", resumed: "عاد دخول {target} بعد توفر مقعد", ownership_offered: "{actor} عرض الملكية على {target}", ownership_transferred: "انتقلت الملكية من {actor} إلى {target}", workspace_created: "{actor} أنشأ مساحة العمل" },
+    logVia: { web: "", console: "من فريق ذكين", system: "تلقائياً" },
+    transfer: "نقل الملكية", transferSub: "اعرض ملكية الحساب على مشرف فيه. يصله بريد بالعرض، ولا تنتقل الملكية حتى يقبلها بنفسه خلال 7 أيام. بعد القبول تبقى مشرفاً، وتتوقف التجديدات ويُحذف الكرت المحفوظ.", transferTo: "المشرف", transferPick: "اختر مشرفاً", transferPassword: "كلمة مرورك", transferCode: "رمز تطبيق التحقق (إن كان التحقق بخطوتين مفعّلاً)", transferSend: "أرسل العرض", transferSent: "أُرسل العرض إلى {email}.", transferPending: "عرض قائم لـ {email} حتى {date}.", transferCancel: "اسحب العرض", transferNoAdmin: "لا يوجد مشرف فعّال. اجعل أحد الأعضاء مشرفاً أولاً.", confirmTransfer: "عرض ملكية الحساب على {email}؟ إذا قبل صار هو المالك المسؤول عن الخطة والدفع.",
+    errors: { wrong_password: "كلمة المرور غير صحيحة.", password_required: "عيّن كلمة مرور لحسابك أولاً من «الأمان»، ثم أعد المحاولة.", bad_code: "رمز التحقق غير صحيح أو انتهى.", slow_down: "محاولات كثيرة. انتظر قليلاً ثم حاول.", transfer_unavailable: "لا يمكن نقل ملكية هذا الحساب الآن.", not_admin: "اختر مشرفاً فعّالاً في هذا الحساب.", mail_unavailable: "البريد غير مهيأ، فلا يمكن إرسال العرض.", busy: "طلب آخر قيد التنفيذ. حاول بعد لحظة.", invalid_email: "البريد غير صحيح.", invalid_role: "اختر دوراً صحيحاً.", forbidden: "دورك لا يسمح بهذا.", unavailable: "لا يمكن دعوة هذا البريد. قد يكون مسجّلاً بالفعل أو لديه دعوة معلّقة.", seats: "لا مقعد متاح ({used} من {limit}).", rate_limited: "محاولات كثيرة في وقت قصير. حاول بعد قليل.", send_failed: "تعذّر إرسال بريد الدعوة، فلم تُنشأ الدعوة. حاول بعد قليل.", not_found: "لم نجده. حدّث الصفحة.", already_member: "هذا البريد في هذا الحساب بالفعل.", failed: "تعذّر التنفيذ، حاول مرة أخرى." },
   },
   /** The public page an invite link opens: /{lang}/app/join#t=… */
   join: {
@@ -98,7 +103,14 @@ export const arTeam = {
     invitesHint: "لقبول دعوة افتح الرابط في رسالة الدعوة التي وصلت إلى بريدك.",
     inviteRow: "{inviter} يدعوك إلى «{workspace}» بدور {role}",
     inviteUntil: "صالحة حتى {date}",
+    xferTitle: "عرض ملكية مساحة عمل",
+    xferText: "عُرضت عليك ملكية مساحة عمل أنت مشرف فيها. إذا قبلت صرت المالك المسؤول عن الخطة والدفع، ويبقى المالك الحالي مشرفاً.",
+    xferAccept: "اقبل الملكية",
+    xferLater: "ليس الآن",
+    xferRate: "محاولات كثيرة. حاول بعد ساعة.",
     errors: {
+      invalid: "العرض غير صالح أو انتهى أو استُخدم. اطلب عرضاً جديداً.",
+      transfer_unavailable: "لم يعد هذا العرض قائماً: تغيّر شيء في المساحة. اطلب عرضاً جديداً.",
       invalid_name: "اكتب اسماً من حرف واحد إلى 80 حرفاً.",
       email_unverified: "أكّد بريدك أولاً، ثم أنشئ مساحة العمل.",
       rate_limited: "أنشأت ثلاث مساحات اليوم. حاول غداً.",
@@ -180,7 +192,12 @@ export const enTeam: typeof arTeam = {
     changeRole: "Role of {name}", remove: "Remove", confirmRemove: "Remove {name} from the account? They are signed out at once and need a new invite to come back.",
     leave: "Leave the account", leaveSub: "You leave this account and are signed out. You need a new invite to come back.", confirmLeave: "Leave this account now?",
     readOnly: "Only the owner and admins can invite or remove people.", impersonating: "Invites, role changes and removals are off while you view this account as the founder.",
-    errors: { invalid_email: "That email is not valid.", invalid_role: "Pick a valid role.", forbidden: "Your role does not allow this.", unavailable: "This email cannot be invited. It may already be registered or have a pending invite.", seats: "No free seat ({used} of {limit}).", rate_limited: "Too many attempts in a short time. Try again shortly.", send_failed: "The invitation email could not be sent, so no invitation was created. Try again shortly.", not_found: "Not found. Refresh the page.", already_member: "This email is already in this account.", failed: "That did not work. Try again." },
+    /** Multi-workspace M3 (rules 2129, 2750): the Team log section and the ownership transfer section, both behind MULTI_ORG. */
+    log: "Team log", logSub: "Who joined, left or changed role, newest first.", logShow: "Show the log", logEmpty: "Nothing logged yet.",
+    logKinds: { invited: "{actor} invited {target}", invite_cancelled: "{actor} cancelled the invite to {target}", joined: "{target} joined the account", role_changed: "{actor} changed the role of {target}", removed: "{actor} removed {target}", left: "{target} left the account", paused_for_seats: "{target} was paused: not enough seats", resumed: "{target} was resumed when a seat freed up", ownership_offered: "{actor} offered ownership to {target}", ownership_transferred: "Ownership passed from {actor} to {target}", workspace_created: "{actor} created the workspace" },
+    logVia: { web: "", console: "by Thakeen support", system: "automatically" },
+    transfer: "Transfer ownership", transferSub: "Offer this account to one of its admins. They get an email, and nothing changes until they accept it themselves within 7 days. After that you stay on as an admin, renewals stop and the saved card is removed.", transferTo: "Admin", transferPick: "Pick an admin", transferPassword: "Your password", transferCode: "Authenticator code (if two-step sign-in is on)", transferSend: "Send the offer", transferSent: "Offer sent to {email}.", transferPending: "An offer to {email} stands until {date}.", transferCancel: "Withdraw the offer", transferNoAdmin: "There is no active admin. Make a member an admin first.", confirmTransfer: "Offer ownership of this account to {email}? If they accept, they own the plan and the payments.",
+    errors: { wrong_password: "That password is not right.", password_required: "Set a password for your login under Security first, then try again.", bad_code: "That code is wrong or expired.", slow_down: "Too many attempts. Wait a little and try again.", transfer_unavailable: "This account cannot change hands right now.", not_admin: "Pick an active admin of this account.", mail_unavailable: "Email is not set up, so the offer cannot be sent.", busy: "Another request is in progress. Try again in a moment.", invalid_email: "That email is not valid.", invalid_role: "Pick a valid role.", forbidden: "Your role does not allow this.", unavailable: "This email cannot be invited. It may already be registered or have a pending invite.", seats: "No free seat ({used} of {limit}).", rate_limited: "Too many attempts in a short time. Try again shortly.", send_failed: "The invitation email could not be sent, so no invitation was created. Try again shortly.", not_found: "Not found. Refresh the page.", already_member: "This email is already in this account.", failed: "That did not work. Try again." },
   },
   join: {
     title: "Join an account", checking: "Checking your invite…",
@@ -241,7 +258,14 @@ export const enTeam: typeof arTeam = {
     invitesHint: "To accept an invitation, open the link in the invitation email we sent you.",
     inviteRow: "{inviter} invites you to “{workspace}” as {role}",
     inviteUntil: "Valid until {date}",
+    xferTitle: "An offer to own a workspace",
+    xferText: "You are offered ownership of a workspace where you are an admin. If you accept, you own the plan and the payments, and the current owner stays on as an admin.",
+    xferAccept: "Accept ownership",
+    xferLater: "Not now",
+    xferRate: "Too many attempts. Try again in an hour.",
     errors: {
+      invalid: "This offer is invalid, expired or already used. Ask for a new one.",
+      transfer_unavailable: "This offer no longer stands: something in the workspace changed. Ask for a new one.",
       invalid_name: "Write a name of 1 to 80 characters.",
       email_unverified: "Confirm your email first, then create the workspace.",
       rate_limited: "You created three workspaces today. Try again tomorrow.",

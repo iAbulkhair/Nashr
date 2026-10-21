@@ -1,0 +1,22 @@
+# Coverage: multi-workspace M3, the lifecycle release (rules 2750-2759)
+
+Status on 2026-10-21 on branch `claude/wave3a-m3-lifecycle`: the spec's "M3 lifecycle" row (`docs/specs/2026-10-18-multi-org.md` sections 9, 11, 13, 14 and 16; plan `docs/superpowers/plans/2026-10-21-multi-org-m3.md`). Everything user-facing is behind `MULTI_ORG` (false in production): every new route answers 404 with it off (`tests/multi-org-flag-off.test.ts`). Release step: expand. New keys `xfer:{aid}` (7 days) and `invitesfor:{email}` (7 days) are written only with the flag on; old code never reads them. Rollback: M2.
+
+The spec's own rules for this release live in `docs/system/tests/2110-multi-org.md` (2124, 2127, 2128, 2129, 2130, 2131); the rows below are the M3 build's own.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 2750 | An ownership offer is made by the owner's own session only (`team.transfer`: never an admin, a member, an impersonation or an AI client's token), with the owner's own password checked against the PERSON's hash and, while two-step sign-in is on, a fresh authenticator code (a recovery code is refused). Only to an enabled admin of the account found on its roster by address, whose `person:` row is verified; never for a legacy-shape account or person or a partner account. The token (32 bytes) is mailed in the link's fragment and only its SHA-256 is stored in `xfer:{aid}` for 7 days; no mail set up refuses (409), a send that fails withdraws it (502). 5 offers per person a day | `tests/multi-org-m3-transfer.test.ts`, describe "rule 2750: …" | — |
+| 2751 | The offer is accepted only by the person it names, signed in as themselves (`currentPerson()`: an impersonation is 401), with the workspace matched by handle among the accounts they hold and the token's hash compared with `sameSecret`; a wrong token, another person or a stranger changes nothing (400); a withdrawn or expired offer no longer works; 10 attempts per person an hour | `tests/multi-org-m3-transfer.test.ts`, describe "rules 2128, 2751: …" | — |
+| 2752 | The accept, under `lock:team` → `lock:login` → `lock:person` → `lock:user` (rule 2139), re-reads everything: a changed account (the admin demoted, the owner changed, a partner record) voids the offer; a full owned-workspace cap keeps it (409). Then, single use: offer deleted, MCP token and grants ended before and after the owner write, `ownerPid`, contact `email`, `name` and `emailVerifiedAt` from the new owner (`phone` cleared), the saved card dropped and renewals stopped (paid-through kept), the old owner an `admin` membership, the new owner's membership row and roster entry gone, exactly one `ownership_transferred` row; the old owner's Reem calendar links revoked after the locks; the accepting device opens the workspace | `tests/multi-org-m3-transfer.test.ts`, "rule 2752: …" (lock order recorded by wrapping the four lock helpers) | The calendar revoke is not exercised (no calendar link in the fixture) |
+| 2753 | The invitations inbox: `invitesfor:{email}` is written with each invite (flag on) and read only for the signed-in person's own verified address; the answer is workspace name, inviter address, role and expiry, never an invite id, a token or an account id; accept, cancel and discard take the entry out; what no longer stands (expired, another address's, a forged id) is dropped at read | `tests/multi-org-m3-inbox.test.ts` | — |
+
+Team log tab (rule 2129, read half): `tests/multi-org-m3-teamlog.test.ts` (owner and admin read, member 403, an impersonation may view, rows carry addresses only, the account is the session's own).
+
+Rulings (fail-closed where the spec is silent):
+- Only an `a_` account owned by a `p_` person, offered to a `p_` admin, transfers. Until M4/S2 a legacy account record is also its owner's credential record, so moving it would strand or delete credentials.
+- A partner account never transfers: its commission and bank details are keyed by the account and must not follow it to a new owner.
+- No mail configured means no offer: the mailed link is the only copy of the token. A send failure withdraws the offer.
+- The owner's Reem calendar links (their own calendar) are revoked after a transfer.
+- The cap failure keeps the offer so the person can free a slot and accept; any other change voids it.
+- The "Team log tab" is a section of the Members page (owner and admin), read on demand.

@@ -113,6 +113,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.invitesFor(E), `invitesfor:${E}`],
     // Customer passkeys (rules 2400-2429): a new family, no old template; the bytes are pinned by tests/passkeys-keys.test.ts.
     [accountKey.passkeyProofBucket(E), `pkpw:${E}`],
+    // Release M3: the wrong-password bucket `freshProof` shares with the two-step settings route (rule 1170).
+    [accountKey.mfaPasswordBucket(E), `mfapw:${E}`],
     // Agent status and phone notifications (rules 2560-2573): new families, no old template.
     [accountKey.tabSeen(E), `tabseen:${E}`],
     [accountKey.pushLast(E), `pushlast:${E}`],

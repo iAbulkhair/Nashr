@@ -26,6 +26,10 @@ export type TeamView = {
   approvals?: Record<string, { approved: number; rejected: number; edited: number; rate: number | null }>;
 };
 type Result = { ok: boolean; status: number; j: Record<string, unknown> };
+/** One GET /api/team/log row (`teamLogView` in src/lib/teamlog.ts): addresses only, never a person id. */
+type LogRow = { at: string; kind: keyof AppDict["team"]["logKinds"]; actor: { email: string }; target: { email: string }; role?: TeamRole; via: keyof AppDict["team"]["logVia"] };
+/** The owner's pending ownership offer (`pendingTransfer`): the address and the expiry, never the token. */
+export type TransferOffer = { email: string; expiresAt: string };
 
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
 const day = (iso?: string) => (iso ?? "").slice(0, 10);
@@ -47,7 +51,7 @@ async function call(url: string, method: string, body?: unknown): Promise<Result
  * `perms` comes from `can()` on the server; every action is refused by /api/team/* for the same roles regardless.
  * The page is named "Members" because the AI agents are already "the team" across the app.
  */
-export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { t: AppDict; lang: Lang; initial: TeamView; perms: TeamPerms; /** mail can reach the invited address (`mailReady()`); otherwise the link is handed to the inviter */ mailOn?: boolean }) {
+export default function TeamPanel({ t, lang, initial, perms, mailOn = true, transfer = null }: { t: AppDict; lang: Lang; initial: TeamView; perms: TeamPerms; /** mail can reach the invited address (`mailReady()`); otherwise the link is handed to the inviter */ mailOn?: boolean; /** the pending ownership offer, for the owner (multi-workspace M3) */ transfer?: TransferOffer | null }) {
   const href = useAppLink(lang);
   const T = t.team;
   const router = useRouter();
@@ -61,6 +65,12 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
   // Remove, cancel and leave ask in the app's own dialog: each answer is "Go back" or the row's own action.
   const [ask, confirmDialog] = useConfirm();
   const toast = useToast();
+  // Multi-workspace M3: the Team log (read on demand) and the ownership offer. Both sections show only with MULTI_ORG on (`perms`).
+  const [log, setLog] = useState<LogRow[] | null>(null);
+  const [offer, setOffer] = useState<TransferOffer | null>(transfer);
+  const [xTo, setXTo] = useState("");
+  const [xPw, setXPw] = useState("");
+  const [xCode, setXCode] = useState("");
 
   const canInvite = perms.inviteMember || perms.inviteAdmin;
   const locked = busy !== "";
@@ -136,6 +146,27 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
     router.push(`/${lang}/app/login`);
     router.refresh();
   }
+  async function showLog() {
+    setBusy("log"); setErr("");
+    const r = await call("/api/team/log", "GET");
+    if (r.ok && Array.isArray(r.j.rows)) setLog(r.j.rows as LogRow[]);
+    else fail(r);
+    setBusy("");
+  }
+  async function offerTransfer(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!xTo || !xPw) return;
+    if (!(await ask({ title: T.transfer, message: fill(T.confirmTransfer, { email: xTo }), confirmLabel: T.transferSend, cancelLabel: t.dialog.back, destructive: true }))) return;
+    await run("transfer", () => call("/api/team/transfer", "POST", { email: xTo, password: xPw, ...(xCode.trim() ? { code: xCode.trim() } : {}) }), (r) => {
+      const o = r.j.offer as TransferOffer | undefined;
+      if (o && typeof o.email === "string") setOffer(o);
+      setXPw(""); setXCode("");
+      toast.success(fill(T.transferSent, { email: o?.email ?? xTo }));
+    });
+  }
+  async function withdraw() {
+    await run("transfer:cancel", () => call("/api/team/transfer", "DELETE"), () => setOffer(null));
+  }
   async function copy() {
     if (!link) return;
     try {
@@ -149,6 +180,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
 
   const canRemove = (m: Row) => m.role !== "owner" && m.email !== view.you.email && (m.role === "admin" ? perms.removeAdmin : perms.removeMember);
   const canCancel = (inv: PendingRow) => perms.cancelInvite && (inv.role === "member" || perms.inviteAdmin);
+  const admins = view.members.filter((m) => m.role === "admin" && !m.disabled);
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -262,6 +294,65 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
                   </li>
                 ))}
               </ul>
+            )}
+          </section>
+        )}
+
+        {perms.viewLog && (
+          <section className="card" data-team-log>
+            <h2 className="card-title">{T.log}</h2>
+            <p className="mt-1 text-sm text-foreground-muted">{T.logSub}</p>
+            {log === null ? (
+              <button type="button" onClick={showLog} disabled={locked} className="btn btn-secondary btn-sm mt-3">{busy === "log" ? "…" : T.logShow}</button>
+            ) : log.length === 0 ? (
+              <p className="mt-2 text-sm text-foreground-muted">{T.logEmpty}</p>
+            ) : (
+              <ul className="mt-2 divide-y divide-foreground/10">
+                {log.map((r, k) => (
+                  <li key={k} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                    <span className="min-w-0" dir="auto">
+                      {fill(T.logKinds[r.kind] ?? r.kind, { actor: r.actor.email, target: r.target.email })}
+                      {r.role && <span className={`${ROLE_BADGE[r.role]} ms-2`}>{T.roles[r.role]}</span>}
+                      {T.logVia[r.via] && <span className="ms-2 text-xs text-foreground-muted">{T.logVia[r.via]}</span>}
+                    </span>
+                    <span className="font-mono text-xs text-foreground-muted" dir="ltr">{day(r.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {perms.transfer && (
+          <section className="card" data-transfer>
+            <h2 className="card-title">{T.transfer}</h2>
+            <p className="mt-1 text-sm text-foreground-muted">{T.transferSub}</p>
+            {offer ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm">{fill(T.transferPending, { email: offer.email, date: day(offer.expiresAt) })}</p>
+                <button type="button" onClick={withdraw} disabled={locked} className="btn btn-danger btn-xs">{busy === "transfer:cancel" ? "…" : T.transferCancel}</button>
+              </div>
+            ) : admins.length === 0 ? (
+              <p className="mt-2 text-sm text-foreground-muted">{T.transferNoAdmin}</p>
+            ) : (
+              <form onSubmit={offerTransfer} className="mt-3 grid gap-2 sm:max-w-md">
+                <label className="grid gap-1 text-sm">
+                  <span className="text-foreground-muted">{T.transferTo}</span>
+                  <select required value={xTo} onChange={(e) => setXTo(e.target.value)} className="input">
+                    <option value="">{T.transferPick}</option>
+                    {admins.map((m) => <option key={m.email} value={m.email}>{m.name ? `${m.name} (${m.email})` : m.email}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-foreground-muted">{T.transferPassword}</span>
+                  <input type="password" required autoComplete="current-password" maxLength={200} value={xPw} onChange={(e) => setXPw(e.target.value)} className="input" dir="ltr" />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-foreground-muted">{T.transferCode}</span>
+                  <input inputMode="numeric" autoComplete="one-time-code" maxLength={12} value={xCode} onChange={(e) => setXCode(e.target.value)} className="input" dir="ltr" />
+                </label>
+                <div><button disabled={locked || !xTo || !xPw} className="btn btn-primary btn-sm">{busy === "transfer" ? "…" : T.transferSend}</button></div>
+              </form>
             )}
           </section>
         )}
