@@ -4,7 +4,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { newMember, newUser } from "./helpers/session";
 import { db } from "@/lib/db";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
+import { scopeFor } from "@/lib/brands";
+import { ownerOf } from "@/lib/membership";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { dailyRoster } from "@/lib/schedule";
 import { SEC_KEYS } from "@/lib/secretary";
@@ -66,16 +68,17 @@ describe("email verification: tokens, links and jobs (rules 753, 755, 756)", () 
 
   it("feed and booking links refuse while the owner is unverified", async () => {
     const un = await newUser("lnk", { verified: false });
-    const rec = { login: un.email, scope: un.email, createdAt: later() };
+    // Links as M1 writes them (rule 2138: a record without its person and account ids is dead).
+    const unRec = (await getUser(un.email))!;
+    const rec = { pid: ownerOf(unRec), aid: acct(unRec), scope: scopeFor(acct(unRec), "default"), createdAt: later() };
     expect(await loginHolds(rec)).toBe(false);
     await verify(un.email);
     expect(await loginHolds(rec)).toBe(true);
 
     // A member's link is refused while the owner behind it is unverified.
     const owner = await newUser("lnkown");
-    // Pins the legacy shape (multi-org M1): a link record without `pid`/`aid` was made before M1, by a legacy member.
-    const m = await newMember(owner, "member", "m", { legacy: true });
-    const mrec = { login: m.email, scope: owner.email, createdAt: later() };
+    const m = await newMember(owner, "member", "m");
+    const mrec = { pid: m.pid, aid: acct(owner), scope: scopeFor(acct(owner), "default"), createdAt: later() };
     expect(await loginHolds(mrec)).toBe(true);
     await saveUser({ ...(await getUser(owner.email))!, emailVerifiedAt: undefined });
     expect(await loginHolds(mrec)).toBe(false);

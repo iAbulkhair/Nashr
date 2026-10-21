@@ -130,7 +130,7 @@ describe("rule 2116: an existing person accepts from their own session", () => {
 
   it("a person who joined since the invite gets already_member, and the invite stays", async () => {
     const { B, pid, token, aid } = await invited();
-    await writeMembership(aid, pid, { aid, pid, role: "member", acceptedAt: new Date().toISOString(), invitedBy: ownerOf((await getUser(aid))!) }, { home: false, teamLocked: true });
+    await writeMembership(aid, pid, { aid, pid, role: "member", acceptedAt: new Date().toISOString(), invitedBy: ownerOf((await getUser(aid))!) }, { teamLocked: true });
     await signIn(B.email);
     const r = await accept({ token, join: true });
     expect(r.status).toBe(409);

@@ -14,19 +14,19 @@ import { MULTI_ORG } from "./multi-org";
  */
 
 /**
- * When the login record was created: the moment an older two-step enrolment stops counting (src/lib/mfa.ts). A legacy
- * owner's account or member record as before; a person known only through membership rows (multi-workspace M1): the
- * person's own `createdAt`.
+ * When the login record was created: the moment an older two-step enrolment stops counting (src/lib/mfa.ts). An owner:
+ * the account's `createdAt`; a member: the membership's `acceptedAt` (the `mbr:` row, rule 2138); a person with no
+ * workspace: the person's own `createdAt`.
  */
-export const bornAt = (l: Login): string | undefined => (l.kind === "owner" ? l.user.createdAt : l.member ? l.member.acceptedAt : l.person.createdAt);
+export const bornAt = (l: Login): string | undefined => (l.kind === "owner" ? l.user.createdAt : l.membership ? l.membership.acceptedAt : l.person.createdAt);
 
 /** The account owning this login (the owner itself, or the member's owner). */
 export const accountOf = (l: Login) => (l.kind === "owner" ? l.user : l.owner);
 /**
- * The address the session is issued for: the legacy record's own address as before; for a person no legacy record
- * backs, the person's address (the one `getLogin` checked against the login index).
+ * The address the session is issued for: a legacy owner's account address as before; every other login, the person's
+ * address (the one `getLogin` checked against the login index). From M4 no legacy member record is read (rule 2138).
  */
-export const loginEmail = (l: Login) => (l.kind === "owner" ? (l.pid === acct(l.user) ? l.user.email : l.person.email) : l.member ? l.member.email : l.person.email);
+export const loginEmail = (l: Login) => (l.kind === "owner" && l.pid === acct(l.user) ? l.user.email : l.person.email);
 
 /**
  * Why this login may not sign in now, as the answer the form reads, or null. The same checks `currentUser` makes on
@@ -35,17 +35,17 @@ export const loginEmail = (l: Login) => (l.kind === "owner" ? (l.pid === acct(l.
  */
 export function loginRefusal(l: Login): NextResponse | null {
   if (l.kind === "owner") return isSuspended(l.user) ? suspendedAnswer(l.user) : personRefusal(l);
-  const { member, owner } = l;
+  const { membership, owner } = l;
   // A person with no workspace (multi-workspace M2, `getLogin`): only the person's own checks; the session it gets has
   // no account, and the app sends it to the workspaces page.
-  if (MULTI_ORG && !member && !owner && l.acct === null) return personRefusal(l);
-  // A legacy member: its record names this account and was accepted after it was created. A person known only through
-  // membership rows: `getLogin` took the account from a live membership (`listOrgs`, which checks the same dates).
-  const named = member ? !!owner && member.memberOf === acct(owner) && new Date(member.acceptedAt).getTime() >= new Date(owner.createdAt).getTime() : !!owner && l.acct === acct(owner);
+  if (MULTI_ORG && !owner && l.acct === null) return personRefusal(l);
+  // `getLogin` took the account from a live membership (`listOrgs`) or a paused one (`pausedMemberships`), both checked
+  // against this account and its creation date; the membership must still name it.
+  const named = !!owner && l.acct === acct(owner) && (!membership || (membership.aid === acct(owner) && new Date(membership.acceptedAt).getTime() >= new Date(owner.createdAt).getTime()));
   if (!owner || !named) return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
   if (isSuspended(owner)) return suspendedAnswer(owner);
   if (!emailVerified(owner)) return NextResponse.json({ ok: false, error: "owner_unverified" }, { status: 403 });
-  if (member?.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
+  if (membership?.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
   return personRefusal(l);
 }
 

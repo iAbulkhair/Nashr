@@ -16,7 +16,6 @@ import type { Challenge } from "@/lib/mfa";
 import { addPasskey, credHash, ensureUid, readSet } from "@/lib/passkeys";
 import { PASSKEY_COOKIE, PASSKEY_COOKIE_PATH, setPasskeysOn } from "@/lib/passkey-switch";
 import { getPerson } from "@/lib/person";
-import { getMember, saveMember } from "@/lib/team";
 import { track } from "@/lib/track";
 import { appDict } from "@/lib/app-i18n";
 import { AUTOFILL_BACKOFF_MS, AUTOFILL_MAX_FAILURES, AUTOFILL_PATIENT_MS, AUTOFILL_REFRESH_MS, LoginForm, nextAutofill, showPasskeyButton } from "@/components/app/AuthForm";
@@ -357,20 +356,21 @@ describe("rule 2419: every gate of the password path", () => {
 
   it("a member paused by the seat limit", async () => {
     const o = await owner();
-    // A legacy member record in both fixture modes: `disabled` lives on it, and `loginRefusal` reads it there.
-    const m = await newMember(o, "member", "m", { legacy: true });
-    await saveMember({ ...(await getMember(m.email))!, disabled: "seats" });
+    // From M4 (rule 2138) the pause lives on the membership row in both fixture modes; no shadow membership, which
+    // would sign in instead. `getLogin` names the paused membership (`pausedMemberships`) and the refusal is "disabled".
+    const m = await newMember(o, "member", "m", { shadow: false });
+    const rowKey = accountKey.membership(aidOf(o), m.pid);
+    await db.set(rowKey, { ...(await db.get<Record<string, unknown>>(rowKey)), disabled: "seats" });
     const { pw, pk } = await both(m.email, m.password);
     expect(pw).toEqual({ status: 403, body: { ok: false, error: "disabled" } });
     expect(pk).toEqual(pw);
   });
 
-  // A `p_` member has no legacy record: the pause lives on its membership row, and `getLogin` then finds no live
-  // workspace (no shadow membership, which would sign in instead). The password path answers 401 `invalid`; the
-  // passkey path refuses before `finishLogin` (`resolvePasskeyLogin` finds no login), so it gives rule 2423's one
-  // refusal, 401 `passkey_failed`. Neither signs in. p_ fixtures only. Control (Task 6): the same passkey signs in before
-  // the pause, so the refusal after it comes from the pause alone (the second assertion's counter is higher, so the
-  // counter check would pass too).
+  // A `p_` member's pause lives on its membership row (no shadow membership, which would sign in instead). From M4
+  // (rule 2138) `getLogin` names that paused membership when the person has no live workspace (`pausedMemberships`), so
+  // both paths reach `finishLogin` and give the same 403 `disabled` the legacy member record gave before. Neither signs
+  // in. p_ fixtures only. Control (Task 6): the same passkey signs in before the pause, so the refusal after it comes
+  // from the pause alone.
   it.runIf(PERSONS === "p")("a p_ member paused by the seat limit (membership row, no shadow)", async () => {
     const o = await owner();
     const m = await newMember(o, "member", "m", { shadow: false });
@@ -387,8 +387,8 @@ describe("rule 2419: every gate of the password path", () => {
     signOut();
     const pk = await signInWith(k, {}, 2);
     expect(jar().get(SESSION_COOKIE)).toBeUndefined();
-    expect(pw).toEqual({ status: 401, body: { ok: false, error: "invalid" } });
-    await refused(pk);
+    expect(pw).toEqual({ status: 403, body: { ok: false, error: "disabled" } });
+    expect(await answer(pk)).toEqual(pw);
   });
 
   it("a live member signs in, and the session names the member's own pid", async () => {

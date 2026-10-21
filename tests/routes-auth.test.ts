@@ -4,6 +4,11 @@ import { currentUser, getUser, saveUser, verifyPassword } from "@/lib/auth";
 import { allUsers } from "@/lib/schedule";
 import { userFromBearer } from "@/lib/mcp";
 import { db } from "@/lib/db";
+import { getPerson } from "@/lib/person";
+import { storedPersonId } from "@/lib/keys";
+
+/** The legacy fixture's person (pid = address): from M4 (rule 2138) the hash lives only there. */
+const personOf = async (email: string) => (await getPerson(storedPersonId(email)))!;
 
 const sent: { to: string; text: string }[] = [];
 vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (...a: unknown[]) => { const { to: to, text: text } = (typeof a[0] === "string" ? { to: a[0], subject: a[1], text: a[2] } : a[0]) as { to: string; subject: string; text: string }; sent.push({ to, text }); return true; } }));
@@ -49,20 +54,20 @@ describe("password reset (rule 9)", () => {
     expect(sent.map((m) => m.to)).toEqual([u.email]);
   });
   it("stores only a hash of the token, accepts it once, then never again", async () => {
-    // Pins the legacy shape (multi-org M1): the checks read the hash on the legacy `user:{email}` record.
+    // Pins the legacy shape: the person id is the address, and the checks read the hash on that person (rule 2138).
     const u = await newUser("reset", { legacy: true });
     await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email }, ip()));
     const token = tokenFrom(sent[0].text);
     expect(await db.get(`pwreset:${token}`)).toBeNull(); // the raw token is not a key
     expect((await reset.POST(json("/api/auth/reset", "POST", { token, password: "weak" }, ip()))).status).toBe(400);
     expect((await reset.POST(json("/api/auth/reset", "POST", { token, password: "newpass123" }, ip()))).status).toBe(200);
-    expect(await verifyPassword((await getUser(u.email))!, "newpass123")).toBe(true);
+    expect(await verifyPassword(await personOf(u.email), "newpass123")).toBe(true);
     expect((await currentUser())!.email).toBe(u.email); // signed in
     expect((await reset.POST(json("/api/auth/reset", "POST", { token, password: "another123" }, ip()))).status).toBe(400);
-    expect(await verifyPassword((await getUser(u.email))!, "newpass123")).toBe(true);
+    expect(await verifyPassword(await personOf(u.email), "newpass123")).toBe(true);
   });
   it("refuses the token after one hour", async () => {
-    // Pins the legacy shape (multi-org M1): the checks read the hash on the legacy `user:{email}` record.
+    // Pins the legacy shape: the person id is the address, and the checks read the hash on that person (rule 2138).
     const u = await newUser("reset", { legacy: true });
     await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email }, ip()));
     const token = tokenFrom(sent[0].text);
@@ -71,7 +76,7 @@ describe("password reset (rule 9)", () => {
     const res = await reset.POST(json("/api/auth/reset", "POST", { token, password: "newpass123" }, ip()));
     vi.useRealTimers();
     expect(res.status).toBe(400);
-    expect(await verifyPassword((await getUser(u.email))!, "abc12345")).toBe(true);
+    expect(await verifyPassword(await personOf(u.email), "abc12345")).toBe(true);
   });
   it("sends at most three links per account per window and creates no token when mail is not configured", async () => {
     const u = await newUser("reset");

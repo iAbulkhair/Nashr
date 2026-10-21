@@ -5,6 +5,8 @@ import { currentUserUnverified, getUser, saveUser, sessionRecord, type User } fr
 import { db } from "@/lib/db";
 import { applyReferral, codeFor, ownerOf, referralStats, registerCode } from "@/lib/referral";
 import { hasPendingCode } from "@/lib/verify-email";
+import { getPerson } from "@/lib/person";
+import { storedPersonId } from "@/lib/keys";
 
 type Mail = { to: string; subject: string; text: string };
 let mails: Mail[] = [];
@@ -21,6 +23,9 @@ import * as check from "@/app/api/auth/verify/check/route";
 // owns moves with the person in release M2 (`moveOwnerLogin` refuses it). Each person still holds a shadow membership.
 const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
+
+/** The legacy fixture's person (pid = address): from M4 (rule 2138) the credentials and both stamps live only there. */
+const personOf = async (email: string) => (await getPerson(storedPersonId(email)))!;
 
 let ipN = 0;
 /** Never repeats within a run, and never meets the IPs of the other verify test files. */
@@ -123,6 +128,7 @@ describe("change a mistyped signup email", () => {
     await saveUser(stored);
     await db.sadd(`partner:refs:${partner}`, old.email);
     const before = (await getUser(old.email))!;
+    const beforePerson = await personOf(old.email);
     expect(before.credits).toBeGreaterThan(0);
     const token = await signIn(old.email);
 
@@ -134,11 +140,15 @@ describe("change a mistyped signup email", () => {
     const after = (await getUser(to))!;
     expect(after).not.toBeNull();
     expect(after.email).toBe(to);
-    for (const k of ["name", "phone", "passHash", "lang", "plan", "credits", "trialEnds", "createdAt", "gatedSignup", "referredBy", "firstMonthOffer"] as const) {
+    for (const k of ["name", "phone", "lang", "plan", "credits", "trialEnds", "createdAt", "gatedSignup", "referredBy", "firstMonthOffer"] as const) {
       expect(after[k], k).toEqual(before[k]);
     }
+    // Rule 2138: the password and the stamps are the person's; the moved account record carries none of them.
+    const afterPerson = await personOf(to);
+    expect(afterPerson.passHash).toBe(beforePerson.passHash);
+    for (const f of ["passHash", "sessionsAfter", "devicesAfter"]) expect(await db.get(`user:${to}`), f).not.toHaveProperty(f);
     // A fresh session window, not the old one (as createUser stamps): see the session test below.
-    expect(Date.parse(after.sessionsAfter!)).toBeGreaterThan(Date.parse(before.sessionsAfter!));
+    expect(Date.parse(afterPerson.sessionsAfter!)).toBeGreaterThan(Date.parse(beforePerson.sessionsAfter!));
     expect(after.emailVerifiedAt).toBeUndefined();
     expect(after.emailMoves).toEqual({ day: new Date().toISOString().slice(0, 10), n: 1 });
     expect(await getUser(old.email)).toBeNull();
@@ -303,7 +313,7 @@ describe("change a mistyped signup email", () => {
     // What a former owner of the address, a removed member or this owner's own old device left behind.
     const stale = randomBytes(32).toString("hex");
     // Issued after the source account's own window opened, so only the fresh stamp on the moved record can refuse it.
-    await db.set(`session:${stale}`, { email: to, at: Date.parse(old.sessionsAfter!) + 1 }, 3600);
+    await db.set(`session:${stale}`, { email: to, at: Date.parse((await personOf(old.email)).sessionsAfter!) + 1 }, 3600);
     await new Promise((r) => setTimeout(r, 5));
     await signIn(old.email);
     expect((await move(to)).status).toBe(200);
@@ -319,23 +329,27 @@ describe("change a mistyped signup email", () => {
     await saveUser({ ...(await getUser(old.email))!, id: to, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
     const stale = randomBytes(32).toString("hex");
     // Issued after the source account's own window opened, so only the fresh stamp on the moved record can refuse it.
-    await db.set(`session:${stale}`, { email: to, at: Date.parse(old.sessionsAfter!) + 1 }, 3600);
+    await db.set(`session:${stale}`, { email: to, at: Date.parse((await personOf(old.email)).sessionsAfter!) + 1 }, 3600);
     await new Promise((r) => setTimeout(r, 5));
     expect((await move(to)).status).toBe(200);
-    expect(Date.parse((await getUser(to))!.sessionsAfter!)).toBeGreaterThan(Date.parse(old.sessionsAfter!));
+    expect(Date.parse((await personOf(to)).sessionsAfter!)).toBeGreaterThan(Date.parse((await personOf(old.email)).sessionsAfter!));
     expect((await currentUserUnverified())!.email).toBe(to);
     jar().set("thakeen_session", stale);
     expect(await currentUserUnverified()).toBeNull();
   });
 
-  it("no repair for a look-alike: same password hash but another createdAt is 409", async () => {
+  it("rule 2760: no repair for a look-alike: an account record at the target with another createdAt is 409 and stays as it was", async () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("taken");
-    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, createdAt: new Date(Date.now() - 86400000).toISOString() });
+    // A bare account record: no login index and no person at the target, so `getLogin(to)` finds nothing; from M4 the
+    // move reads the raw record in the same round and refuses to overwrite one that is not its own copy.
+    const born = new Date(Date.now() - 86400000).toISOString();
+    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, createdAt: born });
     const res = await move(to);
     expect(res.status).toBe(409);
     expect(await getUser(old.email)).not.toBeNull();
+    expect((await getUser(to))!.createdAt).toBe(born);
   });
 
   it("no repair for a verified copy at the target: 409", async () => {

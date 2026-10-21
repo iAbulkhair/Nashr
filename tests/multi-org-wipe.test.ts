@@ -42,10 +42,10 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(
 const address = (p: string) => `${p}-${randomBytes(4).toString("hex")}@test.example`;
 const aidOf = (u: User): AccountId => storedAccountId(acct(u));
 const withPlan = async (u: User, plan: Plan) => { const x = { ...(await getUser(acct(u)))!, plan }; await saveUser(x); return x; };
-const ownerActor = (u: User): Actor => ({ kind: "owner", pid: ownerOf(u), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" });
+const ownerActor = (u: User): Actor => ({ kind: "owner", pid: ownerOf(u), email: u.email, name: u.name, lang: u.lang, role: "owner" });
 /** A membership of `pid` in `to` that is not the person's home, as release M2's accept will write it. */
 const join = (to: User, pid: PersonId) =>
-  writeMembership(aidOf(to), pid, { aid: aidOf(to), pid, role: "member", acceptedAt: new Date().toISOString(), invitedBy: ownerOf(to) }, { home: false, teamLocked: true });
+  writeMembership(aidOf(to), pid, { aid: aidOf(to), pid, role: "member", acceptedAt: new Date().toISOString(), invitedBy: ownerOf(to) }, { teamLocked: true });
 /** A `p_` person (the M2 shape) who owns one account and has signed in once on a device. */
 const pPerson = async (p: string) => {
   const e = address(p);
@@ -400,40 +400,24 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       expect(rows[0].team).toMatchObject({ disabled: [m.email] });
     }, 30_000);
 
-    it("a refit that cannot take a home member's lock:member after the change is saved answers 200 team busy, audited once, with neither the row nor the mirror paused; a seats-only POST refits both", async () => {
+    it("rule 2138: a held lock:member never stops the refit; the row is paused and no legacy mirror is written", async () => {
       admin();
       const u = await withPlan(await newUser("cpm"), "pro");
       const m = await newMember(u);
       const planRows = async () => (await auditRows()).filter((x) => x.action === "plan" && x.target === u.email);
-      // The two records `writeMembership` keeps together: the forward row (what M1 reads) and the legacy mirror (what R1 reads).
+      // From M4 `writeMembership` writes the forward row alone, under `lock:team` only (no `lock:member`, no mirror).
       const row = async () => ((await db.get(accountKey.membership(aidOf(u), storedPersonId(m.email)))) as { disabled?: string } | null)?.disabled;
-      const mirror = async () => ((await db.get(accountKey.member(m.email))) as { disabled?: string } | null)?.disabled;
-      // No plan change: a plan change resets the month's credits, which would hide a doubled `addCredits`.
       const before = (await getUser(u.email))!.credits;
       const lock = accountKey.memberLock(m.email);
       expect(await db.lock(lock, 10)).toBe(true);
       let r: Response;
       try { r = await planPost({ email: u.email, seats: 1, addCredits: 7 }); } finally { await db.unlock(lock); }
       expect(r.status).toBe(200);
-      const res = (await r.json()) as { ok: boolean; team?: unknown; user?: { plan: string } };
-      expect(res).toMatchObject({ ok: true, team: "busy", user: { plan: "pro" } });
-      // The change stands, once: the credits added exactly once, one audit row saying the team is busy.
+      expect(await r.json()).toMatchObject({ ok: true, team: { limit: 1, disabled: [m.email] }, user: { plan: "pro" } });
       expect((await getUser(u.email))!.credits).toBe(before + 7);
       expect(await planRows()).toHaveLength(1);
-      expect((await planRows())[0]).toMatchObject({ team: "busy" });
-      // `writeMembership` writes the row and the mirror in one round under `lock:member`: the held lock wrote neither.
-      expect(await row()).toBeUndefined();
-      expect(await mirror()).toBeUndefined();
-      expect(await disabled(u, m.email)).toBeUndefined();
-      // The route has no request idempotency (a repeat of the whole POST would add the credits again), so the documented
-      // follow-up is a seats-only POST: it refits the team (idempotent) and leaves the credits alone.
-      const refit = await planPost({ email: u.email, seats: 1 });
-      expect(refit.status).toBe(200);
-      expect(await refit.json()).toMatchObject({ ok: true, team: { limit: 1 } });
       expect(await row()).toBe("seats");
-      expect(await mirror()).toBe("seats");
-      expect((await getUser(u.email))!.credits).toBe(before + 7);
-      expect(await planRows()).toHaveLength(2);
+      expect(await db.get(accountKey.member(m.email))).toBeNull();
     }, 30_000);
 
     it("the normal path is unchanged: a plan change fits the team; a credits-only change does not wait for lock:team", async () => {
@@ -495,6 +479,8 @@ describe("rule 2126: no await db.* inside a loop in the membership deletes", () 
       expect(body, name).toMatch(/pmap\(|Promise\.all\(/);
       for (const loop of loops(body)) expect(loop, name).not.toMatch(/await\s+db\./);
     }
-    expect(fn("wipeMemberships")).toContain("deleteMembership(aid, pid, { home: isHome(await getMember(pid), aid, pid), teamLocked: true })");
+    // Rule 2138: no legacy home lookup (and no `member:` read) per membership.
+    expect(fn("wipeMemberships")).toContain("deleteMembership(aid, pidFrom(p), { teamLocked: true })");
+    expect(fn("wipeMemberships")).not.toMatch(/getMember\(|isHome\(/);
   });
 });

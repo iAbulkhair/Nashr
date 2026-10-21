@@ -1,14 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
 import { jar, json, markVerified, newMember as helperNewMember, newOpaqueUser as helperNewOpaqueUser, newUser as helperNewUser, signIn, signOut } from "./helpers/session";
-import { acct, getLogin, getUser, saveUser, sessionIds, sessionKey, verifyPassword, type User } from "@/lib/auth";
+import { acct, getLogin, sessionIds, sessionKey, verifyPassword, type User } from "@/lib/auth";
 import { loginIndexOf, newAccountId } from "@/lib/account-id";
 import { db } from "@/lib/db";
 import { accountKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { pickAccount } from "@/lib/membership";
 import { getPerson } from "@/lib/person";
 import { newPersonId } from "@/lib/multi-org";
-import { getMember, saveMember } from "@/lib/team";
 import * as loginRoute from "@/app/api/auth/login/route";
 import * as signupRoute from "@/app/api/auth/signup/route";
 import * as forgotRoute from "@/app/api/auth/forgot/route";
@@ -115,13 +114,16 @@ describe("rule 2132: a legacy owner and a legacy member sign in exactly as in R1
     const o = await newUser("ro");
     expect(await answer(await login(o.email, "wrong-pass"))).toEqual({ status: 401, body: { ok: false, error: "invalid" } });
     expect(await answer(await login(address("nobody")))).toEqual({ status: 401, body: { ok: false, error: "invalid" } });
-    const paused = await newMember(o);
-    await saveMember({ ...(await getMember(paused.email))!, disabled: "seats" });
+    // Without the shadow membership: from M4 (rule 2138) a person signs in to its first live membership, so a shadow one
+    // would carry a paused or removed member elsewhere.
+    const paused = await newMember(o, "member", "m", { shadow: false });
+    const row = accountKey.membership(storedAccountId(acct(o)), storedPersonId(paused.email));
+    await db.set(row, { ...(await db.get<Record<string, unknown>>(row))!, disabled: "seats" });
     expect(await answer(await login(paused.email))).toEqual({ status: 403, body: { ok: false, error: "disabled" } });
     const uo = await newUser("ruo", { verified: false });
-    const um = await newMember(uo);
+    const um = await newMember(uo, "member", "m", { shadow: false });
     expect(await answer(await login(um.email))).toEqual({ status: 403, body: { ok: false, error: "owner_unverified" } });
-    const gone = await newMember(o);
+    const gone = await newMember(o, "member", "m", { shadow: false });
     await db.srem(accountKey.members(acct(o)), gone.email);
     expect(await answer(await login(gone.email))).toEqual({ status: 401, body: { ok: false, error: "invalid" } });
     expect(jar().get("thakeen_session")).toBeFalsy();
@@ -130,13 +132,14 @@ describe("rule 2132: a legacy owner and a legacy member sign in exactly as in R1
   it("getLogin keeps R1's kinds and ids, and adds the person and the account", async () => {
     const o = await newUser("go");
     const m = await newMember(o);
-    // The owner's person is read from the `person:` row `createUser` mirrors in multi-workspace M1 (rule 2132), a
-    // member's from the row the accept writes in M1; a member record written before M1 (no `person:` row) is still read
-    // as the legacy member.
+    // The owner's person is read from the `person:` row `createUser` writes (rule 2132), a member's from the row the
+    // accept writes; from M4 (rule 2138) the membership is the `mbr:` row, and a member without a `person:` row is
+    // nobody (no `member:` record is read any more).
     expect(await getLogin(o.email)).toMatchObject({ kind: "owner", pid: acct(o), acct: acct(o), person: { email: o.email, source: "person" } });
-    expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email, acct: acct(o), member: { email: m.email }, person: { email: m.email, source: "person" } });
+    expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email, acct: acct(o), membership: { aid: acct(o), role: "member" }, person: { email: m.email, source: "person" } });
+    expect(await getLogin(m.email)).not.toHaveProperty("member");
     await db.del(personKey.person(storedPersonId(m.email)));
-    expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email, acct: acct(o), member: { email: m.email }, person: { email: m.email, source: "member" } });
+    expect(await getLogin(m.email)).toBeNull();
   });
 
   it("the test helper writes the R1 ids by default, none with legacyShape, and the given acct when asked", async () => {
@@ -183,7 +186,7 @@ describe("rule 2136: a p_ person signs in to the account the pick order names", 
     await db.srem(accountKey.members(unlisted), pid);
     expect(await answer(await login(e, "pw-person-1"))).toEqual({ status: 200, body: { ok: true } });
     expect(await sessionNow()).toMatchObject({ email: e, pid, acct: older });
-    expect(await getLogin(e)).toMatchObject({ kind: "member", member: null, pid, acct: older });
+    expect(await getLogin(e)).toMatchObject({ kind: "member", membership: { aid: older }, pid, acct: older });
   });
 
   it("lastorg: naming a live membership wins over the owned account", async () => {
@@ -275,16 +278,15 @@ describe("reconciliation 7: a person whose only membership is gone is nobody", (
   });
 });
 
-describe("reconciliation 5: verifyPassword reads the person, and a stale person: row loses", () => {
-  it("a person: row older than the legacy owner's last password change keeps its old hash out", async () => {
+describe("reconciliation 5 with rule 2138: verifyPassword reads the person only", () => {
+  it("a password hash left on the legacy account record is never read: the person's hash decides", async () => {
     const o = await newUser("st");
     await markVerified(o.email);
-    const cur = (await getUser(o.email))!;
-    const later = new Date(Date.parse(cur.sessionsAfter!) + 60_000).toISOString();
-    await saveUser({ ...cur, sessionsAfter: later });
-    await db.set(personKey.person(storedPersonId(o.email)), { pid: o.email, email: o.email, name: "Old", lang: "ar", passHash: await bcrypt.hash("old-pass-1", 4), sessionsAfter: cur.sessionsAfter, createdAt: cur.createdAt });
+    // What an account written before M4 still holds until Script S2 removes it: a hash (here a different one) and stamps.
+    const raw = (await db.get<Record<string, unknown>>(accountKey.user(acct(o))))!;
+    await db.set(accountKey.user(acct(o)), { ...raw, passHash: await bcrypt.hash("old-pass-1", 4), sessionsAfter: new Date(Date.now() + 60_000).toISOString() });
     const l = (await getLogin(o.email))!;
-    expect(l.person.source).toBe("owner");
+    expect(l.person.source).toBe("person");
     expect(await verifyPassword(l.person, "old-pass-1")).toBe(false);
     expect(await verifyPassword(l.person, "abc12345")).toBe(true);
     expect((await login(o.email, "old-pass-1")).status).toBe(401);

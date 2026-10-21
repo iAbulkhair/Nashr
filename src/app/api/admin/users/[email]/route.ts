@@ -7,7 +7,7 @@ import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
 import { IMPERSONATE_COOKIE, RETURN_COOKIE, SESSION_COOKIE, readCookie } from "@/lib/cookie-names";
-import { revokeFeeds } from "@/lib/feed-token";
+import { linksOfPerson, revokeFeeds } from "@/lib/feed-token";
 import { revokeCalendarLinks } from "@/lib/secretary-gcal";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
@@ -24,7 +24,7 @@ import { wipeAccount } from "@/lib/account";
 import { db } from "@/lib/db";
 import { listActivity } from "@/lib/activity";
 import { cookies } from "next/headers";
-import { forceRemoveMember, getMember, isTeamLockTimeout, membersKey, onRoster } from "@/lib/team";
+import { forceRemoveMember, isTeamLockTimeout, membersKey, rosterLinks } from "@/lib/team";
 import { unfinishedRefunds } from "@/lib/partners";
 import { sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
 import { TRIAL_EXTEND_MAX_DAYS, parseImpersonateMinutes } from "@/lib/admin-input";
@@ -49,22 +49,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   if (!u) {
     // Member logins never enter users:all, so the list cannot show them: an address is looked up here instead, which is
     // how support finds (and can remove, below) a member login holding an address its real owner wants to sign up with.
-    const m = await getMember(decodeURIComponent(email));
-    if (!m) {
-      // A person known only through membership rows (multi-workspace M1: test persons; real ones from M2) has no member
-      // record: shown from the person and the membership sign-in would open, read only. Its person id and its
-      // inviter's are never shown (a `p_` id is not an address).
-      if (login?.kind !== "member" || !login.acct) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-      const ms = await getMembership(login.acct, login.pid);
-      return NextResponse.json({
-        ok: true, kind: "member",
-        member: { email: login.person.email, name: login.person.name, role: ms?.role ?? null, memberOf: login.acct, invitedBy: "", acceptedAt: ms?.acceptedAt ?? "", disabled: ms?.disabled ?? null, ownerExists: !!login.owner, onRoster: !!ms },
-      });
-    }
-    const [owner, listed] = await Promise.all([getUser(m.memberOf), onRoster(m.memberOf, m.email)]);
+    // From M4 (rule 2138) a member is read from the person and the membership sign-in would open, read only; a leftover
+    // legacy member record answers nothing. Its person id and its inviter's are never shown (a `p_` id is not an address).
+    if (login?.kind !== "member" || !login.acct) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    const ms = await getMembership(login.acct, login.pid);
     return NextResponse.json({
       ok: true, kind: "member",
-      member: { email: m.email, name: m.name, role: m.role, memberOf: m.memberOf, invitedBy: m.invitedBy, acceptedAt: m.acceptedAt, disabled: m.disabled ?? null, ownerExists: !!owner, onRoster: listed },
+      member: { email: login.person.email, name: login.person.name, role: ms?.role ?? null, memberOf: login.acct, invitedBy: "", acceptedAt: ms?.acceptedAt ?? "", disabled: ms?.disabled ?? null, ownerExists: !!login.owner, onRoster: !!ms },
     });
   }
   const brands = await listBrands(acct(u));
@@ -138,10 +129,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   };
   if (!u) {
     // A member login: the one action is removing it (the owner's own removal, done by support), which frees the address.
-    // A person with no member record (multi-workspace M1, rule 2130) is the membership the login resolves to, as GET shows
-    // it: the record and that membership are read in ONE round.
-    const [m, ms] = await Promise.all([getMember(email), login?.kind === "member" && login.acct ? getMembership(login.acct, login.pid) : null]);
-    const at = m ? { memberOf: m.memberOf, role: m.role } : ms ? { memberOf: ms.aid, role: ms.role } : null;
+    // The membership the login resolves to, as GET shows it (rule 2138: never a legacy member record).
+    const ms = login?.kind === "member" && login.acct ? await getMembership(login.acct, login.pid) : null;
+    const at = ms ? { memberOf: ms.aid, role: ms.role } : null;
     if (!at) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     if (b.action !== "removeMember") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
     // The person left with nothing is deleted under `lock:person:{pid}` (multi-workspace M1): a person, login or member
@@ -191,7 +181,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const temp = randomBytes(6).toString("base64url").slice(0, 10) + "!";
       // The owner's sessions and every member's: a founder reset answers "someone else has this account".
       // The password and the owner's session stamp are the owner PERSON's (multi-workspace M1, rule 2132: `updatePerson`,
-      // mirrored to a legacy owner's account); the team stamp is the account's. Person lock, then user lock (rule 2139).
+      // the `person:` row only from M4, rule 2138); the team stamp is the account's. Person lock, then user lock (rule 2139).
       const pid = ownerOf(u);
       const passHash = await bcrypt.hash(temp, 10);
       const held = await personWrite(() => withPersonLock(pid, () => withUserLock(id, async (x) => {
@@ -201,8 +191,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       })));
       if (held) return held;
       // The owner's calendar feed and booking links and every member's, as every member's session just ended.
-      const roster = await db.smembers(membersKey(id));
-      await Promise.all([revokeAllMcp(id), revokeFeeds([u.email, ...roster]), revokeBooks([u.email, ...roster]), revokeCalendarLinks(id)]);
+      // By `(pid, aid)` (rule 2138): the owner's own links in every account it holds, each roster member's in this one.
+      const [roster, ownLinks] = await Promise.all([db.smembers(membersKey(id)), linksOfPerson(pid)]);
+      const links = [...ownLinks, ...rosterLinks(aidOf(u), roster)];
+      await Promise.all([revokeAllMcp(id), revokeFeeds(links), revokeBooks(links), revokeCalendarLinks(id)]);
       await log("resetPassword");
       // Shown once to the admin; never stored in clear.
       return NextResponse.json({ ok: true, tempPassword: temp });

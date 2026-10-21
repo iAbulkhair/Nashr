@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { getUser, type User } from "@/lib/auth";
+import { getUser, sessionIds, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { base32, fromBase32, hotp, looksLikeRecovery, newRecoveryCode, newTotpSecret, otpauthUri, recoveryHash, totpMatch, totpStep } from "@/lib/totp";
 import { ADMIN_2FA_COOKIE, CODE_TRIES_ALL, CODE_TRIES_PER_IP, ENROLMENT_KEY, PENDING_KEY, STEP_UP_IDLE, STEP_UP_MAX, openSecret, sealSecret, type Enrolment } from "@/lib/admin-2fa";
@@ -46,12 +46,12 @@ async function enrol(now = T0): Promise<{ secret: string; recovery: string }> {
 
 /** A founder signed in as themselves (ADMIN_EMAILS): a 30-day session, unlike the key session's 15 idle minutes. */
 async function asFounder(): Promise<string> {
-  // Pins the legacy shape (multi-org M1): the 30-day record below has no `pid`/`acct`, as a session from before R1.
   const founder = await newUser("founder", { legacy: true });
   vi.stubEnv("ADMIN_EMAILS", founder.email);
   const token = await signIn(founder.email);
-  // The helper's record lives an hour; a real sign-in lives 30 days, and the 12-hour test needs that.
-  await db.set(`session:${token}`, { email: founder.email, at: Date.now() }, 30 * 86_400);
+  // The helper's record lives an hour; a real sign-in lives 30 days, and the 12-hour test needs that. The record keeps
+  // its `pid`/`acct`: from M4 (rule 2138) a session without them is nobody.
+  await db.set(`session:${token}`, { email: founder.email, at: Date.now(), ...(await sessionIds(founder.email)) }, 30 * 86_400);
   return founder.email;
 }
 

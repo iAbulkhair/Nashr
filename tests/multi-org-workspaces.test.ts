@@ -184,7 +184,7 @@ describe("rule 2112: switch", () => {
   it("a removed membership's handle is a 404", async () => {
     const { u, shadow, pid } = await ownerWithTwo();
     await signIn(u.email);
-    await withAccountTeamLock(storedAccountId(shadow.aid), () => deleteMembership(storedAccountId(shadow.aid), pid, { home: false, teamLocked: true }));
+    await withAccountTeamLock(storedAccountId(shadow.aid), () => deleteMembership(storedAccountId(shadow.aid), pid, { teamLocked: true }));
     expect((await doSwitch(wsHandle(shadow.aid))).status).toBe(404);
   });
 

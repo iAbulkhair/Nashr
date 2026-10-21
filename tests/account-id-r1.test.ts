@@ -5,9 +5,9 @@ import { jar, json, newMember as helperNewMember, newOpaqueUser as helperNewOpaq
 import { accountByLogin, acct, accountOfScope, claimLogin, createSession, createUser, currentUser, getAccount, getLogin, getUser, releaseLogin, saveUser, sc, sessionKey, type User } from "@/lib/auth";
 import { brandOfScope, idForNewAccount, LoginIndex, newAccountId, OPAQUE_ACCOUNT_ID, OPAQUE_IDS } from "@/lib/account-id";
 import { db } from "@/lib/db";
-import { accountKey, globalKey } from "@/lib/keys";
+import { accountKey, globalKey, personKey, storedPersonId } from "@/lib/keys";
 import { charge } from "@/lib/credits";
-import { getMember, memberPid, saveMember, withLoginLock } from "@/lib/team";
+import { getMember, memberPid, withLoginLock } from "@/lib/team";
 import { revokeAllMcp, userFromBearer } from "@/lib/mcp";
 import { chatStatus } from "@/lib/chat-allowance";
 import { chatMsgKey, chatTrialKey } from "@/lib/usage";
@@ -43,6 +43,13 @@ let n = 0;
 const addr = (p: string) => `${p}${++n}-${Math.random().toString(36).slice(2, 8)}@test.example`;
 const input = (email: string) => ({ email, name: "Test", phone: "", password: "abc12345", lang: "ar" as const });
 const signupLocked = (e: string) => withLoginLock(e, async () => ((await getLogin(e)) ? null : createUser(input(e))));
+/**
+ * A legacy `member:` record as a build before M4 wrote it (rule 2138: no M4 writer makes one), without an `id` unless
+ * one is given: what Script R1 and the stale-id guard still read.
+ */
+async function plantLegacyMember(email: string, memberOf: string, extra: Record<string, unknown> = {}): Promise<void> {
+  await db.set(accountKey.member(email), { email, name: "Legacy", lang: "ar", passHash: "legacy-hash", memberOf, role: "member", invitedBy: "x@test.example", acceptedAt: new Date().toISOString(), ...extra });
+}
 /** The stored record without its `id`: what a build from before R1 wrote. */
 async function stripId(key: string): Promise<void> {
   const { id: _id, ...rest } = (await db.get<Record<string, unknown>>(key))!;
@@ -115,12 +122,14 @@ describe("rule 1981: the legacy fallback accepts user:{e} only when the record i
     await claimLogin(u.email, "a_cccccccccccccccccccccccc");
     expect(await getLogin(u.email)).toBeNull();
   });
-  it("the index decides when present: it names the person, and an account that changed its address never passes", async () => {
+  it("the index decides when present: it names the person, and a person that changed its address never passes", async () => {
     const o = await newOpaqueUser("ix");
     expect(await index(o.email)).toEqual({ kind: "person", pid: acct(o) });
     expect(await getLogin(o.email)).toMatchObject({ kind: "owner", pid: acct(o), user: { email: o.email } });
-    // The account's address changed under the index (what R2's move in place does): the old address resolves nothing.
-    await saveUser({ ...(await getAccount(acct(o)))!, email: addr("elsewhere") });
+    // The person's address changed under the index (what R2's move in place does): the old address resolves nothing.
+    // Rule 2138: the person row holds the sign-in address; the account record is not read for it.
+    const key = personKey.person(storedPersonId(acct(o)));
+    await db.set(key, { ...(await db.get<Record<string, unknown>>(key))!, email: addr("elsewhere") });
     expect(await getLogin(o.email)).toBeNull();
   });
 });
@@ -132,11 +141,11 @@ describe("rule 1982: pointers resolve through getAccount, sign-in addresses thro
     expect(read("src/app/api/auth/signup/route.ts")).toMatch(/getLogin\(/);
     expect(read("src/app/api/admin/users/[email]/route.ts")).toMatch(/await getLogin\(/);
   });
-  it("a member's memberOf and the session's acct are read with getAccount; getUser is its alias", () => {
+  it("accounts are read with getAccount (getUser is its alias), and no legacy member record is read (rule 2138)", () => {
     const auth = read("src/lib/auth.ts");
     expect(auth).toContain("export const getUser = getAccount;");
-    expect(auth).toMatch(/getAccount\(m\.memberOf\)/);
-    expect(auth).toMatch(/getAccount\(typeof s\.acct === "string" && s\.acct \? s\.acct : email\)/);
+    expect(auth).toMatch(/getAccount\(first\.aid\)/);
+    expect(auth).not.toMatch(/getMember\(|memberKey\(|accountKey\.member\(/);
   });
 });
 
@@ -157,7 +166,8 @@ describe("rule 1983: the login index is written under lock:login after the resol
   it("a member gets its frozen id and its index on creation (multi-org forced change 2)", async () => {
     const o = await newOpaqueUser("tm");
     const m = await newMember(o);
-    expect(await getMember(m.email)).toMatchObject({ id: m.email, email: m.email, memberOf: acct(o) });
+    // Rule 2138: no legacy member record is written; the person id is frozen in the membership row and the index.
+    expect(await getMember(m.email)).toBeNull();
     expect(await index(m.email)).toEqual({ kind: "person", pid: m.email });
     expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email });
   });
@@ -284,7 +294,7 @@ describe("rule 1994: the conversion script is idempotent, dry by default, never 
   async function legacy(): Promise<{ owner: string; member: string }> {
     const u = await newUser("cv");
     const m = await newMember(u);
-    await Promise.all([stripId(accountKey.user(u.email)), stripId(accountKey.member(m.email)), db.del(accountKey.login(u.email)), db.del(accountKey.login(m.email))]);
+    await Promise.all([stripId(accountKey.user(u.email)), plantLegacyMember(m.email, acct(u)), db.del(accountKey.login(u.email)), db.del(accountKey.login(m.email))]);
     return { owner: u.email, member: m.email };
   }
   it("a dry run counts and writes nothing; --apply writes ids and indexes; a second run writes nothing", async () => {
@@ -399,7 +409,7 @@ describe("the owner move in R1 is still a copy: the new record lives under the n
   });
   it("a member move claims the new index and releases the old one", () => {
     const team = read("src/lib/team.ts");
-    expect(team).toContain("claimLogin(to, to)");
+    expect(team).toContain("claimLogin(to, toPid)");
     expect(team).toMatch(/releaseLogin\(/);
   });
   it("a copy stored at its own id with its index resolves at the new address", async () => {
@@ -407,6 +417,9 @@ describe("the owner move in R1 is still a copy: the new record lives under the n
     const u = await newUser("cp");
     const to = addr("cpto");
     await saveUser({ ...(await getUser(u.email))!, id: to, email: to });
+    // The move writes the person at the new address too (rule 2138: the person row holds the sign-in address).
+    const row = await db.get<Record<string, unknown>>(personKey.person(storedPersonId(u.email)));
+    await Promise.all([db.set(personKey.person(storedPersonId(to)), { ...row, pid: to, email: to }), db.sadd(personKey.orgs(storedPersonId(to)), to)]);
     await claimLogin(to, to);
     expect(await getLogin(to)).toMatchObject({ kind: "owner", pid: to });
   });
@@ -418,27 +431,34 @@ describe("security review of R1 (M1, M2, L1)", () => {
     const o = await newUser("m1");
     const m = await newMember(o);
     const other = addr("m1old");
-    await saveMember({ ...(await getMember(m.email))!, id: other });
+    await plantLegacyMember(m.email, acct(o), { id: other });
     await db.del(accountKey.login(m.email));
     const got = (await getMember(m.email))!;
     expect(got.id).toBe(m.email);
     expect(memberPid({ id: other, email: m.email })).toBe(m.email);
     expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email });
   });
-  it("M1: signup refuses an address that still has a member record off its roster", async () => {
+  it("M1 under M4 (rule 2138): a leftover member record off its roster holds nothing; a live membership still holds the address", async () => {
+    const signup = (e: string) => signupRoute.POST(json("/api/auth/signup", "POST", { email: e, password: "abc12345", name: "X", lang: "en" }, { "x-forwarded-for": `10.9.${n % 250}.${(n * 7) % 250}` }));
     const o = await newUser("m1s");
     const m = await newMember(o);
-    await Promise.all([db.srem(accountKey.members(acct(o)), m.email), db.del(accountKey.login(m.email))]);
-    expect(await getLogin(m.email)).toBeNull();
+    await Promise.all([db.srem(accountKey.members(acct(o)), m.email), db.del(accountKey.login(m.email)), plantLegacyMember(m.email, acct(o))]);
+    // The person's other (shadow) membership still signs it in, so signup refuses the address.
+    expect(await getLogin(m.email)).toMatchObject({ kind: "member", pid: m.email });
     jar().clear();
-    const res = await signupRoute.POST(json("/api/auth/signup", "POST", { email: m.email, password: "abc12345", name: "X", lang: "en" }, { "x-forwarded-for": `10.9.${n % 250}.${(n * 7) % 250}` }));
-    expect(res.status).toBe(409);
+    expect((await signup(m.email)).status).toBe(409);
     expect(await db.get(accountKey.user(m.email))).toBeNull();
+    // A person left with nothing but the stale legacy record: the record answers nothing and the address is free.
+    const lone = await newMember(o, "member", "m1l", { shadow: false });
+    await Promise.all([db.srem(accountKey.members(acct(o)), lone.email), db.del(accountKey.login(lone.email)), plantLegacyMember(lone.email, acct(o))]);
+    expect(await getLogin(lone.email)).toBeNull();
+    jar().clear();
+    expect((await signup(lone.email)).status).toBe(200);
   });
   it("M1: the script counts a member whose id is not its address as a conflict and writes no index for it", async () => {
     const o = await newUser("m1c");
     const m = await newMember(o);
-    await saveMember({ ...(await getMember(m.email))!, id: addr("m1cold") });
+    await plantLegacyMember(m.email, acct(o), { id: addr("m1cold") });
     await db.del(accountKey.login(m.email));
     const r = await convertAccountIds(true);
     expect(r.conflicts).toBeGreaterThanOrEqual(1);
@@ -461,7 +481,7 @@ describe("security review of R1 (M1, M2, L1)", () => {
   });
   it("L1: callers that already hold the login lock say so, so nothing waits on itself", () => {
     expect(read("src/lib/auth.ts")).toMatch(/withLoginLock\(email, drop\)/);
-    expect(read("src/lib/team.ts")).toContain("releaseLogin(old, memberPid(cur), { locked: true })");
+    expect(read("src/lib/team.ts")).toContain("releaseLogin(old, oldPid, { locked: true })");
     // Multi-workspace M1: `wipeAccount` releases the owner's login inside `wipeMemberships`'s finish, under the
     // login lock it takes itself unless the caller (the address move) says it holds it already.
     const account = read("src/lib/account.ts");

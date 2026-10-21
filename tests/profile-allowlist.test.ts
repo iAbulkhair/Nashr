@@ -18,7 +18,7 @@ const OWNER_KEYS = ["createdAt", "credits", "deal", "email", "lang", "name", "ph
 /** A member's `user`: its own name, email, language and role, and the account summary every seat shares. */
 const MEMBER_KEYS = ["createdAt", "credits", "email", "lang", "name", "plan", "renewedAt", "role", "topups", "trialEnds"];
 /** Strings stored in fields the customer must never be sent. None may appear anywhere in the answer. */
-const SECRETS = ["founder-fairuse@test.example", "founder-seat@test.example", "founder-lock@test.example", "founder-deal@test.example", "founder-grant@test.example", "SECRET-GRANT-NOTE", "SECRET-BANK-REF", "founder-topup@test.example", "SECRET-INTENT-REF", "SECRET-TXN", "partner-owner@test.example", "SECRET-PARTNER-REF", "pay_7870000000000000", "founder-hand@test.example", "p_ownerpidaaaaaaaaaaaaaaaa"];
+const SECRETS = ["founder-fairuse@test.example", "founder-seat@test.example", "founder-lock@test.example", "founder-deal@test.example", "founder-grant@test.example", "SECRET-GRANT-NOTE", "SECRET-BANK-REF", "founder-topup@test.example", "SECRET-INTENT-REF", "SECRET-TXN", "partner-owner@test.example", "SECRET-PARTNER-REF", "pay_7870000000000000", "founder-hand@test.example"];
 
 const DAY = 86400_000;
 const iso = (days: number) => new Date(Date.now() + days * DAY).toISOString();
@@ -29,20 +29,21 @@ const month = new Date().toISOString().slice(0, 7);
  * the type-check here until it is set, and this test then shows whether the profile sends it.
  */
 async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">>> {
-  // Pins the legacy shape (multi-org M1): the record below names an owner no person holds (`ownerPid`), which only the
-  // legacy resolver reads past; no shadow membership, which sign-in would otherwise pick as the person's only live account.
-  const u = (await getUser((await newUser("allow", { legacy: true, shadow: false })).email))!;
+  // No shadow membership, which sign-in would otherwise pick as the person's only live account. The owner follows
+  // `TEST_PERSONS`; from M4 (rule 2138) the record must name its real owner, since no legacy resolver reads past it.
+  const made = await newUser("allow", { shadow: false });
+  const u = (await getUser(made.email))!;
   const full: Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">> = {
     // The account id (rule 1995): storage only, never a profile field.
     id: u.email,
     // The owning person (multi-workspace membership, rule 1995): storage only, never a profile field.
-    ownerPid: "p_ownerpidaaaaaaaaaaaaaaaa",
+    ownerPid: u.ownerPid ?? u.email,
     // The name given at create (multi-workspace M2): the switcher reads it, the profile does not send it.
     workspaceName: "WORKSPACE-NAME",
     email: u.email,
     name: "Owner Name",
     phone: "+966500000787",
-    // The legacy mirror of the person's hash (rule 2132): storage only, never a profile field.
+    // The legacy mirror of the person's hash (rule 2132): `saveUser` drops it from M4 (rule 2138); never a profile field.
     passHash: "$2b$10$profileallowlistfixturehashhhhhhhhhhhhhhhhhhhhhhhhhhhh",
     plan: "agency",
     credits: 1300,
@@ -105,13 +106,13 @@ describe("GET /api/profile sends only the account fields it names (rule 787)", (
     expect(body.user.deal).toEqual({ credits: 5000, priceSar: 3330 });
     expect(body.user.topups).toEqual([{ credits: 300, left: 300, expiresAt: full.topups[0].expiresAt }]);
     for (const s of [...SECRETS, full.passHash]) expect(raw, s).not.toContain(s);
+    if (full.ownerPid.startsWith("p_")) expect(raw).not.toContain(full.ownerPid);
   });
 
   it("a founder acting as the owner gets the same keys; a member gets its own and the summary", async () => {
     const full = await fullAccount();
     vi.stubEnv("ADMIN_EMAILS", "founder-allow@test.example");
-    // A session from before R1 (pins the legacy shape, multi-org M1): today's ids would name the fixture's absent owner.
-    await signIn(full.email, { imp: "founder-allow@test.example", legacyShape: true });
+    await signIn(full.email, { imp: "founder-allow@test.example" });
     const founder = await read();
     expect(Object.keys(founder.body.user).sort()).toEqual(OWNER_KEYS);
     for (const s of [...SECRETS, full.passHash]) expect(founder.raw, s).not.toContain(s);

@@ -994,7 +994,7 @@ describe("proposing from text (rules 604-606)", () => {
 
 describe("propose_meeting_tasks (rule 607)", () => {
   /** The user as the app's chat resolves it: the account with an acting login (a bare `createUser` has none and is refused by every role check). */
-  const acting = (u: User, kind: "owner" | "member" = "owner"): User => ({ ...u, actor: { kind, pid: storedPersonId(u.email), home: true, email: u.email, name: "Test", lang: "en", role: kind === "owner" ? "owner" : "member" } });
+  const acting = (u: User, kind: "owner" | "member" = "owner"): User => ({ ...u, actor: { kind, pid: storedPersonId(u.email), email: u.email, name: "Test", lang: "en", role: kind === "owner" ? "owner" : "member" } });
   async function call(u: User, input: Record<string, unknown>, ctx: Partial<ToolCtx> = {}) {
     const actions: string[] = [];
     const text = await runTool(u, "propose_meeting_tasks", input, actions, [], undefined, { agent: "reem", via: "app", lang: "en", ...ctx });
@@ -1083,7 +1083,7 @@ describe("propose_meeting_tasks (rule 607)", () => {
 
     // Only Reem's own turn in the app: any other agent, a turn with no agent, MCP and a token are refused and store nothing.
     const fresh = await booking(u, "Second meeting");
-    const token = { kind: "token" as const, pid: storedPersonId(u.email), home: true, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
+    const token = { kind: "token" as const, pid: storedPersonId(u.email), email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
     const cases: [string, User, Partial<ToolCtx>][] = [
       ["noor", u, { agent: "noor" }],
       ["majed", u, { agent: "majed" }],

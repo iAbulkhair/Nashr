@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ALL_VIDEO_MODELS, entitlementView, entitlements, grantActive, isUtcDay, type EntUser } from "@/lib/entitlements";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
+import { accountKey, storedAccountId } from "@/lib/keys";
 import { db } from "@/lib/db";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
-import { getMember, saveMember, seatsUsed } from "@/lib/team";
+import { seatsUsed } from "@/lib/team";
 import { chatTrialKey } from "@/lib/usage";
 import { newMember, newUser } from "./helpers/session";
 import { AGENT_IDS } from "@/lib/agents";
@@ -230,9 +231,10 @@ describe("entitlementView (rule 784)", () => {
     const owner = await stored({ plan: "pro" });
     expect((await entitlementView(owner, NOW)).used.seats).toBe(1);   // the owner alone
     await newMember(owner);
-    // Pins the legacy shape (multi-org M1): `saveMember` pauses through the legacy `member:{email}` record.
-    const paused = await newMember(owner, "member", "m", { legacy: true });
-    await saveMember({ ...(await getMember(paused.email))!, disabled: "seats" });   // what enforceSeats does when a plan shrinks
+    // The pause lives on the membership row (rule 2138: no legacy member record), as enforceSeats writes it when a plan shrinks.
+    const paused = await newMember(owner, "member", "m");
+    const row = accountKey.membership(storedAccountId(acct(owner)), paused.pid);
+    await db.set(row, { ...(await db.get<Record<string, unknown>>(row)), disabled: "seats" });
     const v = await entitlementView(owner, NOW);
     expect(v.used.seats).toBe(await seatsUsed(owner.email));
     expect(v.used.seats).toBe(2);   // the owner and the one active member

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminSignIn, jar, json, newUser, signIn, signOut } from "./helpers/session";
-import { createSession, currentUser, dropSession, sessionKey, sessionKeys, sessionRecord } from "@/lib/auth";
+import { createSession, currentUser, dropSession, sessionIds, sessionKey, sessionKeys, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { legacySettingsPath } from "@/lib/settings-nav";
 
@@ -145,10 +145,10 @@ describe("rules 1345-1346: session tokens are stored hashed (expand step)", () =
     expect((await currentUser())?.email).toBe(u.email);
   });
   it("a session written before the change (raw key) still signs in: nobody is signed out", async () => {
-    // Pins the legacy shape (multi-org M1): a session from before R1 belongs to a legacy owner.
+    // The raw key is what is old here; the record names its person and account (rule 2138: one without is nobody).
     const u = await newUser("hs2", { legacy: true });
     const legacy = randomBytes(32).toString("hex");
-    await db.set(`session:${legacy}`, { email: u.email, at: Date.now() }, 3600);
+    await db.set(`session:${legacy}`, { email: u.email, at: Date.now(), ...(await sessionIds(u.email)) }, 3600);
     signOut();
     jar().set("thakeen_session", legacy);
     expect((await currentUser())?.email).toBe(u.email);

@@ -7,28 +7,30 @@ import { db } from "@/lib/db";
 import { personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { getPerson } from "@/lib/person";
 import { deleteMembership, writeMembership } from "@/lib/team";
-import { createFeed, FEED_KEYS, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, type FeedRecord, type LinkOwner } from "@/lib/feed-token";
-import { BOOK_KEYS, createBook, getBookStatus, hashBookToken, resolveBook, revokeBook } from "@/lib/booking-token";
+import { createFeed, FEED_KEYS, getFeedStatus, hashFeedToken, linksOfPerson, resolveFeed, revokeFeed, revokeFeeds, type FeedRecord, type LinkOwner } from "@/lib/feed-token";
+import { BOOK_KEYS, createBook, getBookStatus, hashBookToken, resolveBook, revokeBook, revokeBooks, type BookRecord } from "@/lib/booking-token";
 import { linkOwner, loginHolds } from "@/lib/secretary-feed";
 import * as feedRoute from "@/app/api/secretary/feed/[token]/route";
 import * as manageRoute from "@/app/api/secretary/feed/route";
 
-// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
-// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+// Legacy persons (pid = its address), so the address names the person in the assertions below; each still holds a shadow
+// membership unless it says `shadow: false`.
 const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
- * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md section 9): the calendar feed and the booking
- * links per (person, account). Rules 2119 (a link lives in one account and dies with its membership, even when the
- * revoke is skipped), 2131 (a person suspension ends every link, an account suspension only that account's), 2132 (a home
- * link keeps R1's legacy pointer; a link made before M1 still resolves and is revoked) and 2139 (the feed and booking
- * locks are leaves: new first, legacy inside).
+ * Multi-workspace (docs/specs/2026-10-18-multi-org.md section 9): the calendar feed and the booking links per (person,
+ * account). Rules 2119 (a link lives in one account and dies with its membership, even when the revoke is skipped), 2131
+ * (a person suspension ends every link, an account suspension only that account's), 2138 (M4 contract: the legacy
+ * per-login pointers `sec:feedof:{login}` / `sec:bookof:{login}:{provider}` and locks are never read or written, and a
+ * link made before M1, without `pid`, is dead; it replaced rule 2132's M1 expand pins) and 2139 (the feed and booking
+ * locks are leaves).
  *
- * The person is a legacy member of H (its home: `pid` = its address) and joins O with `writeMembership`, as release M2's
- * accept will. Links are made through the management route signed in to each account, or with the library and a
- * `LinkOwner` built from stored ids.
+ * The person is a member of H (where it signs in first) and joins O with `writeMembership`, as release M2's accept does.
+ * Links are made through the management route signed in to each account, or with the library and a `LinkOwner` built
+ * from stored ids.
  */
+const plainToken = () => randomBytes(32).toString("base64url");
 
 afterEach(() => { vi.restoreAllMocks(); signOut(); });
 beforeAll(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", ""); });
@@ -49,12 +51,12 @@ const routeFeed = async (email: string, account: User) => {
 };
 const live = async (token: string) => (await callFeed(token)).status;
 
-/** A person who is a legacy member of H (home) and a member of O. */
+/** A person who is a member of H (where it signs in first) and a member of O. */
 async function twoAccounts() {
   const [H, O] = [await newUser("lh"), await newUser("lo")];
   const p = await newMember(H, "member", "lp");
   const pid = storedPersonId(p.email);
-  await writeMembership(aidOf(O), pid, { aid: aidOf(O), pid, role: "member", acceptedAt: new Date().toISOString(), invitedBy: storedPersonId(O.email) }, { home: false, teamLocked: true });
+  await writeMembership(aidOf(O), pid, { aid: aidOf(O), pid, role: "member", acceptedAt: new Date().toISOString(), invitedBy: storedPersonId(O.email) }, { teamLocked: true });
   const [uH, uO] = [await as(p.email, H), await as(p.email, O)];
   signOut();
   return { H, O, email: p.email, pid, uH, uO, whoH: linkOwner(uH)!, whoO: linkOwner(uO)! };
@@ -63,20 +65,21 @@ async function twoAccounts() {
 describe("rule 2119: a link lives in one account", () => {
   it("links in H and O each resolve; each record names its own account and scope; a record moved to the other account's scope is refused", async () => {
     const t = await twoAccounts();
-    expect(t.whoH).toEqual({ pid: t.pid, aid: aidOf(t.H), login: t.email, home: true });
-    expect(t.whoO).toEqual({ pid: t.pid, aid: aidOf(t.O), login: t.email, home: false });
+    expect(t.whoH).toEqual({ pid: t.pid, aid: aidOf(t.H), login: t.email });
+    expect(t.whoO).toEqual({ pid: t.pid, aid: aidOf(t.O), login: t.email });
     const [h, o] = [await routeFeed(t.email, t.H), await routeFeed(t.email, t.O)];
     expect(await live(h)).toBe(200);
     expect(await live(o)).toBe(200);
 
     const [recH, recO] = [(await resolveFeed(h))!.rec, (await resolveFeed(o))!.rec];
-    expect(recH).toMatchObject({ pid: t.pid, aid: aidOf(t.H), scope: sc(t.uH), home: true, login: t.email });
-    expect(recO).toMatchObject({ pid: t.pid, aid: aidOf(t.O), scope: sc(t.uO) });
+    expect(recH).toMatchObject({ pid: t.pid, aid: aidOf(t.H), scope: sc(t.uH), login: t.email });
+    expect(recO).toMatchObject({ pid: t.pid, aid: aidOf(t.O), scope: sc(t.uO), login: t.email });
+    expect(recH.home).toBeUndefined();
     expect(recO.home).toBeUndefined();
-    // Each account's pointer names its own link; only the home one writes the legacy per-login pointer.
+    // Each account's pointer names its own link; no legacy per-login pointer is written (rule 2138).
     expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBe(hashFeedToken(h));
     expect(await db.get(personKey.feedOf(t.pid, aidOf(t.O)))).toBe(hashFeedToken(o));
-    expect(await db.get(FEED_KEYS.of(t.email))).toBe(hashFeedToken(h));
+    expect(await db.get(FEED_KEYS.of(t.email))).toBeNull();
 
     // A link reaches only its own account's brands: O's record with H's scope (or the reverse) does not hold.
     expect(await loginHolds({ ...recO, scope: sc(t.uH) })).toBe(false);
@@ -112,7 +115,7 @@ describe("rule 2119: a link lives in one account", () => {
     const bookO = (await createBook(t.whoO, sc(t.uO), "calcom", "ar")) as string;
     const bookH = (await createBook(t.whoH, sc(t.uH), "calcom", "ar")) as string;
 
-    await deleteMembership(aidOf(t.O), t.pid, { home: false, teamLocked: true });
+    await deleteMembership(aidOf(t.O), t.pid, { teamLocked: true });
     expect(await live(o)).toBe(404);
     expect(await live(h)).toBe(200);
     expect(await db.get(personKey.feedOf(t.pid, aidOf(t.O)))).toBeNull();
@@ -139,7 +142,8 @@ describe("rule 2119: a link lives in one account", () => {
       (await createBook(t.whoO, sc(t.uO), "calendly", "en")) as string,
     ];
     for (const tok of [h, o, o2]) expect(await loginHolds((await resolveBook(tok))!)).toBe(true);
-    expect(await db.get(BOOK_KEYS.of(t.email, "calcom"))).toBe(hashBookToken(h));
+    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calcom"))).toBe(hashBookToken(h));
+    expect(await db.get(BOOK_KEYS.of(t.email, "calcom"))).toBeNull();
     expect(await db.get(BOOK_KEYS.of(t.email, "calendly"))).toBeNull();
     expect((await getBookStatus(t.whoO, sc(t.uO))).map((s) => s.provider).sort()).toEqual(["calcom", "calendly"]);
     expect((await getBookStatus(t.whoH, sc(t.uH))).map((s) => s.provider)).toEqual(["calcom"]);
@@ -152,120 +156,111 @@ describe("rule 2119: a link lives in one account", () => {
   });
 });
 
-describe("rule 2132: R1 still reads the home link; links made before M1 keep working", () => {
-  it("a home link is readable by an R1-shaped resolver: legacy pointer, record, and R1's check on the fields it knows", async () => {
+describe("rule 2138: M4 contract, the legacy per-login pointers are gone and links made before M1 are dead", () => {
+  it("a create writes no legacy pointer; a planted legacy pointer is never read: it neither keeps a link alive nor ends one", async () => {
     const t = await twoAccounts();
     const h = await routeFeed(t.email, t.H);
-    // R1: `sec:feedof:{login}` names the hash, the record is there, and R1's check (no pid read) holds.
-    const hash = await db.get<string>(FEED_KEYS.of(t.email));
-    expect(hash).toBe(hashFeedToken(h));
-    const rec = (await db.get<FeedRecord>(FEED_KEYS.rec(hash!)))!;
-    const { pid: _p, aid: _a, home: _h, ...r1 } = rec;
-    expect(await loginHolds(r1)).toBe(true);
-    expect(Object.keys(r1).sort()).toEqual(["createdAt", "lang", "login", "scope"]);
-  });
-
-  it("a home link needs both pointers: a revoke by address (reset, console, R1) that drops only the legacy pointer ends it, and revokeFeed(login) drops the (pid, aid) pointer too", async () => {
-    const t = await twoAccounts();
-    const h = await routeFeed(t.email, t.H);
-    await db.del(FEED_KEYS.of(t.email));
-    expect(await resolveFeed(h)).toBeNull();
-    expect((await getFeedStatus(t.whoH)).exists).toBe(false);
-
-    const h2 = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
-    const o = (await createFeed(t.whoO, sc(t.uO), "ar")) as string;
-    await revokeFeed(t.email);
-    expect(await resolveFeed(h2)).toBeNull();
-    expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBeNull();
-    expect(await db.get(FEED_KEYS.rec(hashFeedToken(h2)))).toBeNull();
-    // The address names the home only: the link in O is not touched (it dies at read time with the person, rule 2131).
-    expect(await live(o)).toBe(200);
-  });
-
-  it("a link made before M1 (no pid) still resolves, shows in the home status, is replaced by a new home link, and deleteMembership(home) revokes it", async () => {
-    const t = await twoAccounts();
-    const old = (await createFeed(t.email, sc(t.uH), "ar")) as string;
-    const oldBook = (await createBook(t.email, sc(t.uH), "calcom", "ar")) as string;
-    expect((await resolveFeed(old))!.rec.pid).toBeUndefined();
-    expect(await live(old)).toBe(200);
-    expect(await loginHolds((await resolveBook(oldBook))!)).toBe(true);
-    expect((await getFeedStatus(t.whoH, sc(t.uH))).exists).toBe(true);
-    expect((await getFeedStatus(t.whoO, sc(t.uO))).exists).toBe(false);
-    expect((await getBookStatus(t.whoH)).map((s) => s.provider)).toEqual(["calcom"]);
-
-    // A new home link replaces it (one link per person per account).
-    const fresh = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
-    expect(await live(old)).toBe(404);
-    expect(await live(fresh)).toBe(200);
-
-    // A second pre-M1 link (an R1 build's create), then the home membership is deleted: both kinds end.
-    const old2 = (await createFeed(t.email, sc(t.uH), "ar")) as string;
-    expect(await live(old2)).toBe(200);
-    const book2 = (await createBook(t.whoH, sc(t.uH), "calendly", "ar")) as string;
-    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calendly"))).toBe(hashBookToken(book2));
-    await deleteMembership(aidOf(t.H), t.pid, { home: true, teamLocked: true });
-    expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBeNull();
-    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calendly"))).toBeNull();
-    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calcom"))).toBeNull();
-    expect(await resolveBook(book2)).toBeNull();
-    expect(await resolveFeed(old2)).toBeNull();
-    expect(await resolveBook(oldBook)).toBeNull();
+    const b = (await createBook(t.whoH, sc(t.uH), "calcom", "ar")) as string;
     expect(await db.get(FEED_KEYS.of(t.email))).toBeNull();
     expect(await db.get(BOOK_KEYS.of(t.email, "calcom"))).toBeNull();
-  });
-});
+    // The record still carries `login` (the rate bucket's name; an M3 build after a rollback reads it).
+    expect((await resolveFeed(h))!.rec.login).toBe(t.email);
 
-describe("rule 2132: rollback and status", () => {
-  it("R1 re-creates while an M1 home record exists: the M1 record is dead, the R1 link live, status shows the R1 link; a later M1 create cleans up", async () => {
+    // A legacy pointer naming another hash changes nothing: the (pid, aid) pointer alone decides.
+    await Promise.all([db.set(FEED_KEYS.of(t.email), "e".repeat(64)), db.set(BOOK_KEYS.of(t.email, "calcom"), "e".repeat(64))]);
+    expect(await live(h)).toBe(200);
+    expect(await resolveBook(b)).not.toBeNull();
+    // Without the (pid, aid) pointer the link is dead, even when a legacy pointer names it.
+    await Promise.all([db.set(FEED_KEYS.of(t.email), hashFeedToken(h)), db.set(BOOK_KEYS.of(t.email, "calcom"), hashBookToken(b))]);
+    await Promise.all([db.del(personKey.feedOf(t.pid, aidOf(t.H))), db.del(personKey.bookOf(t.pid, aidOf(t.H), "calcom"))]);
+    expect(await resolveFeed(h)).toBeNull();
+    expect(await resolveBook(b)).toBeNull();
+    expect((await getFeedStatus(t.whoH, sc(t.uH))).exists).toBe(false);
+    expect(await getBookStatus(t.whoH, sc(t.uH))).toEqual([]);
+  });
+
+  it("a link made before M1 (a record without pid, named by the legacy pointer) is dead: resolve, status and loginHolds refuse it", async () => {
     const t = await twoAccounts();
-    const m1 = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
-    const m1Rec = (await resolveFeed(m1))!.rec;
-    // R1's create: the per-login lock, a pid-less record, the legacy pointer, then the old record deleted.
-    const r1 = (await createFeed(t.email, sc(t.uH), "en")) as string;
-    expect(await resolveFeed(m1)).toBeNull();
-    expect(await live(r1)).toBe(200);
-    const r1Rec = (await resolveFeed(r1))!.rec;
-    expect(r1Rec.pid).toBeUndefined();
-    expect((await getFeedStatus(t.whoH, sc(t.uH))).createdAt).toBe(r1Rec.createdAt);
-    // R1's delete of the M1 record failed: the record is back, named by the (pid, aid) pointer only, and still dead.
-    await db.set(FEED_KEYS.rec(hashFeedToken(m1)), m1Rec);
-    expect(await resolveFeed(m1)).toBeNull();
-    expect(await live(m1)).toBe(404);
-    expect((await getFeedStatus(t.whoH, sc(t.uH))).createdAt).toBe(r1Rec.createdAt);
-    // The next M1 create deletes both old records.
-    const again = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
-    expect(await db.get(FEED_KEYS.rec(hashFeedToken(m1)))).toBeNull();
-    expect(await db.get(FEED_KEYS.rec(hashFeedToken(r1)))).toBeNull();
-    expect(await live(again)).toBe(200);
+    const [f, b] = [plainToken(), plainToken()];
+    const createdAt = new Date().toISOString();
+    const feedRec: FeedRecord = { login: t.email, scope: sc(t.uH), lang: "ar", createdAt };
+    const bookRec: BookRecord = { login: t.email, scope: sc(t.uH), provider: "calcom", lang: "ar", createdAt };
+    await Promise.all([
+      db.set(FEED_KEYS.rec(hashFeedToken(f)), feedRec),
+      db.set(FEED_KEYS.of(t.email), hashFeedToken(f)),
+      db.set(BOOK_KEYS.rec(hashBookToken(b)), bookRec),
+      db.set(BOOK_KEYS.of(t.email, "calcom"), hashBookToken(b)),
+    ]);
+    expect(await resolveFeed(f)).toBeNull();
+    expect(await live(f)).toBe(404);
+    expect(await resolveBook(b)).toBeNull();
+    expect(await loginHolds(feedRec)).toBe(false);
+    expect(await loginHolds(bookRec)).toBe(false);
+    expect((await getFeedStatus(t.whoH, sc(t.uH))).exists).toBe(false);
+    expect(await getBookStatus(t.whoH, sc(t.uH))).toEqual([]);
+    // Even a (pid, aid) pointer naming it does not revive it: the record names no ids.
+    await db.set(personKey.feedOf(t.pid, aidOf(t.H)), hashFeedToken(f));
+    expect(await resolveFeed(f)).toBeNull();
+    expect((await getFeedStatus(t.whoH, sc(t.uH))).exists).toBe(false);
+    // A new link in H is made beside it as usual and is live.
+    const fresh = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
+    expect(await live(fresh)).toBe(200);
   });
 
-  it("status agrees with resolve when a home record is seen by an actor that is not home in it, for the feed and booking", async () => {
+  it("a record M1 to M3 made with `home: true` stays live while its (pid, aid) pointer names it; revokeFeed / revokeBook end it", async () => {
     const t = await twoAccounts();
     const f = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
     const b = (await createBook(t.whoH, sc(t.uH), "calcom", "ar")) as string;
-    const flipped: LinkOwner = { ...t.whoH, home: false };
-    expect(await resolveFeed(f)).not.toBeNull();
-    expect((await getFeedStatus(flipped, sc(t.uH))).exists).toBe(true);
-    expect((await getBookStatus(flipped, sc(t.uH))).map((r) => r.provider)).toEqual(["calcom"]);
-    // With the legacy pointer gone the record is dead for resolve, and status says so too.
-    await Promise.all([db.del(FEED_KEYS.of(t.email)), db.del(BOOK_KEYS.of(t.email, "calcom"))]);
-    expect(await resolveFeed(f)).toBeNull();
+    const [fk, bk] = [FEED_KEYS.rec(hashFeedToken(f)), BOOK_KEYS.rec(hashBookToken(b))];
+    await Promise.all([
+      db.set(fk, { ...(await db.get<FeedRecord>(fk))!, home: true }),
+      db.set(bk, { ...(await db.get<BookRecord>(bk))!, home: true }),
+    ]);
+    expect(await live(f)).toBe(200);
+    expect(await loginHolds((await resolveBook(b))!)).toBe(true);
+    expect((await getFeedStatus(t.whoH, sc(t.uH))).exists).toBe(true);
+    await Promise.all([revokeFeed(t.whoH), revokeBook(t.whoH)]);
+    expect(await live(f)).toBe(404);
     expect(await resolveBook(b)).toBeNull();
-    expect((await getFeedStatus(flipped, sc(t.uH))).exists).toBe(false);
-    expect(await getBookStatus(flipped, sc(t.uH))).toEqual([]);
+    expect(await db.get(fk)).toBeNull();
+    expect(await db.get(bk)).toBeNull();
   });
 
-  it("a revoke by address deletes the home record's (pid, aid) pointer only while it still names that record", async () => {
+  it("status agrees with resolve: a record its (pid, aid) pointer names but that names another person or account is dead for both", async () => {
     const t = await twoAccounts();
-    const h = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
-    const b = (await createBook(t.whoH, sc(t.uH), "calcom", "ar")) as string;
-    const newer = "f".repeat(64);
-    await Promise.all([db.set(personKey.feedOf(t.pid, aidOf(t.H)), newer), db.set(personKey.bookOf(t.pid, aidOf(t.H), "calcom"), newer)]);
-    await Promise.all([revokeFeed(t.email), revokeBook(t.email)]);
-    expect(await db.get(FEED_KEYS.rec(hashFeedToken(h)))).toBeNull();
-    expect(await db.get(BOOK_KEYS.rec(hashBookToken(b)))).toBeNull();
-    expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBe(newer);
-    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calcom"))).toBe(newer);
+    const f = (await createFeed(t.whoO, sc(t.uO), "ar")) as string;
+    const b = (await createBook(t.whoO, sc(t.uO), "calcom", "ar")) as string;
+    // H's pointers name O's records: H's status shows nothing, and the records stay live only under O.
+    await Promise.all([db.set(personKey.feedOf(t.pid, aidOf(t.H)), hashFeedToken(f)), db.set(personKey.bookOf(t.pid, aidOf(t.H), "calcom"), hashBookToken(b))]);
+    expect((await getFeedStatus(t.whoH, sc(t.uH))).exists).toBe(false);
+    expect(await getBookStatus(t.whoH, sc(t.uH))).toEqual([]);
+    expect((await getFeedStatus(t.whoO, sc(t.uO))).exists).toBe(true);
+    expect(await live(f)).toBe(200);
+  });
+
+  it("deleteMembership in the account the person signs in to first revokes its links there and leaves the other account's", async () => {
+    const t = await twoAccounts();
+    const [h, o] = [await routeFeed(t.email, t.H), await routeFeed(t.email, t.O)];
+    const [bh, bh2] = [(await createBook(t.whoH, sc(t.uH), "calcom", "ar")) as string, (await createBook(t.whoH, sc(t.uH), "calendly", "ar")) as string];
+    await deleteMembership(aidOf(t.H), t.pid, { teamLocked: true });
+    expect(await live(h)).toBe(404);
+    expect(await resolveBook(bh)).toBeNull();
+    expect(await resolveBook(bh2)).toBeNull();
+    expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBeNull();
+    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calcom"))).toBeNull();
+    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calendly"))).toBeNull();
+    expect(await live(o)).toBe(200);
+  });
+
+  it("linksOfPerson names every account the person holds, so a person-wide revoke ends the links in each", async () => {
+    const t = await twoAccounts();
+    const [h, o] = [await routeFeed(t.email, t.H), await routeFeed(t.email, t.O)];
+    const links = await linksOfPerson(t.pid);
+    expect(links.map((l) => l.aid).sort()).toEqual(expect.arrayContaining([aidOf(t.H), aidOf(t.O)].sort()));
+    expect(links.every((l) => l.pid === t.pid)).toBe(true);
+    await Promise.all([revokeFeeds(links), revokeBooks(links)]);
+    expect(await live(h)).toBe(404);
+    expect(await live(o)).toBe(404);
   });
 });
 
@@ -292,21 +287,10 @@ describe("rule 2131: suspensions", () => {
     expect(await loginHolds((await resolveBook(bh))!)).toBe(true);
   });
 
-  it("a person suspension ends a feed link and a booking link made before M1 (no pid) too", async () => {
-    const t = await twoAccounts();
-    const f = (await createFeed(t.email, sc(t.uH), "ar")) as string;
-    const b = (await createBook(t.email, sc(t.uH), "calcom", "ar")) as string;
-    expect(await live(f)).toBe(200);
-    expect(await loginHolds((await resolveBook(b))!)).toBe(true);
-    const { source: _s, ...person } = (await getPerson(t.pid))!;
-    await db.set(personKey.person(t.pid), { ...person, suspended: true });
-    expect(await live(f)).toBe(404);
-    expect(await loginHolds((await resolveBook(b))!)).toBe(false);
-  });
 });
 
-describe("rule 2139: the feed and booking locks are leaves, new first and legacy inside", () => {
-  it("the lock keys are byte-exact; a held legacy lock makes the home create busy and frees the new lock; a create in another account ignores it", async () => {
+describe("rule 2139: the feed and booking locks are leaves", () => {
+  it("the lock keys are byte-exact; a held (pid, aid) lock makes that create busy; a held legacy per-login lock is ignored (rule 2138)", async () => {
     const pid = storedPersonId(`x-${randomBytes(3).toString("hex")}@test.example`);
     const aid = storedAccountId("acct@test.example");
     expect(personKey.feedLock(pid, aid)).toBe(`lock:feed:${pid}:${aid}`);
@@ -315,22 +299,24 @@ describe("rule 2139: the feed and booking locks are leaves, new first and legacy
     expect(personKey.bookOf(pid, aid, "calendly")).toBe(`sec:bookof:${pid}:${aid}:calendly`);
 
     const t = await twoAccounts();
-    const held = (await db.lockOwned(`lock:feed:${t.email}`, 10))!;
-    expect(await createFeed(t.whoH, sc(t.uH), "ar")).toBe("busy");
-    // The new lock was released on the way out: it can be taken now.
-    const mine = await db.lockOwned(personKey.feedLock(t.pid, aidOf(t.H)), 10);
-    expect(mine).toBeTruthy();
-    await db.unlockOwned(personKey.feedLock(t.pid, aidOf(t.H)), mine!);
-    expect(typeof (await createFeed(t.whoO, sc(t.uO), "ar"))).toBe("string");
-    await db.unlockOwned(`lock:feed:${t.email}`, held);
+    // The legacy per-login locks are never taken from M4: holding them blocks nothing.
+    const legacyFeed = (await db.lockOwned(`lock:feed:${t.email}`, 10))!;
+    const legacyBook = (await db.lockOwned(`lock:book:${t.email}:calcom`, 10))!;
+    expect(typeof (await createFeed(t.whoH, sc(t.uH), "ar"))).toBe("string");
+    expect(typeof (await createBook(t.whoH, sc(t.uH), "calcom", "ar"))).toBe("string");
+    await Promise.all([db.unlockOwned(`lock:feed:${t.email}`, legacyFeed), db.unlockOwned(`lock:book:${t.email}:calcom`, legacyBook)]);
 
-    const bookHeld = (await db.lockOwned(`lock:book:${t.email}:calcom`, 10))!;
+    // The (pid, aid) lock makes that create busy and leaves the other account's alone.
+    const held = (await db.lockOwned(personKey.feedLock(t.pid, aidOf(t.H)), 10))!;
+    expect(await createFeed(t.whoH, sc(t.uH), "ar")).toBe("busy");
+    expect(typeof (await createFeed(t.whoO, sc(t.uO), "ar"))).toBe("string");
+    await db.unlockOwned(personKey.feedLock(t.pid, aidOf(t.H)), held);
+    const bookHeld = (await db.lockOwned(personKey.bookLock(t.pid, aidOf(t.H), "calcom"), 10))!;
     expect(await createBook(t.whoH, sc(t.uH), "calcom", "ar")).toBe("busy");
-    expect(await db.lockOwned(personKey.bookLock(t.pid, aidOf(t.H), "calcom"), 10)).toBeTruthy();
-    await db.unlockOwned(`lock:book:${t.email}:calcom`, bookHeld);
+    await db.unlockOwned(personKey.bookLock(t.pid, aidOf(t.H), "calcom"), bookHeld);
   });
 
-  it("one round each: resolveFeed reads the record then both pointers together; loginHolds for an M1 record reads person, account, membership and brands together", async () => {
+  it("rounds: resolveFeed reads the record then its (pid, aid) pointer; loginHolds reads person, account, membership and brands together", async () => {
     const t = await twoAccounts();
     const h = await routeFeed(t.email, t.H);
     const rec = (await resolveFeed(h))!.rec;

@@ -10,7 +10,7 @@ import { allow, clientIp, retryLater, sameSecret } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
 import { mailReady, sendEmail } from "./notify";
 import { withLoginLock, withMoveTeamLock } from "./team";
-import { createPersonRecord, getPerson, laterStamp, updatePerson, withMovePersonLock } from "./person";
+import { createPersonRecord, getPerson, updatePerson, withMovePersonLock } from "./person";
 import { movePasskeys } from "./passkeys";
 import { log } from "./log";
 import { ownerOf } from "./membership";
@@ -241,25 +241,29 @@ export async function moveOwnerLogin(from: User, target: string, opts: { may: (c
       // an account a `p_` person owns moves with the person (release M2), never here.
       const pid = ownerOf(cur);
       if (pid !== fromPid) return "not_allowed";
-      const [login, me] = await Promise.all([getLogin(to), getPerson(pid)]);
+      // The raw account record at the target too (rule 2138): from M4 `getLogin` answers from the index and the person
+      // only, so a record a stopped run wrote before its person (or any record without a login) is not a login, but
+      // `saveUser` below would overwrite it. Only this move's own copy (same birth, still a copy) may be written over.
+      const [login, me, atTarget] = await Promise.all([getLogin(to), getPerson(pid), db.get<User>(accountKey.user(to))]);
       if (!me) return "not_allowed";
-      const unfinished = login?.kind === "owner" && opts.isCopy(login.user) && login.user.createdAt === cur.createdAt && login.person.passHash === me.passHash;
-      if (login && !unfinished) return "exists";
+      const sameBirth = (x: User) => opts.isCopy(x) && x.createdAt === cur.createdAt;
+      const copy = login
+        ? (login.kind === "owner" && sameBirth(login.user) && login.person.passHash === me.passHash ? login.user : null)
+        : (atTarget && sameBirth(atTarget) ? atTarget : null);
+      if ((login || atTarget) && !copy) return "exists";
+      const unfinished = !!copy;
       // A fresh session window (as `createUser` stamps): a session issued earlier for the TARGET address (a deleted former
       // owner, a removed member, this owner's own devices after A to B to A) must never resolve to the moved account. The
       // session the route opens right after has `at >= sessionsAfter` (the check is a strict `<`), so it still resolves.
       const fresh = new Date(now).toISOString();
-      // The device stamp is the later of the moved person's and the record written (a stamp never moves backwards), the
-      // same on both records.
-      const dev = laterStamp(me.devicesAfter, (unfinished ? login.user : cur).devicesAfter);
-      const devices = dev ? { devicesAfter: dev } : {};
-      if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh, ...devices });
-      else await saveUser({ ...cur, id: to, email: to, sessionsAfter: fresh, ...devices, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
+      // The device stamp is the moved person's (from M4, rule 2138, the credentials and both stamps live on the person
+      // only: the account record is saved without them, `saveUser`).
+      const dev = me.devicesAfter;
+      if (!unfinished) await saveUser({ ...cur, id: to, email: to, emailMoves: { day: today, n: used + 1 }, ...(opts.proved ? { emailVerifiedAt: fresh } : {}) });
       // The person at the new address (multi-workspace M1, rule 2132), written whole (reconciliation 6: a leftover row at
       // `person:{to}` lends nothing): the moved owner's password, the account's birth, the fresh session stamp, and the
       // proof only when this move proved the address (or a stopped run's copy already carried one). Under both login
       // locks and both person locks (taken above, before `lock:user`); the address is claimed only below.
-      const copy = unfinished ? login.user : null;
       await Promise.all([
         createPersonRecord(
           { pid: toPid, email: to, name: me.name, lang: me.lang, passHash: me.passHash, createdAt: cur.createdAt, sessionsAfter: fresh, devicesAfter: dev, emailVerifiedAt: copy ? copy.emailVerifiedAt : opts.proved ? fresh : undefined },

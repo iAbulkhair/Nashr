@@ -9,12 +9,12 @@ import { can, forbid } from "@/lib/roles";
 import { acct } from "@/lib/account-id";
 
 /**
- * Whose active brand a switch moves: the person acting, in this account only (`activebrand:{pid}:{aid}`, rule 2119), and
- * the legacy per-login key beside it when this account is their home. Never the account as a whole, never another account.
+ * Whose active brand a switch moves: the person acting, in this account only (`activebrand:{pid}:{aid}`, rule 2119; from
+ * M4 the legacy per-login key is neither read nor written, rule 2138). Never the account as a whole, never another account.
  */
 const choose = (u: User, id: string) => {
   const who = brandChooser(u);
-  return setActiveBrandIn(who.pid, who.aid, id, who.homeLogin);
+  return setActiveBrandIn(who.pid, who.aid, id);
 };
 /** The cap refusal as the route answers it: 402, the cap and the plan, nothing written (rule 1391). */
 const overCap = (u: User, r: BrandLimit) => NextResponse.json({ ok: false, error: r.error, cap: r.cap, plan: u.plan }, { status: 402 });
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     // archives the brand the owner is on: a session written before R1 does not validate the owner's (src/lib/auth.ts).
     if ((u.brandId ?? "default") === changed.id) await choose(u, "default");
     const owner = ownerChooser(u);
-    if (changed.status === "archived" && brandChooser(u).pid !== owner.pid && (await activeBrandIn(owner.pid, owner.aid, owner.homeLogin)) === changed.id) await setActiveBrandIn(owner.pid, owner.aid, "default", owner.homeLogin);
+    if (changed.status === "archived" && brandChooser(u).pid !== owner.pid && (await activeBrandIn(owner.pid, owner.aid)) === changed.id) await setActiveBrandIn(owner.pid, owner.aid, "default");
   }
   return NextResponse.json({ ok: true });
 }

@@ -100,12 +100,12 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // inside `withUserLock(email)` (the address move, `moveOwnerLogin`) says so: the lock is not reentrant.
   await stopRenewals(e, opts);
   // Calendar feed and booking links first, before anything slow can fail and before the roster is deleted: the owner's and every roster
-  // member's (`members:{owner}`), each in THIS account only (`rosterLinks`: the (person, account) pointers, and the legacy
-  // per-login ones only for a person whose home this account is, so a member's links in its other accounts stay). A member
-  // added after this read is revoked by `wipeMemberships` under `lock:team`. A failure stops the wipe (a retry runs it
-  // again) rather than leaving a working link behind a half-wiped account.
+  // member's (`members:{owner}`), each in THIS account only (`rosterLinks`: the (person, account) pointers; from M4, rule
+  // 2138, no per-login pointer is read, so a member's links in its other accounts stay). A member added after this read
+  // is revoked by `wipeMemberships` under `lock:team`. A failure stops the wipe (a retry runs it again) rather than
+  // leaving a working link behind a half-wiped account.
   const roster = await db.smembers(membersKey(e));
-  const links = [{ pid: self, aid, login, home: true }, ...(await rosterLinks(aid, roster))];
+  const links = [{ pid: self, aid }, ...rosterLinks(aid, roster)];
   // The owner's linked marketing calendars (Reem B3), every brand's: only our side is dropped, the owner removes access at the provider.
   await Promise.all([pmap(links, (w) => revokeFeed(w)), pmap(links, (w) => revokeBook(w)), revokeCalendarLinks(e)]);
   // The account's own brand list, read under its owner email: the scopes come from our records, never from a request.
@@ -243,8 +243,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // code, the referral set and the ledger. The account also leaves its own partner's referral set.
   keys.push(...(await forgetPartnerData(e, login)));
   keys.push(accountKey.mcpGrants(e));
-  // The owner's active brand here: the legacy per-login key (this account is the owner's home) and the per-(person,
-  // account) one (multi-workspace M1).
+  // The owner's active brand here: the per-(person, account) key (multi-workspace M1), and a leftover legacy per-login
+  // key of this account's owner (never read from M4, rule 2138; deleted so a wiped account leaves nothing behind).
   keys.push(`profile:${e}`, accountKey.mcpTokenOf(e), accountKey.brands(e), accountKey.activeBrand(login), personKey.activeBrand(self, aid), accountKey.user(e));
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
   // referral graph, share-bonus markers and activity history behind, so re-registering the same address inherited

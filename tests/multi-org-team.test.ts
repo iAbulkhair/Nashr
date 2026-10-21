@@ -37,8 +37,9 @@ const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Paramete
 /**
  * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md sections 9, 13 and 15): team membership writes on
  * the new shapes. Rules 2118 (seats per account), 2124 (M1 half: leave and removal), 2125 (an admin of one account is
- * nobody in another), 2129 (write half: one team log row per event, never a token, an invite id or a password), 2132
- * (a legacy reader still sees R1's bytes) and 2139 (the lock order, and no half-written membership under races).
+ * nobody in another), 2129 (write half: one team log row per event, never a token, an invite id or a password), 2138
+ * (M4 contract: no legacy member record is written; rule 2132's R1 bytes are gone) and 2139 (the lock order, and no
+ * half-written membership under races).
  *
  * The second membership of a legacy person (in an account that is not its home) is written with `writeMembership`, as
  * release M2's accept will: M1's own accept refuses an address that already signs in.
@@ -47,13 +48,13 @@ const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Paramete
 afterEach(() => { vi.restoreAllMocks(); signOut(); });
 
 const freshEmail = (p = "inv") => `${p}-${randomBytes(4).toString("hex")}@test.example`;
-const ownerActor = (u: User): Actor => ({ kind: "owner", pid: storedPersonId(u.email), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" });
+const ownerActor = (u: User): Actor => ({ kind: "owner", pid: storedPersonId(u.email), email: u.email, name: u.name, lang: u.lang, role: "owner" });
 const withPlan = async (u: User, plan: Plan, seats?: number) => { const x = { ...(await getUser(u.email))!, plan, seats }; await saveUser(x); return x; };
 const aidOf = (u: User): AccountId => storedAccountId(acct(u));
 const resolveAs = async (email: string, account?: User) => { await signIn(email, account ? { acct: acct(account) } : {}); return currentUser(); };
 /** Join a legacy person (`pid` = its address) to a second account, as M2's accept will: the row, the roster and `orgs:`. */
 const joinElsewhere = (to: User, pid: PersonId, role: "admin" | "member" = "member") =>
-  writeMembership(aidOf(to), pid, { aid: aidOf(to), pid, role, acceptedAt: new Date().toISOString(), invitedBy: storedPersonId(to.email) }, { home: false, teamLocked: true });
+  writeMembership(aidOf(to), pid, { aid: aidOf(to), pid, role, acceptedAt: new Date().toISOString(), invitedBy: storedPersonId(to.email) }, { teamLocked: true });
 /** Every key a membership of `pid` in `aid` lives in, read in one round. */
 const traces = async (aid: AccountId, pid: PersonId) => {
   const [row, listed, org, brandIn] = await Promise.all([db.get(accountKey.membership(aid, pid)), db.sismember(accountKey.members(aid), pid), db.sismember(personKey.orgs(pid), aid), db.get(personKey.activeBrand(pid, aid))]);
@@ -91,12 +92,15 @@ describe("rule 2118: seats are per account", () => {
 });
 
 describe("rule 2124 (M1 half): leave and removal", () => {
-  it("a removal deletes the row, the roster and orgs: entries, both active brands and the legacy record; the person keeps signing in to B", async () => {
+  it("a removal deletes the row, the roster and orgs: entries, the active brand and a leftover legacy record with its per-login brand; the person keeps signing in to B", async () => {
     const [A, B] = [await newUser("ra"), await newUser("rb")];
     const p = await newMember(A);
     const pid = storedPersonId(p.email);
     await joinElsewhere(B, pid);
-    await Promise.all([db.set(personKey.activeBrand(pid, aidOf(A)), "brandA00"), db.set(accountKey.activeBrand(p.email), "brandA00"), db.set(personKey.activeBrand(pid, aidOf(B)), "brandB00")]);
+    // A legacy member record of this membership that a build before M4 left (rule 2138: never written or read for an
+    // answer; the removal still deletes it with its per-login brand, so Script S2 has nothing left to report for it).
+    const legacy = { email: p.email, name: "Legacy", lang: "ar", passHash: "legacy-hash", memberOf: acct(A), role: "member", invitedBy: A.email, acceptedAt: new Date().toISOString() };
+    await Promise.all([db.set(accountKey.member(p.email), legacy), db.set(personKey.activeBrand(pid, aidOf(A)), "brandA00"), db.set(accountKey.activeBrand(p.email), "brandA00"), db.set(personKey.activeBrand(pid, aidOf(B)), "brandB00")]);
 
     expect(await removeMember(A, ownerActor(A), p.email)).toEqual({ ok: true });
     expect(await traces(aidOf(A), pid)).toEqual({ row: false, listed: false, org: false, brandIn: false });
@@ -307,13 +311,13 @@ describe("rule 2139: the lock order, and no half-written membership under races"
     return { taken, nesting };
   }
 
-  it("accept takes inviteuse → lock:team → lock:login → lock:person → lock:member, and never an outer lock under an inner one", async () => {
+  it("accept takes inviteuse → lock:team → lock:login → lock:person (rule 2138: no lock:member, no member record), and never an outer lock under an inner one", async () => {
     const A = await newUser("lo");
     const inv = await invite(A);
     const spy = lockSpy();
     const r = await acceptInvite(inv.token, { name: "Locker", password: "abc12345" });
     expect(r.ok).toBe(true);
-    expect(spy.taken).toEqual(["inviteuse", "lock:team", "lock:login", "lock:person", "lock:member"]);
+    expect(spy.taken).toEqual(["inviteuse", "lock:team", "lock:login", "lock:person"]);
     expect(spy.nesting).toEqual([]);
   });
 
@@ -349,7 +353,7 @@ describe("rule 2139: the lock order, and no half-written membership under races"
       await db.unlock(personKey.lock(pid));
     }
     expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
-    expect(await db.get(accountKey.member(m.email))).not.toBeNull();
+    expect(await getPerson(pid)).not.toBeNull();
     expect(await kinds(A)).toEqual([]);
     expect((await del()).status).toBe(200);
     expect(await traces(aidOf(A), pid)).toMatchObject({ row: false, listed: false, org: false });
@@ -418,31 +422,22 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     expect(await getLogin(e)).toBeNull();
     expect(await kinds(A)).toEqual(["invited"]);
     expect((await accept()).status).toBe(200);
-    expect(await db.get(accountKey.member(e))).not.toBeNull();
+    expect(await db.get(accountKey.member(e))).toBeNull(); // rule 2138: never written
     expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
     expect(await getLogin(e)).not.toBeNull();
     expect(await kinds(A)).toEqual(["joined", "invited"]);
   }, 20_000);
 
-  it("accept with the new member's lock:member held answers busy and writes nothing (no person, member:, mbr:, roster, orgs: or login); the invite stays; the retry joins whole", async () => {
+  it("accept never takes the new member's lock:member (rule 2138: no member record is written): a held one does not stop it, and it joins whole", async () => {
     const A = await newUser("am");
     const inv = await invite(A);
     const e = inv.invite.email;
     const pid = storedPersonId(e);
     const accept = () => acceptRoute.POST(json("/api/team/accept", "POST", { token: inv.token, name: "Late", password: "abc12345" }));
-    const r = await holding(accountKey.memberLock(e), accept);
-    expect(r.status).toBe(409);
-    expect(await r.json()).toEqual({ error: "busy" });
-    expect(await db.get(personKey.person(pid))).toBeNull();
-    expect(await db.get(accountKey.member(e))).toBeNull();
-    expect(await traces(aidOf(A), pid)).toMatchObject({ row: false, listed: false, org: false });
-    expect(await getLogin(e)).toBeNull();
-    expect(await db.get(globalKey.invite(inv.id))).not.toBeNull();
-    expect(await kinds(A)).toEqual(["invited"]);
-    // The retry after the lock frees: everything, in one piece, and the member signs in to A.
-    expect((await accept()).status).toBe(200);
+    expect((await holding(accountKey.memberLock(e), accept)).status).toBe(200);
     expect(await db.get(personKey.person(pid))).not.toBeNull();
-    expect(await db.get(accountKey.member(e))).toMatchObject({ email: e, memberOf: aidOf(A), role: "member" });
+    expect(await db.get(accountKey.member(e))).toBeNull();
+    expect(await db.get(globalKey.invite(inv.id))).toBeNull();
     expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
     expect(await getMembership(aidOf(A), pid)).toMatchObject({ role: "member" });
     expect(await getLogin(e)).not.toBeNull();
@@ -511,7 +506,7 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
       const force = () => adminUserRoute.POST(json(`/api/admin/users/${encodeURIComponent(m.email)}`, "POST", { action: "removeMember" }), params({ email: encodeURIComponent(m.email) }));
       expect((await holding(lock, force)).status).toBe(409);
       expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
-      expect(await db.get(accountKey.member(m.email))).not.toBeNull();
+      expect(await getPerson(pid)).not.toBeNull();
       expect(await getLogin(m.email)).not.toBeNull();
       expect(await kinds(A)).toEqual([]);
       expect((await force()).status).toBe(200);
@@ -521,7 +516,7 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     }
   }, 30_000);
 
-  it("a stale member lock stops a removal before its first delete; the retry removes the member", async () => {
+  it("a stale member lock (the lock of the leftover legacy record's cleanup, rule 2138) stops a removal before its first delete; the retry removes the member", async () => {
     const A = await newUser("sm");
     const m = await newMember(A);
     const pid = storedPersonId(m.email);
@@ -529,7 +524,7 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     const del = () => memberRoute.DELETE(json("/api/team/member", "DELETE", { email: m.email }));
     expect((await holding(accountKey.memberLock(m.email), del)).status).toBe(409);
     expect(await traces(aidOf(A), pid)).toMatchObject({ row: true, listed: true, org: true });
-    expect(await db.get(accountKey.member(m.email))).not.toBeNull();
+    expect(await getPerson(pid)).not.toBeNull();
     expect(await getLogin(m.email)).not.toBeNull();
     expect(await kinds(A)).toEqual([]);
     expect((await del()).status).toBe(200);
@@ -550,28 +545,23 @@ describe("rule 2139: a lock that cannot be had writes nothing, and the retry fin
     expect(await db.get(accountKey.user(acct(A)))).toBeNull();
     expect(await db.get(accountKey.user(to))).not.toBeNull();
   }, 20_000);
-  it("writeMembership writes the row and the legacy mirror under one lock:member: held, a role change or a seat pause writes neither; the retry writes both", async () => {
+  it("writeMembership writes the row only (rule 2138: no legacy mirror), and a held lock:member never stops a role change or a seat pause", async () => {
     const A = await withPlan(await newUser("wm"), "pro");
     const m = await newMember(A, "member", "m");
     const pid = storedPersonId(m.email);
-    /** The forward row (what M1 reads) and the legacy mirror (what R1 reads), raw. */
-    const both = async () => {
-      const [row, mirror] = await Promise.all([db.get(accountKey.membership(aidOf(A), pid)), db.get(accountKey.member(m.email))]);
-      const r = row as { role?: string; disabled?: string } | null, l = mirror as { role?: string; disabled?: string } | null;
-      return { row: { role: r?.role, disabled: r?.disabled }, mirror: { role: l?.role, disabled: l?.disabled } };
+    /** The forward row, raw: the one membership record from M4. */
+    const row = async () => {
+      const r = (await db.get<{ role?: string; disabled?: string }>(accountKey.membership(aidOf(A), pid)))!;
+      return { role: r.role, disabled: r.disabled };
     };
-    const start = await both();
-    expect(start).toEqual({ row: { role: "member", disabled: undefined }, mirror: { role: "member", disabled: undefined } });
+    expect(await row()).toEqual({ role: "member", disabled: undefined });
     const lock = accountKey.memberLock(m.email);
-    await expect(holding(lock, () => setRole(A, ownerActor(A), m.email, "admin"))).rejects.toThrow("team_lock_timeout");
-    expect(await both()).toEqual(start);
+    expect(await holding(lock, () => setRole(A, ownerActor(A), m.email, "admin"))).toEqual({ ok: true });
+    expect(await row()).toEqual({ role: "admin", disabled: undefined });
     await saveUser({ ...(await getUser(A.email))!, seats: 1 });
-    await expect(holding(lock, () => enforceSeats(A.email))).rejects.toThrow("team_lock_timeout");
-    expect(await both()).toEqual(start);
-    expect(await setRole(A, ownerActor(A), m.email, "admin")).toEqual({ ok: true });
-    expect(await both()).toEqual({ row: { role: "admin", disabled: undefined }, mirror: { role: "admin", disabled: undefined } });
-    expect((await enforceSeats(A.email)).disabled).toEqual([m.email]);
-    expect(await both()).toEqual({ row: { role: "admin", disabled: "seats" }, mirror: { role: "admin", disabled: "seats" } });
+    expect((await holding(lock, () => enforceSeats(A.email))).disabled).toEqual([m.email]);
+    expect(await row()).toEqual({ role: "admin", disabled: "seats" });
+    expect(await db.get(accountKey.member(m.email))).toBeNull();
   }, 30_000);
 });
 
@@ -719,30 +709,27 @@ describe("rule 2139: the owner's records go last and first", () => {
   });
 });
 
-describe("rule 2132: a reader of R1's shapes sees R1's bytes", () => {
-  it("after accept the legacy member record has exactly R1's fields in R1's order, and the roster names the address", async () => {
+describe("rule 2138: from M4 no legacy member record is written (rule 2132's R1 bytes are contracted)", () => {
+  it("accept, a role change, a seat pause and a resume write the row and the person only; the roster names the person id", async () => {
     const A = await newUser("r1");
     const inv = await invite(A);
     const j = await acceptInvite(inv.token, { name: "Legacy", password: "abc12345", lang: "en" });
     if (!j.ok) throw new Error(j.error);
     const e = inv.invite.email;
-    const rec = await db.get<Record<string, unknown>>(accountKey.member(e));
-    expect(Object.keys(rec!)).toEqual(["id", "email", "name", "lang", "passHash", "memberOf", "role", "invitedBy", "acceptedAt", "sessionsAfter"]);
-    expect(rec).toMatchObject({ id: e, email: e, name: "Legacy", lang: "en", memberOf: acct(A), role: "member", invitedBy: A.email });
-    expect(rec!.sessionsAfter).toBe(rec!.acceptedAt);
-    expect(await db.sismember(accountKey.members(acct(A)), e)).toBeTruthy();
-
-    // A role change and a seat pause write the same fields in place, in the same order; a resume deletes `disabled`.
+    const pid = storedPersonId(e);
+    expect(await db.get(accountKey.member(e))).toBeNull();
+    expect(await db.sismember(accountKey.members(acct(A)), pid)).toBeTruthy();
+    const p = (await getPerson(pid))!;
+    expect(p).toMatchObject({ email: e, name: "Legacy", lang: "en" });
+    expect(p.sessionsAfter).toBeTruthy();
     expect(await setRole(A, ownerActor(A), e, "admin")).toEqual({ ok: true });
-    const after = await db.get<Record<string, unknown>>(accountKey.member(e));
-    expect(Object.keys(after!)).toEqual(Object.keys(rec!));
-    expect({ ...after, role: "member" }).toEqual(rec);
     await withPlan(A, "starter");
     await enforceSeats(A.email);
-    expect(await db.get(accountKey.member(e))).toEqual({ ...after, disabled: "seats" });
+    expect(await getMembership(aidOf(A), pid)).toMatchObject({ role: "admin", disabled: "seats" });
     await withPlan(A, "agency");
     await enforceSeats(A.email);
-    expect(await db.get(accountKey.member(e))).toEqual(after);
+    expect((await getMembership(aidOf(A), pid))!.disabled).toBeUndefined();
+    expect(await db.get(accountKey.member(e))).toBeNull();
   });
 
   it("createInvite for an address that already signs in anywhere answers unavailable", async () => {

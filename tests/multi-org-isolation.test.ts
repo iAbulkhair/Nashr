@@ -101,7 +101,7 @@ async function seedAccount(k: number, u: User): Promise<Acc> {
 
 async function join(aid: AccountId, pid: PersonId, role: TeamRole, paused = false) {
   await withAccountTeamLock(aid, () =>
-    writeMembership(aid, pid, { aid, pid, role, acceptedAt: new Date().toISOString(), invitedBy: accById(aid)!.u.email, ...(paused ? { disabled: "seats" as const } : {}) }, { home: false, teamLocked: true }),
+    writeMembership(aid, pid, { aid, pid, role, acceptedAt: new Date().toISOString(), invitedBy: accById(aid)!.u.email, ...(paused ? { disabled: "seats" as const } : {}) }, { teamLocked: true }),
   );
   memberships.set(mkey(aid, pid), { role, paused, home: false });
 }
@@ -220,7 +220,7 @@ async function mutate(p: Person, active: AccountId): Promise<string> {
     // Pause for seats, or resume.
     const [k, m] = pick(extra);
     const aid = k.split(" ")[0] as AccountId;
-    await withAccountTeamLock(aid, () => writeMembership(aid, p.pid, { aid, pid: p.pid, role: m.role, acceptedAt: new Date().toISOString(), invitedBy: accById(aid)!.u.email, ...(m.paused ? {} : { disabled: "seats" as const }) }, { home: false, teamLocked: true }));
+    await withAccountTeamLock(aid, () => writeMembership(aid, p.pid, { aid, pid: p.pid, role: m.role, acceptedAt: new Date().toISOString(), invitedBy: accById(aid)!.u.email, ...(m.paused ? {} : { disabled: "seats" as const }) }, { teamLocked: true }));
     m.paused = !m.paused;
     return `${m.paused ? "paused" : "resumed"} ${aid}`;
   }
@@ -228,7 +228,7 @@ async function mutate(p: Person, active: AccountId): Promise<string> {
     // Remove the membership of the session's own account, after the session was written.
     const m = memberships.get(mkey(active, p.pid));
     if (m && !m.home) {
-      await withAccountTeamLock(active, () => deleteMembership(active, p.pid, { home: false, teamLocked: true }));
+      await withAccountTeamLock(active, () => deleteMembership(active, p.pid, { teamLocked: true }));
       memberships.delete(mkey(active, p.pid));
       return `removed ${active}`;
     }

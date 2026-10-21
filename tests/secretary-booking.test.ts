@@ -4,13 +4,15 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
-import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
-import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeMemberships } from "@/lib/team";
+import { createUser, currentUser, getLogin, getUser, normalizeEmail, saveUser } from "@/lib/auth";
+import { forceRemoveMember, leaveTeam, removeMember, wipeMemberships } from "@/lib/team";
+import { getMembership, ownerOf } from "@/lib/membership";
+import { updatePerson } from "@/lib/person";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as accountRoute from "@/app/api/account/route";
 import { db } from "@/lib/db";
-import { storedAccountId } from "@/lib/keys";
+import { personKey, storedAccountId, storedPersonId } from "@/lib/keys";
 import * as rate from "@/lib/rate";
 import * as bookingRoute from "@/app/api/secretary/booking/[token]/route";
 import * as manageRoute from "@/app/api/secretary/booking/route";
@@ -25,15 +27,17 @@ import { SEC_KEYS, SEC_TOOL_DEFS, changeItem, createItem, getItem, listOpenItems
 import { SEC_RESTORE_DAYS, formatWhen, type SecItem } from "@/lib/secretary-agenda";
 import { wipeAccount } from "@/lib/account";
 import type { BookRecord } from "@/lib/booking-token";
+import type { LinkOwner } from "@/lib/feed-token";
 import type { User } from "@/lib/auth";
 import { appDict } from "@/lib/app-i18n";
 import { CHAT_ALLOWANCE, PLAN_CREDITS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount } from "@/lib/pricing";
 import { BookingView, bookingWords, rowAfterFailedRenew, type BookingState, type BookRow } from "@/components/app/BookingCard";
 import { refusalText } from "@/components/app/useOneWrite";
 
-// Pins the legacy shape (multi-org M1): this file pins R1's booking links, made, listed and revoked by login
-// (`createBook(login)`, the `sec:bookof:{login}` pointers), so its persons are legacy ones; the links of a `p_` person, per
-// `(pid, aid)`, are pinned in tests/multi-org-links.test.ts (rule 2119). Each still holds a shadow membership.
+// Legacy persons (pid = address): from M4 (rule 2138) every booking link is per `(pid, aid)` (`createBook(as(login))`,
+// the `sec:bookof:{pid}:{aid}:{provider}` pointers, `lock:book:{pid}:{aid}:{provider}`); the per-login pointers are never
+// read or written. The links of a `p_` person are pinned in tests/multi-org-links.test.ts (rule 2119). Each person still
+// holds a shadow membership.
 const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
@@ -202,6 +206,23 @@ const memValues = () => {
 /** The `sec:book:*` records that belong to this login. */
 const recordsOf = (login: string) => [...mem().kv.entries()].filter(([k, v]) => k.startsWith("sec:book:") && (v as { login?: string }).login === login);
 const resolveAs = async (email: string, opts: { imp?: string } = {}) => { await signIn(email, opts); return currentUser(); };
+/**
+ * The link owner an address makes links as (`linkOwner`): its person and the account it signs in to. Remembered per
+ * address, so a test can still name the links of a login it has since removed (legacy persons: the ids never change).
+ */
+const seats = new Map<string, LinkOwner>();
+const as = async (email: string): Promise<LinkOwner> => {
+  const e = normalizeEmail(email);
+  const known = seats.get(e);
+  if (known) return known;
+  const l = await getLogin(e);
+  if (!l?.acct) throw new Error(`as: ${e} signs in to no workspace`);
+  const w = { pid: l.pid, aid: l.acct, login: e };
+  seats.set(e, w);
+  return w;
+};
+/** `sec:bookof:{pid}:{aid}:{provider}` of an address (rule 2119). */
+const ptrOf = async (email: string, provider: string) => { const w = await as(email); return personKey.bookOf(w.pid, w.aid, provider); };
 
 describe("booking token (rule 589)", () => {
   beforeAll(() => {
@@ -215,15 +236,16 @@ describe("booking token (rule 589)", () => {
     const login = (await newUser("book")).email;
 
     // Only the hash is stored; the plain token is returned once and appears in no key or value.
-    const token = await createBook(login, login, "calcom", "ar");
+    const token = await createBook(await as(login), login, "calcom", "ar");
     expect(token).toMatch(BOOK_TOKEN);
     const hash = hashBookToken(token);
     expect(hash).toBe(createHash("sha256").update(token).digest("hex"));
-    expect(await db.get(BOOK_KEYS.rec(hash))).toEqual({ login, scope: login, provider: "calcom", lang: "ar", createdAt: expect.any(String) });
-    expect(await db.get(BOOK_KEYS.of(login, "calcom"))).toBe(hash);
+    const w = await as(login);
+    expect(await db.get(BOOK_KEYS.rec(hash))).toEqual({ login, scope: login, provider: "calcom", lang: "ar", createdAt: expect.any(String), pid: w.pid, aid: w.aid });
+    expect(await db.get(await ptrOf(login, "calcom"))).toBe(hash);
     expect(memKeys().filter((k) => k.includes(token))).toEqual([]);
     expect(memValues().filter((v) => v.includes(token))).toEqual([]);
-    expect(await resolveBook(token)).toEqual({ login, scope: login, provider: "calcom", lang: "ar", createdAt: expect.any(String) });
+    expect(await resolveBook(token)).toEqual({ login, scope: login, provider: "calcom", lang: "ar", createdAt: expect.any(String), pid: w.pid, aid: w.aid });
 
     // Wrong shape is refused before any read.
     const get = vi.spyOn(db, "get");
@@ -234,9 +256,9 @@ describe("booking token (rule 589)", () => {
     get.mockRestore();
 
     // Renewing deletes the old record; one link per login per provider; the other provider is independent.
-    const other = await createBook(login, login, "calendly", "en");
+    const other = await createBook(await as(login), login, "calendly", "en");
     expect(other).toMatch(BOOK_TOKEN);
-    const renewed = await createBook(login, login, "calcom", "en");
+    const renewed = await createBook(await as(login), login, "calcom", "en");
     expect(renewed).toMatch(BOOK_TOKEN);
     expect(renewed).not.toBe(token);
     expect(await resolveBook(token)).toBeNull();
@@ -247,20 +269,20 @@ describe("booking token (rule 589)", () => {
 
     // A record that bookof does not name is dead.
     const orphan = randomBytes(32).toString("base64url");
-    await db.set(BOOK_KEYS.rec(hashBookToken(orphan)), { login, scope: login, provider: "calcom", lang: "ar", createdAt: new Date().toISOString() });
+    await db.set(BOOK_KEYS.rec(hashBookToken(orphan)), { login, scope: login, provider: "calcom", lang: "ar", createdAt: new Date().toISOString(), pid: w.pid, aid: w.aid });
     expect(await resolveBook(orphan)).toBeNull();
     // The pointer names that hash for that provider only: calendly's pointer naming it does not make a calcom record live.
-    await db.set(BOOK_KEYS.of(login, "calendly"), hashBookToken(orphan));
+    await db.set(await ptrOf(login, "calendly"), hashBookToken(orphan));
     expect(await resolveBook(orphan)).toBeNull();
-    await db.set(BOOK_KEYS.of(login, "calendly"), hashBookToken(other));
+    await db.set(await ptrOf(login, "calendly"), hashBookToken(other));
 
     // Status: one row per live provider, no token, no hash, no scope.
-    const status = await getBookStatus(login);
+    const status = await getBookStatus(await as(login));
     expect(status.map((r) => r.provider).sort()).toEqual(["calcom", "calendly"]);
     expect(status.every((r) => r.sameBrand && typeof r.createdAt === "string")).toBe(true);
     expect(JSON.stringify(status)).not.toContain(hashBookToken(renewed));
-    expect((await getBookStatus(login, "other-brand@test.example")).every((r) => !r.sameBrand)).toBe(true);
-    expect(await getBookStatus((await newUser("book")).email)).toEqual([]);
+    expect((await getBookStatus(await as(login), "other-brand@test.example")).every((r) => !r.sameBrand)).toBe(true);
+    expect(await getBookStatus(await as((await newUser("book")).email))).toEqual([]);
 
     // The derived key.
     vi.stubEnv("CONNECT_SECRET", "s".repeat(40));
@@ -301,38 +323,39 @@ describe("booking token (rule 589)", () => {
   it("rule 589: two creates at once leave one working link; revoke removes every provider, is idempotent, and never waits out a held lock; revokeBooks covers every login", async () => {
     const a = (await newUser("book")).email;
     const b = (await newUser("book")).email;
-    const out = await Promise.all([createBook(a, a, "calcom", "ar"), createBook(a, a, "calcom", "ar")]);
+    const out = await Promise.all([createBook(await as(a), a, "calcom", "ar"), createBook(await as(a), a, "calcom", "ar")]);
     const good = out.filter((x) => x !== "busy");
     expect(good.length).toBeGreaterThanOrEqual(1);
     expect((await Promise.all(good.map((t) => resolveBook(t)))).filter((r) => r !== null)).toHaveLength(1);
     expect(recordsOf(a)).toHaveLength(1);
 
-    const ta = await createBook(a, a, "calendly", "ar");
-    const tb = await createBook(b, b, "calcom", "en");
-    const held = await db.lockOwned(`lock:book:${a}:calcom`, 10);
+    const ta = await createBook(await as(a), a, "calendly", "ar");
+    const tb = await createBook(await as(b), b, "calcom", "en");
+    const wa = await as(a);
+    const held = await db.lockOwned(personKey.bookLock(wa.pid, wa.aid, "calcom"), 10);
     expect(held).not.toBeNull();
     try {
-      expect(await createBook(a, a, "calcom", "ar")).toBe("busy");
-      await revokeBooks([a, b]);
+      expect(await createBook(await as(a), a, "calcom", "ar")).toBe("busy");
+      await revokeBooks([await as(a), await as(b)]);
       expect(await resolveBook(ta)).toBeNull();
       expect(await resolveBook(tb)).toBeNull();
       expect(recordsOf(a)).toEqual([]);
       expect(recordsOf(b)).toEqual([]);
     } finally {
-      await db.unlockOwned(`lock:book:${a}:calcom`, held!);
+      await db.unlockOwned(personKey.bookLock(wa.pid, wa.aid, "calcom"), held!);
     }
-    await revokeBook(a);
+    await revokeBook(await as(a));
     expect(memKeys().filter((k) => k.startsWith(`sec:bookof:${a}:`) || k.startsWith(`sec:bookof:${b}:`))).toEqual([]);
 
     // One provider only.
     const c = (await newUser("book")).email;
-    const t1 = await createBook(c, c, "calcom", "ar");
-    const t2 = await createBook(c, c, "calendly", "ar");
-    await revokeBook(c, "calcom");
+    const t1 = await createBook(await as(c), c, "calcom", "ar");
+    const t2 = await createBook(await as(c), c, "calendly", "ar");
+    await revokeBook(await as(c), "calcom");
     expect(await resolveBook(t1)).toBeNull();
     expect(await resolveBook(t2)).not.toBeNull();
-    await revokeBook(c);
-    expect(await getBookStatus(c)).toEqual([]);
+    await revokeBook(await as(c));
+    expect(await getBookStatus(await as(c))).toEqual([]);
   });
 });
 
@@ -748,7 +771,7 @@ describe("booking webhook (rules 594-595)", () => {
   /** A live link: owner, plain token, hash and the derived signing key. */
   const link = async (provider: "calcom" | "calendly" = "calcom") => {
     const u = await newUser("bkroute");
-    const token = await createBook(u.email, u.email, provider, "en");
+    const token = await createBook(await as(u.email), u.email, provider, "en");
     if (token === "busy") throw new Error("busy");
     const hash = hashBookToken(token);
     return { u, token, hash, key: bookingKey(hash) };
@@ -835,7 +858,7 @@ describe("booking webhook (rules 594-595)", () => {
 
     // Revoked link, and a login that no longer holds the scope (suspended, the way the feed's check refuses it).
     const gone = await link();
-    await revokeBook(gone.u.email);
+    await revokeBook(await as(gone.u.email));
     responses.push(await post(gone.token, body, calcomSig(body, gone.key), ip));
     const sus = await link();
     expect((await post(sus.token, body, calcomSig(body, sus.key), ip)).status).toBe(200);
@@ -844,7 +867,8 @@ describe("booking webhook (rules 594-595)", () => {
     expect(await listOpenItems(sus.u.email)).toHaveLength(1);
     // A link made before the login's last password event is refused too.
     const old = await link();
-    await saveUser({ ...(await getUser(old.u.email))!, sessionsAfter: new Date(Date.now() + 5000).toISOString() });
+    // The person's stamp (rule 2138: the account carries none).
+    await updatePerson(ownerOf(old.u), { sessionsAfter: new Date(Date.now() + 5000).toISOString() });
     responses.push(await post(old.token, body, calcomSig(body, old.key), ip));
     expect(await listOpenItems(old.u.email)).toHaveLength(0);
 
@@ -937,7 +961,7 @@ describe("booking webhook (rules 594-595)", () => {
     const badHash = bad.hash;
     const rec = (await db.get<BookRecord>(BOOK_KEYS.rec(badHash)))!;
     await db.set(BOOK_KEYS.rec(badHash), { ...rec, provider: "zoom" });
-    await db.set(BOOK_KEYS.of(rec.login, "zoom"), badHash);
+    await db.set(personKey.bookOf(storedPersonId(rec.pid!), storedAccountId(rec.aid!), "zoom"), badHash);
     const bb = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_595_bad"));
     const r500 = await post(bad.token, bb, calcomSig(bb, bad.key));
     expect(r500.status).toBe(500);
@@ -1053,7 +1077,7 @@ describe("booking management (rules 596-597)", () => {
       expect(st.status).toBe(200);
       expect(st.headers.get("cache-control")).toBe("no-store");
       const text = await st.text();
-      const links = (await getBookStatus(login)).map((l) => ({ ...l, sameBrand: true }));
+      const links = (await getBookStatus(await as(login))).map((l) => ({ ...l, sameBrand: true }));
       expect(JSON.parse(text)).toEqual({ ok: true, links });
       expect(links).toHaveLength(1);
       expect(Object.keys(JSON.parse(text).links[0]).sort()).toEqual(["createdAt", "provider", "sameBrand"]);
@@ -1066,7 +1090,7 @@ describe("booking management (rules 596-597)", () => {
     for (const bad of [undefined, null, [], "calcom", {}, { provider: "zoom" }, { provider: 7 }]) {
       expect((await create(bad)).status).toBe(400);
     }
-    expect((await getBookStatus(owner.email)).map((l) => l.provider)).toEqual(["calcom"]);
+    expect((await getBookStatus(await as(owner.email))).map((l) => l.provider)).toEqual(["calcom"]);
 
     // Stopping needs the provider named and valid.
     expect((await stop()).status).toBe(400);
@@ -1084,25 +1108,25 @@ describe("booking management (rules 596-597)", () => {
       expect(r.headers.get("cache-control")).toBe("no-store");
       expect(await r.json()).toEqual({ ok: true });
     }
-    expect(await getBookStatus(member.email)).toEqual([]);
+    expect(await getBookStatus(await as(member.email))).toEqual([]);
     const dead = await webhook(memberToken, body, { "x-cal-signature-256": hex(memberKey, body) });
     expect(dead.status).toBe(404);
     expect(await dead.text()).toBe("");
     // The other two logins keep their links; stopping calendly (none) is also 200 and leaves them.
     expect((await stop("calendly")).status).toBe(200);
-    expect((await getBookStatus(owner.email)).map((l) => l.provider)).toEqual(["calcom"]);
-    expect((await getBookStatus(admin.email)).map((l) => l.provider)).toEqual(["calcom"]);
+    expect((await getBookStatus(await as(owner.email))).map((l) => l.provider)).toEqual(["calcom"]);
+    expect((await getBookStatus(await as(admin.email))).map((l) => l.provider)).toEqual(["calcom"]);
 
     // A founder impersonating the account: status is readable, but nothing that outlives the session may be made or stopped.
     await signIn(owner.email, { imp: FOUNDER });
-    const before = await getBookStatus(owner.email);
+    const before = await getBookStatus(await as(owner.email));
     const p = await create({ provider: "calcom" });
     expect(p.status).toBe(403);
     expect(await p.json()).toEqual({ error: "forbidden" });
     expect((await create({ provider: "calendly", token: "x" })).status).toBe(403);
     expect((await stop("calcom")).status).toBe(403);
     expect(safeFetchMock).not.toHaveBeenCalled();
-    expect(await getBookStatus(owner.email)).toEqual(before);
+    expect(await getBookStatus(await as(owner.email))).toEqual(before);
     const g = await status();
     expect(g.status).toBe(200);
     expect(await g.json()).toMatchObject({ ok: true, links: [{ provider: "calcom" }] });
@@ -1196,8 +1220,8 @@ describe("booking management (rules 596-597)", () => {
       expect(r.headers.get("cache-control"), name).toBe("no-store");
       expect(JSON.parse(text), name).toEqual({ ok: false, error });
       expect(text).not.toContain(PAT);
-      expect(await getBookStatus(other.email), name).toEqual([]);
-      expect(await db.get(BOOK_KEYS.of(other.email, "calendly")), name).toBeNull();
+      expect(await getBookStatus(await as(other.email)), name).toEqual([]);
+      expect(await db.get(await ptrOf(other.email, "calendly")), name).toBeNull();
       failed.push({});
     }
     expect(failed).toHaveLength(cases.length);
@@ -1206,7 +1230,7 @@ describe("booking management (rules 596-597)", () => {
     safeFetchMock.mockReset();
     safeFetchMock.mockResolvedValueOnce(reply(401));
     expect((await create({ provider: "calendly", token: PAT })).status).toBe(422);
-    expect(await getBookStatus(owner.email)).toEqual([]);
+    expect(await getBookStatus(await as(owner.email))).toEqual([]);
 
     // The token is bounded: over 2,000 characters, empty, blank, or not a string is 400 and nothing is called or made.
     safeFetchMock.mockReset();
@@ -1220,7 +1244,7 @@ describe("booking management (rules 596-597)", () => {
     }
     expect(safeFetchMock).not.toHaveBeenCalled();
     expect(lockSpy).not.toHaveBeenCalled();
-    expect(await getBookStatus(fresh.email)).toEqual([]);
+    expect(await getBookStatus(await as(fresh.email))).toEqual([]);
     // Exactly 2,000 characters is accepted.
     calendlyOk();
     expect((await create({ provider: "calendly", token: "y".repeat(2000) })).status).toBe(200);
@@ -1229,7 +1253,8 @@ describe("booking management (rules 596-597)", () => {
     safeFetchMock.mockReset();
     const busy = await newUser("book597h");
     await signIn(busy.email);
-    const lockKey = `lock:book:${busy.email}:calendly`;
+    const wb = await as(busy.email);
+    const lockKey = personKey.bookLock(wb.pid, wb.aid, "calendly");
     const owned = await db.lockOwned(lockKey, 30);
     expect(owned).toBeTruthy();
     const b = await create({ provider: "calendly", token: PAT });
@@ -1264,7 +1289,7 @@ describe("booking revocation (rule 598)", () => {
   const live = async (login: string, scope: string) => {
     const t: Record<string, string> = {};
     for (const p of PROVIDERS) {
-      const token = await createBook(login, scope, p, "en");
+      const token = await createBook(await as(login), scope, p, "en");
       expect(token).toMatch(BOOK_TOKEN);
       expect(await resolveBook(token)).not.toBeNull();
       t[p] = token;
@@ -1276,13 +1301,13 @@ describe("booking revocation (rule 598)", () => {
     for (const p of PROVIDERS) {
       expect(await resolveBook(t[p]), `${login} ${p}`).toBeNull();
       expect(await db.get(BOOK_KEYS.rec(hashBookToken(t[p]))), `${login} ${p} record`).toBeNull();
-      expect(await db.get(BOOK_KEYS.of(login, p)), `${login} ${p} pointer`).toBeNull();
+      expect(await db.get(await ptrOf(login, p)), `${login} ${p} pointer`).toBeNull();
     }
-    expect(await getBookStatus(login)).toEqual([]);
+    expect(await getBookStatus(await as(login))).toEqual([]);
   };
   const expectAlive = async (login: string, t: Record<string, string>) => {
     for (const p of PROVIDERS) expect(await resolveBook(t[p]), `${login} ${p}`).toMatchObject({ login, provider: p });
-    expect((await getBookStatus(login)).map((r) => r.provider).sort()).toEqual([...PROVIDERS].sort());
+    expect((await getBookStatus(await as(login))).map((r) => r.provider).sort()).toEqual([...PROVIDERS].sort());
   };
 
   beforeAll(() => {
@@ -1388,7 +1413,8 @@ describe("booking revocation (rule 598)", () => {
     await wipeAccount(owner.email);
 
     const keys = [...mem().kv.keys(), ...mem().sets.keys()];
-    expect(keys.filter((k) => logins.some((l) => PROVIDERS.some((p) => k === BOOK_KEYS.of(l, p))) || hashes.some((h) => k === BOOK_KEYS.rec(h)))).toEqual([]);
+    const ptrs = (await Promise.all(logins.map((l) => Promise.all(PROVIDERS.map((p) => ptrOf(l, p)))))).flat();
+    expect(keys.filter((k) => ptrs.includes(k) || logins.some((l) => PROVIDERS.some((p) => k === BOOK_KEYS.of(l, p))) || hashes.some((h) => k === BOOK_KEYS.rec(h)))).toEqual([]);
     expect(keys.filter((k) => k.includes(owner.email) && (k.startsWith("sec:book:ext:") || k.startsWith("sec:bookext:")))).toEqual([]);
     for (const l of logins) for (const p of PROVIDERS) expect(await resolveBook(t[l][p])).toBeNull();
     // Another account's links and claims are not touched.
@@ -1401,22 +1427,23 @@ describe("booking revocation (rule 598)", () => {
     // The owner's link appears after the first revoke, as a create already running would leave it: the wipe's last step ends it.
     const real = db.lrange.bind(db);
     const spy = vi.spyOn(db, "lrange").mockImplementationOnce(async (...a: Parameters<typeof db.lrange>) => {
-      await createBook(owner.email, owner.email, "calcom", "en");
+      await createBook(await as(owner.email), owner.email, "calcom", "en");
       return real(...a);
     });
     await wipeAccount(owner.email);
     spy.mockRestore();
-    expect(await getBookStatus(owner.email)).toEqual([]);
-    expect(await db.get(BOOK_KEYS.of(owner.email, "calcom"))).toBeNull();
+    expect(await getBookStatus(await as(owner.email))).toEqual([]);
+    expect(await db.get(await ptrOf(owner.email, "calcom"))).toBeNull();
     // wipeMemberships (multi-workspace M1's name for wipeTeam) on its own deletes the members' links (a member added after the roster
     // read of the first step).
     const o2 = await newUser("book598t");
     const m = await newMember(o2, "member");
     const t = await live(m.email, o2.email);
+    const wm = await as(m.email);
     await wipeMemberships(storedAccountId(o2.email));
-    expect(await getMember(m.email)).toBeNull();
+    expect(await getMembership(wm.aid, wm.pid)).toBeNull();
     for (const p of PROVIDERS) expect(await resolveBook(t[p])).toBeNull();
-    expect(await getBookStatus(m.email)).toEqual([]);
+    expect(await getBookStatus(await as(m.email))).toEqual([]);
   });
 
   it("rule 598: a booking revoke that fails stops the wipe before the account is touched, and a second wipe finishes it", async () => {
@@ -1431,13 +1458,15 @@ describe("booking revocation (rule 598)", () => {
     } finally {
       lock.mockRestore();
     }
+    const wm = await as(m.email);
     expect(await getUser(owner.email)).not.toBeNull();
-    expect(await getMember(m.email)).not.toBeNull();
+    expect(await getMembership(wm.aid, wm.pid)).not.toBeNull();
     await wipeAccount(owner.email);
     expect(await getUser(owner.email)).toBeNull();
-    expect(await getMember(m.email)).toBeNull();
+    expect(await getMembership(wm.aid, wm.pid)).toBeNull();
     for (const x of t) for (const p of PROVIDERS) expect(await resolveBook(x[p])).toBeNull();
-    expect([...mem().kv.keys()].filter((k) => [owner.email, m.email].some((l) => PROVIDERS.some((p) => k === BOOK_KEYS.of(l, p))))).toEqual([]);
+    const ptrs = (await Promise.all([owner.email, m.email].map((l) => Promise.all(PROVIDERS.map((p) => ptrOf(l, p)))))).flat();
+    expect([...mem().kv.keys()].filter((k) => ptrs.includes(k))).toEqual([]);
   });
 });
 

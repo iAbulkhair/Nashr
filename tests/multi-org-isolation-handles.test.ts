@@ -150,7 +150,7 @@ beforeAll(async () => {
   for (const p of persons) {
     for (const a of accounts.filter((x) => !holds(p, x.aid)).filter(() => chance(0.5)).slice(0, 2)) {
       await withAccountTeamLock(a.aid, () =>
-        writeMembership(a.aid, p.pid, { aid: a.aid, pid: p.pid, role: chance(0.5) ? "admin" : "member", acceptedAt: new Date().toISOString(), invitedBy: a.u.email }, { home: false, teamLocked: true }),
+        writeMembership(a.aid, p.pid, { aid: a.aid, pid: p.pid, role: chance(0.5) ? "admin" : "member", acceptedAt: new Date().toISOString(), invitedBy: a.u.email }, { teamLocked: true }),
       );
       memberships.set(mkey(a.aid, p.pid), { home: false });
     }
@@ -172,7 +172,7 @@ async function mutate(p: Person): Promise<string> {
     const extra = [...memberships.entries()].filter(([k, m]) => !m.home && k.endsWith(` ${p.pid}`));
     if (extra.length) {
       const aid = pick(extra)[0].split(" ")[0] as AccountId;
-      await withAccountTeamLock(aid, () => deleteMembership(aid, p.pid, { home: false, teamLocked: true }));
+      await withAccountTeamLock(aid, () => deleteMembership(aid, p.pid, { teamLocked: true }));
       memberships.delete(mkey(aid, p.pid));
       stale.set(p.pid, [...(stale.get(p.pid) ?? []), aid]);
       return `removed ${aid}`;

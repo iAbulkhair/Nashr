@@ -4,7 +4,7 @@ import { acct, createUser, getLogin, getUser, normalizeEmail, PLAN_CREDITS, save
 import { db } from "@/lib/db";
 import { createMember, withAccountTeamLock, writeMembership } from "@/lib/team";
 import { updatePerson } from "@/lib/person";
-import { legacyHomeFrom, ownerOf } from "@/lib/membership";
+import { ownerOf } from "@/lib/membership";
 import { activeBrandIn, setActiveBrandIn } from "@/lib/brands";
 import { newPersonId } from "@/lib/multi-org";
 import { accountKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
@@ -97,8 +97,8 @@ let shadows = 0;
 export const PERSONS: "p" | "legacy" = process.env.TEST_PERSONS === "legacy" ? "legacy" : "p";
 const pMode = (legacy: boolean) => PERSONS === "p" && !legacy;
 /**
- * What a fixture may ask for. `legacy`: a legacy person whatever `PERSONS` says (a test that reads `user:{email}`'s
- * hash, `member:{email}`, R1's exact keys). `shadow: false`: no shadow membership, for a test that pins what happens to
+ * What a fixture may ask for. `legacy`: a legacy person whatever `PERSONS` says (a test that pins address-shaped ids
+ * and R1's keys; from M4 no fixture writes a hash on `user:` or a `member:` record). `shadow: false`: no shadow membership, for a test that pins what happens to
  * a person who holds nothing else (a removal or a deletion that takes the login with it, a count of other workspaces).
  */
 export type Fixture = { legacy?: boolean; shadow?: boolean };
@@ -136,7 +136,7 @@ export async function addShadowMembership(pid: PersonId, homeAt: string): Promis
     emailVerifiedAt: createdAt,
   };
   await db.set(accountKey.user(aid), account);
-  await withAccountTeamLock(aid, () => writeMembership(aid, pid, { aid, pid, role: "member", acceptedAt: at, invitedBy: email }, { home: false, teamLocked: true }));
+  await withAccountTeamLock(aid, () => writeMembership(aid, pid, { aid, pid, role: "member", acceptedAt: at, invitedBy: email }, { teamLocked: true }));
   await Promise.all([
     saveBrand(email, { name: marker, website: "", industry: marker, dialect: "saudi", languages: ["ar"], tone: "", products: marker, audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "", updatedAt: createdAt }),
     saveTask(email, { id: `shadow${k}${randomBytes(4).toString("hex")}`, type: "social", channel: "instagram", title: marker, body: marker, status: "pending", createdAt, lang: "ar" }, true),
@@ -190,9 +190,9 @@ export async function newOpaqueUser(prefix = "o", { verified = true, legacy = fa
 
 /**
  * A real member login in `owner`'s account (src/lib/team.ts `createMember`, no seat check). Sign in with
- * `signIn(email)`. Multi-workspace M1: in `"p"` mode a `p_` person with a membership row and no legacy `member:` record;
- * `{ legacy: true }` or `TEST_PERSONS=legacy` makes today's legacy member (record plus roster entry, person id = its
- * address). Either way the member also holds a shadow membership, accepted one second after the home one.
+ * `signIn(email)`. Multi-workspace M1: in `"p"` mode a `p_` person with a membership row; `{ legacy: true }` or
+ * `TEST_PERSONS=legacy` makes a legacy member (person id = its address). From M4 (rule 2138) neither writes a legacy
+ * `member:` record. Either way the member also holds a shadow membership, accepted one second after the home one.
  */
 export async function newMember(owner: User, role: "admin" | "member" = "member", prefix = "m", { legacy = false, shadow = true }: Fixture = {}): Promise<{ email: string; password: string; pid: PersonId }> {
   const email = `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`;
@@ -207,24 +207,23 @@ export async function newMember(owner: User, role: "admin" | "member" = "member"
 
 /**
  * The active brand a sign-in address works in (rule 2119), seeded and read the way `resolveSession` reads it: the person
- * and the account the login resolves to, and the legacy per-login key only when that account is the person's home
- * (`legacyHomeFrom`). The same answer for a `p_` person and a legacy one, so a brand-scope test runs in both fixture modes.
+ * and the account the login resolves to (from M4, rule 2138, never a legacy per-login key). The same answer for a `p_`
+ * person and a legacy one, so a brand-scope test runs in both fixture modes.
  */
-async function brandSeat(email: string): Promise<{ pid: PersonId; aid: AccountId; homeLogin: string | null }> {
+async function brandSeat(email: string): Promise<{ pid: PersonId; aid: AccountId }> {
   const l = await getLogin(email);
   if (!l?.acct) throw new Error("brandSeat: the address signs in to no workspace");
-  const [rawUser, rawMember] = await Promise.all([db.get<unknown>(accountKey.user(l.pid)), db.get<unknown>(accountKey.member(l.pid))]);
-  return { pid: l.pid, aid: l.acct, homeLogin: legacyHomeFrom(l.pid, rawUser, rawMember) === l.acct ? normalizeEmail(email) : null };
+  return { pid: l.pid, aid: l.acct };
 }
 /** Choose the active brand of the address's person in its workspace (`setActiveBrandIn`, as the brands route does). */
 export async function seedActiveBrand(email: string, id: string): Promise<void> {
   const s = await brandSeat(email);
-  await setActiveBrandIn(s.pid, s.aid, id, s.homeLogin);
+  await setActiveBrandIn(s.pid, s.aid, id);
 }
 /** The active brand of the address's person in its workspace (`activeBrandIn`). */
 export async function readActiveBrand(email: string): Promise<string> {
   const s = await brandSeat(email);
-  return activeBrandIn(s.pid, s.aid, s.homeLogin);
+  return activeBrandIn(s.pid, s.aid);
 }
 
 /**

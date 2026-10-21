@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { newUser } from "./helpers/session";
 import { sc } from "@/lib/auth";
-import { activeBrandId, listBrands, saveBrands } from "@/lib/brands";
+import { activeBrandIn, listBrands, saveBrands } from "@/lib/brands";
 import { getConnection, listConnections, saveConnection } from "@/lib/connectors/store";
 import { createConversation, getConversation, listConversations, touchConversation } from "@/lib/conversations";
 import { db } from "@/lib/db";
-import { accountKey, wsKey } from "@/lib/keys";
+import { accountKey, personKey, wsKey } from "@/lib/keys";
+import { aidOf, ownerOf } from "@/lib/membership";
 import { log } from "@/lib/log";
 import { parseStored } from "@/lib/stored";
 
@@ -69,16 +70,21 @@ describe("rule 2036: brands:{email} is checked row by row", () => {
   });
 });
 
-describe("rule 2037: activebrand:{login}", () => {
+describe("rule 2037: activebrand:{pid}:{aid} (the per-login key is not read from M4, rule 2138)", () => {
   it("a stored id comes back; absent or malformed is the default brand; a number is text again", async () => {
     const u = await newUser("shape");
-    expect(await activeBrandId(u.email)).toBe("default");
+    const [pid, aid] = [ownerOf(u), aidOf(u)];
+    expect(await activeBrandIn(pid, aid)).toBe("default");
+    await db.set(personKey.activeBrand(pid, aid), "ab12cd34");
+    expect(await activeBrandIn(pid, aid)).toBe("ab12cd34");
+    await db.set(personKey.activeBrand(pid, aid), 12345678);
+    expect(await activeBrandIn(pid, aid)).toBe("12345678");
+    await db.set(personKey.activeBrand(pid, aid), { id: "x" });
+    expect(await activeBrandIn(pid, aid)).toBe("default");
+    // A legacy per-login key answers nothing.
+    await db.del(personKey.activeBrand(pid, aid));
     await db.set(accountKey.activeBrand(u.email), "ab12cd34");
-    expect(await activeBrandId(u.email)).toBe("ab12cd34");
-    await db.set(accountKey.activeBrand(u.email), 12345678);
-    expect(await activeBrandId(u.email)).toBe("12345678");
-    await db.set(accountKey.activeBrand(u.email), { id: "x" });
-    expect(await activeBrandId(u.email)).toBe("default");
+    expect(await activeBrandIn(pid, aid)).toBe("default");
   });
 });
 

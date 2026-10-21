@@ -2,9 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
 import { readFileSync } from "fs";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, saveUser, sessionRecord } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getMember, membersKey } from "@/lib/team";
+import { membersKey } from "@/lib/team";
+import { getMembership } from "@/lib/membership";
+import { getPerson } from "@/lib/person";
+import { accountKey, personKey, storedAccountId, storedPersonId } from "@/lib/keys";
 import { mfaKey } from "@/lib/mfa";
 import { MIN_ROLE, IMPERSONATION_BLOCKED } from "@/lib/roles";
 import { linkKey, subKey } from "@/lib/google-signin";
@@ -84,11 +87,13 @@ describe("rule 1942: the password starts it, the code goes to the new address on
 });
 
 describe("rule 1943: a member moves its own login; the team, the active brand and two-step sign-in follow", () => {
-  it("the member record, roster entry and enrolment move; the old login is gone", async () => {
+  it("the membership, roster entry and enrolment move; the old login is gone", async () => {
     const owner = await newUser("em");
     // Pins the legacy shape (multi-org M1): an address moves only for a legacy person until release M2 moves it with the `p_` person.
     const m = await newMember(owner, "member", "m", { legacy: true });
-    await db.set(`activebrand:${m.email}`, "default");
+    const aid = storedAccountId(acct(owner));
+    // The active brand is the person's in the account (rule 2138: the per-login key is no longer read or written).
+    await db.set(personKey.activeBrand(storedPersonId(m.email), aid), "default");
     await db.set(mfaKey(m.email), { enc: "x", kid: "k", rc: [], at: new Date().toISOString() });
     await Promise.all([db.set(subKey(m.email), "gMoveSub1"), db.set(linkKey("gMoveSub1"), m.email)]);
     await signIn(m.email);
@@ -96,13 +101,17 @@ describe("rule 1943: a member moves its own login; the team, the active brand an
     const to = addr("mnew");
     await start(to, m.password);
     expect((await confirm(codeFor(to))).status).toBe(200);
-    const moved = (await getMember(to))!;
-    expect(moved).toMatchObject({ email: to, memberOf: owner.email });
-    expect(await getMember(m.email)).toBeNull();
-    const roster = await db.smembers(membersKey(owner.email));
+    // Rule 2138: the membership row and the person move; no legacy member record is written at either address.
+    expect(await getMembership(aid, storedPersonId(to))).toMatchObject({ role: "member" });
+    expect(await getMembership(aid, storedPersonId(m.email))).toBeNull();
+    expect(await getPerson(storedPersonId(to))).toMatchObject({ email: to });
+    expect(await db.get(accountKey.member(to))).toBeNull();
+    expect(await db.get(accountKey.member(m.email))).toBeNull();
+    const roster = await db.smembers(membersKey(acct(owner)));
     expect(roster).toContain(to);
     expect(roster).not.toContain(m.email);
-    expect(await db.get(`activebrand:${to}`)).toBe("default");
+    expect(await db.get(personKey.activeBrand(storedPersonId(to), aid))).toBe("default");
+    expect(await db.get(`activebrand:${to}`)).toBeNull();
     expect(await db.get(mfaKey(to))).toBeTruthy();
     // The Google link follows both ways; nothing names the old login.
     expect(await db.get(subKey(to))).toBe("gMoveSub1");

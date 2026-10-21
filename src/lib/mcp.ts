@@ -76,43 +76,42 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   if (!rec) return null;
   const email = rec.email;
   // Tokens (personal and OAuth) are minted by owners only, so a bearer resolves only to an owner account. A token whose
-  // email is a member login is refused, even should an owner record exist at the same address: a legacy member record
-  // there, or (multi-workspace M1) a login index naming a person who does not own the account, such as a `p_` member,
-  // who has no legacy record.
-  const [{ getMember }, { activeBrandFrom, activeBrandIn, scopeFor }, { getPerson, personFromRaw }, { aidOf, ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./person"), import("./membership")]);
+  // email is another person's login is refused: the login index at the address must name the account's owner. From M4
+  // (rule 2138) no legacy member record is read; the index is the one answer to "who signs in at this address".
+  const [{ activeBrandFrom, activeBrandIn, scopeFor }, { getPerson, personFromRaw }, { aidOf, ownerOf }] = await Promise.all([import("./brands"), import("./person"), import("./membership")]);
   // A legacy account's owner is the person whose id is the account id (the token record's value, which this app wrote).
+  // The account must also be on the owner's `orgs:{pid}`, as sign-in requires (`listOrgs`): a record at a legacy member's
+  // address (whose person id is that address) is otherwise "owned" by the member, and the index names that member too.
   const id = normalizeEmail(email);
   const legacyPid = storedPersonId(id);
   const legacyAid = storedAccountId(id);
   // An OAuth access token is accepted only while its grant exists and lists it (revoked, or rotated past, is refused).
   // Read alongside the account, with the owner's person and active brand, so none of them costs an extra round trip.
-  const [u, member, idx, rawPerson, rawActive, rawLegacyActive, granted] = await Promise.all([
+  const [u, idx, rawPerson, rawActive, legacyListed, granted] = await Promise.all([
     getUser(email),
-    getMember(email),
     readLoginIndex(id),
     db.get<unknown>(personKey.person(legacyPid)),
     db.get<unknown>(personKey.activeBrand(legacyPid, legacyAid)),
-    db.get<unknown>(accountKey.activeBrand(id)),
+    db.sismember(personKey.orgs(legacyPid), legacyAid),
     rec.grant ? grantHoldsAccess(email, rec.grant, rec.hash) : true,
   ]);
   // A suspended account is blocked everywhere, including tokens issued before the suspension; so is an owner who has
   // not proved the address yet (rule 753), which covers a token minted before the gate or by a not-yet-verified owner.
-  if (!u || isSuspended(u) || !emailVerified(u) || member || !granted) return null;
+  if (!u || isSuspended(u) || !emailVerified(u) || !granted) return null;
   const pid = ownerOf(u);
   if (idx && idx.pid !== pid) return null;
   const aid = aidOf(u);
-  // The legacy per-login key belongs to the owner's home account: a legacy owner's own account, at its address.
-  const homeLogin = u.ownerPid === undefined ? u.email : null;
   const inRound = pid === legacyPid && aid === legacyAid && normalizeEmail(u.email) === id;
-  const [person, chosen] = inRound
-    ? [personFromRaw(pid, rawPerson, u, null), activeBrandFrom(rawActive, rawLegacyActive, homeLogin !== null)]
-    : await Promise.all([getPerson(pid), activeBrandIn(pid, aid, homeLogin)]);
+  const [person, chosen, listed] = inRound
+    ? [personFromRaw(pid, rawPerson), activeBrandFrom(rawActive), legacyListed]
+    : await Promise.all([getPerson(pid), activeBrandIn(pid, aid), db.sismember(personKey.orgs(pid), aid)]);
+  if (!listed) return null;
   // Person suspension blocks the person in every account and every resolver, tokens included (rule 2131).
   if (!person || isPersonSuspended(person)) return null;
   // Same scope resolution as a browser session (src/lib/auth.ts `currentUser`): without it every MCP call read and
   // wrote the default brand even while the owner had another brand active. The owner's choice in THIS account.
   u.brandId = chosen;
   u.scope = scopeFor(acct(u), u.brandId);
-  u.actor = { kind: "token", pid, home: homeLogin !== null, email: u.email, name: u.name, lang: u.lang, role: "owner" };
+  u.actor = { kind: "token", pid, email: u.email, name: u.name, lang: u.lang, role: "owner" };
   return u;
 }

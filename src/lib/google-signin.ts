@@ -194,9 +194,6 @@ export async function resolveGoogle(id: GoogleIdentity, mode: "login" | "signup"
       return { kind: "login", login: l };
     }
     if (l) return { kind: "refused", error: "google_not_linked" };
-    // A member record that is not on its roster still holds the address.
-    const { getMember } = await import("./team");
-    if (await getMember(id.email)) return { kind: "refused", error: "google_not_linked" };
     if (mode !== "signup") return { kind: "refused", error: "google_no_account" };
     // No password (multi-workspace M1, rule 2132): the person has no hash, so it signs in with Google, or sets a password
     // with "forgot password". Google proved the address: the person and the account it owns are stamped in the same

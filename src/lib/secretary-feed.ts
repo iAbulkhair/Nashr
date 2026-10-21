@@ -1,6 +1,6 @@
 import { appDict } from "./app-i18n";
 import { isPersonSuspended, isSuspended } from "./suspension";
-import { emailVerified, getAccount, getLogin, normalizeEmail, type User } from "./auth";
+import { emailVerified, getAccount, type User } from "./auth";
 // Straight from the pure module, not through auth.ts: the public feed route may reach auth.ts only by the names
 // tests/csrf.test.ts allows (no cookie, no session).
 import { accountOfScope, acct } from "./account-id";
@@ -87,28 +87,26 @@ const olderThan = (recAt: unknown, lifeAt: unknown): boolean => {
 /**
  * Whom a link made on this request belongs to (rules 2119, 2132): the acting person (`u.actor.pid`) and the ACTIVE
  * account (`aidOf(u)`, the session's account, re-checked on every request), never a value from the request. `login` is
- * the acting address as R1 named the legacy pointer (the member's own address, the account address for an owner), and
- * `home` the actor's: only the home account writes and reads the legacy per-login pointer. Null without an actor (every
- * role check has already refused then).
+ * the acting address (the member's own address, the account address for an owner), written on the record only. Null
+ * without an actor (every role check has already refused then).
  */
 export function linkOwner(u: User): LinkOwner | null {
   const a = u.actor;
   if (!a) return null;
-  return { pid: a.pid, aid: aidOf(u), login: a.kind === "member" ? a.email : u.email, home: a.home };
+  return { pid: a.pid, aid: aidOf(u), login: a.kind === "member" ? a.email : u.email };
 }
 
 /**
  * Whether a link record still holds, read fresh on every fetch (the session-free half of `resolveSession` in auth.ts).
- * A record made from M1 names its person and account (`pid`, `aid`): `personHolds`. A record made before M1 names a
- * login only and keeps R1's check through `getLogin` (its home account only): `legacyHolds`. A record with one of the two
- * ids and not the other is refused. Any record with a login, a scope and a creation time can ask (the booking links of
- * B2a do); `feedHolds` is the feed's name for it.
+ * The record must name its person and account (`pid`, `aid`): `personHolds`. A record without them (made before M1) is
+ * dead from M4 (rule 2138; M1 to M3 checked it through `getLogin` for the home account), as is one with one id and not
+ * the other. Any record with a scope and a creation time can ask (the booking links of B2a do); `feedHolds` is the
+ * feed's name for it.
  */
-export async function loginHolds(rec: Pick<FeedRecord, "login" | "scope" | "createdAt" | "pid" | "aid">): Promise<boolean> {
+export async function loginHolds(rec: Pick<FeedRecord, "scope" | "createdAt" | "pid" | "aid">): Promise<boolean> {
   if (typeof rec.scope !== "string") return false;
   const ids = linkIds(rec);
-  if (ids === null) return false;
-  return ids === "legacy" ? legacyHolds(rec) : personHolds(rec, ids.pid, ids.aid);
+  return ids !== null && personHolds(rec, ids.pid, ids.aid);
 }
 
 /**
@@ -140,50 +138,6 @@ async function personHolds(rec: Pick<FeedRecord, "scope" | "createdAt">, pid: Pe
   }
   const id = brandIdOf(rec.scope, aid);
   return !!id && brands.some((b) => b.id === id && b.status === "active");
-}
-
-/**
- * A record made before M1 (no `pid`), R1's check plus the person suspension (rule 2131): the login exists and is active,
- * its person is not suspended, and `rec.scope` is one of its account's active brands. An owner must not be suspended
- * and must have verified the address (rule 756), and the same holds for the owner behind a member.
- * A member must be on the owner's roster (`getLogin` checks it), not disabled, an admin or member, joined after the owner
- * record was made, and the owner must exist and not be suspended. The scope is compared with the owner's stored email
- * exactly, as `sc(u)` builds it: a member's own address, another account or an archived brand is never a scope here.
- * A record made before the login's current life began (a member's `acceptedAt`, an owner's `createdAt`) is stale: the
- * login was removed or deleted and the address taken again, so a link that outlived its revoke does not carry over. A
- * missing or unparsable date on either side is not a reason to refuse (existing links keep working).
- * The password events that sign a login out also end its links at read time (B1-R15), so a revoke that failed after the
- * password was saved cannot leave a link working: a record older than the owner's `sessionsAfter` (a password change or
- * reset), or, for a member, older than the member's own `sessionsAfter` or the owner's `teamSessionsAfter` (an owner or
- * founder reset signs the whole team out). An owner's password change stamps only `sessionsAfter`, so it ends the
- * owner's link and leaves the members' alone.
- */
-async function legacyHolds(rec: Pick<FeedRecord, "login" | "scope" | "createdAt">): Promise<boolean> {
-  const login = await getLogin(rec.login);
-  if (!login) return false;
-  // Rule 2131: a person suspension ends every link, a link made before M1 too (`getLogin` already read the person).
-  if (isPersonSuspended(login.person)) return false;
-  let owner: string;
-  if (login.kind === "owner") {
-    if (isSuspended(login.user) || !emailVerified(login.user)) return false;
-    if (olderThan(rec.createdAt, login.user.createdAt)) return false;
-    if (olderThan(rec.createdAt, login.user.sessionsAfter)) return false;
-    owner = login.user.email;
-  } else {
-    const { member: m, owner: u } = login;
-    // A person known only through membership rows (multi-workspace M1, test persons only) holds no legacy link.
-    if (!m || !u || isSuspended(u) || !emailVerified(u) || m.disabled) return false;
-    if (m.role !== "admin" && m.role !== "member") return false;
-    if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === normalizeEmail(rec.login)) return false;
-    // NaN on either side (a malformed date) refuses too.
-    if (!(new Date(m.acceptedAt).getTime() >= new Date(u.createdAt).getTime())) return false;
-    if (olderThan(rec.createdAt, m.acceptedAt)) return false;
-    if (olderThan(rec.createdAt, m.sessionsAfter) || olderThan(rec.createdAt, u.teamSessionsAfter)) return false;
-    owner = u.email;
-  }
-  const id = brandIdOf(rec.scope, owner);
-  if (!id) return false;
-  return (await listBrands(owner)).some((b) => b.id === id && b.status === "active");
 }
 
 /** The calendar feed's validity check; `loginHolds` under its B1 name. */

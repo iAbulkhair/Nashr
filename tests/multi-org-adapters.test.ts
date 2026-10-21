@@ -10,10 +10,11 @@ import { isPersonSuspended, isSuspended } from "@/lib/suspension";
 import { newPersonId } from "@/lib/multi-org";
 
 /**
- * Multi-workspace membership, release M1 expand (docs/specs/2026-10-18-multi-org.md sections 2-4): the read adapters
- * `getPerson`, `getMembership`, `ownerOf`, `roleIn`, `listOrgs`, `homeAccountOf` and `isPersonSuspended`. Every fixture
- * is written with raw `db.set` / `db.sadd` through the key builders, never through the helpers under test.
- * Rules 2115 (partly), 2134, 2136.
+ * Multi-workspace membership (docs/specs/2026-10-18-multi-org.md sections 2-4): the read adapters `getPerson`,
+ * `getMembership`, `ownerOf`, `roleIn`, `listOrgs`, `homeAccountOf` and `isPersonSuspended`. Every fixture is written
+ * with raw `db.set` / `db.sadd` through the key builders, never through the helpers under test. Rules 2115 (partly),
+ * 2136 and 2138 (M4 contract: `person:` and `mbr:` alone; it replaced rule 2134's legacy fallbacks, whose fixtures
+ * below stay only to show they are ignored).
  */
 
 afterEach(() => vi.restoreAllMocks());
@@ -66,197 +67,84 @@ function trackRounds(methods: readonly ("get" | "sismember" | "smembers")[]) {
   return { calls, rounds: () => new Set(calls.map((c) => c.round)).size };
 }
 
-describe("rule 2134: getPerson reads person:, then the legacy owner, then the legacy member", () => {
-  it("person: wins over user: and member: holding the same id", async () => {
+describe("rule 2138: getPerson reads person: alone (M4 contract; the legacy owner and member fallbacks of rule 2134 are gone)", () => {
+  it("a person: row is the person, whatever user: and member: hold under the same id", async () => {
     const e = address("prec");
     const pid = storedPersonId(e);
-    await putAccount(account(e, { passHash: "hash-owner" }));
-    await db.set(accountKey.member(e), legacyMember(e, address("other")));
+    await putAccount(account(e, { passHash: "hash-owner", sessionsAfter: T3 }));
+    await db.set(accountKey.member(e), legacyMember(e, address("other"), { passHash: "hash-member", sessionsAfter: T3 }));
     await db.set(personKey.person(pid), personRow(e, e, { passHash: "hash-person", sessionsAfter: T0 }));
     const p = await getPerson(pid);
-    expect(p).toMatchObject({ pid, source: "person", passHash: "hash-person", email: e, name: "Person Name", lang: "ar" });
+    expect(p).toEqual({ pid, source: "person", email: e, name: "Person Name", lang: "ar", passHash: "hash-person", sessionsAfter: T0, createdAt: T0 });
   });
 
-  it("a legacy owner maps only the credential fields (suspension, plan and credits stay on the account)", async () => {
-    const e = address("own");
+  it("a legacy owner or member record without a person: row is no person (Script S1 wrote every row before M4)", async () => {
+    const o = address("own");
+    await putAccount(account(o, { devicesAfter: T2 }));
+    expect(await getPerson(storedPersonId(o))).toBeNull();
+    const m = address("mem");
+    await db.set(accountKey.member(m), legacyMember(m, address("team")));
+    expect(await getPerson(storedPersonId(m))).toBeNull();
+  });
+
+  it("a newer legacy record (a password changed by a rolled-back build) no longer wins: the row is read as it is", async () => {
+    const e = address("stale");
     const pid = storedPersonId(e);
-    await putAccount(account(e, { suspended: true, devicesAfter: T2, name: "Ann" }));
-    const p = await getPerson(pid);
-    expect(p).toEqual({ pid, source: "owner", email: e, name: "Ann", lang: "en", passHash: "hash-owner", emailVerifiedAt: T0, sessionsAfter: T0, devicesAfter: T2, createdAt: T0 });
-    expect(isPersonSuspended(p!)).toBe(false);
-    expect(p).not.toHaveProperty("plan");
-    expect(p).not.toHaveProperty("credits");
+    await putAccount(account(e, { passHash: "hash-new", sessionsAfter: T3, createdAt: T3 }));
+    await db.set(personKey.person(pid), personRow(e, e, { passHash: "hash-old", sessionsAfter: T1 }));
+    const w = vi.spyOn(log, "warn");
+    expect(await getPerson(pid)).toMatchObject({ source: "person", passHash: "hash-old", sessionsAfter: T1 });
+    expect(w).not.toHaveBeenCalled();
   });
 
-  it("a legacy member maps its credentials, with createdAt = acceptedAt and no role or account", async () => {
-    const e = address("mem");
-    const pid = storedPersonId(e);
-    await db.set(accountKey.member(e), legacyMember(e, address("team"), { devicesAfter: T2 }));
-    const p = await getPerson(pid);
-    expect(p).toEqual({ pid, source: "member", email: e, name: "Member Name", lang: "en", passHash: "hash-member", sessionsAfter: T1, devicesAfter: T2, createdAt: T1 });
-  });
-
-  it("a legacy owner record whose ownerPid names someone else is no person; ownerPid equal to the id is", async () => {
-    const e = address("ownpid");
-    const pid = storedPersonId(e);
-    await putAccount(account(e, { ownerPid: newPersonId() }));
-    expect(await getPerson(pid)).toBeNull();
-    await putAccount(account(e, { ownerPid: e }));
-    expect((await getPerson(pid))?.source).toBe("owner");
-  });
-
-  it("an account owned by a p_ person lends its passHash to nobody: the p_ id reads its own person: record", async () => {
-    const e = address("pown");
-    const pp = newPersonId();
-    await putAccount(account(e, { ownerPid: pp, passHash: "hash-account" }));
-    expect(await getPerson(storedPersonId(e))).toBeNull();
-    expect(await getPerson(storedPersonId(pp))).toBeNull();
-    await db.set(personKey.person(storedPersonId(pp)), personRow(pp, e));
-    expect(await getPerson(storedPersonId(pp))).toMatchObject({ source: "person", passHash: "hash-person" });
-  });
-
-  it("a member record whose person id is not the key it was asked under is no person", async () => {
-    const e = address("mpid");
-    const other = address("mpid-other");
-    // A record at member:{e} that holds another address (a rolled-back move copied it): its person id is `other`.
-    await db.set(accountKey.member(e), legacyMember(other, address("team")));
-    expect(await getPerson(storedPersonId(e))).toBeNull();
-  });
-
-  it("nothing stored, or nothing that parses, is no person; a person: row that does not parse falls back to the legacy record", async () => {
+  it("nothing stored, or a row that does not parse, is no person (no fallback), logged without values", async () => {
     const w = vi.spyOn(log, "warn");
     expect(await getPerson(storedPersonId(address("none")))).toBeNull();
     const e = address("bad");
     const pid = storedPersonId(e);
+    await putAccount(account(e));
     await db.set(personKey.person(pid), { pid: e, passHash: "hash-broken" }); // no email
     expect(await getPerson(pid)).toBeNull();
-    await putAccount(account(e));
-    expect(await getPerson(pid)).toMatchObject({ source: "owner", passHash: "hash-owner" });
     expect(JSON.stringify(w.mock.calls)).not.toContain("hash-broken");
   });
 
-  it("a stale person: (the legacy sessionsAfter is later: a password changed by a rolled-back build) loses, and is logged without values", async () => {
-    const e = address("stale");
-    const pid = storedPersonId(e);
-    await putAccount(account(e, { passHash: "hash-new", sessionsAfter: T2, devicesAfter: T0 }));
-    await db.set(personKey.person(pid), personRow(e, e, { passHash: "hash-old", sessionsAfter: T1, devicesAfter: T3, trialUsedAt: T1, suspended: true }));
+  it("a row whose stored pid differs is read under its key (the key wins, as for an account), logged without values", async () => {
+    const e = address("mpid");
+    const other = storedPersonId(newPersonId());
+    await db.set(personKey.person(storedPersonId(e)), personRow(other, e));
     const w = vi.spyOn(log, "warn");
-    const p = await getPerson(pid);
-    expect(p).toMatchObject({ source: "owner", passHash: "hash-new", sessionsAfter: T2, name: "Owner Name", lang: "en", emailVerifiedAt: T0 });
-    // Every field the owner record carries comes from it, except the revocation stamps: the later of both records
-    // (the row's devicesAfter T3 beats the owner's older T0). Person-only fields stay from the row.
-    expect(p?.devicesAfter).toBe(T3);
-    expect(p?.trialUsedAt).toBe(T1);
-    expect(isPersonSuspended(p!)).toBe(true);
-    expect(w).toHaveBeenCalledWith("person stale", { shape: "person", source: "owner" });
-    const logged = JSON.stringify(w.mock.calls);
-    for (const v of ["hash-new", "hash-old", e]) expect(logged).not.toContain(v);
+    expect((await getPerson(storedPersonId(e)))?.pid).toBe(storedPersonId(e));
+    expect(w).toHaveBeenCalledWith("person id differs from its key", { shape: "person.pid" });
+    expect(JSON.stringify(w.mock.calls)).not.toContain(e);
   });
 
-  it("a stale person: by birth (the legacy record was created after it) loses; an equal or older legacy record does not", async () => {
-    const e = address("born");
-    const pid = storedPersonId(e);
-    await db.set(personKey.person(pid), personRow(e, e, { passHash: "hash-leftover", sessionsAfter: T2, createdAt: T0 }));
-    await db.set(accountKey.member(e), legacyMember(e, address("team"), { acceptedAt: T0, sessionsAfter: T0 }));
-    expect(await getPerson(pid)).toMatchObject({ source: "person", passHash: "hash-leftover" });
-    // A member re-created at the address after the person was written (by an older build).
-    await db.set(accountKey.member(e), legacyMember(e, address("team"), { acceptedAt: T3, sessionsAfter: T0, passHash: "hash-fresh" }));
-    // The leftover lends nothing: not even its later session stamp.
-    expect(await getPerson(pid)).toEqual({ pid, source: "member", email: e, name: "Member Name", lang: "en", passHash: "hash-fresh", createdAt: T3, sessionsAfter: T0 });
-    // An owner signed up at the address after the person was written.
-    await putAccount(account(e, { createdAt: T3, sessionsAfter: T0, passHash: "hash-signup" }));
-    expect(await getPerson(pid)).toMatchObject({ source: "owner", passHash: "hash-signup", sessionsAfter: T0 });
-  });
-
-  it("a verified leftover person lends no verification, trial or stamps to an unverified owner born later; a set suspension is kept", async () => {
-    const e = address("leftover");
-    const pid = storedPersonId(e);
-    await db.set(personKey.person(pid), personRow(e, e, { passHash: "hash-leftover", emailVerifiedAt: T0, trialUsedAt: T0, sessionsAfter: T2, devicesAfter: T2, createdAt: T0 }));
-    await putAccount(account(e, { createdAt: T3, emailVerifiedAt: undefined, sessionsAfter: undefined, passHash: "hash-signup", name: "New Human" }));
-    const p = await getPerson(pid);
-    expect(p).toEqual({ pid, source: "owner", email: e, name: "New Human", lang: "en", passHash: "hash-signup", createdAt: T3 });
-    expect(p).not.toHaveProperty("emailVerifiedAt");
-    expect(isPersonSuspended(p!)).toBe(false);
-    // Fail closed: a suspension on the leftover row stays (it can never be lifted by a rebuild).
-    await db.set(personKey.person(pid), personRow(e, e, { emailVerifiedAt: T0, suspended: true, createdAt: T0 }));
-    const q = await getPerson(pid);
-    expect(q).toMatchObject({ source: "owner", passHash: "hash-signup" });
-    expect(q).not.toHaveProperty("emailVerifiedAt");
-    expect(isPersonSuspended(q!)).toBe(true);
-  });
-
-  it("the same human, address changed by a rolled-back build (verification cleared): the new address reads unverified", async () => {
-    const e = address("moved");
-    const moved = address("NewAddr");
-    const pid = storedPersonId(e);
-    await db.set(personKey.person(pid), personRow(e, e, { emailVerifiedAt: T0, trialUsedAt: T0, sessionsAfter: T1, createdAt: T0 }));
-    // The old build kept the account id and wrote the new address, cleared the verification and ended sessions.
-    await putAccount(account(e, { email: moved, emailVerifiedAt: undefined, sessionsAfter: T2, devicesAfter: undefined }));
-    const p = await getPerson(pid);
-    expect(p).toMatchObject({ source: "owner", email: moved.toLowerCase(), sessionsAfter: T2, trialUsedAt: T0, passHash: "hash-owner" });
-    expect(p).not.toHaveProperty("emailVerifiedAt");
-    expect(p).not.toHaveProperty("devicesAfter");
-  });
-
-  it("the same-human merge keeps the later revocation stamp: a newer legacy record without devicesAfter never un-revokes a device", async () => {
-    const e = address("devices");
-    const pid = storedPersonId(e);
-    await db.set(personKey.person(pid), personRow(e, e, { sessionsAfter: T1, devicesAfter: T3, createdAt: T0 }));
-    await putAccount(account(e, { sessionsAfter: T2, devicesAfter: undefined, passHash: "hash-new" }));
-    expect(await getPerson(pid)).toMatchObject({ source: "owner", passHash: "hash-new", sessionsAfter: T2, devicesAfter: T3 });
-    // An older legacy devicesAfter loses to the row's later one too.
-    await putAccount(account(e, { sessionsAfter: T2, devicesAfter: T1, passHash: "hash-new" }));
-    expect(await getPerson(pid)).toMatchObject({ source: "owner", sessionsAfter: T2, devicesAfter: T3 });
-  });
-
-  it("the same-human merge never lets a PersonRow default (name, lang, createdAt) replace the row's real value", async () => {
-    const e = address("defaults");
-    const pid = storedPersonId(e);
-    await db.set(personKey.person(pid), personRow(e, e, { name: "Person Name", lang: "en", sessionsAfter: T1, createdAt: T1 }));
-    await putAccount(account(e, { name: undefined, lang: "xx" as never, createdAt: undefined, sessionsAfter: T2, passHash: "hash-new" }));
-    const p = await getPerson(pid);
-    expect(p).toMatchObject({ source: "owner", name: "Person Name", lang: "en", createdAt: T1, passHash: "hash-new", sessionsAfter: T2 });
-  });
-
-  it("makes exactly one round of three reads, and personFromRaw gives the same answer from the raw values", async () => {
+  it("makes exactly one read, and personFromRaw gives the same answer from the raw value", async () => {
     const e = address("round");
     const pid = storedPersonId(e);
     await putAccount(account(e));
     await db.set(accountKey.member(e), legacyMember(e, address("team")));
     await db.set(personKey.person(pid), personRow(e, e, { sessionsAfter: T3 }));
-    const raws = await Promise.all([db.get(personKey.person(pid)), db.get(accountKey.user(pid)), db.get(accountKey.member(pid))]);
+    const raw = await db.get(personKey.person(pid));
     const t = trackRounds(["get", "sismember", "smembers"]);
     const p = await getPerson(pid);
     expect(t.rounds()).toBe(1);
-    expect(t.calls.map((c) => c.key).sort()).toEqual([accountKey.member(e), accountKey.user(e), personKey.person(pid)].sort());
+    expect(t.calls.map((c) => c.key)).toEqual([personKey.person(pid)]);
     const before = t.calls.length;
-    expect(personFromRaw(pid, ...raws)).toEqual(p);
+    expect(personFromRaw(pid, raw)).toEqual(p);
     expect(t.calls.length).toBe(before); // pure: no read
   });
 });
 
-describe("rule 2134: getMembership reads mbr: and the roster, then the legacy member with memberOf and the roster", () => {
-  it("mbr: wins over a legacy member record for the same account", async () => {
+describe("rule 2138: getMembership reads mbr: and the roster alone (the legacy member fallback of rule 2134 is gone)", () => {
+  it("a legacy member record grants nothing, with or without its roster entry; the mbr: row decides", async () => {
     const aid = await putAccount(account(address("acc")));
-    const e = address("m");
-    const pid = storedPersonId(e);
-    await db.set(accountKey.membership(aid, pid), mbrRow(aid, e, { role: "member", invitedBy: "p_inviterinviterinviterinv" }));
-    await db.set(accountKey.member(e), legacyMember(e, aid, { invitedBy: "someone@test.example" }));
-    await db.sadd(accountKey.members(aid), pid);
-    expect(await getMembership(aid, pid)).toEqual({ aid, pid, role: "member", acceptedAt: T1, invitedBy: "p_inviterinviterinviterinv", source: "mbr" });
-  });
-
-  it("a legacy member counts only with memberOf equal to the account AND the roster entry, read as {role, acceptedAt, invitedBy, disabled}", async () => {
-    const aid = await putAccount(account(address("acc")));
-    const otherAid = await putAccount(account(address("acc2")));
     const e = address("lm");
     const pid = storedPersonId(e);
-    await db.set(accountKey.member(e), legacyMember(e, aid, { role: "admin", disabled: "seats" }));
-    expect(await getMembership(aid, pid)).toBeNull(); // no roster entry
+    await db.set(accountKey.member(e), legacyMember(e, aid, { role: "admin" }));
     await db.sadd(accountKey.members(aid), pid);
-    expect(await getMembership(aid, pid)).toEqual({ aid, pid, role: "admin", acceptedAt: T1, invitedBy: aid, disabled: "seats", source: "member" });
-    await db.sadd(accountKey.members(otherAid), pid);
-    expect(await getMembership(otherAid, pid)).toBeNull(); // listed there, but memberOf is the other account
+    expect(await getMembership(aid, pid)).toBeNull();
+    await db.set(accountKey.membership(aid, pid), mbrRow(aid, e, { role: "member", invitedBy: "p_inviterinviterinviterinv" }));
+    expect(await getMembership(aid, pid)).toEqual({ aid, pid, role: "member", acceptedAt: T1, invitedBy: "p_inviterinviterinviterinv", source: "mbr" });
   });
 
   it("a row without its roster entry, and a roster entry without a row, both give null", async () => {
@@ -278,41 +166,19 @@ describe("rule 2134: getMembership reads mbr: and the roster, then the legacy me
     expect(await getMembership(aid, pid)).toBeNull();
   });
 
-  it("a home membership whose two records disagree (a rolled-back demotion or pause) reads the stricter value, logged without values", async () => {
-    const aid = await putAccount(account(address("acc")));
-    const e = address("strict");
-    const pid = storedPersonId(e);
-    await db.set(accountKey.membership(aid, pid), mbrRow(aid, e, { role: "admin", acceptedAt: T1 }));
-    await db.set(accountKey.member(e), legacyMember(e, aid, { role: "member", disabled: "seats", acceptedAt: T2 }));
-    await db.sadd(accountKey.members(aid), pid);
-    const w = vi.spyOn(log, "warn");
-    expect(await getMembership(aid, pid)).toMatchObject({ role: "member", disabled: "seats", acceptedAt: T2, source: "mbr" });
-    expect(w).toHaveBeenCalledWith("membership stale", { shape: "membership" });
-    expect(JSON.stringify(w.mock.calls)).not.toContain(e);
-    // In steady state the two agree, and nothing is logged.
-    await db.set(accountKey.member(e), legacyMember(e, aid, { role: "admin", acceptedAt: T1 }));
-    w.mockClear();
-    expect(await getMembership(aid, pid)).toEqual({ aid, pid, role: "admin", acceptedAt: T1, invitedBy: "p_inviterinviterinviterinv", source: "mbr" });
-    expect(w).not.toHaveBeenCalled();
-  });
-
-  it("fails closed: a resume or promotion made only on the legacy record (by a rolled-back build) grants nothing after roll-forward", async () => {
+  it("a resume or promotion made only on a legacy record (by a rolled-back build) grants nothing: the row is read as it is", async () => {
     const aid = await putAccount(account(address("acc")));
     const e = address("resumed");
     const pid = storedPersonId(e);
-    // M1 paused and demoted the member (both records); the rolled-back build then resumed and promoted it, legacy only.
     await db.set(accountKey.membership(aid, pid), mbrRow(aid, e, { role: "member", disabled: "seats", acceptedAt: T1 }));
     await db.set(accountKey.member(e), legacyMember(e, aid, { role: "admin", acceptedAt: T1 }));
     await db.sadd(accountKey.members(aid), pid);
-    const m = await getMembership(aid, pid);
-    expect(m).toMatchObject({ role: "member", disabled: "seats", source: "mbr" });
-    // The owner repeats the resume and the promotion (both records), and only then does it hold.
-    await db.set(accountKey.membership(aid, pid), mbrRow(aid, e, { role: "admin", acceptedAt: T1 }));
-    expect(await getMembership(aid, pid)).toMatchObject({ role: "admin", source: "mbr" });
-    expect(await getMembership(aid, pid)).not.toHaveProperty("disabled");
+    const w = vi.spyOn(log, "warn");
+    expect(await getMembership(aid, pid)).toMatchObject({ role: "member", disabled: "seats", source: "mbr" });
+    expect(w).not.toHaveBeenCalled();
   });
 
-  it("makes exactly one round (two reads and one SISMEMBER), and membershipFromRaw gives the same answer", async () => {
+  it("makes exactly one round (one read and one SISMEMBER), and membershipFromRaw gives the same answer", async () => {
     const aid = await putAccount(account(address("acc")));
     const pid = storedPersonId(newPersonId());
     await db.set(accountKey.membership(aid, pid), mbrRow(aid, pid));
@@ -320,9 +186,9 @@ describe("rule 2134: getMembership reads mbr: and the roster, then the legacy me
     const t = trackRounds(["get", "sismember", "smembers"]);
     const m = await getMembership(aid, pid);
     expect(t.rounds()).toBe(1);
-    expect(t.calls.map((c) => `${c.op} ${c.key}`).sort()).toEqual([`get ${accountKey.member(pid)}`, `get ${accountKey.membership(aid, pid)}`, `sismember ${accountKey.members(aid)}`].sort());
-    expect(membershipFromRaw(aid, pid, mbrRow(aid, pid), null, true)).toEqual(m);
-    expect(membershipFromRaw(aid, pid, mbrRow(aid, pid), null, false)).toBeNull();
+    expect(t.calls.map((c) => `${c.op} ${c.key}`).sort()).toEqual([`get ${accountKey.membership(aid, pid)}`, `sismember ${accountKey.members(aid)}`].sort());
+    expect(membershipFromRaw(aid, pid, mbrRow(aid, pid), true)).toEqual(m);
+    expect(membershipFromRaw(aid, pid, mbrRow(aid, pid), false)).toBeNull();
   });
 });
 
@@ -365,7 +231,7 @@ describe("rule 2115: a role belongs to a membership, and owner comes only from o
     const m = await getMembership(aid, pid);
     expect(m).toBeNull();
     expect(roleIn(A, pid, m)).toBeNull();
-    // A legacy member record claiming owner is refused the same way.
+    // A legacy member record claiming owner grants nothing either (it is not read from M4).
     const e = address("lo");
     await db.set(accountKey.member(e), legacyMember(e, aid, { role: "owner" }));
     await db.sadd(accountKey.members(aid), storedPersonId(e));
@@ -443,7 +309,7 @@ describe("rule 2136: orgs:{pid} is a hint, re-checked on the forward records", (
     await listOrgs(g.pid);
     expect(t.rounds()).toBe(2);
     expect(t.calls.filter((c) => c.round === 0).map((c) => c.key)).toEqual([personKey.orgs(g.pid)]);
-    expect(t.calls.filter((c) => c.round === 1)).toHaveLength(7 * 4); // per entry: account, mbr:, member:, roster
+    expect(t.calls.filter((c) => c.round === 1)).toHaveLength(7 * 3); // per entry: account, mbr:, roster (no member: from M4)
   });
 
   it("src/lib/membership.ts and src/lib/person.ts hold no loop at all: lists go through pmap (no await db.* in a loop)", () => {
@@ -456,32 +322,26 @@ describe("rule 2136: orgs:{pid} is a hint, re-checked on the forward records", (
   });
 });
 
-describe("homeAccountOf: the account the legacy per-login keys belong to", () => {
-  const person = (pid: PersonId, source: Person["source"]): Person => ({ pid, source, email: "x@test.example", name: "", lang: "ar", createdAt: T0 });
+describe("homeAccountOf: the first of listOrgs (rule 2138: no legacy home)", () => {
+  const person = (pid: PersonId): Person => ({ pid, source: "person", email: "x@test.example", name: "", lang: "ar", createdAt: T0 });
 
-  it("a legacy owner: their own account; a legacy member: memberOf", async () => {
-    const e = address("ho");
-    expect(await homeAccountOf(person(storedPersonId(e), "owner"))).toBe(e);
-    const m = address("hm");
-    const team = address("team");
-    await db.set(accountKey.member(m), legacyMember(m, team));
-    expect(await homeAccountOf(person(storedPersonId(m), "member"))).toBe(team);
-    expect(await homeAccountOf(person(storedPersonId(address("nomember")), "member"))).toBeNull();
-  });
-
-  it("a person: record of a legacy owner or member keeps the legacy home (no orgs: entry exists for them in M1)", async () => {
+  it("a legacy owner or member without orgs: entries has no home: the legacy records are not read", async () => {
     const e = address("hpo");
     await putAccount(account(e));
-    expect(await homeAccountOf(person(storedPersonId(e), "person"))).toBe(e);
+    expect(await homeAccountOf(person(storedPersonId(e)))).toBeNull();
     const m = address("hpm");
-    const team = address("team");
+    const team = await putAccount(account(address("team")));
     await db.set(accountKey.member(m), legacyMember(m, team));
-    expect(await homeAccountOf(person(storedPersonId(m), "person"))).toBe(team);
+    await db.sadd(accountKey.members(team), storedPersonId(m));
+    expect(await homeAccountOf(person(storedPersonId(m)))).toBeNull();
+    // With the entries Script S1 wrote, the forward records answer.
+    await db.sadd(personKey.orgs(storedPersonId(e)), e);
+    expect(await homeAccountOf(person(storedPersonId(e)))).toBe(e);
   });
 
   it("a p_ person: the owned account, else the oldest live membership, else none", async () => {
     const pid = storedPersonId(newPersonId());
-    expect(await homeAccountOf(person(pid, "person"))).toBeNull();
+    expect(await homeAccountOf(person(pid))).toBeNull();
     const older = await putAccount(account(address("o1")));
     const newer = await putAccount(account(address("o2")));
     await Promise.all([
@@ -492,10 +352,10 @@ describe("homeAccountOf: the account the legacy per-login keys belong to", () =>
       db.sadd(personKey.orgs(pid), older),
       db.sadd(personKey.orgs(pid), newer),
     ]);
-    expect(await homeAccountOf(person(pid, "person"))).toBe(older);
+    expect(await homeAccountOf(person(pid))).toBe(older);
     const owned = await putAccount(account(address("o3"), { ownerPid: pid }));
     await db.sadd(personKey.orgs(pid), owned);
-    expect(await homeAccountOf(person(pid, "person"))).toBe(owned);
+    expect(await homeAccountOf(person(pid))).toBe(owned);
   });
 });
 

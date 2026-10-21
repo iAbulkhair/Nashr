@@ -3,14 +3,14 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
-import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
+import { json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, seedActiveBrand, signIn, signOut } from "./helpers/session";
+import { createUser, currentUser, getLogin, getUser, normalizeEmail, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
-import { createMember, forceRemoveMember, getMember, leaveTeam, removeMember, saveMember, type Member } from "@/lib/team";
+import { createMember, forceRemoveMember, leaveTeam, removeMember } from "@/lib/team";
 import { wipeAccount } from "@/lib/account";
 import { updatePerson } from "@/lib/person";
-import { ownerOf } from "@/lib/membership";
-import { storedPersonId } from "@/lib/keys";
+import { getMembership, ownerOf, type Membership } from "@/lib/membership";
+import { accountKey, personKey, storedPersonId } from "@/lib/keys";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as accountRoute from "@/app/api/account/route";
@@ -28,11 +28,11 @@ import { appDict } from "@/lib/app-i18n";
 import { CHAT_ALLOWANCE, PLAN_CREDITS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount } from "@/lib/pricing";
 import { formatWhen } from "@/lib/secretary-agenda";
 import { FeedView, type FeedState } from "@/components/app/FeedCard";
-import { createFeed, FEED_KEYS, FEED_TOKEN, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, revokeFeeds } from "@/lib/feed-token";
+import { createFeed, FEED_KEYS, FEED_TOKEN, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, revokeFeeds, type LinkOwner } from "@/lib/feed-token";
 
-// Pins the legacy shape (multi-org M1): this file pins R1's feed links, made and checked by login (`createFeed(login)`, the
-// `sec:feedof:{login}` pointer, the login's lock, `activebrand:{login}`), so its persons are legacy ones; the links of a
-// `p_` person, per `(pid, aid)`, are pinned in tests/multi-org-links.test.ts (rule 2119). Each still holds a shadow membership.
+// Legacy persons (pid = address): from M4 (rule 2138) every link is per `(pid, aid)` (`createFeed(as(login))`, the
+// `sec:feedof:{pid}:{aid}` pointer, `lock:feed:{pid}:{aid}`); the per-login pointer is never read or written. The links of
+// a `p_` person are pinned in tests/multi-org-links.test.ts (rule 2119). Each person still holds a shadow membership.
 const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
@@ -50,6 +50,23 @@ const memValues = () => {
 /** The `sec:feed:*` records that belong to this login. */
 const recordsOf = (login: string) => [...mem().kv.entries()].filter(([k, v]) => k.startsWith("sec:feed:") && (v as { login?: string }).login === login);
 const resolveAs = async (email: string, opts: { imp?: string } = {}) => { await signIn(email, opts); return currentUser(); };
+/**
+ * The link owner an address makes links as (`linkOwner`): its person and the account it signs in to. Remembered per
+ * address, so a test can still name the link of a login it has since removed (legacy persons: the ids never change).
+ */
+const seats = new Map<string, LinkOwner>();
+const as = async (email: string): Promise<LinkOwner> => {
+  const e = normalizeEmail(email);
+  const known = seats.get(e);
+  if (known) return known;
+  const l = await getLogin(e);
+  if (!l?.acct) throw new Error(`as: ${e} signs in to no workspace`);
+  const w = { pid: l.pid, aid: l.acct, login: e };
+  seats.set(e, w);
+  return w;
+};
+/** `sec:feedof:{pid}:{aid}` of an address: the pointer its link lives under (rule 2119). */
+const ptrOf = async (email: string) => { const w = await as(email); return personKey.feedOf(w.pid, w.aid); };
 
 beforeAll(() => {
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
@@ -60,16 +77,16 @@ beforeAll(() => {
 describe("feed token (rules 530-533)", () => {
   it("rule 530: only the SHA-256 of the token is stored, the plain token never", async () => {
     const login = (await newUser("feed")).email;
-    const token = await createFeed(login, login, "ar");
+    const token = await createFeed(await as(login), login, "ar");
     expect(token).toMatch(FEED_TOKEN);
     expect(hashFeedToken(token)).toMatch(/^[0-9a-f]{64}$/);
     const rec = await db.get(FEED_KEYS.rec(hashFeedToken(token)));
-    expect(rec).toEqual({ login, scope: login, lang: "ar", createdAt: expect.any(String) });
+    expect(rec).toEqual({ login, scope: login, lang: "ar", createdAt: expect.any(String), pid: (await as(login)).pid, aid: (await as(login)).aid });
     expect(Number.isNaN(Date.parse((rec as { createdAt: string }).createdAt))).toBe(false);
     expect(memKeys().filter((k) => k.includes(token))).toEqual([]);
     expect(memValues().filter((v) => v.includes(token))).toEqual([]);
     expect(await resolveFeed(token)).toEqual({ hash: hashFeedToken(token), rec });
-    expect(await getFeedStatus(login)).toEqual({ exists: true, createdAt: (rec as { createdAt: string }).createdAt });
+    expect(await getFeedStatus(await as(login))).toEqual({ exists: true, createdAt: (rec as { createdAt: string }).createdAt });
   });
 
   it("rule 530: a malformed token is refused without reading the store", async () => {
@@ -84,69 +101,74 @@ describe("feed token (rules 530-533)", () => {
 
   it("rule 531: renewing deletes the old record and sec:feedof keeps one per login", async () => {
     const login = (await newUser("feed")).email;
-    const first = await createFeed(login, login, "en");
-    const second = await createFeed(login, login, "en");
+    const first = await createFeed(await as(login), login, "en");
+    const second = await createFeed(await as(login), login, "en");
     expect(first).not.toBe(second);
     expect(await resolveFeed(first)).toBeNull();
     expect(await resolveFeed(second)).not.toBeNull();
-    expect(await db.get(FEED_KEYS.of(login))).toBe(hashFeedToken(second));
+    expect(await db.get(await ptrOf(login))).toBe(hashFeedToken(second));
     expect(await db.get(FEED_KEYS.rec(hashFeedToken(first)))).toBeNull();
     expect(recordsOf(login)).toHaveLength(1);
   });
 
   it("rule 532: two creates at once leave exactly one working link; revoke is idempotent", async () => {
     const login = (await newUser("feed")).email;
-    const out = await Promise.all([createFeed(login, login, "ar"), createFeed(login, login, "ar")]);
+    const out = await Promise.all([createFeed(await as(login), login, "ar"), createFeed(await as(login), login, "ar")]);
     expect(out.filter((x) => x === "busy").length).toBeLessThanOrEqual(1);
     expect(recordsOf(login)).toHaveLength(1);
     const working = await Promise.all(out.filter((x) => x !== "busy").map((t) => resolveFeed(t)));
     expect(working.filter((r) => r !== null)).toHaveLength(1);
 
-    await revokeFeed(login);
-    await revokeFeed(login);
+    await revokeFeed(await as(login));
+    await revokeFeed(await as(login));
     expect(recordsOf(login)).toEqual([]);
+    const ptr = await ptrOf(login);
+    expect(memKeys().filter((k) => k === ptr)).toEqual([]);
+    // No legacy per-login pointer is ever written (rule 2138).
     expect(memKeys().filter((k) => k === FEED_KEYS.of(login))).toEqual([]);
-    expect(await getFeedStatus(login)).toEqual({ exists: false, createdAt: null });
+    expect(await getFeedStatus(await as(login))).toEqual({ exists: false, createdAt: null });
   });
 
   it("rule 532: a held lock never keeps a link alive, and revokeFeeds revokes every login given", async () => {
     const a = (await newUser("feed")).email;
     const b = (await newUser("feed")).email;
-    const ta = await createFeed(a, a, "ar");
-    const tb = await createFeed(b, b, "en");
-    const held = await db.lockOwned(`lock:feed:${a}`, 10);
+    const ta = await createFeed(await as(a), a, "ar");
+    const tb = await createFeed(await as(b), b, "en");
+    const wa = await as(a);
+    const held = await db.lockOwned(personKey.feedLock(wa.pid, wa.aid), 10);
     expect(held).not.toBeNull();
     try {
-      expect(await createFeed(a, a, "ar")).toBe("busy");
-      await revokeFeeds([a, b]);
+      expect(await createFeed(await as(a), a, "ar")).toBe("busy");
+      await revokeFeeds([await as(a), await as(b)]);
       expect(await resolveFeed(ta)).toBeNull();
       expect(await resolveFeed(tb)).toBeNull();
       expect(recordsOf(a)).toEqual([]);
       expect(recordsOf(b)).toEqual([]);
     } finally {
-      await db.unlockOwned(`lock:feed:${a}`, held!);
+      await db.unlockOwned(personKey.feedLock(wa.pid, wa.aid), held!);
     }
   });
 
   it("rule 532: a record that sec:feedof does not name is dead (a create that outran a revoke)", async () => {
     const login = (await newUser("feed")).email;
-    const live = await createFeed(login, login, "ar");
+    const live = await createFeed(await as(login), login, "ar");
     expect(live).toMatch(FEED_TOKEN);
     expect(await resolveFeed(live)).not.toBeNull();
 
     // What a stalled create leaves after a revoke that gave up waiting: its record written, `of` naming something else or nothing.
     const orphan = randomBytes(32).toString("base64url");
-    await db.set(FEED_KEYS.rec(hashFeedToken(orphan)), { login, scope: login, lang: "ar", createdAt: new Date().toISOString() });
+    const w = await as(login);
+    await db.set(FEED_KEYS.rec(hashFeedToken(orphan)), { login, scope: login, lang: "ar", createdAt: new Date().toISOString(), pid: w.pid, aid: w.aid });
     expect(await resolveFeed(orphan)).toBeNull();
     expect(await resolveFeed(live)).not.toBeNull();
 
-    await revokeFeed(login);
-    expect(await db.get(FEED_KEYS.of(login))).toBeNull();
+    await revokeFeed(await as(login));
+    expect(await db.get(await ptrOf(login))).toBeNull();
     expect(await db.get(FEED_KEYS.rec(hashFeedToken(orphan)))).not.toBeNull();
     expect(await resolveFeed(orphan)).toBeNull();
 
     // Named by `of`, the same record works: the check is `of === hash`, nothing else.
-    await db.set(FEED_KEYS.of(login), hashFeedToken(orphan));
+    await db.set(await ptrOf(login), hashFeedToken(orphan));
     expect(await resolveFeed(orphan)).toEqual({ hash: hashFeedToken(orphan), rec: expect.objectContaining({ login }) });
   });
 
@@ -382,19 +404,19 @@ describe("public feed route (rules 539, 577-579)", () => {
     const ip = nextIp();
     const due = iso(Date.now() + DAY);
     const owner = await newUser("feed539");
-    const revoked = await createFeed(owner.email, owner.email, "en");
-    await revokeFeed(owner.email);
+    const revoked = await createFeed(await as(owner.email), owner.email, "en");
+    await revokeFeed(await as(owner.email));
 
     const member = await newMember(owner, "member");
     await seed(owner.email, { dueAt: due });
-    const removed = await createFeed(member.email, owner.email, "en");
+    const removed = await createFeed(await as(member.email), owner.email, "en");
     const sus = await newUser("feed539s");
     await seed(sus.email, { dueAt: due });
-    const suspended = await createFeed(sus.email, sus.email, "en");
+    const suspended = await createFeed(await as(sus.email), sus.email, "en");
     const arch = await newUser("feed539a");
     await saveBrands(arch.email, brandRows("active"));
     await seed(`${arch.email}#b2`, { dueAt: due });
-    const archived = await createFeed(arch.email, `${arch.email}#b2`, "en");
+    const archived = await createFeed(await as(arch.email), `${arch.email}#b2`, "en");
     // Each one works while its login and brand hold.
     for (const t of [removed, suspended, archived]) expect((await callFeed(t, ip)).status).toBe(200);
 
@@ -434,15 +456,18 @@ describe("public feed route (rules 539, 577-579)", () => {
     const owner = await newUser("feed539m");
     const { email } = await newMember(owner, "admin");
     // Made after the member joined: a record from before the login's life is refused (the re-invite test below).
-    const rec = { login: email, scope: owner.email, lang: "en" as const, createdAt: new Date(Date.now() + 1000).toISOString() };
-    const original = (await getMember(email))!;
-    const holdsWith = async (m: Partial<Member>) => {
-      await saveMember({ ...original, ...m });
-      try { return await feedHolds(rec); } finally { await saveMember(original); }
+    const w = await as(email);
+    const rec = { login: email, scope: owner.email, lang: "en" as const, createdAt: new Date(Date.now() + 1000).toISOString(), pid: w.pid, aid: w.aid };
+    // The membership row (rule 2138: never the legacy member record) changed for one read, then put back.
+    const row = accountKey.membership(w.aid, w.pid);
+    const original = await db.get<Record<string, unknown>>(row);
+    const holdsWith = async (m: Partial<Pick<Membership, "role" | "disabled" | "acceptedAt">> | { role: string }) => {
+      await db.set(row, { ...original, ...m });
+      try { return await feedHolds(rec); } finally { await db.set(row, original); }
     };
     expect(await feedHolds(rec)).toBe(true);
     expect(await holdsWith({ disabled: "seats" })).toBe(false);
-    expect(await holdsWith({ role: "owner" as Member["role"] })).toBe(false);
+    expect(await holdsWith({ role: "owner" })).toBe(false);
     expect(await holdsWith({ acceptedAt: iso(Date.parse(owner.createdAt) - 1000) })).toBe(false);
     expect(await holdsWith({ acceptedAt: "not a date" })).toBe(false);
     expect(await holdsWith({ role: "member" })).toBe(true);
@@ -456,32 +481,33 @@ describe("public feed route (rules 539, 577-579)", () => {
     // A member removed without a revoke (as if it failed) and invited again at the same address.
     const owner = await newUser("feed539r");
     const { email } = await newMember(owner, "member");
-    const old = (await createFeed(email, owner.email, "en")) as string;
+    const old = (await createFeed(await as(email), owner.email, "en")) as string;
     expect((await callFeed(old, ip)).status).toBe(200);
     await Promise.all([db.del(`member:${email}`), db.srem(`members:${owner.email}`, email)]);
     await later();
     await createMember(owner.email, { email, name: "Again", password: "abc12345", lang: "ar", role: "member", invitedBy: owner.email });
     const found = await resolveFeed(old);
     expect(found).not.toBeNull();
-    expect(Date.parse(found!.rec.createdAt)).toBeLessThan(Date.parse((await getMember(email))!.acceptedAt));
+    const again = await as(email);
+    expect(Date.parse(found!.rec.createdAt)).toBeLessThan(Date.parse((await getMembership(again.aid, again.pid))!.acceptedAt));
     expect(await feedHolds(found!.rec)).toBe(false);
     const stale = await callFeed(old, ip);
     expect(stale.status).toBe(404);
     expect(await stale.text()).toBe("");
-    const fresh = (await createFeed(email, owner.email, "en")) as string;
+    const fresh = (await createFeed(await as(email), owner.email, "en")) as string;
     expect((await callFeed(fresh, ip)).status).toBe(200);
     // The same record with a date that cannot be read is not refused for that reason.
     expect(await feedHolds({ ...(await resolveFeed(fresh))!.rec, createdAt: "not a date" })).toBe(true);
 
     // An owner deleted without a revoke and registered again at the same address.
     const o2 = await newUser("feed539o");
-    const oldOwner = (await createFeed(o2.email, o2.email, "en")) as string;
+    const oldOwner = (await createFeed(await as(o2.email), o2.email, "en")) as string;
     expect((await callFeed(oldOwner, ip)).status).toBe(200);
     await db.del(`user:${o2.email}`);
     await later();
     await markVerified((await createUser({ email: o2.email, name: "Again", phone: "", password: "abc12345", lang: "ar" })).email);
     expect((await callFeed(oldOwner, ip)).status).toBe(404);
-    const freshOwner = (await createFeed(o2.email, o2.email, "en")) as string;
+    const freshOwner = (await createFeed(await as(o2.email), o2.email, "en")) as string;
     expect((await callFeed(freshOwner, ip)).status).toBe(200);
     expect(await feedHolds({ ...(await resolveFeed(freshOwner))!.rec, createdAt: "not a date" })).toBe(true);
   });
@@ -496,13 +522,13 @@ describe("public feed route (rules 539, 577-579)", () => {
     const inOther = await seed(b.email, { dueAt: due });
     const uid = (it: SecItem) => `UID:${it.id}@thakeen`;
 
-    const brandTwo = await (await callFeed(await createFeed(a.email, `${a.email}#b2`, "en"))).text();
+    const brandTwo = await (await callFeed(await createFeed(await as(a.email), `${a.email}#b2`, "en"))).text();
     expect(brandTwo).toContain(uid(inTwo));
     for (const x of [inDefault, inOther]) expect(brandTwo).not.toContain(uid(x));
 
     const member = await newMember(a, "member");
     const ownAddress = await seed(member.email, { dueAt: due });
-    const memberFeed = await (await callFeed(await createFeed(member.email, a.email, "en"))).text();
+    const memberFeed = await (await callFeed(await createFeed(await as(member.email), a.email, "en"))).text();
     expect(memberFeed).toContain(uid(inDefault));
     for (const x of [inTwo, inOther, ownAddress]) expect(memberFeed).not.toContain(uid(x));
 
@@ -517,7 +543,7 @@ describe("public feed route (rules 539, 577-579)", () => {
       [a.email, a.email.toUpperCase()],
     ];
     for (const [login, scope] of refused) {
-      const r = await callFeed(await createFeed(login, scope, "en"));
+      const r = await callFeed(await createFeed(await as(login), scope, "en"));
       expect(r.status, `${login} -> ${scope}`).toBe(404);
       expect(await r.text()).toBe("");
     }
@@ -526,7 +552,7 @@ describe("public feed route (rules 539, 577-579)", () => {
   it("rule 578: rate limits answer 429 with Retry-After before any item read", async () => {
     const o = await newUser("feed578");
     await seed(o.email, { dueAt: iso(Date.now() + DAY) });
-    const token = await createFeed(o.email, o.email, "en");
+    const token = await createFeed(await as(o.email), o.email, "en");
     const refusedWithoutRead = async (ip: string) => {
       const list = vi.spyOn(secretary, "listOpenItems");
       try {
@@ -553,7 +579,7 @@ describe("public feed route (rules 539, 577-579)", () => {
   it("rule 579: headers", async () => {
     const o = await newUser("feed579");
     const it = await seed(o.email, { dueAt: iso(Date.now() + DAY) });
-    const token = await createFeed(o.email, o.email, "ar");
+    const token = await createFeed(await as(o.email), o.email, "ar");
     const r = await callFeed(token);
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toBe("text/calendar; charset=utf-8");
@@ -609,7 +635,7 @@ describe("feed management (rules 580-581)", () => {
       const recs = recordsOf(login);
       expect(recs).toHaveLength(1);
       expect(recs[0][1]).toMatchObject({ login, scope: owner.email, lang: "en" });
-      expect(hashFeedToken(tokenOf(b.url))).toBe(await db.get(FEED_KEYS.of(login)));
+      expect(hashFeedToken(tokenOf(b.url))).toBe(await db.get(await ptrOf(login)));
 
       const st = await status();
       expect(st.status).toBe(200);
@@ -626,9 +652,9 @@ describe("feed management (rules 580-581)", () => {
     const stopped = await stop();
     expect(stopped.status).toBe(200);
     expect(stopped.headers.get("cache-control")).toBe("no-store");
-    expect(await getFeedStatus(member.email)).toEqual({ exists: false, createdAt: null });
-    expect((await getFeedStatus(owner.email)).exists).toBe(true);
-    expect((await getFeedStatus(admin.email)).exists).toBe(true);
+    expect(await getFeedStatus(await as(member.email))).toEqual({ exists: false, createdAt: null });
+    expect((await getFeedStatus(await as(owner.email))).exists).toBe(true);
+    expect((await getFeedStatus(await as(admin.email))).exists).toBe(true);
 
     // A founder impersonating the account: status is readable, but nothing that outlives the session may be made or stopped.
     await signIn(owner.email, { imp: FOUNDER });
@@ -690,7 +716,7 @@ describe("feed management (rules 580-581)", () => {
     const same = await (await status()).json();
     expect(same).toMatchObject({ ok: true, exists: true, sameBrand: true });
     // The active brand moves to another one of the account's brands: the link is still the old brand's.
-    await db.set(`activebrand:${owner.email}`, "b2");
+    await seedActiveBrand(owner.email, "b2");
     const text = await (await status()).text();
     expect(JSON.parse(text)).toMatchObject({ ok: true, exists: true, sameBrand: false });
     expect(text).not.toContain("b2");
@@ -726,13 +752,14 @@ describe("feed management (rules 580-581)", () => {
   it("rule 581: a lock held by another create answers 409 busy; the 21st write in an hour is 429 and writes nothing, and the status read has its own bucket", async () => {
     const owner = await newUser("feed581b");
     await signIn(owner.email);
-    const owned = await db.lockOwned(`lock:feed:${owner.email}`, 10);
+    const wo = await as(owner.email);
+    const owned = await db.lockOwned(personKey.feedLock(wo.pid, wo.aid), 10);
     expect(owned).toBeTruthy();
     const busy = await create({});
     expect(busy.status).toBe(409);
     expect(busy.headers.get("cache-control")).toBe("no-store");
     expect(await busy.json()).toEqual({ ok: false, error: "busy" });
-    await db.unlockOwned(`lock:feed:${owner.email}`, owned!);
+    await db.unlockOwned(personKey.feedLock(wo.pid, wo.aid), owned!);
     expect(recordsOf(owner.email)).toEqual([]);
 
     // That busy answer was write 1; POST and DELETE share one bucket per login (`sec:feed:{login}`, 20 an hour).
@@ -757,7 +784,7 @@ describe("feed management (rules 580-581)", () => {
 
 describe("feed revocation (rules 582-583)", () => {
   const live = async (login: string, scope: string) => {
-    const token = await createFeed(login, scope, "en");
+    const token = await createFeed(await as(login), scope, "en");
     expect(token).not.toBe("busy");
     expect(FEED_TOKEN.test(token as string)).toBe(true);
     // A link that answers 200 now, so the 404 later means the revoke and not a link that never worked.
@@ -767,13 +794,13 @@ describe("feed revocation (rules 582-583)", () => {
   /** Dead in every way: the public route, the status, the record and the pointer. */
   const expectEnded = async (login: string, token: string) => {
     expect((await callFeed(token)).status, `public route for ${login}`).toBe(404);
-    expect(await getFeedStatus(login)).toEqual({ exists: false, createdAt: null });
+    expect(await getFeedStatus(await as(login))).toEqual({ exists: false, createdAt: null });
     expect(await db.get(FEED_KEYS.rec(hashFeedToken(token)))).toBeNull();
-    expect(await db.get(FEED_KEYS.of(login))).toBeNull();
+    expect(await db.get(await ptrOf(login))).toBeNull();
   };
   const expectAlive = async (login: string, token: string) => {
     expect((await callFeed(token)).status, `public route for ${login}`).toBe(200);
-    expect((await getFeedStatus(login)).exists).toBe(true);
+    expect((await getFeedStatus(await as(login))).exists).toBe(true);
   };
   let ipN2 = 0;
   const ipH = () => ({ "x-forwarded-for": `198.18.7.${++ipN2}` });
@@ -868,7 +895,7 @@ describe("feed revocation (rules 582-583)", () => {
     let t = { owner: await live(owner.email, owner.email), m1: await live(m1.email, owner.email), m2: await live(m2.email, owner.email) };
     await wait();
     await failing(() => resetAs(m1.email, "member", "reset12345"));
-    expect(await getFeedStatus(m1.email)).toMatchObject({ exists: true });
+    expect(await getFeedStatus(await as(m1.email))).toMatchObject({ exists: true });
     expect((await callFeed(t.m1)).status).toBe(404);
     expect((await callFeed(t.owner)).status).toBe(200);
     expect((await callFeed(t.m2)).status).toBe(200);
@@ -930,15 +957,16 @@ describe("feed revocation (rules 582-583)", () => {
     const tokens = { [owner.email]: await live(owner.email, owner.email), [m1.email]: await live(m1.email, owner.email), [m2.email]: await live(m2.email, owner.email) };
     const keep = await live(bystander.email, bystander.email);
     const hashes = Object.values(tokens).map(hashFeedToken);
-    expect(memKeys().filter((k) => logins.some((l) => k === FEED_KEYS.of(l)))).toHaveLength(3);
+    const ptrs = await Promise.all(logins.map(ptrOf));
+    expect(memKeys().filter((k) => ptrs.includes(k))).toHaveLength(3);
 
     await wipeAccount(owner.email);
 
-    const leftKeys = memKeys().filter((k) => logins.some((l) => k === FEED_KEYS.of(l)) || hashes.some((h) => k === FEED_KEYS.rec(h)));
+    const leftKeys = memKeys().filter((k) => ptrs.includes(k) || logins.some((l) => k === FEED_KEYS.of(l)) || hashes.some((h) => k === FEED_KEYS.rec(h)));
     expect(leftKeys).toEqual([]);
     expect(logins.flatMap(recordsOf)).toEqual([]);
-    // No key of the feed family still ends with one of these logins, and no stored value names a hash of these links.
-    expect(memKeys().filter((k) => k.startsWith("sec:feed") && logins.some((l) => k.endsWith(`:${l}`)))).toEqual([]);
+    // No key of the feed family still names one of these logins, and no stored value names a hash of these links.
+    expect(memKeys().filter((k) => k.startsWith("sec:feed") && logins.some((l) => k.includes(`:${l}`)))).toEqual([]);
     expect(memValues().filter((v) => hashes.some((h) => v.includes(h)))).toEqual([]);
     for (const l of logins) expect((await callFeed(tokens[l])).status).toBe(404);
     // Another account's link is not touched.
@@ -957,12 +985,14 @@ describe("feed revocation (rules 582-583)", () => {
     }
     // The first step failed: nothing of the account was deleted yet, so the owner can still see and retry.
     expect(await getUser(owner.email)).not.toBeNull();
-    expect(await getMember(m.email)).not.toBeNull();
+    const wm = await as(m.email);
+    expect(await getMembership(wm.aid, wm.pid)).not.toBeNull();
     await wipeAccount(owner.email);
     expect(await getUser(owner.email)).toBeNull();
-    expect(await getMember(m.email)).toBeNull();
+    expect(await getMembership(wm.aid, wm.pid)).toBeNull();
     for (const t of tokens) expect((await callFeed(t)).status).toBe(404);
-    expect(memKeys().filter((k) => [owner.email, m.email].some((l) => k === FEED_KEYS.of(l)))).toEqual([]);
+    const ptrs = await Promise.all([owner.email, m.email].map(ptrOf));
+    expect(memKeys().filter((k) => ptrs.includes(k))).toEqual([]);
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash, randomBytes } from "crypto";
 import { jar, json, newUser, signIn, signOut } from "./helpers/session";
-import { createSession, currentUser, getUser, saveUser, sessionRecord } from "@/lib/auth";
+import { createSession, currentUser, getUser, sessionRecord } from "@/lib/auth";
 import { charge } from "@/lib/credits";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { issueCode, issueTokens, listGrants, redeemCode, registerClient, rotateRefresh } from "@/lib/oauth";
@@ -42,17 +42,14 @@ describe("sessions end when the password changes", () => {
     jar().set("thakeen_session", other);
     expect((await currentUser())!.email).toBe(u.email);
   });
-  it("a reset kills old sessions, legacy ones without an issue time included, and every MCP token", async () => {
-    // Pins the legacy shape (multi-org M1): a session from before R1 belongs to a legacy owner.
+  it("a reset kills old sessions and every MCP token; a session in the pre-2026-09-18 format is nobody already", async () => {
+    // Pins the legacy shape (multi-org M1): a legacy owner.
     const u = await newUser("sess", { legacy: true });
     const old = await signIn(u.email);
     const legacy = randomBytes(32).toString("hex");
-    // Legacy sessions only exist for accounts from before 2026-09-18, which carry no creation stamp in sessionsAfter
-    // (createUser now sets one, so a re-registered address never inherits an old session).
-    await saveUser({ ...(await getUser(u.email))!, sessionsAfter: undefined });
-    await db.set(`session:${legacy}`, u.email); // the format written before 2026-09-18
+    await db.set(`session:${legacy}`, u.email); // the format written before 2026-09-18: an address, no ids
     jar().set("thakeen_session", legacy);
-    expect((await currentUser())!.email).toBe(u.email); // legacy sessions keep working until a password change
+    expect(await currentUser()).toBeNull(); // rule 2138: a session without `pid` resolves to nobody
     const personal = await createMcpToken(u.email);
     const client = await registerClient({ redirect_uris: ["https://claude.example/cb"], client_name: "Claude" });
     const oauth = await issueTokens(u.email, client.client_id, "noor");

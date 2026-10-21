@@ -4,7 +4,7 @@ import { createHash, randomBytes } from "crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { jar, json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
-import { acct, createUser, currentUser, getUser, verifyPassword, type User } from "@/lib/auth";
+import { acct, createUser, currentUser, getUser, saveUser, verifyPassword, type User } from "@/lib/auth";
 import { loginIndexOf, newAccountId } from "@/lib/account-id";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
@@ -23,18 +23,18 @@ import * as signupRoute from "@/app/api/auth/signup/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as verifyCheckRoute from "@/app/api/auth/verify/check/route";
 
-// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
-// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+// Legacy persons (pid = its address), so the address names the person's `user:` / `member:` keys in the assertions below;
+// each still holds a shadow membership unless it says `shadow: false`.
 const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
- * Multi-workspace M1 expand (docs/specs/2026-10-18-multi-org.md sections 2 and 6): every credential write goes
- * through `updatePerson` (or `createPersonRecord` for a new login). Rule 2132 (credential part): the person row and the
- * legacy record it mirrors agree after every write, so a build rolled back to R1 reads the new credentials, and the
- * stale guard never fires; a `p_` person writes `person:` only. Rule 2139 (credential part): `lock:person` before
- * `lock:member` / `lock:user`, and a held person lock answers 409 `busy` with nothing written. Plan reconciliations 6
- * (a new login's row is written whole) and 11 (a proved address lands on the person and every account it owns).
+ * Multi-workspace (docs/specs/2026-10-18-multi-org.md sections 2 and 6): every credential write goes through
+ * `updatePerson` (or `createPersonRecord` for a new login). Rule 2138 (M4 contract, credential part; it replaced rule
+ * 2132's mirror): every person, legacy or `p_`, writes `person:` only, and `user:` / `member:` hold no credentials
+ * (`saveUser` strips them, Script S2 removes what is left). Rule 2139 (credential part): `lock:person` first, and a held
+ * person lock answers 409 `busy` with nothing written. Plan reconciliations 6 (a new login's row is written whole) and
+ * 11 (a proved address lands on the person and every account it owns).
  */
 
 const FOUNDER = "founder-credentials@test.example";
@@ -59,16 +59,22 @@ async function resetWith(email: string, kind: "owner" | "member") {
   return resetRoute.POST(json("/api/auth/reset", "POST", { token, password: NEW }, ip()));
 }
 
-const OWNER_FIELDS = ["email", "name", "lang", "passHash", "emailVerifiedAt", "sessionsAfter", "devicesAfter"] as const;
-const MEMBER_FIELDS = ["email", "name", "lang", "passHash", "sessionsAfter", "devicesAfter"] as const;
-/** The `person:` row and the legacy record it mirrors hold the same credentials, and the row's birth is the legacy one. */
-async function expectAgree(pid: string, kind: "owner" | "member") {
-  const row = await db.get<Record<string, unknown>>(personKey.person(storedPersonId(pid)));
-  const legacy = await db.get<Record<string, unknown>>(kind === "owner" ? accountKey.user(pid) : accountKey.member(pid));
+/** The fields M4 never writes on an account or member record (rule 2138); Script S2 removes the ones left. */
+const LEGACY_CREDENTIALS = ["passHash", "sessionsAfter", "devicesAfter"] as const;
+/**
+ * The person holds its credentials on `person:{pid}` alone: the row exists with a birth, the record at `user:{pid}` (a
+ * legacy owner's own account, when there is one) holds no credential field, and no `member:{pid}` record exists.
+ */
+async function expectPersonOnly(pid: string) {
+  const [row, account, member] = await Promise.all([
+    db.get<Record<string, unknown>>(personKey.person(storedPersonId(pid))),
+    db.get<Record<string, unknown>>(accountKey.user(pid)),
+    db.get(accountKey.member(pid)),
+  ]);
   expect(row, "person row").toBeTruthy();
-  for (const f of kind === "owner" ? OWNER_FIELDS : MEMBER_FIELDS) expect(row![f], f).toEqual(legacy![f]);
-  expect(row!.createdAt).toBe(kind === "owner" ? legacy!.createdAt : legacy!.acceptedAt);
-  if (kind === "member") expect(legacy).not.toHaveProperty("emailVerifiedAt");
+  expect(row!.createdAt, "person birth").toBeTruthy();
+  if (account) for (const f of LEGACY_CREDENTIALS) expect(account, f).not.toHaveProperty(f);
+  expect(member, "member record").toBeNull();
 }
 const tick = () => new Promise((r) => setTimeout(r, 5));
 /** Act with a session token issued earlier (as a second browser holding it would). */
@@ -91,28 +97,25 @@ async function putAccount(over: Partial<User> = {}): Promise<AccountId> {
   return storedAccountId(id);
 }
 
-describe("rule 2132 (credential part): a legacy login's writes land on the person and on its legacy record", () => {
-  it("an owner's password change: the same hash and stamp on person: and user:, which an R1 reader checks", async () => {
+describe("rule 2138 (credential part): a legacy login's credential writes land on person: only", () => {
+  it("an owner's password change: the new hash and stamp on person:, none on user:", async () => {
     const o = await newUser("pw");
     await signIn(o.email);
     expect(await answer(await changePassword("abc12345"))).toEqual({ status: 200, body: { ok: true } });
-    await expectAgree(acct(o), "owner");
-    // What an R1 build reads: the account record's own hash.
-    const r1 = (await db.get<User>(accountKey.user(acct(o))))!;
-    expect(await bcrypt.compare(NEW, r1.passHash!)).toBe(true);
-    expect(await bcrypt.compare("abc12345", r1.passHash!)).toBe(false);
-    expect(await verifyPassword((await getPerson(storedPersonId(acct(o))))!, NEW)).toBe(true);
+    await expectPersonOnly(acct(o));
+    const p = (await getPerson(storedPersonId(acct(o))))!;
+    expect(await verifyPassword(p, NEW)).toBe(true);
+    expect(await verifyPassword(p, "abc12345")).toBe(false);
   });
 
-  it("a member's password change: the same hash and stamp on person: and member:, and the owner's record is untouched", async () => {
+  it("a member's password change: the person only; no member: record appears and the owner's record is untouched", async () => {
     const o = await newUser("mpo");
     const m = await newMember(o);
     const ownerBefore = await db.get<User>(accountKey.user(acct(o)));
     await signIn(m.email);
     expect(await answer(await changePassword(m.password))).toEqual({ status: 200, body: { ok: true } });
-    await expectAgree(m.email, "member");
-    const r1 = (await db.get<{ passHash: string }>(accountKey.member(m.email)))!;
-    expect(await bcrypt.compare(NEW, r1.passHash)).toBe(true);
+    await expectPersonOnly(m.pid);
+    expect(await verifyPassword((await getPerson(m.pid))!, NEW)).toBe(true);
     expect(await db.get<User>(accountKey.user(acct(o)))).toEqual(ownerBefore);
   });
 
@@ -121,43 +124,36 @@ describe("rule 2132 (credential part): a legacy login's writes land on the perso
     const m = await newMember(o);
     await signIn(o.email);
     expect((await saveProfile({ name: "Owner Renamed", lang: "en", phone: "+966500002132" })).status).toBe(200);
-    await expectAgree(acct(o), "owner");
     expect((await getPerson(storedPersonId(acct(o))))).toMatchObject({ name: "Owner Renamed", lang: "en" });
     expect((await signOutOthers("abc12345")).status).toBe(200);
-    await expectAgree(acct(o), "owner");
     expect((await getPerson(storedPersonId(acct(o))))!.devicesAfter).toBeTruthy();
+    await expectPersonOnly(acct(o));
     await signIn(m.email);
     expect((await saveProfile({ name: "Member Renamed", lang: "en" })).status).toBe(200);
-    await expectAgree(m.email, "member");
     expect((await signOutOthers(m.password)).status).toBe(200);
-    await expectAgree(m.email, "member");
-    expect((await db.get<{ name: string; devicesAfter?: string }>(accountKey.member(m.email)))).toMatchObject({ name: "Member Renamed" });
+    expect((await getPerson(m.pid))).toMatchObject({ name: "Member Renamed", lang: "en", devicesAfter: expect.any(String) });
+    await expectPersonOnly(m.pid);
   });
 
-  it("after every credential write the two records agree and no `person stale` is logged", async () => {
+  it("resets, a proof and every route write leave the legacy records without credentials, and no `person stale` is logged", async () => {
     const warn = vi.spyOn(log, "warn");
     const o = await newUser("ag", { verified: false });
     await verifyAddress(o.email);
-    await expectAgree(acct(o), "owner");
     const m = await newMember(o);
     expect((await resetWith(o.email, "owner")).status).toBe(200);
-    await expectAgree(acct(o), "owner");
     expect((await resetWith(m.email, "member")).status).toBe(200);
-    await expectAgree(m.email, "member");
     await signIn(o.email);
     expect((await changePassword(NEW)).status).toBe(200);
     expect((await saveProfile({ lang: "en", phone: "+966500002133" })).status).toBe(200);
     expect((await signOutOthers(NEW)).status).toBe(200);
-    await expectAgree(acct(o), "owner");
     await signIn(m.email);
     expect((await saveProfile({ name: "M" })).status).toBe(200);
     expect((await signOutOthers(NEW)).status).toBe(200);
-    await expectAgree(m.email, "member");
-    // Every read since (the sessions above resolved through the person) found both records agreeing.
+    await Promise.all([expectPersonOnly(acct(o)), expectPersonOnly(m.pid)]);
     expect(staleLogs(warn)).toEqual([]);
   });
 
-  it("the founder's reset and language change write the owner person and the account alike", async () => {
+  it("the founder's reset and language change write the owner person; the account record gets no password", async () => {
     vi.stubEnv("ADMIN_EMAILS", FOUNDER);
     if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" })).email);
     const o = await newUser("fr");
@@ -165,97 +161,61 @@ describe("rule 2132 (credential part): a legacy login's writes land on the perso
     const res = await adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(o.email) }));
     expect(res.status).toBe(200);
     const { tempPassword } = (await res.json()) as { tempPassword: string };
-    await expectAgree(acct(o), "owner");
     expect(await verifyPassword((await getPerson(storedPersonId(acct(o))))!, tempPassword)).toBe(true);
     expect((await adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "setLang", lang: "en" }), params({ email: encodeURIComponent(o.email) }))).status).toBe(200);
-    await expectAgree(acct(o), "owner");
     expect((await getPerson(storedPersonId(acct(o))))!.lang).toBe("en");
+    await expectPersonOnly(acct(o));
+  });
+
+  it("saveUser strips the credential fields, so no writer can put them back on an account record", async () => {
+    const o = await newUser("strip");
+    const u = (await getUser(o.email))!;
+    await saveUser({ ...u, passHash: "hash-should-not-land", sessionsAfter: T1, devicesAfter: T1 });
+    const raw = (await db.get<Record<string, unknown>>(accountKey.user(acct(o))))!;
+    for (const f of LEGACY_CREDENTIALS) expect(raw, f).not.toHaveProperty(f);
   });
 });
 
-describe("rule 2132: a revocation stamp never moves backwards", () => {
-  /** A newer `devicesAfter` written to the legacy record only, as R1's "sign out other devices" does (rule 1170). */
-  async function r1SignOutOthers(key: string): Promise<string> {
-    await tick();
-    const at = new Date().toISOString();
-    const rec = (await db.get<Record<string, unknown>>(key))!;
-    await db.set(key, { ...rec, devicesAfter: at });
-    await tick();
-    return at;
-  }
-
-  it("owner: a rolled-back sign-out survives a name change and a password change, on both records", async () => {
+describe("rule 2138: the person row alone holds the revocation stamps", () => {
+  it("a stamp a build before M4 wrote on the legacy record is not read: the person's own stamps decide", async () => {
     const o = await newUser("rb");
     const pid = storedPersonId(acct(o));
-    await updatePerson(pid, { devicesAfter: new Date().toISOString() }); // an M1 sign-out: the row holds an older stamp
-    await tick();
     const before = await signIn(o.email);
-    const at = await r1SignOutOthers(accountKey.user(acct(o)));
-    // Read: the newer legacy stamp already ends the session issued before it.
-    expect((await getPerson(pid))!.devicesAfter).toBe(at);
-    useSession(before);
-    expect(await currentUser()).toBeNull();
-    // A name change (no session stamp moves) keeps it on both records, and the session stays ended.
-    await signIn(o.email);
-    expect((await saveProfile({ name: "Still Out", phone: "+966500002141" })).status).toBe(200);
-    expect((await db.get<User>(accountKey.user(acct(o))))!.devicesAfter).toBe(at);
-    expect((await db.get<{ devicesAfter?: string }>(personKey.person(pid)))!.devicesAfter).toBe(at);
-    useSession(before);
-    expect(await currentUser()).toBeNull();
-    // A password change likewise.
-    await signIn(o.email);
-    expect((await changePassword("abc12345")).status).toBe(200);
-    expect((await db.get<User>(accountKey.user(acct(o))))!.devicesAfter).toBe(at);
-    expect((await db.get<{ devicesAfter?: string }>(personKey.person(pid)))!.devicesAfter).toBe(at);
-    await expectAgree(acct(o), "owner");
-    useSession(before);
-    expect(await currentUser()).toBeNull();
-  });
-
-  it("member: a rolled-back sign-out survives a name change and a password change, on both records", async () => {
-    const o = await newUser("rbo");
-    const m = await newMember(o);
-    const pid = storedPersonId(m.email);
-    await updatePerson(pid, { devicesAfter: new Date().toISOString() });
     await tick();
-    const before = await signIn(m.email);
-    const at = await r1SignOutOthers(accountKey.member(m.email));
+    const raw = (await db.get<Record<string, unknown>>(accountKey.user(acct(o))))!;
+    await db.set(accountKey.user(acct(o)), { ...raw, devicesAfter: new Date().toISOString(), sessionsAfter: new Date().toISOString() });
+    expect((await getPerson(pid))!.devicesAfter).toBeUndefined();
     useSession(before);
-    expect(await currentUser()).toBeNull();
-    await signIn(m.email);
-    expect((await saveProfile({ name: "Member Still Out" })).status).toBe(200);
-    expect((await changePassword(m.password)).status).toBe(200);
-    expect((await db.get<{ devicesAfter?: string }>(accountKey.member(m.email)))!.devicesAfter).toBe(at);
-    expect((await db.get<{ devicesAfter?: string }>(personKey.person(pid)))!.devicesAfter).toBe(at);
-    await expectAgree(m.email, "member");
-    useSession(before);
+    expect(await currentUser()).not.toBeNull();
+    // The person's own sign-out ends it.
+    await updatePerson(pid, { devicesAfter: new Date(Date.now() + 1000).toISOString() });
     expect(await currentUser()).toBeNull();
   });
 
-  it("a patch never moves a stamp backwards either, and the read keeps the later of both records", async () => {
+  it("a patch never moves a stamp backwards, and the pure reader reads the row alone", async () => {
     const o = await newUser("rbp");
     const pid = storedPersonId(acct(o));
     const late = new Date(Date.now() + 60_000).toISOString();
+    const sessionsBefore = (await getPerson(pid))!.sessionsAfter;
+    expect(sessionsBefore).toBeTruthy();
     await updatePerson(pid, { devicesAfter: late });
     await updatePerson(pid, { devicesAfter: T0, sessionsAfter: T0 });
     const p = (await getPerson(pid))!;
     expect(p.devicesAfter).toBe(late);
-    expect(p.sessionsAfter).toBe(o.sessionsAfter);
-    // The pure reader: the row wins, but each stamp is the later of the row and the legacy record.
+    expect(p.sessionsAfter).toBe(sessionsBefore);
     const row = { pid, email: o.email, name: "R", lang: "ar", createdAt: o.createdAt, sessionsAfter: T1, devicesAfter: T0 };
-    const legacy = { ...(await db.get<User>(accountKey.user(acct(o))))!, sessionsAfter: T0, devicesAfter: T1 };
-    expect(personFromRaw(pid, row, legacy, null)).toMatchObject({ source: "person", name: "R", sessionsAfter: T1, devicesAfter: T1 });
+    expect(personFromRaw(pid, row)).toMatchObject({ source: "person", name: "R", sessionsAfter: T1, devicesAfter: T0 });
   });
 
-  it("an address move writes the same device stamp on the moved account and the person", async () => {
+  it("an address move carries the person's device stamp to the new address; the moved account record holds none", async () => {
     const o = await newUser("mvd", { verified: false });
     const pid = storedPersonId(acct(o));
-    await updatePerson(pid, { devicesAfter: new Date().toISOString() });
-    const at = await r1SignOutOthers(accountKey.user(acct(o)));
+    const at = new Date().toISOString();
+    await updatePerson(pid, { devicesAfter: at });
     const to = address("mvdto");
     expect(await moveUnverifiedAccount((await getUser(o.email))!, to)).toBe("ok");
-    expect((await db.get<User>(accountKey.user(to)))!.devicesAfter).toBe(at);
-    await expectAgree(to, "owner");
+    expect((await getPerson(storedPersonId(to)))!.devicesAfter).toBe(at);
+    await expectPersonOnly(to);
   });
 });
 
@@ -302,7 +262,7 @@ describe("plan reconciliation 6: a new login's row is written under lock:person"
   }, 30_000);
 });
 
-describe("rule 2132 (credential part): a p_ person writes person: only", () => {
+describe("rule 2138 (credential part): a p_ person writes person: only", () => {
   it("a p_ owner's reset: the new password is on the person, never on the account record", async () => {
     const e = address("po");
     const u = await createUser({ email: e, name: "P Owner", phone: "", password: "abc12345", lang: "en" }, { person: "p" });
@@ -365,7 +325,7 @@ describe("plan reconciliation 6: a new login's person row is written whole", () 
     signOut();
     expect(await answer(await login(e, "leftover-pass-1"))).toEqual({ status: 401, body: { ok: false, error: "invalid" } });
     expect((await login(e, "abc12345")).status).toBe(200);
-    await expectAgree(e, "owner");
+    await expectPersonOnly(e);
   });
 
   it("an owner's address move writes the person at the new address whole, with the moved password and birth", async () => {
@@ -378,7 +338,7 @@ describe("plan reconciliation 6: a new login's person row is written whole", () 
     expect(row).not.toHaveProperty("suspended");
     expect(row.createdAt).toBe(o.createdAt);
     expect(await verifyPassword((await getPerson(storedPersonId(to)))!, "abc12345")).toBe(true);
-    await expectAgree(to, "owner");
+    await expectPersonOnly(to);
     expect(await db.get(personKey.person(storedPersonId(o.email)))).toBeNull();
   });
 
@@ -392,8 +352,8 @@ describe("plan reconciliation 6: a new login's person row is written whole", () 
     expect(await verifyPassword(p, "anything-at-all")).toBe(false);
     const account = (await db.get<User>(accountKey.user(e)))!;
     expect(account.emailVerifiedAt).toBe(p.emailVerifiedAt);
-    // A build rolled back to R1 compares `user.passHash`: the account keeps a hash nobody knows.
-    expect(typeof account.passHash).toBe("string");
+    // Rule 2138: no account record holds a password, a placeholder hash included.
+    expect(account).not.toHaveProperty("passHash");
   });
 });
 
@@ -421,12 +381,12 @@ describe("plan reconciliation 11: a proved address lands on the person and on ev
     expect((await db.get<User>(accountKey.user(other)))!.emailVerifiedAt).toBeUndefined();
   });
 
-  it("a member's proof stamps no account and is never written to the member record", async () => {
+  it("a member's proof stamps no account and writes no member record", async () => {
     const o = await newUser("vo", { verified: false });
     const m = await newMember(o);
     await updatePerson(storedPersonId(m.email), { emailVerifiedAt: T1 });
     expect((await getPerson(storedPersonId(m.email)))!.emailVerifiedAt).toBe(T1);
-    expect(await db.get(accountKey.member(m.email))).not.toHaveProperty("emailVerifiedAt");
+    expect(await db.get(accountKey.member(m.email))).toBeNull();
     expect((await getUser(o.email))!.emailVerifiedAt).toBeUndefined();
   });
 });
@@ -434,19 +394,26 @@ describe("plan reconciliation 11: a proved address lands on the person and on ev
 describe("rule 2139 (credential part): lock:person first, and a held one waits or answers busy", () => {
   const lockKeys = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map((c) => String(c[0])).filter((k) => /^lock:(person|member|user):/.test(k));
 
-  it("updatePerson takes lock:person before lock:user (owner) and before lock:member (member)", async () => {
+  it("updatePerson takes lock:person alone (rule 2138: no legacy record to mirror), and lock:user only to stamp an owned account", async () => {
     const o = await newUser("lk");
     const m = await newMember(o);
     const spy = vi.spyOn(db, "lock");
     await updatePerson(storedPersonId(acct(o)), { name: "Locked Owner" });
-    expect(lockKeys(spy)).toEqual([`lock:person:${acct(o)}`, `lock:user:${acct(o)}`]);
+    expect(lockKeys(spy)).toEqual([`lock:person:${acct(o)}`]);
     spy.mockClear();
     await updatePerson(storedPersonId(m.email), { name: "Locked Member" });
-    expect(lockKeys(spy)).toEqual([`lock:person:${m.email}`, `lock:member:${m.email}`]);
+    expect(lockKeys(spy)).toEqual([`lock:person:${m.email}`]);
     spy.mockClear();
     await signIn(o.email);
     expect((await saveProfile({ name: "Via Profile", phone: "+966500002139" })).status).toBe(200);
-    expect(lockKeys(spy)).toEqual([`lock:person:${acct(o)}`, `lock:user:${acct(o)}`]);
+    expect(lockKeys(spy)[0]).toBe(`lock:person:${acct(o)}`);
+    expect(lockKeys(spy)).not.toContain(`lock:member:${acct(o)}`);
+    spy.mockClear();
+    // A proof stamps the account the person owns, under its user lock, after the person lock.
+    const u = await newUser("lkv", { verified: false });
+    spy.mockClear();
+    await updatePerson(storedPersonId(acct(u)), { emailVerifiedAt: T1 });
+    expect(lockKeys(spy)).toEqual([`lock:person:${acct(u)}`, `lock:user:${acct(u)}`]);
   });
 
   it("a held lock:person makes a concurrent updatePerson wait, then run on the fresh record", async () => {
@@ -460,7 +427,7 @@ describe("rule 2139 (credential part): lock:person first, and a held one waits o
     expect((await getPerson(pid))!.name).toBe("Test");
     await db.unlock(personKey.lock(pid));
     expect((await pending)!.name).toBe("After Wait");
-    await expectAgree(acct(o), "owner");
+    await expectPersonOnly(acct(o));
   });
 
   it("a person lock held for the whole wait: the profile, password and sign-out routes answer 409 busy and write nothing", async () => {
@@ -494,11 +461,11 @@ describe("rule 2139 (credential part): lock:person first, and a held one waits o
     expect((await getUser(o.email))!.emailVerifiedAt).toBeUndefined();
     expect(await answer(await check())).toEqual({ status: 200, body: { ok: true } });
     expect((await getPerson(pid))!.emailVerifiedAt).toBeTruthy();
-    await expectAgree(acct(o), "owner");
+    await expectPersonOnly(acct(o));
   }, 30_000);
 });
 
-describe("source scans (rule 2132, credential part)", () => {
+describe("source scans (rule 2138, credential part)", () => {
   const files = (dir: string): string[] => readdirSync(dir, { recursive: true }).map(String).filter((f) => /\.tsx?$/.test(f)).map((f) => join(dir, f));
   const SRC = files("src");
 

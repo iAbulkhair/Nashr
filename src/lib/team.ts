@@ -6,14 +6,14 @@ import { log } from "./log";
 import { pmap } from "./parallel";
 import { withNamedLock } from "./locks";
 import { revokeBook } from "./booking-token";
-import { revokeFeed, type LinkOwner } from "./feed-token";
+import { revokeFeed, type LinkIds } from "./feed-token";
 import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
 import { acct, LoginIndex, OPAQUE_IDS } from "./account-id";
 import { can } from "./roles";
 import { teamApprovals } from "./approver-stats";
 import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "./keys";
 import { parseStored, type MembershipValue } from "./stored";
-import { aidOf, getMembership, legacyHomeFrom, membershipFromRaw, ownerOf, type Membership } from "./membership";
+import { aidOf, getMembership, membershipFromRaw, ownerOf, type Membership } from "./membership";
 import { createPersonRecord, getPerson, withMovePersonLock, withPersonLock, type Person } from "./person";
 import { logTeam } from "./teamlog";
 import { MULTI_ORG, newPersonId, PERSON_ID } from "./multi-org";
@@ -31,16 +31,17 @@ import { revokeAllDevices } from "./devices";
  * member session to the OWNER record with `actor` set.
  *
  * Keys:
- *   mbr:{aid}:{pid}    MembershipRow (M1 writes it beside the legacy record)
+ *   mbr:{aid}:{pid}    MembershipRow, the one membership record (rule 2138)
  *   members:{aid}      set of person ids (a legacy member's is its address, so R1's values already are)
  *   orgs:{pid}         set of account ids: a hint for listing only (rule 2136)
- *   member:{email}     the legacy member record, still written for the person's HOME membership (a rollback reads it)
+ *   member:{email}     the legacy member record: from M4 (rule 2138) never read for an answer and never written;
+ *                      Script S2 deletes it where its `mbr:` twin matches, `deleteMembership` a leftover one
  *   teamlog:{aid}      capped list of membership events (src/lib/teamlog.ts, rule 2129)
  *   invite:{sha256}    Invite, TTL 7 days (the token itself is never stored)
  *   invites:{aid}      set of invite hashes
  *   inviteuse:{hash}   single use at accept
  *
- * Every membership event writes the new shape and the legacy one in the same locked step, and one team log row under the
+ * Every membership event writes the membership row and one team log row under the
  * same `lock:team:{aid}`. Lock order (rule 2139), always outer to inner:
  *   inviteuse → lock:team:{aid} → lock:login:{email} → lock:person:{pid} → lock:member:{email} → lock:user:{aid}.
  * No lock is reentrant: a function called under a held lock says so (`teamLocked`, `locked`).
@@ -192,16 +193,12 @@ export async function saveMember(m: Member) {
   await db.set(memberKey(m.email), m);
 }
 
-/** The legacy member record is this person's HOME membership in `aid`: its person id is `pid` and its `memberOf` is `aid`. */
+/** A leftover legacy member record of this membership (cleanup only, never an answer): its person id is `pid` and its `memberOf` is `aid`. */
 const isHome = (m: Member | null, aid: AccountId, pid: PersonId): m is Member => !!m && memberPid(m) === pid && m.memberOf === aid;
 
-/**
- * One membership read for a change, in ONE round: the `mbr:` row, the legacy record and the roster entry (the
- * precedence of `getMembership`, src/lib/membership.ts), and whether the legacy record is this membership's (`home`).
- */
-async function readMembership(aid: AccountId, pid: PersonId): Promise<{ ms: Membership | null; home: boolean }> {
-  const [row, legacy, listed] = await Promise.all([db.get(accountKey.membership(aid, pid)), getMember(pid), db.sismember(accountKey.members(aid), pid)]);
-  return { ms: membershipFromRaw(aid, pid, row, legacy, listed), home: isHome(legacy, aid, pid) };
+/** One membership read for a change: the `mbr:` row and the roster entry in ONE round (`getMembership`, rule 2138). */
+async function readMembership(aid: AccountId, pid: PersonId): Promise<{ ms: Membership | null }> {
+  return { ms: await getMembership(aid, pid) };
 }
 
 /** The row a membership is written as: exactly the `MembershipRow` fields, `disabled` only when set. */
@@ -213,43 +210,24 @@ async function putRow(aid: AccountId, pid: PersonId, row: MembershipValue): Prom
 }
 
 /**
- * Write one membership (rule 2132): `SET mbr:{aid}:{pid}`, the roster entry and `orgs:{pid}`, and for the person's HOME
- * membership the legacy `member:{email}` fields (`role`, `acceptedAt`, `disabled`), so a build rolled back to R1 reads
- * the same membership. For a home membership both writes run in ONE round under `lock:member`: a lock timeout throws
- * before either is written, so the row and the mirror never disagree (a pause on the row only would come back unpaused
- * after a rollback). Without a legacy record (a `p_` person, or one already gone) the row is written alone, after the
- * lock. The legacy record is changed in place (`Object.assign` keeps its field order, a resume deletes `disabled` as R1
- * did) and only when a field differs, so a home record stays exactly what R1 wrote; `invitedBy` and `memberOf` never
- * change after an accept and are left as R1 wrote them (the row's `invitedBy` is the inviter's person id, the legacy
- * record's their address). The caller holds `lock:team:{aid}` (`teamLocked`); `lock:member` comes after `lock:team`,
- * `lock:login` and `lock:person` in rule 2139's order.
+ * Write one membership (rules 2132, 2138): `SET mbr:{aid}:{pid}`, the roster entry and `orgs:{pid}`, in one round. From
+ * M4 the legacy `member:{email}` record is never written (M1 to M3 mirrored the home membership's role, date and pause
+ * to it). The caller holds `lock:team:{aid}` (`teamLocked`).
  */
-export async function writeMembership(aid: AccountId, pid: PersonId, row: MembershipValue, opts: { home: boolean; teamLocked: true }): Promise<void> {
-  if (!opts.home) return putRow(aid, pid, row);
-  const done = await withMemberLock(pid, async (m) => {
-    const mirror = isHome(m, aid, pid) && !(m.role === row.role && m.acceptedAt === row.acceptedAt && m.disabled === row.disabled);
-    if (mirror) {
-      Object.assign(m, { role: row.role, acceptedAt: row.acceptedAt });
-      if (row.disabled) m.disabled = row.disabled;
-      else delete m.disabled;
-    }
-    await Promise.all([putRow(aid, pid, row), mirror ? saveMember(m) : null]);
-    return true;
-  });
-  // No legacy record: nothing to mirror.
-  if (done === null) await putRow(aid, pid, row);
+export async function writeMembership(aid: AccountId, pid: PersonId, row: MembershipValue, opts: { teamLocked: true }): Promise<void> {
+  void opts;
+  await putRow(aid, pid, row);
 }
 
 /**
  * Does the person still hold anything outside `aid`: an account they own, or a membership (paused ones count: the person
- * is kept for them)? Read from `orgs:{pid}` AND the legacy records (a legacy member accepted before M1 has no `orgs:`
- * entry), each re-checked on the forward records (`ownerOf`, `getMembership`). Two rounds. Also asked by `wipeAccount`
- * (src/lib/account.ts) for the deleted account's OWNER, under the owner's `lock:login`.
+ * is kept for them)? Read from `orgs:{pid}` (rule 2138: Script S1 filled it for every person, so no legacy record is
+ * read), each entry re-checked on the forward records (`ownerOf`, `getMembership`). Two rounds. Also asked by
+ * `wipeAccount` (src/lib/account.ts) for the deleted account's OWNER, under the owner's `lock:login`.
  */
 export async function holdsElsewhere(pid: PersonId, aid: AccountId): Promise<boolean> {
-  const [entries, rawUser, rawMember] = await Promise.all([db.smembers(personKey.orgs(pid)), db.get(accountKey.user(pid)), db.get(accountKey.member(pid))]);
-  const home = legacyHomeFrom(pid, rawUser, rawMember);
-  const pool = [...new Set<AccountId>([...entries.map(aidFrom), ...(home ? [home] : [])])].filter((a) => a !== aid);
+  const entries = await db.smembers(personKey.orgs(pid));
+  const pool = [...new Set<AccountId>(entries.map(aidFrom))].filter((a) => a !== aid);
   const held = await pmap(pool, async (a) => {
     const [u, m] = await Promise.all([getAccount(a), getMembership(a, pid)]);
     return (!!u && acct(u) === a && ownerOf(u) === pid) || !!m;
@@ -281,19 +259,20 @@ async function forgetPersonIfAlone(pid: PersonId, email: string, aid: AccountId,
 }
 
 /**
- * Delete one membership (rules 2124, 2132) and everything that is the person's in the account: `mbr:{aid}:{pid}`, the
- * roster entry, the `orgs:` entry, the per-(person, account) active brand and the invites the person sent in this
- * account, in one round; for the HOME membership also the legacy `member:{email}` record and `activebrand:{login}`,
- * under `lock:member` and only while the record is still this membership's (a profile or password save in flight can
- * never bring the login back behind the roster's back). Then the person's calendar feed and booking links in this account, and with
- * nothing left the person (`forgetPersonIfAlone`, plan reconciliation 7). The caller holds `lock:team:{aid}` and has
- * checked who may do it on the membership read under that lock. `lock:login:{email}` → `lock:person:{pid}` are taken
- * here BEFORE the first write (rule 2139), so a lock that cannot be had throws with nothing deleted and a retry finds the
- * membership whole.
+ * Delete one membership (rules 2124, 2132, 2138) and everything that is the person's in the account: `mbr:{aid}:{pid}`,
+ * the roster entry, the `orgs:` entry, the per-(person, account) active brand and the invites the person sent in this
+ * account, in one round. A leftover legacy `member:{email}` record of THIS membership (one Script S2 has not deleted yet)
+ * goes in the same round with its `activebrand:{login}`, read under `lock:member` for that check only (from M4 it never
+ * answers who is a member). Then the person's calendar feed and booking links in this account, and with nothing left
+ * the person (`forgetPersonIfAlone`, plan reconciliation 7). The caller holds `lock:team:{aid}` and has checked who may
+ * do it on the membership read under that lock. `lock:login:{email}` → `lock:person:{pid}` → `lock:member:{email}` are
+ * taken here BEFORE the first write (rule 2139), so a lock that cannot be had throws with nothing deleted and a retry
+ * finds the membership whole.
  */
-export async function deleteMembership(aid: AccountId, pid: PersonId, opts: { home: boolean; teamLocked: true }): Promise<void> {
+export async function deleteMembership(aid: AccountId, pid: PersonId, opts: { teamLocked: true }): Promise<void> {
+  void opts;
   const person = await getPerson(pid);
-  const email = person ? normalizeEmail(person.email) : opts.home ? pid : null;
+  const email = person ? normalizeEmail(person.email) : null;
   const run = async () => {
     const invites = await listInvites(aid);
     const sent = invites.filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === pid : email !== null && normalizeEmail(i.invitedBy) === email)).map((i) => i.id);
@@ -307,24 +286,23 @@ export async function deleteMembership(aid: AccountId, pid: PersonId, opts: { ho
         legacy ? db.del(memberKey(legacy.email)) : null,
         legacy ? db.del(accountKey.activeBrand(legacy.email)) : null,
       ]);
-    // The home membership's `lock:member` is taken BEFORE the first delete of the round (person → member is in the
-    // order), so a stale member lock throws with nothing deleted, never a half-removed membership.
-    if (opts.home) {
-      await withLock(accountKey.memberLock(normalizeEmail(pid)), async () => {
-        const m = await getMember(pid);
+    // `lock:member` is taken BEFORE the first delete of the round (person → member is in the order), so a stale member
+    // lock throws with nothing deleted, never a half-removed membership.
+    if (email) {
+      await withLock(accountKey.memberLock(email), async () => {
+        const m = await getMember(email);
         await round(isHome(m, aid, pid) ? m : null);
       });
     } else await round(null);
-    // The person's (pid, aid) feed and booking links (rule 2119), and for the home membership the legacy per-login
-    // pointers and a link made before M1 (rule 2132). After the record is gone, so nothing can mint a new one for it
-    // (`revokeFeed` waits out a create already running); a link that outlives a skipped revoke is refused at read time
-    // anyway, since the membership no longer holds (`loginHolds`). The feed and booking locks are leaves (rule 2139):
-    // taken here under lock:team, lock:login and lock:person, and they take nothing else.
-    const link = { pid, aid, login: email ?? "", home: opts.home && !!email };
+    // The person's (pid, aid) feed and booking links (rule 2119). After the record is gone, so nothing can mint a new one
+    // for it (`revokeFeed` waits out a create already running); a link that outlives a skipped revoke is refused at read
+    // time anyway, since the membership no longer holds (`loginHolds`). The feed and booking locks are leaves (rule
+    // 2139): taken here under lock:team, lock:login and lock:person, and they take nothing else.
+    const link = { pid, aid };
     await Promise.all([revokeFeed(link), revokeBook(link)]);
     if (email) await forgetPersonIfAlone(pid, email, aid, { loginLocked: true, personLocked: true });
   };
-  // No address (a roster entry with no person and no legacy record): nothing signs in, so no login or person to lock.
+  // No address (a roster entry with no person): nothing signs in, so no login or person to lock.
   if (!email) return run();
   return withLoginLock(email, () => withPersonLock(pid, run));
 }
@@ -332,9 +310,9 @@ export async function deleteMembership(aid: AccountId, pid: PersonId, opts: { ho
 /**
  * Write a new member (a person, the membership and the login index). NO checks: `acceptInvite` calls it after every
  * check under its locks (`lock:team` → `lock:login`), and tests use it to build a team. Never call it from a route.
- * Without `opts.pid` the member is a legacy one: its person id is its address, it gets the legacy `member:{email}` record
- * exactly as R1 wrote it, and the membership is its home. With `opts.pid` (a `p_` person, tests of release M1 only) the
- * person has a `person:` row and a membership row and no legacy record.
+ * Without `opts.pid` the person id is the address (as R1 named a member); with it (`MULTI_ORG`, rule 2117) a `p_` id.
+ * Either way the person has a `person:` row and a membership row: from M4 (rule 2138) no legacy `member:{email}` record
+ * is written. The returned `Member` is the in-memory view the caller reads (address, role, date); it is not stored.
  */
 export async function createMember(
   owner: string,
@@ -352,7 +330,6 @@ async function insertMember(
   const now = new Date().toISOString();
   const email = normalizeEmail(input.email);
   const pid = opts.pid ?? pidFrom(email);
-  const home = opts.pid === undefined;
   const member: Member = {
     id: pid,
     email,
@@ -365,21 +342,14 @@ async function insertMember(
     acceptedAt: now,
     sessionsAfter: now,
   };
-  // The person row fresh (plan reconciliation 6: a leftover row at this id lends nothing), born with the membership so
-  // the stale guard reads the two records as one, and the legacy record exactly as R1 wrote it. Every write runs under
-  // `lock:person:{pid}` (rule 2139: inviteuse → team → login → person), taken BEFORE the first one, so a person lock that
-  // cannot be had throws with nothing written (no `member:`, no roster entry, no `mbr:`, no login) and a retry starts clean.
-  // A home member's `lock:member:{email}` (next in the order) is taken the same way, BEFORE the first write, and the
-  // membership is written with `putRow` under it, not `writeMembership` (which would take `lock:member` a second time
-  // after the person row, the legacy record and the login were written: a held member lock then left a person who could
-  // not sign in, an address a retry calls "unavailable", and the invite pending). The mirror needs no extra write: the
-  // legacy record was just written with the row's own `role` and `acceptedAt`, byte-compatible with R1.
-  const write = async () => {
+  // The person row fresh (plan reconciliation 6: a leftover row at this id lends nothing), born with the membership.
+  // Every write runs under `lock:person:{pid}` (rule 2139: inviteuse → team → login → person), taken BEFORE the first
+  // one, so a person lock that cannot be had throws with nothing written (no roster entry, no `mbr:`, no login) and a
+  // retry starts clean.
+  await withPersonLock(pid, async () => {
     await createPersonRecord({ pid, email, name: member.name, lang: member.lang, passHash: member.passHash, createdAt: now, sessionsAfter: now }, { loginLocked: true, personLocked: true });
-    if (home) await saveMember(member);
     await Promise.all([putRow(aid, pid, { aid, pid, role: input.role, acceptedAt: now, invitedBy: input.invitedByPid ?? input.invitedBy }), claimLogin(email, pid)]);
-  };
-  await withPersonLock(pid, () => (home ? withLock(accountKey.memberLock(email), write) : write()));
+  });
   return member;
 }
 
@@ -507,7 +477,7 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
   const aid = aidOf(owner);
   return withTeamLock(aid, async () => {
     // Is the address taken? Through the login resolver (rule 1982), not by reading `user:{address}` as an account.
-    const [taken, m, members, invites, fresh] = await Promise.all([getLogin(e), getMember(e), listMembers(aid), listInvites(aid), getAccount(aid)]);
+    const [taken, members, invites, fresh] = await Promise.all([getLogin(e), listMembers(aid), listInvites(aid), getAccount(aid)]);
     // The account re-read under the lock: one deleted while this request waited (`wipeAccount` holds `lock:team` until
     // `user:{owner}` is gone) gets no invite, no index entry and no team log row.
     if (!fresh) return fail("forbidden");
@@ -516,7 +486,7 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
       const owned = taken && taken.pid === ownerOf(fresh);
       if (owned || members.some((x) => x.email === e)) return fail("already_member");
       if (invites.some((i) => i.email === e)) return fail("unavailable");
-    } else if (taken || m || invites.some((i) => i.email === e)) return fail("unavailable");
+    } else if (taken || invites.some((i) => i.email === e)) return fail("unavailable");
     const limit = seatLimit(fresh);
     const used = 1 + members.filter((x) => !x.disabled).length + invites.length;
     if (used + 1 > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
@@ -599,8 +569,8 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
       const used = 1 + members.filter((m) => !m.disabled).length + invites.length;
       if (used > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
       return withLoginLock(inv.email, async () => {
-        const [taken, m] = await Promise.all([getLogin(inv.email), getMember(inv.email)]);
-        if (taken || m) return fail(MULTI_ORG ? "signin_required" : "unavailable");
+        const taken = await getLogin(inv.email);
+        if (taken) return fail(MULTI_ORG ? "signin_required" : "unavailable");
         const lang = input.lang === "en" || input.lang === "ar" ? input.lang : inv.lang;
         const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid }, MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {});
         const pid = pidFrom(memberPid(member));
@@ -656,7 +626,7 @@ export async function joinInviteAsPerson(token: string, person: Person): Promise
         if (!fresh || !fresh.emailVerifiedAt || isPersonSuspended(fresh) || normalizeEmail(fresh.email) !== normalizeEmail(inv.email)) return fail("invalid");
         if (held || ownerOf(owner) === pid) return fail("already_member");
         const now = new Date().toISOString();
-        await writeMembership(aid, pid, { aid, pid, role: inv.role, acceptedAt: now, invitedBy: inv.invitedByPid ?? inv.invitedBy }, { home: false, teamLocked: true });
+        await writeMembership(aid, pid, { aid, pid, role: inv.role, acceptedAt: now, invitedBy: inv.invitedByPid ?? inv.invitedBy }, { teamLocked: true });
         await Promise.all([
           dropInvites(aid, [id]),
           logTeam(aid, { kind: "joined", actor: { pid, email: fresh.email }, target: { pid, email: fresh.email }, role: inv.role, via: "web" }, { teamLocked: true }),
@@ -720,17 +690,17 @@ async function memberByEmail(aid: AccountId, email: string): Promise<MemberView 
 
 /**
  * A member moves its own login to a new address it has proved (rules 1942-1945, src/lib/email-change.ts). R1's copy
- * semantics: the record is written again at the new address, so its person id is the new address. Locks in the
+ * semantics: the person is written again at the new address, so its person id is the new address. Locks in the
  * documented order (rule 2139): `lock:team:{aid}`, both login locks (the smaller address first, as in
  * `moveUnverifiedAccount`), both person locks (the same order; 60 s expiry, `withMovePersonLock`, as they span the whole
- * move), then the old member record's lock. Inside: the target
- * must hold no owner or member record at all, the record is written at the new address with a fresh session window
- * (every device signs in again, an old session issued for the target address never resolves to it), the membership row,
- * the roster, `orgs:` and the active brand follow the new person id, `carry` moves what other modules keep per login
- * (two-step sign-in), the passkeys move to the new person id (`movePasskeys`, rule 2424: same user handle, every reverse
- * entry rewritten), and only then the old record, its membership row, roster and `orgs:` entries, its passkey keys, its `person:` row
- * (and any leftover row at the new address: the person is read from the new legacy record until its next credential
- * write), its pending invites and its feed and booking links go. No team log row: the membership is the same.
+ * move). Inside: the old person must hold a membership of `aid` (`readMembership`) and the target must sign in nowhere
+ * (`getLogin`); the person row is written at the new address with a fresh session window (every device signs in again,
+ * an old session issued for the target address never resolves to it), the membership row, the roster, `orgs:` and the
+ * active brand follow the new person id, `carry` moves what other modules keep per login (two-step sign-in), the
+ * passkeys move to the new person id (`movePasskeys`, rule 2424: same user handle, every reverse entry rewritten), and
+ * only then the old membership row, roster and `orgs:` entries, its passkey keys, its `person:` row, its pending invites
+ * and its feed and booking links go. From M4 (rule 2138) no legacy member record is read or written: a leftover one at
+ * the old address is deleted with its per-login active brand. No team log row: the membership is the same.
  */
 export async function moveMemberLogin(owner: string, from: string, target: string, carry?: (from: string, to: string) => Promise<void>): Promise<"ok" | "exists" | "not_found"> {
   const old = normalizeEmail(from);
@@ -740,52 +710,46 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
   const [oldPid, toPid] = [pidFrom(old), pidFrom(to)];
   const [first, second] = old < to ? [old, to] : [to, old];
   return withTeamLock(aid, () => withLoginLock(first, () => withLoginLock(second, () => withMovePersonLock(pidFrom(first), () => withMovePersonLock(pidFrom(second), async () => {
-    const res = await withMemberLock(old, async (cur) => {
-      if (cur.memberOf !== aid) return "not_found" as const;
-      const [taken, m, read] = await Promise.all([getLogin(to), getMember(to), readMembership(aid, oldPid)]);
-      if (taken || m) return "exists" as const;
-      const [sent, brand, brandIn] = await Promise.all([listInvites(aid), db.get<string>(accountKey.activeBrand(old)), db.get<string>(personKey.activeBrand(oldPid, aid))]);
-      const { devicesAfter: _d, ...rest } = cur;
-      // R1: the record is written again at the new address, so its person id is the new address (the roster and the
-      // other per-login keys name the address). The move in place that keeps the id comes with R2 (spec section 6).
-      const moved: Member = { ...rest, id: to, email: to, sessionsAfter: new Date().toISOString() };
-      await saveMember(moved);
-      const row = read.ms ?? { aid, pid: oldPid, role: moved.role, acceptedAt: moved.acceptedAt, invitedBy: moved.invitedBy, ...(moved.disabled ? { disabled: moved.disabled } : {}) };
-      await Promise.all([
-        putRow(aid, toPid, { ...row, aid, pid: toPid }),
-        db.del(personKey.person(toPid)),
-        brand ? db.set(accountKey.activeBrand(to), brand) : null,
-        brandIn ? db.set(personKey.activeBrand(toPid, aid), brandIn) : null,
-        claimLogin(to, to),
-      ]);
-      if (carry) await carry(old, to);
-      // The passkeys follow the person (rule 2424): both person locks are held here. Then whatever passkey key the old pid
-      // still has (an open registration, an entry still naming it) goes with it, unless the move could not run (a person
-      // unreadable: the keys stay, inert under rules 2402 and 2405, and the reason is logged).
-      const pk = await movePasskeys(oldPid, toPid, { personLocked: true });
-      if (pk === "skipped") log.warn("member move kept passkeys", { reason: "passkey_move_skipped" });
-      const oldPasskeys = pk === "skipped" ? [] : await passkeyKeys(oldPid);
-      const mine = sent.filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === oldPid : normalizeEmail(i.invitedBy) === old)).map((i) => i.id);
-      await Promise.all([
-        ...oldPasskeys.map((k) => db.del(k)),
-        db.del(memberKey(old)),
-        db.del(accountKey.activeBrand(old)),
-        db.del(accountKey.membership(aid, oldPid)),
-        db.del(personKey.activeBrand(oldPid, aid)),
-        db.srem(membersKey(aid), old),
-        db.srem(personKey.orgs(oldPid), aid),
-        db.del(personKey.person(oldPid)),
-        db.del(personKey.lastOrg(oldPid)),
-        dropInvites(aid, mine),
-        releaseLogin(old, memberPid(cur), { locked: true }),
-      ]);
-      // The old person id's links in this account, its home (`cur.memberOf` is `aid`): the (pid, aid) pointers, the legacy
-      // per-login ones and a link made before M1. Leaf locks, taken under lock:member (rule 2139).
-      const was = { pid: oldPid, aid, login: old, home: true };
-      await Promise.all([revokeFeed(was), revokeBook(was)]);
-      return "ok" as const;
-    });
-    return res ?? "not_found";
+    const [person, read] = await Promise.all([getPerson(oldPid), readMembership(aid, oldPid)]);
+    if (!person || !read.ms || normalizeEmail(person.email) !== old) return "not_found" as const;
+    const taken = await getLogin(to);
+    if (taken) return "exists" as const;
+    const [sent, brandIn] = await Promise.all([listInvites(aid), db.get<string>(personKey.activeBrand(oldPid, aid))]);
+    const { pid: _pid, source: _source, devicesAfter: _d, emailVerifiedAt: _v, ...rest } = person;
+    void _pid; void _source; void _d; void _v;
+    // R1: the person is written again at the new address, so its person id is the new address (the roster and the
+    // other per-login keys name the address). The move in place that keeps the id comes with R2 (spec section 6).
+    await Promise.all([
+      db.set(personKey.person(toPid), { ...rest, pid: toPid, email: to, sessionsAfter: new Date().toISOString() }),
+      putRow(aid, toPid, { ...read.ms, aid, pid: toPid }),
+      brandIn ? db.set(personKey.activeBrand(toPid, aid), brandIn) : null,
+      claimLogin(to, toPid),
+    ]);
+    if (carry) await carry(old, to);
+    // The passkeys follow the person (rule 2424): both person locks are held here. Then whatever passkey key the old pid
+    // still has (an open registration, an entry still naming it) goes with it, unless the move could not run (a person
+    // unreadable: the keys stay, inert under rules 2402 and 2405, and the reason is logged).
+    const pk = await movePasskeys(oldPid, toPid, { personLocked: true });
+    if (pk === "skipped") log.warn("member move kept passkeys", { reason: "passkey_move_skipped" });
+    const oldPasskeys = pk === "skipped" ? [] : await passkeyKeys(oldPid);
+    const mine = sent.filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === oldPid : normalizeEmail(i.invitedBy) === old)).map((i) => i.id);
+    await Promise.all([
+      ...oldPasskeys.map((k) => db.del(k)),
+      db.del(memberKey(old)),
+      db.del(accountKey.activeBrand(old)),
+      db.del(accountKey.membership(aid, oldPid)),
+      db.del(personKey.activeBrand(oldPid, aid)),
+      db.srem(membersKey(aid), oldPid),
+      db.srem(personKey.orgs(oldPid), aid),
+      db.del(personKey.person(oldPid)),
+      db.del(personKey.lastOrg(oldPid)),
+      dropInvites(aid, mine),
+      releaseLogin(old, oldPid, { locked: true }),
+    ]);
+    // The old person id's links in this account: the (pid, aid) pointers. Leaf locks (rule 2139).
+    const was = { pid: oldPid, aid };
+    await Promise.all([revokeFeed(was), revokeBook(was)]);
+    return "ok" as const;
   })))));
 }
 
@@ -806,7 +770,7 @@ export async function removeMember(owner: User, actor: Actor, email: string): Pr
     const cur = await readMembership(aid, m.pid);
     if (!cur.ms) return "not_found" as const;
     if (cur.ms.role === "admin" && !can(acting, "team.remove.admin")) return "forbidden" as const;
-    await deleteMembership(aid, m.pid, { home: cur.home, teamLocked: true });
+    await deleteMembership(aid, m.pid, { teamLocked: true });
     await logTeam(aid, { kind: "removed", actor: who(actor), target: { pid: m.pid, email: m.email }, role: cur.ms.role, via: "web" }, { teamLocked: true });
     return "ok" as const;
   });
@@ -815,32 +779,54 @@ export async function removeMember(owner: User, actor: Actor, email: string): Pr
 
 /**
  * Founder console: delete a member login whatever state it is in (an address taken through a hand-passed invite link, a
- * record whose owner is gone, a record off its roster), under the same locks as any removal. Members never enter
+ * membership whose account is gone, a row off its roster), under the same locks as any removal. Members never enter
  * `users:all`, so without this nothing but a hand edit of the store could free such an address. False when there is no
  * member login at `email`. The team log row (when the account still exists) says `via: "console"` and names the
  * account's owner as the actor: staff are never named (rule 2129).
  *
- * A person with no member record (a `p_` person, multi-workspace M1 rule 2130) is found through the login: the
- * membership sign-in opens (`getLogin`, the one the console's GET shows), read in the same round as the legacy record.
- * Only that membership goes; a person who still holds another workspace keeps the address (`forgetPersonIfAlone`).
+ * From M4 (rule 2138) the member is found through the login, never a legacy member record: the membership sign-in opens
+ * (`getLogin`, the one the console's GET shows), else, for a person the login index names who holds no workspace
+ * sign-in would open, the oldest membership row or roster entry of the person's `orgs:` accounts that the person does
+ * not own (`strayMembership`). Only that membership goes; a person who still holds another workspace keeps the address
+ * (`forgetPersonIfAlone`).
  */
 export async function forceRemoveMember(email: string): Promise<boolean> {
   const e = normalizeEmail(email);
-  const [m, login] = await Promise.all([getMember(e), getLogin(e)]);
-  const p = !m && login?.kind === "member" && !login.member && login.acct && PERSON_ID.test(login.pid) ? { aid: login.acct, pid: login.pid } : null;
-  if (!m && !p) return false;
-  const aid = m ? aidFrom(m.memberOf) : p!.aid;
-  const pid = m ? pidFrom(memberPid(m)) : p!.pid;
+  const login = await getLogin(e);
+  const open = login?.kind === "member" && login.acct ? { aid: login.acct, pid: login.pid } : null;
+  const target = open ?? (login?.kind === "owner" ? null : await strayMembership(e));
+  if (!target) return false;
+  const { aid, pid } = target;
   return withTeamLock(aid, async () => {
-    const [cur, account] = await Promise.all([readMembership(aid, pid), getAccount(aid)]);
-    // A legacy member: only its home membership (the record); a `p_` person: the membership row on the roster.
-    if (m ? !cur.home : !cur.ms) return false;
-    await deleteMembership(aid, pid, { home: cur.home, teamLocked: true });
+    const [row, listed, account] = await Promise.all([db.get(accountKey.membership(aid, pid)), db.sismember(accountKey.members(aid), pid), getAccount(aid)]);
+    if (!row && !listed) return false;
+    await deleteMembership(aid, pid, { teamLocked: true });
     if (account && acct(account) === aid) {
-      await logTeam(aid, { kind: "removed", actor: { pid: ownerOf(account), email: normalizeEmail(account.email) }, target: { pid, email: e }, role: cur.ms?.role ?? m?.role ?? "member", via: "console" }, { teamLocked: true });
+      const role = membershipFromRaw(aid, pid, row, true)?.role ?? "member";
+      await logTeam(aid, { kind: "removed", actor: { pid: ownerOf(account), email: normalizeEmail(account.email) }, target: { pid, email: e }, role, via: "console" }, { teamLocked: true });
     }
     return true;
   });
+}
+
+/**
+ * A membership `getLogin` does not open (its account gone, its row off the roster): the person the login index names at
+ * `email`, then ONE `pmap` round over `orgs:{pid}` of the account, the row and the roster entry. The account the person
+ * owns is never one. Null when the address names nobody or nothing is left.
+ */
+async function strayMembership(email: string): Promise<{ aid: AccountId; pid: PersonId } | null> {
+  const idx = parseStored("login", LoginIndex, await db.get<unknown>(accountKey.login(email)), null);
+  if (!idx) return null;
+  const pid = pidFrom(idx.pid);
+  const entries = await db.smembers(personKey.orgs(pid));
+  const found = await pmap(entries, async (a) => {
+    const aid = aidFrom(a);
+    const [u, row, listed] = await Promise.all([getAccount(aid), db.get(accountKey.membership(aid, pid)), db.sismember(accountKey.members(aid), pid)]);
+    if (u && acct(u) === aid && ownerOf(u) === pid) return null;
+    return row || listed ? aid : null;
+  });
+  const aid = found.filter((a): a is AccountId => !!a).sort()[0];
+  return aid ? { aid, pid } : null;
 }
 
 /**
@@ -858,7 +844,7 @@ export async function setRole(owner: User, actor: Actor, email: string, role: st
     if (!cur.ms) return false;
     const demoted = cur.ms.role === "admin" && role !== "admin";
     const changed = cur.ms.role !== role;
-    await writeMembership(aid, m.pid, { ...cur.ms, role }, { home: cur.home, teamLocked: true });
+    await writeMembership(aid, m.pid, { ...cur.ms, role }, { teamLocked: true });
     // An admin's invites could never be accepted once the admin is a plain member (`inviteHolds`), yet each would
     // keep holding a seat for up to seven days. They go with the role, as they go with the membership in `deleteMembership`.
     const sent = demoted ? (await listInvites(aid)).filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === m.pid : normalizeEmail(i.invitedBy) === m.email)).map((i) => i.id) : [];
@@ -883,7 +869,7 @@ export async function leaveTeam(u: User): Promise<{ ok: true } | TeamFail> {
     if (!cur.ms) return "not_found" as const;
     const person = await getPerson(a.pid);
     const email = normalizeEmail(person?.email ?? a.email);
-    await deleteMembership(aid, a.pid, { home: cur.home, teamLocked: true });
+    await deleteMembership(aid, a.pid, { teamLocked: true });
     await logTeam(aid, { kind: "left", actor: { pid: a.pid, email }, target: { pid: a.pid, email }, role: cur.ms.role, via: "web" }, { teamLocked: true });
     return "ok" as const;
   });
@@ -924,7 +910,7 @@ export async function enforceSeats(owner: User | string, opts: { teamLocked?: bo
         const { disabled: _was, ...base } = cur.ms;
         void _was;
         await Promise.all([
-          writeMembership(aid, m.pid, off ? { ...base, disabled: "seats" } : base, { home: cur.home, teamLocked: true }),
+          writeMembership(aid, m.pid, off ? { ...base, disabled: "seats" } : base, { teamLocked: true }),
           logTeam(aid, { kind: off ? "paused_for_seats" : "resumed", actor: system, target: { pid: m.pid, email: m.email }, role: cur.ms.role, via: "system" }, { teamLocked: true }),
         ]);
         return { email: m.email, off };
@@ -942,32 +928,25 @@ export async function enforceSeats(owner: User | string, opts: { teamLocked?: bo
 
 /**
  * The calendar feed and booking link owner of every roster entry of `aid` (`roster`: `members:{aid}` as the caller read
- * it), in ONE `pmap` round of the person and the legacy record: exactly what `deleteMembership` revokes, the (person,
- * account) pointers and, for a HOME membership only, the legacy per-login ones. A membership in an account that is not
- * the person's home never reaches the legacy pointers, which belong to that home. `wipeAccount` revokes these first, before
- * anything slow can fail (rule 598); `deleteMembership` revokes them again under its locks.
+ * it): exactly what `deleteMembership` revokes, the (person, account) pointers. No read: from M4 (rule 2138) no legacy
+ * per-login pointer is revoked, so the person's address is not needed. `wipeAccount` revokes these first, before anything
+ * slow can fail (rule 598); `deleteMembership` revokes them again under its locks.
  */
-export async function rosterLinks(aid: AccountId, roster: readonly string[]): Promise<LinkOwner[]> {
-  return pmap(roster, async (p) => {
-    const pid = pidFrom(p);
-    const [person, m] = await Promise.all([getPerson(pid), getMember(pid)]);
-    const home = isHome(m, aid, pid);
-    const email = person ? normalizeEmail(person.email) : home ? pid : null;
-    return { pid, aid, login: email ?? "", home: home && !!email };
-  });
+export function rosterLinks(aid: AccountId, roster: readonly string[]): LinkIds[] {
+  return roster.map((p) => ({ pid: pidFrom(p), aid }));
 }
 
 /**
  * Account deletion (src/lib/account.ts `wipeAccount`, plan reconciliation 7, rule 2126): every membership of the account
- * (`deleteMembership`: the row, the roster and `orgs:` entries, the per-(person, account) active brand and links, for a
- * home membership the legacy member record and its per-login keys, and the person only when nothing else is left), then
+ * (`deleteMembership`: the row, the roster and `orgs:` entries, the per-(person, account) active brand and links, a
+ * leftover legacy member record of this membership, and the person only when nothing else is left), then
  * every invite, both indexes and the team log (`teamlog:{aid}`: its rows hold member addresses), then `finish` (the account's own records, `user:{owner}` among them), then the owner's
  * `orgs:` entry, all under `lock:team:{aid}`: an accept already holding it finishes first and its member is deleted here,
  * and one that takes it afterwards re-reads the owner and finds none. A person who belongs elsewhere keeps every key of
  * the other accounts and keeps signing in there.
  *
- * Order: the members go FIRST (one `pmap` round; each `home` is read from the legacy record in the same round): a login,
- * person or member lock that cannot be had throws before any invite, index or `finish` write, so the owner's account is
+ * Order: the members go FIRST (one `pmap` round): a login, person or member lock that cannot be had throws before any
+ * invite, index or `finish` write, so the owner's account is
  * still whole and a retry runs the wipe again (the 409 of DELETE /api/account and the console's delete is true). The
  * owner's `orgs:` entry goes after `finish`, so a `finish` that throws leaves a `p_` owner (signed in through `orgs:`
  * only) able to sign in to the account that is still there.
@@ -979,10 +958,7 @@ export async function wipeMemberships(aid: AccountId, opts: { teamLocked?: boole
   const locked = <T,>(fn: () => Promise<T>) => (opts.teamLocked ? fn() : withTeamLock(aid, fn));
   await locked(async () => {
     const [pids, ids, account] = await Promise.all([db.smembers(membersKey(aid)), db.smembers(invitesKey(aid)), getAccount(aid)]);
-    await pmap(pids, async (p) => {
-      const pid = pidFrom(p);
-      await deleteMembership(aid, pid, { home: isHome(await getMember(pid), aid, pid), teamLocked: true });
-    });
+    await pmap(pids, async (p) => deleteMembership(aid, pidFrom(p), { teamLocked: true }));
     await pmap([...ids.map(inviteKey), membersKey(aid), invitesKey(aid), accountKey.teamLog(aid)], (k) => db.del(k));
     if (opts.finish) await opts.finish();
     // The owner is no membership row (rule 2115): its `orgs:` entry for this account is the last trace of it here.

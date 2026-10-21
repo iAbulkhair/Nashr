@@ -90,12 +90,12 @@ describe("rule 2112: the handle picks among the person's own accounts", () => {
     await expect404(inWs(wsHandle(shadow.aid), () => currentUser()));
   });
 
-  it("a session written before R1 reaches only its own account's handle", async () => {
+  it("rule 2138: a session written before R1 is nobody at every handle, its own account's included", async () => {
     const u = await newUser("lg", { legacy: true, shadow: false });
     const shadow = await addShadowMembership(ownerOf(u), u.createdAt);
     await signIn(u.email, { legacyShape: true });
-    expect(acct((await inWs(wsHandle(acct(u)), () => currentUser()))!)).toBe(acct(u));
-    await expect404(inWs(wsHandle(shadow.aid), () => currentUser()));
+    expect(await inWs(wsHandle(acct(u)), () => currentUser())).toBeNull();
+    expect(await inWs(wsHandle(shadow.aid), () => currentUser())).toBeNull();
   });
 
   it("a signed-out request is still null, not 404", async () => {
@@ -112,7 +112,7 @@ describe("rule 2111: a membership removed ends its handle at the next request", 
     const { u, shadow } = await ownerWithTwo();
     await signIn(u.email);
     expect(acct((await inWs(wsHandle(shadow.aid), () => currentUser()))!)).toBe(shadow.aid);
-    await withAccountTeamLock(storedAccountId(shadow.aid), () => deleteMembership(storedAccountId(shadow.aid), ownerOf(u), { home: false, teamLocked: true }));
+    await withAccountTeamLock(storedAccountId(shadow.aid), () => deleteMembership(storedAccountId(shadow.aid), ownerOf(u), { teamLocked: true }));
     await expect404(inWs(wsHandle(shadow.aid), () => currentUser()));
     expect(acct((await currentUser())!)).toBe(acct(u));
   });

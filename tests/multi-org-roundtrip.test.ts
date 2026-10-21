@@ -90,7 +90,7 @@ beforeAll(async () => {
   // the charge in A.
   moneyAtSetup = await Promise.all([money(B), money(C)]);
   for (const w of [B, C]) {
-    await withAccountTeamLock(w.aid, () => writeMembership(w.aid, pid, { aid: w.aid, pid, role: "admin", acceptedAt: at, invitedBy: w.u.email }, { home: false, teamLocked: true }));
+    await withAccountTeamLock(w.aid, () => writeMembership(w.aid, pid, { aid: w.aid, pid, role: "admin", acceptedAt: at, invitedBy: w.u.email }, { teamLocked: true }));
   }
   // A second brand in each account, so a scope with `#` is in play too.
   await Promise.all([A, B, C].map((w) => saveBrands(w.aid, [{ id: "default", name: `RT-${w.name}`, createdAt: at, status: "active" }, { id: `b${w.name.toLowerCase()}2`, name: `RT-${w.name} second`, createdAt: at, status: "active" }])));

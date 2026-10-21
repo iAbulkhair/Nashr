@@ -135,7 +135,7 @@ describe("rule 2132 (fixtures): p_ persons by default, each with one shadow memb
 });
 
 describe("rule 2132 (fixtures): TEST_PERSONS=legacy makes legacy persons, still with a shadow membership", () => {
-  it("an owner's person id is its account id and a member's its address, with a legacy record; each holds one shadow", async () => {
+  it("an owner's person id is its account id and a member's its address, with a membership row and no legacy record (rule 2138); each holds one shadow", async () => {
     const m = await load("legacy");
     expect(m.h.PERSONS).toBe("legacy");
     const u = await m.h.newUser("hl");
@@ -149,7 +149,8 @@ describe("rule 2132 (fixtures): TEST_PERSONS=legacy makes legacy persons, still 
 
     const mem = await m.h.newMember(u, "member", "hlm");
     expect(mem.pid).toBe(m.auth.normalizeEmail(mem.email));
-    expect(await m.team.getMember(mem.email)).toMatchObject({ email: mem.email, memberOf: m.auth.acct(u) });
+    expect(await m.membership.getMembership(m.keys.storedAccountId(m.auth.acct(u)), mem.pid)).toMatchObject({ role: "member" });
+    expect(await m.db.get(m.keys.accountKey.member(mem.email))).toBeNull();
     expect(await others(m, mem.pid, m.auth.acct(u))).toHaveLength(1);
     expect((await expectHome(m, mem.email, m.auth.acct(u))).actor).toMatchObject({ kind: "member", pid: mem.pid });
   });

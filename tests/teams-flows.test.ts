@@ -4,13 +4,14 @@ import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/sessio
 import { currentUser, getUser, saveUser, sc, sessionRecord, type Plan, type User } from "@/lib/auth";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { scopeFor } from "@/lib/brands";
-import { createMember, getMember, listInvites, saveMember } from "@/lib/team";
+import { createMember, listInvites } from "@/lib/team";
+import { getPerson } from "@/lib/person";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { listNotifs } from "@/lib/notifications";
 import { day } from "@/lib/track";
 import { db } from "@/lib/db";
 import { acct } from "@/lib/account-id";
-import { storedAccountId } from "@/lib/keys";
+import { accountKey, storedAccountId, storedPersonId } from "@/lib/keys";
 import { getMembership, listOrgs } from "@/lib/membership";
 
 const sent: { to: string; subject: string; text: string }[] = [];
@@ -55,6 +56,11 @@ const memberWithOwnPassword = async (owner: User, role: "admin" | "member" = "me
   await createMember(owner.email, { email, name: "Own Pass", password: MEMBER_PW, lang: "en", role, invitedBy: owner.email });
   return email;
 };
+type Row = { role?: string; disabled?: string; acceptedAt?: string };
+/** The membership row of a member made by `memberWithOwnPassword` (person id = its address) in `owner`'s account. Rule 2138: the row is the membership; no `member:` record is written from M4. */
+const rowKey = (owner: User, email: string) => accountKey.membership(storedAccountId(acct(owner)), storedPersonId(email));
+const rowOf = (owner: User, email: string) => db.get<Row>(rowKey(owner, email));
+const patchRow = async (owner: User, email: string, patch: Row) => db.set(rowKey(owner, email), { ...(await rowOf(owner, email))!, ...patch });
 const loginAs = (email: string, password: string) => login.POST(json("/api/auth/login", "POST", { email, password }, ip()));
 const inviteReq = (body: unknown) => invite.POST(json("/api/team/invite", "POST", body, ip()));
 const tokenOf = (text: string) => text.match(/#t=([a-f0-9]{64})/)![1];
@@ -97,7 +103,7 @@ describe("login: every login is checked against its own password", () => {
   it("refuses a member whose owner is suspended, and a member paused by the seat limit", async () => {
     const owner = await newUser("own");
     const m = await memberWithOwnPassword(owner);
-    await saveMember({ ...(await getMember(m))!, disabled: "seats" });
+    await patchRow(owner, m, { disabled: "seats" });
     const paused = await loginAs(m, MEMBER_PW);
     expect(paused.status).toBe(403);
     expect(await paused.json()).toMatchObject({ error: "disabled" });
@@ -161,7 +167,8 @@ describe("a member's password is its own", () => {
     expect((await account.DELETE(json("/api/account", "DELETE", { password: MEMBER_PW }))).status).toBe(401);
     expect((await account.DELETE(json("/api/account", "DELETE", { password: "abc12345" }))).status).toBe(200);
     expect(await getUser(owner.email)).toBeNull();
-    expect(await getMember(m), "every member login goes with the account").toBeNull();
+    expect(await rowOf(owner, m), "every membership goes with the account").toBeNull();
+    expect(await getPerson(storedPersonId(m)), "and the member's person, who held nothing else").toBeNull();
   });
 });
 
@@ -232,7 +239,7 @@ describe("signup", () => {
     expect(await asMember.json()).toEqual(await asOwner.json());
     expect(await getUser(m), "no owner record at a member's address").toBeNull();
     expect(await db.smembers("users:all")).not.toContain(m);
-    expect((await getMember(m))!.memberOf).toBe(owner.email);
+    expect(await rowOf(owner, m)).toMatchObject({ role: "member" });
   });
   it("the founder console finds a member login by address and can remove it, which frees the address for signup", async () => {
     const owner = await newUser("own");
@@ -247,7 +254,7 @@ describe("signup", () => {
     expect((await adminUsers.POST(json(`/api/admin/users/${m}`, "POST", { action: "removeMember" }), { params: Promise.resolve({ email: m }) })).status).toBe(401);
     const gone = await adminUsers.POST(json(`/api/admin/users/${m}`, "POST", { action: "removeMember", reason: "address owner asked" }, byKey), { params: Promise.resolve({ email: m }) });
     expect(gone.status).toBe(200);
-    expect(await getMember(m)).toBeNull();
+    expect(await rowOf(owner, m)).toBeNull();
     const log = (await db.lrange("admin:log", 0, 0)).map((x) => JSON.parse(x) as { what: string; email: string; actor: string });
     expect(log[0]).toMatchObject({ what: "removeMember", email: m, actor: "key" });
     expect((await signup.POST(json("/api/auth/signup", "POST", { email: m, password: "abc12345", name: "Real owner" }, ip()))).status).toBe(200);
@@ -520,7 +527,7 @@ describe("removal, leaving and roles take effect at the next request", () => {
     expect(jar().get("thakeen_session"), "the cookie is cleared").toBeUndefined();
     jar().set("thakeen_session", leaverSession);
     expect(await currentUser()).toBeNull();
-    expect(await getMember(leaver)).toBeNull();
+    expect(await getPerson(storedPersonId(leaver))).toBeNull();
 
     await signIn(owner.email);
     expect((await leave.POST()).status).toBe(403);
@@ -530,13 +537,12 @@ describe("removal, leaving and roles take effect at the next request", () => {
   it("an admin removes plain members but not another admin", async () => {
     const owner = await withPlan(await newUser("own"), "agency");
     const admin = await newMember(owner, "admin");
-    // Pins the legacy shape (multi-org M1): the check below reads the legacy `member:{email}` record.
-    const admin2 = await newMember(owner, "admin", "m", { legacy: true });
+    const admin2 = await newMember(owner, "admin");
     const plain = await newMember(owner, "member");
     await signIn(admin.email);
     expect((await memberRoute.DELETE(json("/api/team/member", "DELETE", { email: admin2.email }))).status).toBe(403);
     expect((await memberRoute.DELETE(json("/api/team/member", "DELETE", { email: plain.email }))).status).toBe(200);
-    expect(await getMember(admin2.email)).not.toBeNull();
+    expect(await getMembership(storedAccountId(acct(owner)), admin2.pid)).toMatchObject({ role: "admin" });
   });
 
   it("only the owner changes roles, and the change applies at the member's next request", async () => {
@@ -575,11 +581,11 @@ describe("a plan change refits the team (founder console)", () => {
     const emails = [await memberWithOwnPassword(owner), await memberWithOwnPassword(owner), await memberWithOwnPassword(owner)];
     // Distinct join times after the account was created, oldest first, so "newest" is not decided by a tie.
     const created = new Date(owner.createdAt).getTime();
-    await Promise.all(emails.map(async (e, i) => saveMember({ ...(await getMember(e))!, acceptedAt: new Date(created + (i + 1) * 1000).toISOString() })));
+    await Promise.all(emails.map((e, i) => patchRow(owner, e, { acceptedAt: new Date(created + (i + 1) * 1000).toISOString() })));
     const newestSession = await signIn(emails[2]);
     expect((await currentUser())!.actor!.email, "the newest member is signed in before the downgrade").toBe(emails[2]);
     const call = (body: Record<string, unknown>) => plan.POST(json("/api/admin/plan", "POST", { email: owner.email, ...body }, { "x-admin-key": ADMIN_KEY }));
-    const paused = async () => (await Promise.all(emails.map(getMember))).map((m) => !!m!.disabled);
+    const paused = async () => (await Promise.all(emails.map((e) => rowOf(owner, e)))).map((m) => !!m!.disabled);
 
     const down = await call({ plan: "pro" });
     expect(down.status).toBe(200);
@@ -655,7 +661,7 @@ describe("profile", () => {
     const put = (body: Record<string, string>) => profile.PUT(json("/api/profile", "PUT", body));
 
     expect((await put({ name: "Renamed Member", lang: "ar" })).status).toBe(200);
-    expect(await getMember(m)).toMatchObject({ name: "Renamed Member", lang: "ar" });
+    expect(await getPerson(storedPersonId(m))).toMatchObject({ name: "Renamed Member", lang: "ar" });
     const acct = (await getUser(owner.email))!;
     expect(acct.name, "the owner's name is the account's, not the member's").toBe(owner.name);
     expect(acct.lang).toBe(owner.lang);
@@ -665,7 +671,7 @@ describe("profile", () => {
       const res = await put(body);
       expect(res.status, JSON.stringify(body)).toBe(403);
     }
-    expect((await getMember(m))!.name, "a refused request writes nothing").toBe("Renamed Member");
+    expect((await getPerson(storedPersonId(m)))!.name, "a refused request writes nothing").toBe("Renamed Member");
     expect((await getUser(owner.email))!.phone).toBe(owner.phone);
     expect(await db.get(`profile:${owner.email}`)).toBeNull();
   });

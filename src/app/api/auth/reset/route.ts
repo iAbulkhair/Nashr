@@ -6,10 +6,10 @@ import { NextResponse } from "next/server";
 import { emailVerified, getLogin, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { revokeAllMcp } from "@/lib/mcp";
-import { revokeBook, revokeBooks } from "@/lib/booking-token";
-import { revokeFeed, revokeFeeds } from "@/lib/feed-token";
+import { revokeBooks } from "@/lib/booking-token";
+import { linksOfPerson, revokeFeeds } from "@/lib/feed-token";
 import { revokeCalendarLinks } from "@/lib/secretary-gcal";
-import { membersKey } from "@/lib/team";
+import { membersKey, rosterLinks } from "@/lib/team";
 import { aidOf, getMembership } from "@/lib/membership";
 import { isPersonLockTimeout, updatePerson, withPersonLock } from "@/lib/person";
 import { db } from "@/lib/db";
@@ -25,7 +25,7 @@ const badToken = () => NextResponse.json({ ok: false, error: "bad_token" }, { st
 /**
  * POST {token, password} → sets the new password of the login the token was issued for, burns the token, signs that
  * login in. The password is the PERSON's (`updatePerson`, multi-workspace M1, rule 2132). A member's reset writes the
- * member's person only (and its legacy member record): it never touches the owner's hash, sessions or tokens.
+ * member's person only (from M4, rule 2138, no legacy record): it never touches the owner's hash, sessions or tokens.
  *
  * Rule 2300: the sign-in at the end is `finishLogin`, the one every way in shares, so a login with two-step sign-in on
  * gets the code challenge (`mfa_required`) and NO session. A reset link proves the mailbox, not the authenticator: a
@@ -57,12 +57,12 @@ export async function POST(req: Request) {
 
   if (login.kind === "member") {
     const { owner } = login;
-    // The membership as the forward records read it (the `mbr:` row, or the legacy member record): a person known only
-    // through membership rows (multi-workspace M1, a `p_` member) resets like a legacy member.
+    // The membership as the forward records read it (the `mbr:` row and the roster; from M4, rule 2138, never the legacy
+    // member record).
     const m = owner ? await getMembership(aidOf(owner), login.pid) : null;
     if (!owner || !m) return badToken();
     if (isSuspended(owner)) return suspendedAnswer(owner);
-    // The PERSON's password only (rule 2132: `updatePerson`, mirrored to the member record). Every other device of THIS
+    // The PERSON's password only (rule 2132: `updatePerson`, the `person:` row only). Every other device of THIS
     // member is signed out; the owner and the rest of the team are untouched. A held person lock answers 409 `busy`
     // before anything is written.
     let p;
@@ -74,9 +74,10 @@ export async function POST(req: Request) {
     }
     if (!p) return badToken();
     // The member's own calendar feed and booking links end with the password they were made under, as an owner's MCP
-    // tokens do, and so does the login's Google link (rule 2301). Only this login's: the owner's links and the rest of
-    // the team's are untouched.
-    await Promise.all([revokeFeed(p.email), revokeBook(p.email), unlinkGoogle(p.email)]);
+    // tokens do, and so does the login's Google link (rule 2301). Only this person's, in every account it holds (rule
+    // 2138: by `(pid, aid)` from `orgs:{pid}`): the owner's links and the rest of the team's are untouched.
+    const mine = await linksOfPerson(login.pid);
+    await Promise.all([revokeFeeds(mine), revokeBooks(mine), unlinkGoogle(p.email)]);
     // A seat-paused member gets the new password but no session: `currentUser` refuses it until the owner has room.
     if (m.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
     // Likewise while the owner has not proved the address (rule 767): `currentUser` refuses the member, as login does.
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
   // an owner who has not verified yet is verified here (the date is kept when there is one). A member's reset proves the
   // member's address, not the owner's, and never comes here.
   // Multi-workspace M1 (rule 2132): the password, the session stamp and the proof are the PERSON's (`updatePerson`, which
-  // mirrors a legacy owner's account and stamps every account the person owns); the team stamp is the account's. The
+  // stamps every account the person owns; from M4, rule 2138, no legacy record is mirrored); the team stamp is the account's. The
   // person lock, then the user lock (rule 2139), both before the first write: a `p_` owner's account record never gets
   // a `passHash`, and a held person lock answers 409 `busy` with nothing written.
   try {
@@ -109,9 +110,11 @@ export async function POST(req: Request) {
   }
   // The owner's calendar feed and booking links and every member's go with the MCP tokens, as every member's session does above (the
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
-  const roster = await db.smembers(membersKey(acct(owner)));
+  // By `(pid, aid)` (rule 2138): the owner's own links in every account it holds, and each roster member's in this one.
+  const [roster, ownLinks] = await Promise.all([db.smembers(membersKey(acct(owner))), linksOfPerson(login.pid)]);
+  const links = [...ownLinks, ...rosterLinks(aidOf(owner), roster)];
   // The owner's linked marketing calendars (Reem B3) end with them too: whoever holds the account next links their own.
-  await Promise.all([revokeAllMcp(acct(owner)), revokeFeeds([owner.email, ...roster]), revokeBooks([owner.email, ...roster]), revokeCalendarLinks(owner.email), unlinkGoogle(owner.email)]);
+  await Promise.all([revokeAllMcp(acct(owner)), revokeFeeds(links), revokeBooks(links), revokeCalendarLinks(owner.email), unlinkGoogle(owner.email)]);
   return signInAfterReset(rec.email);
 }
 

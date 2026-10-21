@@ -12,7 +12,7 @@ import { chatTrialKey } from "./usage";
 import { mfaKey } from "./mfa";
 import { mailReady, sendEmail } from "./notify";
 import { sameSecret } from "./rate";
-import { getMember, membersKey, moveMemberLogin } from "./team";
+import { membersKey, moveMemberLogin } from "./team";
 import { devCodeExposed, moveOwnerLogin, normalizeCode, VERIFY } from "./verify-email";
 import { accountKey, workspaceScope, wsKey } from "./keys";
 
@@ -95,8 +95,7 @@ export async function startEmailChange(u: User, me: Acting, target: unknown, lan
   if (!validEmail(to)) return { ok: false, error: "invalid_email" };
   if (to === me.email) return { ok: false, error: "same_email" };
   // Taken as a sign-in address (rule 1982), not read as an account key.
-  const [owner, member] = await Promise.all([getLogin(to), getMember(to)]);
-  if (owner || member) return { ok: false, error: "taken" };
+  if (await getLogin(to)) return { ok: false, error: "taken" };
   if (me.kind === "owner") {
     const today = new Date().toISOString().slice(0, 10);
     if (u.emailMoves?.day === today && u.emailMoves.n >= VERIFY.movesPerDay) return { ok: false, error: "limit" };

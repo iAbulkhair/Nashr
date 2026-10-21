@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
 import { jar, newUser } from "./helpers/session";
-import { createSession, currentUser, destroySession, sessionKey, sessionRecord } from "@/lib/auth";
+import { createSession, currentUser, destroySession, sessionIds, sessionKey, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { dateFormat } from "@/lib/dates";
 import { formatMoney, formatNumber, formatTime } from "@/lib/format";
@@ -162,10 +162,11 @@ describe("rule 1810: one home for every cookie and storage name, the new `thakee
   });
 
   it("a browser holding only the old session cookie stays signed in", async () => {
-    // Pins the legacy shape (multi-org M1): a session record without `pid`/`acct` was written before R1, for a legacy owner.
+    // The record names its person and account (from M4, rule 2138, a session without them is nobody); only the
+    // cookie's name is old.
     const u = await newUser("legacy", { legacy: true });
     const token = randomBytes(32).toString("hex");
-    await db.set(sessionKey(token), { email: u.email, at: Date.now() }, 3600);
+    await db.set(sessionKey(token), { email: u.email, at: Date.now(), ...(await sessionIds(u.email)) }, 3600);
     jar().clear();
     jar().set("nashr_session", token);
     expect((await currentUser())?.email).toBe(u.email);
@@ -222,13 +223,15 @@ describe("rule 1811: sign-out, stop viewing and a used OAuth state clear both na
   });
 
   it("a customer view opened before the release (old cookie names) stops cleanly and hands the founder back", async () => {
-    // Pins the legacy shape (multi-org M1): a session record without `pid`/`acct` was written before R1, for a legacy owner.
+    // The records name their person and account (from M4, rule 2138, a session without them is nobody); only the
+    // cookies' names are old.
     const founder = await newUser("imp-founder", { legacy: true });
     const customer = await newUser("imp-customer", { legacy: true });
     const mine = randomBytes(32).toString("hex"), temp = randomBytes(32).toString("hex");
+    const [mineIds, tempIds] = await Promise.all([sessionIds(founder.email), sessionIds(customer.email, { imp: true })]);
     await Promise.all([
-      db.set(sessionKey(mine), { email: founder.email, at: Date.now() }, 3600),
-      db.set(sessionKey(temp), { email: customer.email, at: Date.now(), imp: founder.email }, 3600),
+      db.set(sessionKey(mine), { email: founder.email, at: Date.now(), ...mineIds }, 3600),
+      db.set(sessionKey(temp), { email: customer.email, at: Date.now(), imp: founder.email, ...tempIds }, 3600),
       db.del("admin:log"),
     ]);
     // What the code before this release left in the browser: every helper cookie under its `nashr_` name only.

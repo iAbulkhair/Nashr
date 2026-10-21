@@ -5,17 +5,16 @@ import { jar, json, newMember as helperNewMember, newUser as helperNewUser, sign
 import { trackRounds } from "./helpers/rounds";
 import { acct, currentPerson, currentUser, getUser, saveUser, sc, sessionKey, type User } from "@/lib/auth";
 import { loginIndexOf, newAccountId } from "@/lib/account-id";
-import { activeBrandIn, saveBrands, scopeFor, setActiveBrand, setActiveBrandIn, type BrandMeta } from "@/lib/brands";
+import { activeBrandIn, saveBrands, scopeFor, setActiveBrandIn, type BrandMeta } from "@/lib/brands";
 import { db } from "@/lib/db";
 import { accountKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { ownerOf } from "@/lib/membership";
 import { newPersonId } from "@/lib/multi-org";
-import { getMember, saveMember } from "@/lib/team";
 import * as brandsRoute from "@/app/api/brands/route";
 
-// Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
-// person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
+// Legacy persons (pid = its address) beside the `p_` ones written raw below: from M4 (rule 2138) both resolve on `person:`,
+// the membership and the (pid, aid) active brand alone. Each still holds a shadow membership unless it says `shadow: false`.
 const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
@@ -25,9 +24,10 @@ const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Paramete
  *
  * Rules 2111 (the membership is re-checked on every request), 2112 (partly: the account comes only from the session),
  * 2119 (partly: the active brand per (pid, aid)), 2120 (a token resolves to its own account), 2131 (account suspension
- * blocks that account, person suspension every account and every resolver), 2132 (a legacy session resolves to the same
- * user as before) and 2135 (every session in two rounds; a session from before R1 as today). The `p_` persons, accounts
- * and memberships are raw writes through the key builders, never the code under test.
+ * blocks that account, person suspension every account and every resolver), 2135 (every session in two rounds) and 2138
+ * (M4 contract: a session without `pid` is refused; `user:`/`member:` credentials, `member:` memberships and the
+ * per-login `activebrand:{login}` are never read; it replaced rule 2132's "a legacy session resolves as before"). The
+ * `p_` persons, accounts and memberships are raw writes through the key builders, never the code under test.
  */
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); signOut(); });
@@ -114,7 +114,7 @@ describe("tests/helpers/rounds.ts counts real rounds", () => {
   });
 });
 
-describe("rule 2135: every kind of session resolves in two rounds; a session from before R1 as today", () => {
+describe("rule 2135: every kind of session resolves in two rounds; rule 2138: a session from before R1 is refused", () => {
   const rounds = async (email: string, opts: { legacyShape?: boolean; acct?: string } = {}) => {
     await signIn(email, opts);
     const t = trackRounds();
@@ -134,28 +134,32 @@ describe("rule 2135: every kind of session resolves in two rounds; a session fro
     }
   });
 
-  it("a session written before R1: an owner in two rounds (as R1), a member in three (as before)", async () => {
+  it("rule 2138: a session written before R1 (no pid) is refused for an owner and a member, after the session read alone", async () => {
     const owner = await newUser("r2lo");
     const m = await newMember(owner, "admin", "r2lm");
-    const o = await rounds(owner.email, { legacyShape: true });
-    expect(o.u?.actor?.kind).toBe("owner");
-    expect(o.rounds).toBe(2);
-    const mm = await rounds(m.email, { legacyShape: true });
-    expect(mm.u?.actor?.kind).toBe("member");
-    expect(mm.rounds).toBe(3);
-    // Never rewritten on read: still no pid, no acct.
-    const s = await sessionNow();
-    expect(s).not.toHaveProperty("pid");
-    expect(s).not.toHaveProperty("acct");
+    for (const email of [owner.email, m.email]) {
+      const r = await rounds(email, { legacyShape: true });
+      expect(r.u, email).toBeNull();
+      expect(r.rounds, email).toBe(1);
+      expect(await currentPerson(), email).toBeNull();
+      // Never rewritten on read: still no pid, no acct.
+      const s = await sessionNow();
+      expect(s).not.toHaveProperty("pid");
+      expect(s).not.toHaveProperty("acct");
+      // The same login signed in again (a session with pid and acct) resolves.
+      expect((await as(email))?.actor?.kind, email).toBe(email === owner.email ? "owner" : "member");
+    }
   });
 
-  it("the R1 round reads the person, the login index, the account, the membership, the roster, the brands and both active-brand keys", async () => {
+  it("the round reads the person, the login index, the account, the membership, the roster, the brands and the (pid, aid) active brand; never a legacy key", async () => {
     const p = await twoAccounts();
     const r = await rounds(p.email, { acct: p.A });
     expect(r.keys).toEqual(expect.arrayContaining([
-      personKey.person(p.pid), accountKey.user(p.pid), accountKey.member(p.pid), accountKey.login(p.email), accountKey.user(p.A),
-      accountKey.membership(p.A, p.pid), accountKey.members(p.A), accountKey.brands(p.A), personKey.activeBrand(p.pid, p.A), accountKey.activeBrand(p.email),
+      personKey.person(p.pid), accountKey.login(p.email), accountKey.user(p.A),
+      accountKey.membership(p.A, p.pid), accountKey.members(p.A), accountKey.brands(p.A), personKey.activeBrand(p.pid, p.A),
     ]));
+    // M4 (rule 2138): no `user:{pid}` / `member:{pid}` credential read, no per-login active brand.
+    for (const k of [accountKey.user(p.pid), accountKey.member(p.pid), accountKey.member(p.email), accountKey.activeBrand(p.email)]) expect(r.keys).not.toContain(k);
   });
 });
 
@@ -165,7 +169,8 @@ describe("rule 2111: the membership is re-checked on every request", () => {
     const u = (await as(p.email, p.A))!;
     expect(acct(u)).toBe(p.A);
     expect(sc(u)).toBe(scopeFor(p.A, "default"));
-    expect(u.actor).toMatchObject({ kind: "member", pid: p.pid, email: p.email, role: "member", home: false });
+    expect(u.actor).toMatchObject({ kind: "member", pid: p.pid, email: p.email, role: "member" });
+    expect(u.actor).not.toHaveProperty("home");
     const b = (await as(p.email, p.B))!;
     expect(acct(b)).toBe(p.B);
     expect(b.actor).toMatchObject({ kind: "member", pid: p.pid, role: "admin" });
@@ -188,18 +193,22 @@ describe("rule 2111: the membership is re-checked on every request", () => {
     }
   });
 
-  it("a legacy member removed (record deleted) or disabled resolves to nothing at the next request", async () => {
+  it("a legacy member: the membership row alone decides (rule 2138); a leftover `member:` record neither holds nor ends it", async () => {
     const owner = await newUser("r11o");
     const m1 = await newMember(owner, "member", "r11a");
     const m2 = await newMember(owner, "member", "r11b");
+    const A = storedAccountId(acct(owner));
     expect((await as(m1.email))?.actor?.kind).toBe("member");
-    // A removal deletes the legacy record and, since multi-workspace M1, the membership row too (the roster entry
-    // is kept here, to show neither record alone is enough).
-    await Promise.all([db.del(accountKey.member(m1.email)), db.del(accountKey.membership(storedAccountId(acct(owner)), storedPersonId(m1.email)))]);
+    // The membership row deleted (the roster entry kept): nothing, whatever `member:` says.
+    await db.set(accountKey.member(m1.email), { email: m1.email, memberOf: owner.email, role: "member", acceptedAt: T1 });
+    await db.del(accountKey.membership(A, storedPersonId(m1.email)));
     expect(await currentUser()).toBeNull();
+    // A `member:` record deleted alone changes nothing; the row paused for seats ends it.
     expect((await as(m2.email))?.actor?.kind).toBe("member");
-    const rec = (await getMember(m2.email))!;
-    await saveMember({ ...rec, disabled: "seats" });
+    await db.del(accountKey.member(m2.email));
+    expect((await currentUser())?.actor?.kind).toBe("member");
+    const k = accountKey.membership(A, storedPersonId(m2.email));
+    await db.set(k, { ...(await db.get<Record<string, unknown>>(k))!, disabled: "seats" });
     expect(await currentUser()).toBeNull();
   });
 
@@ -318,23 +327,27 @@ describe("rule 2120: a token resolves to its own account and never follows a swi
     expect(acct(uB!)).toBe(B);
     expect(uB!.brandId).toBe("bb");
     for (const u of [uA!, uB!]) {
-      expect(u.actor).toMatchObject({ kind: "token", pid, role: "owner", home: false });
+      expect(u.actor).toMatchObject({ kind: "token", pid, role: "owner" });
       expect(u.actor!.pid).toBe(ownerOf(u));
     }
   });
 
-  it("a legacy owner's token: actor.pid is ownerOf(u), the home account's legacy brand choice applies", async () => {
+  it("a legacy owner's token: actor.pid is ownerOf(u); the per-login brand key is ignored, the (pid, aid) one applies (rule 2138)", async () => {
     const owner = await newUser("r20o");
-    await brands(owner.email, "b1");
-    await setActiveBrand(owner.email, "b1"); // written by a build before R1
-    const u = (await userFromBearer(bearer(await createMcpToken(owner.email))))!;
-    expect(u.actor).toMatchObject({ kind: "token", pid: ownerOf(u), home: true });
-    expect(u.brandId).toBe("b1");
-    expect(sc(u)).toBe(scopeFor(owner.email, "b1"));
+    await brands(owner.email, "b1", "b2");
+    await db.set(accountKey.activeBrand(owner.email), "b1"); // written by a build before M4
+    const t = await createMcpToken(owner.email);
+    const u = (await userFromBearer(bearer(t)))!;
+    expect(u.actor).toMatchObject({ kind: "token", pid: ownerOf(u) });
+    expect(u.brandId).toBe("default");
+    await setActiveBrandIn(ownerOf(u), storedAccountId(owner.email), "b2");
+    const v = (await userFromBearer(bearer(t)))!;
+    expect(v.brandId).toBe("b2");
+    expect(sc(v)).toBe(scopeFor(owner.email, "b2"));
   });
 });
 
-describe("rule 2119: the active brand is per (pid, aid); the legacy per-login key only for the home account", () => {
+describe("rule 2119: the active brand is per (pid, aid); rule 2138: the per-login key is never read or written", () => {
   it("choosing a brand in B never moves A, and back", async () => {
     const p = await twoAccounts();
     await Promise.all([brands(p.A, "x", "y"), brands(p.B, "x", "z")]);
@@ -348,56 +361,44 @@ describe("rule 2119: the active brand is per (pid, aid); the legacy per-login ke
     expect((await as(p.email, p.B))!.brandId).toBe("z");
     expect(await db.get(personKey.activeBrand(p.pid, p.A))).toBe("x");
     expect(await db.get(personKey.activeBrand(p.pid, p.B))).toBe("z");
-    // A p_ person has no home account: the legacy per-login key is never written.
+    // The per-login key is never written.
     expect(await db.get(accountKey.activeBrand(p.email))).toBeNull();
   });
 
-  it("a legacy member: the legacy key is read and written for the home account only", async () => {
+  it("a legacy member: a per-login choice left by a build before M4 is read in no account, and a switch never writes it", async () => {
     const owner = await newUser("r19o");
     const m = await newMember(owner, "member", "r19m");
     const mpid = storedPersonId(m.email);
     const B = await putAccount();
     await join(B, mpid);
     await Promise.all([brands(owner.email, "h1", "shared"), brands(B, "shared")]);
-    // A choice written by a build before R1 (the legacy key only) is read in the home account...
-    await setActiveBrand(m.email, "shared");
-    expect((await as(m.email, owner.email))!.brandId).toBe("shared");
-    // ...and never in another account, even where a brand of the same id exists.
+    await db.set(accountKey.activeBrand(m.email), "shared");
+    expect((await as(m.email, owner.email))!.brandId).toBe("default");
     expect((await as(m.email, B))!.brandId).toBe("default");
-    // A switch in B writes only the new key.
+    // A switch in B writes only the (pid, aid) key.
     expect((await brandsRoute.POST(json("/api/brands", "POST", { action: "switch", id: "shared" }))).status).toBe(200);
     expect(await db.get(personKey.activeBrand(mpid, B))).toBe("shared");
-    expect(await db.get(accountKey.activeBrand(m.email))).toBe("shared"); // unchanged, from before
     await as(m.email, owner.email);
     expect((await brandsRoute.POST(json("/api/brands", "POST", { action: "switch", id: "h1" }))).status).toBe(200);
-    // In the home account both keys move (a rollback to a build before R1 keeps the choice).
     expect(await db.get(personKey.activeBrand(mpid, storedAccountId(owner.email)))).toBe("h1");
-    expect(await db.get(accountKey.activeBrand(m.email))).toBe("h1");
+    expect(await db.get(accountKey.activeBrand(m.email))).toBe("shared"); // unchanged, from before M4
     expect((await as(m.email, B))!.brandId).toBe("shared");
+    expect((await as(m.email, owner.email))!.brandId).toBe("h1");
   });
 
-  it("activeBrandIn and setActiveBrandIn: the legacy key only with a home login, where a later legacy write wins", async () => {
+  it("activeBrandIn and setActiveBrandIn: the (pid, aid) key alone", async () => {
     const email = address("ab");
     const pid = storedPersonId(email);
     const aid = storedAccountId(email);
     await db.set(accountKey.activeBrand(email), "legacy");
-    expect(await activeBrandIn(pid, aid, email)).toBe("legacy");
-    expect(await activeBrandIn(pid, aid, null)).toBe("default");
-    // Not home: only the new key is written and read.
-    await setActiveBrandIn(pid, aid, "fresh", null);
+    expect(await activeBrandIn(pid, aid)).toBe("default");
+    await setActiveBrandIn(pid, aid, "fresh");
+    expect(await db.get(personKey.activeBrand(pid, aid))).toBe("fresh");
     expect(await db.get(accountKey.activeBrand(email))).toBe("legacy");
-    expect(await activeBrandIn(pid, aid, null)).toBe("fresh");
-    // Home: both keys, the same value.
-    await setActiveBrandIn(pid, aid, "both", email);
-    expect(await db.get(accountKey.activeBrand(email))).toBe("both");
-    expect(await db.get(personKey.activeBrand(pid, aid))).toBe("both");
-    expect(await activeBrandIn(pid, aid, email)).toBe("both");
-    // A rolled-back build writes the legacy key alone; after the roll forward that later choice still wins.
-    await setActiveBrand(email, "rolled");
-    expect(await activeBrandIn(pid, aid, email)).toBe("rolled");
-    // A home person without the legacy key reads the new one.
-    await db.del(accountKey.activeBrand(email));
-    expect(await activeBrandIn(pid, aid, email)).toBe("both");
+    expect(await activeBrandIn(pid, aid)).toBe("fresh");
+    // A later per-login write (a build before M4 after a rollback) is not read by M4.
+    await db.set(accountKey.activeBrand(email), "rolled");
+    expect(await activeBrandIn(pid, aid)).toBe("fresh");
   });
 
   it("a store error on the brand list does not end the request: the stored choice, unchecked, in the same account", async () => {
@@ -457,10 +458,12 @@ describe("currentPerson: the person behind a session, with or without a valid ac
     expect(none.acct).toBeNull();
   });
 
-  it("a session from before R1 finds its person through the login; an impersonation and a moved index find nobody", async () => {
+  it("a session from before R1 (rule 2138), an impersonation and a moved index find nobody", async () => {
     const owner = await newUser("cpo");
     await signIn(owner.email, { legacyShape: true });
-    expect((await currentPerson())).toMatchObject({ person: { pid: owner.email }, acct: owner.email });
+    expect(await currentPerson()).toBeNull();
+    await signIn(owner.email);
+    expect((await currentPerson())).toMatchObject({ person: { pid: storedPersonId(owner.email) }, acct: storedAccountId(owner.email) });
     await signIn(owner.email, { imp: "founder-cp@test.example" });
     expect(await currentUser()).not.toBeNull();
     expect(await currentPerson()).toBeNull();
@@ -496,19 +499,22 @@ describe("currentPerson: the person behind a session, with or without a valid ac
   });
 });
 
-describe("rule 2132: a legacy owner and a legacy member resolve to the same user, scope, brand and actor as before", () => {
-  it("the R1 session and the session from before R1 give equal users", async () => {
+describe("rule 2138: a legacy owner and a legacy member resolve on person:, the membership and the (pid, aid) brand", () => {
+  it("each resolves into the owner's account with its own brand and actor; the session from before R1 resolves to nothing", async () => {
     const owner = await newUser("lgo");
     const m = await newMember(owner, "admin", "lgm");
+    const A = storedAccountId(owner.email);
     await brands(owner.email, "b1", "b2");
-    await Promise.all([setActiveBrand(owner.email, "b1"), setActiveBrand(m.email, "b2")]);
+    await Promise.all([setActiveBrandIn(storedPersonId(owner.email), A, "b1"), setActiveBrandIn(storedPersonId(m.email), A, "b2")]);
     for (const email of [owner.email, m.email]) {
-      const r1 = (await as(email))!;
-      const old = (await as(email, undefined, { legacyShape: true }))!;
-      expect(r1, email).toEqual(old);
-      expect(acct(r1)).toBe(owner.email);
-      expect(sc(r1)).toBe(scopeFor(owner.email, email === owner.email ? "b1" : "b2"));
-      expect(r1.actor).toMatchObject({ email, pid: storedPersonId(email), home: true, kind: email === owner.email ? "owner" : "member" });
+      const u = (await as(email))!;
+      expect(acct(u)).toBe(owner.email);
+      expect(sc(u)).toBe(scopeFor(owner.email, email === owner.email ? "b1" : "b2"));
+      expect(u.actor).toMatchObject({ email, pid: storedPersonId(email), kind: email === owner.email ? "owner" : "member" });
+      expect(u.actor).not.toHaveProperty("home");
+      // The account record carries no credentials (`saveUser` strips them, Script S2 removes the rest).
+      expect(u).not.toHaveProperty("passHash");
+      expect(await as(email, undefined, { legacyShape: true }), email).toBeNull();
     }
   });
 });

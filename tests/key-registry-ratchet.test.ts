@@ -191,7 +191,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/lib/agent-scope.ts": 1,
   "src/lib/auth.ts": 4,
   "src/lib/billing.ts": 15,
-  "src/lib/booking-token.ts": 4,
+  "src/lib/booking-token.ts": 3,
   "src/lib/brand-proposals.ts": 5,
   "src/lib/brand-rules.ts": 2,
   "src/lib/catalog.ts": 2,
@@ -209,7 +209,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/lib/devices.ts": 2,
   "src/lib/email-change.ts": 2,
   "src/lib/fair-use.ts": 3,
-  "src/lib/feed-token.ts": 3,
+  "src/lib/feed-token.ts": 2,
   "src/lib/generate-batch.ts": 4,
   "src/lib/golden.ts": 3,
   "src/lib/google-signin.ts": 1,
@@ -299,7 +299,7 @@ const STORED_SCOPE: Record<string, number> = {
 // or an account id is read back from a record; each call site is listed here, none under src/app.
 const STORED_PERSON_ID: Record<string, number> = {
   "src/lib/membership.ts": 1, // ownerOf: the account record's ownerPid, else acct(u)
-  "src/lib/auth.ts": 7, // getLogin: the sign-in address as a legacy person id, and the person id the login index names; sessionPerson: the session's pid (index-checked); resolveIds: the session's pid (index-checked); resolveInHandle (M2): the session's pid, to read its orgs: hint (the match is re-checked by resolveIds); resolveLegacy: the legacy member's pid; createUser: the new account's id (or a new p_ id) as its owner's person id
+  "src/lib/auth.ts": 6, // getLogin: the sign-in address as a legacy person id, and the person id the login index names; sessionPerson: the session's pid (index-checked); resolveIds: the session's pid (index-checked); resolveInHandle (M2): the session's pid, to read its orgs: hint (the match is re-checked by resolveIds); createUser: the new account's id (or a new p_ id) as its owner's person id
   "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy owner's person id (used only when ownerOf agrees)
   "src/lib/verify-email.ts": 2, // moveOwnerLogin: the moved account's id as its legacy owner's person id (compared with ownerOf, and its person lock), and the new address as the new legacy owner's person id (its person lock and row)
   "src/lib/account.ts": 1, // wipeAccount: the wiped account's id as its legacy owner's person id (the person row createUser wrote), used only when the record is gone (else ownerOf)
@@ -308,10 +308,9 @@ const STORED_PERSON_ID: Record<string, number> = {
   "src/lib/passkeys.ts": 1, // resolvePasskeyLogin (customer passkeys, pre-flight ruling 3): the pid a `pkcred:` reverse entry names, written by addPasskey/movePasskeys, forward-checked (getPerson, getLogin(person.email).pid, the credential in that pid's set)
 };
 const STORED_ACCOUNT_ID: Record<string, number> = {
-  "src/lib/membership.ts": 6, // aidOf: a resolved account's own id; listOrgs: an orgs:{pid} entry (re-checked); legacyHomeOf/legacyHomeFrom: a legacy owner's own id (twice), a legacy memberOf; pickAccount: lastorg:{pid} (re-checked)
-  "src/lib/auth.ts": 3, // getLogin: a legacy owner's own id, a legacy member's memberOf; resolveIds: the session's acct (re-checked against the account record and roleIn)
+  "src/lib/membership.ts": 4, // aidOf: a resolved account's own id; listOrgs and pausedMemberships (M4): an orgs:{pid} entry (re-checked); pickAccount: lastorg:{pid} (re-checked)
+  "src/lib/auth.ts": 1, // resolveIds: the session's acct (re-checked against the account record and roleIn)
   "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy account id (used only when aidOf agrees)
-  "src/lib/person.ts": 2, // updatePerson: a legacy owner's person id as its own account id (mirror, stampOwned; re-checked with ownerOf)
   "src/lib/team.ts": 1, // aidFrom (multi-workspace M1): an account id from a resolved user or a record (an invite's account, a legacy memberOf, an orgs:{pid} entry)
   "src/lib/feed-token.ts": 1, // linkIds (multi-workspace M1): a feed or booking link record's aid, written by createFeed/createBook from the session's account (re-checked by loginHolds)
   "src/lib/account.ts": 1, // wipeAccount (multi-workspace M1): the wiped account's id as its callers hold it (acct(u) of a resolved account, or the console's lookup by address)

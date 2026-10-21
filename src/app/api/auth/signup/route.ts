@@ -6,7 +6,7 @@ import { allow, clientIp, retryLater } from "@/lib/rate";
 import { countVerifySend, devCodeExposed, sendVerifyCode } from "@/lib/verify-email";
 import { applyReferral, registerCode } from "@/lib/referral";
 import { captchaRefusal } from "@/lib/turnstile";
-import { getMember, withLoginLock } from "@/lib/team";
+import { withLoginLock } from "@/lib/team";
 import { acct } from "@/lib/account-id";
 import { isPersonLockTimeout } from "@/lib/person";
 
@@ -35,9 +35,8 @@ export async function POST(req: Request) {
   let account: Awaited<ReturnType<typeof createUser>> | null;
   try {
     account = await withLoginLock(email, async () => {
-      // A member record that is not a login (off its roster, or a stale copy) still holds the address, as in Google sign-in.
-      const [login, member] = await Promise.all([getLogin(email), getMember(email)]);
-      if (login || member) return null;
+      // Taken when the address signs in (rule 2138: from M4 a leftover legacy member record answers nothing).
+      if (await getLogin(email)) return null;
       return createUser({ email, name: String(b.name ?? ""), phone: String(b.phone ?? ""), password: b.password, lang: b.lang === "en" ? "en" : "ar" });
     });
   } catch (e) {

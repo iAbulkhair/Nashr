@@ -128,7 +128,8 @@ describe("rules 2072-2073: an ended suspension stops blocking at read time, and 
 
   it("no cron is needed for blocking: entitlements and currentUser use the read-time check", () => {
     expect(read("src/lib/entitlements.ts")).toMatch(/isSuspended\(u, now\)/);
-    expect(read("src/lib/auth.ts")).toMatch(/isSuspended\(u\)/);
+    // From M4 (rule 2138) the session resolves through `resolveIds` only, which reads the account record as `account`.
+    expect(read("src/lib/auth.ts")).toMatch(/isSuspended\(account\)/);
   });
 });
 
@@ -244,7 +245,7 @@ describe("rules 2077, 2079-2082: the read-only workspace view", () => {
     await store(owner.email, { seats: 5, brandCap: 3 });
     const o = (await getUser(owner.email))!;
     const [m1, m2] = await Promise.all([newMember(o, "admin", "wsa"), newMember(o, "member", "wsm")]);
-    const actor: Actor = { kind: "owner", pid: storedPersonId(o.email), home: true, email: o.email, name: o.name, lang: o.lang, role: "owner" };
+    const actor: Actor = { kind: "owner", pid: storedPersonId(o.email), email: o.email, name: o.name, lang: o.lang, role: "owner" };
     const inv = await createInvite(o, actor, `invitee-${Date.now()}@test.example`, "member", "ar");
     if (!inv.ok) throw new Error(JSON.stringify(inv));
     const b = await addBrand(o, "Second brand");

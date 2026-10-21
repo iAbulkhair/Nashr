@@ -118,35 +118,30 @@ describe("rule 886: the brand header is a selector among the session account's o
     expect((await currentUser())!.brandId).toBe("default");
   });
 
-  it("sessions written before R1: the owner and the member branch check the selector the same way", async () => {
+  it("rule 2138: a session written before R1 is nobody, with or without a selector, owner or member", async () => {
     const owner = await ownerWithBrands("blo", { legacyShape: true });
-    const stranger = await newUser("bls");
-    await setBrands(acct(stranger), ["sb2"]);
-    const u = (await pick("b1"))!;
-    expect(u.actor?.kind).toBe("owner");
-    expect(sc(u)).toBe(scopeFor(acct(owner), "b1"));
-    for (const bad of ["sb2", "old", "nope"]) await expect(pick(bad), bad).rejects.toMatchObject(NOT_FOUND);
-
+    expect(await currentUser()).toBeNull();
+    for (const sel of ["b1", "default", "nope"]) expect(await pick(sel), sel).toBeNull();
     const m = await newMember(owner, "admin", "blm", { legacy: true });
     await signIn(m.email, { legacyShape: true });
-    const mu = (await pick("b2"))!;
-    expect(mu.actor?.kind).toBe("member");
-    expect(sc(mu)).toBe(scopeFor(acct(owner), "b2"));
-    for (const bad of ["sb2", "old", "nope"]) await expect(pick(bad), bad).rejects.toMatchObject(NOT_FOUND);
+    expect(await currentUser()).toBeNull();
+    for (const sel of ["b2", "default", "nope"]) expect(await pick(sel), sel).toBeNull();
   });
 
   it("an impersonation resolves only the impersonated account's brands", async () => {
     const stranger = await newUser("bis");
     await setBrands(acct(stranger), ["sb3"]);
-    for (const legacyShape of [false, true]) {
-      const owner = await ownerWithBrands(`bio${legacyShape ? "l" : ""}`, { legacyShape });
-      await signIn(owner.email, { imp: "founder-bi@test.example", legacyShape });
-      const u = (await pick("b2"))!;
-      expect(u.actor?.kind, String(legacyShape)).toBe("founder");
-      expect(sc(u)).toBe(scopeFor(acct(owner), "b2"));
-      await expect(pick("sb3"), String(legacyShape)).rejects.toMatchObject(NOT_FOUND);
-      await expect(pick("old"), String(legacyShape)).rejects.toMatchObject(NOT_FOUND);
-    }
+    const owner = await ownerWithBrands("bio");
+    await signIn(owner.email, { imp: "founder-bi@test.example" });
+    const u = (await pick("b2"))!;
+    expect(u.actor?.kind).toBe("founder");
+    expect(sc(u)).toBe(scopeFor(acct(owner), "b2"));
+    await expect(pick("sb3")).rejects.toMatchObject(NOT_FOUND);
+    await expect(pick("old")).rejects.toMatchObject(NOT_FOUND);
+    // Rule 2138: an impersonation on a session written before R1 is nobody too.
+    const legacy = await ownerWithBrands("biol", { legacyShape: true });
+    await signIn(legacy.email, { imp: "founder-bi@test.example", legacyShape: true });
+    expect(await pick("b2")).toBeNull();
   });
 
   it('"default" always resolves: an owner, a member, both session shapes, an account with no brand list at all', async () => {
@@ -156,7 +151,7 @@ describe("rule 886: the brand header is a selector among the session account's o
     const a = (await pick("default"))!;
     expect(sc(a)).toBe(scopeFor(acct(bare), "default"));
     const bareLegacy = await newUser("bdl", { legacy: true });
-    await signIn(bareLegacy.email, { legacyShape: true });
+    await signIn(bareLegacy.email);
     expect((await pick("default"))!.brandId).toBe("default");
 
     const owner = await newUser("bdo");
@@ -191,8 +186,10 @@ describe("rule 886: the brand header is a selector among the session account's o
     vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(pick("b2")).rejects.toMatchObject(NOT_FOUND);
     expect((await currentUser())!.brandId).toBe("b1");
-    // A session written before R1 (owner branch) fails closed the same way.
-    const legacy = await ownerWithBrands("bufl", { legacyShape: true });
+    // A legacy owner on an R1 session fails closed the same way.
+    const legacy = await newUser("bufl", { legacy: true });
+    await setBrands(acct(legacy), ["b1", "b2"]);
+    await signIn(legacy.email);
     vi.spyOn(db, "get").mockImplementation(((k: string) => (k === accountKey.brands(acct(legacy)) ? Promise.reject(new Error("down")) : real(k))) as typeof db.get);
     await expect(pick("b2")).rejects.toMatchObject(NOT_FOUND);
     expect((await currentUser())!.brandId).toBe("default");
@@ -336,7 +333,7 @@ describe("fix round item 4: who holds the founder console never depends on the b
   });
 });
 
-describe("rule 886 with rule 2135: the selector costs no round on an R1 session, one on a pre-R1 owner session (R-C7)", () => {
+describe("rule 886 with rules 2135 and 2138: the selector costs no round on an R1 session; a pre-R1 session stops at the session read", () => {
   const rounds = async (fn: () => Promise<User | null>) => {
     const t = trackRounds();
     const u = await fn();
@@ -358,18 +355,19 @@ describe("rule 886 with rule 2135: the selector costs no round on an R1 session,
     expect((await rounds(() => currentUser())).rounds).toBe(2);
   });
 
-  it("a pre-R1 owner: one more round with a header than without; a pre-R1 member: as before", async () => {
+  it("rule 2138: a pre-R1 owner or member session is refused after the one session read, header or not", async () => {
     const owner = await ownerWithBrands("rlo", { legacyShape: true });
-    const without = await rounds(() => currentUser());
-    const withSel = await rounds(() => pick("b1"));
-    expect(without.rounds).toBe(2);
-    expect(withSel.u?.brandId).toBe("b1");
-    expect(withSel.rounds).toBe(without.rounds + 1);
+    for (const fn of [() => currentUser(), () => pick("b1")]) {
+      const o = await rounds(fn);
+      expect(o.u).toBeNull();
+      expect(o.rounds).toBe(1);
+    }
     const m = await newMember(owner, "member", "rlm", { legacy: true });
     await signIn(m.email, { legacyShape: true });
-    expect((await rounds(() => currentUser())).rounds).toBe(3);
-    const ms = await rounds(() => pick("b2"));
-    expect(ms.u?.brandId).toBe("b2");
-    expect(ms.rounds).toBe(3);
+    for (const fn of [() => currentUser(), () => pick("b2")]) {
+      const o = await rounds(fn);
+      expect(o.u).toBeNull();
+      expect(o.rounds).toBe(1);
+    }
   });
 });

@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, sessionRecord } from "@/lib/auth";
+import { acct, currentUser, sessionIds, sessionRecord } from "@/lib/auth";
+import { scopeFor } from "@/lib/brands";
 import { db } from "@/lib/db";
 import { loginHolds } from "@/lib/secretary-feed";
-import { getMember } from "@/lib/team";
+import { getPerson } from "@/lib/person";
+import { personKey, storedPersonId } from "@/lib/keys";
 import * as sessionsRoute from "@/app/api/account/sessions/route";
 
 /**
@@ -12,6 +14,8 @@ import * as sessionsRoute from "@/app/api/account/sessions/route";
  * docs/system/tests/1170-uiux-phase4.md). Rule 1150 itself stays pinned in tests/uiux-phase3.test.ts.
  */
 const read = (f: string) => readFileSync(f, "utf8");
+/** The person of a legacy fixture (pid = the owner's account id or the member's address): from M4 (rule 2138) both stamps live only there. */
+const stamps = async (pid: string) => (await getPerson(storedPersonId(pid)))!;
 const post = (password: string) => sessionsRoute.POST(json("/api/account/sessions", "POST", { password }));
 afterEach(() => { vi.restoreAllMocks(); signOut(); });
 
@@ -49,14 +53,16 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
   });
 
   it("the owner's sign-out stamps devicesAfter, never sessionsAfter, so a feed or booking link made earlier still holds", async () => {
-    // Pins the legacy shape (multi-org M1): the stamps are read on the legacy `user:{email}` record.
+    // Pins the legacy shape: the person id is the address (rule 2138: the stamps are the person's).
     const u = await newUser("so4", { legacy: true });
-    const before = (await getUser(u.email))!.sessionsAfter;
-    const rec = { login: u.email, scope: u.email, createdAt: new Date().toISOString() };
+    const before = (await stamps(u.email)).sessionsAfter;
+    expect(before).toBeTruthy();
+    // A link as M1 writes it (rule 2138: a record without its person and account ids is dead).
+    const rec = { pid: u.email, aid: acct(u), scope: scopeFor(acct(u), "default"), createdAt: new Date().toISOString() };
     await new Promise((r) => setTimeout(r, 5));
     await signIn(u.email);
     expect((await post("abc12345")).status).toBe(200);
-    const after = (await getUser(u.email))!;
+    const after = await stamps(u.email);
     expect(after.sessionsAfter).toBe(before);
     expect(after.devicesAfter).toBeTruthy();
     expect(new Date(after.devicesAfter!).getTime()).toBeGreaterThan(new Date(rec.createdAt).getTime());
@@ -65,15 +71,15 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
 
   it("a member's sign-out stamps the member's devicesAfter only; the member's links stay too", async () => {
     const owner = await newUser("so4");
-    // Pins the legacy shape (multi-org M1): the stamps are read on the legacy `member:{email}` record.
+    // Pins the legacy shape: the member's person id is its address (rule 2138: the stamps are the person's).
     const m = await newMember(owner, "member", "m", { legacy: true });
-    const rec = { login: m.email, scope: owner.email, createdAt: new Date().toISOString() };
+    const rec = { pid: m.pid, aid: acct(owner), scope: scopeFor(acct(owner), "default"), createdAt: new Date().toISOString() };
     await new Promise((r) => setTimeout(r, 5));
     const other = await signIn(m.email);
     await signIn(m.email);
-    const sessionsAfter = (await getMember(m.email))!.sessionsAfter;
+    const sessionsAfter = (await stamps(m.pid)).sessionsAfter;
     expect((await post(m.password)).status).toBe(200);
-    const mem = (await getMember(m.email))!;
+    const mem = await stamps(m.pid);
     expect(mem.sessionsAfter).toBe(sessionsAfter);
     expect(mem.devicesAfter).toBeTruthy();
     expect(await loginHolds(rec)).toBe(true);
@@ -84,7 +90,7 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
   it("a record without devicesAfter signs nothing out (the expand reads old records as before)", async () => {
     const u = await newUser("so4");
     const t = await signIn(u.email);
-    expect((await getUser(u.email))!.devicesAfter).toBeUndefined();
+    expect((await stamps((await sessionIds(u.email)).pid!)).devicesAfter).toBeUndefined();
     jar().set("thakeen_session", t);
     expect((await currentUser())?.email).toBe(u.email);
   });
@@ -103,18 +109,18 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
 
 describe("rule 1171: the new session is written before the old ones end", () => {
   it("when the stamp cannot be saved the device is still signed in", async () => {
-    // Pins the legacy shape (multi-org M1): the failing write is the legacy `user:{email}` record's.
+    // Pins the legacy shape: the person id is the address; the failing write is the person row's (rule 2138).
     const u = await newUser("so4", { legacy: true });
     await signIn(u.email);
     const real = db.set.bind(db);
     vi.spyOn(db, "set").mockImplementation(((key: string, ...rest: unknown[]) => {
-      if (key === `user:${u.email}`) return Promise.reject(new Error("store down"));
+      if (key === personKey.person(storedPersonId(u.email))) return Promise.reject(new Error("store down"));
       return (real as (...a: unknown[]) => Promise<unknown>)(key, ...rest);
     }) as typeof db.set);
     await expect(post("abc12345")).rejects.toThrow();
     vi.restoreAllMocks();
     expect((await currentUser())?.email).toBe(u.email);
-    expect((await getUser(u.email))!.devicesAfter).toBeUndefined();
+    expect((await stamps(u.email)).devicesAfter).toBeUndefined();
   });
 
   it("on success the old session record is gone and only the new one holds", async () => {
