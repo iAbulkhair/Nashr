@@ -18,6 +18,8 @@ import { loadJourney } from "@/lib/journey-load";
 import { can } from "@/lib/roles";
 import { availableModels, offModels } from "@/lib/media/config";
 import { modelState } from "@/lib/model";
+import { revisePrice } from "@/lib/revise";
+import { DRAFT_TYPES, type TaskType } from "@/lib/tasks";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const [tasks, brief, connections, journey, off, activity] = await Promise.all([listTasks(sc(u)), latestBrief(sc(u)), listConnections(sc(u)), loadJourney(sc(u), u.email, { brand }), offModels(), recentActivity(sc(u), STATUS_ROWS)]);
   // Each agent's state (rules 2550-2555): derived from the activity rows and the waiting drafts read above, never stored.
   const statuses = agentStatuses(activity, tasks.filter(isWaiting));
+  // One draft's price per draft type (rule 2492), the same function the revise route charges with; none for a role that may not edit.
+  const revisePrices: Partial<Record<TaskType, number>> = {};
+  if (can(u, "drafts")) for (const type of DRAFT_TYPES) { const p = revisePrice(u, brand, type); if (p !== null) revisePrices[type] = p; }
   // The device switch shows only while push is on and for a person's own session (never a founder's view, rule 2562).
   const publicKey = u.actor?.kind === "owner" || u.actor?.kind === "member" ? pushPublicKey() : null;
   // The media models on offer (keys, Blob store, MEDIA_MODELS_ON, not switched off by the breaker) and the pause, read
@@ -43,7 +48,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   return (
     <>
       <AgentStatusBoard lang={lang} statuses={statuses} kinds={appDict[lang].activity.kinds}>{publicKey && <PushToggle lang={lang} publicKey={publicKey} />}</AgentStatusBoard>
-      <Inbox t={appDict[lang]} lang={lang} tasks={tasks} brief={brief?.text ?? null} connected={connectedTargets(connections)} banned={brand.banned} journey={journey} media={availableModels(undefined, off)} included={entitlements(u).media.video} credits={u.credits} plan={u.plan} paused={modelState() !== "on"} canPublish={can(u, "publish")} owner={can(u, "billing")} initialFilter={sp.view === "notnow" ? "notnow" : undefined} />
+      <Inbox revisePrices={revisePrices} t={appDict[lang]} lang={lang} tasks={tasks} brief={brief?.text ?? null} connected={connectedTargets(connections)} banned={brand.banned} journey={journey} media={availableModels(undefined, off)} included={entitlements(u).media.video} credits={u.credits} plan={u.plan} paused={modelState() !== "on"} canPublish={can(u, "publish")} owner={can(u, "billing")} initialFilter={sp.view === "notnow" ? "notnow" : undefined} />
     </>
   );
 }

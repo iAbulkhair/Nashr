@@ -6,8 +6,8 @@ import { dirname, join } from "node:path";
 import { SHARED, affectedTests, isShared, mentions } from "../scripts/ci-affected.mjs";
 
 /**
- * Rules 2550-2557: a tree that already passed the full check is not checked again, and a draft runs only the unit tests
- * its change reaches. docs/system/tests/2550-ci-reuse.md lists the rules. The workflow's shell is executed here for
+ * Rules 2580-2587: a tree that already passed the full check is not checked again, and a draft runs only the unit tests
+ * its change reaches. docs/system/tests/2580-ci-reuse.md lists the rules. The workflow's shell is executed here for
  * real, in throwaway git repositories, and every step's `if:` is evaluated against Scope's outputs, so the test pins
  * what CI decides, the way tests/ci-workflow.test.ts does for rule 772.
  */
@@ -83,7 +83,7 @@ function runs(name: string, sc: Scope, e2eVersion = "1.0.0") {
 }
 const ran = (sc: Scope) => steps.map(nameOf).filter((n) => runs(n, sc));
 
-describe("rule 2550: the green key is the merge commit's tree plus the workflow, and nothing else", () => {
+describe("rule 2580: the green key is the merge commit's tree plus the workflow, and nothing else", () => {
   const key = (root: string) => runStep("Green key", root, { WORKFLOW_HASH: "wf", RUNNER_OS: "Linux" });
 
   it("the key is built from HEAD's tree, the OS and a hash of ci.yml and the selector; the lookup is exact", () => {
@@ -132,7 +132,7 @@ describe("rule 2550: the green key is the merge commit's tree plus the workflow,
   });
 });
 
-describe("rule 2551: a reused run passes after the secret scan alone; reuse needs a record naming this very tree", () => {
+describe("rule 2581: a reused run passes after the secret scan alone; reuse needs a record naming this very tree", () => {
   it("an exact hit whose record names the tree is reused; a miss, a missing or a different record is not", () => {
     const reused = { build: "false", e2e: "false", unit: "none", reused: "true" };
     const root = mergeCheckout(["src/lib/x.ts"]);
@@ -160,7 +160,7 @@ describe("rule 2551: a reused run passes after the secret scan alone; reuse need
   });
 });
 
-describe("rule 2552: only a run that checked everything records its tree", () => {
+describe("rule 2582: only a run that checked everything records its tree", () => {
   it("Record and Save run only when every earlier step passed and Scope ran the end-to-end suite; they are last", () => {
     for (const s of ["Record green run", "Save green run"]) expect(step(s), s).toMatch(/if: success\(\) && steps\.scope\.outputs\.e2e == 'true'\n/);
     expect(steps.map(nameOf).slice(-2)).toEqual(["Record green run", "Save green run"]);
@@ -193,7 +193,7 @@ describe("rule 2552: only a run that checked everything records its tree", () =>
   });
 });
 
-describe("rule 2553: a draft into main runs the affected unit tests; ready and release pull requests run them all", () => {
+describe("rule 2583: a draft into main runs the affected unit tests; ready and release pull requests run them all", () => {
   it("Scope: draft into main is affected; ready, a release PR into production, and no diff are all", () => {
     expect(scope(["src/lib/x.ts"], { draft: true }).unit).toBe("affected");
     expect(scope(["docs/x.md"], { draft: true }).unit).toBe("affected");
@@ -239,7 +239,7 @@ describe("rule 2553: a draft into main runs the affected unit tests; ready and r
   });
 });
 
-describe("rule 2554: a shared file, content/ or an empty diff runs every unit test", () => {
+describe("rule 2584: a shared file, content/ or an empty diff runs every unit test", () => {
   it("the shared list is explicit", () => {
     expect(SHARED).toEqual([
       "package.json", "package-lock.json", ".npmrc", "vitest.config.mts", "tsconfig.json", "tests/helpers/", "tests/fixtures/",
@@ -256,7 +256,7 @@ describe("rule 2554: a shared file, content/ or an empty diff runs every unit te
   });
 });
 
-describe("rule 2555: the affected tests follow imports, path mentions outside src/, and always include folder readers", () => {
+describe("rule 2585: the affected tests follow imports, path mentions outside src/, and always include folder readers", () => {
   const roots = ["src", "tests", "docs", "scripts", "e2e"];
   const files = new Map<string, string>([
     ["src/lib/a.ts", 'import { b } from "./b";\nimport "./a.css";'],
@@ -322,11 +322,11 @@ describe("rule 2555: the affected tests follow imports, path mentions outside sr
   });
 });
 
-describe("rule 2557: the docs name the change", () => {
+describe("rule 2587: the docs name the change", () => {
   it("flows section 62 and the coverage file describe it", () => {
     const flows = readFileSync("docs/system/flows.md", "utf8");
-    for (const r of ["rules 2550-2556", "rule 2552", "rules 2553 and 2555", "rule 2554", "scripts/ci-affected.mjs"]) expect(flows, r).toContain(r);
-    const f = readFileSync("docs/system/tests/2550-ci-reuse.md", "utf8");
-    for (let r = 2550; r <= 2557; r++) expect(f).toContain(`| ${r} |`);
+    for (const r of ["rules 2580-2586", "rule 2582", "rules 2583 and 2585", "rule 2584", "scripts/ci-affected.mjs"]) expect(flows, r).toContain(r);
+    const f = readFileSync("docs/system/tests/2580-ci-reuse.md", "utf8");
+    for (let r = 2580; r <= 2587; r++) expect(f).toContain(`| ${r} |`);
   });
 });

@@ -253,7 +253,8 @@ describe("rule 2528: every writer says where its text came from", () => {
     ["src/app/api/files/route.ts", /writeFileChecked\(scope, b\.name, b\.content, "user", b\.baseAt, fileSrc\("owner"\)\)/],
     ["src/app/api/onboard/route.ts", /writeFile\(scope, f\.name, f\.content, "noor", \{ src: fileSrc\("crawl", url\) \}\)/],
     ["src/app/api/onboard/route.ts", /"noor", \{ src: fileSrc\("builtin"\) \}\)/],
-    ["src/app/api/tasks/[id]/route.ts", /"noor", \{ src: fileSrc\("builtin"\) \}\)/],
+    // The learned-note append moved from the task route to src/lib/task-notes.ts (#409), shared with the revise route.
+    ["src/lib/task-notes.ts", /"noor", \{ src: fileSrc\("builtin"\) \}\)/],
     ["src/lib/catalog.ts", /"noor", \{ src: fileSrc\("crawl", site\) \}\)/],
     ["src/lib/cloud-drives.ts", /"user", \{ src: fileSrc\("drive"\) \}\)/],
     ["src/lib/instruction-refs.ts", /"user", \{ src: fileSrc\(source\) \}\)/],

@@ -89,6 +89,8 @@ export const wsKey = {
   task: (s: Scope, id: string) => `task:${s}:${id}`,
   /** lock: one task's writers. */
   taskLock: (s: Scope, id: string) => `tasklock:${s}:${id}`,
+  /** lock: writers of the workspace's preferences.md, one learned note at a time (src/lib/task-notes.ts). */
+  prefsFileLock: (s: Scope) => `prefsfile:${s}`,
   /** set: ids of tasks waiting for approval. */
   pending: (s: Scope) => `pending:${s}`,
   /** set: ids of pending tasks set aside under "Not now" (a subset of `pending`, rule 2341). */
@@ -238,6 +240,8 @@ export const accountKey = {
   digestLock: (id: string) => `digestlock:${id}`,
   /** bucket name for `allow` (stored as `rate:digestsave:{login}`): saves of the digest choice (rule 2355). */
   digestBucket: (login: string) => `digestsave:${login}`,
+  /** bucket name for `allow` (stored as `rate:revise:{login}`): line notes revisions sent by the account (rule 2497). */
+  reviseBucket: (login: string) => `revise:${login}`,
   /** set: friends this account referred. */
   referrals: (email: string) => `referrals:${email}`,
   /** string: who referred this account. */

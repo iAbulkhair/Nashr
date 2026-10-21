@@ -1,5 +1,5 @@
 /**
- * Affected unit tests for a draft pull request's CI run (rules 2553-2556, docs/system/tests/2550-ci-reuse.md).
+ * Affected unit tests for a draft pull request's CI run (rules 2583-2586, docs/system/tests/2580-ci-reuse.md).
  *
  * `node scripts/ci-affected.mjs <file listing the changed paths>` prints the test files to run, one per line, or the
  * single line `all`. It reads the repository from the working directory. Only CI's "Select unit tests" step calls it,
