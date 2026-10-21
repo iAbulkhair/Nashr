@@ -197,12 +197,13 @@ export async function getBookStatus(who: LinkOwner | string, scope?: string): Pr
  * Kill one provider's link. Waits for each lock up to 20 tries 50 ms apart, then revokes anyway. `who` from M1: the new
  * lock, then for the home account the legacy one; both pointers and the records they name. A plain login: the legacy
  * lock, pointer and record, and that record's `(pid, aid)` pointer when M1 wrote it (the home link) and it still names it.
+ * `locked`: the caller already holds those locks (as `revokeFeed`), so none is taken.
  */
-async function revokeOne(who: LinkOwner | string, provider: BookRecord["provider"]): Promise<void> {
+async function revokeOne(who: LinkOwner | string, provider: BookRecord["provider"], opts: { locked?: true }): Promise<void> {
   const ids = typeof who === "string" ? null : who;
   const login = typeof who === "string" ? who : who.login;
   const home = typeof who === "string" || who.home;
-  const locks = [...(ids ? [personKey.bookLock(ids.pid, ids.aid, provider)] : []), ...(home ? [lockKey(login, provider)] : [])];
+  const locks = opts.locked ? [] : [...(ids ? [personKey.bookLock(ids.pid, ids.aid, provider)] : []), ...(home ? [lockKey(login, provider)] : [])];
   const held: [string, string][] = [];
   try {
     // New before legacy (rule 2139). Sequential by design: each try only makes sense after the last one failed.
@@ -233,10 +234,11 @@ async function revokeOne(who: LinkOwner | string, provider: BookRecord["provider
 
 /**
  * Kill the link for `provider`, or for every provider without one. Idempotent. A held lock never keeps a link alive: the
- * lock wait gives up and the revoke goes ahead (as `revokeFeed`, B1-R10).
+ * lock wait gives up and the revoke goes ahead (as `revokeFeed`, B1-R10). `locked`: the caller holds the locks of every
+ * provider it names (as `revokeFeed`), so none is taken.
  */
-export async function revokeBook(who: LinkOwner | string, provider?: BookRecord["provider"]): Promise<void> {
-  await pmap(provider ? [provider] : [...BOOK_PROVIDERS], (p) => revokeOne(who, p));
+export async function revokeBook(who: LinkOwner | string, provider?: BookRecord["provider"], opts: { locked?: true } = {}): Promise<void> {
+  await pmap(provider ? [provider] : [...BOOK_PROVIDERS], (p) => revokeOne(who, p, opts));
 }
 
 export const revokeBooks = (logins: string[]) => pmap(logins, (l) => revokeBook(l)).then(() => {});

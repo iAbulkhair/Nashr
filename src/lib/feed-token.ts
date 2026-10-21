@@ -187,13 +187,14 @@ export async function getFeedStatus(who: LinkOwner | string, scope?: string): Pr
  * a link alive (B1-R10). `who` from M1: `lock:feed:{pid}:{aid}`, then for the home account `lock:feed:{login}`; deletes
  * both pointers and the records they name. A plain login (the pre-M1 form): `lock:feed:{login}`; deletes the legacy
  * pointer, the record it names, and that record's `(pid, aid)` pointer when M1 wrote it (the home link) and it still
- * names that record.
+ * names that record. `locked`: the caller already holds every lock this revoke would take (as `wipeAccount`'s
+ * `loginLocked`; the links script's `--retire`, rule 2756), so it takes none and deletes the same keys at once.
  */
-export async function revokeFeed(who: LinkOwner | string): Promise<void> {
+export async function revokeFeed(who: LinkOwner | string, opts: { locked?: true } = {}): Promise<void> {
   const ids = typeof who === "string" ? null : who;
   const login = typeof who === "string" ? who : who.login;
   const home = typeof who === "string" || who.home;
-  const locks = [...(ids ? [personKey.feedLock(ids.pid, ids.aid)] : []), ...(home ? [lockKey(login)] : [])];
+  const locks = opts.locked ? [] : [...(ids ? [personKey.feedLock(ids.pid, ids.aid)] : []), ...(home ? [lockKey(login)] : [])];
   const held: [string, string][] = [];
   try {
     // New before legacy (rule 2139). Sequential by design: each try only makes sense after the last one failed.
@@ -224,4 +225,4 @@ export async function revokeFeed(who: LinkOwner | string): Promise<void> {
   }
 }
 
-export const revokeFeeds = (logins: string[]) => pmap(logins, revokeFeed);
+export const revokeFeeds = (logins: string[]) => pmap(logins, (l) => revokeFeed(l));
