@@ -15,6 +15,7 @@ import { movePasskeys } from "./passkeys";
 import { log } from "./log";
 import { ownerOf } from "./membership";
 import { accountKey, personKey, storedPersonId } from "./keys";
+import { OPAQUE_IDS } from "./account-id";
 
 /**
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
@@ -185,6 +186,13 @@ export type MoveResult = "ok" | "exists" | "not_allowed" | "limit";
  */
 export async function moveUnverifiedAccount(from: User, target: string): Promise<MoveResult> {
   const gated = (x: User) => x.gatedSignup === true && !x.emailVerifiedAt;
+  // Account-id R2 (rule 2741): with `OPAQUE_IDS` on the typo fix moves the owner in place, like the proved change, but
+  // proves nothing and writes no hold or revert link (nothing was proved at the old address).
+  if (OPAQUE_IDS) {
+    const { movePersonLogin } = await import("./email-move");
+    const r = await movePersonLogin(ownerOf(from), from.email, target, { may: (_p, owned) => owned.length > 0 && owned.every(gated), proved: false, limited: true, hold: false });
+    return r.result === "partner" ? "not_allowed" : r.result;
+  }
   return moveOwnerLogin(from, target, { may: gated, isCopy: gated });
 }
 

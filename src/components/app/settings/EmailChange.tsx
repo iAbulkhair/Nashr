@@ -18,6 +18,8 @@ const COPY = {
     taken: "هذا البريد عليه حساب ثاني في ذكين.", hasData: "حسابك فيه شغل، وتغيير بريد المالك لحساب فيه شغل يمر عن طريق الدعم الحين. راسلنا ونغيّره لك.",
     limit: "وصلت حد التغييرات اليوم. جرّب بكرة.", slow: "طلبات كثيرة. جرّب بعد شوي.", mailOff: "الإيميل واقف عندنا الحين. جرّب بعدين.",
     badCode: "الرمز غلط.", expired: "الرمز انتهى أو انقفل. اطلب رمز جديد.", failed: "ما زبطت. جرّب مرة ثانية.",
+    mfa: "رمز تطبيق المصادقة (أو رمز استرداد)", mfaRequired: "التحقق بخطوتين شغّال على حسابك: اكتب رمز تطبيق المصادقة عشان تكمل.", badMfa: "رمز تطبيق المصادقة غلط.",
+    partner: "هذا البريد مربوط ببرنامج الشركاء، وتغييره يمر عن طريق الدعم. راسلنا ونغيّره لك.",
   },
   en: {
     change: "Change email", newEmail: "New email", password: "Current password", send: "Send the code", sending: "Sending…",
@@ -29,6 +31,8 @@ const COPY = {
     taken: "That email already has a Thakeen login.", hasData: "Your account already holds work, and an owner's email on such an account is changed through support for now. Write to us and we will change it.",
     limit: "You reached today's limit of changes. Try tomorrow.", slow: "Too many tries. Try again a bit later.", mailOff: "Email is off on our side right now. Try later.",
     badCode: "That code is wrong.", expired: "The code ran out or was locked. Ask for a new one.", failed: "That did not work. Try again.",
+    mfa: "Authenticator code (or a recovery code)", mfaRequired: "Two-step sign-in is on for your login: type your authenticator code to go on.", badMfa: "That authenticator code is wrong.",
+    partner: "This email is tied to the partner programme, so it is changed through support. Write to us and we will change it.",
   },
 } as const;
 
@@ -52,19 +56,23 @@ export default function EmailChange({ lang, forbidden, onStatus }: { lang: Lang;
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState<"" | "start" | "confirm">("");
   const [ownerHasData, setOwnerHasData] = useState(false);
+  // Account-id R2, D2 (rule 2745): a login with two-step sign-in on gives its code too; the field shows once asked.
+  const [needMfa, setNeedMfa] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
 
   useEffect(() => { void call("GET").then(({ j }) => { if (j.ok && j.pending) setPending(j.pending); }); }, []);
 
   const err = (s: number, e?: string) =>
     s === 403 ? forbidden : e === "wrong_password" ? T.wrong : e === "invalid_email" ? T.invalid : e === "same_email" ? T.same : e === "taken" ? T.taken
-      : e === "owner_has_data" ? T.hasData : e === "limit" ? T.limit : e === "mail_unavailable" ? T.mailOff : s === 429 ? T.slow
+      : e === "owner_has_data" ? T.hasData : e === "partner" ? T.partner : e === "mfa_required" ? T.mfaRequired : e === "bad_code" ? T.badMfa : e === "limit" ? T.limit : e === "mail_unavailable" ? T.mailOff : s === 429 ? T.slow
       : e === "wrong" ? T.badCode : e === "expired" || e === "locked" ? T.expired : T.failed;
 
   async function start() {
     if (busy) return;
     setBusy("start"); onStatus(null);
-    const { status, j } = await call("POST", { action: "start", password: pw, email: to.trim() });
-    setBusy(""); setPw("");
+    const { status, j } = await call("POST", { action: "start", password: pw, email: to.trim(), ...(needMfa ? { mfaCode: mfaCode.trim() } : {}) });
+    setBusy(""); setPw(""); setMfaCode("");
+    if (j.error === "mfa_required" || j.error === "bad_code") setNeedMfa(true);
     if (j.ok && j.pending) { setPending(j.pending); setOpen(false); onStatus({ tone: "ok", text: T.sentTo(j.pending) }); return; }
     if (j.error === "owner_has_data") setOwnerHasData(true);
     onStatus({ tone: "error", text: err(status, j.error) });
@@ -75,7 +83,7 @@ export default function EmailChange({ lang, forbidden, onStatus }: { lang: Lang;
     const { status, j } = await call("POST", { action: "confirm", code });
     setBusy(""); setCode("");
     if (j.ok && j.email) { onStatus({ tone: "ok", text: T.done(j.email) }); setTimeout(() => window.location.reload(), 1200); return; } // the success shows first (rule 2001)
-    if (j.error === "expired" || j.error === "locked" || j.error === "taken" || j.error === "owner_has_data") setPending(null);
+    if (j.error === "expired" || j.error === "locked" || j.error === "taken" || j.error === "owner_has_data" || j.error === "partner") setPending(null);
     onStatus({ tone: "error", text: err(status, j.error) });
   }
 
@@ -101,7 +109,7 @@ export default function EmailChange({ lang, forbidden, onStatus }: { lang: Lang;
       : <Button variant="secondary" size="sm" className="justify-self-start" onClick={() => setOpen(true)}>{T.change}</Button>;
   }
 
-  const ready = to.trim().length > 3 && pw.length > 0;
+  const ready = to.trim().length > 3 && pw.length > 0 && (!needMfa || mfaCode.trim().length > 0);
   return (
     <div className="grid gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -111,6 +119,11 @@ export default function EmailChange({ lang, forbidden, onStatus }: { lang: Lang;
         <Field label={T.password} required>
           <PasswordField lang={lang} name="emailPassword" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} />
         </Field>
+        {needMfa && (
+          <Field label={T.mfa} required>
+            <Input name="emailMfaCode" dir="ltr" autoComplete="one-time-code" maxLength={64} value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
+          </Field>
+        )}
       </div>
       <p className="text-xs text-foreground-muted">{T.after}</p>
       <div className="flex flex-wrap gap-3">

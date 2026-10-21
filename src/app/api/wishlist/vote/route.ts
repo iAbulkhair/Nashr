@@ -3,6 +3,7 @@ import { z } from "zod";
 import { handler } from "@/lib/api-handler";
 import { WINDOW } from "@/lib/rate";
 import { setVote, votableId } from "@/lib/wishlist";
+import { acct } from "@/lib/account-id";
 
 /** Votes per account per hour: far above what a person clicks, low enough that a script cannot churn the counts. */
 const VOTES_PER_HOUR = 60;
@@ -19,7 +20,9 @@ export const POST = handler(
   async ({ u, input: b }) => {
     const id = await votableId(b.id);
     if (!id) return NextResponse.json({ ok: false, error: "unknown_item" }, { status: 400 });
-    const r = await setVote(u.email, id, b.on);
+    // Keyed by the account id (rule 2748): the same bytes as the address for every legacy account, and an address move in
+    // place keeps the votes.
+    const r = await setVote(acct(u), id, b.on);
     return NextResponse.json({ ok: true, id, ...r });
   },
 );

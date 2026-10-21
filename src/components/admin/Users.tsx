@@ -462,6 +462,7 @@ export default function Users({ lang, keySession }: SectionProps) {
           <button type="button" onClick={() => open(u.email)} className="min-h-[var(--hit-min)] text-start text-foreground underline pointer-fine:min-h-6"><bdi dir="ltr">{u.email}</bdi></button>
           {u.suspended && <Badge tone="danger">{UC.suspendedBadge}{u.suspendedUntil ? ` · ${UC.suspendedUntil(formatSuspensionEnd(u.suspendedUntil, lang))}` : ""}</Badge>}
           {!u.emailVerifiedAt && <span className="rounded border border-border px-1.5 text-xs text-foreground-muted" data-testid="unverified">{S.unverified}</span>}
+          {u.signsIn === false && <span className="rounded border border-border px-1.5 text-xs text-foreground-muted" data-testid="no-sign-in">{S.noSignIn}</span>}
         </span>
       ),
     },

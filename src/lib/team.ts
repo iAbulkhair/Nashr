@@ -20,6 +20,7 @@ import { MULTI_ORG, newPersonId, PERSON_ID } from "./multi-org";
 import { mfaKeys } from "./mfa";
 import { movePasskeys, passkeyKeys } from "./passkeys";
 import { revokeAllDevices } from "./devices";
+import { addressBlocked } from "./email-hold";
 
 /**
  * Teams (seats): memberships, invites and seat accounting (docs/superpowers/specs/2026-09-29-teams-design.md;
@@ -599,8 +600,12 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
       const used = 1 + members.filter((m) => !m.disabled).length + invites.length;
       if (used > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
       return withLoginLock(inv.email, async () => {
-        const [taken, m] = await Promise.all([getLogin(inv.email), getMember(inv.email)]);
+        const [taken, m, blocked] = await Promise.all([getLogin(inv.email), getMember(inv.email), addressBlocked(inv.email)]);
         if (taken || m) return fail(MULTI_ORG ? "signin_required" : "unavailable");
+        // Account-id R2 (rules 2740, 2743; nothing to find before any account moved in place): an address another person
+        // moved away from is held, and with `MULTI_ORG` off the new member's person id would be the address, which an account that moved in
+        // place still holds as its key (L3).
+        if (blocked === "held" || (blocked === "moved" && !MULTI_ORG)) return fail("unavailable");
         const lang = input.lang === "en" || input.lang === "ar" ? input.lang : inv.lang;
         const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid }, MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {});
         const pid = pidFrom(memberPid(member));
@@ -742,8 +747,10 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
   return withTeamLock(aid, () => withLoginLock(first, () => withLoginLock(second, () => withMovePersonLock(pidFrom(first), () => withMovePersonLock(pidFrom(second), async () => {
     const res = await withMemberLock(old, async (cur) => {
       if (cur.memberOf !== aid) return "not_found" as const;
-      const [taken, m, read] = await Promise.all([getLogin(to), getMember(to), readMembership(aid, oldPid)]);
-      if (taken || m) return "exists" as const;
+      const [taken, m, read, blocked] = await Promise.all([getLogin(to), getMember(to), readMembership(aid, oldPid), addressBlocked(to, oldPid)]);
+      // Account-id R2 (rules 2740, 2743): a held address, or one whose `user:`/`person:` key an account that moved in place
+      // still holds (L3: this copy writes `person:{to}`), is taken too. Both are never there while `OPAQUE_IDS` is off.
+      if (taken || m || blocked) return "exists" as const;
       const [sent, brand, brandIn] = await Promise.all([listInvites(aid), db.get<string>(accountKey.activeBrand(old)), db.get<string>(personKey.activeBrand(oldPid, aid))]);
       const { devicesAfter: _d, ...rest } = cur;
       // R1: the record is written again at the new address, so its person id is the new address (the roster and the
