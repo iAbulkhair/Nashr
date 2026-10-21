@@ -176,6 +176,16 @@ export const withPersonLock = <T,>(pid: PersonId, fn: () => Promise<T>): Promise
 
 /** What `withPersonLock` throws when the lock stays taken; routes answer it 409 `busy` (nothing was written). */
 export const PERSON_LOCK_TIMEOUT = "person_lock_timeout";
+
+/**
+ * The address moves' person locks expire after 60 s, not 10 s (passkeys Task 6 fix round 1), the same as their
+ * `lock:team` (`MOVE_TEAM_LOCK_TTL_SECONDS` in src/lib/team.ts): a move holds them across the user and team lock waits,
+ * the carry, the passkey move and the old person's wipe, and the shared lock has no renewal. A held lock still throws
+ * `person_lock_timeout` after the same wait; released as soon as the move ends.
+ */
+export const MOVE_PERSON_LOCK_TTL_SECONDS = 60;
+export const withMovePersonLock = <T,>(pid: PersonId, fn: () => Promise<T>): Promise<T> =>
+  withNamedLock(personKey.lock(pid), fn, PERSON_LOCK_TIMEOUT, MOVE_PERSON_LOCK_TTL_SECONDS);
 export const isPersonLockTimeout = (e: unknown): boolean => e instanceof Error && e.message === PERSON_LOCK_TIMEOUT;
 
 /** The credential and profile fields a write may change (`updatePerson`). */
@@ -283,18 +293,15 @@ export async function updatePerson(pid: PersonId, patch: PersonPatch, opts: { pe
  * `person_lock_timeout` before anything is written.
  *
  * - `personLocked`: the caller already holds `lock:person:{pid}` (`createUser` takes it before its first write, so a
- *   timeout leaves no account without its person).
- * - `userLockHeld`: the caller holds a `lock:user` (the address move, `moveOwnerLogin`), which comes AFTER `lock:person`
- *   in the order, so taking the person lock here would invert it. No lock is taken: the address is still unclaimed
- *   (`claimLogin` runs after this write, under the same login lock), so no session, reset link or route can resolve
- *   this person and no `updatePerson` of it can be running.
+ *   timeout leaves no account without its person; the owner address move, `moveOwnerLogin`, takes both person locks
+ *   before `lock:user`, rule 2139, passkeys Task 6).
  */
 export async function createPersonRecord(
   input: { pid: PersonId; email: string; name: string; lang: "ar" | "en"; passHash?: string; createdAt: string; sessionsAfter: string; devicesAfter?: string; emailVerifiedAt?: string; trialUsedAt?: string },
   opts: { loginLocked: true; personLocked?: true; userLockHeld?: true },
 ): Promise<void> {
   const write = async () => { await db.set(personKey.person(input.pid), defined({ ...input, email: normalizeEmail(input.email) })); };
-  if (opts.personLocked || opts.userLockHeld) return write();
+  if (opts.personLocked) return write();
   return withPersonLock(input.pid, write);
 }
 

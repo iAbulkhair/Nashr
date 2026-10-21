@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { log } from "./log";
+import { PASSKEY_NAME_MAX, PASSKEYS_MAX } from "./passkey-limits";
 
 /**
  * Read validation for stored shapes (rules 2035-2039, docs/system/flows.md section 83).
@@ -159,3 +160,38 @@ export const TeamLogRow = z.looseObject({
   via: z.enum(["web", "console", "system"]),
 });
 export type TeamLogRowValue = z.output<typeof TeamLogRow>;
+
+/**
+ * Customer passkeys (docs/specs/2026-10-20-passkeys.md "Data shapes and keys", release step expand, rules 2400-2429).
+ * Rule 2401: one credential of a passkey set. `id` is the credential id as the authenticator gave it (base64url, never
+ * `+` or `/`), `pk` the COSE public key (base64url). `transports` (at most 8 of at most 20 characters) and `pk` (at most
+ * 2048 characters) also bound what the WebAuthn library hands back, so the store checks a new credential against this
+ * shape before it writes it. `name` is the cleaned label, 1-40 characters. `lastUsedAt` is absent until the first
+ * sign-in; `backedUp` is shown as "synced".
+ */
+export const PasskeyCred = z.looseObject({
+  id: z.string().regex(/^[A-Za-z0-9_-]{16,1366}$/),
+  pk: z.string().min(1).max(2048),
+  counter: z.number().int().min(0),
+  transports: z.array(z.string().max(20)).max(8).default([]),
+  name: z.string().min(1).max(PASSKEY_NAME_MAX),
+  createdAt: z.string(),
+  lastUsedAt: z.string().optional(),
+  aaguid: z.string().max(36).default(""),
+  backedUp: z.boolean().optional(),
+});
+export type PasskeyCredValue = z.output<typeof PasskeyCred>;
+
+/**
+ * Rules 2401-2403: `passkeys:{pid}`, one person's passkeys. `uid` is the WebAuthn user handle (32 random bytes,
+ * base64url), never the pid or the address, kept across address moves. `born` is the person's `createdAt` when the set
+ * was created (`getPerson(pid).createdAt`, rule 2402): a set whose `born` differs from the person's is ignored. At most
+ * 10 credentials. A record that does not fit reads as "no passkeys" (fail closed) and is logged by shape only.
+ */
+export const PasskeySet = z.looseObject({
+  v: z.literal(1),
+  uid: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  born: z.string().optional(),
+  creds: z.array(PasskeyCred).max(PASSKEYS_MAX),
+});
+export type PasskeySetValue = z.output<typeof PasskeySet>;

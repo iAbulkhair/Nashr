@@ -8,6 +8,9 @@ import { getBrand, isWaiting, listLite, type Task, getTask } from "./brand";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType } from "./tasks";
 import { countCost, generateBatch, withheldNote } from "./generate-batch";
 import { CORE_FILES, FileLimitError, MAX_FILES, readFile, safeName, writeFile } from "./files";
+import { fileResult, fileSrc, parseRefRecords, parseSrc, provenanceOf } from "./ref-provenance";
+import { refsKey } from "./instructions-store";
+import { db } from "./db";
 import { importCatalog } from "./catalog";
 import { renderImage } from "./media/start";
 import { deadlineFor } from "./media/keys";
@@ -198,8 +201,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return `Not saved yet: ${why}, so every change to the brand file from a chat waits for the owner's or an admin's Save. It waits as a card with the old and the new value and a Save button ${where} for 7 days. Tell the owner plainly that you proposed the change and that nothing changed until they press Save.`;
     }
     case "read_file": {
-      const f = await readFile(email, String(input.name));
-      return f ? f.content.slice(0, 12000) : "File not found.";
+      // The on-demand load of a reference (rule 2526): free and read-only (not in TOOL_ACTION, no charge, no write), the
+      // workspace is the turn's own, and the text comes back fenced as data with its source and last refresh (`fileResult`).
+      const f = await readFile(email, String(input.name ?? ""));
+      if (!f) return "File not found.";
+      // Only an owner's file stored without `src` can be an older Google import, so only then is the record read.
+      const record = !parseSrc(f.src) && f.by === "user" ? parseRefRecords(await db.hgetall<unknown>(refsKey(email)))[f.name] ?? null : null;
+      return fileResult(f.name, f.content, provenanceOf(f.name, f, record));
     }
     case "write_file": {
       // Core memory (brand.md, products.md, strategy.md, …) is what every agent reads; overwriting or blanking one is
@@ -225,7 +233,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // say so to the owner, or overwrite an existing file, instead of the message failing with nothing shown.
       let f;
       try {
-        f = await writeFile(email, String(input.name), String(input.content), "noor");
+        f = await writeFile(email, String(input.name), String(input.content), "noor", { src: fileSrc("agent") });
       } catch (e) {
         if (e instanceof FileLimitError) return `This workspace already holds ${MAX_FILES} files, the maximum. Ask the owner to delete one from the Files page, or write to a file that already exists.`;
         throw e;

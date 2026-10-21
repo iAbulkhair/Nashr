@@ -2,9 +2,14 @@ import { createHash } from "crypto";
 import { db } from "./db";
 import { pmap } from "./parallel";
 import { scopeParam, wsKey } from "./keys";
+import { log } from "./log";
+import type { FileSrc } from "./ref-provenance";
 
-/** Workspace files = Noor's memory. Markdown the user can read, edit, delete. */
-export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user" };
+/**
+ * Workspace files = Noor's memory. Markdown the user can read, edit, delete. `src` (rule 2523, expand only) says where the
+ * text came from; a file written without it has its source worked out by `provenanceOf` (src/lib/ref-provenance.ts).
+ */
+export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user"; src?: FileSrc };
 
 /** The one place this module turns a scope string into a `Scope`; every key below is built from it (rule 2033). */
 const ws = (e: string) => scopeParam(e);
@@ -70,29 +75,68 @@ export class FileLimitError extends Error {
   constructor() { super("file_limit"); this.name = "FileLimitError"; }
 }
 
-export async function writeFile(email: string, name: string, content: string, by: WFile["by"] = "noor") {
-  let n = safeName(name);
-  // The agent must not destroy what the owner wrote by hand. import_catalog and write_file are chosen by the model,
-  // and crawled pages and catalogs reach that model, so an ordinary chat turn could replace a curated products.md —
-  // margins, "do not promote X", Ramadan bundles — with a scrape, unrecoverably. An agent write over an owner-written
-  // file goes to a sibling name instead, and the caller reports the name it actually got.
-  if (by === "noor") {
-    const existing = await db.get<WFile>(KEY(email, n));
-    if (existing && existing.by === "user" && existing.content !== content) {
-      const dot = n.lastIndexOf(".");
-      const ext = dot > 0 ? n.slice(dot) : "";
-      n = safeName((ext ? n.slice(0, dot) : n) + "-imported" + ext);
+/** `opts.src` is where the text came from (rule 2523); a write without it stores none, and the reader falls back to `by` and the name. */
+export async function writeFile(email: string, name: string, content: string, by: WFile["by"] = "noor", opts: { locked?: boolean; src?: FileSrc } = {}) {
+  const asked = safeName(name);
+  // Rule 2520: every writer takes the file's lock, so a person's checked save (rule 2441) reads and writes with no other
+  // write in between. `locked`: the caller already holds it (`writeFileChecked`).
+  return withFileLock(email, asked, opts.locked === true, async () => {
+    let n = asked;
+    // The agent must not destroy what the owner wrote by hand. import_catalog and write_file are chosen by the model,
+    // and crawled pages and catalogs reach that model, so an ordinary chat turn could replace a curated products.md —
+    // margins, "do not promote X", Ramadan bundles — with a scrape, unrecoverably. An agent write over an owner-written
+    // file goes to a sibling name instead, and the caller reports the name it actually got.
+    if (by === "noor") {
+      const existing = await db.get<WFile>(KEY(email, n));
+      if (existing && existing.by === "user" && existing.content !== content) {
+        const dot = n.lastIndexOf(".");
+        const ext = dot > 0 ? n.slice(dot) : "";
+        n = safeName((ext ? n.slice(0, dot) : n) + "-imported" + ext);
+      }
     }
-  }
+    // The sibling is another file with its own lock, taken inside this one: its name is longer, so locks are always
+    // taken shorter name first and two writers never wait on each other in a circle.
+    return n === asked ? put(email, n, content, by, opts.src) : withFileLock(email, n, false, () => put(email, n, content, by, opts.src));
+  });
+}
+
+async function put(email: string, n: string, content: string, by: WFile["by"], src?: FileSrc): Promise<WFile> {
   // Only a NEW name counts against the ceiling: rewriting products.md for the thousandth time is free, and a
   // workspace already over the limit can still be edited and tidied rather than being frozen outright.
   if (!(await db.get<WFile>(KEY(email, n)))) {
     if ((await db.smembers(SET(email))).length >= MAX_FILES) throw new FileLimitError();
   }
-  const f: WFile = { name: n, content: content.slice(0, 40000), updatedAt: new Date().toISOString(), by };
+  const f: WFile = { name: n, content: content.slice(0, 40000), updatedAt: new Date().toISOString(), by, ...(src ? { src } : {}) };
   await db.set(KEY(email, n), f);
   await db.sadd(SET(email), n);
   return f;
+}
+
+/** One file's lock (`filelock:{scope}:{name}`, 10 s), tried `tries` times 50 ms apart; the key, or null when it was not had. */
+async function takeFileLock(email: string, n: string, tries: number): Promise<string | null> {
+  const lock = wsKey.fileLock(ws(email), n);
+  for (let i = 0; i < tries; i++) {
+    if (await db.lock(lock, 10)) return lock;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return null;
+}
+
+/**
+ * Rule 2521: a writer that is not a person's checked save waits up to `WRITER_LOCK_TRIES` × 50 ms (2 s) for the file's
+ * lock, then writes anyway. A checked save holds it for a few store round trips, so in practice it always waits its turn;
+ * a lock left by a killed request (10 s at most) never makes an import, a catalog sync or an agent's write fail.
+ */
+const WRITER_LOCK_TRIES = 40;
+async function withFileLock<T>(email: string, n: string, held: boolean, fn: () => Promise<T>): Promise<T> {
+  if (held) return fn();
+  const lock = await takeFileLock(email, n, WRITER_LOCK_TRIES);
+  if (!lock) log.warn("file lock not had; writing anyway");
+  try {
+    return await fn();
+  } finally {
+    if (lock) await db.unlock(lock).catch(() => {});
+  }
 }
 /**
  * Rule 2441: a person's save that says what it was made from. `baseAt` is the `updatedAt` of the file the editor showed,
@@ -100,24 +144,19 @@ export async function writeFile(email: string, name: string, content: string, by
  * tabs, two members, or a member and an agent's write in between never lose one another's text without a word
  * (OpenDots' `expectedRevision`, docs/OpenDots_Adoption.md). Otherwise nothing is written and the file as it is now
  * comes back: `stale` when it changed or was deleted since, `exists` when a "new" name is taken. Writes that send no
- * base (agents, imports, uploads, older pages) keep `writeFile` as it is: the check is the editor's, not a transaction
- * over every writer.
+ * base (agents, imports, uploads, older pages) are not checked, but since rule 2520 they take the same lock, so none
+ * lands between this check and this write.
  */
 export type CheckedWrite = { ok: true; file: WFile } | { ok: false; error: "stale" | "exists"; file: WFile | null } | { ok: false; error: "busy" };
-export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null): Promise<CheckedWrite> {
+export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null, src?: FileSrc): Promise<CheckedWrite> {
   const n = safeName(name);
-  const lock = wsKey.fileLock(ws(email), n);
-  let got = false;
-  for (let i = 0; i < 20 && !got; i++) {
-    got = await db.lock(lock, 10);
-    if (!got) await new Promise((r) => setTimeout(r, 50));
-  }
-  if (!got) return { ok: false, error: "busy" };
+  const lock = await takeFileLock(email, n, 20);
+  if (!lock) return { ok: false, error: "busy" };
   try {
     const cur = await db.get<WFile>(KEY(email, n));
     if (baseAt === null && cur) return { ok: false, error: "exists", file: cur };
     if (baseAt !== null && cur?.updatedAt !== baseAt) return { ok: false, error: "stale", file: cur };
-    return { ok: true, file: await writeFile(email, n, content, by) };
+    return { ok: true, file: await writeFile(email, n, content, by, { locked: true, src }) };
   } finally {
     await db.unlock(lock).catch(() => {});
   }

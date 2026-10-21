@@ -82,7 +82,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call. The last
   // two are for the agent-scope input gate below: the modes (the route's copy when it passed one) and the names of the
   // account's other brands. A store error on the brand names must not cost the owner the turn: the gate reads none.
-  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands, gov] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId]), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
+  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands, gov] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId], "stub"), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
     log.error("agent scope brand names failed", e);
     return [];
   }), getGov(email)]);

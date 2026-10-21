@@ -139,6 +139,11 @@ export const MIN_ROLE = {
   "email.change": "member",
   /** Unlink one's OWN Google sign-in (POST /api/account/google, rules 1948-1955). Refused while impersonating. */
   "google.manage": "member",
+  /**
+   * List, add, rename and remove one's OWN passkeys (GET/POST /api/account/passkeys, customer passkeys, rule 2412).
+   * Refused while impersonating: a founder must never register an authenticator on a customer's login.
+   */
+  "passkeys.manage": "member",
   /** One's own display name and interface language. */
   "profile.self": "member",
 } as const satisfies Record<string, Role>;
@@ -158,6 +163,7 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "mfa.manage",
   "email.change",
   "google.manage",
+  "passkeys.manage",
   "team.invite.member",
   "team.invite.admin",
   "team.invite.cancel",
@@ -208,6 +214,8 @@ export function forbid(u: User | null | undefined, action: Action): Response | n
 export const STAFF_MAY = {
   /** Open one customer workspace read-only (GET /api/admin/users/{email}/workspace): members, invites, brands, plan. */
   "workspace.view": ["owner", "support"],
+  /** Turn customer passkey sign-in and adding off or on (POST /api/admin/passkeys, rule 2426); stored passkeys are untouched. */
+  "passkeys.switch": ["owner"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type StaffAction = keyof typeof STAFF_MAY;

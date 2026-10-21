@@ -11,6 +11,8 @@ import { handleOf } from "@/lib/ws-handle";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
 import InstallHint from "@/components/app/InstallHint";
+import TabBeat from "@/components/app/TabBeat";
+import { pushOn } from "@/lib/push";
 import ImpersonationBanner from "@/components/app/ImpersonationBanner";
 import LangToggle from "@/components/LangToggle";
 import Wordmark from "@/components/Wordmark";
@@ -101,6 +103,7 @@ export default async function AppLayout({ children, params }: { children: React.
         {actor?.kind === "founder" && <ImpersonationBanner lang={lang} email={user.email} until={actor.until} />}
         {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} />}
         <InstallHint lang={lang} />
+        {pushOn() && (actor?.kind === "owner" || actor?.kind === "member") && <TabBeat />}
         {children}
       </main>
       <LimitModal t={t} lang={lang} owner={owner} governs={can(user, "governance.write")} topups={topupsSold(user.plan)} />

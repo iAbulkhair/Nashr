@@ -109,18 +109,21 @@ describe("rule 682: iOS gets the apple-web-app tags and a 180 apple-touch-icon (
   });
 });
 
-describe("rule 683: no service worker, so nothing on the device caches a signed-in page", () => {
+describe("rule 683 (narrowed by rule 2569): one push-only worker, so nothing on the device caches a signed-in page", () => {
   const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
     const p = join(dir, n);
     return statSync(p).isDirectory() ? walk(p) : [p];
   });
 
-  it("ships no worker file and never registers one or opens the Cache API", () => {
+  it("ships only public/sw.js, registered only by the push switch, with no fetch handler and no Cache API", () => {
     const pub = walk("public").map((p) => p.toLowerCase());
-    expect(pub.filter((p) => /(^|\/)(sw|service-?worker|workbox)[^/]*\.js$/.test(p))).toEqual([]);
+    expect(pub.filter((p) => /(^|\/)(sw|service-?worker|workbox)[^/]*\.js$/.test(p))).toEqual([join("public", "sw.js")]);
+    const sw = readFileSync("public/sw.js", "utf8");
+    expect(sw).not.toMatch(/addEventListener\(\s*["'](fetch|install|activate)["']|\bcaches\b|importScripts|Workbox/);
+    expect(sw).toMatch(/addEventListener\(\s*"push"/);
     const src = walk("src").filter((p) => /\.(ts|tsx|js|mjs)$/.test(p));
-    const hits = src.filter((p) => /serviceWorker\s*\.\s*register|caches\s*\.\s*open|new\s+Workbox/.test(readFileSync(p, "utf8")));
-    expect(hits).toEqual([]);
+    expect(src.filter((p) => /serviceWorker\s*\.\s*register/.test(readFileSync(p, "utf8")))).toEqual([join("src", "components", "app", "PushToggle.tsx")]);
+    expect(src.filter((p) => /caches\s*\.\s*open|new\s+Workbox/.test(readFileSync(p, "utf8")))).toEqual([]);
     expect(manifest()).not.toHaveProperty("serviceworker");
   });
 

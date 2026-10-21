@@ -22,6 +22,7 @@ import { revokeCalendarLinks } from "./secretary-gcal";
 import { handoffKeys } from "./handoffs";
 import { paymobAccountKeys, stopRenewals } from "./billing";
 import { mfaKeys } from "./mfa";
+import { passkeyKeys } from "./passkeys";
 import { revokeAllDevices } from "./devices";
 import { freePlaces } from "./founding";
 import { proposalKeys } from "./brand-proposals";
@@ -82,9 +83,10 @@ async function revokeComposio(scopes: Scope[]) {
  * is never deleted (`releaseLogin` deletes only an index that names this account, rule 1999). `loginLocked`: the caller
  * holds `lock:login:{address}` already (the address move), so the release does not take it again (security review L1).
  * `teamLocked`: the caller holds `lock:team:{id}` (the address move, `withMoveTeamLock`), so `wipeMemberships` does not
- * take it.
+ * take it. `keepPasskeys`: the address move could not carry the owner's passkeys to the new person (rule 2424), so the
+ * wipe leaves them under the old pid instead of deleting the only copy.
  */
-export async function wipeAccount(id: string, opts: { userLocked?: boolean; loginLocked?: boolean; teamLocked?: boolean } = {}) {
+export async function wipeAccount(id: string, opts: { userLocked?: boolean; loginLocked?: boolean; teamLocked?: boolean; keepPasskeys?: boolean } = {}) {
   const e = id;
   // The account id as the callers hold it (`acct(u)`, read from a resolved account or the console's lookup by address).
   const aid = storedAccountId(e);
@@ -200,6 +202,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...AD_STATS_SOURCES.map((p) => ADSTATS_KEY(s, p)),
       // The notification choices, per brand (src/lib/notify-prefs.ts `profileKey`): only the default brand's was deleted.
       profileKey(s),
+      // The devices that get phone notifications for this brand (rule 2571).
+      wsKey.pushSubs(s),
       wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
     );
   });
@@ -218,12 +222,14 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // setup in progress), a waiting address change (src/lib/email-change.ts) and the Google link both ways
   // (src/lib/google-signin.ts), with the owner's person row, account list and last pick. Deleted in `finish` only when the
   // owner holds nothing else (`alone`); the device lists and the sessions they name go below, with `revokeAllDevices`. A
-  // member's pack goes with its last membership (`deleteMembership`, src/lib/team.ts).
-  const sub = await db.get<string>(accountKey.googleSub(login));
+  // member's pack goes with its last membership (`deleteMembership`, src/lib/team.ts). The owner person's passkeys go with
+  // it (rule 2425: the set, the reverse entries that still name the pid, an open registration), read in the same round;
+  // `keepPasskeys`: the address move could not carry them (`movePasskeys` answered `skipped`), so they stay where they are.
+  const [sub, passkeys] = await Promise.all([db.get<string>(accountKey.googleSub(login)), opts.keepPasskeys ? [] : passkeyKeys(self)]);
   const personal = [
     ...mfaKeys(login), accountKey.emailChange(login), accountKey.emailChangeTries(login), accountKey.googleSub(login),
     ...[sub].filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(s)).map((s) => globalKey.googleAccount(s)),
-    personKey.person(self), personKey.orgs(self), personKey.lastOrg(self),
+    personKey.person(self), personKey.orgs(self), personKey.lastOrg(self), ...passkeys,
   ];
   // A founding seat and a price-lock place (src/lib/founding.ts, rule 1712): the account's email leaves both counted sets.
   await freePlaces(e);
@@ -259,6 +265,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
     accountKey.shared(e),
     ...["x", "linkedin", "whatsapp", "instagram"].map((p) => accountKey.shared(e, p)), // pre-set markers
     accountKey.lastSeen(e),
+    // The owner's "tab open" marker and last phone notification text (rule 2571); a member's expire on their own (5 minutes, a day).
+    accountKey.tabSeen(login), accountKey.pushLast(login),
     accountKey.weeklyLock(e),
     ...EVENTS.flatMap((ev) => [accountKey.event(e, ev), accountKey.eventFirst(e, ev), accountKey.eventFirst0(e, ev)]),
     // Model-spend counters for the months this account could have been active (the monthly chat messages among them),

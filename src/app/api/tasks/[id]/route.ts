@@ -4,47 +4,15 @@ import { currentUser, sc } from "@/lib/auth";
 import { addPreference, getBrand, updateTask } from "@/lib/brand";
 import { gateTask, type Violation } from "@/lib/brand-rules";
 import { getGov } from "@/lib/governance";
-import { readFile, writeFile } from "@/lib/files";
 import { decisionOf, recordDecisions, type DecisionAction } from "@/lib/decisions";
 import { editPctOf } from "@/lib/similarity";
 import { byOf } from "@/lib/actor";
 import { can, forbid } from "@/lib/roles";
-import { db } from "@/lib/db";
+import { appendPreferences, cleanNote } from "@/lib/task-notes";
 import { taskVersion } from "@/lib/task-version";
 import { acct } from "@/lib/account-id";
 
 type Patch = { status?: string; editedBody?: string; note?: unknown; scheduledFor?: string | null; version?: unknown; notNow?: unknown };
-
-/** The longest reason a person may give for an edit or a rejection. */
-const NOTE_MAX = 300;
-/**
- * The typed reason as it is stored: a string or nothing, on one line, without control or direction characters, at most
- * `NOTE_MAX` characters. Any member may reject (role "drafts"), and the reason lands in preferences.md, a core file every
- * agent reads, so it is the member's words inside a fixed sentence, never a block of text or a new markdown section.
- */
-function cleanNote(v: unknown): string {
-  if (typeof v !== "string") return "";
-  return v.replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim().slice(0, NOTE_MAX).trim();
-}
-
-/** Learned notes are appended to preferences.md one request at a time: two rejections at once must not drop one. */
-const PREFS_LOCK_S = 10;
-async function appendPreferences(scope: string, lines: string) {
-  const key = `prefsfile:${scope}`;
-  let token: string | null = null;
-  // Waiting for the lock is the one awaited call that repeats, as in updateTask (src/lib/brand.ts): ~3 s at most.
-  for (let i = 0; i < 60 && !token; i++) {
-    token = await db.lockOwned(key, PREFS_LOCK_S);
-    if (!token) await new Promise((r) => setTimeout(r, 50));
-  }
-  if (!token) throw new Error("prefs_lock_timeout");
-  try {
-    const f = await readFile(scope, "preferences.md");
-    await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor");
-  } finally {
-    await db.unlockOwned(key, token).catch((e) => console.error("prefs lock release failed", e instanceof Error ? e.name : "error"));
-  }
-}
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();

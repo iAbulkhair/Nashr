@@ -109,9 +109,11 @@ function importsGoogleExchange(sf: ts.SourceFile): boolean {
  * Reads of a record this app wrote, looked up by a request value (the console's lookup by address, rule 1982; a reset
  * link's record by its token's hash; an OAuth flow's server-side state by its random id). The ids inside such a record
  * were written by this app and are re-checked by its readers, so taint stops at the lookup. The lookup's own argument is
- * still scanned: `getMembership(body.acct, …)` is a hit on `body.acct`.
+ * still scanned: `getMembership(body.acct, …)` is a hit on `body.acct`. `resolvePasskeyLogin` (passkey sign-in, rule 2405)
+ * reads the reverse entry `pkcred:{sha256(credential id)}` this app wrote and checks the pid it names against the person,
+ * the login index and the person's own set; the hash is a lookup hint, never an ownership claim.
  */
-const STORED_LOOKUP = /^(?:db\.get|getLogin|getMember|getMembership|getAccount|getUser|readLoginIndex|takeState)$/;
+const STORED_LOOKUP = /^(?:db\.get|getLogin|getMember|getMembership|getAccount|getUser|readLoginIndex|takeState|resolvePasskeyLogin)$/;
 
 /** `e` without an `await`, parentheses, a type assertion or a non-null mark around it (none of them brings in a value). */
 function bare(e: ts.Expression): ts.Expression {

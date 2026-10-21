@@ -72,18 +72,26 @@ export type Finish =
   | { kind: "signed_in"; /** Owners only: whether the address still needs its code. */ verify?: boolean };
 
 /**
- * After the proof: refuse, or (two-step sign-in on and `codeDone` false) open the challenge and issue NO session, or
- * create the session. `codeDone` is true only on POST /api/auth/login/mfa after the code matched.
+ * How the person proved who they are. A password or a Google sign-in may still owe the two-step code; a passkey never
+ * does (user verification is required, so it counts as both factors: rules 2409, 2420), and the type makes every passkey
+ * caller say `codeDone: true`. `Challenge["via"]` (src/lib/mfa.ts) stays password or Google: no challenge is ever opened
+ * for a passkey.
  */
-export async function finishLogin(l: Login, { via, next, codeDone = false }: { via: "password" | "google"; next?: string; codeDone?: boolean }): Promise<Finish> {
+export type FinishVia = { via: "password" | "google"; next?: string; codeDone?: boolean } | { via: "passkey"; next?: undefined; codeDone: true };
+
+/**
+ * After the proof: refuse, or (two-step sign-in on and `codeDone` false) open the challenge and issue NO session, or
+ * create the session. `codeDone` is true on POST /api/auth/login/mfa after the code matched, and always for a passkey.
+ */
+export async function finishLogin(l: Login, opts: FinishVia): Promise<Finish> {
   // An account whose suspension ended is let in by `isSuspended` already; this clears it and logs the expiry (rule 2073).
   const account = accountOf(l);
   if (account && suspensionExpired(account)) await endExpiredSuspension(acct(account));
   const refused = loginRefusal(l);
   if (refused) return { kind: "refused", res: refused };
   const email = loginEmail(l);
-  if (!codeDone && (await mfaActive(email, bornAt(l)))) {
-    await openChallenge(email, via, next);
+  if (opts.via !== "passkey" && !opts.codeDone && (await mfaActive(email, bornAt(l)))) {
+    await openChallenge(email, opts.via, opts.next);
     return { kind: "mfa" };
   }
   await createSession(email);

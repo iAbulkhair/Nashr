@@ -89,6 +89,8 @@ export const wsKey = {
   task: (s: Scope, id: string) => `task:${s}:${id}`,
   /** lock: one task's writers. */
   taskLock: (s: Scope, id: string) => `tasklock:${s}:${id}`,
+  /** lock: writers of the workspace's preferences.md, one learned note at a time (src/lib/task-notes.ts). */
+  prefsFileLock: (s: Scope) => `prefsfile:${s}`,
   /** set: ids of tasks waiting for approval. */
   pending: (s: Scope) => `pending:${s}`,
   /** set: ids of pending tasks set aside under "Not now" (a subset of `pending`, rule 2341). */
@@ -173,6 +175,13 @@ export const wsKey = {
   storeSyncBucket: (s: Scope) => `storesync:${s}`,
   /** bucket name for `allow` (stored as `rate:catalogimport:{scope}`): product imports from a store of one workspace (rule 2243). */
   catalogImportBucket: (s: Scope) => `catalogimport:${s}`,
+  /**
+   * hash: this workspace's phone push subscriptions (rules 2560-2563), field = the first 32 hex of the SHA-256 of the
+   * endpoint, value `{ endpoint, login, at }`. Written only by POST /api/push under the session's own `sc(u)`.
+   */
+  pushSubs: (s: Scope) => `pushsubs:${s}`,
+  /** marker: a push about this agent and state went out in the last 30 minutes (SET NX, rule 2566). */
+  pushSent: (s: Scope, agent: string, state: string) => `pushsent:${s}:${agent}:${state}`,
 } as const;
 
 export const personKey = {
@@ -198,6 +207,10 @@ export const personKey = {
   feedLock: (p: PersonId, a: AccountId) => `lock:feed:${p}:${a}`,
   /** lock: one person's booking link for one provider in one account (src/lib/booking-token.ts). A leaf lock, as `feedLock`. */
   bookLock: (p: PersonId, a: AccountId, prov: string) => `lock:book:${p}:${a}:${prov}`,
+  /** json `PasskeySet` (src/lib/stored.ts): the person's passkeys, written under `lock`; no TTL (customer passkeys, rules 2400-2402). */
+  passkeys: (p: PersonId) => `passkeys:${p}`,
+  /** json `{ challenge, sess, at }`: the person's one open passkey registration, taken with `getdel`; 300 s (rule 2407). */
+  passkeyReg: (p: PersonId) => `pkreg:${p}`,
 } as const;
 
 export const accountKey = {
@@ -227,6 +240,8 @@ export const accountKey = {
   digestLock: (id: string) => `digestlock:${id}`,
   /** bucket name for `allow` (stored as `rate:digestsave:{login}`): saves of the digest choice (rule 2355). */
   digestBucket: (login: string) => `digestsave:${login}`,
+  /** bucket name for `allow` (stored as `rate:revise:{login}`): line notes revisions sent by the account (rule 2497). */
+  reviseBucket: (login: string) => `revise:${login}`,
   /** set: friends this account referred. */
   referrals: (email: string) => `referrals:${email}`,
   /** string: who referred this account. */
@@ -272,6 +287,16 @@ export const accountKey = {
   usage: (email: string, month: string) => `usage:${email}:${month}`,
   /** counter: the trial's chat messages. */
   chatTrial: (email: string) => `chatm:${email}:trial`,
+  /** bucket name for `allow` (stored as `rate:pkpw:{login}`): passkey add and remove proofs of one login, 10 per hour (rule 2410). */
+  passkeyProofBucket: (login: string) => `pkpw:${login}`,
+  /** marker: a tab of this login was visible in the last `AWAY_MINUTES` (rule 2564); its TTL is the whole record. */
+  tabSeen: (login: string) => `tabseen:${login}`,
+  /** json `{ agent, state, at }`: the last push this login's devices were sent, read by the worker (rule 2567), 1 day. */
+  pushLast: (login: string) => `pushlast:${login}`,
+  /** bucket name for `allow` (stored as `rate:push:{login}`): push subscribe, unsubscribe and the worker's read (rule 2562). */
+  pushBucket: (login: string) => `push:${login}`,
+  /** bucket name for `allow` (stored as `rate:tabbeat:{login}`): the visible-tab heartbeat (rule 2564). */
+  seenBucket: (login: string) => `tabbeat:${login}`,
 } as const;
 
 export const globalKey = {
@@ -314,6 +339,21 @@ export const globalKey = {
   shopifyRedact: () => "shopify:redact",
   /** json: per-platform connection counts across every workspace, written by the stores cron (rules 2177-2178). */
   connectionHealth: () => "connections:health",
+  /**
+   * string pid: the passkey reverse index, under the SHA-256 hex of a credential id; no TTL. A hint only, forward-checked
+   * against the person's set and login before it grants anything (rules 2404, 2405).
+   */
+  passkeyCred: (credHash: string) => `pkcred:${credHash}`,
+  /** json `{ challenge, at }`: a passkey sign-in challenge under the SHA-256 hex of the `thakeen_pk` nonce, taken with `getdel`; 300 s (rule 2408). */
+  passkeyAuth: (nonceHash: string) => `pkauth:${nonceHash}`,
+  /** string: the passkey off switch, `"1"` = off, absent = on; no TTL; written only by the console owner (rule 2426). */
+  passkeysOff: () => "passkeys:off",
+  /** bucket name for `allow` (stored as `rate:pk:ip:{ip}`): passkey sign-in options per IP, 60 per 15 min (rule 2417). */
+  passkeyIpBucket: (ip: string) => `pk:ip:${ip}`,
+  /** bucket name for `allow` (stored as `rate:pkv:ip:{ip}`): passkey sign-in verifies per IP, 20 per 15 min (rule 2418). */
+  passkeyVerifyIpBucket: (ip: string) => `pkv:ip:${ip}`,
+  /** bucket name for `allow` (stored as `rate:pkv:cred:{hash}`): passkey sign-in verifies per credential hash, 10 per 15 min (rule 2418). */
+  passkeyCredBucket: (credHash: string) => `pkv:cred:${credHash}`,
   /** counter: how many times `event` was tracked on UTC day `day` (src/lib/track.ts `track`); read by the ops summary (rule 2380). */
   eventDay: (day: string, event: string) => `ev:${day}:${event}`,
   /** json `OpsProposal`: one action the ops agent proposed, waiting for the founder's press on Telegram (rules 2386-2389). */

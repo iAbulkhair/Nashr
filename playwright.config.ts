@@ -1,9 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
-import { hasBuild, webServerCommand } from "./e2e/web-server";
+import { E2E_ADMIN_KEY, hasBuild, webServerCommand } from "./e2e/web-server";
 
 /**
  * End-to-end suite. Runs against a production build of the app with no environment variables except `APP_ENV=test`
- * (set on the web server below): `src/lib/db.ts` falls back to a process-local store and `ANTHROPIC_API_KEY` being unset
+ * and a console key made fresh for each run (both set on the web server below): `src/lib/db.ts` falls back to a process-local store and `ANTHROPIC_API_KEY` being unset
  * puts every agent call on its mock path, so the suite needs no Redis, no model key and no network. Without
  * `APP_ENV=test` a production build counts as a production deployment and refuses both (rules 430-431,
  * `src/lib/deploy-env.ts`). The process-local store also means the server must be a single process — `next start`,
@@ -67,8 +67,9 @@ export default defineConfig({
     // CI the Build step has made it already and the server only starts it (rule 1207, `e2e/web-server.ts`); locally it builds.
     command: webServerCommand(PORT, { ci: isCI, prebuilt: hasBuild() }),
     // Marks this production build as a test so the memory store and the model mock stay on (rules 430-431). Read at
-    // runtime, so a build made without it (CI's, like thakeen.com's) serves the suite the same.
-    env: { APP_ENV: "test" },
+    // runtime, so a build made without it (CI's, like thakeen.com's) serves the suite the same. The console key is random
+    // per run (`E2E_ADMIN_KEY`): only the passkey spec uses it, to flip the passkey off switch (rule 2426).
+    env: { APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY },
     url: baseURL,
     // Never reuse. The rate limiters (signup five per IP per hour, forgot three per address per fifteen minutes, login
     // eight per account) live in the same process-local store as the data, so a server left running from an earlier run

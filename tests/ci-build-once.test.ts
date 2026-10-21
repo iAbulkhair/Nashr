@@ -38,18 +38,18 @@ describe("rule 1207: in CI the end-to-end server starts the Build step's build i
 
   it("playwright.config.ts uses the helper and still sets APP_ENV=test on the server, never reusing one", () => {
     const cfg = readFileSync("playwright.config.ts", "utf8");
-    expect(cfg).toMatch(/import \{ hasBuild, webServerCommand \} from "\.\/e2e\/web-server";/);
+    expect(cfg).toMatch(/import \{ E2E_ADMIN_KEY, hasBuild, webServerCommand \} from "\.\/e2e\/web-server";/);
     expect(cfg).toMatch(/const isCI = !!process\.env\.CI;/);
     expect(cfg).toMatch(/command: webServerCommand\(PORT, \{ ci: isCI, prebuilt: hasBuild\(\) \}\),/);
-    expect(cfg).toMatch(/env: \{ APP_ENV: "test" \},/);
+    expect(cfg).toMatch(/env: \{ APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY \},/);
     expect(cfg).toMatch(/reuseExistingServer: false,/);
   });
 
-  it("CI builds once: the Build step runs before the suite, the suite step builds nothing, the cap is 35 minutes (rule 1211)", () => {
+  it("CI builds once: the Build step runs before the suite, the suite step builds nothing, the cap is 40 minutes (rule 1211, raised by rule 2511)", () => {
     expect(yml.match(/^\s+run: .*\bbuild\b.*$/gm)).toEqual(["        run: npm run build:hostinger"]);
     expect(yml.indexOf("- name: Build\n")).toBeLessThan(yml.indexOf("- name: End-to-end tests"));
     expect(step("End-to-end tests")).toMatch(/run: npx playwright test\n?$/);
-    expect(yml.match(/timeout-minutes: (\d+)/g)).toEqual(["timeout-minutes: 35"]);
+    expect(yml.match(/timeout-minutes: (\d+)/g)).toEqual(["timeout-minutes: 40"]);
   });
 });
 
