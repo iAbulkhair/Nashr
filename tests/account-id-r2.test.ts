@@ -483,6 +483,52 @@ describe("rules 2744, 1997: the revert link", () => {
     expect((await revert(token)).status).toBe(400);
   }, 20_000);
 
+  it("a failure after the token is claimed puts it back: the route answers an error and the same link then works once", async () => {
+    const u = await pOwner("throwrev");
+    const pid = ownerOf(u);
+    const old = u.email;
+    const to = addr("throwto");
+    expect((await changeTo(u, to)).status).toBe(200);
+    const token = revertTokenIn(old)!;
+    const tokenKey = globalKey.emailRevert(createHash("sha256").update(token).digest("hex"));
+    // Armed by the claim (GETDEL of the token), the first read the extra step makes (two-step at the old address)
+    // throws once: the move has finished, the token is gone, the revert's own removals have not run.
+    let armed = false;
+    let thrown = 0;
+    const getdel = db.getdel.bind(db);
+    const get = db.get.bind(db);
+    const spies = [
+      vi.spyOn(db, "getdel").mockImplementation(async (k: string) => {
+        const v = await getdel(k);
+        if (k === tokenKey && v) armed = true;
+        return v as never;
+      }),
+      vi.spyOn(db, "get").mockImplementation(async (k: string) => {
+        if (armed && k === mfaKey(old)) {
+          armed = false;
+          thrown++;
+          throw new Error("boom-2744");
+        }
+        return (await get(k)) as never;
+      }),
+    ];
+    try {
+      await expect(revert(token)).rejects.toThrow("boom-2744");
+    } finally {
+      spies.forEach((s) => s.mockRestore());
+    }
+    expect(thrown).toBe(1);
+    // The token is back (claimed, then restored), with the rest of its 7 days.
+    expect(await db.get(tokenKey)).toBeTruthy();
+    // The same link finishes the revert, and only once.
+    const r = await answer(await revert(token));
+    expect(r.status).toBe(200);
+    expect(r.body.reset).toMatch(/^[a-f0-9]{64}$/);
+    expect((await getPerson(pid))!.email).toBe(old);
+    expect(await getLogin(to)).toBeNull();
+    expect((await revert(token)).status).toBe(400);
+  }, 20_000);
+
   it("a refused revert (the old address taken meanwhile) keeps the token; claim, restore and the batch removals are in the source", async () => {
     const u = await pOwner("takenrev");
     const old = u.email;
