@@ -975,7 +975,7 @@ describe("rule 479: alerts for what others owe count working days from the chase
       if (i === 11) last = sent;
     }
     expect(got).toEqual([1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0]);
-    expect(first[0]).toMatchObject({ agent: "reem", href: "/ar/app/todo", title: "متأخرة: «Quote from Ahmad»", body: "تابِع مع أحمد، أو غيّر الموعد." });
+    expect(first[0]).toMatchObject({ agent: "reem", href: "/ar/app/b/default/todo", title: "متأخرة: «Quote from Ahmad»", body: "تابِع مع أحمد، أو غيّر الموعد." });
     expect(last[0].body).toContain("آخر تنبيه");
     expect(await seen(u, `todo-due:${u.email}:${it0.id}:${local("2026-10-08T07:00")}:0`, local("2026-10-08T08:00"))).toBe(1);
   });
@@ -1035,7 +1035,7 @@ describe("rule 479: alerts for what others owe count working days from the chase
     const v = await workspace("al479undateden");
     await make(v, local("2026-10-01T10:00"), { title: "Samples", direction: "they_owe", owedBy: "Sara" });
     const en = await fakeAt(local("2026-10-05T12:00"), async () => (await followUps({ ...v, lang: "en" }, v.email)).filter((n) => n.kind === "todo"));
-    expect(en[0]).toMatchObject({ title: "Time to follow up: «Samples»", body: "Follow up with Sara, or change the date.", href: "/en/app/todo" });
+    expect(en[0]).toMatchObject({ title: "Time to follow up: «Samples»", body: "Follow up with Sara, or change the date.", href: "/en/app/b/default/todo" });
   });
 
   it("the owner's own items keep today's steps (Friday included) and the fingerprint string todo-due:{scope}:{id}:{dueMs}:{step}", async () => {

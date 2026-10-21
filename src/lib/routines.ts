@@ -346,6 +346,7 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine, d
     title: ar ? `${label} من ${name} في صندوق الموافقة` : `${label} from ${name} is in your inbox`,
     body: ar ? `${created.length} عنصر من مهمة دورية مفعّلة في المهام المجدولة. راجعه واعتمد ما يناسبك.` : `${created.length} item(s) from a routine that is on in Scheduled tasks. Review them and approve what fits.`,
     href: "",
+    brandScope: scope,
   }, runFingerprint(scope, r.id, periodOf(r.cadence)), periodDays(r.cadence));
   return `ok:${created.length}`;
 }

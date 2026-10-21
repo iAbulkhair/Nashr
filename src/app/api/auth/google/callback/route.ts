@@ -62,7 +62,8 @@ export async function GET(req: Request) {
     if (partner && partner !== "bad") await afterSignup({ id, email: res.email }, partner).catch(() => false);
     await createSession(res.email);
     await track(id, "signup");
-    return go(st.next || appHref(lang, "/start"));
+    // A new account has one brand, "default": its start page by name, no legacy hop (rule 894).
+    return go(st.next || appHref(lang, "/start", null, "default"));
   }
   const f = await finishLogin(res.login, { via: "google", next: st.next });
   if (f.kind === "refused") {

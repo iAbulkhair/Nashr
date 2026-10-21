@@ -102,7 +102,7 @@ export default async function AppLayout({ children, params }: { children: React.
       <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-8 lg:overflow-y-auto">
         {/* Rule 1177: from the session, never the cookie alone; the account's email and the end the founder chose. */}
         {actor?.kind === "founder" && <ImpersonationBanner lang={lang} email={user.email} until={actor.until} />}
-        {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} to={(p?: string) => appHref(lang, p, handle)} />}
+        {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} to={(p?: string) => appHref(lang, p, handle, user.brandId)} />}
         <InstallHint lang={lang} />
         {pushOn() && (actor?.kind === "owner" || actor?.kind === "member") && <TabBeat />}
         {children}

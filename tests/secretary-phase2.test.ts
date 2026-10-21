@@ -158,7 +158,7 @@ describe("the sweep fires each reminder once, only on an open item whose time ca
     expect((await audit(u.email))[0]).toMatchObject({ action: "remind", actor: "cron", via: "cron", id: it.id });
     const bell = (await listNotifs(u.email)).filter((n) => n.kind === "todo");
     expect(bell).toHaveLength(1);
-    expect(bell[0]).toMatchObject({ agent: "reem", href: "/ar/app/todo", title: "تذكير: «Call the bank»" });
+    expect(bell[0]).toMatchObject({ agent: "reem", href: "/ar/app/b/default/todo", title: "تذكير: «Call the bank»" });
     expect(await db.get(seenKey(u.email, remindFingerprint(u.email, it.id, at)))).toBe(1);
   });
 
@@ -880,7 +880,7 @@ describe("the evening wrap: from stored facts, silent when nothing happened, onc
     expect(await eveningWrap(u, T0)).toBe("already");
     const w = await wraps(u.email);
     expect(w).toHaveLength(1);
-    expect(w[0]).toMatchObject({ kind: "todo", agent: "reem", href: "/ar/app/todo" });
+    expect(w[0]).toMatchObject({ kind: "todo", agent: "reem", href: "/ar/app/b/default/todo" });
     expect(w[0].body).toContain("• أُنجز اليوم (1):");
     expect(w[0].body).toContain("«Send the quote»: Sent by email");
     expect(w[0].body).toContain("اعتماد 1، رفض 1");

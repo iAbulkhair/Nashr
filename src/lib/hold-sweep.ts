@@ -75,7 +75,8 @@ async function tell(u: Pick<User, "id" | "email" | "lang">, refunded: ClaimRefun
     await Promise.all([
       ...[...byScope].map(([scope, xs]) => recordActivity(scope, xs.map((x) => ({ at, kind: "run_refunded" as const, agent: x.agent, by: systemBy("cron"), via: "cron" as const, credits: x.credits, outcome: x.claim.split(":")[0] + (x.partial ? ":partial" : "") })))),
       total > 0 ? notifyItem(acct(u), u.lang, {
-        kind: "credits", href: "activity",
+        // One brand refunded: its activity log (rule 894). Several: the old path, which opens the session's brand.
+        kind: "credits", href: "activity", ...(byScope.size === 1 ? { brandScope: [...byScope.keys()][0] } : {}),
         title: ar ? `أعدنا ${total} كريدت لعمل مجدول لم يكتمل` : `We returned ${total} credits for scheduled work that did not finish`,
         body: ar ? "توقف تشغيل مجدول قبل أن يكتمل، أو لم يُعِد جزءاً من كلفته، فأعدنا الكريدت إلى رصيدك. التفاصيل في سجل النشاط." : "A scheduled run stopped before it finished, or did not give back part of its cost, so the credits are back in your balance. Details are in the activity log.",
       }, runClaim.sweepNotice(at.slice(0, 10)), 2) : null,

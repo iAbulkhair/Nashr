@@ -38,7 +38,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  const link = await pageHref(lang);
+  const link = await pageHref(lang, u.brandId);
   const t = appDict[lang];
   const m = dict[lang].pricing;
   // Paying is the owner's: pay links and the WhatsApp activation thread (which carries the account email) are built and

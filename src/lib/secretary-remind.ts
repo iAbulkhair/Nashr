@@ -40,7 +40,7 @@ import { COPY, paragraphs } from "../emails";
 import { meetingsNow } from "./secretary-cal-link";
 import { quietUntil } from "./secretary-meetings";
 import { accountOfScope } from "./account-id";
-import { appHrefIn } from "@/lib/ws-href";
+import { appHrefInBrand } from "@/lib/ws-href";
 
 /** Scopes read per sweep, due ids read per scope, scopes handled at once. */
 export const SWEEP_SCOPES = 200;
@@ -92,7 +92,7 @@ function notifFor(scope: string, zone: Zone, item: SecItem, user: Pick<User, "la
   const due = item.dueAt ? formatWhen(item.dueAt, item.allDay, user.lang, now, zone) : "";
   return {
     n: {
-      kind: "todo", agent: "reem", href: appHrefIn(scope, user.lang, "/todo"), about: aboutKey("todo", scope, item.id),
+      kind: "todo", agent: "reem", href: appHrefInBrand(scope, user.lang, "/todo"), about: aboutKey("todo", scope, item.id),
       title: ar ? `تذكير: ${t}` : `Reminder: ${t}`,
       body: ar ? `طلبت أن أذكّرك بهذه المهمة.${due ? ` موعدها: ${due}.` : ""}` : `You asked to be reminded of this.${due ? ` Due: ${due}.` : ""}`,
     },
