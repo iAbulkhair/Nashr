@@ -7,10 +7,12 @@ import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
 import { recordCronRun } from "@/lib/cron-heartbeat";
 import { deadlineFor } from "@/lib/media/keys";
+import { jobRef, runAsAccount, type JobRef } from "@/lib/job-account";
 
 export const maxDuration = 300;
 
-type Item = { kind: "routine"; user: User; id: RoutineId } | { kind: "handoff"; user: User; id: string; item: number };
+/** Every item carries the account it acts for, taken from the roster when it is listed (rule 2500). */
+type Item = ({ kind: "routine"; user: User; id: RoutineId } | { kind: "handoff"; user: User; id: string; item: number }) & { ref: JobRef };
 
 /**
  * The routines the owners turned on (src/lib/routines.ts), daily at 06:00 UTC, after the 05:00 daily job has renewed
@@ -38,11 +40,11 @@ export async function GET(req: Request) {
   if (!sameSecret(bearer, process.env.CRON_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
   const users = await allUsers();
   const [routines, handoffs] = await Promise.all([dueRoutines(users), dueHandoffs(users)]);
-  const items: Item[] = [...handoffs.map((h) => ({ kind: "handoff" as const, ...h })), ...routines.map((r) => ({ kind: "routine" as const, ...r }))];
+  const items: Item[] = [...handoffs.map((h) => ({ kind: "handoff" as const, ...h, ref: jobRef(h.user) })), ...routines.map((r) => ({ kind: "routine" as const, ...r, ref: jobRef(r.user) }))];
   const report = await runCronBatch<Item>({
     job: "routines", period: new Date().toISOString().slice(0, 10), items,
     id: (x) => `${x.user.scope ?? x.user.email}:${x.kind === "routine" ? x.id : AUTO_HANDOFF_CRON_ID}`,
-    run: (x) => (x.kind === "routine" ? runRoutine(x.user, x.id, deadline) : autoRunHandoff(x.user, x.id, x.item, deadline)),
+    run: (x) => runAsAccount(x.ref, (u) => (x.kind === "routine" ? runRoutine(u, x.id, deadline) : autoRunHandoff(u, x.id, x.item, deadline))),
     concurrency: 4, startBudgetMs: 160_000, markerTtlSeconds: 2 * 86400, req,
   });
   await recordCronRun("routines");

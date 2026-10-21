@@ -9,6 +9,7 @@ import { applyShopRedactions, backfillUninstallHooks } from "@/lib/connectors/sh
 import { appOrigin } from "@/lib/origin";
 import { tallyConnections } from "@/lib/connectors/health";
 import { keepTokensAlive } from "@/lib/connectors/keepalive";
+import { jobRef, runAsAccount } from "@/lib/job-account";
 
 export const maxDuration = 300;
 /** No new workspace's sync starts after this long from the request's start: the limit minus the longest sync (rule 2208). */
@@ -72,8 +73,9 @@ export async function GET(req: Request) {
     return -1;
   }));
   const report = await runCronBatch({
-    job: "stores", period: `${now.toISOString().slice(0, 10)}-${slot}`, items: users,
-    id: (u) => sc(u), run: (u) => syncStoreIfDue(sc(u)),
+    // Each sync reads its account again before it writes a snapshot (rule 2506).
+    job: "stores", period: `${now.toISOString().slice(0, 10)}-${slot}`, items: users.map((u) => ({ u, ref: jobRef(u) })),
+    id: (x) => sc(x.u), run: (x) => runAsAccount(x.ref, (u) => syncStoreIfDue(sc(u))),
     concurrency: 6, startBudgetMs: Math.max(0, SYNC_START_BUDGET_MS - (Date.now() - now.getTime())), markerTtlSeconds: 2 * 86400, req,
   });
   await recordCronRun("stores");

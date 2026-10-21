@@ -8,6 +8,7 @@ import { runCronBatch } from "@/lib/cron-batch";
 import { pmap } from "@/lib/parallel";
 import { eveningWrap, isRamadan } from "@/lib/secretary-evening";
 import { isZone, zoneOf, type Zone } from "@/lib/zones";
+import { jobRef, runAsAccount } from "@/lib/job-account";
 
 export const maxDuration = 300;
 
@@ -42,8 +43,9 @@ export async function GET(req: Request) {
     users = users.filter((_, i) => zones.includes(zoneOf(brands[i])));
   }
   const report = await runCronBatch({
-    job: "evening", period: new Date(now).toISOString().slice(0, 10), items: users,
-    id: (u) => sc(u), run: (u) => eveningWrap(u, Date.now()),
+    // Each wrap reads its account again before it mails (rule 2506).
+    job: "evening", period: new Date(now).toISOString().slice(0, 10), items: users.map((u) => ({ u, ref: jobRef(u) })),
+    id: (x) => sc(x.u), run: (x) => runAsAccount(x.ref, (u) => eveningWrap(u, Date.now())),
     concurrency: 8, startBudgetMs: 240_000, markerTtlSeconds: 2 * 86400, req,
   });
   await recordCronRun("evening");
