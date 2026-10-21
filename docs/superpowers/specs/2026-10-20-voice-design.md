@@ -1,6 +1,6 @@
 # Voice: talk to the team, through the same gated turn (design)
 
-Status: **Draft, waiting on the founder's decisions in section 10; no code until then; post-launch (after 2026-11-01).** Written 2026-10-20 on branch `claude/voice-spec` from main `051e437`. Item 7 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2560-2569** are reserved for this work, not yet pinned.
+Status: **Decided in part on 2026-10-21 (section 10): option A, voice notes at a small credit price, with an on/off switch; a PDPL review comes before it ships. Still open: the vendor shortlist, retention and the quality bar. No code until those are settled; post-launch (after 2026-11-01).** Written 2026-10-20 on branch `claude/voice-spec` from main `051e437`. Item 7 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2620-2629** are reserved for this work, not yet pinned.
 
 ## 1. Why
 
@@ -110,18 +110,20 @@ How Thakeen would charge (decision 3):
 - **Contract.** None.
 - **Environment variables** (named in `docs/system/variables.md` when built): one key per chosen vendor, for example `STT_API_KEY` and `TTS_API_KEY`. The names are fixed when the vendor is chosen, never pasted.
 
-## 8. Tests (rules 2560-2569, reserved, not yet pinned)
+## 8. Tests (rules 2620-2629, reserved, not yet pinned)
 
 | Rule | Pins |
 |---|---|
-| 2560 | `/api/chat/voice` authenticates first, then the chat gates in order, the size cap and the rate limit |
-| 2561 | Nothing runs before the owner confirms the transcript; the confirmed text is one normal turn |
-| 2562 | A `source: "voice"` message never passes `spendIntent`: paid work leaves a card |
-| 2563 | Audio is never stored or logged (a source scan for the upload body) |
-| 2564 | "Listen" speaks only a stored reply by id, counted and capped |
-| 2565 | The charge is one claim per note, refunded when transcription fails (decision 3a) |
-| 2566 | B only: one live call per account, the token's expiry is the cap, `ask_thakeen` is counted and refused past the limit, and runs as `via: "voice"` |
-| 2567-2569 | Held for the build's findings |
+| 2620 | `/api/chat/voice` authenticates first, then the chat gates in order, the size cap and the rate limit |
+| 2621 | Nothing runs before the owner confirms the transcript; the confirmed text is one normal turn |
+| 2622 | A `source: "voice"` message never passes `spendIntent`: paid work leaves a card |
+| 2623 | Audio is never stored or logged (a source scan for the upload body) |
+| 2624 | "Listen" speaks only a stored reply by id, counted and capped |
+| 2625 | The charge is one claim per note, refunded when transcription fails (decision 3a) |
+| 2626 | B only: one live call per account, the token's expiry is the cap, `ask_thakeen` is counted and refused past the limit, and runs as `via: "voice"` |
+| 2627 | The owner's voice switch: off by default (a missing field), `voice.write` owner only, off hides the button and the route answers 403 `voice_off` before reading the upload |
+| 2628 | The founder's platform switch wins over every workspace |
+| 2629 | Held for the build's findings |
 
 ## 9. Not in this spec
 
@@ -138,6 +140,14 @@ How Thakeen would charge (decision 3):
 4. **Retention:** require a vendor setting of zero audio retention? Recommended yes, if offered.
 5. **The quality bar:** what word-error level on the Gulf test set is good enough to ship, and who records the set.
 6. **PDPL review** before launch of the feature: yes or no, and by whom.
+
+### Decided by the founder on 2026-10-21
+
+- **2. Option A: voice notes with a confirm step**, not a live call.
+- **3. Charging: 3a**, a small credit price per note (the price itself to set from the vendor quote, under the 60% margin floor).
+- **New: an on/off switch.** Two layers, both checked in code: the owner turns voice notes on or off for the workspace (Settings, beside the other chat settings; `voice.write`, owner only; stored on the brand's settings as `voiceNotes: boolean`, expand step, a missing field reads as off so nothing changes for anyone until an owner turns it on), and the founder keeps a platform off switch in the console (like the passkey switch, rule 2426) that wins over every workspace. With either off, the microphone button is hidden and `/api/chat/voice` answers 403 `voice_off` before any upload is read. Rules 2627-2629 take the switch (they were held for the build's findings).
+- **6. PDPL review: yes, before it ships** (a standing decision for every feature that carries personal data through a third party; not to be asked again).
+- **Still open:** 1 (vendor shortlist), 4 (zero audio retention; the recommendation stands), 5 (the Gulf quality bar and who records the set).
 
 ## 11. Size and release steps
 
