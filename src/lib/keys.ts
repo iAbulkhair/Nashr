@@ -89,6 +89,8 @@ export const wsKey = {
   task: (s: Scope, id: string) => `task:${s}:${id}`,
   /** lock: one task's writers. */
   taskLock: (s: Scope, id: string) => `tasklock:${s}:${id}`,
+  /** lock: writers of the workspace's preferences.md, one learned note at a time (src/lib/task-notes.ts). */
+  prefsFileLock: (s: Scope) => `prefsfile:${s}`,
   /** set: ids of tasks waiting for approval. */
   pending: (s: Scope) => `pending:${s}`,
   /** set: ids of pending tasks set aside under "Not now" (a subset of `pending`, rule 2341). */
@@ -173,6 +175,13 @@ export const wsKey = {
   storeSyncBucket: (s: Scope) => `storesync:${s}`,
   /** bucket name for `allow` (stored as `rate:catalogimport:{scope}`): product imports from a store of one workspace (rule 2243). */
   catalogImportBucket: (s: Scope) => `catalogimport:${s}`,
+  /**
+   * hash: this workspace's phone push subscriptions (rules 2560-2563), field = the first 32 hex of the SHA-256 of the
+   * endpoint, value `{ endpoint, login, at }`. Written only by POST /api/push under the session's own `sc(u)`.
+   */
+  pushSubs: (s: Scope) => `pushsubs:${s}`,
+  /** marker: a push about this agent and state went out in the last 30 minutes (SET NX, rule 2566). */
+  pushSent: (s: Scope, agent: string, state: string) => `pushsent:${s}:${agent}:${state}`,
 } as const;
 
 export const personKey = {
@@ -231,6 +240,8 @@ export const accountKey = {
   digestLock: (id: string) => `digestlock:${id}`,
   /** bucket name for `allow` (stored as `rate:digestsave:{login}`): saves of the digest choice (rule 2355). */
   digestBucket: (login: string) => `digestsave:${login}`,
+  /** bucket name for `allow` (stored as `rate:revise:{login}`): line notes revisions sent by the account (rule 2497). */
+  reviseBucket: (login: string) => `revise:${login}`,
   /** set: friends this account referred. */
   referrals: (email: string) => `referrals:${email}`,
   /** string: who referred this account. */
@@ -278,6 +289,14 @@ export const accountKey = {
   chatTrial: (email: string) => `chatm:${email}:trial`,
   /** bucket name for `allow` (stored as `rate:pkpw:{login}`): passkey add and remove proofs of one login, 10 per hour (rule 2410). */
   passkeyProofBucket: (login: string) => `pkpw:${login}`,
+  /** marker: a tab of this login was visible in the last `AWAY_MINUTES` (rule 2564); its TTL is the whole record. */
+  tabSeen: (login: string) => `tabseen:${login}`,
+  /** json `{ agent, state, at }`: the last push this login's devices were sent, read by the worker (rule 2567), 1 day. */
+  pushLast: (login: string) => `pushlast:${login}`,
+  /** bucket name for `allow` (stored as `rate:push:{login}`): push subscribe, unsubscribe and the worker's read (rule 2562). */
+  pushBucket: (login: string) => `push:${login}`,
+  /** bucket name for `allow` (stored as `rate:tabbeat:{login}`): the visible-tab heartbeat (rule 2564). */
+  seenBucket: (login: string) => `tabbeat:${login}`,
 } as const;
 
 export const globalKey = {

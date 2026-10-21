@@ -168,7 +168,6 @@ const RAW_KEYS: Record<string, number> = {
   "src/app/api/secretary/series/[seriesId]/keep/route.ts": 1,
   "src/app/api/secretary/walk/route.ts": 2,
   "src/app/api/support/route.ts": 1,
-  "src/app/api/tasks/[id]/route.ts": 1,
   "src/app/api/team/accept/route.ts": 2,
   "src/app/api/team/invite/route.ts": 3,
   "src/app/api/tools/[tool]/route.ts": 3,
@@ -283,6 +282,7 @@ const SCOPE_PARAM: Record<string, number> = {
   "src/lib/handoffs.ts": 1,
   "src/lib/onboard-confirm.ts": 2,
   "src/lib/perf-store.ts": 3,
+  "src/lib/push.ts": 1, // pushForActivity: the activity log's string scope, as recordActivity passes it (rule 2566)
   "src/lib/routines.ts": 1,
   "src/lib/schedule.ts": 5,
   "src/lib/site-stats.ts": 1,

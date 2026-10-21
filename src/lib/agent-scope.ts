@@ -118,7 +118,8 @@ export const agentScopeRetryText = (lang: Lang): string =>
   lang === "ar" ? "تعذّر فحص هذا العنصر الآن. حاول مرة أخرى بعد دقيقة." : "This item could not be checked right now. Try again in a minute.";
 
 export type AgentScopeLayer = "input" | "role" | "output";
-export type AgentScopeWhere = "chat" | "mcp_chat" | "generate" | "mcp_generate" | "items" | "save_draft" | "publish" | "chat_publish" | "tool";
+/** `revise`: a line notes revision of one draft (rule 2493), its notes (input) and the revised text (output). */
+export type AgentScopeWhere = "chat" | "mcp_chat" | "generate" | "mcp_generate" | "items" | "save_draft" | "publish" | "chat_publish" | "tool" | "revise";
 export type AgentScopeLogEntry = {
   at: string;
   email: string;
@@ -273,7 +274,7 @@ export { GENERATE_NOTES_READ };
  * input mode from the same preflight (`modes.input`), the route (`where`), the reply language, and the preflight's `slow`, the
  * window of the refusal ceiling when it is spent (set only in `enforce`).
  */
-export type NotesGate = { notes: string; mode: AgentScopeMode; where: "generate" | "mcp_generate"; lang: Lang; slow?: "hour" | "day" | null };
+export type NotesGate = { notes: string; mode: AgentScopeMode; where: "generate" | "mcp_generate" | "revise"; lang: Lang; slow?: "hour" | "day" | null };
 /** `reply`: the refusal the owner reads (the notes are outside the team's work). `slow`: too many such requests or checks, wait this window. */
 export type NotesDecision = { block: false } | { block: true; reply: string } | { block: true; slow: "hour" | "day" };
 

@@ -3,6 +3,8 @@ import { isAgentId, type AgentId } from "./agents";
 import { isTaskType, type TaskType } from "./tasks";
 import { isBy, publicBy, type By } from "./actor";
 import { log } from "./log";
+import { after } from "next/server";
+import { pushForActivity, pushOn } from "./push";
 
 /**
  * The per-agent activity log: what each agent did in one brand, and what was done to its work, newest first in
@@ -32,6 +34,8 @@ export const ACTIVITY_KINDS = [
   "instructions_changed",
   // A paid "test this instruction" (src/app/api/instructions/test/route.ts): `credits` is what was taken, `count` the two items written.
   "instructions_tested",
+  // Line notes on a draft sent in one revision (src/lib/revise.ts, rule 2496): `credits` is the draft's price, `count` the notes.
+  "revised",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 /** Where it happened. Not a task's `source`: chat and MCP batches are both `source: "chat"`. */
@@ -115,11 +119,27 @@ function bounded(e: Activity): Activity {
  */
 export async function recordActivity(scope: string, entries: readonly (Activity | null | undefined | false)[]): Promise<void> {
   try {
-    const rows = entries.filter((e): e is Activity => !!e).map((e) => JSON.stringify(bounded(e)));
+    const kept = entries.filter((e): e is Activity => !!e).map(bounded);
+    const rows = kept.map((e) => JSON.stringify(e));
     if (rows.length) await Promise.all(rows.map((r) => pushCapped(key(scope), r, CAPS.activity)));
+    // Phone notifications (rules 2565, 2572): only while push is on, after the response, and never in the action's way.
+    if (kept.length && pushOn()) {
+      const later = () => pushForActivity(scope, kept);
+      try { after(later); } catch { void later(); }
+    }
   } catch (e) {
     log.error("activity record failed", e);
   }
+}
+
+/**
+ * The newest `n` rows of a scope's log, unreadable ones skipped, in stored order (rule 2553): one lrange of the head of
+ * the capped list, for the app page's agent states, where the whole log would be read for nothing.
+ */
+export async function recentActivity(scope: string, n: number): Promise<Activity[]> {
+  const take = Math.max(0, Math.min(CAPS.activity, Math.floor(n)));
+  if (!take) return [];
+  return (await db.lrange(key(scope), 0, take - 1)).flatMap((r) => { const a = readRow(r); return a ? [a] : []; });
 }
 
 /** One stored row read back, or null when any field is not what a row holds (skipped, never guessed at). */

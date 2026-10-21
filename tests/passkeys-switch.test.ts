@@ -6,6 +6,7 @@ import { json, newUser, signIn, signOut } from "./helpers/session";
 import { codeAt, enrolledStaff } from "./helpers/staff";
 import { enrolPasskeys, passkeyResidue, passkeySignIn, PASSKEY_ORIGIN } from "./helpers/passkeys";
 import { db } from "@/lib/db";
+import { log } from "@/lib/log";
 import { globalKey } from "@/lib/keys";
 import { ENROLMENT_KEY, sealSecret, type Enrolment } from "@/lib/admin-2fa";
 import { newRecoveryCode, newTotpSecret, recoveryHash } from "@/lib/totp";
@@ -196,6 +197,57 @@ describe("rule 2426 (console half): only the console owner flips the switch", ()
     rows = await switchRows();
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ section: "system", action: "passkeys.on", target: "passkeys", before: { on: false }, after: { on: true }, reason: REASON });
+  });
+
+  it("`before` is the state the write replaced: a repeat flip logs before = after, a foreign value off logs before on", async () => {
+    // setPasskeysOn answers the state it replaced, read by the write itself (GETDEL / SET NX).
+    expect(await setPasskeysOn(false)).toBe(true);
+    expect(await setPasskeysOn(false)).toBe(false);
+    expect(await setPasskeysOn(true)).toBe(false);
+    expect(await setPasskeysOn(true)).toBe(true);
+
+    expect((await flip({ on: false, reason: REASON })).status).toBe(200);
+    expect((await flip({ on: false, reason: REASON })).status).toBe(200);
+    let rows = await switchRows();
+    expect(rows[0]).toMatchObject({ action: "passkeys.off", before: { on: false }, after: { on: false } });
+    expect(rows[1]).toMatchObject({ action: "passkeys.off", before: { on: true }, after: { on: false } });
+
+    // A value passkeysOn reads as on (nothing writes one, but the read half accepts it) is replaced with "1".
+    await db.set(globalKey.passkeysOff(), "0");
+    expect((await flip({ on: false, reason: REASON })).status).toBe(200);
+    expect(String(await stored())).toBe("1");
+    rows = await switchRows();
+    expect(rows[0]).toMatchObject({ action: "passkeys.off", before: { on: true }, after: { on: false } });
+  });
+
+  it("an audit write that throws puts the switch back, answers 500 audit_failed and logs it", async () => {
+    const err = vi.spyOn(log, "error").mockImplementation(() => {});
+    const push = vi.spyOn(db, "lpush").mockRejectedValueOnce(new Error("redis down"));
+    try {
+      expect(await answer(await flip({ on: false, reason: REASON }))).toEqual({ status: 500, body: { ok: false, error: "audit_failed" } });
+      expect(await stored()).toBeNull();
+      expect(await passkeysOn()).toBe(true);
+      expect(err).toHaveBeenCalledWith("passkeys switch: audit row failed, switch put back", expect.objectContaining({ on: false, was: true }));
+    } finally {
+      push.mockRestore();
+      err.mockRestore();
+    }
+  });
+
+  it("when the undo fails too, the log line says the switch changed with no audit row", async () => {
+    const err = vi.spyOn(log, "error").mockImplementation(() => {});
+    const push = vi.spyOn(db, "lpush").mockRejectedValueOnce(new Error("redis down"));
+    // The undo of an off flip is GETDEL.
+    const undo = vi.spyOn(db, "getdel").mockRejectedValueOnce(new Error("redis down"));
+    try {
+      expect(await answer(await flip({ on: false, reason: REASON }))).toEqual({ status: 500, body: { ok: false, error: "audit_failed" } });
+      expect(String(await stored())).toBe("1");
+      expect(err).toHaveBeenCalledWith("passkeys switch: audit row failed and the undo failed, switch changed with no audit row", expect.objectContaining({ on: false, was: true }));
+    } finally {
+      undo.mockRestore();
+      push.mockRestore();
+      err.mockRestore();
+    }
   });
 });
 

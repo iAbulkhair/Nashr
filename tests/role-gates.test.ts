@@ -190,6 +190,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/schedule": g("admin", "schedule.write"),
   "POST /api/publish/[id]": g("admin", "publish"),
   "PATCH /api/tasks/[id]": g("admin", "publish", "drafts"),
+  // Line notes on a draft (rule 2490): any member who may edit sends them; the item stays pending.
+  "POST /api/tasks/[id]/revise": g("member", "drafts"),
   "PUT /api/files": g("admin", "files.core.write"),
   "DELETE /api/files": g("admin", "files.core.delete"),
   "POST /api/performance": g("admin", "performance.import"),
@@ -223,6 +225,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "PUT /api/notifications/digest": g("owner", "profile.account"),
+  // Phone notifications (rules 2562-2567): a person's own device in the workspace they act in; tokens and founder views get 403 in the route.
+  "POST /api/push": "member",
+  "DELETE /api/push": "member",
+  "POST /api/push/seen": "member",
   "POST /api/team/leave": g("member", "team.leave"),
   "POST /api/chat": "member",
   "POST /api/chat/feedback": "member",
@@ -364,6 +370,8 @@ const READS: Record<string, Gate> = {
   "GET /api/instructions/refs": "member",
   "GET /api/instructions/history": "member",
   "GET /api/notifications": "member",
+  // The text a woken phone worker shows (rule 2567), read with the device's own session.
+  "GET /api/push/latest": "member",
   "GET /api/onboard/plan": "member",
   "GET /api/performance": "member",
   "GET /api/schedule": "member",
@@ -421,8 +429,12 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/r
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // The digest email choice (rule 2355).
   "PUT /api/notifications/digest",
+  // Phone notifications (rules 2562-2567): per-login hourly buckets.
+  "POST /api/push", "DELETE /api/push", "POST /api/push/seen", "GET /api/push/latest",
   // Chat spend cards (rule 1512): each Run is a paid batch or render.
   "POST /api/chat/spend/[id]",
+  // Line notes revision (rule 2497): each is a paid model call.
+  "POST /api/tasks/[id]/revise",
   // Cloud drives and the media library (rule 1785): every write has its own hourly bucket per workspace.
   "POST /api/drives", "DELETE /api/drives", "POST /api/media/upload"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
