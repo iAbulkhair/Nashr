@@ -1,5 +1,6 @@
 "use client";
 import { useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { WaitingInvite } from "@/lib/team";
 import type { WorkspaceRow } from "@/lib/workspaces";
@@ -28,6 +29,7 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
   const [busy, setBusy] = useState<string | null>(null);
   // Deleting one's own login (multi-workspace M3, rule 2754) asks in the app's own dialog; the route checks the rest.
   const [ask, confirmDialog] = useConfirm();
+  const router = useRouter();
   const [delPw, setDelPw] = useState("");
   const [delCode, setDelCode] = useState("");
   const [name, setName] = useState("");
@@ -69,7 +71,7 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
       const r = await fetch("/api/workspaces/person", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: delPw, code: delCode || undefined }) });
       const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (j.ok) {
-        window.location.assign(`/${lang}/app/login`);
+        router.replace(`/${lang}/app/login`);
         return;
       }
       setError(message(j.error));

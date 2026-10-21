@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 import { acct, currentUser } from "@/lib/auth";
 import { MULTI_ORG } from "@/lib/multi-org";
 import { wsHandle } from "@/lib/ws-handle";
 import { WS_HEADER } from "@/lib/ws-path";
-import { addShadowMembership, newUser, signIn, withHeaders } from "./helpers/session";
+import { addShadowMembership, newUser, params, signIn, withHeaders } from "./helpers/session";
 import { ownerOf } from "@/lib/membership";
 import * as workspacesRoute from "@/app/api/workspaces/route";
 import * as switchRoute from "@/app/api/workspaces/switch/route";
@@ -17,6 +17,7 @@ import * as transferRoute from "@/app/api/team/transfer/route";
 import * as xferAcceptRoute from "@/app/api/workspaces/transfer/route";
 import * as invitesRoute from "@/app/api/workspaces/invites/route";
 import * as personRoute from "@/app/api/workspaces/person/route";
+import * as peopleRoute from "@/app/api/admin/people/[email]/route";
 import { teamPerms } from "@/components/app/teamPerms";
 import { db } from "@/lib/db";
 import { accountKey } from "@/lib/keys";
@@ -110,6 +111,11 @@ describe("M3 with MULTI_ORG off changes nothing", () => {
     expect((await invitesRoute.GET()).status).toBe(404);
     expect((await personRoute.DELETE(json("/api/workspaces/person", "DELETE", { password: "abc12345" }))).status).toBe(404);
     expect(acct((await currentUser())!)).toBe(acct(u));
+    // The console people view (rule 2755): after the console gate, 404 while the switch is off, no audit row.
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-flag-off-0123456789");
+    const people = await peopleRoute.GET(json(`/api/admin/people/${encodeURIComponent(u.email)}`, "GET", undefined, { "x-admin-key": "test-admin-key-flag-off-0123456789" }), params({ email: encodeURIComponent(u.email) }));
+    vi.unstubAllEnvs();
+    expect(people.status).toBe(404);
   });
 
   it("the Members page offers no log and no transfer, and an invite leaves no inbox entry", async () => {
