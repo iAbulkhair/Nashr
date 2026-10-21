@@ -190,6 +190,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/schedule": g("admin", "schedule.write"),
   "POST /api/publish/[id]": g("admin", "publish"),
   "PATCH /api/tasks/[id]": g("admin", "publish", "drafts"),
+  // Line notes on a draft (rule 2490): any member who may edit sends them; the item stays pending.
+  "POST /api/tasks/[id]/revise": g("member", "drafts"),
   "PUT /api/files": g("admin", "files.core.write"),
   "DELETE /api/files": g("admin", "files.core.delete"),
   "POST /api/performance": g("admin", "performance.import"),
@@ -431,6 +433,8 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/r
   "POST /api/push", "DELETE /api/push", "POST /api/push/seen", "GET /api/push/latest",
   // Chat spend cards (rule 1512): each Run is a paid batch or render.
   "POST /api/chat/spend/[id]",
+  // Line notes revision (rule 2497): each is a paid model call.
+  "POST /api/tasks/[id]/revise",
   // Cloud drives and the media library (rule 1785): every write has its own hourly bucket per workspace.
   "POST /api/drives", "DELETE /api/drives", "POST /api/media/upload"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */

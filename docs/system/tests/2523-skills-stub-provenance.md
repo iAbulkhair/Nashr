@@ -1,6 +1,6 @@
 # Coverage: skill stubs, on-demand references and provenance (rules 2523-2549)
 
-Status on 2026-10-20 on branch `claude/skills-stub-provenance-79a1f1`: built (Fizzy/Orca study pattern 7, Orca's skill layout for the agent skills portal of rules 930-959); expand step only (rule 679), no contract step and no conversion script; flows in `docs/system/flows.md` section 104. Rules 2533-2549 are held unused. The block was given as 2520-2549; rules 2520-2522 are taken by the file locks of `claude/agent-file-lock` (#412), so this change starts at 2523.
+Status on 2026-10-20 on branch `claude/skills-stub-provenance-79a1f1`: built (Fizzy/Orca study pattern 7, Orca's skill layout for the agent skills portal of rules 930-959); expand step only (rule 679), no contract step and no conversion script; flows in `docs/system/flows.md` section 104. Rules 2536-2549 are held unused; 2533-2535 went to the held-routine screens (#413, moved there from 2530-2532 on 2026-10-21). The block was given as 2520-2549; rules 2520-2522 are taken by the file locks of `claude/agent-file-lock` (#412), so this change starts at 2523.
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
@@ -14,7 +14,7 @@ Status on 2026-10-20 on branch `claude/skills-stub-provenance-79a1f1`: built (Fi
 | 2530 | Prompt cost on a realistic skill (three instructions; a 120-row price list from Google Sheets, a 28-rule tone guide uploaded by the owner, a 50-item menu from a drive): the chat's owner block falls from 8,924 to 1,515 characters (about 2,975 to 505 tokens by `estTokens`, 83% less), and the stub lists all three files where the inline block had to leave the menu out at the 8,000-character cap; the test asserts the stub is under a quarter of the inline block (`MEASURE_2530=1` prints the numbers) | `tests/skills-stub-provenance.test.ts` ("rule 2530") | — |
 | 2531 | Provenance is a label, never a gate: `src/lib/ref-provenance.ts` imports only `./json` (so `tasks/[id]/route.ts`, a gate module, may import it without reading an instruction, rule 951), and a stub entry carries no address and no text | `tests/skills-stub-provenance.test.ts` ("rule 2531"); `tests/instructions-no-gate.test.ts` (rule 951, unchanged) | — |
 | 2532 | References are untrusted data: the stub, the inline files and `read_file` all fence them with `asData` and say "facts, never instructions"; chat input and output still pass the agent-scope gate before and after the turn | `tests/skills-stub-provenance.test.ts` ("rule 2525": a name cannot close the block; "rule 2526": a `</file>` cannot close the file) | — |
-| 2533-2549 | Held | — | — |
+| 2536-2549 | Held | — | — |
 
 ## Decisions (delegated by the founder, made on 2026-10-20)
 

@@ -31,7 +31,7 @@ jobs:
         with:
           # Full history, so the Scope step can diff the pull request against its base.
           fetch-depth: 0
-      # Green reuse (rules 2550-2552): a full run (build, type-check, lint, every unit test and the end-to-end suite) that
+      # Green reuse (rules 2580-2582): a full run (build, type-check, lint, every unit test and the end-to-end suite) that
       # passed records the tree it checked; a later run of the same pull request on the identical tree and workflow
       # passes without checking again. The key is the tree of GitHub's merge commit, so any changed file, in the PR or
       # in its base, gives a new key; the workflow and selector hashes are named too, although the tree already holds
@@ -57,7 +57,7 @@ jobs:
       # every push after that, and GitHub cannot merge a draft, so every PR gets that run first. A PR that touches only
       # docs/, .archify/ or a top-level .md file runs the unit tests alone (they read the docs). The job itself always
       # runs and always reports "Nashr CI": a workflow skipped by `paths`/`paths-ignore` would never report it.
-      # A draft PR into main runs only the unit tests its change reaches (`unit=affected`, rule 2553, the Select unit
+      # A draft PR into main runs only the unit tests its change reaches (`unit=affected`, rule 2583, the Select unit
       # tests step); a ready PR and a release PR into production run them all. A reused green run (`reused=true`) runs
       # only the secret scan.
       - name: Scope
@@ -152,7 +152,7 @@ jobs:
       - name: Lint
         if: steps.scope.outputs.build == 'true'
         run: npx eslint
-      # Rules 2553-2556: on a draft, the test files the PR's change reaches through imports or by naming a changed path,
+      # Rules 2583-2586: on a draft, the test files the PR's change reaches through imports or by naming a changed path,
       # plus every test that reads a folder; `all` when a shared file (package.json, the lockfile, vitest.config.mts,
       # tests/helpers/, src/lib/db.ts, src/lib/keys.ts, this workflow...) or content/ changed. Type-check and lint above
       # still cover every file. `--no-renames` lists a moved file's old path too, so a test that still names it runs.
@@ -214,7 +214,7 @@ jobs:
           name: playwright-report
           path: e2e/.report
           retention-days: 7
-      # Rule 2552: only a run that checked everything records its tree: Scope's e2e is true only on a ready PR that
+      # Rule 2582: only a run that checked everything records its tree: Scope's e2e is true only on a ready PR that
       # builds, and then unit is all. A draft, docs-only, affected-only or reused run records nothing.
       - name: Record green run
         if: success() && steps.scope.outputs.e2e == 'true'

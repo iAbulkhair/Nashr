@@ -13,7 +13,7 @@ import { DEFAULT_SCHEDULE } from "@/lib/schedule";
 import { ROUTINES, type RoutineView } from "@/lib/routines";
 
 /**
- * Rules 2530-2532: the two screens of the paid-cron work (#404) that no browser check could reach. A held routine needs a
+ * Rules 2533-2535 (numbered 2530-2532 when they merged in #413; moved because #415 uses those): the two screens of the paid-cron work (#404) that no browser check could reach. A held routine needs a
  * run killed more than 10 minutes before, and the cron counts need a cron run and a founder sign-in, neither of which the
  * end-to-end server has (it runs with `APP_ENV=test` only, no cron secret, no admin credentials, and no route that seeds
  * data). So each screen is rendered here as the server renders it, in both languages; the Run request itself is pinned
@@ -23,7 +23,7 @@ import { ROUTINES, type RoutineView } from "@/lib/routines";
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
 const views = (heldId?: string): RoutineView[] => ROUTINES.map((r) => ({ id: r.id, agent: r.agent, type: r.type, cadence: r.cadence, ...(r.id === heldId ? { held: true } : {}) }));
 
-describe("rule 2530: Scheduled tasks shows a held routine with its note and a Run button", () => {
+describe("rule 2533: Scheduled tasks shows a held routine with its note and a Run button", () => {
   const held = ROUTINES[0].id;
 
   it("only the held routine gets the block, in both languages", () => {
@@ -50,7 +50,7 @@ describe("rule 2530: Scheduled tasks shows a held routine with its note and a Ru
   });
 });
 
-describe("rule 2531: the founder's Usage page shows each job's last batch counts under its heartbeat", () => {
+describe("rule 2534: the founder's Usage page shows each job's last batch counts under its heartbeat", () => {
   const report = { total: 40, alreadyDone: 5, processed: 30, failed: 2, held: 1, remaining: 2 };
 
   it("the counts line, in both languages, only for a job that has a report", () => {
@@ -67,7 +67,7 @@ describe("rule 2531: the founder's Usage page shows each job's last batch counts
   });
 });
 
-describe("rule 2532: the Usage page still renders the list through CronList", () => {
+describe("rule 2535: the Usage page still renders the list through CronList", () => {
   it("the section passes the overview's crons to the extracted component", async () => {
     const { readFileSync } = await import("node:fs");
     expect(readFileSync("src/components/admin/Usage.tsx", "utf8")).toContain("<CronList crons={ov.crons ?? []} O={O} />");
