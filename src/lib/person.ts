@@ -156,8 +156,9 @@ export async function updatePerson(pid: PersonId, patch: PersonPatch, opts: { pe
  *   timeout leaves no account without its person; the owner address move, `moveOwnerLogin`, takes both person locks
  *   before `lock:user`, rule 2139, passkeys Task 6).
  * - `sessionsAfter` must be named by every caller: a new login stamps it with its creation time; script S1
- *   (scripts/multi-org-index.ts, rule 2133) copies a record from before M1 as it is, and passes `undefined` when that
- *   record has none (inventing a stamp there would sign the person out of every session).
+ *   (scripts/multi-org-index.ts, rule 2133; retired in M4, it runs only from a pre-M4 build) copied a record from before
+ *   M1 as it was, and passed `undefined` when that record had none (inventing a stamp there would sign the person out
+ *   of every session).
  */
 export async function createPersonRecord(
   input: { pid: PersonId; email: string; name: string; lang: "ar" | "en"; passHash?: string; createdAt: string; sessionsAfter: string | undefined; devicesAfter?: string; emailVerifiedAt?: string; trialUsedAt?: string },

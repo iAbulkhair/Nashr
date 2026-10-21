@@ -14,9 +14,9 @@ import { run } from "../scripts/multi-org-contract";
 /**
  * Script S2 of multi-workspace membership (docs/specs/2026-10-18-multi-org.md, "Releases"; rule 2138 in
  * docs/system/tests/2110-multi-org.md, rules 2762-2764 in docs/system/tests/2760-multi-org-m4.md): after M4 it strips
- * the credentials left on account records and deletes the legacy `member:` records whose `mbr:` twin matches. Dry by
- * default, idempotent, never deletes a record whose twin is missing or differs, counts the links made before M1, prints
- * counts only and awaits no db call inside a loop. Its fixtures are legacy persons in both `TEST_PERSONS` modes (only a
+ * the credentials left on account records and deletes the legacy `member:` records whose `mbr:` twin exists. Dry by
+ * default, idempotent, checks every owner and member for a lock-out gap (rule 2765), never deletes a record with no
+ * twin, counts the links made before M1, prints counts only and awaits no db call inside a loop. Its fixtures are legacy persons in both `TEST_PERSONS` modes (only a
  * login from before M2 has legacy copies), with the copies a build before M4 left planted by hand.
  */
 
@@ -84,12 +84,52 @@ describe("rule 2762: S2 is dry by default, strips credentials only where the per
     await plantCreds(u);
     await db.del(personKey.person(storedPersonId(acct(u))));
     const r = await run({ apply: true });
-    expect(r.ownerNoPerson).toBeGreaterThanOrEqual(1);
+    expect(r.personMissing).toBeGreaterThanOrEqual(1);
     expect((await userRaw(u))!.passHash).toBe("legacy-hash");
   });
 });
 
-describe("rule 2763: S2 deletes a legacy member record only when its twin exists and matches", () => {
+describe("rule 2765: S2 checks every owner and member for a lock-out gap and touches nothing for one", () => {
+  it("an owner whose account is missing from its orgs set is counted (with or without credentials) and keeps them", async () => {
+    const base = await run({ apply: false });
+    const [bare, withCreds] = await Promise.all([newUser("s2oa"), newUser("s2ob")]);
+    await plantCreds(withCreds);
+    await Promise.all([bare, withCreds].map((u) => db.srem(personKey.orgs(storedPersonId(acct(u))), storedAccountId(acct(u)))));
+    const r = await run({ apply: true });
+    expect(r.notInOrgs).toBe(base.notInOrgs + 2);
+    expect((await userRaw(withCreds))!.passHash).toBe("legacy-hash");
+  });
+
+  it("an owner without person row is counted even with no credentials left", async () => {
+    const base = await run({ apply: false });
+    const u = await newUser("s2oc");
+    await db.del(personKey.person(storedPersonId(acct(u))));
+    const r = await run({ apply: false });
+    expect(r.personMissing).toBe(base.personMissing + 1);
+  });
+
+  it("a member whose account is missing from its orgs set, or whose person row is gone, is counted and its record kept", async () => {
+    const base = await run({ apply: false });
+    const a = await preM4("s2mo");
+    const b = await preM4("s2mq");
+    await Promise.all([db.srem(personKey.orgs(a.m.pid), a.aid), db.del(personKey.person(b.m.pid))]);
+    const r = await run({ apply: true });
+    expect(r.notInOrgs).toBe(base.notInOrgs + 1);
+    expect(r.personMissing).toBe(base.personMissing + 1);
+    expect(await db.get(accountKey.member(a.m.email))).not.toBeNull();
+    expect(await db.get(accountKey.member(b.m.email))).not.toBeNull();
+  });
+
+  it("a clean store reports 0 for both, and the second run is clean", async () => {
+    await preM4("s2ok");
+    await run({ apply: true });
+    const again = await run({ apply: false });
+    // Other files' fixtures share the store; this file's own subjects add no gap.
+    expect([again.credsRemoved, again.membersDeleted]).toEqual([0, 0]);
+  });
+});
+
+describe("rule 2763: S2 deletes a legacy member record when its twin exists; differences are information only", () => {
   it("a record whose twin row is missing is kept and counted; one no roster lists is never reached, so never deleted", async () => {
     const a = await preM4("s2tm");
     const b = await preM4("s2tr");
@@ -102,7 +142,7 @@ describe("rule 2763: S2 deletes a legacy member record only when its twin exists
     expect(await db.get(accountKey.member(b.m.email))).not.toBeNull();
   });
 
-  it("a record that differs from its twin (role, acceptedAt or pause) is kept and counted", async () => {
+  it("a record that differs from its twin (role, acceptedAt or pause) is deleted and counted for information", async () => {
     const u = await newUser("s2td");
     const [m1, m2, m3] = await Promise.all([newMember(u), newMember(u), newMember(u)]);
     await Promise.all([
@@ -110,24 +150,30 @@ describe("rule 2763: S2 deletes a legacy member record only when its twin exists
       plantMemberRecord(u, m2, { acceptedAt: new Date(Date.now() - 86400000).toISOString() }),
       plantMemberRecord(u, m3, { disabled: "seats" }),
     ]);
+    const dry = await run({ apply: false });
+    expect(dry.twinDiffers).toBeGreaterThanOrEqual(3);
     const r = await run({ apply: true });
-    expect(r.twinMismatch).toBeGreaterThanOrEqual(3);
-    const kept = await Promise.all([m1, m2, m3].map((m) => db.get(accountKey.member(m.email))));
-    expect(kept.every((k) => k !== null)).toBe(true);
+    expect(r.twinDiffers).toBeGreaterThanOrEqual(3);
+    const left = await Promise.all([m1, m2, m3].map((m) => db.get(accountKey.member(m.email))));
+    expect(left).toEqual([null, null, null]);
+    // The row stays the truth: what M4 reads did not change.
+    expect(await getMembership(storedAccountId(acct(u)), m1.pid)).toMatchObject({ role: "member" });
   });
 
-  it("a record whose person has no row is kept: it may hold the only copy of the credentials", async () => {
-    const u = await newUser("s2mp");
+  it("a record whose twin names other ids is kept and counted as missing", async () => {
+    const u = await newUser("s2ti");
+    const other = await newUser("s2tj");
     const m = await newMember(u);
     await plantMemberRecord(u, m);
-    await db.del(personKey.person(m.pid));
+    const row = (await db.get<Record<string, unknown>>(accountKey.membership(storedAccountId(acct(u)), m.pid)))!;
+    await db.set(accountKey.membership(storedAccountId(acct(u)), m.pid), { ...row, aid: acct(other) });
     const r = await run({ apply: true });
-    expect(r.twinMismatch).toBeGreaterThanOrEqual(1);
+    expect(r.twinMissing).toBeGreaterThanOrEqual(1);
     expect(await db.get(accountKey.member(m.email))).not.toBeNull();
   });
 });
 
-describe("rule 2764: S2 counts the links made before M1 and writes nothing for them", () => {
+describe("rule 2764: S2 counts the links made before M1 (must be 0) and writes nothing for them", () => {
   it("a pointed-to record without pid and aid is counted; an M1 record is not; nothing is deleted", async () => {
     const u = await newUser("s2ln");
     const base = (await run({ apply: false })).preM1Links;
@@ -158,6 +204,8 @@ describe("rule 2138: S2 prints counts only, awaits no db call inside a loop, and
     expect(logs.length).toBeGreaterThan(0);
     for (const l of logs) expect(l).not.toMatch(/\.email\b|\.login\b|\.id\b|\bpid\b|\baid\b/);
     expect(src).toContain('process.argv.includes("--apply")');
+    // Rules 2764, 2765: a lock-out gap or a link made before M1 fails the run (exit 1), as a kept record or busy lock does.
+    expect(src).toContain("process.exitCode = r.personMissing || r.notInOrgs || r.twinMissing || r.preM1Links || r.busy ? 1 : 0;");
     expect(src).toContain("import.meta.url === pathToFileURL(process.argv[1]).href");
     expect(src).toContain("withAccountTeamLock(aid, async () => {\n    const r = await withMemberLock(login");
     expect(src).toContain("return withUserLock(id,");
