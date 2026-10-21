@@ -22,12 +22,13 @@ import { connectAds, isAdProvider } from "@/lib/connectors/ads";
 import { SHOP_HOST, subscribeUninstall, UNINSTALL_HOOK_META, validShopifyHmac } from "@/lib/connectors/shopify";
 import { can } from "@/lib/roles";
 import { appOrigin } from "@/lib/origin";
-import { appHref } from "@/lib/brand-path";
 import { brandIdOfScope } from "@/lib/brands";
-import { settingsHref } from "@/lib/settings-nav";
+import { settingsPath } from "@/lib/settings-nav";
 import { dropSnapshotIfStoreChanged, storeIdentity } from "@/lib/store-sales";
 import { connectCalendar } from "@/lib/secretary-gcal";
 import type { CalProvider } from "@/lib/connectors/registry";
+import { appHrefIn } from "@/lib/ws-href";
+import { appHref } from "@/lib/ws-path";
 
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const { provider } = await ctx.params;
@@ -50,10 +51,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   // The page it returns to is the brand's whose page started the flow: the brand of the scope in the stored state (`st.email`,
   // written by `start`, the scope the connection goes to), never a value from this request and never the session's stored
   // choice, which can be another brand by now. Without a state (an error before it is read) there is no brand to name, so the
-  // old path stays and the `[...legacy]` page sends it to the session's brand.
+  // old path stays and the `[...legacy]` page sends it to the session's brand. The workspace is that scope's account's too.
   const brand = st?.email ? brandIdOfScope(st.email) : null;
-  const back = (q: string) =>
-    NextResponse.redirect(`${origin}${cal ? appHref(lang, "/todo", { brand }) : brand ? settingsHref(lang, "connections", brand) : `/${lang}/app/integrations`}?${q}`);
+  const page = cal ? "/todo" : brand ? settingsPath("connections") : "/integrations";
+  const back = (q: string) => NextResponse.redirect(`${origin}${st ? appHrefIn(st.email, lang, `${page}?${q}`, brand) : appHref(lang, `${page}?${q}`)}`);
   // A Composio flow comes back with no code: the account was created at start and is verified below.
   if (!st || (!code && (cal || st.via !== "composio"))) {
     const err = url.searchParams.get("error");

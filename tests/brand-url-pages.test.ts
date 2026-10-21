@@ -8,6 +8,7 @@ import { acct, type User } from "@/lib/auth";
 import { BRAND_HEADER, BRAND_SECTIONS, isBrandPath } from "@/lib/brand-path";
 import { saveBrands, type BrandMeta } from "@/lib/brands";
 import { LEGACY_SETTINGS, SETTINGS_SECTIONS, legacySettingsPath, settingsHref } from "@/lib/settings-nav";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * Rules 885 and 891 (brand id in the URL, Part C; plan docs/superpowers/plans/2026-10-20-brand-url.md Task 4, R-C5,
@@ -96,12 +97,14 @@ describe("rule 885: brand pages live under /{lang}/app/b/[brand], account pages 
   });
 
   it("settingsHref puts a brand section under the brand when it has one; account sections never", () => {
-    expect(settingsHref("ar")).toBe("/ar/app/settings");
-    expect(settingsHref("en", "billing", "b2")).toBe("/en/app/settings/billing");
-    expect(settingsHref("en", "brand", "b2")).toBe("/en/app/b/b2/settings/brand");
-    expect(settingsHref("ar", "notifications", "b2")).toBe("/ar/app/b/b2/settings/notifications");
+    // The caller's builder carries the brand (and, with `MULTI_ORG` on, the workspace): ws-path.ts `appHref`.
+    const to = (lang: "ar" | "en", brand?: string) => (p: string) => appHref(lang, p, null, brand);
+    expect(settingsHref(to("ar"))).toBe("/ar/app/settings");
+    expect(settingsHref(to("en", "b2"), "billing")).toBe("/en/app/settings/billing");
+    expect(settingsHref(to("en", "b2"), "brand")).toBe("/en/app/b/b2/settings/brand");
+    expect(settingsHref(to("ar", "b2"), "notifications")).toBe("/ar/app/b/b2/settings/notifications");
     // No brand known yet: the old path, which the [...legacy] page sends on.
-    expect(settingsHref("ar", "connections")).toBe("/ar/app/settings/connections");
+    expect(settingsHref(to("ar"), "connections")).toBe("/ar/app/settings/connections");
   });
 
   it("the proxy keeps the account settings renames and leaves the three that became brand sections to [...legacy]", () => {

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { PlanItem } from "@/lib/chat";
 import { render } from "@/lib/md";
 import { Icon } from "./Icons";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const STR = {
   ar: { file: "ملف", saved: "محفوظ", expand: "عرض", collapse: "طيّ", copy: "نسخ", copied: "نُسخ", open: "فتح في الملفات", planHint: "اضغط + لإضافة المهمة إلى قائمتك، أو ابدأها الآن.", add: "أضف المهمة", added: "أُضيفت", start: "ابدأها الآن", skip: "تخطَّ", activate: "فعّل نور", firstUp: "أولاً", waTitle: "رقم واتساب (اختياري)", waBody: "نحفظه ليتواصل معك فريق ذكين عند الحاجة. لا نشاركه مع أحد.", waSave: "حفظ", waSaved: "حُفظ الرقم", waBad: "رقم غير صحيح", waLater: "لاحقاً" },
@@ -12,6 +13,7 @@ const STR = {
 
 /** A workspace file written by the agent, shown inline: collapsed preview, expand, copy. */
 export function FileCard({ file, lang, defaultOpen = false }: { file: { name: string; content: string }; lang: "ar" | "en"; defaultOpen?: boolean }) {
+  const href = useAppLink(lang);
   const S = STR[lang];
   const [open, setOpen] = useState(defaultOpen);
   const [copied, setCopied] = useState(false);
@@ -27,7 +29,7 @@ export function FileCard({ file, lang, defaultOpen = false }: { file: { name: st
       <footer className="flex flex-wrap items-center gap-1.5 border-t border-foreground/5 px-3 py-2 text-xs">
         <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? S.collapse : S.expand}</button>
         <button type="button" onClick={async () => { await navigator.clipboard.writeText(file.content); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? S.copied : S.copy}</button>
-        <Link href={`/${lang}/app/files`} className="ms-auto text-foreground-muted underline">{S.open}</Link>
+        <Link href={href("/files")} className="ms-auto text-foreground-muted underline">{S.open}</Link>
       </footer>
     </article>
   );
@@ -91,13 +93,14 @@ export function WhatsAppCard({ lang }: { lang: "ar" | "en" }) {
 
 /** Sticky bar above the composer for trial accounts: the goal, the upgrade action, the first task. */
 export function ActivationBar({ lang, goal, first }: { lang: "ar" | "en"; goal: string; first?: string }) {
+  const href = useAppLink(lang);
   const S = STR[lang];
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-lemon/40 px-3 py-2 text-sm">
       <Icon name="spark" className="h-4 w-4 shrink-0 text-foreground" />
       <span className="font-semibold" dir="auto">{goal}</span>
       {first && <span className="min-w-0 flex-1 text-xs text-foreground-muted" dir="auto">{S.firstUp}: {first}</span>}
-      <Link href={`/${lang}/app/settings/billing`} className="btn btn-accent btn-xs ms-auto">{S.activate}</Link>
+      <Link href={href("/settings/billing")} className="btn btn-accent btn-xs ms-auto">{S.activate}</Link>
     </div>
   );
 }

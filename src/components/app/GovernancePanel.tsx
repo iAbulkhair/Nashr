@@ -15,6 +15,7 @@ import Scribble from "@/components/Scribble";
 import Switch from "@/components/ui/Switch";
 import EmptyState from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 /** Declared at module scope: a component created during render is remounted on every keystroke and loses focus. */
 function Row({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
@@ -58,6 +59,7 @@ const validCap = (v: string) => v.trim() === "" || /^\d+$/.test(v.trim());
  * so an item whose card scrolled out of its thread can still be kept from starting.
  */
 export default function GovernancePanel({ t, lang, initial, spend, history: initialHistory, historyCap, readOnly = false, queue: initialQueue = [], canDecline = false }: { t: AppDict; lang: "ar" | "en"; initial: Governance; spend: Partial<Record<AgentId, number>>; history: GovHistoryEntry[]; historyCap: number; readOnly?: boolean; queue?: AutoQueued[]; canDecline?: boolean }) {
+  const href = useAppLink(lang);
   const g = t.governance;
   const toast = useToast();
   const [gov, setGov] = useState<Governance>(initial);
@@ -304,7 +306,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-foreground-muted">
                       <span className="tnum">{fill(t.handoff.cost, { n: q.cost })}</span>
                       <time id={`gov-q-${k}`} dateTime={q.createdAt} suppressHydrationWarning>{when.format(new Date(q.createdAt))} UTC</time>
-                      <Link href={`/${lang}/app/chat${q.conv ? `?conv=${q.conv}` : ""}`} className="underline">{g.autoQueueOpen}</Link>
+                      <Link href={href(`/chat${q.conv ? `?conv=${q.conv}` : ""}`)} className="underline">{g.autoQueueOpen}</Link>
                     </p>
                   </div>
                   {canDecline && <button type="button" onClick={() => declineQueued(q)} disabled={declining !== null} aria-describedby={`gov-q-${k}`} className="btn btn-secondary btn-xs">{declining === k ? g.autoQueueDeclining : t.handoff.decline}</button>}

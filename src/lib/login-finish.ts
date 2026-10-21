@@ -5,6 +5,7 @@ import { track } from "./track";
 import { isPersonSuspended, isSuspended, suspensionEnd, suspensionExpired } from "./suspension";
 import { endExpiredSuspension } from "./suspension-server";
 import { acct } from "./account-id";
+import { MULTI_ORG } from "./multi-org";
 
 /**
  * What every sign-in path shares once the person has proved who they are (a password in POST /api/auth/login, a
@@ -35,6 +36,9 @@ export const loginEmail = (l: Login) => (l.kind === "owner" ? (l.pid === acct(l.
 export function loginRefusal(l: Login): NextResponse | null {
   if (l.kind === "owner") return isSuspended(l.user) ? suspendedAnswer(l.user) : personRefusal(l);
   const { member, owner } = l;
+  // A person with no workspace (multi-workspace M2, `getLogin`): only the person's own checks; the session it gets has
+  // no account, and the app sends it to the workspaces page.
+  if (MULTI_ORG && !member && !owner && l.acct === null) return personRefusal(l);
   // A legacy member: its record names this account and was accepted after it was created. A person known only through
   // membership rows: `getLogin` took the account from a live membership (`listOrgs`, which checks the same dates).
   const named = member ? !!owner && member.memberOf === acct(owner) && new Date(member.acceptedAt).getTime() >= new Date(owner.createdAt).getTime() : !!owner && l.acct === acct(owner);
@@ -92,7 +96,8 @@ export async function finishLogin(l: Login, opts: FinishVia): Promise<Finish> {
   }
   await createSession(email);
   // Product analytics count ACCOUNTS: a member's activity is the owner's account being active.
-  await track(accountOf(l)!.email, "login");
+  const counted = accountOf(l);
+  if (counted) await track(counted.email, "login");
   return l.kind === "owner" ? { kind: "signed_in", verify: !emailVerified(l.user) } : { kind: "signed_in" };
 }
 

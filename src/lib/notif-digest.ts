@@ -5,6 +5,7 @@ import { pmap } from "./parallel";
 import { sendEmail } from "./notify";
 import { appOrigin } from "./origin";
 import { COUNT_MAX, listNotifs, type Notif } from "./notifications";
+import { appHref } from "@/lib/ws-path";
 import { emailVerified, getUser } from "./auth";
 import { isSuspended } from "./suspension";
 import { acct } from "./account-id";
@@ -76,7 +77,7 @@ export function digestMail(lang: "ar" | "en", every: Exclude<DigestEvery, "off">
   const tail = more > 0 ? [ar ? `و${more} غيرها في صفحة التنبيهات.` : `And ${more} more on the notifications page.`] : [];
   const foot = ar ? "تغيّر وقت هذا الملخص أو توقفه من الإعدادات، التنبيهات." : "Change or stop this digest in Settings, Notifications.";
   const paragraphs = [head, ...lines, ...tail, foot];
-  return { subject, paragraphs, text: paragraphs.join("\n\n"), href: `${appOrigin()}/${lang}/app/notifications` };
+  return { subject, paragraphs, text: paragraphs.join("\n\n"), href: `${appOrigin()}${appHref(lang, "/notifications")}` };
 }
 
 /** "held": the account is suspended or its owner's address is not verified, so the window stays open (rule 2508). */

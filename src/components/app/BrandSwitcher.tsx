@@ -3,6 +3,8 @@ import { usePathname, useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import { switchBrandPath } from "@/lib/brand-path";
 import { settingsHref } from "@/lib/settings-nav";
+import { appHref } from "@/lib/ws-path";
+import { useAppLink } from "./WorkspaceContext";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 import { Icon } from "./Icons";
@@ -19,9 +21,10 @@ const COPY = {
  * The menu's rows (rule 893), pure so a test can read them: the ACTIVE brands only (an archived brand is managed on the
  * brands page, never offered here), the current one marked, then "Add a brand" (only when `canAdd`: owner or admin under
  * the plan's cap, display only, `POST /api/brands` is the check) and "Manage brands". A brand row has no link: picking
- * it asks the server to remember the choice, then navigates (`pickBrand`). The current brand's row does nothing.
+ * it asks the server to remember the choice, then navigates (`pickBrand`). The current brand's row does nothing. `to` is
+ * the page's link builder (`useAppLink`, so the workspace stays in the link); without it, the link has no workspace.
  */
-export function brandMenuItems({ lang, brands, current, canAdd, onPick }: { lang: Lang; brands: SwitcherBrand[]; current: string; canAdd: boolean; onPick: (id: string) => void }): MenuItem[] {
+export function brandMenuItems({ lang, brands, current, canAdd, onPick, to }: { lang: Lang; brands: SwitcherBrand[]; current: string; canAdd: boolean; onPick: (id: string) => void; to?: (path: string) => string }): MenuItem[] {
   const c = COPY[lang];
   const rows: MenuItem[] = brands
     .filter((b) => b.status !== "archived")
@@ -35,7 +38,7 @@ export function brandMenuItems({ lang, brands, current, canAdd, onPick }: { lang
       ),
       onSelect: b.id === current ? undefined : () => onPick(b.id),
     }));
-  const href = settingsHref(lang, "brands");
+  const href = settingsHref(to ?? ((p) => appHref(lang, p)), "brands");
   return [...rows, ...(canAdd ? [{ key: "add", label: c.add, href }] : []), { key: "manage", label: c.manage, href }];
 }
 
@@ -67,13 +70,14 @@ export default function BrandSwitcher({ lang, brands, current, canAdd, sub, onOp
   const path = usePathname();
   const r = useRouter();
   const toast = useToast();
+  const to = useAppLink(lang);
   const name = current.name.trim();
   const initial = (name || (lang === "ar" ? "ع" : "B")).charAt(0);
   async function onPick(id: string) {
     if (await pickBrand(id, path, (h) => r.push(h))) onPicked?.();
     else toast.danger(c.failed);
   }
-  const items = brandMenuItems({ lang, brands: brands ?? [{ id: current.id, name: current.name, status: "active" }], current: current.id, canAdd, onPick: (id) => { void onPick(id); } });
+  const items = brandMenuItems({ lang, brands: brands ?? [{ id: current.id, name: current.name, status: "active" }], current: current.id, canAdd, onPick: (id) => { void onPick(id); }, to });
   return (
     <Menu
       label={c.label}

@@ -473,18 +473,28 @@ describe("rule 2132 (scan): the switch is off and nothing in product code makes 
     expect(MULTI_ORG).toBe(false);
   });
 
-  it("only src/lib/team.ts and src/lib/membership.ts branch on MULTI_ORG (its definition is in src/lib/multi-org.ts)", () => {
+  // M2 (docs/superpowers/plans/2026-10-20-multi-org-m2.md): the files that build the enable step branch on the switch
+  // too, each falling back to M1's behaviour while it is off. A new file here is a new place the flip changes.
+  const BRANCHES = ["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts", "src/lib/auth.ts", "src/lib/api-handler.ts", "src/proxy.ts", "src/app/[lang]/app/layout.tsx", "src/lib/ws-href.ts", "src/lib/page-href.ts", "src/app/api/workspaces/route.ts", "src/app/api/workspaces/switch/route.ts", "src/app/api/team/accept/route.ts", "src/app/[lang]/app/join/page.tsx", "src/app/[lang]/app/workspaces/page.tsx", "src/lib/login-finish.ts"];
+  it("only the listed M1 and M2 files branch on MULTI_ORG (its definition is in src/lib/multi-org.ts)", () => {
     const users = ALL.filter((f) => identifiers(tree(f), "MULTI_ORG").length > 0);
-    expect(users.filter((f) => !["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts"].includes(f))).toEqual([]);
+    expect(users.filter((f) => !BRANCHES.includes(f))).toEqual([]);
   });
 
-  it("newPersonId is called only by createUser in src/lib/auth.ts, under person: \"p\"", () => {
+  // M2 adds the invite accept and the sign-up (rule 2117): a new member or owner is a `p_` person, under `MULTI_ORG`
+  // only (the sign-up's `split` is `MULTI_ORG` or the test-only `person: "p"`).
+  it("newPersonId is called only by createUser (under MULTI_ORG, or a test's person: \"p\") and the invite accept (under MULTI_ORG)", () => {
     const callers = ALL.filter((f) => calls(tree(f), "newPersonId").length > 0);
-    expect(callers).toEqual(["src/lib/auth.ts"]);
-    const [c] = calls(tree("src/lib/auth.ts"), "newPersonId");
-    let p: ts.Node | undefined = c;
-    while (p && !ts.isConditionalExpression(p)) p = p.parent;
-    expect(p && ts.isConditionalExpression(p) ? p.condition.getText(tree("src/lib/auth.ts")) : "").toBe('opts.person === "p"');
+    expect(callers).toEqual(["src/lib/auth.ts", "src/lib/team.ts"]);
+    const condition = (f: string) => {
+      const [c] = calls(tree(f), "newPersonId");
+      let p: ts.Node | undefined = c;
+      while (p && !ts.isConditionalExpression(p)) p = p.parent;
+      return p && ts.isConditionalExpression(p) ? p.condition.getText(tree(f)) : "";
+    };
+    expect(condition("src/lib/auth.ts")).toBe("split");
+    expect(readFileSync("src/lib/auth.ts", "utf8")).toContain('const split = opts.person ? opts.person === "p" : MULTI_ORG;');
+    expect(condition("src/lib/team.ts")).toBe("MULTI_ORG");
   });
 
   it("no product call of createUser passes the person option", () => {
@@ -493,10 +503,10 @@ describe("rule 2132 (scan): the switch is off and nothing in product code makes 
     expect(sites.filter((s) => hasProp(s.opts, "person")).map((s) => s.at)).toEqual([]);
   });
 
-  it("createMember (the only writer that takes a p_ pid) has no product caller, and accept passes no pid", () => {
+  it("createMember (the only writer that takes a p_ pid) has no product caller, and accept passes a pid only under MULTI_ORG", () => {
     const callers = ALL.flatMap((f) => calls(tree(f), "createMember").map((c) => where(tree(f), c)));
     expect(callers).toEqual([]);
     const inserts = calls(tree("src/lib/team.ts"), "insertMember").map((c) => c.arguments[2]?.getText(tree("src/lib/team.ts")));
-    expect(inserts.sort()).toEqual(["opts", "{}"]);
+    expect(inserts.sort()).toEqual(["MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {}", "opts"]);
   });
 });

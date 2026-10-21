@@ -26,6 +26,7 @@ import { keepGoogle, keepGraph, limitMeetings, type GEvent, type GraphEvent, typ
 import { zoneOf } from "./zones";
 import { log } from "./log";
 import { accountOfScope, acct } from "./account-id";
+import { appHrefFor } from "@/lib/ws-href";
 
 export const GOOGLE_API = "https://www.googleapis.com";
 export const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -217,7 +218,7 @@ async function noticeLost(scope: string, link: CalLink): Promise<void> {
       agent: "reem",
       title: ar ? "تقويم التسويق يحتاج إعادة ربط" : "Marketing calendar needs reconnecting",
       body: ar ? "توقفت ريم عن قراءة تقويم التسويق إلى أن تعيد ربطه." : "Reem stopped reading the marketing calendar until you reconnect it.",
-      href: `/${owner.lang}/app/todo`,
+      href: appHrefFor(owner, owner.lang, "/todo"),
     },
     `cal-lost:${scope}:${link.connectedAt}`,
     30,

@@ -80,15 +80,19 @@ function sectionOf(rest: string): string | null {
   return best;
 }
 
+/** The brand section `rest` (the path after `/{lang}/app`, or after its `/b/{id}`) belongs to: "" for the inbox, null for none. */
+export const brandSectionOf = (rest: string): string | null => sectionOf(rest);
+
 /** `rest` is the path after `/{lang}/app` (leading `/` or empty, no query). True when it names a brand section or a path under one. */
 export function isBrandPath(rest: string): boolean {
   return sectionOf(rest) !== null;
 }
 
 /**
- * The workspace handle segment draft PR #418 (multi-workspace) puts after `/app`: `/{lang}/app/w/{handle}/…`. Part C does
- * not read or issue handles; it only tolerates the segment and keeps it, so the two features compose without a rewrite.
- * Same shape as #418's handle (`w_` and sixteen base-32 characters).
+ * The workspace handle segment multi-workspace M2 puts after `/app`: `/{lang}/app/w/{handle}/…` (src/lib/ws-path.ts,
+ * rule 2112). This file does not read or issue handles; it keeps the segment, so `/w/{handle}/b/{id}/…` composes with one
+ * proxy rewrite. Same shape as ws-path.ts `HANDLE_RE` (`w_` and sixteen base-32 characters), repeated so this file stays
+ * import-free (ws-path.ts imports this one).
  */
 const HANDLE_RE = /^w_[a-z2-7]{16}$/;
 

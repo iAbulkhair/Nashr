@@ -237,7 +237,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/lib/prompt-stamp.ts": 1,
   "src/lib/provider-fault-note.ts": 1,
   "src/lib/publish-once.ts": 2,
-  "src/lib/rate.ts": 13,
+  "src/lib/rate.ts": 14,
   "src/lib/referral.ts": 5,
   "src/lib/routines.ts": 9,
   "src/lib/safe-fetch.ts": 1,
@@ -299,7 +299,7 @@ const STORED_SCOPE: Record<string, number> = {
 // or an account id is read back from a record; each call site is listed here, none under src/app.
 const STORED_PERSON_ID: Record<string, number> = {
   "src/lib/membership.ts": 1, // ownerOf: the account record's ownerPid, else acct(u)
-  "src/lib/auth.ts": 6, // getLogin: the sign-in address as a legacy person id, and the person id the login index names; sessionPerson: the session's pid (index-checked); resolveIds: the session's pid (index-checked); resolveLegacy: the legacy member's pid; createUser: the new account's id (or a new p_ id) as its owner's person id
+  "src/lib/auth.ts": 7, // getLogin: the sign-in address as a legacy person id, and the person id the login index names; sessionPerson: the session's pid (index-checked); resolveIds: the session's pid (index-checked); resolveInHandle (M2): the session's pid, to read its orgs: hint (the match is re-checked by resolveIds); resolveLegacy: the legacy member's pid; createUser: the new account's id (or a new p_ id) as its owner's person id
   "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy owner's person id (used only when ownerOf agrees)
   "src/lib/verify-email.ts": 2, // moveOwnerLogin: the moved account's id as its legacy owner's person id (compared with ownerOf, and its person lock), and the new address as the new legacy owner's person id (its person lock and row)
   "src/lib/account.ts": 1, // wipeAccount: the wiped account's id as its legacy owner's person id (the person row createUser wrote), used only when the record is gone (else ownerOf)

@@ -10,9 +10,10 @@ import { OAUTH_COOKIE, saveState } from "@/lib/connectors/store";
 import { SHOP_HOST } from "@/lib/connectors/shopify";
 import { forbid } from "@/lib/roles";
 import { appOrigin } from "@/lib/origin";
-import { settingsHref } from "@/lib/settings-nav";
+import { settingsPath } from "@/lib/settings-nav";
 import { wsKey } from "@/lib/keys";
 import { CONNECT_STARTS_PER_HOUR, WINDOW, allow, retryAfter } from "@/lib/rate";
+import { appHrefFor } from "@/lib/ws-href";
 
 /**
  * GET /api/connect/{provider}/start?shop=xxx.myshopify.com&lang=ar → redirect to provider.
@@ -33,7 +34,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   const lang = url.searchParams.get("lang") === "en" ? "en" : "ar";
   // A refusal goes back to the Connections page of the brand the session is on (`u.brandId`, checked by `currentUser()`), the
   // same brand whose scope `sc(u)` this start writes into the state. The old `/app/integrations` path would land on the stored choice.
-  const back = (error: string) => `${appOrigin()}${settingsHref(lang, "connections", u.brandId)}?error=${error}`;
+  const back = (error: string) => `${appOrigin()}${appHrefFor(u, lang, `${settingsPath("connections")}?error=${error}`, u.brandId)}`;
   // Each start writes an OAuth state and, through Composio, opens a pending connection on the one Composio account
   // every tenant shares: twenty an hour per workspace, every provider together, so a loop cannot spend the others'
   // allowance (rule 2242). The browser navigated here, so a refusal goes back to the page with a code it shows.

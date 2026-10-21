@@ -9,6 +9,7 @@ import { agentById, isAgentId, type AgentId } from "./agents";
 import { pushStateOf, STATUS_COPY } from "./agent-status";
 import type { Activity } from "./activity";
 import { AWAY_MINUTES } from "./push-beat";
+import { appHref } from "./ws-path";
 
 export { AWAY_MINUTES, BEAT_SECONDS } from "./push-beat";
 
@@ -227,7 +228,8 @@ export async function pushForActivity(scope: string, rows: readonly Activity[], 
 export function pushText(last: unknown, lang: "ar" | "en"): { title: string; body: string; href: string } {
   const c = STATUS_COPY[lang];
   const title = lang === "ar" ? "ذكين" : "Thakeen";
-  const href = `/${lang}/app`;
+  // No handle: the last push is kept per login, not per workspace; the app layout's 307 opens the session's workspace (rule 2113).
+  const href = appHref(lang);
   const v = (typeof last === "string" ? safeParse(last) : last) as Partial<PushLast> | null;
   if (!v || !isAgentId(v.agent) || (v.state !== "waiting" && v.state !== "stuck")) return { title, body: c.generic, href };
   return { title, body: `${agentById(v.agent).name[lang]}: ${c.state[v.state]}`, href };

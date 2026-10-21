@@ -286,7 +286,8 @@ describe("rule 889: the fetch wrapper carries the page's brand", () => {
       expect(apiHref("/api/activity/export")).toBe("/api/activity/export?brand=b2");
       expect(apiHref("/api/tasks/t1/pptx?lang=ar")).toBe("/api/tasks/t1/pptx?lang=ar&brand=b2");
       vi.stubGlobal("location", { pathname: "/ar/app/w/w_abcdefghijklmnop/b/b2/activity" });
-      expect(apiHref("/api/activity/export")).toBe("/api/activity/export?brand=b2");
+      // Under a workspace (multi-workspace M2) the handle rides along too; with MULTI_ORG off no such page exists.
+      expect(apiHref("/api/activity/export")).toBe("/api/activity/export?brand=b2&ws=w_abcdefghijklmnop");
     });
 
     it("apiHref leaves the path alone on an account page and on the server", () => {
@@ -321,7 +322,7 @@ describe("rule 889: the fetch wrapper carries the page's brand", () => {
     const read = (p: string) => readFileSync(p, "utf8");
     it("WorkspaceContext installs the wrapper and exposes useBrandId", () => {
       const src = read("src/components/app/WorkspaceContext.tsx");
-      expect(src).toMatch(/installBrandFetch\(\)/);
+      expect(src).toMatch(/installBrandFetch\(\{ workspace: multiOrg \}\)/);
       expect(src).toMatch(/export function useBrandId\(\): string \| null/);
     });
 

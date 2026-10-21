@@ -29,6 +29,7 @@ import CreditUsageCard from "@/components/app/settings/CreditUsageCard";
 import PlanCard from "@/components/app/settings/PlanCard";
 import PaymentHistory from "@/components/app/settings/PaymentHistory";
 import { acct } from "@/lib/account-id";
+import { pageHref } from "@/lib/page-href";
 
 export const generateMetadata = settingsScreenMeta("billing");
 
@@ -37,6 +38,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
+  const link = await pageHref(lang);
   const t = appDict[lang];
   const m = dict[lang].pricing;
   // Paying is the owner's: pay links and the WhatsApp activation thread (which carries the account email) are built and
@@ -99,7 +101,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <dl className="mt-4 grid gap-3 card text-sm sm:grid-cols-2 lg:grid-cols-4" data-billing-summary="">
         <div><dt className="text-foreground-muted">{t.billing.current}</dt><dd className="font-display text-lg font-medium">{t.billing.plans[u.plan]}</dd></div>
         <div><dt className="text-foreground-muted">{t.billing.credits}</dt><dd className="font-mono text-lg tnum" dir="ltr">{formatCount(u.credits)}</dd>{fromTopups > 0 && <dd className="text-xs text-foreground-muted" data-topup-share="">{lang === "ar" ? `منها ${formatCount(fromTopups)} من باقات الشحن` : `incl. ${formatCount(fromTopups)} from top-ups`}</dd>}</div>
-        <div><dt className="text-foreground-muted">{t.billing.seats}</dt><dd className="font-mono text-lg tnum" dir="ltr"><Link href={settingsHref(lang, "members")} className="hover:underline">{used} / {seatLimit(u)}</Link></dd></div>
+        <div><dt className="text-foreground-muted">{t.billing.seats}</dt><dd className="font-mono text-lg tnum" dir="ltr"><Link href={settingsHref(link, "members")} className="hover:underline">{used} / {seatLimit(u)}</Link></dd></div>
         <div><dt className="text-foreground-muted">{nextLabel}</dt><dd className="font-mono text-lg tnum" dir="ltr" data-billing-next="">{nextDate}</dd></div>
       </dl>
       {!owner && <ReadOnlyNote className="mt-4" text={t.billing.ownerOnly} />}

@@ -2,7 +2,9 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
+import { brandFromPath } from "@/lib/brand-path";
 import { installBrandFetch } from "@/lib/brand-fetch";
+import { appHref, handleOfPath } from "@/lib/ws-path";
 
 /** A conversation as the rail lists it (GET /api/conversations). */
 export type RailConv = { id: string; title: string; agent?: AgentId; updatedAt: string };
@@ -44,9 +46,11 @@ const BrandCtx = createContext<string | null>(null);
  * to 100 reads. Now a navigation reads the counts again only when they are older than WORKSPACE_STALE_MS, and a screen that
  * changes one says so with its window event, which reads that one at once.
  */
-export function WorkspaceProvider({ initial, brandId = null, children }: { initial: WorkspaceCounts; brandId?: string | null; children: React.ReactNode }) {
-  // Wrapped during the first render, not in an effect: a child's effect runs before this component's, and its first fetch must carry the page's brand (rule 889).
-  installBrandFetch();
+export function WorkspaceProvider({ initial, brandId = null, handle = null, multiOrg = false, children }: { initial: WorkspaceCounts; brandId?: string | null; handle?: string | null; multiOrg?: boolean; children: React.ReactNode }) {
+  // ONE fetch wrapper (rules 889, 2113): requests name this tab's brand and, with `MULTI_ORG` on (`multiOrg`), its
+  // workspace. Wrapped during the first render, not in an effect: a child's effect runs before this component's, and its
+  // first fetch must carry the page's brand and handle. Idempotent. With `multiOrg` false it is exactly Part C's wrapper.
+  installBrandFetch({ workspace: multiOrg });
   const [credits, setCredits] = useState(initial.credits);
   const [unread, setUnread] = useState(initial.unread);
   const [pending, setPending] = useState(initial.pending);
@@ -84,7 +88,36 @@ export function WorkspaceProvider({ initial, brandId = null, children }: { initi
   }, [loadPending, loadUnread, loadConvs]);
 
   const value = useMemo<Workspace>(() => ({ credits, unread, pending, convs, setCredits, setUnread }), [credits, unread, pending, convs]);
-  return <BrandCtx.Provider value={brandId}><Ctx.Provider value={value}>{children}</Ctx.Provider></BrandCtx.Provider>;
+  return (
+    <HandleCtx.Provider value={handle}>
+      <BrandCtx.Provider value={brandId}>
+        <Ctx.Provider value={value}>{children}</Ctx.Provider>
+      </BrandCtx.Provider>
+    </HandleCtx.Provider>
+  );
+}
+
+/** This tab's workspace handle (multi-workspace M2), from the layout; null with `MULTI_ORG` off or outside the shell. */
+const HandleCtx = createContext<string | null>(null);
+
+/** The workspace handle the shell was rendered for, or null. */
+export function useWsHandle(): string | null {
+  return useContext(HandleCtx);
+}
+
+/**
+ * The one app-link builder for client components, with both selectors: `useAppLink(lang)("/tasks")`. The workspace is
+ * the page's own `/w/{handle}` segment, else the shell's (a person page such as the workspaces list links into the
+ * session's workspace); the brand is the page's `/b/{id}` segment, else `fallbackBrand`. With `MULTI_ORG` off (no handle
+ * anywhere) it is brand-path.ts `appHref`, Part C's link. `useBrandHref` (./useBrandHref.ts) is the same builder with the
+ * language read from the path.
+ */
+export function useAppLink(lang: string, fallbackBrand?: string | null): (path?: string) => string {
+  const ctxHandle = useContext(HandleCtx);
+  const pathname = usePathname() || "";
+  const handle = handleOfPath(pathname) ?? ctxHandle;
+  const brand = brandFromPath(pathname) ?? fallbackBrand ?? null;
+  return useCallback((path = "") => appHref(lang, path, handle, brand), [lang, handle, brand]);
 }
 
 /** The shell's numbers, or null outside the provider (a test rendering the rail alone): the caller falls back to its props. */

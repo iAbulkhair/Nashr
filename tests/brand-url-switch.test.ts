@@ -118,9 +118,9 @@ describe("rule 893: the brand switcher", () => {
     expect(off.find((i) => i.key === "add")).toBeUndefined();
     const add = on.find((i) => i.key === "add")!;
     const manage = on.find((i) => i.key === "manage")!;
-    expect(manage.href).toBe(settingsHref("ar", "brands"));
-    expect(add.href).toBe(settingsHref("ar", "brands"));
-    expect(off.find((i) => i.key === "manage")?.href).toBe(settingsHref("ar", "brands"));
+    expect(manage.href).toBe("/ar/app/settings/brands");
+    expect(add.href).toBe("/ar/app/settings/brands");
+    expect(off.find((i) => i.key === "manage")?.href).toBe("/ar/app/settings/brands");
     // Arabic first, then English (the page's language), and the two are different words.
     expect(renderToStaticMarkup(createElement("b", null, add.label))).toContain("أضف براند");
     expect(renderToStaticMarkup(createElement("b", null, manage.label))).toContain("إدارة البراندات");
@@ -188,7 +188,10 @@ describe("rule 893: the brand switcher", () => {
 
   it("the rail's new conversation goes to the brand it was created in (ruling P10)", () => {
     const sidebar = read("src/components/app/Sidebar.tsx");
-    expect(sidebar).toMatch(/r\.push\(appHref\(lang, `\/chat\?conv=\$\{j\.conversation\.id\}`, \{ brand: brandFromPath\(path\) \?\? sessionBrand \}\)\)/);
+    expect(sidebar).toMatch(/const toSession = useAppLink\(lang, sessionBrand\);/);
+    expect(sidebar).toMatch(/r\.push\(toSession\(`\/chat\?conv=\$\{j\.conversation\.id\}`\)\)/);
+    // useAppLink: the page's brand first, the fallback (here the session's) only on an account page.
+    expect(read("src/components/app/WorkspaceContext.tsx")).toMatch(/const brand = brandFromPath\(pathname\) \?\? fallbackBrand \?\? null;/);
     expect(sidebar).not.toMatch(/r\.push\(`\$\{base\}\/chat\?conv=/);
     // What the push builds: the page's brand wins over the session's, and an account page uses the session's.
     expect(appHref("en", "/chat?conv=c1", { brand: "b1" })).toBe("/en/app/b/b1/chat?conv=c1");

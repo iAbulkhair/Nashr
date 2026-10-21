@@ -11,6 +11,7 @@ import { Icon } from "./Icons";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 type TeamRole = "admin" | "member";
 type Row = { email: string; name: string; role: Role; acceptedAt?: string; disabled?: "seats" };
@@ -47,6 +48,7 @@ async function call(url: string, method: string, body?: unknown): Promise<Result
  * The page is named "Members" because the AI agents are already "the team" across the app.
  */
 export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { t: AppDict; lang: Lang; initial: TeamView; perms: TeamPerms; /** mail can reach the invited address (`mailReady()`); otherwise the link is handed to the inviter */ mailOn?: boolean }) {
+  const href = useAppLink(lang);
   const T = t.team;
   const router = useRouter();
   const [view, setView] = useState<TeamView>(initial);
@@ -156,7 +158,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
       <div className="mt-4 card card-sm text-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="flex items-center gap-2"><Icon name="users" className="h-4 w-4 text-foreground" />{T.seats}: <b className="tnum" dir="ltr">{used} / {limit}</b></span>
-          {full && perms.inviteAdmin && <Link href={`/${lang}/app/settings/billing`} className="text-xs font-medium text-foreground underline">{T.plans}</Link>}
+          {full && perms.inviteAdmin && <Link href={href("/settings/billing")} className="text-xs font-medium text-foreground underline">{T.plans}</Link>}
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-label={T.seats} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)}>
           <div className={`h-full rounded-full ${full ? "bg-lemon" : "bg-foreground"}`} style={{ width: `${pct}%` }} />

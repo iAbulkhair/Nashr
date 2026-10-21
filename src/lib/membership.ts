@@ -142,6 +142,22 @@ export async function listOrgs(pid: PersonId): Promise<{ aid: AccountId; role: R
     .map(({ aid, role }) => ({ aid, role }));
 }
 
+/**
+ * `listOrgs` plus the person's legacy home (multi-workspace M2, the workspaces list and the create cap): a person from
+ * before the R2 conversion has no `orgs:` entry for the account their legacy record names. ONE round (`orgs:` and the
+ * legacy record), then ONE `pmap` round of the account and the membership of every candidate; a candidate the forward
+ * records do not back grants nothing. Owned first, then oldest membership first.
+ */
+export async function heldAccounts(p: Person): Promise<{ aid: AccountId; role: Role }[]> {
+  const [entries, home] = await Promise.all([db.smembers(personKey.orgs(p.pid)), legacyHomeOf(p)]);
+  const pool = [...new Set<AccountId>([...entries.map(storedAccountId), ...(home ? [home] : [])])];
+  const rows = await pmap(pool, async (aid) => holding(aid, p.pid));
+  return rows
+    .filter((r): r is Held => !!r)
+    .sort(byPick)
+    .map(({ aid, role }) => ({ aid, role }));
+}
+
 /** The `memberOf` of a legacy member record that is this person's, or null. */
 function legacyHome(pid: PersonId, raw: unknown): AccountId | null {
   if (!isRecord(raw) || typeof raw.email !== "string") return null;

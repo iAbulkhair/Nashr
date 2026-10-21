@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { currentUser } from "@/lib/auth";
 import { appHref, isBrandId } from "@/lib/brand-path";
+import { pageHref } from "@/lib/page-href";
 
 export const dynamic = "force-dynamic";
 
@@ -17,5 +18,6 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!u) redirect(appHref(lang, "/login"));
   // Never a loop back to this page: a brand id always reads as one (rule 886), else the 404.
   if (!isBrandId(u.brandId)) notFound();
-  redirect(appHref(lang, "", { brand: u.brandId }));
+  // With `MULTI_ORG` on, `/{lang}/app/w/{handle}` lands here too (the proxy's rewrite) and keeps its handle (`pageHref`).
+  redirect((await pageHref(lang))("", u.brandId));
 }

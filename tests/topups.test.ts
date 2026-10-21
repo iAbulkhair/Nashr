@@ -524,7 +524,7 @@ describe("out of credits, every message names the top-up (rule 450)", () => {
     for (const lang of ["ar", "en"] as const) expect(appDict[lang].inbox.topupLink, lang).toMatch(lang === "ar" ? /شحن الرصيد/ : /Top-ups/);
     const media = readFileSync("src/components/app/MediaControls.tsx", "utf8");
     expect(media).toContain("billing: true, topup: sold };");
-    expect(media).toContain('href={`/${lang}/app/settings/billing${n.topup ? "#topup" : ""}`}');
+    expect(media).toContain('href={href(`/settings/billing${n.topup ? "#topup" : ""}`)}');
     const src = readFileSync("src/components/app/LimitModal.tsx", "utf8");
     // The fair-use pause (rule 1727) offers the same pack: buying one raises the month's limit.
     expect(src).toContain('const topup = (kind === "credits" || kind === "fair_use") && topups;');

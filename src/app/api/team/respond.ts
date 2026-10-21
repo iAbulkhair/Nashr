@@ -7,7 +7,7 @@ import type { TeamFail } from "@/lib/team";
  */
 export function teamFail(f: TeamFail): Response {
   if (f.error === "seats") return Response.json({ error: "seats", used: f.used, limit: f.limit }, { status: 409 });
-  const status = f.error === "forbidden" ? 403 : f.error === "not_found" ? 404 : f.error === "unavailable" ? 409 : 400;
+  const status = f.error === "forbidden" ? 403 : f.error === "not_found" ? 404 : f.error === "unavailable" || f.error === "already_member" || f.error === "signin_required" ? 409 : 400;
   return Response.json({ error: f.error }, { status });
 }
 

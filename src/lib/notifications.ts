@@ -18,6 +18,7 @@ import { listConnections } from "./connectors/store";
 import { getProvider } from "./connectors/registry";
 import { acct } from "./account-id";
 import { brandOfScope } from "./account-id";
+import { appHrefFor, appHrefIn } from "@/lib/ws-href";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -194,7 +195,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const sched = await getSchedule(scope);
   if (sched.followUps === false) return [];
   const ar = user.lang === "ar";
-  const app = `/${user.lang}/app`;
+  const app = appHrefFor(user, user.lang);
   const tasks = await listLite(scope, new Date(Date.now() - 180 * 864e5));
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
@@ -332,7 +333,7 @@ async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
     else body = ar ? "أنجزها أو أجّلها أو غيّر موعدها." : "Do it, snooze it or reschedule it.";
     return {
       n: {
-        kind: "todo", agent: "reem", href: `/${lang}/app/todo`, about: aboutKey("todo", scope, it.id),
+        kind: "todo", agent: "reem", href: appHrefIn(scope, lang, "/todo"), about: aboutKey("todo", scope, it.id),
         title: late ? (ar ? `متأخرة: ${t}` : `Overdue: ${t}`) : ar ? `حان وقت المتابعة: ${t}` : `Time to follow up: ${t}`,
         body: body + last,
       },
@@ -347,7 +348,7 @@ export function notifEmailText(user: User, items: Notif[]) {
 
 /** Helper for other modules (weekly cron, judge). */
 export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string; about?: string }, fp?: string, ttl?: number, scope?: string) {
-  return pushNotif(email, { ...n, href: n.href.startsWith("/") ? n.href : `/${lang}/app/${n.href}` }, fp, ttl, scope);
+  return pushNotif(email, { ...n, href: n.href.startsWith("/") ? n.href : appHrefIn(email, lang, `/${n.href}`) }, fp, ttl, scope);
 }
 
 /**

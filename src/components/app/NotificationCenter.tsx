@@ -7,7 +7,8 @@ import type { Notif } from "@/lib/notifications";
 import { Icon } from "./Icons";
 import { Time } from "@/components/ui/Time";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useAppLink, useWorkspace, useWsHandle, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { inWorkspace } from "@/lib/ws-path";
 
 /** The badge's text: the count up to 99, then "99+", so a long backlog never widens the bell. Pure for the tests. */
 export const bellCount = (n: number) => (n > 99 ? "99+" : String(Math.max(0, Math.floor(n))));
@@ -43,6 +44,8 @@ export async function markOneRead(id: string): Promise<number | null> {
 }
 
 export default function NotificationCenter({ t, lang, align = "start", fallbackUnread = 0 }: { t: AppDict; lang: Lang; align?: "start" | "end"; fallbackUnread?: number }) {
+  const href = useAppLink(lang);
+  const handle = useWsHandle();
   const U = t.ux.notif;
   const ws = useWorkspace();
   const unread = ws?.unread ?? fallbackUnread;
@@ -114,7 +117,7 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
             <ul className="max-h-[60dvh] divide-y divide-border overflow-y-auto">
               {items.map((n) => (
                 <li key={n.id}>
-                  <Link href={n.href} onClick={() => { setOpen(false); void readOne(n); }} className="flex gap-2 px-3 py-2.5 hover:bg-background-muted/60">
+                  <Link href={inWorkspace(n.href, handle)} onClick={() => { setOpen(false); void readOne(n); }} className="flex gap-2 px-3 py-2.5 hover:bg-background-muted/60">
                     <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-foreground"}`} />
                     <span className="min-w-0 flex-1">
                       <span className={`block text-sm ${n.read ? "" : "font-semibold"}`} dir="auto">{n.title}<Times count={n.count} label={U.times} />{!n.read && <span className="sr-only"> ({U.unread})</span>}</span>
@@ -126,7 +129,7 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
             </ul>
           )}
           <footer className="border-t border-border px-3 py-2 text-sm">
-            <Link href={`/${lang}/app/notifications`} onClick={() => setOpen(false)} className="inline-flex min-h-[var(--hit-min)] items-center font-semibold text-foreground underline-offset-2 hover:underline pointer-fine:min-h-8">{U.seeAll}</Link>
+            <Link href={href("/notifications")} onClick={() => setOpen(false)} className="inline-flex min-h-[var(--hit-min)] items-center font-semibold text-foreground underline-offset-2 hover:underline pointer-fine:min-h-8">{U.seeAll}</Link>
           </footer>
         </section>
       )}

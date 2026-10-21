@@ -391,14 +391,14 @@ describe("rule 957: the sidebar row", () => {
   it("is in the brand group, after content inspiration, for every role (no show.owner gate)", () => {
     const src = readFileSync("src/components/app/Sidebar.tsx", "utf8");
     const brand = src.indexOf("group(`${p}-brand`");
-    const inspo = src.indexOf("${base}/inspo");
-    const ins = src.indexOf("${base}/instructions");
+    const inspo = src.indexOf('to("/inspo")');
+    const ins = src.indexOf('to("/instructions")');
     const account = src.indexOf("group(`${p}-account`");
     expect(brand).toBeGreaterThan(0);
     expect(inspo).toBeGreaterThan(brand);
     expect(ins).toBeGreaterThan(inspo);
     expect(account).toBeGreaterThan(ins);
-    const line = src.split("\n").find((l) => l.includes("${base}/instructions"))!;
+    const line = src.split("\n").find((l) => l.includes('to("/instructions")'))!;
     expect(line).toContain("N.instructions");
     expect(line).not.toContain("show.");
   });

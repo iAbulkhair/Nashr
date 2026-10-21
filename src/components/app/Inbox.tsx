@@ -25,6 +25,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import LineNotes, { LINE_NOTES } from "./LineNotes";
 import type { TaskType } from "@/lib/tasks";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 import { useApiHref } from "./useBrandHref";
 
 const GUARD = {
@@ -111,6 +112,7 @@ const saveLink = (url: string) => (isOurMediaUrl(url) ? `${url}?download=1` : ur
  * prop because src/lib/entitlements.ts reaches the store and must not be imported here.
  */
 export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], included, credits = 0, plan, paused, canPublish = true, owner = true, initialFilter, revisePrices = {} }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; included: readonly VideoModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean; owner?: boolean; /** `?view=notnow` from the "moved to Not now" notice (rule 2346). */ initialFilter?: "notnow"; /** One draft's price per draft type a line-notes revision costs (rule 2498); empty for a role that may not edit. */ revisePrices?: Partial<Record<TaskType, number>> }) {
+  const href = useAppLink(lang);
   const i = t.inbox;
   const apiHref = useApiHref();
   const toast = useToast();
@@ -297,7 +299,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   return (
     <div>
       <div className="mb-4 flex gap-1 border-b border-foreground/10 text-sm">
-        <Link href={`/${lang}/app/chat`} className="px-4 py-2 text-foreground-muted hover:text-foreground">{i.tabChat}</Link>
+        <Link href={href("/chat")} className="px-4 py-2 text-foreground-muted hover:text-foreground">{i.tabChat}</Link>
         <span className="border-b-2 border-border-strong px-4 py-2 font-semibold text-foreground">{i.tabFeed} <span className="badge badge-accent ms-1">{t.nav.newBadge}</span></span>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -320,7 +322,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
       )}
       {shown.length === 0 && (
         // Rule 2002: the shared empty state; the way to ask for a batch stays as its action.
-        <EmptyState className="mt-10" title={E.title} body={E.body} help={emptyHelp(lang, "inbox")} action={<Link href={`/${lang}/app/generate`} className="inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-accent-foreground">{i.regenerate}</Link>} />
+        <EmptyState className="mt-10" title={E.title} body={E.body} help={emptyHelp(lang, "inbox")} action={<Link href={href("/generate")} className="inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-accent-foreground">{i.regenerate}</Link>} />
       )}
 
       <ul className="mt-6 grid gap-4">
@@ -356,7 +358,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   {/* Made by a run of one of Majed's handoffs (`Task.parent`, set in code): back to the conversation that proposed it.
                       `parent.auto`: his auto-run started it, not a login pressing Run. */}
                   {x.source === "handoff" && x.parent && (x.parent.conv && /^[a-f0-9]{6,16}$/.test(x.parent.conv)
-                    ? <Link href={`/${lang}/app/chat?conv=${x.parent.conv}`} className="max-w-full rounded-full bg-foreground/10 px-2 py-0.5 text-foreground underline-offset-2 hover:underline">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</Link>
+                    ? <Link href={href(`/chat?conv=${x.parent.conv}`)} className="max-w-full rounded-full bg-foreground/10 px-2 py-0.5 text-foreground underline-offset-2 hover:underline">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</Link>
                     : <span className="max-w-full rounded-full bg-foreground/10 px-2 py-0.5 text-foreground">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</span>)}
                   <span className={`badge whitespace-nowrap ${x.status === "approved" ? "badge-primary" : x.status === "rejected" ? "badge-danger" : "badge-accent"}`}>{i[x.status]}</span>
                 </span>
@@ -386,7 +388,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   <ul className="mt-1.5 grid gap-1">{hits.map((v) => <li key={v.ruleId} className="text-xs text-foreground-muted"><span className="font-semibold" dir="auto">«{v.term}»</span> · <Hit v={v} /></li>)}</ul>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-primary btn-xs">{G.fix}</button>
-                    {hits.some((v) => v.kind === "banned") && <Link href={`/${lang}/app/settings/brand`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
+                    {hits.some((v) => v.kind === "banned") && <Link href={href("/settings/brand")} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
                   </div>
                 </div>
               )}

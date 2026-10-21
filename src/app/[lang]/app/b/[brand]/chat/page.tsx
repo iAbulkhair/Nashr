@@ -27,6 +27,7 @@ import { chatRouteFor } from "@/lib/models/overrides";
 import { getConversation } from "@/lib/conversations";
 import { wsKey } from "@/lib/keys";
 import { acct } from "@/lib/account-id";
+import { pageHref } from "@/lib/page-href";
 import { appHref } from "@/lib/brand-path";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(appHref(lang, "/login"));
+  const href = await pageHref(lang);
   // The WhatsApp prompt saves the ACCOUNT's phone (owner only: "profile.account"), so no other role is asked for it.
   const needPhone = !u.phone && can(u, "profile.account");
   // The model picker's one-time consent to China-hosted models is the owner's own, never given while a founder
@@ -46,13 +48,13 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const canConfirmChina = can(u, "profile.account") && u.actor?.kind !== "founder";
   if (!(await getBrand(sc(u)))) {
     // Building the workspace is admin and owner only ("onboard"): anyone else waits on the start page, which says so.
-    if (!can(u, "onboard")) redirect(appHref(lang, "/start", { brand: u.brandId }));
+    if (!can(u, "onboard")) redirect(href("/start", u.brandId));
     // First run: the workspace is built inside the "Getting started" thread, not on a form, and only from the site the
     // owner confirmed on the start page. A `?onboard=` from a link goes back there as the pre-filled value to review.
     const [onboard, initial, chat] = await Promise.all([confirmedOnboard(sc(u)), historyFor(sc(u)), chatStatus(u, route("chat").model)]);
     if (!onboard) {
       const asked = onboardUrl(sp.onboard);
-      redirect(appHref(lang, `/start${asked.length >= 4 ? `?url=${encodeURIComponent(asked)}` : ""}`, { brand: u.brandId }));
+      redirect(href(`/start${asked.length >= 4 ? `?url=${encodeURIComponent(asked)}` : ""}`, u.brandId));
     }
     return (
       <div className="grid min-h-0 flex-1">
@@ -95,7 +97,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
           to this same page, and without a key React keeps the panel's state, so the old thread stayed on screen and the
           next message went to the old conversation. A new key mounts a fresh panel on the new thread's messages. */}
       <ChatPanel key={conv ?? agentParam ?? "default"} t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canInstructions={can(u, "instructions.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} chat={chat} canConfirmChina={canConfirmChina} active={active ? { id: active.id, model: active.model } : null} />
-      <div className="hidden overflow-y-auto xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
+      <div className="hidden overflow-y-auto xl:block"><HomeSide to={href} t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
     </div>
   );
 }

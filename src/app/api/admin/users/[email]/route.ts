@@ -34,6 +34,7 @@ import { endExpiredSuspension } from "@/lib/suspension-server";
 import { accountKey } from "@/lib/keys";
 import { acct } from "@/lib/account-id";
 import { aidOf, getMembership, ownerOf } from "@/lib/membership";
+import { appHref } from "@/lib/ws-path";
 
 export const dynamic = "force-dynamic";
 
@@ -250,7 +251,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       // founder console and is refused account delete, password change, invites, role changes, MCP tokens and OAuth.
       await createSession(email, ttl, { imp: who, ...(bind ?? {}), ...(ss ? { ss } : {}) });
       // The redirect is built from a fixed list, never from the stored value as it is (rule 1188).
-      return NextResponse.json({ ok: true, redirect: `/${u.lang === "en" ? "en" : "ar"}/app` });
+      return NextResponse.json({ ok: true, redirect: appHref(u.lang === "en" ? "en" : "ar") });
     }
     case "resendVerification": {
       // Rule 777: support mails a fresh code to the account's own address, through the same refusals as the owner's

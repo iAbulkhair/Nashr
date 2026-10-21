@@ -93,9 +93,14 @@ describe("the staging lock (rules 674, 677)", () => {
     // A closed list: proxy -> {cookie-names, csrf, deploy-env, staging-access}; cookie-names -> nothing; csrf -> origin; staging-access -> {secret, deploy-env};
     // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
-      "src/proxy.ts": ["@/lib/brand-path", "@/lib/brand-guard", "@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "next/server"],
-      // The settings redirect map (rule 1141): plain data; a type import, erased at build, and the pure brand path helpers
-      // (rule 885: a brand settings section is linked under /b/{id}), themselves import-free but for a type (pinned below).
+      "src/proxy.ts": ["@/lib/brand-path", "@/lib/brand-guard", "@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/multi-org", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "@/lib/ws-path", "next/server"],
+      // Multi-workspace M2: the switch and the link's handle (rule 2113). The handle's shape only; no store, no secret.
+      "src/lib/multi-org.ts": ["crypto", "./account-id"],
+      // The one link builder: the handle on top of the pure brand path helpers (a type import, erased at build).
+      "src/lib/ws-path.ts": ["./brand-path", "./i18n"],
+      // The settings redirect map (rule 1141): plain data; a type import, erased at build, the pure brand path helpers
+      // (rule 885: a brand settings section is linked under /b/{id}) and the link builder, all import-free but for a type
+      // and each other (pinned below).
       "src/lib/settings-nav.ts": ["./i18n", "./brand-path"],
       "src/lib/csrf.ts": ["@/lib/origin", "next/server"],
       "src/lib/origin.ts": [],
@@ -119,7 +124,10 @@ describe("the staging lock (rules 674, 677)", () => {
       expect(specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)), f).toEqual([]);
     expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(/^import type \{ Lang \} from "\.\/i18n";$/m);
     expect(readFileSync("src/lib/settings-nav.ts", "utf8").match(/^import /gm)).toHaveLength(2);
+    // The proxy reaches account-id.ts through multi-org.ts: crypto and zod only (its prose names `sc(u)`, which the spec reader would take for an import).
+    expect(readFileSync("src/lib/account-id.ts", "utf8").match(/^import .*$/gm)).toEqual(['import { randomBytes } from "crypto";', 'import { z } from "zod";']);
     expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(/^import \{ appHref, isBrandPath \} from "\.\/brand-path";$/m);
+    expect(readFileSync("src/lib/ws-path.ts", "utf8").match(/^import .*$/gm)).toEqual(['import { appHref as brandHref, brandSectionOf } from "./brand-path";', 'import type { Lang } from "./i18n";']);
     expect(readFileSync("src/lib/brand-path.ts", "utf8")).toMatch(/^import type \{ Lang \} from "\.\/i18n";$/m);
     expect(readFileSync("src/lib/brand-path.ts", "utf8").match(/^import /gm)).toHaveLength(1);
     // And the lock gets sameSecret from the module with no store behind it, through no other path.

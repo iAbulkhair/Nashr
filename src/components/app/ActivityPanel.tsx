@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
 import { PanelSkeleton } from "@/components/ui/Skeleton";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 import { useApiHref } from "./useBrandHref";
 
 type Page = { rows: Activity[]; next: string | null };
@@ -21,6 +22,7 @@ type Page = { rows: Activity[]; next: string | null };
  * a title, a file name or a setting written by a model, an outside app or the owner.
  */
 export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t: AppDict; lang: "ar" | "en"; initial: Activity[]; next: string | null }) {
+  const href = useAppLink(lang);
   const a = t.activity;
   const apiHref = useApiHref();
   const toast = useToast();
@@ -167,7 +169,7 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
                     <span aria-hidden="true">·</span>
                     <span dir="auto">{who(r.by)}</span>
                     {spent(r) && <><span aria-hidden="true">·</span><span className="tnum">{spent(r)}</span></>}
-                    {r.tasks?.length ? <><span aria-hidden="true">·</span><a href={`/${lang}/app`} className="underline">{a.inbox}</a></> : null}
+                    {r.tasks?.length ? <><span aria-hidden="true">·</span><a href={href()} className="underline">{a.inbox}</a></> : null}
                   </p>
                 </li>
               ))}

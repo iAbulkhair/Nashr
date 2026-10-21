@@ -8,6 +8,7 @@ import LangToggle from "../LangToggle";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { Icon, type IconName } from "../app/Icons";
 import { SW } from "@/lib/staff-words";
+import { appHref } from "@/lib/ws-path";
 
 const ICON: Record<AdminSection, IconName> = { overview: "dashboard", users: "users", leads: "inbox", usage: "chart", billing: "finance", partners: "gift", quality: "check", skills: "strategy", integrations: "plug", mail: "email", wishlist: "spark", log: "clock" };
 const T = {
@@ -70,7 +71,7 @@ export default function AdminNav({ lang, keySession, founder, staff = null }: { 
       <div className="mt-auto grid gap-2 border-t-[1.5px] border-foreground/10 pt-3">
         {/* Rule 1204: the same theme choice as the app's account menu. */}
         <ThemeToggle lang={lang} size="sm" className="justify-self-start" />
-        {founder && <Link href={`/${lang}/app`} className="btn btn-secondary btn-sm">{S.back}</Link>}
+        {founder && <Link href={appHref(lang)} className="btn btn-secondary btn-sm">{S.back}</Link>}
         {staff && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={async () => { await adminFetch("/api/admin/staff/login", { method: "DELETE" }).catch(() => null); router.push(`/${lang}/admin/login`); router.refresh(); }}>{SW[lang].signOut}</button>
         )}

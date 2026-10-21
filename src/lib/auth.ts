@@ -22,6 +22,9 @@ import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, stor
 import type { Person } from "./person";
 import { acct, idForNewAccount, LoginIndex, loginIndexOf, type LoginIndexValue } from "./account-id";
 import { parseStored } from "./stored";
+import { MULTI_ORG } from "./multi-org";
+import { WS_HEADER, asHandle } from "./ws-path";
+import { handleOf, matchHandle, wsHandle } from "./ws-handle";
 
 export { acct, accountOfScope } from "./account-id";
 
@@ -93,6 +96,11 @@ export type User = {
    * `p_...` id. Read only through `ownerOf`, which falls back to `acct(u)`; never compared or keyed directly.
    */
   ownerPid?: string;
+  /**
+   * The name a person gave a workspace they created (multi-workspace M2, `POST /api/workspaces`). Shown by the switcher
+   * when the account has no brand name yet. Optional and new (expand): older code ignores it.
+   */
+  workspaceName?: string;
   /** The sign-in and contact address: mail goes here, display uses it. Never a key: keys go through `acct(u)`. */
   email: string;
   name: string;
@@ -386,14 +394,21 @@ export async function releaseLogin(email: string, pid: string, opts: { locked?: 
  * one. `emailVerifiedAt` (a Google sign-up, which proved the address) is written on the person and the account in the
  * same locked write (reconciliation 11: the only account the new person owns). `person: "p"` (tests only, rule 2132; a source scan pins that no route passes it) makes the M2 shape: a `p_`
  * person holding the credentials, and an account without them that names it in `ownerPid`.
+ *
+ * Multi-workspace M2 (rule 2117, sign-up half; spec section 10, decision 11): with `MULTI_ORG` on every sign-up, the
+ * password form and Google alike, makes that shape with an opaque `a_` account id, and the person's one trial is
+ * spent on it (`trialUsedAt`, read by `createWorkspace`). With it off nothing changes.
  */
-export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en"; emailVerifiedAt?: string }, opts: { opaque?: boolean; person?: "p" } = {}): Promise<User> {
+export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en"; emailVerifiedAt?: string }, opts: { opaque?: boolean; person?: "p" | "legacy" } = {}): Promise<User> {
   const email = normalizeEmail(input.email);
   const now = new Date();
   const stamp = now.toISOString();
   const passHash = input.password ? await bcrypt.hash(input.password, 10) : undefined;
+  const [{ createPersonRecord, withPersonLock }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
+  // Tests may pick the shape (`"p"`, or `"legacy"` for a legacy owner while `MULTI_ORG` is mocked on); a route never does.
+  const split = opts.person ? opts.person === "p" : MULTI_ORG;
   const account: User = {
-    id: idForNewAccount(email, opts.opaque),
+    id: idForNewAccount(email, opts.opaque || (split && MULTI_ORG)),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",
@@ -406,14 +421,13 @@ export async function createUser(input: { email: string; name: string; phone: st
     // What the signup notice under the form named, from the versions in code (rule 1325).
     consent: signupConsent(input.lang, now),
   };
-  const [{ createPersonRecord, withPersonLock }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
-  const pid = storedPersonId(opts.person === "p" ? newPersonId() : acct(account));
+  const pid = storedPersonId(split ? newPersonId() : acct(account));
   // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
   // session issued before this person existed: a re-registered address never inherits an old login.
   const proved = input.emailVerifiedAt ? { emailVerifiedAt: input.emailVerifiedAt } : {};
-  const person = { pid, email, name: account.name, lang: account.lang, passHash, createdAt: stamp, sessionsAfter: stamp, ...proved };
+  const person = { pid, email, name: account.name, lang: account.lang, passHash, createdAt: stamp, sessionsAfter: stamp, ...proved, ...(split ? { trialUsedAt: stamp } : {}) };
   const u: User =
-    opts.person === "p"
+    split
       ? { ...account, ...proved, ownerPid: pid }
       : { ...account, ...proved, passHash: passHash ?? (await bcrypt.hash(randomBytes(32).toString("base64url"), 10)), sessionsAfter: stamp };
   // `lock:login` (the caller's) → `lock:person` (rule 2139), taken before the first write: a held person lock throws
@@ -574,6 +588,25 @@ export async function sessionIds(email: string, opts: { imp?: boolean } = {}): P
   }
 }
 
+/**
+ * Point this device's session at account `aid` (multi-workspace M2, spec section 7 "Switching"): the switch, create and
+ * accept routes call it after checking that `pid` holds `aid`. `SET XX` on the record's own key with its TTL kept, so a
+ * session signed out meanwhile stays gone. An impersonation, or a session of another person, is never moved. False when
+ * nothing was written. Reads the record and its TTL in one round.
+ */
+export async function setSessionAccount(pid: string, aid: string): Promise<boolean> {
+  const token = readCookie(await cookies(), COOKIE);
+  if (!token) return false;
+  const rows = await Promise.all(sessionKeys(token).map(async (k) => {
+    const [rec, ttl] = await Promise.all([db.get<SessionRec>(k), db.ttl(k)]);
+    return { k, rec, ttl };
+  }));
+  const hit = rows.find((r) => r.rec);
+  const s = sessionOf(hit?.rec ?? null);
+  if (!hit || !s || s.imp || hit.ttl <= 0 || (s.pid !== undefined && s.pid !== pid)) return false;
+  return db.setXx(hit.k, { ...s, pid, acct: aid } satisfies Session, hit.ttl);
+}
+
 /** The hashed session key behind this request's cookie (the device list marks it as "this device"), or null. */
 export async function currentSessionKey(): Promise<string | null> {
   const token = readCookie(await cookies(), COOKIE);
@@ -653,7 +686,17 @@ async function brandSelector(): Promise<string | undefined> {
 export async function currentUser(): Promise<User | null> {
   const brand = await brandSelector();
   const s = await readSession();
-  return s ? resolveSession(s, { brand }) : null;
+  return s ? resolveSession(s, { brand, handle: await requestHandle() }) : null;
+}
+
+/**
+ * The request's workspace handle (`x-thakeen-ws`, src/lib/ws-path.ts), read only while `MULTI_ORG` is on: undefined
+ * when the request names no workspace, the raw value otherwise (a malformed one answers 404 in `resolveSession`). The
+ * proxy sets it for pages from their own path and strips any value the browser sent; the client sends it for APIs.
+ */
+async function requestHandle(): Promise<string | undefined> {
+  if (!MULTI_ORG) return undefined;
+  return (await headers()).get(WS_HEADER) ?? undefined;
 }
 
 /**
@@ -664,7 +707,7 @@ export async function currentUser(): Promise<User | null> {
 export async function currentUserUnverified(): Promise<User | null> {
   const brand = await brandSelector();
   const s = await readSession();
-  return s ? resolveSession(s, { unverified: true, brand }) : null;
+  return s ? resolveSession(s, { unverified: true, brand, handle: await requestHandle() }) : null;
 }
 
 /**
@@ -728,10 +771,54 @@ async function sessionPerson(s: Session): Promise<Person | null> {
  * of the RESOLVED account's active brands (`selectedBrand`; for an impersonation, the impersonated account's), else
  * `notFound()`. The stored choice (`activebrand`) is then neither used nor written. Without it, today's behaviour.
  * The checks run after the session and the account have resolved, so a session that resolves to nobody stays null.
+ * With a workspace `handle` too (M2, `/w/{handle}/b/{id}`), the handle picks the account first (`resolveInHandle`) and
+ * the brand is then one of THAT account's active brands.
  */
-type ResolveOpts = { unverified?: boolean; brand?: string };
+type ResolveOpts = { unverified?: boolean; brand?: string; handle?: string };
 async function resolveSession(s: Session, opts: ResolveOpts = {}): Promise<User | null> {
-  return typeof s.pid === "string" && s.pid && typeof s.acct === "string" && s.acct ? resolveIds(s, s.pid, s.acct, opts) : resolveLegacy(s, opts);
+  const ids = typeof s.pid === "string" && !!s.pid && typeof s.acct === "string" && !!s.acct;
+  const h = opts.handle;
+  if (h === undefined) return ids ? resolveIds(s, s.pid!, s.acct!, opts) : resolveLegacy(s, opts);
+  return resolveInHandle(s, ids, h, opts);
+}
+
+/**
+ * The account a request names by its workspace handle (multi-workspace release M2, spec section 7 "Workspace in the
+ * link", rules 2112, 2135). The handle is only a selector among the person's own accounts, re-checked on every request:
+ *
+ * - the handle of the session's `acct`, computed locally: the same two rounds as without a handle;
+ * - any other handle: ONE round reads `orgs:{pid}` (a hint) and the legacy `user:`/`member:` of `pid` (a legacy owner's
+ *   or member's home has no `orgs:` entry), each candidate's handle is computed and the match goes through `resolveIds`,
+ *   every forward check included (three rounds in all);
+ * - a session without `pid`/`acct` (written before R1) and an impersonation reach only their own account's handle.
+ *
+ * Any miss (a malformed, made-up, foreign or stale handle, a membership gone since) answers 404 through `notFound()`,
+ * the same answer for every case, so a handle never tells whether an account exists. Nothing is written: visiting a link
+ * moves neither the session's `acct` nor `lastorg:`.
+ */
+async function resolveInHandle(s: Session, ids: boolean, h: string, opts: ResolveOpts): Promise<User | null> {
+  if (!asHandle(h)) notFound();
+  if (ids && wsHandle(s.acct!) === h) return resolveIds(s, s.pid!, s.acct!, opts);
+  if (!ids) {
+    const u = await resolveLegacy(s, opts);
+    if (!u) return null;
+    if (handleOf(u) !== h) notFound();
+    return u;
+  }
+  if (s.imp) notFound();
+  const pid = storedPersonId(s.pid!);
+  const [{ legacyHomeFrom }, entries, rawUser, rawMember] = await Promise.all([
+    import("./membership"),
+    db.smembers(personKey.orgs(pid)),
+    db.get<unknown>(accountKey.user(pid)),
+    db.get<unknown>(accountKey.member(pid)),
+  ]);
+  const home = legacyHomeFrom(pid, rawUser, rawMember);
+  const aid = matchHandle(h, [...new Set([...entries, pid as string, ...(home ? [home as string] : [])])]);
+  if (!aid) notFound();
+  const u = await resolveIds(s, pid, aid, opts);
+  if (!u) notFound();
+  return u;
 }
 
 /** `resolveIds`'s marker for a brand list the store failed to answer. */
@@ -986,7 +1073,11 @@ export async function getLogin(email: string): Promise<Login | null> {
   const orgs = await listOrgs(pid);
   const owned = orgs.find((o) => o.role === "owner");
   const first = owned ?? orgs[0];
-  if (!first) return null;
+  // Multi-workspace M2 (rules 2124, 2126; spec section 7 "no workspace"): a `p_` person whose last workspace was left,
+  // removed or deleted still signs in, with no account, and picks or creates one on the workspaces page; the address
+  // stays taken, so a sign-up or an invite accept cannot claim it again. With `MULTI_ORG` off such a person was deleted
+  // with its last membership (plan reconciliation 7) and nothing reaches here.
+  if (!first) return MULTI_ORG ? { kind: "member", member: null, owner: null, pid, person, acct: null } : null;
   const account = await getAccount(first.aid);
   if (!account || acct(account) !== first.aid) return null;
   if (owned) return ownerOf(account) === pid ? { kind: "owner", user: account, pid, person, acct: first.aid } : null;

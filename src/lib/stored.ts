@@ -108,6 +108,11 @@ export const PersonRow = z.looseObject({
   devicesAfter: z.string().optional(),
   suspended: z.union([z.literal(true), z.looseObject({ until: z.string() })]).optional(),
   trialUsedAt: z.string().optional(),
+  /**
+   * Multi-workspace M2 (spec section 10, decision 3): how many accounts this person may own, set by the founder for one
+   * person; absent reads as `OWNED_CAP` (src/lib/workspaces.ts). Optional and new (expand): older code ignores it.
+   */
+  ownedCap: z.number().int().min(1).max(50).optional(),
   createdAt: z.string().catch(""),
 });
 export type PersonRowValue = z.output<typeof PersonRow>;

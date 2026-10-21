@@ -32,12 +32,16 @@ export const isSettingsSection = (v: unknown): v is SettingsSection => typeof v 
  */
 export const isBrandSettings = (s: SettingsSection): boolean => isBrandPath(`/settings/${s}`);
 
+/** `/settings` or one section of it, what follows `/app`. */
+export const settingsPath = (section?: SettingsSection) => `/settings${section ? `/${section}` : ""}`;
+
 /**
- * `/{lang}/app/settings` or one section of it, built by `appHref`. A brand section with a brand id is
- * `/{lang}/app/b/{brand}/settings/{section}`; without one it is the old path, which the `[...legacy]` page sends to the
- * session's brand (one 307). An account section ignores the brand.
+ * The link to the settings area or one section, made by the caller's app-link builder (`useAppLink`, `useBrandHref`,
+ * `pageHref`), which carries the workspace and the brand: a brand section with a brand is
+ * `/{lang}/app[/w/{handle}]/b/{brand}/settings/{section}`; without a brand it is the old path, which the `[...legacy]`
+ * page sends to the session's brand (one 307). An account section ignores the brand.
  */
-export const settingsHref = (lang: Lang, section?: SettingsSection, brand?: string | null) => appHref(lang, `/settings${section ? `/${section}` : ""}`, { brand });
+export const settingsHref = (href: (path: string) => string, section?: SettingsSection) => href(settingsPath(section));
 
 /**
  * The old scattered routes and the section that replaced each (rule 1141). Expand step: for one release the proxy
@@ -70,7 +74,7 @@ const LEGACY_PATH = new RegExp(`^/(ar|en)/app/(${PROXY_LEGACY.join("|")})/?$`);
 export function legacySettingsPath(pathname: string): string | null {
   const m = LEGACY_PATH.exec(pathname);
   if (!m) return null;
-  return settingsHref(m[1] as Lang, LEGACY_SETTINGS[m[2]]);
+  return settingsHref((p) => appHref(m[1] as Lang, p), LEGACY_SETTINGS[m[2]]);
 }
 
 /** Each section's name and one line of what it holds, in both languages. */

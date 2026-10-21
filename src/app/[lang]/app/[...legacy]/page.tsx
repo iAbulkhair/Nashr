@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { currentUser } from "@/lib/auth";
 import { appHref, isBrandId, isBrandPath } from "@/lib/brand-path";
+import { pageHref } from "@/lib/page-href";
 import { LEGACY_SETTINGS, settingsHref } from "@/lib/settings-nav";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,8 @@ function queryOf(sp: Search): string {
  * redirects (rule 1141): a rollback finds the old pages again and no browser keeps the move for good. Anything else is
  * the app's 404, as before this page existed (`src/app/[lang]/[...rest]` answered it).
  *
- * The brand comes from the session only (`u.brandId`), never from the request. Each segment is encoded again before it
+ * The brand comes from the session only (`u.brandId`), never from the request. With `MULTI_ORG` on, an old path inside
+ * `w/{handle}` keeps that handle (`pageHref`; `currentUser()` has checked it is one of the caller's workspaces). Each segment is encoded again before it
  * is matched, so a decoded `?`, `#` or `/` inside a segment never becomes a query or another section.
  */
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string; legacy: string[] }>; searchParams: Promise<Search> }) {
@@ -38,10 +40,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!isBrandId(u.brandId)) notFound();
   // An empty, "." or ".." segment names no page: it would only walk the redirect into another section.
   if (legacy.some((seg) => seg === "" || seg === "." || seg === "..")) notFound();
-  const query = queryOf(sp);
+  const [query, href] = [queryOf(sp), await pageHref(lang)];
   const name = legacy.length === 1 ? legacy[0] : "";
-  if (name && Object.hasOwn(LEGACY_SETTINGS, name)) redirect(settingsHref(lang, LEGACY_SETTINGS[name], u.brandId) + query);
+  if (name && Object.hasOwn(LEGACY_SETTINGS, name)) redirect(settingsHref((p) => href(p, u.brandId), LEGACY_SETTINGS[name]) + query);
   const rest = `/${legacy.map(encodeURIComponent).join("/")}`;
   if (!isBrandPath(rest)) notFound();
-  redirect(appHref(lang, rest + query, { brand: u.brandId }));
+  redirect(href(rest + query, u.brandId));
 }

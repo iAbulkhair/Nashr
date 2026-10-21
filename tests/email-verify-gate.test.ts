@@ -168,7 +168,7 @@ describe("login and the verification gate", () => {
     const form = src.slice(src.indexOf("export function LoginForm"), src.indexOf("const PW ="));
     const verify = form.indexOf("p.body.verify === true");
     expect(verify).toBeGreaterThan(-1);
-    expect(form).toContain("if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || `/${lang}/app`)}`); return; }");
+    expect(form).toContain("if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || appHref(lang))}`); return; }");
     expect(form).toMatch(/const next = safeNext\(nextParam\)/);
     expect(verify).toBeLessThan(form.indexOf("if (next) { window.location.href = next"));
   });

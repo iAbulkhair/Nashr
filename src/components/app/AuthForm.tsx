@@ -21,6 +21,7 @@ import Button from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-class";
 import Callout from "@/components/ui/Callout";
 import { Field, Input } from "@/components/ui/Field";
+import { appHref } from "@/lib/ws-path";
 
 // Every field has a visible label (rule 1090): a placeholder is an example and disappears as soon as someone types.
 
@@ -101,7 +102,7 @@ export function SignupForm({ t, lang, turnstileKey = null, google = false }: { t
       }
       // The new owner proves the address first (rule 754): the verify page carries the old destination on in `next`. A carried
       // site only pre-fills the start page: the owner confirms it there before anything is read (onboard-confirm.ts).
-      const after = next || `/${lang}/app/start${site.length >= 4 ? `?url=${encodeURIComponent(site)}` : ""}`;
+      const after = next || appHref(lang, `/start${site.length >= 4 ? `?url=${encodeURIComponent(site)}` : ""}`);
       // `sent=0`: the first mail did not go out, so the verify page does not say it did (copy only).
       r.push(`/${lang}/app/verify?next=${encodeURIComponent(after)}${p.body.mail === false ? "&sent=0" : ""}`);
       r.refresh();
@@ -250,9 +251,9 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
     setLeaving(true);
     // An owner who has not proved the address goes to the code page first, carrying the destination (rule 754), so a
     // `next` outside the app (the OAuth consent page) is reached after the code instead of looping back here.
-    if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || `/${lang}/app`)}`); return; }
+    if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || appHref(lang))}`); return; }
     if (next) { window.location.href = next; return; }
-    r.push(`/${lang}/app`);
+    r.push(appHref(lang));
     r.refresh();
   }
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -481,7 +482,7 @@ export function ResetForm({ lang }: { lang: Lang }) {
       // bad_token, weak_password, slow_down and suspended keep their own messages; disabled, network and server errors
       // get the shared ones.
       if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { ...(S as Record<string, string>), suspended: suspendedMessage(p.body.until, lang, S.suspended) }));
-      r.push(`/${lang}/app`);
+      r.push(appHref(lang));
       r.refresh();
     } finally {
       setBusy(false);

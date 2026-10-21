@@ -152,10 +152,12 @@ export async function addShadowMembership(pid: PersonId, homeAt: string): Promis
  * stamp directly.
  */
 export async function markVerified(email: string): Promise<User> {
-  const stored = (await getUser(email))!;
+  // With `MULTI_ORG` on (M2 test files) a new owner's account is an opaque `a_` id: found through the login index.
+  const byLogin = async () => { const l = await getLogin(email); return l?.kind === "owner" ? l.user : null; };
+  const stored = ((await getUser(email)) ?? (await byLogin()))!;
   const at = new Date().toISOString();
   await updatePerson(ownerOf(stored), { emailVerifiedAt: at });
-  const after = (await getUser(email))!;
+  const after = (await getUser(acct(stored)))!;
   if (after.emailVerifiedAt) return after;
   after.emailVerifiedAt = at;
   await saveUser(after);
@@ -170,7 +172,7 @@ export async function markVerified(email: string): Promise<User> {
  * `TEST_PERSONS=legacy` makes today's legacy owner. Either way the owner also holds a shadow membership.
  */
 export async function newUser(prefix = "u", { verified = true, legacy = false, shadow = true }: Fixture & { verified?: boolean } = {}): Promise<User> {
-  const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, pMode(legacy) ? { person: "p" } : {});
+  const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, { person: pMode(legacy) ? "p" : "legacy" });
   if (shadow) await addShadowMembership(ownerOf(u), u.createdAt);
   return verified ? markVerified(u.email) : u;
 }
@@ -181,7 +183,7 @@ export async function newUser(prefix = "u", { verified = true, legacy = false, s
  * Verified like `newUser`, and a `p_` person with a shadow membership like `newUser`.
  */
 export async function newOpaqueUser(prefix = "o", { verified = true, legacy = false, shadow = true }: Fixture & { verified?: boolean } = {}): Promise<User> {
-  const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, pMode(legacy) ? { opaque: true, person: "p" } : { opaque: true });
+  const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, { opaque: true, person: pMode(legacy) ? "p" : "legacy" });
   if (shadow) await addShadowMembership(ownerOf(u), u.createdAt);
   return verified ? markVerified(acct(u)) : u;
 }
