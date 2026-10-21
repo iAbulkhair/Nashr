@@ -1,14 +1,15 @@
 import Link from "next/link";
 import type { Lang } from "@/lib/i18n";
 import { plural } from "@/lib/format";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * Persistent activation strip for trial accounts: days left + what the plan does + Activate. Only the owner can
  * subscribe, so everyone else sees the same countdown with "ask the account owner" instead of the button.
  */
-export default function TrialBanner({ lang, days, plan, industry, owner = true }: { lang: Lang; /** whole days left, from trialDaysLeft() in the server layout */ days: number; plan: string; industry?: string; /** the acting person may subscribe (`can(u, "billing")`) */ owner?: boolean }) {
-  const href = useAppHref(lang);
+export default function TrialBanner({ lang, days, plan, industry, owner = true, to }: { lang: Lang; /** whole days left, from trialDaysLeft() in the server layout */ days: number; plan: string; industry?: string; /** the acting person may subscribe (`can(u, "billing")`) */ owner?: boolean; /** the layout's link builder for the shell's workspace; today's links without it */ to?: (path?: string) => string }) {
+  // A server component cannot call `useAppHref`: the layout passes the builder for its handle (rule 2113).
+  const href = to ?? ((path?: string) => appHref(lang, path));
   if (plan !== "trial") return null;
   const ar = lang === "ar";
   const promise = ar

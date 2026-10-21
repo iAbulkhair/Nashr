@@ -49,6 +49,21 @@ describe("rule 2113: app links go through appHref", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("only client components call the WorkspaceContext hooks (a server component gets the page's builder as a prop)", () => {
+    // `useAppHref` is a client hook: a server component calling it answers 500 on every page that renders it (React
+    // error 441, caught by the end-to-end run of PR #418 for HomeSide and TrialBanner). Those take `to` from the page.
+    const isClient = (src: string) => /^\s*["']use client["']/.test(src.replace(/^(\s*\/\/[^\n]*\n|\s*\/\*[\s\S]*?\*\/\s*)*/, ""));
+    const hooks = /\buse(AppHref|WsHandle|Workspace)\(/;
+    const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const server = walk("src")
+      .map((f) => f.replace(/\\/g, "/"))
+      .filter((f) => f !== "src/components/app/WorkspaceContext.tsx")
+      .filter((f) => { const src = readFileSync(f, "utf8"); return hooks.test(code(src)) && !isClient(src); });
+    expect(server).toEqual([]);
+    expect(isClient('"use client";\nexport default 1')).toBe(true);
+    expect(isClient('import x from "y";\nexport default 1')).toBe(false);
+  });
+
   it("the scan reads the tree and knows a raw link when it sees one", () => {
     const sample = ["go(`/${lang}/app/tasks`)", 'href="/ar/app"', "`/${lang}/app/settings/brand?x=1`"];
     for (const s of sample) expect([...s.matchAll(RAW)].some((m) => !isPerson(m[1] ?? "")), s).toBe(true);

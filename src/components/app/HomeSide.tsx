@@ -4,7 +4,7 @@ import type { Lang } from "@/lib/i18n";
 import type { Kpis } from "@/lib/stats";
 import type { Notif } from "@/lib/notifications";
 import { Icon } from "./Icons";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { appHref } from "@/lib/ws-path";
 
 type Props = {
   t: AppDict; lang: Lang; k: Kpis;
@@ -13,6 +13,8 @@ type Props = {
   files: { name: string; updatedAt: string }[];
   brief?: string | null;
   action?: Notif | null;
+  /** The page's link builder (`pageHref`), so links stay in the page's workspace; today's links without it. */
+  to?: (path?: string) => string;
 };
 
 function Box({ title, children, href, action }: { title: string; children: React.ReactNode; href?: string; action?: string }) {
@@ -45,8 +47,9 @@ function ago(iso: string | undefined, lang: Lang) {
 }
 
 /** Right-hand home panel (Enrich-style): metrics, channels, task feed with live status and latest run, brand assets. Server component. */
-export default function HomeSide({ t, lang, k, connections, schedule, files, brief, action }: Props) {
-  const href = useAppHref(lang);
+export default function HomeSide({ t, lang, k, connections, schedule, files, brief, action, to }: Props) {
+  // A server component cannot call `useAppHref`: the page passes its own `pageHref` builder (rule 2113).
+  const href = to ?? ((path?: string) => appHref(lang, path));
   const H = t.home;
   const base = href();
   const week = k.weeks[k.weeks.length - 1] ?? { created: 0, approved: 0 };

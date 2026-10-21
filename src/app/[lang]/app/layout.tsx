@@ -6,7 +6,7 @@ import { safeNext } from "@/lib/safe-next";
 import { appDict } from "@/lib/app-i18n";
 import { currentPerson, currentUser, currentUserUnverified, isFounderActor, trialDaysLeft } from "@/lib/auth";
 import { MULTI_ORG } from "@/lib/multi-org";
-import { WS_HEADER, asHandle, oldAppTarget, stripWs } from "@/lib/ws-path";
+import { WS_HEADER, appHref, asHandle, oldAppTarget, stripWs } from "@/lib/ws-path";
 import { handleOf } from "@/lib/ws-handle";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
@@ -101,7 +101,7 @@ export default async function AppLayout({ children, params }: { children: React.
       <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-8 lg:overflow-y-auto">
         {/* Rule 1177: from the session, never the cookie alone; the account's email and the end the founder chose. */}
         {actor?.kind === "founder" && <ImpersonationBanner lang={lang} email={user.email} until={actor.until} />}
-        {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} />}
+        {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} to={(p?: string) => appHref(lang, p, handle)} />}
         <InstallHint lang={lang} />
         {pushOn() && (actor?.kind === "owner" || actor?.kind === "member") && <TabBeat />}
         {children}
