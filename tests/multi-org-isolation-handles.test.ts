@@ -123,6 +123,17 @@ const namedAccounts = (key: string): AccountId[] => {
 const checkRead = (t: Touch, aid: AccountId, pid: PersonId) =>
   READS.has(t.op) && [accountKey.user(aid), accountKey.membership(aid, pid), accountKey.members(aid), accountKey.brands(aid), personKey.activeBrand(pid, aid)].includes(t.key);
 
+/**
+ * The legacy person shape (`TEST_PERSONS=legacy`, production before R2): a person's id is its address, which is also the
+ * id of the account it owns, so its own person records name that account without being that account's data: the person,
+ * its `orgs:` hint, the legacy member row, the login index, and its membership row and brand choice in any account, where
+ * the address stands in the person's place (the other account named there is checked on its own by `checkRead`).
+ */
+const ownPersonRead = (t: Touch, aid: AccountId, pid: PersonId) =>
+  READS.has(t.op) && (aid as string) === (pid as string) &&
+  ([personKey.person(pid), personKey.orgs(pid), accountKey.member(pid), accountKey.login(pid), accountKey.activeBrand(pid)].includes(t.key) ||
+    (t.key.startsWith("mbr:") && t.key.endsWith(`:${pid}`) && t.key !== accountKey.membership(pid as unknown as AccountId, pid)) ||
+    (t.key.startsWith(`activebrand:${pid}:`) && t.key !== personKey.activeBrand(pid, pid as unknown as AccountId)));
 beforeAll(async () => {
   for (let k = 0; k < 4; k++) {
     const u = await newUser(`hiso${k}-`, { shadow: false });
@@ -261,6 +272,7 @@ describe("rule 2110 (handle half): a request reaches only the held account its h
         for (const aid of namedAccounts(t.key)) {
           if (target && aid === target) continue;
           if (checkRead(t, aid, p.pid)) continue;
+          if (ownPersonRead(t, aid, p.pid)) continue;
           problems.push(`${at}: ${t.op} ${t.key}`);
         }
       }
