@@ -182,7 +182,11 @@ async function applyOne(s: Subject): Promise<Verdict> {
         return v;
       }),
     );
-  return (s.kind === "member" ? withAccountTeamLock(s.aid, locked) : locked()).catch((): Verdict => ({ ok: false, why: "busy" }));
+  // Only a lock that could not be had is "busy" (a second run finishes it); any other error stops the run (exit 2).
+  return (s.kind === "member" ? withAccountTeamLock(s.aid, locked) : locked()).catch((e: unknown): Verdict => {
+    if (e instanceof Error && /(^|_)lock_timeout$/.test(e.message)) return { ok: false, why: "busy" };
+    throw e;
+  });
 }
 
 export async function run(opts: { apply: boolean }): Promise<IndexReport> {
