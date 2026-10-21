@@ -1,6 +1,6 @@
 # WhatsApp inbound: talk to the team from WhatsApp (design)
 
-Status: **Draft, waiting on the founder's decisions in section 10; no code until then; post-launch (after 2026-11-01).** Written 2026-10-20 on branch `claude/whatsapp-inbound-spec` from main `051e437`. Item 5 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2540-2549** are reserved for this work, not yet pinned.
+Status: **Decided in part on 2026-10-21 (section 10): provider is a BSP, a PDPL review comes before it ships. Still open: who pays the per-message fee, which BSP, and decisions 3 and 4. No code until those are settled; post-launch (after 2026-11-01).** Written 2026-10-20 on branch `claude/whatsapp-inbound-spec` from main `051e437`. Item 5 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2600-2609** are reserved for this work, not yet pinned.
 
 ## 1. Why
 
@@ -76,7 +76,7 @@ Who may link (founder decision 4): **owner only** (recommended for v1), or any m
 
 ### 4.4 What can run from WhatsApp
 
-`via` gains `"whatsapp"`. Every refusal that today reads `ctx.via === "mcp"` reads "not in the app" instead (`ctx.via !== "app"`), so a new channel never silently gets more than MCP has. Today's `ctx.via === "mcp"` checks are rewritten in one place with a test that lists them (rule 2545).
+`via` gains `"whatsapp"`. Every refusal that today reads `ctx.via === "mcp"` reads "not in the app" instead (`ctx.via !== "app"`), so a new channel never silently gets more than MCP has. Today's `ctx.via === "mcp"` checks are rewritten in one place with a test that lists them (rule 2605).
 
 Paid work differs from MCP in one way, and it is the founder's call (decision 3):
 
@@ -130,19 +130,19 @@ Meta allows free-form replies only inside a customer-service window after the pe
 - **Contract.** None.
 - **Environment variables** (named in `docs/system/variables.md` when built; never pasted): `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`.
 
-## 8. Tests (rules 2540-2549, reserved, not yet pinned)
+## 8. Tests (rules 2600-2609, reserved, not yet pinned)
 
 | Rule | Pins |
 |---|---|
-| 2540 | GET answers only the right verify token; POST without a valid signature is 401 and runs nothing |
-| 2541 | A duplicate message id runs one turn |
-| 2542 | An unlinked number gets one reply a day and no turn; a link code links exactly once, then is gone |
-| 2543 | A removed, paused or suspended membership is refused at the next message; account deletion and member removal delete the link |
-| 2544 | The turn passes the app's gates in order: plan, trial, burst, agent scope, allowance |
-| 2545 | Every `via` refusal holds for `"whatsapp"`; a scan lists them so a new channel cannot be missed |
-| 2546 | Paid work leaves a card and a link and charges nothing (decision 3a) |
-| 2547 | Logs hold no text and no number; the access token appears only in `src/lib/whatsapp.ts` |
-| 2548-2549 | Held for the build's findings |
+| 2600 | GET answers only the right verify token; POST without a valid signature is 401 and runs nothing |
+| 2601 | A duplicate message id runs one turn |
+| 2602 | An unlinked number gets one reply a day and no turn; a link code links exactly once, then is gone |
+| 2603 | A removed, paused or suspended membership is refused at the next message; account deletion and member removal delete the link |
+| 2604 | The turn passes the app's gates in order: plan, trial, burst, agent scope, allowance |
+| 2605 | Every `via` refusal holds for `"whatsapp"`; a scan lists them so a new channel cannot be missed |
+| 2606 | Paid work leaves a card and a link and charges nothing (decision 3a) |
+| 2607 | Logs hold no text and no number; the access token appears only in `src/lib/whatsapp.ts` |
+| 2608-2609 | Held for the build's findings |
 
 ## 9. Not in this spec
 
@@ -158,6 +158,12 @@ Meta allows free-form replies only inside a customer-service window after the pe
 3. **Paid work from WhatsApp:** card in the app plus a link (recommended), refuse as MCP does, or run on a WhatsApp "Run" (not recommended).
 4. **Who may link a number:** owner only (recommended for v1), or members with chat access too.
 5. **PDPL review** of Meta's processing location before launch of the feature: yes or no, and by whom.
+
+### Decided by the founder on 2026-10-21
+
+- **1. Provider: a BSP (a Meta Business Solution Provider), not Meta direct.** This changes section 4: the webhook and the send call go to the BSP's API, and the BSP's signature header replaces Meta's in the webhook check (`sameSecret` on the BSP's shared secret or its HMAC, whichever it documents). Which BSP is still to choose; ask each candidate for its monthly fee, its per-conversation markup over Meta's rate, where it stores message content and for how long, and whether it signs a data processing agreement. Prices stay "to confirm with the vendor".
+- **5. PDPL review: yes, before it ships** (a standing decision for every feature that carries personal data through a third party; not to be asked again). With a BSP the review covers two processors, the BSP and Meta.
+- **Still open:** 2 (who pays the per-message fee), 3 (paid work from WhatsApp; the recommendation stands), 4 (who may link a number; the recommendation stands), and the choice of BSP.
 
 ## 11. Size and release steps
 
