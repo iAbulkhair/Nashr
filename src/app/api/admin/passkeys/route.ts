@@ -4,6 +4,7 @@ import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
 import { passkeysOn, setPasskeysOn } from "@/lib/passkey-switch";
 import { staffMay } from "@/lib/roles";
+import { log } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,9 @@ export async function GET(req: Request) {
  * only (`staffMay(consoleRole(req), "passkeys.switch")`, 403 `forbidden`; a support staff session is refused here) →
  * the second factor (`secondFactorRefusal`, which also runs the console write check; its code check is rate limited
  * per IP) → a reason of 3 to 200 characters (400) → `on` a boolean (400 `bad_request`) → the switch written → one
- * `admin:log` row in section `system` with the state before and after. No key is built from the body.
+ * `admin:log` row in section `system` with the state before and after. `before` is the state the write itself replaced
+ * (the switch write answers it). An audit write that throws puts the switch back and answers 500 `audit_failed`; if the
+ * undo fails too, a `log.error` line names it. No key is built from the body.
  */
 export async function POST(req: Request) {
   const who = await adminActor(req);
@@ -46,11 +49,19 @@ export async function POST(req: Request) {
   if (noReason) return noReason;
   if (typeof b.on !== "boolean") return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   const on = b.on;
-  const was = await passkeysOn();
-  await setPasskeysOn(on);
-  await adminAudit({
-    actor: who, via: viaOf(req), section: "system", action: on ? "passkeys.on" : "passkeys.off", target: "passkeys",
-    what: on ? "passkeys on" : "passkeys off", before: { on: was }, after: { on }, reason: b.reason,
-  });
+  // The state before comes from the write itself (GETDEL / SET NX), so a flip racing this one cannot make `before` wrong.
+  const was = await setPasskeysOn(on);
+  try {
+    await adminAudit({
+      actor: who, via: viaOf(req), section: "system", action: on ? "passkeys.on" : "passkeys.off", target: "passkeys",
+      what: on ? "passkeys on" : "passkeys off", before: { on: was }, after: { on }, reason: b.reason,
+    });
+  } catch (e) {
+    // No flip stays without its audit row: the switch is put back and the caller told, so the owner tries again. Should
+    // the undo fail as well (the store down), the log line is the only record of a switch changed with no row.
+    const undone = was === on || (await setPasskeysOn(was).then(() => true, () => false));
+    log.error(undone ? "passkeys switch: audit row failed, switch put back" : "passkeys switch: audit row failed and the undo failed, switch changed with no audit row", { on, was, error: e });
+    return NextResponse.json({ ok: false, error: "audit_failed" }, { status: 500 });
+  }
   return NextResponse.json({ ok: true, on }, { headers: { "cache-control": "no-store" } });
 }

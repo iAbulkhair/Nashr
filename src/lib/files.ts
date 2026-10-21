@@ -3,9 +3,13 @@ import { db } from "./db";
 import { pmap } from "./parallel";
 import { scopeParam, wsKey } from "./keys";
 import { log } from "./log";
+import type { FileSrc } from "./ref-provenance";
 
-/** Workspace files = Noor's memory. Markdown the user can read, edit, delete. */
-export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user" };
+/**
+ * Workspace files = Noor's memory. Markdown the user can read, edit, delete. `src` (rule 2523, expand only) says where the
+ * text came from; a file written without it has its source worked out by `provenanceOf` (src/lib/ref-provenance.ts).
+ */
+export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user"; src?: FileSrc };
 
 /** The one place this module turns a scope string into a `Scope`; every key below is built from it (rule 2033). */
 const ws = (e: string) => scopeParam(e);
@@ -71,7 +75,8 @@ export class FileLimitError extends Error {
   constructor() { super("file_limit"); this.name = "FileLimitError"; }
 }
 
-export async function writeFile(email: string, name: string, content: string, by: WFile["by"] = "noor", opts: { locked?: boolean } = {}) {
+/** `opts.src` is where the text came from (rule 2523); a write without it stores none, and the reader falls back to `by` and the name. */
+export async function writeFile(email: string, name: string, content: string, by: WFile["by"] = "noor", opts: { locked?: boolean; src?: FileSrc } = {}) {
   const asked = safeName(name);
   // Rule 2520: every writer takes the file's lock, so a person's checked save (rule 2441) reads and writes with no other
   // write in between. `locked`: the caller already holds it (`writeFileChecked`).
@@ -91,17 +96,17 @@ export async function writeFile(email: string, name: string, content: string, by
     }
     // The sibling is another file with its own lock, taken inside this one: its name is longer, so locks are always
     // taken shorter name first and two writers never wait on each other in a circle.
-    return n === asked ? put(email, n, content, by) : withFileLock(email, n, false, () => put(email, n, content, by));
+    return n === asked ? put(email, n, content, by, opts.src) : withFileLock(email, n, false, () => put(email, n, content, by, opts.src));
   });
 }
 
-async function put(email: string, n: string, content: string, by: WFile["by"]): Promise<WFile> {
+async function put(email: string, n: string, content: string, by: WFile["by"], src?: FileSrc): Promise<WFile> {
   // Only a NEW name counts against the ceiling: rewriting products.md for the thousandth time is free, and a
   // workspace already over the limit can still be edited and tidied rather than being frozen outright.
   if (!(await db.get<WFile>(KEY(email, n)))) {
     if ((await db.smembers(SET(email))).length >= MAX_FILES) throw new FileLimitError();
   }
-  const f: WFile = { name: n, content: content.slice(0, 40000), updatedAt: new Date().toISOString(), by };
+  const f: WFile = { name: n, content: content.slice(0, 40000), updatedAt: new Date().toISOString(), by, ...(src ? { src } : {}) };
   await db.set(KEY(email, n), f);
   await db.sadd(SET(email), n);
   return f;
@@ -143,7 +148,7 @@ async function withFileLock<T>(email: string, n: string, held: boolean, fn: () =
  * lands between this check and this write.
  */
 export type CheckedWrite = { ok: true; file: WFile } | { ok: false; error: "stale" | "exists"; file: WFile | null } | { ok: false; error: "busy" };
-export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null): Promise<CheckedWrite> {
+export async function writeFileChecked(email: string, name: string, content: string, by: WFile["by"], baseAt: string | null, src?: FileSrc): Promise<CheckedWrite> {
   const n = safeName(name);
   const lock = await takeFileLock(email, n, 20);
   if (!lock) return { ok: false, error: "busy" };
@@ -151,7 +156,7 @@ export async function writeFileChecked(email: string, name: string, content: str
     const cur = await db.get<WFile>(KEY(email, n));
     if (baseAt === null && cur) return { ok: false, error: "exists", file: cur };
     if (baseAt !== null && cur?.updatedAt !== baseAt) return { ok: false, error: "stale", file: cur };
-    return { ok: true, file: await writeFile(email, n, content, by, { locked: true }) };
+    return { ok: true, file: await writeFile(email, n, content, by, { locked: true, src }) };
   } finally {
     await db.unlock(lock).catch(() => {});
   }

@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { readFile, writeFile } from "./files";
+import { fileSrc } from "./ref-provenance";
 import { wsKey, type Scope } from "./keys";
 import { log } from "./log";
 
@@ -34,7 +35,7 @@ export async function appendPreferences(scope: Scope, lines: string) {
   if (!token) throw new Error("prefs_lock_timeout");
   try {
     const f = await readFile(scope, "preferences.md");
-    await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor");
+    await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor", { src: fileSrc("builtin") });
   } finally {
     await db.unlockOwned(key, token).catch((e) => log.error("prefs lock release failed", e));
   }

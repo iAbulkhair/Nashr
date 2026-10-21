@@ -1,8 +1,9 @@
 /**
  * Installing Thakeen to the home screen (PWA, rules 681-684, spec docs/superpowers/specs/2026-10-08-pwa-install-design.md).
  * One manifest (src/app/manifest.ts), the apple-web-app tags in src/app/[lang]/layout.tsx and the install hint in the app
- * shell (src/components/app/InstallHint.tsx) all read from here. There is no service worker: nothing is cached on the
- * device, so a signed-in page is only ever what the server sends (rule 683). Push is phase 2.
+ * shell (src/components/app/InstallHint.tsx) all read from here. The only service worker is public/sw.js, for phone
+ * notifications (rules 2562-2569): it has no fetch handler and no cache, so a signed-in page is only ever what the server
+ * sends (rule 683).
  */
 import { INSTALL_DISMISS_KEY, readStored, writeStored } from "./cookie-names";
 

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -21,3 +22,11 @@ export function webServerCommand(port: number, opts: { ci: boolean; prebuilt: bo
  * cache restores only `.next/cache`, so the file exists only when this run's Build step built; a failed build stops the job.
  */
 export const hasBuild = (dir = process.cwd()): boolean => existsSync(join(dir, ".next", "BUILD_ID"));
+
+/**
+ * The console key the end-to-end server starts with (`WAITLIST_ADMIN_KEY`): the passkey spec flips the passkey off switch,
+ * which only a console actor may (rule 2426), through the `x-admin-key` header. Random per run, made once in the runner
+ * when it loads this config and inherited by its workers through the environment, so no key is written in the repository
+ * and a server from another run never accepts it.
+ */
+export const E2E_ADMIN_KEY = (process.env.E2E_ADMIN_KEY ??= randomBytes(24).toString("base64url"));

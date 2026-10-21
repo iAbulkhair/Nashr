@@ -175,6 +175,13 @@ export const wsKey = {
   storeSyncBucket: (s: Scope) => `storesync:${s}`,
   /** bucket name for `allow` (stored as `rate:catalogimport:{scope}`): product imports from a store of one workspace (rule 2243). */
   catalogImportBucket: (s: Scope) => `catalogimport:${s}`,
+  /**
+   * hash: this workspace's phone push subscriptions (rules 2560-2563), field = the first 32 hex of the SHA-256 of the
+   * endpoint, value `{ endpoint, login, at }`. Written only by POST /api/push under the session's own `sc(u)`.
+   */
+  pushSubs: (s: Scope) => `pushsubs:${s}`,
+  /** marker: a push about this agent and state went out in the last 30 minutes (SET NX, rule 2566). */
+  pushSent: (s: Scope, agent: string, state: string) => `pushsent:${s}:${agent}:${state}`,
 } as const;
 
 export const personKey = {
@@ -282,6 +289,14 @@ export const accountKey = {
   chatTrial: (email: string) => `chatm:${email}:trial`,
   /** bucket name for `allow` (stored as `rate:pkpw:{login}`): passkey add and remove proofs of one login, 10 per hour (rule 2410). */
   passkeyProofBucket: (login: string) => `pkpw:${login}`,
+  /** marker: a tab of this login was visible in the last `AWAY_MINUTES` (rule 2564); its TTL is the whole record. */
+  tabSeen: (login: string) => `tabseen:${login}`,
+  /** json `{ agent, state, at }`: the last push this login's devices were sent, read by the worker (rule 2567), 1 day. */
+  pushLast: (login: string) => `pushlast:${login}`,
+  /** bucket name for `allow` (stored as `rate:push:{login}`): push subscribe, unsubscribe and the worker's read (rule 2562). */
+  pushBucket: (login: string) => `push:${login}`,
+  /** bucket name for `allow` (stored as `rate:tabbeat:{login}`): the visible-tab heartbeat (rule 2564). */
+  seenBucket: (login: string) => `tabbeat:${login}`,
 } as const;
 
 export const globalKey = {
