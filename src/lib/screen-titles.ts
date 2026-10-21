@@ -15,7 +15,7 @@ import { SW } from "./staff-words";
 export const APP_SCREENS = [
   "home", "activity", "admin", "calendar", "chat", "conversations", "files", "forgot", "generate", "help", "inspo",
   "instructions", "join", "login", "mcp", "notifications", "partner", "refer", "reports", "reset", "settings", "signup", "start", "tasks",
-  "todo", "verify",
+  "todo", "verify", "workspaces",
 ] as const;
 export type AppScreen = (typeof APP_SCREENS)[number];
 
@@ -29,7 +29,7 @@ export const APP_SCREEN_NAME: Record<Lang, Record<AppScreen, string>> = {
     generate: nav("ar").generate, help: nav("ar").help, inspo: nav("ar").inspo, instructions: nav("ar").instructions, join: "الانضمام إلى فريق",
     login: "تسجيل الدخول", mcp: "ربط مساعدك الذكي", notifications: nav("ar").notifications, partner: "برنامج الشركاء",
     refer: nav("ar").refer, reports: nav("ar").reports, reset: "كلمة مرور جديدة", settings: nav("ar").settings,
-    signup: "إنشاء حساب", start: "ابدأ", tasks: nav("ar").tasks, todo: nav("ar").todo, verify: "تأكيد البريد",
+    signup: "إنشاء حساب", start: "ابدأ", tasks: nav("ar").tasks, todo: nav("ar").todo, verify: "تأكيد البريد", workspaces: appDict.ar.workspaces.title,
   },
   en: {
     home: nav("en").inbox, activity: nav("en").activity, admin: nav("en").adminPanel, calendar: nav("en").calendar,
@@ -37,7 +37,7 @@ export const APP_SCREEN_NAME: Record<Lang, Record<AppScreen, string>> = {
     generate: nav("en").generate, help: nav("en").help, inspo: nav("en").inspo, instructions: nav("en").instructions, join: "Join a team",
     login: "Log in", mcp: "Connect your AI assistant", notifications: nav("en").notifications, partner: "Partner programme",
     refer: nav("en").refer, reports: nav("en").reports, reset: "New password", settings: nav("en").settings,
-    signup: "Sign up", start: "Get started", tasks: nav("en").tasks, todo: "My to-dos", verify: "Verify your email",
+    signup: "Sign up", start: "Get started", tasks: nav("en").tasks, todo: "My to-dos", verify: "Verify your email", workspaces: appDict.en.workspaces.title,
   },
 };
 

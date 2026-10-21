@@ -37,7 +37,7 @@ import * as publishRoute from "@/app/api/publish/[id]/route";
 import * as proposalRoute from "@/app/api/brand/proposals/[id]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 import * as adminUser from "@/app/api/admin/users/[email]/route";
-import Page from "@/app/[lang]/app/activity/page";
+import Page from "@/app/[lang]/app/b/[brand]/activity/page";
 
 /**
  * Rules 232-240: the per-agent activity log (src/lib/activity.ts). This file pins the store, the owner actions that

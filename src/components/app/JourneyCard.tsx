@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { levelFor, type Journey, type LevelId, type MilestoneId } from "@/lib/journey";
 import { Icon } from "./Icons";
 import { JOURNEY_KEY, readStored, writeStored } from "@/lib/cookie-names";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const STR = {
   ar: {
@@ -61,8 +62,8 @@ function Confetti({ burst }: { burst: number }) {
 }
 
 export default function JourneyCard({ journey, lang, compact = false }: { journey: Journey; lang: "ar" | "en"; compact?: boolean }) {
+  const href = useAppLink(lang);
   const S = STR[lang];
-  const base = `/${lang}/app`;
   const [extra, setExtra] = useState<MilestoneId[]>([]);
   const [toast, setToast] = useState<{ kind: "milestone" | "level"; text: string } | null>(null);
   const [burst, setBurst] = useState(0);
@@ -162,7 +163,7 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
               <li key={m.id} className="relative w-24 shrink-0 sm:w-auto">
                 {/* The link from the previous milestone's centre to this one's. */}
                 {i > 0 && <span aria-hidden className={`absolute top-7 hidden h-0.5 w-full sm:block ${m.done ? "bg-foreground" : "bg-foreground/10"}`} style={{ insetInlineEnd: "50%" }} />}
-                <Link ref={isNext ? nextRef : undefined} href={`${base}${m.href}`} className={`relative flex flex-col items-center gap-1.5 rounded-lg p-2 text-center ${isNext ? "bg-lemon/10" : "hover:bg-background"}`}>
+                <Link ref={isNext ? nextRef : undefined} href={href(m.href)} className={`relative flex flex-col items-center gap-1.5 rounded-lg p-2 text-center ${isNext ? "bg-lemon/10" : "hover:bg-background"}`}>
                   <span className={`relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 ${m.done ? "pop-in border-border-strong bg-inverse text-lemon" : isNext ? "journey-next border-border-strong bg-lemon text-accent-foreground" : "border-border bg-surface text-foreground-muted"}`}>
                     <Icon name={m.done ? "check" : isNext ? ICON[m.id] : "lock"} className="h-4.5 w-4.5" />
                   </span>
@@ -182,7 +183,7 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
           <>
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lemon text-accent-foreground"><Icon name={ICON[next.id]} className="h-4 w-4" /></span>
             <span className="min-w-0 flex-1 text-sm" dir="auto"><span className="block text-xs text-foreground-muted">{S.next} · <span className="tnum" dir="ltr">+{next.points}</span></span><span className="font-semibold">{S.m[next.id][0]}</span> <span className="text-foreground-muted">{S.m[next.id][1]}</span></span>
-            <Link href={`${base}${next.href}`} className="btn btn-accent btn-xs">{S.go}</Link>
+            <Link href={href(next.href)} className="btn btn-accent btn-xs">{S.go}</Link>
           </>
         ) : (
           <p className="flex items-center gap-2 text-sm font-semibold text-foreground" dir="auto"><Icon name="oasis" className="h-5 w-5 text-foreground" />{S.complete}</p>

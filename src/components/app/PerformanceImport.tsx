@@ -6,6 +6,7 @@ import { fmt, int, METRICS, type Finding, type MetricId, type PerfSnapshot } fro
 import { Icon } from "./Icons";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { useToast } from "@/components/ui/Toast";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const STR = {
   ar: {
@@ -51,6 +52,7 @@ const AD_NAMES: Record<string, string> = { meta_ads: "Meta Ads", snapchat: "Snap
  * owner). Without them the upload and the remove button are not offered; the route refuses them regardless.
  */
 export default function PerformanceImport({ lang, initial, ads = [], canImport = true, canDelete = true }: { lang: "ar" | "en"; initial: PerfSnapshot | null; /** connected ad accounts it can read from */ ads?: string[]; canImport?: boolean; canDelete?: boolean }) {
+  const href = useAppLink(lang);
   const S = STR[lang];
   const r = useRouter();
   const toast = useToast();
@@ -103,7 +105,7 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
   // Metrics the file can support, from the totals it reported; switching re-ranks the same file.
   const fits = snap ? (Object.keys(METRICS) as MetricId[]).filter((id) => { const d = METRICS[id]; return id === "cpa" ? !!snap.totals.spend && !!snap.totals.conversions : !!snap.totals[d.num] && !!snap.totals[d.den]; }) : [];
   const by = (k: Finding["kind"]) => snap?.findings.filter((f) => f.kind === k) ?? [];
-  const chat = (p: string) => `/${lang}/app/chat?prompt=${encodeURIComponent(p)}`;
+  const chat = (p: string) => href(`/chat?prompt=${encodeURIComponent(p)}`);
 
   return (
     <section id="campaign-results" className="card mt-6 overflow-hidden p-0" aria-label={S.title}>

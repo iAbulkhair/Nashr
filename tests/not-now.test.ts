@@ -70,7 +70,7 @@ describe("rule 2342: what counts as waiting", () => {
     const read = (p: string) => readFileSync(p, "utf8");
     expect(read("src/lib/schedule.ts")).toMatch(/const pending = tasks\.filter\(isWaiting\)\.length/);
     expect(read("src/lib/lifecycle.ts")).toMatch(/pending: tasks\.filter\(isWaiting\)\.length/);
-    expect(read("src/app/[lang]/app/chat/page.tsx")).toMatch(/rows\.find\(isWaiting\)/);
+    expect(read("src/app/[lang]/app/b/[brand]/chat/page.tsx")).toMatch(/rows\.find\(isWaiting\)/);
     expect(read("src/lib/secretary-walk.ts")).toMatch(/waitingIds\(scope\)/);
     expect(read("src/lib/secretary-walk.ts")).toMatch(/!!t && isWaiting\(t\)/);
     expect(read("src/lib/notifications.ts")).toMatch(/const stale = tasks\.filter\(\(t\) => isWaiting\(t\)/);
@@ -118,7 +118,7 @@ describe("rule 2343: the 14-day move", () => {
     expect(await pendingCount(u.email)).toBe(0);
     const moved = (await listNotifs(u.email)).filter((x) => x.title.includes("انتقل إلى «ليس الآن»"));
     expect(moved).toHaveLength(1);
-    expect(moved[0].href).toBe("/ar/app/?view=notnow");
+    expect(moved[0].href).toBe("/ar/app/b/default?view=notnow");
     await runDaily((await getUser(u.email))!);
     expect((await listNotifs(u.email)).filter((x) => x.title.includes("انتقل إلى «ليس الآن»"))).toHaveLength(1);
   });
@@ -181,7 +181,7 @@ describe("rules 2346-2347: the inbox chip and the tools", () => {
     expect(inbox).toMatch(/const CHIPS = \["pending", "notnow", "approved", "rejected", "all"\] as const/);
     expect(inbox).toMatch(/patch\(x\.id, \{ notNow: true \}\)/);
     expect(inbox).toMatch(/patch\(x\.id, \{ notNow: false \}\)/);
-    expect(readFileSync("src/app/[lang]/app/page.tsx", "utf8")).toMatch(/initialFilter=\{sp\.view === "notnow" \? "notnow" : undefined\}/);
+    expect(readFileSync("src/app/[lang]/app/b/[brand]/page.tsx", "utf8")).toMatch(/initialFilter=\{sp\.view === "notnow" \? "notnow" : undefined\}/);
   });
   it("MCP list_inbox offers not_now and lists only waiting items under pending", () => {
     const mcp = readFileSync("src/app/api/mcp/route.ts", "utf8");

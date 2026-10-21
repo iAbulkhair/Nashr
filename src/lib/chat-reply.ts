@@ -16,6 +16,7 @@ import { fileProposalCard, type FileProposal } from "./file-proposals";
 import type { AgentScopeModes } from "./agent-scope";
 import type { ChatMsg } from "./chat-history";
 import { AWAY_CARDS_PER_REPLY, BRAND_CARDS_PER_REPLY, FILE_CARDS_PER_REPLY, INSTRUCTION_CARDS_PER_REPLY } from "./chat-gates";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * The `maxDuration` of the two routes that call chat(), `/api/chat` and `/api/mcp` (route config must be a literal, so
@@ -49,7 +50,7 @@ export type ChatLimit = "credits" | "trial" | "agent_cap" | "fair_use";
  */
 export type ChatRefused = "trial" | "hour" | "day";
 export function chatRefusedText(kind: ChatRefused, lang: "ar" | "en", o: { origin?: string; cap?: number } = {}): string {
-  const billing = `${o.origin ?? ""}/${lang}/app/billing`;
+  const billing = `${o.origin ?? ""}${appHref(lang, "/billing")}`;
   const n = o.cap !== undefined ? ` (${o.cap})` : "";
   if (lang === "ar") {
     if (kind === "trial") return `انتهت تجربتك المجانية، فلن يرد الوكلاء على رسائل جديدة حتى يُفعَّل اشتراك. كل ما في صندوقك وملفاتك محفوظ. [اختر خطة من صفحة الاشتراك](${billing}) (أو اطلب ذلك من مالك الحساب) ليكمل الفريق من حيث توقف. لم يُخصم أي كريدت.`;

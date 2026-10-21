@@ -17,6 +17,7 @@ import { log as logger } from "./log";
 import { acct } from "./account-id";
 import { globalKey } from "./keys";
 import { handPlanEnded } from "./hand-plan";
+import { appHrefFor } from "@/lib/ws-href";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
@@ -174,7 +175,7 @@ export async function startCheckout(owner: Pick<User, "id" | "email">, body: unk
       billing: { ...billingName(acc), email: acc.email, phone },
       reference: ref,
       notificationUrl: `${appOrigin()}/api/billing/paymob/webhook`,
-      redirectionUrl: `${appOrigin()}/${lang}/app/billing?paymob=return`,
+      redirectionUrl: `${appOrigin()}${appHrefFor(acc, lang, "/billing?paymob=return")}`,
       expirationS: 3600,
     });
     await Promise.all([db.set(intentKey(ref), { ...intent, orderId: it.orderId }, DAYS_400), db.set(orderKey(it.orderId), ref, DAYS_400)]);
@@ -440,7 +441,7 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
       billing: { ...billingName(u), email: u.email, phone: normalizePhone(u.phone ?? "") || "NA" },
       reference: ref,
       notificationUrl: `${appOrigin()}/api/billing/paymob/webhook`,
-      redirectionUrl: `${appOrigin()}/${u.lang}/app/billing`,
+      redirectionUrl: `${appOrigin()}${appHrefFor(u, u.lang, "/billing")}`,
       expirationS: 3600,
     });
     paymentKey = it.paymentKey;

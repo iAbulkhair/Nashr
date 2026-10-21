@@ -46,7 +46,7 @@ describe("verify page", () => {
 
   it("a member, a founder session or a verified owner goes to the app (or the safe next)", () => {
     expect(src).toMatch(/u\.actor\?\.kind !== "owner" \|\| emailVerified\(u\)/);
-    expect(src).toMatch(/redirect\(next \|\| `\/\$\{lang\}\/app`\)/);
+    expect(src).toMatch(/redirect\(next \|\| appHref\(lang\)\)/);
     expect(src).toContain("safeNext(");
   });
 
@@ -132,7 +132,7 @@ describe("VerifyForm", () => {
 
   it("goes on to the safe next, or the app", () => {
     expect(src).toMatch(/window\.location\.assign\(dest\)/);
-    expect(src).toMatch(/safeNext\(next\) \|\| `\/\$\{lang\}\/app`/);
+    expect(src).toMatch(/safeNext\(next\) \|\| appHref\(lang\)/);
   });
 
   it("never logs or puts the code in a URL", () => {
@@ -149,7 +149,7 @@ describe("signup goes to verify", () => {
     // the old destination: the next param, or the start page with the carried url
     // sent=0 tells the verify page the first mail did not go out (copy only)
     expect(src).toContain('${p.body.mail === false ? "&sent=0" : ""}');
-    expect(src).toMatch(/const after = next \|\| `\/\$\{lang\}\/app\/start\$\{site\.length >= 4 \? `\?url=\$\{encodeURIComponent\(site\)\}` : ""\}`;/);
+    expect(src).toMatch(/const after = next \|\| appHref\(lang, `\/start\$\{site\.length >= 4 \? `\?url=\$\{encodeURIComponent\(site\)\}` : ""\}`, null, "default"\);/);
   });
 });
 

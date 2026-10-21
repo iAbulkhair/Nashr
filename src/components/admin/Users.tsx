@@ -23,6 +23,7 @@ import Badge from "@/components/ui/Badge";
 import { Input, Select } from "@/components/ui/Field";
 import { USERS_COPY } from "./users-copy";
 import { formatSuspensionEnd, parseSuspendFor, SUSPEND_FOR } from "@/lib/suspension";
+import { appHref } from "@/lib/ws-path";
 
 /** The users list's query in the address (rule 2007): `parseUserQuery` validates every value, the defaults stay out. */
 const USER_CODEC: QueryCodec<UserQuery> = { parse: parseUserQuery, params: userQueryParams };
@@ -176,7 +177,7 @@ export default function Users({ lang, keySession }: SectionProps) {
     setBusy(false);
     if (!j.ok) { setMsg(failed(email, j.error ?? status)); return j; }
     if (action === "resetPassword") { setTemp({ email, password: j.tempPassword }); setMsg(`${email}: ${UC.passwordReset}`); }
-    else if (action === "impersonate") { window.location.assign(IMPERSONATE_REDIRECT.test(j.redirect) ? j.redirect : `/${lang}/app`); return j; }
+    else if (action === "impersonate") { window.location.assign(IMPERSONATE_REDIRECT.test(j.redirect) ? j.redirect : appHref(lang)); return j; }
     else if (action === "delete") { setMsg(`${email}: ${UC.deleted}`); setSel(null); }
     else if (action === "resendVerification") setMsg(`${email}: ${S.codeSent}`);
     else if (action === "removeMember") { setMsg(`${email}: ${UC.memberRemoved}`); setMemberSel(null); return j; }

@@ -9,9 +9,15 @@ import { PasswordRules } from "./PasswordRules";
 import PasswordField from "./PasswordField";
 import { forgetInviteToken, readInviteToken, recallInviteToken, rememberInviteToken, withoutFragment } from "./inviteToken";
 import Scribble from "@/components/Scribble";
+import { appHref } from "@/lib/ws-path";
 
-type Preview = { team: string; inviter: string; email: string; role: "admin" | "member"; expiresAt: string };
-type Phase = "checking" | "signedIn" | "none" | "invalid" | "ready";
+type Preview = { team: string; inviter: string; email: string; role: "admin" | "member"; expiresAt: string; signIn?: boolean };
+/**
+ * Multi-workspace M2 (rule 2116) adds three, only when the page passes `person` (`MULTI_ORG` on): "signIn" (the invited
+ * address already signs in: log in, the token is kept for this tab), "joinAs" (signed in with the invited address: one
+ * button, no password) and "otherEmail" (signed in with another address: log out first).
+ */
+type Phase = "checking" | "signedIn" | "none" | "invalid" | "ready" | "signIn" | "joinAs" | "otherEmail";
 
 /** Fill "{key}" slots with nodes, so names typed by other people render as text inside the sentence, never as markup. */
 function parts(s: string, v: Record<string, React.ReactNode>) {
@@ -21,13 +27,15 @@ function parts(s: string, v: Record<string, React.ReactNode>) {
 /**
  * Accept a team invite (POST /api/team/accept). `{token}` alone previews the invite without consuming it, so mail
  * scanners that open the link cannot burn it; `{token, name, password, lang}` creates the member login and signs it in.
- * A visitor who is already signed in is never joined into that session: they are asked to log out first.
+ * A visitor who is already signed in is never joined into that session: they are asked to log out first. With
+ * `MULTI_ORG` on the page passes `person` (the signed-in person, `currentPerson()`): a person whose verified address is
+ * the invite's joins from their own session (`{token, join: true}`), never by address alone; the route re-checks it.
  */
-export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: Lang; signedInAs: string | null }) {
+export default function JoinForm({ t, lang, signedInAs, person = null }: { t: AppDict; lang: Lang; signedInAs: string | null; person?: { email: string; verified: boolean } | null }) {
   const J = t.join;
   const r = useRouter();
   const token = useRef("");
-  const [phase, setPhase] = useState<Phase>(signedInAs ? "signedIn" : "checking");
+  const [phase, setPhase] = useState<Phase>(signedInAs && !person ? "signedIn" : "checking");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [name, setName] = useState("");
   const [pw, setPw] = useState("");
@@ -44,12 +52,17 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
     if (window.location.hash) window.history.replaceState(window.history.state, "", withoutFragment(window.location));
     const tok = token.current;
     void Promise.resolve().then(async () => {
-      if (signedInAs) return;
+      if (signedInAs && !person) return;
       if (!tok) return setPhase("none");
       try {
         const res = await fetch("/api/team/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: tok }) });
         const j = (await res.json().catch(() => ({}))) as { preview?: Preview };
-        if (res.ok && j.preview) { setPreview(j.preview); setPhase("ready"); return; }
+        if (res.ok && j.preview) {
+          setPreview(j.preview);
+          if (person) setPhase(j.preview.email === person.email.toLowerCase() ? "joinAs" : "otherEmail");
+          else setPhase(j.preview.signIn ? "signIn" : "ready");
+          return;
+        }
         if (res.status === 400) forgetInviteToken(); // unknown, expired or used: never offered again in this tab
         setErr(res.status === 429 ? J.errors.rate_limited : J.errors.invalid);
       } catch {
@@ -57,7 +70,7 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
       }
       setPhase("invalid");
     });
-  }, [signedInAs, J]);
+  }, [signedInAs, person, J]);
 
   async function logout() {
     setBusy(true);
@@ -66,6 +79,27 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
     const tok = token.current;
     window.history.replaceState(null, "", withoutFragment(window.location) + (tok ? `#t=${tok}` : ""));
     window.location.reload();
+  }
+
+  /** Join from the signed-in person's own session (M2): the answer is the workspace's link, opened with a full load. */
+  async function joinAsMe() {
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/team/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: token.current, join: true, lang }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; href?: string };
+      if (res.ok && j.ok && typeof j.href === "string" && j.href.startsWith(appHref(lang))) {
+        forgetInviteToken();
+        window.location.assign(j.href);
+        return;
+      }
+      const code = res.status === 429 ? "rate_limited" : (j.error ?? "failed");
+      setErr((J.errors as Record<string, string>)[code] ?? J.errors.failed);
+      if (code === "invalid") { forgetInviteToken(); setPhase("invalid"); }
+    } catch {
+      setErr(J.errors.failed);
+    }
+    setBusy(false);
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -81,7 +115,7 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
       if (res.ok && j.ok) {
         forgetInviteToken();
         // The route set the session cookie; refreshing re-renders the layout with the app shell of the account just joined.
-        r.push(`/${lang}/app`);
+        r.push(appHref(lang));
         r.refresh();
         return;
       }
@@ -106,8 +140,36 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
           <p>{parts(J.signedIn, { email: <b dir="ltr">{signedInAs}</b> })}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={logout} disabled={busy} className="btn btn-primary btn-sm">{J.logout}</button>
-            <Link href={`/${lang}/app`} className="btn btn-secondary btn-sm">{J.back}</Link>
+            <Link href={appHref(lang)} className="btn btn-secondary btn-sm">{J.back}</Link>
           </div>
+        </div>
+      )}
+
+      {(phase === "signIn" || phase === "joinAs" || phase === "otherEmail") && preview && (
+        <div className="mt-6 card">
+          <p>{parts(J.invited, { inviter: <b dir="auto">{preview.inviter}</b>, team: <b dir="auto">{preview.team}</b>, role: <b>{t.team.roles[preview.role]}</b> })}</p>
+          <p className="mt-1 text-xs text-foreground-muted">{t.team.roleHelp[preview.role]}</p>
+          {phase === "signIn" && (
+            <>
+              <p className="mt-3">{J.signInToJoin}</p>
+              {/* The token stays in this tab (sessionStorage), so the join page finds it again after the sign-in. */}
+              <Link href={`/${lang}/app/login?next=${encodeURIComponent(`/${lang}/app/join`)}`} className="btn btn-primary btn-sm mt-4">{J.login}</Link>
+            </>
+          )}
+          {phase === "joinAs" && person && (person.verified ? (
+            <>
+              {err && <p role="alert" className="mt-3 text-sm text-danger">{err}</p>}
+              <button type="button" onClick={joinAsMe} disabled={busy} className="btn btn-primary btn-sm mt-4">{busy ? J.joining : parts(J.joinAs, { email: <span dir="ltr">{person.email}</span> })}</button>
+            </>
+          ) : (
+            <p className="mt-3 text-sm">{J.verifyFirst}</p>
+          ))}
+          {phase === "otherEmail" && (
+            <>
+              <p className="mt-3">{parts(J.otherEmail, { email: <b dir="ltr">{signedInAs}</b> })}</p>
+              <button type="button" onClick={logout} disabled={busy} className="btn btn-primary btn-sm mt-4">{J.logout}</button>
+            </>
+          )}
         </div>
       )}
 

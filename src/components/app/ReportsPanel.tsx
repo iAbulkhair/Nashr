@@ -31,6 +31,8 @@ import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 import { METRICS_KEY, readStored, writeStored } from "@/lib/cookie-names";
+import { useAppLink } from "@/components/app/WorkspaceContext";
+import { useApiHref } from "./useBrandHref";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 /**
@@ -43,7 +45,9 @@ export const QUIET: readonly NotReadReason[] = ["not_connected", "publish_only",
 const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "videos", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
 export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, liNoPage = false, x = null, notRead = [], socialVia = null, xConnected = false, siteChoices = null, canRead = false, canGenerate = false, canConnectors = false, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: every platform part from the last read, or a snapshot from before v2 (src/lib/social-stats.ts). */ social?: StoredSocial | null; /** `liNeedsPage`: LinkedIn is connected through Composio with no company page chosen. */ liNoPage?: boolean; /** `xReadOf(getXStats)`, without the account's id: X's last paid read (rule 744). */ x?: XStats | null; /** `notReadOf` over the page's own reads (rule 738). */ notRead?: NotReadItem[]; /** `socialRefreshPath`: the provider path the social Refresh posts to. */ socialVia?: string | null; /** `xDirect`: X is connected directly. */ xConnected?: boolean; /** `siteChoices`: the GA4 properties and Search Console sites listed at connect. */ siteChoices?: SiteChoices | null; /** `can(u, "read")`: the free refreshes (rule 735). */ canRead?: boolean; /** `can(u, "generate")`: X's paid refresh (rule 744). */ canGenerate?: boolean; /** `can(u, "connectors")`: the property choice (rule 734). */ canConnectors?: boolean; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
+  const href = useAppLink(lang);
   const r = useRouter();
+  const apiHref = useApiHref();
   const R = t.reports;
   const toast = useToast();
   const E = emptyCopy(lang, "reports");
@@ -110,7 +114,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
   const colors = { created: "var(--chart-1)", approved: "var(--chart-2)", published: "var(--chart-3)" };
   const dashes = { created: undefined, approved: "6 3", published: "2 3" };
   const swatch = (key: keyof typeof colors) => <svg width="16" height="8" aria-hidden="true" className="shrink-0"><line x1="0" y1="4" x2="16" y2="4" stroke={colors[key]} strokeWidth="2" strokeDasharray={dashes[key]} /></svg>;
-  const rangeHref = (rg: string) => `/${lang}/app/reports?range=${rg}`;
+  const rangeHref = (rg: string) => href(`/reports?range=${rg}`);
   // The chart's day labels and the table under it (rule 1129): a calendar day, in the page's language and Western digits.
   const dayLabel = dateFormat(lang, { month: "short", day: "numeric" });
 
@@ -120,7 +124,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <div className="mb-5 rounded-xl border border-border bg-surface p-4 text-sm" data-testid="sources-banner">
           <p>{sources.banner === "some" ? <><b>{R.warnSomeTitle}</b> {R.warnSomeBody}</> : <><b>{R.warnTitle}</b> {R.warnBody}</>}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {sources.missing.map((key) => <Link key={key} href={`/${lang}/app/settings/connections`} className="btn btn-secondary btn-xs">{R.sources[key]} · {key === "store" ? R.connectStore : R.connectNow} {nextArrow(lang)}</Link>)}
+            {sources.missing.map((key) => <Link key={key} href={href("/settings/connections")} className="btn btn-secondary btn-xs">{R.sources[key]} · {key === "store" ? R.connectStore : R.connectNow} {nextArrow(lang)}</Link>)}
           </div>
         </div>
       )}
@@ -129,7 +133,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       {/* Rule 1129: the chosen range is marked for screen readers as well as by fill; 44px targets on touch screens. */}
       <nav aria-label={t.ux.reports.rangeLabel} className="mt-4 flex flex-wrap gap-2">
         {(["1", "2", "7", "30", "60", "90", "ytd", "ly"] as const).map((rg) => <Link key={rg} href={rangeHref(rg)} aria-current={range === rg ? "page" : undefined} className={`inline-flex min-h-[var(--hit-min)] items-center rounded-full px-3 text-xs pointer-fine:min-h-7 ${range === rg ? "bg-inverse font-semibold text-inverse-foreground" : "border border-border text-foreground-muted hover:border-border-strong"}`}>{R.ranges[rg]}</Link>)}
-        <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-border px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-border px-2 py-1" /><button aria-current={range === "custom" ? "page" : undefined} className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-inverse text-inverse-foreground" : "border border-border text-foreground-muted"}`}>{R.ranges.custom}</button></form>
+        <form action={href("/reports")} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-border px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-border px-2 py-1" /><button aria-current={range === "custom" ? "page" : undefined} className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-inverse text-inverse-foreground" : "border border-border text-foreground-muted"}`}>{R.ranges.custom}</button></form>
       </nav>
       <p className="mt-2 font-mono text-xs text-foreground-muted" dir="ltr">{k.window.from} → {k.window.to}</p>
       <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} canImport={perfImport} canDelete={perfDelete} />
@@ -167,7 +171,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
               // A read source's numbers live in their own card (store, campaign results, site, social), not in a tile.
               return on
                 ? <a key={m.key} href={m.source === "ads" ? "#campaign-results" : m.source === "analytics" ? "#site-stats" : m.source === "social" ? "#social-stats" : "#store-sales"} className="btn btn-xs btn-secondary">✓ {R.platform[m.key as keyof typeof R.platform]} · {m.source === "ads" ? R.inResultsCard : m.source === "analytics" ? R.inSiteCard : m.source === "social" ? R.inSocialCard : R.inStoreCard}</a>
-                : <Link key={m.key} href={`/${lang}/app/settings/connections`} className="btn btn-xs btn-secondary opacity-70">🔒 {R.platform[m.key as keyof typeof R.platform]} · {m.source === "store" ? R.connectStore : R.connectNow}</Link>;
+                : <Link key={m.key} href={href("/settings/connections")} className="btn btn-xs btn-secondary opacity-70">🔒 {R.platform[m.key as keyof typeof R.platform]} · {m.source === "store" ? R.connectStore : R.connectNow}</Link>;
             })}
           </div>
         </div>
@@ -295,8 +299,8 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
                   <p className="text-xs text-foreground-muted"><span>{typeLabel(x.type)}</span> · <Time value={x.createdAt} lang={lang} className="tnum" /> · {x.status}</p>
                 </div>
                 <div className="flex gap-2">
-                  {x.type === "board_deck" && <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-xs">{t.inbox.pptx}</a>}
-                  <Link href={`/${lang}/app`} className="btn btn-secondary btn-xs">{R.open}</Link>
+                  {x.type === "board_deck" && <a href={apiHref(`/api/tasks/${x.id}/pptx`)} className="btn btn-accent btn-xs">{t.inbox.pptx}</a>}
+                  <Link href={href()} className="btn btn-secondary btn-xs">{R.open}</Link>
                 </div>
               </li>
             ))}
@@ -309,6 +313,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 
 /** Store orders and abandoned carts, as totals from the last sync. The numbers are the store's, never estimated. */
 function StoreSales({ R, refusals, failed, provider, store, failedAt, lang }: { R: AppDict["reports"]["store"]; /** The report buttons' refusal words by error code (limits, no brand, models paused). */ refusals: Record<string, string>; failed: string; provider: SalesProvider; store: SalesSnapshot | null; failedAt: string | null; lang: Lang }) {
+  const href = useAppLink(lang);
   const r = useRouter();
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -371,7 +376,7 @@ function StoreSales({ R, refusals, failed, provider, store, failedAt, lang }: { 
           {store.carts.top.length > 0 && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button onClick={draft} disabled={drafting || busy} className="btn btn-primary btn-xs">{drafting ? R.drafting : R.draft} <span className="font-mono" dir="ltr">· {TASK_COST.cart_recovery}</span></button>
-              {note && <Link href={`/${lang}/app`} className="text-xs text-foreground underline">{note}</Link>}
+              {note && <Link href={href()} className="text-xs text-foreground underline">{note}</Link>}
             </div>
           )}
         </>

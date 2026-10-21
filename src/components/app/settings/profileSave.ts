@@ -1,4 +1,5 @@
 import type { Lang } from "@/lib/i18n";
+import { sessionBrandHeaders } from "@/lib/brand-fetch";
 
 /** What PUT /api/profile answers: the stored values on 200, the refused field on 400, `busy` on 409 (nothing written). */
 export type ProfileSaved = {
@@ -15,11 +16,12 @@ export type ProfileOutcome = { kind: "saved"; saved: NonNullable<ProfileSaved["s
  * One settings card's save through PUT /api/profile (rule 1142): only the fields this card holds are sent, so a role may
  * save every card it owns and the route never sees a field from another card. The refusals the route names (403, 400 with
  * the field, 409 busy) come before any write and say "nothing was saved"; any other failure may come after part of a
- * write, so it never says that and the caller re-reads what is stored.
+ * write, so it never says that and the caller re-reads what is stored. `sessionBrand` is the account page's brand (R-C12):
+ * the account settings page has no `/b/{id}` for the fetch wrapper to read, so the card names the session's brand itself.
  */
-export async function saveProfile(body: Record<string, string>, lang: Lang, forbidden: string): Promise<ProfileOutcome> {
+export async function saveProfile(body: Record<string, string>, lang: Lang, forbidden: string, sessionBrand?: string | null): Promise<ProfileOutcome> {
   const ar = lang === "ar";
-  const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
+  const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", ...sessionBrandHeaders(sessionBrand) }, body: JSON.stringify(body) }).catch(() => null);
   const j = ((await res?.json().catch(() => ({}))) ?? {}) as ProfileSaved;
   if (res?.ok && j.ok && j.saved) return { kind: "saved", saved: j.saved };
   const refused = res?.status === 403 ? forbidden

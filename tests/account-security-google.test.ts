@@ -218,7 +218,7 @@ describe("rule 1950: signup creates an owner whose address is already proved; lo
   it("signup mode creates the owner, proved, linked and signed in", async () => {
     const email = `gnew-${randomBytes(4).toString("hex")}@test.example`;
     const { loc, claims } = await roundTrip("mode=signup&lang=en", email);
-    expect(loc).toMatch(/\/en\/app\/start$/);
+    expect(loc).toMatch(/\/en\/app\/b\/default\/start$/);
     const u = (await getUser(email))!;
     expect(u.emailVerifiedAt).toBeTruthy();
     expect(await db.get(linkKey(String(claims.sub)))).toBe(email);

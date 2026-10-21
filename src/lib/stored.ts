@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { log } from "./log";
+import { BRAND_ID_RE } from "./brand-path";
 import { PASSKEY_NAME_MAX, PASSKEYS_MAX } from "./passkey-limits";
 
 /**
@@ -51,9 +52,9 @@ export function brandRows(raw: unknown): z.output<typeof BrandRow>[] {
 
 /**
  * Rule 2037: `activebrand:{login}`, a brand id. The Redis client reads a stored value that looks like a number back as
- * a number (a brand id is eight base-36 characters, so "12345678" can happen), so a number is turned back into its text.
+ * a number (a brand id is eight base-36 characters, so "12345678" can happen), so a number is turned back into its text. The text shape is `BRAND_ID_RE` from `brand-path.ts`, the same one `isBrandId` checks, for the text of a number too (`1.5` or `1e+21` is no brand id).
  */
-export const ActiveBrandId = z.union([z.string().min(1), z.number().transform((n) => String(n))]);
+export const ActiveBrandId = z.union([z.string().regex(BRAND_ID_RE), z.number().transform((n) => String(n)).pipe(z.string().regex(BRAND_ID_RE))]);
 
 /**
  * Rule 2038: `conn:{scope}:{provider}`, one connection with its credentials sealed in `enc`. `provider` and `enc` are
@@ -107,6 +108,11 @@ export const PersonRow = z.looseObject({
   devicesAfter: z.string().optional(),
   suspended: z.union([z.literal(true), z.looseObject({ until: z.string() })]).optional(),
   trialUsedAt: z.string().optional(),
+  /**
+   * Multi-workspace M2 (spec section 10, decision 3): how many accounts this person may own, set by the founder for one
+   * person; absent reads as `OWNED_CAP` (src/lib/workspaces.ts). Optional and new (expand): older code ignores it.
+   */
+  ownedCap: z.number().int().min(1).max(50).optional(),
   createdAt: z.string().catch(""),
 });
 export type PersonRowValue = z.output<typeof PersonRow>;

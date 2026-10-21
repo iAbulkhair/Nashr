@@ -554,8 +554,8 @@ describe("security review fixes (rules 1184-1190)", () => {
   it("rule 1188: the console follows only /ar/app or /en/app, and the server builds it from a fixed list", () => {
     for (const ok of ["/ar/app", "/en/app"]) expect(IMPERSONATE_REDIRECT.test(ok), ok).toBe(true);
     for (const bad of ["https://evil.example/ar/app", "//evil.example", "/fr/app", "/ar/app/x", "/ar/app?next=//x", "javascript:alert(1)", ""]) expect(IMPERSONATE_REDIRECT.test(bad), bad).toBe(false);
-    expect(read("src/components/admin/Users.tsx")).toContain("window.location.assign(IMPERSONATE_REDIRECT.test(j.redirect) ? j.redirect : `/${lang}/app`)");
-    expect(read("src/app/api/admin/users/[email]/route.ts")).toContain('redirect: `/${u.lang === "en" ? "en" : "ar"}/app`');
+    expect(read("src/components/admin/Users.tsx")).toContain("window.location.assign(IMPERSONATE_REDIRECT.test(j.redirect) ? j.redirect : appHref(lang))");
+    expect(read("src/app/api/admin/users/[email]/route.ts")).toContain('redirect: appHref(u.lang === "en" ? "en" : "ar")');
   });
 
   it("rule 1189: secret-shaped text is masked in free text; emails, dates and short ids are not", async () => {

@@ -32,7 +32,7 @@ import { AwayProposalCard, awayCardRefusal } from "@/components/app/ChatPanel";
 import { awayCall } from "@/components/app/AwayPanel";
 import { calBody, withAdded, withEid, withHolidayOff, withHours, withWeekend, yearlyValue } from "@/components/app/WorkingDaysPanel";
 import { localDay } from "@/components/app/useOneWrite";
-import Page from "@/app/[lang]/app/todo/page";
+import Page from "@/app/[lang]/app/b/[brand]/todo/page";
 
 // The app router only exists inside Next: the to-do page's client components get a router whose refresh does nothing.
 vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next/navigation")>()), useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
@@ -937,7 +937,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       expect(unknown.status).toBe(400);
       expect(await unknown.json()).toEqual({ ok: false, error: "holidays_invalid", field: "holidays.remove" });
       // The panel lists the stored removal no default produces, with its "make it a day off again" button.
-      const html = await new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang: "en" }) }))).text();
+      const html = await new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang: "en", brand: "default" }) }))).text();
       const list = html.slice(html.indexOf(appDict.en.todo.cal.offList));
       expect(html).toContain(appDict.en.todo.cal.offList);
       expect(list).toContain(localDay("en", "2026-10-06")("2027-09-23"));
@@ -1406,7 +1406,7 @@ describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for
 });
 
 describe("rule 487: the to-do page shows Working days and Away panels, and the reason a debt waits under its WhatsApp link", () => {
-  const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }) }))).text();
+  const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang, brand: "default" }) }))).text();
   /** The seven weekend checkboxes, in weekday order (0 Sunday … 6 Saturday). */
   const weekendBoxes = (html: string) => [...html.matchAll(/<input[^>]*name="weekend"[^>]*>/g)].map((m) => m[0]);
   const ARABIC_INDIC = /[٠-٩۰-۹]/;

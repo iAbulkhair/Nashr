@@ -4,6 +4,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { json, newMember, newUser, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
+import { acct } from "@/lib/account-id";
 import { accountKey, globalKey } from "@/lib/keys";
 import { aboutKey, collapse, listNotifs, markAllRead, pushNotif, type Notif } from "@/lib/notifications";
 import { digestEntries, digestFor, digestMail, getDigest, saveDigest, sweepDigests, windowEnded } from "@/lib/notif-digest";
@@ -102,13 +103,13 @@ describe("rule 2353: the digest choice", () => {
     for (const v of ["4h", "day", "week"]) expect(html).toContain(`name="digest" value="${v}"`);
     expect(html).toContain('name="digest" checked="" value="off"');
     expect(read("src/components/app/settings/NotifyPrefsSettings.tsx")).toContain('"/api/notifications/digest"');
-    expect(read("src/app/[lang]/app/settings/notifications/page.tsx")).toContain("getDigest(acct(u))");
+    expect(read("src/app/[lang]/app/b/[brand]/settings/notifications/page.tsx")).toContain("getDigest(acct(u))");
   });
 });
 
 describe("rule 2354: the tick sends one email per window, only with what is new and unread", () => {
   it("starts a window, waits, then sends the unread entries of that window once", async () => {
-    const a = acc();
+    const a = acct(await newUser("dg")); // a real account: the tick reads it again (rule 2507)
     await saveDigest(a, "4h", a, "en");
     const start = Date.parse((await db.get<string>(accountKey.digestLast(a)))!);
     expect(await digestFor(a, start + H)).toBe("wait");
@@ -130,7 +131,7 @@ describe("rule 2354: the tick sends one email per window, only with what is new 
     expect(sent).toHaveLength(1);
   });
   it("a refused send keeps the window open for a later tick; a claimed send is not made twice", async () => {
-    const a = acc();
+    const a = acct(await newUser("dg")); // a real account: the tick reads it again (rule 2507)
     await saveDigest(a, "day", a, "ar");
     const start = Date.parse((await db.get<string>(accountKey.digestLast(a)))!);
     await db.set(accountKey.notifications(a), [entry("x", { at: new Date(start + H).toISOString() })]);
@@ -147,7 +148,7 @@ describe("rule 2354: the tick sends one email per window, only with what is new 
     await db.sadd(globalKey.digests(), a);
     expect(await digestFor(a, Date.now())).toBe("off");
     expect(await db.smembers(globalKey.digests())).not.toContain(a);
-    const b = acc();
+    const b = acct(await newUser("dg"));
     await saveDigest(b, "week", b, "en");
     await db.del(accountKey.digestLast(b));
     expect(await digestFor(b, Date.now())).toBe("start");

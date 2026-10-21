@@ -29,7 +29,9 @@ import { endHandPlanIfDue } from "@/lib/hand-plan-end";
 import { handPlanEnded } from "@/lib/hand-plan";
 import { ksaDay } from "@/lib/partner-rules";
 import { runMarginAlert } from "@/lib/margin";
-import { acct } from "@/lib/account-id";
+import { acct, brandOfScope } from "@/lib/account-id";
+import { appHrefFor } from "@/lib/ws-href";
+import { jobRef, runAsAccount, type JobRef } from "@/lib/job-account";
 
 export const maxDuration = 300;
 
@@ -131,7 +133,7 @@ async function dailyFor(u: User): Promise<string> {
     // (src/lib/notify.ts `sendOnce`): a refused nudge is tried again on the next run instead of being recorded as done.
     if (Date.now() - new Date(u.createdAt).getTime() > 10 * 60e3 && mailReady()) {
       const ar = u.lang === "ar";
-      const link = `${appOrigin()}/${u.lang}/app/start`;
+      const link = `${appOrigin()}${appHrefFor(u, u.lang, "/start", brandOfScope(u.scope ?? u.email))}`;
       const subject = ar ? "نور جاهزة — أعطيها رابط موقعك" : "Noor is ready — give her your website";
       const text = ar
         ? `أهلاً ${u.name}\n\nسجّلت في ذكين وما بدأت بعد. نور جاهزة: أعطيها رابط موقعك وتكتب ملف علامتك وخطتك أمامك، ثم اطلب منها أول دفعة منشورات.\n\n${link}`
@@ -164,7 +166,7 @@ async function dailyFor(u: User): Promise<string> {
     // "important": something waits for a decision, a follow-up fired, or a to-do is overdue or due today.
     const worth = emailAllowed(prefs, "brief", brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0);
     const extra = mailed.length ? `\n\n${notifEmailText(u, mailed)}` : "";
-    const app = `${appOrigin()}/${u.lang}/app`;
+    const app = `${appOrigin()}${appHrefFor(u, u.lang, "", brandOfScope(u.scope ?? u.email))}`;
     const text = brief.text + extra + `\n\n${app}`;
     // The HTML part is the same text in the shared layout (rule 1961): the model's brief is untrusted, so `dailyBrief`
     // escapes every paragraph and links only the button.
@@ -172,7 +174,7 @@ async function dailyFor(u: User): Promise<string> {
   } else if (mailed.length && prefs.brief !== "none") {
     const subject = u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team";
     const text = notifEmailText(u, fu);
-    if (await sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}/${u.lang}/app` } }, locale: u.lang })) out.push("email");
+    if (await sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}${appHrefFor(u, u.lang, "", brandOfScope(u.scope ?? u.email))}` } }, locale: u.lang })) out.push("email");
   }
   // Instagram and LinkedIn page results for Dana (src/lib/social-stats.ts), last: up to 30 post reads may be slow, and a
   // slow platform must never cost this workspace its brief or its email. Tomorrow's report reads what lands here.
@@ -189,7 +191,8 @@ async function purgeIdle(scope: string): Promise<string> {
   return n ? `todo:${n}p` : "idle";
 }
 
-type DailyItem = { user: User } | { idle: string };
+/** A workspace entry carries the account it acts for, taken at listing time (rule 2500); an idle scope only purges. */
+type DailyItem = { user: User; ref: JobRef } | { idle: string };
 
 /** How long the batch may start workspaces, counted from the route's start: the function limit minus the longest run. */
 const START_BUDGET_MS = 240_000;
@@ -232,10 +235,10 @@ export async function GET(req: Request) {
     margin = await runMarginAlert();
   }
   const roster = await dailyRoster();
-  const items: DailyItem[] = [...roster.users.map((user) => ({ user })), ...roster.idle.map((idle) => ({ idle }))];
+  const items: DailyItem[] = [...roster.users.map((user) => ({ user, ref: jobRef(user) })), ...roster.idle.map((idle) => ({ idle }))];
   const report = await runCronBatch({
     job: "daily", period: new Date().toISOString().slice(0, 10), items,
-    id: (x) => ("user" in x ? x.user.scope ?? x.user.email : `idle:${x.idle}`), run: (x) => ("user" in x ? dailyFor(x.user) : purgeIdle(x.idle)),
+    id: (x) => ("user" in x ? x.user.scope ?? x.user.email : `idle:${x.idle}`), run: (x) => ("user" in x ? runAsAccount(x.ref, dailyFor) : purgeIdle(x.idle)),
     concurrency: 8, startBudgetMs: Math.max(0, START_BUDGET_MS - (Date.now() - routeStart)), markerTtlSeconds: 2 * 86400, req,
   });
   if (!report.chained && new Date().getUTCDay() <= 2) {

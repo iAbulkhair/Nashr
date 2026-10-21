@@ -6,6 +6,7 @@ import { mailReady } from "@/lib/notify";
 import { safeNext } from "@/lib/safe-next";
 import { devCodeExposed, hasPendingCode } from "@/lib/verify-email";
 import VerifyForm from "@/components/app/VerifyForm";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * Where an owner who has not proved the address lands (rule 754). The layout sends them here; `currentUser()` reads them
@@ -23,7 +24,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!u) redirect(`/${lang}/app/login`);
   const sp = await searchParams;
   const next = safeNext(Array.isArray(sp.next) ? sp.next[0] : sp.next);
-  if (u.actor?.kind !== "owner" || emailVerified(u)) redirect(next || `/${lang}/app`);
+  if (u.actor?.kind !== "owner" || emailVerified(u)) redirect(next || appHref(lang));
   // Signup already mailed the first code; a login without a waiting code asks for one when the page opens.
   const autoSend = !(await hasPendingCode(u.email));
   const canChangeEmail = !!u.gatedSignup;

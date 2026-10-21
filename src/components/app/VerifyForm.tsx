@@ -7,6 +7,7 @@ import LogoutButton from "./LogoutButton";
 import { authMessage, failureCode, postJson, succeeded } from "@/lib/auth-client";
 import { safeNext } from "@/lib/safe-next";
 import { retryWait, typedDigits, waitLabel } from "@/lib/verify-client";
+import { appHref } from "@/lib/ws-path";
 
 const input = "input";
 
@@ -77,7 +78,7 @@ const V = {
 export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mailOn, whatsapp, next, mailSent = true }: { lang: Lang; email: string; canChangeEmail: boolean; autoSend: boolean; mailOn: boolean; whatsapp: string | null; next: string; mailSent?: boolean }) {
   const r = useRouter();
   const S = V[lang];
-  const dest = safeNext(next) || `/${lang}/app`;
+  const dest = safeNext(next) || appHref(lang);
   const login = `/${lang}/app/login`;
   const [shown, setShown] = useState(email);
   const [code, setCode] = useState("");

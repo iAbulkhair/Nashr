@@ -13,6 +13,7 @@ import { SEC_ID, SEC_KEYS, SEC_PURGE_BATCH, SERIES_ID, audit, fail, stateOf, wit
 import { arCount, formatWhen, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 import { accountOfScope, brandOfScope } from "./account-id";
+import { appHrefInBrand } from "@/lib/ws-href";
 
 /**
  * The closed copies of recurring series: warned about, then deleted 90 days after their close (spec §5, rulings R43,
@@ -119,7 +120,7 @@ export async function warnSeries(scope: string, now = Date.now()): Promise<numbe
     const at = (g: Group) => Math.max(Math.min(...g.copies.map((x) => x.c + SERIES_PURGE_MS)), now + SERIES_NOTICE_MS);
     const text = warningText(named.map((g) => ({ title: g.title, n: g.copies.length, date: formatWhen(new Date(at(g)).toISOString(), true, lang, now, zone) })), fresh.length - named.length, lang);
     const title = withBrand(text.title, tag);
-    const href = `/${lang}/app/todo?series=${named[0].sid}`;
+    const href = appHrefInBrand(scope, lang, `/todo?series=${named[0].sid}`);
     const n: Omit<Notif, "id" | "at"> = { kind: "todo", agent: "reem", title, body: text.body, href };
     const [pushed] = await pushNotifs(email, [{ n, fingerprint: brandFingerprint(scope, `todo-purge:${zoneDay(now, zone as Zone)}`), ttlDays: 7, scope }]);
     // The day's warning went out already (another run): its copies wait for the next local day.

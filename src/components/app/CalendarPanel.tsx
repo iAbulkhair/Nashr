@@ -10,6 +10,7 @@ import { Icon, channelIcon } from "./Icons";
 import Scribble from "@/components/Scribble";
 import Tabs, { TabPanel } from "@/components/ui/Tabs";
 import EmptyState from "@/components/ui/EmptyState";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const DEFAULT_ROWS = ["instagram", "snapchat", "tiktok", "x", "whatsapp", "gbp", "blog"];
 
@@ -55,6 +56,7 @@ type View = "week" | "month" | "agenda";
  * rather than anywhere on the page, and an empty day or cell asks Noor for content for that day.
  */
 export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: AppDict; tasks: CalendarRow[]; lang: Lang; channels?: string[] }) {
+  const href = useAppLink(lang);
   const c = t.calendar;
   const U = t.ux.calendar;
   const rtl = lang === "ar";
@@ -73,7 +75,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
   const dayLong = dateFormat(lang, { weekday: "long", month: "long", day: "numeric" });
   const range = `${fmt.format(dateOf(days[0]))} – ${fmt.format(dateOf(days[6]))}`;
   const chName = (ch: string) => (t.channelNames as Record<string, string>)[ch] ?? ch;
-  const askFor = (day: string, ch?: string) => `/${lang}/app/chat?prompt=${encodeURIComponent(U.prompt.replace("{date}", day) + (ch ? ` (${chName(ch)})` : ""))}`;
+  const askFor = (day: string, ch?: string) => href(`/chat?prompt=${encodeURIComponent(U.prompt.replace("{date}", day) + (ch ? ` (${chName(ch)})` : ""))}`);
 
   function shift(n: number) {
     if (view === "week") setAnchor((a) => addDays(a, 7 * n));
@@ -199,7 +201,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
           ) : (
             <ul className="mt-2 grid gap-2 md:grid-cols-2">{selected.map(item)}</ul>
           )}
-          {unscheduled.length > 0 && <p className="mt-3 text-xs text-foreground-muted">{c.unscheduled}: <span className="tnum">{unscheduled.length}</span> · <Link href={`/${lang}/app`} className="text-foreground underline">{c.setDates}</Link></p>}
+          {unscheduled.length > 0 && <p className="mt-3 text-xs text-foreground-muted">{c.unscheduled}: <span className="tnum">{unscheduled.length}</span> · <Link href={href()} className="text-foreground underline">{c.setDates}</Link></p>}
         </aside>
       )}
     </div>

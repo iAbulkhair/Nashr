@@ -16,6 +16,7 @@ import ScribbleStatic from "@/components/ScribbleStatic";
 import Doodle from "@/components/home/Doodle";
 import Face from "@/components/home/Face";
 import { pageMeta } from "@/lib/page-meta";
+import { appHref } from "@/lib/ws-path";
 
 export function generateStaticParams() {
   return LANGS.flatMap((lang) => AGENT_SLUGS.map((agent) => ({ lang, agent })));
@@ -102,7 +103,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
               <ul className="mt-5 flex flex-wrap gap-3" role="list">
                 {asks.map((q, i) => (
                   <li key={q} className="max-w-full">
-                    <Link href={`/${lang}/app/chat?${agent === "noor" ? "" : `agent=${agent}&`}prompt=${encodeURIComponent(q)}`} className="s-chip inline-flex max-w-full items-center text-start">
+                    <Link href={appHref(lang, `/chat?${agent === "noor" ? "" : `agent=${agent}&`}prompt=${encodeURIComponent(q)}`)} className="s-chip inline-flex max-w-full items-center text-start">
                       <Scribble kind="pill" seed={`agent-ask-${i}`} fill="paper" />
                       {q}
                     </Link>

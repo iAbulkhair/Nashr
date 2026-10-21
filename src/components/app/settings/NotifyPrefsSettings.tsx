@@ -7,6 +7,7 @@ import type { DigestEvery } from "@/lib/notif-digest";
 import Switch from "@/components/ui/Switch";
 import ReadOnlyNote from "../ReadOnlyNote";
 import SettingsCard, { type CardStatus } from "./SettingsCard";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 type Row = { key: string; name: string; sub: string; inApp: InAppTopic | "always" | "with-reminders" | null; email: EmailTopic | "always" | null };
 
@@ -72,6 +73,7 @@ const same = (a: NotifyPrefs, b: NotifyPrefs) => JSON.stringify(a) === JSON.stri
  * owner (`profile.account`); anyone else sees the choices and who makes them.
  */
 export default function NotifyPrefsSettings({ lang, initial, canEdit, digest: digestInitial = "off" }: { lang: Lang; initial: NotifyPrefs; canEdit: boolean; digest?: DigestEvery }) {
+  const href = useAppLink(lang);
   const T = COPY[lang];
   const [stored, setStored] = useState(initial);
   const [brief, setBrief] = useState<EmailLevel>(initial.brief);
@@ -175,7 +177,7 @@ export default function NotifyPrefsSettings({ lang, initial, canEdit, digest: di
           ))}
         </fieldset>
       </SettingsCard>
-      <p className="text-sm"><Link href={`/${lang}/app/notifications`} className="font-medium text-foreground underline underline-offset-4">{T.feed}</Link></p>
+      <p className="text-sm"><Link href={href("/notifications")} className="font-medium text-foreground underline underline-offset-4">{T.feed}</Link></p>
     </div>
   );
 }

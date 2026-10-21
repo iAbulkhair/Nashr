@@ -38,7 +38,8 @@ import { dateFormat } from "./dates";
 import { DEFAULT_ZONE, ZONE_IDS, type Zone } from "./zones";
 import { appOrigin } from "./origin";
 import { COPY, paragraphs } from "../emails";
-import { acct } from "./account-id";
+import { acct, brandOfScope } from "./account-id";
+import { appHrefFor } from "@/lib/ws-href";
 
 /** The wrap's local time, and in Ramadan (after Taraweeh). */
 export const EVENING_AT = { hh: 18, mm: 0 } as const;
@@ -206,7 +207,7 @@ export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" 
   try {
     brand = await wrapBrand(acct(user), scope);
     ({ title, body } = wrapText(w, user.lang, brand));
-    await notifyItem(acct(user), user.lang, { kind: "todo", agent: "reem", title, body, href: `/${user.lang}/app/todo` }, undefined, undefined, scope);
+    await notifyItem(acct(user), user.lang, { kind: "todo", agent: "reem", title, body, href: appHrefFor(user, user.lang, "/todo", brandOfScope(scope)) }, undefined, undefined, scope);
   } catch (e) {
     await db.del(marker).catch(() => {});
     throw e;
@@ -214,7 +215,7 @@ export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" 
   if (process.env.RESEND_API_KEY) {
     const subject = user.lang === "ar" ? `ملخص المساء — ${w.day}${brand ? ` — «${brand}»` : ""}` : `Evening wrap — ${w.day}${brand ? ` — “${brand}”` : ""}`;
     // The evening wrap's own switch (rule 1147); the old levels read as before: only "all" sent it.
-    if (emailAllowed(await readPrefs(scope, user.email), "evening")) await sendEmail({ to: user.email, subject, text: `${title}\n\n${body}\n\n${appOrigin()}/${user.lang}/app/todo`, template: "notice", context: { title, paragraphs: paragraphs(body), cta: { href: `${appOrigin()}/${user.lang}/app/todo`, label: COPY[user.lang].notice.todo } }, locale: user.lang });
+    if (emailAllowed(await readPrefs(scope, user.email), "evening")) await sendEmail({ to: user.email, subject, text: `${title}\n\n${body}\n\n${appOrigin()}${appHrefFor(user, user.lang, "/todo", brandOfScope(scope))}`, template: "notice", context: { title, paragraphs: paragraphs(body), cta: { href: `${appOrigin()}${appHrefFor(user, user.lang, "/todo", brandOfScope(scope))}`, label: COPY[user.lang].notice.todo } }, locale: user.lang });
   }
   return "sent";
 }

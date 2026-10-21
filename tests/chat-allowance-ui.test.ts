@@ -29,7 +29,7 @@ import { chatMsgKey, chatTrialKey } from "@/lib/usage";
 import type { ChatStatus } from "@/lib/chat-allowance";
 import ChatPanel, { chatLine, refusalOf } from "@/components/app/ChatPanel";
 import { limitText, raiseLimit, type LimitKind } from "@/components/app/LimitModal";
-import ChatPage from "@/app/[lang]/app/chat/page";
+import ChatPage from "@/app/[lang]/app/b/[brand]/chat/page";
 import { newMember, newUser, signIn, signOut } from "./helpers/session";
 
 const LANGS = ["ar", "en"] as const;
@@ -195,7 +195,7 @@ describe("the messages-left line under the chat box (rule 315)", () => {
     expect(src.match(/if \(j\.chat\) setChatNow\(j\.chat/g)?.length).toBeGreaterThanOrEqual(3);
     expect(src).toContain("useState<ChatStatus | null>(chat0 ?? null)");
     // The chat page passes it in both branches (first run and the workspace thread).
-    const page = readFileSync("src/app/[lang]/app/chat/page.tsx", "utf8");
+    const page = readFileSync("src/app/[lang]/app/b/[brand]/chat/page.tsx", "utf8");
     expect(page.match(/chat=\{chat\}/g)?.length).toBe(2);
     expect(page).toContain('chatStatus(u, route("chat").model)');
     // The workspace thread shows the hold of the conversation's own model (its pick when route() accepts it).
@@ -320,7 +320,7 @@ describe("the limit dialog's chat kinds (rule 315)", () => {
     expect(src).toContain('const cta = topup ? L.topup : (kind === "chat" && open.period !== "trial") || kind === "chat_credits" ? L.billing : L.plans;');
     // Out of credits on a paid plan, the same page at its top-up packs (rule 450, tests/topups.test.ts).
     // Settings, Billing since UI/UX phase 3 (rule 1141); the old /app/billing redirects there for one release.
-    expect(src).toContain("<Link href={`/${lang}/app/settings/billing${topup ? \"#topup\" : \"\"}`} className=\"btn btn-primary\">{cta}</Link>");
+    expect(src).toContain("<Link href={href(`/settings/billing${topup ? \"#topup\" : \"\"}`)} className=\"btn btn-primary\">{cta}</Link>");
   });
 });
 

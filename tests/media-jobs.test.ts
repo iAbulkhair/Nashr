@@ -893,7 +893,7 @@ describe("what the owner sees", () => {
     await advance(started(await startMedia(input(u, t, "img-balanced"), d1)), d1, sweep());
     const notes = await listNotifs(u.email);
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ kind: "info", title: "لم تكتمل الصورة لـ«Weekend offer»", body: "أُعيدت 1 كريدت.", href: "/ar/app" });
+    expect(notes[0]).toMatchObject({ kind: "info", title: "لم تكتمل الصورة لـ«Weekend offer»", body: "أُعيدت 1 كريدت.", href: "/ar/app/b/default" });
 
     const v = await owner();
     const d2 = failing();
@@ -907,7 +907,7 @@ describe("what the owner sees", () => {
     const deps = fakeDeps({ kie: fakeAdapter("kie", { status: () => ({ state: "done", urls: ["https://tempfile.kie.example/v.mp4"] }) }) });
     const job = started(await startMedia(input(u, t, "vid-quick", { aspect: "portrait" }), deps));
     expect((await advance(job, deps, { deadline: Date.now() + 100_000, via: "hook" })).state).toBe("done");
-    expect(await listNotifs(u.email)).toMatchObject([{ kind: "info", title: "Your video is ready: Ramadan hours", body: "It's in your inbox.", href: "/en/app" }]);
+    expect(await listNotifs(u.email)).toMatchObject([{ kind: "info", title: "Your video is ready: Ramadan hours", body: "It's in your inbox.", href: "/en/app/b/default" }]);
     expect((await getTask(u.email, t.id))!).toMatchObject({ videoUrl: deps.stored[0].url, videoPrompt: "a test prompt", videoProvider: "kie", videoModel: "vid-quick", mediaCredits: 12 });
     expect(deps.stored[0].kind).toBe("video");
   });

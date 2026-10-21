@@ -6,6 +6,7 @@ import { mailReady, sendOnce, type OncePart } from "./notify";
 import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
 import { appOrigin } from "./origin";
 import { COPY, paragraphs, renderEmail } from "../emails";
+import { appHrefFor } from "@/lib/ws-href";
 
 /**
  * Lifecycle emails (from the founder): a plain-text part written here, and the same words as an HTML notice
@@ -30,7 +31,7 @@ export function day3Offer(u: Pick<User, "firstMonthOffer" | "firstPaidOn">): "ea
 /** The lifecycle note for `key`, or null (exported for tests). */
 export function lifecycleTemplate(u: User, key: string, ctx: { firstTitle?: string; pending: number; approved: number; trialEnds: string }): Tpl | null {
   const ar = u.lang === "ar";
-  const app = `${appOrigin()}/${u.lang}/app`;
+  const app = `${appOrigin()}${appHrefFor(u, u.lang)}`;
   const sig = ar ? `\n\n— مؤسس ذكين${WA() ? "\nواتساب: " + WA() : ""}` : `\n\n— Founder of Thakeen${WA() ? "\nWhatsApp: " + WA() : ""}`;
   switch (key) {
     case "day1":
@@ -72,12 +73,12 @@ export function lifecycleTemplate(u: User, key: string, ctx: { firstTitle?: stri
  * trial notes (day 2 and day 3) point it at the subscription page they talk about. Every other address stays where the
  * text has it, as text kept left to right, never as a link (rule 687: links go into the app only).
  */
-export function lifecycleHtml(u: Pick<User, "lang">, key: string, tpl: Tpl): string {
+export function lifecycleHtml(u: Pick<User, "lang" | "id" | "email">, key: string, tpl: Tpl): string {
   return renderEmail("notice", lifecyclePart(u, key, tpl).context, u.lang);
 }
 /** The note as a typed template message for `sendOnce` (rule 1962); `lifecycleHtml` renders the same thing. */
-export function lifecyclePart(u: Pick<User, "lang">, key: string, tpl: Tpl): OncePart<"notice"> {
-  const app = `${appOrigin()}/${u.lang}/app`;
+export function lifecyclePart(u: Pick<User, "lang" | "id" | "email">, key: string, tpl: Tpl): OncePart<"notice"> {
+  const app = `${appOrigin()}${appHrefFor(u, u.lang)}`;
   const billing = key === "day2" || key === "day3";
   return {
     template: "notice",
@@ -85,7 +86,7 @@ export function lifecyclePart(u: Pick<User, "lang">, key: string, tpl: Tpl): Onc
     context: {
       title: tpl.subject,
       paragraphs: paragraphs(tpl.body).filter((p) => p !== app),
-      cta: billing ? { href: `${app}/billing`, label: COPY[u.lang].notice.billing } : { href: app, label: COPY[u.lang].notice.open },
+      cta: billing ? { href: `${appOrigin()}${appHrefFor(u, u.lang, "/billing")}`, label: COPY[u.lang].notice.billing } : { href: app, label: COPY[u.lang].notice.open },
     },
   };
 }

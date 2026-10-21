@@ -186,6 +186,11 @@ export async function brandAddRefusal(email: string): Promise<"hour" | "day" | n
   return null;
 }
 
+/** Workspaces one person may create per day (`wscreate`, multi-workspace M2, docs/specs/2026-10-18-multi-org.md section 10). */
+export const WS_CREATES_PER_DAY = 3;
+/** True while the person may create another workspace today. `pid` is the session's person, never the request's. */
+export const workspaceCreateAllowed = (pid: string): Promise<boolean> => allow(`wscreate:${pid}`, WS_CREATES_PER_DAY, WINDOW.day);
+
 /**
  * Enforced agent-scope refusals per brand scope (rule 795; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md
  * section 4.2). A message the input gate refuses makes no main model call and is given back to the chat allowance, so it

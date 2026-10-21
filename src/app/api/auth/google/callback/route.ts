@@ -9,6 +9,7 @@ import { afterSignup, signupPartner } from "@/lib/partners";
 import { allow, clientIp } from "@/lib/rate";
 import { applyReferral, registerCode } from "@/lib/referral";
 import { track } from "@/lib/track";
+import { appHref } from "@/lib/ws-path";
 
 const go = (path: string) => NextResponse.redirect(`${appOrigin()}${path}`, 303);
 
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
   const st = await takeState(q.get("state"));
   const lang = st?.lang ?? "ar";
-  const fail = (code: string, page: "login" | "signup" = "login") => go(`/${lang}/app/${page}?google=${code}`);
+  const fail = (code: string, page: "login" | "signup" = "login") => go(appHref(lang, `/${page}?google=${code}`));
   if (!(await allow(`login:ip:${clientIp(req)}`, 20, 900))) return fail("slow_down");
   if (!st) return fail("google_failed");
   if (q.get("error")) return st.mode === "link" ? go(`/${lang}/app/settings/security?google=google_cancelled`) : fail("google_cancelled", st.mode === "signup" ? "signup" : "login");
@@ -61,7 +62,8 @@ export async function GET(req: Request) {
     if (partner && partner !== "bad") await afterSignup({ id, email: res.email }, partner).catch(() => false);
     await createSession(res.email);
     await track(id, "signup");
-    return go(st.next || `/${lang}/app/start`);
+    // A new account has one brand, "default": its start page by name, no legacy hop (rule 894).
+    return go(st.next || appHref(lang, "/start", null, "default"));
   }
   const f = await finishLogin(res.login, { via: "google", next: st.next });
   if (f.kind === "refused") {
@@ -69,5 +71,5 @@ export async function GET(req: Request) {
     return fail(typeof j.error === "string" && /^[a-z_]{1,40}$/.test(j.error) ? j.error : "invalid");
   }
   if (f.kind === "mfa") return go(`/${lang}/app/login?mfa=1${st.next ? `&next=${encodeURIComponent(st.next)}` : ""}`);
-  return go(st.next || `/${lang}/app`);
+  return go(st.next || appHref(lang));
 }

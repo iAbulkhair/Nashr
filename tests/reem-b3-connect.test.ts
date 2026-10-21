@@ -124,7 +124,7 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
     const res = await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal"));
     expect(res.status).toBe(307);
     const to = where(res);
-    expect(to.pathname).toBe("/ar/app/todo");
+    expect(to.pathname).toBe("/ar/app/b/default/todo");
     expect(to.search).toBe("?cal=choose");
     const link = (await getLink(owner.email))!;
     expect(link).toMatchObject({ v: 1, provider: "gcal", login: owner.email, account: "o@brand.example", accountDomain: "brand.example", proof: null, state: "choose", rev: 1 });
@@ -144,7 +144,7 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
     await signIn(owner.email);
     const state = await begin("gcal", "?lang=en");
     const to = where(await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal")));
-    expect(to.pathname).toBe("/en/app/todo");
+    expect(to.pathname).toBe("/en/app/b/default/todo");
   });
 
   it("Gmail has no proven domain: the link carries no accountDomain", async () => {
@@ -207,7 +207,7 @@ describe("rule 912c: the same state, cookie, login and role rules as every provi
     await saveState("s-admin", { email: owner.email, provider: "gcal", lang: "ar", shop: "", verifier: "", actor: admin.email });
     jar().set(OAUTH_COOKIE, "s-admin");
     const res = await callback.GET(cbReq("gcal", "state=s-admin&code=c1"), ctx("gcal"));
-    expect(where(res).pathname).toBe("/ar/app/todo");
+    expect(where(res).pathname).toBe("/ar/app/b/default/todo");
     expect(where(res).search).toBe("?cal_error=forbidden");
     expect(await getLink(owner.email)).toBeNull();
     expect(tokenCalls()).toHaveLength(0);
@@ -244,7 +244,7 @@ describe("rule 912c: the same state, cookie, login and role rules as every provi
     await saveState("s-google", { email: owner.email, provider: "google", lang: "ar", shop: "", verifier: "", actor: owner.email });
     jar().set(OAUTH_COOKIE, "s-google");
     const res = await callback.GET(cbReq("gcal", "state=s-google&code=c1"), ctx("gcal"));
-    expect(where(res).pathname).toBe("/ar/app/todo");
+    expect(where(res).pathname).toBe("/ar/app/b/default/todo");
     expect(where(res).search).toBe("?cal_error=invalid_state");
     expect(await getLink(owner.email)).toBeNull();
     expect(tokenCalls()).toHaveLength(0);
@@ -256,7 +256,7 @@ describe("rule 912c: the same state, cookie, login and role rules as every provi
     await signIn(owner.email);
     const state = await begin("gcal");
     const res = await callback.GET(cbReq("google", `state=${state}&code=c1`), ctx("google"));
-    expect(where(res).pathname).toBe("/ar/app/integrations");
+    expect(where(res).pathname).toBe("/ar/app/b/default/settings/connections");
     expect(where(res).search).toBe("?error=invalid_state");
     expect(await listConnections(owner.email)).toEqual([]);
     expect(await getConnection(owner.email, "google")).toBeNull();

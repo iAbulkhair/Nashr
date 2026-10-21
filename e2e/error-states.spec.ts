@@ -11,7 +11,7 @@ test.use({ storageState: "e2e/.auth/owner.json" });
 
 test.describe("generate panel survives a failing request", () => {
   test("a gateway error re-enables the buttons and says something went wrong", async ({ page }) => {
-    await open(page, "/en/app/generate");
+    await open(page, "/en/app/b/default/generate");
     const button = page.getByRole("button", { name: /social/i }).first();
     await expect(button).toBeEnabled();
 
@@ -25,7 +25,7 @@ test.describe("generate panel survives a failing request", () => {
   });
 
   test("a dropped connection is handled the same way", async ({ page }) => {
-    await open(page, "/en/app/generate");
+    await open(page, "/en/app/b/default/generate");
     const button = page.getByRole("button", { name: /social/i }).first();
     await page.route("**/api/generate", (route) => route.abort("connectionfailed"));
 
@@ -37,7 +37,7 @@ test.describe("generate panel survives a failing request", () => {
 
 test.describe("scheduled tasks report what actually happened", () => {
   test("a run that produced nothing is not reported as a run", async ({ page }) => {
-    await open(page, "/en/app/tasks");
+    await open(page, "/en/app/b/default/tasks");
     // The schedule route answers 200 with the reason in `result`; "no_credits" means nothing was generated and no
     // credits moved. It used to render as "Ran: no_credits".
     await page.route("**/api/schedule", (route) =>
@@ -55,7 +55,7 @@ test.describe("scheduled tasks report what actually happened", () => {
   });
 
   test("a 500 does not leave the buttons disabled", async ({ page }) => {
-    await open(page, "/en/app/tasks");
+    await open(page, "/en/app/b/default/tasks");
     await page.route("**/api/schedule", (route) =>
       route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "text/html", body: "<html>boom</html>" }) : route.continue());
 

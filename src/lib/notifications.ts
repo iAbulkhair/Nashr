@@ -18,6 +18,7 @@ import { listConnections } from "./connectors/store";
 import { getProvider } from "./connectors/registry";
 import { acct } from "./account-id";
 import { brandOfScope } from "./account-id";
+import { appHrefFor, appHrefIn, appHrefInBrand } from "@/lib/ws-href";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -194,7 +195,8 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const sched = await getSchedule(scope);
   if (sched.followUps === false) return [];
   const ar = user.lang === "ar";
-  const app = `/${user.lang}/app`;
+  // Every entry opens the brand it is about (rule 894): `/b/{id}/…` of this scope, not the person's last choice.
+  const to = (path = "") => appHrefFor(user, user.lang, path, brandOfScope(scope));
   const tasks = await listLite(scope, new Date(Date.now() - 180 * 864e5));
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
@@ -210,31 +212,31 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   // 1. Scheduled items due today or tomorrow and not yet published through a connector.
   if (due.length) {
     const titles = due.slice(0, 3).map((t) => t.title).join(" · ");
-    await add({ kind: "due", agent: "noor", href: `${app}/calendar`, about: aboutKey("due", scope), title: withBrand(ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, tag), body: ar ? `انشرها الآن، فلا شيء يُنشر تلقائياً: ${titles}` : `Publish now; nothing goes out automatically: ${titles}` }, brandFingerprint(scope, `due:${today}`), 2);
+    await add({ kind: "due", agent: "noor", href: to("/calendar"), about: aboutKey("due", scope), title: withBrand(ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, tag), body: ar ? `انشرها الآن، فلا شيء يُنشر تلقائياً: ${titles}` : `Publish now; nothing goes out automatically: ${titles}` }, brandFingerprint(scope, `due:${today}`), 2);
   }
   // 2. Approvals waiting more than 48 hours.
   if (stale.length) {
-    await add({ kind: "pending", agent: "noor", href: app, about: aboutKey("pending", scope), title: withBrand(ar ? `${stale.length} عنصر بانتظارك منذ أكثر من يومين` : `${stale.length} item(s) waiting for you for over 2 days`, tag), body: ar ? "اعتمد أو ارفض مع سبب، وتتعلم نور من قرارك." : "Approve or reject with a reason; Noor learns from your decision." }, brandFingerprint(scope, `pending:${Math.floor(stale.length / 5)}`), 3);
+    await add({ kind: "pending", agent: "noor", href: to(), about: aboutKey("pending", scope), title: withBrand(ar ? `${stale.length} عنصر بانتظارك منذ أكثر من يومين` : `${stale.length} item(s) waiting for you for over 2 days`, tag), body: ar ? "اعتمد أو ارفض مع سبب، وتتعلم نور من قرارك." : "Approve or reject with a reason; Noor learns from your decision." }, brandFingerprint(scope, `pending:${Math.floor(stale.length / 5)}`), 3);
   }
   // 2b. Items about to move under "Not now": the soonest one sets the number of days.
   if (soon.length) {
     const days = Math.max(1, Math.ceil(NOT_NOW_DAYS - Math.max(...soon.map((t) => idleDays(t, Date.now(), sched.notNowFrom)))));
     const ids = soon.map((t) => t.id).sort().join(",").slice(0, 80);
-    await add({ kind: "pending", agent: "noor", href: app, about: aboutKey("notnow", scope), title: withBrand(ar ? `${soon.length} عنصر ينتقل إلى «ليس الآن» خلال ${days} يوم` : `${soon.length} item(s) move to Not now in ${days} day(s)`, tag), body: ar ? "اعتمدها أو ارفضها أو عدّلها لتبقى بانتظارك. لن يُحذف شيء." : "Approve, reject or edit them to keep them waiting. Nothing is deleted." }, brandFingerprint(scope, "notnow-soon:" + ids), 5);
+    await add({ kind: "pending", agent: "noor", href: to(), about: aboutKey("notnow", scope), title: withBrand(ar ? `${soon.length} عنصر ينتقل إلى «ليس الآن» خلال ${days} يوم` : `${soon.length} item(s) move to Not now in ${days} day(s)`, tag), body: ar ? "اعتمدها أو ارفضها أو عدّلها لتبقى بانتظارك. لن يُحذف شيء." : "Approve, reject or edit them to keep them waiting. Nothing is deleted." }, brandFingerprint(scope, "notnow-soon:" + ids), 5);
   }
   // 3. Low credits.
   if (user.credits < 10) {
-    await add({ kind: "credits", href: `${app}/billing`, title: ar ? `رصيدك ${user.credits} كريدت` : `Balance: ${user.credits} credits`, body: ar ? "لن يستطيع الفريق توليد دفعات جديدة قريباً. رقّ خطتك أو اطلب رصيداً." : "The team will not be able to generate new batches soon. Upgrade or request a top-up." }, "credits", 5);
+    await add({ kind: "credits", href: to("/billing"), title: ar ? `رصيدك ${user.credits} كريدت` : `Balance: ${user.credits} credits`, body: ar ? "لن يستطيع الفريق توليد دفعات جديدة قريباً. رقّ خطتك أو اطلب رصيداً." : "The team will not be able to generate new batches soon. Upgrade or request a top-up." }, "credits", 5);
   }
   // 4. Trial ending within 24h.
   if (user.plan === "trial") {
     const left = new Date(user.trialEnds).getTime() - Date.now();
-    if (left > 0 && left < 864e5) await add({ kind: "trial", href: `${app}/billing`, title: ar ? "تجربتك تنتهي خلال 24 ساعة" : "Your trial ends within 24 hours", body: ar ? "اشترك لتبقى دفعاتك وجدولك تعمل." : "Subscribe to keep your batches and schedule running." }, "trial", 3);
+    if (left > 0 && left < 864e5) await add({ kind: "trial", href: to("/billing"), title: ar ? "تجربتك تنتهي خلال 24 ساعة" : "Your trial ends within 24 hours", body: ar ? "اشترك لتبقى دفعاتك وجدولك تعمل." : "Subscribe to keep your batches and schedule running." }, "trial", 3);
   }
   // 5. Items the judge scored below 70 and still pending.
   const weak = tasks.filter((t) => isWaiting(t) && typeof t.score === "number" && t.score < 70);
   if (weak.length) {
-    await add({ kind: "quality", agent: "dana", href: app, about: aboutKey("quality", scope), title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
+    await add({ kind: "quality", agent: "dana", href: to(), about: aboutKey("quality", scope), title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
   }
   // 6. Connections a platform refused (rule 2200): the owner hears it here, not only on the next failed publish.
   const broken = (await listConnections(scope)).filter((c) => {
@@ -244,7 +246,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   if (broken.length) {
     const names = broken.map((c) => getProvider(c.provider)!.name).sort().join(ar ? "، " : ", ");
     const fp = ["reconnect", ...broken.map((c) => `${c.provider}@${c.needsReconnect}`).sort()].join(",").slice(0, 130);
-    await add({ kind: "info", href: `${app}/settings/connections`, about: aboutKey("reconnect", scope), title: withBrand(ar ? `أعد ربط ${names}` : `Reconnect ${names}`, await brandTag(user.email, scope)), body: ar ? "رفضت المنصة الربط الحالي، فلن ينشر الفريق أو يقرأ منها حتى تربطها من جديد." : "The platform refused the current connection, so the team cannot publish to it or read from it until you connect it again." }, brandFingerprint(scope, fp), 7);
+    await add({ kind: "info", href: to("/settings/connections"), about: aboutKey("reconnect", scope), title: withBrand(ar ? `أعد ربط ${names}` : `Reconnect ${names}`, await brandTag(user.email, scope)), body: ar ? "رفضت المنصة الربط الحالي، فلن ينشر الفريق أو يقرأ منها حتى تربطها من جديد." : "The platform refused the current connection, so the team cannot publish to it or read from it until you connect it again." }, brandFingerprint(scope, fp), 7);
   }
   // 7. Overdue to-dos on Reem's list.
   out.push(...(await overdueTodoAlerts(user, scope)));
@@ -332,7 +334,7 @@ async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
     else body = ar ? "أنجزها أو أجّلها أو غيّر موعدها." : "Do it, snooze it or reschedule it.";
     return {
       n: {
-        kind: "todo", agent: "reem", href: `/${lang}/app/todo`, about: aboutKey("todo", scope, it.id),
+        kind: "todo", agent: "reem", href: appHrefInBrand(scope, lang, "/todo"), about: aboutKey("todo", scope, it.id),
         title: late ? (ar ? `متأخرة: ${t}` : `Overdue: ${t}`) : ar ? `حان وقت المتابعة: ${t}` : `Time to follow up: ${t}`,
         body: body + last,
       },
@@ -346,8 +348,13 @@ export function notifEmailText(user: User, items: Notif[]) {
 }
 
 /** Helper for other modules (weekly cron, judge). */
-export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string; about?: string }, fp?: string, ttl?: number, scope?: string) {
-  return pushNotif(email, { ...n, href: n.href.startsWith("/") ? n.href : `/${lang}/app/${n.href}` }, fp, ttl, scope);
+export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string; about?: string; brandScope?: string }, fp?: string, ttl?: number, scope?: string) {
+  // A relative href opens the brand the entry is about (rule 894): `brandScope`, else the scope the entry is filed under.
+  // Neither: the old path, whose `[...legacy]` page picks the session's brand (an account-wide notice).
+  const { brandScope, ...rest } = n;
+  const of = brandScope ?? scope;
+  const href = rest.href.startsWith("/") ? rest.href : of ? appHrefInBrand(of, lang, `/${rest.href}`) : appHrefIn(email, lang, `/${rest.href}`);
+  return pushNotif(email, { ...rest, href }, fp, ttl, scope);
 }
 
 /**
@@ -377,7 +384,8 @@ export async function warnAgentCap(user: Pick<User, "email" | "lang">, paid: Ext
         : ar
           ? "اقترب الاستهلاك من الحد الشهري الذي وضعته لهذا الوكيل في صفحة الحوكمة لهذه العلامة. عند بلوغه تتوقف دفعاته وصوره ومقاطعه حتى ترفع الحد أو يبدأ الشهر القادم. الدردشة لا تُحسب."
           : "This agent is close to the monthly cap you set for it in Governance for this brand. At the cap its batches, images and videos stop until you raise the cap or the next month starts. Chat is not counted.",
-      href: "governance",
+      href: "settings/governance",
+      brandScope: paid.scope,
     }, agentCapFingerprint(paid.scope, paid.agent, paid.month), 35);
   } catch (e) {
     log.error("agent cap warning failed", e);

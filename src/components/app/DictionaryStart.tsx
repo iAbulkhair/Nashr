@@ -9,6 +9,7 @@ import type { Lang } from "@/lib/i18n";
 import Doodle from "@/components/home/Doodle";
 import cast from "@/components/home/home.module.css";
 import StartLaunch from "./StartLaunch";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const STEPS: readonly Step[] = [1, 2, 3, 4, 5, 6, 7];
 
@@ -79,6 +80,7 @@ function Sample({ who, lang, children }: { who: readonly HomeAgentId[]; lang: La
  * away under the title on every step. Each step change moves focus to the new step's heading.
  */
 export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupPaid, credits }: { t: AppDict; lang: Lang; initialUrl: string; setupCost: number; setupPaid: boolean; credits: number }) {
+  const href = useAppLink(lang);
   const [s, dispatch] = useReducer(reduce, INITIAL);
   const ready = useReady();
   const uid = useId();
@@ -204,7 +206,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             {DICT_COPY.title[lang]}
           </h1>
           <p className="mt-1 text-foreground-muted">{DICT_COPY.subtitle[lang]}</p>
-          <Link href={`/${lang}/app/settings/brand`} className="mt-2 inline-block text-sm text-foreground-muted underline">
+          <Link href={href("/settings/brand")} className="mt-2 inline-block text-sm text-foreground-muted underline">
             {t.start.manual}
           </Link>
 

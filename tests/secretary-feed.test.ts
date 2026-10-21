@@ -566,7 +566,7 @@ describe("public feed route (rules 539, 577-579)", () => {
     expect(body).toContain(`UID:${it.id}@thakeen\r\n`);
     expect(unfold(body)).toContain("X-WR-CALNAME:ذكين: مهامي\r\n");
     // The link inside is the app's own origin, never the request's host.
-    expect(unfold(body)).toContain(`URL:${appOrigin()}/ar/app/todo\r\n`);
+    expect(unfold(body)).toContain(`URL:${appOrigin()}/ar/app/b/default/todo\r\n`);
     expect(body).not.toContain("http://x/");
 
     const ics = await callFeed(`${token}.ics`);

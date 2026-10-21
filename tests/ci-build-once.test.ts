@@ -38,10 +38,10 @@ describe("rule 1207: in CI the end-to-end server starts the Build step's build i
 
   it("playwright.config.ts uses the helper and still sets APP_ENV=test on the server, never reusing one", () => {
     const cfg = readFileSync("playwright.config.ts", "utf8");
-    expect(cfg).toMatch(/import \{ E2E_ADMIN_KEY, hasBuild, webServerCommand \} from "\.\/e2e\/web-server";/);
+    expect(cfg).toMatch(/import \{ E2E_ADMIN_KEY, e2eSeed, hasBuild, webServerCommand \} from "\.\/e2e\/web-server";/);
     expect(cfg).toMatch(/const isCI = !!process\.env\.CI;/);
     expect(cfg).toMatch(/command: webServerCommand\(PORT, \{ ci: isCI, prebuilt: hasBuild\(\) \}\),/);
-    expect(cfg).toMatch(/env: \{ APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY \},/);
+    expect(cfg).toMatch(/env: \{ APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY, E2E_SEED_KV: e2eSeed\(OWNER\.email\) \},/);
     expect(cfg).toMatch(/reuseExistingServer: false,/);
   });
 

@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import { ONBOARD_EXTRA_BRAND_COST } from "@/lib/pricing";
+import { switchBrandPath } from "@/lib/brand-path";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Scribble from "@/components/Scribble";
 import Badge from "@/components/ui/Badge";
@@ -13,6 +14,8 @@ import { usePrompt } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
+import { useAppLink, useWsHandle } from "@/components/app/WorkspaceContext";
+import { appHref, handleOfPath } from "@/lib/ws-path";
 
 type B = { id: string; name: string; createdAt: string; status: "active" | "archived"; hasBrandFile: boolean };
 
@@ -28,8 +31,11 @@ type B = { id: string; name: string; createdAt: string; status: "active" | "arch
  * off until switched on (rule 247).
  */
 export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: { lang: Lang; manage?: boolean; readOnlyNote?: string }) {
+  const href = useAppLink(lang);
   const ar = lang === "ar";
   const r = useRouter();
+  const path = usePathname();
+  const shellHandle = useWsHandle();
   const [brands, setBrands] = useState<B[]>([]);
   const [active, setActive] = useState("default");
   // The plan's cap (0 until loaded, so nothing is shown as full before the answer) and whether this login may upgrade.
@@ -68,7 +74,10 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
         return;
       }
       setErr("");
-      if (body.action === "add") { r.push(`/${lang}/app/start`); r.refresh(); return; }
+      // An add makes the new brand the chosen one: its start page, named in the link (rule 890), not the brand on show.
+      if (body.action === "add") { r.push(appHref(lang, "/start", handleOfPath(path) ?? shellHandle, j.brand?.id)); r.refresh(); return; }
+      // A switch goes to the same section of the other brand (rule 893); from this account page that is the new brand's inbox.
+      if (body.action === "switch") { r.push(switchBrandPath(path, body.id)); r.refresh(); return; }
       await load(); r.refresh();
     } finally {
       setBusy(false);
@@ -90,7 +99,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
         {manage && full && (
           <p className="text-sm">
             {canUpgrade
-              ? <>{ar ? "خطتك تشمل هذا العدد من العلامات. " : "Your plan includes this many brands. "}<Link href={`/${lang}/app/settings/billing`} className="font-semibold underline">{ar ? "رقِّ الخطة لإضافة علامة" : "Upgrade to add a brand"}</Link></>
+              ? <>{ar ? "خطتك تشمل هذا العدد من العلامات. " : "Your plan includes this many brands. "}<Link href={href("/settings/billing")} className="font-semibold underline">{ar ? "رقِّ الخطة لإضافة علامة" : "Upgrade to add a brand"}</Link></>
               : (ar ? "خطة الحساب تشمل هذا العدد من العلامات. اطلب من مالك الحساب ترقية الخطة لإضافة علامة." : "The account's plan includes this many brands. Ask the account owner to upgrade the plan to add one.")}
           </p>
         )}

@@ -1,9 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { BRAND_HEADER, brandFromPath } from "@/lib/brand-path";
+import { brandMissingRefusal } from "@/lib/brand-guard";
 import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";
 import { STAGING_COOKIE, hasAccess, stagingOpen } from "@/lib/staging-access";
 import { legacySettingsPath } from "@/lib/settings-nav";
-import { LANG_COOKIE, readCookie } from "@/lib/cookie-names";
+import { LANG_COOKIE, SESSION_COOKIE, readCookie } from "@/lib/cookie-names";
+import { MULTI_ORG } from "@/lib/multi-org";
+import { WS_HEADER, asHandle, splitWsPath, stripWs, workspaceMissing } from "@/lib/ws-path";
 import { REQUEST_ID_HEADER, requestId } from "@/lib/request-id";
 import { NONCE_HEADER, cspNonce, pageCsp, pagePath, reportOnlyCsp } from "@/lib/csp";
 
@@ -88,7 +92,38 @@ export function proxy(req: NextRequest) {
     reqHeaders.delete(NONCE_HEADER);
     reqHeaders.delete("content-security-policy");
   }
+  // The workspace in the link (multi-workspace M2, rules 2112-2113): a page's workspace comes only from its own path, so
+  // a value the browser sent is never kept on a page path. An API request keeps the one its page sent
+  // (`installBrandFetch`, src/lib/brand-fetch.ts); `resolveSession` treats it as a selector among the caller's own accounts.
+  // A GET or HEAD without the header may name it in a `ws` query value, as the brand below (`apiHref`, src/lib/brand-fetch.ts).
+  if (MULTI_ORG && !pathname.startsWith("/api/")) reqHeaders.delete(WS_HEADER);
+  else if (MULTI_ORG && (req.method === "GET" || req.method === "HEAD") && !reqHeaders.get(WS_HEADER)) {
+    const queried = asHandle(req.nextUrl.searchParams.get("ws"));
+    if (queried) reqHeaders.set(WS_HEADER, queried);
+  }
+  // The brand (rules 887-888, src/lib/brand-guard.ts). A page request carries the brand its own path names and nothing the
+  // browser sent: `resolveSession` takes the header as a selector, and a page the person typed must not pick a scope by
+  // a header (the browser cannot send one for a navigation anyway). An API request keeps the header it came with; a GET or
+  // HEAD without one may name the brand in a `brand` query value (R-C13), since a link click or a download cannot send a
+  // header. That value is the same selector, checked the same way by `resolveSession`, and never read for a mutation.
+  if (pathname.startsWith("/api/")) {
+    const queried = req.method === "GET" || req.method === "HEAD" ? req.nextUrl.searchParams.get("brand") : null;
+    if (queried && !reqHeaders.get(BRAND_HEADER)) {
+      try {
+        reqHeaders.set(BRAND_HEADER, queried);
+      } catch {
+        // A value no header can hold (a line break, a character beyond Latin-1): send one that is no brand id, so the
+        // session answers 404 and does not fall back to the stored brand.
+        reqHeaders.set(BRAND_HEADER, "?");
+      }
+    }
+  } else {
+    reqHeaders.delete(BRAND_HEADER);
+    const brand = brandFromPath(pathname);
+    if (brand) reqHeaders.set(BRAND_HEADER, brand);
+  }
   const next = () => NextResponse.next({ request: { headers: reqHeaders } });
+  const ws = MULTI_ORG ? splitWsPath(pathname) : null;
 
   // Staging lock (rules 674, 677): without the access cookie every path but the four open ones and `/m/` (rule 1760) is
   // a bare 404, and with no STAGING_ACCESS_KEY nobody gets in. The proxy sees every path, so this runs before anything else.
@@ -98,10 +133,32 @@ export function proxy(req: NextRequest) {
 
   let res: NextResponse;
   if (pathname.startsWith("/api/")) {
-    // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), else pass it
-    // on untouched. The exempt paths (webhooks, crons, MCP, OAuth token) pass inside crossSiteRefusal. The language and
+    // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), then notice a
+    // browser mutation to a brand route that names no brand (src/lib/brand-guard.ts, rule 888: logged in this release),
+    // else pass it on. The exempt paths (webhooks, crons, MCP, OAuth token) pass inside crossSiteRefusal. The language and
     // x-pathname logic below is for pages only.
-    res = crossSiteRefusal(req) ?? next();
+    // Multi-workspace M2 (rule 2113): a state-changing request with the session cookie that names no workspace answers
+    // 409 `workspace_missing` before the route runs, so it can never save into the workspace the session chose last.
+    const missing = MULTI_ORG && workspaceMissing(req.method, pathname, !!readCookie(req.cookies, SESSION_COOKIE), req.headers.get(WS_HEADER));
+    res = crossSiteRefusal(req) ?? (missing ? NextResponse.json({ ok: false, error: "workspace_missing" }, { status: 409 }) : null) ?? brandMissingRefusal(req) ?? next();
+  } else if (ws) {
+    // `/{lang}/app/w/{handle}/…` (multi-workspace M2): served, without moving the address bar, by the page folder at
+    // `/{lang}/app/…`, with the handle in `x-thakeen-ws` and the address the browser shows in `x-pathname`. A legacy
+    // settings path inside it moves as it does outside (rule 1141), keeping the handle.
+    const inner = stripWs(pathname);
+    const moved = legacySettingsPath(inner);
+    if (moved) {
+      const url = req.nextUrl.clone();
+      url.pathname = `/${ws.lang}/app/w/${ws.handle}${moved.slice(`/${ws.lang}/app`.length)}`;
+      url.search = search;
+      res = NextResponse.redirect(url, 307);
+    } else {
+      reqHeaders.set(WS_HEADER, ws.handle);
+      reqHeaders.set("x-pathname", pathname);
+      const url = req.nextUrl.clone();
+      url.pathname = inner;
+      res = NextResponse.rewrite(url, { request: { headers: reqHeaders } });
+    }
   } else if (pathname === "/" || pathname === "/app") {
     // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
     // (src/app/manifest.ts, rule 681): the same choice, into the app.
@@ -135,8 +192,10 @@ export function proxy(req: NextRequest) {
     url.search = search;
     res = NextResponse.redirect(url, 307);
   } else if (APP_PATH.test(pathname)) {
-    // App routes: forward the pathname to server components.
+    // App routes: forward the pathname to server components, and with the workspace in the link (M2) the query too, so
+    // an old address keeps it on its 307 into `w/{handle}`.
     reqHeaders.set("x-pathname", pathname);
+    if (MULTI_ORG) reqHeaders.set("x-search", search);
     res = next();
   } else {
     res = next();

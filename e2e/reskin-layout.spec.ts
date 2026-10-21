@@ -12,7 +12,7 @@ export const PAGES: string[] = ["", "/pricing", "/app/login", "/agents", "/agent
  * Signed-in app paths, opened as the seeded owner (`e2e/auth.setup.ts`). Local runs only: against a deployed preview
  * there is no throwaway account to sign in with, and the preview's store is not ours to fill.
  */
-export const APP_PAGES: string[] = ["/app/start", "/app/settings/brand", "/app", "/app/chat", "/app/conversations", "/app/todo", "/app/tasks", "/app/calendar", "/app/files", "/app/settings/brands", "/app/generate", "/app/inspo", "/app/settings/billing", "/app/refer", "/app/partner", "/app/settings", "/app/settings/account", "/app/settings/security", "/app/settings/notifications", "/app/settings/danger", "/app/settings/members", "/app/notifications", "/app/settings/connections", "/app/mcp", "/app/settings/governance", "/app/reports", "/app/activity", "/app/help"];
+export const APP_PAGES: string[] = ["/app/b/default/start", "/app/b/default/settings/brand", "/app/b/default", "/app/b/default/chat", "/app/b/default/conversations", "/app/b/default/todo", "/app/b/default/tasks", "/app/b/default/calendar", "/app/b/default/files", "/app/settings/brands", "/app/b/default/generate", "/app/b/default/inspo", "/app/settings/billing", "/app/refer", "/app/partner", "/app/settings", "/app/settings/account", "/app/settings/security", "/app/b/default/settings/notifications", "/app/settings/danger", "/app/settings/members", "/app/notifications", "/app/b/default/settings/connections", "/app/mcp", "/app/b/default/settings/governance", "/app/b/default/reports", "/app/b/default/activity", "/app/help"];
 const LANGS = ["ar", "en"] as const;
 const WIDTHS = [1440, 1024, 768, 390, 360];
 

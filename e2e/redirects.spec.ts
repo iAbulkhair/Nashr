@@ -107,3 +107,31 @@ test.describe("not found", () => {
     });
   }
 });
+
+// Rule 891: the brand pages moved under /{lang}/app/b/{id} (rule 885). An old brand path, and the three old settings
+// names that now land on brand sections, answer one 307 to the same page under the session's last chosen brand, with the
+// query; `/app` goes to that brand's inbox. The seeded owner's brand is "default".
+test.describe("old brand paths", () => {
+  test.use({ storageState: "e2e/.auth/owner.json" });
+  const MOVED: [string, string][] = [
+    ["/en/app/tasks?id=1&x=a%20b", "/en/app/b/default/tasks?id=1&x=a+b"],
+    ["/ar/app/settings/brand", "/ar/app/b/default/settings/brand"],
+    ["/ar/app/onboarding", "/ar/app/b/default/settings/brand"],
+    ["/en/app/integrations?error=denied", "/en/app/b/default/settings/connections?error=denied"],
+    ["/en/app", "/en/app/b/default"],
+  ];
+  for (const [from, to] of MOVED) {
+    test(`${from} answers 307 to ${to}`, async ({ request }) => {
+      const res = await request.get(from, { maxRedirects: 0 });
+      expect(res.status()).toBe(307);
+      const at = new URL(res.headers()["location"], "http://localhost");
+      const want = new URL(to, "http://localhost");
+      expect(at.pathname).toBe(want.pathname);
+      expect([...at.searchParams]).toEqual([...want.searchParams]);
+    });
+  }
+  test("an unknown app path is still a 404", async ({ page }) => {
+    const res = await open(page, "/en/app/nope");
+    expect(res.status()).toBe(404);
+  });
+});

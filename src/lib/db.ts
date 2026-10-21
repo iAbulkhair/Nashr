@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { Redis } from "@upstash/redis";
-import { isProductionDeploy } from "./deploy-env";
+import { isProductionDeploy, isTestServer } from "./deploy-env";
 import { pmap } from "./parallel";
 import { log } from "./log";
 
@@ -254,8 +254,28 @@ function upstash(): Store | null {
 }
 
 const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes?: Map<string, Map<string, unknown>>; exp?: Map<string, number>; owners?: Map<string, string>; zsets?: Map<string, Map<string, number>> } };
+/**
+ * Rule 2590: the end-to-end server starts with the few records no request can make (a run the cron held after a kill, a
+ * cron's last batch report), from `E2E_SEED_KV`, a JSON object of key to value that playwright.config.ts builds per run.
+ * Read once, when the memory store is first made, and only with `APP_ENV=test` off a production deploy; the memory store
+ * itself never runs in production (rule 430), so nothing here can write to Redis.
+ */
+export function seedForE2e(kv: Map<string, unknown>): void {
+  const raw = process.env.E2E_SEED_KV;
+  if (!raw || !isTestServer()) return;
+  try {
+    const seed: unknown = JSON.parse(raw);
+    if (seed && typeof seed === "object" && !Array.isArray(seed)) for (const [k, v] of Object.entries(seed)) kv.set(k, v);
+  } catch {
+    log.error("e2e seed ignored: E2E_SEED_KV is not JSON");
+  }
+}
+
 function memory(): Store {
-  if (!mem.__nashrMem) mem.__nashrMem = { kv: new Map(), lists: new Map(), sets: new Map(), hashes: new Map() };
+  if (!mem.__nashrMem) {
+    mem.__nashrMem = { kv: new Map(), lists: new Map(), sets: new Map(), hashes: new Map() };
+    seedForE2e(mem.__nashrMem.kv);
+  }
   const m = mem.__nashrMem;
   const hashes = (m.hashes ??= new Map<string, Map<string, unknown>>());
   const zsets = (m.zsets ??= new Map<string, Map<string, number>>());

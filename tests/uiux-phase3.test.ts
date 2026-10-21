@@ -7,7 +7,7 @@ import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/sessio
 import { currentUser, getUser, saveUser, sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { appDict } from "@/lib/app-i18n";
-import { LEGACY_SETTINGS, SETTINGS_COPY, SETTINGS_SECTIONS, legacySettingsPath, settingsHref } from "@/lib/settings-nav";
+import { LEGACY_SETTINGS, SETTINGS_COPY, SETTINGS_SECTIONS, isBrandSettings, legacySettingsPath, settingsHref, type SettingsSection } from "@/lib/settings-nav";
 import { EMAIL_LEVELS, emailAllowed, inAppAllowed, legacyEmails, parsePrefs, prefsFrom, prefsFromLevel, readPrefs, readPrefsMany, storedFrom, type NotifyPrefs } from "@/lib/notify-prefs";
 import { listNotifs, pushNotifs } from "@/lib/notifications";
 import { checkoutState, lastCheckoutKey, paymentHistory, paymobAccountKeys } from "@/lib/billing";
@@ -27,6 +27,7 @@ import Sidebar from "@/components/app/Sidebar";
 import * as sessionsRoute from "@/app/api/account/sessions/route";
 import * as prefsRoute from "@/app/api/notifications/prefs/route";
 import * as statusRoute from "@/app/api/billing/status/route";
+import { appHref } from "@/lib/ws-path";
 
 /**
  * UI/UX phase 3, Settings and Billing (rules 1140-1158, docs/system/tests/1140-uiux-phase3.md): the settings area and its
@@ -41,6 +42,8 @@ vi.mock("next/navigation", async (orig) => ({
 }));
 
 const read = (f: string) => readFileSync(f, "utf8");
+/** A settings section's page: the four brand sections live under b/[brand] since rule 885 (R-C6, R-C10). */
+const settingsPage = (s: SettingsSection) => (isBrandSettings(s) ? `src/app/[lang]/app/b/[brand]/settings/${s}/page.tsx` : `src/app/[lang]/app/settings/${s}/page.tsx`);
 const FOUNDER = "founder-phase3@test.example";
 const PAYMOB = {
   PAYMOB_SECRET_KEY: "sk_test_fake_secret_for_unit_tests",
@@ -55,15 +58,18 @@ beforeEach(() => { vi.stubEnv("ADMIN_EMAILS", FOUNDER); });
 afterEach(() => { vi.unstubAllEnvs(); signOut(); });
 
 describe("rule 1140: one settings area, one page per section, its own navigation", () => {
-  it("has ten sections, each a page under /{lang}/app/settings, inside one layout", () => {
+  it("has ten sections, each a page under /{lang}/app/settings (the brand four under /b/{id}/settings), inside one frame", () => {
     expect(SETTINGS_SECTIONS).toEqual(["account", "security", "notifications", "brand", "brands", "members", "billing", "connections", "governance", "danger"]);
-    for (const s of SETTINGS_SECTIONS) expect(existsSync(`src/app/[lang]/app/settings/${s}/page.tsx`), s).toBe(true);
+    for (const s of SETTINGS_SECTIONS) expect(existsSync(settingsPage(s)), s).toBe(true);
+    expect(SETTINGS_SECTIONS.filter(isBrandSettings)).toEqual(["notifications", "brand", "connections", "governance"]);
     expect(existsSync("src/app/[lang]/app/settings/page.tsx")).toBe(true);
-    expect(read("src/app/[lang]/app/settings/layout.tsx")).toMatch(/<SettingsNav lang=\{lang\} \/>/);
-    expect(settingsHref("ar")).toBe("/ar/app/settings");
-    expect(settingsHref("en", "billing")).toBe("/en/app/settings/billing");
+    // Both settings layouts (account and brand) render the one frame, which holds the nav (rule 885).
+    expect(read("src/components/app/settings/SettingsFrame.tsx")).toMatch(/<SettingsNav lang=\{lang\} brand=\{brand\} \/>/);
+    for (const l of ["src/app/[lang]/app/settings/layout.tsx", "src/app/[lang]/app/b/[brand]/settings/layout.tsx"]) expect(read(l), l).toMatch(/<SettingsFrame lang=\{lang\}/);
+    expect(settingsHref((p) => appHref("ar", p))).toBe("/ar/app/settings");
+    expect(settingsHref((p) => appHref("en", p), "billing")).toBe("/en/app/settings/billing");
   });
-  it("the old pages left: the proxy answers their paths", () => {
+  it("the old pages left: the proxy (or, for a brand section, the [...legacy] page) answers their paths", () => {
     for (const old of Object.keys(LEGACY_SETTINGS)) expect(existsSync(`src/app/[lang]/app/${old}/page.tsx`), old).toBe(false);
     expect(existsSync("src/components/app/ProfilePanel.tsx")).toBe(false);
   });
@@ -74,6 +80,8 @@ describe("rule 1140: one settings area, one page per section, its own navigation
     const list = renderToStaticMarkup(h(SettingsNav, { lang: "ar", variant: "list" }));
     for (const s of SETTINGS_SECTIONS) expect(list).toContain(SETTINGS_COPY.ar.sections[s].sub);
     expect(sectionOf("/ar/app/settings/security")).toBe("security");
+    expect(sectionOf("/ar/app/b/b2/settings/brand")).toBe("brand");
+    expect(sectionOf("/ar/app/b/b2/settings")).toBeNull();
     expect(sectionOf("/ar/app/settings")).toBeNull();
     expect(sectionOf("/ar/app/settings/nope")).toBeNull();
   });
@@ -89,9 +97,10 @@ describe("rule 1141: the old routes redirect for one release; the rail and the a
   it("maps each old page path, and nothing else", () => {
     expect(legacySettingsPath("/ar/app/profile")).toBe("/ar/app/settings/account");
     expect(legacySettingsPath("/en/app/team/")).toBe("/en/app/settings/members");
-    expect(legacySettingsPath("/en/app/onboarding")).toBe("/en/app/settings/brand");
-    expect(legacySettingsPath("/en/app/integrations")).toBe("/en/app/settings/connections");
     expect(legacySettingsPath("/en/app/billing")).toBe("/en/app/settings/billing");
+    // Rule 891: these three land on brand sections, whose path needs the session's brand; the proxy leaves them to the
+    // [...legacy] page, which sends them to /b/{id}/settings/{brand|connections|governance} (tests/brand-url-pages.test.ts).
+    for (const p of ["/en/app/onboarding", "/en/app/integrations", "/en/app/governance"]) expect(legacySettingsPath(p), p).toBeNull();
     for (const p of ["/en/app/team/x", "/fr/app/team", "/en/app/notifications", "/en/app/settings/billing", "/api/billing", "/en/app"]) expect(legacySettingsPath(p), p).toBeNull();
   });
   it("a temporary redirect that keeps the query string (a Paymob return, an integration error)", () => {
@@ -111,9 +120,10 @@ describe("rule 1141: the old routes redirect for one release; the rail and the a
     // signed-out visitor, which the app layout above the boundary already sends to login.
     expect(existsSync("src/app/[lang]/app/settings/loading.tsx")).toBe(false);
     for (const s of SETTINGS_SECTIONS) {
-      if (!existsSync(`src/app/[lang]/app/settings/${s}/loading.tsx`)) continue;
-      const redirects = read(`src/app/[lang]/app/settings/${s}/page.tsx`).match(/redirect\([^;]*\)/g) ?? [];
-      for (const r of redirects) expect(r, s).toBe("redirect(`/${lang}/app/login`)");
+      const page = settingsPage(s);
+      if (!existsSync(page.replace(/page\.tsx$/, "loading.tsx"))) continue;
+      const redirects = read(page).match(/redirect\([^;]*\)/g) ?? [];
+      for (const r of redirects) expect(["redirect(`/${lang}/app/login`)", 'redirect(appHref(lang, "/login"))'], s).toContain(r);
     }
     expect(existsSync("src/app/[lang]/app/settings/billing/loading.tsx")).toBe(true);
   });
@@ -122,7 +132,11 @@ describe("rule 1141: the old routes redirect for one release; the rail and the a
     expect(html).toContain('href="/en/app/settings"');
     for (const old of ["team", "integrations", "governance", "profile", "billing", "onboarding", "brands"]) expect(html, old).not.toContain(`href="/en/app/${old}"`);
     expect(html).toContain('href="/en/app/settings/billing"');
-    expect(html).toContain('href="/en/app/settings/brands"');
+    // The brand button is the switcher (rule 893): a menu whose «Manage brands» row, like the account menu's, links to the
+    // brands page; both render only when opened, so the rows are pinned in the source.
+    expect(html).toContain('aria-label="Switch brand: Your brand"');
+    expect(read("src/components/app/BrandSwitcher.tsx")).toMatch(/settingsHref\(to \?\? \(\(p\) => appHref\(lang, p\)\), "brands"\)/);
+    expect(read("src/components/app/Sidebar.tsx")).toMatch(/\[settingsHref\(to, "brands"\), N\.brands\]/);
   });
 });
 
@@ -240,7 +254,7 @@ describe("rules 1144-1148: notification preferences per type and channel (expand
     expect(await readPrefs(scope, owner.email)).toEqual(body);
   });
   it("1144: the page reads the session's scope; anyone but the owner sees the choices without a Save", () => {
-    expect(read("src/app/[lang]/app/settings/notifications/page.tsx")).toContain("readPrefs(sc(u), u.email)");
+    expect(read("src/app/[lang]/app/b/[brand]/settings/notifications/page.tsx")).toContain("readPrefs(sc(u), u.email)");
     const ro = renderToStaticMarkup(h(NotifyPrefsSettings, { lang: "en", initial: all, canEdit: false }));
     expect(ro).not.toContain('type="submit"');
     const edit = renderToStaticMarkup(h(NotifyPrefsSettings, { lang: "ar", initial: all, canEdit: true }));
@@ -366,7 +380,7 @@ describe("rule 1154: plan cards, the summary and the VAT note", () => {
   it("the page sums up plan, credits, seats and the next date, and states VAT next to the prices", () => {
     const page = read("src/app/[lang]/app/settings/billing/page.tsx");
     expect(page).toContain("data-billing-summary");
-    expect(page).toContain('href={settingsHref(lang, "members")}');
+    expect(page).toContain('href={settingsHref(link, "members")}');
     expect(page).toContain("data-vat-note");
     expect(page).toMatch(/<PlanCard key=\{k\} lang=\{lang\} id=\{k\}/);
   });
@@ -466,8 +480,8 @@ describe("rule 1158: settings screens keep the shared accessibility rules", () =
     expect(read("src/components/app/settings/SettingsNav.tsx").match(/min-h-\[var\(--hit-min\)\]/g)!.length).toBeGreaterThanOrEqual(3);
   });
   it("each new settings page has its own title and a PageHeader", () => {
-    for (const s of ["account", "security", "notifications", "danger"]) {
-      const src = read(`src/app/[lang]/app/settings/${s}/page.tsx`);
+    for (const s of ["account", "security", "notifications", "danger"] as const) {
+      const src = read(settingsPage(s));
       expect(src, s).toContain(`settingsScreenMeta("${s}")`);
       expect(src, s).toContain("<PageHeader ");
     }

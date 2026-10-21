@@ -23,7 +23,7 @@ describe("the daily follow-ups tell the owner to reconnect a refused platform (r
     ]);
     const first = reconnects(await followUps(user, u.email));
     expect(first).toHaveLength(1);
-    expect(first[0]).toMatchObject({ kind: "info", href: "/en/app/settings/connections" });
+    expect(first[0]).toMatchObject({ kind: "info", href: "/en/app/b/default/settings/connections" });
     expect(first[0].title).toBe("Reconnect Salla (سلة), X");
     expect(first[0].title).not.toContain("Shopify");
     expect(JSON.stringify(first[0])).not.toContain("test-token");

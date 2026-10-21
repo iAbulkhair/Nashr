@@ -113,7 +113,7 @@ describe("one alert per overdue item, spaced, then only the brief (rule 200)", (
       expect(again, `day ${day}, second run`).toEqual([]);
       sent[day] = first.length;
       if (first.length) {
-        expect(first[0]).toMatchObject({ agent: "reem", href: `/${u.lang}/app/todo`, title: "متأخرة: «Send the contract»" });
+        expect(first[0]).toMatchObject({ agent: "reem", href: `/${u.lang}/app/b/default/todo`, title: "متأخرة: «Send the contract»" });
         expect(first[0].body.includes("آخر تنبيه"), `day ${day}`).toBe(day === 7);
       }
     }

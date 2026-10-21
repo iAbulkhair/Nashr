@@ -34,7 +34,7 @@ vi.mock("@/lib/noor", async (orig) => ({
   ...(await orig<typeof import("@/lib/noor")>()),
   generate: async () => [{ channel: "instagram", title: "t", body: "b" }],
 }));
-import Page from "@/app/[lang]/app/instructions/page";
+import Page from "@/app/[lang]/app/b/[brand]/instructions/page";
 
 /**
  * Rule 957: the customer page `/{lang}/app/instructions` (agent skills portal, spec 8.1, task 10). The server renders
@@ -391,14 +391,14 @@ describe("rule 957: the sidebar row", () => {
   it("is in the brand group, after content inspiration, for every role (no show.owner gate)", () => {
     const src = readFileSync("src/components/app/Sidebar.tsx", "utf8");
     const brand = src.indexOf("group(`${p}-brand`");
-    const inspo = src.indexOf("${base}/inspo");
-    const ins = src.indexOf("${base}/instructions");
+    const inspo = src.indexOf('to("/inspo")');
+    const ins = src.indexOf('to("/instructions")');
     const account = src.indexOf("group(`${p}-account`");
     expect(brand).toBeGreaterThan(0);
     expect(inspo).toBeGreaterThan(brand);
     expect(ins).toBeGreaterThan(inspo);
     expect(account).toBeGreaterThan(ins);
-    const line = src.split("\n").find((l) => l.includes("${base}/instructions"))!;
+    const line = src.split("\n").find((l) => l.includes('to("/instructions")'))!;
     expect(line).toContain("N.instructions");
     expect(line).not.toContain("show.");
   });

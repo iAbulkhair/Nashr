@@ -22,6 +22,7 @@ import { appOrigin } from "@/lib/origin";
 import { route } from "@/lib/models/route";
 import { MODEL_UNAVAILABLE_NOTE } from "@/lib/models/overrides";
 import { AgentScopeRefused, agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
+import { appHref } from "@/lib/ws-path";
 
 export const maxDuration = 300;
 
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
   if (method === "tools/list") return ok(id, { tools: TOOLS });
 
   const user = await userFromBearer(req);
-  if (!user) return err(id, -32001, "Unauthorized: connect via OAuth (this server advertises /.well-known/oauth-authorization-server) or add Authorization: Bearer <personal token from /ar/app/mcp>", 401);
+  if (!user) return err(id, -32001, `Unauthorized: connect via OAuth (this server advertises /.well-known/oauth-authorization-server) or add Authorization: Bearer <personal token from ${appHref("ar", "/mcp")}>`, 401);
 
   if (method !== "tools/call") return err(id, -32601, "Method not found");
   const name = String(params.name ?? "");

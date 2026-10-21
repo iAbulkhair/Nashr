@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z, type ZodType, type output } from "zod";
 import { currentUser, isAdmin, sc, type User } from "./auth";
+import { MULTI_ORG } from "./multi-org";
+import { WS_HEADER, isNotFoundError, workspaceMissing } from "./ws-path";
 import { allow, clientIp, retryLater } from "./rate";
 import { forbid, type Action } from "./roles";
 import { sameSecret } from "./secret";
@@ -51,6 +53,7 @@ export const API_ERRORS = [
   "too_short",
   "too_long",
   "unknown_item",
+  "workspace_missing",
 ] as const;
 export type ApiError = (typeof API_ERRORS)[number];
 export const isApiError = (v: unknown): v is ApiError => typeof v === "string" && (API_ERRORS as readonly string[]).includes(v);
@@ -129,7 +132,16 @@ export function handler<A extends ApiAuth, I extends Schema = undefined, Q exten
     // 1. Who is calling. Nothing of the request is parsed before this answers.
     let u: User | null = null;
     if (opts.auth === "user") {
-      u = await currentUser();
+      // Multi-workspace M2 (rule 2113): a state-changing request that names no workspace writes nothing; the proxy
+      // answers it first, this is the same check again for a route the proxy did not see. A foreign handle (or a brand
+      // that is not the account's) is a JSON 404 with the switch on; with it off the route throws Next's 404 as on main.
+      if (MULTI_ORG && workspaceMissing(req.method, new URL(req.url).pathname, true, req.headers.get(WS_HEADER))) return fail("workspace_missing", 409);
+      try {
+        u = await currentUser();
+      } catch (e) {
+        if (MULTI_ORG && isNotFoundError(e)) return fail("not_found", 404);
+        throw e;
+      }
       if (!u) return fail(opts.unauthorized, 401);
     } else if (opts.auth === "admin") {
       if (!(await isAdmin(req))) return fail(opts.unauthorized, 401);

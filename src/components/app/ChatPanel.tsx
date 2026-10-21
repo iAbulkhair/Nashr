@@ -22,7 +22,7 @@ import { Icon } from "./Icons";
 import ApprovalCard from "./ApprovalCard";
 import CopyButton from "@/components/ui/CopyButton";
 import Menu from "@/components/ui/Menu";
-import { announceCredits } from "./WorkspaceContext";
+import { useAppLink, announceCredits } from "./WorkspaceContext";
 import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
 import ChatBubble from "./ChatBubble";
 import type { Journey } from "@/lib/journey";
@@ -347,6 +347,7 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
  * admin level as `brand.write`, so the page's `canBrand` decides who sees the buttons), Dismiss drops it.
  */
 export function FileProposalCard({ p, t, lang, canWrite = true }: { p: FileProposalCardData; t: AppDict; lang: "ar" | "en"; canWrite?: boolean }) {
+  const href = useAppLink(lang);
   const ar = lang === "ar";
   const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "stale" | "gone" | "forbidden" | "busy" | "slow" | "error">(p.state === "applied" || p.state === "dismissed" || p.state === "stale" ? p.state : p.state === "expired" ? "gone" : "open");
   async function decide(decision: "apply" | "dismiss") {
@@ -380,7 +381,7 @@ export function FileProposalCard({ p, t, lang, canWrite = true }: { p: FilePropo
       </div>
       <footer className="flex flex-wrap items-center gap-2 border-t border-foreground/5 px-3 py-2 text-xs">
         {words[state] && <span role="status" className={state === "applied" || state === "dismissed" ? "text-foreground" : "text-danger"}>{words[state]}</span>}
-        {state === "applied" && <Link href={`/${lang}/app/files`} className="underline">{ar ? "افتح الملفات" : "Open Files"}</Link>}
+        {state === "applied" && <Link href={href("/files")} className="underline">{ar ? "افتح الملفات" : "Open Files"}</Link>}
         {!closed && !canWrite && <span className="ms-auto text-foreground-muted">{t.inbox.waitAdmin}</span>}
         {!closed && canWrite && (
           <span className="ms-auto flex gap-1.5">
@@ -399,6 +400,7 @@ export function FileProposalCard({ p, t, lang, canWrite = true }: { p: FilePropo
  * Apply applies it as the owner's click (POST /api/instructions/proposals/{id}, `instructions.write`), Dismiss drops it.
  */
 export function InstructionProposalCard({ p, t, lang, canWrite = true }: { p: InstructionProposalCardData; t: AppDict; lang: "ar" | "en"; /** `can(u, "instructions.write")`: a plain member sees the rule but cannot decide it */ canWrite?: boolean }) {
+  const href = useAppLink(lang);
   const C = t.instructionCard;
   // A reloaded thread carries where the proposal stands now (history() reads it), so a decided card stays decided.
   const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "gone" | "forbidden" | "busy" | "lockBusy" | "slow" | "full" | "many" | "plan" | "refused" | "error">(p.state === "applied" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
@@ -425,7 +427,7 @@ export function InstructionProposalCard({ p, t, lang, canWrite = true }: { p: In
       </div>
       <footer className="flex flex-wrap items-center gap-2 border-t border-foreground/5 px-3 py-2 text-xs">
         {done[state] && <span role="status" className={state === "applied" || state === "dismissed" ? "text-foreground" : "text-danger"}>{done[state]}</span>}
-        {state === "applied" && <Link href={`/${lang}/app/instructions`} className="underline">{C.review}</Link>}
+        {state === "applied" && <Link href={href("/instructions")} className="underline">{C.review}</Link>}
         {!closed && !canWrite && <span className="ms-auto text-foreground-muted">{t.inbox.waitAdmin}</span>}
         {!closed && canWrite && (
           <span className="ms-auto flex gap-1.5">
@@ -526,6 +528,7 @@ export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; 
  * card open.
  */
 export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p: SpendProposalCardData; t: AppDict; lang: "ar" | "en"; /** `can(u, "generate")` */ canRun?: boolean; onCredits?: (n: number) => void }) {
+  const href = useAppLink(lang);
   const ar = lang === "ar";
   const [state, setState] = useState<"open" | "running" | "ran" | "dismissed" | "gone" | "busy" | "slow" | "forbidden" | "paused" | "failed" | "revoked" | "error">(p.state === "ran" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
   const [made, setMade] = useState<number | null>(null);
@@ -586,7 +589,7 @@ export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p:
         : (ar ? "لم يُنفَّذ شيء ولم يُخصم أي كريدت لأن رسالتك لم تطلب هذا صراحةً. اضغط «نفّذ» إن كنت تريده." : "Nothing ran and no credits were used, because your message did not ask for this in words. Press Run if you want it.")}</p>
       <footer className="flex flex-wrap items-center gap-2 border-t border-foreground/5 px-3 py-2 text-xs">
         {done[state] && (state === "ran" || state === "dismissed" ? <span role="status" className="text-foreground">{done[state]}</span> : <span role="alert" className="text-danger">{done[state]}</span>)}
-        {state === "ran" && <Link href={`/${lang}/app`} className="underline">{ar ? "افتح صندوق الموافقات" : "Open approvals"}</Link>}
+        {state === "ran" && <Link href={href()} className="underline">{ar ? "افتح صندوق الموافقات" : "Open approvals"}</Link>}
         {!closed && !canRun && <span className="ms-auto text-foreground-muted">{ar ? "لا تملك صلاحية تنفيذ هذا العمل." : "You don't have permission to run this."}</span>}
         {!closed && canRun && (
           <span className="ms-auto flex gap-1.5">
@@ -616,6 +619,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
 }
 
 export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canInstructions = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "instructions.write")`: a plain member sees a proposed instruction but cannot decide it */ canInstructions?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null }) {
+  const href = useAppLink(lang);
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
@@ -714,7 +718,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             else if (ev.type === "message") { setMsgs((p) => [...p, ev.message]); if (ev.message.plan?.length) setGoal((g) => ({ goal: g?.goal ?? "", first: ev.message.plan[0].title })); }
             // The balance after an added brand's setup charge: the page keeps this component (and its state) across the
             // refresh below, so the header's pill would otherwise show the balance from before the charge.
-            else if (ev.type === "done") { got = true; if (typeof ev.credits === "number") setCredits(ev.credits); setGoal((g) => ({ goal: ev.goal ?? "", first: g?.first })); setOnboarded(true); router.replace(`/${lang}/app/chat`); router.refresh(); }
+            else if (ev.type === "done") { got = true; if (typeof ev.credits === "number") setCredits(ev.credits); setGoal((g) => ({ goal: ev.goal ?? "", first: g?.first })); setOnboarded(true); router.replace(href("/chat")); router.refresh(); }
             // A paid setup that failed before the brand file was saved was refunded: say so, with the balance, and that a
             // retry pays again. One that failed after it was saved kept the brand: say that instead of "could not set up".
             else if (ev.type === "error") { got = true; if (typeof ev.credits === "number") setCredits(ev.credits); fail(ev.refunded ? "refunded" : ev.saved ? "saved" : undefined, ev); }
@@ -725,7 +729,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       } catch { fail(); }
       finally { setBusy(false); setSteps([]); }
     })();
-  }, [onboardUrl, lang, router, t.start]);
+  }, [onboardUrl, lang, router, href, t.start]);
 
   async function newConv(withAgent: AgentId = agent) {
     const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent: withAgent }) })).json();
@@ -733,7 +737,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     setConvs((p) => [j.conversation, ...p]); setConv(j.conversation.id); setAgent(withAgent); setMsgs([]);
     // The address names the new thread (rule 962): the page keys this panel by it, so a later sidebar link back to the
     // thread this one replaced is a new key and opens that thread, and a reload reopens this one.
-    router.replace(`/${lang}/app/chat?conv=${j.conversation.id}${withAgent === "noor" ? "" : `&agent=${withAgent}`}`);
+    router.replace(href(`/chat?conv=${j.conversation.id}${withAgent === "noor" ? "" : `&agent=${withAgent}`}`));
   }
   async function pick(id: AgentId) {
     if (id === agent || busy) return;
@@ -855,7 +859,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         <div className="flex flex-wrap items-center gap-2">
           <ChatModelPicker t={t} lang={lang} conv={conv} stored={storedPick(conv, made, active, convs)} replying={busy} canConfirmChina={canConfirmChina} onPicked={(c, previous, model, outcome) => setMade((p) => nextMadePicks(p, c, previous, model, outcome))} onChat={setChatNow} onGone={reloadConvs} />
           <button onClick={() => newConv()} className="btn btn-secondary btn-xs"><Icon name="plus" className="h-3.5 w-3.5" />{t.chat.newConv}</button>
-          <Link href={`/${lang}/app/settings/billing`} className="tnum rounded-full bg-background-muted px-3 py-1 text-xs text-foreground-muted">{credits} {t.nav.credits}</Link>
+          <Link href={href("/settings/billing")} className="tnum rounded-full bg-background-muted px-3 py-1 text-xs text-foreground-muted">{credits} {t.nav.credits}</Link>
         </div>
       </div>
 
@@ -886,7 +890,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           <section className="rounded-xl border border-border bg-background p-3" aria-label={t.chat.todayFromTeam}>
             <div className="flex items-center justify-between gap-2">
               <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><Icon name="sun" className="h-4 w-4 text-foreground" />{t.chat.todayFromTeam}</p>
-              {left > 0 && <Link href={`/${lang}/app`} className="btn btn-primary btn-xs"><Icon name="inbox" className="h-3.5 w-3.5" />{t.chat.pending} <span className="tnum" dir="ltr">({left})</span> · {t.chat.reviewAll}</Link>}
+              {left > 0 && <Link href={href()} className="btn btn-primary btn-xs"><Icon name="inbox" className="h-3.5 w-3.5" />{t.chat.pending} <span className="tnum" dir="ltr">({left})</span> · {t.chat.reviewAll}</Link>}
             </div>
             {briefLines.length > 0 && <ul className="mt-2 text-sm text-foreground-muted">{briefLines.map((l, i) => <li key={i} dir="auto">{l}</li>)}</ul>}
             {pending[0] && <ItemCard item={pending[0]} t={t} lang={lang} canApprove={canApprove} onApproved={() => setLeft((n) => Math.max(0, n - 1))} />}
@@ -914,7 +918,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             {m.role === "assistant" && m.switchTo && isAgentId(m.switchTo) && m.switchTo !== agent && (
               <button onClick={() => pick(m.switchTo!)} className="btn btn-secondary btn-xs mt-1.5">{t.chat.switchTo.replace("{name}", A[m.switchTo].name)}</button>
             )}
-            {m.role === "assistant" && m.large && <p className="mt-1 text-xs text-foreground-muted" data-workspace-large>{lang === "ar" ? "ملفات مساحة العمل كبيرة، فكان لهذا الرد مساحة أقل: ربما تركتُ رسائل سابقة من المحادثة أو اختصرتُ الجواب. " : "Your workspace files are large, so this reply had less room: I may have left out earlier messages or kept the answer short. "}<Link href={`/${lang}/app/files`} className="underline">{lang === "ar" ? "اختصر ملفاتك الطويلة" : "Shorten your long files"}</Link>{lang === "ar" ? " أو ابدأ محادثة جديدة." : " or start a new conversation."}</p>}
+            {m.role === "assistant" && m.large && <p className="mt-1 text-xs text-foreground-muted" data-workspace-large>{lang === "ar" ? "ملفات مساحة العمل كبيرة، فكان لهذا الرد مساحة أقل: ربما تركتُ رسائل سابقة من المحادثة أو اختصرتُ الجواب. " : "Your workspace files are large, so this reply had less room: I may have left out earlier messages or kept the answer short. "}<Link href={href("/files")} className="underline">{lang === "ar" ? "اختصر ملفاتك الطويلة" : "Shorten your long files"}</Link>{lang === "ar" ? " أو ابدأ محادثة جديدة." : " or start a new conversation."}</p>}
             {m.role === "assistant" && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
                 {/* Rule 1126: each answer can be copied; the last one (or an error) can be asked again. */}

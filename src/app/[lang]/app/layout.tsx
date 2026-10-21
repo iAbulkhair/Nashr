@@ -4,7 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { safeNext } from "@/lib/safe-next";
 import { appDict } from "@/lib/app-i18n";
-import { currentUser, currentUserUnverified, isFounderActor, trialDaysLeft } from "@/lib/auth";
+import { currentPerson, currentUser, currentUserUnverified, isFounderActor, trialDaysLeft } from "@/lib/auth";
+import { MULTI_ORG } from "@/lib/multi-org";
+import { WS_HEADER, appHref, asHandle, oldAppTarget, stripWs } from "@/lib/ws-path";
+import { handleOf } from "@/lib/ws-handle";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
 import InstallHint from "@/components/app/InstallHint";
@@ -38,6 +41,10 @@ export default async function AppLayout({ children, params }: { children: React.
   const h = await headers();
   const path = h.get("x-pathname") ?? "";
   const isPublic = PUBLIC.some((p) => path.endsWith(p));
+  // Multi-workspace M2 (spec section 7): the page's workspace from its own link (the proxy sets the header from the
+  // path); `currentUser()` answers 404 for a handle that is not one of the person's workspaces.
+  const handle = MULTI_ORG ? asHandle(h.get(WS_HEADER)) : null;
+  const workspacesPage = MULTI_ORG && stripWs(path) === `/${lang}/app/workspaces`;
   const user = await currentUser();
   // An owner who has not verified the address reads as signed out above; send them to the code page, not to login (rule 754).
   const pending = !user && !isPublic && path ? await currentUserUnverified() : null;
@@ -46,7 +53,17 @@ export default async function AppLayout({ children, params }: { children: React.
     const back = safeNext(path);
     redirect(`/${lang}/app/verify${back ? `?next=${encodeURIComponent(back)}` : ""}`);
   }
-  if (!user && !isPublic && path) redirect(`/${lang}/app/login`);
+  // A valid person without a valid workspace (their last one removed, or none yet) picks one on the workspaces page;
+  // that page itself is reachable in that state (it reads `currentPerson()`).
+  if (MULTI_ORG && !user && !isPublic && path && (await currentPerson())) {
+    if (!workspacesPage) redirect(`/${lang}/app/workspaces`);
+  } else if (!user && !isPublic && path) redirect(`/${lang}/app/login`);
+  // An old address without `w/{handle}` goes to the same page of the session's workspace, the query kept (307); an old
+  // brand section goes straight under the session's brand too (`/w/{handle}/b/{id}/…`, one hop).
+  if (MULTI_ORG && user && !isPublic && !handle) {
+    const to = oldAppTarget(lang, path, h.get("x-search") ?? "", handleOf(user), user.brandId);
+    if (to) redirect(to);
+  }
 
   if (!user) {
     // Rule 1088: one toast region for every screen under the app, signed in or not.
@@ -77,7 +94,7 @@ export default async function AppLayout({ children, params }: { children: React.
   const owner = can(user, "billing");
   return (
     <ToastProvider lang={lang}>
-    <WorkspaceProvider initial={{ credits: user.credits, unread, pending: toApprove }}>
+    <WorkspaceProvider initial={{ credits: user.credits, unread, pending: toApprove }} brandId={user.brandId ?? null} handle={handle} multiOrg={MULTI_ORG}>
     <div className="flex min-h-dvh flex-col bg-background lg:h-dvh lg:flex-row lg:overflow-hidden">
       {/* Rule 968: past the sidebar's links straight to the screen. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
@@ -85,7 +102,7 @@ export default async function AppLayout({ children, params }: { children: React.
       <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-8 lg:overflow-y-auto">
         {/* Rule 1177: from the session, never the cookie alone; the account's email and the end the founder chose. */}
         {actor?.kind === "founder" && <ImpersonationBanner lang={lang} email={user.email} until={actor.until} />}
-        {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} />}
+        {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} to={(p?: string) => appHref(lang, p, handle, user.brandId)} />}
         <InstallHint lang={lang} />
         {pushOn() && (actor?.kind === "owner" || actor?.kind === "member") && <TabBeat />}
         {children}
