@@ -108,6 +108,9 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     // Multi-workspace membership (rules 2110-2139, release M1): the two account builders of the new families.
     [accountKey.membership(storedAccountId(E), storedPersonId("p1")), `mbr:${E}:p1`],
     [accountKey.teamLog(storedAccountId(E)), `teamlog:${E}`],
+    // Release M3: the pending ownership transfer and the invitations inbox.
+    [accountKey.xfer(storedAccountId(E)), `xfer:${E}`],
+    [accountKey.invitesFor(E), `invitesfor:${E}`],
     // Customer passkeys (rules 2400-2429): a new family, no old template; the bytes are pinned by tests/passkeys-keys.test.ts.
     [accountKey.passkeyProofBucket(E), `pkpw:${E}`],
     // Agent status and phone notifications (rules 2560-2573): new families, no old template.

@@ -358,8 +358,8 @@ describe("rule 2112 (scan half): no route or page reads a person or an account i
 // Rule 2137
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** The prefixes only src/lib/keys.ts may produce: `personKey.person`, `.lock`, `.orgs`, `.lastOrg`, `accountKey.membership`, `.teamLog`. */
-const NEW_ONLY = /^(person|lock:person|orgs|lastorg|mbr|teamlog):/;
+/** The prefixes only src/lib/keys.ts may produce: `personKey.person`, `.lock`, `.orgs`, `.lastOrg`, `accountKey.membership`, `.teamLog`, `.xfer`, `.invitesFor` (M3). */
+const NEW_ONLY = /^(person|lock:person|orgs|lastorg|mbr|teamlog|xfer|invitesfor):/;
 /**
  * Prefixes shared by a legacy per-login key and its per-(person, account) family (`personKey.activeBrand`, `.feedOf`,
  * `.bookOf`, `.feedLock`, `.bookLock`): outside keys.ts a template may hold at most the legacy number of placeholders.
@@ -435,6 +435,8 @@ describe("rule 2137 (producer scan): the new key families come only from src/lib
       "bookOf: (p: PersonId, a: AccountId, prov: string) => `sec:bookof:${p}:${a}:${prov}`",
       "membership: (a: AccountId, p: PersonId) => `mbr:${a}:${p}`",
       "teamLog: (a: AccountId) => `teamlog:${a}`",
+      "xfer: (a: AccountId) => `xfer:${a}`",
+      "invitesFor: (login: string) => `invitesfor:${login}`",
     ]) expect(src).toContain(sig);
   });
 

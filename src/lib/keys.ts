@@ -218,6 +218,8 @@ export const accountKey = {
   membership: (a: AccountId, p: PersonId) => `mbr:${a}:${p}`,
   /** capped list (`CAPS.teamLog`): the account's membership events, newest first (`TeamLogRow`). */
   teamLog: (a: AccountId) => `teamlog:${a}`,
+  /** json `TransferOffer` (src/lib/transfer.ts): the account's one pending ownership transfer, 7 days (multi-workspace M3, rule 2128). */
+  xfer: (a: AccountId) => `xfer:${a}`,
   /** json `User`: the account, under its id (`acct(u)`). */
   user: (id: string) => `user:${id}`,
   /** json `BrandMeta[]`: the account's brands. */
@@ -279,6 +281,11 @@ export const accountKey = {
    * 1981-1983). Written only under `loginLock`; the address is normalized by the caller.
    */
   login: (login: string) => `login:${login}`,
+  /**
+   * set: the ids of the open invites to this sign-in address, 7 days (multi-workspace M3, spec section 9). Written with the
+   * invite, read only for the signed-in person's own verified address; the address is normalized by the caller.
+   */
+  invitesFor: (login: string) => `invitesfor:${login}`,
   /** lock: one login. */
   loginLock: (login: string) => `lock:login:${login}`,
   /** lock: one member record. */
