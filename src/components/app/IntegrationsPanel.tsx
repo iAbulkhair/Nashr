@@ -19,6 +19,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "./ConfirmDialog";
+import { apiHref } from "@/lib/brand-fetch";
 
 type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean; toolkits?: string[] };
 type C = { provider: string; meta?: Record<string, string>; connectedAt: string; needsReconnect?: string };
@@ -162,7 +163,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
     // Not an internal page: this route answers 302 to the provider's own consent screen. router.push() performs a
     // client-side RSC navigation, which cannot leave the origin, so the hand-off has to be a real navigation.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- leaves the origin via a 302
-    window.location.assign(`/api/connect/${p.id}/start?lang=${lang}${toolkit ? `&toolkit=${encodeURIComponent(toolkit)}` : ""}`);
+    window.location.assign(apiHref(`/api/connect/${p.id}/start?lang=${lang}${toolkit ? `&toolkit=${encodeURIComponent(toolkit)}` : ""}`));
   };
   // A provider connected in parts shows each part's card as connected only when that part is: Instagram by its account,
   // Facebook by its Page.
@@ -306,7 +307,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
           const shop = String(data.get("shop") ?? "").trim();
           // Same hand-off as startOAuth: the route redirects off-origin to the provider.
           // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- leaves the origin via a 302
-          window.location.href = `/api/connect/${shopFor.id}/start?lang=${lang}&shop=${encodeURIComponent(shop)}`;
+          window.location.href = apiHref(`/api/connect/${shopFor.id}/start?lang=${lang}&shop=${encodeURIComponent(shop)}`);
         }}>
           <Field label={g.shopPrompt} required><Input name="shop" dir="ltr" autoComplete="off" spellCheck={false} /></Field>
         </FormDialog>

@@ -42,7 +42,7 @@ describe("callers read what a plan includes from entitlements", () => {
   });
 
   it("rule 781: the inbox takes the plan's video list as a prop, and the client files never import entitlements at runtime", () => {
-    expect(read("src/app/[lang]/app/page.tsx")).toMatch(/included=\{entitlements\(u\)\.media\.video\}/);
+    expect(read("src/app/[lang]/app/b/[brand]/page.tsx")).toMatch(/included=\{entitlements\(u\)\.media\.video\}/);
     for (const f of ["src/components/app/Inbox.tsx", "src/components/app/MediaControls.tsx"]) {
       expect(read(f), f).not.toMatch(/from\s+["']@\/lib\/entitlements["']/);
     }

@@ -58,7 +58,7 @@ describe("which connectors do something", () => {
     expect(reportSources(["tiktok_ads"]).read).toEqual(["ads"]);
     expect(reportSources(["google_ads"]).read).toEqual(["ads"]);
     // The page passes only readable records (report-sources.ts connectedSources, pinned in composio-social.test.ts).
-    expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/const connected = connectedSources\(connections\)/);
+    expect(readFileSync("src/app/[lang]/app/b/[brand]/reports/page.tsx", "utf8")).toMatch(/const connected = connectedSources\(connections\)/);
     expect(READ_VIA_COMPOSIO).toEqual(["google", "meta", "linkedin", "youtube", "tiktok"]);
   });
 });

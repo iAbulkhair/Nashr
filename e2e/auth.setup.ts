@@ -15,7 +15,7 @@ setup("authenticate and seed the owner", async ({ request, context }) => {
   const state = await request.storageState();
   expect(state.cookies.some((c) => c.name === "thakeen_session"), "signup/login must set the session cookie").toBe(true);
 
-  const brand = await request.put("/api/brand", { data: SEEDED_BRAND });
+  const brand = await request.put("/api/brand", { data: SEEDED_BRAND, headers: { "x-thakeen-brand": "default" } });
   expect(brand.ok(), `seeding the brand failed: ${brand.status()} ${await brand.text()}`).toBe(true);
 
   await context.addCookies(state.cookies);

@@ -8,7 +8,7 @@ import { appHref } from "@/lib/ws-path";
  * subscribe, so everyone else sees the same countdown with "ask the account owner" instead of the button.
  */
 export default function TrialBanner({ lang, days, plan, industry, owner = true, to }: { lang: Lang; /** whole days left, from trialDaysLeft() in the server layout */ days: number; plan: string; industry?: string; /** the acting person may subscribe (`can(u, "billing")`) */ owner?: boolean; /** the layout's link builder for the shell's workspace; today's links without it */ to?: (path?: string) => string }) {
-  // A server component cannot call `useAppHref`: the layout passes the builder for its handle (rule 2113).
+  // A server component cannot call `useAppLink`: the layout passes the builder for its handle (rule 2113).
   const href = to ?? ((path?: string) => appHref(lang, path));
   if (plan !== "trial") return null;
   const ar = lang === "ar";

@@ -26,7 +26,7 @@ import { keepGoogle, keepGraph, limitMeetings, type GEvent, type GraphEvent, typ
 import { zoneOf } from "./zones";
 import { log } from "./log";
 import { accountOfScope, acct } from "./account-id";
-import { appHrefFor } from "@/lib/app-href";
+import { appHrefFor } from "@/lib/ws-href";
 
 export const GOOGLE_API = "https://www.googleapis.com";
 export const GRAPH = "https://graph.microsoft.com/v1.0";

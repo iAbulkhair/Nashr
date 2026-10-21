@@ -332,7 +332,7 @@ describe("out of credits, the line fits the plan and the role (rule 457)", () =>
       const src = readFileSync(f, "utf8");
       expect(src, f).toMatch(/no_credits: noCreditsText\((g|t\.generate), owner, topups\)/);
     }
-    for (const f of ["src/app/[lang]/app/generate/page.tsx", "src/app/[lang]/app/reports/page.tsx"]) {
+    for (const f of ["src/app/[lang]/app/b/[brand]/generate/page.tsx", "src/app/[lang]/app/b/[brand]/reports/page.tsx"]) {
       expect(readFileSync(f, "utf8"), f).toContain('owner={can(u, "billing")} topups={topupsSold(u.plan)}');
     }
     const media = readFileSync("src/components/app/MediaControls.tsx", "utf8");
@@ -362,7 +362,7 @@ describe("out of credits, the line fits the plan and the role (rule 457)", () =>
       expect(trialMember.text, lang).toContain(i.needPlanAsk);
       expect(trialMember.text, lang).not.toMatch(/top.?up|شحن|باقة/i);
     }
-    expect(readFileSync("src/app/[lang]/app/page.tsx", "utf8")).toContain('canPublish={can(u, "publish")} owner={can(u, "billing")}');
+    expect(readFileSync("src/app/[lang]/app/b/[brand]/page.tsx", "utf8")).toContain('canPublish={can(u, "publish")} owner={can(u, "billing")}');
     expect(readFileSync("src/components/app/Inbox.tsx", "utf8")).toContain('paused={!!paused} owner={owner} onChanged=');
   });
 

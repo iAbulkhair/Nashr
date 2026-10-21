@@ -21,3 +21,4 @@ Stored shape (rule 679): one optional field, `User.brandCap`. Expand only: old c
 - Not in this change: `entitlements.ts` and the `PlanIncludesCard` do not list brands yet (the entitlements Part B branch touches them); the brand id in the URL (spec Part C).
 - Founder actions: set each Agency account's number in the console (Users, Brands column) once its contract says it; until then Agency accounts get 10. After release, accounts above their plan's number keep their brands and cannot add one.
 - 2026-10-12 build batch: `POST /api/admin/brand-cap` calls `secondFactorRefusal(req, who)` right after `adminActor` (rule 1376 from the second factor change, pinned by the route scan in `tests/admin-2fa.test.ts`).
+- 2026-10-21 re-check (brand id in the URL, ruling R-B1): re-checked against account ids 1980-1999, multi-workspace M1 2110-2139 and OpenDots 2460-2469; no change to rules 1390-1395, no new code for Part B.

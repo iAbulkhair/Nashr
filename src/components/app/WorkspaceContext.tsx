@@ -2,8 +2,9 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
-import { installWorkspaceFetch } from "@/lib/api-client";
-import { appHref } from "@/lib/ws-path";
+import { brandFromPath } from "@/lib/brand-path";
+import { installBrandFetch } from "@/lib/brand-fetch";
+import { appHref, handleOfPath } from "@/lib/ws-path";
 
 /** A conversation as the rail lists it (GET /api/conversations). */
 export type RailConv = { id: string; title: string; agent?: AgentId; updatedAt: string };
@@ -36,6 +37,7 @@ export function announceCredits(n: number) {
 export const isStale = (readAt: number, now: number) => now - readAt >= WORKSPACE_STALE_MS;
 
 const Ctx = createContext<Workspace | null>(null);
+const BrandCtx = createContext<string | null>(null);
 
 /**
  * The shell's shared numbers (rule 1119). The layout reads the first counts on the server in one `Promise.all`, so the rail
@@ -44,10 +46,11 @@ const Ctx = createContext<Workspace | null>(null);
  * to 100 reads. Now a navigation reads the counts again only when they are older than WORKSPACE_STALE_MS, and a screen that
  * changes one says so with its window event, which reads that one at once.
  */
-export function WorkspaceProvider({ initial, handle = null, multiOrg = false, children }: { initial: WorkspaceCounts; handle?: string | null; multiOrg?: boolean; children: React.ReactNode }) {
-  // Multi-workspace M2 (rule 2113): requests name this tab's workspace. Installed during the first render, before any
-  // screen's effect fetches; idempotent. With `MULTI_ORG` off the layout passes `multiOrg` false and nothing changes.
-  if (multiOrg) installWorkspaceFetch();
+export function WorkspaceProvider({ initial, brandId = null, handle = null, multiOrg = false, children }: { initial: WorkspaceCounts; brandId?: string | null; handle?: string | null; multiOrg?: boolean; children: React.ReactNode }) {
+  // ONE fetch wrapper (rules 889, 2113): requests name this tab's brand and, with `MULTI_ORG` on (`multiOrg`), its
+  // workspace. Wrapped during the first render, not in an effect: a child's effect runs before this component's, and its
+  // first fetch must carry the page's brand and handle. Idempotent. With `multiOrg` false it is exactly Part C's wrapper.
+  installBrandFetch({ workspace: multiOrg });
   const [credits, setCredits] = useState(initial.credits);
   const [unread, setUnread] = useState(initial.unread);
   const [pending, setPending] = useState(initial.pending);
@@ -87,7 +90,9 @@ export function WorkspaceProvider({ initial, handle = null, multiOrg = false, ch
   const value = useMemo<Workspace>(() => ({ credits, unread, pending, convs, setCredits, setUnread }), [credits, unread, pending, convs]);
   return (
     <HandleCtx.Provider value={handle}>
-      <Ctx.Provider value={value}>{children}</Ctx.Provider>
+      <BrandCtx.Provider value={brandId}>
+        <Ctx.Provider value={value}>{children}</Ctx.Provider>
+      </BrandCtx.Provider>
     </HandleCtx.Provider>
   );
 }
@@ -100,13 +105,33 @@ export function useWsHandle(): string | null {
   return useContext(HandleCtx);
 }
 
-/** `appHref` bound to this tab's workspace: `useAppHref(lang)("/tasks")`. Without a handle, today's `/{lang}/app/tasks`. */
-export function useAppHref(lang: string): (path?: string) => string {
-  const handle = useContext(HandleCtx);
-  return useCallback((path = "") => appHref(lang, path, handle), [lang, handle]);
+/**
+ * The one app-link builder for client components, with both selectors: `useAppLink(lang)("/tasks")`. The workspace is
+ * the page's own `/w/{handle}` segment, else the shell's (a person page such as the workspaces list links into the
+ * session's workspace); the brand is the page's `/b/{id}` segment, else `fallbackBrand`. With `MULTI_ORG` off (no handle
+ * anywhere) it is brand-path.ts `appHref`, Part C's link. `useBrandHref` (./useBrandHref.ts) is the same builder with the
+ * language read from the path.
+ */
+export function useAppLink(lang: string, fallbackBrand?: string | null): (path?: string) => string {
+  const ctxHandle = useContext(HandleCtx);
+  const pathname = usePathname() || "";
+  const handle = handleOfPath(pathname) ?? ctxHandle;
+  const brand = brandFromPath(pathname) ?? fallbackBrand ?? null;
+  return useCallback((path = "") => appHref(lang, path, handle, brand), [lang, handle, brand]);
 }
 
 /** The shell's numbers, or null outside the provider (a test rendering the rail alone): the caller falls back to its props. */
 export function useWorkspace(): Workspace | null {
   return useContext(Ctx);
+}
+
+/**
+ * The brand the layout was rendered with (`user.brandId`), or null outside the provider. On an account page that is the
+ * session's stored choice; on a `/b/{id}` page it is the page's brand as of the last layout render, so it can lag after a
+ * soft navigation from one brand's page to another's until the layout renders again. A shell component on an account page
+ * that mutates a brand route sends it explicitly (`sessionBrandHeaders`, R-C12). On a brand page a request takes its brand
+ * from the path (`installBrandFetch`'s path header wins over anything built from this value), never from here.
+ */
+export function useBrandId(): string | null {
+  return useContext(BrandCtx);
 }

@@ -11,7 +11,7 @@ import CopyButton from "@/components/ui/CopyButton";
 import Badge from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { Icon, channelIcon } from "./Icons";
-import { useAppHref, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useAppLink, WORKSPACE_EVENTS } from "./WorkspaceContext";
 
 /** A string from the dictionary with its {placeholders} filled. */
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
@@ -30,7 +30,7 @@ const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w
  * that; with `demo` the card is a sample whose buttons write nothing.
  */
 export default function ApprovalCard({ item, t, lang, onApproved, canApprove = true, demo = false }: { item: ChatItem; t: ApprovalDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean; /** the home page's gallery (rule 1222): Approve and Undo change only this card, nothing is sent or saved */ demo?: boolean }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const [open, setOpen] = useState(true);
   const [status, setStatus] = useState(item.status);
   const [err, setErr] = useState("");

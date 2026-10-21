@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import { ONBOARD_EXTRA_BRAND_COST } from "@/lib/pricing";
+import { switchBrandPath } from "@/lib/brand-path";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Scribble from "@/components/Scribble";
 import Badge from "@/components/ui/Badge";
@@ -13,7 +14,7 @@ import { usePrompt } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 type B = { id: string; name: string; createdAt: string; status: "active" | "archived"; hasBrandFile: boolean };
 
@@ -29,9 +30,10 @@ type B = { id: string; name: string; createdAt: string; status: "active" | "arch
  * off until switched on (rule 247).
  */
 export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: { lang: Lang; manage?: boolean; readOnlyNote?: string }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const ar = lang === "ar";
   const r = useRouter();
+  const path = usePathname();
   const [brands, setBrands] = useState<B[]>([]);
   const [active, setActive] = useState("default");
   // The plan's cap (0 until loaded, so nothing is shown as full before the answer) and whether this login may upgrade.
@@ -71,6 +73,8 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
       }
       setErr("");
       if (body.action === "add") { r.push(href("/start")); r.refresh(); return; }
+      // A switch goes to the same section of the other brand (rule 893); from this account page that is the new brand's inbox.
+      if (body.action === "switch") { r.push(switchBrandPath(path, body.id)); r.refresh(); return; }
       await load(); r.refresh();
     } finally {
       setBusy(false);

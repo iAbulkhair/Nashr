@@ -9,7 +9,7 @@ import type { Lang } from "@/lib/i18n";
 import Doodle from "@/components/home/Doodle";
 import cast from "@/components/home/home.module.css";
 import StartLaunch from "./StartLaunch";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const STEPS: readonly Step[] = [1, 2, 3, 4, 5, 6, 7];
 
@@ -80,7 +80,7 @@ function Sample({ who, lang, children }: { who: readonly HomeAgentId[]; lang: La
  * away under the title on every step. Each step change moves focus to the new step's heading.
  */
 export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupPaid, credits }: { t: AppDict; lang: Lang; initialUrl: string; setupCost: number; setupPaid: boolean; credits: number }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const [s, dispatch] = useReducer(reduce, INITIAL);
   const ready = useReady();
   const uid = useId();

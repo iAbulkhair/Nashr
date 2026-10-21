@@ -30,7 +30,7 @@ import { handPlanEnded } from "@/lib/hand-plan";
 import { ksaDay } from "@/lib/partner-rules";
 import { runMarginAlert } from "@/lib/margin";
 import { acct } from "@/lib/account-id";
-import { appHrefFor } from "@/lib/app-href";
+import { appHrefFor } from "@/lib/ws-href";
 import { jobRef, runAsAccount, type JobRef } from "@/lib/job-account";
 
 export const maxDuration = 300;

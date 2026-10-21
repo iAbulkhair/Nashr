@@ -5,7 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { chatOverflowHold, formatCount } from "@/lib/pricing";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 /**
  * `credits`: the balance (the month's plan credits and any top-up pack) does not cover the work; the way out is a top-up
@@ -74,7 +74,7 @@ export function noCreditsText(g: AppDict["generate"], may: boolean, topups: bool
  * to ask the account owner rather than sent to a page they cannot change.
  */
 export default function LimitModal({ t, lang, owner = true, governs = true, topups = true }: { t: AppDict; lang: Lang; owner?: boolean; governs?: boolean; topups?: boolean }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const [open, setOpen] = useState<Open | null>(null);
   useEffect(() => {
     const on = (e: Event) => setOpen((e as CustomEvent<Open>).detail);

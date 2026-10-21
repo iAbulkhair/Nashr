@@ -17,7 +17,7 @@ import { log as logger } from "./log";
 import { acct } from "./account-id";
 import { globalKey } from "./keys";
 import { handPlanEnded } from "./hand-plan";
-import { appHrefFor } from "@/lib/app-href";
+import { appHrefFor } from "@/lib/ws-href";
 
 /**
  * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):

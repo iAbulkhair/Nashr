@@ -1,5 +1,7 @@
 # Admin shell, brand limits per plan, brand in the URL — design
 
+> **Status update (2026-10-21):** Part B = shipped in #340 (re-checked 2026-10-21, ruling R-B1: no change after account ids, M1 and OpenDots). Part C = branch `claude/brand-parts-bc-29277a` (plan `docs/superpowers/plans/2026-10-20-brand-url.md`, rules 885-896, draft, not merged); its links move into the `/w/{handle}` form after #418 lands (Task 8, ruling R-M1).
+
 > **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** Part A (the admin shell) merged as #304 (2026-10-10, in `production`). Part B (brand limits per plan) was built after that date: merged to `main` as #340 (rules 1390-1395, `docs/system/tests/1390-brand-limits.md`), part of the #347 batch, not in `production` yet (checked 2026-10-13). Part C (the brand id in the URL) is not built; "Spec only, no code" below is true of C only.
 
 Status: design approved in conversation on 2026-10-09 (founder: «صحيحة»). Spec only, no code. Branch `claude/admin-panel-brand-management-7d1abe`. Rules 870-899 reserved for this work (870-879 part A, 880-884 part B, 885-899 part C); check `docs/system/tests.md` after other merges.

@@ -35,7 +35,7 @@ import {
   type StartResult, type StatusResult, type SubmitResult, type SweepReport,
 } from "./types";
 import { log } from "../log";
-import { appHrefIn } from "@/lib/app-href";
+import { appHrefIn } from "@/lib/ws-href";
 
 /** One render per task and kind at a time, a little longer than that kind's max age. */
 export const FLIGHT_TTL_S: Record<MediaKind, number> = { image: 15 * 60, video: 35 * 60 };

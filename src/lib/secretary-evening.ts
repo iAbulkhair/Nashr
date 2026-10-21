@@ -39,7 +39,7 @@ import { DEFAULT_ZONE, ZONE_IDS, type Zone } from "./zones";
 import { appOrigin } from "./origin";
 import { COPY, paragraphs } from "../emails";
 import { acct } from "./account-id";
-import { appHrefFor } from "@/lib/app-href";
+import { appHrefFor } from "@/lib/ws-href";
 
 /** The wrap's local time, and in Ramadan (after Taraweeh). */
 export const EVENING_AT = { hh: 18, mm: 0 } as const;

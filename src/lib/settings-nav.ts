@@ -1,5 +1,5 @@
 import type { Lang } from "./i18n";
-import { appHref } from "./ws-path";
+import { appHref, isBrandPath } from "./brand-path";
 
 /**
  * The settings area (UI/UX phase 3, rules 1140-1142): one place for the account, its security, notifications, the brand
@@ -25,10 +25,22 @@ export const groupOf = (s: SettingsSection): SettingsGroup => SETTINGS_GROUPS.fi
 
 export const isSettingsSection = (v: unknown): v is SettingsSection => typeof v === "string" && (SETTINGS_SECTIONS as readonly string[]).includes(v);
 
+/**
+ * A section whose page shows or saves the brand's data (`sc(u)`), so it lives under `/{lang}/app/b/{id}/settings/{section}`
+ * (R-C6, R-C10: brand, connections, governance, notifications). It asks `isBrandPath`, which reads the one list of brand
+ * sections in brand-path.ts, so the two cannot drift.
+ */
+export const isBrandSettings = (s: SettingsSection): boolean => isBrandPath(`/settings/${s}`);
+
 /** `/settings` or one section of it, what follows `/app`. */
 export const settingsPath = (section?: SettingsSection) => `/settings${section ? `/${section}` : ""}`;
 
-/** The link to the settings area or one section, made by the caller's app-link builder (`useAppHref`, `pageHref`). */
+/**
+ * The link to the settings area or one section, made by the caller's app-link builder (`useAppLink`, `useBrandHref`,
+ * `pageHref`), which carries the workspace and the brand: a brand section with a brand is
+ * `/{lang}/app[/w/{handle}]/b/{brand}/settings/{section}`; without a brand it is the old path, which the `[...legacy]`
+ * page sends to the session's brand (one 307). An account section ignores the brand.
+ */
 export const settingsHref = (href: (path: string) => string, section?: SettingsSection) => href(settingsPath(section));
 
 /**
@@ -38,6 +50,7 @@ export const settingsHref = (href: (path: string) => string, section?: SettingsS
  * bookmarks still name them. Contract step (a later release, docs/system/tests/1140-uiux-phase3.md): drop entries here
  * once nothing new links to them; `billing` and `profile` stay longest, since lifecycle and billing emails named them.
  * `/app/notifications` is not here: it stays the notification feed (the bell's "see all"); its preferences moved.
+ * The entries whose section is a brand section (rule 891) are answered by the `[...legacy]` page, not the proxy.
  */
 export const LEGACY_SETTINGS: Readonly<Record<string, SettingsSection>> = {
   profile: "account",
@@ -49,13 +62,19 @@ export const LEGACY_SETTINGS: Readonly<Record<string, SettingsSection>> = {
   governance: "governance",
 };
 
-const LEGACY_PATH = new RegExp(`^/(ar|en)/app/(${Object.keys(LEGACY_SETTINGS).join("|")})/?$`);
+/**
+ * The old names the proxy answers. `onboarding`, `integrations` and `governance` now land on brand sections, whose path
+ * needs the session's brand id, which the proxy does not read: those three go on to the `[...legacy]` page
+ * (src/app/[lang]/app/[...legacy]/page.tsx), which signs in and sends them to `/b/{id}/settings/{section}` in one hop.
+ */
+const PROXY_LEGACY = Object.keys(LEGACY_SETTINGS).filter((k) => !isBrandSettings(LEGACY_SETTINGS[k]));
+const LEGACY_PATH = new RegExp(`^/(ar|en)/app/(${PROXY_LEGACY.join("|")})/?$`);
 
-/** The settings path an old route moved to, or null for any other path. Only the exact page path matches. */
+/** The settings path an old account route moved to, or null for any other path (a brand one included). Only the exact page path matches. */
 export function legacySettingsPath(pathname: string): string | null {
   const m = LEGACY_PATH.exec(pathname);
   if (!m) return null;
-  return settingsHref((p) => appHref(m[1], p), LEGACY_SETTINGS[m[2]]);
+  return settingsHref((p) => appHref(m[1] as Lang, p), LEGACY_SETTINGS[m[2]]);
 }
 
 /** Each section's name and one line of what it holds, in both languages. */

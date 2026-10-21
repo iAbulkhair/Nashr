@@ -116,7 +116,8 @@ describe("rule 1115: loading screens, skeletons, and the card and line height on
   });
   it("each signed-in area that waits on the server has a loading.tsx on RouteLoading", () => {
     // Billing moved into the settings area in UI/UX phase 3 (rule 1140), its loading screen with it.
-    for (const dir of ["/chat", "/calendar", "/reports", "/notifications", "/conversations", "/activity", "/settings/billing", "/files"]) {
+    // The brand areas live under b/[brand] since rule 885.
+    for (const dir of ["/b/[brand]/chat", "/b/[brand]/calendar", "/b/[brand]/reports", "/notifications", "/b/[brand]/conversations", "/b/[brand]/activity", "/settings/billing", "/b/[brand]/files"]) {
       const f = `src/app/[lang]/app${dir}/loading.tsx`;
       expect(existsSync(f), f).toBe(true);
       expect(read(f), f).toContain("<RouteLoading");
@@ -128,7 +129,8 @@ describe("rule 1115: loading screens, skeletons, and the card and line height on
     // A root loading.tsx wraps every page under /app in a Suspense boundary, and a redirect() behind a boundary is streamed
     // as a meta refresh with a 200: the start page, verify, login, signup and the home page stopped redirecting on the server.
     expect(existsSync("src/app/[lang]/app/loading.tsx")).toBe(false);
-    for (const page of ["", "/start", "/verify", "/login", "/signup", "/admin"]) {
+    // Rule 891: `/app` itself, the brand's inbox and start page under b/[brand], and the [...legacy] page all redirect.
+    for (const page of ["", "/b/[brand]", "/b/[brand]/start", "/[...legacy]", "/verify", "/login", "/signup", "/admin"]) {
       expect(read(`src/app/[lang]/app${page}/page.tsx`), page || "/").toContain("redirect(");
       expect(existsSync(`src/app/[lang]/app${page}/loading.tsx`), page || "/").toBe(false);
     }
@@ -181,8 +183,8 @@ describe("rule 1119: the shell's counts are read once on the server and shared",
     const layout = read("src/app/[lang]/app/layout.tsx");
     // Since rule 1177 the impersonation banner reads the session's founder actor, so the cookie read left this round.
     expect(layout).toMatch(/await Promise\.all\(\[getBrand\(sc\(user\)\), listNotifs\(acct\(user\)\), pendingCount\(sc\(user\)\)\]\)/);
-    // With the page's workspace handle and the switch since multi-workspace M2.
-    expect(layout).toMatch(/<WorkspaceProvider initial=\{\{ credits: user\.credits, unread, pending: toApprove \}\} handle=\{handle\} multiOrg=\{MULTI_ORG\}>/);
+    // The session's brand (rule 889) and, since multi-workspace M2, the page's workspace handle and the switch.
+    expect(layout).toMatch(/<WorkspaceProvider initial=\{\{ credits: user\.credits, unread, pending: toApprove \}\} brandId=\{user\.brandId \?\? null\} handle=\{handle\} multiOrg=\{MULTI_ORG\}>/);
   });
   it("counts are re-read only when 30 seconds old or a screen announces a change", () => {
     expect(WORKSPACE_STALE_MS).toBe(30_000);

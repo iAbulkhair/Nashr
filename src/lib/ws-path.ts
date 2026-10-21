@@ -1,17 +1,21 @@
+import { appHref as brandHref, brandSectionOf } from "./brand-path";
+import type { Lang } from "./i18n";
+
 /**
  * The workspace in the link (multi-workspace release M2, docs/specs/2026-10-18-multi-org.md section 7, decision 7 as the
- * founder changed it on 2026-10-19, rules 2112-2114). Import-free, so the proxy, client components and server code all
- * read the same path rules.
+ * founder changed it on 2026-10-19, rules 2112-2114). Pure (it imports only brand-path.ts, itself pure), so the proxy,
+ * client components and server code all read the same path rules.
  *
  * A workspace page is served at `/{lang}/app/w/{handle}/…`; the proxy rewrites it to `/{lang}/app/…` and sets the
  * `x-thakeen-ws` request header to the handle (src/proxy.ts). Client requests to `/api/` send the handle of their own
- * page in the same header (src/lib/api-client.ts). The handle is only a selector among the caller's own memberships,
+ * page in the same header (the one fetch wrapper, src/lib/brand-fetch.ts). The handle is only a selector among the caller's own memberships,
  * re-checked on every request (src/lib/auth.ts `resolveSession`): it is never a key and never names an account by itself.
  *
- * Part C (brand in the link) nests `/w/{handle}/b/{brandId}/…`; the `rest` kept here carries that segment untouched.
+ * Part C (brand in the link, rules 885-891) nests `/w/{handle}/b/{brandId}/…`: the proxy strips `w/{handle}` and the real
+ * `b/[brand]` folders serve the rest, so one rewrite serves both; the `rest` kept here carries the brand segment untouched.
  */
 
-/** The request header that names the request's workspace. Set by the proxy for pages, by `api-client.ts` for APIs. */
+/** The request header that names the request's workspace. Set by the proxy for pages, by the fetch wrapper (`installBrandFetch`) for APIs. */
 export const WS_HEADER = "x-thakeen-ws";
 
 /** A workspace handle (rule 2114): `w_` and 16 base32 characters. No `@`, `.`, `:` or `#`. */
@@ -39,15 +43,16 @@ export function stripWs(pathname: string): string {
 export const handleOfPath = (pathname: string): string | null => splitWsPath(pathname)?.handle ?? null;
 
 /**
- * An app link. `path` is what follows `/app` (`""`, `"/tasks"`, `"/tasks?tab=done#x"`). With a handle the link is
- * `/{lang}/app/w/{handle}{path}`; without one it is today's `/{lang}/app{path}`, so with `MULTI_ORG` off (no handle is
- * ever passed) every link is the old string. A person-level page never takes a handle (`PERSON_PAGES`).
+ * An app link, the one builder with both selectors (rules 889, 2113). `path` is what follows `/app` (`""`, `"/tasks"`,
+ * `"/tasks?tab=done#x"`). It is brand-path.ts `appHref` with the workspace added: a brand section with a brand is
+ * `/{lang}/app/w/{handle}/b/{brand}{path}`, any other path `/{lang}/app/w/{handle}{path}`. Without a handle it is main's
+ * brand link (`/{lang}/app/b/{brand}…` or `/{lang}/app…`), so with `MULTI_ORG` off (no handle is ever passed) every link
+ * is the string Part C makes. A person-level page never takes a handle (`PERSON_PAGES`) and is no brand section.
  */
-export function appHref(lang: string, path: string = "", handle?: string | null): string {
+export function appHref(lang: string, path: string = "", handle?: string | null, brand?: string | null): string {
   const p = path === "/" ? "" : path;
-  const h = asHandle(handle);
-  if (!h || personPage(`/${lang}/app${p}`)) return `/${lang}/app${p}`;
-  return `/${lang}/app/w/${h}${p}`;
+  const h = personPage(`/${lang}/app${p}`) ? null : asHandle(handle);
+  return brandHref(lang as Lang, p, { brand, handle: h });
 }
 
 /**
@@ -142,12 +147,14 @@ export const isNotFoundError = (e: unknown): boolean => {
  * of the session's workspace, the query kept, so bookmarks and old mails keep working. Null when nothing moves: a path
  * already inside `w/{handle}`, a person-level page, a path outside the app, or no valid handle (never a redirect loop).
  */
-export function oldAppTarget(lang: string, browserPath: string, search: string, handle: string | null): string | null {
+export function oldAppTarget(lang: string, browserPath: string, search: string, handle: string | null, brand?: string | null): string | null {
   const base = `/${lang}/app`;
   if (!asHandle(handle) || splitWsPath(browserPath) || personPage(browserPath)) return null;
   if (browserPath !== base && !browserPath.startsWith(base + "/")) return null;
   if (browserPath.startsWith(base + "/w/")) return null;
-  return appHref(lang, browserPath.slice(base.length) + search, handle);
+  // `brand` (the session's, rule 891): an old brand section goes to `w/{handle}/b/{brand}/…` in this one hop, not on to
+  // the `[...legacy]` page's 307. A path already under `/b/{id}` keeps its own brand segment.
+  return appHref(lang, browserPath.slice(base.length) + search, handle, brand);
 }
 
 const APP_HREF = /^\/([^/?#]+)\/app(\/[^?#]*)?([?#].*)?$/;
@@ -171,5 +178,10 @@ export function inWorkspace(href: string, handle: string | null | undefined): st
  */
 export function switchTarget(href: string, pathname: string): string {
   const rest = splitWsPath(pathname)?.rest ?? "";
-  return href + rest;
+  // A brand page (`/b/{id}/…`): that brand belongs to the workspace being left, so the new one opens the same section
+  // without it, and the `[...legacy]` page sends it to the new workspace's own brand (rule 891).
+  const inBrand = /^\/b\/[^/]+(\/.*)?$/.exec(rest);
+  if (!inBrand) return href + rest;
+  const section = brandSectionOf(inBrand[1] ?? "");
+  return href + (section ? `/${section}` : "");
 }

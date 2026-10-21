@@ -4,22 +4,23 @@ import { usePathname } from "next/navigation";
 import { Icon } from "../Icons";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_SECTIONS, settingsHref, type SettingsSection } from "@/lib/settings-nav";
 import type { Lang } from "@/lib/i18n";
-import { useAppHref } from "../WorkspaceContext";
+import { useAppLink } from "../WorkspaceContext";
 import { stripWs } from "@/lib/ws-path";
 
-/** The section a settings path is on, or null for the settings index. */
+/** The section a settings path is on (`/{lang}/app[/w/{handle}]/settings/{s}` or `…/b/{id}/settings/{s}`), or null for the settings index. */
 export function sectionOf(path: string): SettingsSection | null {
-  const seg = stripWs(path).split("/")[4];
-  return (SETTINGS_SECTIONS as readonly string[]).includes(seg) ? (seg as SettingsSection) : null;
+  const seg = /^\/[^/]+\/app(?:\/b\/[^/]+)?\/settings\/([^/?#]+)/.exec(stripWs(path))?.[1];
+  return seg !== undefined && (SETTINGS_SECTIONS as readonly string[]).includes(seg) ? (seg as SettingsSection) : null;
 }
 
 /**
  * The settings area's own navigation (rule 1140): every section as a link, the one on show marked `aria-current="page"`.
  * The layout places it as a column at the start side on a wide screen; on a phone the settings index shows the same list
  * full width (`variant="list"`, with each section's line), and a section page offers a link back to it instead.
+ * `brand` (rule 885): the brand sections link under `/b/{brand}`; without one they link the old path, which redirects.
  */
-export default function SettingsNav({ lang, variant = "column", current }: { lang: Lang; variant?: "column" | "list"; current?: SettingsSection | null }) {
-  const href = useAppHref(lang);
+export default function SettingsNav({ lang, variant = "column", current, brand }: { lang: Lang; variant?: "column" | "list"; current?: SettingsSection | null; brand?: string }) {
+  const href = useAppLink(lang, brand);
   const path = usePathname() ?? "";
   const on = current !== undefined ? current : sectionOf(path);
   const C = SETTINGS_COPY[lang];
@@ -74,7 +75,7 @@ export default function SettingsNav({ lang, variant = "column", current }: { lan
 
 /** On a phone, a section page's way back to the list of sections; nothing on the index itself or on a wide screen. */
 export function SettingsBack({ lang }: { lang: Lang }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const path = usePathname() ?? "";
   if (!sectionOf(path)) return null;
   return (

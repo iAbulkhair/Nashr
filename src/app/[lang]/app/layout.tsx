@@ -58,9 +58,10 @@ export default async function AppLayout({ children, params }: { children: React.
   if (MULTI_ORG && !user && !isPublic && path && (await currentPerson())) {
     if (!workspacesPage) redirect(`/${lang}/app/workspaces`);
   } else if (!user && !isPublic && path) redirect(`/${lang}/app/login`);
-  // An old address without `w/{handle}` goes to the same page of the session's workspace, the query kept (307).
+  // An old address without `w/{handle}` goes to the same page of the session's workspace, the query kept (307); an old
+  // brand section goes straight under the session's brand too (`/w/{handle}/b/{id}/…`, one hop).
   if (MULTI_ORG && user && !isPublic && !handle) {
-    const to = oldAppTarget(lang, path, h.get("x-search") ?? "", handleOf(user));
+    const to = oldAppTarget(lang, path, h.get("x-search") ?? "", handleOf(user), user.brandId);
     if (to) redirect(to);
   }
 
@@ -93,7 +94,7 @@ export default async function AppLayout({ children, params }: { children: React.
   const owner = can(user, "billing");
   return (
     <ToastProvider lang={lang}>
-    <WorkspaceProvider initial={{ credits: user.credits, unread, pending: toApprove }} handle={handle} multiOrg={MULTI_ORG}>
+    <WorkspaceProvider initial={{ credits: user.credits, unread, pending: toApprove }} brandId={user.brandId ?? null} handle={handle} multiOrg={MULTI_ORG}>
     <div className="flex min-h-dvh flex-col bg-background lg:h-dvh lg:flex-row lg:overflow-hidden">
       {/* Rule 968: past the sidebar's links straight to the screen. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>

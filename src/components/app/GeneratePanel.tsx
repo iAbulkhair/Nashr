@@ -11,14 +11,14 @@ import type { Lang } from "@/lib/i18n";
 import Scribble from "@/components/Scribble";
 import AgentAvatar from "@/components/app/AgentAvatar";
 import { useToast } from "@/components/ui/Toast";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 /**
  * `owner`: the acting person may subscribe (`can(u, "billing")`); `topups`: the account's plan may buy top-up packs
  * (`topupsSold`). Both only choose the out-of-credits line (`noCreditsText`, rule 457).
  */
 export default function GeneratePanel({ t, lang, credits, owner = true, topups = true }: { t: AppDict; lang: Lang; credits: number; owner?: boolean; topups?: boolean }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const r = useRouter();
   const toast = useToast();
   const g = t.generate;

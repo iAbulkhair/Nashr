@@ -48,15 +48,14 @@ function ago(iso: string | undefined, lang: Lang) {
 
 /** Right-hand home panel (Enrich-style): metrics, channels, task feed with live status and latest run, brand assets. Server component. */
 export default function HomeSide({ t, lang, k, connections, schedule, files, brief, action, to }: Props) {
-  // A server component cannot call `useAppHref`: the page passes its own `pageHref` builder (rule 2113).
+  // A server component cannot call `useAppLink`: the page passes its own `pageHref` builder (rule 2113).
   const href = to ?? ((path?: string) => appHref(lang, path));
   const H = t.home;
-  const base = href();
   const week = k.weeks[k.weeks.length - 1] ?? { created: 0, approved: 0 };
   const tiles = [
-    { l: H.created7, v: week.created, href: base },
-    { l: H.approved7, v: week.approved, href: base },
-    { l: H.pending, v: k.pending, href: base },
+    { l: H.created7, v: week.created, href: href() },
+    { l: H.approved7, v: week.approved, href: href() },
+    { l: H.pending, v: k.pending, href: href() },
   ];
   const tasks = [
     { on: schedule.weeklyPlan, l: t.tasks.weekly, next: nextRun("weekly", lang), last: ago(schedule.lastWeekly, lang) },
@@ -66,24 +65,24 @@ export default function HomeSide({ t, lang, k, connections, schedule, files, bri
   const briefLines = (brief ?? "").split("\n").filter(Boolean).slice(0, 4);
   return (
     <aside className="grid content-start gap-4">
-      <Box title={H.metrics} href={`${base}/reports`} action={H.all}>
+      <Box title={H.metrics} href={href("/reports")} action={H.all}>
         <div className="grid grid-cols-3 gap-2">
           {tiles.map((x) => <Link key={x.l} href={x.href} className="rounded-lg bg-background-muted p-2"><p className="text-xs text-foreground-muted">{x.l}</p><p className="font-display text-xl font-bold text-foreground" dir="ltr">{x.v}</p></Link>)}
         </div>
-        <Link href={`${base}/integrations`} className="mt-3 block rounded-lg border border-dashed border-border p-2 text-center text-xs text-foreground-muted hover:border-border-strong hover:text-foreground">{H.connectAnalytics}</Link>
+        <Link href={href("/integrations")} className="mt-3 block rounded-lg border border-dashed border-border p-2 text-center text-xs text-foreground-muted hover:border-border-strong hover:text-foreground">{H.connectAnalytics}</Link>
       </Box>
-      <Box title={H.channels} href={`${base}/integrations`} action={H.addChannel}>
+      <Box title={H.channels} href={href("/integrations")} action={H.addChannel}>
         {connections.length === 0 ? <p className="text-xs text-foreground-muted">{H.noChannels}</p> : (
           <ul className="flex flex-wrap gap-1.5">{connections.map((c) => <li key={c.provider} className="badge badge-primary">{c.provider}</li>)}</ul>
         )}
       </Box>
-      <Box title={H.taskFeed} href={`${base}/tasks`} action={H.manage}>
+      <Box title={H.taskFeed} href={href("/tasks")} action={H.manage}>
         <ul className="space-y-2">
           {tasks.map((x) => (
             <li key={x.l} className="text-xs">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 font-medium"><span className={`h-1.5 w-1.5 rounded-full ${x.on ? "bg-foreground" : "bg-foreground/20"}`} />{x.l}</span>
-                <Link href={`${base}/tasks`} className="text-foreground hover:underline">{H.runNow}</Link>
+                <Link href={href("/tasks")} className="text-foreground hover:underline">{H.runNow}</Link>
               </div>
               <p className="ms-3.5 text-xs text-foreground-muted">{x.on ? H.live : H.paused} · {H.next} {x.next} · {H.last} {x.last}</p>
             </li>
@@ -103,11 +102,11 @@ export default function HomeSide({ t, lang, k, connections, schedule, files, bri
           </div>
         )}
       </Box>
-      <Box title={H.assets} href={`${base}/files`} action={H.all}>
+      <Box title={H.assets} href={href("/files")} action={H.all}>
         {files.length === 0 ? <p className="text-xs text-foreground-muted">{H.noFiles}</p> : (
-          <ul className="space-y-1.5">{files.slice(0, 4).map((f) => <li key={f.name} className="flex items-center justify-between text-xs"><Link href={`${base}/files`} className="hover:text-foreground" dir="ltr">{f.name}</Link><span className="font-mono text-xs text-foreground-muted" dir="ltr">{f.updatedAt.slice(5, 10)}</span></li>)}</ul>
+          <ul className="space-y-1.5">{files.slice(0, 4).map((f) => <li key={f.name} className="flex items-center justify-between text-xs"><Link href={href("/files")} className="hover:text-foreground" dir="ltr">{f.name}</Link><span className="font-mono text-xs text-foreground-muted" dir="ltr">{f.updatedAt.slice(5, 10)}</span></li>)}</ul>
         )}
-        <Link href={`${base}/onboarding`} className="mt-3 block rounded-lg border border-dashed border-border p-2 text-center text-xs text-foreground-muted hover:border-border-strong hover:text-foreground">{H.completeBrand}</Link>
+        <Link href={href("/onboarding")} className="mt-3 block rounded-lg border border-dashed border-border p-2 text-center text-xs text-foreground-muted hover:border-border-strong hover:text-foreground">{H.completeBrand}</Link>
       </Box>
     </aside>
   );

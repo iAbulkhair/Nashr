@@ -479,7 +479,7 @@ describe("review minor 6: the selection comes from the active conversation's rec
   });
 
   it("the chat page hands the panel the active conversation's id and pick only, and the panel feeds them to storedPick", () => {
-    const page = readFileSync("src/app/[lang]/app/chat/page.tsx", "utf8");
+    const page = readFileSync("src/app/[lang]/app/b/[brand]/chat/page.tsx", "utf8");
     expect(page).toMatch(/active=\{active \? \{ id: active\.id, model: active\.model \} : null\}/);
     // The same record the allowance line's chat status was worked out for.
     expect(page).toMatch(/const record = getConversation\(sc\(u\), conv\);/);
@@ -593,7 +593,7 @@ describe("the pages wire the pickers in", () => {
     expect(chat).toMatch(/<ChatModelPicker\b/);
     const brand = readFileSync("src/components/app/BrandForm.tsx", "utf8");
     expect(brand).toMatch(/<BrandModelField\b/);
-    for (const page of ["src/app/[lang]/app/chat/page.tsx", "src/app/[lang]/app/settings/brand/page.tsx"]) {
+    for (const page of ["src/app/[lang]/app/b/[brand]/chat/page.tsx", "src/app/[lang]/app/b/[brand]/settings/brand/page.tsx"]) {
       const src = readFileSync(page, "utf8");
       expect(src, page).toMatch(/can\(u, "profile\.account"\) && u\.actor\?\.kind !== "founder"/);
       expect(src, page).toMatch(/canConfirmChina=\{/);

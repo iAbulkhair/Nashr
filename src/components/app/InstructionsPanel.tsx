@@ -23,7 +23,7 @@ import InstructionEditor, { targetLabel, type RowErrors } from "./InstructionEdi
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 /** The eight agents and the group for images and videos: what a customer may point an instruction at. */
 const CUSTOMER_TARGETS: Target[] = [...AGENT_IDS, "media"];
@@ -87,7 +87,7 @@ function ItemLine({ t, i }: { t: AppDict; i: Instruction }) {
  * is applied anywhere.
  */
 export default function InstructionsPanel({ t, lang, layer: initialLayer, base: initialBase, history: initialHistory, limits, skipped: initialSkipped, files: initialFiles, refs: initialRefs, refInfo = {}, readOnly = false, canTest = false, googleOn = false, paused = false, testOptions = [] }: { t: AppDict; lang: "ar" | "en"; layer: Layer; base: number; history: HistoryRow[]; limits: InstructionLimits; skipped: number; files: string[]; refs: Record<string, RefSource>; refInfo?: Record<string, Provenance>; readOnly?: boolean; canTest?: boolean; googleOn?: boolean; paused?: boolean; testOptions?: TestOption[] }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const I = t.instructions;
   const G = t.governance;
   const router = useRouter();

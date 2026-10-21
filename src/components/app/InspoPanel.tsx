@@ -11,10 +11,10 @@ import { limitFromError, raiseLimit } from "./LimitModal";
 import Scribble from "@/components/Scribble";
 import EmptyState from "@/components/ui/EmptyState";
 import { emptyCopy } from "@/lib/empty-copy";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Inspo[] }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const r = useRouter();
   const p = t.inspo;
   const E = emptyCopy(lang, "inspo");

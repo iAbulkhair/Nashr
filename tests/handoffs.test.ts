@@ -30,9 +30,9 @@ import * as declineRoute from "@/app/api/handoffs/[id]/decline/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 import { HANDOFF_POLL_MS, HandoffCard, ItemCard, keepReading, runAnswer } from "@/components/app/ChatPanel";
 import { saveTask, type CrossVerdict } from "@/lib/brand";
-import InboxPage from "@/app/[lang]/app/page";
-import ActivityPage from "@/app/[lang]/app/activity/page";
-import ChatPage from "@/app/[lang]/app/chat/page";
+import InboxPage from "@/app/[lang]/app/b/[brand]/page";
+import ActivityPage from "@/app/[lang]/app/b/[brand]/activity/page";
+import ChatPage from "@/app/[lang]/app/b/[brand]/chat/page";
 import { coverageRow } from "./helpers/coverage";
 
 /**

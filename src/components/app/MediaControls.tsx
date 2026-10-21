@@ -9,7 +9,7 @@ import type { PublicJob } from "@/lib/media/types";
 import { IMAGE_TYPES, VIDEO_TYPES } from "@/lib/tasks";
 import { limitFromError } from "./LimitModal";
 import { topupsSold, type Plan } from "@/lib/pricing";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 /**
  * The image and video buttons of one inbox card: a model picker per kind with the price on every choice, a
@@ -112,7 +112,7 @@ export default function MediaControls({ task, lang, t, available, included, cred
    */
   onChanged(): void;
 }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const i = t.inbox;
   const uid = useId();
   const [pick, setPick] = useState<Partial<Record<MediaKind, MediaModelId>>>({});

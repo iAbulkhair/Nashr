@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { PlanItem } from "@/lib/chat";
 import { render } from "@/lib/md";
 import { Icon } from "./Icons";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const STR = {
   ar: { file: "ملف", saved: "محفوظ", expand: "عرض", collapse: "طيّ", copy: "نسخ", copied: "نُسخ", open: "فتح في الملفات", planHint: "اضغط + لإضافة المهمة إلى قائمتك، أو ابدأها الآن.", add: "أضف المهمة", added: "أُضيفت", start: "ابدأها الآن", skip: "تخطَّ", activate: "فعّل نور", firstUp: "أولاً", waTitle: "رقم واتساب (اختياري)", waBody: "نحفظه ليتواصل معك فريق ذكين عند الحاجة. لا نشاركه مع أحد.", waSave: "حفظ", waSaved: "حُفظ الرقم", waBad: "رقم غير صحيح", waLater: "لاحقاً" },
@@ -13,7 +13,7 @@ const STR = {
 
 /** A workspace file written by the agent, shown inline: collapsed preview, expand, copy. */
 export function FileCard({ file, lang, defaultOpen = false }: { file: { name: string; content: string }; lang: "ar" | "en"; defaultOpen?: boolean }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const S = STR[lang];
   const [open, setOpen] = useState(defaultOpen);
   const [copied, setCopied] = useState(false);
@@ -93,7 +93,7 @@ export function WhatsAppCard({ lang }: { lang: "ar" | "en" }) {
 
 /** Sticky bar above the composer for trial accounts: the goal, the upgrade action, the first task. */
 export function ActivationBar({ lang, goal, first }: { lang: "ar" | "en"; goal: string; first?: string }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const S = STR[lang];
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-lemon/40 px-3 py-2 text-sm">

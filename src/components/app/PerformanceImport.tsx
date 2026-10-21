@@ -6,7 +6,7 @@ import { fmt, int, METRICS, type Finding, type MetricId, type PerfSnapshot } fro
 import { Icon } from "./Icons";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { useToast } from "@/components/ui/Toast";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const STR = {
   ar: {
@@ -52,7 +52,7 @@ const AD_NAMES: Record<string, string> = { meta_ads: "Meta Ads", snapchat: "Snap
  * owner). Without them the upload and the remove button are not offered; the route refuses them regardless.
  */
 export default function PerformanceImport({ lang, initial, ads = [], canImport = true, canDelete = true }: { lang: "ar" | "en"; initial: PerfSnapshot | null; /** connected ad accounts it can read from */ ads?: string[]; canImport?: boolean; canDelete?: boolean }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const S = STR[lang];
   const r = useRouter();
   const toast = useToast();

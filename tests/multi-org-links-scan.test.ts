@@ -1,15 +1,15 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { appHrefFor } from "@/lib/app-href";
+import { appHrefFor } from "@/lib/ws-href";
 import { MULTI_ORG } from "@/lib/multi-org";
 import { wsHandle } from "@/lib/ws-handle";
 import { PERSON_PAGES, appHref, inWorkspace } from "@/lib/ws-path";
 
 /**
  * Rule 2113, link half (multi-workspace M2, docs/specs/2026-10-18-multi-org.md section 7 "Links"): every link to a
- * workspace page is made by `appHref` (src/lib/ws-path.ts) through `useAppHref` in client components, `pageHref` (src/lib/page-href.ts) in
- * pages and `appHrefFor` for links made from an account (src/lib/app-href.ts), so a page under `w/{handle}` never links
+ * workspace page is made by `appHref` (src/lib/ws-path.ts) through `useAppLink` in client components, `pageHref` (src/lib/page-href.ts) in
+ * pages and `appHrefFor` for links made from an account (src/lib/ws-href.ts), so a page under `w/{handle}` never links
  * out of its workspace. A raw `/{lang}/app…` string may name only a person-level page (`PERSON_PAGES`). With
  * `MULTI_ORG` off (this file does not turn it on) every builder gives today's string.
  */
@@ -24,6 +24,7 @@ function walk(dir: string): string[] {
 /** The files that may hold a raw app path, and why. */
 const RAW_ALLOWED = new Set([
   "src/lib/ws-path.ts", // the builder itself
+  "src/lib/brand-path.ts", // the one place that writes the `/{lang}/app` prefix (ws-path.ts delegates to it)
   "src/proxy.ts", // the rewrite and the legacy-settings move build the path from its parts
   "src/app/robots.ts", // the crawl rule for the whole app
 ]);
@@ -50,7 +51,7 @@ describe("rule 2113: app links go through appHref", () => {
   });
 
   it("only client components call the WorkspaceContext hooks (a server component gets the page's builder as a prop)", () => {
-    // `useAppHref` is a client hook: a server component calling it answers 500 on every page that renders it (React
+    // `useAppLink` is a client hook: a server component calling it answers 500 on every page that renders it (React
     // error 441, caught by the end-to-end run of PR #418 for HomeSide and TrialBanner). Those take `to` from the page.
     const isClient = (src: string) => /^\s*["']use client["']/.test(src.replace(/^(\s*\/\/[^\n]*\n|\s*\/\*[\s\S]*?\*\/\s*)*/, ""));
     const hooks = /\buse(AppHref|WsHandle|Workspace)\(/;

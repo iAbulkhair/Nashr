@@ -7,7 +7,7 @@ import type { Notif } from "@/lib/notifications";
 import { Icon } from "./Icons";
 import { Time } from "@/components/ui/Time";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useAppHref, useWorkspace, useWsHandle, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useAppLink, useWorkspace, useWsHandle, WORKSPACE_EVENTS } from "./WorkspaceContext";
 import { inWorkspace } from "@/lib/ws-path";
 
 /** The badge's text: the count up to 99, then "99+", so a long backlog never widens the bell. Pure for the tests. */
@@ -44,7 +44,7 @@ export async function markOneRead(id: string): Promise<number | null> {
 }
 
 export default function NotificationCenter({ t, lang, align = "start", fallbackUnread = 0 }: { t: AppDict; lang: Lang; align?: "start" | "end"; fallbackUnread?: number }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const handle = useWsHandle();
   const U = t.ux.notif;
   const ws = useWorkspace();

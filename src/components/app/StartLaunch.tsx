@@ -7,7 +7,7 @@ import { START_COPY, noSiteBrand, type GameAnswers } from "@/lib/dictionary";
 import { Icon } from "./Icons";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { useToast } from "@/components/ui/Toast";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const STR = {
   ar: {
@@ -39,7 +39,7 @@ const STR = {
  * could not save the brand file.
  */
 export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCost = 0, setupPaid = false, credits = 0 }: { t: AppDict; lang: Lang; answers: GameAnswers; initialUrl?: string; setupCost?: number; setupPaid?: boolean; credits?: number }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const r = useRouter();
   const s = t.start;
   const S = STR[lang];

@@ -6,7 +6,7 @@ import { mailReady, sendOnce, type OncePart } from "./notify";
 import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
 import { appOrigin } from "./origin";
 import { COPY, paragraphs, renderEmail } from "../emails";
-import { appHrefFor } from "@/lib/app-href";
+import { appHrefFor } from "@/lib/ws-href";
 
 /**
  * Lifecycle emails (from the founder): a plain-text part written here, and the same words as an HTML notice

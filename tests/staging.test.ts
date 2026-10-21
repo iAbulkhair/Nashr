@@ -87,19 +87,21 @@ describe("the staging lock (rules 674, 677)", () => {
   });
   it("the proxy and its lock never load the store", () => {
     // Every module a file names, however it spells the path: static and side-effect imports, re-exports, import() and
-    // require(). Comments are not stripped on purpose: a comment that looks like an import fails, the safe direction.
+    // require(). A word after a slash is a path (the route `/api/instructions/refs/import` in the brand guard's list), never a statement. Comments are not stripped on purpose: a comment that looks like an import fails, the safe direction.
     const specs = (src: string) =>
-      [...new Set([...src.matchAll(/\b(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]))].sort();
+      [...new Set([...src.matchAll(/(?<![/\w])(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]))].sort();
     // A closed list: proxy -> {cookie-names, csrf, deploy-env, staging-access}; cookie-names -> nothing; csrf -> origin; staging-access -> {secret, deploy-env};
     // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
-      "src/proxy.ts": ["@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/multi-org", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "@/lib/ws-path", "next/server"],
+      "src/proxy.ts": ["@/lib/brand-path", "@/lib/brand-guard", "@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/multi-org", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "@/lib/ws-path", "next/server"],
       // Multi-workspace M2: the switch and the link's handle (rule 2113). The handle's shape only; no store, no secret.
       "src/lib/multi-org.ts": ["crypto", "./account-id"],
-      "src/lib/ws-path.ts": [],
-      // The settings redirect map (rule 1141): plain data; its one import is a type, erased at build (pinned below).
-      // Since multi-workspace M2 also the link helper `appHref`, import-free.
-      "src/lib/settings-nav.ts": ["./i18n", "./ws-path"],
+      // The one link builder: the handle on top of the pure brand path helpers (a type import, erased at build).
+      "src/lib/ws-path.ts": ["./brand-path", "./i18n"],
+      // The settings redirect map (rule 1141): plain data; a type import, erased at build, the pure brand path helpers
+      // (rule 885: a brand settings section is linked under /b/{id}) and the link builder, all import-free but for a type
+      // and each other (pinned below).
+      "src/lib/settings-nav.ts": ["./i18n", "./brand-path"],
       "src/lib/csrf.ts": ["@/lib/origin", "next/server"],
       "src/lib/origin.ts": [],
       "src/lib/staging-access.ts": ["@/lib/deploy-env", "@/lib/secret", "node:crypto"],
@@ -107,6 +109,12 @@ describe("the staging lock (rules 674, 677)", () => {
       "src/lib/secret.ts": ["crypto"],
       // Cookie names and jar helpers (rules 1810-1813): import-free, so the language cookie read adds nothing behind it.
       "src/lib/cookie-names.ts": [],
+      // The brand in the URL (rules 887-888): the header name and path reader (its one import is a type, erased at build, pinned below)
+      // and the guard, which reads the cookie names and the method set and writes one log line; the logger reads the deploy name and the request id.
+      "src/lib/brand-path.ts": ["./i18n"],
+      "src/lib/brand-guard.ts": ["@/lib/brand-path", "@/lib/cookie-names", "@/lib/csrf", "@/lib/log", "next/server"],
+      "src/lib/log.ts": ["./deploy-env", "./log-safe", "./request-id"],
+      "src/lib/log-safe.ts": [],
       // The request id (rule 1975): import-free.
       "src/lib/request-id.ts": [],
       // The Content-Security-Policy and its nonce (rule 2320): import-free.
@@ -118,6 +126,10 @@ describe("the staging lock (rules 674, 677)", () => {
     expect(readFileSync("src/lib/settings-nav.ts", "utf8").match(/^import /gm)).toHaveLength(2);
     // The proxy reaches account-id.ts through multi-org.ts: crypto and zod only (its prose names `sc(u)`, which the spec reader would take for an import).
     expect(readFileSync("src/lib/account-id.ts", "utf8").match(/^import .*$/gm)).toEqual(['import { randomBytes } from "crypto";', 'import { z } from "zod";']);
+    expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(/^import \{ appHref, isBrandPath \} from "\.\/brand-path";$/m);
+    expect(readFileSync("src/lib/ws-path.ts", "utf8").match(/^import .*$/gm)).toEqual(['import { appHref as brandHref, brandSectionOf } from "./brand-path";', 'import type { Lang } from "./i18n";']);
+    expect(readFileSync("src/lib/brand-path.ts", "utf8")).toMatch(/^import type \{ Lang \} from "\.\/i18n";$/m);
+    expect(readFileSync("src/lib/brand-path.ts", "utf8").match(/^import /gm)).toHaveLength(1);
     // And the lock gets sameSecret from the module with no store behind it, through no other path.
     expect(specs(readFileSync("src/lib/staging-access.ts", "utf8"))).toContain("@/lib/secret");
     expect(specs(readFileSync("src/proxy.ts", "utf8"))).toContain("@/lib/staging-access");

@@ -12,7 +12,7 @@ import { isTaskType } from "@/lib/tasks";
  * vouch for itself.
  */
 const FEATURES: Record<Feature, { skills: string; page: string }> = {
-  todo: { skills: "secretary", page: "src/app/[lang]/app/todo/page.tsx" },
+  todo: { skills: "secretary", page: "src/app/[lang]/app/b/[brand]/todo/page.tsx" },
 };
 
 /**

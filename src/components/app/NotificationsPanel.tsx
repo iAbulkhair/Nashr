@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-class";
 import EmptyState from "@/components/ui/EmptyState";
 import { Time } from "@/components/ui/Time";
-import { useAppHref, useWorkspace, useWsHandle, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useAppLink, useWorkspace, useWsHandle, WORKSPACE_EVENTS } from "./WorkspaceContext";
 import { Times, markOneRead } from "./NotificationCenter";
 import { SETTINGS_COPY, settingsHref } from "@/lib/settings-nav";
 import { inWorkspace } from "@/lib/ws-path";
@@ -23,7 +23,7 @@ export default function NotificationsPanel({ t, lang, initial }: { t: AppDict; l
   const N = t.notifications;
   const U = t.ux.notif;
   const ws = useWorkspace();
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const handle = useWsHandle();
   const [items, setItems] = useState(initial);
   const [said, setSaid] = useState("");

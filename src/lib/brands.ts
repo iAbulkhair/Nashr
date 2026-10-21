@@ -4,7 +4,7 @@ import { brandCapFor } from "./pricing";
 import { log } from "./log";
 import { accountKey, personKey, workspaceScope, type AccountId, type PersonId } from "./keys";
 import { ActiveBrandId, brandRows, parseStored } from "./stored";
-import { acct } from "./account-id";
+import { acct, brandOfScope } from "./account-id";
 import { aidOf, ownerOf } from "./membership";
 
 /**
@@ -122,6 +122,14 @@ export function ownerChooser(u: User): { pid: PersonId; aid: AccountId; homeLogi
 /** Plain-string form of `workspaceScope` (src/lib/keys.ts), for code that compares scopes as strings. Keys take the branded one. */
 export function scopeFor(email: string, brandId: string): string {
   return workspaceScope(email, brandId);
+}
+/**
+ * The brand id of a scope, the inverse of `scopeFor`: `brandIdOfScope(scopeFor(a, id)) === id`. For a scope that is the
+ * session's own (`sc(u)`) or read from our own records, to put the brand into a link the server builds (Task 8 of the
+ * brand-in-the-URL branch); never for a value from a request.
+ */
+export function brandIdOfScope(scope: string): string {
+  return brandOfScope(scope);
 }
 /** Brands that count against the cap: the active ones, the default brand included. */
 export const activeCount = (rows: BrandMeta[]) => rows.filter((b) => b.status === "active").length;

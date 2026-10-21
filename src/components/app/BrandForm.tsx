@@ -16,7 +16,7 @@ import Button from "@/components/ui/Button";
 import Callout from "@/components/ui/Callout";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const GUARD = {
   ar: { title: "حارس العلامة", body: "كلمات لا تريدها في أي منشور. أي مسودة تحتوي واحدة منها لا تُعتمد ولا تُنشر حتى تعدّلها. التحقق في الكود، وليس وعداً من النموذج.", examples: "أمثلة شائعة، اضغط للإضافة:", count: (n: number) => `${n} كلمة محمية`, none: "لا كلمات بعد: الحارس متوقف.", ex: ["مضمون", "الأفضل", "رقم 1", "رخيص", "بدون ألم"] },
@@ -45,7 +45,7 @@ const CHANNELS = ["instagram", "snapchat", "tiktok", "x", "linkedin", "whatsapp"
  */
 /** `help` is the help answer about the brand file (rule 2147), from `helpHref`. */
 export default function BrandForm({ t, lang, initial, readOnly = false, canConfirmChina = false, help }: { t: AppDict; lang: Lang; initial: Brand | null; readOnly?: boolean; canConfirmChina?: boolean; help?: string }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const r = useRouter();
   const o = t.onboarding;
   const [busy, setBusy] = useState(false);

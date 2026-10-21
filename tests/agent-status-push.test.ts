@@ -145,7 +145,7 @@ describe("rule 2556: the board on the app's home", () => {
 
 describe("rule 2557: the page reads the state in its one round of reads", () => {
   it("adds the activity rows to the existing Promise.all under sc(u) and renders the board before the inbox", () => {
-    const page = read("src/app/[lang]/app/page.tsx");
+    const page = read("src/app/[lang]/app/b/[brand]/page.tsx");
     expect(page).toMatch(/await Promise\.all\(\[listTasks\(sc\(u\)\)[^\n]*recentActivity\(sc\(u\), STATUS_ROWS\)\]\)/);
     expect(page).toMatch(/agentStatuses\(activity, tasks\.filter\(isWaiting\)\)/);
     expect(page.indexOf("<AgentStatusBoard")).toBeLessThan(page.indexOf("<Inbox"));
@@ -370,7 +370,7 @@ describe("rule 2570: the permission is asked only after the person presses the s
     expect(t).toMatch(/const enable = async \(\) => \{[\s\S]*Notification\.requestPermission\(\)/);
     expect(t.indexOf("requestPermission")).toBeGreaterThan(t.indexOf("const enable"));
     expect(t).toMatch(/if \(phase === "unsupported"\) return null/);
-    expect(read("src/app/[lang]/app/page.tsx")).toMatch(/\? pushPublicKey\(\) : null/);
+    expect(read("src/app/[lang]/app/b/[brand]/page.tsx")).toMatch(/\? pushPublicKey\(\) : null/);
   });
 });
 

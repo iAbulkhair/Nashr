@@ -10,7 +10,7 @@ import { Icon, channelIcon } from "./Icons";
 import Scribble from "@/components/Scribble";
 import Tabs, { TabPanel } from "@/components/ui/Tabs";
 import EmptyState from "@/components/ui/EmptyState";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 const DEFAULT_ROWS = ["instagram", "snapchat", "tiktok", "x", "whatsapp", "gbp", "blog"];
 
@@ -56,7 +56,7 @@ type View = "week" | "month" | "agenda";
  * rather than anywhere on the page, and an empty day or cell asks Noor for content for that day.
  */
 export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: AppDict; tasks: CalendarRow[]; lang: Lang; channels?: string[] }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const c = t.calendar;
   const U = t.ux.calendar;
   const rtl = lang === "ar";

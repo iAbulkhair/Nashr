@@ -13,7 +13,7 @@ import { SEC_ID, SEC_KEYS, SEC_PURGE_BATCH, SERIES_ID, audit, fail, stateOf, wit
 import { arCount, formatWhen, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 import { accountOfScope, brandOfScope } from "./account-id";
-import { appHrefIn } from "@/lib/app-href";
+import { appHrefIn } from "@/lib/ws-href";
 
 /**
  * The closed copies of recurring series: warned about, then deleted 90 days after their close (spec §5, rulings R43,

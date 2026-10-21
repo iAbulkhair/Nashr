@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import type { Role } from "@/lib/auth";
@@ -18,7 +18,10 @@ import Sheet from "@/components/ui/Sheet";
 import Menu from "@/components/ui/Menu";
 import NotificationCenter from "./NotificationCenter";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
-import { useAppHref, useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useAppLink, useBrandId, useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { sessionBrandHeaders } from "@/lib/brand-fetch";
+import { brandFromPath } from "@/lib/brand-path";
+import BrandSwitcher, { type SwitcherBrand } from "./BrandSwitcher";
 
 /** An agent's avatar sits on the agent's own colour; Faris and Majed are dark fills, so their letter is paper. */
 const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id})` }, tone: id === "faris" || id === "majed" ? "text-inverse-foreground" : "text-accent-foreground" });
@@ -42,7 +45,11 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const sp = useSearchParams();
   const r = useRouter();
   const ws = useWorkspace();
-  const to = useAppHref(lang);
+  // The one link builder (rules 889, 2113): the page's workspace and brand. Every row is built with it, never by
+  // appending to a prefix: an account path (`/refer`, `/integrations`) under `/b/{id}` would be no page.
+  const sessionBrand = useBrandId();
+  const to = useAppLink(lang);
+  const toSession = useAppLink(lang, sessionBrand);
   const base = to();
   const N = t.nav;
   const X = t.ux.nav;
@@ -54,9 +61,26 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const convs = ws?.convs ?? [];
 
   async function newThread(agent: AgentId) {
-    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent }) })).json();
-    if (j.ok) { setOpen(false); window.dispatchEvent(new Event(WORKSPACE_EVENTS.convs)); r.push(`${base}/chat?conv=${j.conversation.id}`); }
+    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json", ...sessionBrandHeaders(sessionBrand) }, body: JSON.stringify({ title: "…", agent }) })).json();
+    // The conversation was created in the brand of this page (the fetch wrapper's header) or, on an account page, the
+    // session's (`sessionBrandHeaders`), so it opens in that brand: the legacy path would 307 to the stored choice, which
+    // another tab may have changed (ruling P10).
+    if (j.ok) { setOpen(false); window.dispatchEvent(new Event(WORKSPACE_EVENTS.convs)); r.push(toSession(`/chat?conv=${j.conversation.id}`)); }
   }
+  // The brand switcher's list (rule 893), asked for when the menu is first opened: the brands, whether this login may add
+  // one (owner or admin under the plan's cap; display only, POST /api/brands is the check). Once per mount, not on every
+  // open; a pick (the list or the cap may have changed) and a failed read let the next open ask again.
+  const [brandList, setBrandList] = useState<{ brands: SwitcherBrand[]; canAdd: boolean } | null>(null);
+  const brandsAsked = useRef(false);
+  const loadBrands = useCallback(async () => {
+    if (brandsAsked.current) return;
+    brandsAsked.current = true;
+    try {
+      const j = await (await fetch("/api/brands")).json();
+      if (j.ok) setBrandList({ brands: j.brands, canAdd: (user.role === "owner" || user.role === "admin") && Number(j.count) < Number(j.cap) });
+      else brandsAsked.current = false;
+    } catch { brandsAsked.current = false; /* the menu keeps showing the current brand */ }
+  }, [user.role]);
   // The row for the screen on show (rule 968), marked with `aria-current="page"` as well as the tint. A link with a query
   // (a conversation) matches its path and every parameter it names; the plain chat row only while no conversation or
   // specialist is open, so one row at most is current.
@@ -64,7 +88,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     const [hp, hq] = h.split("?");
     if (hq !== undefined) return path === hp && [...new URLSearchParams(hq)].every(([k, v]) => sp.get(k) === v);
     if (h === base) return path === base;
-    if (h === `${base}/chat`) return path === h && !sp.get("conv") && !sp.get("agent");
+    if (h === to("/chat")) return path === h && !sp.get("conv") && !sp.get("agent");
     return path.startsWith(h);
   };
   // 44px rows on touch screens (the phone's sheet), 36px under a mouse (rule 1120).
@@ -87,7 +111,6 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
       <ul className="grid gap-0.5">{rows}</ul>
     </div>
   );
-  const initial = (brandName || t.appName).trim().charAt(0);
   const specialists = AGENTS.filter((a) => a.id !== "noor");
   const planName = (N.plans as Record<string, string>)[user.plan] ?? user.plan;
 
@@ -98,10 +121,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     {/* Above the brand: the workspace switcher (multi-workspace M2), drawn only with two workspaces or more. */}
     <WorkspaceSwitcher t={t.workspaces} lang={lang} onNavigate={() => setOpen(false)} />
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
-      <Link href={settingsHref(to, "brands")} onClick={() => setOpen(false)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 hover:bg-background-muted/60">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[1.5px] border-border-strong bg-background-muted font-display text-lg font-bold text-foreground" aria-hidden>{initial}</span>
-        <span className="min-w-0"><span className="clip block text-sm font-semibold text-foreground" dir="auto">{brandName || (lang === "ar" ? "علامتك" : "Your brand")}</span><span className="block text-xs text-foreground-muted">{N.workspace}</span></span>
-      </Link>
+      <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />
       {bell && <NotificationCenter t={t} lang={lang} align="start" />}
     </div>
     </>
@@ -110,15 +130,15 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const nav = (p: string) => (
     <nav aria-label={lang === "ar" ? "التنقل الرئيسي" : "Main navigation"} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
       {group(`${p}-work`, X.work, <>
-        <li>{row(`${base}/chat`, N.main, "chat")}</li>
+        <li>{row(to("/chat"), N.main, "chat")}</li>
         <li>{row(base, N.approvals, "inbox", pending)}</li>
-        <li>{row(`${base}/todo`, N.todo, "check")}</li>
-        <li>{row(`${base}/calendar`, N.calendarCh, "calendar")}</li>
+        <li>{row(to("/todo"), N.todo, "check")}</li>
+        <li>{row(to("/calendar"), N.calendarCh, "calendar")}</li>
       </>)}
 
       {group(`${p}-dms`, N.dms, <>
         <li className={`${rowBox} text-foreground-muted hover:bg-background-muted/60`}>
-          <Link href={`${base}/chat`} onClick={() => setOpen(false)} className="flex min-w-0 items-center gap-2.5 hover:text-foreground">
+          <Link href={to("/chat")} onClick={() => setOpen(false)} className="flex min-w-0 items-center gap-2.5 hover:text-foreground">
             <span style={avatar("noor").style} className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border-[1.5px] border-border-strong font-display text-xs font-bold ${avatar("noor").tone}`} aria-hidden>{t.agents.noor.name.charAt(0)}</span>
             <span className="min-w-0"><span className="clip block text-foreground">{t.agents.noor.name}</span><span className="clip block text-xs">{t.agents.noor.role}</span></span>
           </Link>
@@ -134,7 +154,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
             <ul id={`${p}-specialists`} className="ms-3 mt-1 grid gap-0.5 border-s border-border ps-2">
               {specialists.map((a) => (
                 <li key={a.id} className="flex items-center justify-between gap-1 rounded-lg ps-2 text-sm text-foreground-muted hover:bg-background-muted/60">
-                  <Link href={`${base}/chat?agent=${a.id}`} onClick={() => setOpen(false)} className="flex min-h-[var(--hit-min)] min-w-0 items-center gap-2 hover:text-foreground pointer-fine:min-h-9">
+                  <Link href={to(`/chat?agent=${a.id}`)} onClick={() => setOpen(false)} className="flex min-h-[var(--hit-min)] min-w-0 items-center gap-2 hover:text-foreground pointer-fine:min-h-9">
                     <span style={avatar(a.id).style} className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border-[1.5px] border-border-strong text-xs font-bold ${avatar(a.id).tone}`} aria-hidden>{t.agents[a.id].name.charAt(0)}</span>
                     <span className="min-w-0"><span className="clip block text-foreground">{t.agents[a.id].name}</span><span className="clip block text-xs">{t.agents[a.id].role}</span></span>
                   </Link>
@@ -148,37 +168,37 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
 
       <div role="group" aria-labelledby={`${p}-history`}>
         <p id={`${p}-history`} className="mb-1 px-3 text-xs font-semibold text-foreground-muted">{N.history}</p>
-        <form role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) { setOpen(false); r.push(`${base}/conversations?q=${encodeURIComponent(q.trim())}`); } }} className="relative">
+        <form role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) { setOpen(false); r.push(to(`/conversations?q=${encodeURIComponent(q.trim())}`)); } }} className="relative">
           <Icon name="search" className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground-muted" />
           <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={N.searchConv} aria-label={N.searchConv} className="min-h-[var(--hit-min)] w-full rounded-lg border-[1.5px] border-border-input bg-surface pe-3 ps-8 text-sm text-foreground placeholder:text-foreground-muted focus:border-border-strong pointer-fine:min-h-9" />
         </form>
         <ul className="mt-1 grid gap-0.5">
-          {convs.slice(0, 3).map((c) => <li key={c.id}>{row(`${base}/chat?conv=${c.id}`, <span dir="auto">{c.title || "…"}</span>, "chat")}</li>)}
-          <li><Link href={`${base}/conversations`} onClick={() => setOpen(false)} className="flex min-h-[var(--hit-min)] items-center px-3 text-xs text-foreground-muted hover:text-foreground pointer-fine:min-h-8">{N.seeAll}</Link></li>
+          {convs.slice(0, 3).map((c) => <li key={c.id}>{row(to(`/chat?conv=${c.id}`), <span dir="auto">{c.title || "…"}</span>, "chat")}</li>)}
+          <li><Link href={to("/conversations")} onClick={() => setOpen(false)} className="flex min-h-[var(--hit-min)] items-center px-3 text-xs text-foreground-muted hover:text-foreground pointer-fine:min-h-8">{N.seeAll}</Link></li>
         </ul>
       </div>
 
       {group(`${p}-brand`, X.brand, <>
-        <li>{row(`${base}/files`, N.files, "folder")}</li>
-        <li>{row(`${base}/reports`, N.performance, "chart")}</li>
-        <li>{row(`${base}/activity`, N.activity, "clock")}</li>
-        <li>{row(`${base}/inspo`, N.contentInspo, "spark")}</li>
+        <li>{row(to("/files"), N.files, "folder")}</li>
+        <li>{row(to("/reports"), N.performance, "chart")}</li>
+        <li>{row(to("/activity"), N.activity, "clock")}</li>
+        <li>{row(to("/inspo"), N.contentInspo, "spark")}</li>
         {/* The workspace's agent instructions (rule 957). */}
-        <li>{row(`${base}/instructions`, N.instructions, "strategy")}</li>
+        <li>{row(to("/instructions"), N.instructions, "strategy")}</li>
       </>)}
 
       {group(`${p}-account`, X.workspace, <>
         {/* One row for the whole settings area (rule 1141): members, integrations, governance, billing and the rest live
             under /settings, so the row is current on every settings page and no other row is. */}
         <li>{row(settingsHref(to), N.settings, "settings")}</li>
-        {show.refer && <li>{row(`${base}/refer`, N.refer, "gift")}</li>}
-        {show.partner && <li>{row(`${base}/partner`, PARTNER_COPY[lang].nav, "growth")}</li>}
+        {show.refer && <li>{row(to("/refer"), N.refer, "gift")}</li>}
+        {show.partner && <li>{row(to("/partner"), PARTNER_COPY[lang].nav, "growth")}</li>}
       </>)}
 
       {group(`${p}-help`, X.support, <>
         {/* Public page: what shipped, and the wishlist signed-in owners vote on. */}
         <li>{row(`/${lang}/updates`, N.updates, "sapling")}</li>
-        <li><a href={supportWa ? `https://wa.me/${supportWa}` : `${base}/help#support`} target={supportWa ? "_blank" : undefined} rel="noreferrer" className={`${rowBox} justify-start gap-2.5 text-foreground-muted hover:bg-background-muted/60 hover:text-foreground`}><Icon name="whatsapp" className="h-4 w-4" />{N.contact}</a></li>
+        <li><a href={supportWa ? `https://wa.me/${supportWa}` : to("/help#support")} target={supportWa ? "_blank" : undefined} rel="noreferrer" className={`${rowBox} justify-start gap-2.5 text-foreground-muted hover:bg-background-muted/60 hover:text-foreground`}><Icon name="whatsapp" className="h-4 w-4" />{N.contact}</a></li>
       </>)}
     </nav>
   );
@@ -186,8 +206,8 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   // The account menu. Members moved to the rail's "Account and team" group (it was listed twice); the account pages
   // point into the settings area (rule 1141).
   const links = [
-    [settingsHref(to, "account"), N.profile], [`${base}/notifications`, N.notifications], [`${base}/tasks`, N.tasks], [`${base}/generate`, N.generate], [settingsHref(to, "billing"), N.billing], [settingsHref(to, "brand"), N.brand], [settingsHref(to, "brands"), N.brands],
-    ...(show.mcp ? [[`${base}/mcp`, "MCP"]] : []), [`${base}/help`, N.help],
+    [settingsHref(to, "account"), N.profile], [to("/notifications"), N.notifications], [to("/tasks"), N.tasks], [to("/generate"), N.generate], [settingsHref(to, "billing"), N.billing], [settingsHref(to, "brand"), N.brand], [settingsHref(to, "brands"), N.brands],
+    ...(show.mcp ? [[to("/mcp"), "MCP"]] : []), [to("/help"), N.help],
     // Founder accounts only: the console has its own shell at /{lang}/admin (rules 871, 873), never a main-nav row.
     ...(admin ? [[adminHref(lang, "overview"), N.adminPanel]] : []),
   ];
@@ -219,7 +239,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     <>
       <aside data-testid="app-sidebar" className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-e-[1.5px] border-border-strong bg-surface text-foreground lg:flex">{top(true)}{nav("rail")}{account}</aside>
       <header className="sticky top-0 z-40 flex items-center justify-between gap-2 border-b-[1.5px] border-border-strong bg-surface px-4 py-2 text-foreground lg:hidden">
-        <Link href={`${base}/chat`} className="font-display text-xl font-bold"><Wordmark lang={lang} name={t.appName} /></Link>
+        <Link href={to("/chat")} className="font-display text-xl font-bold"><Wordmark lang={lang} name={t.appName} /></Link>
         <div className="flex items-center gap-1">
           <NotificationCenter t={t} lang={lang} align="end" />
           <Link href={settingsHref(to, "billing")} title={show.owner ? undefined : N.sharedCredits} className="tnum inline-flex min-h-[var(--hit-min)] items-center px-2 text-xs font-semibold text-foreground">{credits} {N.credits}</Link>

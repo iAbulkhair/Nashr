@@ -18,7 +18,7 @@ import { listConnections } from "./connectors/store";
 import { getProvider } from "./connectors/registry";
 import { acct } from "./account-id";
 import { brandOfScope } from "./account-id";
-import { appHrefFor, appHrefIn } from "@/lib/app-href";
+import { appHrefFor, appHrefIn } from "@/lib/ws-href";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one

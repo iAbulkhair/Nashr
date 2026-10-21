@@ -11,7 +11,7 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 /** As in home-copy.test.ts: a line no task type backs must point at a feature the agent really runs. */
 const FEATURES: Record<Feature, { skills: string; page: string }> = {
-  todo: { skills: "secretary", page: "src/app/[lang]/app/todo/page.tsx" },
+  todo: { skills: "secretary", page: "src/app/[lang]/app/b/[brand]/todo/page.tsx" },
 };
 /** Reem's draft copy names no reminders, WhatsApp or Telegram (home-copy.test.ts). */
 const NOT_YET = [/remind/i, /whats\s*app/i, /telegram/i, /ذكّر/, /ذكر(ي)?ني/, /تذكير/, /واتس\s*اب/, /تي?لي?[جغ]رام/];

@@ -133,12 +133,13 @@ export function handler<A extends ApiAuth, I extends Schema = undefined, Q exten
     let u: User | null = null;
     if (opts.auth === "user") {
       // Multi-workspace M2 (rule 2113): a state-changing request that names no workspace writes nothing; the proxy
-      // answers it first, this is the same check again for a route the proxy did not see. A foreign handle is a 404.
+      // answers it first, this is the same check again for a route the proxy did not see. A foreign handle (or a brand
+      // that is not the account's) is a JSON 404 with the switch on; with it off the route throws Next's 404 as on main.
       if (MULTI_ORG && workspaceMissing(req.method, new URL(req.url).pathname, true, req.headers.get(WS_HEADER))) return fail("workspace_missing", 409);
       try {
         u = await currentUser();
       } catch (e) {
-        if (isNotFoundError(e)) return fail("not_found", 404);
+        if (MULTI_ORG && isNotFoundError(e)) return fail("not_found", 404);
         throw e;
       }
       if (!u) return fail(opts.unauthorized, 401);

@@ -15,7 +15,7 @@ import * as govRoute from "@/app/api/governance/route";
 import * as rollbackRoute from "@/app/api/governance/rollback/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
 import * as adminUser from "@/app/api/admin/users/[email]/route";
-import Page from "@/app/[lang]/app/settings/governance/page";
+import Page from "@/app/[lang]/app/b/[brand]/settings/governance/page";
 import { appDict } from "@/lib/app-i18n";
 
 /**

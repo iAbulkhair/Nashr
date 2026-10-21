@@ -22,7 +22,7 @@ import { Icon } from "./Icons";
 import ApprovalCard from "./ApprovalCard";
 import CopyButton from "@/components/ui/CopyButton";
 import Menu from "@/components/ui/Menu";
-import { useAppHref, announceCredits } from "./WorkspaceContext";
+import { useAppLink, announceCredits } from "./WorkspaceContext";
 import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
 import ChatBubble from "./ChatBubble";
 import type { Journey } from "@/lib/journey";
@@ -347,7 +347,7 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
  * admin level as `brand.write`, so the page's `canBrand` decides who sees the buttons), Dismiss drops it.
  */
 export function FileProposalCard({ p, t, lang, canWrite = true }: { p: FileProposalCardData; t: AppDict; lang: "ar" | "en"; canWrite?: boolean }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const ar = lang === "ar";
   const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "stale" | "gone" | "forbidden" | "busy" | "slow" | "error">(p.state === "applied" || p.state === "dismissed" || p.state === "stale" ? p.state : p.state === "expired" ? "gone" : "open");
   async function decide(decision: "apply" | "dismiss") {
@@ -400,7 +400,7 @@ export function FileProposalCard({ p, t, lang, canWrite = true }: { p: FilePropo
  * Apply applies it as the owner's click (POST /api/instructions/proposals/{id}, `instructions.write`), Dismiss drops it.
  */
 export function InstructionProposalCard({ p, t, lang, canWrite = true }: { p: InstructionProposalCardData; t: AppDict; lang: "ar" | "en"; /** `can(u, "instructions.write")`: a plain member sees the rule but cannot decide it */ canWrite?: boolean }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const C = t.instructionCard;
   // A reloaded thread carries where the proposal stands now (history() reads it), so a decided card stays decided.
   const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "gone" | "forbidden" | "busy" | "lockBusy" | "slow" | "full" | "many" | "plan" | "refused" | "error">(p.state === "applied" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
@@ -528,7 +528,7 @@ export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; 
  * card open.
  */
 export function SpendProposalCard({ p, t, lang, canRun = true, onCredits }: { p: SpendProposalCardData; t: AppDict; lang: "ar" | "en"; /** `can(u, "generate")` */ canRun?: boolean; onCredits?: (n: number) => void }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const ar = lang === "ar";
   const [state, setState] = useState<"open" | "running" | "ran" | "dismissed" | "gone" | "busy" | "slow" | "forbidden" | "paused" | "failed" | "revoked" | "error">(p.state === "ran" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
   const [made, setMade] = useState<number | null>(null);
@@ -619,7 +619,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
 }
 
 export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canInstructions = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "instructions.write")`: a plain member sees a proposed instruction but cannot decide it */ canInstructions?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);

@@ -60,7 +60,17 @@ describe("rule 960: founder console prompts stop on Cancel, the trial days are c
 });
 
 describe("rule 961: every app and founder console screen has its own title", () => {
-  const pages = [...globSync("src/app/[[]lang[]]/app/**/page.tsx"), ...globSync("src/app/[[]lang[]]/admin/**/page.tsx")];
+  // Two app pages show no screen: they only redirect (rule 891). `/{lang}/app` goes to the brand's inbox, and the
+  // `[...legacy]` page sends an old brand path to its place under `/b/{id}`. Every other page is a screen.
+  const REDIRECT_ONLY = ["src/app/[lang]/app/page.tsx", "src/app/[lang]/app/[...legacy]/page.tsx"];
+  const pages = [...globSync("src/app/[[]lang[]]/app/**/page.tsx"), ...globSync("src/app/[[]lang[]]/admin/**/page.tsx")].filter((p) => !REDIRECT_ONLY.includes(p));
+
+  it("the redirect-only pages redirect and show nothing", () => {
+    for (const p of REDIRECT_ONLY) {
+      expect(read(p), p).toMatch(/redirect\(appHref\(lang, /);
+      expect(read(p), p).not.toMatch(/generateMetadata|return </);
+    }
+  });
 
   // 44 since UI/UX phase 3 (rule 1140): the profile page left, the settings index and its account, security,
   // notifications and danger sections came; a settings section's title comes from `settingsScreenMeta`. 46 with the
@@ -89,14 +99,15 @@ describe("rule 961: every app and founder console screen has its own title", () 
     for (const p of pages) {
       const seg = p.split("/").slice(-2, -1)[0];
       const key = read(p).match(/ScreenMeta\("([a-z]+)"\)/)?.[1];
-      const want = seg === "app" ? "home" : seg === "admin" ? (p.includes("/app/admin/") ? "admin" : "overview") : seg;
+      // The inbox is `b/[brand]/page.tsx` since rule 885.
+      const want = seg === "[brand]" ? "home" : seg === "admin" ? (p.includes("/app/admin/") ? "admin" : "overview") : seg;
       expect(key, p).toBe(want);
     }
   });
 });
 
 describe("rule 962: the chat panel is keyed by its thread", () => {
-  const page = read("src/app/[lang]/app/chat/page.tsx");
+  const page = read("src/app/[lang]/app/b/[brand]/chat/page.tsx");
   const panel = read("src/components/app/ChatPanel.tsx");
 
   it("mounts a new panel when the conversation or specialist in the address changes", () => {
@@ -106,7 +117,7 @@ describe("rule 962: the chat panel is keyed by its thread", () => {
 
   it("puts a new thread in the address, so a link back to the old one is a new key", () => {
     expect(panel).toMatch(/if \(!j\.ok\) return;\n\s*setConvs/);
-    // Through the workspace link helper since multi-workspace M2 (`href` from `useAppHref`).
+    // Through the workspace link helper since multi-workspace M2 (`href` from `useAppLink`).
     expect(panel).toMatch(/router\.replace\(href\(`\/chat\?conv=\$\{j\.conversation\.id\}/);
   });
 });

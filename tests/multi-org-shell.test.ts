@@ -6,7 +6,8 @@ import { listConversations } from "@/lib/conversations";
 import { ownerOf } from "@/lib/membership";
 import { wsHandle } from "@/lib/ws-handle";
 import { WS_HEADER, oldAppTarget } from "@/lib/ws-path";
-import { installWorkspaceFetch, withWsHeader, wsHeaderFor } from "@/lib/api-client";
+import { withWsHeader, wsHeaderFor } from "@/lib/brand-fetch";
+import { installBrandFetch } from "@/lib/brand-fetch";
 import { addShadowMembership, json, newUser, signIn, withHeaders } from "./helpers/session";
 
 vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
@@ -46,7 +47,7 @@ describe("the fetch header follows the page's link", () => {
     expect(new Headers(withWsHeader("/api/tasks", { headers: { [WS_HEADER]: h2 } }, h1).headers).get(WS_HEADER)).toBe(h2);
   });
 
-  it("installWorkspaceFetch wraps window.fetch once and adds the header", async () => {
+  it("the one fetch wrapper (installBrandFetch with the workspace half on) wraps window.fetch once and adds the header", async () => {
     const seen: (string | null)[] = [];
     const fake = vi.fn(async (_i: RequestInfo | URL, init?: RequestInit) => {
       seen.push(new Headers(init?.headers).get(WS_HEADER));
@@ -54,8 +55,8 @@ describe("the fetch header follows the page's link", () => {
     });
     vi.stubGlobal("window", { fetch: fake, location: { pathname: `/ar/app/w/${h1}/tasks`, origin } });
     try {
-      installWorkspaceFetch();
-      installWorkspaceFetch();
+      installBrandFetch({ workspace: true });
+      installBrandFetch({ workspace: true });
       await window.fetch("/api/tasks", { method: "POST" });
       await window.fetch("https://other.example/x");
       expect(seen).toEqual([h1, null]);
@@ -86,7 +87,7 @@ describe("old addresses move into the session's workspace (307 from the layout)"
   it("the layout applies it only with MULTI_ORG on, from the session's own handle", () => {
     const src = readFileSync("src/app/[lang]/app/layout.tsx", "utf8");
     expect(src).toMatch(/MULTI_ORG && user && !isPublic && !handle\)/);
-    expect(src).toContain('oldAppTarget(lang, path, h.get("x-search") ?? "", handleOf(user))');
+    expect(src).toContain('oldAppTarget(lang, path, h.get("x-search") ?? "", handleOf(user), user.brandId)');
     expect(src).toContain("handle={handle} multiOrg={MULTI_ORG}");
   });
 });

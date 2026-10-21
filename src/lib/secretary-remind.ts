@@ -40,7 +40,7 @@ import { COPY, paragraphs } from "../emails";
 import { meetingsNow } from "./secretary-cal-link";
 import { quietUntil } from "./secretary-meetings";
 import { accountOfScope } from "./account-id";
-import { appHrefIn } from "@/lib/app-href";
+import { appHrefIn } from "@/lib/ws-href";
 
 /** Scopes read per sweep, due ids read per scope, scopes handled at once. */
 export const SWEEP_SCOPES = 200;

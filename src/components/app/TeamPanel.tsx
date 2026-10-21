@@ -11,7 +11,7 @@ import { Icon } from "./Icons";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
-import { useAppHref } from "@/components/app/WorkspaceContext";
+import { useAppLink } from "@/components/app/WorkspaceContext";
 
 type TeamRole = "admin" | "member";
 type Row = { email: string; name: string; role: Role; acceptedAt?: string; disabled?: "seats" };
@@ -48,7 +48,7 @@ async function call(url: string, method: string, body?: unknown): Promise<Result
  * The page is named "Members" because the AI agents are already "the team" across the app.
  */
 export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { t: AppDict; lang: Lang; initial: TeamView; perms: TeamPerms; /** mail can reach the invited address (`mailReady()`); otherwise the link is handed to the inviter */ mailOn?: boolean }) {
-  const href = useAppHref(lang);
+  const href = useAppLink(lang);
   const T = t.team;
   const router = useRouter();
   const [view, setView] = useState<TeamView>(initial);
