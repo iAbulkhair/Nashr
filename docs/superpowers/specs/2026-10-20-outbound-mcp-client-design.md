@@ -1,6 +1,6 @@
 # Outbound MCP client: agents use a workspace's own tools (design)
 
-Status: **Draft, waiting on the founder's decisions in section 10; no code until then; post-launch (after 2026-11-01).** Written 2026-10-20 on branch `claude/outbound-mcp-spec` from main `051e437`. Item 6 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2550-2559** are reserved for this work, not yet pinned.
+Status: **Decided in part on 2026-10-21 (section 10): yes, option A (any public server), Agency plan only. Still open: decisions 3 to 5. No code until those are settled; post-launch (after 2026-11-01).** Written 2026-10-20 on branch `claude/outbound-mcp-spec` from main `051e437`. Item 6 of the OpenDots adoption order (`docs/OpenDots_Adoption.md` section 4). Rules **2610-2619** are reserved for this work, not yet pinned.
 
 ## 1. Why
 
@@ -96,19 +96,19 @@ A tool whose description or schema changes on a later refresh goes back to Not a
 - **Contract.** None.
 - **Environment:** no new variable. Proposed code constants: `MCP_SERVERS_PER_SCOPE`, `EXT_CALLS_PER_HOUR`.
 
-## 8. Tests (rules 2550-2559, reserved, not yet pinned)
+## 8. Tests (rules 2610-2619, reserved, not yet pinned)
 
 | Rule | Pins |
 |---|---|
-| 2550 | Save refuses a private, loopback, metadata or credentialed URL. Every call goes through `safeFetch` (a source scan, as for crawls) |
-| 2551 | A discovered tool is offered to no agent until reviewed; a changed description or schema goes back to off |
-| 2552 | A missing `extPolicy` entry is off; `ask` leaves a card and sends nothing; Run sends the stored arguments once, and 409 after a policy, connection or schema change |
-| 2553 | The audit row is written before dispatch |
-| 2554 | Results are fenced and cut; a result containing `</external_tool_result>` cannot end the block |
-| 2555 | No outside tool over MCP or WhatsApp |
-| 2556 | Tokens are sealed, never returned by any route, never logged |
-| 2557 | Rate limits per scope and per connection |
-| 2558-2559 | Held for the build's findings |
+| 2610 | Save refuses a private, loopback, metadata or credentialed URL. Every call goes through `safeFetch` (a source scan, as for crawls) |
+| 2611 | A discovered tool is offered to no agent until reviewed; a changed description or schema goes back to off |
+| 2612 | A missing `extPolicy` entry is off; `ask` leaves a card and sends nothing; Run sends the stored arguments once, and 409 after a policy, connection or schema change |
+| 2613 | The audit row is written before dispatch |
+| 2614 | Results are fenced and cut; a result containing `</external_tool_result>` cannot end the block |
+| 2615 | No outside tool over MCP or WhatsApp |
+| 2616 | Tokens are sealed, never returned by any route, never logged |
+| 2617 | Rate limits per scope and per connection |
+| 2618-2619 | Held for the build's findings |
 
 ## 9. Options (founder decision 1)
 
@@ -127,6 +127,13 @@ A tool whose description or schema changes on a later refresh goes back to Not a
 3. **May read tools ever be Allowed** (run without a card), or is everything Ask first?
 4. **Credentials:** a static token or header only in v1 (recommended), or OAuth to outside servers too, which is more work and more secrets to hold.
 5. **Terms:** does the agency agreement need a paragraph on outside tools and personal data (counsel)?
+
+### Decided by the founder on 2026-10-21
+
+- **1. Yes, option A:** any public MCP server the owner adds, every discovered tool off until reviewed, every write behind a card.
+- **2. Agency plan only** for v1.
+- **PDPL:** a review before any feature that carries personal data through a third party ships (a standing decision, not to be asked again). Outside tools can carry customer data to the agency's own servers, so decision 5 (the agency terms) goes to the same review.
+- **Still open:** 3 (may read tools ever run without a card; the recommendation stands: Ask first for everything in v1), 4 (static token only in v1; the recommendation stands), 5 (agency terms, with the PDPL review).
 
 ## 11. Size and release steps
 
