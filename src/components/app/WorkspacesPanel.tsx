@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
+import type { WaitingInvite } from "@/lib/team";
 import type { WorkspaceRow } from "@/lib/workspaces";
 import { appHref } from "@/lib/ws-path";
 import Badge from "@/components/ui/Badge";
@@ -17,7 +18,7 @@ type T = AppDict["workspaces"];
  * (the switch route, then a full load of its link so the whole shell is rendered for it), and create one. The routes
  * check everything; the button state only mirrors them.
  */
-export default function WorkspacesPanel({ t, lang, initial, canCreate }: { t: T; lang: "ar" | "en"; initial: WorkspaceRow[]; canCreate: boolean }) {
+export default function WorkspacesPanel({ t, lang, initial, invites = [], canCreate }: { t: T; lang: "ar" | "en"; initial: WorkspaceRow[]; invites?: WaitingInvite[]; canCreate: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +65,20 @@ export default function WorkspacesPanel({ t, lang, initial, canCreate }: { t: T;
             </li>
           ))}
         </ul>
+      )}
+      {invites.length > 0 && (
+        <section className="grid gap-2 rounded-lg border border-border p-4" aria-labelledby="ws-invites">
+          <h2 id="ws-invites" className="font-display text-lg font-bold">{t.invites.replace("{n}", String(invites.length))}</h2>
+          <ul className="grid gap-2">
+            {invites.map((i, k) => (
+              <li key={k} className="text-sm">
+                <span className="block text-foreground" dir="auto">{t.inviteRow.replace("{inviter}", i.inviter).replace("{workspace}", i.workspace).replace("{role}", t.roles[i.role])}</span>
+                <span className="text-foreground-muted">{t.inviteUntil.replace("{date}", new Date(i.expiresAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-GB"))}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-sm text-foreground-muted">{t.invitesHint}</p>
+        </section>
       )}
       {canCreate && (
         <form

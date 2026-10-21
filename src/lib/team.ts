@@ -38,6 +38,7 @@ import { revokeAllDevices } from "./devices";
  *   teamlog:{aid}      capped list of membership events (src/lib/teamlog.ts, rule 2129)
  *   invite:{sha256}    Invite, TTL 7 days (the token itself is never stored)
  *   invites:{aid}      set of invite hashes
+ *   invitesfor:{email} set of invite hashes for one address, TTL 7 days (M3 inbox, written while `MULTI_ORG` is on)
  *   inviteuse:{hash}   single use at accept
  *
  * Every membership event writes the new shape and the legacy one in the same locked step, and one team log row under the
@@ -296,7 +297,7 @@ export async function deleteMembership(aid: AccountId, pid: PersonId, opts: { ho
   const email = person ? normalizeEmail(person.email) : opts.home ? pid : null;
   const run = async () => {
     const invites = await listInvites(aid);
-    const sent = invites.filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === pid : email !== null && normalizeEmail(i.invitedBy) === email)).map((i) => i.id);
+    const sent = invites.filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === pid : email !== null && normalizeEmail(i.invitedBy) === email));
     const round = (legacy: Member | null) =>
       Promise.all([
         db.del(accountKey.membership(aid, pid)),
@@ -476,9 +477,18 @@ function inviteHolds(inv: Invite, owner: User, inviter: Membership | null): bool
   if (inv.invitedByPid !== undefined ? inv.invitedByPid === ownerOf(owner) : inv.invitedBy === owner.email || inv.invitedBy === acct(owner)) return true;
   return !!inviter && inviter.aid === aidOf(owner) && !inviter.disabled && inviter.role === "admin" && inv.role === "member";
 }
-/** Delete these invites of `owner` (record and index entry). Callers hold `lock:team:{owner}`. */
-async function dropInvites(owner: string, ids: string[]) {
-  await Promise.all(ids.flatMap((id) => [db.del(inviteKey(id)), db.srem(invitesKey(owner), id)]));
+/**
+ * Delete these invites of `owner` (record and index entry). Callers hold `lock:team:{owner}`. An invite passed with its
+ * address also leaves that address's inbox (`invitesfor:{email}`, multi-workspace M3); one passed by id only stays there
+ * until the inbox reads it and finds it gone (`invitesWaiting` drops what no longer stands).
+ */
+async function dropInvites(owner: string, items: readonly (string | Pick<PendingInvite, "id" | "email">)[]) {
+  await Promise.all(
+    items.flatMap((x) => {
+      const id = typeof x === "string" ? x : x.id;
+      return [db.del(inviteKey(id)), db.srem(invitesKey(owner), id), typeof x === "string" ? null : db.srem(accountKey.invitesFor(normalizeEmail(x.email)), id)];
+    }),
+  );
 }
 
 /** The acting person as a team log row names them (rule 2129): the person id and the address of the day. */
@@ -535,6 +545,10 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
     await Promise.all([
       db.set(inviteKey(id), invite, INVITE_TTL_SECONDS),
       db.sadd(invitesKey(aid), id),
+      // The invited address's inbox (multi-workspace M3, spec section 9): the id only, read back for that address alone.
+      // Its TTL is the newest invite's, so the set never outlives the invites in it. Only while `MULTI_ORG` is on, so
+      // with the flag off the store is byte-for-byte M2's.
+      MULTI_ORG ? db.sadd(accountKey.invitesFor(e), id).then(() => db.expire(accountKey.invitesFor(e), INVITE_TTL_SECONDS)) : null,
       logTeam(aid, { kind: "invited", actor: who(actor), target: { email: e }, role, via: "web" }, { teamLocked: true }),
     ]);
     return { ok: true as const, token, id, invite };
@@ -605,7 +619,7 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
         const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid }, MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {});
         const pid = pidFrom(memberPid(member));
         await Promise.all([
-          dropInvites(aid, [id]),
+          dropInvites(aid, [{ id, email: inv.email }]),
           logTeam(aid, { kind: "joined", actor: { pid, email: member.email }, target: { pid, email: member.email }, role: member.role, via: "web" }, { teamLocked: true }),
         ]);
         return { ok: true as const, member };
@@ -658,7 +672,7 @@ export async function joinInviteAsPerson(token: string, person: Person): Promise
         const now = new Date().toISOString();
         await writeMembership(aid, pid, { aid, pid, role: inv.role, acceptedAt: now, invitedBy: inv.invitedByPid ?? inv.invitedBy }, { home: false, teamLocked: true });
         await Promise.all([
-          dropInvites(aid, [id]),
+          dropInvites(aid, [{ id, email: inv.email }]),
           logTeam(aid, { kind: "joined", actor: { pid, email: fresh.email }, target: { pid, email: fresh.email }, role: inv.role, via: "web" }, { teamLocked: true }),
         ]);
         return { aid, role: inv.role, name: fresh.name, email: normalizeEmail(fresh.email) };
@@ -671,6 +685,40 @@ export async function joinInviteAsPerson(token: string, person: Person): Promise
   return { ok: true, member: { name: done.name, email: done.email, role: done.role, memberOf: done.aid } };
 }
 
+/** One row of the invitations inbox: what the person may see of an invite to their own address, never its id or token. */
+export type WaitingInvite = { workspace: string; inviter: string; role: TeamRole; expiresAt: string };
+
+/**
+ * The invitations inbox (multi-workspace M3, spec section 9; rule 2753): the open invites to the signed-in person's OWN
+ * verified address. `p` is the person `currentPerson()` resolved, never an address from the request; an unverified
+ * address reads nothing (whoever typed it has not proved it is theirs). The ids in `invitesfor:{email}` are re-read in
+ * one round and kept only while the invite is for this address, unexpired, still in its account's index and still
+ * standing (`inviteHolds`, the same check accept makes); the account, its inviter and its brand name come in one more
+ * round. What no longer stands leaves the set. Show only: the answer has no id and no token, so accepting stays on the
+ * mailed link. Empty while `MULTI_ORG` is off.
+ */
+export async function invitesWaiting(p: Person): Promise<WaitingInvite[]> {
+  if (!MULTI_ORG || !p.emailVerifiedAt) return [];
+  const e = normalizeEmail(p.email);
+  const ids = (await db.smembers(accountKey.invitesFor(e))).filter((id) => TOKEN_RE.test(id));
+  if (!ids.length) return [];
+  const now = Date.now();
+  const rows = await pmap(ids, async (id) => {
+    const inv = await db.get<Invite>(inviteKey(id));
+    if (!inv || expired(inv, now) || !isTeamRole(inv.role) || normalizeEmail(inv.email) !== e) return null;
+    const aid = aidFrom(inviteAccount(inv));
+    const [owner, inviter, indexed] = await Promise.all([getAccount(aid), getMembership(aid, inviterPid(inv)), db.sismember(invitesKey(aid), id)]);
+    if (!owner || isSuspended(owner) || !indexed || !inviteHolds(inv, owner, inviter)) return null;
+    const { getBrand } = await import("./brand");
+    const [brand, by] = await Promise.all([getBrand(aid), inviter ? getPerson(inviter.pid) : null]);
+    const workspace = brand?.name?.trim() || owner.workspaceName?.trim() || owner.name;
+    return { id, row: { workspace, inviter: by?.name || owner.name, role: inv.role, expiresAt: inv.expiresAt } };
+  });
+  const gone = ids.filter((_, i) => !rows[i]);
+  if (gone.length) await Promise.all(gone.map((id) => db.srem(accountKey.invitesFor(e), id)));
+  return rows.filter((r): r is NonNullable<typeof r> => !!r).map((r) => r.row).sort((a, b) => (a.expiresAt < b.expiresAt ? -1 : 1));
+}
+
 /**
  * Undo an invite this request just created, under the team lock (POST /api/team/invite, when mail is configured and the
  * email could not be sent). No role check: it is the creating request's own rollback, never exposed to a caller's id.
@@ -680,7 +728,7 @@ export async function discardInvite(owner: string, id: string) {
   const aid = aidFrom(owner);
   await withTeamLock(aid, async () => {
     const inv = await db.get<Invite>(inviteKey(id));
-    await dropInvites(aid, [id]);
+    await dropInvites(aid, [inv && typeof inv.email === "string" ? { id, email: inv.email } : id]);
     if (inv && inviteAccount(inv) === aid) {
       await logTeam(aid, { kind: "invite_cancelled", actor: { pid: inviterPid(inv), email: normalizeEmail(inv.invitedBy) }, target: { email: inv.email }, role: inv.role, via: "system" }, { teamLocked: true });
     }
@@ -703,7 +751,7 @@ export async function cancelInvite(owner: User, actor: Actor, id: string): Promi
     const cur = await db.get<Invite>(inviteKey(id));
     if (!cur || inviteAccount(cur) !== aid) return false;
     await Promise.all([
-      dropInvites(aid, [id]),
+      dropInvites(aid, [{ id, email: cur.email }]),
       logTeam(aid, { kind: "invite_cancelled", actor: who(actor), target: { email: cur.email }, role: cur.role, via: "web" }, { teamLocked: true }),
     ]);
     return true;
@@ -861,7 +909,7 @@ export async function setRole(owner: User, actor: Actor, email: string, role: st
     await writeMembership(aid, m.pid, { ...cur.ms, role }, { home: cur.home, teamLocked: true });
     // An admin's invites could never be accepted once the admin is a plain member (`inviteHolds`), yet each would
     // keep holding a seat for up to seven days. They go with the role, as they go with the membership in `deleteMembership`.
-    const sent = demoted ? (await listInvites(aid)).filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === m.pid : normalizeEmail(i.invitedBy) === m.email)).map((i) => i.id) : [];
+    const sent = demoted ? (await listInvites(aid)).filter((i) => (i.invitedByPid !== undefined ? i.invitedByPid === m.pid : normalizeEmail(i.invitedBy) === m.email)) : [];
     await Promise.all([
       dropInvites(aid, sent),
       changed ? logTeam(aid, { kind: "role_changed", actor: who(actor), target: { pid: m.pid, email: m.email }, role, via: "web" }, { teamLocked: true }) : null,
@@ -929,7 +977,7 @@ export async function enforceSeats(owner: User | string, opts: { teamLocked?: bo
         ]);
         return { email: m.email, off };
       }),
-      dropInvites(aid, cancel.map((i) => i.id)),
+      dropInvites(aid, cancel),
     ]).then(([rows]) => rows.filter((r): r is { email: string; off: boolean } => !!r));
     return {
       limit,

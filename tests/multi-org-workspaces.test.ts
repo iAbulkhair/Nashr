@@ -212,7 +212,9 @@ describe("rule 2112: the switcher", () => {
 
   it("is drawn only in a shell with a handle and two workspaces or more, switches through the route and a full load", () => {
     const src = readFileSync("src/components/app/WorkspaceSwitcher.tsx", "utf8");
-    expect(src).toContain('if (!handle || !rows || rows.length < 2) return null;');
+    expect(src).toContain('if (!handle || !rows || (rows.length < 2 && waiting === 0)) return null;');
+    // M3 (rule 2753): one more reason to draw it, an invitation waiting; its count is all the switcher fetches of it.
+    expect(src).toContain('fetch("/api/workspaces/invites")');
     expect(src).toContain('fetch("/api/workspaces/switch"');
     expect(src).toContain("window.location.assign(switchTarget(j.href, path))");
     expect(src).toContain("j.href.startsWith(appHref(lang))");

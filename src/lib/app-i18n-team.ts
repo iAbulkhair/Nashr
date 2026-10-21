@@ -94,6 +94,10 @@ export const arTeam = {
     creating: "جارٍ الإنشاء…",
     noTrial: "التجربة مرة واحدة لكل شخص: إن استخدمتها من قبل تبدأ المساحة الجديدة بلا رصيد، واختر لها خطة بعد إنشائها.",
     switcher: "مساحة العمل",
+    invites: "دعوات بانتظارك ({n})",
+    invitesHint: "لقبول دعوة افتح الرابط في رسالة الدعوة التي وصلت إلى بريدك.",
+    inviteRow: "{inviter} يدعوك إلى «{workspace}» بدور {role}",
+    inviteUntil: "صالحة حتى {date}",
     errors: {
       invalid_name: "اكتب اسماً من حرف واحد إلى 80 حرفاً.",
       email_unverified: "أكّد بريدك أولاً، ثم أنشئ مساحة العمل.",
@@ -233,6 +237,10 @@ export const enTeam: typeof arTeam = {
     creating: "Creating…",
     noTrial: "The trial is once per person: if you used it before, the new workspace starts with no credits, and you choose a plan for it after creating it.",
     switcher: "Workspace",
+    invites: "Invitations waiting for you ({n})",
+    invitesHint: "To accept an invitation, open the link in the invitation email we sent you.",
+    inviteRow: "{inviter} invites you to “{workspace}” as {role}",
+    inviteUntil: "Valid until {date}",
     errors: {
       invalid_name: "Write a name of 1 to 80 characters.",
       email_unverified: "Confirm your email first, then create the workspace.",

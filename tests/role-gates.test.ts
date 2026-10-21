@@ -306,6 +306,7 @@ const READS: Record<string, Gate> = {
   "GET /api/team": g("member", "team.view"),
   // Multi-workspace M2: the person's own workspaces (handles, names and roles only).
   "GET /api/workspaces": "person-session",
+  "GET /api/workspaces/invites": "person-session", // M3 inbox (rule 2753): the person's own verified address only
   "GET /api/profile": g("member", "read"),
   // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
   "GET /api/account/export": g("owner", "account.export"),

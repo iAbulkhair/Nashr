@@ -20,6 +20,7 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
   const handle = useWsHandle();
   const path = usePathname();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
+  const [waiting, setWaiting] = useState(0);
 
   useEffect(() => {
     if (!handle) return;
@@ -28,10 +29,15 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { workspaces?: WorkspaceRow[] } | null) => { if (live && Array.isArray(j?.workspaces)) setRows(j.workspaces); })
       .catch(() => {});
+    // The invitations inbox (M3, rule 2753): only how many wait; the list is on the workspaces page.
+    fetch("/api/workspaces/invites")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { invites?: unknown[] } | null) => { if (live && Array.isArray(j?.invites)) setWaiting(j.invites.length); })
+      .catch(() => {});
     return () => { live = false; };
   }, [handle]);
 
-  if (!handle || !rows || rows.length < 2) return null;
+  if (!handle || !rows || (rows.length < 2 && waiting === 0)) return null;
   const current = rows.find((w) => w.handle === handle) ?? rows.find((w) => w.current);
 
   async function open(to: string) {
@@ -49,6 +55,7 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
       label: <span className="flex min-w-0 flex-1 items-center justify-between gap-2"><span className="clip" dir="auto">{w.name}</span><span className="shrink-0 text-xs">{t.roles[w.role]}</span></span>,
       onSelect: () => void open(w.handle),
     })),
+    ...(waiting > 0 ? [{ key: "invites", href: appHref(lang, "/workspaces"), label: t.invites.replace("{n}", String(waiting)), onSelect: onNavigate }] : []),
     { key: "new", href: appHref(lang, "/workspaces"), label: t.create, onSelect: onNavigate },
   ];
 
