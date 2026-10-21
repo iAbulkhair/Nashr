@@ -5,18 +5,19 @@ import { Icon } from "../Icons";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_SECTIONS, settingsHref, type SettingsSection } from "@/lib/settings-nav";
 import type { Lang } from "@/lib/i18n";
 
-/** The section a settings path is on, or null for the settings index. */
+/** The section a settings path is on (`/{lang}/app/settings/{s}` or `/{lang}/app/b/{id}/settings/{s}`), or null for the settings index. */
 export function sectionOf(path: string): SettingsSection | null {
-  const seg = path.split("/")[4];
-  return (SETTINGS_SECTIONS as readonly string[]).includes(seg) ? (seg as SettingsSection) : null;
+  const seg = /^\/[^/]+\/app(?:\/b\/[^/]+)?\/settings\/([^/?#]+)/.exec(path)?.[1];
+  return seg !== undefined && (SETTINGS_SECTIONS as readonly string[]).includes(seg) ? (seg as SettingsSection) : null;
 }
 
 /**
  * The settings area's own navigation (rule 1140): every section as a link, the one on show marked `aria-current="page"`.
  * The layout places it as a column at the start side on a wide screen; on a phone the settings index shows the same list
  * full width (`variant="list"`, with each section's line), and a section page offers a link back to it instead.
+ * `brand` (rule 885): the brand sections link under `/b/{brand}`; without one they link the old path, which redirects.
  */
-export default function SettingsNav({ lang, variant = "column", current }: { lang: Lang; variant?: "column" | "list"; current?: SettingsSection | null }) {
+export default function SettingsNav({ lang, variant = "column", current, brand }: { lang: Lang; variant?: "column" | "list"; current?: SettingsSection | null; brand?: string }) {
   const path = usePathname() ?? "";
   const on = current !== undefined ? current : sectionOf(path);
   const C = SETTINGS_COPY[lang];
@@ -30,7 +31,7 @@ export default function SettingsNav({ lang, variant = "column", current }: { lan
             <ul className="grid gap-2 sm:grid-cols-2">
               {g.sections.map((s) => (
                 <li key={s}>
-                  <Link href={settingsHref(lang, s)} className={`flex min-h-[var(--hit-min)] items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4 hover:border-border-strong ${s === "danger" ? "text-danger" : "text-foreground"}`}>
+                  <Link href={settingsHref(lang, s, brand)} className={`flex min-h-[var(--hit-min)] items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4 hover:border-border-strong ${s === "danger" ? "text-danger" : "text-foreground"}`}>
                     <span className="min-w-0">
                       <span className="block font-semibold">{C.sections[s].name}</span>
                       <span className="block text-sm text-foreground-muted">{C.sections[s].sub}</span>
@@ -54,7 +55,7 @@ export default function SettingsNav({ lang, variant = "column", current }: { lan
             {g.sections.map((s) => (
               <li key={s}>
                 <Link
-                  href={settingsHref(lang, s)}
+                  href={settingsHref(lang, s, brand)}
                   aria-current={on === s ? "page" : undefined}
                   className={`flex min-h-[var(--hit-min)] items-center rounded-lg px-3 text-sm transition pointer-fine:min-h-9 ${on === s ? "bg-background-muted font-semibold text-foreground" : s === "danger" ? "text-danger hover:bg-background-muted/60" : "text-foreground-muted hover:bg-background-muted/60 hover:text-foreground"}`}
                 >

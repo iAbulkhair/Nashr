@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { BRAND_HEADER, brandFromPath } from "@/lib/brand-path";
+import { brandMissingRefusal } from "@/lib/brand-guard";
 import { crossSiteRefusal } from "@/lib/csrf";
 import { isStaging } from "@/lib/deploy-env";
 import { STAGING_COOKIE, hasAccess, stagingOpen } from "@/lib/staging-access";
@@ -88,6 +90,27 @@ export function proxy(req: NextRequest) {
     reqHeaders.delete(NONCE_HEADER);
     reqHeaders.delete("content-security-policy");
   }
+  // The brand (rules 887-888, src/lib/brand-guard.ts). A page request carries the brand its own path names and nothing the
+  // browser sent: `resolveSession` takes the header as a selector, and a page the person typed must not pick a scope by
+  // a header (the browser cannot send one for a navigation anyway). An API request keeps the header it came with; a GET or
+  // HEAD without one may name the brand in a `brand` query value (R-C13), since a link click or a download cannot send a
+  // header. That value is the same selector, checked the same way by `resolveSession`, and never read for a mutation.
+  if (pathname.startsWith("/api/")) {
+    const queried = req.method === "GET" || req.method === "HEAD" ? req.nextUrl.searchParams.get("brand") : null;
+    if (queried && !reqHeaders.get(BRAND_HEADER)) {
+      try {
+        reqHeaders.set(BRAND_HEADER, queried);
+      } catch {
+        // A value no header can hold (a line break, a character beyond Latin-1): send one that is no brand id, so the
+        // session answers 404 and does not fall back to the stored brand.
+        reqHeaders.set(BRAND_HEADER, "?");
+      }
+    }
+  } else {
+    reqHeaders.delete(BRAND_HEADER);
+    const brand = brandFromPath(pathname);
+    if (brand) reqHeaders.set(BRAND_HEADER, brand);
+  }
   const next = () => NextResponse.next({ request: { headers: reqHeaders } });
 
   // Staging lock (rules 674, 677): without the access cookie every path but the four open ones and `/m/` (rule 1760) is
@@ -98,10 +121,11 @@ export function proxy(req: NextRequest) {
 
   let res: NextResponse;
   if (pathname.startsWith("/api/")) {
-    // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), else pass it
-    // on untouched. The exempt paths (webhooks, crons, MCP, OAuth token) pass inside crossSiteRefusal. The language and
+    // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), then notice a
+    // browser mutation to a brand route that names no brand (src/lib/brand-guard.ts, rule 888: logged in this release),
+    // else pass it on. The exempt paths (webhooks, crons, MCP, OAuth token) pass inside crossSiteRefusal. The language and
     // x-pathname logic below is for pages only.
-    res = crossSiteRefusal(req) ?? next();
+    res = crossSiteRefusal(req) ?? brandMissingRefusal(req) ?? next();
   } else if (pathname === "/" || pathname === "/app") {
     // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
     // (src/app/manifest.ts, rule 681): the same choice, into the app.

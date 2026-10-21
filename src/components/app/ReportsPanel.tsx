@@ -31,6 +31,7 @@ import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 import { METRICS_KEY, readStored, writeStored } from "@/lib/cookie-names";
+import { useApiHref } from "./useBrandHref";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 /**
@@ -44,6 +45,7 @@ const METRICS = ["created", "approved", "approvalRate", "pending", "published", 
 type MetricKey = (typeof METRICS)[number];
 export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, liNoPage = false, x = null, notRead = [], socialVia = null, xConnected = false, siteChoices = null, canRead = false, canGenerate = false, canConnectors = false, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: every platform part from the last read, or a snapshot from before v2 (src/lib/social-stats.ts). */ social?: StoredSocial | null; /** `liNeedsPage`: LinkedIn is connected through Composio with no company page chosen. */ liNoPage?: boolean; /** `xReadOf(getXStats)`, without the account's id: X's last paid read (rule 744). */ x?: XStats | null; /** `notReadOf` over the page's own reads (rule 738). */ notRead?: NotReadItem[]; /** `socialRefreshPath`: the provider path the social Refresh posts to. */ socialVia?: string | null; /** `xDirect`: X is connected directly. */ xConnected?: boolean; /** `siteChoices`: the GA4 properties and Search Console sites listed at connect. */ siteChoices?: SiteChoices | null; /** `can(u, "read")`: the free refreshes (rule 735). */ canRead?: boolean; /** `can(u, "generate")`: X's paid refresh (rule 744). */ canGenerate?: boolean; /** `can(u, "connectors")`: the property choice (rule 734). */ canConnectors?: boolean; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
   const r = useRouter();
+  const apiHref = useApiHref();
   const R = t.reports;
   const toast = useToast();
   const E = emptyCopy(lang, "reports");
@@ -295,7 +297,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
                   <p className="text-xs text-foreground-muted"><span>{typeLabel(x.type)}</span> · <Time value={x.createdAt} lang={lang} className="tnum" /> · {x.status}</p>
                 </div>
                 <div className="flex gap-2">
-                  {x.type === "board_deck" && <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-xs">{t.inbox.pptx}</a>}
+                  {x.type === "board_deck" && <a href={apiHref(`/api/tasks/${x.id}/pptx`)} className="btn btn-accent btn-xs">{t.inbox.pptx}</a>}
                   <Link href={`/${lang}/app`} className="btn btn-secondary btn-xs">{R.open}</Link>
                 </div>
               </li>

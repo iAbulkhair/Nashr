@@ -10,6 +10,7 @@ import ThemeToggle from "@/components/ui/ThemeToggle";
 import { THEME_COPY } from "@/lib/theme";
 import { readProfile, saveProfile } from "./profileSave";
 import EmailChange from "./EmailChange";
+import { useBrandId } from "@/components/app/WorkspaceContext";
 
 /** The account values the page renders with: the acting person's name and language, and the account's phone (owner only). */
 export type AccountInitial = { name: string; email: string; lang: Lang; phone?: string; owner: boolean; canChangeEmail?: boolean };
@@ -47,6 +48,7 @@ export default function AccountSettings({ lang, initial, forbidden }: { lang: La
   const T = COPY[lang];
   const [stored, setStored] = useState(initial);
   const [name, setName] = useState(initial.name);
+  const sessionBrand = useBrandId();
   const [ui, setUi] = useState<Lang>(initial.lang);
   const [phone, setPhone] = useState(initial.phone ?? "");
   const [busy, setBusy] = useState<"" | "name" | "lang" | "phone">("");
@@ -55,7 +57,7 @@ export default function AccountSettings({ lang, initial, forbidden }: { lang: La
 
   async function save(k: "name" | "lang" | "phone", value: string) {
     setBusy(k); say(k, null);
-    const out = await saveProfile({ [k]: value }, lang, forbidden);
+    const out = await saveProfile({ [k]: value }, lang, forbidden, sessionBrand);
     setBusy("");
     if (out.kind === "saved") {
       const next = { ...stored, name: out.saved.me.name, lang: out.saved.me.lang, ...(out.saved.phone !== undefined ? { phone: out.saved.phone } : {}) };

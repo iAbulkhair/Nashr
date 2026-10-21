@@ -311,7 +311,7 @@ describe("rule 2529: the owner sees the source and age, and the out-of-date ones
     expect(ed).toContain("{I.refSource[refInfo[name].source]} · {refAgeText(I, refInfo[name])}");
     expect(ed).toContain('className="badge badge-warning" title={I.refStaleHint}>{I.refStale}');
     expect(ed).not.toContain("dangerouslySetInnerHTML");
-    const page = readFileSync(join(process.cwd(), "src/app/[lang]/app/instructions/page.tsx"), "utf8");
+    const page = readFileSync(join(process.cwd(), "src/app/[lang]/app/b/[brand]/instructions/page.tsx"), "utf8");
     expect(page).toContain("const refInfo = await provenanceFor(scope, attached, refs);");
     expect(page).toContain("const scope = sc(u);");
   });

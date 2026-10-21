@@ -77,7 +77,7 @@ export default async function AppLayout({ children, params }: { children: React.
   const owner = can(user, "billing");
   return (
     <ToastProvider lang={lang}>
-    <WorkspaceProvider initial={{ credits: user.credits, unread, pending: toApprove }}>
+    <WorkspaceProvider initial={{ credits: user.credits, unread, pending: toApprove }} brandId={user.brandId ?? null}>
     <div className="flex min-h-dvh flex-col bg-background lg:h-dvh lg:flex-row lg:overflow-hidden">
       {/* Rule 968: past the sidebar's links straight to the screen. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>

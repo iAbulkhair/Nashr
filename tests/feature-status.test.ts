@@ -40,7 +40,7 @@ describe("rule 2451: the Connections page shows the card, text badges and both l
       expect(html).toContain('data-feature="email" data-on="0"');
       expect(html).toContain(lang === "ar" ? "لم يُفعَّل بعد" : "Not on yet");
     }
-    expect(readFileSync("src/app/[lang]/app/settings/connections/page.tsx", "utf8")).toContain("<FeatureStatus lang={lang} features={customerFeatures()} />");
+    expect(readFileSync("src/app/[lang]/app/b/[brand]/settings/connections/page.tsx", "utf8")).toContain("<FeatureStatus lang={lang} features={customerFeatures()} />");
   });
 });
 

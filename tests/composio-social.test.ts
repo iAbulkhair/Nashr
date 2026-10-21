@@ -20,7 +20,7 @@ import { connectViaComposio } from "@/lib/connectors/via-composio";
 import { listActivity } from "@/lib/activity";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
-import ReportsPage from "@/app/[lang]/app/reports/page";
+import ReportsPage from "@/app/[lang]/app/b/[brand]/reports/page";
 import { NOT_READ_PLATFORMS, NOT_READ_REASONS, notRead as notReadList, type NotReadItem } from "@/lib/not-read";
 import { QUIET } from "@/components/app/ReportsPanel";
 import { XSTATS_KEY } from "@/lib/x-stats";

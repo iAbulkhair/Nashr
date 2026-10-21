@@ -1,4 +1,7 @@
 import { cookies, headers } from "next/headers";
+import { notFound } from "next/navigation";
+import { BRAND_HEADER, isBrandId } from "./brand-path";
+import type { BrandMeta } from "./brands";
 import { isPersonSuspended, isSuspended, type StoredSuspension } from "./suspension";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
@@ -627,19 +630,52 @@ async function readSession(): Promise<Session | null> {
   return s;
 }
 
+/**
+ * The page's brand selector (rule 886, brand id in the URL): the `x-thakeen-brand` request header, set by the browser's
+ * fetch wrapper (src/lib/brand-fetch.ts) from the page's `/b/{id}` segment and by the proxy from a page path. Undefined when absent
+ * or empty (an empty value is no header, as in the proxy and the brand guard). A value that is not
+ * a brand id (`isBrandId`: no `/`, `%`, `.`, `#`, `:`, at most 64 characters) is Next's 404 here, before any store read.
+ * It is only a SELECTOR: `resolveSession` accepts it when it is one of the session account's own active brands, and
+ * builds the scope from that brand list, never from the header.
+ */
+async function brandSelector(): Promise<string | undefined> {
+  const v = (await headers()).get(BRAND_HEADER);
+  if (!v) return undefined;
+  if (!isBrandId(v)) notFound();
+  return v;
+}
+
+/**
+ * The signed-in account for this request, or null. With a brand selector (`brandSelector`) the account's brand is that
+ * one, or the request is Next's 404 (R-C3): a page renders the not-found page, a route answers 404. Callers that wrap
+ * this in a `try` put `unstable_rethrow(e)` first in the `catch`.
+ */
 export async function currentUser(): Promise<User | null> {
+  const brand = await brandSelector();
   const s = await readSession();
-  return s ? resolveSession(s) : null;
+  return s ? resolveSession(s, { brand }) : null;
 }
 
 /**
  * Like `currentUser`, but an owner who has not verified the address yet resolves too. Only the verify page, the verify
  * routes and the app layout may call it (rule 752, pinned by tests/email-verify-gate.test.ts): every other caller keeps
- * `currentUser`, where such an owner reads as signed out.
+ * `currentUser`, where such an owner reads as signed out. The brand selector is honoured the same way (rule 886).
  */
 export async function currentUserUnverified(): Promise<User | null> {
+  const brand = await brandSelector();
   const s = await readSession();
-  return s ? resolveSession(s, { unverified: true }) : null;
+  return s ? resolveSession(s, { unverified: true, brand }) : null;
+}
+
+/**
+ * The brand a selector names in this account (rule 886): "default" always (the account's own scope, every resolver's
+ * fallback), otherwise the id of the ACTIVE row of `rows` that equals `want`. Undefined when there is none, or when the
+ * list could not be read (`rows` null): a selector fails closed, the caller answers 404. The id returned comes from
+ * the account's stored list, so the scope is never built from the request.
+ */
+function selectedBrand(want: string, rows: BrandMeta[] | null): string | undefined {
+  if (want === "default") return "default";
+  return rows?.find((b) => b.id === want && b.status === "active")?.id;
 }
 
 /**
@@ -687,8 +723,14 @@ async function sessionPerson(s: Session): Promise<Person | null> {
  * A session with `pid` and `acct` (written from R1 on) resolves on the person and the membership (`resolveIds`): one
  * parallel round after the session read, for owners and members alike (rule 2135). A session without them (written
  * before R1) resolves exactly as before (`resolveLegacy`) and is never rewritten on read.
+ *
+ * `brand` (rule 886) is the page's selector (`brandSelector`): when set, the account's brand is that brand if it is one
+ * of the RESOLVED account's active brands (`selectedBrand`; for an impersonation, the impersonated account's), else
+ * `notFound()`. The stored choice (`activebrand`) is then neither used nor written. Without it, today's behaviour.
+ * The checks run after the session and the account have resolved, so a session that resolves to nobody stays null.
  */
-async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): Promise<User | null> {
+type ResolveOpts = { unverified?: boolean; brand?: string };
+async function resolveSession(s: Session, opts: ResolveOpts = {}): Promise<User | null> {
   return typeof s.pid === "string" && s.pid && typeof s.acct === "string" && s.acct ? resolveIds(s, s.pid, s.acct, opts) : resolveLegacy(s, opts);
 }
 
@@ -709,7 +751,7 @@ const BRANDS_UNREAD = Symbol("brands unread");
  * older than the account's `teamSessionsAfter`. An impersonation resolves only as the owner, and only until its `exp`.
  * Nothing is taken from the request: `acct` is the session's, re-checked here on every request.
  */
-async function resolveIds(s: Session, rawPid: string, rawAcct: string, opts: { unverified?: boolean }): Promise<User | null> {
+async function resolveIds(s: Session, rawPid: string, rawAcct: string, opts: ResolveOpts): Promise<User | null> {
   const email = normalizeEmail(s.email);
   const pid = storedPersonId(rawPid);
   const aid = storedAccountId(rawAcct);
@@ -759,8 +801,16 @@ async function resolveIds(s: Session, rawPid: string, rawAcct: string, opts: { u
   // The person's active brand in THIS account (rule 2119), the legacy per-login key only for their home account, and
   // only while it is one of this account's active brands.
   const home = legacyHomeFrom(pid, legacyRecord, rawMember) === aid;
-  const chosen = activeBrandFrom(rawActive, rawLegacyActive, home);
-  const bid = rawBrands === BRANDS_UNREAD || brandsFromRaw(rawBrands).some((b) => b.id === chosen && b.status === "active") ? chosen : "default";
+  let bid: string;
+  if (opts.brand !== undefined) {
+    // Rule 886: the page's selector, only among this account's active brands; an unreadable list refuses it.
+    const picked = selectedBrand(opts.brand, rawBrands === BRANDS_UNREAD ? null : brandsFromRaw(rawBrands));
+    if (picked === undefined) notFound();
+    bid = picked;
+  } else {
+    const chosen = activeBrandFrom(rawActive, rawLegacyActive, home);
+    bid = rawBrands === BRANDS_UNREAD || brandsFromRaw(rawBrands).some((b) => b.id === chosen && b.status === "active") ? chosen : "default";
+  }
   account.brandId = bid;
   account.scope = scopeFor(acct(account), bid);
   const base = { pid, home, email: person.email, name: person.name, lang: person.lang === "en" ? ("en" as const) : ("ar" as const), role };
@@ -782,7 +832,7 @@ async function resolveIds(s: Session, rawPid: string, rawAcct: string, opts: { u
  * derived from the legacy records (an owner: `acct(u)`; a member: its `memberOf`), both the person's home; the active
  * brand is the legacy per-login `activebrand:{email}`, which `setActiveBrandIn` keeps writing for the home account.
  */
-async function resolveLegacy(s: Session, opts: { unverified?: boolean }): Promise<User | null> {
+async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null> {
   const email = normalizeEmail(s.email);
   const [{ getMember, onRoster, memberPid }, { activeBrandId, listBrands, scopeFor }, { ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./membership")]);
   // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records, and so
@@ -803,11 +853,19 @@ async function resolveLegacy(s: Session, opts: { unverified?: boolean }): Promis
     // `currentUserUnverified`. A founder impersonation passes (support must reach the account). A member login (below)
     // is gated by its owner's state too (rule 767).
     if (!emailVerified(u) && !s.imp && !opts.unverified) return null;
-    u.brandId = brandId;
-    u.scope = scopeFor(acct(u), brandId);
+    if (s.imp && typeof s.exp === "number" && Date.now() >= s.exp) return null; // the founder's chosen length is over (rule 1177)
+    let bid = brandId;
+    if (opts.brand !== undefined) {
+      // Rule 886 (R-C7): this branch never listed the brands, so a selector costs one more round; a store error refuses it.
+      const rows = opts.brand === "default" ? null : await listBrands(acct(u)).catch((e: unknown) => { log.error("session brand list read failed", e); return null; });
+      const picked = selectedBrand(opts.brand, rows);
+      if (picked === undefined) notFound();
+      bid = picked;
+    }
+    u.brandId = bid;
+    u.scope = scopeFor(acct(u), bid);
     // A legacy owner's person is the account's owner, and the account is their home.
     const base = { pid: ownerOf(u), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" as const };
-    if (s.imp && typeof s.exp === "number" && Date.now() >= s.exp) return null; // the founder's chosen length is over (rule 1177)
     u.actor = s.imp
       ? { ...base, kind: "founder", impersonating: s.imp, since: s.at, until: typeof s.exp === "number" ? s.exp : s.at + IMPERSONATION_LEGACY_MS }
       : { ...base, kind: "owner" };
@@ -835,7 +893,13 @@ async function resolveLegacy(s: Session, opts: { unverified?: boolean }): Promis
   // NaN on either side (a malformed date) refuses too.
   if (!(new Date(m.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) return null;
   // The member's own active brand, but only while it is one of the owner's active brands.
-  const bid = brands.some((b) => b.id === brandId && b.status === "active") ? brandId : "default";
+  let bid: string;
+  if (opts.brand !== undefined) {
+    // Rule 886: the page's selector, only among the owner's active brands (already listed in this round).
+    const picked = selectedBrand(opts.brand, brands);
+    if (picked === undefined) notFound();
+    bid = picked;
+  } else bid = brands.some((b) => b.id === brandId && b.status === "active") ? brandId : "default";
   owner.brandId = bid;
   owner.scope = scopeFor(acct(owner), bid);
   // A legacy member's person id is its frozen address (`memberPid`), and `memberOf` is its home account.
@@ -1122,12 +1186,23 @@ export function markFreshCode(req: Request): void {
 }
 
 /**
+ * The session's account for the console checks only: `currentUser` WITHOUT the page's brand selector (rule 886). Who
+ * holds the console is a property of the session, not of a brand, so a stale or forged `x-thakeen-brand` on an admin
+ * request (a wrong value is Next's 404 in `currentUser`) must not turn a staff, key or founder session away. The brand
+ * is not read from the result: only `isFounderActor` is.
+ */
+async function sessionAccountForConsole(): Promise<User | null> {
+  const s = await readSession();
+  return s ? resolveSession(s) : null;
+}
+
+/**
  * Whether the founder's own customer session still opens the console: an expand-only path (rule 1649) that a staff
  * owner can switch off at runtime (rule 1650, `staff:config.customerPathOff`) and the contract release removes.
  */
 async function founderSessionConsole(): Promise<{ email: string } | null> {
   const { customerPathOff } = await import("./staff");
-  const [off, u] = await Promise.all([customerPathOff(), currentUser()]);
+  const [off, u] = await Promise.all([customerPathOff(), sessionAccountForConsole()]);
   return !off && isFounderActor(u) ? { email: u!.actor!.email } : null;
 }
 

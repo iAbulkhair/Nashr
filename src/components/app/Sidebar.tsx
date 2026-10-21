@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import type { Role } from "@/lib/auth";
@@ -17,7 +17,10 @@ import { settingsHref } from "@/lib/settings-nav";
 import Sheet from "@/components/ui/Sheet";
 import Menu from "@/components/ui/Menu";
 import NotificationCenter from "./NotificationCenter";
-import { useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { useBrandId, useWorkspace, WORKSPACE_EVENTS } from "./WorkspaceContext";
+import { sessionBrandHeaders } from "@/lib/brand-fetch";
+import { appHref, brandFromPath } from "@/lib/brand-path";
+import BrandSwitcher, { type SwitcherBrand } from "./BrandSwitcher";
 
 /** An agent's avatar sits on the agent's own colour; Faris and Majed are dark fills, so their letter is paper. */
 const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id})` }, tone: id === "faris" || id === "majed" ? "text-inverse-foreground" : "text-accent-foreground" });
@@ -41,6 +44,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const sp = useSearchParams();
   const r = useRouter();
   const ws = useWorkspace();
+  const sessionBrand = useBrandId();
   const base = `/${lang}/app`;
   const N = t.nav;
   const X = t.ux.nav;
@@ -52,9 +56,26 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const convs = ws?.convs ?? [];
 
   async function newThread(agent: AgentId) {
-    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent }) })).json();
-    if (j.ok) { setOpen(false); window.dispatchEvent(new Event(WORKSPACE_EVENTS.convs)); r.push(`${base}/chat?conv=${j.conversation.id}`); }
+    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json", ...sessionBrandHeaders(sessionBrand) }, body: JSON.stringify({ title: "…", agent }) })).json();
+    // The conversation was created in the brand of this page (the fetch wrapper's header) or, on an account page, the
+    // session's (`sessionBrandHeaders`), so it opens in that brand: the legacy path would 307 to the stored choice, which
+    // another tab may have changed (ruling P10).
+    if (j.ok) { setOpen(false); window.dispatchEvent(new Event(WORKSPACE_EVENTS.convs)); r.push(appHref(lang, `/chat?conv=${j.conversation.id}`, { brand: brandFromPath(path) ?? sessionBrand })); }
   }
+  // The brand switcher's list (rule 893), asked for when the menu is first opened: the brands, whether this login may add
+  // one (owner or admin under the plan's cap; display only, POST /api/brands is the check). Once per mount, not on every
+  // open; a pick (the list or the cap may have changed) and a failed read let the next open ask again.
+  const [brandList, setBrandList] = useState<{ brands: SwitcherBrand[]; canAdd: boolean } | null>(null);
+  const brandsAsked = useRef(false);
+  const loadBrands = useCallback(async () => {
+    if (brandsAsked.current) return;
+    brandsAsked.current = true;
+    try {
+      const j = await (await fetch("/api/brands")).json();
+      if (j.ok) setBrandList({ brands: j.brands, canAdd: (user.role === "owner" || user.role === "admin") && Number(j.count) < Number(j.cap) });
+      else brandsAsked.current = false;
+    } catch { brandsAsked.current = false; /* the menu keeps showing the current brand */ }
+  }, [user.role]);
   // The row for the screen on show (rule 968), marked with `aria-current="page"` as well as the tint. A link with a query
   // (a conversation) matches its path and every parameter it names; the plain chat row only while no conversation or
   // specialist is open, so one row at most is current.
@@ -85,7 +106,6 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
       <ul className="grid gap-0.5">{rows}</ul>
     </div>
   );
-  const initial = (brandName || t.appName).trim().charAt(0);
   const specialists = AGENTS.filter((a) => a.id !== "noor");
   const planName = (N.plans as Record<string, string>)[user.plan] ?? user.plan;
 
@@ -93,10 +113,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   /** The brand you work on, and the bell beside it (outside the scrolling list, so its panel is never clipped). In the sheet the bell stays in the phone header. */
   const top = (bell: boolean) => (
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
-      <Link href={settingsHref(lang, "brands")} onClick={() => setOpen(false)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 hover:bg-background-muted/60">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[1.5px] border-border-strong bg-background-muted font-display text-lg font-bold text-foreground" aria-hidden>{initial}</span>
-        <span className="min-w-0"><span className="clip block text-sm font-semibold text-foreground" dir="auto">{brandName || (lang === "ar" ? "علامتك" : "Your brand")}</span><span className="block text-xs text-foreground-muted">{N.workspace}</span></span>
-      </Link>
+      <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />
       {bell && <NotificationCenter t={t} lang={lang} align="start" />}
     </div>
   );

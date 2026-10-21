@@ -22,9 +22,9 @@ import { appDict } from "@/lib/app-i18n";
 import * as govRoute from "@/app/api/governance/route";
 import * as rollbackRoute from "@/app/api/governance/rollback/route";
 import * as exportRoute from "@/app/api/activity/export/route";
-import GovPage from "@/app/[lang]/app/settings/governance/page";
-import InboxPage from "@/app/[lang]/app/page";
-import ActivityPage from "@/app/[lang]/app/activity/page";
+import GovPage from "@/app/[lang]/app/b/[brand]/settings/governance/page";
+import InboxPage from "@/app/[lang]/app/b/[brand]/page";
+import ActivityPage from "@/app/[lang]/app/b/[brand]/activity/page";
 import { coverageRow } from "./helpers/coverage";
 
 /**
