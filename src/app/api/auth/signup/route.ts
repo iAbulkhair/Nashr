@@ -7,6 +7,7 @@ import { countVerifySend, devCodeExposed, sendVerifyCode } from "@/lib/verify-em
 import { applyReferral, registerCode } from "@/lib/referral";
 import { captchaRefusal } from "@/lib/turnstile";
 import { getMember, withLoginLock } from "@/lib/team";
+import { addressBlocked } from "@/lib/email-hold";
 import { acct } from "@/lib/account-id";
 import { isPersonLockTimeout } from "@/lib/person";
 
@@ -36,8 +37,10 @@ export async function POST(req: Request) {
   try {
     account = await withLoginLock(email, async () => {
       // A member record that is not a login (off its roster, or a stale copy) still holds the address, as in Google sign-in.
-      const [login, member] = await Promise.all([getLogin(email), getMember(email)]);
-      if (login || member) return null;
+      // Account-id R2 (rule 2743): an address another person moved away from in place is held for 30 days (only a move
+      // in place writes a hold). The same answer as an existing account.
+      const [login, member, blocked] = await Promise.all([getLogin(email), getMember(email), addressBlocked(email)]);
+      if (login || member || blocked === "held") return null;
       return createUser({ email, name: String(b.name ?? ""), phone: String(b.phone ?? ""), password: b.password, lang: b.lang === "en" ? "en" : "ar" });
     });
   } catch (e) {

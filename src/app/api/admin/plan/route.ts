@@ -66,7 +66,7 @@ const videoLabel = (g: Grant<"all"> | undefined) => (g ? `all@${g.until}` : "pla
 //      Rules 243-244 and 316, tests/admin-deal.test.ts.
 /** One account's row: its record with this month's usage and chat. Two reads per account (usage and chat). */
 async function rowOf(u: User) {
-  const [usage, chat, mediaMicro] = await Promise.all([getUsage(acct(u)), chatStatus(u, route("chat").model), db.get<number>(mediaCostKey(acct(u))).catch(() => 0)]);
+  const [usage, chat, mediaMicro, owner] = await Promise.all([getUsage(acct(u)), chatStatus(u, route("chat").model), db.get<number>(mediaCostKey(acct(u))).catch(() => 0), accountByLogin(u.email).catch(() => null)]);
   // The list price, or an Agency account's deal price (Business's without a deal).
   const priceSar = priceOf(u);
   // Rule 1532: the same margin as the daily alert (src/lib/margin.ts): model cost plus this month's render cost.
@@ -80,6 +80,9 @@ async function rowOf(u: User) {
     renewedAt: u.renewedAt ?? null, suspended: isSuspended(u), suspendedUntil: isSuspended(u) ? suspensionEnd(u) : null, lang: u.lang,
     // Rule 776: when the owner proved the address (null: not yet, so the account reads as signed out until they do).
     emailVerifiedAt: u.emailVerifiedAt ?? null,
+    // L4 (rule 2748): whether the record's address signs in to THIS account. False for a record whose address another login
+    // took or never resolved (hand-edited data, a stopped move): the row still shows, marked, instead of the console hiding it.
+    signsIn: !!owner && acct(owner) === acct(u),
     seats: seatLimit(u), seatsOverride: u.seats ?? null,
     // Rule 1393: the active-brand cap and the founder override (POST /api/admin/brand-cap sets it).
     brandCap: brandCapFor(u), brandCapOverride: u.brandCap ?? null,

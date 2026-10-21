@@ -349,9 +349,10 @@ describe("rule 1996: OPAQUE_IDS is off in R1", () => {
     expect(read("docs/system/variables.md")).not.toContain("OPAQUE_IDS");
   });
   it("an owner move with data stays refused while it is off (the copy carries nothing)", () => {
+    // Rule 2746 (R2): the refusal applies exactly while the flag is off; with it on the move is in place and carries all.
     const src = read("src/lib/email-change.ts");
-    expect(src).toContain('if (await ownerHasData(u)) return { ok: false, error: "owner_has_data" };');
-    expect(src).toContain("may: async (cur) => !!cur.emailVerifiedAt && !(await ownerHasData(cur)),");
+    expect(src).toContain('if (!OPAQUE_IDS && (await ownerHasData(u))) return { ok: false, error: "owner_has_data" };');
+    expect(src).toContain("may: async (cur) => !!cur.emailVerifiedAt && !(!OPAQUE_IDS && (await ownerHasData(cur))),");
   });
 });
 

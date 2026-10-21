@@ -20,7 +20,7 @@ import type { FoundingSeat, PriceLock } from "./founding";
 import { SESSION_COOKIE, dropCookie, dropLegacyCookie, namesOf, readCookie } from "./cookie-names";
 import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, storedScope, type AccountId, type PersonId, type Scope } from "./keys";
 import type { Person } from "./person";
-import { acct, idForNewAccount, LoginIndex, loginIndexOf, type LoginIndexValue } from "./account-id";
+import { acct, idForNewAccount, LoginIndex, loginIndexOf, OPAQUE_IDS, type LoginIndexValue } from "./account-id";
 import { parseStored } from "./stored";
 import { MULTI_ORG } from "./multi-org";
 import { WS_HEADER, asHandle } from "./ws-path";
@@ -398,17 +398,23 @@ export async function releaseLogin(email: string, pid: string, opts: { locked?: 
  * Multi-workspace M2 (rule 2117, sign-up half; spec section 10, decision 11): with `MULTI_ORG` on every sign-up, the
  * password form and Google alike, makes that shape with an opaque `a_` account id, and the person's one trial is
  * spent on it (`trialUsedAt`, read by `createWorkspace`). With it off nothing changes.
+ *
+ * Account id R2 (rule 2740): with `OPAQUE_IDS` on every new account gets an `a_` id, whatever the shape, so an address
+ * whose old `user:{e}` or `person:{e}` still holds an account that moved in place never meets a new account at that key.
  */
 export async function createUser(input: { email: string; name: string; phone: string; password?: string; lang: "ar" | "en"; emailVerifiedAt?: string }, opts: { opaque?: boolean; person?: "p" | "legacy" } = {}): Promise<User> {
   const email = normalizeEmail(input.email);
   const now = new Date();
   const stamp = now.toISOString();
   const passHash = input.password ? await bcrypt.hash(input.password, 10) : undefined;
-  const [{ createPersonRecord, withPersonLock }, { newPersonId }] = await Promise.all([import("./person"), import("./multi-org")]);
+  const [{ createPersonRecord, withPersonLock }, { newPersonId }, { addressBlocked }] = await Promise.all([import("./person"), import("./multi-org"), import("./email-hold")]);
   // Tests may pick the shape (`"p"`, or `"legacy"` for a legacy owner while `MULTI_ORG` is mocked on); a route never does.
   const split = opts.person ? opts.person === "p" : MULTI_ORG;
+  // L3 (account-id R2, rule 2740): an account that moved in place keeps `user:{old}` holding its new address. An id
+  // derived from this address would overwrite it, so such an address gets an opaque id whatever `OPAQUE_IDS` says.
+  const moved = !(opts.opaque || OPAQUE_IDS || (split && MULTI_ORG)) && (await addressBlocked(email)) === "moved";
   const account: User = {
-    id: idForNewAccount(email, opts.opaque || (split && MULTI_ORG)),
+    id: idForNewAccount(email, opts.opaque || OPAQUE_IDS || (split && MULTI_ORG) || moved),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",

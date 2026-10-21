@@ -13,7 +13,7 @@ import { PasswordRules } from "./PasswordRules";
 import PasswordField from "./PasswordField";
 import { Turnstile } from "./Turnstile";
 import { safeNext } from "@/lib/safe-next";
-import { readInviteToken as readFragmentToken, withoutFragment } from "./inviteToken";
+import { readInviteToken as readFragmentToken, readRevertToken, withoutFragment } from "./inviteToken";
 import Scribble from "@/components/Scribble";
 import Face from "@/components/home/Face";
 import { SIGNUP_NEXT, shownSite } from "@/lib/signup-preview";
@@ -454,13 +454,31 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
  * fragment, which browsers never send to a server, so it stays out of server, proxy and edge logs and the Referer header,
  * the same way team invite links work. It is read once on the client, taken out of the address bar and history, and
  * posted in a JSON body. A `?token=` query is never read. Rules 546-547.
+ *
+ * Account-id R2 (rule 2744): the same page opens the REVERT link of an address move, #r=<64 hex>, mailed to the old
+ * address. The token is posted once to /api/auth/email-revert, which moves the login back, ends every session and
+ * answers a one-hour reset token; the form then sets the new password with it, as after a reset link.
  */
+const REVERT_COPY = {
+  ar: { done: "رجّعنا بريد الدخول القديم وطلّعنا كل الأجهزة. حط كلمة مرور جديدة الحين.", failed: "رابط الاسترجاع غير صالح أو انتهى أو انستخدم. تواصل مع الدعم من بريدك القديم." },
+  en: { done: "Your old sign-in email is back and every device was signed out. Set a new password now.", failed: "This undo link is invalid, expired or already used. Contact support from your old email." },
+} as const;
+
 export function ResetForm({ lang }: { lang: Lang }) {
   const r = useRouter();
   const tokenRef = useRef("");
+  const [revert, setRevert] = useState<"" | "done" | "failed">("");
   useEffect(() => {
     tokenRef.current ||= readFragmentToken(window.location.hash);
+    const undo = readRevertToken(window.location.hash);
     if (window.location.hash) window.history.replaceState(window.history.state, "", withoutFragment(window.location));
+    if (!undo) return;
+    void postJson("/api/auth/email-revert", { token: undo }).then((p) => {
+      if (succeeded(p) && typeof p.body.reset === "string") {
+        tokenRef.current = p.body.reset;
+        setRevert("done");
+      } else setRevert("failed");
+    });
   }, []);
   const S = PW[lang], rules = SU[lang].rules;
   const [pw, setPw] = useState("");
@@ -492,6 +510,7 @@ export function ResetForm({ lang }: { lang: Lang }) {
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t4" />{S.resetTitle}</span></h1>
+      {revert && <div className="mt-4"><Callout tone={revert === "done" ? "info" : "danger"}>{REVERT_COPY[lang][revert]}</Callout></div>}
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <Field label={S.resetTitle}>
           <PasswordField lang={lang} ref={pwRef} name="password" required autoFocus autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-describedby="reset-rules" />

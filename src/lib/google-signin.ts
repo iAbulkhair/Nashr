@@ -195,9 +195,11 @@ export async function resolveGoogle(id: GoogleIdentity, mode: "login" | "signup"
     }
     if (l) return { kind: "refused", error: "google_not_linked" };
     // A member record that is not on its roster still holds the address.
-    const { getMember } = await import("./team");
+    const [{ getMember }, { addressBlocked }] = await Promise.all([import("./team"), import("./email-hold")]);
     if (await getMember(id.email)) return { kind: "refused", error: "google_not_linked" };
     if (mode !== "signup") return { kind: "refused", error: "google_no_account" };
+    // Account-id R2 (rule 2743): an address another person moved away from in place is held (only a move in place writes a hold).
+    if ((await addressBlocked(id.email)) === "held") return { kind: "refused", error: "google_taken" };
     // No password (multi-workspace M1, rule 2132): the person has no hash, so it signs in with Google, or sets a password
     // with "forgot password". Google proved the address: the person and the account it owns are stamped in the same
     // write, under `lock:person` (reconciliation 11); a held person lock throws `person_lock_timeout` with nothing
@@ -237,6 +239,18 @@ export async function moveGoogleLink(from: string, to: string): Promise<void> {
   const holder = await db.get<string>(linkKey(sub));
   await db.del(subKey(from));
   if (holder === normalizeEmail(from)) await writeLink(to, sub);
+}
+
+/**
+ * Drop a login's Google link, both ways, when the caller already holds `lock:login` of that address (the move in place,
+ * account-id R2: a leftover link at the new address, or the link the revert ends). The reverse entry goes only while it
+ * names this login.
+ */
+export async function dropGoogleLinkLocked(login: string): Promise<void> {
+  const sub = await db.get<string>(subKey(login));
+  if (!sub) return;
+  const holder = await db.get<string>(linkKey(sub));
+  await Promise.all([db.del(subKey(login)), holder === normalizeEmail(login) ? db.del(linkKey(sub)) : Promise.resolve()]);
 }
 
 /** Drop this login's Google link, both ways. */
