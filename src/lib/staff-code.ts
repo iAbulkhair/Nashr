@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "./db";
 import { allow, clientIp, giveBack, retryLater } from "./rate";
+import { westernDigits } from "./verify-client";
 import { totpMatch } from "./totp";
 import { openStaffSecret, saveStaff, sealStaffSecret, sha, withStaffLock, type Staff } from "./staff";
 
@@ -24,8 +25,9 @@ export async function staffTryAccepted(req: Request, email: string): Promise<voi
 }
 
 /** A 6-digit code against `secret`, burning the step for this person. False for a wrong or already used code. */
-export async function staffTotpOnce(email: string, secret: string, code: unknown): Promise<boolean> {
-  if (typeof code !== "string" || !/^\d{6}$/.test(code)) return false;
+export async function staffTotpOnce(email: string, secret: string, typed: unknown): Promise<boolean> {
+  const code = typeof typed === "string" ? westernDigits(typed) : null;
+  if (code === null || !/^\d{6}$/.test(code)) return false;
   const step = totpMatch(secret, code, Date.now());
   if (step === null) return false;
   return db.setNx(`staffotp:used:${sha(email)}:${step}`, 1, 120);

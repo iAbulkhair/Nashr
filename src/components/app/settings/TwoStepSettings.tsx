@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { westernDigits } from "@/lib/verify-client";
 import type { Lang } from "@/lib/i18n";
 import Button from "@/components/ui/Button";
 import Callout from "@/components/ui/Callout";
@@ -140,7 +141,7 @@ export default function TwoStepSettings({ lang, forbidden }: { lang: Lang; forbi
 
   if (setup) {
     return (
-      <SettingsCard title={T.title} sub={T.scan} onSave={confirm} dirty={code.length > 0} valid={/^\d{6}$/.test(code.replace(/\s/g, ""))} busy={busy === "confirm"} status={status} saveLabel={T.confirm} savingLabel={T.confirming}>
+      <SettingsCard title={T.title} sub={T.scan} onSave={confirm} dirty={code.length > 0} valid={/^\d{6}$/.test(westernDigits(code).replace(/\s/g, ""))} busy={busy === "confirm"} status={status} saveLabel={T.confirm} savingLabel={T.confirming}>
         <div className="flex flex-wrap items-start gap-4">
           <QrCode value={setup.uri} label={T.qr} px={180} />
           <div className="grid gap-3">
