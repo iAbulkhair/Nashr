@@ -1,6 +1,6 @@
 # Paymob KSA billing (design, 2026-10-08)
 
-> **Status update (2026-10-18):** the founder chose Geidea instead of Paymob for card payments. The swap design is `docs/superpowers/specs/2026-10-18-geidea-payment-provider-design.md` (rules 2230-2259 reserved). Paymob stays off and stays in the code until that design's contract release.
+> **Status update (2026-10-18):** the founder chose Geidea instead of Paymob for card payments. The swap design is `docs/superpowers/specs/2026-10-18-geidea-payment-provider-design.md` (rules 2700-2729 reserved; first 2230-2259, renumbered 2026-10-21). Paymob stays off and stays in the code until that design's contract release.
 
 > **Status update (2026-10-12, from `git log origin/main` and the files named; the status line below is the state when the document was written):** merged as #279 (2026-10-08, in `production`), off until the founder adds the Paymob variables (`docs/system/variables.md` section 4a); a live test payment: unverified.
 

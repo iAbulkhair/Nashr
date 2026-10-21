@@ -1,6 +1,6 @@
 # Geidea replaces Paymob for card payments (design, 2026-10-18)
 
-Status: **spec only**. No code, variable, route or stored record has changed. Card payments stay **off** until the founder says to switch them on, and going live (real money) is a separate founder decision after that. Branch `claude/geidea-swap-spec`, no pull request. Rules **2230-2259** are reserved for the build (section 9). Flows section: the next free number when the build lands (87 is the last on `main` at `6b8090a6`).
+Status: **spec only**. No code, variable, route or stored record has changed. Card payments stay **off** until the founder says to switch them on, and going live (real money) is a separate founder decision after that. Branch `claude/geidea-swap-spec`, no pull request. Rules **2700-2729** are reserved for the build (section 9). Flows section: the next free number when the build lands (87 is the last on `main` at `6b8090a6`).
 
 Decision: on 2026-10-18 (quiz answers) the founder chose Geidea (https://geidea.net/ksa/ar) instead of Paymob KSA for card payments. The company papers (commercial registration, VAT number, IBAN) were started the same day, and an accountant and a lawyer have been contacted. The founder checklist job `paymob` is retitled Geidea.
 
@@ -73,22 +73,22 @@ Hosts are constants in code, never user input; Geidea is called with plain `fetc
 | Gate | `paymobConfig()`: secret key, public key, HMAC secret, card integration id; live keys need `PAYMOB_LIVE=1` (rule 700) | `geideaConfig()`: `GEIDEA_PUBLIC_KEY` + `GEIDEA_API_PASSWORD` (G3) | New gate, same fail-closed rules. Geidea keys cannot be read as test or live (G2), so the live guard moves to the deploy (section 6.6). |
 | Start a payment | `POST /v1/intention/` (Token auth), then the unified checkout `?publicKey&clientSecret` | Create session (G4, signed per G5, Basic auth), then redirect to `/hpp/checkout/?{sessionId}` | `createCheckout` returns `{orderId: null, url}`. Geidea creates its order id only when the customer pays, and the session id is not an order. |
 | Our reference | `special_reference` = `pmi_` + 24 hex, echoed as `order.merchant_order_id`, **not** covered by the HMAC | `merchantReferenceId` = a random UUID v4, echoed in the callback, **covered by the signature** (G7) | New reference format, validated as a UUID. Because the reference is signed, a callback can no longer be moved onto another intent. |
-| Amount | `amount_cents` (halalas, integer) | `amount` (riyals, 2 decimals) | Integer conversion both ways, no floating point in the comparison (rule 2236). |
-| Transaction id | Positive integer (`obj.id`) | `orderId` UUID, one per order, holding every attempt (G8) | `PaymentTxn.id` becomes a string (rule 2230). Exactly-once is per Geidea order. |
-| Callback signature | HMAC-SHA512 hex of 20 fields, `?hmac=` in the query | HMAC-SHA256 Base64 of 7 values (G7), `signature` in the body | `verifyWebhook` gets the signature from the event (rule 2232), compares with `sameSecret`. |
-| Saved card arrives | A separate `TOKEN` callback, matched by order pointer and email | `tokenId` + `agreementId` inside the paid order callback (G9) | The card rides on the transaction (rule 2233). No email match is needed: the signed reference already names our intent. |
-| Renewal (MIT) | A Moto-integration intention, then `payments/pay` with the token | A Merchant session, then `pay/token` (G10) | `savedCard.charge` takes the card's token **and** agreement id (rule 2234). The switch that offers it is `GEIDEA_MIT=1`, the counterpart of `PAYMOB_INTEGRATION_ID_MOTO`. |
-| Refund | `void_refund/refund {transaction_id, amount_cents}`, full only from the console | `refund {orderId, refundAmount}` (G12): full or partial, several times | Full refund at parity (rule 2254). Partial refund only on the founder's decision (rule 2255). |
-| Dashboard refund | Arrives as a child or refunded transaction; ignored (rule 1301) | Arrives as a callback for the **same** order with `PartiallyRefunded` / refunded totals | The order's done marker already answers it. Any order with a refunded total is ignored and logged for the founder (rule 2256). |
-| Missing callback | Paymob retries (assumed in the Paymob spec, never verified) | No retry policy published, and no callback while InProgress (G8) | New reconciliation by fetching the order (G14, rule 2248). |
-| Phone | Required (`need_phone`) | Not required for cards (G4) | `need_phone` only for Paymob (rule 2249). |
-| Webhook route | `POST /api/billing/paymob/webhook` | `POST /api/billing/geidea/webhook` | New route, CSRF exemption `/api/billing/geidea/`, the same order of checks (rule 2245). |
+| Amount | `amount_cents` (halalas, integer) | `amount` (riyals, 2 decimals) | Integer conversion both ways, no floating point in the comparison (rule 2706). |
+| Transaction id | Positive integer (`obj.id`) | `orderId` UUID, one per order, holding every attempt (G8) | `PaymentTxn.id` becomes a string (rule 2700). Exactly-once is per Geidea order. |
+| Callback signature | HMAC-SHA512 hex of 20 fields, `?hmac=` in the query | HMAC-SHA256 Base64 of 7 values (G7), `signature` in the body | `verifyWebhook` gets the signature from the event (rule 2702), compares with `sameSecret`. |
+| Saved card arrives | A separate `TOKEN` callback, matched by order pointer and email | `tokenId` + `agreementId` inside the paid order callback (G9) | The card rides on the transaction (rule 2703). No email match is needed: the signed reference already names our intent. |
+| Renewal (MIT) | A Moto-integration intention, then `payments/pay` with the token | A Merchant session, then `pay/token` (G10) | `savedCard.charge` takes the card's token **and** agreement id (rule 2704). The switch that offers it is `GEIDEA_MIT=1`, the counterpart of `PAYMOB_INTEGRATION_ID_MOTO`. |
+| Refund | `void_refund/refund {transaction_id, amount_cents}`, full only from the console | `refund {orderId, refundAmount}` (G12): full or partial, several times | Full refund at parity (rule 2724). Partial refund only on the founder's decision (rule 2725). |
+| Dashboard refund | Arrives as a child or refunded transaction; ignored (rule 1301) | Arrives as a callback for the **same** order with `PartiallyRefunded` / refunded totals | The order's done marker already answers it. Any order with a refunded total is ignored and logged for the founder (rule 2726). |
+| Missing callback | Paymob retries (assumed in the Paymob spec, never verified) | No retry policy published, and no callback while InProgress (G8) | New reconciliation by fetching the order (G14, rule 2718). |
+| Phone | Required (`need_phone`) | Not required for cards (G4) | `need_phone` only for Paymob (rule 2719). |
+| Webhook route | `POST /api/billing/paymob/webhook` | `POST /api/billing/geidea/webhook` | New route, CSRF exemption `/api/billing/geidea/`, the same order of checks (rule 2715). |
 | Founding offer | `claimOnPayment` / `newLock` write `by: "paymob"` | Same calls | `by` = the provider's name. Nothing else in `src/lib/founding.ts` changes. |
 | Price lock renewal | `priceFor("renewal", …, lockedBaseHalalas)` | Same | None. The renewal session carries the locked price. |
 | ZATCA seam | `invoiceForPayment({provider:"paymob", providerRef: txnId})` | `provider:"geidea"`, `providerRef: orderId` | The type union only. |
 | Console audit | actor `paymob`; `paymob_paid`, `paymob_mismatch`, `paymob_unapplied`, `paymob_locked`, `paymob_refund` | actor `geidea`; `geidea_paid` … | `{provider}_` prefix. No console reader parses these names (checked 2026-10-18: no component under `src/components/admin` reads them). |
-| Integrations page | Row `paymob`: names `PAYMOB_*`, the `paymob_live` check | Row `geidea`: names `GEIDEA_*` | New row (rule 2257). The Paymob row stays until the contract release. |
-| Customer copy | Privacy text, help "processors" answer (`src/lib/help.ts`), legal drafts name Paymob | Geidea | Step 6 (rule 2258), with the lawyer's review of the legal drafts. |
+| Integrations page | Row `paymob`: names `PAYMOB_*`, the `paymob_live` check | Row `geidea`: names `GEIDEA_*` | New row (rule 2727). The Paymob row stays until the contract release. |
+| Customer copy | Privacy text, help "processors" answer (`src/lib/help.ts`), legal drafts name Paymob | Geidea | Step 6 (rule 2728), with the lawyer's review of the legal drafts. |
 
 ## 4. The seam's types (code only, no stored shape)
 
@@ -134,7 +134,7 @@ Paymob was never switched on: no `PAYMOB_*` value is set on production or stagin
 
   That is safe in the rule 679 sense: nothing is lost and nothing is charged twice.
 
-**Release 2 (contract, rule 2259).** This is a later release, and only after Geidea has taken live payments that the founder has checked. It removes:
+**Release 2 (contract, rule 2729).** This is a later release, and only after Geidea has taken live payments that the founder has checked. It removes:
 - `src/lib/paymob.ts` and `/api/billing/paymob/webhook`.
 - The CSRF entry `/api/billing/paymob/` and the `paymob` union members.
 - The `card_token` event kind and the `PAYMOB_*` names (variables.md, `.env.example`, the Integrations row).
@@ -180,7 +180,7 @@ The order of checks is the same as Paymob's:
 
 Nothing in the body is used before step 6. Then:
 
-- **Ignored (200).** `merchantReferenceId` is not a UUID; no intent has that reference; or the order has a refunded total above 0 (`totalRefundedAmount`, `detailedStatus` PartiallyRefunded or Refunded). The last case is logged `geidea_external_refund` for the founder (rule 2256).
+- **Ignored (200).** `merchantReferenceId` is not a UUID; no intent has that reference; or the order has a refunded total above 0 (`totalRefundedAmount`, `detailedStatus` PartiallyRefunded or Refunded). The last case is logged `geidea_external_refund` for the founder (rule 2726).
 - **Exactly once.** If `pay:done:geidea:{orderId}` is set, answer 200 `already`. Otherwise take the lock and run the same `applyTransaction`. The done marker is written last, so a failure halfway answers 500 and the next delivery or the reconciliation (6.3) completes it.
 - **Cross-checks (rule 2051).**
   - The amount in halalas equals the intent's and `priceFor`'s.
@@ -214,14 +214,14 @@ Fallback, not built: if Geidea says mada cannot be charged MIT, or that a fixed 
 
 ### 6.5 Refunds (founder console)
 
-- **Full refund at parity** (rule 2254). `POST /api/admin/payments/{email} {action:"refund", id, reason}` keeps the founder only, the second factor and the required reason. Then:
+- **Full refund at parity** (rule 2724). `POST /api/admin/payments/{email} {action:"refund", id, reason}` keeps the founder only, the second factor and the required reason. Then:
   1. It finds the payment and checks that `pay:txn:geidea:{orderId}` names the same account and payment id.
   2. It refunds `amountHalalas` once (G12), guarded by the refunded marker and the lock.
   3. It voids the payment (a pack's payment with its pack).
   4. For a plan or renewal payment, it ends the plan (rule 1300), and with it the seat and the lock (rule 1708).
 
   Errors: `not_online` replaces `not_paymob`, `refund_failed` replaces `paymob_refund_failed`. During expand both old and new codes are answered and read.
-- **Partial refund** (rule 2255, built only if the founder says yes to F5). Geidea allows several partial refunds up to the paid total (G12). That makes the founding offer's 7-day refund (rule 1707: paid minus used credits, shown to the founder today as a figure only) payable for the first time. The proposal:
+- **Partial refund** (rule 2725, built only if the founder says yes to F5). Geidea allows several partial refunds up to the paid total (G12). That makes the founding offer's 7-day refund (rule 1707: paid minus used credits, shown to the founder today as a figure only) payable for the first time. The proposal:
   - The console sends `amountHalalas`, between 1 and the paid total minus what was already refunded.
   - The refund is recorded on the payment as `Payment.refund = {amountHalalas, reason, by, at, partial}` (an optional field, expand).
   - `pay:txn` keeps `refundedHalalas`, so a retry never refunds twice. Geidea's own 800.007 and 800.008 are a second guard.
@@ -263,49 +263,51 @@ When both Paymob and Geidea are configured during the expand release, Geidea is 
 
 ## 9. Build order and rule numbers
 
+**Renumbered 2026-10-21:** this spec first reserved 2230-2259, but main has since used 2230-2232 (staff login key form), 2240 (key check rate) and 2250 (connector leftovers). Every rule here moved by +470 to 2700-2729, checked free on 2026-10-21 on main, every local branch and `origin/*`. The list below is the 2026-10-18 check, kept as history.
+
 Rules 2230-2259 were checked free on 2026-10-18:
 - `origin/main` `docs/system/tests/` ends at 2140-2149.
 - Local branches use up to 2213 (2160-2179 and 2200-2207 integrations, 2192 lock, 2210-2213 Zid).
 - 2150-2159 are held by help URLs and 2180-2199 by the Salla Easy Mode spec.
 - The only open pull request, #387, uses 1980-1999.
 
-The reservation is noted in the session notes folder. The build adds `docs/system/tests/2230-geidea-swap.md` (rule 788).
+The reservation is noted in the session notes folder. The build adds `docs/system/tests/2700-geidea-swap.md` (rule 788).
 
 Each step is one commit on one branch, with its tests in `tests/geidea.test.ts` (and the existing `tests/paymob.test.ts`, `tests/payment-storage-seams.test.ts` and `tests/founding.test.ts` kept green). There is one draft pull request at the end (rule 772). Steps 1-6 are release 1 (expand), with payments off. Step 7 is release 2 (contract).
 
 | Step | Rules | What | Needs before it |
 |---|---|---|---|
 | 0 | none | Founder and Geidea: the merchant account with Payment Gateway, test credentials, MIT and refunds switched on, and answers to section 10 | Commercial registration, IBAN |
-| 1 Seam | 2230 | `PaymentTxn.id` / `orderId` are strings; `paymentIdFor("paymob", n)` gives every existing Paymob payment id unchanged (golden ids) | none |
-| | 2231 | Provider name union; `Billing.provider` read as either; `billingLocked` and `renewalDue` accept both; a stored Paymob record reads unchanged | |
-| | 2232 | `parseEvent(body, query)` carries the signature; Paymob still verifies `?hmac=` exactly as rules 2053-2054 pin | |
-| | 2233 | A card may ride on a paid transaction; billing saves it under the account lock, matched to the intent's account only | |
-| | 2234 | `savedCard.prepare/charge` carry `{token, agreementId}`; Paymob ignores the agreement and keeps rule 2055 | |
-| 2 Adapter | 2235 | `geideaConfig()`: both names set or null; `GEIDEA_LIVE` honoured only on a production deploy; KSA host constant; the provider object carries no key; nothing secret in errors or logs | Step 1 |
-| | 2236 | Riyals and halalas convert with integer math only: `34385` ↔ `"343.85"`; a callback amount with more than 2 decimals, negative, non-finite or non-numeric is refused | |
-| | 2237 | Create session: the body (plan with `cardOnFile`, `cofAgreement` Unscheduled, `initiatedBy` Internet; pack without), Basic auth, the G5 signature against a fixed sample, the redirect URL built from the session id only | |
-| | 2238 | Callback signature (G7): good, tampered field (each of the 7), reordered, wrong key, short, non-Base64, missing; never compared with `===` (source scan) | |
-| | 2239 | Order parsing: paid only on Success + Paid + 000/000; cancelled by user and Failed are declined; InProgress pending; any refunded total is refunded; `isTest` sets the live flag | |
-| | 2240 | Card from a paid order: `tokenId` and `agreementId` validated as UUIDs, brand, last 4 from the masked number, expiry; 000.004 gives no card | |
-| | 2241 | MIT: a Merchant session with token and agreement, then `pay/token` signed over public key + session id + timestamp; 750.005 / 750.006 are declines with the code kept | |
-| | 2242 | Refund: the G12 body and signature, any amount from 0.01 SAR to the paid total; 800.x answers give `PaymentError` `geidea_refund_failed:{status}` | |
-| | 2243 | `fetchByReference` (G14), parsed by the same parser | |
-| 3 Billing | 2244 | Provider choice: Geidea when its gate is open, else Paymob; both gives Geidea plus one log line; each webhook answers 404 unless its provider is chosen | Step 2 |
-| | 2245 | `POST /api/billing/geidea/webhook`: the order of checks in 6.2, CSRF exemption `/api/billing/geidea/`, key-ratchet entry, permissions row, 500 on a failure halfway | |
-| | 2246 | `pay:*` keys from `src/lib/keys.ts`; refs are UUID v4; the intent is stored before the session; old `pmi_` refs still read | |
-| | 2247 | Exactly once per Geidea order: the paid callback twice, then the refund callback for the same order, gives one payment, one `txns` entry | |
-| | 2248 | Reconciliation (6.3): the status route (open, 60 s to 48 h, once per 20 s) and the cron sweep (20 min to 48 h, 50 a run, `pmap` 5) apply a paid order whose callback never came, through the same cross-checks | |
-| | 2249 | Checkout no longer needs a phone for Geidea; the customer object holds name and email only; `provider_error` (the page reads it and the old `paymob_error`) | |
-| | 2250 | Account deletion removes both providers' card and last-checkout keys and calls Geidea's delete-token; "remove card" does the same; the data download names provider references, never a token | |
-| 4 Renewals | 2251 | Renewal through Geidea MIT at `priceFor` (lock rule 1706 kept); the rule 1956 re-check unchanged; a pending charge settled by the reconciliation | Step 3; F1 answered |
-| | 2252 | A declined renewal, 750.005 or an error leads to past due, grace, then lock, exactly as rules 710-714; 750.005 also drops the card | |
-| | 2253 | Reserved: Geidea Subscriptions fallback (6.4), only if F1 says so | |
-| 5 Refunds | 2254 | Full console refund through Geidea: once, voids the payment, ends the plan (rule 1300) and the founding seat and lock (rule 1708); `not_online` / `refund_failed` alongside the old codes | Step 3 |
-| | 2255 | Partial refund (6.5), only on the founder's yes to F5 | F5 |
-| | 2256 | A refund made in Geidea's portal changes nothing on the account (rule 1301 parity) and writes `geidea_external_refund` for the founder | |
-| 6 Config and copy | 2257 | variables.md section 4b, `.env.example`, the Integrations row `geidea` (names and presence only), flows section, permissions rows, `docs/system/tests/2230-geidea-swap.md` | Step 3 |
-| | 2258 | Customer copy: privacy text and the help "processors" answer name Geidea as the card processor; the billing page says "payment gateway", not a brand; `?pay=return` read alongside `?paymob=return`. No claim that payment is live until it is | Lawyer for the legal drafts |
-| 7 Contract | 2259 | Release 2: Paymob removed (section 5), after live Geidea payments are checked and the read-only key count shows 0 `paymob:*` keys | Founder |
+| 1 Seam | 2700 | `PaymentTxn.id` / `orderId` are strings; `paymentIdFor("paymob", n)` gives every existing Paymob payment id unchanged (golden ids) | none |
+| | 2701 | Provider name union; `Billing.provider` read as either; `billingLocked` and `renewalDue` accept both; a stored Paymob record reads unchanged | |
+| | 2702 | `parseEvent(body, query)` carries the signature; Paymob still verifies `?hmac=` exactly as rules 2053-2054 pin | |
+| | 2703 | A card may ride on a paid transaction; billing saves it under the account lock, matched to the intent's account only | |
+| | 2704 | `savedCard.prepare/charge` carry `{token, agreementId}`; Paymob ignores the agreement and keeps rule 2055 | |
+| 2 Adapter | 2705 | `geideaConfig()`: both names set or null; `GEIDEA_LIVE` honoured only on a production deploy; KSA host constant; the provider object carries no key; nothing secret in errors or logs | Step 1 |
+| | 2706 | Riyals and halalas convert with integer math only: `34385` ↔ `"343.85"`; a callback amount with more than 2 decimals, negative, non-finite or non-numeric is refused | |
+| | 2707 | Create session: the body (plan with `cardOnFile`, `cofAgreement` Unscheduled, `initiatedBy` Internet; pack without), Basic auth, the G5 signature against a fixed sample, the redirect URL built from the session id only | |
+| | 2708 | Callback signature (G7): good, tampered field (each of the 7), reordered, wrong key, short, non-Base64, missing; never compared with `===` (source scan) | |
+| | 2709 | Order parsing: paid only on Success + Paid + 000/000; cancelled by user and Failed are declined; InProgress pending; any refunded total is refunded; `isTest` sets the live flag | |
+| | 2710 | Card from a paid order: `tokenId` and `agreementId` validated as UUIDs, brand, last 4 from the masked number, expiry; 000.004 gives no card | |
+| | 2711 | MIT: a Merchant session with token and agreement, then `pay/token` signed over public key + session id + timestamp; 750.005 / 750.006 are declines with the code kept | |
+| | 2712 | Refund: the G12 body and signature, any amount from 0.01 SAR to the paid total; 800.x answers give `PaymentError` `geidea_refund_failed:{status}` | |
+| | 2713 | `fetchByReference` (G14), parsed by the same parser | |
+| 3 Billing | 2714 | Provider choice: Geidea when its gate is open, else Paymob; both gives Geidea plus one log line; each webhook answers 404 unless its provider is chosen | Step 2 |
+| | 2715 | `POST /api/billing/geidea/webhook`: the order of checks in 6.2, CSRF exemption `/api/billing/geidea/`, key-ratchet entry, permissions row, 500 on a failure halfway | |
+| | 2716 | `pay:*` keys from `src/lib/keys.ts`; refs are UUID v4; the intent is stored before the session; old `pmi_` refs still read | |
+| | 2717 | Exactly once per Geidea order: the paid callback twice, then the refund callback for the same order, gives one payment, one `txns` entry | |
+| | 2718 | Reconciliation (6.3): the status route (open, 60 s to 48 h, once per 20 s) and the cron sweep (20 min to 48 h, 50 a run, `pmap` 5) apply a paid order whose callback never came, through the same cross-checks | |
+| | 2719 | Checkout no longer needs a phone for Geidea; the customer object holds name and email only; `provider_error` (the page reads it and the old `paymob_error`) | |
+| | 2720 | Account deletion removes both providers' card and last-checkout keys and calls Geidea's delete-token; "remove card" does the same; the data download names provider references, never a token | |
+| 4 Renewals | 2721 | Renewal through Geidea MIT at `priceFor` (lock rule 1706 kept); the rule 1956 re-check unchanged; a pending charge settled by the reconciliation | Step 3; F1 answered |
+| | 2722 | A declined renewal, 750.005 or an error leads to past due, grace, then lock, exactly as rules 710-714; 750.005 also drops the card | |
+| | 2723 | Reserved: Geidea Subscriptions fallback (6.4), only if F1 says so | |
+| 5 Refunds | 2724 | Full console refund through Geidea: once, voids the payment, ends the plan (rule 1300) and the founding seat and lock (rule 1708); `not_online` / `refund_failed` alongside the old codes | Step 3 |
+| | 2725 | Partial refund (6.5), only on the founder's yes to F5 | F5 |
+| | 2726 | A refund made in Geidea's portal changes nothing on the account (rule 1301 parity) and writes `geidea_external_refund` for the founder | |
+| 6 Config and copy | 2727 | variables.md section 4b, `.env.example`, the Integrations row `geidea` (names and presence only), flows section, permissions rows, `docs/system/tests/2700-geidea-swap.md` | Step 3 |
+| | 2728 | Customer copy: privacy text and the help "processors" answer name Geidea as the card processor; the billing page says "payment gateway", not a brand; `?pay=return` read alongside `?paymob=return`. No claim that payment is live until it is | Lawyer for the legal drafts |
+| 7 Contract | 2729 | Release 2: Paymob removed (section 5), after live Geidea payments are checked and the read-only key count shows 0 `paymob:*` keys | Founder |
 
 Going live is not a build step. It is the founder's, in this order:
 1. Test credentials go in staging's hPanel.
@@ -322,7 +324,7 @@ Going live is not a build step. It is the founder's, in this order:
 - **F2. VAT.** Prices are shown ex-VAT and the code adds 15% (`PAYMOB_CHARGES_VAT = true`, renamed `CHARGES_VAT`). The company cannot charge VAT without a VAT number. Is the number issued before the first card payment? The accountant decides; until then the build keeps the constant and the go-live step checks it.
 - **F3. Payment methods in v1.** Cards only (mada, Visa, Mastercard), or also Amex, Apple Pay (needs Geidea's domain file on thakeen.com) and STC Pay? Default: mada, Visa and Mastercard only.
 - **F4. Customer data sent to Geidea.** Name and email only (default), or also the phone?
-- **F5. Partial refund.** Build it (rule 2255) so the founding offer's 7-day refund (paid minus used credits) can be paid out? Default: yes, ending the plan, as the founding spec says. F5b: is the partner's commission voided in full or pro rata on a partial refund? Default: in full.
+- **F5. Partial refund.** Build it (rule 2725) so the founding offer's 7-day refund (paid minus used credits) can be paid out? Default: yes, ending the plan, as the founding spec says. F5b: is the partner's commission voided in full or pro rata on a partial refund? Default: in full.
 - **F6. Rule 1301 carry-over.** A refund made in Geidea's portal still changes nothing on the account. Keep that (default), or should a portal refund end the plan too?
 - **F7. Confirm** that no `PAYMOB_*` value was ever set on production or staging, so no Paymob record exists.
 - **F8. Paymob account.** Close it, or keep it unused until the contract release? Default: keep until release 2.

@@ -1,5 +1,7 @@
 # Salla Easy Mode: tokens by webhook, claimed by a code shown inside Salla — design
 
+> **Status update (2026-10-21):** the base this spec was cut from reached main in #393 (rules 2160-2179 and 2200-2209). Rule 2192 (the owned lock in `fresh.ts`) is built and goes to main in PR #424, together with Zid's early refresh: the registry's `oauth.refreshLeadDays` and `refreshDue` (rules 2210-2211). So section 8.1's rule 2193 should set Salla's 3-day window through `refreshLeadDays` rather than add a second test, and its cron pass should build on rule 2179's keep-alive (and 2212) instead of adding a second pass. Rules 2180-2191 and 2193-2199 are still unused on main. The design still waits on the founder's approval before any plan or code.
+
 Status: design only, no code. Written 2026-10-18 on branch `claude/salla-easy-mode-spec`, cut from the local branch
 `claude/api-platform-integrations-ce2972` (`2cb2b779`, rules 2160-2176, not pushed). That base is needed because the
 design builds on `tokenExpiry` (rule 2176). The founder approves the design before any plan or code.
