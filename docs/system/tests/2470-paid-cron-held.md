@@ -21,3 +21,5 @@ Status on 2026-10-20 on branch `claude/lucid-faraday-kq261a`: built after the fo
 | 2484 | `cronreport:{job}:{period}` holds counts only, never an email or scope | `tests/paid-cron-held.test.ts` ("rules 2484-2485") | — |
 | 2485 | The admin overview shows the last report beside the heartbeat | `tests/paid-cron-held.test.ts` ("rules 2484-2485": `cronStatuses`); the Usage page line is not render-tested | — |
 | 2486 | `scripts/lost-scheduled-charges.ts` lists, read only, the scheduled charges lost before this release (a routine period's unsettled charges less the one its recorded run delivered; a handoff item left `running` past its lock, marked "check"), and never lists one the new sweep handles (a receipt or a claim hold) | `tests/lost-charges.test.ts` ("rule 2486": also an opaque-id account found by its id) | — |
+
+The held-routine Run button and the Usage page's cron counts, which no browser reached, are rendered by `tests/held-routine-screens.test.ts` (rules 2530-2532, `docs/system/tests/2530-held-routine-screens.md`).

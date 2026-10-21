@@ -86,6 +86,11 @@ function MarginSection({ lang, m }: { lang: "ar" | "en"; m: Overview["margin"] }
   );
 }
 
+/** The scheduled jobs' heartbeats (rule 1015), each with its last batch's counts (rules 2484-2485). Exported for its render test. */
+export function CronList({ crons, O }: { crons: NonNullable<Overview["crons"]>; O: (typeof OV)["en"] }) {
+  return <ul className="mt-2 grid gap-2 sm:grid-cols-4 text-sm">{crons.map((c) => <li key={c.job} className="flex flex-col rounded-lg bg-background-muted p-2"><span className="flex justify-between"><span dir="ltr">{c.job}</span><b className={c.status === "stale" ? "text-danger" : ""}>{c.status === "stale" ? O.cronStale : c.status === "waiting" ? O.cronWaiting : O.cronOk}</b></span><span className="tnum text-xs text-foreground-muted" dir="ltr">{c.lastRunAt ? c.lastRunAt.slice(0, 16).replace("T", " ") + " UTC" : "—"}</span>{c.report && <span className="tnum text-xs text-foreground-muted" data-cron-report={c.job}>{O.cronReport.replace("{d}", String(c.report.alreadyDone)).replace("{p}", String(c.report.processed)).replace("{h}", String(c.report.held)).replace("{f}", String(c.report.failed)).replace("{r}", String(c.report.remaining)).replace("{t}", String(c.report.total))}</span>}</li>)}</ul>;
+}
+
 /** Founder console, Usage (/{lang}/admin/usage): active users, feature use, events per day and platform health. */
 export default function Usage({ lang, keySession }: SectionProps) {
   const ended = useAdminEnded();
@@ -113,7 +118,7 @@ export default function Usage({ lang, keySession }: SectionProps) {
             <p className="mt-2 text-xs text-foreground-muted">Uptime and p95 latency: an external monitor on /api/health?store=1 (docs/system/flows.md, monitoring).</p>
           </section>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{O.crons}</h2>
-            <ul className="mt-2 grid gap-2 sm:grid-cols-4 text-sm">{(ov.crons ?? []).map((c) => <li key={c.job} className="flex flex-col rounded-lg bg-background-muted p-2"><span className="flex justify-between"><span dir="ltr">{c.job}</span><b className={c.status === "stale" ? "text-danger" : ""}>{c.status === "stale" ? O.cronStale : c.status === "waiting" ? O.cronWaiting : O.cronOk}</b></span><span className="tnum text-xs text-foreground-muted" dir="ltr">{c.lastRunAt ? c.lastRunAt.slice(0, 16).replace("T", " ") + " UTC" : "—"}</span>{c.report && <span className="tnum text-xs text-foreground-muted" data-cron-report={c.job}>{O.cronReport.replace("{d}", String(c.report.alreadyDone)).replace("{p}", String(c.report.processed)).replace("{h}", String(c.report.held)).replace("{f}", String(c.report.failed)).replace("{r}", String(c.report.remaining)).replace("{t}", String(c.report.total))}</span>}</li>)}</ul>
+            <CronList crons={ov.crons ?? []} O={O} />
             <p className="mt-2 text-xs text-foreground-muted">{O.cronNote}</p>
           </section>
         </div>
