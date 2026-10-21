@@ -427,7 +427,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
     expect(await Promise.all(recKeys.map((k) => db.get(k)))).toEqual(after);
   });
 
-  it("never overwrites: a pointer naming another link, a record of another login, a half-stamped record, an answer that would change and a differing brand choice are counted and left", async () => {
+  it("--apply never overwrites: a pointer naming another link, a record of another login, a half-stamped record and an answer that would change are counted and left; a differing M1-era brand choice takes the legacy one (round 2, S-3)", async () => {
     const [a, b, c, d] = [await twoAccounts(), await twoAccounts(), await twoAccounts(), await twoAccounts()];
     // a: its M1-era pointer already names another link.
     const fa = (await createFeed(a.email, sc(a.uH), "ar")) as string;
@@ -445,7 +445,8 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
     const row = (await db.get<Record<string, unknown>>(accountKey.membership(aidOf(d.H), d.pid)))!;
     await db.set(accountKey.membership(aidOf(d.H), d.pid), { ...row, disabled: "seats" });
     expect(await live(fd)).toBe(200);
-    // d: an M1-era brand choice that differs from the legacy one.
+    // d: an M1-era brand choice that differs from the legacy one. M3 reads the legacy key first, so that is the person's
+    // choice today; M4 reads only the M1-era key.
     await db.set(accountKey.activeBrand(d.email), "default");
     await db.set(personKey.activeBrand(d.pid, aidOf(d.H)), "other1");
 
@@ -453,17 +454,92 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
       FEED_KEYS.rec(hashFeedToken(fa)), personKey.feedOf(a.pid, aidOf(a.H)),
       bKey, personKey.bookOf(b.pid, aidOf(b.H), "calcom"),
       cKey, personKey.feedOf(c.pid, aidOf(c.H)),
-      FEED_KEYS.rec(hashFeedToken(fd)), personKey.feedOf(d.pid, aidOf(d.H)), personKey.activeBrand(d.pid, aidOf(d.H)),
+      FEED_KEYS.rec(hashFeedToken(fd)), personKey.feedOf(d.pid, aidOf(d.H)),
     ];
     const snapshot = await Promise.all(keys.map((k) => db.get(k)));
+    const dry = await runLinks({ apply: false });
+    expect(dry.brandsAligned).toBeGreaterThanOrEqual(1);
+    expect(await db.get(personKey.activeBrand(d.pid, aidOf(d.H)))).toBe("other1");
     const r = await runLinks({ apply: true });
     expect(r.pointerConflicts).toBeGreaterThanOrEqual(1);
     expect(r.loginConflicts).toBeGreaterThanOrEqual(1);
     expect(r.malformed).toBeGreaterThanOrEqual(1);
     expect(r.holdsDiffer).toBeGreaterThanOrEqual(1);
-    expect(r.brandConflicts).toBeGreaterThanOrEqual(1);
+    expect(r.retired).toBe(0);
     expect(await Promise.all(keys.map((k) => db.get(k)))).toEqual(snapshot);
     expect(await live(fd)).toBe(200);
+    expect(r.brandsAligned).toBeGreaterThanOrEqual(1);
+    expect(await db.get(personKey.activeBrand(d.pid, aidOf(d.H)))).toBe("default");
+    expect(await db.get(accountKey.activeBrand(d.email))).toBe("default");
+    const again = await runLinks({ apply: false });
+    expect(again.brandsAligned).toBe(0);
+  });
+
+  it("--retire revokes what --apply leaves (an answer that would change, a malformed record) through the app's own revoke; the dry run splits them into live and dead; conflicts stay (round 2, S-1)", async () => {
+    const [a, b, c, d] = [await twoAccounts(), await twoAccounts(), await twoAccounts(), await twoAccounts()];
+    // a: pointer conflict, b: login conflict. Both stay as they are under --retire.
+    const fa = (await createFeed(a.email, sc(a.uH), "ar")) as string;
+    await db.set(personKey.feedOf(a.pid, aidOf(a.H)), "f".repeat(64));
+    const bb = (await createBook(b.email, sc(b.uH), "calcom", "ar")) as string;
+    const bKey = BOOK_KEYS.rec(hashBookToken(bb));
+    await db.set(bKey, { ...(await db.get<Record<string, unknown>>(bKey))!, login: "someone-else@test.example" });
+    // c: one id without the other: dead in M3.
+    const fc = (await createFeed(c.email, sc(c.uH), "ar")) as string;
+    const cKey = FEED_KEYS.rec(hashFeedToken(fc));
+    await db.set(cKey, { ...(await db.get<Record<string, unknown>>(cKey))!, pid: c.pid });
+    // d: live in M3 today, would die once stamped (membership row paused, legacy record not).
+    const fd = (await createFeed(d.email, sc(d.uH), "ar")) as string;
+    const dKey = FEED_KEYS.rec(hashFeedToken(fd));
+    const row = (await db.get<Record<string, unknown>>(accountKey.membership(aidOf(d.H), d.pid)))!;
+    await db.set(accountKey.membership(aidOf(d.H), d.pid), { ...row, disabled: "seats" });
+    expect(await live(fd)).toBe(200);
+    const keep = [FEED_KEYS.rec(hashFeedToken(fa)), personKey.feedOf(a.pid, aidOf(a.H)), FEED_KEYS.of(a.email), bKey, BOOK_KEYS.of(b.email, "calcom")];
+    const kept = await Promise.all(keep.map((k) => db.get(k)));
+
+    const writes = [vi.spyOn(db, "set"), vi.spyOn(db, "setNx"), vi.spyOn(db, "setXx"), vi.spyOn(db, "del"), vi.spyOn(db, "lockOwned")];
+    const dry = await runLinks({ apply: false });
+    for (const w of writes) expect(w).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+    expect(dry.retireLive).toBeGreaterThanOrEqual(1);
+    expect(dry.retireDead).toBeGreaterThanOrEqual(1);
+    expect(dry.retireLive + dry.retireDead).toBe(dry.holdsDiffer + dry.malformed);
+    expect(dry.retired).toBe(0);
+
+    const r = await runLinks({ apply: false, retire: true });
+    expect(r.retired).toBeGreaterThanOrEqual(2);
+    expect([r.holdsDiffer, r.malformed]).toEqual([0, 0]);
+    expect(r.pointerConflicts).toBeGreaterThanOrEqual(1);
+    expect(r.loginConflicts).toBeGreaterThanOrEqual(1);
+    expect(r.stamped).toBe(dry.stamped);
+    // Revoked: the record and the legacy pointer of each; the link no longer answers in M3.
+    expect(await Promise.all([cKey, FEED_KEYS.of(c.email), dKey, FEED_KEYS.of(d.email)].map((k) => db.get(k)))).toEqual([null, null, null, null]);
+    expect(await live(fd)).not.toBe(200);
+    expect(await Promise.all(keep.map((k) => db.get(k)))).toEqual(kept);
+    // Nothing named by a legacy pointer is left without both ids except the two conflicts: what M4's S2 counts.
+    const again = await runLinks({ apply: false });
+    expect([again.holdsDiffer, again.malformed, again.retireLive, again.retireDead]).toEqual([0, 0, 0, 0]);
+  });
+
+  it("--apply writes the stamped record with SET XX: a record revoked between the read and the write stays gone (round 2, S-2)", async () => {
+    const t = await twoAccounts();
+    const f = (await createFeed(t.email, sc(t.uH), "ar")) as string;
+    const fKey = FEED_KEYS.rec(hashFeedToken(f));
+    const mine = personKey.feedOf(t.pid, aidOf(t.H));
+    const setNx = db.setNx.bind(db);
+    // A revoke that gave up waiting for the lock deletes the record right after the script's re-read.
+    vi.spyOn(db, "setNx").mockImplementation(async (k, v, ttl) => {
+      if (k === mine) await db.del(fKey);
+      return setNx(k, v, ttl);
+    });
+    const xx = vi.spyOn(db, "setXx");
+    const r = await runLinks({ apply: true });
+    expect(xx).toHaveBeenCalledWith(fKey, expect.objectContaining({ pid: t.pid }));
+    vi.restoreAllMocks();
+    expect(r.busy).toBeGreaterThanOrEqual(1);
+    expect(await db.get(fKey)).toBeNull();
+    // The pointer left behind names no record: dead in M3 and in M4.
+    expect(await db.get(mine)).toBe(hashFeedToken(f));
+    expect(await live(f)).not.toBe(200);
   });
 
   it("a held link lock (new or legacy) is busy and writes nothing; the next run finishes", async () => {

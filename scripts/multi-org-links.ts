@@ -1,33 +1,41 @@
 // Links script of multi-workspace membership (rule 2756; docs/system/flows.md section 93.3): the precondition of release
 // M4. M4 (contract, rule 2138) kills every calendar feed and booking link made before M1, a record with no `pid`/`aid`
-// that only the legacy per-login pointer (`sec:feedof:{login}`, `sec:bookof:{login}:{provider}`) names. This script gives
-// each such link its owner's ids and its M1-era pointer, so it keeps working through M4. Run by hand ONCE, from the live
-// M3 build and only on the founder's yes (it writes production data), after Script S1 and before the M4 release; never at
-// build time and not as part of `npm run check`. M3 still reads the legacy pointer and the legacy brand key, so a run
-// that stops halfway is harmless and the next run finishes it.
+// that only the legacy per-login pointer (`sec:feedof:{login}`, `sec:bookof:{login}:{provider}`) names, and its Script S2
+// refuses to run while any such record is left. This script gives each such link its owner's ids and its M1-era pointer
+// (`--apply`), and retires the ones it cannot carry (`--retire`). Run by hand from the live M3 build, after Script S1 and
+// before the M4 release; never at build time and not as part of `npm run check`. M3 still reads the legacy pointer and the
+// legacy brand key, so a run that stops halfway is harmless and the next run finishes it.
 //
-// Usage:  npx --no-install jiti scripts/multi-org-links.ts            (dry run: read-only, prints counts)
-//         npx --no-install jiti scripts/multi-org-links.ts --apply    (write what is missing)
+// Usage:  npx --no-install jiti scripts/multi-org-links.ts             (dry run: read-only, prints counts)
+//         npx --no-install jiti scripts/multi-org-links.ts --apply     (carry what can be carried; founder's yes)
+//         npx --no-install jiti scripts/multi-org-links.ts --retire    (revoke the leftovers; founder's yes, see below)
 // with the app's own KV_REST_API_URL / KV_REST_API_TOKEN already in the environment (set privately, never typed on a
-// command line that is saved).
+// command line that is saved). Order: dry run, `--apply`, dry run again; `--retire` only after the founder has read that
+// second dry run's counts (how many leftover links are still live in M3 and would stop) and said yes.
 //
 // For every id in `users:all` (in parallel, 50 at a time; no `await db.*` inside a loop), every HOME login: a legacy
 // owner of its own account, a legacy member of its `memberOf` (`legacyHomeFrom`, the only logins the legacy keys belong
 // to). For each of its links (the feed, one booking link per provider) whose legacy pointer names a record made before M1:
-//   - `sec:feedof:{pid}:{aid}` (or `sec:bookof:{pid}:{aid}:{provider}`) is written with SET NX to the same hash, then
-//   - the record gets `pid`, `aid` and `home: true`, exactly the record M1's home create writes.
-// Both under the locks the app's link writers take (rule 2139: `lock:feed:{pid}:{aid}` then the legacy `lock:feed:{login}`,
-// the booking ones alike), with everything read again under them first. The legacy pointer is never deleted (M4's S2 owns
-// that), so M3 and an older build keep resolving and revoking the link as before.
-// A link is stamped only when M3's own check (`loginHolds`) answers the same for the stamped record as for the record as
-// it is: a link that holds keeps holding, a dead one stays dead. It never overwrites: a record that names another login,
-// a record with one id and not the other, an M1-era pointer that names another link, and a link whose answer would change
-// are counted and left as they are.
-// The person's chosen brand in the home account (`activebrand:{login}`) is carried to `activebrand:{pid}:{aid}` with SET NX;
-// an M1-era choice that differs is counted and left. A second run writes nothing (idempotent).
+//   --apply: `sec:feedof:{pid}:{aid}` (or `sec:bookof:{pid}:{aid}:{provider}`) is written with SET NX to the same hash,
+//     then the record gets `pid`, `aid` and `home: true` with SET XX (exactly the record M1's home create writes; XX so
+//     a record revoked meanwhile never comes back). Only when M3's own check (`loginHolds`) answers the same for the
+//     stamped record as for the record as it is: a link that holds keeps holding, a dead one stays dead. The legacy
+//     pointer is kept (M4's S2 owns it), so M3 and an older build keep resolving and revoking the link as before.
+//   --retire: a link whose answer would change (`holdsDiffer`) and a record with one id and not the other or without a
+//     login (`malformed`) are revoked through the app's own `revokeFeed(login)` / `revokeBook(login, provider)`: the
+//     legacy pointer, the record, and an M1-era pointer only while it names that record. The dry run splits these into
+//     links live in M3 today (they stop working) and links already dead.
+// Both writers take the locks the app's link writers take (rule 2139: `lock:feed:{pid}:{aid}` then the legacy
+// `lock:feed:{login}`, the booking ones alike) and read everything again under them first. A retire calls the revoke while
+// it still holds them: the revoke waits for the legacy lock, then goes ahead without it (B1-R10), so no link created in
+// between is revoked by mistake. Never written by either: a record that names another login and an M1-era pointer that
+// names another link. Those are counted and left for the founder to look at by hand.
+// The person's chosen brand in the home account: M3 reads the legacy `activebrand:{login}` first, so with `--apply` its
+// value is carried to `activebrand:{pid}:{aid}` (SET NX when absent) or written over an M1-era choice that differs (the
+// legacy one is what the person sees now). A second run writes nothing (idempotent).
 //
 // Output is counts only: no email, id, hash or key is printed.
-// Exit codes: 0 done with no conflict; 1 finished with at least one conflict or busy lock; 2 could not run.
+// Exit codes: 0 done with nothing left over; 1 finished with a leftover, a conflict or a busy lock; 2 could not run.
 import { pathToFileURL } from "node:url";
 import { db, mgetChunked } from "../src/lib/db";
 import { pmap } from "../src/lib/parallel";
@@ -35,12 +43,13 @@ import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, type
 import { normalizeEmail } from "../src/lib/auth";
 import { legacyHomeFrom } from "../src/lib/membership";
 import { ActiveBrandId } from "../src/lib/stored";
-import { FEED_KEYS, legacyFeedLock, linkIds } from "../src/lib/feed-token";
-import { BOOK_KEYS, BOOK_PROVIDERS, legacyBookLock } from "../src/lib/booking-token";
+import { FEED_KEYS, legacyFeedLock, linkIds, revokeFeed } from "../src/lib/feed-token";
+import { BOOK_KEYS, BOOK_PROVIDERS, legacyBookLock, revokeBook } from "../src/lib/booking-token";
 import { loginHolds } from "../src/lib/secretary-feed";
 
 export type LinksReport = {
   apply: boolean;
+  retire: boolean;
   accounts: number;
   /** In `users:all` with no record (a deletion that stopped halfway): left alone. */
   missing: number;
@@ -54,26 +63,32 @@ export type LinksReport = {
   stamped: number;
   /** M1-era pointers written (or would be); a stamp whose pointer an earlier run already wrote writes none. */
   pointersSet: number;
-  /** Home brand choices carried to the M1-era key (or would be). */
+  /** Home brand choices carried to an absent M1-era key (or would be). */
   brandsSet: number;
-  /** A legacy pointer naming no record: dead in every build, nothing to carry. */
+  /** Home brand choices written over an M1-era choice that differs (or would be): the legacy one wins, M3 reads it first. */
+  brandsAligned: number;
+  /** A legacy pointer naming no record: dead in every build, nothing to carry or retire. */
   dead: number;
-  /** A record with one id and not the other, or without a login: dead in M3, left as it is. */
+  /** A record with one id and not the other, or without a login: dead in M3. Revoked by `--retire`. */
   malformed: number;
-  /** A record that names another login than the pointer's. Never stamped. */
+  /** A record that names another login than the pointer's. Never written: by hand. */
   loginConflicts: number;
-  /** An M1-era pointer that names another link. Never overwritten. */
+  /** An M1-era pointer that names another link. Never written: by hand. */
   pointerConflicts: number;
-  /** A link whose `loginHolds` answer would change with the ids (it would die, or come back). Never stamped. */
+  /** A link whose `loginHolds` answer would change with the ids (it would die, or come back). Revoked by `--retire`. */
   holdsDiffer: number;
-  /** An M1-era brand choice that differs from the legacy one. Never overwritten. */
-  brandConflicts: number;
+  /** Of `holdsDiffer` and `malformed`, as read before any write: links live in M3 today, which a retire stops. */
+  retireLive: number;
+  /** Of `holdsDiffer` and `malformed`, as read before any write: links already dead in M3. */
+  retireDead: number;
+  /** Links revoked by `--retire`. */
+  retired: number;
   /** A lock that was held, or a record that changed between the read and the write: run again. */
   busy: number;
 };
 
 const CHUNK = 50;
-type Counter = Exclude<keyof LinksReport, "apply">;
+type Counter = Exclude<keyof LinksReport, "apply" | "retire">;
 type Fail = "dead" | "malformed" | "login" | "pointer" | "holds" | "busy";
 const FAIL_FIELD: Record<Fail, Counter> = { dead: "dead", malformed: "malformed", login: "loginConflicts", pointer: "pointerConflicts", holds: "holdsDiffer", busy: "busy" };
 
@@ -88,6 +103,8 @@ const mineKey = (l: Link) => (l.kind === "feed" ? personKey.feedOf(l.pid, l.aid)
 const recKey = (l: Link, hash: string) => (l.kind === "feed" ? FEED_KEYS.rec(hash) : BOOK_KEYS.rec(hash));
 const newLock = (l: Link) => (l.kind === "feed" ? personKey.feedLock(l.pid, l.aid) : personKey.bookLock(l.pid, l.aid, l.kind));
 const oldLock = (l: Link) => (l.kind === "feed" ? legacyFeedLock(l.login) : legacyBookLock(l.login, l.kind));
+/** The app's own revoke by address: the legacy pointer, the record, and its M1-era pointer only while it names the record. */
+const revoke = (l: Link) => (l.kind === "feed" ? revokeFeed(l.login) : revokeBook(l.login, l.kind));
 const LOCK_TTL = 10;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -105,44 +122,46 @@ async function holdsOf(l: Link, rec: unknown): Promise<Holds | null> {
   return { before, after };
 }
 
-type Done = { ok: true; current: boolean; stamp: boolean; pointer: boolean };
-type Verdict = { ok: false; why: Fail } | Done;
-const NONE: Done = { ok: true, current: false, stamp: false, pointer: false };
+type Done = { ok: true; current: boolean; stamp: boolean; pointer: boolean; retired: boolean };
+/** `live`, on a link `--retire` revokes: whether M3 serves it today. */
+type Verdict = { ok: false; why: Fail; live?: boolean } | Done;
+const NONE: Done = { ok: true, current: false, stamp: false, pointer: false, retired: false };
+const BUSY: Verdict = { ok: false, why: "busy" };
+/** What `--retire` revokes: a link the stamp would change, and a malformed record. Never a conflict (those are by hand). */
+const retirable = (v: Verdict): boolean => !v.ok && (v.why === "holds" || v.why === "malformed");
 
 /** Pure: what the script writes for one link, or why it writes nothing. Used for the dry-run counts and again under the locks. */
 function decide(l: Link, legacy: unknown, rec: unknown, mine: unknown, holds: Holds | null): Verdict {
-  const fail = (why: Fail): Verdict => ({ ok: false, why });
+  const fail = (why: Fail, live?: boolean): Verdict => ({ ok: false, why, live });
   const hash = hashOf(legacy);
   if (hash === null) return NONE;
   if (!isRecord(rec)) return fail("dead");
   const ids = linkIds(rec);
-  if (ids === null || typeof rec.login !== "string") return fail("malformed");
+  // Dead in M3: `loginHolds` refuses a record with one id, and the legacy check one without a login.
+  if (ids === null || typeof rec.login !== "string") return fail("malformed", false);
   if (ids !== "legacy") return { ...NONE, current: true };
   if (normalizeEmail(rec.login) !== l.login) return fail("login");
   const ptr = hashOf(mine);
   if (ptr !== null && ptr !== hash) return fail("pointer");
-  if (!holds || holds.before !== holds.after) return fail("holds");
-  return { ok: true, current: false, stamp: true, pointer: ptr === null };
+  if (!holds || holds.before !== holds.after) return fail("holds", holds?.before === true);
+  return { ...NONE, stamp: true, pointer: ptr === null };
 }
 
-/** Stamp one link under `lock:feed:{pid}:{aid}` → `lock:feed:{login}` (the booking ones alike), reading it all again first. */
-async function applyLink(l: Link): Promise<Verdict> {
-  const busy: Verdict = { ok: false, why: "busy" };
+/**
+ * Under `lock:feed:{pid}:{aid}` then `lock:feed:{login}` (the booking ones alike, rule 2139): read the link again, decide,
+ * and hand the verdict to `act`. Busy when either lock is held.
+ */
+async function underLocks(l: Link, act: (v: Verdict, hash: string | null, rec: unknown) => Promise<Verdict>): Promise<Verdict> {
   const a = await db.lockOwned(newLock(l), LOCK_TTL);
-  if (!a) return busy;
+  if (!a) return BUSY;
   try {
     const b = await db.lockOwned(oldLock(l), LOCK_TTL);
-    if (!b) return busy;
+    if (!b) return BUSY;
     try {
       const [legacy, mine] = await Promise.all([db.get<unknown>(legacyKey(l)), db.get<unknown>(mineKey(l))]);
       const hash = hashOf(legacy);
       const rec = hash ? await db.get<unknown>(recKey(l, hash)) : null;
-      const v = decide(l, legacy, rec, mine, await holdsOf(l, rec));
-      if (!v.ok || !v.stamp || !hash || !isRecord(rec)) return v;
-      // The pointer first: until the record names its ids, M3 still resolves it through the legacy pointer alone.
-      if (v.pointer && !(await db.setNx(mineKey(l), hash))) return busy;
-      await db.set(recKey(l, hash), stampOf(l, rec));
-      return v;
+      return await act(decide(l, legacy, rec, mine, await holdsOf(l, rec)), hash, rec);
     } finally {
       await db.unlockOwned(oldLock(l), b).catch(() => {});
     }
@@ -151,17 +170,37 @@ async function applyLink(l: Link): Promise<Verdict> {
   }
 }
 
-/** The legacy brand choice to carry, "same" when the M1-era key already holds it, "conflict" when it holds another. */
-function brandVerdict(legacy: unknown, fresh: unknown): string | "none" | "same" | "conflict" {
+/** `--apply` for one link: the M1-era pointer (SET NX), then the stamped record (SET XX). */
+const applyLink = (l: Link) =>
+  underLocks(l, async (v, hash, rec) => {
+    if (!v.ok || !v.stamp || !hash || !isRecord(rec)) return v;
+    // The pointer first: until the record names its ids, M3 still resolves it through the legacy pointer alone.
+    if (v.pointer && !(await db.setNx(mineKey(l), hash))) return BUSY;
+    // XX: a revoke that went ahead without the lock (B1-R10) and deleted the record meanwhile is never undone. The pointer
+    // left behind then names no record, which is dead in every build.
+    return (await db.setXx(recKey(l, hash), stampOf(l, rec))) ? v : BUSY;
+  });
+
+/** `--retire` for one link: the app's own revoke, called while the script still holds the locks (see the header). */
+const retireLink = (l: Link) =>
+  underLocks(l, async (v) => {
+    if (!retirable(v)) return v.ok && v.stamp ? BUSY : v;
+    await revoke(l);
+    return { ...NONE, retired: true };
+  });
+
+/** The legacy brand choice to write to the M1-era key: carried when that key is empty, written over it when it differs. */
+function brandWrite(legacy: unknown, fresh: unknown): { id: string; carry: boolean } | null {
   const old = ActiveBrandId.safeParse(legacy);
-  if (legacy === null || legacy === undefined || !old.success) return "none";
-  if (fresh === null || fresh === undefined) return old.data;
+  if (legacy === null || legacy === undefined || !old.success) return null;
+  if (fresh === null || fresh === undefined) return { id: old.data, carry: true };
   const cur = ActiveBrandId.safeParse(fresh);
-  return cur.success && cur.data === old.data ? "same" : "conflict";
+  return cur.success && cur.data === old.data ? null : { id: old.data, carry: false };
 }
 
-export async function run(opts: { apply: boolean }): Promise<LinksReport> {
-  const r: LinksReport = { apply: opts.apply, accounts: 0, missing: 0, homes: 0, links: 0, current: 0, stamped: 0, pointersSet: 0, brandsSet: 0, dead: 0, malformed: 0, loginConflicts: 0, pointerConflicts: 0, holdsDiffer: 0, brandConflicts: 0, busy: 0 };
+export async function run(opts: { apply: boolean; retire?: boolean }): Promise<LinksReport> {
+  const retire = opts.retire === true;
+  const r: LinksReport = { apply: opts.apply, retire, accounts: 0, missing: 0, homes: 0, links: 0, current: 0, stamped: 0, pointersSet: 0, brandsSet: 0, brandsAligned: 0, dead: 0, malformed: 0, loginConflicts: 0, pointerConflicts: 0, holdsDiffer: 0, retireLive: 0, retireDead: 0, retired: 0, busy: 0 };
   const count = (v: Verdict) => {
     if (!v.ok) {
       r[FAIL_FIELD[v.why]]++;
@@ -170,6 +209,7 @@ export async function run(opts: { apply: boolean }): Promise<LinksReport> {
     if (v.current) r.current++;
     if (v.stamp) r.stamped++;
     if (v.pointer) r.pointersSet++;
+    if (v.retired) r.retired++;
   };
 
   // Round 1: the accounts and their rosters. Round 2: each roster entry's legacy member record.
@@ -215,44 +255,62 @@ export async function run(opts: { apply: boolean }): Promise<LinksReport> {
   const holds = await pmap(named, (x, j) => holdsOf(x.l, recs[j]), CHUNK);
 
   const work: Link[] = [];
+  const leftovers: { l: Link; v: Verdict }[] = [];
   named.forEach((x, j) => {
     const v = decide(x.l, legacies[x.i], recs[j], mines[x.i], holds[j]);
     count(v);
     if (v.ok && v.stamp) work.push(x.l);
+    if (retirable(v)) {
+      if (!v.ok && v.live) r.retireLive++;
+      else r.retireDead++;
+      leftovers.push({ l: x.l, v });
+    }
   });
-  const brands: { h: Home; id: string }[] = [];
+  const brands: { h: Home; id: string; carry: boolean }[] = [];
   homes.forEach((h, i) => {
-    const v = brandVerdict(legacyBrands[i], freshBrands[i]);
-    if (v === "conflict") r.brandConflicts++;
-    else if (v !== "none" && v !== "same") brands.push({ h, id: v });
+    const w = brandWrite(legacyBrands[i], freshBrands[i]);
+    if (w) brands.push({ h, ...w });
   });
-  r.brandsSet = brands.length;
-  if (!opts.apply) return r;
+  r.brandsSet = brands.filter((b) => b.carry).length;
+  r.brandsAligned = brands.length - r.brandsSet;
 
   // The writes are counted again from what they find under their locks: a link changed since the read above is not
   // overwritten, and is counted under what it is now. What the read above left alone stays counted as it was.
-  r.stamped = r.pointersSet = 0;
-  const done = await pmap(work, applyLink, CHUNK);
-  done.forEach(count);
-  // The brand choice is written with SET NX, as the app's own writer needs no lock for it: a choice made meanwhile wins.
-  const carried = await pmap(brands, ({ h, id }) => db.setNx(personKey.activeBrand(h.pid, h.aid), id), CHUNK);
-  r.brandsSet = carried.filter(Boolean).length;
-  r.busy += carried.length - r.brandsSet;
+  if (opts.apply) {
+    r.stamped = r.pointersSet = 0;
+    const done = await pmap(work, applyLink, CHUNK);
+    done.forEach(count);
+    // The brand choice, with no lock as the app's own writer: SET NX when the M1-era key is empty (a choice made
+    // meanwhile writes both keys, and wins), else the legacy value over the M1-era one.
+    const key = (h: Home) => personKey.activeBrand(h.pid, h.aid);
+    const wrote = await pmap(brands, ({ h, id, carry }) => (carry ? db.setNx(key(h), id) : db.set(key(h), id).then(() => true)), CHUNK);
+    r.brandsSet = brands.filter((b, k) => b.carry && wrote[k]).length;
+    r.busy += wrote.filter((w) => !w).length;
+  }
+  if (retire) {
+    leftovers.forEach(({ v }) => {
+      if (!v.ok) r[FAIL_FIELD[v.why]]--;
+    });
+    const done = await pmap(leftovers, ({ l }) => retireLink(l), CHUNK);
+    done.forEach(count);
+  }
   return r;
 }
 
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
+  const retire = process.argv.includes("--retire");
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
     console.error("KV_REST_API_URL and KV_REST_API_TOKEN must be set (the app's own store).");
     process.exitCode = 2;
     return;
   }
-  const r = await run({ apply });
+  const r = await run({ apply, retire });
   const verb = apply ? "set" : "to set";
-  console.log(`${apply ? "Applied" : "Dry run"}: accounts ${r.accounts} (missing records ${r.missing}), home logins ${r.homes}, links ${r.links} (already current ${r.current}); links stamped ${verb} ${r.stamped}, pointers ${verb} ${r.pointersSet}, brand choices ${verb} ${r.brandsSet}.`);
-  console.log(`Left as they are: dead pointers ${r.dead}, malformed records ${r.malformed}, login conflicts ${r.loginConflicts}, pointer conflicts ${r.pointerConflicts}, answer would change ${r.holdsDiffer}, brand conflicts ${r.brandConflicts}, busy ${r.busy}.`);
-  process.exitCode = r.malformed || r.loginConflicts || r.pointerConflicts || r.holdsDiffer || r.brandConflicts || r.busy ? 1 : 0;
+  console.log(`${apply || retire ? "Written" : "Dry run"}: accounts ${r.accounts} (missing records ${r.missing}), home logins ${r.homes}, links ${r.links} (already current ${r.current}); links stamped ${verb} ${r.stamped}, pointers ${verb} ${r.pointersSet}, brand choices carried ${verb} ${r.brandsSet}, brand choices aligned ${verb} ${r.brandsAligned}.`);
+  console.log(`To retire, as read before any write: live in M3 today ${r.retireLive}, already dead ${r.retireDead}; retired ${r.retired}.`);
+  console.log(`Left as they are: dead pointers ${r.dead}, malformed records ${r.malformed}, answer would change ${r.holdsDiffer}, login conflicts ${r.loginConflicts}, pointer conflicts ${r.pointerConflicts}, busy ${r.busy}.`);
+  process.exitCode = r.malformed || r.loginConflicts || r.pointerConflicts || r.holdsDiffer || r.busy ? 1 : 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
