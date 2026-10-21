@@ -1,12 +1,14 @@
-# Coverage: the held-routine and cron-count screens, rendered (rules 2530-2532)
+# Coverage: the held-routine and cron-count screens, rendered (rules 2533-2535)
 
 Status on 2026-10-20 on branch `claude/e2e-held-routine`. The two screens of the paid-cron work (#404, rules 2479 and 2484-2485, `docs/system/tests/2470-paid-cron-held.md`) that the browser check of that pull request could not reach. Rules 2533-2539 are held for this work and unused.
 
+The rules were numbered 2530-2532 when they merged (#413); they moved to 2533-2535 because #415 already used 2530-2532 (2026-10-21).
+
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
-| 2530 | Scheduled tasks shows a held routine, and only it, with the held note and a Run button, in Arabic and English; a read-only member still gets Run | `tests/held-routine-screens.test.ts` ("rule 2530") | A browser test, once the end-to-end server can stage a held run (see Notes) |
-| 2531 | The founder's Usage page shows each job's last batch counts under its heartbeat (`CronList`, `data-cron-report`), only for a job with a report, in both languages | `tests/held-routine-screens.test.ts` ("rule 2531") | A browser test, once the end-to-end server can run a cron and sign the founder in |
-| 2532 | The Usage section renders the list through the extracted `CronList` (no change in what it shows) | `tests/held-routine-screens.test.ts` ("rule 2532"); rule 1015's pins in `tests/monitoring-ci-parity.test.ts` still pass | — |
+| 2533 | Scheduled tasks shows a held routine, and only it, with the held note and a Run button, in Arabic and English; a read-only member still gets Run | `tests/held-routine-screens.test.ts` ("rule 2533") | A browser test, once the end-to-end server can stage a held run (see Notes) |
+| 2534 | The founder's Usage page shows each job's last batch counts under its heartbeat (`CronList`, `data-cron-report`), only for a job with a report, in both languages | `tests/held-routine-screens.test.ts` ("rule 2534") | A browser test, once the end-to-end server can run a cron and sign the founder in |
+| 2535 | The Usage section renders the list through the extracted `CronList` (no change in what it shows) | `tests/held-routine-screens.test.ts` ("rule 2535"); rule 1015's pins in `tests/monitoring-ci-parity.test.ts` still pass | — |
 
 ## Notes
 

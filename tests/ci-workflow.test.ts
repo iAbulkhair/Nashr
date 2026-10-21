@@ -77,7 +77,7 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
     expect(yml).not.toMatch(/- name: Seed Playwright cache/);
   });
 
-  it("unit tests run unless Scope reuses a green run (rule 2551); build, type-check and lint follow Scope's build; the e2e suite follows Scope's e2e", () => {
+  it("unit tests run unless Scope reuses a green run (rule 2581); build, type-check and lint follow Scope's build; the e2e suite follows Scope's e2e", () => {
     expect(step("Unit tests")).toMatch(/if: steps\.scope\.outputs\.unit != 'none'\n/);
     for (const s of ["Build", "Type-check", "Lint", "Restore Next build cache", "Save Next build cache"]) expect(step(s), s).toMatch(/if: steps\.scope\.outputs\.build == 'true'/);
     expect(step("End-to-end tests")).toMatch(/if: steps\.scope\.outputs\.e2e == 'true'\n/);
