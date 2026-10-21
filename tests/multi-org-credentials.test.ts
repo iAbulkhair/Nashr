@@ -174,6 +174,24 @@ describe("rule 2138 (credential part): a legacy login's credential writes land o
     const raw = (await db.get<Record<string, unknown>>(accountKey.user(acct(o))))!;
     for (const f of LEGACY_CREDENTIALS) expect(raw, f).not.toHaveProperty(f);
   });
+
+  it("rule 2766: saveUser keeps the credential fields while the owner has no person row (the only copy)", async () => {
+    const o = await newUser("keep");
+    const u = (await getUser(o.email))!;
+    await db.del(personKey.person(ownerOf(u)));
+    const warn = vi.spyOn(log, "warn");
+    await saveUser({ ...u, passHash: "only-copy", sessionsAfter: T1 });
+    const raw = (await db.get<Record<string, unknown>>(accountKey.user(acct(o))))!;
+    expect(raw).toMatchObject({ passHash: "only-copy", sessionsAfter: T1 });
+    expect(raw).not.toHaveProperty("devicesAfter");
+    expect(warn).toHaveBeenCalledWith("save_user_kept_credentials", {});
+    // An account with no credential left costs no extra read.
+    const get = vi.spyOn(db, "get");
+    const { passHash: _h, sessionsAfter: _s, ...clean } = u;
+    void _h; void _s;
+    await saveUser(clean as User);
+    expect(get.mock.calls.filter(([k]) => k === personKey.person(ownerOf(u)))).toEqual([]);
+  });
 });
 
 describe("rule 2138: the person row alone holds the revocation stamps", () => {

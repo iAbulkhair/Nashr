@@ -559,7 +559,7 @@ export default function Users({ lang, keySession }: SectionProps) {
           <div className="grid gap-3 p-5 pe-14 text-sm">
             <h2 className="font-display text-lg font-bold text-foreground"><bdi dir="ltr">{memberSel.email}</bdi></h2>
             <p className="text-foreground-muted">{S.memberLogin} · {memberSel.role}{memberSel.disabled ? ` · ${memberSel.disabled}` : ""}</p>
-            <p dir="auto">{memberSel.name} · {S.memberOf} <button type="button" onClick={() => open(memberSel.memberOf)} className="min-h-[var(--hit-min)] text-foreground underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <bdi dir="ltr">{memberSel.invitedBy}</bdi> · <bdi dir="ltr">{memberSel.acceptedAt.slice(0, 10)}</bdi></p>
+            <p dir="auto">{memberSel.name} · {S.memberOf} <button type="button" onClick={() => open(memberSel.memberOf)} className="min-h-[var(--hit-min)] text-foreground underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <bdi dir="ltr">{memberSel.invitedBy ?? "—"}</bdi> · <bdi dir="ltr">{memberSel.acceptedAt.slice(0, 10)}</bdi></p>
             {(!memberSel.ownerExists || !memberSel.onRoster) && <p className="text-danger">{[!memberSel.ownerExists ? S.ownerMissing : "", !memberSel.onRoster ? S.offRoster : ""].filter(Boolean).join(" · ")}</p>}
             {msg && <p role="status" className="text-sm text-foreground" dir="auto">{msg}</p>}
             <button type="button" disabled={busy} onClick={() => act(memberSel.email, "removeMember")} className="btn btn-danger-solid btn-xs min-h-[var(--hit-min)] justify-self-start">{S.removeMember}</button>

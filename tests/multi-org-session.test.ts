@@ -518,3 +518,18 @@ describe("rule 2138: a legacy owner and a legacy member resolve on person:, the 
     }
   });
 });
+
+describe("rule 2767: a store error while building a session is not swallowed into a session without pid", () => {
+  it("sessionIds and createSession reject, and no session record or cookie is written", async () => {
+    const u = await newUser("sid");
+    const { sessionIds, createSession } = await import("@/lib/auth");
+    const realGet = db.get.bind(db);
+    vi.spyOn(db, "get").mockImplementation(((k: string) => (k === accountKey.login(u.email) ? Promise.reject(new Error("store_down")) : realGet(k))) as typeof db.get);
+    await expect(sessionIds(u.email)).rejects.toThrow("store_down");
+    signOut();
+    const set = vi.spyOn(db, "set");
+    await expect(createSession(u.email)).rejects.toThrow("store_down");
+    expect(set).not.toHaveBeenCalled();
+    expect(jar().get("thakeen_session")).toBeUndefined();
+  });
+});

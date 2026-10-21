@@ -338,11 +338,16 @@ export const getUser = getAccount;
 export async function saveUser(u: User) {
   // The runtime-only fields: the active scope and who is acting are per request, never part of the account. From M4
   // (rule 2138) the credentials are the person's only: an account read with a leftover `passHash`, `sessionsAfter` or
-  // `devicesAfter` (one Script S2 has not stripped yet) is saved without them.
+  // `devicesAfter` (one Script S2 has not stripped yet) is saved without them, but only while the owner's `person:` row
+  // exists (rule 2766): with no row, the account may hold the only copy of the password, so it is kept and S2's dry run
+  // reports the gap (`personMissing`). The extra read happens only for an account that still carries a credential.
   const { scope: _s, brandId: _b, actor: _a, topupsDirty: _t, passHash: _h, sessionsAfter: _sa, devicesAfter: _da, ...persist } = u;
-  void _s; void _b; void _a; void _t; void _h; void _sa; void _da;
+  void _s; void _b; void _a; void _t;
   const id = acct(u);
-  await db.set(accountKey.user(id), { ...persist, id });
+  const leftover = _h !== undefined || _sa !== undefined || _da !== undefined;
+  const keep = leftover && (await db.get<unknown>(personKey.person((await import("./membership")).ownerOf(u)))) == null;
+  if (keep) log.warn("save_user_kept_credentials", {});
+  await db.set(accountKey.user(id), keep ? { ...persist, ...(_h !== undefined ? { passHash: _h } : {}), ...(_sa !== undefined ? { sessionsAfter: _sa } : {}), ...(_da !== undefined ? { devicesAfter: _da } : {}), id } : { ...persist, id });
   await db.sadd(globalKey.usersAll(), id);
 }
 
@@ -556,18 +561,17 @@ export async function createSession(email: string, ttlSeconds: number = SESSION_
  * live membership; a legacy person's home account). With `MULTI_ORG` off the pick is always the home account, the value
  * R1 wrote: the owner's own account, or the member's `memberOf`. No account: `acct` is absent. An impersonation keeps
  * R1's shape: the account the address owns and its owner (`ownerOf`, the same person for a legacy owner).
+ * A store error is not swallowed (rule 2767): from M4 a session without `pid` resolves to nobody, so writing one would
+ * sign the person in to nothing with no message. The error reaches `createSession`'s caller, which answers with its
+ * normal error before any cookie is set (fail closed, the person tries again).
  */
 export async function sessionIds(email: string, opts: { imp?: boolean } = {}): Promise<{ pid?: string; acct?: string }> {
-  try {
-    const l = await getLogin(email);
-    if (!l) return {};
-    const { ownerOf, pickAccount } = await import("./membership");
-    if (opts.imp) return l.kind === "owner" ? { pid: ownerOf(l.user), acct: l.acct } : { pid: l.pid, ...(l.acct ? { acct: l.acct } : {}) };
-    const a = await pickAccount(l.person);
-    return a ? { pid: l.pid, acct: a } : { pid: l.pid };
-  } catch {
-    return {};
-  }
+  const l = await getLogin(email);
+  if (!l) return {};
+  const { ownerOf, pickAccount } = await import("./membership");
+  if (opts.imp) return l.kind === "owner" ? { pid: ownerOf(l.user), acct: l.acct } : { pid: l.pid, ...(l.acct ? { acct: l.acct } : {}) };
+  const a = await pickAccount(l.person);
+  return a ? { pid: l.pid, acct: a } : { pid: l.pid };
 }
 
 /**

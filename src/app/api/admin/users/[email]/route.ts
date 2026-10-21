@@ -50,12 +50,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     // Member logins never enter users:all, so the list cannot show them: an address is looked up here instead, which is
     // how support finds (and can remove, below) a member login holding an address its real owner wants to sign up with.
     // From M4 (rule 2138) a member is read from the person and the membership sign-in would open, read only; a leftover
-    // legacy member record answers nothing. Its person id and its inviter's are never shown (a `p_` id is not an address).
+    // legacy member record answers nothing. Its person id and its inviter's are never shown (a `p_` id is not an address): `invitedBy` is null, never an empty string.
     if (login?.kind !== "member" || !login.acct) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     const ms = await getMembership(login.acct, login.pid);
     return NextResponse.json({
       ok: true, kind: "member",
-      member: { email: login.person.email, name: login.person.name, role: ms?.role ?? null, memberOf: login.acct, invitedBy: "", acceptedAt: ms?.acceptedAt ?? "", disabled: ms?.disabled ?? null, ownerExists: !!login.owner, onRoster: !!ms },
+      member: { email: login.person.email, name: login.person.name, role: ms?.role ?? null, memberOf: login.acct, invitedBy: null, acceptedAt: ms?.acceptedAt ?? "", disabled: ms?.disabled ?? null, ownerExists: !!login.owner, onRoster: !!ms },
     });
   }
   const brands = await listBrands(acct(u));

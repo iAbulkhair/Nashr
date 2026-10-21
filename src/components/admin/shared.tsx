@@ -36,7 +36,7 @@ export const CHAT_LOW_SHARE = 0.1;
 /** The least a balance needs for a message past the allowance, and the most one is billed (src/lib/pricing.ts). */
 export const CHAT_HOLD = chatOverflowHold();
 /** GET /api/admin/users/{email} for an address that is a member login, not an account (members never enter users:all). */
-export type MemberDetail = { email: string; name: string; role: string; memberOf: string; invitedBy: string; acceptedAt: string; disabled: string | null; ownerExists: boolean; onRoster: boolean };
+export type MemberDetail = { email: string; name: string; role: string; memberOf: string; invitedBy: string | null; acceptedAt: string; disabled: string | null; ownerExists: boolean; onRoster: boolean };
 /** What POST /api/admin/plan changed in the team when the seat limit moved (src/lib/team.ts `enforceSeats`). */
 export type TeamChange = { limit: number; disabled: string[]; enabled: string[]; cancelled: string[] };
 export type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage>; byAgent?: Record<string, { calls: number; usd: number }> }; chat?: ChatStatus; chatUsdPerMsg?: number | null; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null; activity?: { brand: string; name: string; rows: Activity[] }[]; unfinishedRefunds?: string[]; entitlements?: EntitlementView };
