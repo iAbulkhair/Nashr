@@ -6,6 +6,9 @@ import { sendEmail } from "./notify";
 import { appOrigin } from "./origin";
 import { COUNT_MAX, listNotifs, type Notif } from "./notifications";
 import { appHref } from "@/lib/ws-path";
+import { emailVerified, getUser } from "./auth";
+import { isSuspended } from "./suspension";
+import { acct } from "./account-id";
 
 /**
  * The digest email the owner chooses (rules 2352-2357, pattern 2 of docs/reports/2026-10-19-PRD-fizzy-orca_AR.md, after
@@ -77,7 +80,8 @@ export function digestMail(lang: "ar" | "en", every: Exclude<DigestEvery, "off">
   return { subject, paragraphs, text: paragraphs.join("\n\n"), href: `${appOrigin()}${appHref(lang, "/notifications")}` };
 }
 
-export type DigestOutcome = "off" | "start" | "wait" | "busy" | "empty" | "sent" | "failed" | "late";
+/** "held": the account is suspended or its owner's address is not verified, so the window stays open (rule 2508). */
+export type DigestOutcome = "off" | "start" | "wait" | "busy" | "empty" | "sent" | "failed" | "late" | "held";
 
 /** One account's turn on the tick: start its window, wait, or close it and send what it holds (rule 2354). */
 export async function digestFor(account: string, now: number): Promise<DigestOutcome> {
@@ -92,6 +96,17 @@ export async function digestFor(account: string, now: number): Promise<DigestOut
     return "start";
   }
   if (!windowEnded(pref.every, last, now)) return "wait";
+  // Rules 2507-2509: the account this entry names is read again before anything is claimed or sent. Gone (or keyed
+  // elsewhere): it leaves the tick's set and its choice goes, as the account wipe does. Suspended or unverified: no
+  // email, and the window stays open for a later tick, as the daily brief holds them (rule 755). The email goes to the
+  // account's current address, never the copy saved with the choice: an owner who moved their address is not mailed
+  // at the old one.
+  const u = await getUser(account);
+  if (!u || acct(u) !== account) {
+    await Promise.all([db.srem(globalKey.digests(), account), db.del(accountKey.digest(account)), db.del(accountKey.digestLast(account))]);
+    return "off";
+  }
+  if (isSuspended(u) || !emailVerified(u)) return "held";
   if (!(await db.setNx(accountKey.digestLock(account), 1, LOCK_SECONDS))) return "busy";
   const items = digestEntries(await listNotifs(account), last, now);
   const closed = new Date(now).toISOString();
@@ -100,7 +115,7 @@ export async function digestFor(account: string, now: number): Promise<DigestOut
     return "empty";
   }
   const m = digestMail(pref.lang, pref.every, items);
-  const sent = await sendEmail({ to: pref.to, subject: m.subject, text: `${m.text}\n\n${m.href}`, template: "notice", context: { title: m.subject, paragraphs: m.paragraphs, cta: { href: m.href } }, locale: pref.lang }).catch(() => false);
+  const sent = await sendEmail({ to: u.email, subject: m.subject, text: `${m.text}\n\n${m.href}`, template: "notice", context: { title: m.subject, paragraphs: m.paragraphs, cta: { href: m.href } }, locale: pref.lang }).catch(() => false);
   // Not sent: the window stays open and the claim runs out, so a later tick tries again with the same entries.
   if (!sent) return "failed";
   await db.set(accountKey.digestLast(account), closed);

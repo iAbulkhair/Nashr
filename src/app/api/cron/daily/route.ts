@@ -31,6 +31,7 @@ import { ksaDay } from "@/lib/partner-rules";
 import { runMarginAlert } from "@/lib/margin";
 import { acct } from "@/lib/account-id";
 import { appHrefFor } from "@/lib/app-href";
+import { jobRef, runAsAccount, type JobRef } from "@/lib/job-account";
 
 export const maxDuration = 300;
 
@@ -190,7 +191,8 @@ async function purgeIdle(scope: string): Promise<string> {
   return n ? `todo:${n}p` : "idle";
 }
 
-type DailyItem = { user: User } | { idle: string };
+/** A workspace entry carries the account it acts for, taken at listing time (rule 2500); an idle scope only purges. */
+type DailyItem = { user: User; ref: JobRef } | { idle: string };
 
 /** How long the batch may start workspaces, counted from the route's start: the function limit minus the longest run. */
 const START_BUDGET_MS = 240_000;
@@ -233,10 +235,10 @@ export async function GET(req: Request) {
     margin = await runMarginAlert();
   }
   const roster = await dailyRoster();
-  const items: DailyItem[] = [...roster.users.map((user) => ({ user })), ...roster.idle.map((idle) => ({ idle }))];
+  const items: DailyItem[] = [...roster.users.map((user) => ({ user, ref: jobRef(user) })), ...roster.idle.map((idle) => ({ idle }))];
   const report = await runCronBatch({
     job: "daily", period: new Date().toISOString().slice(0, 10), items,
-    id: (x) => ("user" in x ? x.user.scope ?? x.user.email : `idle:${x.idle}`), run: (x) => ("user" in x ? dailyFor(x.user) : purgeIdle(x.idle)),
+    id: (x) => ("user" in x ? x.user.scope ?? x.user.email : `idle:${x.idle}`), run: (x) => ("user" in x ? runAsAccount(x.ref, dailyFor) : purgeIdle(x.idle)),
     concurrency: 8, startBudgetMs: Math.max(0, START_BUDGET_MS - (Date.now() - routeStart)), markerTtlSeconds: 2 * 86400, req,
   });
   if (!report.chained && new Date().getUTCDay() <= 2) {
