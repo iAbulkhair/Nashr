@@ -550,6 +550,8 @@ describe("source scans (rule 2132, credential part)", () => {
       join("src", "app", "api", "auth", "passkey", "verify", "route.ts"),
       // Multi-workspace M3: the ownership accept (`acceptTransfer`, src/lib/transfer.ts) takes the receiving person's lock.
       join("src", "app", "api", "workspaces", "transfer", "route.ts"),
+      // Multi-workspace M3: deleting one's own login (`deletePerson`, src/lib/person-delete.ts) takes the person's lock.
+      join("src", "app", "api", "workspaces", "person", "route.ts"),
     ];
     // The sign-in options route (rule 2417) reads no person and takes no lock: it stays off the list, and this pins that
     // it still imports no person writer, so a lock added to it later lands here first.
@@ -557,7 +559,7 @@ describe("source scans (rule 2132, credential part)", () => {
     expect(optionsSrc).not.toMatch(/@\/lib\/(passkeys|person|team)"|\b(updatePerson|withPersonLock|createUser|markVerified)\(/);
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
-    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/team.ts", "src/lib/transfer.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/person-delete.ts", "src/lib/team.ts", "src/lib/transfer.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
     // src/lib/passkeys.ts: every route that imports the store is listed, so a new one (the sign-in verify route) fails
     // here until it is, and then must answer the lock timeout (Task 3 review minor 7).
     const passkeyRoutes = files(join("src", "app")).filter((f) => /from "@\/lib\/passkeys"/.test(readFileSync(f, "utf8")));

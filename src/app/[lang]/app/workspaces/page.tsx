@@ -23,5 +23,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!me) redirect(`/${lang}/app/login`);
   // The invitations inbox (M3, rule 2753): the person's own verified address only, never an id or a token.
   const [rows, invites] = await Promise.all([listWorkspaces(me.person, me.acct), invitesWaiting(me.person)]);
-  return <WorkspacesPanel t={appDict[lang].workspaces} lang={lang} initial={rows} invites={invites} canCreate={!!me.person.emailVerifiedAt} />;
+  return <WorkspacesPanel t={appDict[lang].workspaces} lang={lang} initial={rows} invites={invites} canCreate={!!me.person.emailVerifiedAt} back={appDict[lang].dialog.back} />;
 }

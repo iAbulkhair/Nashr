@@ -479,7 +479,7 @@ describe("rule 2132 (scan): the switch is off and nothing in product code makes 
   // too, each falling back to M1's behaviour while it is off. A new file here is a new place the flip changes.
   const BRANCHES = ["src/lib/multi-org.ts", "src/lib/team.ts", "src/lib/membership.ts", "src/lib/auth.ts", "src/lib/api-handler.ts", "src/proxy.ts", "src/app/[lang]/app/layout.tsx", "src/lib/ws-href.ts", "src/lib/page-href.ts", "src/app/api/workspaces/route.ts", "src/app/api/workspaces/switch/route.ts", "src/app/api/team/accept/route.ts", "src/app/[lang]/app/join/page.tsx", "src/app/[lang]/app/workspaces/page.tsx", "src/lib/login-finish.ts",
     // Release M3 (lifecycle)
-    "src/app/api/workspaces/invites/route.ts", "src/app/api/team/log/route.ts", "src/components/app/teamPerms.ts", "src/app/api/team/transfer/route.ts", "src/app/api/workspaces/transfer/route.ts",
+    "src/app/api/workspaces/invites/route.ts", "src/app/api/team/log/route.ts", "src/components/app/teamPerms.ts", "src/app/api/team/transfer/route.ts", "src/app/api/workspaces/transfer/route.ts", "src/app/api/workspaces/person/route.ts",
   ];
   it("only the listed M1 and M2 files branch on MULTI_ORG (its definition is in src/lib/multi-org.ts)", () => {
     const users = ALL.filter((f) => identifiers(tree(f), "MULTI_ORG").length > 0);

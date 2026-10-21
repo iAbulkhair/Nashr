@@ -19,7 +19,8 @@ const PHYSICAL = /(?<![\w-])-?(?:ml|mr|pl|pr|left|right|rounded-l|rounded-r|bord
 describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in the app's own dialog, never the browser's confirm()", () => {
   // GovernancePanel: the restore question, and the auto-run question it asks from two places through askAutoHandoff.
   // TeamPanel's fourth: offering the account's ownership (multi-workspace M3, rule 2750).
-  const PANELS = { TeamPanel: 4, FilesPanel: 1, GovernancePanel: 2, WishlistPanel: 1 } as const;
+  // WorkspacesPanel: deleting one's own login (multi-workspace M3, rule 2754).
+  const PANELS = { TeamPanel: 4, FilesPanel: 1, GovernancePanel: 2, WishlistPanel: 1, WorkspacesPanel: 1 } as const;
 
   it("no panel calls the browser's confirm, and each asks through useConfirm and renders its dialog", () => {
     for (const [name, asks] of Object.entries(PANELS)) {
@@ -38,6 +39,7 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
     expect(team).toContain("message: fill(T.confirmCancel, { email: inv.email })");
     expect(team).toContain("message: T.confirmLeave");
     expect(team).toContain("message: fill(T.confirmTransfer, { email: xTo })");
+    expect(app("WorkspacesPanel")).toContain("message: t.delConfirm, confirmLabel: t.delSubmit, cancelLabel: back, destructive: true");
     expect(app("FilesPanel")).toContain("message: `${f.delete} ${name}?`");
     expect(app("WishlistPanel")).toContain("message: L.confirmDel");
     const gov = app("GovernancePanel");
@@ -52,6 +54,8 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
       expect(body.slice(0, 400), fn).toMatch(/if \(!\(await ask\(\{[^\n]*\}\)\)\) return;/);
     }
     expect(app("FilesPanel")).toMatch(/if \(!\(await ask\(\{[^\n]*\}\)\)\) return;/);
+    const ws = app("WorkspacesPanel");
+    expect(ws.slice(ws.indexOf("function deleteLogin("), ws.indexOf("function deleteLogin(") + 400)).toMatch(/if \(!\(await ask\(\{[^\n]*\}\)\)\) return;/);
     expect(app("WishlistPanel")).toMatch(/if \(w\.seeded \|\| \(await ask\(\{[^\n]*\}\)\)\) void act\(\{ action: "delete", id: w\.id \}\)/);
     const gov = app("GovernancePanel");
     // Turning the auto-run switch on asks; turning it off does not. A restore that would turn it on asks the same question.

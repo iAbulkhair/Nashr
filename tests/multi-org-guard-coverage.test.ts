@@ -44,6 +44,7 @@ const PERSON_LEVEL = new Set([
   "/api/workspaces", // currentPerson(): list and create (rule 2123)
   "/api/workspaces/switch", // currentPerson(): the switch (rule 2112)
   "/api/workspaces/transfer", // currentPerson(): accept an ownership offer, the workspace by handle among the person's own (M3, rule 2751)
+  "/api/workspaces/person", // currentPerson(): delete one's own login, no workspace named (M3, rule 2754)
 ]);
 
 describe("rule 2113: every workspace route is inside the second guard", () => {

@@ -48,8 +48,8 @@ const TOKEN = /^[a-f0-9]{64}$/;
 const hashOf = (token: string) => createHash("sha256").update(token).digest("hex");
 const offerKey = (aid: AccountId) => accountKey.xfer(aid);
 
-/** A `p_` person read from its own `person:` row: the only shape a transfer moves (ruling 1). */
-const splitPerson = (p: Person | null): p is Person => !!p && p.source === "person" && PERSON_ID.test(p.pid);
+/** A `p_` person read from its own `person:` row: the only shape a transfer moves (ruling 1) and a delete removes (ruling 7). */
+export const splitPerson = (p: Person | null): p is Person => !!p && p.source === "person" && PERSON_ID.test(p.pid);
 
 /** The account may change hands at all: an `a_` account owned through `ownerPid` by a `p_` person, not suspended. */
 const transferable = (u: User | null): u is User => !!u && OPAQUE_ACCOUNT_ID.test(acct(u)) && !!u.ownerPid && PERSON_ID.test(ownerOf(u)) && !isSuspended(u);

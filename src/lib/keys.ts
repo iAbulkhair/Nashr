@@ -197,6 +197,8 @@ export const personKey = {
   xferOfferBucket: (p: PersonId) => `xfer:offer:${p}`,
   /** bucket name for `allow` (stored as `rate:xfer:accept:{pid}`): ownership accept attempts of the person, 10 an hour (M3, rule 2751). */
   xferAcceptBucket: (p: PersonId) => `xfer:accept:${p}`,
+  /** bucket name for `allow` (stored as `rate:persondel:{pid}`): attempts to delete one's own login, 5 an hour (M3, rule 2754). */
+  deleteBucket: (p: PersonId) => `persondel:${p}`,
   /** string: the brand id the person last chose in one account. */
   activeBrand: (p: PersonId, a: AccountId) => `activebrand:${p}:${a}`,
   /** string: the hash of the person's current calendar feed link in one account. */

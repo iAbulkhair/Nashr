@@ -259,6 +259,22 @@ export async function holdsElsewhere(pid: PersonId, aid: AccountId): Promise<boo
 }
 
 /**
+ * Every account the person owns or has a membership row in, paused ones included (the read of `holdsElsewhere`, listed):
+ * the M3 delete-person flow (rule 2754) leaves each, and refuses while any is owned. Two rounds.
+ */
+export async function heldAnywhere(pid: PersonId): Promise<{ aid: AccountId; owner: boolean }[]> {
+  const [entries, rawUser, rawMember] = await Promise.all([db.smembers(personKey.orgs(pid)), db.get(accountKey.user(pid)), db.get(accountKey.member(pid))]);
+  const home = legacyHomeFrom(pid, rawUser, rawMember);
+  const pool = [...new Set<AccountId>([...entries.map(aidFrom), ...(home ? [home] : [])])];
+  const rows = await pmap(pool, async (a) => {
+    const [u, m] = await Promise.all([getAccount(a), getMembership(a, pid)]);
+    const owner = !!u && acct(u) === a && ownerOf(u) === pid;
+    return owner || m ? { aid: a, owner } : null;
+  });
+  return rows.filter((r): r is { aid: AccountId; owner: boolean } => !!r);
+}
+
+/**
  * Plan reconciliation 7: with `MULTI_ORG` off, a person with no owned account and no other membership left is deleted as
  * R1 deleted a removed member's login: `person:{pid}`, its account list and last pick, and, while the login index still
  * names this person (an address taken by someone else since keeps everything), the login index, two-step sign-in, the
@@ -268,17 +284,44 @@ export async function holdsElsewhere(pid: PersonId, aid: AccountId): Promise<boo
  * write of the same person waits for it.
  */
 async function forgetPersonIfAlone(pid: PersonId, email: string, aid: AccountId, opts: { loginLocked: true; personLocked: true }): Promise<void> {
-  void opts;
   if (MULTI_ORG) return;
   if (await holdsElsewhere(pid, aid)) return;
+  await forgetPerson(pid, email, opts);
+}
+
+/**
+ * Delete a person who holds nothing (the key list of plan reconciliation 7, shared by `forgetPersonIfAlone` and the M3
+ * delete-person flow, rule 2754): `person:{pid}`, its account list and last pick, its passkeys, and, while the login index
+ * still names this person (an address taken by someone else since keeps everything), the login index, two-step sign-in,
+ * the waiting address change, the Google link both ways, the invitations inbox (`invitesfor:`) and every device session.
+ * One round. The caller holds `lock:login:{email}` → `lock:person:{pid}` and has checked that nothing is held.
+ */
+export async function forgetPerson(pid: PersonId, email: string, opts: { loginLocked: true; personLocked: true }): Promise<void> {
+  void opts;
   const [rawIdx, sub, passkeys] = await Promise.all([db.get<unknown>(accountKey.login(email)), db.get<unknown>(accountKey.googleSub(email)), passkeyKeys(pid)]);
   const idx = parseStored("login", LoginIndex, rawIdx, null);
   const own = !idx || idx.pid === pid;
   const google = typeof sub === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(sub) ? [globalKey.googleAccount(sub)] : [];
   // The person's passkeys go with the person whoever holds the address now (rule 2425, pre-flight ruling 6): they are
   // keyed by pid, and `passkeyKeys` lists only reverse entries that still name this pid.
-  const keys = [personKey.person(pid), personKey.orgs(pid), personKey.lastOrg(pid), ...passkeys, ...(own ? [...mfaKeys(email), accountKey.emailChange(email), accountKey.emailChangeTries(email), accountKey.googleSub(email), ...google] : [])];
+  const keys = [personKey.person(pid), personKey.orgs(pid), personKey.lastOrg(pid), ...passkeys, ...(own ? [...mfaKeys(email), accountKey.emailChange(email), accountKey.emailChangeTries(email), accountKey.googleSub(email), accountKey.invitesFor(email), ...google] : [])];
   await Promise.all([...keys.map((k) => db.del(k)), own ? revokeAllDevices(email) : null, releaseLogin(email, pid, { locked: true })]);
+}
+
+/**
+ * One membership of a person deleting their own login (multi-workspace M3, rule 2754): under `lock:team:{aid}` the
+ * membership is read again and, while it holds, deleted with everything that is the person's in the account
+ * (`deleteMembership`), and one "left" row is written. False when there was nothing to delete. Never an owner: the caller
+ * refused an owned account before.
+ */
+export async function leaveForDeletion(aid: AccountId, pid: PersonId, email: string): Promise<boolean> {
+  return withTeamLock(aid, async () => {
+    const [cur, account] = await Promise.all([readMembership(aid, pid), getAccount(aid)]);
+    if (!cur.ms || (account && ownerOf(account) === pid)) return false;
+    await deleteMembership(aid, pid, { home: cur.home, teamLocked: true });
+    await logTeam(aid, { kind: "left", actor: { pid, email }, target: { pid, email }, role: cur.ms.role, via: "web" }, { teamLocked: true });
+    return true;
+  });
 }
 
 /**

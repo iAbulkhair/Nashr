@@ -11,6 +11,7 @@ import Callout from "@/components/ui/Callout";
 import EmptyState from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import PageHeader from "@/components/ui/PageHeader";
+import { useConfirm } from "./ConfirmDialog";
 
 type T = AppDict["workspaces"];
 
@@ -23,8 +24,12 @@ const XFER = /^#xfer=(w_[a-z2-7]{16})\.([a-f0-9]{64})$/;
  * (the switch route, then a full load of its link so the whole shell is rendered for it), and create one. The routes
  * check everything; the button state only mirrors them.
  */
-export default function WorkspacesPanel({ t, lang, initial, invites = [], canCreate }: { t: T; lang: "ar" | "en"; initial: WorkspaceRow[]; invites?: WaitingInvite[]; canCreate: boolean }) {
+export default function WorkspacesPanel({ t, lang, initial, invites = [], canCreate, back }: { t: T; lang: "ar" | "en"; initial: WorkspaceRow[]; invites?: WaitingInvite[]; canCreate: boolean; back: string }) {
   const [busy, setBusy] = useState<string | null>(null);
+  // Deleting one's own login (multi-workspace M3, rule 2754) asks in the app's own dialog; the route checks the rest.
+  const [ask, confirmDialog] = useConfirm();
+  const [delPw, setDelPw] = useState("");
+  const [delCode, setDelCode] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const message = (code: unknown) => (typeof code === "string" && code in t.errors ? t.errors[code as keyof T["errors"]] : t.errors.failed);
@@ -50,6 +55,24 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
         return;
       }
       setError(key === "xfer" && j.error === "rate_limited" ? t.xferRate : message(j.error));
+    } catch {
+      setError(t.errors.failed);
+    }
+    setBusy(null);
+  }
+
+  async function deleteLogin() {
+    if (!(await ask({ title: t.delTitle, message: t.delConfirm, confirmLabel: t.delSubmit, cancelLabel: back, destructive: true }))) return;
+    setBusy("delete");
+    setError(null);
+    try {
+      const r = await fetch("/api/workspaces/person", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: delPw, code: delCode || undefined }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (j.ok) {
+        window.location.assign(`/${lang}/app/login`);
+        return;
+      }
+      setError(message(j.error));
     } catch {
       setError(t.errors.failed);
     }
@@ -129,6 +152,30 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
           </div>
         </form>
       )}
+      <form
+        className="grid gap-3 rounded-lg border border-border p-4"
+        aria-labelledby="ws-delete"
+        data-delete-person
+        onSubmit={(e) => {
+          e.preventDefault();
+          void deleteLogin();
+        }}
+      >
+        <h2 id="ws-delete" className="font-display text-lg font-bold">{t.delTitle}</h2>
+        <p className="text-sm text-foreground-muted">{t.delText}</p>
+        <Field label={t.delPassword}>
+          <Input type="password" autoComplete="current-password" value={delPw} onChange={(e) => setDelPw(e.target.value)} maxLength={200} required />
+        </Field>
+        <Field label={t.delCode}>
+          <Input inputMode="text" autoComplete="one-time-code" value={delCode} onChange={(e) => setDelCode(e.target.value)} maxLength={40} dir="ltr" />
+        </Field>
+        <div>
+          <Button type="submit" variant="danger" loading={busy === "delete"} disabled={!!busy || !delPw}>
+            {t.delSubmit}
+          </Button>
+        </div>
+      </form>
+      {confirmDialog}
     </div>
   );
 }

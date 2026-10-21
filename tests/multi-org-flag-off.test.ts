@@ -16,6 +16,7 @@ import * as logRoute from "@/app/api/team/log/route";
 import * as transferRoute from "@/app/api/team/transfer/route";
 import * as xferAcceptRoute from "@/app/api/workspaces/transfer/route";
 import * as invitesRoute from "@/app/api/workspaces/invites/route";
+import * as personRoute from "@/app/api/workspaces/person/route";
 import { teamPerms } from "@/components/app/teamPerms";
 import { db } from "@/lib/db";
 import { accountKey } from "@/lib/keys";
@@ -107,6 +108,8 @@ describe("M3 with MULTI_ORG off changes nothing", () => {
     expect((await transferRoute.DELETE()).status).toBe(404);
     expect((await xferAcceptRoute.POST(json("/api/workspaces/transfer", "POST", { handle: "w_aaaaaaaaaaaaaaaa", token: "0".repeat(64) }))).status).toBe(404);
     expect((await invitesRoute.GET()).status).toBe(404);
+    expect((await personRoute.DELETE(json("/api/workspaces/person", "DELETE", { password: "abc12345" }))).status).toBe(404);
+    expect(acct((await currentUser())!)).toBe(acct(u));
   });
 
   it("the Members page offers no log and no transfer, and an invite leaves no inbox entry", async () => {
