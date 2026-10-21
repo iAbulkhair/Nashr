@@ -14,6 +14,9 @@ const REVIEWED: Record<string, string> = {
   // the next try only makes sense after the last one failed.
   "src/lib/task-notes.ts appendPreferences": "lock retry",
   "src/lib/booking-token.ts revokeOne": "lock retry",
+  // Account-id R2 (rule 1990): the carry takes both addresses' leaf locks in sorted order, each a spin-wait as above.
+  "src/lib/booking-token.ts carryOne": "lock retry, two locks in sorted order",
+  "src/lib/feed-token.ts carryFeedLogin": "lock retry, two locks in sorted order",
   "src/lib/brand-proposals.ts withBrandLock": "lock retry",
   "src/lib/brand.ts updateTask": "lock retry",
   "src/lib/brands.ts withBrandsLock": "lock retry",

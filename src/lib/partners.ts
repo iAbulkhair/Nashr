@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
-import { getLogin, getUser, normalizeEmail, saveUser, sessionCookie, validEmail, type Plan, type User } from "./auth";
+import { accountByLogin, getLogin, getUser, normalizeEmail, saveUser, sessionCookie, validEmail, type Plan, type User } from "./auth";
 import { addTopup, voidTopup, withUserLock } from "./credits";
 import { lotsOf, refundUnused, type RefundRequest, type RefundUnusedError, type TopupLot, type TopupRefund, type TopupRequest } from "./topups";
 import { pmap } from "./parallel";
@@ -784,13 +784,17 @@ export async function listPartners() {
   const emails = await db.smembers(PARTNERS);
   const [records, owners, refSets, ledgers] = await Promise.all([
     db.mget<Partner>(emails.map(partnerKey)),
-    db.mget<User>(emails.map((e) => accountKey.user(e))),
+    // The partner signs in with the address the programme is keyed by; the account behind it is resolved, never read as
+    // `user:{address}` (rule 2748: an opaque account lives at its id).
+    pmap(emails, (e) => accountByLogin(e)),
     pmap(emails, (e) => db.smembers(refsKey(e))),
     pmap(emails, (e) => db.hgetall<LedgerRow>(ledgerKey(e))),
   ]);
   const refEmails = [...new Set(refSets.flatMap((r) => r.slice(0, 500)))];
+  // The referral set holds account ids (R1 on; the same bytes as the address for a legacy account): `user:{id}` is the
+  // account record, as `getAccount` reads it, in one round.
   const refUsers = refEmails.length ? await db.mget<User>(refEmails.map((r) => accountKey.user(r))) : [];
-  const byLabel = new Map(refUsers.flatMap((u) => (u?.referredBy ? [[`${u.referredBy.partner}|${customerLabel(u)}`, acct(u)] as const] : [])));
+  const byLabel = new Map(refUsers.flatMap((u) => (u?.referredBy ? [[`${u.referredBy.partner}|${customerLabel(u)}`, u.email] as const] : [])));
   return emails.flatMap((e, i) => {
     const p = records[i];
     if (!p) return [];

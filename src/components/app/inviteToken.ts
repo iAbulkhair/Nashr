@@ -14,6 +14,15 @@ export function readInviteToken(hash: string): string {
   return TOKEN.test(raw) ? raw.toLowerCase() : "";
 }
 
+/**
+ * The revert link of an address move (account-id R2, D1): /{lang}/app/reset#r=<64 hex>, mailed to the OLD address. Read
+ * like the reset token, from the fragment only; "" when there is none or it is malformed.
+ */
+export function readRevertToken(hash: string): string {
+  const raw = new URLSearchParams(hash.replace(/^#/, "")).get("r") ?? "";
+  return TOKEN.test(raw) ? raw.toLowerCase() : "";
+}
+
 /** The same address with no fragment: what the join page leaves in the address bar and history once it has read the token. */
 export const withoutFragment = (loc: { pathname: string; search: string }) => `${loc.pathname}${loc.search}`;
 

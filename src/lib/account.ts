@@ -238,7 +238,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   if (token) keys.push(globalKey.mcpToken(token));
   await revokeAllGrants(e); // OAuth tokens issued to connected apps
   // Wishlist: votes are taken back (the counts drop) and suggestions, which carry the email and free text, are removed.
-  keys.push(...(await forgetWishlistUser(e)));
+  keys.push(...(await forgetWishlistUser(e, login)));
   // Partner programme (src/lib/partners.ts): recorded payments and, for a partner, the record with its bank details, the
   // code, the referral set and the ledger. The account also leaves its own partner's referral set.
   keys.push(...(await forgetPartnerData(e, login)));

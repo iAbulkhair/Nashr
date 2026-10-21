@@ -111,7 +111,7 @@ export async function POST(req: Request) {
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
   const roster = await db.smembers(membersKey(acct(owner)));
   // The owner's linked marketing calendars (Reem B3) end with them too: whoever holds the account next links their own.
-  await Promise.all([revokeAllMcp(acct(owner)), revokeFeeds([owner.email, ...roster]), revokeBooks([owner.email, ...roster]), revokeCalendarLinks(owner.email), unlinkGoogle(owner.email)]);
+  await Promise.all([revokeAllMcp(acct(owner)), revokeFeeds([owner.email, ...roster]), revokeBooks([owner.email, ...roster]), revokeCalendarLinks(acct(owner)), unlinkGoogle(owner.email)]);
   return signInAfterReset(rec.email);
 }
 

@@ -52,11 +52,17 @@ const readIndex = (raw: unknown) => {
   return r.success ? r.data : ("invalid" as const);
 };
 
-/** The index of `login`, written only while it is still absent under the login lock. True when written. */
-async function claimIfAbsent(login: string, pid: string): Promise<"set" | "same" | "conflict"> {
+/**
+ * The index of `login`, written only while it is still absent under the login lock, and only while the record it is
+ * written for still holds the address (L2, rule 2747: `holds` re-reads it under the lock, so a record that moved or was
+ * deleted since the first read is never indexed).
+ */
+async function claimIfAbsent(login: string, pid: string, holds: () => Promise<boolean>): Promise<"set" | "same" | "conflict"> {
   return withLoginLock(login, async () => {
-    const cur = readIndex(await db.get(accountKey.login(login)));
+    const [raw, still] = await Promise.all([db.get(accountKey.login(login)), holds()]);
+    const cur = readIndex(raw);
     if (cur === null) {
+      if (!still) return "conflict" as const;
       await db.set(accountKey.login(login), loginIndexOf(pid));
       return "set" as const;
     }
@@ -64,7 +70,12 @@ async function claimIfAbsent(login: string, pid: string): Promise<"set" | "same"
   });
 }
 
-type Plan = { kind: "owner"; id: string; login: string; needsId: boolean } | { kind: "member"; owner: string; login: string; pid: string; needsId: boolean };
+/**
+ * `index`: whether the script may write the login index. A legacy owner (its key is its address) and a member may. An
+ * account whose key is not its address (an opaque `a_` account, or one that moved in place under R2, rule 2747) had its
+ * index written by the signup or the move itself: the script only checks it names the owner, and never writes one.
+ */
+type Plan = { kind: "owner"; id: string; login: string; pid: string; needsId: boolean; index: boolean } | { kind: "member"; owner: string; login: string; pid: string; needsId: boolean; index: true };
 
 export async function convertAccountIds(apply: boolean): Promise<IdsReport> {
   const r: IdsReport = { apply, accounts: 0, missing: 0, members: 0, idsSet: 0, indexesSet: 0, conflicts: 0, orphans: 0 };
@@ -80,13 +91,15 @@ export async function convertAccountIds(apply: boolean): Promise<IdsReport> {
       return;
     }
     const login = normalizeEmail(u.email);
-    // R1 stores every account under its first address and moves copy the record, so a record whose address is not its key
-    // was written by hand or by a bug: reported, never indexed (the guarded fallback already refuses it, rule 1981).
-    if (login !== id || (u.id !== undefined && u.id !== id)) {
+    // A stored id that is not its key (a rolled-back build's copy), or a record with no id whose address is not its key
+    // (written by hand or by a bug): reported, never indexed (the guarded fallback already refuses it, rule 1981). A
+    // record that carries its key as its id and another address is an opaque account or one that moved in place (R2):
+    // not a conflict, its index is only checked below.
+    if ((u.id !== undefined && u.id !== id) || (u.id === undefined && login !== id)) {
       r.conflicts++;
       return;
     }
-    plans.push({ kind: "owner", id, login, needsId: u.id === undefined });
+    plans.push({ kind: "owner", id, login, pid: u.ownerPid ?? id, needsId: u.id === undefined, index: login === id });
   });
   const rosterPairs = ids.flatMap((id, i) => (users[i] ? rosters[i].map((m) => [id, normalizeEmail(m)] as const) : []));
   const members = await mgetChunked<Member>(rosterPairs.map(([, m]) => accountKey.member(m)));
@@ -103,14 +116,13 @@ export async function convertAccountIds(apply: boolean): Promise<IdsReport> {
       return;
     }
     r.members++;
-    plans.push({ kind: "member", owner, login, pid: login, needsId: m.id === undefined });
+    plans.push({ kind: "member", owner, login, pid: login, needsId: m.id === undefined, index: true });
   });
   const indexes = await mgetChunked<unknown>(plans.map((p) => accountKey.login(p.login)));
   const work: Plan[] = [];
   plans.forEach((p, i) => {
     const cur = readIndex(indexes[i]);
-    const pid = p.kind === "owner" ? p.id : p.pid;
-    if (cur !== null && (cur === "invalid" || cur.pid !== pid)) {
+    if ((cur !== null && (cur === "invalid" || cur.pid !== p.pid)) || (cur === null && !p.index)) {
       r.conflicts++;
       return;
     }
@@ -138,7 +150,14 @@ export async function convertAccountIds(apply: boolean): Promise<IdsReport> {
         return true;
       }).catch(() => false));
     }
-    const idx = await claimIfAbsent(p.login, p.kind === "owner" ? p.id : p.pid).catch(() => "conflict" as const);
+    // L2: the record is read again under the login lock; only one that still holds this address gets its index.
+    const holds = p.kind === "owner"
+      ? async () => normalizeEmail((await db.get<User>(accountKey.user(p.id)))?.email ?? "") === p.login
+      : async () => {
+        const m = await db.get<Member>(accountKey.member(p.login));
+        return !!m && m.memberOf === p.owner && normalizeEmail(m.email) === p.login;
+      };
+    const idx = await claimIfAbsent(p.login, p.pid, holds).catch(() => "conflict" as const);
     return { idSet, idx };
   }, CHUNK);
   for (const o of outcomes) {

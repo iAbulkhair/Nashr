@@ -60,7 +60,8 @@ export async function applyReferral(newEmail: string, code: string) {
   const at = new Date().toISOString();
   await adjust(newEmail, REFERRAL_CREDITS);
   await Promise.all([
-    db.lpush(accountKey.referrals(refEmail), JSON.stringify({ email: newEmail, at })),
+    // `id` names the referred ACCOUNT (rule 2748); `email` keeps the same value for builds before R2, which read it.
+    db.lpush(accountKey.referrals(refEmail), JSON.stringify({ id: newEmail, email: newEmail, at })),
     db.set(accountKey.referredBy(newEmail), refEmail),
     db.hset(pendingKey(refEmail), who(newEmail), { at, status: "pending" } satisfies PendingReferral),
   ]);
@@ -82,9 +83,9 @@ export async function moveReferral(from: string, to: string): Promise<void> {
     await db.hset(pendingKey(refEmail), who(to), states[fromId]);
     await db.hdel(pendingKey(refEmail), fromId);
   }
-  const row = rows.find((r) => { try { return (JSON.parse(r) as { email?: string }).email === from; } catch { return false; } });
-  if (row && !rows.some((r) => { try { return (JSON.parse(r) as { email?: string }).email === to; } catch { return false; } })) {
-    await db.lpush(accountKey.referrals(refEmail), JSON.stringify({ ...JSON.parse(row), email: to }));
+  const row = rows.find((r) => { try { return ((p: { id?: string; email?: string }) => (p.id ?? p.email) === from)(JSON.parse(r)); } catch { return false; } });
+  if (row && !rows.some((r) => { try { return ((p: { id?: string; email?: string }) => (p.id ?? p.email) === to)(JSON.parse(r)); } catch { return false; } })) {
+    await db.lpush(accountKey.referrals(refEmail), JSON.stringify({ ...JSON.parse(row), id: to, email: to }));
   }
   if (row) await db.lrem(accountKey.referrals(refEmail), row);
 }
@@ -123,6 +124,6 @@ export async function referralStats(email: string) {
   const legacy = Math.max(0, rows.length - all.length);
   return {
     code: codeFor(email), count: rows.length, pending, earned: (paid + legacy) * REFERRAL_CREDITS,
-    rows: rows.map((r) => JSON.parse(r) as { email: string; at: string }),
+    rows: rows.map((r) => JSON.parse(r) as { id?: string; email: string; at: string }),
   };
 }

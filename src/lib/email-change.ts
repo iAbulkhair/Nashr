@@ -14,7 +14,11 @@ import { mailReady, sendEmail } from "./notify";
 import { sameSecret } from "./rate";
 import { getMember, membersKey, moveMemberLogin } from "./team";
 import { devCodeExposed, moveOwnerLogin, normalizeCode, VERIFY } from "./verify-email";
-import { accountKey, workspaceScope, wsKey } from "./keys";
+import { accountKey, workspaceScope, wsKey, type PersonId } from "./keys";
+import { OPAQUE_IDS } from "./account-id";
+import { addressBlocked } from "./email-hold";
+import { movePersonLogin } from "./email-move";
+import { appOrigin } from "./origin";
 
 /**
  * Self-serve change of the sign-in address (rules 1942-1945, docs/system/flows.md "Changing the sign-in address").
@@ -30,6 +34,12 @@ import { accountKey, workspaceScope, wsKey } from "./keys";
  * account id is separate from the address, only an account with nothing in it yet may move (`ownerHasData`); any other
  * answers `owner_has_data` and the page sends the owner to support.
  *
+ * Account-id R2 (rules 2741-2746, `OPAQUE_IDS` on): the account id is no longer the address, so an owner and a `p_`
+ * person move IN PLACE (`movePersonLogin`, src/lib/email-move.ts) with everything they hold, and `ownerHasData` no longer
+ * applies (rule 2746: it guards only R1's copy, which still runs while the flag is off). A login whose record is a legacy
+ * member record keeps R1's copy. The move holds the old address for 30 days and the notice mail carries a single-use
+ * revert link (D1, src/lib/email-hold.ts). A partner's address is refused (`partner`).
+ *
  * Stored: `emailchange:{login}` = {to, hash, at} for 15 minutes (only a hash of the code, salted with both addresses),
  * and `emailchange:tries:{login}`, counted with an atomic INCRBY before the comparison (as rule 758). The login key is
  * always the session's acting login, never an address from the request; the target address is only ever a value.
@@ -41,8 +51,11 @@ const pendingKey = (login: string) => accountKey.emailChange(normalizeEmail(logi
 const triesKey = (login: string) => accountKey.emailChangeTries(normalizeEmail(login));
 const hashOf = (login: string, to: string, code: string) => createHash("sha256").update(`nashr-emailchange:${login}:${to}:${code}`).digest("hex");
 
-export type Acting = { kind: "owner" | "member"; email: string };
+export type Acting = { kind: "owner" | "member"; email: string; pid?: PersonId };
 export type StartRefusal = "invalid_email" | "same_email" | "taken" | "owner_has_data" | "limit";
+
+/** R2: the move in place runs (flag on and a person id known); otherwise R1's copy. */
+const inPlace = (me: Acting): me is Acting & { pid: PersonId } => OPAQUE_IDS && !!me.pid;
 
 /**
  * Whether an owner's account already holds anything an address change here could not carry. Read in one round: the
@@ -80,9 +93,9 @@ const mail = (lang: "ar" | "en") => ({
   code: (code: string) => lang === "en"
     ? { subject: `Your Thakeen code: ${code}`, text: `Your code to make this your Thakeen sign-in email: ${code}\nIt works for 15 minutes.\nIf you did not ask for it, ignore this email: nothing changes without it.` }
     : { subject: `رمز ذكين: ${code}`, text: `هذا رمزك عشان يصير هذا البريد بريد دخولك في ذكين: ${code}\nيشتغل 15 دقيقة.\nإذا ما طلبته أنت، تجاهل الرسالة: ما يتغيّر شي بدونه.` },
-  notice: (to: string) => lang === "en"
-    ? { subject: "Your Thakeen sign-in email changed", text: `The sign-in email of your Thakeen login was changed to ${to}, and every device was signed out.\nIf this was not you, reply to this email right away so we can lock the account.` }
-    : { subject: "تغيّر بريد دخولك في ذكين", text: `تغيّر بريد الدخول لحسابك في ذكين إلى ${to}، وطلعت كل الأجهزة من الحساب.\nإذا ما كنت أنت، رد على هذي الرسالة على طول عشان نقفل الحساب.` },
+  notice: (to: string, revert?: string) => lang === "en"
+    ? { subject: "Your Thakeen sign-in email changed", text: `The sign-in email of your Thakeen login was changed to ${to}, and every device was signed out.\n${revert ? `If this was not you, open this link within 7 days to take the account back and set a new password (it works once): ${revert}\n` : ""}If this was not you, reply to this email right away so we can lock the account.` }
+    : { subject: "تغيّر بريد دخولك في ذكين", text: `تغيّر بريد الدخول لحسابك في ذكين إلى ${to}، وطلعت كل الأجهزة من الحساب.\n${revert ? `إذا ما كنت أنت، افتح هذا الرابط خلال 7 أيام عشان ترجّع الحساب وتحط كلمة مرور جديدة (يشتغل مرة وحدة): ${revert}\n` : ""}إذا ما كنت أنت، رد على هذي الرسالة على طول عشان نقفل الحساب.` },
 });
 
 /**
@@ -95,12 +108,12 @@ export async function startEmailChange(u: User, me: Acting, target: unknown, lan
   if (!validEmail(to)) return { ok: false, error: "invalid_email" };
   if (to === me.email) return { ok: false, error: "same_email" };
   // Taken as a sign-in address (rule 1982), not read as an account key.
-  const [owner, member] = await Promise.all([getLogin(to), getMember(to)]);
-  if (owner || member) return { ok: false, error: "taken" };
+  const [owner, member, blocked] = await Promise.all([getLogin(to), getMember(to), addressBlocked(to, me.pid)]);
+  if (owner || member || blocked) return { ok: false, error: "taken" };
   if (me.kind === "owner") {
     const today = new Date().toISOString().slice(0, 10);
     if (u.emailMoves?.day === today && u.emailMoves.n >= VERIFY.movesPerDay) return { ok: false, error: "limit" };
-    if (await ownerHasData(u)) return { ok: false, error: "owner_has_data" };
+    if (!OPAQUE_IDS && (await ownerHasData(u))) return { ok: false, error: "owner_has_data" };
   }
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   await Promise.all([db.set(pendingKey(me.email), { to, hash: hashOf(me.email, to, code), at: Date.now() } satisfies Pending, EMAIL_CHANGE.ttl), db.del(triesKey(me.email))]);
@@ -126,7 +139,7 @@ export async function pendingEmailChange(login: string): Promise<string | null> 
 
 export type ConfirmResult =
   | { ok: true; to: string }
-  | { ok: false; error: "expired" | "wrong" | "locked" | "taken" | "owner_has_data" | "limit" | "not_found"; attemptsLeft?: number };
+  | { ok: false; error: "expired" | "wrong" | "locked" | "taken" | "owner_has_data" | "limit" | "not_found" | "partner"; attemptsLeft?: number };
 
 /**
  * Check the code, then move the login. A right code is consumed before the move (one code, one move); a move refused
@@ -153,13 +166,20 @@ export async function confirmEmailChange(u: User, me: Acting, typed: unknown, la
   if (!(await db.getdel<Pending>(pendingKey(me.email)))) return { ok: false, error: "expired" };
   await db.del(triesKey(me.email));
   const to = p.to;
-  if (me.kind === "member") {
+  let revert: string | undefined;
+  const legacyMember = me.kind === "member" && !!(await getMember(me.email));
+  if (inPlace(me) && !legacyMember) {
+    // R2: in place, gated on the proof only (an account's work moves with it). A legacy member record keeps the copy below.
+    const r = await movePersonLogin(me.pid, me.email, to, { may: (p) => !!p.emailVerifiedAt || me.kind === "member", proved: true, limited: true, hold: true });
+    if (r.result !== "ok") return { ok: false, error: r.result === "exists" ? "taken" : r.result === "not_allowed" ? "not_found" : r.result };
+    revert = r.revert;
+  } else if (me.kind === "member") {
     const r = await moveMemberLogin(acct(u), me.email, to, carryLogin);
     if (r === "exists") return { ok: false, error: "taken" };
     if (r === "not_found") return { ok: false, error: "not_found" };
   } else {
     const r = await moveOwnerLogin(u, to, {
-      may: async (cur) => !!cur.emailVerifiedAt && !(await ownerHasData(cur)),
+      may: async (cur) => !!cur.emailVerifiedAt && !(!OPAQUE_IDS && (await ownerHasData(cur))),
       isCopy: (copy) => !!copy.emailVerifiedAt,
       proved: true,
       carry: carryLogin,
@@ -169,7 +189,7 @@ export async function confirmEmailChange(u: User, me: Acting, typed: unknown, la
     if (r === "not_allowed") return { ok: false, error: (await getLogin(me.email))?.kind === "owner" ? "owner_has_data" : "not_found" };
   }
   if (mailReady()) {
-    const m = mail(lang).notice(to);
+    const m = mail(lang).notice(to, revert ? `${appOrigin()}/${lang}/app/reset#r=${revert}` : undefined);
     await sendEmail(me.email, m.subject, m.text).catch(() => false);
   }
   return { ok: true, to };

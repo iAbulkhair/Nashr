@@ -146,9 +146,17 @@ export async function restoreWish(id: string) {
 /**
  * Account deletion: take this account's votes back and drop its suggestions (they carry the email and free text).
  * Returns the keys the caller deletes with the rest of the account.
+ *
+ * Rule 2748: votes are keyed by the account id (`acct(u)`), suggestions carry the sign-in address. The caller passes both
+ * (`id`, and `login` the account's current address); for a legacy account that never moved they are the same string.
+ * Votes cast under the address before the id was used for them (an opaque or moved account cannot have any) go too.
  */
-export async function forgetWishlistUser(email: string): Promise<string[]> {
-  const [mine, sugg] = await Promise.all([db.smembers(K.mine(email)), rawSuggestions()]);
-  await Promise.all([...mine.map((id) => db.srem(K.votes(id), email)), ...sugg.filter((r) => r.s.email === email).map((r) => db.lrem(K.suggestions, r.raw))]);
-  return [K.mine(email)];
+export async function forgetWishlistUser(id: string, login: string = id): Promise<string[]> {
+  const voters = [...new Set([id, login])];
+  const [mines, sugg] = await Promise.all([Promise.all(voters.map((v) => db.smembers(K.mine(v)))), rawSuggestions()]);
+  await Promise.all([
+    ...voters.flatMap((v, i) => mines[i].map((item) => db.srem(K.votes(item), v))),
+    ...sugg.filter((r) => voters.includes(r.s.email)).map((r) => db.lrem(K.suggestions, r.raw)),
+  ]);
+  return voters.map((v) => K.mine(v));
 }

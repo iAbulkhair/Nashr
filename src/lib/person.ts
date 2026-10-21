@@ -1,3 +1,5 @@
+import { randomBytes } from "crypto";
+import bcrypt from "bcryptjs";
 import { db } from "./db";
 import { log } from "./log";
 import { withNamedLock } from "./locks";
@@ -286,6 +288,16 @@ export async function updatePerson(pid: PersonId, patch: PersonPatch, opts: { pe
 }
 
 /**
+ * A password nobody knows, and every session ended at `at` (account-id R2, the revert of an address move, rule 2744):
+ * the hash of 32 random bytes that are never kept, so neither the person nor whoever moved the address can sign in with
+ * a password until the person sets one through the reset token the revert hands back. Kept here so the person writer
+ * stays the only file outside account creation that writes a customer password hash (rule 2132).
+ */
+export async function forgetPassword(pid: PersonId, at: string, opts: { personLocked?: boolean } = {}): Promise<Person | null> {
+  return updatePerson(pid, { passHash: await bcrypt.hash(randomBytes(32).toString("hex"), 10), sessionsAfter: at }, opts);
+}
+
+/**
  * A new login's person row (plan reconciliation 6): `SET person:{pid}` whole, so a leftover row of a deleted account at
  * the same id (an address registered again) lends it nothing. The caller holds `lock:login` of the address and has
  * checked it is free. The write runs under `lock:person:{pid}` (`lock:login` → `lock:person`, rule 2139), so an
@@ -310,3 +322,30 @@ export async function createPersonRecord(
 
 /** The later of two revocation stamps (a malformed one never wins over a valid one). */
 export const laterStamp = later;
+
+/**
+ * Account-id R2 (rule 2741): the person's sign-in address changes in place, the id stays. Writes `person:{pid}` as the
+ * person reads now (`getPerson`'s view, unknown stored fields kept) with `email: to`, the fresh session stamp (never
+ * moved backwards), the day's move count and, when the move proved the address, `emailVerifiedAt`; a move that proved
+ * nothing (the typo fix of an unverified owner) leaves the proof as it was. The caller holds both login locks and
+ * `lock:person:{pid}`, and has already written every account the person owns (`email: to`, the same stamp): a legacy
+ * owner's account record backs this person, so it goes first and both records then agree (the stale guard never picks
+ * an old address). Null, with nothing written, when no record holds the person.
+ */
+export async function movePersonRow(pid: PersonId, to: string, patch: { sessionsAfter: string; emailMoves: { day: string; n: number }; emailVerifiedAt?: string }): Promise<Person | null> {
+  const [p, u, m] = await Promise.all([db.get(personKey.person(pid)), db.get(accountKey.user(pid)), db.get(accountKey.member(pid))]);
+  const read = resolvePerson(pid, p, u, m);
+  if (!read) return null;
+  const { pid: _pid, source: _source, ...view } = read.person;
+  void _pid; void _source;
+  const row = {
+    ...view,
+    email: normalizeEmail(to),
+    ...latestStamps(view, read.legacy?.row, { sessionsAfter: patch.sessionsAfter }),
+    emailMoves: patch.emailMoves,
+    ...(patch.emailVerifiedAt ? { emailVerifiedAt: patch.emailVerifiedAt } : {}),
+    pid,
+  } as PersonRowValue;
+  await db.set(personKey.person(pid), row);
+  return { ...row, pid, source: "person" };
+}

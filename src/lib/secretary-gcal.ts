@@ -454,6 +454,7 @@ export async function sweepCalendars(now: number, deadline: number): Promise<Cal
  * Only our side is dropped; no provider is called (ruling R7). A sync in flight writes nothing afterwards (rulings R5, R15).
  */
 export async function revokeCalendarLinks(email: string): Promise<void> {
+  // `email` is the ACCOUNT ID (`acct(owner)`; the same bytes as the owner's address for a legacy account).
   const [owner, brands] = await Promise.all([getUser(email), listBrands(email)]);
   if (!owner) return;
   await pmap(brands, async (b) => {
@@ -462,5 +463,22 @@ export async function revokeCalendarLinks(email: string): Promise<void> {
     // (ruling R15): it is dropped anyway, and the run in flight finds the link gone before it writes anything.
     const r = await withCalLock(scope, () => dropLink(scope));
     if (r) await dropLink(scope);
+  });
+}
+
+/**
+ * Account-id R2 (rule 1990): an owner's marketing calendar links follow the login that moved in place (the sync loses a
+ * link whose `login` is not the owner's address, `syncLocked`). `aid` is the account id (`acct(owner)`); only a link
+ * made by `from` changes. Under each brand's calendar lock; a lock that stays busy leaves that link as it was, and its
+ * next sync ends it ("owner"), which the owner sees and reconnects.
+ */
+export async function carryCalendarLogin(aid: string, from: string, to: string): Promise<void> {
+  const brands = await listBrands(aid);
+  await pmap(brands, async (b) => {
+    const scope = scopeFor(aid, b.id);
+    await withCalLock(scope, async () => {
+      const link = await getLink(scope);
+      if (link && link.login === from) await putLink(scope, { ...link, login: to });
+    });
   });
 }
