@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_ADMIN_KEY, hasBuild, webServerCommand } from "./e2e/web-server";
+import { E2E_ADMIN_KEY, e2eSeed, hasBuild, webServerCommand } from "./e2e/web-server";
+import { OWNER } from "./e2e/fixtures/accounts";
 
 /**
  * End-to-end suite. Runs against a production build of the app with no environment variables except `APP_ENV=test`
@@ -68,8 +69,9 @@ export default defineConfig({
     command: webServerCommand(PORT, { ci: isCI, prebuilt: hasBuild() }),
     // Marks this production build as a test so the memory store and the model mock stay on (rules 430-431). Read at
     // runtime, so a build made without it (CI's, like thakeen.com's) serves the suite the same. The console key is random
-    // per run (`E2E_ADMIN_KEY`): only the passkey spec uses it, to flip the passkey off switch (rule 2426).
-    env: { APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY },
+    // per run (`E2E_ADMIN_KEY`): the passkey spec flips the passkey off switch with it (rule 2426) and the held-routine spec
+    // opens the Usage page with it. `E2E_SEED_KV` starts the memory store with a held routine and a cron report (rule 2590).
+    env: { APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY, E2E_SEED_KV: e2eSeed(OWNER.email) },
     url: baseURL,
     // Never reuse. The rate limiters (signup five per IP per hour, forgot three per address per fifteen minutes, login
     // eight per account) live in the same process-local store as the data, so a server left running from an earlier run

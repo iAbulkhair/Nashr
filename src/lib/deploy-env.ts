@@ -31,6 +31,11 @@ export function isProductionDeploy(): boolean {
   return process.env.NODE_ENV === "production";
 }
 
+/** Is this the end-to-end server? Exactly `APP_ENV=test` and not a production deploy; read at call time (rule 2590). */
+export function isTestServer(): boolean {
+  return process.env.APP_ENV === "test" && !isProductionDeploy();
+}
+
 /** Is this the staging site? Exactly `APP_ENV=staging`; read at call time. Does not change `isProductionDeploy()`. */
 export function isStaging(): boolean {
   return process.env.APP_ENV === "staging";
