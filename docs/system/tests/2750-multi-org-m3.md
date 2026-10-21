@@ -1,6 +1,6 @@
 # Coverage: multi-workspace M3, the lifecycle release (rules 2750-2759)
 
-Status on 2026-10-21 on branch `claude/wave3a-m3-lifecycle`: the spec's "M3 lifecycle" row (`docs/specs/2026-10-18-multi-org.md` sections 9, 11, 13, 14 and 16; plan `docs/superpowers/plans/2026-10-21-multi-org-m3.md`). Everything user-facing is behind `MULTI_ORG` (false in production): every new route answers 404 with it off (`tests/multi-org-flag-off.test.ts`). Release step: expand. New keys `xfer:{aid}` (7 days) and `invitesfor:{email}` (7 days) are written only with the flag on; old code never reads them. Rollback: M2.
+Status on 2026-10-21 on branch `claude/wave3a-m3-lifecycle`: the spec's "M3 lifecycle" row (`docs/specs/2026-10-18-multi-org.md` sections 9, 11, 13, 14 and 16; plan `docs/superpowers/plans/2026-10-21-multi-org-m3.md`). Everything user-facing is behind `MULTI_ORG` (false in production): every new route answers 404 with it off (`tests/multi-org-flag-off.test.ts`). Release step: expand. New keys `xfer:{aid}` (7 days) and `invitesfor:{email}` (7 days) are written only with the flag on; old code never reads them. Rollback: M2. One change is live with the flag off: a session written before R1 is now refused for a suspended person (rule 2131, pre-R1 half; nothing in production writes a person suspension yet, so nothing changes until one is written). Rules 2750-2755 are used; 2756-2759 are free.
 
 The spec's own rules for this release live in `docs/system/tests/2110-multi-org.md` (2124, 2127, 2128, 2129, 2130, 2131); the rows below are the M3 build's own.
 
