@@ -22,32 +22,71 @@ jobs:
     # Pull requests report the check under this name; a required check or ruleset names it, so keep it stable.
     name: Nashr CI
     runs-on: ubuntu-latest
-    # Rule 1211: unit tests take about 7 minutes and the end-to-end suite about 14, so a passing run ends near 24 minutes; 35 leaves room without hiding a hang for long.
-    timeout-minutes: 35
+    # Rule 1211, raised by rule 2511: unit tests take about 7 minutes, their second pass in production's person shape
+    # (ready pull requests only) about 7 more and the end-to-end suite about 14, so a passing ready run ends near 31
+    # minutes; 40 leaves room without hiding a hang for long. A draft run is unchanged.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Full history, so the Scope step can diff the pull request against its base.
           fetch-depth: 0
+      # Green reuse (rules 2550-2552): a full run (build, type-check, lint, every unit test and the end-to-end suite) that
+      # passed records the tree it checked; a later run of the same pull request on the identical tree and workflow
+      # passes without checking again. The key is the tree of GitHub's merge commit, so any changed file, in the PR or
+      # in its base, gives a new key; the workflow and selector hashes are named too, although the tree already holds
+      # them. That covers a re-run with no change, a reopened PR, `gh pr ready` on a tree that was green, and merging
+      # main into the PR right before the merge when main has not moved since the last full run. A cache saved by a
+      # pull request is read only by that pull request's runs.
+      - name: Green key
+        id: green-key
+        env:
+          WORKFLOW_HASH: ${{ hashFiles('.github/workflows/ci.yml', 'scripts/ci-affected.mjs') }}
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "key=ci-green-v1-$RUNNER_OS-$tree-$WORKFLOW_HASH" >> "$GITHUB_OUTPUT"
+      - name: Find green run
+        id: green
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/ci-green
+          key: ${{ steps.green-key.outputs.key }}
       # What this run checks, to keep inside the plan's Actions minutes (a full run is about 20 minutes, 12 of them the
       # end-to-end suite). A draft PR skips the end-to-end suite: it runs once the PR is marked ready for review and on
       # every push after that, and GitHub cannot merge a draft, so every PR gets that run first. A PR that touches only
       # docs/, .archify/ or a top-level .md file runs the unit tests alone (they read the docs). The job itself always
       # runs and always reports "Nashr CI": a workflow skipped by `paths`/`paths-ignore` would never report it.
+      # A draft PR into main runs only the unit tests its change reaches (`unit=affected`, rule 2553, the Select unit
+      # tests step); a ready PR and a release PR into production run them all. A reused green run (`reused=true`) runs
+      # only the secret scan.
       - name: Scope
         id: scope
         env:
           DRAFT: ${{ github.event.pull_request.draft }}
+          BASE_REF: ${{ github.base_ref }}
+          GREEN_HIT: ${{ steps.green.outputs.cache-hit }}
+          GREEN_FILE: ${{ runner.temp }}/ci-green
+          TREE: ${{ steps.green-key.outputs.tree }}
         run: |
-          build=false; e2e=false
-          # A pull_request run checks out GitHub's merge commit: its first parent is the base, so HEAD^1..HEAD is the PR.
-          changed=$(git diff --name-only HEAD^1 HEAD 2>/dev/null) || changed=""
-          if [ -z "$changed" ] || printf '%s\n' "$changed" | grep -qvE '^(docs/|\.archify/)|^[^/]+\.md$'; then build=true; fi
-          if [ "$build" = true ] && [ "$DRAFT" != true ]; then e2e=true; fi
-          printf '%s\n' "$changed" | head -40
+          build=false; e2e=false; unit=all; reused=false
+          # The restored record must name this very tree; anything else is not a reuse.
+          if [ "$GREEN_HIT" = true ] && [ -n "$TREE" ] && grep -qx "tree=$TREE" "$GREEN_FILE" 2>/dev/null; then
+            reused=true; unit=none
+            echo "This tree already passed the full check:"; cat "$GREEN_FILE"
+          else
+            # A pull_request run checks out GitHub's merge commit: its first parent is the base, so HEAD^1..HEAD is the PR.
+            changed=$(git diff --name-only HEAD^1 HEAD 2>/dev/null) || changed=""
+            if [ -z "$changed" ] || printf '%s\n' "$changed" | grep -qvE '^(docs/|\.archify/)|^[^/]+\.md$'; then build=true; fi
+            if [ "$build" = true ] && [ "$DRAFT" != true ]; then e2e=true; fi
+            if [ -n "$changed" ] && [ "$DRAFT" = true ] && [ "$BASE_REF" != production ]; then unit=affected; fi
+            printf '%s\n' "$changed" | head -40
+          fi
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
-          echo "build=$build e2e=$e2e"
+          echo "unit=$unit" >> "$GITHUB_OUTPUT"
+          echo "reused=$reused" >> "$GITHUB_OUTPUT"
+          echo "build=$build e2e=$e2e unit=$unit reused=$reused"
       # Secret scan of this pull request's own commits (rule 1355, 360 study J-004): a key, token or password pasted into
       # a commit fails the run before anything else is installed. gitleaks is a single binary, downloaded at a fixed
       # version and checked against its published SHA-256, so no third-party action runs; a few seconds of the job.
@@ -67,11 +106,15 @@ jobs:
       # Node 22 and the webpack build, the same as thakeen.com's Hostinger build (docs/system/architecture.md, "Build":
       # Node 22, `npm run build:hostinger`). CI built with Turbopack on Node 24, so a webpack-only or Node 22-only failure
       # showed up only when the release pull request was merged and Hostinger built (rule 1017).
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - name: Set up Node
+        if: steps.scope.outputs.reused != 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Install
+        if: steps.scope.outputs.reused != 'true'
+        run: npm ci
       # Next's build cache (webpack's under `.next/cache`, as on Hostinger). A cache saved by a pull request is readable
       # only by later runs of that pull request (and a base branch's cache by all of them, but main runs no CI, rule 988),
       # so the first run of a PR builds cold and every push after it starts warm. The key moves with the lockfile and
@@ -109,7 +152,37 @@ jobs:
       - name: Lint
         if: steps.scope.outputs.build == 'true'
         run: npx eslint
+      # Rules 2553-2556: on a draft, the test files the PR's change reaches through imports or by naming a changed path,
+      # plus every test that reads a folder; `all` when a shared file (package.json, the lockfile, vitest.config.mts,
+      # tests/helpers/, src/lib/db.ts, src/lib/keys.ts, this workflow...) or content/ changed. Type-check and lint above
+      # still cover every file. `--no-renames` lists a moved file's old path too, so a test that still names it runs.
+      - name: Select unit tests
+        id: select
+        if: steps.scope.outputs.unit == 'affected'
+        run: |
+          git diff --name-only --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          if ! node scripts/ci-affected.mjs "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/unit-tests.txt"; then
+            echo "::warning::test selection failed, running every unit test"; echo all > "$RUNNER_TEMP/unit-tests.txt"
+          fi
+          echo "list=$RUNNER_TEMP/unit-tests.txt" >> "$GITHUB_OUTPUT"
       - name: Unit tests
+        if: steps.scope.outputs.unit != 'none'
+        env:
+          LIST: ${{ steps.select.outputs.list }}
+        run: |
+          if [ -n "$LIST" ] && [ -s "$LIST" ] && [ "$(head -n 1 "$LIST")" != all ]; then
+            mapfile -t files < "$LIST"; npx vitest run "${files[@]}"
+          else
+            npx vitest run
+          fi
+      # Rule 2510: the same unit tests with the person shape every production login has until multi-workspace M2
+      # (`TEST_PERSONS=legacy`, tests/helpers/session.ts). The step above runs the `p_` shape M2 will sign up; a site
+      # that reads one shape wrongly passes there and fails here. On ready pull requests only (the run before every
+      # merge), so a draft push costs what it did.
+      - name: Unit tests (production person shape)
+        if: steps.scope.outputs.e2e == 'true'
+        env:
+          TEST_PERSONS: legacy
         run: npx vitest run
       # Playwright's browsers, keyed on the installed Playwright version. A cache saved by a pull request serves only
       # that PR, so a PR's first end-to-end run downloads them (about 30 seconds) and its later runs restore them.
@@ -141,3 +214,18 @@ jobs:
           name: playwright-report
           path: e2e/.report
           retention-days: 7
+      # Rule 2552: only a run that checked everything records its tree: Scope's e2e is true only on a ready PR that
+      # builds, and then unit is all. A draft, docs-only, affected-only or reused run records nothing.
+      - name: Record green run
+        if: success() && steps.scope.outputs.e2e == 'true'
+        env:
+          TREE: ${{ steps.green-key.outputs.tree }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: printf 'tree=%s\nhead=%s\nrun=%s\n' "$TREE" "$HEAD_SHA" "$RUN_URL" > "$RUNNER_TEMP/ci-green"
+      - name: Save green run
+        if: success() && steps.scope.outputs.e2e == 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/ci-green
+          key: ${{ steps.green.outputs.cache-primary-key }}

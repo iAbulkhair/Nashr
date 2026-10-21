@@ -24,6 +24,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.taskLock(S, "t1"), `tasklock:${S}:t1`],
     [wsKey.pending(S), `pending:${S}`],
     [wsKey.notNow(S), `notnow:${S}`],
+    [wsKey.pushSubs(S), `pushsubs:${S}`],
+    [wsKey.pushSent(S, "noor", "stuck"), `pushsent:${S}:noor:stuck`],
     [wsKey.pendingIndex(S), `pendingidx:${S}`],
     [wsKey.taskMonth(S, "2026-10"), `tidx:${S}:2026-10`],
     [wsKey.taskMonths(S), `tidxm:${S}`],
@@ -104,6 +106,13 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     // Multi-workspace membership (rules 2110-2139, release M1): the two account builders of the new families.
     [accountKey.membership(storedAccountId(E), storedPersonId("p1")), `mbr:${E}:p1`],
     [accountKey.teamLog(storedAccountId(E)), `teamlog:${E}`],
+    // Customer passkeys (rules 2400-2429): a new family, no old template; the bytes are pinned by tests/passkeys-keys.test.ts.
+    [accountKey.passkeyProofBucket(E), `pkpw:${E}`],
+    // Agent status and phone notifications (rules 2560-2573): new families, no old template.
+    [accountKey.tabSeen(E), `tabseen:${E}`],
+    [accountKey.pushLast(E), `pushlast:${E}`],
+    [accountKey.pushBucket(E), `push:${E}`],
+    [accountKey.seenBucket(E), `tabbeat:${E}`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
@@ -127,6 +136,13 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.shopifyCompliance(), "shopify:compliance"],
     [globalKey.shopifyRedact(), "shopify:redact"],
     [globalKey.connectionHealth(), "connections:health"],
+    // Customer passkeys (rules 2400-2429): new families, no old template; the bytes are pinned by tests/passkeys-keys.test.ts.
+    [globalKey.passkeyCred("h1"), "pkcred:h1"],
+    [globalKey.passkeyAuth("h1"), "pkauth:h1"],
+    [globalKey.passkeysOff(), "passkeys:off"],
+    [globalKey.passkeyIpBucket("1.2.3.4"), "pk:ip:1.2.3.4"],
+    [globalKey.passkeyVerifyIpBucket("1.2.3.4"), "pkv:ip:1.2.3.4"],
+    [globalKey.passkeyCredBucket("h1"), "pkv:cred:h1"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));

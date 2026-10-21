@@ -1,6 +1,6 @@
 # Coverage: background jobs carry the workspace they act for (rules 2500-2509)
 
-Status on 2026-10-20 on branch `claude/jobs-carry-account-dfe36f`: built (pattern 6 of `docs/reports/2026-10-19-PRD-fizzy-orca_AR.md`, after Fizzy's jobs restoring `Current.account`); flows in `docs/system/flows.md` section 102. Rules 2500-2509 are written; 2512-2519 are held (2510-2511 went to #410, CI in production's person shape). Tests: `tests/jobs-carry-account.test.ts`, and `tests/notif-digest.test.ts` (its sending tests now use real accounts, since the tick reads the account again).
+Status on 2026-10-20 on branch `claude/jobs-carry-account-dfe36f`: built (pattern 6 of `docs/reports/2026-10-19-PRD-fizzy-orca_AR.md`, after Fizzy's jobs restoring `Current.account`); flows in `docs/system/flows.md` section 105. Rules 2500-2509 are written; 2512-2519 are held (2510-2511 went to #410, CI in production's person shape). Tests: `tests/jobs-carry-account.test.ts`, and `tests/notif-digest.test.ts` (its sending tests now use real accounts, since the tick reads the account again).
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|
@@ -14,7 +14,6 @@ Status on 2026-10-20 on branch `claude/jobs-carry-account-dfe36f`: built (patter
 | 2507 | The digest tick reads the account again once a window ended: a gone account leaves `notifydigests` and its choice and window go | `tests/jobs-carry-account.test.ts` ("rule 2507") | — |
 | 2508 | A suspended or unverified account's digest is `held`: no email, the window stays open | `tests/jobs-carry-account.test.ts` ("rule 2508") | — |
 | 2509 | The digest goes to the account's current address, never the `to` saved with the choice | `tests/jobs-carry-account.test.ts` ("rule 2509"); `tests/notif-digest.test.ts` (rule 2354 tests, `to` is the account's address) | — |
-| 2510-2511 | Used by #410 (not this change) | — | — |
 | 2512-2519 | Held | — | — |
 
 ## Audit: every background job, before this change

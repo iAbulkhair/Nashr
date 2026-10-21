@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { claudeOn } from "./helpers/model";
 import { readFileSync } from "node:fs";
-import { json, newUser, signIn } from "./helpers/session";
+import { json, newOpaqueUser, newUser, signIn } from "./helpers/session";
+import { acct } from "@/lib/account-id";
+import { accountKey } from "@/lib/keys";
 import { getUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { chargeOnce } from "@/lib/credits";
@@ -117,6 +119,23 @@ describe("rules 2473-2475: the daily sweep resolves every scheduled hold", () =>
     const u = await owner("pc-young");
     await chargeOnce(u.email, COST, { scope: u.email, agent: "dana" }, routineClaim(u.email, "dana_weekly_report", "2026-10-18"));
     expect(await sweepHolds((await getUser(u.email))!)).toBeNull();
+  });
+
+  it("an account with an opaque id is refunded on its own record, where the charge was taken (rule 1980)", async () => {
+    const o = await newOpaqueUser("pc-opaque");
+    const id = acct(o);
+    const rec = async () => (await db.get<User>(accountKey.user(id)))!;
+    const start = (await rec()).credits;
+    const claim = routineClaim(id, "dana_weekly_report", "2026-10-11");
+    await chargeOnce(id, COST, { scope: id, agent: "dana" }, claim);
+    const charged = await rec();
+    const old = new Date(Date.now() - RUN_STALE_MS - 60e3).toISOString();
+    await db.set(accountKey.user(id), { ...charged, paidOnce: { [claim]: { ...charged.paidOnce![claim], at: old } } });
+    const r = await sweepHolds(await rec());
+    expect(r?.refunded.map((x) => x.claim)).toEqual([claim]);
+    expect((await rec()).credits).toBe(start);
+    expect((await rec()).paidOnce ?? {}).toEqual({});
+    expect(await db.get(accountKey.user(o.email)), "nothing written under the address").toBeNull();
   });
 });
 

@@ -3,6 +3,7 @@ import { productsMarkdown } from "./products-md";
 import { providerTimeout } from "../fetch-timeout";
 import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 import { writeFile } from "../files";
+import { fileSrc } from "../ref-provenance";
 import { pmap } from "../parallel";
 import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
 
@@ -82,7 +83,7 @@ export async function importZid(email: string, c: Connection) {
     const sale = p.sale_price == null || p.sale_price === "" || Number(p.sale_price) === Number(p.price) ? "" : `${p.sale_price}${cur}`;
     return { name: zidText(p.name), price: sale ? `${sale} (was ${reg})` : reg, description: zidText(p.description), url: p.html_url };
   }));
-  await writeFile(email, "products.md", md, "noor");
+  await writeFile(email, "products.md", md, "noor", { src: fileSrc("store") });
   return count;
 }
 

@@ -77,22 +77,22 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
     expect(yml).not.toMatch(/- name: Seed Playwright cache/);
   });
 
-  it("unit tests run on every run; build, type-check and lint follow Scope's build; the e2e suite follows Scope's e2e", () => {
-    expect(step("Unit tests")).not.toMatch(/\bif:/);
+  it("unit tests run unless Scope reuses a green run (rule 2551); build, type-check and lint follow Scope's build; the e2e suite follows Scope's e2e", () => {
+    expect(step("Unit tests")).toMatch(/if: steps\.scope\.outputs\.unit != 'none'\n/);
     for (const s of ["Build", "Type-check", "Lint", "Restore Next build cache", "Save Next build cache"]) expect(step(s), s).toMatch(/if: steps\.scope\.outputs\.build == 'true'/);
     expect(step("End-to-end tests")).toMatch(/if: steps\.scope\.outputs\.e2e == 'true'\n/);
     expect(step("Upload Playwright report")).toMatch(/if: failure\(\) && steps\.scope\.outputs\.e2e == 'true'/);
   });
 
   it("a ready PR that touches code runs everything; a draft skips only the e2e suite", () => {
-    expect(scope(["src/lib/x.ts"], { draft: false })).toEqual({ build: "true", e2e: "true" });
-    expect(scope(["src/lib/x.ts", "docs/b.md"], { draft: true })).toEqual({ build: "true", e2e: "false" });
+    expect(scope(["src/lib/x.ts"], { draft: false })).toEqual({ build: "true", e2e: "true", unit: "all", reused: "false" });
+    expect(scope(["src/lib/x.ts", "docs/b.md"], { draft: true })).toEqual({ build: "true", e2e: "false", unit: "affected", reused: "false" });
   });
 
   it("docs/, .archify/ and top-level .md files alone are docs-only; product content in .md is not", () => {
-    expect(scope(["docs/system/tests.md", "docs/system/tests/0788-x.md", "README.md", ".archify/x/y.png"], { draft: false })).toEqual({ build: "false", e2e: "false" });
-    expect(scope(["content/skills/ads.md"], { draft: false })).toEqual({ build: "true", e2e: "true" });
-    expect(scope([".github/workflows/ci.yml"], { draft: false })).toEqual({ build: "true", e2e: "true" });
+    expect(scope(["docs/system/tests.md", "docs/system/tests/0788-x.md", "README.md", ".archify/x/y.png"], { draft: false })).toEqual({ build: "false", e2e: "false", unit: "all", reused: "false" });
+    expect(scope(["content/skills/ads.md"], { draft: false })).toEqual({ build: "true", e2e: "true", unit: "all", reused: "false" });
+    expect(scope([".github/workflows/ci.yml"], { draft: false })).toEqual({ build: "true", e2e: "true", unit: "all", reused: "false" });
   });
 
   it("Next's build cache is restored before the build, keyed on the lockfile and the sources", () => {
