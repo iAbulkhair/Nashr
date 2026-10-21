@@ -1,0 +1,21 @@
+# Coverage: multi-workspace M4 contract and Script S2 (rules 2760-2764; pins rule 2138)
+
+Status on 2026-10-21 on branch `claude/wave3a-m4-contract` (draft, not pushed): release M4 of `docs/specs/2026-10-18-multi-org.md` ("Releases", contract step of rule 679), plan `docs/superpowers/plans/2026-10-21-multi-org-m4.md`, flows section 93.4. Rule 2138 itself is listed in `docs/system/tests/2110-multi-org.md` and is pinned by this release. The rules below are the decisions the contract needed beyond rule 2138's wording. Range 2765-2769 stays free.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 2760 | The owner address move (`moveOwnerLogin`, `src/lib/verify-email.ts`) reads the raw `user:{to}` record in the same round as the login and the person, and never overwrites one that is not this move's own unfinished copy (same birth, still unverified): a bare account record at the target with no login index is 409 `exists` and stays byte for byte. From M4 the moved record carries no `passHash`, `sessionsAfter` or `devicesAfter` | `tests/email-verify-change.test.ts` ("rule 2760: no repair for a look-alike …", and "moves the account (rule 764)" for the stripped fields) | — |
+| 2761 | An MCP bearer resolves only while the account is on its owner's `orgs:{pid}` (read in the same round for a legacy account): a forged `user:` record at a legacy member's address, whose person id is that address, is refused although the login index names that person | `tests/teams-core.test.ts` ("rule 2761: resolves an owner token …", tokens `nashr_memberforged1` and `nashr_memberforged2`) | — |
+| 2762 | Script S2 (`scripts/multi-org-contract.ts`) is dry by default; `--apply` removes `passHash`, `sessionsAfter` and `devicesAfter` from an account record under `lock:user`, read again first, and only while the owner's `person:` row exists and parses; every other field stays as it was; a second run changes nothing | `tests/multi-org-contract.test.ts` ("rule 2762: …") | — |
+| 2763 | S2 deletes a legacy `member:{login}` record, under `lock:team:{memberOf}` then `lock:member:{login}` and read again first, only when its twin `mbr:{memberOf}:{pid}` exists and agrees on role, acceptedAt and pause, the roster of `memberOf` lists the person and the person's `person:` row exists. A record whose twin is missing or differs is counted (`twinMissing`, `twinMismatch`) and kept. Records are found through the rosters; one no roster names is never reached | `tests/multi-org-contract.test.ts` ("rule 2763: …") | — |
+| 2764 | S2 counts the calendar and booking links made before M1 (`preM1Links`: a record named by a legacy `sec:feedof:{login}` or `sec:bookof:{login}:{provider}` pointer with no `pid`/`aid`) and writes nothing for them; it prints counts only and awaits no db call inside a loop | `tests/multi-org-contract.test.ts` ("rule 2764: …", and the "rule 2138" source scan) | — |
+
+Rulings (decided by the builder, 2026-10-21, delegated):
+- A session without `pid` (written before R1) is nobody, owner, member and impersonation alike; there is no person check to add for it any more (flows 93.1 "Legacy sessions and person suspension" is closed).
+- Calendar and booking links made before M1 (no `pid`/`aid`) are dead from the M4 deploy; the owner makes a new one. S2's dry run gives the number for the release pull request.
+- A password change or reset revokes the person's links in every account `orgs:` names (`linksOfPerson`), not only the home account.
+- A leftover `member:` record no longer holds an address: a signup at an address whose person has nothing live succeeds.
+- `saveUser` drops the three credential fields from any account it writes, so an M4 write never re-adds them.
+- `getLogin` decides on the person row's address; a person whose memberships are all paused gets the paused membership while `MULTI_ORG` is off, so sign-in answers 403 `disabled` as before.
+- `deleteMembership` and the removal paths still delete a leftover `member:` record and `activebrand:{login}` under `lock:member` (cleanup, never a read for access).
+- `verify-email` no longer stamps `emailVerifiedAt` on the account during a move; the person holds it (overlaps account-id R2).
