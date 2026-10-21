@@ -441,7 +441,7 @@ describe("production is detected on any host, failing closed (rules 430-431)", (
       expect(src, f).toMatch(/isProductionDeploy\(\)/);
       expect(src, f).not.toMatch(/process\.env\.VERCEL_ENV/);
     }
-    expect(readFileSync("playwright.config.ts", "utf8")).toMatch(/env:\s*\{\s*APP_ENV:\s*"test",\s*WAITLIST_ADMIN_KEY:\s*E2E_ADMIN_KEY\s*\}/);
+    expect(readFileSync("playwright.config.ts", "utf8")).toMatch(/env:\s*\{\s*APP_ENV:\s*"test",\s*WAITLIST_ADMIN_KEY:\s*E2E_ADMIN_KEY,\s*E2E_SEED_KV:\s*e2eSeed\(OWNER\.email\)\s*\}/);
   });
 });
 
