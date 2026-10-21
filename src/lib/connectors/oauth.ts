@@ -85,9 +85,14 @@ async function tokenRequest(p: Provider, body: URLSearchParams, shop?: string): 
   return out;
 }
 
-/** Trade a refresh token for a new access token. Providers that rotate it (X) return a new refresh token too. */
+/**
+ * Trade a refresh token for a new access token. Providers that rotate it (X) return a new refresh token too. Zid's docs
+ * (Authorization, read 2026-10-18) list `redirect_uri` in the refresh body as well, so it goes with Zid's (rule 2213).
+ */
 export async function refreshTokens(p: Provider, refreshToken: string, shop?: string): Promise<Record<string, string>> {
-  return tokenRequest(p, new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }), shop);
+  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
+  if (p.id === "zid") body.set("redirect_uri", REDIRECT(p.id));
+  return tokenRequest(p, body, shop);
 }
 
 export async function exchangeCode(p: Provider, code: string, opts: { shop?: string; verifier?: string }): Promise<Record<string, string>> {
