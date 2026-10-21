@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { readFileSync } from "fs";
 import { adminSignIn, jar, json, markVerified, newMember, newUser, signIn, signOut } from "./helpers/session";
 import { codeAt } from "./helpers/staff";
@@ -369,7 +369,7 @@ describe("rules 2743, 1997: the old address is held for 30 days", () => {
 });
 
 describe("rules 2744, 1997: the revert link", () => {
-  it("moves the person back, ends every session, makes the password unknown, drops two-step, passkeys and Google added after, and hands a reset token", async () => {
+  it("moves the person back, ends every session, makes the password unknown, drops EVERY passkey, two-step, Google, feed and booking links, and hands a reset token", async () => {
     const u = await pOwner();
     const pid = ownerOf(u);
     const old = u.email;
@@ -381,7 +381,15 @@ describe("rules 2744, 1997: the revert link", () => {
     await db.set(mfaKey(to), { enc: "x", kid: "k", rc: [], at: new Date(Date.now() + 1000).toISOString() });
     await new Promise((r) => setTimeout(r, 5));
     await enrolPasskeys(to, { count: 1, reg: false });
-    await Promise.all([db.set(subKey(to), "gHijack"), db.set(linkKey("gHijack"), to)]);
+    await Promise.all([
+      db.set(subKey(to), "gHijack"),
+      db.set(linkKey("gHijack"), to),
+      // A calendar feed and a booking link the hijacker made (fix round 1: the revert ends them, not only a later reset).
+      db.set(FEED_KEYS.of(to), "fhRev"),
+      db.set(FEED_KEYS.rec("fhRev"), { login: to, scope: acct(u), lang: "en", createdAt: new Date().toISOString() }),
+      db.set(BOOK_KEYS.of(to, "calcom"), "bhRev"),
+      db.set(BOOK_KEYS.rec("bhRev"), { login: to, scope: acct(u), provider: "calcom", lang: "en", createdAt: new Date().toISOString() }),
+    ]);
     expect((await listPasskeys(pid, kept.born)).length).toBe(2);
     await signIn(to);
     const hijackSession = jar().get("thakeen_session")!;
@@ -399,8 +407,10 @@ describe("rules 2744, 1997: the revert link", () => {
     expect(await db.get(mfaKey(to))).toBeNull();
     expect(await db.get(subKey(old))).toBeNull();
     expect(await db.get(linkKey("gHijack"))).toBeNull();
-    const left = await listPasskeys(pid, kept.born);
-    expect(left.length).toBe(1);
+    // Every passkey goes, the one from before the move too (ruling: the old mailbox's holder is the rightful owner).
+    expect(await listPasskeys(pid, kept.born)).toEqual([]);
+    expect(await db.get(personKey.passkeys(pid))).toBeNull();
+    for (const k of [FEED_KEYS.of(old), FEED_KEYS.of(to), FEED_KEYS.rec("fhRev"), BOOK_KEYS.of(old, "calcom"), BOOK_KEYS.of(to, "calcom"), BOOK_KEYS.rec("bhRev")]) expect(await db.get(k), k).toBeNull();
     // Single use.
     expect((await revert(token)).status).toBe(400);
     // The reset token sets a new password at the old address.
@@ -433,6 +443,82 @@ describe("rules 2744, 1997: the revert link", () => {
     expect((await getLogin(a))!.pid).toBe(ownerOf(u));
     expect((await revert(t2)).status).toBe(400);
     expect((await getLogin(a))!.pid).toBe(ownerOf(u));
+  });
+
+  it("two-step enrolled after the move or within 7 days before it goes; one enrolled earlier stays", async () => {
+    const recentU = await pOwner("mfarecent");
+    const oldU = await pOwner("mfaold");
+    await Promise.all([
+      db.set(mfaKey(recentU.email), { enc: "x", kid: "k", rc: [], at: new Date(Date.now() - 3 * 864e5).toISOString() }),
+      db.set(mfaKey(oldU.email), { enc: "x", kid: "k", rc: [], at: new Date(Date.now() - 10 * 864e5).toISOString() }),
+    ]);
+    // Two-step is on, so the route would ask for a code (D2, its own test): the move runs as the confirm runs it.
+    for (const u of [recentU, oldU]) {
+      const r = await movePersonLogin(ownerOf(u), u.email, addr("mfato"), { may: () => true, proved: true, limited: true, hold: true });
+      expect(r.result).toBe("ok");
+      expect((await revert((r as { revert: string }).revert)).status).toBe(200);
+    }
+    expect(await db.get(mfaKey(recentU.email))).toBeNull();
+    expect(await db.get(mfaKey(oldU.email))).toBeTruthy();
+  });
+
+  it("the token is used up only under the locks once the revert can finish: a busy person lock leaves it usable", async () => {
+    const u = await pOwner("busyrev");
+    const pid = ownerOf(u);
+    const to = addr("busyto");
+    expect((await changeTo(u, to)).status).toBe(200);
+    const token = revertTokenIn(u.email)!;
+    const lock = personKey.lock(pid);
+    const held = await db.lockOwned(lock, 60);
+    expect(held).toBeTruthy();
+    try {
+      expect(await answer(await revert(token))).toMatchObject({ status: 409, body: { error: "busy" } });
+    } finally {
+      await db.unlockOwned(lock, held!);
+    }
+    expect((await getPerson(pid))!.email).toBe(to);
+    // The same link works once the lock is free, and only once.
+    expect((await revert(token)).status).toBe(200);
+    expect((await getPerson(pid))!.email).toBe(u.email);
+    expect((await revert(token)).status).toBe(400);
+  }, 20_000);
+
+  it("a refused revert (the old address taken meanwhile) keeps the token; claim, restore and the batch removals are in the source", async () => {
+    const u = await pOwner("takenrev");
+    const old = u.email;
+    const to = addr("takento");
+    expect((await changeTo(u, to)).status).toBe(200);
+    const token = revertTokenIn(old)!;
+    // Another existing person's hold on the old address (not reachable in the product while this person's own hold
+    // stands; written here directly so the re-check under the locks refuses).
+    const other = await pOwner("otherhold");
+    const until = new Date(Date.now() + 864e5).toISOString();
+    await db.set(accountKey.emailHold(old), { pid: ownerOf(other), to: other.email, at: new Date().toISOString(), until });
+    expect(await answer(await revert(token))).toMatchObject({ status: 409, body: { error: "unavailable" } });
+    expect(await db.get(globalKey.emailRevert(createHash("sha256").update(token).digest("hex")))).toBeTruthy();
+    expect((await getPerson(ownerOf(u)))!.email).toBe(to);
+    await db.del(accountKey.emailHold(old));
+    expect((await revert(token)).status).toBe(200);
+    const src = read("src/lib/email-move.ts");
+    expect(src).toMatch(/const rec = await peekRevert\(token\)/);
+    expect(src).toMatch(/if \(opts\.claim && !\(await opts\.claim\(\)\)\) return \{ result: "not_allowed" \};\n    const fresh/);
+    expect(src).toMatch(/if \(claimed\) await restoreRevert\(token, rec\);/);
+    expect(src).toMatch(/removeAllPasskeys\(pid, \{ personLocked: true \}\)/);
+    expect(src).toMatch(/revokeCalendarLinks\(acct\(x\)\)/);
+    // No loop at all in the move or the revert (fix round 1: the passkeys went one await at a time): every batch is a
+    // Promise.all or pmap.
+    expect(src).not.toMatch(/\b(for|while)\s*(await\s*)?\(/);
+  });
+
+  it("the reset page never reverts on load: it shows a confirm screen and only its button posts the token", () => {
+    const src = read("src/components/app/AuthForm.tsx");
+    const reset = src.slice(src.indexOf("export function ResetForm"));
+    const effect = reset.slice(reset.indexOf("useEffect("), reset.indexOf("}, []);"));
+    expect(effect).toContain("readRevertToken(window.location.hash)");
+    expect(effect).not.toMatch(/postJson|fetch\(/);
+    expect(reset).toMatch(/async function onUndo\(\) \{[\s\S]*?postJson\("\/api\/auth\/email-revert"/);
+    expect(reset).toMatch(/onClick=\{onUndo\}/);
+    expect(reset).toMatch(/revert === "confirm" \?/);
   });
 
   it("a malformed or unknown token is 400; nothing works while the constant is off; the route is rate limited", async () => {

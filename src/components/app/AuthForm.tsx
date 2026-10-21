@@ -456,9 +456,16 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
  * posted in a JSON body. A `?token=` query is never read. Rules 546-547.
  *
  * Account-id R2 (rule 2744): the same page opens the REVERT link of an address move, #r=<64 hex>, mailed to the old
- * address. The token is posted once to /api/auth/email-revert, which moves the login back, ends every session and
- * answers a one-hour reset token; the form then sets the new password with it, as after a reset link.
+ * address. Nothing changes on load (mail scanners open links and run scripts): the page reads the token, takes it out
+ * of the address bar and shows a confirm screen; only its one button posts the token to /api/auth/email-revert, which
+ * moves the login back, ends every session and answers a one-hour reset token. The form then sets the new password with
+ * it, as after a reset link.
  */
+const REVERT_ASK = {
+  ar: { title: "ترجّع بريد الدخول القديم؟", body: "هذا الرابط يرجّع بريد الدخول القديم لحسابك، ويطلّع كل الأجهزة، ويشيل كلمة المرور ومفاتيح المرور والتحقق بخطوتين وربط Google. اضغط الزر بس إذا كان هذا بريدك القديم وما غيّرته أنت.", go: "رجّع بريدي القديم" },
+  en: { title: "Put your old sign-in email back?", body: "This link puts your old sign-in email back on your account, signs out every device and removes the password, passkeys, two-step sign-in and the Google link. Press the button only if this is your old email and you did not make the change.", go: "Undo the email change" },
+} as const;
+
 const REVERT_COPY = {
   ar: { done: "رجّعنا بريد الدخول القديم وطلّعنا كل الأجهزة. حط كلمة مرور جديدة الحين.", failed: "رابط الاسترجاع غير صالح أو انتهى أو انستخدم. تواصل مع الدعم من بريدك القديم." },
   en: { done: "Your old sign-in email is back and every device was signed out. Set a new password now.", failed: "This undo link is invalid, expired or already used. Contact support from your old email." },
@@ -467,19 +474,30 @@ const REVERT_COPY = {
 export function ResetForm({ lang }: { lang: Lang }) {
   const r = useRouter();
   const tokenRef = useRef("");
-  const [revert, setRevert] = useState<"" | "done" | "failed">("");
+  const undoRef = useRef("");
+  const [revert, setRevert] = useState<"" | "confirm" | "done" | "failed">("");
+  const [undoing, setUndoing] = useState(false);
   useEffect(() => {
     tokenRef.current ||= readFragmentToken(window.location.hash);
-    const undo = readRevertToken(window.location.hash);
+    undoRef.current ||= readRevertToken(window.location.hash);
     if (window.location.hash) window.history.replaceState(window.history.state, "", withoutFragment(window.location));
-    if (!undo) return;
-    void postJson("/api/auth/email-revert", { token: undo }).then((p) => {
+    // Read only: the revert waits for the person's own click (onUndo).
+    if (undoRef.current) setRevert("confirm");
+  }, []);
+  async function onUndo() {
+    if (undoing || !undoRef.current) return;
+    setUndoing(true);
+    try {
+      const p = await postJson("/api/auth/email-revert", { token: undoRef.current });
+      undoRef.current = "";
       if (succeeded(p) && typeof p.body.reset === "string") {
         tokenRef.current = p.body.reset;
         setRevert("done");
       } else setRevert("failed");
-    });
-  }, []);
+    } finally {
+      setUndoing(false);
+    }
+  }
   const S = PW[lang], rules = SU[lang].rules;
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
@@ -510,6 +528,12 @@ export function ResetForm({ lang }: { lang: Lang }) {
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t4" />{S.resetTitle}</span></h1>
+      {revert === "confirm" ? (
+        <div className="mt-6 grid gap-3">
+          <Callout tone="info"><strong>{REVERT_ASK[lang].title}</strong> {REVERT_ASK[lang].body}</Callout>
+          <Button type="button" variant="pill" seed="authform-b4u" loading={undoing} onClick={onUndo}>{REVERT_ASK[lang].go}</Button>
+        </div>
+      ) : (<>
       {revert && <div className="mt-4"><Callout tone={revert === "done" ? "info" : "danger"}>{REVERT_COPY[lang][revert]}</Callout></div>}
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <Field label={S.resetTitle}>
@@ -519,6 +543,7 @@ export function ResetForm({ lang }: { lang: Lang }) {
         {err && <Callout tone="danger">{err} {err === S.bad_token && <Link href={`/${lang}/app/forgot`} className="underline">{S.forgotTitle}</Link>}</Callout>}
         <Button type="submit" variant="pill" seed="authform-b4" loading={busy} aria-disabled={!ready ? true : undefined} aria-describedby="reset-rules">{S.save}</Button>
       </form>
+      </>)}
     </div>
   );
 }

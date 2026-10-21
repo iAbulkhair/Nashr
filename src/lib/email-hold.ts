@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "crypto";
 import { z } from "zod";
 import { db } from "./db";
 import { OPAQUE_IDS } from "./account-id";
+import { normalizeEmail } from "./auth";
 import { accountKey, addressRecordKeys, globalKey, personKey, storedPersonId, type PersonId } from "./keys";
 import { getPerson } from "./person";
 import { parseStored } from "./stored";
@@ -22,7 +23,8 @@ import { parseStored } from "./stored";
  *
  * Holds and revert tokens are written only by a move in place, which runs only while `OPAQUE_IDS` is on; a revert is
  * taken only while it is on. `addressBlocked` reads whatever the constant says (see there).
- * Addresses are normalized by the callers; the tokens are only ever stored as their SHA-256.
+ * Addresses are normalized by the callers (and `addressBlocked` normalizes both sides of its compare); the tokens are
+ * only ever stored as their SHA-256.
  */
 export const HOLD_DAYS = 30;
 export const REVERT_DAYS = 7;
@@ -59,7 +61,10 @@ export async function addressBlocked(address: string, pid?: string): Promise<"he
   const [rawHold, rawUser, rawPerson] = await Promise.all([db.get(accountKey.emailHold(address)), db.get<{ email?: unknown }>(userKey), db.get<{ email?: unknown }>(personRowKey)]);
   const hold = parseStored("emailhold", EmailHold, rawHold, null);
   if (hold && hold.pid !== pid && Date.parse(hold.until) > Date.now() && (await getPerson(storedPersonId(hold.pid)))) return "held";
-  if (address !== pid && [rawUser, rawPerson].some((r) => !!r && typeof r === "object" && r.email !== address)) return "moved";
+  // Both sides normalized: a record written before the address rules tightened may hold another case or spacing.
+  const here = normalizeEmail(address);
+  const holds = (r: { email?: unknown } | null) => !!r && typeof r === "object" && normalizeEmail(typeof r.email === "string" ? r.email : "") !== here;
+  if (here !== normalizeEmail(pid ?? "") && [rawUser, rawPerson].some(holds)) return "moved";
   return null;
 }
 
@@ -84,18 +89,42 @@ export async function dropOwnHold(address: string, pid: string): Promise<void> {
 }
 
 /**
- * Take a revert token (single use: `getdel`, so two clicks never both pass). Null when it is unknown, used, expired,
- * malformed, or dead because an earlier revert of the same person undid a move made before this one (a later move
- * made by whoever held the account then: `emailreverted:{pid}`).
+ * The record still counts: not dead because an earlier revert of the same person undid a move made before this one
+ * (a later move made by whoever held the account then: `emailreverted:{pid}`).
  */
-export async function takeRevert(token: unknown): Promise<EmailRevertValue | null> {
-  if (!OPAQUE_IDS || typeof token !== "string" || !REVERT_TOKEN.test(token)) return null;
-  const rec = parseStored("emailrevert", EmailRevert, await db.getdel(globalKey.emailRevert(revertHash(token))), null);
+async function revertAlive(rec: EmailRevertValue | null): Promise<EmailRevertValue | null> {
   if (!rec) return null;
   const last = parseStored("emailreverted", Reverted, await db.get(personKey.emailReverted(storedPersonId(rec.pid))), null);
   const t = Date.parse(rec.at);
   if (last && t > Date.parse(last.move) && t <= Date.parse(last.at)) return null;
   return rec;
+}
+
+const revertable = (token: unknown): token is string => OPAQUE_IDS && typeof token === "string" && REVERT_TOKEN.test(token);
+
+/**
+ * Read a revert token WITHOUT using it up (rule 2744, fix round 1): the revert reads it first to learn the person and
+ * the address, takes its locks, re-checks, and only then claims it (`claimRevert`). A busy lock or a refused check
+ * leaves the link usable. Null when it is unknown, used, expired, malformed or dead (`revertAlive`).
+ */
+export async function peekRevert(token: unknown): Promise<EmailRevertValue | null> {
+  if (!revertable(token)) return null;
+  return revertAlive(parseStored("emailrevert", EmailRevert, await db.get(globalKey.emailRevert(revertHash(token))), null));
+}
+
+/**
+ * Use a revert token up (single use: `getdel`, so two clicks never both pass), called under the revert's locks once
+ * every check passed. Null when another click took it first, or it is dead.
+ */
+export async function claimRevert(token: unknown): Promise<EmailRevertValue | null> {
+  if (!revertable(token)) return null;
+  return revertAlive(parseStored("emailrevert", EmailRevert, await db.getdel(globalKey.emailRevert(revertHash(token))), null));
+}
+
+/** Put a claimed token back for the rest of its 7 days, when the revert that claimed it did not finish. */
+export async function restoreRevert(token: string, rec: EmailRevertValue, now: number = Date.now()): Promise<void> {
+  const left = Math.floor((Date.parse(rec.at) + REVERT_DAYS * 864e5 - now) / 1000);
+  if (left > 0) await db.set(globalKey.emailRevert(revertHash(token)), rec, left);
 }
 
 /** Stamp a revert: tokens of moves made after `move` and before now are dead (`takeRevert`). */

@@ -2,11 +2,11 @@ import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { OPAQUE_IDS } from "./account-id";
 import { acct, claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, saveUser, type User } from "./auth";
-import { carryBookLogin } from "./booking-token";
+import { carryBookLogin, revokeBooks } from "./booking-token";
 import { withUserLock } from "./credits";
 import { revokeAllDevices } from "./devices";
-import { addressBlocked, dropOwnHold, holdOldAddress, stampRevert, takeRevert } from "./email-hold";
-import { carryFeedLogin } from "./feed-token";
+import { addressBlocked, claimRevert, dropOwnHold, holdOldAddress, peekRevert, restoreRevert, stampRevert } from "./email-hold";
+import { carryFeedLogin, revokeFeeds } from "./feed-token";
 import { dropGoogleLinkLocked, moveGoogleLink } from "./google-signin";
 import { accountKey, globalKey, storedPersonId, type PersonId } from "./keys";
 import { revokeAllMcp } from "./mcp";
@@ -14,10 +14,10 @@ import { heldAccounts, ownerOf } from "./membership";
 import { mfaKey, mfaKeys } from "./mfa";
 import { pmap } from "./parallel";
 import { getPartner } from "./partners";
-import { listPasskeys, removePasskey } from "./passkeys";
+import { removeAllPasskeys } from "./passkeys";
 import { forgetPassword, getPerson, movePersonRow, withMovePersonLock, type Person } from "./person";
-import { carryCalendarLogin } from "./secretary-gcal";
-import { getMember, withLoginLock } from "./team";
+import { carryCalendarLogin, revokeCalendarLinks } from "./secretary-gcal";
+import { getMember, membersKey, withLoginLock } from "./team";
 import { dropVerifyCode, VERIFY } from "./verify-email";
 
 /**
@@ -52,6 +52,11 @@ export type InPlaceOpts = {
   limited: boolean;
   /** Write the D1 hold on the old address and a revert token (a proved move only). */
   hold: boolean;
+  /**
+   * Runs under every lock once each check passed and before the first write (the revert claims its single-use token
+   * here): false stops the move with nothing written (`not_allowed`).
+   */
+  claim?: () => Promise<boolean>;
   /** Runs last under both login locks and the person lock (the revert's security steps). */
   extra?: (p: Person, owned: User[]) => Promise<void>;
 };
@@ -111,6 +116,7 @@ export async function movePersonLogin(pid: PersonId, from: string, target: strin
     const today = utcDay(now);
     const used = Math.max(movesToday((person as { emailMoves?: unknown }).emailMoves, today), ...owned.map((x) => movesToday(x.emailMoves, today)));
     if (opts.limited && used >= VERIFY.movesPerDay) return { result: "limit" };
+    if (opts.claim && !(await opts.claim())) return { result: "not_allowed" };
     const fresh = new Date(now).toISOString();
     const emailMoves = { day: today, n: used + 1 };
     const proof = opts.proved ? { emailVerifiedAt: fresh } : {};
@@ -149,51 +155,83 @@ async function resetTokenFor(email: string, kind: "owner" | "member"): Promise<s
 
 export type RevertResult = { ok: true; email: string; reset: string } | { ok: false; error: "bad_token" | "unavailable" };
 
+/** A two-step enrolment this close before the move counts as the mover's (rule 2744, fix round 1): 7 days. */
+export const REVERT_MFA_WINDOW_MS = 7 * 864e5;
+
 /**
- * D1 (rule 2744): the link mailed to the OLD address undoes the move. Single use (`takeRevert`). The person moves back
- * in place (not counted against the day's limit, no new hold), and then, under both login locks and the person lock:
- * every session ends (a fresh stamp) and the password becomes random bytes nobody knows, two-step enrolled after the
- * move goes, the Google link goes, passkeys added after the move go, and every MCP token of the accounts the person owns
- * dies. The answer hands a one-hour reset token for the old address, so the person sets a new password at once (the
- * reset itself ends the feed, booking and calendar links as any reset does). `emailreverted:{pid}` makes a token of a
- * move made after this one and before now dead (a hijacker's own move cannot be reverted back to them).
+ * D1 (rule 2744): the link mailed to the OLD address undoes the move. Ruling (fix round 1): under D1 the holder of the
+ * old mailbox is the rightful owner, so the revert fails toward them: whatever the person who moved could have added to
+ * keep a way in goes.
+ *
+ * The token is read first (`peekRevert`, nothing used up), the locks are taken (both login locks and the person lock),
+ * every check runs again, and only then is the token claimed (`claimRevert`, GETDEL). A busy lock or a refused check
+ * leaves the link usable; a failure after the claim puts it back (`restoreRevert`). Two clicks: the second finds the
+ * token gone under the locks and answers `bad_token`.
+ *
+ * The person moves back in place (not counted against the day's limit, no new hold), and then, still under the locks:
+ * every session ends (a fresh stamp) and the password becomes random bytes nobody knows; EVERY passkey of the person
+ * goes in one batch (`removeAllPasskeys`); a two-step enrolment made after the move or within 7 days before it goes;
+ * the Google link goes; every MCP token, calendar feed, booking link and marketing calendar link of the accounts the
+ * person owns (and of their members, as a reset does) ends; `emailreverted:{pid}` is stamped (a token of a move made
+ * after the reverted one is dead) and the hold goes. The answer hands a one-hour reset token for the old address, so the
+ * person sets a new password at once.
  */
 export async function revertEmailMove(token: unknown): Promise<RevertResult> {
-  const rec = await takeRevert(token);
-  if (!rec) return { ok: false, error: "bad_token" };
+  const rec = await peekRevert(token);
+  if (!rec || typeof token !== "string") return { ok: false, error: "bad_token" };
   const pid = storedPersonId(rec.pid);
   const person = await getPerson(pid);
   if (!person) return { ok: false, error: "bad_token" };
   const old = normalizeEmail(rec.old);
   const since = Date.parse(rec.at);
-  const secure = async (p: Person, owned: User[]) => {
+  let claimed = false;
+  let lost = false;
+  const claim = async (): Promise<boolean> => {
+    claimed = !!(await claimRevert(token));
+    lost = !claimed;
+    return claimed;
+  };
+  const secure = async (_p: Person, owned: User[]) => {
     const enr = await db.get<{ at?: unknown }>(mfaKey(old));
-    const addedAfter = !!enr && typeof enr.at === "string" && Date.parse(enr.at) > since;
-    const keys = await listPasskeys(pid, p.createdAt);
+    const recent = !!enr && typeof enr.at === "string" && Date.parse(enr.at) > since - REVERT_MFA_WINDOW_MS;
     const now = new Date().toISOString();
+    const rosters = await pmap(owned, (x) => db.smembers(membersKey(acct(x))));
+    const logins = [...new Set([old, ...rosters.flat()])];
     await Promise.all([
-      addedAfter ? Promise.all(mfaKeys(old).map((k) => db.del(k))) : Promise.resolve(),
+      recent ? Promise.all(mfaKeys(old).map((k) => db.del(k))) : Promise.resolve(),
       dropGoogleLinkLocked(old),
       forgetPassword(pid, now, { personLocked: true }),
-      pmap(owned, (x) => revokeAllMcp(acct(x))),
+      removeAllPasskeys(pid, { personLocked: true }),
+      pmap(owned, (x) => Promise.all([revokeAllMcp(acct(x)), revokeCalendarLinks(acct(x))])),
+      revokeFeeds(logins),
+      revokeBooks(logins),
       revokeAllDevices(old),
+      stampRevert(pid, rec.at, now),
+      dropOwnHold(old, pid),
     ]);
-    // One at a time: each removal rewrites the same passkey set under the person lock (a short list, capped per person).
-    for (const k of keys.filter((k) => Date.parse(k.createdAt) > since)) await removePasskey(pid, p.createdAt, k.ref, { personLocked: true });
   };
   let done: InPlaceResult;
-  if (person.email !== old) {
-    done = await movePersonLogin(pid, person.email, old, { may: () => true, proved: true, limited: false, hold: false, extra: secure });
-  } else {
-    done = await withLoginLock(old, () => withMovePersonLock(pid, async () => {
-      const p = await getPerson(pid);
-      if (!p) return { result: "not_allowed" } as const;
-      await secure(p, await ownedBy(p));
-      return { result: "ok" } as const;
-    }));
+  try {
+    if (normalizeEmail(person.email) !== old) {
+      done = await movePersonLogin(pid, person.email, old, { may: () => true, proved: true, limited: false, hold: false, claim, extra: secure });
+    } else {
+      done = await withLoginLock(old, () => withMovePersonLock(pid, async () => {
+        const p = await getPerson(pid);
+        if (!p || normalizeEmail(p.email) !== old) return { result: "not_allowed" } as const;
+        if (!(await claim())) return { result: "not_allowed" } as const;
+        await secure(p, await ownedBy(p));
+        return { result: "ok" } as const;
+      }));
+    }
+  } catch (e) {
+    if (claimed) await restoreRevert(token, rec);
+    throw e;
   }
-  if (done.result !== "ok") return { ok: false, error: "unavailable" };
-  await Promise.all([stampRevert(pid, rec.at, new Date().toISOString()), dropOwnHold(old, pid)]);
+  if (lost) return { ok: false, error: "bad_token" };
+  if (done.result !== "ok") {
+    if (claimed) await restoreRevert(token, rec);
+    return { ok: false, error: "unavailable" };
+  }
   const login = await getLogin(old);
   if (!login) return { ok: false, error: "unavailable" };
   return { ok: true, email: old, reset: await resetTokenFor(old, login.kind) };

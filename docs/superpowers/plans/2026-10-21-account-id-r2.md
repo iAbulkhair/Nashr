@@ -65,7 +65,8 @@ Expand (rule 679), constant off. Rollback floor unchanged: nothing this branch w
 (the only always-on changes are read-side: referral rows gain an `id` field older builds ignore, the wishlist key is the
 same bytes for every account that exists, the console rows gain `signsIn`).
 
-The later flip PR carries "rollback floor: R1" and "rollback floor: M1". Preconditions for the flip (not for merging
+The later flip PR carries "rollback floor: this R2-expand release" (fix round 1, 2026-10-21: not R1, because an R1 build
+writes a moved owner's `user:{old}` again; this release is above R1 and M1, so it covers both). Preconditions for the flip (not for merging
 this branch): R1 live 7 days (on or after 2026-10-26), `scripts/account-ids.ts` reports 0 conflicts, and the Paymob or
 Geidea saved-card check of spec section 7 passes on staging.
 
@@ -74,3 +75,26 @@ Geidea saved-card check of spec section 7 passes on staging.
 Revert this branch: nothing to clean, because nothing new is written while the constant is off. After the flip, a
 rollback below this release is unsafe for a moved account (an R1 build has no L3 guard and would write `user:{old}`);
 the flip PR's floor is therefore this release, not R1, for any account that moved (recorded in the report).
+
+## Fix round 1 (review 2026-10-21)
+
+- The revert token is read first (`peekRevert`), claimed with GETDEL only under the locks once every check passed
+  (`claimRevert`, through `InPlaceOpts.claim`), and put back (`restoreRevert`) when the revert fails after the claim. A
+  busy lock or a refused check leaves the link usable.
+- Ruling: under D1 the holder of the old mailbox is the rightful owner, so the revert fails toward them. It drops EVERY
+  passkey of the person in one batch (`removeAllPasskeys`), and a two-step enrolment made after the move or within 7
+  days before it (`REVERT_MFA_WINDOW_MS`). It also ends the feed, booking and marketing calendar links of the accounts
+  the person owns and of their members (the calls the reset uses), not only after the reset finishes.
+- The reset page never reverts on load (mail scanners run scripts): it shows a confirm screen and only its button posts
+  the token.
+- `addressBlocked` normalizes both sides of the address compare.
+- Rollback floor of the flip: this R2-expand release (see "Release step").
+
+## Known gaps
+
+- D2 can be skipped for an address change started before the flip and confirmed within its 15 minutes after it (the
+  start ran without the code check; the confirm does not ask again).
+- A stop between the account writes and `carry()` leaves the two-step enrolment at `mfa:{old}`: the person's address is
+  already the new one, so the new address signs in without two-step until the retry carries it.
+- Push subscriptions keep the old login label; a calendar link whose lock stays busy during the carry keeps the old
+  `login` until its next sync; a move stopped part way is finished by its retry, not by a sweep.
