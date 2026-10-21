@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "./db";
 import { actorInfo, type ActorInfo } from "./auth";
 import { checkCode, secondFactorStatus } from "./admin-2fa";
+import { westernDigits } from "./verify-client";
 import { checkStaffCode } from "./staff-code";
 import { activeOwner, getStaff, listStaff, type Staff } from "./staff";
 import { log } from "./log";
@@ -38,7 +39,7 @@ export async function freshCodeRefusal(req: Request, info: ActorInfo, bodyCode: 
   if (info.via === "key" && !(await secondFactorStatus()).enrolled) return no("console_code_required", 403);
   if (info.fresh) return null;
   const raw = typeof bodyCode === "string" && bodyCode ? bodyCode : req.headers.get("x-admin-otp");
-  const code = typeof raw === "string" ? raw.replace(/\s+/g, "") : null;
+  const code = typeof raw === "string" ? westernDigits(raw).replace(/\s+/g, "") : null;
   if (info.via === "staff") {
     if (!code || !/^\d{6}$/.test(code)) return no("fresh_code", 403);
     const staff = await getStaff(info.who);

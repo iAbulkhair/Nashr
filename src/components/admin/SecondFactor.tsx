@@ -157,7 +157,7 @@ export default function SecondFactor({ lang, enrolled, staff = false }: { lang: 
           <p className="text-sm text-foreground-muted">{S.manual}</p>
           <p dir="ltr" className="select-all rounded-lg bg-background-muted/60 px-3 py-2 text-center font-mono text-sm tracking-wider">{groups(setup.secret)}</p>
           <p><a className="text-sm underline" href={setup.uri}>{S.openApp}</a></p>
-          <Field label={S.code}><Input name="code" inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} pattern="\d{6}" required /></Field>
+          <Field label={S.code}><Input name="code" inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} pattern={"[0-9\\u0660-\\u0669\\u06F0-\\u06F9]{6}"} required /></Field>
         </FormDialog>
       )}
 

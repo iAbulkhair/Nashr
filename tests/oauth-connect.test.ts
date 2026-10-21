@@ -2,11 +2,13 @@ import { createHmac } from "crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, newUser, signIn, signOut } from "./helpers/session";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState } from "@/lib/connectors/store";
-import { getFreshConnection } from "@/lib/connectors/fresh";
+import { RefreshBusy, getFreshConnection } from "@/lib/connectors/fresh";
+import { db } from "@/lib/db";
 import { publishTask } from "@/lib/connectors/publish";
 import type { Task } from "@/lib/brand";
 import * as start from "@/app/api/connect/[provider]/start/route";
 import * as callback from "@/app/api/connect/[provider]/callback/route";
+import * as connectRoute from "@/app/api/connect/[provider]/route";
 
 /**
  * Rules 67-70, the connector OAuth flow, pinned before any platform app credentials go into production:
@@ -21,7 +23,7 @@ afterAll(() => { for (const k of Object.keys(ENV)) if (saved[k] === undefined) d
 
 const realFetch = globalThis.fetch;
 let tokenCalls: string[] = [];
-function fakeProviders(opts: { refreshStatus?: number } = {}) {
+function fakeProviders(opts: { refreshStatus?: number; onRefresh?: () => Promise<void> } = {}) {
   tokenCalls = [];
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -29,6 +31,7 @@ function fakeProviders(opts: { refreshStatus?: number } = {}) {
     if (url.includes("oauth2/token") || url.includes("access_token")) {
       tokenCalls.push(body);
       if (body.includes("grant_type=refresh_token")) {
+        await opts.onRefresh?.();
         if (opts.refreshStatus) return new Response("invalid_grant", { status: opts.refreshStatus });
         return Response.json({ access_token: "new-access", refresh_token: "rotated-refresh", expires_in: 7200 });
       }
@@ -172,5 +175,79 @@ describe("an expiring token is refreshed before use, or the owner is asked to re
     await saveConnection(u.email, { ...expired(), expiresAt: new Date(Date.now() + 3600_000).toISOString() });
     await expect(publishTask(u.email, task, "x")).rejects.toThrow("reconnect_required");
     expect((await getConnection(u.email, "x"))?.needsReconnect).toBeTruthy();
+  });
+});
+
+describe("a token is refreshed only under the connection's own lock (rule 2192)", () => {
+  const expired = () => ({ provider: "x", data: { access_token: "old-access", refresh_token: "old-refresh" }, connectedAt: new Date().toISOString(), expiresAt: new Date(Date.now() - 1000).toISOString() });
+  const lockOf = (scope: string) => `connlock:${scope}:x`;
+  const refreshes = () => tokenCalls.filter((b) => b.includes("grant_type=refresh_token")).length;
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("never refreshes without the lock: another holder through every wait is RefreshBusy, and its lock stays", async () => {
+    fakeProviders();
+    const u = await newUser("lockbusy");
+    await saveConnection(u.email, expired());
+    const holder = await db.lockOwned(lockOf(u.email), 30);
+    expect(holder).toBeTruthy();
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const p = getFreshConnection(u.email, "x");
+    const done = expect(p).rejects.toBeInstanceOf(RefreshBusy);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await done;
+    await expect(p).rejects.toThrow("busy");
+    expect(refreshes()).toBe(0);
+    expect((await getConnection(u.email, "x"))?.data.refresh_token).toBe("old-refresh");
+    // The holder's lock was never freed by the request that gave up.
+    expect(await db.lockOwned(lockOf(u.email), 30)).toBeNull();
+    await db.unlockOwned(lockOf(u.email), holder!);
+  });
+
+  it("uses what the holder saved while it waited, without a refresh of its own", async () => {
+    fakeProviders();
+    const u = await newUser("lockwait");
+    await saveConnection(u.email, expired());
+    const holder = await db.lockOwned(lockOf(u.email), 30);
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const p = getFreshConnection(u.email, "x");
+    await saveConnection(u.email, { ...expired(), data: { access_token: "held-access", refresh_token: "held-refresh" }, expiresAt: new Date(Date.now() + 3600_000).toISOString() });
+    await vi.advanceTimersByTimeAsync(300);
+    expect((await p)?.data.access_token).toBe("held-access");
+    expect(refreshes()).toBe(0);
+    await db.unlockOwned(lockOf(u.email), holder!);
+  });
+
+  it("does not free another holder's lock when its own lapsed during the refresh", async () => {
+    let other: string | null = null;
+    const u = await newUser("locklapse");
+    fakeProviders({
+      // The refresh outlives this request's lock and the next request takes the lock.
+      onRefresh: async () => { await db.unlock(lockOf(u.email)); other = await db.lockOwned(lockOf(u.email), 30); },
+    });
+    await saveConnection(u.email, expired());
+    expect((await getFreshConnection(u.email, "x"))?.data.access_token).toBe("new-access");
+    expect(other).toBeTruthy();
+    expect(await db.lockOwned(lockOf(u.email), 30)).toBeNull();
+    await db.unlockOwned(lockOf(u.email), other!);
+    expect(await db.lockOwned(lockOf(u.email), 30)).toBeTruthy();
+  });
+
+  it("the connect route answers a busy refresh as 503 busy with a Retry-After, and spends nothing", async () => {
+    fakeProviders();
+    const u = await newUser("lockroute");
+    await saveConnection(u.email, expired());
+    await signIn(u.email);
+    const holder = await db.lockOwned(lockOf(u.email), 30);
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const req = new Request("https://app.test/api/connect/x", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "import_products" }) });
+    const p = connectRoute.POST(req, ctx("x"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    const res = await p;
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("5");
+    expect(await res.json()).toEqual({ ok: false, error: "busy" });
+    expect(refreshes()).toBe(0);
+    expect((await getConnection(u.email, "x"))?.needsReconnect).toBeFalsy();
+    await db.unlockOwned(lockOf(u.email), holder!);
   });
 });

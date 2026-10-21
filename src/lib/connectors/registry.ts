@@ -25,6 +25,12 @@ export type Provider = {
      * cron then refreshes an expired access token even when nothing else uses the connection (connectors/keepalive.ts).
      */
     refreshTokenDays?: number;
+    /**
+     * Days before the stored expiry a token is refreshed (rule 2210), where five minutes is too late: Zid's access and
+     * refresh tokens both last a year, so a refresh in the last minutes could find the refresh token gone too. Unset means
+     * five minutes (connectors/fresh.ts `refreshLeadMs`); the stores cron keeps these connections alive too (rule 2212).
+     */
+    refreshLeadDays?: number;
   };
   keyFields?: KeyField[];
   docs?: string;
@@ -104,7 +110,7 @@ export const PROVIDERS: Provider[] = [
   // publishing flow would make every Page connection fail until Meta approves it. Same app credentials.
   { id: "meta_ads", name: "Meta Ads (results)", kind: "oauth", capabilities: ["ads"], oauth: { authorizeUrl: "https://www.facebook.com/v23.0/dialog/oauth", tokenUrl: "https://graph.facebook.com/v23.0/oauth/access_token", scopes: ["ads_read"], clientIdEnv: "META_APP_ID", clientSecretEnv: "META_APP_SECRET", scopeSeparator: "," } },
   { id: "salla", name: "Salla (سلة)", kind: "oauth", capabilities: ["products", "orders"], oauth: { authorizeUrl: "https://accounts.salla.sa/oauth2/auth", tokenUrl: "https://accounts.salla.sa/oauth2/token", scopes: ["offline_access"], clientIdEnv: "SALLA_CLIENT_ID", clientSecretEnv: "SALLA_CLIENT_SECRET", refreshTokenDays: 30 } },
-  { id: "zid", name: "Zid (زد)", kind: "oauth", capabilities: ["products", "orders"], oauth: { authorizeUrl: "https://oauth.zid.sa/oauth/authorize", tokenUrl: "https://oauth.zid.sa/oauth/token", scopes: [], clientIdEnv: "ZID_CLIENT_ID", clientSecretEnv: "ZID_CLIENT_SECRET" } },
+  { id: "zid", name: "Zid (زد)", kind: "oauth", capabilities: ["products", "orders"], oauth: { authorizeUrl: "https://oauth.zid.sa/oauth/authorize", tokenUrl: "https://oauth.zid.sa/oauth/token", scopes: [], clientIdEnv: "ZID_CLIENT_ID", clientSecretEnv: "ZID_CLIENT_SECRET", refreshLeadDays: 60 } },
   { id: "linkedin", name: "LinkedIn", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization", tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken", scopes: ["openid", "profile", "w_member_social"], clientIdEnv: "LINKEDIN_CLIENT_ID", clientSecretEnv: "LINKEDIN_CLIENT_SECRET" } },
   { id: "tiktok", name: "TikTok", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/", tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/", scopes: ["user.info.basic", "video.publish", "video.upload"], clientIdEnv: "TIKTOK_CLIENT_KEY", clientSecretEnv: "TIKTOK_CLIENT_SECRET", scopeSeparator: "," } },
   { id: "snapchat", name: "Snapchat Ads", kind: "oauth", capabilities: ["ads"], oauth: { authorizeUrl: "https://accounts.snapchat.com/login/oauth2/authorize", tokenUrl: "https://accounts.snapchat.com/login/oauth2/access_token", scopes: ["snapchat-marketing-api"], clientIdEnv: "SNAP_CLIENT_ID", clientSecretEnv: "SNAP_CLIENT_SECRET" } },

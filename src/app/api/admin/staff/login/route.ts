@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { consoleWriteRefusal } from "@/lib/console-origin";
 import { allow, clientIp, giveBack, retryLater } from "@/lib/rate";
 import { adminAudit } from "@/lib/admin-audit";
+import { westernDigits } from "@/lib/verify-client";
 import { clearStaffFailures, countStaffFailure, getStaff, openStaffSecret, staffEmail, staffLocked, staffPasswordMatches } from "@/lib/staff";
 import { resealStaffSecret, staffTotpOnce, staffTryAccepted, takeStaffTry } from "@/lib/staff-code";
 import { destroyStaffSession, openStaffPre } from "@/lib/staff-session";
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
   };
 
   if (locked) {
-    const code = typeof b.code === "string" ? b.code.replace(/\s+/g, "") : "";
+    const code = typeof b.code === "string" ? westernDigits(b.code).replace(/\s+/g, "") : "";
     if (!email || !/^\d{6}$/.test(code)) return fail();
     const slow = await takeStaffTry(req, email);
     if (slow) return slow;
