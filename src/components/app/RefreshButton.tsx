@@ -16,7 +16,7 @@ const STR = {
     done: "قُرئت الآن.", nothing: "لم يُقرأ شيء: أعد ربط حساباتك من صفحة التكاملات.",
     reconnectOne: "قُرئ الباقي. أعد ربط {name} من صفحة التكاملات.",
     xDone: "قُرئ إكس وخُصم رصيد واحد.", xFree: "قُرئ إكس اليوم من قبل، فلم يُخصم رصيد.",
-    slowDown: "تحديثات كثيرة. حاول بعد ساعة.", trialOver: "انتهت الفترة التجريبية: اختر خطة لتحديث إكس.",
+    slowDown: "تحديثات كثيرة. حاول بعد ساعة.", busy: "تحديث آخر لهذا الربط يجري الآن. حاول بعد ثوانٍ.", trialOver: "انتهت الفترة التجريبية: اختر خطة لتحديث إكس.",
     noCredits: "رصيدك لا يكفي لتحديث إكس.", agentCap: "بلغت دانة سقف رصيدها لهذا الشهر.",
     xUnavailable: "إكس غير متاح الآن. حاول لاحقاً.", xDirectOnly: "نقرأ إكس من ربطه المباشر فقط. اربطه مباشرة من صفحة التكاملات.",
     notConnected: "غير مربوط. اربطه من صفحة التكاملات.", reconnect: "انتهت صلاحية الربط: أعد ربطه من صفحة التكاملات.",
@@ -30,7 +30,7 @@ const STR = {
     done: "Read just now.", nothing: "Nothing was read: connect your accounts again on the Integrations page.",
     reconnectOne: "The rest was read. Connect {name} again on the Integrations page.",
     xDone: "X was read. One credit was used.", xFree: "X was already read today, so no credit was used.",
-    slowDown: "Too many refreshes. Try again in an hour.", trialOver: "The trial is over: choose a plan to refresh X.",
+    slowDown: "Too many refreshes. Try again in an hour.", busy: "Another refresh of this connection is running. Try again in a few seconds.", trialOver: "The trial is over: choose a plan to refresh X.",
     noCredits: "Not enough credits to refresh X.", agentCap: "Dana has reached her credit cap for this month.",
     xUnavailable: "X is not available right now. Try again later.", xDirectOnly: "X is read only through its own direct connection. Connect it directly on the Integrations page.",
     notConnected: "Not connected. Connect it on the Integrations page.", reconnect: "The connection expired: connect it again on the Integrations page.",
@@ -58,6 +58,7 @@ export function refreshNote(lang: Lang, kind: RefreshKind, status: number, j: An
   }
   switch (j.error) {
     case "slow_down": return S.slowDown;
+    case "busy": return S.busy;
     case "trial_over": return S.trialOver;
     case "no_credits": return noCredits || S.noCredits;
     case "agent_cap": return S.agentCap;

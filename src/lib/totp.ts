@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes } from "crypto";
+import { westernDigits } from "./verify-client";
 import { sameSecret } from "./secret";
 
 /**
@@ -62,7 +63,7 @@ export const totpStep = (nowMs: number) => Math.floor(nowMs / 1000 / TOTP_STEP);
  */
 export function totpMatch(secretB32: string, code: string, nowMs: number): number | null {
   const key = fromBase32(secretB32);
-  const given = code.replace(/\s/g, "");
+  const given = westernDigits(code).replace(/\s/g, "");
   if (!key || key.length === 0 || !/^\d{6}$/.test(given)) return null;
   const now = totpStep(nowMs);
   let hit: number | null = null;

@@ -10,7 +10,7 @@ export const CONNECT_ERROR_CODES = [
   "verify_failed", "unknown_provider", "slow_down", "composio_rate_limited", "not_connected", "bad_value", "bad_action",
   "unknown_property", "unknown_page", "unknown_org", "unknown_account", "no_page", "shop_required", "bad_shop", "bad_hmac",
   "revoke_failed", "provider_not_configured", "zid_access_denied", "invalid_state", "session_mismatch", "forbidden",
-  "token_failed", "provider_error", "access_denied", "connect_failed",
+  "token_failed", "provider_error", "access_denied", "connect_failed", "busy",
 ] as const;
 export type ConnectErrorCode = (typeof CONNECT_ERROR_CODES)[number];
 
@@ -21,6 +21,7 @@ export const CONNECT_ERRORS: Record<Lang, Messages> = {
     verify_failed: "فشل التحقق. راجع البيانات وحاول مرة أخرى.",
     unknown_provider: "هذه المنصة غير متاحة للربط.",
     slow_down: "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى.",
+    busy: "تحديث آخر لهذا الربط يجري الآن. حاول بعد ثوانٍ.",
     composio_rate_limited: "محاولات كثيرة. انتظر قليلاً ثم حاول مرة أخرى.",
     not_connected: "هذا الحساب غير مربوط الآن. اربطه أولاً.",
     bad_value: "القيمة المختارة غير صالحة. حدّث الصفحة واختر مرة أخرى.",
@@ -49,6 +50,7 @@ export const CONNECT_ERRORS: Record<Lang, Messages> = {
     verify_failed: "Verification failed. Check the details and try again.",
     unknown_provider: "This platform is not available to connect.",
     slow_down: "Too many tries. Wait a little, then try again.",
+    busy: "Another refresh of this connection is running. Try again in a few seconds.",
     composio_rate_limited: "Too many tries. Wait a little, then try again.",
     not_connected: "This account is not connected right now. Connect it first.",
     bad_value: "That choice is not valid. Refresh the page and choose again.",

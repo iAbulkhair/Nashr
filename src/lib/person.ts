@@ -295,9 +295,12 @@ export async function updatePerson(pid: PersonId, patch: PersonPatch, opts: { pe
  * - `personLocked`: the caller already holds `lock:person:{pid}` (`createUser` takes it before its first write, so a
  *   timeout leaves no account without its person; the owner address move, `moveOwnerLogin`, takes both person locks
  *   before `lock:user`, rule 2139, passkeys Task 6).
+ * - `sessionsAfter` must be named by every caller: a new login stamps it with its creation time; script S1
+ *   (scripts/multi-org-index.ts, rule 2133) copies a record from before M1 as it is, and passes `undefined` when that
+ *   record has none (inventing a stamp there would sign the person out of every session).
  */
 export async function createPersonRecord(
-  input: { pid: PersonId; email: string; name: string; lang: "ar" | "en"; passHash?: string; createdAt: string; sessionsAfter: string; devicesAfter?: string; emailVerifiedAt?: string; trialUsedAt?: string },
+  input: { pid: PersonId; email: string; name: string; lang: "ar" | "en"; passHash?: string; createdAt: string; sessionsAfter: string | undefined; devicesAfter?: string; emailVerifiedAt?: string; trialUsedAt?: string },
   opts: { loginLocked: true; personLocked?: true; userLockHeld?: true },
 ): Promise<void> {
   const write = async () => { await db.set(personKey.person(input.pid), defined({ ...input, email: normalizeEmail(input.email) })); };
