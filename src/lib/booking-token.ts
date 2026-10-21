@@ -61,6 +61,8 @@ export function bookingKey(hash: string): string {
 }
 
 const lockKey = (login: string, provider: string) => `lock:book:${login}:${provider}`;
+/** The legacy per-login lock, for Script scripts/multi-org-links.ts (rule 2756), which takes it as the home create does. */
+export const legacyBookLock = lockKey;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LOCK_TTL = 10;
 const distinct = (hashes: unknown[]): string[] => [...new Set(hashes.filter((h): h is string => typeof h === "string" && !!h))];

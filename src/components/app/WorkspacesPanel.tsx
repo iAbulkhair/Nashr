@@ -69,12 +69,12 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
     setError(null);
     try {
       const r = await fetch("/api/workspaces/person", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: delPw, code: delCode || undefined }) });
-      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; left?: number };
       if (j.ok) {
         router.replace(`/${lang}/app/login`);
         return;
       }
-      setError(message(j.error));
+      setError(message(j.error).replace("{n}", String(typeof j.left === "number" ? j.left : 0)));
     } catch {
       setError(t.errors.failed);
     }

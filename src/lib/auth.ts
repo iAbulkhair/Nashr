@@ -101,6 +101,12 @@ export type User = {
    * when the account has no brand name yet. Optional and new (expand): older code ignores it.
    */
   workspaceName?: string;
+  /**
+   * When the account last changed owner (ISO, multi-workspace M3 ownership transfer, rule 2757). A saved card
+   * whose checkout started before it belongs to the previous owner and is refused (`intentOutdatesOwner`, src/lib/billing-state).
+   * Optional and new (expand): older builds ignore it, and an account that never changed hands has none.
+   */
+  ownerSince?: string;
   /** The sign-in and contact address: mail goes here, display uses it. Never a key: keys go through `acct(u)`. */
   email: string;
   name: string;

@@ -36,7 +36,8 @@ export async function DELETE(req: Request) {
   if (proof) return proof;
   try {
     const r = await deletePerson(me.person);
-    if (!r.ok) return fail(r.error, 409);
+    // After some memberships went (review B finding 5): `left_partway` with how many, and a retry finishes the delete.
+    if (!r.ok) return r.left ? NextResponse.json({ ok: false, error: r.error === "owns_workspace" ? r.error : "left_partway", left: r.left }, { status: 409 }) : fail(r.error, 409);
   } catch (e) {
     if (lockTimeout(e)) return fail("busy", 409);
     throw e;

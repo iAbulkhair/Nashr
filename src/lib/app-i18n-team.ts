@@ -118,8 +118,9 @@ export const arTeam = {
     errors: {
       owns_workspace: "تملك مساحة عمل. احذفها أو انقل ملكيتها أولاً، ثم احذف دخولك.",
       delete_unavailable: "لا يمكن حذف هذا الدخول من هنا الآن. راسلنا.",
+      left_partway: "خرجت من {n} من مساحات العمل، لكن شيئاً تغيّر أثناء الحذف فلم يُحذف دخولك بعد. أعد المحاولة لإكماله.",
       wrong_password: "كلمة المرور غير صحيحة.",
-      password_required: "عيّن كلمة مرور لدخولك أولاً، ثم أعد المحاولة.",
+      password_required: "لا توجد كلمة مرور لدخولك (تدخل بحساب Google). عيّن واحدة من «نسيت كلمة المرور» في صفحة الدخول، ثم أعد المحاولة.",
       bad_code: "رمز التحقق غير صحيح أو انتهى.",
       slow_down: "محاولات كثيرة. انتظر قليلاً ثم حاول.",
       invalid: "العرض غير صالح أو انتهى أو استُخدم. اطلب عرضاً جديداً.",
@@ -286,8 +287,9 @@ export const enTeam: typeof arTeam = {
     errors: {
       owns_workspace: "You own a workspace. Delete it or hand it over first, then delete your login.",
       delete_unavailable: "This login cannot be deleted from here right now. Write to us.",
+      left_partway: "You left {n} workspaces, but something changed while deleting, so your login is not deleted yet. Try again to finish.",
       wrong_password: "That password is not right.",
-      password_required: "Set a password for your login first, then try again.",
+      password_required: "Your login has no password (you sign in with Google). Set one with Forgot password on the sign-in page, then try again.",
       bad_code: "That code is wrong or expired.",
       slow_down: "Too many attempts. Wait a little and try again.",
       invalid: "This offer is invalid, expired or already used. Ask for a new one.",

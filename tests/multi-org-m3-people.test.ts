@@ -103,7 +103,7 @@ describe("rules 2130, 2755: the console people view", () => {
     expect(v.workspaces).toEqual([expect.objectContaining({ handle: wsHandle(o.aid), role: "owner", suspended: true, paused: false })]);
   });
 
-  it("needs a console actor (401) and the workspace.view permission (403); an unknown address is 404; none of these writes an audit row", async () => {
+  it("needs a console actor (401) and the workspace.view permission (403), neither audited; an unknown address is 404 and audited", async () => {
     const o = await owner("pg");
     expect((await view(o.u.email, {})).status).toBe(401);
     const { staff } = await enrolledStaff({ role: "auditor" as never });
@@ -112,8 +112,24 @@ describe("rules 2130, 2755: the console people view", () => {
     const r = await view(o.u.email, {});
     expect(r.status).toBe(403);
     expect(((await r.json()) as { error: string }).error).toBe("forbidden");
-    expect((await view("nobody-people@test.example")).status).toBe(404);
     expect(await rowsFor(o.u.email)).toEqual([]);
+    // Review B finding 6: a lookup that finds nobody leaves a trail, under the looked-up address.
+    const nobody = address("nobody-people");
+    const nf = await view(nobody.toUpperCase());
+    expect(nf.status).toBe(404);
+    expect(nf.headers.get("cache-control")).toBe("no-store");
+    expect((await logRows()).filter((x) => x.target === nobody)).toEqual([expect.objectContaining({ what: "people view (not found)", action: "workspace.view", actor: "key" })]);
+  });
+
+  it("without CONNECT_SECRET in production: a clean 503 not_configured, nothing read or audited", async () => {
+    const o = await owner("pnc");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("CONNECT_SECRET", "");
+    const r = await view(o.u.email);
+    vi.stubEnv("NODE_ENV", "test");
+    expect(r.status).toBe(503);
+    expect(((await r.json()) as { error: string }).error).toBe("not_configured");
+    expect((await logRows()).filter((x) => x.target === o.u.email)).toEqual([]);
   });
 
   it("a support staff session may open it; the audit row names the staff member", async () => {

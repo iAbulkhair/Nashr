@@ -46,6 +46,8 @@ export type LinkOwner = { pid: PersonId; aid: AccountId; login: string; home: bo
 export const hashFeedToken = (token: string): string => createHash("sha256").update(token).digest("hex");
 
 const lockKey = (login: string) => `lock:feed:${login}`;
+/** The legacy per-login lock, for Script scripts/multi-org-links.ts (rule 2756), which takes it as the home create does. */
+export const legacyFeedLock = lockKey;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LOCK_TTL = 10;
 

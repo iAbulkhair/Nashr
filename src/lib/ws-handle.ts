@@ -19,6 +19,14 @@ function connectSecret(): string {
   return process.env.WAITLIST_ADMIN_KEY ?? "dev-only-insecure";
 }
 
+/**
+ * Handles can be made here: false only in production without CONNECT_SECRET. A route that would otherwise answer 500
+ * from `wsHandle` checks it first and answers 503 `not_configured` before changing anything (M3 fix round).
+ */
+export function handlesReady(): boolean {
+  return !!process.env.CONNECT_SECRET || process.env.NODE_ENV !== "production";
+}
+
 /** The handle of account `aid` (rule 2114). */
 export function wsHandle(aid: string): string {
   const mac = createHmac("sha256", connectSecret()).update("ws:handle:v1:" + aid).digest();

@@ -934,3 +934,68 @@ describe("the first-month offer pays once (rule 2303)", () => {
     expect((await getUser(u.email))!.billing!.paidThrough).toBe(addMonths(addMonths(today(), 1), 1, Number(today().slice(8, 10))));
   });
 });
+
+describe("rule 2757: a card from a checkout opened before the account changed owner is refused", () => {
+  const tokenFor = (email: string, orderId: number) => ({ id: 1, token: "tok" + randomBytes(20).toString("hex"), masked_pan: "xxxx-xxxx-xxxx-4242", merchant_id: 1, card_subtype: "Visa", created_at: "2026-10-21T10:00:00", email, order_id: String(orderId), expiry_month: "01", expiry_year: "38" });
+  const intentOf = (ref: string) => db.get<Record<string, unknown>>(`paymob:intent:${ref}`);
+  /** The M3 transfer's stamp (src/lib/transfer.ts writes it with the card dropped, under the account lock), just after `at`. */
+  async function handedOver(u: User, at: string) {
+    const cur = (await getUser(acct(u)))!;
+    const billing = cur.billing ? { ...cur.billing, autoRenew: false } : undefined;
+    if (billing) delete billing.card;
+    await saveUser({ ...cur, ownerSince: new Date(Date.parse(at) + 1).toISOString(), ...(billing ? { billing } : {}) });
+    await db.del(cardKey(acct(u)));
+  }
+
+  it("the old owner's late card token and late payment never save the card or turn renewals on; a checkout after it does", async () => {
+    const u = await owner("pmxfer");
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const before = fake.intents.at(-1)!;
+    const opened = (await intentOf(before.ref))!;
+    await handedOver(u, String(opened.createdAt));
+
+    // The card-token callback for the old checkout arrives after the handover: refused, nothing written, logged without the token.
+    const late = tokenFor(u.email, before.orderId);
+    expect(await (await hook(late, "TOKEN")).json()).toMatchObject({ result: "ignored" });
+    expect(await db.get(cardKey(acct(u)))).toBeNull();
+    const audit = JSON.stringify(await db.lrange("admin:log", 0, 200));
+    expect(audit).toContain(`card_refused reason:owner_changed ref:${before.ref}`);
+    expect(audit).not.toContain(late.token);
+
+    // Its payment still pays the month, but a card read for it (one saved by a replay that raced the transfer) never turns
+    // renewals on for the new owner.
+    await db.set(cardKey(acct(u)), { token: "tok_raced", last4: "4242", brand: "Visa", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: before.orderId });
+    expect(await (await hook(txnObj({ amount: before.amount, orderId: before.orderId, ref: before.ref }))).json()).toMatchObject({ result: "paid" });
+    const paid = (await getUser(acct(u)))!;
+    expect(paid.billing).toMatchObject({ plan: "starter", status: "active", autoRenew: false });
+    expect(paid.billing!.card).toBeUndefined();
+    await db.del(cardKey(acct(u)));
+
+    // A checkout the new owner opens after the handover saves its card as before.
+    expect((await pay({ kind: "plan", plan: "pro" })).status).toBe(200);
+    const after = fake.intents.at(-1)!;
+    expect(await (await hook(tokenFor(u.email, after.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+    expect(await db.get(cardKey(acct(u)))).not.toBeNull();
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ autoRenew: true, card: { last4: "4242" } });
+  });
+
+  it("an intent without a creation stamp on an account that changed owner is refused (fail closed); with no handover it stands", async () => {
+    const u = await owner("pmxfer2");
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const it0 = fake.intents.at(-1)!;
+    const s0 = (await intentOf(it0.ref))!;
+    delete s0.createdAt;
+    await db.set(`paymob:intent:${it0.ref}`, s0);
+    await handedOver(u, new Date(Date.now() - 60_000).toISOString());
+    expect(await (await hook(tokenFor(u.email, it0.orderId), "TOKEN")).json()).toMatchObject({ result: "ignored" });
+    expect(await db.get(cardKey(acct(u)))).toBeNull();
+
+    const v = await owner("pmxfer3");
+    expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(200);
+    const it1 = fake.intents.at(-1)!;
+    const s1 = (await intentOf(it1.ref))!;
+    delete s1.createdAt;
+    await db.set(`paymob:intent:${it1.ref}`, s1);
+    expect(await (await hook(tokenFor(v.email, it1.orderId), "TOKEN")).json()).toMatchObject({ result: "card_saved" });
+  });
+});

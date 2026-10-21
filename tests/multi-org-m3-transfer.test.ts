@@ -5,6 +5,8 @@ import * as acceptRoute from "@/app/api/workspaces/transfer/route";
 import * as twoFaRoute from "@/app/api/account/2fa/route";
 import { acct, createUser, currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { cardKey } from "@/lib/billing";
+import { scopeFor } from "@/lib/brands";
+import { SEC_KEYS } from "@/lib/secretary";
 import { db } from "@/lib/db";
 import { accountKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { createMcpToken, getMcpToken } from "@/lib/mcp";
@@ -22,11 +24,15 @@ import { json, markVerified, newUser, signIn, signOut } from "./helpers/session"
 vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /** The mail the offer route sends, captured: the token rides only in the mailed link. */
-const mail = vi.hoisted(() => ({ on: true, ok: true, sent: [] as { to: string; text: string; locale?: string }[] }));
+const mail = vi.hoisted(() => ({ on: true, ok: true, throws: false, sent: [] as { to: string; text: string; locale?: string }[] }));
 vi.mock("@/lib/notify", async (orig) => ({
   ...(await orig<typeof import("@/lib/notify")>()),
   mailReady: () => mail.on,
-  sendEmail: async (m: { to: string; text: string; locale?: string }) => { mail.sent.push(m); return mail.ok; },
+  sendEmail: async (m: { to: string; text: string; locale?: string }) => {
+    if (mail.throws) throw new Error("mail provider down");
+    mail.sent.push(m);
+    return mail.ok;
+  },
 }));
 
 /** The lock order of the accept (rule 2139): team → login → person → user, recorded as each lock is entered. */
@@ -55,7 +61,7 @@ vi.mock("@/lib/credits", async (orig) => {
  */
 
 beforeAll(() => { vi.stubEnv("CONNECT_SECRET", "xfer-connect-secret-one"); });
-afterEach(() => { signOut(); mail.on = true; mail.ok = true; mail.sent.length = 0; order.on = false; order.seen.length = 0; });
+afterEach(() => { signOut(); mail.on = true; mail.ok = true; mail.throws = false; mail.sent.length = 0; order.on = false; order.seen.length = 0; });
 
 let n = 0;
 const address = (prefix: string) => `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`;
@@ -198,6 +204,29 @@ describe("rule 2750: an offer needs the owner's own session, password and (when 
     expect(r.status).toBe(502);
     expect(await db.get(accountKey.xfer(o.aid))).toBeNull();
   });
+
+  it("review B finding 7: a mail that throws withdraws the offer; without CONNECT_SECRET in production nothing is offered (503)", async () => {
+    const o = await owner("xt");
+    const a = await person(o, "admin", "xta");
+    await signIn(o.u.email);
+    mail.throws = true;
+    const r = await offer({ email: a.email, password: PASSWORD });
+    expect(r.status).toBe(502);
+    expect(await db.get(accountKey.xfer(o.aid))).toBeNull();
+    mail.throws = false;
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("CONNECT_SECRET", "");
+    try {
+      const r2 = await offer({ email: a.email, password: PASSWORD });
+      expect(r2.status).toBe(503);
+      expect(((await r2.json()) as { error: string }).error).toBe("not_configured");
+      expect(await db.get(accountKey.xfer(o.aid))).toBeNull();
+      expect(mail.sent).toHaveLength(0);
+    } finally {
+      vi.stubEnv("NODE_ENV", "test");
+      vi.stubEnv("CONNECT_SECRET", "xfer-connect-secret-one");
+    }
+  });
 });
 
 describe("rules 2128, 2751: the receiving admin accepts it, signed in as themselves, with the mailed token", () => {
@@ -228,6 +257,9 @@ describe("rules 2128, 2751: the receiving admin accepts it, signed in as themsel
     const { handle, token } = await offered(o, a);
     const mcp = await createMcpToken(o.aid);
     expect(mcp).toBeTruthy();
+    // The old owner's Google Calendar link in the account's brand (ruling 4): revoked after the locks.
+    const calKey = SEC_KEYS.calLink(scopeFor(o.aid, "default"));
+    await db.set(calKey, { state: "ok" });
     await signIn(a.email);
     order.on = true;
     const r = await accept({ handle, token });
@@ -246,8 +278,11 @@ describe("rules 2128, 2751: the receiving admin accepts it, signed in as themsel
     expect(after.billing?.autoRenew).toBe(false);
     expect(after.billing?.card).toBeUndefined();
     expect(after.billing?.paidThrough).toBe("2026-11-20");
+    // Rule 2757: the handover's time, so a card callback for a checkout the old owner opened before it is refused.
+    expect(Date.parse(after.ownerSince ?? "")).toBeGreaterThan(Date.now() - 60_000);
     expect(await db.get(cardKey(o.aid))).toBeNull();
     expect(await getMcpToken(o.aid)).toBeNull();
+    expect(await db.get(calKey)).toBeNull();
     expect((await getMembership(o.aid, o.pid))?.role).toBe("admin");
     expect(await getMembership(o.aid, a.pid)).toBeNull();
     const roster = await db.smembers(accountKey.members(o.aid));
@@ -287,6 +322,23 @@ describe("rules 2128, 2751: the receiving admin accepts it, signed in as themsel
     await signIn(a.email);
     expect((await accept(second)).status).toBe(400);
     expect(ownerOf((await getUser(o.aid))!)).toBe(o.pid);
+  });
+
+  it("rule 2758: an offer whose offering owner's person was suspended since is void; the account stays with its owner", async () => {
+    const o = await owner("yf");
+    const a = await person(o, "admin", "yfa");
+    const link = await offered(o, a);
+    const row = (await db.get<Record<string, unknown>>(personKey.person(o.pid)))!;
+    await db.set(personKey.person(o.pid), { ...row, suspended: true });
+    await signIn(a.email);
+    const r = await accept(link);
+    expect(r.status).toBe(409);
+    expect(((await r.json()) as { error: string }).error).toBe("transfer_unavailable");
+    expect(await db.get(accountKey.xfer(o.aid))).toBeNull();
+    const kept = (await getUser(o.aid))!;
+    expect(ownerOf(kept)).toBe(o.pid);
+    expect(kept.ownerSince).toBeUndefined();
+    expect(await getMembership(o.aid, a.pid)).not.toBeNull();
   });
 
   it("a changed account voids the offer (admin demoted); a full owned-workspace cap keeps it (409)", async () => {

@@ -17,13 +17,15 @@ export type DeletePersonFail = "delete_unavailable" | "owns_workspace" | "busy";
  * keeps the person; nothing held deletes the person's keys in one round (`forgetPerson`). The caller has checked the
  * fresh proof and signs this device out.
  */
-export async function deletePerson(p: Person): Promise<{ ok: true } | { ok: false; error: DeletePersonFail }> {
+export async function deletePerson(p: Person): Promise<{ ok: true } | { ok: false; error: DeletePersonFail; left?: number }> {
   if (!splitPerson(p)) return { ok: false, error: "delete_unavailable" };
   const email = normalizeEmail(p.email);
   const held = await heldAnywhere(p.pid);
   if (held.some((h) => h.owner)) return { ok: false, error: "owns_workspace" };
   await pmap(held, ({ aid }) => leaveForDeletion(aid, p.pid, email), 1);
-  return withLoginLock(email, () =>
+  // Review B finding 5: a refusal after the memberships went says how many were left, so the answer is never silent about
+  // a partial delete. A retry finishes it: it leaves whatever was joined in between and deletes the person.
+  const r = await withLoginLock(email, () =>
     withPersonLock(p.pid, async () => {
       const fresh = await getPerson(p.pid);
       if (!fresh) return { ok: true } as const;
@@ -34,4 +36,5 @@ export async function deletePerson(p: Person): Promise<{ ok: true } | { ok: fals
       return { ok: true } as const;
     }),
   );
+  return !r.ok && held.length ? { ...r, left: held.length } : r;
 }

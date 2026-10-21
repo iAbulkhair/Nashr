@@ -11,7 +11,7 @@ import { allow } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 import { isTeamLockTimeout } from "@/lib/team";
 import { cancelTransfer, offerTransfer, withdrawOffer } from "@/lib/transfer";
-import { handleOf } from "@/lib/ws-handle";
+import { handleOf, handlesReady } from "@/lib/ws-handle";
 import { busy, rateLimited, unauthorized } from "../respond";
 
 export const dynamic = "force-dynamic";
@@ -68,12 +68,18 @@ export async function POST(req: Request) {
   if (!person) return fail("forbidden", 403);
   const proof = await freshProof(req, person, me.bornAt, b, { recovery: false });
   if (proof) return proof;
+  // The link's handle is made before the offer is written (review B finding 7): an offer never stays without its mail.
+  if (!handlesReady()) return fail("not_configured", 503);
+  const handle = handleOf(u);
   try {
     const r = await offerTransfer(u, me.pid, b.email);
     if (!r.ok) return fail(r.error, r.error === "invalid_email" ? 400 : r.error === "forbidden" ? 403 : 409);
-    const link = `${appOrigin()}/${r.to.lang}/app/workspaces#xfer=${handleOf(u)}.${r.token}`;
-    const m = offerMail(r.to.lang, me.email);
-    const sent = await sendEmail({ to: r.to.email, subject: m.subject, text: [...m.paragraphs, link].join("\n\n"), template: "notice", context: { title: m.title, paragraphs: m.paragraphs, cta: { label: m.label, href: link } }, locale: r.to.lang }).catch(() => false);
+    // Anything that stops the mail (a throw while building it included) withdraws the offer: no live offer without mail.
+    const sent = await (async () => {
+      const link = `${appOrigin()}/${r.to.lang}/app/workspaces#xfer=${handle}.${r.token}`;
+      const m = offerMail(r.to.lang, me.email);
+      return sendEmail({ to: r.to.email, subject: m.subject, text: [...m.paragraphs, link].join("\n\n"), template: "notice", context: { title: m.title, paragraphs: m.paragraphs, cta: { label: m.label, href: link } }, locale: r.to.lang });
+    })().catch(() => false);
     if (!sent) {
       await withdrawOffer(u, r.token);
       return fail("send_failed", 502);

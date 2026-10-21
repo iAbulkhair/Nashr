@@ -14,7 +14,7 @@ import { getPerson, withPersonLock, type Person } from "./person";
 import { sameSecret } from "./secret";
 import { revokeCalendarLinks } from "./secretary-gcal";
 import { parseStored, TransferOfferRow, type TransferOfferValue } from "./stored";
-import { isSuspended } from "./suspension";
+import { isPersonSuspended, isSuspended } from "./suspension";
 import { listMembers, withAccountTeamLock, withLoginLock, writeMembership } from "./team";
 import { logTeam } from "./teamlog";
 import { OWNED_CAP } from "./workspaces";
@@ -144,8 +144,10 @@ export async function acceptTransfer(p: Person, handle: unknown, token: unknown)
             return { ok: false, error: "transfer_unavailable" };
           }
           const [me, old, m, partner] = await Promise.all([getPerson(p.pid), getPerson(oldPid), getMembership(aid, p.pid), getPartner(aid)]);
+          // Rule 2758: an offer whose offering owner's person was suspended since is void (the suspension is read here, under
+          // the locks, through `isPersonSuspended`, fail closed on unknown values), and so is one to a suspended receiver.
           const stands =
-            transferable(account) && splitPerson(old) && splitPerson(me) && !!me.emailVerifiedAt &&
+            transferable(account) && splitPerson(old) && splitPerson(me) && !isPersonSuspended(old) && !isPersonSuspended(me) && !!me.emailVerifiedAt &&
             normalizeEmail(me.email) === offer.toEmail && !!m && m.role === "admin" && membershipHolds(account, m) && !partner;
           if (!stands) {
             await db.del(offerKey(aid));
@@ -156,13 +158,15 @@ export async function acceptTransfer(p: Person, handle: unknown, token: unknown)
 
           // Single use, then the old owner's AI access ends before the account changes hands.
           await Promise.all([db.del(offerKey(aid)), revokeAllMcp(aid)]);
-          const next: User = { ...account, ownerPid: me.pid, email: normalizeEmail(me.email), name: me.name, phone: "", emailVerifiedAt: me.emailVerifiedAt };
+          const stamp = new Date().toISOString();
+          // `ownerSince` (rule 2757): a card callback for a checkout the old owner opened before now is refused by the billing
+          // save path (`intentOutdatesOwner`), under this same account lock.
+          const next: User = { ...account, ownerPid: me.pid, ownerSince: stamp, email: normalizeEmail(me.email), name: me.name, phone: "", emailVerifiedAt: me.emailVerifiedAt };
           if (next.billing) {
             const billing = { ...next.billing, autoRenew: false };
             delete billing.card;
             next.billing = billing;
           }
-          const stamp = new Date().toISOString();
           await Promise.all([saveUser(next), db.del(cardKey(aid))]);
           await Promise.all([
             writeMembership(aid, oldPid, { aid, pid: oldPid, role: "admin", acceptedAt: stamp, invitedBy: me.pid }, { home: false, teamLocked: true }),

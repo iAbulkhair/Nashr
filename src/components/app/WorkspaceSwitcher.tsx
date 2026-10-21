@@ -1,6 +1,6 @@
 "use client";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import type { WorkspaceRow } from "@/lib/workspaces";
@@ -21,6 +21,7 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
   const path = usePathname();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
   const [waiting, setWaiting] = useState(0);
+  const asked = useRef(false);
 
   useEffect(() => {
     if (!handle) return;
@@ -29,15 +30,21 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { workspaces?: WorkspaceRow[] } | null) => { if (live && Array.isArray(j?.workspaces)) setRows(j.workspaces); })
       .catch(() => {});
-    // The invitations inbox (M3, rule 2753): only how many wait; the list is on the workspaces page.
-    fetch("/api/workspaces/invites")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: { invites?: unknown[] } | null) => { if (live && Array.isArray(j?.invites)) setWaiting(j.invites.length); })
-      .catch(() => {});
     return () => { live = false; };
   }, [handle]);
 
-  if (!handle || !rows || (rows.length < 2 && waiting === 0)) return null;
+  // The invitations inbox (M3, rule 2753): only how many wait, and only once the menu is first opened (review B finding 9:
+  // the inbox read is several Redis rounds, never spent on a page load). The list is on the workspaces page.
+  function loadInvites() {
+    if (asked.current) return;
+    asked.current = true;
+    fetch("/api/workspaces/invites")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { invites?: unknown[] } | null) => { if (Array.isArray(j?.invites)) setWaiting(j.invites.length); })
+      .catch(() => {});
+  }
+
+  if (!handle || !rows || rows.length < 2) return null;
   const current = rows.find((w) => w.handle === handle) ?? rows.find((w) => w.current);
 
   async function open(to: string) {
@@ -66,7 +73,11 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
         className="w-full"
         items={items}
         trigger={(props, isOpen) => (
-          <button {...props} aria-label={`${t.switcher}: ${current?.name ?? ""}`} className="flex min-h-[var(--hit-min)] w-full items-center gap-2 rounded-lg px-2 text-start text-sm text-foreground hover:bg-background-muted/60 pointer-fine:min-h-9">
+          <button
+            {...props}
+            onClick={(e) => { loadInvites(); props.onClick?.(e); }}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown" || e.key === "ArrowUp") loadInvites(); props.onKeyDown?.(e); }}
+            aria-label={`${t.switcher}: ${current?.name ?? ""}`} className="flex min-h-[var(--hit-min)] w-full items-center gap-2 rounded-lg px-2 text-start text-sm text-foreground hover:bg-background-muted/60 pointer-fine:min-h-9">
             <span className="min-w-0 flex-1">
               <span className="block text-xs text-foreground-muted">{t.switcher}</span>
               <span className="flex min-w-0 items-center gap-1.5">

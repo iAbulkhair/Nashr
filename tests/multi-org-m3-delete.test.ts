@@ -16,6 +16,22 @@ import { addShadowMembership, jar, json, markVerified, newMember, newUser, signI
 
 vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
+/** Runs once after the first membership left: a join landing between the delete's first read and its final check. */
+const race = vi.hoisted(() => ({ after: null as null | (() => Promise<void>) }));
+vi.mock("@/lib/team", async (orig) => {
+  const m = await orig<typeof import("@/lib/team")>();
+  return {
+    ...m,
+    leaveForDeletion: (async (...a: Parameters<typeof m.leaveForDeletion>) => {
+      const r = await m.leaveForDeletion(...a);
+      const hook = race.after;
+      race.after = null;
+      if (hook) await hook();
+      return r;
+    }) as typeof m.leaveForDeletion,
+  };
+});
+
 /**
  * Multi-workspace M3, deleting a person (docs/specs/2026-10-18-multi-org.md section 13; rules 2127, 2754), with
  * `MULTI_ORG` on for this file. The fixtures are `a_` accounts owned by `p_` persons and `p_` members whatever
@@ -131,6 +147,27 @@ describe("rules 2127, 2754: a person deletes their own login", () => {
     expect(await getPerson(o.pid)).not.toBeNull();
     expect(await getLogin(o.u.email)).not.toBeNull();
     expect(await currentUser()).not.toBeNull();
+  });
+
+  it("review B finding 5: a join that lands mid-delete keeps the person and says how many workspaces were left; a retry finishes", async () => {
+    const o = await owner("dj");
+    const m = await member(o, "djm");
+    const ms = (await getMembership(o.aid, m.pid))!;
+    let joined: AccountId | null = null;
+    race.after = async () => { joined = (await addShadowMembership(m.pid, ms.acceptedAt!)).aid; };
+    await signIn(m.email);
+    const r = await del({ password: PASSWORD });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ ok: false, error: "left_partway", left: 2 });
+    expect(joined).not.toBeNull();
+    expect(await getPerson(m.pid)).not.toBeNull();
+    expect(await getMembership(o.aid, m.pid)).toBeNull();
+    expect(await getMembership(joined!, m.pid)).not.toBeNull();
+    // The session still stands, and the retry leaves the newly joined workspace and deletes the person.
+    const again = await del({ password: PASSWORD });
+    expect(again.status).toBe(200);
+    expect(await getPerson(m.pid)).toBeNull();
+    expect(await getMembership(joined!, m.pid)).toBeNull();
   });
 
   it("an impersonation has no person (401); a legacy-shaped person is refused 409 delete_unavailable", async () => {
