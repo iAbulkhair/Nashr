@@ -108,7 +108,9 @@ export function useWsHandle(): string | null {
 /**
  * The one app-link builder for client components, with both selectors: `useAppLink(lang)("/tasks")`. The workspace is
  * the page's own `/w/{handle}` segment, else the shell's (a person page such as the workspaces list links into the
- * session's workspace); the brand is the page's `/b/{id}` segment, else `fallbackBrand`. With `MULTI_ORG` off (no handle
+ * session's workspace); the brand is the page's `/b/{id}` segment, else `fallbackBrand`, else the brand the shell was
+ * rendered with (`useBrandId()`: on an account page the session's stored choice), so a link from an account page into a
+ * brand section names that brand and takes no `[...legacy]` hop (rule 890). With `MULTI_ORG` off (no handle
  * anywhere) it is brand-path.ts `appHref`, Part C's link. `useBrandHref` (./useBrandHref.ts) is the same builder with the
  * language read from the path.
  */
@@ -116,7 +118,8 @@ export function useAppLink(lang: string, fallbackBrand?: string | null): (path?:
   const ctxHandle = useContext(HandleCtx);
   const pathname = usePathname() || "";
   const handle = handleOfPath(pathname) ?? ctxHandle;
-  const brand = brandFromPath(pathname) ?? fallbackBrand ?? null;
+  const shellBrand = useContext(BrandCtx);
+  const brand = brandFromPath(pathname) ?? (fallbackBrand === undefined ? shellBrand : fallbackBrand) ?? null;
   return useCallback((path = "") => appHref(lang, path, handle, brand), [lang, handle, brand]);
 }
 

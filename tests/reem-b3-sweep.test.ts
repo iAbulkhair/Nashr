@@ -287,7 +287,7 @@ describe("rule 916: a sync keeps, retries, defers or loses the link", () => {
     expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBeNull();
     const n = await lostNotices(o.email);
     expect(n).toHaveLength(1);
-    expect(n[0]).toMatchObject({ kind: "todo", agent: "reem", title: "تقويم التسويق يحتاج إعادة ربط", href: "/ar/app/todo" });
+    expect(n[0]).toMatchObject({ kind: "todo", agent: "reem", title: "تقويم التسويق يحتاج إعادة ربط", href: "/ar/app/b/default/todo" });
     expect(n[0].body).toBeTruthy();
     expect(JSON.stringify(n)).not.toContain("OLD-");
     expect((await auditOf(o.email)).filter((a) => a.action === "cal_lost")).toEqual([expect.objectContaining({ actor: "cron", via: "cron", login: o.email, diff: "provider=gcal" })]);
@@ -308,7 +308,7 @@ describe("rule 916: a sync keeps, retries, defers or loses the link", () => {
     await sweep();
     const n = await lostNotices(o.email);
     expect(n).toHaveLength(1);
-    expect(n[0]).toMatchObject({ title: "Marketing calendar needs reconnecting", href: "/en/app/todo" });
+    expect(n[0]).toMatchObject({ title: "Marketing calendar needs reconnecting", href: "/en/app/b/default/todo" });
   });
 
   it("a loss found by a route notifies too, once (the notice lives in loseLink)", async () => {

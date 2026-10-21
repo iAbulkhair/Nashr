@@ -11,8 +11,10 @@ import { WS_HEADER, appHref, asHandle } from "./ws-path";
  * brand itself (a page outside `/b/{id}` sending the person into a brand section). With `MULTI_ORG` off this is exactly
  * brand-path.ts `appHref(lang, path, { brand })`.
  */
-export async function pageHref(lang: string): Promise<(path?: string, brand?: string | null) => string> {
-  const { handle, brand: pageBrand } = await pageSelectors();
+export async function pageHref(lang: string, fallbackBrand?: string | null): Promise<(path?: string, brand?: string | null) => string> {
+  const { handle, brand: own } = await pageSelectors();
+  // A page outside `/b/{id}` (billing, team) passes `u.brandId`, so its links into a brand section take no legacy hop (rule 890).
+  const pageBrand = own ?? fallbackBrand ?? null;
   return (path = "", brand) => appHref(lang, path, handle, brand === undefined ? pageBrand : brand);
 }
 

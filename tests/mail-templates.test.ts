@@ -194,7 +194,7 @@ describe("rule 685: every templated email is multipart, and its HTML reads in th
       const [m] = mailTo(u.email);
       expect(m.text).toContain(`Call the bank ${lang}`);
       expectFlow(m.html!, lang);
-      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/todo`);
+      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/b/default/todo`);
     }
   });
 
@@ -208,7 +208,7 @@ describe("rule 685: every templated email is multipart, and its HTML reads in th
       const [m] = mailTo(u.email);
       expect(m.text).toContain(`Water the plants ${lang}`);
       expectFlow(m.html!, lang);
-      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/todo?series=${sid}`);
+      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/b/default/todo?series=${sid}`);
     }
   });
 
@@ -227,7 +227,7 @@ describe("rule 685: every templated email is multipart, and its HTML reads in th
       const [m] = mailTo(u.email);
       expect(m.text).toContain(`Send the quote ${lang}`);
       expectFlow(m.html!, lang);
-      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/todo`);
+      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/b/default/todo`);
     }
   });
 

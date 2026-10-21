@@ -283,7 +283,7 @@ describe("the 80% warning (rule 108)", () => {
     expect((await generateRoute.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(200);
     const warned = (await listNotifs(u.email)).filter((x) => x.kind === "credits");
     expect(warned).toHaveLength(1);
-    expect(warned[0]).toMatchObject({ agent: "razan", title: "رزان في «مقهى الفنجان»: 4 من 5 كريدت هذا الشهر", href: "/ar/app/governance" });
+    expect(warned[0]).toMatchObject({ agent: "razan", title: "رزان في «مقهى الفنجان»: 4 من 5 كريدت هذا الشهر", href: "/ar/app/b/default/settings/governance" });
     expect(warned[0].body).toContain("«مقهى الفنجان»");
     expect(warned[0].body, "no number other than X of Y").not.toMatch(/\d/);
 
@@ -304,7 +304,7 @@ describe("the 80% warning (rule 108)", () => {
     await warnAgentCap(u, { ...base, cap: 10, warn80: true });
     const n = await listNotifs(u.email);
     expect(n).toHaveLength(1);
-    expect(n[0]).toMatchObject({ kind: "credits", agent: "dana", title: "Dana in “مقهى الفنجان”: 8 of 10 credits this month", href: "/en/app/governance" });
+    expect(n[0]).toMatchObject({ kind: "credits", agent: "dana", title: "Dana in “مقهى الفنجان”: 8 of 10 credits this month", href: "/en/app/b/default/settings/governance" });
   });
 
   it("names the brand the cap belongs to, not the one that is open: the bell is per account", async () => {

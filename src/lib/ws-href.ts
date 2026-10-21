@@ -1,5 +1,5 @@
 import { MULTI_ORG } from "./multi-org";
-import { accountOfScope } from "./account-id";
+import { accountOfScope, brandOfScope } from "./account-id";
 import { handleOf, wsHandle } from "./ws-handle";
 import { appHref } from "./ws-path";
 
@@ -25,4 +25,14 @@ export function appHrefFor(u: { id?: string; email: string }, lang: string, path
  */
 export function appHrefIn(scopeOrAid: string, lang: string, path: string = "", brand?: string | null): string {
   return appHref(lang, path, MULTI_ORG ? wsHandle(accountOfScope(scopeOrAid)) : null, brand);
+}
+
+/**
+ * A link into the brand a scope names (rule 894): the scope's workspace and its brand (`brandOfScope`, "default" for the
+ * account's own scope), so a bell entry, a reminder or a mail about one brand opens that brand, never the one the person
+ * last chose, and takes no `[...legacy]` hop. `scope` is a brand scope from our own records (`sc(u)`, a job's, a
+ * reminder's), never a value from the request. A path outside the brand sections (billing, team) ignores the brand.
+ */
+export function appHrefInBrand(scope: string, lang: string, path: string = ""): string {
+  return appHrefIn(scope, lang, path, brandOfScope(scope));
 }

@@ -190,8 +190,8 @@ describe("rule 893: the brand switcher", () => {
     const sidebar = read("src/components/app/Sidebar.tsx");
     expect(sidebar).toMatch(/const toSession = useAppLink\(lang, sessionBrand\);/);
     expect(sidebar).toMatch(/r\.push\(toSession\(`\/chat\?conv=\$\{j\.conversation\.id\}`\)\)/);
-    // useAppLink: the page's brand first, the fallback (here the session's) only on an account page.
-    expect(read("src/components/app/WorkspaceContext.tsx")).toMatch(/const brand = brandFromPath\(pathname\) \?\? fallbackBrand \?\? null;/);
+    // useAppLink: the page's brand first, the fallback (here the session's) only on an account page; with none given, the shell's brand (rule 2603).
+    expect(read("src/components/app/WorkspaceContext.tsx")).toMatch(/const brand = brandFromPath\(pathname\) \?\? \(fallbackBrand === undefined \? shellBrand : fallbackBrand\) \?\? null;/);
     expect(sidebar).not.toMatch(/r\.push\(`\$\{base\}\/chat\?conv=/);
     // What the push builds: the page's brand wins over the session's, and an account page uses the session's.
     expect(appHref("en", "/chat?conv=c1", { brand: "b1" })).toBe("/en/app/b/b1/chat?conv=c1");

@@ -118,7 +118,7 @@ describe("rule 2343: the 14-day move", () => {
     expect(await pendingCount(u.email)).toBe(0);
     const moved = (await listNotifs(u.email)).filter((x) => x.title.includes("انتقل إلى «ليس الآن»"));
     expect(moved).toHaveLength(1);
-    expect(moved[0].href).toBe("/ar/app?view=notnow");
+    expect(moved[0].href).toBe("/ar/app/b/default?view=notnow");
     await runDaily((await getUser(u.email))!);
     expect((await listNotifs(u.email)).filter((x) => x.title.includes("انتقل إلى «ليس الآن»"))).toHaveLength(1);
   });

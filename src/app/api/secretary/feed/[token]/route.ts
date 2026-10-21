@@ -4,6 +4,7 @@ import { buildIcs, feedHolds, feedItems } from "@/lib/secretary-feed";
 import { getBrand } from "@/lib/brand";
 import { zoneOf } from "@/lib/zones";
 import { appOrigin } from "@/lib/origin";
+import { brandOfScope } from "@/lib/account-id";
 
 /**
  * GET: one login's private calendar feed (Reem phase 3 B1), what a calendar app subscribes to. No session: the random
@@ -34,7 +35,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
   if (!(await feedHolds(rec))) return notFound();
   const now = Date.now();
   const [items, brand] = await Promise.all([feedItems(rec.scope, now), getBrand(rec.scope)]);
-  const body = buildIcs(items, { lang: rec.lang === "en" ? "en" : "ar", zone: zoneOf(brand), origin: appOrigin(), now });
+  const body = buildIcs(items, { lang: rec.lang === "en" ? "en" : "ar", zone: zoneOf(brand), origin: appOrigin(), now, brand: brandOfScope(rec.scope) });
   return new Response(body, {
     status: 200,
     headers: {

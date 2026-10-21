@@ -183,6 +183,7 @@ async function tell(user: User, scope: string, h: Handoff, n: number, count: num
         ? `بدأه ${lead} بنفسه من تسليمه، لأنك فعّلت تشغيله التلقائي في الحوكمة. ${count} عنصر ينتظر موافقتك.`
         : `${lead} started it himself from his handoff, because you turned on his auto-run in Governance. ${count} item(s) wait for your approval.`,
       href: "",
+      brandScope: scope,
     }, handoffFingerprint(scope, h.id, n), AUTO_KEYS_DAYS);
   } catch (e) {
     log.error("auto handoff notification failed", e);

@@ -194,12 +194,13 @@ const utc = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").repl
 const compactDay = (day: string) => day.replace(/-/g, "");
 
 /** The whole calendar, `BEGIN:VCALENDAR` to `END:VCALENDAR`, every line folded and ended with CRLF. */
-export function buildIcs(items: SecItem[], o: { lang: "ar" | "en"; zone: Zone; origin: string; now: number }): string {
+export function buildIcs(items: SecItem[], o: { lang: "ar" | "en"; zone: Zone; origin: string; now: number; brand?: string | null }): string {
   const ar = o.lang === "ar";
   // The two "who acts" phrases are the page's words (`todo.feed`), one source for the card and the file.
   const feedWords = appDict[o.lang].todo.feed;
   // The origin is caller-supplied: cleaned like a text value, but not escaped, since `URL` is a URI.
-  const url = clean(`${o.origin}${appHref(o.lang, "/todo")}`);
+  // The feed's own brand (rule 894): `brand` is `brandOfScope(rec.scope)`, read from the stored feed record.
+  const url = clean(`${o.origin}${appHref(o.lang, "/todo", null, o.brand)}`);
   const out: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",

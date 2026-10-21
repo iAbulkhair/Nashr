@@ -181,7 +181,7 @@ export async function judgeTasks(scope: string, email: string, brand: Brand, tas
   const kept = scored.filter((_, i) => saved[i] !== null);
   if (vetoed.length) {
     const lang = tasks[0].lang ?? "ar";
-    await notifyItem(email, lang, { kind: "quality", agent: "dana", title: lang === "ar" ? `أُعيد ${vetoed.length} من عناصر ${agent.name.ar} المعتمدة آلياً إلى صندوق الموافقة` : `${vetoed.length} auto-approved ${agent.name.en} item(s) sent back to your inbox`, body: vetoed[0].notes, href: "" }, `judgeveto:${tasks[0].id}`, 7);
+    await notifyItem(email, lang, { kind: "quality", agent: "dana", title: lang === "ar" ? `أُعيد ${vetoed.length} من عناصر ${agent.name.ar} المعتمدة آلياً إلى صندوق الموافقة` : `${vetoed.length} auto-approved ${agent.name.en} item(s) sent back to your inbox`, body: vetoed[0].notes, href: "", brandScope: scope }, `judgeveto:${tasks[0].id}`, 7);
   }
   if (scored.length < tasks.length) log.error("judge: fewer verdicts than items", { type: tasks[0].type, items: tasks.length, verdicts: scored.length });
   const judged = scored.map((x) => x.q);
@@ -190,7 +190,7 @@ export async function judgeTasks(scope: string, email: string, brand: Brand, tas
   await Promise.all([
     recordActivity(scope, judgedRows(tasks[0].type, agent.id, kept, ctx.via ?? "app")),
     // "of" the items that were judged: an unjudged item is not a passing one, and counting it would dilute the alarm.
-    weak ? notifyItem(email, lang, { kind: "quality", agent: "dana", title: lang === "ar" ? `${weak} من ${judged.length} عناصر ${agent.name.ar} بدرجة أقل من 70` : `${weak} of ${judged.length} ${agent.name.en} item(s) scored below 70`, body: judged.find((q) => q.score < 70)?.notes ?? "", href: "" }, `judge:${tasks[0].id}`, 7) : null,
+    weak ? notifyItem(email, lang, { kind: "quality", agent: "dana", title: lang === "ar" ? `${weak} من ${judged.length} عناصر ${agent.name.ar} بدرجة أقل من 70` : `${weak} of ${judged.length} ${agent.name.en} item(s) scored below 70`, body: judged.find((q) => q.score < 70)?.notes ?? "", href: "", brandScope: scope }, `judge:${tasks[0].id}`, 7) : null,
   ]);
   return out;
 }

@@ -149,7 +149,7 @@ describe("signup goes to verify", () => {
     // the old destination: the next param, or the start page with the carried url
     // sent=0 tells the verify page the first mail did not go out (copy only)
     expect(src).toContain('${p.body.mail === false ? "&sent=0" : ""}');
-    expect(src).toMatch(/const after = next \|\| appHref\(lang, `\/start\$\{site\.length >= 4 \? `\?url=\$\{encodeURIComponent\(site\)\}` : ""\}`\);/);
+    expect(src).toMatch(/const after = next \|\| appHref\(lang, `\/start\$\{site\.length >= 4 \? `\?url=\$\{encodeURIComponent\(site\)\}` : ""\}`, null, "default"\);/);
   });
 });
 

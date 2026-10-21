@@ -14,7 +14,8 @@ import { usePrompt } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
-import { useAppLink } from "@/components/app/WorkspaceContext";
+import { useAppLink, useWsHandle } from "@/components/app/WorkspaceContext";
+import { appHref, handleOfPath } from "@/lib/ws-path";
 
 type B = { id: string; name: string; createdAt: string; status: "active" | "archived"; hasBrandFile: boolean };
 
@@ -34,6 +35,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
   const ar = lang === "ar";
   const r = useRouter();
   const path = usePathname();
+  const shellHandle = useWsHandle();
   const [brands, setBrands] = useState<B[]>([]);
   const [active, setActive] = useState("default");
   // The plan's cap (0 until loaded, so nothing is shown as full before the answer) and whether this login may upgrade.
@@ -72,7 +74,8 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
         return;
       }
       setErr("");
-      if (body.action === "add") { r.push(href("/start")); r.refresh(); return; }
+      // An add makes the new brand the chosen one: its start page, named in the link (rule 890), not the brand on show.
+      if (body.action === "add") { r.push(appHref(lang, "/start", handleOfPath(path) ?? shellHandle, j.brand?.id)); r.refresh(); return; }
       // A switch goes to the same section of the other brand (rule 893); from this account page that is the new brand's inbox.
       if (body.action === "switch") { r.push(switchBrandPath(path, body.id)); r.refresh(); return; }
       await load(); r.refresh();

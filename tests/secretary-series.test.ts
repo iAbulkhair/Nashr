@@ -585,7 +585,7 @@ describe("rule 505: the warning", () => {
     const copies = await Promise.all(sids.map((sid, i) => seedCopy(o.email, sid, T - (100 - i) * DAY, { title: `Series ${i}` })));
     expect(await warnSeries(o.email, T)).toBe(5);
     const [w] = await warnings(o.email);
-    expect(w).toMatchObject({ kind: "todo", agent: "reem", href: `/ar/app/todo?series=${sids[0]}` });
+    expect(w).toMatchObject({ kind: "todo", agent: "reem", href: `/ar/app/b/default/todo?series=${sids[0]}` });
     for (let i = 0; i < 5; i++) expect(w.body).toContain(`«Series ${i}»`);
     expect(w.body).not.toContain("Series 5");
     expect(w.body).not.toContain("Series 6");
@@ -691,7 +691,7 @@ describe("rule 505: the warning", () => {
     expect(w.body + w.title).not.toMatch(/[\u0660-\u0669\u06f0-\u06f9]/);
     expect(date).toMatch(/\d/);
     // The preference is "all" by default: one email, with the link.
-    expect(sent.filter((m) => m.to === o.email)).toEqual([expect.objectContaining({ subject: w.title, text: expect.stringContaining(`/ar/app/todo?series=${sids[0]}`) })]);
+    expect(sent.filter((m) => m.to === o.email)).toEqual([expect.objectContaining({ subject: w.title, text: expect.stringContaining(`/ar/app/b/default/todo?series=${sids[0]}`) })]);
 
     // English, and the preference "none": the notification, and no email.
     const e = await login();
@@ -704,7 +704,7 @@ describe("rule 505: the warning", () => {
     expect(await warnSeries(e.email, T)).toBe(3);
     const [we] = await warnings(e.email);
     const en = formatWhen(new Date(T + 7 * DAY).toISOString(), true, "en", T, z);
-    expect(we.href).toBe(`/en/app/todo?series=${esid}`);
+    expect(we.href).toBe(`/en/app/b/default/todo?series=${esid}`);
     expect(we.body).toBe([`2 closed copies of "Rent" will be deleted from ${en}.`, `1 closed copy of "Fees" will be deleted from ${en}.`, "Keep the history or download it as CSV"].join("\n"));
     expect(sent.filter((m) => m.to === e.email)).toEqual([]);
   });
