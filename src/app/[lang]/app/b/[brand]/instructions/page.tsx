@@ -4,7 +4,7 @@ import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { entitlements } from "@/lib/entitlements";
-import { skippedCount } from "@/lib/agent-instructions";
+import { provenanceFor, skippedCount } from "@/lib/agent-instructions";
 import { getBrand } from "@/lib/brand";
 import { listFileNames } from "@/lib/files";
 import { refRecords, refsAvailable } from "@/lib/instruction-refs";
@@ -44,6 +44,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     isPaused(),
     limits.refs ? refsAvailable(scope) : Promise.resolve(false),
   ]);
+  // Source and age of every file the live set or the draft attaches (rule 2529), one read after the layer.
+  const attached = [...layer.active.items, ...(layer.draft?.items ?? [])].flatMap((i) => (Array.isArray(i.refs) ? i.refs : []));
+  const refInfo = await provenanceFor(scope, attached, refs);
   return (
     <InstructionsPanel
       t={appDict[lang]}
@@ -55,6 +58,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       history={history.slice(0, 20).map((r) => summarizeRevision(publicRevision(r)))}
       files={files}
       refs={refs}
+      refInfo={refInfo}
       readOnly={readOnly}
       canTest={canTest}
       googleOn={googleOn}

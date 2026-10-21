@@ -22,6 +22,8 @@ import { taskVersion } from "@/lib/task-version";
 import { CHANNEL_LIMITS } from "@/lib/channel-limits";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
+import LineNotes, { LINE_NOTES } from "./LineNotes";
+import type { TaskType } from "@/lib/tasks";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 import { useApiHref } from "./useBrandHref";
 
@@ -108,7 +110,7 @@ const saveLink = (url: string) => (isOurMediaUrl(url) ? `${url}?download=1` : ur
  * `included` is `entitlements(u).media.video` from the page (rule 781): the video models the plan includes. It arrives as a
  * prop because src/lib/entitlements.ts reaches the store and must not be imported here.
  */
-export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], included, credits = 0, plan, paused, canPublish = true, owner = true, initialFilter }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; included: readonly VideoModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean; owner?: boolean; /** `?view=notnow` from the "moved to Not now" notice (rule 2346). */ initialFilter?: "notnow" }) {
+export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], included, credits = 0, plan, paused, canPublish = true, owner = true, initialFilter, revisePrices = {} }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; included: readonly VideoModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean; owner?: boolean; /** `?view=notnow` from the "moved to Not now" notice (rule 2346). */ initialFilter?: "notnow"; /** One draft's price per draft type a line-notes revision costs (rule 2498); empty for a role that may not edit. */ revisePrices?: Partial<Record<TaskType, number>> }) {
   const i = t.inbox;
   const apiHref = useApiHref();
   const toast = useToast();
@@ -131,6 +133,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [rejecting, setRejecting] = useState<string | null>(null);
+  // The card whose draft is open for line notes (rule 2498).
+  const [noting, setNoting] = useState<string | null>(null);
   const [why, setWhy] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [publishing, setPublishing] = useState<string | null>(null);
@@ -420,7 +424,11 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   </div>
                 </div>
               )}
-              {editing === x.id ? (
+              {noting === x.id && revisePrices[x.type] !== undefined ? (
+                <LineNotes task={x} body={body} lang={lang} price={revisePrices[x.type]!} onCancel={() => setNoting(null)}
+                  onDone={(next) => { setLocal((p) => ({ ...p, [x.id]: next })); setNoting(null); setFailed(null); }}
+                  onChanged={(next) => setLocal((p) => ({ ...p, [x.id]: next }))} />
+              ) : editing === x.id ? (
                 <div className="mt-3 grid gap-2">
                   <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={10} className="w-full rounded-lg border border-border p-3 text-sm" />
                   {(() => {
@@ -473,12 +481,14 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                 </div>
               )}
               </div>
-              {editing !== x.id && rejecting !== x.id && (
+              {editing !== x.id && rejecting !== x.id && noting !== x.id && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-foreground/5 bg-background px-4 py-3 text-sm">
                   {failed?.id === x.id && <p role="alert" className="w-full text-sm text-danger">{failed.why === "forbidden" ? t.team.errors.forbidden : failed.why === "changed" ? CHANGED[lang] : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
                   {x.status !== "approved" && canPublish && <button disabled={hits.length > 0} title={hits.length ? G.held : undefined} onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
                   {x.status === "pending" && !canPublish && <p className="w-full text-xs text-foreground-muted">{i.waitAdmin}</p>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
+                  {/* Line notes (rule 2498): pending draft-type items, a role that may edit, the agents not paused. */}
+                  {x.status === "pending" && revisePrices[x.type] !== undefined && !paused && <button onClick={() => { setNoting(x.id); setFailed(null); }} className="btn btn-secondary btn-pill">{LINE_NOTES[lang].button}</button>}
                   {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
                   {/* "Not now" (rule 2346): set aside without deciding, or bring back. Any member who may edit may do it. */}
                   {x.status === "pending" && !x.notNow && <button onClick={() => patch(x.id, { notNow: true })} className="btn btn-secondary btn-pill">{i.notNowBtn}</button>}
@@ -536,7 +546,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   </label>
                 </div>
               )}
-              {(editing === x.id || rejecting === x.id) && <div className="pb-3" />}
+              {(editing === x.id || rejecting === x.id || noting === x.id) && <div className="pb-3" />}
               </article>
             </li>
           );

@@ -38,6 +38,9 @@ const GATES = [
   "src/lib/chat-allowance.ts",
   "src/lib/chat-budget.ts",
   "src/lib/schedule.ts",
+  // Line notes (rule 2492): the revision's charge and save; the instructions reach the prompt through noor.reviseDraft only.
+  "src/lib/revise.ts",
+  "src/app/api/tasks/[id]/revise/route.ts",
 ];
 const FORBIDDEN = ["agent-instructions", "instructions-store", "instructions-safety", "instruction-proposals", "instruction-refs", "instructions-http"];
 const importsOf = (src: string) => [...src.matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\s*\(\s*)["']([^"']+)["']/g)].map((m) => m[1]);

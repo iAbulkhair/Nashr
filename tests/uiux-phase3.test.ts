@@ -332,11 +332,11 @@ describe("rule 1150: sign out other devices", () => {
 
 describe("rule 1151: the new password shows the sign-up rules live", () => {
   it("links the rules list to the field and uses the shared checks", () => {
-    const html = renderToStaticMarkup(h(SecuritySettings, { lang: "en", rules: appDict.en.join.rules, may: true, owner: true, forbidden: "x" }));
+    const html = renderToStaticMarkup(h(SecuritySettings, { lang: "en", rules: appDict.en.join.rules, may: true, owner: true, forbidden: "x", passkeys: { T: appDict.en.passkeys, enabled: true } }));
     expect(html).toContain('id="settings-pw-rules"');
     expect(html.match(/<input[^>]*name="newPassword"[^>]*>/)![0]).toMatch(/aria-describedby="[^"]*settings-pw-rules/);
     expect(read("src/components/app/settings/SecuritySettings.tsx")).toContain('import { passwordChecks } from "@/lib/auth-client";');
-    const founder = renderToStaticMarkup(h(SecuritySettings, { lang: "ar", rules: appDict.ar.join.rules, may: false, owner: true, forbidden: "x" }));
+    const founder = renderToStaticMarkup(h(SecuritySettings, { lang: "ar", rules: appDict.ar.join.rules, may: false, owner: true, forbidden: "x", passkeys: { T: appDict.ar.passkeys, enabled: true } }));
     expect(founder).not.toContain('name="newPassword"');
   });
 });

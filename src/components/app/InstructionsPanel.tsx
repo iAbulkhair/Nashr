@@ -6,15 +6,17 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { By } from "@/lib/actor";
 import { AGENT_IDS, isAgentId, type AgentId } from "@/lib/agents";
 import type { RefSource } from "@/lib/instruction-refs";
+import type { Provenance } from "@/lib/ref-provenance";
 import { summarizeRevision, type SetDiff, type HistoryRow } from "@/lib/instructions-diff";
 import { INSTRUCTION_CHARS, TEST_BRIEF_CHARS, type InstructionLimits } from "@/lib/instructions-safety";
 import type { Draft, Instruction, Layer, Revision, Target } from "@/lib/instructions-store";
 import type { TestOption } from "@/lib/instructions-test";
 import { sameContent } from "@/lib/instructions-diff";
-import { ROW_CODES, errorText, fill, formAfterWrite, newNonce, parseTestResult, restoreBlocked, sameDrafts, toDraft, type TestItem } from "@/lib/instructions-ui";
+import { ROW_CODES, errorText, fill, staleRefs, formAfterWrite, newNonce, parseTestResult, restoreBlocked, sameDrafts, toDraft, type TestItem } from "@/lib/instructions-ui";
 import type { TaskType } from "@/lib/tasks";
 import { render } from "@/lib/md";
 import { dateFormat } from "@/lib/dates";
+import Callout from "@/components/ui/Callout";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { useConfirm } from "./ConfirmDialog";
 import InstructionEditor, { targetLabel, type RowErrors } from "./InstructionEditor";
@@ -83,7 +85,7 @@ function ItemLine({ t, i }: { t: AppDict; i: Instruction }) {
  * Google login is stored) on a plan with reference files. `paused` is the founder's switch: while on, no workspace set
  * is applied anywhere.
  */
-export default function InstructionsPanel({ t, lang, layer: initialLayer, base: initialBase, history: initialHistory, limits, skipped: initialSkipped, files: initialFiles, refs: initialRefs, readOnly = false, canTest = false, googleOn = false, paused = false, testOptions = [] }: { t: AppDict; lang: "ar" | "en"; layer: Layer; base: number; history: HistoryRow[]; limits: InstructionLimits; skipped: number; files: string[]; refs: Record<string, RefSource>; readOnly?: boolean; canTest?: boolean; googleOn?: boolean; paused?: boolean; testOptions?: TestOption[] }) {
+export default function InstructionsPanel({ t, lang, layer: initialLayer, base: initialBase, history: initialHistory, limits, skipped: initialSkipped, files: initialFiles, refs: initialRefs, refInfo = {}, readOnly = false, canTest = false, googleOn = false, paused = false, testOptions = [] }: { t: AppDict; lang: "ar" | "en"; layer: Layer; base: number; history: HistoryRow[]; limits: InstructionLimits; skipped: number; files: string[]; refs: Record<string, RefSource>; refInfo?: Record<string, Provenance>; readOnly?: boolean; canTest?: boolean; googleOn?: boolean; paused?: boolean; testOptions?: TestOption[] }) {
   const I = t.instructions;
   const G = t.governance;
   const router = useRouter();
@@ -307,10 +309,11 @@ export default function InstructionsPanel({ t, lang, layer: initialLayer, base: 
         </div>
         <p className="mt-1 text-xs text-foreground-muted">{fill(I.limitHint, { max: limits.max })}</p>
         {!limits.refs && <p className="mt-1 text-xs text-foreground-muted">{I.refsPlan}</p>}
+        {staleRefs(rows, refInfo) > 0 && <Callout tone="warning" className="mt-2 text-sm">{fill(I.refsStaleNote, { n: staleRefs(rows, refInfo) })}</Callout>}
         {skipped > 0 && <p role="status" className="mt-2 rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm">{fill(I.skipped, { n: skipped, max: limits.max })}</p>}
         {draftDiffers && !dirty && <p role="status" className="mt-2 rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm">{fill(I.draftBanner, { v: layer.active.v })}</p>}
         <fieldset disabled={readOnly} className="mt-4 min-w-0">
-          <InstructionEditor t={t} items={rows} onChange={(r) => { setRows(r); setRowErrors({}); }} maxChars={INSTRUCTION_CHARS} targets={CUSTOMER_TARGETS} perAgent={limits.perAgent} refsOn={limits.refs} files={files} allowLock={false} readOnly={readOnly} errors={rowErrors} refTitles={refTitles} />
+          <InstructionEditor t={t} items={rows} onChange={(r) => { setRows(r); setRowErrors({}); }} maxChars={INSTRUCTION_CHARS} targets={CUSTOMER_TARGETS} perAgent={limits.perAgent} refsOn={limits.refs} files={files} allowLock={false} readOnly={readOnly} errors={rowErrors} refTitles={refTitles} refInfo={refInfo} />
           {!readOnly && (
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button type="button" onClick={() => void save()} disabled={locked || !dirty} className="btn btn-secondary btn-sm">{busy === "save" ? I.saving : I.saveDraft}</button>

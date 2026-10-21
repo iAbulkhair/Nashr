@@ -218,6 +218,7 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
     const EXEMPT: Readonly<Record<string, string>> = {
       "/api/account": "the account record itself (name, language, deletion), not a brand",
       "/api/account/2fa": "the login's second factor",
+      "/api/account/passkeys": "the person's passkeys (personKey), not a brand",
       "/api/account/email": "the login's address change",
       "/api/account/google": "the login's Google sign-in link",
       "/api/account/sessions": "the login's sessions",
@@ -236,6 +237,7 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
       "/api/oauth/approve": "an OAuth grant for the account",
       "/api/partner": "the account's partner record",
       "/api/partner/code": "the account's partner code",
+      "/api/push/seen": "the login's away mark (pushLogin), no brand data",
       "/api/referral/share": "the account's share credits (acct(u))",
       "/api/support": "a support ticket with the login's address, no brand data",
       "/api/team/invite": "the account's team",

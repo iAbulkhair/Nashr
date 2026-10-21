@@ -10,6 +10,8 @@ import SettingsCard, { type CardStatus } from "./SettingsCard";
 import TwoStepSettings from "./TwoStepSettings";
 import DeviceList from "./DeviceList";
 import GoogleLink from "./GoogleLink";
+import PasskeySettings from "./PasskeySettings";
+import type { AppDict } from "@/lib/app-i18n";
 
 const COPY = {
   ar: {
@@ -19,7 +21,7 @@ const COPY = {
     others: "الخروج من الأجهزة الأخرى", othersSub: "تخرج كل جلسة أخرى لحسابك في متصفح آخر أو جهاز آخر، ويبقى هذا الجهاز. لا تتأثر مفاتيح المساعد الذكي ولا التطبيقات المربوطة ولا رابط التقويم ولا روابط الحجز.",
     othersBtn: "اخرج من الأجهزة الأخرى", othersBusy: "يُخرج…", othersDone: "خرجت أجهزتك الأخرى. يبقى هذا الجهاز.", confirmPw: "كلمة المرور للتأكيد",
     slow: "محاولات كثيرة في وقت قصير. حاول بعد ساعة.", failed: "تعذّر ذلك. حاول مرة أخرى.",
-    founder: "تغيير كلمة المرور والخروج من الأجهزة الأخرى والدخول بخطوتين موقوفة أثناء تصفّح هذا الحساب كمؤسس.",
+    founder: "تغيير كلمة المرور والخروج من الأجهزة الأخرى والدخول بخطوتين ومفاتيح المرور موقوفة أثناء تصفّح هذا الحساب كمؤسس.",
   },
   en: {
     pw: "Password", pwSub: "Changing it signs your other devices out; this one stays signed in.", pwOwnerSub: "Changing it signs your other devices out and ends your AI-assistant keys, connected apps, calendar feed and booking links. This device stays signed in.",
@@ -28,18 +30,18 @@ const COPY = {
     others: "Sign out other devices", othersSub: "Ends every other session of your login, in another browser or on another device; this one stays signed in. AI-assistant keys, connected apps, the calendar feed and booking links are not affected.",
     othersBtn: "Sign out other devices", othersBusy: "Signing out…", othersDone: "Your other devices are signed out. This one stays signed in.", confirmPw: "Password to confirm",
     slow: "Too many tries in a short time. Try again in an hour.", failed: "That did not work. Try again.",
-    founder: "Changing the password, signing out other devices and two-step sign-in are off while you view this account as the founder.",
+    founder: "Changing the password, signing out other devices, two-step sign-in and passkeys are off while you view this account as the founder.",
   },
 } as const;
 
 /**
  * Settings, Security (rules 1150-1151): the password change with the sign-up rules shown live as they are met (the
  * same `passwordChecks` and words as signup, reset and the invite form), two-step sign-in (rules 1930-1937,
- * `TwoStepSettings`), and "sign out other devices" with the device list (rules 1938-1941, `DeviceList`, which uses the
+ * `TwoStepSettings`), passkeys (rules 2410-2416, 2426, 2429, `PasskeySettings`), and "sign out other devices" with the device list (rules 1938-1941, `DeviceList`, which uses the
  * same password field to sign one device out). Each is its own card; none keeps a typed password once it is sent.
  * `may`: from `can()` on the server (a founder viewing the account may do none of them).
  */
-export default function SecuritySettings({ lang, rules, may, owner, forbidden }: { lang: Lang; rules: readonly string[]; may: boolean; owner: boolean; forbidden: string }) {
+export default function SecuritySettings({ lang, rules, may, owner, forbidden, passkeys }: { lang: Lang; rules: readonly string[]; may: boolean; owner: boolean; forbidden: string; passkeys: { T: AppDict["passkeys"]; enabled: boolean } }) {
   const T = COPY[lang];
   const [cur, setCur] = useState("");
   const [pw, setPw] = useState("");
@@ -87,6 +89,7 @@ export default function SecuritySettings({ lang, rules, may, owner, forbidden }:
       </SettingsCard>
 
       <TwoStepSettings lang={lang} forbidden={forbidden} />
+      <PasskeySettings lang={lang} T={passkeys.T} enabled={passkeys.enabled} forbidden={forbidden} />
       <Suspense><GoogleLink lang={lang} forbidden={forbidden} /></Suspense>
 
       <SettingsCard title={T.others} sub={T.othersSub} onSave={signOutOthers} dirty={confirm.length > 0} busy={busy === "others"} status={othersStatus} saveLabel={T.othersBtn} savingLabel={T.othersBusy}>

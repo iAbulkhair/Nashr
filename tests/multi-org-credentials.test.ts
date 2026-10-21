@@ -525,9 +525,9 @@ describe("source scans (rule 2132, credential part)", () => {
     const direct = files(join("src", "app")).filter((f) => /\bupdatePerson\(|\bwithPersonLock\(|\bmarkVerified\(/.test(readFileSync(f, "utf8")));
     expect(direct.length).toBeGreaterThanOrEqual(6);
     // Routes that reach the person lock only through a library writer, which a call-name scan of the route cannot see:
-    // `createUser` (signup), `resolveGoogle` → `createUser` (the Google callback). The address moves
-    // (`moveUnverifiedAccount`, `moveOwnerLogin`) take no person lock (`createPersonRecord` with `userLockHeld`), so their
-    // routes are not listed. A new library caller of `updatePerson`/`createUser` adds its route here.
+    // `createUser` (signup), `resolveGoogle` → `createUser` (the Google callback), and the owner address moves
+    // (`moveUnverifiedAccount`, `moveOwnerLogin`), which take both person locks before `lock:user` (passkeys Task 6, rule
+    // 2414). A new library caller of `updatePerson`/`createUser` adds its route here.
     // Multi-workspace M1: src/lib/team.ts writes member persons (`acceptInvite`) and deletes a person left with
     // nothing (`removeMember`, `leaveTeam`, `forceRemoveMember`, `wipeMemberships` through `wipeAccount`, `moveMemberLogin`
     // through `confirmEmailChange`) under the person lock.
@@ -539,11 +539,30 @@ describe("source scans (rule 2132, credential part)", () => {
       join("src", "app", "api", "team", "leave", "route.ts"),
       join("src", "app", "api", "account", "route.ts"),
       join("src", "app", "api", "account", "email", "route.ts"),
+      join("src", "app", "api", "auth", "verify", "email", "route.ts"),
       join("src", "app", "api", "admin", "users", "[email]", "route.ts"),
+      // Customer passkeys (rule 2414): `ensureUid`, `addPasskey`, `renamePasskey`, `removePasskey` take the person lock.
+      join("src", "app", "api", "account", "passkeys", "route.ts"),
+      // Passkey sign-in (rules 2414, 2422): `recordUse` writes the counter under the person lock.
+      join("src", "app", "api", "auth", "passkey", "verify", "route.ts"),
     ];
+    // The sign-in options route (rule 2417) reads no person and takes no lock: it stays off the list, and this pins that
+    // it still imports no person writer, so a lock added to it later lands here first.
+    const optionsSrc = readFileSync(join("src", "app", "api", "auth", "passkey", "options", "route.ts"), "utf8");
+    expect(optionsSrc).not.toMatch(/@\/lib\/(passkeys|person|team)"|\b(updatePerson|withPersonLock|createUser|markVerified)\(/);
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
-    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/team.ts", "src/lib/verify-email.ts"]);
-    expect([...direct, ...indirect].filter((f) => !/isPersonLockTimeout|PERSON_LOCK_TIMEOUT/.test(readFileSync(f, "utf8")))).toEqual([]);
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/team.ts", "src/lib/verify-email.ts"]);
+    // src/lib/passkeys.ts: every route that imports the store is listed, so a new one (the sign-in verify route) fails
+    // here until it is, and then must answer the lock timeout (Task 3 review minor 7).
+    const passkeyRoutes = files(join("src", "app")).filter((f) => /from "@\/lib\/passkeys"/.test(readFileSync(f, "utf8")));
+    expect(passkeyRoutes.length).toBeGreaterThanOrEqual(1);
+    expect(passkeyRoutes.filter((f) => !indirect.includes(f) && !direct.includes(f))).toEqual([]);
+    // A call, not a name: an import line alone does not answer the timeout (Task 4 review minor 5). PERSON_LOCK_TIMEOUT
+    // counts only when it is used past its import (src/app/api/profile/route.ts keeps it in a set of lock codes).
+    const answersTimeout = (src: string) => /\bisPersonLockTimeout\(/.test(src) || (src.match(/\bPERSON_LOCK_TIMEOUT\b/g)?.length ?? 0) >= 2;
+    expect([...direct, ...indirect].filter((f) => !answersTimeout(readFileSync(f, "utf8")))).toEqual([]);
+    expect(answersTimeout('import { isPersonLockTimeout } from "@/lib/person";')).toBe(false);
+    expect(answersTimeout('import { PERSON_LOCK_TIMEOUT } from "@/lib/person";')).toBe(false);
   });
 });

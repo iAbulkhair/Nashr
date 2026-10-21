@@ -67,10 +67,12 @@ export const BRAND_API: readonly string[] = [
   "/api/media/upload",
   "/api/performance",
   "/api/publish/[id]",
+  "/api/push",
   "/api/schedule",
   // `tasks` exports GET only today; it is listed so that a mutating export added later is guarded from the first day.
   "/api/tasks",
   "/api/tasks/[id]",
+  "/api/tasks/[id]/revise",
   "/api/tasks/[id]/image",
   "/api/tasks/[id]/video",
   // Onboarding, catalog, connections, drives.
