@@ -93,8 +93,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const ar = lang === "ar";
   const planName = (p: string) => (t.billing.plans as Record<string, string>)[p] ?? p;
   // The summary (rule 1154): plan, balance, seats and the next date that matters, as words and Western digits.
-  const nextLabel = u.plan === "trial" ? t.billing.trialEnds : sub ? (ar ? "مدفوع حتى" : "Paid through") : (ar ? "يتجدد الكريدت في" : "Credits reset on");
-  const nextDate = u.plan === "trial" ? u.trialEnds.slice(0, 10) : sub ? sub.paidThrough : nextReset;
+  // A hand-set plan's credits renew on its own day (rule 2936); with no renewal coming, the summary shows its paid-through day.
+  const handEnd = !sub && !view.resetsAt ? u.handPlan?.paidThrough ?? null : null;
+  const nextLabel = u.plan === "trial" ? t.billing.trialEnds : sub || handEnd ? (ar ? "مدفوع حتى" : "Paid through") : (ar ? "يتجدد الكريدت في" : "Credits renew on");
+  const nextDate = u.plan === "trial" ? u.trialEnds.slice(0, 10) : sub ? sub.paidThrough : handEnd ?? view.resetsAt ?? nextReset;
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-0">
       <PageHeader lang={lang} title={t.billing.title} seed="billing-t1" actions={<HelpLink lang={lang} href={helpHref(lang, "credits", "task-costs")} />} />
@@ -109,7 +111,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       {sub && <PaymobPlanCard lang={lang} billing={sub} />}
       <PlanIncludesCard view={{ ent: view.ent, used: view.used }} lang={lang} />
       <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} premiumHold={chatPremiumHold()} />
-      <CreditUsageCard t={t} lang={lang} user={{ plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, topups: openLots(u).map(topupBalance) }} month={month} allowance={allowanceOf(u)} chat={chat} chatBar={false} />
+      <CreditUsageCard t={t} lang={lang} user={{ plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, topups: openLots(u).map(topupBalance) }} month={month} allowance={allowanceOf(u)} chat={chat} chatBar={false} creditsReset={view.resetsAt} />
       <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} payOnline={online} />
       {owner && u.plan === "trial" && (
         <div className="mt-6 rounded-2xl bg-inverse p-6 text-inverse-muted">

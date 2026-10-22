@@ -7,6 +7,7 @@ import { EndedNotice, OV, STR, useAdminEnded, useOverview, type Overview, type S
 // Rules 2002 empty state, 2003 skeleton while the panel loads.
 import { PanelSkeleton } from "@/components/ui/Skeleton";
 import Callout from "@/components/ui/Callout";
+import ClientUsage from "./ClientUsage";
 
 /** The Margin section's words (rule 1533), both languages. */
 const MG = {
@@ -103,6 +104,7 @@ export default function Usage({ lang, keySession }: SectionProps) {
   return (
         <div className="grid gap-6">
           <MarginSection lang={lang} m={ov.margin} />
+          <ClientUsage lang={lang} />
           <div className="grid gap-3 sm:grid-cols-4">
             {[[O.dau, ov.engagement.dau], [O.wau, ov.engagement.wau], [O.mau, ov.engagement.mau], [O.retention, ov.engagement.retention7 === null ? "—" : `${ov.engagement.retention7}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-foreground-muted">{l}</p><p className="tnum font-display text-2xl font-bold text-foreground">{v}</p></div>)}
           </div>

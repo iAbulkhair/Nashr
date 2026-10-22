@@ -106,8 +106,7 @@ export async function deleteConnection(email: string, provider: string) {
 export async function saveState(state: string, payload: Record<string, string>) {
   await db.set(globalKey.oauthState(state), payload, 600);
 }
+/** Read and removed in one command (GETDEL, rule 2931): two callbacks racing on the same state never both get it. */
 export async function takeState(state: string) {
-  const p = await db.get<Record<string, string>>(globalKey.oauthState(state));
-  if (p) await db.del(globalKey.oauthState(state));
-  return p;
+  return db.getdel<Record<string, string>>(globalKey.oauthState(state));
 }

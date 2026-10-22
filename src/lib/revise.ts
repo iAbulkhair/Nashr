@@ -23,6 +23,7 @@ import { draftCredits } from "./task-costs";
 import { decisionOf, recordDecisions } from "./decisions";
 import { editPctOf } from "./similarity";
 import { acct } from "./account-id";
+import { usageWho } from "./usage";
 import { log } from "./log";
 import type { Scope } from "./keys";
 import type { Lang } from "./i18n";
@@ -158,7 +159,7 @@ export async function reviseTask(user: User, scope: Scope, id: string, input: { 
   try {
     const [prefs, memory, feedback] = await Promise.all([listPreferencesFor(scope, agent), memoryBlock(scope), feedbackFor(scope, agent, { gov })]);
     const revised = await reviseDraft(t.type, brand, prefs, { channel: t.channel, title: t.title, body: t.editedBody ?? t.body }, notes, {
-      model, meter: user.email, memory, feedback, noEmDash: gov.noEmDash, agentScope: modes.prompt === "on", deadline: o.deadline,
+      model, meter: acct(user), meterWho: usageWho(user, scope), memory, feedback, noEmDash: gov.noEmDash, agentScope: modes.prompt === "on", deadline: o.deadline,
       instructions: { scope, limits: entitlements(user).instructions },
     });
     // The revised text is an agent's text, checked like a batch's items (rule 801): refused in enforce, logged in shadow.

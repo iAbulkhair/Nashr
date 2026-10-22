@@ -102,7 +102,7 @@ export async function POST(req: Request) {
   if (byEmail) {
     const mail = inviteMail(inv, normalizeEmail(a.email), link);
     if (!(await sendEmail({ to: inv.email, subject: mail.subject, text: mail.text, template: "teamInvite", context: mail.context, locale: inv.lang }))) {
-      await discardInvite(u.email, res.id);
+      await discardInvite(acct(u), res.id);
       return Response.json({ error: "send_failed" }, { status: 502 });
     }
   }

@@ -4,6 +4,7 @@ import type { Grant, User } from "./auth";
 import { billingLocked } from "./billing-state";
 import { handPlanEnded } from "./hand-plan";
 import { ksaDay } from "./partner-rules";
+import { creditsResetOn } from "./renewal";
 import { chatStatus, type ChatStatus } from "./chat-allowance";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS, type VideoModelId } from "./media-catalog";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "./pricing";
@@ -149,17 +150,22 @@ export type EntitlementView = {
    */
   base: Entitlements;
   used: { credits: number; seats: number; chat: ChatStatus };
-  /** The next 1st of the month (a UTC day, YYYY-MM-DD) for a paid plan that renews; null for a trial and for a locked Paymob subscription. */
+  /** The day the plan's credits renew next (a Riyadh day, YYYY-MM-DD, the plan's own day, rule 2936); null when no renewal is coming. */
   resetsAt: string | null;
+  /** The next 1st of the month (a UTC day) when the month's chat count restarts; null where `resetsAt` would be. Absent on an older view. */
+  chatResetsAt?: string | null;
   grants: { video: (Grant<"all"> & { expired: boolean }) | null };
 };
 
 /**
- * The next 1st of the month after `now`, as a UTC day. Only a paid plan that is not billing-locked has one: that is the
- * account `renewalDue` (src/lib/credits.ts) renews at the start of the UTC month, and the one whose chat count restarts
- * with `monthKey` (rule 712: a locked subscription gets no new month until it pays; a trial's chat and credits do not reset).
+ * The day the plan's credits renew next (rule 2936, src/lib/renewal.ts `creditsResetOn`): the plan's own renewal day, as
+ * a Riyadh day. Null for a trial, a locked Paymob subscription (rule 712), a hand plan past its paid-through day, and a
+ * plan whose next period is not paid. The chat count still restarts with the UTC month (`chatResetOn`).
  */
-function resetsAtOf(u: EntUser, now: number): string | null {
+const resetsAtOf = (u: User, now: number): string | null => creditsResetOn(u, ksaDay(now));
+
+/** The next 1st of the month after `now` (UTC), when a paid plan's chat count restarts with `monthKey` (rule 315). */
+function chatResetsAtOf(u: User, now: number): string | null {
   if (u.plan === "trial" || billingLocked(u.billing) || handPlanEnded(u, ksaDay(now))) return null;
   const d = new Date(now);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
@@ -179,6 +185,7 @@ export async function entitlementView(u: User, now: number = Date.now()): Promis
     base: entitlements(own, now),
     used: { credits: u.credits, seats, chat },
     resetsAt: resetsAtOf(u, now),
+    chatResetsAt: chatResetsAtOf(u, now),
     grants: { video: g ? { ...g, expired: !grantActive(g, now) } : null },
   };
 }

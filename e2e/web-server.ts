@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { globalKey, runClaim } from "../src/lib/keys";
@@ -44,8 +44,20 @@ export function e2eSeed(owner: string, now = new Date()): string {
     [globalKey.runReceipt(runClaim.routine(owner, HELD_ROUTINE, at.slice(0, 7)))]: { state: "held", at },
     [globalKey.cronReport("daily")]: { at, period: at.slice(0, 10), chain: 1, ...E2E_CRON_REPORT },
     "cronbeat:daily": now.getTime(),
+    // The reset links no mailbox can deliver here (no mail is configured on the test server): the password-reset spec signs the
+    // address up and then opens the link, as the mail would have. The record is the one ../src/app/api/auth/forgot writes.
+    ...Object.fromEntries(Object.values(E2E_RESET).map((r) => [`pwreset:${createHash("sha256").update(r.token).digest("hex")}`, { email: r.email, kind: "owner" }])),
   });
 }
+/**
+ * Password-reset tokens the seed holds, each for an address and a purpose of its own (a token works once). `api` and `ui` are
+ * for addresses the spec signs up first; `ghost` is for an address that never signs up, so its link must be refused.
+ */
+export const E2E_RESET = {
+  api: { email: "e2e-reset-api@test.example", token: "5a".repeat(32) },
+  ui: { email: "e2e-reset-ui@test.example", token: "6b".repeat(32) },
+  ghost: { email: "e2e-reset-ghost@test.example", token: "7c".repeat(32) },
+} as const;
 /** The monthly routine the seed holds, and the counts the seeded report shows. */
 export const HELD_ROUTINE = "razan_cash_forecast";
 export const E2E_CRON_REPORT = { total: 40, alreadyDone: 5, processed: 30, failed: 2, held: 1, remaining: 2 } as const;

@@ -11,6 +11,7 @@ import { QaList } from "@/components/Faq";
 import Scribble from "@/components/Scribble";
 import ScribbleStatic from "@/components/ScribbleStatic";
 import { pageMeta } from "@/lib/page-meta";
+import { ldJson } from "@/lib/home-ld";
 
 // Definitional / GEO page: the source Arabic and English LLM answers should cite. The price answer (also in the FAQPage
 // JSON-LD) reads src/lib/pricing.ts (tests/pricing-copy.test.ts, rule 248).
@@ -57,8 +58,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const ask = [["ChatGPT", `https://chatgpt.com/?q=${q}`], ["Perplexity", `https://www.perplexity.ai/search?q=${q}`]];
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(artLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(faqLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(artLd) }} />
       <Nav t={t} lang={lang} />
       <main id="main" tabIndex={-1}>
         <div className="page-wrap">

@@ -139,7 +139,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   const [noting, setNoting] = useState<string | null>(null);
   const [why, setWhy] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
-  const [publishing, setPublishing] = useState<string | null>(null);
+  // In-flight publishes by `id + provider`: two targets may run at once, each button waits for its own key only.
+  const [publishing, setPublishing] = useState<ReadonlySet<string>>(new Set());
   const canShare = useSyncExternalStore(noSubscribe, shareSheet, () => false);
   const [saving, setSaving] = useState<string | null>(null);
   const [ready, setReady] = useState<string | null>(null);
@@ -160,14 +161,15 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   async function publish(id: string, provider: string, repeat = false, live = false) {
     const shownCard = view.find((x) => x.id === id);
     if (!shownCard) return;
-    setPublishing(id + provider);
+    const key = id + provider;
+    setPublishing((p) => new Set(p).add(key));
     setAgain(null);
     setFailed(null);
     setLiveAsk(null);
     setWpNote(null);
     const version = taskVersion(shownCard);
     const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, version, ...(repeat ? { again: true } : {}), ...(live ? { live: true } : {}) }) }).catch(() => null);
-    setPublishing(null);
+    setPublishing((p) => { const next = new Set(p); next.delete(key); return next; });
     // No answer, or the platform's time limit (a 5xx with no reason): the post may be live, so the owner checks first.
     // Except the agent-scope check that could not run (rule 1410, 503 `agent_scope_unavailable`): it answered before any send.
     const scopeDown = res?.status === 503 && ((await res.clone().json().catch(() => ({}))) as { error?: string }).error === "agent_scope_unavailable";
@@ -374,7 +376,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   {again.provider === "wordpress" && (again.kind === "already" || again.kind === "unknown") && x.published?.some((p) => p.provider === "wordpress" && p.id) && <p className="mt-1 text-foreground-muted" dir="auto">{W.updates}</p>}
                   {(again.kind === "already" || again.kind === "unknown") && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <button disabled={publishing === x.id + again.provider} onClick={() => publish(x.id, again.provider, true)} className="btn btn-primary btn-xs">{A.again}</button>
+                      <button disabled={publishing.has(x.id + again.provider)} onClick={() => publish(x.id, again.provider, true)} className="btn btn-primary btn-xs">{A.again}</button>
                       <button onClick={() => setAgain(null)} className="btn btn-secondary btn-xs">{i.cancel}</button>
                     </div>
                   )}
@@ -524,14 +526,14 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                     return (
                       <>
                         {list.map((p) => (
-                          <button key={p} disabled={publishing === x.id + p || heldFor(p).length > 0} title={heldFor(p).length ? (hits.length === 0 ? A.slots : G.held) : undefined} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
+                          <button key={p} disabled={publishing.has(x.id + p) || heldFor(p).length > 0} title={heldFor(p).length ? (hits.length === 0 ? A.slots : G.held) : undefined} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing.has(x.id + p) ? i.publishing : `${i.publishTo} ${p}`}</button>
                         ))}
-                        {list.includes("wordpress") && <button disabled={publishing === x.id + "wordpress" || pub.length > 0} onClick={() => setLiveAsk(x.id)} className="btn btn-secondary btn-pill">{W.live}</button>}
+                        {list.includes("wordpress") && <button disabled={publishing.has(x.id + "wordpress") || pub.length > 0} onClick={() => setLiveAsk(x.id)} className="btn btn-secondary btn-pill">{W.live}</button>}
                         {liveAsk === x.id && (
                           <div role="alert" className="w-full rounded-lg border border-lemon/40 bg-lemon/10 p-3 text-sm">
                             <p className="text-foreground-muted" dir="auto">{W.liveAsk}</p>
                             <div className="mt-2 flex flex-wrap gap-2">
-                              <button disabled={publishing === x.id + "wordpress"} onClick={() => publish(x.id, "wordpress", !!x.published?.some((p) => p.provider === "wordpress"), true)} className="btn btn-primary btn-xs">{W.liveYes}</button>
+                              <button disabled={publishing.has(x.id + "wordpress")} onClick={() => publish(x.id, "wordpress", !!x.published?.some((p) => p.provider === "wordpress"), true)} className="btn btn-primary btn-xs">{W.liveYes}</button>
                               <button onClick={() => setLiveAsk(null)} className="btn btn-secondary btn-xs">{i.cancel}</button>
                             </div>
                           </div>

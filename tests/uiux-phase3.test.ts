@@ -58,8 +58,9 @@ beforeEach(() => { vi.stubEnv("ADMIN_EMAILS", FOUNDER); });
 afterEach(() => { vi.unstubAllEnvs(); signOut(); });
 
 describe("rule 1140: one settings area, one page per section, its own navigation", () => {
-  it("has ten sections, each a page under /{lang}/app/settings (the brand four under /b/{id}/settings), inside one frame", () => {
-    expect(SETTINGS_SECTIONS).toEqual(["account", "security", "notifications", "brand", "brands", "members", "billing", "connections", "governance", "danger"]);
+  it("has eleven sections, each a page under /{lang}/app/settings (the brand four under /b/{id}/settings), inside one frame", () => {
+    // Rule 2907 added `usage` (the owner's own AI requests) after billing.
+    expect(SETTINGS_SECTIONS).toEqual(["account", "security", "notifications", "brand", "brands", "members", "billing", "usage", "connections", "governance", "danger"]);
     for (const s of SETTINGS_SECTIONS) expect(existsSync(settingsPage(s)), s).toBe(true);
     expect(SETTINGS_SECTIONS.filter(isBrandSettings)).toEqual(["notifications", "brand", "connections", "governance"]);
     expect(existsSync("src/app/[lang]/app/settings/page.tsx")).toBe(true);

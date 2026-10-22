@@ -289,17 +289,22 @@ describe("the credit card shows plan credits and top-up credits apart, with each
     usage: {}, images: 0, mediaCredits: 0, emails: "all", allowance: 300, nextReset: "2026-11-01",
     brand: { name: "Roastery", website: "roastery.example", sitemap: "", products: "Beans", audience: "Locals", tone: "warm", valueProp: "", social: {} },
   });
-  const render = (lang: "en" | "ar", topups?: { credits: number; left: number; expiresAt: string }[]) =>
-    renderToStaticMarkup(createElement(CreditUsageCard, { t: appDict[lang], lang, user: initial(topups).user, month: { usage: {}, images: 0, mediaCredits: 0, nextReset: "2026-11-01" }, allowance: 300 }));
+  const render = (lang: "en" | "ar", topups?: { credits: number; left: number; expiresAt: string }[], creditsReset?: string | null) =>
+    renderToStaticMarkup(createElement(CreditUsageCard, { t: appDict[lang], lang, user: initial(topups).user, month: { usage: {}, images: 0, mediaCredits: 0, nextReset: "2026-11-01" }, allowance: 300, creditsReset }));
 
   it("the credit card splits the balance and dates each pack, in both languages; without packs it shows the balance alone", () => {
     const packs = [{ credits: 1000, left: 1000, expiresAt: "2026-12-30T10:00:00.000Z" }, { credits: 300, left: 120, expiresAt: "2026-11-15T10:00:00.000Z" }];
     const en = render("en", packs);
-    expect(en).toMatch(/data-plan-credits=""><dt>Plan credits \(reset on 2026-11-01\)<\/dt><dd[^>]*>280<\/dd>/);
+    expect(en).toMatch(/data-plan-credits=""><dt>Plan credits \(renew on 2026-11-01\)<\/dt><dd[^>]*>280<\/dd>/);
     expect(en).toMatch(/data-topup-credits=""><dt>Top-up credits \(used after the plan credits; no reset\)<\/dt><dd[^>]*>1,120<\/dd>/);
     expect(en.indexOf("2026-11-15"), "the pack that expires first is listed first").toBeLessThan(en.indexOf("2026-12-30"));
     expect(en).toContain("300-credit pack: 120 left");
-    expect(en).toContain("The plan&#x27;s credits reset on the 1st of each month (UTC); top-up packs keep what is left in them until they expire.");
+    expect(en).toContain("The plan&#x27;s credits renew each month on the day its paid period started; top-up packs keep what is left in them until they expire. Next renewal: 2026-11-01.");
+    // The plan's own day (rule 2936), and no day when no renewal is coming.
+    expect(render("en", packs, "2026-11-20")).toContain("Plan credits (renew on 2026-11-20)");
+    const ended = render("en", packs, null);
+    expect(ended).toContain("No renewal is due until the next period is paid.");
+    expect(ended).toMatch(/data-plan-credits=""><dt>Plan credits<\/dt>/);
     const ar = render("ar", packs);
     expect(ar).toContain("كريدت الخطة (يتجدد في 2026-11-01)");
     expect(ar).toContain("كريدت باقات الشحن");

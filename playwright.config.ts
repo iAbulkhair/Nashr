@@ -56,7 +56,12 @@ export default defineConfig({
       // with itself and fail on the product's own rate limiter rather than on a defect. They exercise logic, not
       // layout, so chromium covers them; everything that could break at 390px still runs here.
       // The re-skin layout matrix sets its own widths, so a phone profile only repeats it; WebKit runs it below.
-      testIgnore: [/auth-flows\.spec\.ts/, /error-states\.spec\.ts/, /api-guards\.spec\.ts/, /reskin-.*\.spec\.ts/],
+      testIgnore: [
+        /auth-flows\.spec\.ts/, /error-states\.spec\.ts/, /api-guards\.spec\.ts/, /reskin-.*\.spec\.ts/,
+        // The specs that sign their own accounts up (or log in as one) share the same per-IP limits; they test logic, not layout.
+        /generate-approve\.spec\.ts/, /tenant-isolation\.spec\.ts/, /team-invite\.spec\.ts/, /account-delete\.spec\.ts/,
+        /onboarding\.spec\.ts/, /chat-mock\.spec\.ts/, /password-reset\.spec\.ts/, /ai-usage\.spec\.ts/,
+      ],
     },
     // WebKit for the re-skin layout matrix, on demand only (`E2E_WEBKIT=1`), so CI runs what it ran before.
     ...(process.env.E2E_WEBKIT ? [{ name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /reskin-.*\.spec\.ts/, dependencies: ["setup"] }] : []),

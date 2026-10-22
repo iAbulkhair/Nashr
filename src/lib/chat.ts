@@ -1,11 +1,12 @@
 import { agentById, type AgentId } from "./agents";
-import { costUsd } from "./usage";
+import { costUsd, usageWho } from "./usage";
 import { metered } from "./metered";
 import { CHAT_MAX_CALLS, estTokens, fitFirstCall, inputEstimateUsd, nextMaxTokens, trimHistory, workspaceLarge, type InputEst } from "./chat-budget";
 import { MODEL_BUDGET, PAUSED_REPLY, anthropic, modelState, until } from "./model";
 import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { sc, trialOver, type User } from "./auth";
+import { acct } from "./account-id";
 import { getBrand, listPreferencesFor, type Task } from "./brand";
 import { feedbackFor } from "./feedback";
 import { listFileNames, memoryBlock } from "./files";
@@ -145,7 +146,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       let res: Anthropic.Message;
       try {
         // Metered inside `metered`, an aborted stream included: the API bills what it read and wrote before the deadline.
-        res = await metered(client.messages.stream({ model, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call), { email: user.email, kind: "chat", agent: agentId, requested: model });
+        res = await metered(client.messages.stream({ model, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call), { email: acct(user), kind: "chat", agent: agentId, requested: model, who: usageWho(user, sc(user)) });
       } catch (e) {
         if (call.signal.aborted) { outOfTime = true; break; }
         throw e;

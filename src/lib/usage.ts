@@ -6,6 +6,9 @@ import type { Rejected } from "./models/route";
 import { effectiveProvider, type LlmProvider } from "./model";
 import { log } from "./log";
 import { accountKey, globalKey } from "./keys";
+import { brandOfScope } from "./account-id";
+import { byOf } from "./actor";
+import type { User } from "./auth";
 
 /**
  * Model token metering per account per month. Credits are what users pay;
@@ -56,8 +59,20 @@ export function costUsd(model: string, u: TokenUsage): number {
 }
 
 /**
- * Every counter one account (or `_all`) can have in one month, under `usage:{email}:{YYYY-MM}`. Built from KINDS and
- * AGENT_IDS, so `wipeAccount` cannot miss a counter that a new kind or a new agent adds.
+ * The per-account breakdowns (rules 2900-2909): one month of an account's model calls split by who ran them, which brand
+ * they were for, which model answered and which UTC day, as two hashes per dimension, `usage:{account}:{YYYY-MM}:by:{dim}:calls`
+ * and `...:usd_micro`, one field per value. A hash per account-month keeps the key list closed (`usageMonthKeys` names all
+ * eight, so `wipeAccount` deletes them) however many members, brands or days there are. The field values are worked out in
+ * code: a person from the session's `u.actor` (`usageWho`), a brand from the caller's own scope, a catalog model id or
+ * "other", a day from the clock; never a value taken from a request.
+ */
+export const USAGE_DIMS = ["person", "brand", "model", "day"] as const;
+export type UsageDim = (typeof USAGE_DIMS)[number];
+const dimKey = (k: string, dim: UsageDim, p: "calls" | "usd_micro") => `${k}:by:${dim}:${p}`;
+
+/**
+ * Every counter one account (or `_all`) can have in one month, under `usage:{email}:{YYYY-MM}`. Built from KINDS,
+ * AGENT_IDS and USAGE_DIMS, so `wipeAccount` cannot miss a counter that a new kind, agent or breakdown adds.
  */
 export function usageMonthKeys(email: string, month: string): string[] {
   const k = accountKey.usage(email, month);
@@ -65,7 +80,41 @@ export function usageMonthKeys(email: string, month: string): string[] {
     ...["in", "out", "calls", "usd_micro", "cache_read", "cache_write", "chat_msgs", "chat_over", "chat_cred", "media_usd_micro"].map((p) => `${k}:${p}`),
     ...KINDS.flatMap((kind) => [`${k}:kind:${kind}`, `${k}:kind:${kind}:in`, `${k}:kind:${kind}:out`, `${k}:kind:${kind}:usd_micro`]),
     ...AGENT_IDS.flatMap((id) => [`${k}:agent:${id}:calls`, `${k}:agent:${id}:usd_micro`]),
+    ...USAGE_DIMS.flatMap((d) => [dimKey(k, d, "calls"), dimKey(k, d, "usd_micro")]),
   ];
+}
+
+/**
+ * The founder's ranking of accounts by what they cost this month (rule 2905): a sorted set `usage:_all:{YYYY-MM}:rank`,
+ * member = account id, score = model plus render cost in micro-dollars. Global, so it is not in `usageMonthKeys`;
+ * `wipeAccount` removes the account from the months it can have been in.
+ */
+export const usageRankKey = (month: string) => `${globalKey.usageAll(month)}:rank`;
+
+/**
+ * Who a call worked for inside its account (rule 2901). `person` is "owner", "member:{login}", "support" (a founder acting
+ * through support access), "app" (a connected app's MCP token) or "system" (a cron, a routine, a script); `brand` is the
+ * brand id of the caller's scope ("default" for the account's own). Both come from `usageWho`, never from a request.
+ */
+export type UsageWho = { person?: string; brand?: string };
+
+/** A person or brand value as a hash field: a bounded string with no control characters, else nothing. */
+const field = (v: unknown): string | undefined => (typeof v === "string" && v && v.length <= 200 && !/[\u0000-\u001f]/.test(v) ? v : undefined);
+
+/**
+ * The `UsageWho` of a call made for `u` in `scope`, from the session's actor alone (`byOf`, src/lib/actor.ts): the same
+ * person an activity row names, in a form that can be a hash field. `scope` must be the caller's own (`sc(u)` or a scope from
+ * our records); the brand is the part after `#`.
+ */
+export function usageWho(u: Pick<User, "email" | "actor">, scope?: string): UsageWho {
+  const by = byOf(u as User);
+  const person =
+    by.kind === "member" ? (by.email ? "member:" + by.email.toLowerCase() : "member")
+    : by.kind === "founder" ? "support"
+    : by.kind === "token" ? "app"
+    : by.kind === "owner" ? "owner"
+    : "system";
+  return { person, ...(scope ? { brand: brandOfScope(scope) } : {}) };
 }
 
 /** The providers a call can be metered under: the two `LlmProvider` values, a fixed list so no input becomes part of a key. */
@@ -88,8 +137,8 @@ const modelKeyOf = (model: string): string => modelById(model)?.id ?? OTHER_MODE
  * `provider` is the provider the call went to; left out, it is the one the client really uses (`effectiveProvider()`: the
  * gateway only with `LLM_PROVIDER=straitly` and its key), and a value that is not one of the two is ignored the same way. The model and the provider also count in the two global families above.
  */
-export async function meter(email: string | undefined, model: string, kind: Kind, usage?: TokenUsage | null, agent?: AgentId, provider?: LlmProvider) {
-  return record(email, model, kind, usage, agent, provider, true);
+export async function meter(email: string | undefined, model: string, kind: Kind, usage?: TokenUsage | null, agent?: AgentId, provider?: LlmProvider, who?: UsageWho) {
+  return record(email, model, kind, usage, agent, provider, true, who);
 }
 
 /**
@@ -130,16 +179,17 @@ export function billedParts(model: string, usage: BilledUsage, requested: string
  * the account, the kind, the agent and the provider (the first part); each model that ran counts one call in its own
  * global model counter. Callers go through `metered` (src/lib/metered.ts), which also meters an aborted stream.
  */
-export async function meterBilled(email: string | undefined, model: string, kind: Kind, usage?: BilledUsage | null, agent?: AgentId, requested?: string) {
+export async function meterBilled(email: string | undefined, model: string, kind: Kind, usage?: BilledUsage | null, agent?: AgentId, requested?: string, who?: UsageWho) {
   if (!usage) return;
   const parts = billedParts(model, usage, requested);
-  await Promise.all(parts.map((p, i) => record(email, p.model, kind, p.usage, agent, undefined, i === 0)));
+  await Promise.all(parts.map((p, i) => record(email, p.model, kind, p.usage, agent, undefined, i === 0, who)));
 }
 
 /** `countCall` false: the tokens and cost of a further model in the same request, so only that model's call counter moves. */
-async function record(email: string | undefined, model: string, kind: Kind, usage: TokenUsage | null | undefined, agent: AgentId | undefined, provider: LlmProvider | undefined, countCall: boolean) {
+async function record(email: string | undefined, model: string, kind: Kind, usage: TokenUsage | null | undefined, agent: AgentId | undefined, provider: LlmProvider | undefined, countCall: boolean, who?: UsageWho) {
   if (!usage) return;
-  const m = monthKey();
+  const now = new Date();
+  const m = monthKey(now);
   const inp = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
   const out = usage.output_tokens ?? 0;
   const micro = Math.round(costUsd(model, usage) * 1e6);
@@ -170,10 +220,30 @@ async function record(email: string | undefined, model: string, kind: Kind, usag
       db.incrby(`${mk}:usd_micro`, micro),
       ...(countCall ? [db.incrby(`${pk}:calls`, 1)] : []),
       db.incrby(`${pk}:usd_micro`, micro),
+      ...(email ? breakdownWrites(accountKey.usage(email, m), email, m, now, model, micro, countCall, who) : []),
     ]);
   } catch (e) {
     log.error("meter failed", e);
   }
+}
+
+/**
+ * The account's breakdown writes for one model call (rules 2902-2905): calls and cost per person, brand, model and UTC
+ * day, and the account's place in the month's cost ranking. A person or brand that is missing or malformed counts as
+ * "unknown" so the four breakdowns always add up to the account's own totals. Only a call that counts (`countCall`)
+ * moves the call counters, as in `record`.
+ */
+function breakdownWrites(k: string, account: string, m: string, now: Date, model: string, micro: number, countCall: boolean, who: UsageWho | undefined): Promise<unknown>[] {
+  const fields: Record<UsageDim, string> = {
+    person: field(who?.person) ?? "unknown",
+    brand: field(who?.brand) ?? "unknown",
+    model: modelKeyOf(model),
+    day: now.toISOString().slice(0, 10),
+  };
+  return [
+    ...USAGE_DIMS.flatMap((d) => [...(countCall ? [db.hincrby(dimKey(k, d, "calls"), fields[d], 1)] : []), db.hincrby(dimKey(k, d, "usd_micro"), fields[d], micro)]),
+    ...(micro > 0 ? [db.zincrby(usageRankKey(m), micro, account)] : []),
+  ];
 }
 
 /** Where a pick can be rejected: the chat route and a generation batch (the only two purposes a customer's pick changes). */
@@ -218,7 +288,9 @@ export const mediaCostKey = (email: string, month = monthKey()) => `usage:${emai
 /** Adds one render's cost to the account's month (whole micro-dollars, as INCRBY needs). Nothing for 0 or a bad number. */
 export async function meterRender(email: string, usd: number | undefined): Promise<void> {
   if (!email || typeof usd !== "number" || !Number.isFinite(usd) || usd <= 0) return;
-  await db.incrby(mediaCostKey(email), Math.round(usd * 1e6));
+  const micro = Math.round(usd * 1e6);
+  // The render's cost also counts in the founder's ranking (rule 2905), so a media-heavy account ranks by what it costs.
+  await Promise.all([db.incrby(mediaCostKey(email), micro), db.zincrby(usageRankKey(monthKey()), micro, email)]);
 }
 /** The trial's messages are granted once for the whole trial, not per month. Deleted with the account (`wipeAccount`). */
 export const chatTrialKey = (email: string) => accountKey.chatTrial(email);
@@ -294,4 +366,35 @@ export async function getUsage(email: string | "_all", month = monthKey()): Prom
   // Per model and per provider exist for `_all` only (no per-account counters): an account's summary has them empty, with no extra read.
   const g = email === "_all" ? await globalModelUsage(month) : { models: {}, providers: {}, fallbacks: 0, rejectedPicks: {} };
   return { month, in: inp, out, calls, usd: Math.round(micro / 1e4) / 100, kinds, byKind, byAgent, cacheRead, cacheWrite, chatMessages, chatOverflow, chatCredits, ...g };
+}
+
+/** Calls and cost under one value of a breakdown: a member, a brand, a model id or a day. */
+export type UsageSlice = { calls: number; usd: number };
+export type UsageBreakdown = { month: string } & Record<UsageDim, Record<string, UsageSlice>>;
+
+/**
+ * One account's month split four ways (rule 2906): eight `hgetall` in one `Promise.all`. `account` is the caller's own
+ * (`acct(u)`) or, in the founder console, an account from our records; never a value from a request. A month before this
+ * shipped reads as empty.
+ */
+export async function getUsageBreakdown(account: string, month = monthKey()): Promise<UsageBreakdown> {
+  const k = accountKey.usage(account, month);
+  const raw = await Promise.all(USAGE_DIMS.flatMap((d) => [db.hgetall<number>(dimKey(k, d, "calls")), db.hgetall<number>(dimKey(k, d, "usd_micro"))]));
+  const out = { month } as UsageBreakdown;
+  USAGE_DIMS.forEach((d, i) => {
+    const calls = raw[2 * i] ?? {}, micro = raw[2 * i + 1] ?? {};
+    const slices: Record<string, UsageSlice> = {};
+    for (const f of new Set([...Object.keys(calls), ...Object.keys(micro)])) slices[f] = { calls: Number(calls[f] ?? 0), usd: Number(micro[f] ?? 0) / 1e6 };
+    out[d] = slices;
+  });
+  return out;
+}
+
+/** The month's accounts by what they cost us (model plus render), highest first, at most `limit` (rule 2905). */
+export async function rankAccounts(month = monthKey(), limit = 100): Promise<{ account: string; usd: number }[]> {
+  const all = await db.zrangeWithScores(usageRankKey(month));
+  return all
+    .sort((a, b) => b.score - a.score || a.member.localeCompare(b.member))
+    .slice(0, Math.max(0, Math.min(limit, 500)))
+    .map((x) => ({ account: x.member, usd: x.score / 1e6 }));
 }

@@ -38,7 +38,8 @@ export async function GET(req: Request) {
  * scope has used its ceiling of refused messages (rule 795, `agentScopePreflight`: no classifier call; its `message` says
  * so), and a message past the plan's chat allowance: 402 {error:"chat_allowance"} (paused)
  * or {error:"chat_credits"} (continue-on-credits is on but the balance is below the most a message can cost), with
- * `chat` and `credits`.
+ * `chat` and `credits`. A `conv` other than "default" with no record under the caller's scope: 404 `conversation_gone`
+ * (rule 2933), before every count.
  */
 export async function POST(req: Request) {
   // The request's one deadline, taken first (rule 336): every model turn of the reply, streamed or not, ends by it.
@@ -64,6 +65,10 @@ export async function POST(req: Request) {
   // ceiling (only in enforce) is answered first, before the allowance is touched and without a classifier call. The
   // burst ceiling has counted this request by then.
   const [slow, record, pre] = await Promise.all([chatRefusal(u), b.conv && b.conv !== "default" ? getConversation(sc(u), b.conv) : null, agentScopePreflight(u)]);
+  // A named conversation with no record (deleted in another tab, or an id this scope never made) is refused before any
+  // count or save (rule 2933): a turn would otherwise write `chat:{scope}:{conv}` outside the `convs:` index, where the
+  // account wipe never finds it. Ids come only from POST /api/conversations; "default" is the legacy thread, with no record.
+  if (b.conv && b.conv !== "default" && !record) return NextResponse.json({ ok: false, error: "conversation_gone" }, { status: 404 });
   if (pre.slow) return retryLater({ ok: false, error: "slow_down", retry: pre.slow, message: { role: "assistant", content: agentScopeSlowText(lang), at: new Date().toISOString(), agent } }, WINDOW[pre.slow]);
   if (slow) return retryLater({ ok: false, error: "slow_down", retry: slow, message: refused(slow, chatCaps(u)[slow]) }, WINDOW[slow]);
   // The turn's one model, resolved once: the conversation's pick when route() accepts it, else automatic, and then the

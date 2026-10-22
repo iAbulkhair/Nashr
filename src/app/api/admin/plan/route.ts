@@ -4,7 +4,7 @@ import { accountByLogin, adminActor, getUser, isAdmin, isPlan, normalizeEmail, s
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { matchUser, pageOf, parseUserQuery, sortUsers, tileCounts, userFacets } from "@/lib/admin-users";
 import { db } from "@/lib/db";
-import { monthKey, withUserLock } from "@/lib/credits";
+import { anchorOf, monthKey, withUserLock } from "@/lib/credits";
 import { getUsage, mediaCostKey } from "@/lib/usage";
 import { marginPct, revenueSarOf } from "@/lib/margin";
 import { chatStatus } from "@/lib/chat-allowance";
@@ -229,6 +229,9 @@ export async function POST(req: Request) {
     if (planGiven) {
       setMonthly(u, allowanceOf(u));
       u.renewedAt = monthKey();
+      // Its months run from today: the allowance renews on this day of each month, not on the 1st (rule 2936).
+      u.renewedOn = today;
+      u.renewAnchor = anchorOf(today);
       // A plan set by hand makes the account hand-managed: the online subscription (src/lib/billing.ts, rule 717) stops
       // renewing, and a renewal lock on it ends here. The saved card stays until the owner removes it or the account goes.
       if (u.billing) { delete u.billing; billingEnded = true; }

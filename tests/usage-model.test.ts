@@ -344,11 +344,14 @@ describe("no account-linked key gains model, provider or pickreject", () => {
     await meter(u.email, "mystery-model", "chat", U_SMALL, "sami");
     await noteRejectedPick("chat", "unknown");
     const list = usageMonthKeys(u.email, "2031-08");
-    expect(list.filter((k) => /model:|provider:|pickreject:/.test(k))).toEqual([]);
+    // Rule 2902 adds the account's own per-model breakdown (`:by:model:calls|usd_micro`, two hashes on this list); the
+    // global per-model, provider and pick counters still never carry an account.
+    const notOwn = /(?<!by:)model:|provider:|pickreject:/;
+    expect(list.filter((k) => notOwn.test(k))).toEqual([]);
     expect(list).toContain(`usage:${u.email}:2031-08:calls`);
     const mine = allKeys().filter((k) => k.includes(u.email));
     expect(mine.length).toBeGreaterThan(0);
-    expect(mine.filter((k) => /model:|provider:|pickreject:/.test(k))).toEqual([]);
+    expect(mine.filter((k) => notOwn.test(k))).toEqual([]);
     // Every account counter of the month is on the list `wipeAccount` deletes.
     expect(mine.filter((k) => k.startsWith("usage:") && !list.includes(k))).toEqual([]);
     await wipeAccount(u.email);
@@ -524,8 +527,9 @@ describe("the founder console", () => {
     const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     const files = walk("src");
     const readers = files.filter((f) => /\bgetUsage\b/.test(strip(readFileSync(f, "utf8")))).sort();
-    // The founder's routes, the golden set (its own account's cost), the founder overview, and usage.ts itself.
-    expect(readers).toEqual(["src/app/api/admin/plan/route.ts", "src/app/api/admin/users/[email]/route.ts", "src/lib/admin-stats.ts", "src/lib/golden.ts", "src/lib/usage.ts"]);
+    // The founder's routes, the golden set (its own account's cost), the founder overview, usage.ts itself, and the
+    // usage report (rule 2907): its owner view keeps the calls only, never a dollar figure (tests/ai-usage-tracking.test.ts).
+    expect(readers).toEqual(["src/app/api/admin/plan/route.ts", "src/app/api/admin/users/[email]/route.ts", "src/lib/admin-stats.ts", "src/lib/golden.ts", "src/lib/usage-report.ts", "src/lib/usage.ts"]);
     const namers = files.filter((f) => /\b(rejectedPicks|modelUsage|noteRejectedPick)\b/.test(strip(readFileSync(f, "utf8")))).sort();
     expect(namers).toEqual(["src/app/api/chat/route.ts", "src/app/api/instructions/test/route.ts", "src/components/admin/Billing.tsx", "src/components/admin/shared.tsx", "src/lib/admin-stats.ts", "src/lib/generate-batch.ts", "src/lib/usage.ts"]);
     // And the console is behind the founder's own page and routes: it names no customer route.

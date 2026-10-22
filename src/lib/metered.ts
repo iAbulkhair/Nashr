@@ -1,5 +1,5 @@
 import type { AgentId } from "./agents";
-import { meterBilled, type BilledUsage, type Kind } from "./usage";
+import { meterBilled, type BilledUsage, type Kind, type UsageWho } from "./usage";
 
 /**
  * Every model call is metered here, so the founder console counts what Anthropic bills (rules 980-986,
@@ -24,6 +24,8 @@ export type MeterTo = {
   agent?: AgentId;
   /** The model the request asked for: an iteration with no model of its own is priced at it (left out, the reply's). */
   requested?: string;
+  /** Who in the account the call worked for and which brand (rule 2901): from `usageWho(u, sc(u))`, never a request. */
+  who?: UsageWho;
 };
 
 /** What `metered` reads from a reply: the SDK's `Message` and `BetaMessage` both fit. */
@@ -42,10 +44,10 @@ export async function metered<M extends Reply>(stream: StreamLike<M>, to: MeterT
     msg = await stream.finalMessage();
   } catch (e) {
     const snap = stream.currentMessage ?? stream.receivedMessages?.at(-1);
-    if (snap?.usage) await meterBilled(to.email, snap.model, to.kind, partialUsage(snap), to.agent, to.requested);
+    if (snap?.usage) await meterBilled(to.email, snap.model, to.kind, partialUsage(snap), to.agent, to.requested, to.who);
     throw e;
   }
-  await meterBilled(to.email, msg.model, to.kind, msg.usage, to.agent, to.requested);
+  await meterBilled(to.email, msg.model, to.kind, msg.usage, to.agent, to.requested, to.who);
   return msg;
 }
 

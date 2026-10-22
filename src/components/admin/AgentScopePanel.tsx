@@ -151,7 +151,7 @@ export default function AgentScopePanel({ lang = "en" }: { lang?: "ar" | "en" })
           </label>
           {data.log.length === 0 ? <EmptyState compact title={S.empty} className="mt-2" /> : (
             <div className="overflow-x-auto"><table className="mt-2 w-full text-xs">
-              <thead className="bg-background-muted text-left uppercase tracking-wide text-foreground-muted"><tr>{S.cols.map((c, i) => <th key={i} className="p-2">{c}</th>)}</tr></thead>
+              <thead className="bg-background-muted text-start uppercase tracking-wide text-foreground-muted"><tr>{S.cols.map((c, i) => <th key={i} className="p-2">{c}</th>)}</tr></thead>
               <tbody>
                 {data.log.map((e, i) => (
                   <tr key={`${e.at}-${i}`} className="border-t border-foreground/10 align-top">

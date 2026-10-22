@@ -10,7 +10,7 @@ import { IMPERSONATE_COOKIE, RETURN_COOKIE, SESSION_COOKIE, readCookie } from "@
 import { revokeFeeds } from "@/lib/feed-token";
 import { revokeCalendarLinks } from "@/lib/secretary-gcal";
 import { getBrand, listTasks } from "@/lib/brand";
-import { getUsage } from "@/lib/usage";
+import { getUsage, getUsageBreakdown } from "@/lib/usage";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
 import { entitlementView } from "@/lib/entitlements";
@@ -70,7 +70,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   const brands = await listBrands(acct(u));
   const scopes = brands.map((b) => scopeFor(acct(u), b.id));
   const tasks = (await Promise.all(scopes.map((s) => listTasks(s)))).flat().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  const [brand, usage, chat, connections, convs, referrals, activity, unfinished, ent] = await Promise.all([
+  const [brand, usage, chat, connections, convs, referrals, activity, unfinished, ent, breakdown] = await Promise.all([
     getBrand(acct(u)),
     getUsage(acct(u)),
     // The chat allowance (a trial's for the whole trial, which the month's usage does not keep): the raw count
@@ -86,6 +86,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     // What the plan includes, what the account used, when it resets and the video grant marked expired or not (rule 784). It
     // reads the chat status again (once above for `chat`, once in the view; accepted), in this same `Promise.all`.
     entitlementView(u),
+    // This month split by person, brand, model and day (rule 2906): eight hash reads, the account from the record above.
+    getUsageBreakdown(acct(u)),
   ]);
   const scores = tasks.filter((t) => t.quality).map((t) => t.quality!.score);
   const { passHash: _omit, suspended: _stored, ...rest } = u;
@@ -94,7 +96,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   // The console reads the state as it is now (rule 2074): `suspended` true only while it blocks, and its end date, if any.
   const safe = { ...rest, suspended: isSuspended(u), suspendedUntil: isSuspended(u) ? suspensionEnd(u) : null };
   return NextResponse.json({
-    ok: true, user: safe, brand, tasks, usage, chat, connections, brands, conversations: convs, referrals, activity, unfinishedRefunds: unfinished, entitlements: ent,
+    ok: true, user: safe, brand, tasks, usage, chat, connections, brands, conversations: convs, referrals, activity, unfinishedRefunds: unfinished, entitlements: ent, breakdown,
     // What one chat message cost this month, over every message sent (the raw count and those on credits), as the list shows.
     chatUsdPerMsg: chatUsdPerMessage(usage.byKind.chat?.usd ?? 0, chat),
     avgScore: scores.length ? Math.round(scores.reduce((s, x) => s + x, 0) / scores.length) : null,

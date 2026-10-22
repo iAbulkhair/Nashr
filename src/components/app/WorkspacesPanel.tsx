@@ -34,7 +34,7 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
   const [delCode, setDelCode] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const message = (code: unknown) => (typeof code === "string" && code in t.errors ? t.errors[code as keyof T["errors"]] : t.errors.failed);
+  const message = (code: unknown) => (typeof code === "string" && Object.hasOwn(t.errors, code) ? t.errors[code as keyof T["errors"]] : t.errors.failed);
   // Multi-workspace M3 (rule 2751): an ownership offer arrives as `#xfer={handle}.{token}` in the mailed link. The fragment
   // never reaches a server log; it is read here, sent once in a POST body on Accept, and cleared on "Not now".
   const hash = useSyncExternalStore(onHash, () => window.location.hash, () => "");

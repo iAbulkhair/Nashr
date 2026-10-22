@@ -9,7 +9,7 @@ import { codeFor, referralKeys } from "./referral";
 import { forgetPartnerData } from "./partners";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
-import { chatTrialKey, usageMonthKeys } from "./usage";
+import { chatTrialKey, usageMonthKeys, usageRankKey } from "./usage";
 import { OWNER_SYNC_KEY, autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
@@ -49,9 +49,12 @@ import { getAccount, normalizeEmail, releaseLogin } from "./auth";
  * `usageMonthKeys`, built from KINDS and AGENT_IDS: it was spelled out here by hand, so a new kind or the per-agent
  * counters would have survived the account.
  */
-function usageKeys(email: string): string[] {
+function usageMonths(): string[] {
   const now = new Date();
-  return Array.from({ length: 36 }, (_, back) => usageMonthKeys(email, monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1))))).flat();
+  return Array.from({ length: 36 }, (_, back) => monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1))));
+}
+function usageKeys(email: string): string[] {
+  return usageMonths().flatMap((m) => usageMonthKeys(email, m));
 }
 
 async function revokeComposio(scopes: Scope[]) {
@@ -196,6 +199,9 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       wsKey.storeSales(s), wsKey.storeSyncFail(s),
       // The latest campaign results, from an upload or an ad account (src/lib/perf-store.ts).
       wsKey.perfImport(s),
+      // The ad code -> task index of the scope's tasks (rule 2930): written by `saveTask`, only trimmed by `dropTasks`,
+      // so a re-registered address would otherwise inherit codes that point at deleted tasks.
+      wsKey.adCodes(s),
       // Each ad account's last read time, one per ad platform.
       ...AD_PROVIDERS.map((p) => wsKey.adSync(s, p)),
       // Each ad account's totals and its top ads by name, and the last upload's (src/lib/ad-stats.ts, rule 747).
@@ -318,5 +324,5 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // The owner's links once more (a create that ran between the first revoke and the deletion of `user:{owner}`); the
   // owner's login index went in `finish` above (members' in `wipeMemberships`); the deletion row names the id and the
   // address (rule 1999).
-  await Promise.all([revokeFeed(links[0]), revokeBook(links[0]), db.srem(globalKey.usersAll(), e), db.srem(globalKey.digests(), e), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
+  await Promise.all([revokeFeed(links[0]), revokeBook(links[0]), db.srem(globalKey.usersAll(), e), db.srem(globalKey.digests(), e), ...usageMonths().map((m) => db.zrem(usageRankKey(m), e)), db.lpush(globalKey.deletedAccounts(), JSON.stringify({ id: e, email: login, at: new Date().toISOString() }))]);
 }

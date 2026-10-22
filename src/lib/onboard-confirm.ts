@@ -1,5 +1,6 @@
 import { db } from "./db";
 import type { User } from "./auth";
+import { acct } from "./account-id";
 import { getBrand } from "./brand";
 import { ONBOARD_HOLD_MS, resolveOnboardHolds } from "./credits";
 import { recordActivity } from "./activity";
@@ -53,11 +54,11 @@ export const heldOnboard = (u: Pick<User, "onboardPaid">, scope: string) => u.on
  * ledger gave back (rule 232): the setup's charge was a row there, so its refund is too. A dropped hold adds none (its
  * charge stands).
  */
-export async function sweepOnboardHolds(u: Pick<User, "email" | "onboardPaid">, now = Date.now()) {
+export async function sweepOnboardHolds(u: Pick<User, "id" | "email" | "onboardPaid">, now = Date.now()) {
   const stale = Object.entries(u.onboardPaid ?? {}).filter(([, h]) => !(now - new Date(h.at).getTime() < ONBOARD_HOLD_MS)).map(([scope]) => scope);
   if (!stale.length) return null;
   const brands = await Promise.all(stale.map((scope) => getBrand(scope)));
-  const done = await resolveOnboardHolds(u.email, Object.fromEntries(stale.map((scope, i) => [scope, !!brands[i]])), now);
+  const done = await resolveOnboardHolds(acct(u), Object.fromEntries(stale.map((scope, i) => [scope, !!brands[i]])), now);
   const at = new Date().toISOString();
   await Promise.all(done.refunded.map((r) => recordActivity(r.scope, [{ at, kind: "onboard_refunded", agent: r.agent, by: systemBy("cron"), via: "cron", credits: r.credits, refunded: true }])));
   return done;

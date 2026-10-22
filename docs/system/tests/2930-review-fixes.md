@@ -1,0 +1,14 @@
+# Coverage: fixes from the day-0 code review (rules 2930-2935)
+
+Status on 2026-10-22 on branch `claude/thakeen-nashr-bugs-tests-tracking-9eac9c`. A rescan of the code (engine, money, connectors, account ids, UI) found the defects below. Each one is fixed here with a test. Release step: none of them changes a stored shape. Rule 2930 deletes one more key on account deletion, and rule 2931 changes the order in which writes happen under an existing lock.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 2930 | `wipeAccount` deletes each scope's `adcodes:{scope}` (before, a deleted account's ad codes stayed) | `tests/ai-usage-tracking.test.ts` (rule 2930) | none |
+| 2931 | A disconnect, both callback saves and the token refresh share `connlock:{scope}:{provider}` (`withConnectionLock`); the refresh reads the record again before saving and never writes an old grant's tokens over a newer connection or brings a deleted one back; a held lock is 409 `busy` (DELETE) or `error=busy` (callback) with nothing written; `takeState` is one GETDEL | `tests/connector-lock-oauth-strings.test.ts` (rule 2931) | none |
+| 2932 | `POST /api/oauth/token` turns every field into a string before use: a JSON number, object or array is answered 400 like a missing field, never a 500 thrown by the hashing | `tests/connector-lock-oauth-strings.test.ts` (rule 2932) | none |
+| 2933 | `POST /api/chat` with a `conv` that has no record under the caller's scope is 404 `conversation_gone` before any count or save; the chat shows "this conversation was deleted" | `tests/chat-conv-gone.test.ts` | none |
+| 2934 | UI: the sidebar's new-conversation buttons wait for the request in flight and survive a dropped one; the inbox tracks each publish target on its own; the AI-marketing page writes JSON-LD through `ldJson`; logical spacing classes; the workspaces panel looks error codes up with `Object.hasOwn` | `tests/ui-p2-fixes.test.ts` (rule 2934) | none |
+| 2935 | The remaining ledger and account calls name `acct(u)`, not the sign-in address: referral share, notifications read, invite discard, onboarding holds, media renders, MCP tools (`sc(user)`). The old per-platform share marker is looked for under the account key and the address, so a platform claimed before either change is never paid twice | `tests/acct-ledger-sites.test.ts`; `tests/account-id-r1.test.ts` | none |
+
+Known and left for the founder (not changed here): a plan set in the middle of a month gets a second allowance on the 1st (money review F2: fixed in rule 2936, `2936-renewal-anchor.md`, founder decision 2026-10-22); the billing page's "credits used" is approximated as items × task cost (F3). The remaining `u.scope ?? u.email` sites (`cron/daily`, `schedule.ts`, `routines.ts`, `lifecycle.ts`, `handoff-auto.ts`, `chat-run-tool.ts`, `chat.ts:61`) read a session or loaded user whose scope is set; `rate.ts` keeps its own copy to avoid an import cycle.

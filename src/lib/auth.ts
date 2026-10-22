@@ -122,8 +122,12 @@ export type User = {
   trialEnds: string; // ISO
   createdAt: string; // ISO
   lang: "ar" | "en";
-  /** YYYY-MM of the last monthly credit renewal (paid plans). */
+  /** YYYY-MM of the last monthly credit renewal (paid plans). Still written beside `renewedOn` (rule 2936, expand). */
   renewedAt?: string;
+  /** Riyadh day (YYYY-MM-DD) of the last monthly credit renewal or plan start (rule 2936, src/lib/renewal.ts). */
+  renewedOn?: string;
+  /** Day of the month (1-31) a plan set by hand renews on: the day it was set (rule 2936). A Paymob subscription uses `billing.anchor`. */
+  renewAnchor?: number;
   /**
    * Set by staff: login and all API access blocked. `true` has no end date; `{ until }` (rule 2070, expand) ends at that
    * moment. Read only through `isSuspended` in src/lib/suspension.ts (rule 2071).

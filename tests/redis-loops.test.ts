@@ -21,6 +21,7 @@ const REVIEWED: Record<string, string> = {
   "src/lib/brand.ts updateTask": "lock retry",
   "src/lib/brands.ts withBrandsLock": "lock retry",
   "src/lib/connectors/fresh.ts getFreshConnection": "lock retry while another request refreshes the token",
+  "src/lib/connectors/fresh.ts withConnectionLock": "lock retry (rule 2931): a disconnect or a new connection waits for the token refresh",
   "src/lib/conversations.ts withConversationLock": "lock retry",
   "src/lib/credits.ts withUserLock": "lock retry",
   "src/lib/staff.ts withStaffLock": "lock retry",
