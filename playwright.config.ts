@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_ADMIN_KEY, e2eSeed, hasBuild, webServerCommand } from "./e2e/web-server";
+import { E2E_ADMIN_KEY, E2E_CONNECT_SECRET, e2eSeed, hasBuild, webServerCommand } from "./e2e/web-server";
 import { OWNER } from "./e2e/fixtures/accounts";
 
 /**
@@ -61,6 +61,7 @@ export default defineConfig({
         // The specs that sign their own accounts up (or log in as one) share the same per-IP limits; they test logic, not layout.
         /generate-approve\.spec\.ts/, /tenant-isolation\.spec\.ts/, /team-invite\.spec\.ts/, /account-delete\.spec\.ts/,
         /onboarding\.spec\.ts/, /chat-mock\.spec\.ts/, /password-reset\.spec\.ts/, /ai-usage\.spec\.ts/,
+        /account-2fa\.spec\.ts/, /account-sessions\.spec\.ts/, /brands\.spec\.ts/, /secretary\.spec\.ts/, /notifications-export\.spec\.ts/, /settings-billing\.spec\.ts/,
       ],
     },
     // WebKit for the re-skin layout matrix, on demand only (`E2E_WEBKIT=1`), so CI runs what it ran before.
@@ -76,7 +77,8 @@ export default defineConfig({
     // runtime, so a build made without it (CI's, like thakeen.com's) serves the suite the same. The console key is random
     // per run (`E2E_ADMIN_KEY`): the passkey spec flips the passkey off switch with it (rule 2426) and the held-routine spec
     // opens the Usage page with it. `E2E_SEED_KV` starts the memory store with a held routine and a cron report (rule 2590).
-    env: { APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY, E2E_SEED_KV: e2eSeed(OWNER.email) },
+    // `CONNECT_SECRET` is random per run as well (rule 3008): two-step sign-in seals the authenticator secret with it.
+    env: { APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY, CONNECT_SECRET: E2E_CONNECT_SECRET, E2E_SEED_KV: e2eSeed(OWNER.email) },
     url: baseURL,
     // Never reuse. The rate limiters (signup five per IP per hour, forgot three per address per fifteen minutes, login
     // eight per account) live in the same process-local store as the data, so a server left running from an earlier run

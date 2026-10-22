@@ -8,6 +8,8 @@ import { recordActivity } from "./activity";
 import { systemBy } from "./actor";
 import { log } from "./log";
 import { runClaim } from "./keys";
+import { isRoutineId, routineLastRuns } from "./routines";
+import { pmap } from "./parallel";
 
 /**
  * The daily sweep of every paid-once hold of one account (rules 2473-2475 and 2480; spec
@@ -44,6 +46,19 @@ export async function sweepHolds(u: Pick<User, "id" | "email" | "paidOnce" | "la
     })),
   ]);
   const receipt = new Map<string, RunReceipt | null>(claims.map((c, i) => [c, receipts[i] ?? null]));
+  // Rule 3024: a routine's receipt lives one period (7 days for a weekly one) while its hold lives `PAID_ONCE_MS` (8 days),
+  // so a sweep that ran late finds no receipt for work that was delivered. The routine's own last-run marker, written in
+  // the same round as the `delivered` receipt, answers instead: a run within minutes after the hold's charge delivered it.
+  const noReceipt = runs.filter(([claim]) => claim.startsWith("routine:") && !receipt.get(claim));
+  const lastDelivered = new Set<string>();
+  await pmap(noReceipt, async ([claim, hold]) => {
+    const id = /^routine:.+:([a-z_]+):[^:]+$/.exec(claim)?.[1];
+    if (!id || !isRoutineId(id)) return;
+    const last = Date.parse((await routineLastRuns(hold.scope))[id] ?? "");
+    // The charge and the commit are one run (300 s at most): a later period's run does not vouch for this claim.
+    const gap = last - Date.parse(hold.at);
+    if (Number.isFinite(gap) && gap >= 0 && gap <= RUN_STALE_MS * 3) lastDelivered.add(claim);
+  }, 4);
   /** A delivered claim: kept, or the credits it owes back when its receipt records any. */
   const keep = (claim: string): true | number => {
     const owed = receipt.get(claim)?.owed;
@@ -52,7 +67,7 @@ export async function sweepHolds(u: Pick<User, "id" | "email" | "paidOnce" | "la
   const kept: Record<string, boolean | number> = {};
   for (const [claim, has] of Object.entries(weekly)) kept[claim] = has ? keep(claim) : false;
   runs.forEach(([claim], i) => {
-    const delivered = claim.startsWith("routine:") ? receipt.get(claim)?.state === "delivered" : items[i] === "done";
+    const delivered = claim.startsWith("routine:") ? receipt.get(claim)?.state === "delivered" || lastDelivered.has(claim) : items[i] === "done";
     kept[claim] = delivered ? keep(claim) : false;
   });
   for (const claim of thisWeek) if (receipt.get(claim)?.state === "held") kept[claim] = false;

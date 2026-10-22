@@ -46,6 +46,9 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
       else if (!limitFromError(j.error) && typeof j.message?.content === "string") setRefusal(j.message.content);
       return;
     }
+    // Rule 2972: go to the chat only when the turn was taken. A dropped connection (null) or any other refusal used to
+    // navigate as if it had worked; now the button comes back and the line says it failed.
+    if (!res || !res.ok) { setBusy(""); setRefusal(t.generate.failed); return; }
     r.push(href("/chat"));
   }
   const Pill = ({ v, cur, set, label }: { v: string; cur: string; set: (s: string) => void; label: string }) => (

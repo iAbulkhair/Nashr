@@ -669,7 +669,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   }, [text]);
   // The shell's balance (rail, phone header) follows this panel's: every answer and every handoff run brings it.
   useEffect(() => { announceCredits(credits); }, [credits]);
-  useEffect(() => { void fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }); }, [initialConv]);
+  useEffect(() => { void fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }).catch(() => {}); }, [initialConv]);
   // After the model picker's `not_found` (the conversation is gone): the list again, without touching the agent.
   const reloadConvs = useCallback(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) setConvs(j.conversations); }).catch(() => {}); }, []);
   // The picks made in this panel, by conversation (the picker's optimistic change and its rollback, `nextMadePicks`).
@@ -731,9 +731,19 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     })();
   }, [onboardUrl, lang, router, href, t.start]);
 
+  // Rule 2977: one create at a time (a second tap would make a second empty thread, as the rail's buttons, rule 2934), and a
+  // dropped connection or a non-JSON 5xx lets the button come back instead of throwing out of the click handler.
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   async function newConv(withAgent: AgentId = agent) {
-    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent: withAgent }) })).json();
-    if (!j.ok) return;
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    setCreating(true);
+    const j = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent: withAgent }) })
+      .then((res) => res.json())
+      .catch(() => null)
+      .finally(() => { creatingRef.current = false; setCreating(false); });
+    if (!j?.ok) return;
     setConvs((p) => [j.conversation, ...p]); setConv(j.conversation.id); setAgent(withAgent); setMsgs([]);
     // The address names the new thread (rule 962): the page keys this panel by it, so a later sidebar link back to the
     // thread this one replaced is a new key and opens that thread, and a reload reopens this one.
@@ -858,7 +868,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ChatModelPicker t={t} lang={lang} conv={conv} stored={storedPick(conv, made, active, convs)} replying={busy} canConfirmChina={canConfirmChina} onPicked={(c, previous, model, outcome) => setMade((p) => nextMadePicks(p, c, previous, model, outcome))} onChat={setChatNow} onGone={reloadConvs} />
-          <button onClick={() => newConv()} className="btn btn-secondary btn-xs"><Icon name="plus" className="h-3.5 w-3.5" />{t.chat.newConv}</button>
+          <button disabled={creating} onClick={() => newConv()} className="btn btn-secondary btn-xs"><Icon name="plus" className="h-3.5 w-3.5" />{t.chat.newConv}</button>
           <Link href={href("/settings/billing")} className="tnum rounded-full bg-background-muted px-3 py-1 text-xs text-foreground-muted">{credits} {t.nav.credits}</Link>
         </div>
       </div>

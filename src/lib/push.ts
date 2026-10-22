@@ -10,6 +10,11 @@ import { pushStateOf, STATUS_COPY } from "./agent-status";
 import type { Activity } from "./activity";
 import { AWAY_MINUTES } from "./push-beat";
 import { appHref } from "./ws-path";
+import { accountOfScope } from "./account-id";
+// Named, as the public routes may reach auth.ts only by the names tests/csrf.test.ts allows (no cookie, no session).
+import { getLogin } from "./auth";
+import { heldAccounts } from "./membership";
+import { isPersonSuspended } from "./suspension";
 
 export { AWAY_MINUTES, BEAT_SECONDS } from "./push-beat";
 
@@ -180,6 +185,18 @@ export async function sendPush(cfg: PushConfig, endpoint: string, now: number = 
   }
 }
 
+/**
+ * Whether this login still holds the account the workspace belongs to (rule 3020): the owner, or a live membership
+ * (`heldAccounts`), and the person is not suspended. A removed, departed or paused member's device stays in
+ * `pushsubs:{scope}` (only an account delete clears it), so the send re-checks the role instead of trusting the row.
+ */
+export async function loginHoldsWorkspace(login: string, scope: string): Promise<boolean> {
+  const l = await getLogin(login);
+  if (!l || isPersonSuspended(l.person)) return false;
+  const aid = accountOfScope(scope);
+  return (await heldAccounts(l.person)).some((h) => h.aid === aid);
+}
+
 export type PushLast = { agent: AgentId; state: "waiting" | "stuck"; at: string };
 
 /**
@@ -198,9 +215,15 @@ export async function pushForActivity(scope: string, rows: readonly Activity[], 
     }
     if (!wanted.size) return 0;
     const s = scopeParam(scope);
-    const subs = await listSubscriptions(s);
+    const all = await listSubscriptions(s);
+    if (!all.length) return 0;
+    // Rule 3020: only logins that still hold a role here (a removed member's device is left in the hash).
+    const everyone = [...new Set(all.map((x) => x.login))];
+    const holds = await pmap(everyone, (l) => loginHoldsWorkspace(l, scope), 6);
+    const holding = new Set(everyone.filter((_, i) => holds[i]));
+    const subs = all.filter((x) => holding.has(x.login));
     if (!subs.length) return 0;
-    const logins = [...new Set(subs.map((x) => x.login))];
+    const logins = [...holding];
     const seen = await db.mget<unknown>(logins.map(accountKey.tabSeen));
     const away = new Set(logins.filter((_, i) => seen[i] === null || seen[i] === undefined));
     const targets = subs.filter((x) => away.has(x.login));

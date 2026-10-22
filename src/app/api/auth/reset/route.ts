@@ -3,14 +3,16 @@ import { isSuspended } from "@/lib/suspension";
 import { finishAnswer, finishLogin, suspendedAnswer } from "@/lib/login-finish";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { emailVerified, getLogin, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
+import { emailVerified, getLogin, revokeTeamSessions, saveUser, strongPassword, type User } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBook, revokeBooks } from "@/lib/booking-token";
 import { revokeFeed, revokeFeeds } from "@/lib/feed-token";
 import { revokeCalendarLinks } from "@/lib/secretary-gcal";
 import { membersKey } from "@/lib/team";
-import { aidOf, getMembership } from "@/lib/membership";
+import { aidOf, getMembership, ownerOf } from "@/lib/membership";
+import { ownedBy } from "@/lib/email-move";
+import { pmap } from "@/lib/parallel";
 import { isPersonLockTimeout, updatePerson, withPersonLock } from "@/lib/person";
 import { db } from "@/lib/db";
 import { allow, clientIp, retryLater } from "@/lib/rate";
@@ -76,7 +78,10 @@ export async function POST(req: Request) {
     // The member's own calendar feed and booking links end with the password they were made under, as an owner's MCP
     // tokens do, and so does the login's Google link (rule 2301). Only this login's: the owner's links and the rest of
     // the team's are untouched.
-    await Promise.all([revokeFeed(p.email), revokeBook(p.email), unlinkGoogle(p.email)]);
+    // Rule 2992: should this person also own workspaces (a `p_` person, multi-workspace), their MCP tokens, connected
+    // apps and linked calendars end too, as an owner's reset ends them.
+    const owned = await ownedBy(p);
+    await Promise.all([revokeFeed(p.email), revokeBook(p.email), unlinkGoogle(p.email), pmap(owned, (x) => Promise.all([revokeAllMcp(acct(x)), revokeCalendarLinks(acct(x))]))]);
     // A seat-paused member gets the new password but no session: `currentUser` refuses it until the owner has room.
     if (m.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
     // Likewise while the owner has not proved the address (rule 767): `currentUser` refuses the member, as login does.
@@ -95,23 +100,45 @@ export async function POST(req: Request) {
   // mirrors a legacy owner's account and stamps every account the person owns); the team stamp is the account's. The
   // person lock, then the user lock (rule 2139), both before the first write: a `p_` owner's account record never gets
   // a `passHash`, and a held person lock answers 409 `busy` with nothing written.
+  // Rule 2992: every account the PERSON owns, not only the one `getLogin` picked. A `p_` person may own several
+  // workspaces (multi-workspace), and a reset must not leave a team session, MCP token, connected app, calendar link,
+  // feed or booking link alive in any of them. `ownedBy` is the lister the address-change revert uses (src/lib/email-move.ts);
+  // a legacy owner owns exactly this account, so nothing changes for it. Read before the locks: each account is re-read
+  // under its own user lock and skipped there when its owner is no longer this person.
+  const owned = await ownedBy(login.person);
+  const others = owned.filter((x) => acct(x) !== acct(owner));
+  const closeTeam = async (x: User) => {
+    if (ownerOf(x) !== login.pid) return;
+    revokeTeamSessions(x);
+    await saveUser(x);
+  };
   try {
-    await withPersonLock(login.pid, () =>
-      withUserLock(acct(owner), async (x) => {
+    await withPersonLock(login.pid, async () => {
+      // The other owned accounts first, each under its own user lock (after the person lock, rule 2139): a lock that
+      // cannot be had throws before the password is written.
+      await pmap(others, (o) => withUserLock(acct(o), closeTeam));
+      await withUserLock(acct(owner), async (x) => {
         revokeTeamSessions(x);
         await saveUser(x);
         await updatePerson(login.pid, { passHash: hash, sessionsAfter: now, emailVerifiedAt: now }, { personLocked: true, userLocked: aidOf(x) });
-      }),
-    );
+      });
+    });
   } catch (e) {
     if (isPersonLockTimeout(e)) return busy();
     throw e;
   }
   // The owner's calendar feed and booking links and every member's go with the MCP tokens, as every member's session does above (the
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
-  const roster = await db.smembers(membersKey(acct(owner)));
+  const all = [owner, ...others];
+  const rosters = await pmap(all, (x) => db.smembers(membersKey(acct(x))));
+  const logins = [...new Set([owner.email, ...others.map((x) => x.email), ...rosters.flat()])];
   // The owner's linked marketing calendars (Reem B3) end with them too: whoever holds the account next links their own.
-  await Promise.all([revokeAllMcp(acct(owner)), revokeFeeds([owner.email, ...roster]), revokeBooks([owner.email, ...roster]), revokeCalendarLinks(acct(owner)), unlinkGoogle(owner.email)]);
+  await Promise.all([
+    pmap(all, (x) => Promise.all([revokeAllMcp(acct(x)), revokeCalendarLinks(acct(x))])),
+    revokeFeeds(logins),
+    revokeBooks(logins),
+    unlinkGoogle(owner.email),
+  ]);
   return signInAfterReset(rec.email);
 }
 

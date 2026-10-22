@@ -13,6 +13,10 @@ export default function McpPanel({ lang, origin, draftsPerHour, canToken = true,
   const ar = lang === "ar";
   const [exists, setExists] = useState(false);
   const [token, setToken] = useState("");
+  // Rule 2975: `gen` revokes the old token and mints a new one, so a second click while the first is in flight would mint
+  // two and show the first one's token as live. `busy` blocks it; a refusal or a dropped connection shows a line.
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
   const [grants, setGrants] = useState<{ id: string; client_name: string; createdAt: string; lastIssuedAt: string }[]>([]);
   useEffect(() => {
     if (canToken) fetch("/api/mcp/token").then((r) => r.json()).then((j) => setExists(!!j.exists)).catch(() => {});
@@ -23,8 +27,17 @@ export default function McpPanel({ lang, origin, draftsPerHour, canToken = true,
     if (r.ok) setGrants((g) => g.filter((x) => x.id !== id));
   }
   async function gen() {
-    const j = await (await fetch("/api/mcp/token", { method: "POST" })).json();
-    setToken(j.token); setExists(true);
+    if (busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/mcp/token", { method: "POST" }).catch(() => null);
+      const j = res?.ok ? ((await res.json().catch(() => null)) as { ok?: boolean; token?: string } | null) : null;
+      if (j?.ok && typeof j.token === "string") { setToken(j.token); setExists(true); }
+      else setErr(ar ? "تعذّر إنشاء الرمز. حاول مرة أخرى." : "Could not create the token. Try again.");
+    } finally {
+      setBusy(false);
+    }
   }
   async function revoke() { await fetch("/api/mcp/token", { method: "DELETE" }); setToken(""); setExists(false); }
   const url = `${origin}/api/mcp`;
@@ -42,8 +55,9 @@ export default function McpPanel({ lang, origin, draftsPerHour, canToken = true,
         <p className="text-xs uppercase tracking-wide text-foreground-muted">{ar ? "رمز الوصول" : "Access token"}</p>
         {token ? <code className="mt-1 block break-all rounded bg-background-muted p-3 text-sm" dir="ltr">{token}</code> : <p className="mt-1 text-sm text-foreground-muted">{exists ? (ar ? "يوجد رمز نشط. أنشئ رمزاً جديداً لعرضه (القديم يُلغى)." : "A token exists. Generate a new one to see it (old one is revoked).") : ar ? "لا يوجد رمز بعد." : "No token yet."}</p>}
         {token && <p className="mt-2 text-xs text-danger">{ar ? "يظهر مرة واحدة. انسخه الآن." : "Shown once. Copy it now."}</p>}
+        {err && <p role="alert" className="mt-2 text-xs text-danger">{err}</p>}
         <div className="mt-3 flex gap-2">
-          <button onClick={gen} className="btn btn-primary btn-pill">{ar ? "أنشئ رمزاً" : "Generate token"}</button>
+          <button onClick={gen} disabled={busy} className="btn btn-primary btn-pill">{ar ? "أنشئ رمزاً" : "Generate token"}</button>
           {exists && <button onClick={revoke} className="rounded-full border border-danger px-4 py-2 text-sm text-danger">{ar ? "ألغِ" : "Revoke"}</button>}
         </div>
       </div>}

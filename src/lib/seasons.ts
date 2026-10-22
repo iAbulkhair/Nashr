@@ -24,10 +24,21 @@ export function hijriDate(d: Date, zone: Zone = DEFAULT_ZONE): { y: number; m: n
   return { y: num("year"), m: num("month"), day: num("day") };
 }
 
-function daysUntil(from: Date, month: number, day: number): number {
+/** The day of the month of the last Friday of November in `year` (rule 3026: 28 Nov 2025, 27 Nov 2026, 26 Nov 2027). */
+export function whiteFridayDay(year: number): number {
+  const lastDay = Date.UTC(year, 11, 0); // 30 Nov
+  const dow = new Date(lastDay).getUTCDay(); // 0 Sunday … 5 Friday
+  return 30 - ((dow + 2) % 7);
+}
+
+/** A fixed day of the month, or a rule from the year (a moving date such as the last Friday of a month). */
+type DayOfYear = number | ((year: number) => number);
+
+function daysUntil(from: Date, month: number, day: DayOfYear): number {
   const y = from.getUTCFullYear();
-  let t = Date.UTC(y, month - 1, day);
-  if (t < from.getTime() - 864e5) t = Date.UTC(y + 1, month - 1, day);
+  const at = (year: number) => Date.UTC(year, month - 1, typeof day === "function" ? day(year) : day);
+  let t = at(y);
+  if (t < from.getTime() - 864e5) t = at(y + 1);
   return Math.round((t - from.getTime()) / 864e5);
 }
 
@@ -47,11 +58,11 @@ export function activeSeasons(now = new Date(), zone: Zone = DEFAULT_ZONE): Seas
   if (h.m === 1 && h.day <= 10) out.push({ id: "hijri_new_year", name: "Hijri New Year", nameAr: "رأس السنة الهجرية", daysLeft: 10 - h.day, play: "Reflection and fresh-start messaging; light touch, no hard sell." });
 
   // Gregorian-driven (prep window 35 days)
-  const greg: [string, string, string, number, number, string][] = [
+  const greg: [string, string, string, number, DayOfYear, string][] = [
     ["founding_day", "Saudi Founding Day (22 Feb)", "يوم التأسيس", 2, 22, "Heritage storytelling, Najdi/Hijazi motifs, limited editions, 'since 1727' pride tone; avoid discount-only messaging."],
     ["national_day", "Saudi National Day (23 Sep)", "اليوم الوطني السعودي", 9, 23, "A major KSA sale season. Discount codes matching this year's anniversary number (year minus 1932), green creative, patriotic but not political, 3-day flash window, stock and delivery promises."],
     ["uae_national_day", "UAE National Day (2 Dec)", "اليوم الوطني الإماراتي", 12, 2, "UAE-facing campaigns, Emirati dialect, red/green/white creative, AED pricing."],
-    ["white_friday", "White Friday (last Fri of Nov)", "الجمعة البيضاء", 11, 27, "Warm up 3 weeks early with waitlists and teasers; retargeting heavy; bundle deals; Tabby/Tamara installments highlighted; extend to 'White Week'."],
+    ["white_friday", "White Friday (last Fri of Nov)", "الجمعة البيضاء", 11, whiteFridayDay, "Warm up 3 weeks early with waitlists and teasers; retargeting heavy; bundle deals; Tabby/Tamara installments highlighted; extend to 'White Week'."],
     ["back_to_school", "Back to school (late Aug)", "العودة للمدارس", 8, 25, "Family bundles, uniforms/supplies, installment plans, early-bird offers from Aug 1."],
     ["dsf", "Dubai Shopping Festival (Dec–Jan)", "مهرجان دبي للتسوق", 12, 15, "Tourist and English content, raffles, mall activations, late-night shopping hours."],
     ["kuwait_national_day", "Kuwait National & Liberation Days (25–26 Feb)", "العيد الوطني الكويتي", 2, 25, "Kuwaiti dialect, blue/white creative, two-day celebration window."],

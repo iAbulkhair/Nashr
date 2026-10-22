@@ -1,5 +1,7 @@
 import type { Connection } from "./store";
 import { safeFetch } from "../safe-fetch";
+import { safeHref } from "../safe-next";
+import { escapeTitle } from "./publish";
 import { STORE_REPLY_BYTES, responseBytes, responseJson, responseText } from "../read-capped";
 
 function auth(c: Connection) {
@@ -12,7 +14,7 @@ function base(c: Connection) {
 export async function verifyWordPress(data: Record<string, string>): Promise<{ ok: boolean; name?: string; error?: string }> {
   const c = { provider: "wordpress", data, connectedAt: "" } as Connection;
   try {
-    const r = await safeFetch(`${base(c)}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: auth(c) } });
+    const r = await safeFetch(`${base(c)}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: auth(c) } }, { httpsOnly: true });
     if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
     const j = (await responseJson(r, STORE_REPLY_BYTES)) as { name?: string; capabilities?: Record<string, boolean> };
     if (j.capabilities && !j.capabilities.publish_posts && !j.capabilities.edit_posts) return { ok: false, error: "user cannot publish posts" };
@@ -24,14 +26,16 @@ export async function verifyWordPress(data: Record<string, string>): Promise<{ o
 
 /** Markdown-ish → HTML good enough for WP (headings, bold, lists, paragraphs). */
 export function mdToHtml(md: string) {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  // Quotes are escaped too and the link target goes through safeHref (rule 2960): model text is untrusted, and a `"` in a
+  // link would otherwise close the href attribute and add an event handler to the owner's own site.
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const lines = md.split("\n");
   const out: string[] = [];
   let list: string[] = [];
   const flush = () => { if (list.length) { out.push("<ul>" + list.map((l) => `<li>${l}</li>`).join("") + "</ul>"); list = []; } };
   for (const raw of lines) {
     const l = raw.trimEnd();
-    const inline = (s: string) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, '<a href="$2">$1</a>');
+    const inline = (s: string) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, (_m, t: string, h: string) => `<a href="${safeHref(h)}">${t}</a>`);
     if (/^#{1,6}\s/.test(l)) { flush(); const n = l.match(/^#+/)![0].length; out.push(`<h${Math.min(n + 1, 4)}>${inline(l.replace(/^#+\s*/, ""))}</h${Math.min(n + 1, 4)}>`); }
     else if (/^\s*[-*]\s+/.test(l)) list.push(inline(l.replace(/^\s*[-*]\s+/, "")));
     else if (!l.trim()) flush();
@@ -63,7 +67,7 @@ async function uploadFeaturedImage(c: Connection, imageUrl: string): Promise<num
       headers: { Authorization: auth(c), "Content-Type": type, "Content-Disposition": `attachment; filename="thakeen-${Date.now()}.${ext}"` },
       body: new Uint8Array(bytes),
       signal: AbortSignal.timeout(20_000),
-    });
+    }, { httpsOnly: true });
     if (!r.ok) return null;
     const j = (await responseJson(r, STORE_REPLY_BYTES).catch(() => null)) as { id?: unknown } | null;
     return typeof j?.id === "number" ? j.id : null;
@@ -75,7 +79,7 @@ async function uploadFeaturedImage(c: Connection, imageUrl: string): Promise<num
 /** Whether the connected user may publish (not only draft). Unknown when the site does not report capabilities. */
 async function canPublishLive(c: Connection): Promise<boolean> {
   try {
-    const r = await safeFetch(`${base(c)}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: auth(c) } });
+    const r = await safeFetch(`${base(c)}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: auth(c) } }, { httpsOnly: true });
     if (!r.ok) return true; // the publish itself will say what the site refuses
     const j = (await responseJson(r, STORE_REPLY_BYTES)) as { capabilities?: Record<string, boolean> };
     return j.capabilities ? !!j.capabilities.publish_posts : true;
@@ -106,12 +110,13 @@ export type WordPressResult = { url: string; id: number; status: "draft" | "publ
 export async function publishWordPress(c: Connection, post: WordPressPost): Promise<WordPressResult> {
   const live = post.status === "publish";
   if (live && !(await canPublishLive(c))) throw new Error("wordpress_cannot_publish_live");
+  // The title is model text and WordPress stores it as HTML (rule 3011).
   const content = mdToHtml(post.body);
   const headers = { Authorization: auth(c), "Content-Type": "application/json" };
   const result = (j: { id: number; link: string; status?: string }, notes: string[]): WordPressResult => ({ url: j.link, id: j.id, status: j.status ? (j.status === "publish" ? "published" : "draft") : live ? "published" : "draft", ...(notes.length ? { notes } : {}) });
 
   if (post.updateId && /^\d{1,12}$/.test(post.updateId)) {
-    const r = await safeFetch(`${base(c)}/wp-json/wp/v2/posts/${post.updateId}`, { method: "POST", headers, body: JSON.stringify({ title: post.title, content, ...(live ? { status: "publish" } : {}) }) });
+    const r = await safeFetch(`${base(c)}/wp-json/wp/v2/posts/${post.updateId}`, { method: "POST", headers, body: JSON.stringify({ title: escapeTitle(post.title), content, ...(live ? { status: "publish" } : {}) }) }, { httpsOnly: true });
     if (r.ok) return result((await responseJson(r, STORE_REPLY_BYTES)) as { id: number; link: string; status?: string }, []);
     if (r.status !== 404) throw new Error(`wordpress ${r.status}: ${(await responseText(r, STORE_REPLY_BYTES)).slice(0, 200)}`);
   }
@@ -125,8 +130,8 @@ export async function publishWordPress(c: Connection, post: WordPressPost): Prom
   const r = await safeFetch(`${base(c)}/wp-json/wp/v2/posts`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ title: post.title, content, status: live ? "publish" : "draft", ...(media != null ? { featured_media: media } : {}) }),
-  });
+    body: JSON.stringify({ title: escapeTitle(post.title), content, status: live ? "publish" : "draft", ...(media != null ? { featured_media: media } : {}) }),
+  }, { httpsOnly: true });
   if (!r.ok) throw new Error(`wordpress ${r.status}: ${(await responseText(r, STORE_REPLY_BYTES)).slice(0, 200)}`);
   return result((await responseJson(r, STORE_REPLY_BYTES)) as { id: number; link: string; status?: string }, notes);
 }

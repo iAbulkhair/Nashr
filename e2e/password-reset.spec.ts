@@ -106,6 +106,9 @@ test("the reset page takes the link's token out of the address bar, signs the pe
     await expect(formAlert(page).getByRole("link", { name: "Reset your password" })).toHaveAttribute("href", "/en/app/forgot");
 
     // The real link. The token rides in the fragment and is removed from the address bar once the page has read it (rule 546).
+    // The page is already on /en/app/reset, so a new fragment alone would be a same-document change that neither loads
+    // the page again nor answers with a response: leave it first (rule 3006).
+    await page.goto("about:blank");
     await open(page, `/en/app/reset#t=${E2E_RESET.ui.token}`);
     await expect.poll(() => new URL(page.url()).hash, { message: "the token must not stay in the address bar" }).toBe("");
     expect(page.url()).not.toContain(E2E_RESET.ui.token);

@@ -15,7 +15,11 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
   // Rule 2142: `/help#{slug}` opens that answer and scrolls to it, so an answer's anchor works on the index as on its topic page.
   useEffect(() => {
     const open = () => {
-      const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+      // Rule 2974: a hand-typed or truncated hash such as `#%E0%A4%A` makes decodeURIComponent throw a URIError, which crashed
+      // the whole help page; an undecodable hash opens nothing.
+      let id = "";
+      try { id = decodeURIComponent(location.hash.slice(1)); } catch { /* malformed escape */ }
+      const el = id ? document.getElementById(id) : null;
       // Scrolled on the next task: opening the answer moves everything under it, and the router settles the scroll first.
       if (el instanceof HTMLDetailsElement) { el.open = true; setTimeout(() => el.scrollIntoView({ block: "start" }), 0); }
     };

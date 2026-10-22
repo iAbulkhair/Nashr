@@ -9,12 +9,13 @@ import { productsMarkdown } from "./products-md";
 /** Key-based connectors that need no partner registration: Odoo, PrestaShop, Telegram, Brevo. */
 
 // ---------- Odoo (JSON-RPC, per-customer API key) ----------
+// Credentialed calls are https only (rule 2961): the API key and the Basic password would otherwise cross the wire in clear.
 async function odooCall(c: Record<string, string>, model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}) {
   const url = c.url.replace(/\/+$/, "") + "/jsonrpc";
-  const auth = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 1, params: { service: "common", method: "authenticate", args: [c.db, c.username, c.apiKey, {}] } }) });
+  const auth = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 1, params: { service: "common", method: "authenticate", args: [c.db, c.username, c.apiKey, {}] } }) }, { httpsOnly: true });
   const aj = (await responseJson(auth, STORE_REPLY_BYTES)) as { result?: number; error?: { message: string } };
   if (!aj.result) throw new Error(aj.error?.message ?? "odoo auth failed");
-  const r = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 2, params: { service: "object", method: "execute_kw", args: [c.db, aj.result, c.apiKey, model, method, args, kwargs] } }) });
+  const r = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 2, params: { service: "object", method: "execute_kw", args: [c.db, aj.result, c.apiKey, model, method, args, kwargs] } }) }, { httpsOnly: true });
   const j = (await responseJson(r, STORE_REPLY_BYTES)) as { result?: unknown; error?: { message: string } };
   if (j.error) throw new Error(j.error.message);
   return j.result;
@@ -36,7 +37,7 @@ export async function importOdoo(email: string, c: Connection) {
 function psAuth(d: Record<string, string>) { return "Basic " + Buffer.from(`${d.apiKey}:`).toString("base64"); }
 export async function verifyPrestaShop(d: Record<string, string>) {
   try {
-    const r = await safeFetch(`${d.site.replace(/\/+$/, "")}/api/products?limit=1&output_format=JSON`, { headers: { Authorization: psAuth(d) } });
+    const r = await safeFetch(`${d.site.replace(/\/+$/, "")}/api/products?limit=1&output_format=JSON`, { headers: { Authorization: psAuth(d) } }, { httpsOnly: true });
     return r.ok ? { ok: true } : { ok: false, error: `HTTP ${r.status} (enable Webservice + key with products GET permission)` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "unreachable" };
@@ -44,7 +45,7 @@ export async function verifyPrestaShop(d: Record<string, string>) {
 }
 export async function importPrestaShop(email: string, c: Connection) {
   const base = c.data.site.replace(/\/+$/, "");
-  const r = await safeFetch(`${base}/api/products?display=[id,name,price,link_rewrite,description_short]&limit=60&output_format=JSON`, { headers: { Authorization: psAuth(c.data) } });
+  const r = await safeFetch(`${base}/api/products?display=[id,name,price,link_rewrite,description_short]&limit=60&output_format=JSON`, { headers: { Authorization: psAuth(c.data) } }, { httpsOnly: true });
   if (!r.ok) throw new Error(`prestashop ${r.status}`);
   const j = (await responseJson(r, STORE_REPLY_BYTES)) as { products?: { id: number; name: string | { value: string }[]; price: string; link_rewrite: string | { value: string }[]; description_short?: string | { value: string }[] }[] };
   const txt = (v: unknown) => (Array.isArray(v) ? String((v[0] as { value: string })?.value ?? "") : String(v ?? ""));

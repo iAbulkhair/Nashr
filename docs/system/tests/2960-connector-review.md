@@ -1,0 +1,11 @@
+# Coverage: connectors, catalog and export fixes from the day-0 review (rules 2960-2963, 3006)
+
+Status on 2026-10-22 on branch `claude/thakeen-nashr-review-tests-292d14`, on top of #434. A second review of the files, media and outbound-fetch code found the defects below. Each one is fixed here with a test. Release step: none of them changes a stored shape.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 2960 | `mdToHtml` (the WordPress body) escapes `"` and `'` as well as `<>&`, and a link's target goes through `safeHref`: model text cannot close the `href` attribute and add an event handler to the owner's own site | `tests/connector-review-2960.test.ts` (rule 2960) | none |
+| 2961 | Every `safeFetch` that carries a store credential asks for `{ httpsOnly: true }`: WordPress (verify, capability check, media upload, post update and create), Odoo (both JSON-RPC calls) and PrestaShop (verify, import). An `http://` site is refused before the application password, the API key or the Basic header leaves | `tests/connector-review-2960.test.ts` (rule 2961) | none |
+| 2962 | The catalog import's homepage fallback keeps a product link only when `sameSite(u, origin)`, as the sitemap paths already did (rule 2251); before, `startsWith(origin)` kept `https://shop.com.evil.com/...` | `tests/connector-review-2960.test.ts` (rule 2962) | none |
+| 2963 | The privacy export (`buildExport`) lists the account's brands under `acct(u)`, the key `wipeAccount` and the brand list use; under the address it missed them once an account has an opaque id | `tests/connector-review-2960.test.ts` (rule 2963) | an export of an opaque-id account in the e2e suite |
+| 3006 | Four #434 e2e specs matched the old pages, not a product fault: the delete confirmation types the address in capitals (an email field drops surrounding spaces), the second reset link opens from a blank page (a same-page hash change does not reload), the empty inbox is `EMPTY_COPY.en.inbox.title`, and a weak password is submitted with Enter because the button is `aria-disabled` (rule 434) | `e2e/account-delete.spec.ts`, `e2e/password-reset.spec.ts`, `e2e/tenant-isolation.spec.ts`, `e2e/team-invite.spec.ts` | none |

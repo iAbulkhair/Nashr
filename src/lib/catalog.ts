@@ -87,7 +87,8 @@ export async function discoverProductUrls(site: string, limit = 25): Promise<str
     const html = home || (await get(origin, 6000));
     for (const m of html.matchAll(/href=["']([^"'#?]+)["']/gi)) {
       const u = m[1].startsWith("/") ? origin + m[1] : m[1];
-      if (u.startsWith(origin) && PRODUCT_RX.test(u)) urls.add(u);
+      // sameSite, not startsWith (rule 2962): `https://shop.com.evil.com/...` starts with `https://shop.com`.
+      if (sameSite(u, origin) && PRODUCT_RX.test(u)) urls.add(u);
     }
   }
   return [...urls].slice(0, limit);

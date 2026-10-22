@@ -57,7 +57,8 @@ test("the owner deletes the account from the Danger zone; members, invites and d
     await fillWhenReady(typed, "someone-else@test.example");
     await fillWhenReady(pw, owner.password);
     await expect(confirm).toBeDisabled();
-    await fillWhenReady(typed, ` ${owner.email.toUpperCase()} `);
+    // Case is ignored. (An email field drops surrounding spaces itself, so the spec types none: rule 3006.)
+    await fillWhenReady(typed, owner.email.toUpperCase());
     await expect(confirm).toBeEnabled();
 
     // A wrong password is answered inside the dialog, and the account is untouched.

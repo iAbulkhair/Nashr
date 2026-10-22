@@ -54,6 +54,17 @@ export function WorkspaceProvider({ initial, brandId = null, handle = null, mult
   const [credits, setCredits] = useState(initial.credits);
   const [unread, setUnread] = useState(initial.unread);
   const [pending, setPending] = useState(initial.pending);
+  // Rule 2970: `initial` is the server's read. A `router.refresh()` after a run, a report, media or a top-up brings a new one,
+  // but `useState(initial.*)` keeps only the first, so the rail's balance stayed stale. Adjusted during render when the prop
+  // changes (React's "storing information from previous renders"), field by field: a number a window event already moved
+  // (`announceCredits`) is replaced only when the server's own number changed, never by an unchanged one.
+  const [seen, setSeen] = useState(initial);
+  if (seen.credits !== initial.credits || seen.unread !== initial.unread || seen.pending !== initial.pending) {
+    if (seen.credits !== initial.credits) setCredits(initial.credits);
+    if (seen.unread !== initial.unread) setUnread(initial.unread);
+    if (seen.pending !== initial.pending) setPending(initial.pending);
+    setSeen({ credits: initial.credits, unread: initial.unread, pending: initial.pending });
+  }
   const [convs, setConvs] = useState<RailConv[] | null>(null);
   const readAt = useRef(0);
   const path = usePathname();

@@ -6,6 +6,7 @@ import { emailVerified, getUser, normalizeEmail, readLoginIndex, type User } fro
 import type { Action } from "./roles";
 import { accountKey, globalKey, personKey, storedAccountId, storedPersonId } from "./keys";
 import { acct } from "./account-id";
+import { log } from "./log";
 
 /**
  * The role each /api/mcp tool needs, the same action the web route for that work checks (src/lib/roles.ts). A bearer
@@ -61,6 +62,15 @@ async function bearerRecord(raw: string): Promise<{ email: string; grant?: strin
   return { email: moved, hash };
 }
 
+/** `readBrandList`'s marker for a brand list the store failed to answer: the token then acts on the default brand. */
+const BRANDS_UNREAD = Symbol("brands unread");
+/** The account's raw brand list (`brands:{aid}`), or BRANDS_UNREAD on a store error (logged, never thrown). */
+const readBrandList = (aid: string): Promise<unknown> =>
+  db.get<unknown>(accountKey.brands(aid)).catch((e: unknown) => {
+    log.error("token brand list read failed", e);
+    return BRANDS_UNREAD;
+  });
+
 /**
  * The account behind a bearer (rules 2120, 2131). A token names its ACCOUNT (the record's `email` is `acct(u)` when
  * minted, rule 1985), never a browser session's `acct`, so a token never follows the person to another account. The
@@ -79,14 +89,15 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   // email is a member login is refused, even should an owner record exist at the same address: a legacy member record
   // there, or (multi-workspace M1) a login index naming a person who does not own the account, such as a `p_` member,
   // who has no legacy record.
-  const [{ getMember }, { activeBrandFrom, activeBrandIn, scopeFor }, { getPerson, personFromRaw }, { aidOf, ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./person"), import("./membership")]);
+  const [{ getMember }, { activeBrandFrom, activeBrandIn, brandsFromRaw, scopeFor }, { getPerson, personFromRaw }, { aidOf, ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./person"), import("./membership")]);
   // A legacy account's owner is the person whose id is the account id (the token record's value, which this app wrote).
   const id = normalizeEmail(email);
   const legacyPid = storedPersonId(id);
   const legacyAid = storedAccountId(id);
   // An OAuth access token is accepted only while its grant exists and lists it (revoked, or rotated past, is refused).
-  // Read alongside the account, with the owner's person and active brand, so none of them costs an extra round trip.
-  const [u, member, idx, rawPerson, rawActive, rawLegacyActive, granted] = await Promise.all([
+  // Read alongside the account, with the owner's person, active brand and the account's brand list, so none of them
+  // costs an extra round trip.
+  const [u, member, idx, rawPerson, rawActive, rawLegacyActive, granted, rawRoundBrands] = await Promise.all([
     getUser(email),
     getMember(email),
     readLoginIndex(id),
@@ -94,6 +105,7 @@ export async function userFromBearer(req: Request): Promise<User | null> {
     db.get<unknown>(personKey.activeBrand(legacyPid, legacyAid)),
     db.get<unknown>(accountKey.activeBrand(id)),
     rec.grant ? grantHoldsAccess(email, rec.grant, rec.hash) : true,
+    readBrandList(legacyAid),
   ]);
   // A suspended account is blocked everywhere, including tokens issued before the suspension; so is an owner who has
   // not proved the address yet (rule 753), which covers a token minted before the gate or by a not-yet-verified owner.
@@ -104,14 +116,17 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   // The legacy per-login key belongs to the owner's home account: a legacy owner's own account, at its address.
   const homeLogin = u.ownerPid === undefined ? u.email : null;
   const inRound = pid === legacyPid && aid === legacyAid && normalizeEmail(u.email) === id;
-  const [person, chosen] = inRound
-    ? [personFromRaw(pid, rawPerson, u, null), activeBrandFrom(rawActive, rawLegacyActive, homeLogin !== null)]
-    : await Promise.all([getPerson(pid), activeBrandIn(pid, aid, homeLogin)]);
+  const [person, chosen, rawBrands] = inRound
+    ? [personFromRaw(pid, rawPerson, u, null), activeBrandFrom(rawActive, rawLegacyActive, homeLogin !== null), rawRoundBrands]
+    : await Promise.all([getPerson(pid), activeBrandIn(pid, aid, homeLogin), aid === legacyAid ? Promise.resolve(rawRoundBrands) : readBrandList(aid)]);
   // Person suspension blocks the person in every account and every resolver, tokens included (rule 2131).
   if (!person || isPersonSuspended(person)) return null;
   // Same scope resolution as a browser session (src/lib/auth.ts `currentUser`): without it every MCP call read and
-  // wrote the default brand even while the owner had another brand active. The owner's choice in THIS account.
-  u.brandId = chosen;
+  // wrote the default brand even while the owner had another brand active. The owner's choice in THIS account, and only
+  // while it is one of this account's ACTIVE brands (rule 3030): a choice left on a brand archived since then (or a list
+  // the store failed to answer) is the default brand, so a token never charges credits or writes drafts for an
+  // archived brand the web app no longer shows.
+  u.brandId = rawBrands !== BRANDS_UNREAD && brandsFromRaw(rawBrands).some((b) => b.id === chosen && b.status === "active") ? chosen : "default";
   u.scope = scopeFor(acct(u), u.brandId);
   u.actor = { kind: "token", pid, home: homeLogin !== null, email: u.email, name: u.name, lang: u.lang, role: "owner" };
   return u;

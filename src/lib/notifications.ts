@@ -246,7 +246,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   if (broken.length) {
     const names = broken.map((c) => getProvider(c.provider)!.name).sort().join(ar ? "، " : ", ");
     const fp = ["reconnect", ...broken.map((c) => `${c.provider}@${c.needsReconnect}`).sort()].join(",").slice(0, 130);
-    await add({ kind: "info", href: to("/settings/connections"), about: aboutKey("reconnect", scope), title: withBrand(ar ? `أعد ربط ${names}` : `Reconnect ${names}`, await brandTag(user.email, scope)), body: ar ? "رفضت المنصة الربط الحالي، فلن ينشر الفريق أو يقرأ منها حتى تربطها من جديد." : "The platform refused the current connection, so the team cannot publish to it or read from it until you connect it again." }, brandFingerprint(scope, fp), 7);
+    await add({ kind: "info", href: to("/settings/connections"), about: aboutKey("reconnect", scope), title: withBrand(ar ? `أعد ربط ${names}` : `Reconnect ${names}`, await brandTag(acct(user), scope)), body: ar ? "رفضت المنصة الربط الحالي، فلن ينشر الفريق أو يقرأ منها حتى تربطها من جديد." : "The platform refused the current connection, so the team cannot publish to it or read from it until you connect it again." }, brandFingerprint(scope, fp), 7);
   }
   // 7. Overdue to-dos on Reem's list.
   out.push(...(await overdueTodoAlerts(user, scope)));

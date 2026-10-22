@@ -64,20 +64,28 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
   const refusals: Record<string, string> = { no_credits: noCreditsText(t.generate, owner, topups), trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle, fair_use: t.limit.fairUseTitle };
   async function run(type: TaskType) {
     setBusy(type); setMsg(t.generate.running);
-    const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, notes }) });
-    const j = await res.json();
-    setBusy(null);
-    // Rule 2001: the finished run is a toast; the inline line keeps the running words and the refusals the owner must act on.
-    if (j.ok) { setMsg(""); toast.success(t.generate.done); r.refresh(); return; }
-    limitFromError(j.error);
-    // Outside what the team works on (rule 796), or too many such requests: the server wrote the answer in the owner's language.
-    // Shown as text in the status line, never as HTML.
-    const refused = scopeRefusalText(j);
-    if (refused) { setMsg(refused); return; }
-    // A mapped refusal (limits, no brand, models paused) is something the owner must act on or wait for: it stays inline.
-    if (refusals[j.error]) { setMsg(refusals[j.error]); return; }
-    setMsg("");
-    toast.danger(modelErrorText(lang, j.error) ?? t.generate.failed);
+    // Rule 2971: a dropped connection makes fetch throw and a gateway 502 returns HTML, so res.json() throws too. `finally`
+    // always clears `busy`; before, the run buttons stayed disabled with "running" frozen until a reload (as GeneratePanel).
+    try {
+      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, notes }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+      // Rule 2001: the finished run is a toast; the inline line keeps the running words and the refusals the owner must act on.
+      if (res.ok && j.ok) { setMsg(""); toast.success(t.generate.done); r.refresh(); return; }
+      limitFromError(j.error);
+      // Outside what the team works on (rule 796), or too many such requests: the server wrote the answer in the owner's language.
+      // Shown as text in the status line, never as HTML.
+      const refused = scopeRefusalText(j);
+      if (refused) { setMsg(refused); return; }
+      // A mapped refusal (limits, no brand, models paused) is something the owner must act on or wait for: it stays inline.
+      if (j.error && refusals[j.error]) { setMsg(refusals[j.error]); return; }
+      setMsg("");
+      toast.danger(modelErrorText(lang, j.error) ?? t.generate.failed);
+    } catch {
+      setMsg("");
+      toast.danger(t.generate.failed);
+    } finally {
+      setBusy(null);
+    }
   }
 
   const delta = (cur: number, prev: number) => kpiDelta(cur, prev, R.vsPrev);

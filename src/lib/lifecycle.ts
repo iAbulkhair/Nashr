@@ -2,7 +2,9 @@ import type { User } from "./auth";
 import { FIRST_MONTH_DISCOUNT_PCT } from "./pricing"; // the day-3 offer (src/lib/partners.ts, rules 394, 410)
 import { earlyOfferLastDay } from "./partner-rules";
 import { getBrand, isWaiting, listLiteDays } from "./brand";
-import { mailReady, sendOnce, type OncePart } from "./notify";
+import { confirmedMarker, mailReady, onceKey, sendOnce, type OncePart } from "./notify";
+import { db } from "./db";
+import { acct } from "./account-id";
 import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
 import { appOrigin } from "./origin";
 import { COPY, paragraphs, renderEmail } from "../emails";
@@ -133,10 +135,21 @@ export async function runLifecycle(u: User): Promise<string[]> {
   const ctx = { firstTitle: tasks.at(-1)?.title, pending: tasks.filter(isWaiting).length, approved: tasks.filter((x) => x.status === "approved").length, trialEnds: u.trialEnds.slice(0, 10) };
   // Marked as sent only when Resend accepted it (src/lib/notify.ts `sendOnce`): a refused note is tried again tomorrow,
   // while its window lasts. The due notes go out side by side; rarely more than one is due.
+  //
+  // The one-time markers are the ACCOUNT's (`notified:{acct}:lifecycle:*`, rule 3033), not the address's: a person who
+  // owns two workspaces gets each workspace's notes, and the account deletion (`wipeAccount(acct)`) finds them. The note
+  // still goes to the owner's ADDRESS (`sendOnce`'s `to`). Expand (rule 679): a note marked sent under the address
+  // before this release (the only key while the account id was the address; a moved legacy owner's notes since the
+  // move) counts as sent, so nobody is mailed twice; that read is skipped when the two keys are the same. Contract:
+  // the address read goes once every note window open at the expand release has closed (13 days).
   const due = plan.filter(([, d]) => d).map(([key]) => key);
+  const owner = acct(u);
   const results = await Promise.all(due.map(async (key) => {
     const tpl = lifecycleTemplate(u, key, ctx);
-    return tpl && (await sendOnce(u.email, `lifecycle:${key}`, tpl.subject, tpl.body, lifecyclePart(u, key, tpl))) === "sent" ? key : null;
+    if (!tpl) return null;
+    const name = `lifecycle:${key}`;
+    if (owner !== u.email && confirmedMarker(await db.get<unknown>(onceKey(u.email, name)))) return null;
+    return (await sendOnce(owner, name, tpl.subject, tpl.body, lifecyclePart(u, key, tpl), u.email)) === "sent" ? key : null;
   }));
   return results.filter((k): k is string => k !== null);
 }

@@ -132,8 +132,10 @@ export async function warnSeries(scope: string, now = Date.now()): Promise<numbe
     await Promise.all(rowsN.map((r) => db.zrem(SEC_KEYS.sdone(scope), r.id)));
     moved += rowsN.length;
     try {
-      // Reem's reminder switch (rule 1147); the old "none" level reads as off, as before.
-      if (emailAllowed(await readPrefs(scope, email), "reminders")) await sendEmail({ to: email, subject: title, text: `${text.body}\n\n${appOrigin()}${href}`, template: "notice", context: { title, paragraphs: paragraphs(text.body), cta: { href: `${appOrigin()}${href}`, label: COPY[lang].notice.todo } }, locale: lang });
+      // Reem's reminder switch (rule 1147); the old "none" level reads as off, as before. To the owner's ADDRESS from the
+      // loaded account record, never `email` (the account id taken from the scope: an `a_` id, or a moved owner's old
+      // address once ids are opaque); no record, no email (rule 3031).
+      if (user && emailAllowed(await readPrefs(scope, email), "reminders")) await sendEmail({ to: user.email, subject: title, text: `${text.body}\n\n${appOrigin()}${href}`, template: "notice", context: { title, paragraphs: paragraphs(text.body), cta: { href: `${appOrigin()}${href}`, label: COPY[lang].notice.todo } }, locale: lang });
     } catch (e) {
       log.error("sec series warning email failed", e);
     }

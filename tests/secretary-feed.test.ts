@@ -527,10 +527,10 @@ describe("public feed route (rules 539, 577-579)", () => {
     const o = await newUser("feed578");
     await seed(o.email, { dueAt: iso(Date.now() + DAY) });
     const token = await createFeed(o.email, o.email, "en");
-    const refusedWithoutRead = async (ip: string) => {
+    const refusedWithoutRead = async (ip: string, tok: string = token) => {
       const list = vi.spyOn(secretary, "listOpenItems");
       try {
-        const r = await callFeed(token, ip);
+        const r = await callFeed(tok, ip);
         expect(r.status).toBe(429);
         expect(r.headers.get("retry-after")).toBe("3600");
         expect(await r.text()).toBe("");
@@ -543,7 +543,8 @@ describe("public feed route (rules 539, 577-579)", () => {
     // 120 calls from one address pass its bucket (unknown links, so the link's own bucket is untouched); the 121st is refused.
     const ip = nextIp();
     for (let i = 0; i < 120; i++) expect((await callFeed(randomBytes(32).toString("base64url"), ip)).status).toBe(404);
-    await refusedWithoutRead(ip);
+    // Rule 3021: only misses count against the address, so the 121st miss is the refusal.
+    await refusedWithoutRead(ip, randomBytes(32).toString("base64url"));
 
     // 60 calls for one link from 60 addresses pass; the 61st is refused, from a fresh address too.
     for (let i = 0; i < 60; i++) expect((await callFeed(token)).status).toBe(200);
