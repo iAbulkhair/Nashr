@@ -4,6 +4,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentPerson } from "@/lib/auth";
 import { MULTI_ORG } from "@/lib/multi-org";
 import { appScreenMeta } from "@/lib/screen-titles";
+import { invitesWaiting } from "@/lib/team";
 import { listWorkspaces } from "@/lib/workspaces";
 import WorkspacesPanel from "@/components/app/WorkspacesPanel";
 
@@ -20,6 +21,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang) || !MULTI_ORG) notFound();
   const me = await currentPerson();
   if (!me) redirect(`/${lang}/app/login`);
-  const rows = await listWorkspaces(me.person, me.acct);
-  return <WorkspacesPanel t={appDict[lang].workspaces} lang={lang} initial={rows} canCreate={!!me.person.emailVerifiedAt} />;
+  // The invitations inbox (M3, rule 2753): the person's own verified address only, never an id or a token.
+  const [rows, invites] = await Promise.all([listWorkspaces(me.person, me.acct), invitesWaiting(me.person)]);
+  return <WorkspacesPanel t={appDict[lang].workspaces} lang={lang} initial={rows} invites={invites} canCreate={!!me.person.emailVerifiedAt} back={appDict[lang].dialog.back} />;
 }

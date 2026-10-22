@@ -212,7 +212,14 @@ describe("rule 2112: the switcher", () => {
 
   it("is drawn only in a shell with a handle and two workspaces or more, switches through the route and a full load", () => {
     const src = readFileSync("src/components/app/WorkspaceSwitcher.tsx", "utf8");
-    expect(src).toContain('if (!handle || !rows || rows.length < 2) return null;');
+    expect(src).toContain("if (!handle || !rows || rows.length < 2) return null;");
+    // M3 (rule 2753): the waiting invitations' count is all the switcher fetches of the inbox, and only on the first open
+    // of the menu (review B finding 9): never in the effect that runs on every handle.
+    expect(src).toContain('fetch("/api/workspaces/invites")');
+    const effect = src.slice(src.indexOf("useEffect("), src.indexOf("}, [handle]);"));
+    expect(effect).not.toContain("/api/workspaces/invites");
+    expect(src).toMatch(/function loadInvites\(\) \{\s*if \(asked\.current\) return;/);
+    expect(src).toContain("onClick={(e) => { loadInvites(); props.onClick?.(e); }}");
     expect(src).toContain('fetch("/api/workspaces/switch"');
     expect(src).toContain("window.location.assign(switchTarget(j.href, path))");
     expect(src).toContain("j.href.startsWith(appHref(lang))");

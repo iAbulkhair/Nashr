@@ -6,6 +6,7 @@ import { currentUser } from "@/lib/auth";
 import { mailReady } from "@/lib/notify";
 import { can } from "@/lib/roles";
 import { teamView } from "@/lib/team";
+import { pendingTransfer } from "@/lib/transfer";
 import TeamPanel from "@/components/app/TeamPanel";
 import { teamPerms } from "@/components/app/teamPerms";
 
@@ -26,5 +27,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!can(u, "team.view")) notFound();
   const view = await teamView(u);
   if (!view) notFound();
-  return <TeamPanel t={appDict[lang]} lang={lang} initial={view} perms={teamPerms(u)} mailOn={mailReady()} />;
+  const perms = teamPerms(u);
+  // Multi-workspace M3: the owner's pending ownership offer (address and expiry only); `perms.transfer` is false with MULTI_ORG off.
+  const transfer = perms.transfer ? await pendingTransfer(u) : null;
+  return <TeamPanel t={appDict[lang]} lang={lang} initial={view} perms={perms} mailOn={mailReady()} transfer={transfer} />;
 }

@@ -40,6 +40,11 @@ export const MIN_ROLE = {
   "team.role": "owner",
   /** Remove an admin. */
   "team.remove.admin": "owner",
+  /**
+   * Offer or cancel the transfer of this account's ownership to one of its admins (multi-workspace M3, rule 2128). The
+   * owner's own session only: never an impersonation, never an AI client's token (see `can`).
+   */
+  "team.transfer": "owner",
 
   // ── Admin and owner ──
   /** Brand file writes: PUT /api/brand, profile brand fields, chat `update_brand`. */
@@ -82,6 +87,8 @@ export const MIN_ROLE = {
   "team.invites.view": "admin",
   /** See who on the team approved and rejected what, the last 30 days (rule 1480). */
   "team.approvals.view": "admin",
+  /** The account's team log: who invited, joined, left, changed a role or took over the account (multi-workspace M3, rule 2129). */
+  "team.log.view": "admin",
   /** Cancel a pending invite (an admin only one for role "member"; see team.ts `cancelInvite`). */
   "team.invite.cancel": "admin",
   /**
@@ -170,6 +177,7 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "team.role",
   "team.remove.member",
   "team.remove.admin",
+  "team.transfer",
   "mcp.token",
   "oauth.approve",
   "partner.bank",
@@ -198,6 +206,7 @@ export function can(u: User | null | undefined, action: Action): boolean {
   if (a.kind !== "owner" && a.kind !== "member" && a.kind !== "token" && a.kind !== "founder") return false;
   if (a.kind === "founder" && IMPERSONATION_BLOCKED.has(action)) return false;
   if (action === "team.leave") return a.kind === "member";
+  if (action === "team.transfer") return a.kind === "owner";
   return RANK[a.role] >= RANK[MIN_ROLE[action]];
 }
 

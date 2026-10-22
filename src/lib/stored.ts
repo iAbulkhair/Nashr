@@ -163,6 +163,21 @@ export const TeamLogRow = z.looseObject({
 export type TeamLogRowValue = z.output<typeof TeamLogRow>;
 
 /**
+ * Rules 2128, 2750: the one pending ownership transfer of an account, `xfer:{aid}` (multi-workspace M3, 7 days). `hash` is
+ * the SHA-256 of the mailed token (the token itself is never stored); `toPid`/`byPid` are the receiving admin and the
+ * owner who offered, `toEmail` the address the offer went to. New in M3 (expand): no older build reads the key.
+ */
+export const TransferOfferRow = z.looseObject({
+  hash: z.string().regex(/^[a-f0-9]{64}$/),
+  toPid: z.string().min(1),
+  toEmail: z.string().min(1),
+  byPid: z.string().min(1),
+  createdAt: z.string().min(1),
+  expiresAt: z.string().min(1),
+});
+export type TransferOfferValue = z.output<typeof TransferOfferRow>;
+
+/**
  * Customer passkeys (docs/specs/2026-10-20-passkeys.md "Data shapes and keys", release step expand, rules 2400-2429).
  * Rule 2401: one credential of a passkey set. `id` is the credential id as the authenticator gave it (base64url, never
  * `+` or `/`), `pk` the COSE public key (base64url). `transports` (at most 8 of at most 20 characters) and `pk` (at most
