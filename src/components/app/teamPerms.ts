@@ -1,4 +1,5 @@
 import type { User } from "@/lib/auth";
+import { MULTI_ORG } from "@/lib/multi-org";
 import { can } from "@/lib/roles";
 
 /**
@@ -14,6 +15,10 @@ export type TeamPerms = {
   viewInvites: boolean;
   cancelInvite: boolean;
   leave: boolean;
+  /** The Team log tab (multi-workspace M3): owner and admin, while `MULTI_ORG` is on. */
+  viewLog: boolean;
+  /** Transfer ownership (multi-workspace M3): the owner's own session, while `MULTI_ORG` is on. */
+  transfer: boolean;
   /** A founder viewing this account: every team change is refused, so the page says why. */
   impersonating: boolean;
 };
@@ -28,6 +33,8 @@ export function teamPerms(u: User | null | undefined): TeamPerms {
     viewInvites: can(u, "team.invites.view"),
     cancelInvite: can(u, "team.invite.cancel"),
     leave: can(u, "team.leave"),
+    viewLog: MULTI_ORG && can(u, "team.log.view"),
+    transfer: MULTI_ORG && can(u, "team.transfer"),
     impersonating: u?.actor?.kind === "founder",
   };
 }

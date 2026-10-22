@@ -479,6 +479,11 @@ describe("currentPerson: the person behind a session, with or without a valid ac
     "src/app/api/workspaces/switch/route.ts",
     "src/app/[lang]/app/join/page.tsx",
     "src/app/api/team/accept/route.ts",
+    // Release M3: the invitations inbox
+    "src/app/api/workspaces/invites/route.ts",
+    // Release M3: accepting an ownership offer, deleting one's own login
+    "src/app/api/workspaces/transfer/route.ts",
+    "src/app/api/workspaces/person/route.ts",
   ];
   it("only the listed pages and routes call currentPerson (spec section 7, pinned like rule 752)", () => {
     const files: string[] = [];

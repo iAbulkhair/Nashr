@@ -94,6 +94,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Multi-workspace M2: create a workspace and switch the session's workspace (the person, not one account's role).
   "POST /api/workspaces": "person-session",
   "POST /api/workspaces/switch": "person-session",
+  // Multi-workspace M3: accept an ownership offer (rule 2751), as the signed-in person the offer names; rate limited.
+  "POST /api/workspaces/transfer": "person-session",
+  // Multi-workspace M3: delete one's own login (rule 2754), as the signed-in person; rate limited.
+  "DELETE /api/workspaces/person": "person-session",
   "POST /api/support": "public",
   "POST /api/affiliates": "public",
   "POST /api/waitlist": "public",
@@ -236,6 +240,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "DELETE /api/push": "member",
   "POST /api/push/seen": "member",
   "POST /api/team/leave": g("member", "team.leave"),
+  // Multi-workspace M3 (rules 2128, 2750): the owner's own session offers or withdraws the account's ownership.
+  "POST /api/team/transfer": g("owner", "team.transfer"),
+  "DELETE /api/team/transfer": g("owner", "team.transfer"),
   "POST /api/chat": "member",
   "POST /api/chat/feedback": "member",
   "POST /api/conversations": "member",
@@ -307,6 +314,9 @@ const READS: Record<string, Gate> = {
   "GET /api/team": g("member", "team.view"),
   // Multi-workspace M2: the person's own workspaces (handles, names and roles only).
   "GET /api/workspaces": "person-session",
+  "GET /api/workspaces/invites": "person-session", // M3 inbox (rule 2753): the person's own verified address only
+  // M3 Team log tab (rule 2129): owner and admin, addresses only.
+  "GET /api/team/log": g("admin", "team.log.view"),
   "GET /api/profile": g("member", "read"),
   // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
   "GET /api/account/export": g("owner", "account.export"),
@@ -359,6 +369,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/payments/[email]": "admin-console",
   "GET /api/admin/users/[email]": "admin-console",
   "GET /api/admin/users/[email]/workspace": "admin-console", // rule 2077: read-only workspace view, staffMay("workspace.view") after the console gate
+  "GET /api/admin/people/[email]": "admin-console", // rule 2755: read-only people view (M3, MULTI_ORG), staffMay("workspace.view") after the console gate
   "GET /api/affiliates": "admin-console",
   "GET /api/waitlist": "admin-console",
   "GET /api/support": "admin-console",
@@ -428,7 +439,7 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/team/transfer", "POST /api/workspaces/transfer", "DELETE /api/workspaces/person", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
   // Agent instructions (rules 930-959).
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // Core-file rewrite cards (rule 2306).

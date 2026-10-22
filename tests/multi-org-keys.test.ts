@@ -31,6 +31,12 @@ describe("rule 2137: the exact bytes of every new family", () => {
     expect(accountKey.teamLog(a)).toBe("teamlog:a_bbbbbbbbbbbbbbbbbbbbbbbb");
   });
 
+  it("accountKey.xfer and invitesFor (M3)", () => {
+    expect(accountKey.xfer(a)).toBe("xfer:a_bbbbbbbbbbbbbbbbbbbbbbbb");
+    expect(accountKey.xfer(legacyA)).toBe("xfer:owner@example.com");
+    expect(accountKey.invitesFor("member@example.com")).toBe("invitesfor:member@example.com");
+  });
+
   it("a legacy person and account (both an address) build the same shapes", () => {
     expect(personKey.person(legacyP)).toBe("person:owner@example.com");
     expect(accountKey.membership(legacyA, legacyP)).toBe("mbr:owner@example.com:owner@example.com");
@@ -66,14 +72,14 @@ describe("rule 2137: no new key can equal a legacy key", () => {
     ...allKeys(wsKey),
     ...allKeys(globalKey),
     ...Object.entries(accountKey)
-      .filter(([k]) => k !== "membership" && k !== "teamLog")
+      .filter(([k]) => k !== "membership" && k !== "teamLog" && k !== "xfer" && k !== "invitesFor")
       .flatMap(([, fn]) => allKeys({ fn })),
     // The raw legacy templates still written outside keys.ts (src/lib/feed-token.ts, src/lib/booking-token.ts).
     ...POOL.flatMap((login) => [`sec:feedof:${login}`, ...POOL.map((prov) => `sec:bookof:${login}:${prov}`)]),
   ]);
 
   const fresh = new Set<string>([
-    ...allKeys({ ...personKey, membership: accountKey.membership, teamLog: accountKey.teamLog }),
+    ...allKeys({ ...personKey, membership: accountKey.membership, teamLog: accountKey.teamLog, xfer: accountKey.xfer, invitesFor: accountKey.invitesFor }),
   ]);
 
   it("the corpora are not empty", () => {
@@ -104,7 +110,7 @@ describe("rule 2137: no new key can equal a legacy key", () => {
   });
 
   it("the new prefixes are used by no legacy builder", () => {
-    const prefixes = ["person:", "orgs:", "lastorg:", "mbr:", "teamlog:", "lock:person:"];
+    const prefixes = ["person:", "orgs:", "lastorg:", "mbr:", "teamlog:", "lock:person:", "xfer:", "invitesfor:"];
     for (const k of legacy) for (const pre of prefixes) expect(k.startsWith(pre)).toBe(false);
   });
 });
@@ -142,8 +148,10 @@ describe("rule 2137: a plain string from a request does not type-check in any bu
       accountKey.membership(a, s),
       // @ts-expect-error a plain string is not an AccountId
       accountKey.teamLog(s),
+      // @ts-expect-error a plain string is not an AccountId
+      accountKey.xfer(s),
     ];
-    expect(ok).toHaveLength(14);
+    expect(ok).toHaveLength(15);
   });
 
   it("the brands are not interchangeable, and both are assignable to string", () => {

@@ -1,13 +1,15 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
+import { readFileSync } from "fs";
 import { json, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
 import { trackRounds } from "./helpers/rounds";
-import { acct, currentUser, saveUser, sc, type User } from "@/lib/auth";
+import { acct, currentUser, normalizeEmail, saveUser, sc, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
+import { accountKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { getPerson } from "@/lib/person";
 import { deleteMembership, writeMembership } from "@/lib/team";
-import { createFeed, FEED_KEYS, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, type FeedRecord, type LinkOwner } from "@/lib/feed-token";
+import { createFeed, FEED_KEYS, getFeedStatus, hashFeedToken, legacyFeedLock, linkIds, resolveFeed, revokeFeed, type FeedRecord, type LinkOwner } from "@/lib/feed-token";
+import { exitCodeOf, run as runLinks, type LinksReport } from "../scripts/multi-org-links";
 import { BOOK_KEYS, createBook, getBookStatus, hashBookToken, resolveBook, revokeBook } from "@/lib/booking-token";
 import { linkOwner, loginHolds } from "@/lib/secretary-feed";
 import * as feedRoute from "@/app/api/secretary/feed/[token]/route";
@@ -362,5 +364,332 @@ describe("rule 2139: the feed and booking locks are leaves, new first and legacy
     const who: LinkOwner = linkOwner(u)!;
     expect(who.aid).toBe(aidOf(t.O));
     expect(who.pid).toBe(t.pid as PersonId);
+  });
+});
+
+/**
+ * Rule 2756: scripts/multi-org-links.ts, the precondition of release M4 (contract, rule 2138), which kills a link record
+ * with no `pid`/`aid`. Its fixtures are legacy persons in both `TEST_PERSONS` modes (a link made before M1 belongs to one),
+ * made with the pre-M1 create (`createFeed(login)`). Other tests in this file leave their own links in the store, so the
+ * counts are asserted as "at least" and per fixture by reading the records.
+ */
+describe("rule 2756: the links script carries links made before M1 into M4", () => {
+  /** M4's own liveness rule (src/lib/feed-token.ts on the M4 branch): both ids on the record, and their pointer names it. */
+  const m4Live = async (rec: Record<string, unknown> | null, hash: string, pointer: string) =>
+    !!rec && typeof rec.pid === "string" && !!rec.pid && typeof rec.aid === "string" && !!rec.aid && (await db.get(pointer)) === hash;
+
+  it("dry by default; --apply stamps the ids and home, writes the M1-era pointer, keeps the legacy one and carries the home brand; the links keep working in M3 and pass M4's check; a second run writes nothing", async () => {
+    const t = await twoAccounts();
+    const uOwner = await as(t.H.email, t.H);
+    signOut();
+    const ownerPid = storedPersonId(acct(t.H));
+    const feedP = (await createFeed(t.email, sc(t.uH), "ar")) as string;
+    const bookP = (await createBook(t.email, sc(t.uH), "calendly", "en")) as string;
+    const feedO = (await createFeed(normalizeEmail(t.H.email), sc(uOwner), "ar")) as string;
+    await db.set(accountKey.activeBrand(t.email), "default");
+    const hashes = [hashFeedToken(feedP), hashBookToken(bookP), hashFeedToken(feedO)];
+    const recKeys = [FEED_KEYS.rec(hashes[0]), BOOK_KEYS.rec(hashes[1]), FEED_KEYS.rec(hashes[2])];
+    const legacyKeys = [FEED_KEYS.of(t.email), BOOK_KEYS.of(t.email, "calendly"), FEED_KEYS.of(normalizeEmail(t.H.email))];
+    const owners = [{ pid: t.pid, aid: aidOf(t.H) }, { pid: t.pid, aid: aidOf(t.H) }, { pid: ownerPid, aid: aidOf(t.H) }];
+    const mineKeys = [personKey.feedOf(t.pid, aidOf(t.H)), personKey.bookOf(t.pid, aidOf(t.H), "calendly"), personKey.feedOf(ownerPid, aidOf(t.H))];
+    const brandKey = personKey.activeBrand(t.pid, aidOf(t.H));
+    const before = await Promise.all(recKeys.map((k) => db.get<Record<string, unknown>>(k)));
+    for (const rec of before) expect(linkIds(rec!)).toBe("legacy");
+    expect(await Promise.all(mineKeys.map((k) => db.get(k)))).toEqual([null, null, null]);
+    expect(await db.get(brandKey)).toBeNull();
+
+    const writes = [vi.spyOn(db, "set"), vi.spyOn(db, "setNx"), vi.spyOn(db, "del"), vi.spyOn(db, "lockOwned")];
+    const dry = await runLinks({ apply: false });
+    for (const w of writes) expect(w).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+    expect(dry.apply).toBe(false);
+    expect(dry.stamped).toBeGreaterThanOrEqual(3);
+    expect(dry.pointersSet).toBeGreaterThanOrEqual(3);
+    expect(dry.brandsSet).toBeGreaterThanOrEqual(1);
+    expect(await Promise.all(recKeys.map((k) => db.get(k)))).toEqual(before);
+
+    const r = await runLinks({ apply: true });
+    expect(r.stamped).toBeGreaterThanOrEqual(3);
+    const after = await Promise.all(recKeys.map((k) => db.get<Record<string, unknown>>(k)));
+    after.forEach((rec, i) => expect(rec).toEqual({ ...before[i], ...owners[i], home: true }));
+    expect(await Promise.all(mineKeys.map((k) => db.get(k)))).toEqual(hashes);
+    // The legacy pointers stay (M4's S2 owns them): M3 and an older build still resolve and revoke through them.
+    expect(await Promise.all(legacyKeys.map((k) => db.get(k)))).toEqual(hashes);
+    expect(await live(feedP)).toBe(200);
+    expect(await live(feedO)).toBe(200);
+    expect(await loginHolds((await resolveBook(bookP))!)).toBe(true);
+    for (let i = 0; i < 3; i++) expect(await m4Live(after[i], hashes[i], mineKeys[i]), `link ${i}`).toBe(true);
+    expect(await db.get(brandKey)).toBe("default");
+
+    const again = await runLinks({ apply: true });
+    expect([again.stamped, again.pointersSet, again.brandsSet]).toEqual([0, 0, 0]);
+    expect(again.current).toBeGreaterThanOrEqual(3);
+    expect(await Promise.all(recKeys.map((k) => db.get(k)))).toEqual(after);
+  });
+
+  it("--apply never overwrites: a pointer naming another link, a record of another login, a half-stamped record and an answer that would change are counted and left; a differing M1-era brand choice takes the legacy one (round 2, S-3)", async () => {
+    const [a, b, c, d] = [await twoAccounts(), await twoAccounts(), await twoAccounts(), await twoAccounts()];
+    // a: its M1-era pointer already names another link.
+    const fa = (await createFeed(a.email, sc(a.uH), "ar")) as string;
+    await db.set(personKey.feedOf(a.pid, aidOf(a.H)), "f".repeat(64));
+    // b: the record names another login than the pointer's.
+    const bb = (await createBook(b.email, sc(b.uH), "calcom", "ar")) as string;
+    const bKey = BOOK_KEYS.rec(hashBookToken(bb));
+    await db.set(bKey, { ...(await db.get<Record<string, unknown>>(bKey))!, login: "someone-else@test.example" });
+    // c: one id without the other (dead in M3 already).
+    const fc = (await createFeed(c.email, sc(c.uH), "ar")) as string;
+    const cKey = FEED_KEYS.rec(hashFeedToken(fc));
+    await db.set(cKey, { ...(await db.get<Record<string, unknown>>(cKey))!, pid: c.pid });
+    // d: the membership row is paused but the legacy record is not: M3's legacy check holds, the stamped one would not.
+    const fd = (await createFeed(d.email, sc(d.uH), "ar")) as string;
+    const row = (await db.get<Record<string, unknown>>(accountKey.membership(aidOf(d.H), d.pid)))!;
+    await db.set(accountKey.membership(aidOf(d.H), d.pid), { ...row, disabled: "seats" });
+    expect(await live(fd)).toBe(200);
+    // d: an M1-era brand choice that differs from the legacy one. M3 reads the legacy key first, so that is the person's
+    // choice today; M4 reads only the M1-era key.
+    await db.set(accountKey.activeBrand(d.email), "default");
+    await db.set(personKey.activeBrand(d.pid, aidOf(d.H)), "other1");
+
+    const keys = [
+      FEED_KEYS.rec(hashFeedToken(fa)), personKey.feedOf(a.pid, aidOf(a.H)),
+      bKey, personKey.bookOf(b.pid, aidOf(b.H), "calcom"),
+      cKey, personKey.feedOf(c.pid, aidOf(c.H)),
+      FEED_KEYS.rec(hashFeedToken(fd)), personKey.feedOf(d.pid, aidOf(d.H)),
+    ];
+    const snapshot = await Promise.all(keys.map((k) => db.get(k)));
+    const dry = await runLinks({ apply: false });
+    expect(dry.brandsAligned).toBeGreaterThanOrEqual(1);
+    expect(await db.get(personKey.activeBrand(d.pid, aidOf(d.H)))).toBe("other1");
+    const r = await runLinks({ apply: true });
+    expect(r.pointerConflicts).toBeGreaterThanOrEqual(1);
+    expect(r.loginConflicts).toBeGreaterThanOrEqual(1);
+    expect(r.malformed).toBeGreaterThanOrEqual(1);
+    expect(r.holdsDiffer).toBeGreaterThanOrEqual(1);
+    expect(r.retired).toBe(0);
+    expect(await Promise.all(keys.map((k) => db.get(k)))).toEqual(snapshot);
+    expect(await live(fd)).toBe(200);
+    expect(r.brandsAligned).toBeGreaterThanOrEqual(1);
+    expect(await db.get(personKey.activeBrand(d.pid, aidOf(d.H)))).toBe("default");
+    expect(await db.get(accountKey.activeBrand(d.email))).toBe("default");
+    const again = await runLinks({ apply: false });
+    expect(again.brandsAligned).toBe(0);
+  });
+
+  it("--retire revokes what --apply leaves (an answer that would change, a malformed record) through the app's own revoke; the dry run splits them into live and dead; conflicts stay (round 2, S-1)", async () => {
+    const [a, b, c, d] = [await twoAccounts(), await twoAccounts(), await twoAccounts(), await twoAccounts()];
+    // a: pointer conflict with a record that is not this person's home record (another person's link), b: login
+    // conflict. Both stay as they are under --retire.
+    const fa = (await createFeed(a.email, sc(a.uH), "ar")) as string;
+    const foreign = "e".repeat(64);
+    await db.set(FEED_KEYS.rec(foreign), { login: b.email, scope: sc(b.uH), lang: "ar", createdAt: new Date().toISOString(), pid: b.pid, aid: aidOf(b.H) });
+    await db.set(personKey.feedOf(a.pid, aidOf(a.H)), foreign);
+    const bb = (await createBook(b.email, sc(b.uH), "calcom", "ar")) as string;
+    const bKey = BOOK_KEYS.rec(hashBookToken(bb));
+    await db.set(bKey, { ...(await db.get<Record<string, unknown>>(bKey))!, login: "someone-else@test.example" });
+    // c: one id without the other: dead in M3.
+    const fc = (await createFeed(c.email, sc(c.uH), "ar")) as string;
+    const cKey = FEED_KEYS.rec(hashFeedToken(fc));
+    await db.set(cKey, { ...(await db.get<Record<string, unknown>>(cKey))!, pid: c.pid });
+    // d: live in M3 today, would die once stamped (membership row paused, legacy record not).
+    const fd = (await createFeed(d.email, sc(d.uH), "ar")) as string;
+    const dKey = FEED_KEYS.rec(hashFeedToken(fd));
+    const row = (await db.get<Record<string, unknown>>(accountKey.membership(aidOf(d.H), d.pid)))!;
+    await db.set(accountKey.membership(aidOf(d.H), d.pid), { ...row, disabled: "seats" });
+    expect(await live(fd)).toBe(200);
+    const keep = [FEED_KEYS.rec(hashFeedToken(fa)), personKey.feedOf(a.pid, aidOf(a.H)), FEED_KEYS.of(a.email), FEED_KEYS.rec(foreign), bKey, BOOK_KEYS.of(b.email, "calcom")];
+    const kept = await Promise.all(keep.map((k) => db.get(k)));
+
+    const writes = [vi.spyOn(db, "set"), vi.spyOn(db, "setNx"), vi.spyOn(db, "setXx"), vi.spyOn(db, "del"), vi.spyOn(db, "lockOwned")];
+    const dry = await runLinks({ apply: false });
+    for (const w of writes) expect(w).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+    expect(dry.retireLive).toBeGreaterThanOrEqual(1);
+    expect(dry.retireDead).toBeGreaterThanOrEqual(1);
+    // Every answer that would change and every malformed record, plus the stale home pointers among the pointer conflicts.
+    expect(dry.retireLive + dry.retireDead).toBeGreaterThanOrEqual(dry.holdsDiffer + dry.malformed);
+    expect(dry.retireLive + dry.retireDead).toBeLessThan(dry.holdsDiffer + dry.malformed + dry.pointerConflicts);
+    expect(dry.retired).toBe(0);
+
+    const r = await runLinks({ apply: false, retire: true });
+    expect(r.retired).toBeGreaterThanOrEqual(2);
+    expect([r.holdsDiffer, r.malformed]).toEqual([0, 0]);
+    expect(r.pointerConflicts).toBeGreaterThanOrEqual(1);
+    expect(r.loginConflicts).toBeGreaterThanOrEqual(1);
+    expect(r.stamped).toBe(dry.stamped);
+    // Revoked: the record and the legacy pointer of each; the link no longer answers in M3.
+    expect(await Promise.all([cKey, FEED_KEYS.of(c.email), dKey, FEED_KEYS.of(d.email)].map((k) => db.get(k)))).toEqual([null, null, null, null]);
+    expect(await live(fd)).not.toBe(200);
+    expect(await Promise.all(keep.map((k) => db.get(k)))).toEqual(kept);
+    // Nothing named by a legacy pointer is left without both ids except the two conflicts: what M4's S2 counts.
+    const again = await runLinks({ apply: false });
+    expect([again.holdsDiffer, again.malformed, again.retireLive, again.retireDead]).toEqual([0, 0, 0, 0]);
+  });
+
+  it("--apply writes the stamped record with SET XX: a record revoked between the read and the write stays gone (round 2, S-2)", async () => {
+    const t = await twoAccounts();
+    const f = (await createFeed(t.email, sc(t.uH), "ar")) as string;
+    const fKey = FEED_KEYS.rec(hashFeedToken(f));
+    const mine = personKey.feedOf(t.pid, aidOf(t.H));
+    const setNx = db.setNx.bind(db);
+    // A revoke that gave up waiting for the lock deletes the record right after the script's re-read.
+    vi.spyOn(db, "setNx").mockImplementation(async (k, v, ttl) => {
+      if (k === mine) await db.del(fKey);
+      return setNx(k, v, ttl);
+    });
+    const xx = vi.spyOn(db, "setXx");
+    const r = await runLinks({ apply: true });
+    expect(xx).toHaveBeenCalledWith(fKey, expect.objectContaining({ pid: t.pid }));
+    vi.restoreAllMocks();
+    expect(r.busy).toBeGreaterThanOrEqual(1);
+    expect(await db.get(fKey)).toBeNull();
+    // The pointer left behind names no record: dead in M3 and in M4.
+    expect(await db.get(mine)).toBe(hashFeedToken(f));
+    expect(await live(f)).not.toBe(200);
+  });
+
+  it("--retire deletes under the locks it holds (round 3, R2-1/R2-2): a create of the same link meanwhile answers busy, the revoke takes no lock of its own, and a create after the run works", async () => {
+    const g = await twoAccounts();
+    const fg = (await createFeed(g.email, sc(g.uH), "ar")) as string;
+    const gKey = FEED_KEYS.rec(hashFeedToken(fg));
+    await db.set(gKey, { ...(await db.get<Record<string, unknown>>(gKey))!, pid: g.pid });
+    const del = db.del.bind(db);
+    const during: unknown[] = [];
+    vi.spyOn(db, "del").mockImplementation(async (k) => {
+      // The person creates the same link while the script is deleting the record.
+      if (k === gKey && during.length === 0) during.push(await createFeed(g.whoH, sc(g.uH), "ar"));
+      return del(k);
+    });
+    const locks = vi.spyOn(db, "lockOwned");
+    const r = await runLinks({ apply: false, retire: true });
+    // The script's own take of the legacy lock, and no other: `locked` skips the revoke's 20-try wait.
+    const legacyTakes = locks.mock.calls.filter(([k]) => k === legacyFeedLock(g.email)).length;
+    vi.restoreAllMocks();
+    expect(during).toEqual(["busy"]);
+    expect(legacyTakes).toBe(1);
+    expect(r.retired).toBeGreaterThanOrEqual(1);
+    expect(await Promise.all([gKey, FEED_KEYS.of(g.email), personKey.feedOf(g.pid, aidOf(g.H))].map((k) => db.get(k)))).toEqual([null, null, null]);
+    const after = (await createFeed(g.whoH, sc(g.uH), "ar")) as string;
+    expect(after).not.toBe("busy");
+    expect(await live(after)).toBe(200);
+  });
+
+  it("--retire resolves R1's re-create after a rollback (round 3, R2-3): the stale M1-era home pointer and its record go, the live legacy link stays and the next --apply stamps it; any other pointer conflict stays", async () => {
+    const [e, f] = [await twoAccounts(), await twoAccounts()];
+    // e: an M1 home link, then R1's create, which deletes the M1 record: the M1-era pointer names nothing.
+    const m1e = (await createFeed(e.whoH, sc(e.uH), "ar")) as string;
+    const r1e = (await createFeed(e.email, sc(e.uH), "en")) as string;
+    expect(await db.get(FEED_KEYS.rec(hashFeedToken(m1e)))).toBeNull();
+    // f: the same, but R1's delete of the M1 record failed: the record is back, named by the M1-era pointer only.
+    const m1f = (await createFeed(f.whoH, sc(f.uH), "ar")) as string;
+    const m1fRec = (await resolveFeed(m1f))!.rec;
+    const r1f = (await createFeed(f.email, sc(f.uH), "en")) as string;
+    await db.set(FEED_KEYS.rec(hashFeedToken(m1f)), m1fRec);
+    expect(await live(m1f)).toBe(404);
+    for (const [t, r1] of [[e, r1e], [f, r1f]] as const) expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).not.toBe(hashFeedToken(r1));
+
+    const dry = await runLinks({ apply: false });
+    expect(dry.pointerConflicts).toBeGreaterThanOrEqual(2);
+    expect(dry.retireDead).toBeGreaterThanOrEqual(2);
+    const applied = await runLinks({ apply: true });
+    expect(await db.get(FEED_KEYS.rec(hashFeedToken(m1f)))).toEqual(m1fRec);
+    expect(applied.pointerConflicts).toBeGreaterThanOrEqual(2);
+
+    const r = await runLinks({ apply: false, retire: true });
+    expect(r.retired).toBeGreaterThanOrEqual(2);
+    expect(await db.get(FEED_KEYS.rec(hashFeedToken(m1f)))).toBeNull();
+    for (const t of [e, f]) expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBeNull();
+    expect(await live(r1e)).toBe(200);
+    expect(await live(r1f)).toBe(200);
+
+    await runLinks({ apply: true });
+    for (const [t, r1] of [[e, r1e], [f, r1f]] as const) {
+      const h = hashFeedToken(r1);
+      expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBe(h);
+      expect(await db.get(FEED_KEYS.rec(h))).toMatchObject({ pid: t.pid, aid: aidOf(t.H), home: true });
+      expect(await live(r1)).toBe(200);
+    }
+    expect(await live(m1e)).not.toBe(200);
+    expect(await live(m1f)).not.toBe(200);
+  });
+
+  it("--apply reads the legacy brand again right before an overwrite and skips it (busy) when it changed (round 3, R2-4)", async () => {
+    const t = await twoAccounts();
+    const legacyKey = accountKey.activeBrand(t.email);
+    const freshKey = personKey.activeBrand(t.pid, aidOf(t.H));
+    await db.set(legacyKey, "default");
+    await db.set(freshKey, "other1");
+    const get = db.get.bind(db);
+    // The person switches brand (both keys, as the app writes) between the script's read and its overwrite.
+    vi.spyOn(db, "get").mockImplementation(async (k) => {
+      if (k === legacyKey) await Promise.all([db.set(legacyKey, "other2"), db.set(freshKey, "other2")]);
+      return get(k);
+    });
+    const r = await runLinks({ apply: true });
+    vi.restoreAllMocks();
+    expect(r.busy).toBeGreaterThanOrEqual(1);
+    expect(await db.get(freshKey)).toBe("other2");
+    expect(await db.get(legacyKey)).toBe("other2");
+  });
+
+  it("exit codes (round 3, R2-4): a dry run with any write pending exits 1; a final dry run with nothing pending exits 0; conflicts and busy exit 1 in every mode", () => {
+    const zero: LinksReport = { apply: false, retire: false, accounts: 3, missing: 0, homes: 3, links: 2, current: 2, stamped: 0, pointersSet: 0, brandsSet: 0, brandsAligned: 0, dead: 1, malformed: 0, loginConflicts: 0, pointerConflicts: 0, holdsDiffer: 0, retireLive: 0, retireDead: 0, retired: 0, busy: 0 };
+    expect(exitCodeOf(zero)).toBe(0);
+    for (const k of ["stamped", "pointersSet", "brandsSet", "brandsAligned", "retireLive", "retireDead"] as const) {
+      expect(exitCodeOf({ ...zero, [k]: 1 }), k).toBe(1);
+      expect(exitCodeOf({ ...zero, apply: true, [k]: 1 }), k).toBe(0);
+    }
+    for (const k of ["malformed", "loginConflicts", "pointerConflicts", "holdsDiffer", "busy"] as const) {
+      for (const mode of [{}, { apply: true }, { retire: true }]) expect(exitCodeOf({ ...zero, ...mode, [k]: 1 }), k).toBe(1);
+    }
+  });
+
+  it("a held link lock (new or legacy) is busy and writes nothing; the next run finishes", async () => {
+    const t = await twoAccounts();
+    const f = (await createFeed(t.email, sc(t.uH), "ar")) as string;
+    const b = (await createBook(t.email, sc(t.uH), "calcom", "ar")) as string;
+    const fKey = FEED_KEYS.rec(hashFeedToken(f));
+    const bKey = BOOK_KEYS.rec(hashBookToken(b));
+    const newHeld = (await db.lockOwned(personKey.feedLock(t.pid, aidOf(t.H)), 10))!;
+    const oldHeld = (await db.lockOwned(`lock:book:${t.email}:calcom`, 10))!;
+    const r = await runLinks({ apply: true });
+    expect(r.busy).toBeGreaterThanOrEqual(2);
+    expect((await db.get<FeedRecord>(fKey))!.pid).toBeUndefined();
+    expect((await db.get<FeedRecord>(bKey))!.pid).toBeUndefined();
+    expect(await db.get(personKey.feedOf(t.pid, aidOf(t.H)))).toBeNull();
+    expect(await db.get(personKey.bookOf(t.pid, aidOf(t.H), "calcom"))).toBeNull();
+    // The script released its own new lock on the way out.
+    const freed = await db.lockOwned(personKey.bookLock(t.pid, aidOf(t.H), "calcom"), 10);
+    expect(freed).toBeTruthy();
+    // And it never took the legacy feed lock while the new one was held elsewhere.
+    expect(await db.lockOwned(legacyFeedLock(t.email), 10)).toBeTruthy();
+    await db.del(legacyFeedLock(t.email));
+    await db.unlockOwned(personKey.bookLock(t.pid, aidOf(t.H), "calcom"), freed!);
+    await db.unlockOwned(personKey.feedLock(t.pid, aidOf(t.H)), newHeld);
+    await db.unlockOwned(`lock:book:${t.email}:calcom`, oldHeld);
+    await runLinks({ apply: true });
+    expect((await db.get<FeedRecord>(fKey))!.pid).toBe(t.pid);
+    expect((await db.get<FeedRecord>(bKey))!.pid).toBe(t.pid);
+    expect(await live(f)).toBe(200);
+  });
+
+  it("the script awaits no db call inside a loop, builds every key through keys.ts and the link modules, and prints counts only", () => {
+    const src = readFileSync("scripts/multi-org-links.ts", "utf8");
+    expect(src).not.toMatch(/\bwhile \(/);
+    expect(src).not.toMatch(/\bfor \(/);
+    // The bodies of every forEach/map/flatMap callback, brace-matched: none awaits.
+    for (const m of src.matchAll(/\.(?:forEach|map|flatMap)\(/g)) {
+      let depth = 0;
+      let end = m.index! + m[0].length - 1;
+      for (; end < src.length; end++) {
+        if (src[end] === "(") depth++;
+        if (src[end] === ")" && --depth === 0) break;
+      }
+      expect(src.slice(m.index, end)).not.toMatch(/\bawait\b/);
+    }
+    const code = src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*\*)/.test(l)).join("\n");
+    expect(code).not.toMatch(/[`"'](?:person|orgs|mbr|login|member|members|user|users|lock|sec|activebrand):/);
+    const logs = [...src.matchAll(/console\.(?:log|error)\((.*)\);/g)].map((m) => m[1]);
+    expect(logs.length).toBeGreaterThan(0);
+    for (const l of logs) expect(l).not.toMatch(/\.email\b|\.login\b|\.id\b|\bpid\b|\baid\b|hash/);
   });
 });

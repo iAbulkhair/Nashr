@@ -9,7 +9,7 @@ import { addPaidTopup, openOffer, paymentsKey, unusedOffer, recordPayment, voidP
 import { enforceSeats, isTeamLockTimeout } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
-import { GRACE_DAYS, addDays, addMonths, billingLocked, paymobRenewalDue, type Billing } from "./billing-state";
+import { GRACE_DAYS, addDays, addMonths, billingLocked, intentOutdatesOwner, paymobRenewalDue, type Billing } from "./billing-state";
 import { PaymentError, paymentProvider, type CardTokenEvent, type PaymentProvider, type PaymentTxn } from "./payments";
 import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
@@ -203,11 +203,14 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     return r.ok ? { ok: true, already: r.already, payment: r.payment ?? undefined } : { ok: false, error: r.error };
   }
   const plan = intent.plan!;
-  const card = await db.get<SavedCard>(cardKey(intentAccount(intent)));
+  const cardRead = await db.get<SavedCard>(cardKey(intentAccount(intent)));
   const id = String(txnId);
   let claim: ClaimOutcome | null = null;
   const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing" | "offer_used"> => {
     const b = u.billing;
+    // Rule 2757: a plan checkout opened before the account changed owner still pays its month, but the card read for it
+    // belongs to the previous owner and never turns renewals on for the new one.
+    const card = intentOutdatesOwner(u, intent.createdAt) ? null : cardRead;
     if (b?.txns?.includes(id)) return "already";
     // Rule 2303: the first-month price is read at checkout without reserving the offer, so several checkouts opened before
     // the first payment all carry it. Only the account's first online plan payment may take it: the offer must still be
@@ -347,14 +350,23 @@ async function saveCard(ct: CardTokenEvent | null): Promise<CallbackResult> {
   // card (`endPlanOnRefund`); a late or replayed callback for that order must not bring it back, or the next checkout
   // would turn automatic renewal on with it. Rule 2280: the refunded check and the write run under the account's lock,
   // the one `endPlanOnRefund` holds while it deletes the card, so a refund cannot land between the check and the write.
+  let refused = false;
   const saved = await withUserLock(intentAccount(intent), async (u) => {
     if (intent.txnId !== undefined && (await db.get(refundedKey(intent.txnId)))) return false;
+    // Rule 2757: a checkout opened before the account changed owner carries the previous owner's card. Under the same
+    // lock the transfer writes `ownerSince` and deletes the card, so the card never lands on the new owner's account.
+    if (intentOutdatesOwner(u, intent.createdAt)) {
+      refused = true;
+      return false;
+    }
     await db.set(cardKey(intentAccount(intent)), card);
     if (!u.billing) return true;
     u.billing = { ...u.billing, card: { brand: card.brand, last4: card.last4 }, ...(intent.kind === "plan" ? { autoRenew: true } : {}) };
     await saveUser(u);
     return true;
   });
+  // The refusal is logged with the intent's ref only: never the token, the card or an address.
+  if (refused) await log(intentAccount(intent), `card_refused reason:owner_changed ref:${intent.ref}`);
   return saved ? ok("card_saved") : ok("ignored");
 }
 

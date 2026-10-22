@@ -35,6 +35,19 @@ export const GRACE_DAYS = 7;
 /** A locked subscription spends nothing, exactly like an ended trial (`trialOver` in src/lib/auth.ts). */
 export const billingLocked = (b: Billing | null | undefined): boolean => !!b && b.provider === "paymob" && b.status === "locked";
 
+/**
+ * A checkout started before the account last changed owner (`ownerSince`, set by the M3 ownership transfer) carries the
+ * previous owner's card: its card is never saved and never turns renewals on for the new owner (rule 2757). Provider-neutral: it reads only our own intent's `createdAt`. With no `ownerSince` the account never changed
+ * hands and every intent stands; with one, an intent without a valid `createdAt` is refused (fail closed).
+ */
+export function intentOutdatesOwner(account: { ownerSince?: unknown }, intentCreatedAt: unknown): boolean {
+  if (account.ownerSince === undefined || account.ownerSince === null) return false;
+  const since = typeof account.ownerSince === "string" ? Date.parse(account.ownerSince) : NaN;
+  if (!Number.isFinite(since)) return true;
+  const at = typeof intentCreatedAt === "string" ? Date.parse(intentCreatedAt) : NaN;
+  return !Number.isFinite(at) || at < since;
+}
+
 const pad = (n: number) => String(n).padStart(2, "0");
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 

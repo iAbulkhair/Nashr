@@ -193,6 +193,12 @@ export const personKey = {
   orgs: (p: PersonId) => `orgs:${p}`,
   /** string `AccountId`: the last workspace chosen in the switcher (M2). */
   lastOrg: (p: PersonId) => `lastorg:${p}`,
+  /** bucket name for `allow` (stored as `rate:xfer:offer:{pid}`): ownership offers the person sent as owner, 5 a day (M3, rule 2750). */
+  xferOfferBucket: (p: PersonId) => `xfer:offer:${p}`,
+  /** bucket name for `allow` (stored as `rate:xfer:accept:{pid}`): ownership accept attempts of the person, 10 an hour (M3, rule 2751). */
+  xferAcceptBucket: (p: PersonId) => `xfer:accept:${p}`,
+  /** bucket name for `allow` (stored as `rate:persondel:{pid}`): attempts to delete one's own login, 5 an hour (M3, rule 2754). */
+  deleteBucket: (p: PersonId) => `persondel:${p}`,
   /** string: the brand id the person last chose in one account. */
   activeBrand: (p: PersonId, a: AccountId) => `activebrand:${p}:${a}`,
   /** string: the hash of the person's current calendar feed link in one account. */
@@ -223,6 +229,8 @@ export const accountKey = {
   membership: (a: AccountId, p: PersonId) => `mbr:${a}:${p}`,
   /** capped list (`CAPS.teamLog`): the account's membership events, newest first (`TeamLogRow`). */
   teamLog: (a: AccountId) => `teamlog:${a}`,
+  /** json `TransferOffer` (src/lib/transfer.ts): the account's one pending ownership transfer, 7 days (multi-workspace M3, rule 2128). */
+  xfer: (a: AccountId) => `xfer:${a}`,
   /** json `User`: the account, under its id (`acct(u)`). */
   user: (id: string) => `user:${id}`,
   /** json `BrandMeta[]`: the account's brands. */
@@ -284,6 +292,11 @@ export const accountKey = {
    * 1981-1983). Written only under `loginLock`; the address is normalized by the caller.
    */
   login: (login: string) => `login:${login}`,
+  /**
+   * set: the ids of the open invites to this sign-in address, 7 days (multi-workspace M3, spec section 9). Written with the
+   * invite, read only for the signed-in person's own verified address; the address is normalized by the caller.
+   */
+  invitesFor: (login: string) => `invitesfor:${login}`,
   /** lock: one login. */
   loginLock: (login: string) => `lock:login:${login}`,
   /** lock: one member record. */
@@ -294,6 +307,11 @@ export const accountKey = {
   chatTrial: (email: string) => `chatm:${email}:trial`,
   /** bucket name for `allow` (stored as `rate:pkpw:{login}`): passkey add and remove proofs of one login, 10 per hour (rule 2410). */
   passkeyProofBucket: (login: string) => `pkpw:${login}`,
+  /**
+   * bucket name for `allow` (stored as `rate:mfapw:{login}`): wrong passwords of one login before a two-step or fresh
+   * proof step, 10 per hour (rule 1170; the two-step settings route builds the same name in place, M3 `freshProof` here).
+   */
+  mfaPasswordBucket: (login: string) => `mfapw:${login}`,
   /** marker: a tab of this login was visible in the last `AWAY_MINUTES` (rule 2564); its TTL is the whole record. */
   tabSeen: (login: string) => `tabseen:${login}`,
   /** json `{ agent, state, at }`: the last push this login's devices were sent, read by the worker (rule 2567), 1 day. */

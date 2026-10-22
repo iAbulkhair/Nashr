@@ -101,6 +101,12 @@ export type User = {
    * when the account has no brand name yet. Optional and new (expand): older code ignores it.
    */
   workspaceName?: string;
+  /**
+   * When the account last changed owner (ISO, multi-workspace M3 ownership transfer, rule 2757). A saved card
+   * whose checkout started before it belongs to the previous owner and is refused (`intentOutdatesOwner`, src/lib/billing-state).
+   * Optional and new (expand): older builds ignore it, and an account that never changed hands has none.
+   */
+  ownerSince?: string;
   /** The sign-in and contact address: mail goes here, display uses it. Never a key: keys go through `acct(u)`. */
   email: string;
   name: string;
@@ -930,8 +936,18 @@ async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null
   const [{ getMember, onRoster, memberPid }, { activeBrandId, listBrands, scopeFor }, { ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./membership")]);
   // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records, and so
   // is the login index (rule 1984): one more command, no more rounds. A session without `acct` (written before R1) reads
-  // the account at its own address, exactly the record it read before.
-  const [idx, first, m, brandId] = await Promise.all([readLoginIndex(email), getAccount(typeof s.acct === "string" && s.acct ? s.acct : email), getMember(email), activeBrandId(email)]);
+  // the account at its own address, exactly the record it read before. So is the person row of the session's person (its
+  // `pid`, else the address, a legacy person's id): person suspension (rule 2131, pre-R1 half, multi-workspace M3)
+  // refuses this path too, as it refuses `resolveIds`.
+  const sessionPid = storedPersonId(typeof s.pid === "string" && s.pid ? s.pid : email);
+  const [idx, first, m, brandId, rawPerson] = await Promise.all([
+    readLoginIndex(email), getAccount(typeof s.acct === "string" && s.acct ? s.acct : email), getMember(email), activeBrandId(email), db.get<unknown>(personKey.person(sessionPid)),
+  ]);
+  /** The person `pid` is suspended (its `person:` row, failing closed like the account field); another pid costs one more read. */
+  const personBlocked = async (pid: PersonId): Promise<boolean> => {
+    const raw = pid === sessionPid ? rawPerson : await db.get<unknown>(personKey.person(pid));
+    return isSuspended(raw && typeof raw === "object" ? (raw as { suspended?: unknown }) : null);
+  };
   // The login must still name the session's person: an address that moved on, or was taken by someone else, ends it.
   if (idx && typeof s.pid === "string" && s.pid && idx.pid !== s.pid) return null;
   // A session without `acct` whose index names an account stored under another id (none exists while `OPAQUE_IDS` is
@@ -940,6 +956,7 @@ async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null
   const u = stored && ownsLogin(stored, email, idx) && (!s.acct || s.acct === acct(stored)) ? stored : null;
   if (u) {
     if (isSuspended(u)) return null;
+    if (await personBlocked(ownerOf(u))) return null; // person suspension (rule 2131): every account, every resolver
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
     if (issuedBefore(s.at, u.devicesAfter)) return null; // issued before the owner's last "sign out other devices" (rule 1170)
     // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
@@ -973,6 +990,8 @@ async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null
   if (normalizeEmail(m.email) !== email || !memberHolds(memberPid(m), email, idx)) return null;
   if (typeof s.acct === "string" && s.acct && s.acct !== m.memberOf) return null;
   if (issuedBefore(s.at, m.sessionsAfter) || issuedBefore(s.at, m.devicesAfter)) return null;
+  const mPid = storedPersonId(memberPid(m));
+  if (await personBlocked(mPid)) return null; // person suspension (rule 2131): every account, every resolver
   // The roster entry too, in the same round: removal deletes both under `lock:member`, and a record that outlived its
   // entry anyway (restored by a racing write, left by a deleted account) is off the owner's Members page, so it must
   // not sign in either.
@@ -996,7 +1015,7 @@ async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null
   owner.brandId = bid;
   owner.scope = scopeFor(acct(owner), bid);
   // A legacy member's person id is its frozen address (`memberPid`), and `memberOf` is its home account.
-  owner.actor = { kind: "member", pid: storedPersonId(memberPid(m)), home: true, email: m.email, name: m.name, lang: m.lang === "en" ? "en" : "ar", role: m.role };
+  owner.actor = { kind: "member", pid: mPid, home: true, email: m.email, name: m.name, lang: m.lang === "en" ? "en" : "ar", role: m.role };
   return owner;
 }
 
