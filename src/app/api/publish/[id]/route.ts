@@ -15,6 +15,8 @@ import { taskVersion } from "@/lib/task-version";
 import { publishScopeCheck, readAgentScopeModes } from "@/lib/agent-scope";
 import { deadlineFor } from "@/lib/media/keys";
 import { acct } from "@/lib/account-id";
+import { BUSY_RETRY_S, RefreshBusy } from "@/lib/connectors/fresh";
+import { retryAfter } from "@/lib/rate";
 
 export const maxDuration = 60;
 
@@ -79,6 +81,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!r.ok) {
     if (r.error === "refused") return NextResponse.json({ ok: false, ...r.refusal }, { status: 409 });
     if (r.error === "publish_failed") {
+      // The token's refresh was held by another request through every wait (rule 2192): nothing went out, try again shortly.
+      if (r.cause instanceof RefreshBusy) return NextResponse.json({ ok: false, error: "busy" }, { status: 503, headers: retryAfter(BUSY_RETRY_S) });
       const msg = r.cause instanceof Error ? r.cause.message : "publish_failed";
       // The platform refused the same text again: nothing went out this time, and the connection is fine.
       if (isDuplicate(msg)) return NextResponse.json({ ok: false, error: "duplicate_post" }, { status: 409 });

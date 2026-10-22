@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { getTask, updateTask, type Task } from "./brand";
 import { publishTask, type PublishResult } from "./connectors/publish";
-import { ReconnectRequired } from "./connectors/fresh";
+import { ReconnectRequired, RefreshBusy } from "./connectors/fresh";
 import { SOCIAL_PUB_KEY } from "./social-stats";
 import { log } from "./log";
 
@@ -49,7 +49,8 @@ export const isDuplicate = (msg: string) => msg === "x_duplicate" || /\(#506\)|d
  * failure, a 5xx, a body that could not be read. Asking the owner to check once costs less than a double post.
  */
 export function mayHavePosted(e: unknown): boolean {
-  if (e instanceof ReconnectRequired) return false;
+  // Thrown before anything is sent: the token was not fresh and another request held its refresh (rule 2192).
+  if (e instanceof ReconnectRequired || e instanceof RefreshBusy) return false;
   const msg = e instanceof Error ? e.message : String(e ?? "");
   const name = e instanceof Error ? e.name : "";
   if (name === "AbortError" || name === "TimeoutError") return true;

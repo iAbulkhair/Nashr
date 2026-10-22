@@ -226,3 +226,35 @@ export async function revokeFeed(who: LinkOwner | string, opts: { locked?: true 
 }
 
 export const revokeFeeds = (logins: string[]) => pmap(logins, (l) => revokeFeed(l));
+
+/**
+ * Account-id R2 (rule 1990): the home link follows a login that moved in place. Under the legacy leaf locks of both
+ * addresses (the smaller first; a lock that stays busy is passed, as `revokeFeed` does): a leftover link at the new
+ * address (a previous holder's) is deleted, then the old login's pointer is copied to the new address, the record names
+ * the new login, and the old pointer goes. The `(pid, aid)` pointer stays: the person and the account keep their ids.
+ * In that order a stop leaves the link resolving at one address or the other, never a dead record that the move made.
+ */
+export async function carryFeedLogin(from: string, to: string): Promise<void> {
+  const keys = [lockKey(from), lockKey(to)].sort();
+  const held: [string, string][] = [];
+  try {
+    for (const key of keys) {
+      let owner: string | null = null;
+      for (let i = 0; i < 20 && !owner; i++) {
+        owner = await db.lockOwned(key, LOCK_TTL);
+        if (!owner) await sleep(50);
+      }
+      if (owner) held.push([key, owner]);
+    }
+    const [hash, left] = await Promise.all([db.get<string>(FEED_KEYS.of(from)), db.get<string>(FEED_KEYS.of(to))]);
+    const rec = hash ? await db.get<FeedRecord>(FEED_KEYS.rec(hash)) : null;
+    if (left && left !== hash) await db.del(FEED_KEYS.rec(left));
+    if (hash && rec) {
+      await db.set(FEED_KEYS.of(to), hash);
+      await db.set(FEED_KEYS.rec(hash), { ...rec, login: to } satisfies FeedRecord);
+    } else if (left) await db.del(FEED_KEYS.of(to));
+    await db.del(FEED_KEYS.of(from));
+  } finally {
+    await Promise.all(held.map(([key, owner]) => db.unlockOwned(key, owner).catch(() => {})));
+  }
+}

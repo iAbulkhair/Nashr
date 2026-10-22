@@ -267,6 +267,18 @@ export async function passkeyKeys(pid: PersonId): Promise<string[]> {
 }
 
 /**
+ * Every passkey of `pid` goes at once (account-id R2, the revert of an address move, rule 2744): the keys a wipe would
+ * delete (`passkeyKeys`), in one parallel batch, under `lock:person` unless the caller holds it. The person registers
+ * again from settings; a new set gets a new user handle.
+ */
+export async function removeAllPasskeys(pid: PersonId, opts: Opts = {}): Promise<void> {
+  await run(pid, opts, async () => {
+    const keys = await passkeyKeys(pid);
+    await Promise.all(keys.map((k) => db.del(k)));
+  });
+}
+
+/**
  * What a move did (Task 3 fix round 2, ruling N5). `moved`: the set is at `to` (or a resumed move finished). `nothing`:
  * equal pids or no set under `from`. `dropped`: the `from` set was not the mover's (another birth, or broken) and went
  * with its own reverse entries. `kept_to`: `to` already held a live or broken set, which was kept, and the `from` set

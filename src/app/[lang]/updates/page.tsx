@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { dict, isLang } from "@/lib/i18n";
-import { currentUser } from "@/lib/auth";
+import { acct, currentUser } from "@/lib/auth";
 import { CHANGELOG, UPDATES, type ChangeEntry, type ChangeTag, type WishStatus } from "@/lib/changelog";
 import { listWishes } from "@/lib/wishlist";
 import { dateFormat } from "@/lib/dates";
@@ -44,7 +44,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const t = dict[lang], c = UPDATES[lang];
   const u = await currentUser();
-  const wishes = await listWishes(u?.email);
+  const wishes = await listWishes(u ? acct(u) : null);
   const fmt = dateFormat(lang, { day: "numeric", month: "long", year: "numeric" });
   const loginHref = `/${lang}/app/login?next=${encodeURIComponent(`/${lang}/updates`)}`;
   const voteLabels = { vote: c.vote, voted: c.voted, votesLabel: c.votesLabel, failed: c.failed, slowDown: c.slowDown };

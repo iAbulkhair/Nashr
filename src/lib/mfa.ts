@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { db } from "./db";
 import { normalizeEmail } from "./auth";
 import { allow, clientIp, giveBack, retryLater } from "./rate";
+import { westernDigits } from "./verify-client";
 import { newTotpSecret, otpauthUri, totpMatch } from "./totp";
 import { cleanCode, looksLikeStaffCode, newRecoveryCodes, openWithLabel, recoveryIndex, sealWithLabel } from "./staff";
 import { withLoginLock } from "./team";
@@ -65,7 +66,8 @@ async function tryAccepted(req: Request, login: string): Promise<void> {
 }
 
 /** A 6-digit code against `secret`, burning its 30-second step for this login, so a code seen once never works twice. */
-async function totpOnce(login: string, secret: string, code: string): Promise<boolean> {
+async function totpOnce(login: string, secret: string, typed: string): Promise<boolean> {
+  const code = westernDigits(typed);
   if (!/^\d{6}$/.test(code)) return false;
   const step = totpMatch(secret, code, Date.now());
   if (step === null) return false;

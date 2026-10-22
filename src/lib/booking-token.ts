@@ -242,3 +242,34 @@ export async function revokeBook(who: LinkOwner | string, provider?: BookRecord[
 }
 
 export const revokeBooks = (logins: string[]) => pmap(logins, (l) => revokeBook(l)).then(() => {});
+
+/** One provider's home link follows the login (as `carryFeedLogin`, src/lib/feed-token.ts; the webhook key depends on the hash only). */
+async function carryOne(from: string, to: string, provider: BookRecord["provider"]): Promise<void> {
+  const keys = [lockKey(from, provider), lockKey(to, provider)].sort();
+  const held: [string, string][] = [];
+  try {
+    for (const key of keys) {
+      let owner: string | null = null;
+      for (let i = 0; i < 20 && !owner; i++) {
+        owner = await db.lockOwned(key, LOCK_TTL);
+        if (!owner) await sleep(50);
+      }
+      if (owner) held.push([key, owner]);
+    }
+    const [hash, left] = await Promise.all([db.get<string>(BOOK_KEYS.of(from, provider)), db.get<string>(BOOK_KEYS.of(to, provider))]);
+    const rec = hash ? await db.get<BookRecord>(BOOK_KEYS.rec(hash)) : null;
+    if (left && left !== hash) await db.del(BOOK_KEYS.rec(left));
+    if (hash && rec) {
+      await db.set(BOOK_KEYS.of(to, provider), hash);
+      await db.set(BOOK_KEYS.rec(hash), { ...rec, login: to } satisfies BookRecord);
+    } else if (left) await db.del(BOOK_KEYS.of(to, provider));
+    await db.del(BOOK_KEYS.of(from, provider));
+  } finally {
+    await Promise.all(held.map(([key, owner]) => db.unlockOwned(key, owner).catch(() => {})));
+  }
+}
+
+/** Account-id R2 (rule 1990): every provider's home booking link follows a login that moved in place. */
+export async function carryBookLogin(from: string, to: string): Promise<void> {
+  await pmap([...BOOK_PROVIDERS], (p) => carryOne(from, to, p));
+}

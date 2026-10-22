@@ -552,14 +552,18 @@ describe("source scans (rule 2132, credential part)", () => {
       join("src", "app", "api", "workspaces", "transfer", "route.ts"),
       // Multi-workspace M3: deleting one's own login (`deletePerson`, src/lib/person-delete.ts) takes the person's lock.
       join("src", "app", "api", "workspaces", "person", "route.ts"),
+      // Account-id R2 (rule 2744): the revert link moves the person back and ends its password under the move lock
+      // (`revertEmailMove`, src/lib/email-move.ts).
+      join("src", "app", "api", "auth", "email-revert", "route.ts"),
     ];
     // The sign-in options route (rule 2417) reads no person and takes no lock: it stays off the list, and this pins that
     // it still imports no person writer, so a lock added to it later lands here first.
     const optionsSrc = readFileSync(join("src", "app", "api", "auth", "passkey", "options", "route.ts"), "utf8");
     expect(optionsSrc).not.toMatch(/@\/lib\/(passkeys|person|team)"|\b(updatePerson|withPersonLock|createUser|markVerified)\(/);
-    const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
+    const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock|withMovePersonLock|forgetPassword)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
-    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/person-delete.ts", "src/lib/team.ts", "src/lib/transfer.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
+    // src/lib/email-move.ts (account-id R2): reached from the email change route, the verify route and the revert route.
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/email-move.ts", "src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/person-delete.ts", "src/lib/team.ts", "src/lib/transfer.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
     // src/lib/passkeys.ts: every route that imports the store is listed, so a new one (the sign-in verify route) fails
     // here until it is, and then must answer the lock timeout (Task 3 review minor 7).
     const passkeyRoutes = files(join("src", "app")).filter((f) => /from "@\/lib\/passkeys"/.test(readFileSync(f, "utf8")));

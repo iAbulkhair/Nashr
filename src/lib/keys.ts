@@ -217,6 +217,11 @@ export const personKey = {
   passkeys: (p: PersonId) => `passkeys:${p}`,
   /** json `{ challenge, sess, at }`: the person's one open passkey registration, taken with `getdel`; 300 s (rule 2407). */
   passkeyReg: (p: PersonId) => `pkreg:${p}`,
+  /**
+   * json `{ move, at }`: the person's last revert (account-id R2, rule 2744): `move` is when the reverted move happened,
+   * `at` when it was undone. A revert link of a move made between the two is dead. 30 days.
+   */
+  emailReverted: (p: PersonId) => `emailreverted:${p}`,
 } as const;
 
 export const accountKey = {
@@ -315,6 +320,11 @@ export const accountKey = {
   pushBucket: (login: string) => `push:${login}`,
   /** bucket name for `allow` (stored as `rate:tabbeat:{login}`): the visible-tab heartbeat (rule 2564). */
   seenBucket: (login: string) => `tabbeat:${login}`,
+  /**
+   * json `EmailHold` (src/lib/email-hold.ts): an address a person moved away from in place, refused to anyone else while
+   * that person exists; 30 days (account-id R2, D1, rule 2743). Read and written only while `OPAQUE_IDS` is on.
+   */
+  emailHold: (login: string) => `emailhold:${login}`,
 } as const;
 
 export const globalKey = {
@@ -378,6 +388,15 @@ export const globalKey = {
   opsProposal: (id: string) => `ops:proposal:${id}`,
   /** marker: an ops alert with this key was sent in the last 12 hours (rule 2384). */
   opsAlert: (key: string) => `ops:alert:${key}`,
+  /**
+   * json `EmailRevert` (src/lib/email-hold.ts): a single-use link that moves a person back to the address it left, under
+   * the SHA-256 hex of the token mailed to that address, taken with `getdel`; 7 days (account-id R2, D1, rule 2744).
+   */
+  emailRevert: (tokenHash: string) => `emailrevert:${tokenHash}`,
+  /** bucket name for `allow` (stored as `rate:emailrevert:ip:{ip}`): revert link uses per IP (rule 2744). */
+  emailRevertIpBucket: (ip: string) => `emailrevert:ip:${ip}`,
+  /** json `{ email, kind }`: a password reset link, under the SHA-256 hex of its token; 1 hour (POST /api/auth/forgot). */
+  passwordReset: (tokenHash: string) => `pwreset:${tokenHash}`,
 } as const;
 
 /**
@@ -396,3 +415,8 @@ export const runClaim = {
   sweepNotice: (day: string) => `holdsweep:${day}`,
 };
 
+/**
+ * The records an address may still name after an account moved in place (account-id R2, L3, rule 2740): the account and
+ * the person stored under the address as their id. Read only, by `addressBlocked` (src/lib/email-hold.ts).
+ */
+export const addressRecordKeys = (address: string): [string, string] => [accountKey.user(address), personKey.person(address as PersonId)];
