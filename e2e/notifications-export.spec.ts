@@ -101,7 +101,7 @@ test("the bell lists the account's own entries, marks one read by id, then all, 
       expect(res.status(), `marking id ${JSON.stringify(bad)}`).toBe(400);
       expect(((await res.json()) as { error: string }).error).toBe("bad_id");
     }
-    const absent = await markOne(api, "absentid1234");
+    const absent = await markOne(api, "no-such-notice");
     expect(absent.status()).toBe(404);
     expect(((await absent.json()) as { error: string }).error).toBe("not_found");
     const foreign = await markOne(strangerApi, joined.id);
