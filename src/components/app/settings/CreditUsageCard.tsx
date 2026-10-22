@@ -30,10 +30,14 @@ export type CreditUser = { plan: string; credits: number; trialEnds: string; cre
 /**
  * `chatBar`: the messages bar and its runway line. Off on the billing page, where the chat card above shows them; the
  * chat rows of the breakdown and the overflow credits in "used" stay either way.
+ * `creditsReset`: the day the plan's credits renew next, on the plan's own day (`resetsAt` of the entitlement view, rule
+ * 2936); null when no renewal is coming (a paid period that ended or is not paid yet). Left out, the card uses the 1st.
  */
-export default function CreditUsageCard({ t, lang, user, month, allowance, chat, chatBar = true }: { t: AppDict; lang: Lang; user: CreditUser; month: MonthUsage; allowance: number; chat?: ChatStatus; chatBar?: boolean }) {
+export default function CreditUsageCard({ t, lang, user, month, allowance, chat, chatBar = true, creditsReset }: { t: AppDict; lang: Lang; user: CreditUser; month: MonthUsage; allowance: number; chat?: ChatStatus; chatBar?: boolean; creditsReset?: string | null }) {
   const ar = lang === "ar";
   const { usage, images, nextReset } = month;
+  // Credits renew on the plan's day; the month's chat messages still restart on the 1st (rule 315).
+  const creditReset = creditsReset === undefined ? nextReset : creditsReset;
   const mediaUsed = month.mediaCredits ?? images;
   const chatCredits = chat && Number.isFinite(chat.overflow.credits) ? Math.max(0, chat.overflow.credits) : 0;
   const usedCredits = Object.values(usage).reduce((s, x) => s + x.credits, 0) + mediaUsed + chatCredits;
@@ -41,7 +45,7 @@ export default function CreditUsageCard({ t, lang, user, month, allowance, chat,
   const trial = user.plan === "trial";
   const trialEnd = user.trialEnds.slice(0, 10);
   const lineOpts = { lang, trial, nextReset, trialEnds: trialEnd };
-  const creditLine = runwayLine(runway({ used: usedCredits, left: user.credits, periodStart: paceStart(user.createdAt), resetAt: trial ? null : nextReset, trialEnds: user.trialEnds }), { ...lineOpts, what: "credits" });
+  const creditLine = !trial && creditReset === null ? null : runwayLine(runway({ used: usedCredits, left: user.credits, periodStart: paceStart(user.createdAt), resetAt: trial ? null : creditReset, trialEnds: user.trialEnds }), { ...lineOpts, nextReset: creditReset ?? nextReset, what: "credits" });
   const chatTrial = chat?.period === "trial";
   const chatPct = chat ? Math.min(100, Math.round((chat.used / Math.max(1, chat.allowance)) * 100)) : 0;
   const overflowOn = !!chat && chat.overflow.on && chat.overflow.available;
@@ -51,8 +55,8 @@ export default function CreditUsageCard({ t, lang, user, month, allowance, chat,
   const chatOverflowShown = !!chat && (chat.overflow.used > 0 || chatCredits > 0);
   const rules = trial
     ? (ar ? `تجربتك تشمل ${allowance} كريدت لمدة 3 أيام. تنتهي ${formatTime(user.trialEnds, lang)}.` : `Your trial includes ${allowance} credits for 3 days. Ends ${formatTime(user.trialEnds, lang)}.`)
-    : (ar ? `خطتك تشمل ${allowance} كريدت شهرياً. يتجدد كريدت الخطة في اليوم الأول من كل شهر (UTC)، وتبقى باقات الشحن السارية حتى تنتهي صلاحيتها. التجديد القادم: ${nextReset}.` : `Your plan includes ${allowance} credits per month. The plan's credits reset on the 1st of each month (UTC); top-up packs keep what is left in them until they expire. Next reset: ${nextReset}.`);
-  // The balance as plan credits and top-up credits, each pack with its expiry (rule 456): the renewal on the 1st resets
+    : (ar ? `خطتك تشمل ${allowance} كريدت شهرياً. يتجدد كريدت الخطة كل شهر في يوم بدء فترتها المدفوعة، وتبقى باقات الشحن السارية حتى تنتهي صلاحيتها. ${creditReset ? `التجديد القادم: ${creditReset}.` : "لا تجديد قادم حتى تُدفع الفترة التالية."}` : `Your plan includes ${allowance} credits per month. The plan's credits renew each month on the day its paid period started; top-up packs keep what is left in them until they expire. ${creditReset ? `Next renewal: ${creditReset}.` : "No renewal is due until the next period is paid."}`);
+  // The balance as plan credits and top-up credits, each pack with its expiry (rule 456): the monthly renewal resets
   // only the plan credits, so the card never presents the whole balance as one that resets.
   const split = creditSplit(user.credits, user.topups);
 
@@ -67,7 +71,7 @@ export default function CreditUsageCard({ t, lang, user, month, allowance, chat,
         <span className="font-display text-2xl font-bold text-foreground" dir="ltr">{user.credits}</span> <span className="text-sm text-foreground-muted">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>
         {split.topup > 0 && (
           <dl className="mt-2 grid gap-1 text-xs text-foreground-muted">
-            <div className="flex justify-between gap-2" data-plan-credits=""><dt>{trial ? (ar ? "كريدت التجربة" : "Trial credits") : (ar ? `كريدت الخطة (يتجدد في ${nextReset})` : `Plan credits (reset on ${nextReset})`)}</dt><dd className="font-mono" dir="ltr">{formatCount(split.plan)}</dd></div>
+            <div className="flex justify-between gap-2" data-plan-credits=""><dt>{trial ? (ar ? "كريدت التجربة" : "Trial credits") : creditReset ? (ar ? `كريدت الخطة (يتجدد في ${creditReset})` : `Plan credits (renew on ${creditReset})`) : (ar ? "كريدت الخطة" : "Plan credits")}</dt><dd className="font-mono" dir="ltr">{formatCount(split.plan)}</dd></div>
             <div className="flex justify-between gap-2" data-topup-credits=""><dt>{ar ? "كريدت باقات الشحن (يُصرف بعد كريدت الخطة، ولا يتجدد)" : "Top-up credits (used after the plan credits; no reset)"}</dt><dd className="font-mono" dir="ltr">{formatCount(split.topup)}</dd></div>
             {split.packs.map((p, i) => (
               <div key={i} className="flex justify-between gap-2 ps-3 text-foreground-muted" data-pack-expiry="">

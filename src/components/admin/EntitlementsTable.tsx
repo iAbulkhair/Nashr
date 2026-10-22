@@ -68,6 +68,8 @@ export function videoGrantRequest(until: string, note: string, hasGrant: boolean
 export default function EntitlementsTable({ view, lang, deal }: { view: EntitlementView; lang: "ar" | "en"; deal?: DealCell | null }) {
   const t = T[lang];
   const { ent, base, used, resetsAt, grants } = view;
+  // The chat count restarts on the 1st (rule 315); credits renew on the plan's own day (rule 2936). An older view has no chat day.
+  const chatResetsAt = view.chatResetsAt === undefined ? resetsAt : view.chatResetsAt;
   const g = grants.video;
   const models = (ids: readonly VideoModelId[]) => ids.map((id) => mediaModel(id).label[lang]).join(", ");
   const agents = (e: typeof ent) => e.agents.map((id) => agentById(id).name[lang]).join(", ");
@@ -86,7 +88,7 @@ export default function EntitlementsTable({ view, lang, deal }: { view: Entitlem
   const rows: Row[] = [
     { key: "credits", label: t.credits, plan: String(base.credits.monthly), override: dealCell ?? differs(String(ent.credits.monthly), String(base.credits.monthly)), effective: String(ent.credits.monthly), used: `${t.balance} ${used.credits}`, resets: resetsAt ?? DASH },
     { key: "seats", label: t.seats, plan: String(base.seats), override: differs(String(ent.seats), String(base.seats)), effective: String(ent.seats), used: `${used.seats} / ${ent.seats}`, resets: DASH },
-    { key: "chat", label: monthly ? t.chatMonth : t.chatTrial, plan: String(base.chat.monthly), override: differs(String(ent.chat.monthly), String(base.chat.monthly)), effective: String(ent.chat.monthly), used: `${used.chat.counted} / ${used.chat.allowance}`, resets: monthly ? resetsAt ?? DASH : DASH },
+    { key: "chat", label: monthly ? t.chatMonth : t.chatTrial, plan: String(base.chat.monthly), override: differs(String(ent.chat.monthly), String(base.chat.monthly)), effective: String(ent.chat.monthly), used: `${used.chat.counted} / ${used.chat.allowance}`, resets: monthly ? chatResetsAt ?? DASH : DASH },
     { key: "rate", label: t.chatRate, plan: rate(base), override: differs(rate(ent), rate(base)), effective: rate(ent), used: DASH, resets: DASH },
     {
       key: "video", label: t.video, plan: models(base.media.video),

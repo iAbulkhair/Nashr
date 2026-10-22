@@ -236,6 +236,8 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     if (changed) {
       setMonthly(u, allowanceOf(u));
       u.renewedAt = monthKey();
+      // The allowance renews on the subscription's own day (`billing.anchor`, below), counted from today (rule 2936).
+      u.renewedOn = today;
     }
     // The same plan paid again before its month ran out adds a month to it; anything else starts a month today.
     const extend = !!b && !billingLocked(b) && b.plan === plan && b.paidThrough > today;

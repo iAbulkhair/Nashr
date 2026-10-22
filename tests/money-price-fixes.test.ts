@@ -116,9 +116,9 @@ describe("the monthly refill stops after the paid-through day (rule 1303)", () =
   const base = { plan: "pro" as Plan, renewedAt: "2000-01", createdAt: "2000-01-01T00:00:00.000Z" };
   it("renewalDue: on or before the day it refills, after it not; no handPlan is the old shape and refills", () => {
     const t = "2026-10-12";
-    expect(renewalDue({ ...base, handPlan: { paidThrough: t, by: "key", at: "" } }, "2026-10", t)).toBe(true);
-    expect(renewalDue({ ...base, handPlan: { paidThrough: addDays(t, -1), by: "key", at: "" } }, "2026-10", t)).toBe(false);
-    expect(renewalDue(base, "2026-10", t)).toBe(true);
+    expect(renewalDue({ ...base, handPlan: { paidThrough: t, by: "key", at: "" } }, t)).toBe(true);
+    expect(renewalDue({ ...base, handPlan: { paidThrough: addDays(t, -1), by: "key", at: "" } }, t)).toBe(false);
+    expect(renewalDue(base, t)).toBe(true);
     // A Paymob subscription has its own day: a stray handPlan on it decides nothing.
     expect(handPlanEnded({ billing: paymob({ paidThrough: t }), handPlan: { paidThrough: "2000-01-01", by: "key", at: "" } }, t)).toBe(false);
     expect(handPlanEnded({ handPlan: { paidThrough: "not-a-day", by: "key", at: "" } }, t)).toBe(false);

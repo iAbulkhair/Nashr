@@ -55,7 +55,10 @@ describe("an ended hand-set plan reads as an ended trial at once (rule 2273)", (
     const paid = await account("pro", { handPlan: hand(today()) });
     expect(trialOver(paid)).toBe(false);
     expect(entitlements(paid).active).toBe(true);
-    expect((await entitlementView(paid)).resetsAt).not.toBeNull();
+    // Its last paid day: still active, but no new period is paid, so no renewal shows (rule 2936).
+    expect((await entitlementView(paid)).resetsAt).toBeNull();
+    const ahead = await account("pro", { handPlan: hand(addDays(today(), 40)) });
+    expect((await entitlementView(ahead)).resetsAt).not.toBeNull();
     const none = await account("pro");
     expect([trialOver(none), entitlements(none).active]).toEqual([false, true]);
   });
