@@ -147,7 +147,10 @@ test.describe("publishing with no platform connected", () => {
 
     // The inbox agrees: an approved item offers no "Publish to" button, because there is nowhere to publish to.
     await open(page, "/en/app/b/default");
-    await page.getByRole("button", { name: new RegExp(`^${I.approved}`) }).click();
+    // The filter is a client control: a click before the page hydrates is lost.
+    const approvedTab = page.getByRole("button", { name: new RegExp(`^${I.approved}`) });
+    await hydrated(approvedTab);
+    await approvedTab.click();
     const approvedCard = card(page, 1, brand);
     await expect(approvedCard).toBeVisible();
     await expect(approvedCard.getByRole("button", { name: new RegExp(`^${I.publishTo}`) })).toHaveCount(0);

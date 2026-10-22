@@ -70,7 +70,8 @@ test("the owner invites a member from the Members page, who joins with a name an
     // A weak password is refused on the page, with the rule that failed, and the invite is still usable afterwards.
     await fillWhenReady(guest.getByLabel(J.name, { exact: true }), member.name);
     await fillWhenReady(guest.getByLabel(J.password, { exact: true }), "short");
-    await guest.getByRole("button", { name: J.submit, exact: true }).click();
+    // The button is aria-disabled until the rules are met (Playwright will not click it); Enter submits the form all the same.
+    await guest.getByLabel(J.password, { exact: true }).press("Enter");
     await expect(guest.locator("form").getByRole("alert")).toBeVisible();
 
     await fillWhenReady(guest.getByLabel(J.password, { exact: true }), member.password);

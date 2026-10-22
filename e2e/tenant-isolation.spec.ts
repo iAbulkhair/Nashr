@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures/app";
 import { appDict } from "../src/lib/app-i18n";
-import { BRAND, apiTasks, createWorkspace, freshAccount, generateBatch, mockItem, stamp, useSession, versionOf } from "./fixtures/workspace";
+import { EMPTY_COPY } from "../src/lib/empty-copy";
+import { BRAND, apiTasks, createWorkspace, freshAccount, generateBatch, hydrated, mockItem, stamp, useSession, versionOf } from "./fixtures/workspace";
 
 /**
  * Tenant isolation, end to end: two accounts on the same server, each with its own brand, and the second one tries every
@@ -107,8 +108,11 @@ test("a second account cannot see, read or change the first account's items", as
 
       await pageB.goto("/en/app/b/default", { waitUntil: "domcontentloaded" });
       await expect(pageB.getByRole("heading", { level: 1 })).toContainText(I.title);
-      await pageB.getByRole("button", { name: new RegExp(`^${I.all}`) }).click();
-      await expect(pageB.getByText(appDict.en.inbox.empty)).toBeVisible();
+      const allTab = pageB.getByRole("button", { name: new RegExp(`^${I.all}`) });
+      await hydrated(allTab);
+      await allTab.click();
+      // The inbox's empty state (src/lib/empty-copy.ts).
+      await expect(pageB.getByText(EMPTY_COPY.en.inbox.title, { exact: true })).toBeVisible();
       await expect(pageB.locator("article.card")).toHaveCount(0);
       await expect(pageB.locator("body")).not.toContainText(brandA);
       await expect(pageB.locator("body")).not.toContainText(accountA.email);
