@@ -4,6 +4,8 @@ import { providerTimeout } from "../fetch-timeout";
 import { PROVIDER_REPLY_BYTES, responseJson } from "../read-capped";
 import type { Connection } from "./store";
 import { sameSecret } from "../rate";
+// A function import only (called at publish time), so the cycle with publish.ts is safe at module load.
+import { plainTitle } from "./publish";
 
 /** A real Shopify store domain; anything else must never become the host of an OAuth or API request. */
 export const SHOP_HOST = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
@@ -130,7 +132,8 @@ export async function publishShopifyArticle(c: Connection, post: { title: string
   const blog = b.blogs.nodes[0];
   if (!blog) throw new Error("no blog on store");
   const d = await shopifyGql<{ articleCreate: { article: { id: string; handle: string } | null; userErrors: { message: string }[] } }>(c, ARTICLE, {
-    article: { blogId: blog.id, title: post.title, body: mdToHtml(post.body), isPublished: post.published ?? false, author: { name: b.shop.name } },
+    // Model text: a planted `<img onerror>` in the title must not reach a theme that prints it raw (rule 3010).
+    article: { blogId: blog.id, title: plainTitle(post.title), body: mdToHtml(post.body), isPublished: post.published ?? false, author: { name: b.shop.name } },
   });
   const a = d.articleCreate.article;
   if (!a) throw new Error(`shopify article: ${(d.articleCreate.userErrors[0]?.message ?? "not created").slice(0, 160)}`);

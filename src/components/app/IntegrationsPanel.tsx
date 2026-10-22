@@ -63,8 +63,10 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
   const flashErr = !connectedId && errorCode !== null ? connectError(lang, errorCode) : "";
 
   async function load() {
-    const j = await (await fetch("/api/connect")).json();
-    if (j.ok) { setProviders(j.providers); setConns(j.connections); }
+    // Rule 2973: a dropped connection or an HTML 502 must not reject (an unhandled rejection after a successful action).
+    const res = await fetch("/api/connect").catch(() => null);
+    const j = res ? await res.json().catch(() => null) : null;
+    if (j?.ok) { setProviders(j.providers); setConns(j.connections); }
   }
   useEffect(() => { void Promise.resolve().then(load); }, []);
 
@@ -110,52 +112,68 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
     await load();
     return null;
   }
+  // Rule 2973: each action clears `busy` in `finally` and reads the reply with `.catch(() => null)`, so a dropped connection
+  // or an HTML 502 shows the generic line (`fail(undefined)`) instead of leaving every button disabled (as `disconnect`).
+  async function post(url: string, body: Record<string, unknown>): Promise<{ ok?: boolean; error?: string; count?: number; read?: boolean }> {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
+    return res ? ((await res.json().catch(() => null)) ?? {}) : {};
+  }
   async function importProducts(id: string) {
     setBusy(true);
-    const res = await fetch(`/api/connect/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "import_products" }) });
-    const j = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (j.ok) { setActErr(""); toast.success(`${g.importProducts}: ${j.count}`); } else fail(j.error);
+    try {
+      const j = await post(`/api/connect/${id}`, { action: "import_products" });
+      if (j.ok) { setActErr(""); toast.success(`${g.importProducts}: ${j.count}`); } else fail(j.error);
+    } finally {
+      setBusy(false);
+    }
   }
   async function selectPage(pageId: string) {
     setBusy(true);
-    const res = await fetch("/api/connect/meta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_page", pageId }) });
-    const j = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!j.ok) fail(j.error);
-    else { setActErr(""); const n = pageNote(g, j); if (n) toast.info(n); }
-    await load();
-    r.refresh();
+    try {
+      const j = await post("/api/connect/meta", { action: "select_page", pageId });
+      if (!j.ok) fail(j.error);
+      else { setActErr(""); const n = pageNote(g, j); if (n) toast.info(n); }
+      await load();
+      r.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
   async function selectOrg(org: string) {
     setBusy(true);
-    const res = await fetch("/api/connect/linkedin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_org", org }) });
-    const j = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!j.ok) fail(j.error);
-    else { setActErr(""); const n = pageNote(g, j); if (n) toast.info(n); }
-    await load();
-    r.refresh();
+    try {
+      const j = await post("/api/connect/linkedin", { action: "select_org", org });
+      if (!j.ok) fail(j.error);
+      else { setActErr(""); const n = pageNote(g, j); if (n) toast.info(n); }
+      await load();
+      r.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
   async function postAs(value: "me" | "org") {
     setBusy(true);
-    const res = await fetch("/api/connect/linkedin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "post_as", value }) });
-    const j = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!j.ok) fail(j.error);
-    else setActErr("");
-    await load();
-    r.refresh();
+    try {
+      const j = await post("/api/connect/linkedin", { action: "post_as", value });
+      if (!j.ok) fail(j.error);
+      else setActErr("");
+      await load();
+      r.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
   async function selectAdAccount(provider: string, accountId: string) {
     setBusy(true);
-    const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_ad_account", accountId }) });
-    const j = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!j.ok) fail(j.error);
-    else setActErr("");
-    await load();
-    r.refresh();
+    try {
+      const j = await post(`/api/connect/${provider}`, { action: "select_ad_account", accountId });
+      if (!j.ok) fail(j.error);
+      else setActErr("");
+      await load();
+      r.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
   // `toolkit`: which account of a provider connected in parts (Meta's Instagram and Facebook) this flow connects.
   const startOAuth = (p: P, toolkit?: string) => {

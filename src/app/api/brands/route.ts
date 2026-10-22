@@ -91,12 +91,20 @@ export async function POST(req: Request) {
   if (changed === null) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
   if (!changed) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   if ("error" in changed) return overCap(u, changed);
-  if (b.action === "archive") {
-    // The caller leaves the brand they just archived. The owner's own choice in this account is reset too when an admin
-    // archives the brand the owner is on: a session written before R1 does not validate the owner's (src/lib/auth.ts).
-    if ((u.brandId ?? "default") === changed.id) await choose(u, "default");
+  if (b.action === "archive" && changed.status === "archived") {
+    // The caller leaves the brand they just archived: the page they archived it from, and their STORED choice whenever it
+    // names it, even while they act from another brand's page (/b/Y archiving X, rule 3030). The owner's own choice in
+    // this account is reset too when an admin archives the brand the owner is on. A session written before R1 and an MCP
+    // token before rule 3030 used the stored choice unchecked (src/lib/auth.ts, src/lib/mcp.ts `userFromBearer`). Both
+    // stored choices are read in one round, and the resets written in one more.
+    const me = brandChooser(u);
     const owner = ownerChooser(u);
-    if (changed.status === "archived" && brandChooser(u).pid !== owner.pid && (await activeBrandIn(owner.pid, owner.aid, owner.homeLogin)) === changed.id) await setActiveBrandIn(owner.pid, owner.aid, "default", owner.homeLogin);
+    const ownerToo = me.pid !== owner.pid;
+    const [mine, owners] = await Promise.all([activeBrandIn(me.pid, me.aid, me.homeLogin), ownerToo ? activeBrandIn(owner.pid, owner.aid, owner.homeLogin) : Promise.resolve(null)]);
+    await Promise.all([
+      ...((u.brandId ?? "default") === changed.id || mine === changed.id ? [choose(u, "default")] : []),
+      ...(ownerToo && owners === changed.id ? [setActiveBrandIn(owner.pid, owner.aid, "default", owner.homeLogin)] : []),
+    ]);
   }
   return NextResponse.json({ ok: true });
 }

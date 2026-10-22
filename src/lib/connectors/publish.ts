@@ -42,6 +42,28 @@ export function splitTitle(body: string, fallback: string): { title: string; res
   return m ? { title: m[1].trim(), rest: body.slice(0, m.index) + body.slice(m.index + m[0].length) } : { title: fallback, rest: body };
 }
 
+const ESC: Readonly<Record<string, string>> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+/**
+ * A post title for a field the site stores as HTML (WordPress, rule 3010): the H1 or the item's title is model text, which
+ * may repeat a crawled page, and a WordPress app password of an administrator saves it unfiltered (`unfiltered_html`);
+ * themes print it with `the_title()`, unescaped. So `& < > " '` leave as entities and a planted
+ * `<img src=x onerror=...>` shows as text. WordPress shows entities in a title as the characters they stand for, and its
+ * own escaping (`esc_html`, `esc_attr`) does not encode an existing entity twice.
+ */
+export function escapeTitle(title: string): string {
+  return title.replace(/[&<>"']/g, (c) => ESC[c]);
+}
+
+/**
+ * A post title for a field the site stores as plain text (a Shopify article, rule 3010). Most themes print it through
+ * Liquid's `escape` (Dawn does), which would show an entity as `&amp;` on the page, so nothing is encoded here: the two
+ * characters that open or close a tag become the look-alike angle quotes ‹ ›, and a theme that prints the title raw
+ * still gets no tag from it. Ampersands, quotes and apostrophes ("Mother's Day") stay as written.
+ */
+export function plainTitle(title: string): string {
+  return title.replace(/</g, "‹").replace(/>/g, "›");
+}
+
 async function publishWith(email: string, task: Task, provider: string, opts: PublishOptions): Promise<PublishResult> {
   const c = await getFreshConnection(email, CONNECTION_OF[provider] ?? provider);
   if (!c) throw new Error("not_connected");

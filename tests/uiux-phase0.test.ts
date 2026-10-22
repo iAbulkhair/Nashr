@@ -116,7 +116,7 @@ describe("rule 962: the chat panel is keyed by its thread", () => {
   });
 
   it("puts a new thread in the address, so a link back to the old one is a new key", () => {
-    expect(panel).toMatch(/if \(!j\.ok\) return;\n\s*setConvs/);
+    expect(panel).toMatch(/if \(!j\?\.ok\) return;\n\s*setConvs/);
     // Through the workspace link helper since multi-workspace M2 (`href` from `useAppLink`).
     expect(panel).toMatch(/router\.replace\(href\(`\/chat\?conv=\$\{j\.conversation\.id\}/);
   });

@@ -10,6 +10,11 @@ import { zonesDue } from "@/lib/secretary-evening";
 
 export const maxDuration = 60;
 
+/**
+ * The calendar sweep's deadline from the tick's start (rule 3025): below `maxDuration` by the 5 s the response and the
+ * heartbeat need. A sync starts only 35 s before it (`CAL_START_MARGIN_MS`), so the last one starts at 25 s and ends by ~57 s.
+ */
+const CAL_BUDGET_TICK_MS = 60_000;
 /** Failed calls per IP a minute. QStash calls once every 15 minutes; this only bounds what an unsigned caller can cost. */
 const PER_IP_PER_MINUTE = 60;
 /** QStash's body is empty or tiny, and its signature a few hundred characters: anything far bigger is refused before any check. */
@@ -68,14 +73,26 @@ export async function POST(req: Request) {
   }
   const now = Date.now();
   const deadline = now + SWEEP_BUDGET_TICK_MS;
+  // Rule 3025: the calendars have their own deadline. They start nothing within 35 s of it (`CAL_START_MARGIN_MS`), so
+  // under the reminders' 40 s one a reminder sweep longer than 5 s starved every calendar sync. Sixty seconds from the
+  // start lets a sync begin for the first 25 s, and one that begins last ends inside `maxDuration` (a sync is ~32 s at most).
+  const calDeadline = now + CAL_BUDGET_TICK_MS;
   // Both callers are the tick (rule 1432): QStash, or on thakeen.com the hPanel cron with the bearer. Either one marks
   // timed reminders as running; the daily fallback (`/api/cron/daily`) never does.
-  const sweep = await sweepReminders(now, { tick: true, deadline });
-  // The linked calendars, with the same deadline: each due brand's next 7 days are read and kept (spec §7). A failure here never loses the reminders' answer.
-  const calendars = await sweepCalendars(now, deadline).catch((e) => {
-    console.error("cal sweep failed", e instanceof Error ? e.name : "error");
-    return { scopes: 0, synced: 0, lost: 0, retried: 0, deferred: 0 };
-  });
+  // The two sweeps touch different records and run side by side, each against its own deadline, so neither starves the
+  // other. The linked calendars: each due brand's next 7 days are read and kept (spec §7). A failure there never loses the reminders' answer.
+  const [sweep, calendars, digests] = await Promise.all([
+    sweepReminders(now, { tick: true, deadline }),
+    sweepCalendars(now, calDeadline).catch((e) => {
+      console.error("cal sweep failed", e instanceof Error ? e.name : "error");
+      return { scopes: 0, synced: 0, lost: 0, retried: 0, deferred: 0 };
+    }),
+    // The owners' digest emails (rule 2354): each account whose window closed on this tick, with what time is left.
+    sweepDigests(now, deadline).catch((e) => {
+      console.error("digest sweep failed", e instanceof Error ? e.name : "error");
+      return {};
+    }),
+  ]);
   // The evening pass: the zones whose wrap time (18:00, or 21:30 in Ramadan) fell within the last tick. The batch runs
   // in its own invocation with the cron bearer, so it has the daily job's time budget and its resumable markers. On
   // `appOrigin()`, never `req.url`: behind the Hostinger proxy that is the internal address (rule 904).
@@ -86,11 +103,6 @@ export async function POST(req: Request) {
     const kick = () => fetch(url, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
     try { after(kick); } catch { void kick(); }
   }
-  // The owners' digest emails (rule 2354): each account whose window closed on this tick, with what time is left.
-  const digests = await sweepDigests(now, deadline).catch((e) => {
-    console.error("digest sweep failed", e instanceof Error ? e.name : "error");
-    return {};
-  });
   await recordCronRun("secretary");
   return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, calendars, digests, evening: zones.length && secret ? zones.length : 0 });
 }

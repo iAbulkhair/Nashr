@@ -255,7 +255,7 @@ describe("rules 1144-1148: notification preferences per type and channel (expand
     expect(await readPrefs(scope, owner.email)).toEqual(body);
   });
   it("1144: the page reads the session's scope; anyone but the owner sees the choices without a Save", () => {
-    expect(read("src/app/[lang]/app/b/[brand]/settings/notifications/page.tsx")).toContain("readPrefs(sc(u), u.email)");
+    expect(read("src/app/[lang]/app/b/[brand]/settings/notifications/page.tsx")).toContain("readPrefs(sc(u), acct(u))") // the account's fallback record (rule 3032);
     const ro = renderToStaticMarkup(h(NotifyPrefsSettings, { lang: "en", initial: all, canEdit: false }));
     expect(ro).not.toContain('type="submit"');
     const edit = renderToStaticMarkup(h(NotifyPrefsSettings, { lang: "ar", initial: all, canEdit: true }));

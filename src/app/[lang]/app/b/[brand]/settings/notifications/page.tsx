@@ -16,8 +16,9 @@ export const generateMetadata = settingsScreenMeta("notifications");
 
 /**
  * Settings, Notifications (rule 1144): the choices that apply to the active brand, read from the session's scope (the
- * brand's record, else the account's, as the senders read them), in either stored shape. Only the owner changes them
- * (PUT /api/notifications/prefs checks `profile.account`); the bell's feed stays at /app/notifications. The digest email
+ * brand's record, else the account's `profile:{acct}`, rule 3032, as the senders read them), in either stored shape.
+ * Only the owner changes them (PUT /api/notifications/prefs checks `profile.account`); the bell's feed stays at
+ * /app/notifications. The digest email
  * (rule 2355) is the account's choice, read from `notifydigest:{account}` and saved by PUT /api/notifications/digest.
  */
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
@@ -26,7 +27,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const u = await currentUser();
   if (!u) redirect(appHref(lang, "/login"));
   const S = SETTINGS_COPY[lang].sections.notifications;
-  const [prefs, digest] = await Promise.all([readPrefs(sc(u), u.email), getDigest(acct(u))]);
+  const [prefs, digest] = await Promise.all([readPrefs(sc(u), acct(u)), getDigest(acct(u))]);
   return (
     <div className="grid gap-6">
       <PageHeader lang={lang} title={S.name} sub={S.sub} seed="settings-notifications" />

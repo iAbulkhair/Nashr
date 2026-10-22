@@ -68,7 +68,7 @@ const movesToday = (v: unknown, today: string): number => {
 };
 
 /** The accounts this person OWNS (the forward records agree), read in one `pmap` round. */
-async function ownedBy(p: Person): Promise<User[]> {
+export async function ownedBy(p: Person): Promise<User[]> {
   const held = (await heldAccounts(p)).filter((h) => h.role === "owner");
   const rows = await pmap(held, (h) => getAccount(h.aid));
   return rows.filter((x): x is User => !!x && ownerOf(x) === p.pid);

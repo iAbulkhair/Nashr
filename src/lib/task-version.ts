@@ -23,6 +23,36 @@ export function taskVersion(t: Versioned): string {
   return sha256(JSON.stringify([t.title ?? "", t.editedBody ?? t.body ?? "", hasArtwork(t) ? t.imageUrl : ""]));
 }
 
+/**
+ * When the latest generated image or clip landed on an item (rule 3012, set only by the media engine's `withResult`,
+ * src/lib/media/jobs.ts). Rule 679 expand: a new optional field of the stored task, typed here so the stored `Task` type
+ * (src/lib/brand.ts) needs no change in this step; older code ignores it, and an item without it is judged as before.
+ */
+export type MediaStamped = { mediaAt?: string };
+
+/**
+ * How long before its `at` a publish record may have read the item it sent: the inbox route's publish lock (70 s) plus
+ * the task lock's wait, rounded up. A record younger than the media by less than this may have sent the older media.
+ */
+export const PUBLISH_READ_MARGIN_MS = 120_000;
+
+type Reviewable = MediaStamped & { decidedAt?: string; published?: { at: string }[] };
+
+/**
+ * Whether a person has seen the item as it is now, for the chat's `publish_item` (src/lib/chat-run-tool.ts). Before media
+ * stamps (no `mediaAt`): a person's decision (`decidedAt`) or any publish, as before. With one: a decision after the
+ * media landed, or a publish whose record is more than PUBLISH_READ_MARGIN_MS younger than it (the inbox publish is bound
+ * to the card's version, image included, so it read the new media). A publish made before the media, or during the
+ * seconds of one, says nothing about media nobody saw. A stamp that does not parse counts as unseen.
+ */
+export function personSawCurrent(t: Reviewable): boolean {
+  if (t.mediaAt === undefined) return !!t.decidedAt || !!t.published?.length;
+  const media = Date.parse(t.mediaAt);
+  if (Number.isNaN(media)) return false;
+  const after = (at: string | undefined, margin: number) => typeof at === "string" && Date.parse(at) > media + margin;
+  return after(t.decidedAt, 0) || (t.published ?? []).some((p) => after(p.at, PUBLISH_READ_MARGIN_MS));
+}
+
 const K = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
   0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,

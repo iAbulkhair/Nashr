@@ -3,3 +3,5 @@
 # Only fake values belong here; a real value is rotated, never listed.
 # A made-up "sk_live" sentinel in the integrations test (PR #353, replaced by KEYPREFIX in the next commit).
 c7dcd13e18d8672daf08d4c31bc06764056f11e0:tests/margin-integrations.test.ts:stripe-access-token:222
+# A made-up notification id ("absentid1234") in the notifications export journey (PR #435, replaced by "no-such-notice" in the next commit).
+ba0c5ed88e2f7e2e0e21d074f464febc82cd5ff9:e2e/notifications-export.spec.ts:generic-api-key:104

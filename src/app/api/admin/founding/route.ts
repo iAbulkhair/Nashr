@@ -82,7 +82,8 @@ export async function POST(req: Request) {
     throw e;
   }
   if (!done.ok) return NextResponse.json(done, { status: STATUS[done.error] });
-  if (done.free) await freePlaces(email, done.free);
+  // The account, not the address: a place is held under the id (rule 2982), and freeing removes both members.
+  if (done.free) await freePlaces({ id: account.id, email: account.email }, done.free);
   await adminAudit({ actor: who, section: "billing", action: `founding_${action}`, target: email, what: `founding_${action} ${email}`, before: done.before, after: done.after, reason: b.reason });
   return NextResponse.json({ ok: true, email, ...done.after });
 }

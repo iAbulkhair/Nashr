@@ -117,7 +117,8 @@ async function brandData(scope: Scope): Promise<Omit<ExportBrand, "id" | "name" 
 
 /** The whole export of the signed-in owner `u` (an owner record from `currentUser`, never one named by a request). */
 export async function buildExport(u: User, now = new Date()): Promise<AccountExport> {
-  const owner = u.email;
+  // The account key, not the address (rule 2963): brands are listed under `acct(u)`, like `wipeAccount` finds them.
+  const owner = acct(u);
   // The brand the session has open (`sc(u)`): marked `active`. Every brand of the account is exported, each read under
   // its own scope derived from the same signed-in owner.
   const activeScope = sc(u);

@@ -190,9 +190,10 @@ export async function startCheckout(owner: Pick<User, "id" | "email">, body: unk
 type Applied = { ok: true; already: boolean; payment?: Payment } | { ok: false; error: string };
 
 /**
- * Apply a paid intent (spec 4.1, 4.2). A plan: the plan, its month's credits when it changes (or the account was locked),
- * the subscription state, seats, then the payment through `recordPayment` (offer, commission, referral). A renewal: the
- * paid month moves one month from the previous end, nothing else. A pack: `addPaidTopup`. Every step is idempotent on
+ * Apply a paid intent (spec 4.1, 4.2). A plan: the plan, its month's credits when it changes (or the account was locked,
+ * had no online subscription yet, or held a plan set by hand: rule 2981), the subscription state, seats, then the payment
+ * through `recordPayment` (offer, commission, referral). A renewal: the paid month moves one month from the previous end,
+ * nothing else, and only for the plan it was priced for (rule 2983). A pack: `addPaidTopup`. Every step is idempotent on
  * the transaction id (`billing.txns`) or the payment id derived from it.
  */
 async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): Promise<Applied> {
@@ -206,7 +207,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   const cardRead = await db.get<SavedCard>(cardKey(intentAccount(intent)));
   const id = String(txnId);
   let claim: ClaimOutcome | null = null;
-  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing" | "offer_used"> => {
+  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing" | "plan_changed" | "offer_used"> => {
     const b = u.billing;
     // Rule 2757: a plan checkout opened before the account changed owner still pays its month, but the card read for it
     // belongs to the previous owner and never turns renewals on for the new one.
@@ -219,6 +220,10 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     if (intent.kind === "plan" && intent.offer && (!unusedOffer(u) || b)) return "offer_used";
     if (intent.kind === "renewal") {
       if (!b) return "no_billing";
+      // Rule 2983: a renewal pays a month of the plan it was priced for. One whose subscription has since moved to another
+      // plan (a late callback for the old plan's charge after an upgrade or a downgrade) adds nothing: paid but not
+      // applied, like a renewal with no subscription, and the founder refunds it.
+      if (intent.plan !== b.plan) return "plan_changed";
       const next: Billing = { ...b, status: "active", paidThrough: addMonths(b.paidThrough, 1, b.anchor), failures: 0, txns: keepTxns(b.txns, id) };
       delete next.graceUntil;
       delete next.pending;
@@ -228,7 +233,11 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     }
     // The account's first online subscription: the founding seat (when asked) and the price lock (rules 1703-1705).
     if (!b) claim = await claimOnPayment(u, { founding: !!intent.founding, plan, paidHalalas: intent.amountCents, paymentId, day: today });
-    const changed = u.plan !== plan || billingLocked(b);
+    // Rule 2981: the account's first online subscription, or one replacing a plan set by hand, starts a paid period today
+    // whatever the plan was: its month's credits and `renewedOn` today. Before, the same plan held by hand (or set by hand
+    // with no paid-through day) counted as unchanged, so the payment gave no credits and the next refill waited for the
+    // first renewal, a month later.
+    const changed = u.plan !== plan || billingLocked(b) || !b || !!u.handPlan;
     u.plan = plan;
     delete u.deal;
     // Paid online from now on: the subscription's own `paidThrough` governs, not a day the founder set by hand (rule 1305).
@@ -251,6 +260,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     return changed ? "changed" : "same";
   });
   if (step === "no_billing") return { ok: false, error: "no_billing" };
+  if (step === "plan_changed") return { ok: false, error: "plan_changed" };
   if (step === "offer_used") return { ok: false, error: "offer_used" };
   const c = claim as ClaimOutcome | null;
   if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
@@ -418,6 +428,9 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
   const saved = b.autoRenew ? p.savedCard : null;
   const card = saved ? await db.get<SavedCard>(cardKey(email)) : null;
   let outcome = card ? "paymob_declined" : "paymob_due";
+  // Rule 2984: the charge call itself failed with no answer (a timeout, a network error, a 5xx): the card may have been
+  // charged. Its `pending` stays, so the two-day guard above waits for the callback instead of charging the card again.
+  let keepPending: string | null = null;
   if (card) {
     try {
       const r = await chargeSavedCard(p, saved!, u, b, card, today);
@@ -425,6 +438,7 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
       if (r === "pending") return "paymob_pending";
     } catch (e) {
       outcome = "paymob_error";
+      if (e instanceof ChargeUnanswered) keepPending = e.ref;
       logger.error("paymob renewal", { error: e instanceof PaymentError ? e.message : "error" });
     }
   }
@@ -432,10 +446,21 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
     const xb = x.billing;
     if (!xb || xb.paidThrough !== b.paidThrough || xb.status === "locked") return;
     x.billing = { ...xb, status: "past_due", failures: xb.failures + 1, graceUntil: xb.graceUntil ?? addDays(xb.paidThrough, GRACE_DAYS) };
-    delete x.billing.pending;
+    // A definite decline (or nothing charged) clears it; a charge with no answer keeps its own (rule 2984).
+    if (!keepPending || xb.pending?.ref !== keepPending) delete x.billing.pending;
     await saveUser(x);
   });
   return outcome;
+}
+
+/**
+ * Rule 2984: the saved-card charge was sent and no answer came (a timeout, a network error, a 5xx), or the card answered
+ * and applying it failed part-way. The card may have been charged: `renewPaymob` keeps the subscription's `pending`.
+ */
+class ChargeUnanswered extends PaymentError {
+  constructor(provider: PaymentProvider["name"], readonly ref: string, cause: unknown) {
+    super(provider, cause instanceof PaymentError ? `unanswered_${cause.code}` : "unanswered", cause instanceof PaymentError ? cause.status : 0);
+  }
 }
 
 /** MIT through the provider's saved-card charge (Paymob: the Moto integration): a renewal intent at the plan's price, then the saved card (spec 4.2). */
@@ -483,11 +508,25 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
     await db.set(intentKey(ref), { ...intent, orderId, status: "failed" }, DAYS_400);
     throw new PaymentError(p.name, "renewal_off");
   }
-  const txn = await saved.charge(paymentKey, card.token);
+  let txn: PaymentTxn | null;
+  try {
+    txn = await saved.charge(paymentKey, card.token);
+  } catch (cause) {
+    // Rule 2984: sent, and no answer. The intent stays open and `pending` stays on the subscription (written above), so
+    // its callback still applies it and no later run charges the period again inside the two-day guard.
+    throw new ChargeUnanswered(p.name, ref, cause);
+  }
   if (!txn || txn.pending) return "pending";
   // Our own call's answer over TLS: the reference is ours even when the answer does not echo it, but the order must match.
   if (txn.orderId !== null && txn.orderId !== orderId) return "pending";
-  const r = await applyTransaction(p, { ...txn, ref: txn.ref ?? ref });
+  let r: CallbackResult;
+  try {
+    r = await applyTransaction(p, { ...txn, ref: txn.ref ?? ref });
+  } catch (cause) {
+    // Rule 2984: the card answered but applying it failed part-way; the callback (or the transaction's retry) finishes it.
+    // Until then the period counts as possibly paid, exactly like a charge with no answer.
+    throw new ChargeUnanswered(p.name, ref, cause);
+  }
   return txn.success && (r.result === "paid" || r.result === "already") ? "paid" : r.status === 503 ? "pending" : "declined";
 }
 
@@ -612,9 +651,15 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
     }
   }
   const why = typeof reason === "string" && reason.trim() ? reason : "paymob refund";
-  if (p.topup) {
-    const r = await voidPaidTopup(e, p.topup.lot, by, why);
-    if (r.ok) return { ok: true, payment: r.payment ?? p, alreadyRefunded, planEnded: false };
+  if (p.topup || rec.kind === "topup") {
+    const r = p.topup ? await voidPaidTopup(e, p.topup.lot, by, why) : null;
+    if (r?.ok) return { ok: true, payment: r.payment ?? p, alreadyRefunded, planEnded: false };
+    // Rule 2980: a pack's refund never ends a plan, also when its pack is already gone (a retry after the first run voided
+    // it, a pack that ran out or that the founder voided in the console): the payment alone is voided (a repeat is a
+    // no-op) and the plan, its card and its seats stay. Before, `topup_not_found` fell through to `endPlanOnRefund`.
+    const tv = await voidPayment(e, id, by, why);
+    if (!tv.ok) return { ok: false, error: "not_found" };
+    return { ok: true, payment: tv.payment, alreadyRefunded, planEnded: false };
   }
   const v = await voidPayment(e, id, by, why);
   if (!v.ok) return { ok: false, error: "not_found" };
@@ -694,10 +739,11 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string, txn
     setMonthly(u, 0);
     await saveUser(u);
     await db.set(refundEndedKey(txnId), paymentId, DAYS_400);
-    return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding };
+    return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding, places: { id: acct(u), email: u.email } };
   });
   if (change && typeof change === "object") {
-    if (change.founding) await freePlaces(email);
+    // Rule 2982: the places are held under the account id; a row written under the address before goes too.
+    if (change.founding) await freePlaces(change.places);
     await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
   }
   await enforceSeats(email);

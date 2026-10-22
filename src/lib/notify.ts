@@ -3,6 +3,7 @@ import { adminAudit } from "./admin-audit";
 import { renderEmail, type EmailContext, type EmailTemplateId } from "../emails";
 import type { Lang } from "./i18n";
 import { log } from "./log";
+import { wsKey } from "./keys";
 import { mailProvider } from "./mail-provider";
 
 /**
@@ -119,10 +120,13 @@ async function mailFailed(from: string, reason: string) {
  * predates that guard. A marker burned after the cutoff and before this code is live is left alone: missing that one
  * repair is the lesser failure.
  *
+ * `email` names the marker's owner (an account id from rule 3022 on, the sign-in address before); `to` is the recipient
+ * and defaults to it.
+ *
  * `html`, when given, is the message's HTML part and goes to `sendEmail` with the text (rule 689): a registered template
  * (`{ template, context, locale }`, rule 1962), or markup a caller already built.
  */
-export async function sendOnce<T extends EmailTemplateId>(email: string, key: string, subject: string, text: string, html?: string | OncePart<T>): Promise<OnceResult> {
+export async function sendOnce<T extends EmailTemplateId>(email: string, key: string, subject: string, text: string, html?: string | OncePart<T>, to: string = email): Promise<OnceResult> {
   const marker = onceKey(email, key);
   const first = await db.get(marker);
   if (!repairable(first) || (isOldMarker(first) && !(await writtenBeforeRepairCutoff(marker)))) return "already";
@@ -141,7 +145,7 @@ export async function sendOnce<T extends EmailTemplateId>(email: string, key: st
       if (!(await db.lock(onceRepairKey(email, key), ONCE_TTL_SECONDS))) return "already";
       await db.del(marker);
     }
-    const sent = typeof html === "object" ? await sendEmail({ to: email, subject, text, ...html }) : await sendEmail(email, subject, text, html);
+    const sent = typeof html === "object" ? await sendEmail({ to, subject, text, ...html }) : await sendEmail(to, subject, text, html);
     if (!sent) return "failed";
     await markSent(email, key);
     return "sent";
@@ -202,3 +206,23 @@ export const ONCE_INDEX = (email: string) => `notifiedkeys:${email}`;
 /** Long enough that a "once ever" nudge is never repeated in practice, short enough that the key does not outlive the account. */
 const ONCE_TTL_SECONDS = 400 * 86400;
 export const ONCE_CLAIM_TTL_SECONDS = 120;
+
+/** How long a day's mail claim lives: the batch's own marker TTL, so a retry on the next day's run still finds it. */
+const MAIL_DAY_TTL_SECONDS = 2 * 86400;
+
+/**
+ * Send the workspace's one daily email at most once a day (rule 3023). The claim is `SET NX` on the workspace and the
+ * UTC day (the batch's period) BEFORE the send; a refused send releases it so a retry may try again, a killed run keeps
+ * it so the retry does not mail twice. Answers whether the mail was accepted.
+ */
+export async function mailOncePerDay(scope: string, send: () => Promise<boolean>): Promise<boolean> {
+  const key = wsKey.dailyMail(scope, new Date().toISOString().slice(0, 10));
+  if (!(await db.lock(key, MAIL_DAY_TTL_SECONDS))) return false;
+  let ok = false;
+  try {
+    ok = await send();
+  } finally {
+    if (!ok) await db.unlock(key).catch(() => {});
+  }
+  return ok;
+}

@@ -182,6 +182,8 @@ export const wsKey = {
   pushSubs: (s: Scope) => `pushsubs:${s}`,
   /** marker: a push about this agent and state went out in the last 30 minutes (SET NX, rule 2566). */
   pushSent: (s: Scope, agent: string, state: string) => `pushsent:${s}:${agent}:${state}`,
+  /** The claim of one workspace's daily email on one UTC day (rule 3023); expires on its own, so the wipe needs no entry. */
+  dailyMail: (scope: string, day: string) => `dailymail:${scope}:${day}`,
 } as const;
 
 export const personKey = {
@@ -312,6 +314,10 @@ export const accountKey = {
    * proof step, 10 per hour (rule 1170; the two-step settings route builds the same name in place, M3 `freshProof` here).
    */
   mfaPasswordBucket: (login: string) => `mfapw:${login}`,
+  /** bucket name for `allow` (stored as `rate:pwchange:{login}`): wrong current passwords on PATCH /api/account, 10 per hour (rule 2991). */
+  passwordChangeBucket: (login: string) => `pwchange:${login}`,
+  /** bucket name for `allow` (stored as `rate:acctdelete:{login}`): wrong passwords on DELETE /api/account, 10 per hour (rule 2991). */
+  accountDeleteBucket: (login: string) => `acctdelete:${login}`,
   /** marker: a tab of this login was visible in the last `AWAY_MINUTES` (rule 2564); its TTL is the whole record. */
   tabSeen: (login: string) => `tabseen:${login}`,
   /** json `{ agent, state, at }`: the last push this login's devices were sent, read by the worker (rule 2567), 1 day. */

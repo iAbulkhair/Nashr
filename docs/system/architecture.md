@@ -683,6 +683,7 @@ Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAP
 | `mfachal:{sha256(id)}` | json | Sign-in challenge `{email, at, tries, via, next?}`, its id in the `thakeen_mfa` cookie | `src/lib/mfa.ts` | 5 min |
 | `mfaotp:used:{sha256(login)}:{step}` | string | A TOTP step already used by this login (SET NX) | `src/lib/mfa.ts` | 120 s |
 | `rate:mfacode:ip:{ip}`, `rate:mfacode:em:{sha256(login)}`, `rate:mfapw:{login}` | int | Code tries (5 per 15 min) and wrong passwords (10 per hour) | `src/lib/mfa.ts`, `api/account/2fa` | window |
+| `rate:pwchange:{login}`, `rate:acctdelete:{login}` | int | Wrong current passwords on a password change and on an account delete (10 per hour each, a right one is given back; rule 2991) | `api/account` (`accountKey.passwordChangeBucket`, `accountKey.accountDeleteBucket`) | window |
 | `devs:{login}` | hash | The login's sessions: field = the device id (a hash of the session key), value `{k, ua, ip, at}` where `k` is the session's own Redis key (`session:h:*`, already a hash of the cookie, so it opens nothing); 50 at most | `src/lib/devices.ts` (from `createSession`) | 30 days |
 | `emailchange:{login}`, `emailchange:tries:{login}` | json, int | A pending address change `{to, hash, at}` (only a hash of the code) and its wrong tries | `src/lib/email-change.ts` | 15 min |
 | `rate:emailpw:{login}`, `rate:emailchange:start:{login}` | int | Wrong passwords (10 per hour) and starts (5 per hour) | `api/account/email` | 1 hour |

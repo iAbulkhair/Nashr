@@ -40,6 +40,7 @@ import { recordActivity } from "./activity";
 import { BATCH_RUN_MIN_MS, generateBatch, type BatchRefusal, type BatchResult } from "./generate-batch";
 import { LEAD_BRIEF_MAX } from "./json";
 import { getGov, type Governance } from "./governance";
+import { authorityOf } from "./tool-authority";
 import { estimateBatch } from "./task-costs";
 import { maxCostPerCreditUsd } from "./pricing";
 import { log } from "./log";
@@ -144,7 +145,7 @@ export const AUTO_HANDOFF_MAX_ITEMS = 3;
 export const AUTO_HANDOFF_MAX_CREDITS = 12;
 
 /** Why the auto-run may not start an item. Every reason leaves the item exactly as it is, for the owner. */
-export type AutoBlock = "off" | "not_majed" | "origin" | "requester" | "not_shown" | "thread_gone" | "bad_item" | "not_proposed" | "too_old" | "no_cap" | "floor" | "ceiling";
+export type AutoBlock = "off" | "not_majed" | "origin" | "requester" | "not_shown" | "thread_gone" | "bad_item" | "not_proposed" | "too_old" | "no_cap" | "authority" | "floor" | "ceiling";
 
 /**
  * Whether the auto-run may start a batch of `type` at all: the 60% margin floor (rule 241) checked the way it is for
@@ -178,6 +179,8 @@ export function autoUnderFloor(type: TaskType): boolean {
  * about to be shown with that reply, so `shownAt` is not required yet; every other rule applies.
  */
 export type AutoContext = { threadGone?: boolean; beforeCard?: boolean };
+/** The settings `autoBlock` reads. `toolPolicy` is optional: a caller or record without one reads as every capability on. */
+export type AutoGov = Pick<Governance, "majedAutoHandoff" | "agentCaps"> & Partial<Pick<Governance, "toolPolicy">>;
 
 /**
  * Whether Majed's auto-run may start item `n` of `h` under the brand's settings `gov` at `now`, or why not. Pure; the
@@ -189,10 +192,12 @@ export type AutoContext = { threadGone?: boolean; beforeCard?: boolean };
  * - the item is `proposed`: never one that ran, failed, is running or was declined (a failed item waits for the owner);
  * - the proposal is at most AUTO_HANDOFF_MAX_AGE_DAYS old;
  * - the agent that owns the item's type has an owner-set monthly cap, so every auto-run charge is capped by the owner;
+ * - that agent may create content: its `produce` authority (rules 2430-2436, Governance) is neither `off` nor `ask`
+ *   (rule 3014). Off means the owner allowed it no content, and ask means a person runs each one; the auto-run is neither.
  * - the item's type keeps the margin floor on a cold cache (`autoUnderFloor`): every type today, since rule 901;
  * - the whole proposal is within the ceiling: at most AUTO_HANDOFF_MAX_ITEMS items and AUTO_HANDOFF_MAX_CREDITS credits.
  */
-export function autoBlock(h: Pick<Handoff, "agent" | "origin" | "requestedBy" | "items" | "createdAt" | "shownAt">, n: number, gov: Pick<Governance, "majedAutoHandoff" | "agentCaps">, now: number = Date.now(), ctx: AutoContext = {}): AutoBlock | null {
+export function autoBlock(h: Pick<Handoff, "agent" | "origin" | "requestedBy" | "items" | "createdAt" | "shownAt">, n: number, gov: AutoGov, now: number = Date.now(), ctx: AutoContext = {}): AutoBlock | null {
   if (gov.majedAutoHandoff !== true) return "off";
   if (h.agent !== "majed") return "not_majed";
   if (h.origin !== "web_chat") return "origin";
@@ -206,12 +211,14 @@ export function autoBlock(h: Pick<Handoff, "agent" | "origin" | "requestedBy" | 
   if (Number.isNaN(at) || now - at > AUTO_HANDOFF_MAX_AGE_DAYS * DAY_MS) return "too_old";
   const cap = gov.agentCaps?.[agentForTask(it.type).id];
   if (typeof cap !== "number" || !Number.isFinite(cap)) return "no_cap";
+  // Read from the same settings the caller passed (read again under the run lock by the cron); a record without a policy is all on.
+  if (authorityOf(gov.toolPolicy, agentForTask(it.type).id, "produce") !== "on") return "authority";
   if (!autoUnderFloor(it.type)) return "floor";
   if (h.items.length > AUTO_HANDOFF_MAX_ITEMS || h.items.reduce((s, i) => s + TASK_COST[i.type], 0) > AUTO_HANDOFF_MAX_CREDITS) return "ceiling";
   return null;
 }
 /** The items of `h` the auto-run may start now, in order. */
-export const autoItems = (h: Handoff, gov: Pick<Governance, "majedAutoHandoff" | "agentCaps">, now: number = Date.now(), ctx: AutoContext = {}) => h.items.flatMap((_, n) => (autoBlock(h, n, gov, now, ctx) ? [] : [n]));
+export const autoItems = (h: Handoff, gov: AutoGov, now: number = Date.now(), ctx: AutoContext = {}) => h.items.flatMap((_, n) => (autoBlock(h, n, gov, now, ctx) ? [] : [n]));
 
 // Control characters, zero-width spaces and bidi overrides hide or reorder text on the owner's screen; line breaks stay.
 const HIDDEN = /[\u0000-\u0009\u000b-\u001f\u007f\u200b\u202a-\u202e\u2066-\u2069]/g;

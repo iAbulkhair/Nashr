@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { WFile } from "@/lib/files";
@@ -39,6 +39,10 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   // Rule 2441: a save refused because the file changed (or was deleted) since the editor opened. The typed text stays in
   // the editor; the person saves it over the newer file (with that file's time as the new base) or drops it.
   const [conflict, setConflict] = useState<{ name: string; file: WFile | null } | null>(null);
+  // Rule 2976: one save at a time. A second click on Save used to send a second PUT with the same base time, which the server
+  // refused with 409 `stale` and left a `conflict` banner over the next edit. The ref closes the gap before the re-render.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const isLocked = (name: string) => locked.includes(name);
   /** Shows a refused call: the role for a 403 stays inline, any other failure is a toast. */
   function fail(res: Response | null, generic: string) {
@@ -75,21 +79,29 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
 
   /**
    * `baseAt` (rule 2441): the time of the file the editor opened, or null for a new file, so the server writes only while
-   * that is still so. A refused save keeps the editor open with the text in it.
+   * that is still so. A refused save keeps the editor open with the text in it. `create` (rule 2976) is the new-file box:
+   * it saves a file other than the one open, so it never closes the editor of the open one or clears its conflict.
    */
-  async function save(name: string, content: string, baseAt: string | null) {
-    setErr("");
-    const res = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content, baseAt }) }).catch(() => null);
-    if (res?.status === 409) {
-      const j = (await res.json().catch(() => ({}))) as { error?: string; file?: WFile | null };
-      if (j.error === "exists") { toast.danger(f.exists); setOpen(name); r.refresh(); return; }
-      if (j.error === "stale") { setConflict({ name, file: j.file ?? null }); return; }
+  async function save(name: string, content: string, baseAt: string | null, create = false) {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      setErr("");
+      const res = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content, baseAt }) }).catch(() => null);
+      if (res?.status === 409) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string; file?: WFile | null };
+        if (j.error === "exists") { toast.danger(f.exists); if (!editing) setOpen(name); r.refresh(); return; }
+        if (j.error === "stale" && !create) { setConflict({ name, file: j.file ?? null }); return; }
+      }
+      if (res?.status === 503) { toast.danger(f.busy); return; }
+      if (!res?.ok) { fail(res, t.team.errors.failed); return; }
+      if (!create) { setConflict(null); setEditing(false); }
+      r.refresh();
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
-    if (res?.status === 503) { toast.danger(f.busy); return; }
-    if (!res?.ok) { fail(res, t.team.errors.failed); return; }
-    setConflict(null);
-    setEditing(false);
-    r.refresh();
   }
   async function del(name: string) {
     if (!(await ask({ title: name, message: `${f.delete} ${name}?`, confirmLabel: f.delete, cancelLabel: t.dialog.back, destructive: true }))) return;
@@ -123,7 +135,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
               </li>
             ))}
           </ul>
-          <form onSubmit={(e) => { e.preventDefault(); if (newName) void save(newName.endsWith(".md") ? newName : newName + ".md", "# " + newName + "\n", null); setNewName(""); }} className="mt-3 flex gap-1">
+          <form onSubmit={(e) => { e.preventDefault(); if (newName) void save(newName.endsWith(".md") ? newName : newName + ".md", "# " + newName + "\n", null, true); setNewName(""); }} className="mt-3 flex gap-1">
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={f.newFile} dir="ltr" className="min-w-0 flex-1 rounded border border-border px-2 py-1 text-xs" />
             <button className="rounded bg-inverse px-2 text-xs text-inverse-muted">+</button>
           </form>
@@ -136,12 +148,12 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
                 <div className="flex gap-2 text-sm">
                   {editing ? (
                     <>
-                      <button onClick={() => save(cur.name, draft, cur.updatedAt)} className="btn btn-primary btn-pill">{f.save}</button>
+                      <button onClick={() => save(cur.name, draft, cur.updatedAt)} disabled={saving} className="btn btn-primary btn-pill disabled:opacity-60">{f.save}</button>
                       <button onClick={() => { setEditing(false); setConflict(null); }} className="btn btn-secondary btn-pill">{f.cancel}</button>
                     </>
                   ) : isLocked(cur.name) ? null : (
                     <>
-                      <button onClick={() => { setDraft(cur.content); setEditing(true); setErr(""); }} className="btn btn-secondary btn-pill">{f.edit}</button>
+                      <button onClick={() => { setDraft(cur.content); setEditing(true); setErr(""); setConflict(null); }} className="btn btn-secondary btn-pill">{f.edit}</button>
                       <button onClick={() => del(cur.name)} className="btn btn-danger btn-pill">{f.delete}</button>
                     </>
                   )}
@@ -152,7 +164,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
                   <p>{conflict.file ? f.stale.replace("{who}", f.staleBy[conflict.file.by]) : f.staleGone}</p>
                   {conflict.file && <p className="mt-1 text-xs text-foreground-muted">{f.staleAt} <Time value={conflict.file.updatedAt} lang={lang} style="datetime" /></p>}
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => save(cur.name, draft, conflict.file?.updatedAt ?? null)} className="btn btn-primary btn-sm">{f.overwrite}</button>
+                    <button type="button" onClick={() => save(cur.name, draft, conflict.file?.updatedAt ?? null)} disabled={saving} className="btn btn-primary btn-sm disabled:opacity-60">{f.overwrite}</button>
                     <button type="button" onClick={() => { setConflict(null); setEditing(false); r.refresh(); }} className="btn btn-secondary btn-sm">{f.loadLatest}</button>
                   </div>
                 </div>

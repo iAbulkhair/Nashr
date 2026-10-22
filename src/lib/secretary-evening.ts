@@ -214,8 +214,9 @@ export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" 
   }
   if (process.env.RESEND_API_KEY) {
     const subject = user.lang === "ar" ? `ملخص المساء — ${w.day}${brand ? ` — «${brand}»` : ""}` : `Evening wrap — ${w.day}${brand ? ` — “${brand}”` : ""}`;
-    // The evening wrap's own switch (rule 1147); the old levels read as before: only "all" sent it.
-    if (emailAllowed(await readPrefs(scope, user.email), "evening")) await sendEmail({ to: user.email, subject, text: `${title}\n\n${body}\n\n${appOrigin()}${appHrefFor(user, user.lang, "/todo", brandOfScope(scope))}`, template: "notice", context: { title, paragraphs: paragraphs(body), cta: { href: `${appOrigin()}${appHrefFor(user, user.lang, "/todo", brandOfScope(scope))}`, label: COPY[user.lang].notice.todo } }, locale: user.lang });
+    // The evening wrap's own switch (rule 1147); the old levels read as before: only "all" sent it. The fallback record
+    // is the ACCOUNT's (`profile:{acct}`, rule 3032), the one the prefs route writes; the email still goes to the address.
+    if (emailAllowed(await readPrefs(scope, acct(user)), "evening")) await sendEmail({ to: user.email, subject, text: `${title}\n\n${body}\n\n${appOrigin()}${appHrefFor(user, user.lang, "/todo", brandOfScope(scope))}`, template: "notice", context: { title, paragraphs: paragraphs(body), cta: { href: `${appOrigin()}${appHrefFor(user, user.lang, "/todo", brandOfScope(scope))}`, label: COPY[user.lang].notice.todo } }, locale: user.lang });
   }
   return "sent";
 }

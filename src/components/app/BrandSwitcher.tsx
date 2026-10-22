@@ -74,7 +74,9 @@ export default function BrandSwitcher({ lang, brands, current, canAdd, sub, onOp
   const name = current.name.trim();
   const initial = (name || (lang === "ar" ? "ع" : "B")).charAt(0);
   async function onPick(id: string) {
-    if (await pickBrand(id, path, (h) => r.push(h))) onPicked?.();
+    // push, then refresh (rule 3007): the rail is drawn by the app layout above `b/[brand]`, which a push alone keeps, so its
+    // brand name stayed the old one; the brands page does the same (`BrandsPanel`).
+    if (await pickBrand(id, path, (h) => { r.push(h); r.refresh(); })) onPicked?.();
     else toast.danger(c.failed);
   }
   const items = brandMenuItems({ lang, brands: brands ?? [{ id: current.id, name: current.name, status: "active" }], current: current.id, canAdd, onPick: (id) => { void onPick(id); }, to });
