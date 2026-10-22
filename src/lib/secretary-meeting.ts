@@ -68,6 +68,7 @@ import { agentTaskItem } from "./secretary-handoff";
 import type { Zone } from "./zones";
 import { log } from "./log";
 import { acct } from "./account-id";
+import { usageWho } from "./usage";
 
 /**
  * `itemId` is the id the item will get, chosen by `approveMeeting` and stored before anything is created (a retry then finds
@@ -417,7 +418,7 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
       tools: [EXTRACT_TOOL],
       tool_choice: { type: "tool", name: TOOL_NAME },
       messages: [{ role: "user", content: `<meeting_text>${asData(text)}</meeting_text>` }],
-    }, until(deadline, { cap: MODEL_BUDGET.TOOL_MS })), { email: user.email, kind: "tool", agent: "reem" });
+    }, until(deadline, { cap: MODEL_BUDGET.TOOL_MS })), { email: acct(user), kind: "tool", agent: "reem", who: usageWho(user, scope) });
     const block = res.content.find((b) => b.type === "tool_use" && b.name === TOOL_NAME);
     if (!block || block.type !== "tool_use") throw new Error("no_tool_call");
     tasks = (block.input as { tasks?: unknown } | null)?.tasks;

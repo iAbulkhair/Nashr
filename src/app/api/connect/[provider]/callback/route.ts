@@ -7,6 +7,7 @@ import { accountOfScope, acct } from "@/lib/account-id";
 import { sameSecret } from "@/lib/rate";
 import { getProvider } from "@/lib/connectors/registry";
 import { exchangeCode, tokenExpiry } from "@/lib/connectors/oauth";
+import { withConnectionLock } from "@/lib/connectors/fresh";
 import { OAUTH_COOKIE, getConnection, saveConnection, takeState, type Connection } from "@/lib/connectors/store";
 import { dropCookie, readCookie } from "@/lib/cookie-names";
 import { composioDiscard, composioVerify } from "@/lib/connectors/composio";
@@ -100,8 +101,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     let saved = false;
     try {
       await composioVerify(st.email, toolkit, st.accountId);
-      const conn = await connectViaComposio(st.email, p.id, toolkit, st.accountId, await getConnection(st.email, p.id));
-      await saveConnection(st.email, conn);
+      // Read and saved under the connection lock (rule 2931), so a token refresh in flight never writes over it.
+      const conn = await withConnectionLock(st.email, p.id, async () => {
+        const made = await connectViaComposio(st.email, p.id, toolkit, st.accountId!, await getConnection(st.email, p.id));
+        await saveConnection(st.email, made);
+        return made;
+      });
       saved = true;
       // A first read so Dana's next report has the site's figures; the daily run retries whatever fails here.
       if (p.id === "google") await syncSite(st.email, conn).catch(() => console.error("site first read failed"));
@@ -140,9 +145,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     // the connection tells the stores cron this store needs no second try (rule 2204).
     if (p.id === "shopify" && (await subscribeUninstall(conn, origin))) meta[UNINSTALL_HOOK_META] = new Date().toISOString();
     // Another store of the same platform replaces this one: its totals go before the new store's first sync (rule 2207).
-    const before = storeIdentity(conn) ? await getConnection(st.email, p.id).catch(() => null) : null;
-    await saveConnection(st.email, conn);
-    await dropSnapshotIfStoreChanged(st.email, before, conn);
+    // Under the connection lock the token refresh takes (rule 2931): a refresh of the old grant in flight finishes first and,
+    // reading again before its save, never writes the old grant's tokens over this one. A lock held through every wait
+    // throws `ConnectionBusy`, answered below as `error=busy`; nothing is saved and the owner connects again.
+    await withConnectionLock(st.email, p.id, async () => {
+      const before = storeIdentity(conn) ? await getConnection(st.email, p.id).catch(() => null) : null;
+      await saveConnection(st.email, conn);
+      await dropSnapshotIfStoreChanged(st.email, before, conn);
+    });
     await track(accountOfScope(st.email), "connect");
     return back(`connected=${p.id}`);
   } catch (e) {

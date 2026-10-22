@@ -6,6 +6,7 @@ import { reviewBlock } from "./skills";
 import { asData, groundingBlocks, parseObjectArray, type Grounding } from "./json";
 import { agentForTask } from "./agents";
 import { metered } from "./metered";
+import type { UsageWho } from "./usage";
 import { notifyItem } from "./notifications";
 import { pmap } from "./parallel";
 import { recordActivity, type Activity, type ActivityVia } from "./activity";
@@ -52,6 +53,8 @@ const isAutofail = (v: unknown): v is Autofail => typeof v === "string" && Objec
  */
 export type JudgeContext = Grounding & {
   via?: ActivityVia;
+  /** Who in the account and which brand the judge call worked for (rule 2901, `usageWho`). */
+  meterWho?: UsageWho;
   /**
    * The model that generated the items: the judge is another model when the routing has one that costs no more
    * (`route("judge")`), unless it is the type's own automatic writer (rule 903: an Automatic Sonnet batch keeps the Sonnet judge).
@@ -131,7 +134,7 @@ export async function scoreItems(email: string | undefined, brand: Brand, type: 
       role: "user",
       content: `AGENT: ${agent.name.en}, ${agent.role.en}\n\nTASK SPEC\n${taskSpec(type, brand)}${requested < TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${requested} item(s) of this type, not the full batch of ${TASK_COUNT[type]}. Do not penalize the missing rest of the batch or the channel mix; judge each item against the part of the spec it covers.` : ""}${items.length < requested ? `\n\nSHORTFALL: the owner asked for ${requested} item(s) and only ${items.length} were delivered. That is a completeness failure of the batch: reflect it in the completeness score of every item, and say so in the notes.` : ""}\n\n<brand_file>\n${asData({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n</brand_file>${groundingBlocks(ctx)}${blocks.workspace ? `\n\n${blocks.workspace}\n${JUDGE_FOLLOWS} ${JUDGE_DATA}` : ""}\n\n<items>\n${asData(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, JUDGE_BODY_CHARS) })))}\n</items>`,
     }],
-  }, until(now + MODEL_BUDGET.JUDGE_MS, { now })), { email, kind: "judge", agent: agent.id });
+  }, until(now + MODEL_BUDGET.JUDGE_MS, { now })), { email, kind: "judge", agent: agent.id, who: ctx.meterWho });
   const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   let arr: Array<Record<string, unknown>>;
   try {

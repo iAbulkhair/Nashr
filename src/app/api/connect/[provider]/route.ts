@@ -10,7 +10,7 @@ import { markOwnerSync } from "@/lib/routines";
 import { CATALOG_IMPORTS_PER_HOUR, STORE_SYNCS_PER_HOUR, WINDOW, allow, retryAfter, retryLater } from "@/lib/rate";
 import { wsKey } from "@/lib/keys";
 import { byOf } from "@/lib/actor";
-import { BUSY_RETRY_S, RefreshBusy, getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
+import { BUSY_RETRY_S, ConnectionBusy, RefreshBusy, getFreshConnection, refusedToken, withConnectionLock } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
 import { importWoo } from "@/lib/connectors/woocommerce";
 import { importSalla } from "@/lib/connectors/salla";
@@ -37,26 +37,35 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
   if (getProvider(provider)?.secretary) return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });
   const no = forbid(u, "connectors");
   if (no) return no;
-  // A Composio connection is revoked at the platform first. If that fails the record stays, marked, so the owner can
-  // try again: deleting it would leave a live grant Thakeen can no longer find.
-  const c = await getConnection(sc(u), provider);
-  if (c && isComposio(c)) {
-    const left = await revokeAll(sc(u), c).catch(() => ["all"]);
-    if (left.length) {
-      await saveConnection(sc(u), { ...c, needsReconnect: "revoke_failed" });
-      return NextResponse.json({ ok: false, error: "revoke_failed" }, { status: 502 });
-    }
+  // Under the connection lock the token refresh takes (rule 2931): a refresh in flight finishes and saves before the
+  // record goes, and never saves it back afterwards. A lock held through every wait answers 409 `busy`, nothing deleted.
+  try {
+    return await withConnectionLock(sc(u), provider, async () => {
+      // A Composio connection is revoked at the platform first. If that fails the record stays, marked, so the owner can
+      // try again: deleting it would leave a live grant Thakeen can no longer find.
+      const c = await getConnection(sc(u), provider);
+      if (c && isComposio(c)) {
+        const left = await revokeAll(sc(u), c).catch(() => ["all"]);
+        if (left.length) {
+          await saveConnection(sc(u), { ...c, needsReconnect: "revoke_failed" });
+          return NextResponse.json({ ok: false, error: "revoke_failed" }, { status: 502 });
+        }
+      }
+      // X's stored read goes with its connection (rule 747): another account connected later must never show this one's
+      // results or history, and its first read is its own. A store's sales snapshot, its failure note and store-sales.md go
+      // the same way when they came from this store's platform (rule 2206), so Dana never reports on a store that is gone;
+      // the owner's products.md stays.
+      await Promise.all([
+        deleteConnection(sc(u), provider),
+        provider === "x" ? dropXStats(sc(u)) : null,
+        isSalesProvider(provider) ? dropSalesSnapshot(sc(u), provider) : null,
+      ]);
+      return NextResponse.json({ ok: true });
+    });
+  } catch (e) {
+    if (e instanceof ConnectionBusy) return NextResponse.json({ ok: false, error: "busy" }, { status: 409, headers: retryAfter(BUSY_RETRY_S) });
+    throw e;
   }
-  // X's stored read goes with its connection (rule 747): another account connected later must never show this one's
-  // results or history, and its first read is its own. A store's sales snapshot, its failure note and store-sales.md go
-  // the same way when they came from this store's platform (rule 2206), so Dana never reports on a store that is gone;
-  // the owner's products.md stays.
-  await Promise.all([
-    deleteConnection(sc(u), provider),
-    provider === "x" ? dropXStats(sc(u)) : null,
-    isSalesProvider(provider) ? dropSalesSnapshot(sc(u), provider) : null,
-  ]);
-  return NextResponse.json({ ok: true });
 }
 
 /**

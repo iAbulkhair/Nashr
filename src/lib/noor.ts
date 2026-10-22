@@ -1,4 +1,5 @@
 import { metered } from "./metered";
+import type { UsageWho } from "./usage";
 import { agentById, agentForTask, type Agent } from "./agents";
 import { playbookSection, reviewBlock, skillsBlock } from "./skills";
 import { asData, fenceMemory, groundingBlocks, leadBriefBlock, parseObjectArray, type Grounding } from "./json";
@@ -215,7 +216,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { /** the scope paragraph in the cached fixed block (rule 797): on unless false; `generateBatch` passes the founder's `prompt` switch */ agentScope?: boolean; /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number; /** the model that writes the batch: the one the caller priced (`generateBatch` resolves it once and passes it here); left out, `route("generate")` */ model?: string; /** the instruction layers for this batch (`loadLayers`): the platform and the workspace text in the generation prompt, and the reviewer and the cross-review read the same object (`critique`, `crossReview`); left out, none. The judge is not called from here: `generateBatch` hands it the same object in `JudgeContext.layers` */ layers?: Layers };
+export type GenOptions = { /** the scope paragraph in the cached fixed block (rule 797): on unless false; `generateBatch` passes the founder's `prompt` switch */ agentScope?: boolean; /** account email for token metering */ meter?: string; /** who in the account and which brand the metered calls worked for (rule 2901, `usageWho`) */ meterWho?: UsageWho; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number; /** the model that writes the batch: the one the caller priced (`generateBatch` resolves it once and passes it here); left out, `route("generate")` */ model?: string; /** the instruction layers for this batch (`loadLayers`): the platform and the workspace text in the generation prompt, and the reviewer and the cross-review read the same object (`critique`, `crossReview`); left out, none. The judge is not called from here: `generateBatch` hands it the same object in `JudgeContext.layers` */ layers?: Layers };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
@@ -260,7 +261,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
     // answered. An iteration that names no model is the one asked for, `params.model`.
     const msg = await metered(
       client.beta.messages.stream(serverFallback ? { ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })),
-      { email: opts.meter, kind: "generate", agent: agent.id, requested: params.model },
+      { email: opts.meter, kind: "generate", agent: agent.id, requested: params.model, who: opts.meterWho },
     );
     if (msg.stop_reason === "refusal") throw new Error("refused");
     text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
@@ -268,7 +269,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
     // Fallback parameter not accepted (older org/plan) → plain request. Only when the fallback was asked for: a request
     // without it that is refused is the model's own answer, and asking again would pay twice.
     if (serverFallback && e instanceof Anthropic.BadRequestError) {
-      const msg = await metered(client.messages.stream(params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })), { email: opts.meter, kind: "generate", agent: agent.id, requested: params.model });
+      const msg = await metered(client.messages.stream(params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })), { email: opts.meter, kind: "generate", agent: agent.id, requested: params.model, who: opts.meterWho });
       // The same refusal check as the main path; without it a refused fallback fell through with empty text.
       if (msg.stop_reason === "refusal") throw new Error("refused");
       text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
@@ -283,7 +284,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   if (!items.length) throw new Error("empty_generation");
   // The grounding the reviewer, the cross-reviewers and (through generateBatch) the judge read; `leadBrief` only when set.
   const ground: Grounding = { notes: extra, memory: opts.memory, stats: opts.stats, ...(opts.leadBrief ? { leadBrief: opts.leadBrief } : {}) };
-  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, deadline, ...ground, layers: opts.layers });
+  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, meterWho: opts.meterWho, deadline, ...ground, layers: opts.layers });
   if (opts.noEmDash) items = stripDashes(items);
   // Enforced after the reviewer, so neither pass can reintroduce a discount the owner never offered.
   if (type === "cart_recovery") items = capDiscounts(items, brand.offers);
@@ -292,7 +293,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   // charge kept.
   if (opts.crossReview !== false) {
     if (deadline - Date.now() < CROSS_REVIEW_MIN_MS) log.warn("cross review skipped", { reason: "too little time left" });
-    else items = await crossReview(client, brand, type, items, { meter: opts.meter, ...ground, layers: opts.layers });
+    else items = await crossReview(client, brand, type, items, { meter: opts.meter, meterWho: opts.meterWho, ...ground, layers: opts.layers });
   }
   return items;
 }
@@ -303,6 +304,8 @@ export type LineNote = { line: number; quote: string; note: string };
 export type ReviseOptions = {
   model: string;
   meter?: string;
+  /** Who in the account and which brand the call worked for (rule 2901, `usageWho`). */
+  meterWho?: UsageWho;
   memory?: string;
   feedback?: string;
   noEmDash?: boolean;
@@ -349,7 +352,7 @@ ${asData(notes.map((n) => ({ line: n.line + 1, text: n.quote, note: n.note })))}
       thinking: { type: "adaptive" as const },
       output_config: { effort: "medium" as const },
     }, until(deadline, { cap: MODEL_BUDGET.GEN_MS })),
-    { email: opts.meter, kind: "generate", agent: agent.id, requested: opts.model },
+    { email: opts.meter, kind: "generate", agent: agent.id, requested: opts.model, who: opts.meterWho },
   );
   if (msg.stop_reason === "refusal") throw new Error("refused");
   const text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
@@ -429,7 +432,7 @@ Return ONLY a JSON array, same length and order as the items in <items>: {"ok": 
  * notes, the memory files and the WORKSPACE / STORE / CART DATA block — because it rewrites what it cannot trace to a
  * source, and a real figure from the owner's own sales or notes must not be turned into [رقم].
  */
-async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[], ctx: Grounding & { meter?: string; deadline?: number; layers?: Layers } = {}): Promise<Generated[]> {
+async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[], ctx: Grounding & { meter?: string; meterWho?: UsageWho; deadline?: number; layers?: Layers } = {}): Promise<Generated[]> {
   if (!items.length) return items;
   // Optional, like its failure below: with less than REVIEW_MIN_MS of the batch's deadline left the first pass ships.
   const end = Math.min(ctx.deadline ?? Infinity, Date.now() + MODEL_BUDGET.REVIEW_MS);
@@ -452,7 +455,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
           content: `<brand_file>\n${asData({ name: brand.name, industry: brand.industry, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, banned: brand.banned, preferred: brand.preferred, offers: brand.offers })}\n</brand_file>\n\n<owner_preferences>\n${asData(prefs.length ? prefs : ["none"])}\n</owner_preferences>${ownerForReview(ctx.layers, agentForTask(type).id)}${groundingBlocks(ctx)}\n\nTASK TYPE: ${type}\n\n<items>\n${asData(items.map((i) => ({ channel: i.channel, body: i.body })))}\n</items>`,
         },
       ],
-    }, until(end, { cap: MODEL_BUDGET.REVIEW_MS })), { email: ctx.meter, kind: "review", agent: agentForTask(type).id });
+    }, until(end, { cap: MODEL_BUDGET.REVIEW_MS })), { email: ctx.meter, kind: "review", agent: agentForTask(type).id, who: ctx.meterWho });
     const raw = review.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
     const verdicts = parseObjectArray(raw) as Array<{ ok?: boolean; body?: string }>;
     return items.map((it, i) => (verdicts[i] && verdicts[i].ok === false && typeof verdicts[i].body === "string" && verdicts[i].body!.length > 20 ? { ...it, body: verdicts[i].body! } : it));
@@ -597,7 +600,7 @@ export function parseCrossVerdicts(raw: string, n: number, by: CrossReviewer, mo
  * come back as they were, without that reviewer's verdicts. Bounded in time: one attempt of at most
  * CROSS_REVIEW_TIMEOUT_MS per reviewer, and `generate` does not start it with less than CROSS_REVIEW_MIN_MS left.
  */
-async function crossReview(client: Anthropic, brand: Brand, type: TaskType, items: Generated[], ctx: Grounding & { meter?: string; layers?: Layers } = {}): Promise<Generated[]> {
+async function crossReview(client: Anthropic, brand: Brand, type: TaskType, items: Generated[], ctx: Grounding & { meter?: string; meterWho?: UsageWho; layers?: Layers } = {}): Promise<Generated[]> {
   const reviewers = crossReviewers(type);
   if (!items.length || !reviewers.length || modelState() !== "on") return items;
   try {
@@ -617,7 +620,7 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
           output_config: { effort: "low" },
           system: [{ type: "text", text: reviewerSystem(crossReviewPrompt(r), ctx.layers), cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content }],
-        }, { ...until(now + CROSS_REVIEW_TIMEOUT_MS, { now }), maxRetries: 0 }), { email: ctx.meter, kind: "xreview", agent: r });
+        }, { ...until(now + CROSS_REVIEW_TIMEOUT_MS, { now }), maxRetries: 0 }), { email: ctx.meter, kind: "xreview", agent: r, who: ctx.meterWho });
         if (res.stop_reason === "refusal") return [];
         const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
         return parseCrossVerdicts(raw, items.length, r, res.model, new Date().toISOString());

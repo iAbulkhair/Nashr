@@ -6,7 +6,7 @@ import { appHref, isBrandPath } from "./brand-path";
  * file, brands, members, billing, connections, governance and the danger zone, at /{lang}/app/settings/{section}. Pure
  * data, no React and no server import, so the proxy, the server layout and the client nav all read the same list.
  */
-export const SETTINGS_SECTIONS = ["account", "security", "notifications", "brand", "brands", "members", "billing", "connections", "governance", "danger"] as const;
+export const SETTINGS_SECTIONS = ["account", "security", "notifications", "brand", "brands", "members", "billing", "usage", "connections", "governance", "danger"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /**
@@ -16,7 +16,7 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
  */
 export const SETTINGS_GROUPS = [
   { id: "you", sections: ["account", "security", "notifications"] },
-  { id: "workspace", sections: ["brand", "brands", "members", "billing", "connections", "governance", "danger"] },
+  { id: "workspace", sections: ["brand", "brands", "members", "billing", "usage", "connections", "governance", "danger"] },
 ] as const satisfies readonly { id: string; sections: readonly SettingsSection[] }[];
 export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
 
@@ -94,6 +94,7 @@ export const SETTINGS_COPY: Record<Lang, { title: string; sub: string; back: str
       brands: { name: "العلامات", sub: "أضف علامة أو بدّل بينها." },
       members: { name: "الأعضاء", sub: "من يشارك الحساب وأدوارهم." },
       billing: { name: "الاشتراك", sub: "خطتك ورصيدك وطرق الدفع." },
+      usage: { name: "استخدام الذكاء", sub: "طلبات هذا الشهر حسب الشخص والعلامة والوكيل واليوم." },
       connections: { name: "التكاملات", sub: "المتجر والحسابات المربوطة." },
       governance: { name: "الحوكمة", sub: "حدود الوكلاء والموافقة التلقائية." },
       danger: { name: "منطقة الخطر", sub: "تنزيل بياناتك، أو حذف الحساب، أو مغادرة الفريق." },
@@ -114,6 +115,7 @@ export const SETTINGS_COPY: Record<Lang, { title: string; sub: string; back: str
       brands: { name: "Brands", sub: "Add a brand or switch between them." },
       members: { name: "Members", sub: "Who shares the account, and their roles." },
       billing: { name: "Billing", sub: "Your plan, credits and how you pay." },
+      usage: { name: "AI usage", sub: "This month's requests by person, brand, agent and day." },
       connections: { name: "Integrations", sub: "Your store and linked accounts." },
       governance: { name: "Governance", sub: "Agent limits and auto-approval." },
       danger: { name: "Danger zone", sub: "Download your data, delete the account or leave the team." },

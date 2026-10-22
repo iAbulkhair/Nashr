@@ -4,6 +4,8 @@ import { metered } from "@/lib/metered";
 import { db } from "@/lib/db";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 import { currentUser } from "@/lib/auth";
+import { acct } from "@/lib/account-id";
+import { usageWho } from "@/lib/usage";
 import { MODEL_BUDGET, anthropic, modelState, until } from "@/lib/model";
 import { deadlineFor } from "@/lib/media/keys";
 import { route } from "@/lib/models/route";
@@ -41,7 +43,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
       output_config: { effort: "low" },
       system: `You are Noor, Thakeen's Gulf marketing agent, powering a free tool. Language policy: "${lang}" (عربي سعودي = light Saudi dialect; عربي فصحى = simple MSA; English; عربي + English = Arabic then English). Gulf cultural fit, no invented prices/claims (use [رقم]/[number]), no meta commentary. Output only the deliverable, nicely formatted in plain text.`,
       messages: [{ role: "user", content: `${t.prompt}\n\nINPUTS\n${inputs}` }],
-    }, until(deadline, { cap: MODEL_BUDGET.TOOL_MS })), { email: u?.email, kind: "tool" });
+    }, until(deadline, { cap: MODEL_BUDGET.TOOL_MS })), { email: u ? acct(u) : undefined, kind: "tool", ...(u ? { who: usageWho(u, u.scope) } : {}) });
     const output = res.content.filter((x) => x.type === "text").map((x) => (x as { text: string }).text).join("\n").trim();
     // Haiku 5.5 has no server-side refusal fallback: a declined request comes back with no text. Say it failed
     // instead of showing the visitor an empty result.

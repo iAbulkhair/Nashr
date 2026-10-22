@@ -28,7 +28,7 @@ import { modelAllowsTask, modelById } from "./models/catalog";
 import { creditsFor } from "./models/credits";
 import { type Rejected } from "./models/route";
 import { generateRouteFor } from "./models/overrides";
-import { noteRejectedPick } from "./usage";
+import { noteRejectedPick, usageWho } from "./usage";
 import { memoryBlock } from "./files";
 import { statsFor } from "./stats";
 import { feedbackFor } from "./feedback";
@@ -409,7 +409,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     // A lead brief rides along only when there is one, so every other batch's prompts and judge grounding are unchanged.
     const lead = opts.leadBrief?.trim() ? { leadBrief: opts.leadBrief } : {};
     ground = { notes: opts.notes, memory, stats, ...lead };
-    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, model, layers, agentScope: scopeModes.prompt === "on", ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
+    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: acct(user), meterWho: usageWho(user, scope), stats, feedback, model, layers, agentScope: scopeModes.prompt === "on", ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
     createdAt = new Date().toISOString();
     const brief = opts.brief ?? briefOf(opts.notes);
     // One stamp for the batch: the blocks are the same for every item (they hash the layers, not the item).
@@ -496,6 +496,6 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: net };
   await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
-  judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model, layers });
+  judgeLater(scope, acct(user), brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model, layers, meterWho: usageWho(user, scope) });
   return { ok: true, tasks, credits: user.credits, receipt, cost: net, agent, gov, ...(modelRejected ? { modelRejected } : {}), ...(held > 0 ? { held } : {}), ...(short ? { short } : {}), ...(held > 0 || short ? { refunded: back } : {}) };
 }

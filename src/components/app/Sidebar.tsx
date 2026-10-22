@@ -60,12 +60,20 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const pending = ws?.pending ?? 0;
   const convs = ws?.convs ?? [];
 
+  // One create at a time: a second tap while the first is in flight would make a second empty conversation.
+  const [creating, setCreating] = useState(false);
   async function newThread(agent: AgentId) {
-    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json", ...sessionBrandHeaders(sessionBrand) }, body: JSON.stringify({ title: "…", agent }) })).json();
+    if (creating) return;
+    setCreating(true);
+    // A dropped connection or a non-JSON 5xx answers nothing: the buttons come back and the person taps again.
+    const j = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json", ...sessionBrandHeaders(sessionBrand) }, body: JSON.stringify({ title: "…", agent }) })
+      .then((res) => res.json())
+      .catch(() => null)
+      .finally(() => setCreating(false));
     // The conversation was created in the brand of this page (the fetch wrapper's header) or, on an account page, the
     // session's (`sessionBrandHeaders`), so it opens in that brand: the legacy path would 307 to the stored choice, which
     // another tab may have changed (ruling P10).
-    if (j.ok) { setOpen(false); window.dispatchEvent(new Event(WORKSPACE_EVENTS.convs)); r.push(toSession(`/chat?conv=${j.conversation.id}`)); }
+    if (j?.ok) { setOpen(false); window.dispatchEvent(new Event(WORKSPACE_EVENTS.convs)); r.push(toSession(`/chat?conv=${j.conversation.id}`)); }
   }
   // The brand switcher's list (rule 893), asked for when the menu is first opened: the brands, whether this login may add
   // one (owner or admin under the plan's cap; display only, POST /api/brands is the check). Once per mount, not on every
@@ -142,7 +150,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
             <span style={avatar("noor").style} className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border-[1.5px] border-border-strong font-display text-xs font-bold ${avatar("noor").tone}`} aria-hidden>{t.agents.noor.name.charAt(0)}</span>
             <span className="min-w-0"><span className="clip block text-foreground">{t.agents.noor.name}</span><span className="clip block text-xs">{t.agents.noor.role}</span></span>
           </Link>
-          <button type="button" onClick={() => newThread("noor")} className="btn btn-accent btn-xs" aria-label={`${N.newConv}: ${t.agents.noor.name}`}>+ {N.newConv}</button>
+          <button type="button" disabled={creating} onClick={() => newThread("noor")} className="btn btn-accent btn-xs" aria-label={`${N.newConv}: ${t.agents.noor.name}`}>+ {N.newConv}</button>
         </li>
         <li>
           <button type="button" onClick={() => setTeam(!team)} aria-expanded={team} aria-controls={`${p}-specialists`} className={`${rowBox} w-full text-foreground-muted hover:bg-background-muted/60 hover:text-foreground`}>
@@ -158,7 +166,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
                     <span style={avatar(a.id).style} className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border-[1.5px] border-border-strong text-xs font-bold ${avatar(a.id).tone}`} aria-hidden>{t.agents[a.id].name.charAt(0)}</span>
                     <span className="min-w-0"><span className="clip block text-foreground">{t.agents[a.id].name}</span><span className="clip block text-xs">{t.agents[a.id].role}</span></span>
                   </Link>
-                  <button type="button" onClick={() => newThread(a.id)} className="icon-btn" aria-label={`${N.newConv}: ${t.agents[a.id].name}`}><Icon name="plus" className="h-4 w-4" /></button>
+                  <button type="button" disabled={creating} onClick={() => newThread(a.id)} className="icon-btn" aria-label={`${N.newConv}: ${t.agents[a.id].name}`}><Icon name="plus" className="h-4 w-4" /></button>
                 </li>
               ))}
             </ul>

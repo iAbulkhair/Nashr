@@ -1,4 +1,5 @@
 import { metered } from "./metered";
+import type { UsageWho } from "./usage";
 import { MODEL_BUDGET, ModelPaused, anthropic, modelState, until } from "./model";
 import type { Brand } from "./brand";
 import { activeSeasons } from "./seasons";
@@ -97,7 +98,7 @@ ${asData(snapshot)}
  * (epoch ms): the onboarding request's (rule 336); every call ends by it, so a slow model throws and the route refunds an
  * added brand's held charge before the platform's kill. Without one, ONBOARD_MS from now.
  */
-export async function buildFromSite(site: SiteSnapshot, lang: "ar" | "en", hints?: string, email?: string, onPart?: (part: PartName) => void, deadline?: number): Promise<OnboardResult> {
+export async function buildFromSite(site: SiteSnapshot, lang: "ar" | "en", hints?: string, email?: string, onPart?: (part: PartName) => void, deadline?: number, who?: UsageWho): Promise<OnboardResult> {
   const state = modelState();
   // Never the mock while paused: the route saves what comes back, and a saved brand ends onboarding for good.
   if (state === "paused") throw new ModelPaused();
@@ -139,7 +140,7 @@ strategy_md: 90-day plan in 3 phases with concrete weekly cadence per channel, t
           messages: [{ role: "user", content: user }],
           thinking: { type: "adaptive" },
           output_config: { effort: "medium", format: { type: "json_schema", schema: PARTS[name].schema } },
-        }, until(end, { cap: MODEL_BUDGET.ONBOARD_MS })), { email, kind: "onboard", agent: "noor" });
+        }, until(end, { cap: MODEL_BUDGET.ONBOARD_MS })), { email, kind: "onboard", agent: "noor", who });
       const out = JSON.parse(msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("")) as Record<string, unknown>;
       onPart?.(name);
       return out;

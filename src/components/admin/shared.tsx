@@ -1,4 +1,5 @@
 "use client";
+import type { Breakdown } from "./UsageBreakdown";
 import { useCallback, useEffect, useState } from "react";
 import { ADMIN_ENDED, ADMIN_ENDED_EVENT, adminEndedHref, adminFetch } from "@/lib/admin-fetch";
 import type { Activity } from "@/lib/activity";
@@ -39,7 +40,7 @@ export const CHAT_HOLD = chatOverflowHold();
 export type MemberDetail = { email: string; name: string; role: string; memberOf: string; invitedBy: string; acceptedAt: string; disabled: string | null; ownerExists: boolean; onRoster: boolean };
 /** What POST /api/admin/plan changed in the team when the seat limit moved (src/lib/team.ts `enforceSeats`). */
 export type TeamChange = { limit: number; disabled: string[]; enabled: string[]; cancelled: string[] };
-export type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage>; byAgent?: Record<string, { calls: number; usd: number }> }; chat?: ChatStatus; chatUsdPerMsg?: number | null; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null; activity?: { brand: string; name: string; rows: Activity[] }[]; unfinishedRefunds?: string[]; entitlements?: EntitlementView };
+export type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage>; byAgent?: Record<string, { calls: number; usd: number }> }; chat?: ChatStatus; chatUsdPerMsg?: number | null; /** the month split by person, brand, model and day (rule 2906) */ breakdown?: Breakdown; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null; activity?: { brand: string; name: string; rows: Activity[] }[]; unfinishedRefunds?: string[]; entitlements?: EntitlementView };
 export type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string; quality?: { score: number; notes: string } };
 
 export const STR = {

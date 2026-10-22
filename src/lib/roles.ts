@@ -89,6 +89,11 @@ export const MIN_ROLE = {
   "team.approvals.view": "admin",
   /** The account's team log: who invited, joined, left, changed a role or took over the account (multi-workspace M3, rule 2129). */
   "team.log.view": "admin",
+  /**
+   * The account's AI usage page (GET /api/usage, rule 2907): requests per person, brand, agent, model and day this month.
+   * Requests only, never money; an admin sees it because they run the work it counts.
+   */
+  "usage.view": "admin",
   /** Cancel a pending invite (an admin only one for role "member"; see team.ts `cancelInvite`). */
   "team.invite.cancel": "admin",
   /**

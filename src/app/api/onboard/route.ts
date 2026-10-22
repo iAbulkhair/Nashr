@@ -1,5 +1,6 @@
 import { track } from "@/lib/track";
 import { currentUser, sc, trialOver, type User } from "@/lib/auth";
+import { usageWho } from "@/lib/usage";
 import { crawl } from "@/lib/crawl";
 import { buildFromSite } from "@/lib/onboard";
 import { getBrand, saveBrand } from "@/lib/brand";
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
   // Whether this run holds a charge: one it took now, or one a run that did not finish took (reused, never charged twice).
   let held = false;
   if (cost > 0) {
-    const c = await chargeOnboard(u.email, cost, { scope, agent: "noor", cap: gov?.agentCaps.noor }).catch(async (e) => { await release(); throw e; });
+    const c = await chargeOnboard(acct(u), cost, { scope, agent: "noor", cap: gov?.agentCaps.noor }).catch(async (e) => { await release(); throw e; });
     if (!c.ok) {
       const [res] = await Promise.all([refuse(u, scope, cost, c), release()]);
       return res;
@@ -169,7 +170,7 @@ export async function POST(req: Request) {
         const stages = [t.research, t.files, t.plan];
         let landed = 0;
         send({ type: "status", text: stages[0] });
-        const r = await buildFromSite(site, u.lang, answers ? answersHint(answers) : b.hints, u.email, () => { landed++; if (landed < stages.length) send({ type: "status", text: stages[landed] }); }, deadline);
+        const r = await buildFromSite(site, u.lang, answers ? answersHint(answers) : b.hints, acct(u), () => { landed++; if (landed < stages.length) send({ type: "status", text: stages[landed] }); }, deadline, usageWho(u, scope));
         await track(acct(u), "onboard");
         // What the owner chose in the game wins over what the model read off the site, in code, not in the prompt.
         if (answers) r.brand = { ...r.brand, ...answersToBrand(answers) };
@@ -199,7 +200,7 @@ export async function POST(req: Request) {
           // No brand, so nothing was delivered: the held credits go back and the hold with them, in one save, so the next
           // confirmed run pays afresh. Null when another run already refunded it: nothing is given back twice. When the
           // refund fails the hold stays: the next run reuses it, or the daily sweep refunds it.
-          refunded = await refundOnboard(u.email, scope).catch((err) => (console.error("onboard refund failed", err instanceof Error ? err.name : "error"), null));
+          refunded = await refundOnboard(acct(u), scope).catch((err) => (console.error("onboard refund failed", err instanceof Error ? err.name : "error"), null));
           if (refunded) {
             u.credits = refunded.credits;
             await recordActivity(scope, [setupRow(u, "onboard_refunded", refunded.refunded, { refunded: true })]);

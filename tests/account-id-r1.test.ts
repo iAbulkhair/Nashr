@@ -232,9 +232,19 @@ describe("rule 1985: account keys come from acct(u), never from u.email", () => 
   });
   it("no account-key builder or account function is handed u.email, user.email or owner.email", () => {
     // Widened after the security review (M2): the MCP and OAuth slots, billing, notifications, seats, the roster and the chat counters.
-    const ACCOUNT = /\b(accountKey\.(?:user|brands|members|invites|teamLock|notifications|referrals|shared|mcpTokenOf)|scopeFor|listBrands|saveBrands|withBrandsLock|withUserLock|charge|chargeOnce|refund|refundOnce|renewIfDue|notifyItem|listNotifs|getUsage|track|wipeAccount|seatsUsed|revokeAllMcp|createMcpToken|getMcpToken|revokeMcpToken|listGrants|revokeAllGrants|revokeGrant|markAllRead|lastCheckout|paymentHistory|paymentsView|renewPaymob|enforceSeats|membersKey|chatTrialKey|chatMsgKey|chatOverKey|chatCredKey|registerCode|applyReferral)\((?:u|user|owner|account|prev)\.email\b/;
+    const ACCOUNT = /\b(accountKey\.(?:user|brands|members|invites|teamLock|notifications|referrals|shared|mcpTokenOf)|scopeFor|listBrands|saveBrands|withBrandsLock|withUserLock|charge|chargeOnce|refund|refundOnce|renewIfDue|notifyItem|listNotifs|getUsage|track|wipeAccount|seatsUsed|revokeAllMcp|createMcpToken|getMcpToken|revokeMcpToken|listGrants|revokeAllGrants|revokeGrant|markAllRead|lastCheckout|paymentHistory|paymentsView|renewPaymob|enforceSeats|membersKey|chatTrialKey|chatMsgKey|chatOverKey|chatCredKey|registerCode|applyReferral|chargeOnboard|refundOnboard|settleOnboard|resolveOnboardHolds|adjust|markRead|discardInvite)\((?:u|user|owner|account|prev)\.email\b/;
     const offenders = srcFiles("src").flatMap((f) => read(f).split("\n").map((l, i) => [f, i + 1, l] as const)).filter(([, , l]) => ACCOUNT.test(l)).map(([f, i]) => `${f}:${i}`);
     expect(offenders).toEqual([]);
+  });
+  it("a media job, the onboarding meter and an MCP scope name the account, never the sign-in address", () => {
+    const lines = srcFiles("src").flatMap((f) => read(f).split("\n").map((l, i) => [f, i + 1, l] as const));
+    const at = (re: RegExp) => lines.filter(([, , l]) => re.test(l)).map(([f, i]) => `${f}:${i}`);
+    // A MediaJob's `email` is the account charged, refunded and metered (src/lib/media/types.ts), and so is the meter of its prompt.
+    expect(at(/startMedia\(\{.*\bemail: (?:u|user|owner)\.email\b|\bscope: sc\((?:u|user)\), email: (?:u|user)\.email\b|(?:imagePrompt|videoPrompt)\([^;]*\b(?:u|user)\.email\b/)).toEqual([]);
+    // buildFromSite's `email` is the account its model calls are metered to (src/lib/onboard.ts).
+    expect(at(/buildFromSite\([^;]*\b(?:u|user)\.email\b/)).toEqual([]);
+    // The MCP route's scope is `sc(user)`, whose fallback is the account id, never the address.
+    expect(read("src/app/api/mcp/route.ts")).not.toMatch(/\.scope \?\? (?:u|user)\.email\b/);
   });
   it("no OAuth code, roster check or partner lock is keyed by an address where it means the account", () => {
     const lines = srcFiles("src").flatMap((f) => read(f).split("\n").map((l, i) => [f, i + 1, l] as const));

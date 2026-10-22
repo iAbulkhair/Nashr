@@ -54,6 +54,37 @@ async function markNeedsReconnect(scope: string, c: Connection) {
   await saveConnection(scope, { ...c, needsReconnect: new Date().toISOString() });
 }
 
+/** The connection lock (rule 2192): the refresh, a disconnect and a new connection of one provider take it in turn (rule 2931). */
+const connLock = (scope: string, provider: string) => `connlock:${scope}:${provider}`;
+
+/** The connection lock could not be had: a refresh held it through every wait. Nothing was written; try again shortly. */
+export class ConnectionBusy extends Error {
+  constructor(public provider: string) {
+    super("busy");
+  }
+}
+
+/**
+ * Runs `fn` holding the connection's owned lock (rule 2931), the one the refresh takes (rule 2192), so a disconnect or a
+ * new connection never lands in the middle of a refresh: the refresh would otherwise save the old grant's tokens over
+ * the new connection, or bring a deleted one back. Tried for as long as a refresher waits (about five seconds); a lock
+ * that stays held throws `ConnectionBusy` and `fn` never runs. Only this call's own lock is released.
+ */
+export async function withConnectionLock<T>(scope: string, provider: string, fn: () => Promise<T>): Promise<T> {
+  const lock = connLock(scope, provider);
+  let token: string | null = null;
+  for (let i = 0; i < LOCK_TRIES && !token; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 250));
+    token = await db.lockOwned(lock, LOCK_S);
+  }
+  if (!token) throw new ConnectionBusy(provider);
+  try {
+    return await fn();
+  } finally {
+    await db.unlockOwned(lock, token);
+  }
+}
+
 /**
  * The connection with a usable access token. An OAuth token that expires within five minutes (Zid: 60 days, rule
  * 2210, `refreshDue`) is refreshed first, under a per-connection lock: X rotates its refresh token on every use, so
@@ -75,7 +106,7 @@ export async function getFreshConnection(scope: string, provider: string): Promi
     await markNeedsReconnect(scope, c);
     throw new ReconnectRequired(provider);
   }
-  const lock = `connlock:${scope}:${provider}`;
+  const lock = connLock(scope, provider);
   // Never refresh without the lock (rule 2192): X rotates its refresh token on every use and Salla revokes every token
   // when one is used twice, so a refresh outside the lock spends the same single-use token twice.
   let token: string | null = null;
@@ -97,18 +128,35 @@ export async function getFreshConnection(scope: string, provider: string): Promi
     throw new RefreshBusy(provider);
   }
   try {
-    const cur = (await getConnection(scope, provider)) ?? c;
+    // A connection deleted while this request waited stays deleted: never the record read before the lock (rule 2931).
+    const cur = await getConnection(scope, provider);
+    if (!cur) return null;
+    if (cur.needsReconnect) throw new ReconnectRequired(provider);
     if (!refreshDue(cur)) return cur;
+    if (!cur.data.refresh_token) {
+      if (!urgent(cur)) return cur;
+      await markNeedsReconnect(scope, cur);
+      throw new ReconnectRequired(provider);
+    }
     let data: Record<string, string>;
     try {
-      data = await refreshTokens(p, cur.data.refresh_token ?? c.data.refresh_token, cur.meta?.shop);
+      data = await refreshTokens(p, cur.data.refresh_token, cur.meta?.shop);
     } catch (e) {
       log.error("connector refresh failed", { provider, error: e instanceof Error ? e.message.slice(0, 120) : e });
       // Weeks left on the token and the platform did not refuse the refresh token: keep the connection (rule 2211).
       if (!urgent(cur) && !refused(e)) return cur;
+      // Only the grant this refresh spent is marked: a disconnect or a new connection since then is left as it is.
+      const now = await getConnection(scope, provider);
+      if (!now) return null;
+      if (now.connectedAt !== cur.connectedAt) return now;
       await markNeedsReconnect(scope, cur);
       throw new ReconnectRequired(provider);
     }
+    // Read again before the save (rule 2931), as backfillUninstallHooks does: a connection deleted during the refresh is not
+    // brought back, and one connected again since (another `connectedAt`) keeps its own tokens, never the old grant's.
+    const again = await getConnection(scope, provider);
+    if (!again) return null;
+    if (again.connectedAt !== cur.connectedAt) return again;
     const next: Connection = {
       ...cur,
       // Keep the old refresh token when the platform does not rotate it.

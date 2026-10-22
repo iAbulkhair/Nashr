@@ -20,7 +20,7 @@ import { testQuote } from "@/lib/instructions-test";
 import { TEST_BRIEF_CHARS } from "@/lib/instructions-safety";
 import { generate } from "@/lib/noor";
 import { statsFor } from "@/lib/stats";
-import { noteRejectedPick } from "@/lib/usage";
+import { noteRejectedPick, usageWho } from "@/lib/usage";
 import { warnAgentCap } from "@/lib/notifications";
 import { allow, INSTRUCTION_TESTS_PER_DAY, INSTRUCTION_TESTS_PER_HOUR, retryLater, WINDOW } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
@@ -146,7 +146,7 @@ export async function POST(req: Request) {
       loadLayers(scope, entitlements(u).instructions, "draft", [agent]),
     ]);
     const one = (layers: typeof active) =>
-      generate(type, brand, prefs, brief.trim() || undefined, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: false, meter: u.email, stats, feedback, model, layers, count: 1, deadline });
+      generate(type, brand, prefs, brief.trim() || undefined, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: false, meter: acct(u), meterWho: usageWho(u, scope), stats, feedback, model, layers, count: 1, deadline });
     const [before, after] = await Promise.all([one(active), one(draft)]);
     if (!before[0] || !after[0]) throw new Error("empty_generation");
     // After the answer exists: a failed log write never undoes the test (recordActivity does not throw).

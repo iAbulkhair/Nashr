@@ -54,7 +54,10 @@ describe("rule 2113: every workspace route is inside the second guard", () => {
   });
 
   it("no state-changing route that keys a workspace (sc) is on the free list", () => {
-    const free = routes.filter((r) => /\bsc\(/.test(r.src) && workspaceFree(r.path)).map((r) => r.path);
+    // /api/mcp keys the bearer token's own scope (userFromBearer picks the account and brand from the grant, rule 2935):
+    // no session or workspace handle reaches it, so the guard has nothing to check.
+    const BEARER = new Set(["/api/mcp"]);
+    const free = routes.filter((r) => /\bsc\(/.test(r.src) && workspaceFree(r.path) && !BEARER.has(r.path)).map((r) => r.path);
     expect(free).toEqual([]);
   });
 
