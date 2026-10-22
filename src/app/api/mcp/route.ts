@@ -3,7 +3,7 @@ import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
 import { DRAFTS_PER_HOUR, chatCaps, chatRefusal } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
 import { chat, chatRefusedText } from "@/lib/chat";
-import { trialOver } from "@/lib/auth";
+import { sc, trialOver } from "@/lib/auth";
 import { entitlements } from "@/lib/entitlements";
 import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { fairUseText } from "@/lib/fair-use";
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
         // ceiling holds only a request that has notes.
         const pre = await agentScopePreflight(user);
         // The request's own deadline bounds the batch's cross-agent review (notes only, skipped when too little is left).
-        const r = await generateBatch(user, user.scope ?? user.email, { type, notes, source: "chat", via: "mcp", by: tokenBy(user), deadline, agentScope: pre.modes, notesGate: { notes, mode: pre.modes.input, where: "mcp_generate", lang, slow: pre.slow } });
+        const r = await generateBatch(user, sc(user), { type, notes, source: "chat", via: "mcp", by: tokenBy(user), deadline, agentScope: pre.modes, notesGate: { notes, mode: pre.modes.input, where: "mcp_generate", lang, slow: pre.slow } });
         // A tool error, like insufficient credits: a JSON-RPC client reads the result, not an HTTP status.
         if (!r.ok) {
           switch (r.reason) {
@@ -152,19 +152,19 @@ export async function POST(req: Request) {
       case "list_inbox": {
         const status = String(args.status ?? "pending");
         // "Not now" (rule 2340): set aside, still pending in the record, never listed as waiting.
-        const tasks = (await listTasks((user.scope ?? user.email))).filter((t) => status === "all" || (status === "pending" ? isWaiting(t) : status === "not_now" ? t.status === "pending" && !!t.notNow : t.status === status)).slice(0, 30);
+        const tasks = (await listTasks(sc(user))).filter((t) => status === "all" || (status === "pending" ? isWaiting(t) : status === "not_now" ? t.status === "pending" && !!t.notNow : t.status === status)).slice(0, 30);
         return ok(id, text(tasks.length ? tasks.map((t) => `[${t.id}] ${t.status === "pending" && t.notNow ? "not_now" : t.status} · ${t.type}/${t.channel} · ${t.title}\n${(t.editedBody ?? t.body).slice(0, 300)}`).join("\n\n") : "Inbox empty."));
       }
       case "read_file": {
-        const f = await readFile((user.scope ?? user.email), String(args.name ?? ""));
+        const f = await readFile(sc(user), String(args.name ?? ""));
         return ok(id, f ? text(f.content) : { ...text("Not found."), isError: true });
       }
       case "list_files": {
-        const fs = await listFiles((user.scope ?? user.email));
+        const fs = await listFiles(sc(user));
         return ok(id, text(fs.map((f) => `${f.name} (${f.content.length} chars, ${f.updatedAt.slice(0, 10)})`).join("\n") || "No files."));
       }
       case "get_brand_rules": {
-        const brand = await getBrand(user.scope ?? user.email);
+        const brand = await getBrand(sc(user));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
         const rules = brandRules(brand);
         // The owner's own brand file, returned as data for the calling assistant to write within.
@@ -177,7 +177,7 @@ export async function POST(req: Request) {
         }, null, 2)));
       }
       case "check_brand": {
-        const brand = await getBrand(user.scope ?? user.email);
+        const brand = await getBrand(sc(user));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
         const draft = String(args.text ?? "").slice(0, 20000);
         if (!draft.trim()) return ok(id, { ...text("Nothing to check: pass the draft in `text`."), isError: true });

@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => null)) as { id?: unknown } | null;
   if (b && typeof b === "object" && "id" in b) {
     if (typeof b.id !== "string" || !NOTIF_ID.test(b.id)) return NextResponse.json({ ok: false, error: "bad_id" }, { status: 400 });
-    const unread = await markRead(u.email, b.id);
+    const unread = await markRead(acct(u), b.id);
     if (unread === null) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     return NextResponse.json({ ok: true, unread });
   }

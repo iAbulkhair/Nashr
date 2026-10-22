@@ -52,6 +52,9 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     createdAt: u.createdAt,
     lang: "ar",
     renewedAt: month,
+    // The plan's own renewal day (rule 2936): billing state, not a profile field.
+    renewedOn: iso(-5).slice(0, 10),
+    renewAnchor: 17,
     suspended: false,
     sessionsAfter: u.sessionsAfter!,
     agentSpend: { month, by: { [u.email]: { noor: 12 } } },

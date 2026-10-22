@@ -3,6 +3,7 @@
  * failure, a fixed template built from the brand alone (spec 4.5, A12). The pause stops Claude, never the renderer, and
  * the credit buys the render, not the prompt.
  */
+import type { UsageWho } from "../usage";
 import { metered } from "../metered";
 import { anthropic, modelState, until } from "../model";
 import { agentForTask } from "../agents";
@@ -76,7 +77,7 @@ const postOf = (b: Brand, t: Task) =>
  * system text gains the `media` platform block, and the user message the owner's instructions for `media`, for all
  * agents and for the agent who owns the item (spec 5.2), as fenced data. The template fallback never reads them.
  */
-async function write(system: string, brand: Brand, task: Task, fallback: string, email: string | undefined, timeoutMs: number, layers?: Layers): Promise<string> {
+async function write(system: string, brand: Brand, task: Task, fallback: string, email: string | undefined, timeoutMs: number, layers?: Layers, who?: UsageWho): Promise<string> {
   // `!(>=)` also sends a NaN budget to the template.
   if (modelState() !== "on" || !(timeoutMs >= PROMPT_MIN_MS)) return fallback;
   try {
@@ -89,7 +90,7 @@ async function write(system: string, brand: Brand, task: Task, fallback: string,
     const res = await metered(anthropic({ timeoutMs: PROMPT_MAX_MS, maxRetries: 0 }).messages.stream(
       { model: route("imagePrompt").model, max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system: blocks?.platform ? `${system}\n\n${blocks.platform}` : system, messages: [{ role: "user", content: blocks?.workspace ? `${postOf(brand, task)}\n\n${blocks.workspace}` : postOf(brand, task) }] },
       { ...until(now + Math.min(PROMPT_MAX_MS, timeoutMs), { now }), maxRetries: 0 },
-    ), { email, kind: "image_prompt", agent: agentForTask(task.type).id });
+    ), { email, kind: "image_prompt", agent: agentForTask(task.type).id, who });
     const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(" ").trim();
     if (text) return text;
     log.error("media prompt failed", { error: "empty" });
@@ -99,10 +100,10 @@ async function write(system: string, brand: Brand, task: Task, fallback: string,
   return fallback;
 }
 
-export async function imagePrompt(brand: Brand, task: Task, model: ImageModelId, aspect: Aspect, email?: string, timeoutMs = PROMPT_MAX_MS, layers?: Layers): Promise<string> {
-  return write(IMAGE_SYSTEM[IMAGE_STYLE[model]], brand, task, fixedImagePrompt(brand, task, model, aspect), email, timeoutMs, layers);
+export async function imagePrompt(brand: Brand, task: Task, model: ImageModelId, aspect: Aspect, email?: string, timeoutMs = PROMPT_MAX_MS, layers?: Layers, who?: UsageWho): Promise<string> {
+  return write(IMAGE_SYSTEM[IMAGE_STYLE[model]], brand, task, fixedImagePrompt(brand, task, model, aspect), email, timeoutMs, layers, who);
 }
 
-export async function videoPrompt(brand: Brand, task: Task, model: VideoModelId, fromImage: boolean, email?: string, timeoutMs = PROMPT_MAX_MS, layers?: Layers): Promise<string> {
-  return write(videoSystem(secondsOf(model), fromImage), brand, task, fixedVideoPrompt(brand, task, model, fromImage), email, timeoutMs, layers);
+export async function videoPrompt(brand: Brand, task: Task, model: VideoModelId, fromImage: boolean, email?: string, timeoutMs = PROMPT_MAX_MS, layers?: Layers, who?: UsageWho): Promise<string> {
+  return write(videoSystem(secondsOf(model), fromImage), brand, task, fixedVideoPrompt(brand, task, model, fromImage), email, timeoutMs, layers, who);
 }

@@ -110,6 +110,8 @@ export const ACCOUNT_SC_API: Readonly<Record<string, string>> = {
   "/api/account/export": "GET: exports every brand of the account; sc(u) only marks which one is active (src/lib/privacy-export.ts).",
   "/api/wishlist/suggest": "handler({ auth: \"user\" }) for the session only: a suggestion is keyed by the login's email, no brand data is read.",
   "/api/wishlist/vote": "handler({ auth: \"user\" }) for the session only: a vote is keyed by the voter's account, no brand data is read.",
+  // Rule 2935: the MCP tools key the token user's own scope with sc(user) (they read `user.scope ?? user.email` before).
+  "/api/mcp": "Bearer token only, no session cookie or brand header: userFromBearer fixes the brand from the token's grant (scopeFor in src/lib/mcp.ts).",
 };
 
 /** A route written as on disk (`/api/tasks/[id]/image`) as a pattern over a request path: `[x]` is one segment, a final `/` is allowed. */

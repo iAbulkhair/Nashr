@@ -173,23 +173,32 @@ describe("entitlementView (rule 784)", () => {
     expect(v.ent.media.video).toEqual(TRIAL_VIDEO_MODELS);
   });
 
-  it("a paid plan resets on the next 1st of the month (a UTC day), the year rolling over in December", async () => {
-    const u = await stored({ plan: "pro" });
-    expect((await entitlementView(u, NOW)).resetsAt).toBe("2026-11-01");
-    expect((await entitlementView(u, Date.parse("2026-12-15T10:00:00Z"))).resetsAt).toBe("2027-01-01");
-    expect((await entitlementView(u, Date.parse("2026-10-31T23:59:59Z"))).resetsAt).toBe("2026-11-01");
-    expect((await entitlementView(u, Date.parse("2026-11-01T00:00:00Z"))).resetsAt).toBe("2026-12-01");
+  it("a paid plan's credits renew on its own day (rule 2936); the chat count still restarts on the next 1st (a UTC day)", async () => {
+    const u = await stored({ plan: "pro", renewedOn: "2026-10-01" });
+    expect(await entitlementView(u, NOW)).toMatchObject({ resetsAt: "2026-11-01", chatResetsAt: "2026-11-01" });
+    const dec = await stored({ plan: "pro", renewedOn: "2026-12-01" });
+    expect(await entitlementView(dec, Date.parse("2026-12-15T10:00:00Z"))).toMatchObject({ resetsAt: "2027-01-01", chatResetsAt: "2027-01-01" });
+    // A plan set by hand on the 20th renews on the 20th; its chat count on the 1st.
+    const hand = await stored({ plan: "pro", renewedOn: "2026-09-20", renewAnchor: 20, handPlan: { paidThrough: "2026-12-20", by: "founder@x", at: "x" } });
+    expect(await entitlementView(hand, NOW)).toMatchObject({ resetsAt: "2026-10-20", chatResetsAt: "2026-11-01" });
+    // Its last paid day: no new period comes, so no renewal shows.
+    const last = await stored({ plan: "pro", renewedOn: "2026-09-20", renewAnchor: 20, handPlan: { paidThrough: "2026-10-20", by: "founder@x", at: "x" } });
+    expect((await entitlementView(last, NOW)).resetsAt).toBeNull();
+    // A renewal already due reads as today.
+    const due = await stored({ plan: "pro", renewedOn: "2026-08-20", renewAnchor: 20 });
+    expect((await entitlementView(due, NOW)).resetsAt).toBe("2026-10-08");
     // Agency, with a deal, is paid too.
-    const agency = await stored({ plan: "agency" });
+    const agency = await stored({ plan: "agency", renewedOn: "2026-10-01" });
     expect((await entitlementView(agency, NOW)).resetsAt).toBe("2026-11-01");
   });
 
-  it("a locked Paymob subscription never renews (rule 712), so it has no reset; an active one does (ruling R3)", async () => {
-    const active = await stored({ plan: "pro", billing: billingFixture({ status: "active" }) });
+  it("a locked Paymob subscription never renews (rule 712), so it has no reset; an active one renews on its anchor (ruling R3)", async () => {
+    const active = await stored({ plan: "pro", renewedOn: "2026-10-08", billing: billingFixture({ status: "active" }) });
     const locked = await stored({ plan: "pro", billing: billingFixture({ status: "locked", paidThrough: "2026-10-05" }) });
-    expect((await entitlementView(active, NOW)).resetsAt).toBe("2026-11-01");
+    expect(await entitlementView(active, NOW)).toMatchObject({ resetsAt: "2026-11-08", chatResetsAt: "2026-11-01" });
     const v = await entitlementView(locked, NOW);
     expect(v.resetsAt).toBeNull();
+    expect(v.chatResetsAt).toBeNull();
     expect(v.ent).toMatchObject({ active: false, inactive: "billing_locked" });
   });
 

@@ -28,7 +28,7 @@ export default function Quality({ lang, keySession }: SectionProps) {
         <p className="text-xs text-foreground-muted">{S.qualityNote}</p>
         {!evals ? (failed ? <Callout tone="danger" className="mt-2">{S.loadFailed}</Callout> : <PanelSkeleton label={S.loading} shape="rows" className="mt-2" />) : (
           <div className="overflow-x-auto"><table className="mt-3 w-full text-sm">
-            <thead className="bg-background-muted text-left text-xs uppercase tracking-wide text-foreground-muted"><tr><th className="p-2">{S.agentType}</th><th>{S.items}</th><th>{S.approval}</th><th>{S.edited}</th><th>{S.magnitude}</th><th>{S.published}</th><th>{S.judge}</th><th>{S.low}</th><th>{S.hours}</th><th>👍/👎</th></tr></thead>
+            <thead className="bg-background-muted text-start text-xs uppercase tracking-wide text-foreground-muted"><tr><th className="p-2">{S.agentType}</th><th>{S.items}</th><th>{S.approval}</th><th>{S.edited}</th><th>{S.magnitude}</th><th>{S.published}</th><th>{S.judge}</th><th>{S.low}</th><th>{S.hours}</th><th>👍/👎</th></tr></thead>
             <tbody>
               {evals.agents.map((a) => (
                 <Fragment key={a.agent}>

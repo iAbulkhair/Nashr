@@ -54,7 +54,10 @@ export type MediaJob = {
   id: string;
   /** sc(u) when the job was created: the only workspace this job ever reads or writes. */
   scope: string;
-  /** The account charged (credits are per account, not per brand). */
+  /**
+   * The account charged (credits are per account, not per brand): its account id, `acct(u)`, never the sign-in address.
+   * The field keeps its old name; a job stored before held the address, which is the id of every R1 account.
+   */
   email: string;
   /** That account's createdAt: a refund or a notification goes only to the same account (spec A32). */
   accountSince: string;

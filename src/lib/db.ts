@@ -22,6 +22,8 @@ type Store = {
   hset(key: string, field: string, value: unknown): Promise<void>;
   hgetall<T = unknown>(key: string): Promise<Record<string, T>>;
   hdel(key: string, field: string): Promise<void>;
+  /** HINCRBY: add `n` to one integer field of a hash (missing = 0) and return the new value. */
+  hincrby(key: string, field: string, n: number): Promise<number>;
   sadd(key: string, member: string): Promise<number>;
   smembers(key: string): Promise<string[]>;
   /** One membership test: a single command, where `smembers` would fetch the whole set. */
@@ -37,6 +39,8 @@ type Store = {
    */
   zadd(key: string, score: number, member: string, opts?: { lt?: boolean }): Promise<void>;
   zrem(key: string, member: string): Promise<void>;
+  /** ZINCRBY: add `n` to a member's score (a new member starts at 0). */
+  zincrby(key: string, n: number, member: string): Promise<void>;
   zcard(key: string): Promise<number>;
   /** ZSCORE: the member's score, or null when it is not in the set. */
   zscore(key: string, member: string): Promise<number | null>;
@@ -149,6 +153,9 @@ function upstash(): Store | null {
     async hdel(key, field) {
       await r.hdel(key, field);
     },
+    async hincrby(key, field, n) {
+      return await r.hincrby(key, field, n);
+    },
     async sadd(key, m) {
       return await r.sadd(key, m);
     },
@@ -177,6 +184,9 @@ function upstash(): Store | null {
     },
     async zrem(key, member) {
       await r.zrem(key, member);
+    },
+    async zincrby(key, n, member) {
+      await r.zincrby(key, n, member);
     },
     async zcard(key) {
       return await r.zcard(key);
@@ -342,6 +352,14 @@ function memory(): Store {
     async hdel(key, field) {
       hashes.get(key)?.delete(field);
     },
+    async hincrby(key, field, n) {
+      live(key);
+      const h = hashes.get(key) ?? new Map<string, unknown>();
+      const v = (Number(h.get(field)) || 0) + n;
+      h.set(field, v);
+      hashes.set(key, h);
+      return v;
+    },
     async sadd(key, member) {
       live(key);
       const s = m.sets.get(key) ?? new Set<string>();
@@ -376,6 +394,11 @@ function memory(): Store {
     },
     async zrem(key, member) {
       zsets.get(key)?.delete(member);
+    },
+    async zincrby(key, n, member) {
+      const z = zsets.get(key) ?? new Map<string, number>();
+      z.set(member, (z.get(member) ?? 0) + n);
+      zsets.set(key, z);
     },
     async zcard(key) {
       return zsets.get(key)?.size ?? 0;

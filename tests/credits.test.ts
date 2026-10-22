@@ -179,7 +179,9 @@ describe("per-agent monthly spend and caps (rules 106-107)", () => {
     const admin = await import("@/app/api/admin/plan/route");
     expect((await admin.POST(json("/api/admin/plan", "POST", { email, plan: "pro" }, { "x-admin-key": "k-credits-test" }))).status).toBe(200);
     expect((await admin.POST(json("/api/admin/plan", "POST", { email, addCredits: 30 }, { "x-admin-key": "k-credits-test" }))).status).toBe(200);
-    await saveUser({ ...(await getUser(email))!, renewedAt: "2020-01" });
+    // A renewal long due (rule 2936): the last one years ago, the plan paid well past its next day.
+    const set = (await getUser(email))!;
+    await saveUser({ ...set, renewedAt: "2020-01", renewedOn: "2020-01-15", handPlan: { ...set.handPlan!, paidThrough: "2099-01-01" } });
     expect(await renewIfDue(email)).toBe(true);
 
     const u = (await getUser(email))!;

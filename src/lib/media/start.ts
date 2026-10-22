@@ -4,6 +4,8 @@
  * charge, the refund and every state change; this module only validates and maps the outcome to HTTP.
  */
 import { sc, trialOver, type User } from "../auth";
+import { usageWho } from "../usage";
+import { acct } from "../account-id";
 import { getTask, updateTask, type Brand, type Task } from "../brand";
 import { agentForTask, type AgentId } from "../agents";
 import { entitlements } from "../entitlements";
@@ -94,9 +96,9 @@ export async function renderImage(u: User, t: Task, brand: Brand, requested: unk
   const m = mediaModel(model);
   const aspect = aspectFor("image", t.channel);
   return startMedia({
-    scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
+    scope: sc(u), email: acct(u), lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
     taskId: t.id, model, aspect, imageUrl: mediaImageFor(m, t), deadline: opts.deadline,
-    prompt: (ms) => imagePrompt(brand, t, model, aspect, u.email, ms, layers),
+    prompt: (ms) => imagePrompt(brand, t, model, aspect, acct(u), ms, layers, usageWho(u, sc(u))),
     by, from: opts.from ?? "app",
   }, opts.deps ?? mediaDeps());
 }
@@ -116,9 +118,9 @@ export async function renderVideo(u: User, t: Task, brand: Brand, requested: unk
   const imageUrl = mediaImageFor(m, t);
   if (m.needsImage && !imageUrl) return refuse(409, "needs_image");
   return startMedia({
-    scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
+    scope: sc(u), email: acct(u), lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
     taskId: t.id, model, aspect: "portrait", imageUrl, deadline: opts.deadline,
-    prompt: (ms) => videoPrompt(brand, t, model, !!imageUrl, u.email, ms, layers),
+    prompt: (ms) => videoPrompt(brand, t, model, !!imageUrl, acct(u), ms, layers, usageWho(u, sc(u))),
     by, from: opts.from ?? "app",
   }, opts.deps ?? mediaDeps());
 }

@@ -317,6 +317,8 @@ const READS: Record<string, Gate> = {
   "GET /api/workspaces/invites": "person-session", // M3 inbox (rule 2753): the person's own verified address only
   // M3 Team log tab (rule 2129): owner and admin, addresses only.
   "GET /api/team/log": g("admin", "team.log.view"),
+  // The account's AI usage by person, brand, agent, model and day: requests only (rule 2907).
+  "GET /api/usage": g("admin", "usage.view"),
   "GET /api/profile": g("member", "read"),
   // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
   "GET /api/account/export": g("owner", "account.export"),
@@ -364,6 +366,8 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/client-ip": "admin-console",
   "GET /api/admin/log": "admin-console",
   "GET /api/admin/overview": "admin-console",
+  // Clients ranked by AI cost this month (rule 2905).
+  "GET /api/admin/usage/clients": "admin-console",
   "GET /api/admin/plan": "admin-console",
   "GET /api/admin/partners": "admin-console",
   "GET /api/admin/payments/[email]": "admin-console",

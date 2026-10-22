@@ -12,6 +12,7 @@ import { CHAT_LOW_SHARE, STR, type Detail, type Lang, type U } from "./shared";
 import { USERS_COPY } from "./users-copy";
 import { formatSuspensionEnd } from "@/lib/suspension";
 import WorkspacePanel from "./WorkspacePanel";
+import UsageBreakdown from "./UsageBreakdown";
 
 /**
  * Red once the raw count reached the allowance (it can pass one lowered mid-period; an allowance of 0, chat stopped,
@@ -194,6 +195,7 @@ export default function UserSheet({
               </table>
             </div>
           )}
+          {sel.breakdown && <UsageBreakdown b={sel.breakdown} lang={lang} brands={sel.brands} />}
         </TabPanel>
 
         <TabPanel idBase={idBase} id="activity" value={tab} className="grid gap-3">

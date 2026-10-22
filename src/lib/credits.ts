@@ -4,8 +4,7 @@ import { getUser, saveUser, trialOver, type OnboardHold, type User } from "./aut
 import type { AgentId } from "./agents";
 import { allowanceOf, topupsSold, type Plan } from "./pricing";
 import { addMonthly, newLot, returnCredits, setMonthly, spendCredits, MAX_LIVE_TOPUPS, type Receipt, type TopupLot, type TopupRequest } from "./topups";
-import { billingLocked } from "./billing-state";
-import { handPlanEnded } from "./hand-plan";
+import { renewalDue as renewalDueOn } from "./renewal";
 import { ksaDay } from "./partner-rules";
 import { adminAudit } from "./admin-audit";
 import { log } from "./log";
@@ -510,14 +509,15 @@ export async function settleChatOverflow(email: string, maxCredits: number, usdM
 }
 
 /**
- * The UTC calendar month, YYYY-MM. Agent counters roll at 00:00 UTC on the 1st; `renewIfDue` runs at the 05:00 UTC daily
- * cron and, since 2026-10-01, before the charge of every paid text batch (src/lib/generate-batch.ts, rule 332).
+ * The UTC calendar month, YYYY-MM. Agent counters roll at 00:00 UTC on the 1st. `renewIfDue` runs at the 05:00 UTC daily
+ * cron and, since 2026-10-01, before the charge of every paid text batch (src/lib/generate-batch.ts, rule 332); since rule
+ * 2936 it renews on each plan's own paid-period day (src/lib/renewal.ts), not on the 1st.
  */
 export const monthKey = (d = new Date()) => d.toISOString().slice(0, 7);
 
 /**
- * Monthly renewal for paid plans: on the first cron run or paid text batch of a new month, whichever comes first (rule
- * 332), the balance is reset to the account's allowance
+ * Monthly renewal for paid plans: on the first cron run or paid text batch on or after the plan's renewal day (rule 2936,
+ * src/lib/renewal.ts; rule 332 for the batch), the balance is reset to the account's allowance
  * (src/lib/pricing.ts `allowanceOf`: the plan's credits; for Agency, the deal's credits, or Business's when there is no
  * deal at or above the floor). Unused credits do not roll over, same as Enrich. Trial users are never renewed, and
  * neither is a stored plan `getUser` could not recognise (it reads as trial). Rule 243, tests/pricing.test.ts. Only the
@@ -530,6 +530,7 @@ export async function renewIfDue(email: string): Promise<boolean> {
     // Only the month's plan credits: live top-up packs keep what is left in them (rule 443).
     setMonthly(u, allowanceOf(u));
     u.renewedAt = monthKey();
+    u.renewedOn = ksaDay();
     await saveUser(u);
     // A Paymob subscription's month has its payment record; a plan set by hand has none, so its grant is written below.
     return u.billing ? false : { plan: u.plan, before, after: u.credits, month: u.renewedAt, paidThrough: u.handPlan?.paidThrough ?? null };
@@ -549,12 +550,15 @@ export async function renewIfDue(email: string): Promise<boolean> {
 }
 
 /**
- * Whether `renewIfDue` would renew this record now: a paid plan whose last renewal (or, before the first, its creation)
- * is not in the current UTC month. A copy read before the lock may only skip the lock: `renewedAt` only moves forward,
+ * Whether `renewIfDue` would renew this record now (rule 2936, src/lib/renewal.ts): a paid plan on or after its own
+ * renewal day, with that period paid. A copy read before the lock may only skip the lock: `renewedOn` only moves forward,
  * so a copy that says "not due" is never wrong, and one that says "due" is checked again under the lock. A Paymob
  * subscription locked for an unpaid renewal gets no new month (rule 712): paying again gives it the month's credits.
- * A plan set by hand gets no new month after its paid-through day (Riyadh, `handPlanEnded`, rule 1303); one set before
- * paid-through days existed has none and refills as before (the expand step of rule 679).
+ * A plan set by hand gets no new month after its paid-through day (Riyadh, `handPlanEnded`, rule 1303), nor a month that
+ * starts on that day; one set before paid-through days existed has none and refills every month (the expand step of rule 679).
  */
-export const renewalDue = (u: Pick<User, "plan" | "renewedAt" | "createdAt" | "billing" | "handPlan">, month = monthKey(), today = ksaDay()) =>
-  u.plan !== "trial" && !billingLocked(u.billing) && !handPlanEnded(u, today) && (u.renewedAt ?? u.createdAt.slice(0, 7)) !== month;
+export const renewalDue = (u: Parameters<typeof renewalDueOn>[0], today = ksaDay()) => renewalDueOn(u, today);
+
+/** The day of the month a plan set today renews on (rule 2936): the day it was set, so its months run from it. */
+export const anchorOf = (today: string): number => Number(today.slice(8, 10));
+

@@ -762,7 +762,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     const done = (j: Answer) => {
       if (j.chat) setChatNow(j.chat);
       if (j.message) { setMsgs((p) => [...p, j.message!]); if (typeof j.credits === "number") setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); if (j.limit === "credits" || j.limit === "trial" || j.limit === "agent_cap" || j.limit === "fair_use") raiseLimit(j.limit); }
-      else setMsgs((p) => [...p, { role: "assistant", content: `⚠︎ ${j.error === "network" ? (lang === "ar" ? "انقطع الاتصال. حاول مرة أخرى." : "Connection lost. Try again.") : modelErrorText(lang, j.error) ?? (lang === "ar" ? "تعذّر الرد. حاول مرة أخرى." : "Could not reply. Try again.")}`, at: new Date().toISOString(), agent: "noor" }]);
+      else setMsgs((p) => [...p, { role: "assistant", content: `⚠︎ ${j.error === "network" ? (lang === "ar" ? "انقطع الاتصال. حاول مرة أخرى." : "Connection lost. Try again.") : j.error === "conversation_gone" ? (lang === "ar" ? "حُذفت هذه المحادثة. ابدأ محادثة جديدة." : "This conversation was deleted. Start a new one.") : modelErrorText(lang, j.error) ?? (lang === "ar" ? "تعذّر الرد. حاول مرة أخرى." : "Could not reply. Try again.")}`, at: new Date().toISOString(), agent: "noor" }]);
     };
     /** Refused before anything was saved or counted: out of the thread, back in the box, and the reason shown. */
     const unsend = (why: "chat" | "chat_credits" | "fair_use" | "slow_down", j: Answer) => {

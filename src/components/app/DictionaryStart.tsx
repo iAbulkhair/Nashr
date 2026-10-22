@@ -58,7 +58,7 @@ function Sample({ who, lang, children }: { who: readonly HomeAgentId[]; lang: La
   return (
     <div className="rounded-2xl border border-foreground/10 bg-surface p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex -space-x-2">
+        <span className="flex [&>*:not(:first-child)]:-ms-2">
           {who.map((w) => (
             <Face key={w} who={w} />
           ))}
