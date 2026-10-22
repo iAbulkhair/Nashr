@@ -70,8 +70,7 @@ test("the owner invites a member from the Members page, who joins with a name an
     // A weak password is refused on the page, with the rule that failed, and the invite is still usable afterwards.
     await fillWhenReady(guest.getByLabel(J.name, { exact: true }), member.name);
     await fillWhenReady(guest.getByLabel(J.password, { exact: true }), "short");
-    // The button is aria-disabled until the rules are met (it stays focusable so pressing it names the unmet rules,
-    // rule 434), and Playwright never clicks an aria-disabled button: submit from the field, as Enter would (rule 3006).
+    // The button is aria-disabled until the rules are met (Playwright will not click it); Enter submits the form all the same.
     await guest.getByLabel(J.password, { exact: true }).press("Enter");
     await expect(guest.locator("form").getByRole("alert")).toBeVisible();
 

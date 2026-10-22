@@ -57,7 +57,7 @@ test("the owner deletes the account from the Danger zone; members, invites and d
     await fillWhenReady(typed, "someone-else@test.example");
     await fillWhenReady(pw, owner.password);
     await expect(confirm).toBeDisabled();
-    // Case is ignored. (An email field drops surrounding spaces itself, so the spec types none: rule 3006.)
+    // Case does not matter (an email field drops the spaces itself, so only the case is tried).
     await fillWhenReady(typed, owner.email.toUpperCase());
     await expect(confirm).toBeEnabled();
 
