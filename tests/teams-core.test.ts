@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
 import { jar, json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
-import { adminActor, createUser, currentUser, getLogin, getUser, isAdmin, isAdminCookie, isFounderActor, PLAN_SEATS, saveUser, sc, seatLimit, type Actor, type Plan, type User } from "@/lib/auth";
+import { acct, adminActor, createUser, currentUser, getLogin, getUser, isAdmin, isAdminCookie, isFounderActor, PLAN_SEATS, saveUser, sc, seatLimit, type Actor, type Plan, type User } from "@/lib/auth";
 import { storedPersonId } from "@/lib/keys";
+import { ownerOf } from "@/lib/membership";
 import { can, forbid, IMPERSONATION_BLOCKED, roleOf, type Action } from "@/lib/roles";
 import { acceptInvite, cancelInvite, createInvite, enforceSeats, getMember, INVITE_TTL_SECONDS, leaveTeam, listInvites, listMembers, peekInvite, removeMember, saveMember, seatsUsed, setRole, teamView, withMemberLock } from "@/lib/team";
 import { addBrand, saveBrands, setActiveBrand, scopeFor } from "@/lib/brands";
@@ -17,11 +18,11 @@ const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) =
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 const FOUNDER = "founder-teams@test.example";
-const ownerActor = (u: User): Actor => ({ kind: "owner", pid: storedPersonId(u.email), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" });
+const ownerActor = (u: User): Actor => ({ kind: "owner", pid: ownerOf(u), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" });
 const memberActor = (email: string, role: "admin" | "member"): Actor => ({ kind: "member", pid: storedPersonId(email), home: true, email, name: "M", lang: "ar", role });
 const as = (u: User, actor?: Actor): User => ({ ...u, actor });
 const bearer = (t: string) => new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${t}` } });
-const withPlan = async (u: User, plan: Plan, seats?: number) => { const x = { ...(await getUser(u.email))!, plan, seats }; await saveUser(x); return x; };
+const withPlan = async (u: User, plan: Plan, seats?: number) => { const x = { ...(await getUser(acct(u)))!, plan, seats }; await saveUser(x); return x; };
 const freshEmail = (p = "inv") => `${p}-${randomBytes(4).toString("hex")}@test.example`;
 /** Sign in as `email` and resolve the request's user. */
 const resolveAs = async (email: string, opts: { imp?: string } = {}) => { await signIn(email, opts); return currentUser(); };
@@ -40,7 +41,7 @@ describe("resolving a member session", () => {
     expect(sc(u!)).toBe(sc((await resolveAs(owner.email))!)); // same workspace as the owner
     await signIn(m.email);
     const again = (await currentUser())!;
-    expect(sc(again)).toBe(owner.email);
+    expect(sc(again)).toBe(acct(owner));
     expect(again.actor).toEqual({ kind: "member", pid: storedPersonId(m.email), home: true, email: m.email, name: expect.any(String), lang: "ar", role: "admin" });
     expect(roleOf(again)).toBe("admin");
   });
@@ -54,17 +55,17 @@ describe("resolving a member session", () => {
     const b = (await addBrand(as(owner, ownerActor(owner)), "Second")) as { id: string };
     const m = await newMember(owner);
     // addBrand activated the new brand for the owner only; the member still sits on the default brand.
-    expect(sc((await resolveAs(owner.email))!)).toBe(scopeFor(owner.email, b.id));
-    expect(sc((await resolveAs(m.email))!)).toBe(owner.email);
+    expect(sc((await resolveAs(owner.email))!)).toBe(scopeFor(acct(owner), b.id));
+    expect(sc((await resolveAs(m.email))!)).toBe(acct(owner));
     // The member's own pick, never the member's email as a scope.
     await setActiveBrand(m.email, b.id);
-    expect(sc((await resolveAs(m.email))!)).toBe(scopeFor(owner.email, b.id));
+    expect(sc((await resolveAs(m.email))!)).toBe(scopeFor(acct(owner), b.id));
     // A brand id the owner does not have, or an archived one, falls back to default.
     await setActiveBrand(m.email, "nope1234");
-    expect(sc((await resolveAs(m.email))!)).toBe(owner.email);
-    await saveBrands(owner.email, [{ ...b, name: "Second", createdAt: new Date().toISOString(), status: "archived" }]);
+    expect(sc((await resolveAs(m.email))!)).toBe(acct(owner));
+    await saveBrands(acct(owner), [{ ...b, name: "Second", createdAt: new Date().toISOString(), status: "archived" }]);
     await setActiveBrand(m.email, b.id);
-    expect(sc((await resolveAs(m.email))!)).toBe(owner.email);
+    expect(sc((await resolveAs(m.email))!)).toBe(acct(owner));
   });
   it("addBrand by a member activates the new brand for that member, not for the owner", async () => {
     const owner = await withPlan(await newUser("own"), "agency");
@@ -72,8 +73,8 @@ describe("resolving a member session", () => {
     const u = (await resolveAs(m.email))!;
     const b = (await addBrand(u, "Member brand")) as { id: string };
     expect(await db.get(`activebrand:${m.email}`)).toBe(b.id);
-    expect(await db.get(`activebrand:${owner.email}`)).toBeNull();
-    expect(sc((await resolveAs(owner.email))!)).toBe(owner.email);
+    expect(await db.get(`activebrand:${acct(owner)}`)).toBeNull();
+    expect(sc((await resolveAs(owner.email))!)).toBe(acct(owner));
   });
   it("refuses a removed member, a disabled member, a suspended owner and a missing owner", async () => {
     const owner = await newUser("own");
@@ -89,11 +90,11 @@ describe("resolving a member session", () => {
     expect(await resolveAs(b.email)).toBeNull();
 
     await signIn(c.email);
-    await saveUser({ ...(await getUser(owner.email))!, suspended: true });
+    await saveUser({ ...(await getUser(acct(owner)))!, suspended: true });
     expect(await currentUser()).toBeNull(); // the cookie is still there
-    await saveUser({ ...(await getUser(owner.email))!, suspended: false });
+    await saveUser({ ...(await getUser(acct(owner)))!, suspended: false });
     expect(await currentUser()).not.toBeNull();
-    await db.del(`user:${owner.email}`);
+    await db.del(`user:${acct(owner)}`);
     expect(await currentUser()).toBeNull();
   });
   it("refuses a member record older than the owner record (a re-registered owner address never inherits a team)", async () => {
@@ -101,7 +102,7 @@ describe("resolving a member session", () => {
     // No shadow membership: a refused member who holds nothing else signs in nowhere (multi-org M1).
     const m = await newMember(owner, "member", "m", { shadow: false });
     expect(await resolveAs(m.email)).not.toBeNull();
-    await saveUser({ ...(await getUser(owner.email))!, createdAt: new Date(Date.now() + 60_000).toISOString() });
+    await saveUser({ ...(await getUser(acct(owner)))!, createdAt: new Date(Date.now() + 60_000).toISOString() });
     expect(await resolveAs(m.email)).toBeNull();
   });
   it("teamSessionsAfter signs every member out and leaves the owner signed in", async () => {
@@ -109,7 +110,7 @@ describe("resolving a member session", () => {
     const m = await newMember(owner);
     const memberTok = await signIn(m.email);
     const ownerTok = await signIn(owner.email);
-    await saveUser({ ...(await getUser(owner.email))!, teamSessionsAfter: new Date(Date.now() + 1000).toISOString() });
+    await saveUser({ ...(await getUser(acct(owner)))!, teamSessionsAfter: new Date(Date.now() + 1000).toISOString() });
     jar().set("thakeen_session", memberTok);
     expect(await currentUser()).toBeNull();
     jar().set("thakeen_session", ownerTok);
@@ -140,7 +141,7 @@ describe("resolving a member session", () => {
     const u = (await resolveAs(m.email))!;
     expect(u.actor).toBeDefined();
     await saveUser(u);
-    const raw = (await db.get<Record<string, unknown>>(`user:${owner.email}`))!;
+    const raw = (await db.get<Record<string, unknown>>(`user:${acct(owner)}`))!;
     expect(raw).not.toHaveProperty("actor");
     expect(raw).not.toHaveProperty("scope");
     expect(raw).not.toHaveProperty("brandId");
@@ -149,7 +150,7 @@ describe("resolving a member session", () => {
     const owner = await newUser("own");
     const m = await newMember(owner);
     const all = await db.smembers("users:all");
-    expect(all).toContain(owner.email);
+    expect(all).toContain(acct(owner));
     expect(all).not.toContain(m.email);
     expect(await getUser(m.email)).toBeNull();
     expect(owner.sessionsAfter).toBe(owner.createdAt);
@@ -158,7 +159,7 @@ describe("resolving a member session", () => {
     const owner = await newUser("own");
     const m = await newMember(owner);
     expect(await getLogin(owner.email.toUpperCase())).toMatchObject({ kind: "owner", user: { email: owner.email } });
-    expect(await getLogin(m.email)).toMatchObject({ kind: "member", member: { email: m.email, memberOf: owner.email }, owner: { email: owner.email } });
+    expect(await getLogin(m.email)).toMatchObject({ kind: "member", member: { email: m.email, memberOf: acct(owner) }, owner: { email: owner.email } });
     expect(await getLogin(freshEmail("nobody"))).toBeNull();
   });
 });
@@ -213,7 +214,7 @@ describe("founder console follows the actor", () => {
     await signIn(FOUNDER);
     const res = await users.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) }));
     expect(res.status).toBe(200);
-    expect((await getUser(owner.email))!.teamSessionsAfter).toBeTruthy();
+    expect((await getUser(acct(owner)))!.teamSessionsAfter).toBeTruthy();
     jar().set("thakeen_session", memberTok);
     expect(await currentUser()).toBeNull();
   });
@@ -278,9 +279,9 @@ describe("invites", () => {
     expect(r.token).toMatch(/^[a-f0-9]{64}$/);
     expect(r.id).not.toBe(r.token);
     expect(await db.get(`invite:${r.token}`)).toBeNull();
-    expect(await db.get(`invite:${r.id}`)).toMatchObject({ email, role: "member", owner: owner.email, invitedBy: owner.email, lang: "en" });
+    expect(await db.get(`invite:${r.id}`)).toMatchObject({ email, role: "member", owner: acct(owner), invitedBy: owner.email, lang: "en" });
     expect(new Date(r.invite.expiresAt).getTime() - new Date(r.invite.createdAt).getTime()).toBe(INVITE_TTL_SECONDS * 1000);
-    expect((await listInvites(owner.email)).map((i) => i.id)).toEqual([r.id]);
+    expect((await listInvites(acct(owner))).map((i) => i.id)).toEqual([r.id]);
   });
   it("counts seats (owner + members + pending invites) against the plan", async () => {
     const owner = await newUser("own"); // trial: 3 seats
@@ -288,19 +289,23 @@ describe("invites", () => {
     await newMember(owner);
     const r1 = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
     expect(r1.ok).toBe(true);
-    expect(await seatsUsed(owner.email)).toBe(3);
+    expect(await seatsUsed(acct(owner))).toBe(3);
     expect(await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar")).toEqual({ ok: false, error: "seats", used: 3, limit: 3 });
     // The founder override lifts the plan's number.
     const more = await withPlan(owner, "trial", 5);
     expect((await createInvite(more, ownerActor(more), freshEmail(), "member", "ar")).ok).toBe(true);
   });
-  it("refuses self, an existing login anywhere, and a pending invite, all with one generic answer", async () => {
-    const owner = await newUser("own");
+  it("refuses self and a pending invite; an existing login elsewhere is answered like a new address (multi-workspace M3, rule 2116)", async () => {
+    // With MULTI_ORG on only this account's own people are refused (src/lib/team.ts createInvite); the R1 answer for a login
+    // held anywhere ("unavailable") is pinned by the flag-off tests. tests/multi-org-invites.test.ts covers the rest.
+    const owner = await withPlan(await newUser("own"), "agency");
     const other = await newUser("other");
     const elsewhere = await newMember(other);
     const pending = freshEmail();
     expect((await createInvite(owner, ownerActor(owner), pending, "member", "ar")).ok).toBe(true);
-    for (const e of [owner.email, other.email, elsewhere.email, pending]) expect(await createInvite(owner, ownerActor(owner), e, "member", "ar"), e).toEqual({ ok: false, error: "unavailable" });
+    expect(await createInvite(owner, ownerActor(owner), owner.email, "member", "ar")).toEqual({ ok: false, error: "already_member" });
+    expect(await createInvite(owner, ownerActor(owner), pending, "member", "ar")).toEqual({ ok: false, error: "unavailable" });
+    for (const e of [other.email, elsewhere.email]) expect((await createInvite(owner, ownerActor(owner), e, "member", "ar")).ok, e).toBe(true);
     expect(await createInvite(owner, ownerActor(owner), "victim@x.com#brand", "member", "ar")).toEqual({ ok: false, error: "invalid_email" });
     expect(await createInvite(owner, ownerActor(owner), freshEmail(), "owner", "ar")).toEqual({ ok: false, error: "invalid_role" });
   });
@@ -331,17 +336,17 @@ describe("invites", () => {
     expect(await acceptInvite(r.token, { name: "  ", password: "abc12345" })).toEqual({ ok: false, error: "invalid_name" });
     const done = await acceptInvite(r.token, { name: "New Person", password: "abc12345", lang: "en" });
     if (!done.ok) throw new Error(done.error);
-    expect(done.member).toMatchObject({ email, memberOf: owner.email, role: "admin", lang: "en", invitedBy: owner.email });
+    expect(done.member).toMatchObject({ email, memberOf: acct(owner), role: "admin", lang: "en", invitedBy: owner.email });
     expect(done.member.sessionsAfter).toBe(done.member.acceptedAt);
     expect(done.member.passHash).not.toContain("abc12345");
     // Single use.
     expect(await acceptInvite(r.token, { name: "Again", password: "abc12345" })).toEqual({ ok: false, error: "invalid" });
     expect(await peekInvite(r.token)).toBeNull();
-    expect(await listInvites(owner.email)).toEqual([]);
+    expect(await listInvites(acct(owner))).toEqual([]);
     // A member, never an account: no user record, not in users:all, the roster has it.
     expect(await getUser(email)).toBeNull();
     expect(await db.smembers("users:all")).not.toContain(email);
-    expect((await listMembers(owner.email)).map((m) => m.email)).toEqual([email]);
+    expect((await listMembers(acct(owner))).map((m) => m.email)).toEqual([email]);
     expect((await resolveAs(email))!.actor).toMatchObject({ kind: "member", role: "admin" });
   });
   it("two accepts of one token at the same time create one member", async () => {
@@ -350,7 +355,7 @@ describe("invites", () => {
     if (!r.ok) throw new Error(r.error);
     const both = await Promise.all([acceptInvite(r.token, { name: "A", password: "abc12345" }), acceptInvite(r.token, { name: "B", password: "abc12345" })]);
     expect(both.filter((x) => x.ok)).toHaveLength(1);
-    expect(await listMembers(owner.email)).toHaveLength(1);
+    expect(await listMembers(acct(owner))).toHaveLength(1);
     // The single-use lock itself: while an accept holds `inviteuse:{hash}`, another is refused outright.
     const r2 = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
     if (!r2.ok) throw new Error(r2.error);
@@ -368,7 +373,7 @@ describe("invites", () => {
     try {
       expect(await peekInvite(r.token)).toBeNull();
       expect(await acceptInvite(r.token, { name: "Late", password: "abc12345" })).toEqual({ ok: false, error: "invalid" });
-      expect(await listInvites(owner.email)).toEqual([]);
+      expect(await listInvites(acct(owner))).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
@@ -387,13 +392,14 @@ describe("invites", () => {
     const taken = await createInvite(owner, ownerActor(owner), email, "member", "ar");
     if (!taken.ok) throw new Error(taken.error);
     await createUser({ email, name: "Signed up meanwhile", phone: "", password: "abc12345", lang: "ar" });
-    expect(await acceptInvite(taken.token, { name: "X", password: "abc12345" })).toEqual({ ok: false, error: "unavailable" });
+    // MULTI_ORG on (rule 2116): an address that signs in meanwhile is told to sign in, and the invite stays.
+    expect(await acceptInvite(taken.token, { name: "X", password: "abc12345" })).toEqual({ ok: false, error: "signin_required" });
 
     const susp = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
     if (!susp.ok) throw new Error(susp.error);
-    await saveUser({ ...(await getUser(owner.email))!, suspended: true });
+    await saveUser({ ...(await getUser(acct(owner)))!, suspended: true });
     expect(await acceptInvite(susp.token, { name: "X", password: "abc12345" })).toEqual({ ok: false, error: "invalid" });
-    await saveUser({ ...(await getUser(owner.email))!, suspended: false });
+    await saveUser({ ...(await getUser(acct(owner)))!, suspended: false });
 
     // The plan shrank between invite and accept: the seat no longer fits.
     const late = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
@@ -413,7 +419,7 @@ describe("invites", () => {
     expect(await cancelInvite(adminU, adminU.actor!, aInv.id)).toEqual({ ok: false, error: "forbidden" });
     expect(await cancelInvite(adminU, adminU.actor!, mInv.id)).toEqual({ ok: true });
     expect(await cancelInvite(owner, ownerActor(owner), aInv.id)).toEqual({ ok: true });
-    expect(await listInvites(owner.email)).toEqual([]);
+    expect(await listInvites(acct(owner))).toEqual([]);
   });
 });
 
@@ -434,7 +440,7 @@ describe("roster changes", () => {
     expect(await getMember(admin.email)).toBeNull();
     expect(await db.get(`activebrand:${admin.email}`)).toBeNull();
     expect(await db.get(`invite:${sent.id}`)).toBeNull();
-    expect((await listMembers(owner.email)).map((m) => m.email).sort()).toEqual([admin2.email, plain.email].sort());
+    expect((await listMembers(acct(owner))).map((m) => m.email).sort()).toEqual([admin2.email, plain.email].sort());
     const admin2U = (await resolveAs(admin2.email))!;
     expect(await removeMember(admin2U, admin2U.actor!, plain.email)).toEqual({ ok: true });
     expect(await removeMember(owner, ownerActor(owner), owner.email)).toEqual({ ok: false, error: "not_found" });
@@ -483,23 +489,23 @@ describe("enforceSeats on a plan change", () => {
     if (!inv.ok) throw new Error(inv.error);
 
     await withPlan(owner, "pro"); // 3 seats: owner + the two oldest
-    const down = await enforceSeats(owner.email);
+    const down = await enforceSeats(acct(owner));
     expect(down.limit).toBe(3);
     expect(down.disabled.sort()).toEqual([ms[2].email, ms[3].email].sort());
     expect(down.cancelled).toEqual([inv.id]);
     expect((await getMember(ms[3].email))!.disabled).toBe("seats");
     expect(await resolveAs(ms[3].email)).toBeNull();
     expect(await resolveAs(ms[0].email)).not.toBeNull();
-    expect(await seatsUsed(owner.email)).toBe(3);
+    expect(await seatsUsed(acct(owner))).toBe(3);
     expect(await getMember(ms[3].email)).not.toBeNull(); // kept, never deleted
 
     await withPlan(owner, "pro", 4); // one seat more: the oldest disabled member comes back first
-    const up = await enforceSeats(owner.email);
+    const up = await enforceSeats(acct(owner));
     expect(up.enabled).toEqual([ms[2].email]);
     expect((await getMember(ms[3].email))!.disabled).toBe("seats");
 
     await withPlan(owner, "agency");
-    expect((await enforceSeats(owner.email)).enabled).toEqual([ms[3].email]);
+    expect((await enforceSeats(acct(owner))).enabled).toEqual([ms[3].email]);
     expect(await resolveAs(ms[3].email)).not.toBeNull();
   });
 });
@@ -511,13 +517,13 @@ describe("enforceSeats works from the team as it is now", () => {
     const base = new Date(owner.createdAt).getTime();
     await Promise.all([a, b, c].map(async (m, i) => saveMember({ ...(await getMember(m.email))!, acceptedAt: new Date(base + (i + 1) * 1000).toISOString() })));
     await withPlan(owner, "pro"); // 3 seats: A and B keep theirs, C is paused
-    expect((await enforceSeats(owner.email)).disabled).toEqual([c.email]);
+    expect((await enforceSeats(acct(owner))).disabled).toEqual([c.email]);
     // The owner removes B and brings D in; D is newer than the paused C.
     expect(await removeMember(owner, ownerActor(owner), b.email)).toEqual({ ok: true });
     const d = await newMember(owner);
     await saveMember({ ...(await getMember(d.email))!, acceptedAt: new Date(base + 10_000).toISOString() });
     // The founder re-applies Pro (a renewal, a credits reset): nobody is swapped.
-    expect(await enforceSeats(owner.email)).toEqual({ limit: 3, disabled: [], enabled: [], cancelled: [] });
+    expect(await enforceSeats(acct(owner))).toEqual({ limit: 3, disabled: [], enabled: [], cancelled: [] });
     expect(await resolveAs(d.email)).not.toBeNull();
     expect((await getMember(c.email))!.disabled).toBe("seats");
   });
@@ -527,16 +533,16 @@ describe("enforceSeats works from the team as it is now", () => {
     const base = new Date(owner.createdAt).getTime();
     await Promise.all([a, b].map(async (m, i) => saveMember({ ...(await getMember(m.email))!, acceptedAt: new Date(base + (i + 1) * 1000).toISOString() })));
     await withPlan(owner, "starter");
-    expect((await enforceSeats(owner.email)).disabled.sort()).toEqual([a.email, b.email].sort());
+    expect((await enforceSeats(acct(owner))).disabled.sort()).toEqual([a.email, b.email].sort());
     // Back on Pro, the owner invites someone before the limit is refitted: the invite takes one of the two free seats.
     await withPlan(owner, "pro");
     const inv = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
     if (!inv.ok) throw new Error(inv.error);
-    const up = await enforceSeats(owner.email);
+    const up = await enforceSeats(acct(owner));
     expect(up.enabled).toEqual([a.email]); // the oldest paused member, into the one seat left
     expect(up.cancelled).toEqual([]);
     expect((await getMember(b.email))!.disabled).toBe("seats");
-    expect(await seatsUsed(owner.email)).toBe(3);
+    expect(await seatsUsed(acct(owner))).toBe(3);
   });
 });
 
@@ -556,7 +562,7 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     });
     expect(await removal).toEqual({ ok: true });
     expect(await getMember(m.email)).toBeNull();
-    expect(await listMembers(owner.email)).toEqual([]);
+    expect(await listMembers(acct(owner))).toEqual([]);
     jar().set("thakeen_session", tok);
     expect(await currentUser()).toBeNull();
   });
@@ -576,11 +582,11 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     const email = freshEmail();
     const inv = await createInvite(owner, ownerActor(owner), email, "member", "ar");
     if (!inv.ok) throw new Error(inv.error);
-    expect(await db.lock(`lock:team:${owner.email}`, 10)).toBe(true);
+    expect(await db.lock(`lock:team:${acct(owner)}`, 10)).toBe(true);
     const accepting = acceptInvite(inv.token, { name: "Racer", password: "abc12345" });
     await pause(300); // the accept has read the invite and waits for the lock
-    await Promise.all([db.del(`invite:${inv.id}`), db.srem(`invites:${owner.email}`, inv.id)]); // what cancelInvite does
-    await db.unlock(`lock:team:${owner.email}`);
+    await Promise.all([db.del(`invite:${inv.id}`), db.srem(`invites:${acct(owner)}`, inv.id)]); // what cancelInvite does
+    await db.unlock(`lock:team:${acct(owner)}`);
     expect(await accepting).toEqual({ ok: false, error: "invalid" });
     expect(await getMember(email)).toBeNull();
   });
@@ -589,11 +595,11 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     await newMember(owner);
     const inv = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
     if (!inv.ok) throw new Error(inv.error);
-    expect(await db.lock(`lock:team:${owner.email}`, 10)).toBe(true);
+    expect(await db.lock(`lock:team:${acct(owner)}`, 10)).toBe(true);
     const accepting = acceptInvite(inv.token, { name: "Racer", password: "abc12345" });
     await pause(300);
     await withPlan(owner, "starter"); // the founder downgrades while the accept waits
-    await db.unlock(`lock:team:${owner.email}`);
+    await db.unlock(`lock:team:${acct(owner)}`);
     expect(await accepting).toMatchObject({ ok: false, error: "seats", limit: 1 });
     expect(await getMember(inv.invite.email)).toBeNull();
   });
@@ -601,11 +607,11 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     const owner = await newUser("own");
     const inv = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
     if (!inv.ok) throw new Error(inv.error);
-    expect(await db.lock(`lock:team:${owner.email}`, 10)).toBe(true);
+    expect(await db.lock(`lock:team:${acct(owner)}`, 10)).toBe(true);
     const cancelling = cancelInvite(owner, ownerActor(owner), inv.id);
     await pause(150);
     expect(await db.get(`invite:${inv.id}`), "the cancel has not run while the lock is held").not.toBeNull();
-    await db.unlock(`lock:team:${owner.email}`);
+    await db.unlock(`lock:team:${acct(owner)}`);
     expect(await cancelling).toEqual({ ok: true });
   });
   it("an account deleted while an invite is being accepted leaves no member login behind", async () => {
@@ -613,17 +619,17 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     const email = freshEmail();
     const inv = await createInvite(owner, ownerActor(owner), email, "member", "ar");
     if (!inv.ok) throw new Error(inv.error);
-    expect(await db.lock(`lock:team:${owner.email}`, 10)).toBe(true);
+    expect(await db.lock(`lock:team:${acct(owner)}`, 10)).toBe(true);
     const accepting = acceptInvite(inv.token, { name: "Racer", password: "abc12345" });
     await pause(300);
-    const wiping = wipeAccount(owner.email);
+    const wiping = wipeAccount(acct(owner));
     await pause(200);
-    await db.unlock(`lock:team:${owner.email}`);
+    await db.unlock(`lock:team:${acct(owner)}`);
     // Whichever takes the lock first, nothing survives: an accept before the wipe has its member deleted by it, and one
     // after it finds no owner.
     await Promise.all([accepting, wiping]);
     expect(await getMember(email)).toBeNull();
-    expect(await db.smembers(`members:${owner.email}`)).toEqual([]);
+    expect(await db.smembers(`members:${acct(owner)}`)).toEqual([]);
     expect(await getLogin(email)).toBeNull();
   });
   it("demoting an admin drops the invites they sent, and the join page no longer previews one", async () => {
@@ -637,10 +643,10 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     expect(await peekInvite(sent.token), "an invite accepting would refuse is not previewed").toBeNull();
     await saveMember({ ...(await getMember(admin.email))!, disabled: undefined });
     expect(await peekInvite(sent.token)).not.toBeNull();
-    const before = await seatsUsed(owner.email);
+    const before = await seatsUsed(acct(owner));
     expect(await setRole(owner, ownerActor(owner), admin.email, "member")).toEqual({ ok: true });
-    expect(await listInvites(owner.email)).toEqual([]);
-    expect(await seatsUsed(owner.email)).toBe(before - 2);
+    expect(await listInvites(acct(owner))).toEqual([]);
+    expect(await seatsUsed(acct(owner))).toBe(before - 2);
     expect(await peekInvite(other.token)).toBeNull();
   });
 });
@@ -653,14 +659,14 @@ describe("account deletion cascades to the team", () => {
     const tok = await signIn(m.email);
     const inv = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
     if (!inv.ok) throw new Error(inv.error);
-    await wipeAccount(owner.email);
+    await wipeAccount(acct(owner));
     for (const k of [`member:${m.email}`, `activebrand:${m.email}`, `invite:${inv.id}`]) expect(await db.get(k), k).toBeNull();
-    expect(await db.smembers(`members:${owner.email}`)).toEqual([]);
-    expect(await db.smembers(`invites:${owner.email}`)).toEqual([]);
+    expect(await db.smembers(`members:${acct(owner)}`)).toEqual([]);
+    expect(await db.smembers(`invites:${acct(owner)}`)).toEqual([]);
     const again = await markVerified((await createUser({ email: owner.email, name: "New owner", phone: "", password: "abc12345", lang: "ar" })).email);
     jar().set("thakeen_session", tok);
     expect(await currentUser()).toBeNull();
-    expect(await listMembers(again.email)).toEqual([]);
+    expect(await listMembers(acct(again))).toEqual([]);
     expect(await peekInvite(inv.token)).toBeNull();
   });
 });
@@ -668,7 +674,7 @@ describe("account deletion cascades to the team", () => {
 describe("MCP bearer", () => {
   it("resolves an owner token with a token actor and refuses a token naming a member login", async () => {
     const owner = await newUser("own");
-    const t = await createMcpToken(owner.email);
+    const t = await createMcpToken(acct(owner));
     const u = (await userFromBearer(bearer(t)))!;
     expect(u.email).toBe(owner.email);
     expect(u.actor).toMatchObject({ kind: "token", role: "owner", email: owner.email });

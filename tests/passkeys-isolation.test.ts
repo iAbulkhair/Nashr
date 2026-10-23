@@ -11,6 +11,7 @@ import { addPasskey, credHash, ensureUid } from "@/lib/passkeys";
 import { getPerson } from "@/lib/person";
 import { createMember, forceRemoveMember } from "@/lib/team";
 import { wipeAccount } from "@/lib/account";
+import { deletePerson as deleteOwnLogin } from "@/lib/person-delete";
 import type { PasskeySetValue } from "@/lib/stored";
 import * as manageRoute from "@/app/api/account/passkeys/route";
 import * as optionsRoute from "@/app/api/auth/passkey/options/route";
@@ -224,6 +225,9 @@ async function deletePerson(a: Person, round: Person[]) {
     for (const p of round) if (p.owner === a.owner) p.alive = false;
   } else {
     expect(await forceRemoveMember(a.email)).toBe(true);
+    // With MULTI_ORG on a removal keeps the person (they may hold other workspaces): the person goes through the delete-own-login flow (rule 2754).
+    const left = await getPerson(a.pid);
+    if (left) expect(await deleteOwnLogin(left), `seed ${SEED}: ${a.label} deletes its login`).toMatchObject({ ok: true });
     a.alive = false;
   }
   expect(await getPerson(a.pid), `seed ${SEED}: ${a.label} is still a person`).toBeNull();

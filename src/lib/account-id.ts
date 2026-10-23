@@ -17,9 +17,12 @@ import { z } from "zod";
 
 /**
  * Release R2's switch, a code constant and not an environment variable (spec section "Releases": a variable change
- * needs a rebuild anyway). Off in R1: signup writes `id = email` and an owner with data may not move (rule 1996).
+ * needs a rebuild anyway). On since R2 "enable", shipped with multi-workspace M2 (decision 11, rules 3810-3829): every
+ * new account gets an `a_` id, an owner moves its address in place (src/lib/email-move.ts) with the old address held
+ * 30 days and a revert link (D1), and a change on a login with two-step on asks its code (D2). Rollback floor: the
+ * R2-expand release (an R1 build has no L3 guard).
  */
-export const OPAQUE_IDS = false;
+export const OPAQUE_IDS = true;
 
 /** What `acct` reads: the stored id when the record has one, else the address it was stored under (a legacy account). */
 type AccountLike = { id?: string; email: string };

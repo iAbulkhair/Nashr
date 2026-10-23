@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
  * docs/system/tests/1530-margin-integrations.md).
  */
 import { db } from "@/lib/db";
-import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
+import { getUser, saveUser, type Plan, type User, acct } from "@/lib/auth";
 import { wipeAccount } from "@/lib/account";
 import { listNotifs } from "@/lib/notifications";
 import { monthKey } from "@/lib/credits";
@@ -30,7 +30,7 @@ afterEach(() => { signOut(); vi.unstubAllEnvs(); vi.stubEnv("WAITLIST_ADMIN_KEY"
 const src = (f: string) => readFileSync(f, "utf8");
 async function account(plan: Plan, extra: Partial<User> = {}, prefix = "mg"): Promise<User> {
   const u = await newUser(prefix);
-  const x = { ...(await getUser(u.email))!, plan, ...extra };
+  const x = { ...(await getUser(acct(u)))!, plan, ...extra };
   await saveUser(x);
   return x;
 }
@@ -57,7 +57,7 @@ describe("the margin formula (rule 1530)", () => {
     const trial = await account("trial");
     const off = await account("starter", { suspended: true });
     const agency = await account("agency", { deal: { credits: 5000, priceSar: 3330, setAt: "2031-03-01T00:00:00.000Z", setBy: "f@test.example" } });
-    await Promise.all([spend(pro.email, month, 50, 20), spend(trial.email, month, 500), spend(off.email, month, 500), spend(agency.email, month, 10)]);
+    await Promise.all([spend(acct(pro), month, 50, 20), spend(acct(trial), month, 500), spend(acct(off), month, 500), spend(acct(agency), month, 10)]);
     const mget = vi.spyOn(db, "mget");
     const rows = await accountMargins([pro, trial, off, agency], month);
     expect(mget).toHaveBeenCalledTimes(1);
@@ -81,16 +81,16 @@ describe("the margin formula (rule 1530)", () => {
 describe("per-account media cost (rule 1531)", () => {
   it("meterRender adds micro-dollars to the account's month, ignores junk, and wipeAccount removes it", async () => {
     const u = await newUser("mg-media");
-    await meterRender(u.email, 0.08);
-    await meterRender(u.email, 0.02);
-    await meterRender(u.email, undefined);
-    await meterRender(u.email, -1);
-    await meterRender(u.email, Number.NaN);
-    expect(await db.get<number>(mediaCostKey(u.email))).toBe(100000);
-    expect(mediaCostKey(u.email)).toBe(`usage:${u.email}:${monthKey()}:media_usd_micro`);
-    expect(usageMonthKeys(u.email, monthKey())).toContain(mediaCostKey(u.email));
-    await wipeAccount(u.email);
-    expect(await db.get(mediaCostKey(u.email))).toBeNull();
+    await meterRender(acct(u), 0.08);
+    await meterRender(acct(u), 0.02);
+    await meterRender(acct(u), undefined);
+    await meterRender(acct(u), -1);
+    await meterRender(acct(u), Number.NaN);
+    expect(await db.get<number>(mediaCostKey(acct(u)))).toBe(100000);
+    expect(mediaCostKey(acct(u))).toBe(`usage:${acct(u)}:${monthKey()}:media_usd_micro`);
+    expect(usageMonthKeys(acct(u), monthKey())).toContain(mediaCostKey(acct(u)));
+    await wipeAccount(acct(u));
+    expect(await db.get(mediaCostKey(acct(u)))).toBeNull();
   });
 
   it("a render's cost is counted to the account only while it is the same account (spec A32)", () => {
@@ -108,8 +108,8 @@ describe("the daily run (rules 1534-1539)", () => {
     const month = monthKey(day1);
     const low = await account("pro", {}, "mg-low");
     const fine = await account("business", {}, "mg-fine");
-    await Promise.all([spend(low.email, month, 50, 20), spend(fine.email, month, 5)]);
-    const before = await Promise.all([getUser(low.email), getUser(fine.email)]);
+    await Promise.all([spend(acct(low), month, 50, 20), spend(acct(fine), month, 5)]);
+    const before = await Promise.all([getUser(acct(low)), getUser(acct(fine))]);
 
     const r1 = await runMarginAlert(day1);
     expect(r1).toMatchObject({ day: "2031-05-10", month: "2031-05" });
@@ -133,7 +133,7 @@ describe("the daily run (rules 1534-1539)", () => {
     expect(markerTtl).toBeLessThanOrEqual(2 * 86400);
     expect(lastTtl).toBe(-1);
 
-    const bell1 = (await listNotifs(founder.email)).filter((n) => n.href.endsWith("/admin/usage#margin"));
+    const bell1 = (await listNotifs(acct(founder))).filter((n) => n.href.endsWith("/admin/usage#margin"));
     expect(bell1).toHaveLength(1);
     expect(bell1[0]).toMatchObject({ kind: "credits", href: "/ar/admin/usage#margin" });
     expect(bell1[0].title + bell1[0].body).not.toContain(low.email);
@@ -142,16 +142,16 @@ describe("the daily run (rules 1534-1539)", () => {
     // Same day again: nobody new, no second bell item.
     const r2 = await runMarginAlert(new Date("2031-05-10T18:00:00Z"));
     expect(r2).toMatchObject({ alerted: 0 });
-    expect((await listNotifs(founder.email)).filter((n) => n.href.endsWith("/admin/usage#margin"))).toHaveLength(1);
+    expect((await listNotifs(acct(founder))).filter((n) => n.href.endsWith("/admin/usage#margin"))).toHaveLength(1);
 
     // The next day the account still under the floor is alerted again, once.
     const r3 = await runMarginAlert(new Date("2031-05-11T06:00:00Z"));
     expect((r3 as { alerted: number }).alerted).toBeGreaterThanOrEqual(1);
-    expect((await listNotifs(founder.email)).filter((n) => n.href.endsWith("/admin/usage#margin"))).toHaveLength(2);
+    expect((await listNotifs(acct(founder))).filter((n) => n.href.endsWith("/admin/usage#margin"))).toHaveLength(2);
 
     // Read-only for customers: the accounts are exactly as they were, and they got no bell item.
-    expect(await Promise.all([getUser(low.email), getUser(fine.email)])).toEqual(before);
-    expect((await listNotifs(low.email)).filter((n) => n.href.includes("margin"))).toEqual([]);
+    expect(await Promise.all([getUser(acct(low)), getUser(acct(fine))])).toEqual(before);
+    expect((await listNotifs(acct(low))).filter((n) => n.href.includes("margin"))).toEqual([]);
   });
 
   it("without founders it still records the run and never throws (rule 1536)", async () => {
@@ -187,7 +187,7 @@ describe("the daily run (rules 1534-1539)", () => {
 describe("the console shows margins (rules 1532, 1533)", () => {
   it("the overview carries the live accounts under the floor; the Usage page has the Margin section", async () => {
     const low = await account("starter", {}, "mg-ov");
-    await spend(low.email, monthKey(), 60);
+    await spend(acct(low), monthKey(), 60);
     await adminSignIn();
     const ov = (await (await overviewRoute.GET(json("/api/admin/overview", "GET"))).json()) as { margin: { floorPct: number; under: { email: string; marginPct: number }[] } };
     expect(ov.margin.floorPct).toBe(50);
@@ -200,7 +200,7 @@ describe("the console shows margins (rules 1532, 1533)", () => {
 
   it("the Users table's margin includes media cost (rule 1532)", async () => {
     const u = await account("pro", {}, "mg-row");
-    await spend(u.email, monthKey(), 50, 20);
+    await spend(acct(u), monthKey(), 50, 20);
     await adminSignIn();
     const rows = ((await (await planRoute.GET(json("/api/admin/plan", "GET"))).json()) as { users: { email: string; marginPct: number | null; mediaUsd: number }[] }).users;
     expect(rows.find((r) => r.email === u.email)).toMatchObject({ marginPct: 47, mediaUsd: 20 });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { json, newMember, newUser, params, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
@@ -40,7 +41,7 @@ const ch = (n: number) => String.fromCharCode(n);
 
 async function owner(prefix = "sec", fx: Fixture = {}): Promise<User> {
   const u = await newUser(prefix, fx);
-  await saveBrand(u.email, BRAND);
+  await saveBrand(acct(u), BRAND);
   await signIn(u.email);
   return u;
 }
@@ -80,26 +81,26 @@ describe("tenant isolation (rule 190)", () => {
     const it1 = await add({ title: "A's private to-do", dueAt: inDays(2) });
     const b = await owner("secb");
     for (const body of [{ title: "hijacked" }, { action: "complete", result: "done" }, { action: "delete" }, { action: "restore" }, { action: "snooze", preset: "2h" }, { action: "reschedule", dueAt: null }, { action: "add_note", text: "x" }, { action: "confirm_done" }, { action: "reject_done" }]) {
-      for (const forged of [{}, { scope: a.email, email: a.email }]) {
+      for (const forged of [{}, { scope: acct(a), email: acct(a) }]) {
         const r = await patch(it1.id, { ...body, ...forged });
         expect(r.status, JSON.stringify({ ...body, ...forged })).toBe(404);
       }
     }
     expect(JSON.stringify(await view())).not.toContain("A's private to-do");
-    const stored = await getItem(a.email, it1.id);
+    const stored = await getItem(acct(a), it1.id);
     expect(stored).toMatchObject({ title: "A's private to-do", rev: 1, completedAt: null, deletedAt: null, snoozeUntil: null });
-    expect(b.email).not.toBe(a.email);
+    expect(acct(b)).not.toBe(acct(a));
   });
 
   it("ignores an id, scope, email, source, rev or state in the body", async () => {
     const victim = await owner("secv");
     const me = await owner("secme");
     const forged = "s" + "a".repeat(16);
-    const it1 = await add({ title: "Mine", id: forged, scope: victim.email, email: victim.email, source: "mcp", rev: 99, completedAt: "2026-01-01T00:00:00Z", deletedAt: "2026-01-01T00:00:00Z", proposedDone: { at: "x", by: "reem", evidence: "y" } });
+    const it1 = await add({ title: "Mine", id: forged, scope: acct(victim), email: acct(victim), source: "mcp", rev: 99, completedAt: "2026-01-01T00:00:00Z", deletedAt: "2026-01-01T00:00:00Z", proposedDone: { at: "x", by: "reem", evidence: "y" } });
     expect(it1.id).not.toBe(forged);
     expect(it1).toMatchObject({ source: "owner", rev: 1, completedAt: null, deletedAt: null, proposedDone: null });
-    expect(await getItem(me.email, it1.id)).not.toBeNull();
-    expect(await db.zcard(SEC_KEYS.open(victim.email))).toBe(0);
+    expect(await getItem(acct(me), it1.id)).not.toBeNull();
+    expect(await db.zcard(SEC_KEYS.open(acct(victim)))).toBe(0);
   });
 
   it("checks the id's format before any key is built", async () => {
@@ -114,13 +115,13 @@ describe("tenant isolation (rule 190)", () => {
 
   it("keeps a second brand's list separate", async () => {
     const u = await owner("secbrand");
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
-    await saveBrand(scopeFor(u.email, "b2"), { ...BRAND, name: "Two" });
+    await saveBrands(acct(u), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+    await saveBrand(scopeFor(acct(u), "b2"), { ...BRAND, name: "Two" });
     const first = await add({ title: "Default brand item" });
     await seedActiveBrand(u.email, "b2");
     const second = await add({ title: "Second brand item" });
-    expect(await getItem(scopeFor(u.email, "b2"), second.id)).not.toBeNull();
-    expect(await getItem(u.email, second.id)).toBeNull();
+    expect(await getItem(scopeFor(acct(u), "b2"), second.id)).not.toBeNull();
+    expect(await getItem(acct(u), second.id)).toBeNull();
     expect(JSON.stringify(await view())).not.toContain("Default brand item");
     expect((await patch(first.id, { title: "x" })).status).toBe(404);
     await seedActiveBrand(u.email, "default");
@@ -136,13 +137,13 @@ describe("only the owner closes an item, and closing needs a result (rule 191)",
       const r = await patch(it1.id, body);
       expect(r.status).toBe(400);
     }
-    expect((await getItem(u.email, it1.id))?.completedAt).toBeNull();
+    expect((await getItem(acct(u), it1.id))?.completedAt).toBeNull();
     const r = await patch(it1.id, { action: "complete", result: "Sent by email" });
     expect(r.status).toBe(200);
-    const done = await getItem(u.email, it1.id);
+    const done = await getItem(acct(u), it1.id);
     expect(done).toMatchObject({ result: "Sent by email", rev: 2 });
     expect(done?.completedAt).toBeTruthy();
-    expect((await db.zrangeWithScores(SEC_KEYS.open(u.email))).map((m) => m.member)).not.toContain(it1.id);
+    expect((await db.zrangeWithScores(SEC_KEYS.open(acct(u)))).map((m) => m.member)).not.toContain(it1.id);
     expect((await view("?view=done")).items.map((x: SecItem) => x.id)).toContain(it1.id);
     expect((await patch(it1.id, { title: "changed after" })).status).toBe(409);
   });
@@ -152,7 +153,7 @@ describe("only the owner closes an item, and closing needs a result (rule 191)",
     const it1 = await add({ title: "Chat cannot close me" });
     for (const action of ["complete", "confirm_done", "reject_done", "delete", "restore"] as const) {
       for (const who of [{ actor: "reem" as const, via: "chat" as const }, { actor: "mcp" as const, via: "mcp" as const }, { actor: "owner" as const, via: "chat" as const }]) {
-        const r = await changeItem(u.email, it1.id, action === "complete" ? { action, result: "done" } : { action } as never, who);
+        const r = await changeItem(acct(u), it1.id, action === "complete" ? { action, result: "done" } : { action } as never, who);
         expect(r.ok ? "ok" : r.error, `${action} by ${who.actor}/${who.via}`).toBe("owner_only");
       }
     }
@@ -162,10 +163,10 @@ describe("only the owner closes an item, and closing needs a result (rule 191)",
     // Extra arguments a model might invent change nothing.
     const out = await runTool(u, "todo_update", { id: it1.id, completed: true, status: "done", result: "done", completedAt: new Date().toISOString() }, []);
     expect(out).toMatch(/^Not done:/);
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const res = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "todo_complete", arguments: { id: it1.id } } }) }));
     expect((await res.json()).error).toBeTruthy();
-    expect(await getItem(u.email, it1.id)).toMatchObject({ completedAt: null, deletedAt: null, rev: 1 });
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ completedAt: null, deletedAt: null, rev: 1 });
   });
 
   it("a proposed done stays open under 'needs your confirmation' until the owner confirms or sends it back", async () => {
@@ -175,19 +176,19 @@ describe("only the owner closes an item, and closing needs a result (rule 191)",
     const out = await runTool(u, "todo_propose_done", { id: a1.id, evidence: "Owner said: paid by transfer today" }, [], [], undefined, { lang: "ar", agent: "reem" });
     expect(out).toMatch(/NOT done yet/);
     await runTool(u, "todo_propose_done", { id: a2.id, evidence: "Venue emailed the booking" }, []);
-    let agenda = await agendaFor(u.email);
+    let agenda = await agendaFor(acct(u));
     expect(agenda.buckets.confirm.map((e) => e.item.id).sort()).toEqual([a1.id, a2.id].sort());
-    expect((await getItem(u.email, a1.id))?.completedAt).toBeNull();
+    expect((await getItem(acct(u), a1.id))?.completedAt).toBeNull();
     expect((await patch(a1.id, { action: "confirm_done" })).status).toBe(200);
-    expect(await getItem(u.email, a1.id)).toMatchObject({ result: "Owner said: paid by transfer today", proposedDone: null });
+    expect(await getItem(acct(u), a1.id)).toMatchObject({ result: "Owner said: paid by transfer today", proposedDone: null });
     expect((await patch(a2.id, { action: "reject_done" })).status).toBe(200);
-    const back = await getItem(u.email, a2.id);
+    const back = await getItem(acct(u), a2.id);
     expect(back).toMatchObject({ completedAt: null, proposedDone: null });
     // Stored as the evidence with a kind; worded in the reader's language when shown.
     expect(back?.notes.at(-1)).toMatchObject({ kind: "not_yet", text: "Venue emailed the booking", by: "owner" });
     expect(noteText(back!.notes.at(-1)!, "ar")).toBe("لم تُنجز بعد (المقترح: Venue emailed the booking)");
     expect(await runTool(u, "agenda_get", {}, [])).toContain('last note: "Not done yet (proposed: Venue emailed the booking)"');
-    agenda = await agendaFor(u.email);
+    agenda = await agendaFor(acct(u));
     expect(agenda.buckets.confirm).toEqual([]);
     expect((await patch(a2.id, { action: "confirm_done" })).status).toBe(409);
   });
@@ -196,12 +197,12 @@ describe("only the owner closes an item, and closing needs a result (rule 191)",
     const u = await owner("secsnoozeprop");
     const it1 = await add({ title: "Snoozed then done", dueAt: inDays(-1) });
     expect((await patch(it1.id, { action: "snooze", preset: "tomorrow" })).status).toBe(200);
-    expect((await agendaFor(u.email)).snoozed).toBe(1);
+    expect((await agendaFor(acct(u))).snoozed).toBe(1);
     await runTool(u, "todo_propose_done", { id: it1.id, evidence: "Owner said it was sent this morning" }, []);
-    const agenda = await agendaFor(u.email);
+    const agenda = await agendaFor(acct(u));
     expect(agenda.buckets.confirm.map((e) => e.item.id)).toEqual([it1.id]);
     expect(agenda.snoozed).toBe(0);
-    expect(await getItem(u.email, it1.id)).toMatchObject({ snoozeUntil: null, completedAt: null });
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ snoozeUntil: null, completedAt: null });
     // A stored proposal wins over a snooze in the pure agenda too.
     const both = fixture({ id: "s00000000000000aa", snoozeUntil: new Date(Date.now() + 864e5).toISOString(), proposedDone: { at: "x", by: "mcp", evidence: "e" } });
     expect(computeAgenda([both], Date.now()).buckets.confirm).toHaveLength(1);
@@ -213,42 +214,42 @@ describe("the deterministic close: a linked inbox item approved (rule 192)", () 
 
   it("closes only when the linked task is approved, with the fixed result", async () => {
     const u = await owner("seclink");
-    await saveTask(u.email, task("aaaaaaaaaaaa0001"), true);
-    await saveTask(u.email, task("aaaaaaaaaaaa0002"), true);
+    await saveTask(acct(u), task("aaaaaaaaaaaa0001"), true);
+    await saveTask(acct(u), task("aaaaaaaaaaaa0002"), true);
     const onApprove = await add({ title: "Wait for the National Day post", taskId: "aaaaaaaaaaaa0001" });
     const onReject = await add({ title: "Wait for the other post", taskId: "aaaaaaaaaaaa0002" });
-    expect(titlesIn(await agendaFor(u.email))).toEqual(expect.arrayContaining([onApprove.title, onReject.title]));
-    await updateTask(u.email, "aaaaaaaaaaaa0002", (t) => ({ ...t, status: "rejected" }));
-    expect(titlesIn(await agendaFor(u.email))).toEqual(expect.arrayContaining([onApprove.title, onReject.title]));
-    await updateTask(u.email, "aaaaaaaaaaaa0001", (t) => ({ ...t, status: "approved" }));
+    expect(titlesIn(await agendaFor(acct(u)))).toEqual(expect.arrayContaining([onApprove.title, onReject.title]));
+    await updateTask(acct(u), "aaaaaaaaaaaa0002", (t) => ({ ...t, status: "rejected" }));
+    expect(titlesIn(await agendaFor(acct(u)))).toEqual(expect.arrayContaining([onApprove.title, onReject.title]));
+    await updateTask(acct(u), "aaaaaaaaaaaa0001", (t) => ({ ...t, status: "approved" }));
     const agenda = (await view()).agenda;
     expect(JSON.stringify(agenda)).not.toContain(onApprove.title);
-    expect(await getItem(u.email, onApprove.id)).toMatchObject({ result: AUTO_CLOSE_RESULT });
-    expect((await getItem(u.email, onApprove.id))?.completedAt).toBeTruthy();
-    expect((await getItem(u.email, onReject.id))?.completedAt).toBeNull();
-    const log = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x));
+    expect(await getItem(acct(u), onApprove.id)).toMatchObject({ result: AUTO_CLOSE_RESULT });
+    expect((await getItem(acct(u), onApprove.id))?.completedAt).toBeTruthy();
+    expect((await getItem(acct(u), onReject.id))?.completedAt).toBeNull();
+    const log = (await db.lrange(SEC_KEYS.audit(acct(u)), 0, -1)).map((x) => JSON.parse(x));
     expect(log.find((l) => l.action === "auto_close")).toMatchObject({ actor: "rule", id: onApprove.id });
   });
 
   it("chat and MCP cannot move a link onto an approved item to close it, and link only to a pending item at creation", async () => {
     const u = await owner("seclinkmcp");
-    await saveTask(u.email, { ...task("aaaaaaaaaaaa0003"), status: "approved" }, true);
-    await saveTask(u.email, task("aaaaaaaaaaaa0004"), true);
+    await saveTask(acct(u), { ...task("aaaaaaaaaaaa0003"), status: "approved" }, true);
+    await saveTask(acct(u), task("aaaaaaaaaaaa0004"), true);
     const it1 = await add({ title: "Still open" });
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const rpc = async (name: string, args: Record<string, unknown>) => (await (await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }))).json()).result;
     // The schema has no task_id on todo_update, and the MCP route does not check arguments against it: code does.
     expect((await rpc("todo_update", { id: it1.id, task_id: "aaaaaaaaaaaa0003" })).isError).toBe(true);
     expect(await runTool(u, "todo_update", { id: it1.id, task_id: "aaaaaaaaaaaa0003", title: "Still open" }, [])).toMatch(/^Updated/);
     await rpc("agenda_get", {});
-    await agendaFor(u.email);
-    const kept = await getItem(u.email, it1.id);
+    await agendaFor(acct(u));
+    const kept = await getItem(acct(u), it1.id);
     expect(kept).toMatchObject({ completedAt: null, links: {} });
     // Directly, too: a link change by anyone but the owner in the app is refused.
     for (const who of [{ actor: "mcp" as const, via: "mcp" as const }, { actor: "reem" as const, via: "chat" as const }, { actor: "owner" as const, via: "chat" as const }]) {
       const m = mutateItem(structuredClone(kept!), { action: "update", fields: { taskId: "aaaaaaaaaaaa0003" } }, who, Date.now());
       expect(m.ok ? "ok" : m.error, `${who.actor}/${who.via}`).toBe("owner_only");
-      const r = await changeItem(u.email, it1.id, { action: "update", fields: { taskId: null } }, who);
+      const r = await changeItem(acct(u), it1.id, { action: "update", fields: { taskId: null } }, who);
       expect(r.ok ? "ok" : r.error).toBe("owner_only");
     }
     // At creation, a link from chat or MCP must name an item still pending.
@@ -258,16 +259,16 @@ describe("the deterministic close: a linked inbox item approved (rule 192)", () 
     expect(await runTool(u, "todo_create", { title: "Linked to an approved item", task_id: "aaaaaaaaaaaa0003" }, [])).toMatch(/^Not done: task_id must be/);
     const ok = await rpc("todo_create", { title: "Waits for the pending post", task_id: "aaaaaaaaaaaa0004" });
     const id = /\[id=(s[a-f0-9]{16})\]/.exec(ok.content[0].text)![1];
-    expect(await getItem(u.email, id)).toMatchObject({ links: { taskId: "aaaaaaaaaaaa0004" }, completedAt: null });
+    expect(await getItem(acct(u), id)).toMatchObject({ links: { taskId: "aaaaaaaaaaaa0004" }, completedAt: null });
     // The owner, in the app, may still link to anything of this brand; the close then follows the stored task.
     expect((await patch(it1.id, { taskId: "aaaaaaaaaaaa0003" })).status).toBe(200);
-    await agendaFor(u.email);
-    expect(await getItem(u.email, it1.id)).toMatchObject({ result: AUTO_CLOSE_RESULT });
+    await agendaFor(acct(u));
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ result: AUTO_CLOSE_RESULT });
   });
 
   it("refuses a link to a task that is not this brand's", async () => {
     const other = await owner("seclinko");
-    await saveTask(other.email, task("bbbbbbbbbbbb0001"), true);
+    await saveTask(acct(other), task("bbbbbbbbbbbb0001"), true);
     await owner("seclinkme");
     expect((await create({ title: "x", taskId: "bbbbbbbbbbbb0001" })).status).toBe(400);
     expect((await create({ title: "x", taskId: "../../x" })).status).toBe(400);
@@ -280,14 +281,14 @@ describe("soft delete, restore and the purge (rule 193)", () => {
     const u = await owner("secdel");
     const it1 = await add({ title: "Delete me", dueAt: inDays(1) });
     expect((await patch(it1.id, { action: "delete" })).status).toBe(200);
-    const del = await getItem(u.email, it1.id);
+    const del = await getItem(acct(u), it1.id);
     expect(del?.deletedAt).toBeTruthy();
     expect(Date.parse(del!.expiresAt!) - Date.parse(del!.deletedAt!)).toBe(30 * 864e5);
-    expect(titlesIn(await agendaFor(u.email))).not.toContain("Delete me");
+    expect(titlesIn(await agendaFor(acct(u)))).not.toContain("Delete me");
     expect((await view("?view=deleted")).items.map((x: SecItem) => x.id)).toEqual([it1.id]);
     expect((await patch(it1.id, { title: "while deleted" })).status).toBe(409);
     expect((await patch(it1.id, { action: "restore" })).status).toBe(200);
-    expect(titlesIn(await agendaFor(u.email))).toContain("Delete me");
+    expect(titlesIn(await agendaFor(acct(u)))).toContain("Delete me");
     expect((await view("?view=deleted")).items).toEqual([]);
   });
 
@@ -297,24 +298,24 @@ describe("soft delete, restore and the purge (rule 193)", () => {
     await patch(it1.id, { action: "delete" });
     // Thirty days pass.
     const past = Date.now() - 1000;
-    const stored = (await getItem(u.email, it1.id))!;
-    await db.set(SEC_KEYS.item(u.email, it1.id), { ...stored, expiresAt: new Date(past).toISOString() });
-    await db.zadd(SEC_KEYS.deleted(u.email), past, it1.id);
+    const stored = (await getItem(acct(u), it1.id))!;
+    await db.set(SEC_KEYS.item(acct(u), it1.id), { ...stored, expiresAt: new Date(past).toISOString() });
+    await db.zadd(SEC_KEYS.deleted(acct(u)), past, it1.id);
     expect((await patch(it1.id, { action: "restore" })).status).toBe(410);
-    expect(await purgeExpired(u.email)).toBe(1);
-    expect(await getItem(u.email, it1.id)).toBeNull();
-    expect(await db.smembers(SEC_KEYS.all(u.email))).not.toContain(it1.id);
-    expect(await db.zcard(SEC_KEYS.deleted(u.email))).toBe(0);
-    expect(await purgeExpired(u.email)).toBe(0);
+    expect(await purgeExpired(acct(u))).toBe(1);
+    expect(await getItem(acct(u), it1.id)).toBeNull();
+    expect(await db.smembers(SEC_KEYS.all(acct(u)))).not.toContain(it1.id);
+    expect(await db.zcard(SEC_KEYS.deleted(acct(u)))).toBe(0);
+    expect(await purgeExpired(acct(u))).toBe(0);
   });
 
   it("purges at most one batch per run", async () => {
     const u = await owner("secbatch");
     const past = Date.now() - 1000;
     const ids = Array.from({ length: SEC_PURGE_BATCH + 5 }, (_, i) => `s${i.toString(16).padStart(16, "0")}`);
-    await Promise.all(ids.flatMap((id) => [db.set(SEC_KEYS.item(u.email, id), fixture({ id, deletedAt: new Date(past - 864e5).toISOString(), expiresAt: new Date(past).toISOString() })), db.zadd(SEC_KEYS.deleted(u.email), past, id), db.sadd(SEC_KEYS.all(u.email), id)]));
-    expect(await purgeExpired(u.email)).toBe(SEC_PURGE_BATCH);
-    expect(await purgeExpired(u.email)).toBe(5);
+    await Promise.all(ids.flatMap((id) => [db.set(SEC_KEYS.item(acct(u), id), fixture({ id, deletedAt: new Date(past - 864e5).toISOString(), expiresAt: new Date(past).toISOString() })), db.zadd(SEC_KEYS.deleted(acct(u)), past, id), db.sadd(SEC_KEYS.all(acct(u)), id)]));
+    expect(await purgeExpired(acct(u))).toBe(SEC_PURGE_BATCH);
+    expect(await purgeExpired(acct(u))).toBe(5);
   });
 });
 
@@ -324,7 +325,7 @@ describe("one writer at a time per item, checked against rev (rule 194)", () => 
     const it1 = await add({ title: "Busy item" });
     const rs = await Promise.all([patch(it1.id, { action: "add_note", text: "first" }), patch(it1.id, { action: "add_note", text: "second" }), patch(it1.id, { priority: 3 }), patch(it1.id, { dueAt: inDays(3) })]);
     expect(rs.map((r) => r.status)).toEqual([200, 200, 200, 200]);
-    const s = await getItem(u.email, it1.id);
+    const s = await getItem(acct(u), it1.id);
     expect(s?.notes.map((n) => n.text).sort()).toEqual(["first", "second"]);
     expect(s).toMatchObject({ priority: 3, rev: 5 });
     expect(s?.dueAt).toBeTruthy();
@@ -338,7 +339,7 @@ describe("one writer at a time per item, checked against rev (rule 194)", () => 
     expect(r.status).toBe(409);
     const j = await r.json();
     expect(j).toMatchObject({ error: "conflict", item: { title: "Second", rev: 2 } });
-    expect(await getItem(u.email, it1.id)).toMatchObject({ title: "Second", rev: 2 });
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ title: "Second", rev: 2 });
   });
 });
 
@@ -351,25 +352,25 @@ describe("limits (rule 195)", () => {
     expect(over.status).toBe(429);
     expect(over.headers.get("retry-after"), "the day's window (rule 680)").toBe("86400");
     expect(await over.json()).toEqual({ ok: false, error: "too_many" });
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+    await saveBrands(acct(u), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await seedActiveBrand(u.email, "b2");
     expect((await create({ title: "Other brand" })).status).toBe(429);
-    expect(await db.zcard(SEC_KEYS.open(scopeFor(u.email, "b2")))).toBe(0);
+    expect(await db.zcard(SEC_KEYS.open(scopeFor(acct(u), "b2")))).toBe(0);
   });
 
   it("holds at most 500 open items per brand, on create and on restore", async () => {
     const u = await owner("secopen");
     const back = await add({ title: "Deleted, then restored too late" });
     expect((await patch(back.id, { action: "delete" })).status).toBe(200);
-    await Promise.all(Array.from({ length: SEC_OPEN_MAX }, (_, i) => db.zadd(SEC_KEYS.open(u.email), i, `s${i.toString(16).padStart(16, "0")}`)));
+    await Promise.all(Array.from({ length: SEC_OPEN_MAX }, (_, i) => db.zadd(SEC_KEYS.open(acct(u)), i, `s${i.toString(16).padStart(16, "0")}`)));
     const r = await create({ title: "One too many" });
     expect(r.status).toBe(409);
     expect((await r.json()).error).toBe("open_limit");
     const restore = await patch(back.id, { action: "restore" });
     expect(restore.status).toBe(409);
     expect((await restore.json()).error).toBe("open_limit");
-    expect((await getItem(u.email, back.id))?.deletedAt).toBeTruthy();
-    expect(await db.zcard(SEC_KEYS.open(u.email))).toBe(SEC_OPEN_MAX);
+    expect((await getItem(acct(u), back.id))?.deletedAt).toBeTruthy();
+    expect(await db.zcard(SEC_KEYS.open(acct(u)))).toBe(SEC_OPEN_MAX);
   });
 
   it("bounds reads per hour", async () => {
@@ -387,7 +388,7 @@ describe("limits (rule 195)", () => {
     await db.set(`rate:sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600);
     expect((await patch(it1.id, { title: "x" })).status).toBe(429);
     expect(await runTool(u, "todo_update", { id: it1.id, title: "y" }, [])).toMatch(/^Not done: Too many/);
-    expect(await getItem(u.email, it1.id)).toMatchObject({ title: "Rate me", rev: 1 });
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ title: "Rate me", rev: 1 });
   });
 });
 
@@ -407,7 +408,7 @@ describe("input is bounded, typed and cleaned (rule 196)", () => {
   it("strips control and direction-override characters", async () => {
     const u = await owner("secclean");
     const it1 = await add({ title: `Call${ch(0x202e)} Ahmad${ch(0x200b)}${ch(7)}\n now${ch(0x2066)}`, description: `line one${ch(0)}\nline two${ch(0x202d)}` });
-    const s = await getItem(u.email, it1.id);
+    const s = await getItem(acct(u), it1.id);
     expect(s?.title).toBe("Call Ahmad now");
     expect(s?.description).toBe("line one\nline two");
     // Joiners are text (emoji sequences, Persian), not controls.
@@ -501,7 +502,7 @@ describe("the agenda is computed in Riyadh time (rule 197)", () => {
 
   it("merges the approvals inbox count into the agenda", async () => {
     const u = await owner("secapprovals");
-    await saveTask(u.email, { id: "cccccccccccc0001", type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" }, true);
+    await saveTask(acct(u), { id: "cccccccccccc0001", type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" }, true);
     expect((await view()).agenda.approvals).toBe(1);
   });
 });
@@ -510,19 +511,19 @@ describe("the agenda read is batched (rule 198)", () => {
   it("makes the same number of store calls for 3 items as for 40, linked items included", async () => {
     const pending = (id: string): Task => ({ id, type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" });
     const small = await owner("secsmall");
-    await Promise.all(["eeeeeeeeeeee0001", "eeeeeeeeeeee0002"].map((id) => saveTask(small.email, pending(id), true)));
+    await Promise.all(["eeeeeeeeeeee0001", "eeeeeeeeeeee0002"].map((id) => saveTask(acct(small), pending(id), true)));
     // Every other item waits on an inbox item, so the agenda also reads the linked tasks.
     for (let i = 0; i < 3; i++) await add({ title: `S${i}`, dueAt: inDays(i + 1), ...(i % 2 ? {} : { taskId: `eeeeeeeeeeee000${(i % 4) / 2 + 1}` }) });
     const big = await owner("secbig");
-    await Promise.all(["ffffffffffff0001", "ffffffffffff0002"].map((id) => saveTask(big.email, pending(id), true)));
+    await Promise.all(["ffffffffffff0001", "ffffffffffff0002"].map((id) => saveTask(acct(big), pending(id), true)));
     for (let i = 0; i < 40; i++) await add({ title: `B${i}`, dueAt: inDays((i % 9) + 1), ...(i % 2 ? {} : { taskId: `ffffffffffff000${(i % 4) / 2 + 1}` }) });
     // Rule 478: the brand's work calendar and its away map are read too, once each, whatever their size.
-    await db.set(SEC_KEYS.cal(small.email), { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] }, updatedAt: "2026-10-01T00:00:00.000Z", updatedBy: small.email });
-    await db.set(SEC_KEYS.cal(big.email), { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: ["10-15"], remove: [] }, updatedAt: "2026-10-01T00:00:00.000Z", updatedBy: big.email });
-    await db.hset(SEC_KEYS.away(small.email), "sara", { label: "Sara", until: "2099-01-01", by: small.email, via: "web", at: "2026-10-01T00:00:00.000Z" });
-    for (let i = 0; i < 40; i++) await db.hset(SEC_KEYS.away(big.email), `c${i}`, { label: `C${i}`, until: "2099-01-01", by: big.email, via: "web", at: "2026-10-01T00:00:00.000Z" });
-    await agendaFor(small.email);
-    await agendaFor(big.email);
+    await db.set(SEC_KEYS.cal(acct(small)), { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] }, updatedAt: "2026-10-01T00:00:00.000Z", updatedBy: acct(small) });
+    await db.set(SEC_KEYS.cal(acct(big)), { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: ["10-15"], remove: [] }, updatedAt: "2026-10-01T00:00:00.000Z", updatedBy: acct(big) });
+    await db.hset(SEC_KEYS.away(acct(small)), "sara", { label: "Sara", until: "2099-01-01", by: acct(small), via: "web", at: "2026-10-01T00:00:00.000Z" });
+    for (let i = 0; i < 40; i++) await db.hset(SEC_KEYS.away(acct(big)), `c${i}`, { label: `C${i}`, until: "2099-01-01", by: acct(big), via: "web", at: "2026-10-01T00:00:00.000Z" });
+    await agendaFor(acct(small));
+    await agendaFor(acct(big));
     const names = ["get", "mget", "zrangeWithScores", "smembers", "lrange", "hgetall", "scardMany", "zcard", "set", "lock"] as const;
     const count = async (scope: string) => {
       const spies = names.map((n) => vi.spyOn(db, n));
@@ -534,21 +535,21 @@ describe("the agenda read is batched (rule 198)", () => {
       vi.restoreAllMocks();
       return { calls, mget, cal, away };
     };
-    const a = await count(small.email), b = await count(big.email);
+    const a = await count(acct(small)), b = await count(acct(big));
     expect(b.calls).toBe(a.calls);
     // One MGET of the items and one of the linked inbox items, whatever the number of either.
     expect(a.mget).toBe(2);
     expect(b.mget).toBe(2);
     expect([a.cal, a.away, b.cal, b.away]).toEqual([1, 1, 1, 1]);
-    expect((await agendaFor(big.email)).open).toBe(40);
+    expect((await agendaFor(acct(big))).open).toBe(40);
   });
 });
 
 describe("account deletion removes the whole list (rule 201)", () => {
   it("deletes every sec:* key of every brand scope", async () => {
     const u = await owner("secwipe");
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
-    await saveBrand(scopeFor(u.email, "b2"), { ...BRAND, name: "Two" });
+    await saveBrands(acct(u), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+    await saveBrand(scopeFor(acct(u), "b2"), { ...BRAND, name: "Two" });
     const open = await add({ title: "Open" });
     const done = await add({ title: "Done" });
     const gone = await add({ title: "Deleted" });
@@ -558,26 +559,26 @@ describe("account deletion removes the whole list (rule 201)", () => {
     // the keep list, a warning marker and the next-copy claim are seeded beside them (rule 508).
     const rec = await add({ title: "Recurring", dueAt: new Date(Date.now() + 864e5).toISOString().slice(0, 16), repeat: { every: "day" } });
     const recDone = ((await (await patch(rec.id, { action: "complete", result: "ok" })).json()).item) as { series: { id: string } };
-    await Promise.all([db.sadd(SEC_KEYS.seriesKeep(u.email), recDone.series.id), db.setNx(SEC_KEYS.swarn(u.email, recDone.series.id), "1", 3600), db.setNx(SEC_KEYS.spawn(u.email, rec.id), "s0123456789abcdef", 3600), db.zadd(SEC_KEYS.spurge(u.email), Date.now(), rec.id)]);
-    const seriesKeys = [SEC_KEYS.series(u.email, recDone.series.id), SEC_KEYS.seriesList(u.email), SEC_KEYS.sdone(u.email), SEC_KEYS.spurge(u.email), SEC_KEYS.seriesKeep(u.email), SEC_KEYS.swarn(u.email, recDone.series.id), SEC_KEYS.spawn(u.email, rec.id)];
+    await Promise.all([db.sadd(SEC_KEYS.seriesKeep(acct(u)), recDone.series.id), db.setNx(SEC_KEYS.swarn(acct(u), recDone.series.id), "1", 3600), db.setNx(SEC_KEYS.spawn(acct(u), rec.id), "s0123456789abcdef", 3600), db.zadd(SEC_KEYS.spurge(acct(u)), Date.now(), rec.id)]);
+    const seriesKeys = [SEC_KEYS.series(acct(u), recDone.series.id), SEC_KEYS.seriesList(acct(u)), SEC_KEYS.sdone(acct(u)), SEC_KEYS.spurge(acct(u)), SEC_KEYS.seriesKeep(acct(u)), SEC_KEYS.swarn(acct(u), recDone.series.id), SEC_KEYS.spawn(acct(u), rec.id)];
     expect(seriesKeys.every((k) => memKeys().includes(k))).toBe(true);
     await seedActiveBrand(u.email, "b2");
     await add({ title: "Second brand" });
     // Absences Reem proposed in chat (rule 485), in both brands: an open one (its record and the index) and a decided one
     // (its outcome and the index). Their keys start "secawayprop", outside "sec:", and are found through the index.
     const until = addDays(zoneDay(Date.now()), 2);
-    const open1 = await proposeAway(u.email, { name: "Sara", until }, Date.now(), "Asia/Riyadh");
-    const decided = await proposeAway(scopeFor(u.email, "b2"), { name: "Huda", until }, Date.now(), "Asia/Riyadh");
+    const open1 = await proposeAway(acct(u), { name: "Sara", until }, Date.now(), "Asia/Riyadh");
+    const decided = await proposeAway(scopeFor(acct(u), "b2"), { name: "Huda", until }, Date.now(), "Asia/Riyadh");
     if (!open1.ok || !decided.ok) throw new Error("proposeAway");
-    expect((await decideAwayProposal(scopeFor(u.email, "b2"), decided.p.id, "dismiss", { actor: "owner", via: "web" })).ok).toBe(true);
-    expect(memKeys().filter((k) => k.startsWith("secawayprop") && k.includes(u.email)).sort()).toEqual([
-      SEC_KEYS.awayProp(u.email, open1.p.id), SEC_KEYS.awayPropDone(scopeFor(u.email, "b2"), decided.p.id), SEC_KEYS.awayProps(u.email), SEC_KEYS.awayProps(scopeFor(u.email, "b2")),
+    expect((await decideAwayProposal(scopeFor(acct(u), "b2"), decided.p.id, "dismiss", { actor: "owner", via: "web" })).ok).toBe(true);
+    expect(memKeys().filter((k) => k.startsWith("secawayprop") && k.includes(acct(u))).sort()).toEqual([
+      SEC_KEYS.awayProp(acct(u), open1.p.id), SEC_KEYS.awayPropDone(scopeFor(acct(u), "b2"), decided.p.id), SEC_KEYS.awayProps(acct(u)), SEC_KEYS.awayProps(scopeFor(acct(u), "b2")),
     ].sort());
-    expect(memKeys().filter((k) => k.startsWith("sec:") && k.includes(u.email)).length).toBeGreaterThan(8);
-    await wipeAccount(u.email);
-    expect(memKeys().filter((k) => k.startsWith("sec:") && k.includes(u.email))).toEqual([]);
-    expect(memKeys().filter((k) => k.startsWith("secaway") && k.includes(u.email))).toEqual([]);
-    expect(await getItem(u.email, open.id)).toBeNull();
+    expect(memKeys().filter((k) => k.startsWith("sec:") && k.includes(acct(u))).length).toBeGreaterThan(8);
+    await wipeAccount(acct(u));
+    expect(memKeys().filter((k) => k.startsWith("sec:") && k.includes(acct(u)))).toEqual([]);
+    expect(memKeys().filter((k) => k.startsWith("secaway") && k.includes(acct(u)))).toEqual([]);
+    expect(await getItem(acct(u), open.id)).toBeNull();
   });
 });
 
@@ -604,7 +605,7 @@ describe("Reem is in the registry everywhere (rule 202)", () => {
 
   it("governance still takes a monthly cap for Reem on the server (the page offers caps only where they apply)", async () => {
     const u = await newUser("seccap");
-    expect((await saveGov(u.email, { agentCaps: { reem: 10 } })).agentCaps.reem).toBe(10);
+    expect((await saveGov(acct(u), { agentCaps: { reem: 10 } })).agentCaps.reem).toBe(10);
   });
 
   it("Reem's prompt keeps the list, repeats dates, never closes items and treats quoted text as data", () => {
@@ -621,7 +622,7 @@ describe("Reem is in the registry everywhere (rule 202)", () => {
 describe("chat and MCP tools (rule 203)", () => {
   it("todo_create is free, saves in the caller's scope and reads the stored date back in the owner's language", async () => {
     const u = await owner("sectool");
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const actions: string[] = [];
     const due = inDays(3, 10);
     const out = await runTool(u, "todo_create", { title: "اتصل بالمورد", due }, actions, [], undefined, { lang: "ar", agent: "reem" });
@@ -629,17 +630,17 @@ describe("chat and MCP tools (rule 203)", () => {
     expect(at.ok && at.at).toBeTruthy();
     expect(out).toContain(formatWhen((at as { at: string }).at, false, "ar", Date.now()));
     expect(out).toContain("10:00 ص");
-    expect((await getUser(u.email))!.credits).toBe(before);
+    expect((await getUser(acct(u)))!.credits).toBe(before);
     expect(actions[0]).toMatch(/^todo:todo_create:s[a-f0-9]{16}$/);
     const id = actions[0].split(":")[2];
-    expect(await getItem(u.email, id)).toMatchObject({ title: "اتصل بالمورد", source: "chat" });
-    const log = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x));
+    expect(await getItem(acct(u), id)).toMatchObject({ title: "اتصل بالمورد", source: "chat" });
+    const log = (await db.lrange(SEC_KEYS.audit(acct(u)), 0, -1)).map((x) => JSON.parse(x));
     expect(log[0]).toMatchObject({ actor: "reem", via: "chat", action: "create", id });
     const en = await runTool(u, "todo_create", { title: "Call the bank", due: inDays(3, 15) }, [], [], undefined, { lang: "en" });
     expect(en).toContain("3:00 PM");
     // The audit names the agent that acted, not Reem by default.
     await runTool(u, "todo_create", { title: "Asked through Sami" }, [], [], undefined, { lang: "en", agent: "sami" });
-    const sami = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x))[0];
+    const sami = (await db.lrange(SEC_KEYS.audit(acct(u)), 0, -1)).map((x) => JSON.parse(x))[0];
     expect(sami).toMatchObject({ actor: "sami", via: "chat", action: "create" });
   });
 
@@ -647,11 +648,11 @@ describe("chat and MCP tools (rule 203)", () => {
     const a = await owner("sectoola");
     const aItem = await add({ title: "A's secret errand", dueAt: inDays(2) });
     const b = await owner("sectoolb");
-    const forged = { scope: a.email, email: a.email };
+    const forged = { scope: acct(a), email: acct(a) };
     expect(await runTool(b, "todo_update", { id: aItem.id, title: "hijacked", ...forged }, [])).toMatch(/^Not done: No item/);
     expect(await runTool(b, "todo_propose_done", { id: aItem.id, evidence: "done", ...forged }, [])).toMatch(/^Not done: No item/);
     expect(await runTool(b, "agenda_get", forged, [])).not.toContain("A's secret errand");
-    const token = await createMcpToken(b.email);
+    const token = await createMcpToken(acct(b));
     const rpc = async (name: string, args: Record<string, unknown>) => (await (await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }))).json()).result;
     for (const [name, args] of [["todo_update", { id: aItem.id, title: "hijacked", ...forged }], ["todo_propose_done", { id: aItem.id, evidence: "done", ...forged }]] as const) {
       const r = await rpc(name, args);
@@ -659,8 +660,8 @@ describe("chat and MCP tools (rule 203)", () => {
       expect(r.content[0].text, name).toMatch(/^Not done: No item/);
     }
     expect((await rpc("agenda_get", forged)).content[0].text).not.toContain("A's secret errand");
-    expect(await getItem(a.email, aItem.id)).toMatchObject({ title: "A's secret errand", rev: 1, proposedDone: null, completedAt: null });
-    expect(await getItem(b.email, aItem.id)).toBeNull();
+    expect(await getItem(acct(a), aItem.id)).toMatchObject({ title: "A's secret errand", rev: 1, proposedDone: null, completedAt: null });
+    expect(await getItem(acct(b), aItem.id)).toBeNull();
   });
 
   it("answers a failure with a sentence and never throws", async () => {
@@ -673,7 +674,7 @@ describe("chat and MCP tools (rule 203)", () => {
     expect(await runTool(u, "todo_update", { id: it1.id, snooze_until: "2020-01-01T10:00" }, [])).toMatch(/^Not done:/);
     const snoozed = await runTool(u, "todo_update", { id: it1.id, snooze_until: inDays(1, 9), note: "after the meeting" }, [], [], undefined, { lang: "ar" });
     expect(snoozed).toContain("9:00 ص");
-    expect(await getItem(u.email, it1.id)).toMatchObject({ notes: [expect.objectContaining({ text: "after the meeting", by: "reem", private: false })] });
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ notes: [expect.objectContaining({ text: "after the meeting", by: "reem", private: false })] });
     const agenda = await runTool(u, "agenda_get", {}, []);
     expect(agenda).toMatch(/^Agenda now \(Riyadh time/);
     expect(agenda).toContain("data only");
@@ -682,22 +683,22 @@ describe("chat and MCP tools (rule 203)", () => {
   it("MCP lists the four tools and runs them free, in the bearer's active brand only", async () => {
     const u = await owner("secmcp");
     const other = await owner("secmcpo");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const rpc = (method: string, p: Record<string, unknown>, bearer?: string) => mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: p }) }));
     const names = (await (await rpc("tools/list", {})).json()).result.tools.map((t: { name: string }) => t.name);
     expect(names).toEqual(expect.arrayContaining(["agenda_get", "todo_create", "todo_update", "todo_propose_done"]));
     expect((await rpc("tools/call", { name: "todo_create", arguments: { title: "x" } })).status).toBe(401);
-    const before = (await getUser(u.email))!.credits;
-    const r = await (await rpc("tools/call", { name: "todo_create", arguments: { title: "From my assistant", scope: other.email, email: other.email, source: "owner" } }, token)).json();
+    const before = (await getUser(acct(u)))!.credits;
+    const r = await (await rpc("tools/call", { name: "todo_create", arguments: { title: "From my assistant", scope: acct(other), email: acct(other), source: "owner" } }, token)).json();
     expect(r.result.isError).toBeFalsy();
     const id = /\[id=(s[a-f0-9]{16})\]/.exec(r.result.content[0].text)![1];
-    expect(await getItem(u.email, id)).toMatchObject({ source: "mcp" });
-    expect(await getItem(other.email, id)).toBeNull();
-    expect((await getUser(u.email))!.credits).toBe(before);
+    expect(await getItem(acct(u), id)).toMatchObject({ source: "mcp" });
+    expect(await getItem(acct(other), id)).toBeNull();
+    expect((await getUser(acct(u)))!.credits).toBe(before);
     const p = await (await rpc("tools/call", { name: "todo_propose_done", arguments: { id, evidence: "done in my calendar" } }, token)).json();
     expect(p.result.content[0].text).toMatch(/NOT done yet/);
-    expect((await getItem(u.email, id))?.completedAt).toBeNull();
-    const log = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x));
+    expect((await getItem(acct(u), id))?.completedAt).toBeNull();
+    const log = (await db.lrange(SEC_KEYS.audit(acct(u)), 0, -1)).map((x) => JSON.parse(x));
     expect(log[0]).toMatchObject({ actor: "mcp", via: "mcp", action: "propose_done", id });
   });
 });
@@ -707,21 +708,21 @@ describe("private notes never reach a model (rule 205)", () => {
     const u = await owner("secprivate");
     const it1 = await add({ title: "Negotiate the rent" });
     expect((await patch(it1.id, { action: "add_note", text: "secret-xyz: ceiling is 40k", private: true })).status).toBe(200);
-    expect((await getItem(u.email, it1.id))?.notes.at(-1)).toMatchObject({ private: true, by: "owner" });
+    expect((await getItem(acct(u), it1.id))?.notes.at(-1)).toMatchObject({ private: true, by: "owner" });
     const chat = await runTool(u, "agenda_get", {}, []);
     expect(chat).toContain("Negotiate the rent");
     expect(chat).not.toContain("secret-xyz");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const res = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "agenda_get", arguments: {} } }) }));
     const mcp = (await res.json()).result.content[0].text as string;
     expect(mcp).toContain("Negotiate the rent");
     expect(mcp).not.toContain("secret-xyz");
     // An agent or MCP asking for a private note gets a shared one.
     for (const who of [{ actor: "reem" as const, via: "chat" as const }, { actor: "mcp" as const, via: "mcp" as const }]) {
-      expect((await changeItem(u.email, it1.id, { action: "update", fields: {}, note: { text: `from ${who.actor}`, private: true } }, who)).ok).toBe(true);
-      expect((await changeItem(u.email, it1.id, { action: "add_note", text: `plain ${who.actor}`, private: true }, who)).ok).toBe(true);
+      expect((await changeItem(acct(u), it1.id, { action: "update", fields: {}, note: { text: `from ${who.actor}`, private: true } }, who)).ok).toBe(true);
+      expect((await changeItem(acct(u), it1.id, { action: "add_note", text: `plain ${who.actor}`, private: true }, who)).ok).toBe(true);
     }
-    const notes = (await getItem(u.email, it1.id))!.notes;
+    const notes = (await getItem(acct(u), it1.id))!.notes;
     expect(notes.filter((n) => n.by !== "owner").map((n) => n.private)).toEqual([false, false, false, false]);
   });
 });
@@ -827,12 +828,12 @@ describe("the chase clock and cold items (rule 209)", () => {
     expect(debt.expectBy).toBe(new Date(addWorkingDays(Date.parse(debt.createdAt), 2, "Asia/Riyadh")).toISOString());
     const r = await patch(debt.id, { action: "chased" });
     expect(r.status).toBe(200);
-    const after = await getItem(u.email, debt.id);
+    const after = await getItem(acct(u), debt.id);
     expect(after).toMatchObject({ completedAt: null, rev: 2 });
     expect(after?.lastChasedAt).toBeTruthy();
     expect(after?.notes.at(-1)).toMatchObject({ kind: "chased", by: "owner" });
     expect(noteText(after!.notes.at(-1)!, "ar")).toBe("تمت المتابعة");
-    const log = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x));
+    const log = (await db.lrange(SEC_KEYS.audit(acct(u)), 0, -1)).map((x) => JSON.parse(x));
     expect(log[0]).toMatchObject({ action: "chased", actor: "owner" });
     const mine = await add({ title: "My own task" });
     const refused = await patch(mine.id, { action: "chased" });
@@ -841,7 +842,7 @@ describe("the chase clock and cold items (rule 209)", () => {
     // Chat records the owner's follow-up the same way; it never closes.
     const out = await runTool(u, "todo_update", { id: debt.id, chased: true }, [], [], undefined, { lang: "en", agent: "reem" });
     expect(out).toMatch(/the item stays open/);
-    expect(await getItem(u.email, debt.id)).toMatchObject({ completedAt: null, rev: 3 });
+    expect(await getItem(acct(u), debt.id)).toMatchObject({ completedAt: null, rev: 3 });
     // A debt created in chat with an owner's date keeps it.
     await runTool(u, "todo_create", { title: "Invoice from Ahmad", direction: "they_owe", owed_by: "Ahmad", expect_by: inDays(5, 12) }, [], [], undefined, { lang: "en" });
     const agenda = await runTool(u, "agenda_get", {}, []);
@@ -892,9 +893,9 @@ describe("each brand keeps its list in its own Gulf time zone (rule 210)", () =>
     expect(out).toContain("10:00 AM (Dubai time)");
     const id = /\[id=(s[a-f0-9]{16})\]/.exec(out)![1];
     // 10:00 in Dubai is 06:00 UTC, not 07:00.
-    expect((await getItem(u.email, id))?.dueAt).toBe(`${due.slice(0, 10)}T06:00:00.000Z`);
+    expect((await getItem(acct(u), id))?.dueAt).toBe(`${due.slice(0, 10)}T06:00:00.000Z`);
     expect(await runTool(u, "agenda_get", {}, [])).toMatch(/^Agenda now \(Dubai time, UTC\+4/);
-    const text = system({ ...BRAND, timeZone: "Asia/Dubai" }, { email: u.email, credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User, [], "", [], [], "reem")[2].text;
+    const text = system({ ...BRAND, timeZone: "Asia/Dubai" }, { email: acct(u), credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User, [], "", [], [], "reem")[2].text;
     expect(text).toMatch(/^NOW \(Dubai, UTC\+4\)/);
   });
 });
@@ -914,10 +915,10 @@ describe("a team shares the list: members change items, the owner and admins clo
       const r = await patch(mine.id, body);
       expect(r.status, JSON.stringify(body)).toBe(403);
     }
-    expect(await getItem(o.email, mine.id)).toMatchObject({ completedAt: null, deletedAt: null, rev: 1 });
+    expect(await getItem(acct(o), mine.id)).toMatchObject({ completedAt: null, deletedAt: null, rev: 1 });
     // The audit names the person who acted.
-    const log = (await db.lrange(SEC_KEYS.audit(o.email), 0, -1)).map((x) => JSON.parse(x));
-    expect(log.find((l) => l.id === mine.id && l.action === "create")).toMatchObject({ actor: "owner", via: "web", login: member.email });
+    const log = (await db.lrange(SEC_KEYS.audit(acct(o)), 0, -1)).map((x) => JSON.parse(x));
+    expect(log.find((l) => l.id === mine.id && l.action === "create")).toMatchObject({ actor: "owner", via: "web", login: acct(member) });
     // An admin closes.
     const admin = await newMember(o, "admin", "seca");
     await signIn(admin.email);

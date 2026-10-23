@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { json, newUser, params, signIn, signOut } from "./helpers/session";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, sc, type User } from "@/lib/auth";
+import { handleOf } from "@/lib/ws-handle";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { db } from "@/lib/db";
 import { appOrigin } from "@/lib/origin";
@@ -43,8 +44,10 @@ const ip = () => ({ "x-real-ip": `198.51.100.${++ipN % 250}`, "x-forwarded-host"
 const freshEmail = (p = "inv") => `${p}-${randomBytes(4).toString("hex")}@test.example`;
 const BRAND: Brand = { name: "Rif", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-10-08" };
 const mailTo = (email: string) => msgs.filter((m) => m.to === email);
-const withLang = async (u: User, lang: "ar" | "en") => { const x = { ...(await getUser(u.email))!, lang }; await saveUser(x); return x; };
+const withLang = async (u: User, lang: "ar" | "en") => { const x = { ...(await getUser(acct(u)))!, lang }; await saveUser(x); return x; };
 /** What runLifecycle hands lifecycleTemplate: counts from the workspace and the trial's end as a date. */
+/** A link into the account's workspace, as a mail made for it carries it (`/{lang}/app/w/{handle}{path}`). */
+const inWs = (u: User, lang: string, path: string) => `${ORIGIN}/${lang}/app/w/${handleOf(u)}${path}`;
 const CTX: Parameters<typeof lifecycleTemplate>[2] = { pending: 2, approved: 3, trialEnds: "2026-10-12" };
 
 beforeEach(() => {
@@ -162,8 +165,8 @@ describe("rule 685: every templated email is multipart, and its HTML reads in th
     for (const lang of ["ar", "en"] as const) {
       const u = await withLang(await newUser("htmllife"), lang);
       await saveUser({ ...u, createdAt: new Date(Date.now() - 1.5 * 864e5).toISOString(), trialEnds: new Date(Date.now() + 5 * 864e5).toISOString() });
-      await saveBrand(u.email, BRAND);
-      expect(await runLifecycle((await getUser(u.email))!)).toEqual(["day1"]);
+      await saveBrand(sc(u), BRAND);
+      expect(await runLifecycle({ ...(await getUser(acct(u)))!, scope: sc(u) })).toEqual(["day1"]);
       const [m] = mailTo(u.email);
       expect(m.text).toContain(`${ORIGIN}/${lang}/app`);
       expectFlow(m.html!, lang);
@@ -179,7 +182,7 @@ describe("rule 685: every templated email is multipart, and its HTML reads in th
       for (const key of ["day2", "day3"]) {
         const doc = lifecycleHtml(u, key, lifecycleTemplate(u, key, CTX)!);
         expectFlow(doc, lang);
-        expect(hrefs(doc), key).toContain(`${ORIGIN}/${lang}/app/billing`);
+        expect(hrefs(doc), key).toContain(inWs(u, lang, "/billing"));
         expect(doc).toContain(COPY[lang].notice.billing);
       }
     }
@@ -188,13 +191,13 @@ describe("rule 685: every templated email is multipart, and its HTML reads in th
   it("Reem's reminder: HTML in the account's language", async () => {
     for (const lang of ["ar", "en"] as const) {
       const u = await withLang(await newUser("htmlrem"), lang);
-      await saveBrand(u.email, BRAND);
-      await seedDue(u.email, `Call the bank ${lang}`);
+      await saveBrand(sc(u), BRAND);
+      await seedDue(sc(u), `Call the bank ${lang}`);
       await sweepReminders(Date.now());
       const [m] = mailTo(u.email);
       expect(m.text).toContain(`Call the bank ${lang}`);
       expectFlow(m.html!, lang);
-      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/b/default/todo`);
+      expect(hrefs(m.html!)).toContain(inWs(u, lang, "/b/default/todo"));
     }
   });
 
@@ -203,12 +206,12 @@ describe("rule 685: every templated email is multipart, and its HTML reads in th
     for (const lang of ["ar", "en"] as const) {
       const u = await withLang(await newUser("htmlser"), lang);
       const sid = newSeriesId();
-      await seedCopy(u.email, sid, T - 85 * 864e5, `Water the plants ${lang}`);
-      expect(await warnSeries(u.email, T)).toBe(1);
+      await seedCopy(sc(u), sid, T - 85 * 864e5, `Water the plants ${lang}`);
+      expect(await warnSeries(sc(u), T)).toBe(1);
       const [m] = mailTo(u.email);
       expect(m.text).toContain(`Water the plants ${lang}`);
       expectFlow(m.html!, lang);
-      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/b/default/todo?series=${sid}`);
+      expect(hrefs(m.html!)).toContain(inWs(u, lang, `/b/default/todo?series=${sid}`));
     }
   });
 
@@ -219,15 +222,15 @@ describe("rule 685: every templated email is multipart, and its HTML reads in th
     vi.setSystemTime(T0);
     for (const lang of ["ar", "en"] as const) {
       const u = await withLang(await newUser("htmleve"), lang);
-      await saveBrand(u.email, BRAND);
+      await saveBrand(sc(u), BRAND);
       await signIn(u.email);
       const item = await addItem({ title: `Send the quote ${lang}` });
       expect((await itemRoute.PATCH(json(`/api/secretary/${item.id}`, "PATCH", { action: "complete", result: "Sent" }), params({ id: item.id }))).status).toBe(200);
-      expect(await eveningWrap((await getUser(u.email))!, T0)).toBe("sent");
+      expect(await eveningWrap((await getUser(acct(u)))!, T0)).toBe("sent");
       const [m] = mailTo(u.email);
       expect(m.text).toContain(`Send the quote ${lang}`);
       expectFlow(m.html!, lang);
-      expect(hrefs(m.html!)).toContain(`${ORIGIN}/${lang}/app/b/default/todo`);
+      expect(hrefs(m.html!)).toContain(inWs(u, lang, "/b/default/todo"));
     }
   });
 
@@ -288,8 +291,8 @@ describe("rule 686: every value interpolated into an email's HTML is escaped; on
 
   it("a task title the owner or an agent wrote reaches Reem's reminder email as text", async () => {
     const u = await newUser("htmlxss");
-    await saveBrand(u.email, BRAND);
-    await seedDue(u.email, `${XSS} <img src=x onerror=alert(3)>`);
+    await saveBrand(sc(u), BRAND);
+    await seedDue(sc(u), `${XSS} <img src=x onerror=alert(3)>`);
     await sweepReminders(Date.now());
     const [m] = mailTo(u.email);
     expect(m.text).toContain(XSS);
@@ -385,7 +388,7 @@ describe("rule 688: the team invitation's HTML names no organisation, brand or d
   it("a display name and a brand name typed by the sender never reach the invited address", async () => {
     const owner = { ...(await newUser("htmlrelay")), plan: "agency" as const, name: "Thakeen Security Team" };
     await saveUser(owner);
-    await saveBrand(owner.email, { ...BRAND, name: "Account locked - verify at evil.example" });
+    await saveBrand(sc(owner), { ...BRAND, name: "Account locked - verify at evil.example" });
     await signIn(owner.email);
     for (const lang of ["ar", "en"] as const) {
       const to = freshEmail();

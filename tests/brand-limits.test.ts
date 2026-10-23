@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminSignIn, jar, json, newUser, signIn, signOut } from "./helpers/session";
-import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
+import { getUser, saveUser, type Plan, type User, acct } from "@/lib/auth";
 import { addBrand, activeCount, brandLimitRefusal, listBrands } from "@/lib/brands";
 import { db } from "@/lib/db";
 import { AGENCY_BRANDS, MAX_BRAND_CAP, PLAN_BRANDS, brandCapFor, isBrandCap } from "@/lib/pricing";
@@ -23,7 +23,7 @@ beforeAll(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); });
 
 async function account(p: Plan, extra: Partial<User> = {}): Promise<User> {
   const u = await newUser("bl");
-  const x = { ...(await getUser(u.email))!, plan: p, ...extra };
+  const x = { ...(await getUser(acct(u)))!, plan: p, ...extra };
   await saveUser(x);
   return x;
 }
@@ -50,13 +50,13 @@ describe("rule 1390: the plan table and the founder's override", () => {
   it("only active brands count, so a list above the cap refuses and one archive below it allows", async () => {
     const u = await account("pro");
     expect(await addBrand(u, "Second")).toMatchObject({ status: "active" });
-    const rows = await listBrands(u.email);
+    const rows = await listBrands(acct(u));
     expect(activeCount(rows)).toBe(2);
     expect(brandLimitRefusal(u, rows)).toEqual({ error: "brand_limit", cap: 2, count: 2 });
     expect(brandLimitRefusal(u, rows.map((b) => (b.id === "default" ? b : { ...b, status: "archived" as const })))).toBeNull();
     // addBrand itself refuses at the cap and writes nothing.
     expect(await addBrand(u, "Third")).toEqual({ error: "brand_limit", cap: 2, count: 2 });
-    expect(await listBrands(u.email)).toHaveLength(2);
+    expect(await listBrands(acct(u))).toHaveLength(2);
   });
 });
 
@@ -97,7 +97,7 @@ describe("rule 1393: the founder sets an account's number (POST /api/admin/brand
     expect((await setCap({ email: "", brandCap: 20, reason: "contract" })).status).toBe(400);
     const missing = await setCap({ email: "nobody-brand-cap@test.example", brandCap: 20, reason: "contract" });
     expect(missing.status).toBe(404);
-    expect((await getUser(u.email))!.brandCap).toBeUndefined();
+    expect((await getUser(acct(u)))!.brandCap).toBeUndefined();
   });
   it("sets and clears the number under the lock, logs before and after with the reason, and archives nothing", async () => {
     const u = await account("agency", { brandCap: 3 });
@@ -107,10 +107,10 @@ describe("rule 1393: the founder sets an account's number (POST /api/admin/brand
     const r = await setCap({ email: u.email, brandCap: 1, reason: "contract lowered" });
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ ok: true, user: { email: u.email, brandCap: 1, brandCapOverride: 1, activeBrands: 3 } });
-    expect((await getUser(u.email))!.brandCap).toBe(1);
+    expect((await getUser(acct(u)))!.brandCap).toBe(1);
     // Lowered below the active brands: every brand is still active, only new adds stop.
-    expect(activeCount(await listBrands(u.email))).toBe(3);
-    expect(await addBrand((await getUser(u.email))!, "B4")).toMatchObject({ error: "brand_limit", cap: 1, count: 3 });
+    expect(activeCount(await listBrands(acct(u)))).toBe(3);
+    expect(await addBrand((await getUser(acct(u)))!, "B4")).toMatchObject({ error: "brand_limit", cap: 1, count: 3 });
     const log = await lastLog();
     expect(log).toMatchObject({ action: "brand_cap", target: u.email, before: { cap: 3, override: 3 }, after: { cap: 1, override: 1 }, reason: "contract lowered" });
     expect(log.what).toBe(`brand_cap ${u.email} 3→1`);
@@ -118,7 +118,7 @@ describe("rule 1393: the founder sets an account's number (POST /api/admin/brand
     for (const clear of [0, null]) {
       const c = await setCap({ email: u.email, brandCap: clear, reason: "back to plan" });
       expect((await c.json()).user).toMatchObject({ brandCap: AGENCY_BRANDS, brandCapOverride: null });
-      expect("brandCap" in (await getUser(u.email))!).toBe(false);
+      expect("brandCap" in (await getUser(acct(u)))!).toBe(false);
     }
   });
   it("the console's plan rows show the number and the override", async () => {

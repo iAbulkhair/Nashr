@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { newUser, settle } from "./helpers/session";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { agentSpendFor } from "@/lib/credits";
 import { db } from "@/lib/db";
 import type { Brand } from "@/lib/brand";
@@ -286,7 +286,7 @@ describe("chatUnitsFor: one chat message counts ceil(its chat multiplier) messag
       expect(() => c.chatUnitsFor(ECONOMY.id), String(bad)).toThrow(/chat_allowance_unpriced/);
       const u = await newUser("mc-bad");
       await expect(a.reserveChatTurn(u, ECONOMY.id), String(bad)).rejects.toThrow(/chat_allowance_unpriced/);
-      expect(await db.get<number>(chatMsgKey(u.email)), String(bad)).toBeFalsy();
+      expect(await db.get<number>(chatMsgKey(acct(u))), String(bad)).toBeFalsy();
     }
   });
 });
@@ -295,10 +295,10 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
   async function owner(over: Partial<User> = {}): Promise<User> {
     const u = await newUser("mc-chat");
     await saveUser({ ...u, plan: "starter", chatOverflow: true, credits: 10, ...over });
-    return (await getUser(u.email))!;
+    return (await getUser(acct(u)))!;
   }
-  const msgs = async (u: User) => (await db.get<number>(chatMsgKey(u.email))) ?? 0;
-  const over = async (u: User) => (await db.get<number>(chatOverKey(u.email))) ?? 0;
+  const msgs = async (u: User) => (await db.get<number>(chatMsgKey(acct(u)))) ?? 0;
+  const over = async (u: User) => (await db.get<number>(chatOverKey(acct(u)))) ?? 0;
   const reply = (usd: number): ChatTurn => ({ role: "assistant", content: "ok", at: new Date().toISOString(), usd }) as ChatTurn;
   async function reserved(u: User, model?: string) {
     const g = await reserveChatTurn(u, model ?? SONNET55);
@@ -331,7 +331,7 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
     const r = await runChatTurn(u, await reserved(u, OPUS), async () => reply(0.2));
     expect(r).toMatchObject({ charged: 0, chat: { used: 2, left: 248 } });
     expect(await msgs(u)).toBe(2);
-    expect((await getUser(u.email))!.credits).toBe(10);
+    expect((await getUser(acct(u)))!.credits).toBe(10);
   });
 
   it("the settle reads the count the reserve stored, never the model again; a gate with a bad count moves nothing", async () => {
@@ -349,7 +349,7 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
 
   it("a message that would pass the allowance by its count is refused before any model call, the counter as it was", async () => {
     const u = await owner({ chatOverflow: false });
-    await db.set(chatMsgKey(u.email), 249);
+    await db.set(chatMsgKey(acct(u)), 249);
     const g = await reserveChatTurn(u, OPUS);
     expect(g).toMatchObject({ ok: false, error: "chat_allowance", status: { used: 249, left: 1 } });
     expect(await msgs(u)).toBe(249);
@@ -364,7 +364,7 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
 
   it("past the allowance the overflow scales the same way: Opus needs a hold of 4, counts 2 on chat_over, gives back 2", async () => {
     const u = await owner({ credits: 3 });
-    await db.set(chatMsgKey(u.email), 250);
+    await db.set(chatMsgKey(acct(u)), 250);
     expect(await reserveChatTurn(u, OPUS)).toMatchObject({ ok: false, error: "chat_credits", need: 4, credits: 3 });
     expect([await msgs(u), await over(u)]).toEqual([250, 0]);
     // 3 credits cover a Sonnet message's hold of 2.
@@ -375,22 +375,22 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
     expect(await over(u)).toBe(0);
 
     const v = await owner({ credits: 10 });
-    await db.set(chatMsgKey(v.email), 249); // one left: Opus counts 2, so the whole message goes on credits
+    await db.set(chatMsgKey(acct(v)), 249); // one left: Opus counts 2, so the whole message goes on credits
     const g = await reserved(v, OPUS);
     expect(g).toMatchObject({ mode: "overflow", units: 2, hold: 4, status: { used: 249, overflow: { used: 2, hold: 4 } } });
     expect([await msgs(v), await over(v)]).toEqual([249, 2]);
     expect(await settleChatTurn(v, g, null)).toMatchObject({ charged: 0, status: { overflow: { used: 0 } } });
-    expect([await msgs(v), await over(v), (await getUser(v.email))!.credits]).toEqual([249, 0, 10]);
+    expect([await msgs(v), await over(v), (await getUser(acct(v)))!.credits]).toEqual([249, 0, 10]);
     // Answered at its $0.28 ceiling: billed 3 credits at the floor rate (the rest carried), at most the hold of 4.
     const a = await reserved(v, OPUS);
     const r = await settleChatTurn(v, a, chatTurnMaxUsd(OPUS));
     expect(r.charged).toBe(Math.floor(Math.round(chatTurnMaxUsd(OPUS) * 1e6) / Math.round(maxCostPerCreditUsd() * 1e6)));
     expect(r.charged).toBe(3);
-    expect([await over(v), await db.get<number>(chatCredKey(v.email)), (await getUser(v.email))!.credits]).toEqual([2, 3, 7]);
+    expect([await over(v), await db.get<number>(chatCredKey(acct(v))), (await getUser(acct(v)))!.credits]).toEqual([2, 3, 7]);
     // A metered cost past the ceiling is still billed at most the hold.
     const b = await reserved(v, OPUS);
     expect((await settleChatTurn(v, b, 1)).charged).toBe(4);
-    expect([await over(v), (await getUser(v.email))!.credits]).toEqual([4, 3]);
+    expect([await over(v), (await getUser(acct(v)))!.credits]).toEqual([4, 3]);
   });
 
   it("an id that is not exactly a catalog id is refused before anything is counted", async () => {
@@ -449,10 +449,10 @@ async function load() {
 
 async function brandOwner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, brand);
-  return (await getUser(u.email))!;
+  await db.set(`brand:${acct(u)}`, brand);
+  return (await getUser(acct(u)))!;
 }
-const credits = async (email: string) => (await getUser(email))!.credits;
+const credits = async (id: string) => (await getUser(id))!.credits;
 
 describe("a charge then a refund returns exactly the charged credits, for each tier (generateBatch)", () => {
   const TIERS_ON_GENERATE: [string | undefined, number][] = [[undefined, 10], [OPUS, 10], [SONNET, 5], [SONNET55, 5], [ECONOMY.id, 3]];
@@ -461,13 +461,13 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     const { generateBatch, seen } = await load();
     for (const [model, want] of TIERS_ON_GENERATE) {
       const u = await brandOwner("mc-tier");
-      const before = await credits(u.email);
-      const r = await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", ...(model ? { model } : {}) });
+      const before = await credits(acct(u));
+      const r = await generateBatch(u, acct(u), { type: "social", source: "chat", via: "chat", ...(model ? { model } : {}) });
       const tag = model ?? "default";
       expect(!r.ok && r.reason === "failed" && (r.error as Error).name, tag).toBe("ModelPaused");
       expect(seen.charges.at(-1), `${tag}: charged`).toBe(want);
       expect(seen.refunds.at(-1), `${tag}: refunded`).toBe(want);
-      expect([await credits(u.email), agentSpendFor((await getUser(u.email))!, u.email)], tag).toEqual([before, { noor: 0 }]);
+      expect([await credits(acct(u)), agentSpendFor((await getUser(acct(u)))!, acct(u))], tag).toEqual([before, { noor: 0 }]);
     }
   });
 
@@ -475,58 +475,58 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     const { generateBatch, seen } = await load();
     for (const [model, want] of TIERS_ON_GENERATE) {
       const u = await brandOwner("mc-once");
-      const before = await credits(u.email);
-      const r = await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", once: `test:${model ?? "default"}`, ...(model ? { model } : {}) });
+      const before = await credits(acct(u));
+      const r = await generateBatch(u, acct(u), { type: "social", source: "chat", via: "chat", once: `test:${model ?? "default"}`, ...(model ? { model } : {}) });
       const tag = model ?? "default";
       expect(r.ok, tag).toBe(false);
       expect([seen.onceCharges.at(-1), seen.refunds.at(-1)], tag).toEqual([want, want]);
-      const after = (await getUser(u.email))!;
-      expect([after.credits, after.paidOnce, agentSpendFor(after, u.email)], tag).toEqual([before, undefined, { noor: 0 }]);
+      const after = (await getUser(acct(u)))!;
+      expect([after.credits, after.paidOnce, agentSpendFor(after, acct(u))], tag).toEqual([before, undefined, { noor: 0 }]);
     }
   });
 
   it("a one-item draft at x0.5 is charged 1 credit, never 0, and refunded 1", async () => {
     const { generateBatch, seen } = await load();
     const u = await brandOwner("mc-draft");
-    const before = await credits(u.email);
-    await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", count: 1, model: SONNET });
-    expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(u.email)]).toEqual([1, 1, before]);
+    const before = await credits(acct(u));
+    await generateBatch(u, acct(u), { type: "social", source: "chat", via: "chat", count: 1, model: SONNET });
+    expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(acct(u))]).toEqual([1, 1, before]);
   });
 
   it("an id that is not exactly a catalog id is refused before any read or charge", async () => {
     const { generateBatch, seen } = await load();
     const u = await brandOwner("mc-unknown");
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     for (const id of ["claude-unknown-9", "constructor", "__proto__", "", 5, null]) {
-      await expect(generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", model: id as string }), String(id)).rejects.toThrow(/unknown_model/);
+      await expect(generateBatch(u, acct(u), { type: "social", source: "chat", via: "chat", model: id as string }), String(id)).rejects.toThrow(/unknown_model/);
     }
-    expect([seen.charges, seen.onceCharges, await credits(u.email)]).toEqual([[], [], before]);
+    expect([seen.charges, seen.onceCharges, await credits(acct(u))]).toEqual([[], [], before]);
   });
 
   it("model: undefined is the default (10), the same as leaving it out", async () => {
     const { generateBatch, seen } = await load();
     const u = await brandOwner("mc-undef");
-    await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", model: undefined });
+    await generateBatch(u, acct(u), { type: "social", source: "chat", via: "chat", model: undefined });
     expect([seen.charges.at(-1), seen.refunds.at(-1)]).toEqual([10, 10]);
   });
 
   it("only an offered model may generate: an internal entry is refused before any read or charge; tools are not needed", async () => {
     const { generateBatch, seen } = await load();
     const u = await brandOwner("mc-internal");
-    const before = await credits(u.email);
-    await expect(generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", model: INTERNAL.id })).rejects.toThrow(/^model_not_offered:test-internal-1$/);
-    expect([seen.charges, seen.onceCharges, await credits(u.email)]).toEqual([[], [], before]);
+    const before = await credits(acct(u));
+    await expect(generateBatch(u, acct(u), { type: "social", source: "chat", via: "chat", model: INTERNAL.id })).rejects.toThrow(/^model_not_offered:test-internal-1$/);
+    expect([seen.charges, seen.onceCharges, await credits(acct(u))]).toEqual([[], [], before]);
     // Generation calls no tools: an offered model without them is priced at its tier (standard, x0.5) and runs.
-    const r = await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", model: NOTOOLS.id });
+    const r = await generateBatch(u, acct(u), { type: "social", source: "chat", via: "chat", model: NOTOOLS.id });
     expect(!r.ok && r.reason).toBe("failed");
-    expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(u.email)]).toEqual([5, 5, before]);
+    expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(acct(u))]).toEqual([5, 5, before]);
   });
 
   it("a type outside the model's allow-list is refused before the charge (Haiku 5.5 writes no task)", async () => {
     const { generateBatch, seen } = await load();
     const u = await brandOwner("mc-allow");
     for (const t of ["article", "social"] as const) {
-      await expect(generateBatch(u, u.email, { type: t, source: "chat", via: "chat", model: "claude-haiku-5-5" }), t).rejects.toThrow(/model_task_not_allowed/);
+      await expect(generateBatch(u, acct(u), { type: t, source: "chat", via: "chat", model: "claude-haiku-5-5" }), t).rejects.toThrow(/model_task_not_allowed/);
     }
     expect(seen.charges).toEqual([]);
   });
@@ -535,9 +535,9 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     const { generateBatch, seen } = await load();
     for (const [type, model, want] of [["article", SONNET, 2], ["article", OPUS, 4], ["social", SONNET, 5], ["article", undefined, 2]] as const) {
       const u = await brandOwner("mc-per-type");
-      const before = await credits(u.email);
-      await generateBatch(u, u.email, { type, source: "chat", via: "chat", ...(model ? { model } : {}) });
-      expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(u.email)], `${type} ${model ?? "automatic"}`).toEqual([want, want, before]);
+      const before = await credits(acct(u));
+      await generateBatch(u, acct(u), { type, source: "chat", via: "chat", ...(model ? { model } : {}) });
+      expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(acct(u))], `${type} ${model ?? "automatic"}`).toEqual([want, want, before]);
     }
   });
 

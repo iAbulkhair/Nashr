@@ -420,11 +420,14 @@ export async function createUser(input: { email: string; name: string; phone: st
   const [{ createPersonRecord, withPersonLock }, { newPersonId }, { addressBlocked }] = await Promise.all([import("./person"), import("./multi-org"), import("./email-hold")]);
   // Tests may pick the shape (`"p"`, or `"legacy"` for a legacy owner while `MULTI_ORG` is mocked on); a route never does.
   const split = opts.person ? opts.person === "p" : MULTI_ORG;
+  // A test may also ask for `opaque: false`, an account made before R2 enable (its id is its address, as every account
+  // production holds from then); a route never does (rule 3815).
+  const opaque = opts.opaque ?? (OPAQUE_IDS || (split && MULTI_ORG));
   // L3 (account-id R2, rule 2740): an account that moved in place keeps `user:{old}` holding its new address. An id
   // derived from this address would overwrite it, so such an address gets an opaque id whatever `OPAQUE_IDS` says.
-  const moved = !(opts.opaque || OPAQUE_IDS || (split && MULTI_ORG)) && (await addressBlocked(email)) === "moved";
+  const moved = !opaque && (await addressBlocked(email)) === "moved";
   const account: User = {
-    id: idForNewAccount(email, opts.opaque || OPAQUE_IDS || (split && MULTI_ORG) || moved),
+    id: idForNewAccount(email, opaque || moved),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",

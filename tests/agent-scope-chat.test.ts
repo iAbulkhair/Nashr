@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { readFileSync } from "node:fs";
 
 /**
@@ -70,8 +71,8 @@ async function owner(prefix: string, fx: Fixture = {}): Promise<User> {
   const u = await newUser(prefix, fx);
   await saveUser({ ...u, plan: "starter", credits: 300 });
   await signIn(u.email);
-  const back = (await getUser(u.email))!;
-  back.scope = back.email;
+  const back = (await getUser(acct(u)))!;
+  back.scope = acct(back);
   return back;
 }
 const used = async (u: User) => (await chatStatus(u, route("chat").model)).counted;
@@ -163,7 +164,7 @@ describe("rule 795: the refusal ceiling in rate.ts", () => {
     vi.spyOn(db, "get").mockImplementation(((k: string) => (k.startsWith("rate:agent-scope:") ? Promise.reject(new Error("down")) : real(k))) as typeof db.get);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await agentScopePreflight(u)).slow).toBeNull();
-    expect(err.mock.calls.flat().join(" ")).not.toContain(u.email);
+    expect(err.mock.calls.flat().join(" ")).not.toContain(acct(u));
   });
 
   it("scopeCheck counts an enforced input refusal only: never shadow, never `in`, never an output check", async () => {
@@ -271,7 +272,7 @@ describe("rule 794: the input gate in a chat turn", () => {
 
   it("the gate reads the active brand, its sector and the owner's other brands", async () => {
     const u = await owner("asc-ctx");
-    await saveBrands(u.email, [
+    await saveBrands(acct(u), [
       { id: "default", name: "", createdAt: new Date().toISOString(), status: "active" },
       { id: "b2", name: "Bakery Two", createdAt: new Date().toISOString(), status: "active" },
     ]);
@@ -286,13 +287,13 @@ describe("rule 794: the input gate in a chat turn", () => {
     const u = await owner("asc-brands-err");
     await setModes("enforce");
     const real = db.get.bind(db);
-    vi.spyOn(db, "get").mockImplementation(((k: string) => (k === `brands:${u.email}` ? Promise.reject(new Error("down")) : real(k))) as typeof db.get);
+    vi.spyOn(db, "get").mockImplementation(((k: string) => (k === `brands:${acct(u)}` ? Promise.reject(new Error("down")) : real(k))) as typeof db.get);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await post("اكتب منشوراً");
     expect(res.status).toBe(200);
     expect(((await res.json()) as Body).message.content).toBe("أهلاً");
     expect(cls.calls[0].input.otherBrands).toEqual([]);
-    expect(err.mock.calls.flat().join(" ")).not.toContain(u.email);
+    expect(err.mock.calls.flat().join(" ")).not.toContain(acct(u));
   });
 
   it("chat() called without modes reads them itself", async () => {
@@ -334,8 +335,8 @@ describe("rule 794: the input gate in a chat turn", () => {
   it("ceiling is per brand scope", async () => {
     const u = await owner("asc-ceil-b");
     await setModes("enforce");
-    await db.set(hourKey(u.email), 20);
-    await saveBrands(u.email, [
+    await db.set(hourKey(acct(u)), 20);
+    await saveBrands(acct(u), [
       { id: "default", name: "", createdAt: new Date().toISOString(), status: "active" },
       { id: "b2", name: "Second", createdAt: new Date().toISOString(), status: "active" },
     ]);
@@ -344,8 +345,8 @@ describe("rule 794: the input gate in a chat turn", () => {
     const res = await post("ذكرني بموعد الطبيب");
     expect(res.status, "the default brand's ceiling does not refuse brand b2").toBe(200);
     expect(cls.calls).toHaveLength(1);
-    expect(await counter(hourKey(`${u.email}#b2`)), "b2's refusal counts on b2").toBe(1);
-    expect(await counter(hourKey(u.email)), "the default brand's count is unchanged").toBe(20);
+    expect(await counter(hourKey(`${acct(u)}#b2`)), "b2's refusal counts on b2").toBe(1);
+    expect(await counter(hourKey(acct(u))), "the default brand's count is unchanged").toBe(20);
   });
 
   it("ceiling is ignored outside enforce", async () => {
@@ -365,7 +366,7 @@ describe("rules 794-795: MCP ask_noor", () => {
     const u = await owner("asc-mcp");
     await setModes("enforce");
     cls.verdict = "other_business";
-    const r = await askNoor(u.email, "write ads for my cousin's shop");
+    const r = await askNoor(acct(u), "write ads for my cousin's shop");
     expect(r.isError).toBeUndefined();
     expect(r.content[0].text.startsWith(agentScopeRefusalText("other_business", "ar", { brand: "", otherBrands: [] }))).toBe(true);
     expect(sdk.streams).toBe(0);
@@ -375,7 +376,7 @@ describe("rules 794-795: MCP ask_noor", () => {
 
     await db.set(hourKey(sc(u)), 20);
     cls.calls = [];
-    const slow = await askNoor(u.email, "write ads for my cousin's shop");
+    const slow = await askNoor(acct(u), "write ads for my cousin's shop");
     expect(slow.isError).toBe(true);
     expect(slow.content[0].text).toBe(agentScopeSlowText("ar"));
     expect(cls.calls).toHaveLength(0);
@@ -385,7 +386,7 @@ describe("rules 794-795: MCP ask_noor", () => {
   it("MCP ask_noor in enforce with an `in` verdict runs the turn", async () => {
     const u = await owner("asc-mcp-in");
     await setModes("enforce");
-    const r = await askNoor(u.email, "اكتب منشوراً");
+    const r = await askNoor(acct(u), "اكتب منشوراً");
     expect(r.isError).toBeUndefined();
     expect(r.content[0].text.startsWith("أهلاً")).toBe(true);
     expect(sdk.streams).toBe(1);

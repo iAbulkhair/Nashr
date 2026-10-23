@@ -36,7 +36,7 @@ vi.mock("@anthropic-ai/sdk", () => {
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "on" as const }));
 
 import { MODEL_BUDGET, anthropic, until } from "@/lib/model";
-import { getUser, saveUser } from "@/lib/auth";
+import { acct, getUser, saveUser, sc, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { history, chat, OUT_OF_TIME_REPLY, CHAT_MAX_DURATION_S } from "@/lib/chat";
 import { generate } from "@/lib/noor";
@@ -55,6 +55,8 @@ const TOOL = TOOLS[0].slug;
 const brand: Brand = { name: "مقهى", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(f) ? [p] : []; });
 const credits = async (email: string) => (await getUser(email))!.credits;
+/** The stored account with the brand scope the routes put on it. */
+const userOf = async (u: User) => ({ ...(await getUser(acct(u)))!, scope: sc(u) });
 
 beforeEach(() => { sdk.ctor = []; sdk.calls = []; sdk.mode = "hang"; vi.stubEnv("ANTHROPIC_API_KEY", "test"); });
 afterEach(async () => { vi.useRealTimers(); await settle(); vi.unstubAllEnvs(); });
@@ -153,36 +155,36 @@ describe("every charged model call ends by its caller's deadline, so the refund 
 
   it("generateBatch: a batch whose model passes the deadline is refunded in full", async () => {
     const u = await newUser("mt-batch");
-    await db.set(`brand:${u.email}`, brand);
-    const r = await generateBatch((await getUser(u.email))!, u.email, { type: "social", source: "manual", via: "app", deadline: Date.now() + 150 });
+    await db.set(`brand:${sc(u)}`, brand);
+    const r = await generateBatch(await userOf(u), sc(u), { type: "social", source: "manual", via: "app", deadline: Date.now() + 150 });
     expect(r.ok).toBe(false);
     expect(!r.ok && r.reason).toBe("failed");
-    expect(await credits(u.email)).toBe(50);
+    expect(await credits(acct(u))).toBe(50);
   });
 
   it("POST /api/generate: a model that never answers ends in 502 with the credits back, inside 300 s", async () => {
     const u = await newUser("mt-route");
     await saveUser({ ...u, credits: 20 });
-    await db.set(`brand:${u.email}`, brand);
+    await db.set(`brand:${sc(u)}`, brand);
     await signIn(u.email);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const pending = generateRoute.POST(json("/api/generate", "POST", { type: "social" }));
     await vi.waitFor(() => { if (!sdk.calls.length) throw new Error("not called yet"); }, { timeout: 5_000, interval: 5 });
     // The call's budget is the request's deadline: 15 s under the 300 s the platform allows.
     expect(sdk.calls[0].opts!.timeout).toBeLessThanOrEqual(300_000 - 15_000);
-    expect(await credits(u.email)).toBe(20 - TASK_COST.social);
+    expect(await credits(acct(u))).toBe(20 - TASK_COST.social);
     await vi.advanceTimersByTimeAsync(300_000 - 15_000);
     const res = await pending;
     expect(res.status).toBe(502);
     expect(((await res.json()) as { error: string }).error).toBe("generation_failed");
-    expect(await credits(u.email)).toBe(20);
+    expect(await credits(acct(u))).toBe(20);
   });
 
   it("chat(): a turn whose model never answers ends by the request's deadline with a saved reply, not a hang", async () => {
     const u = await newUser("mt-chat");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const deadline = Date.now() + 60_000;
-    const pending = chat((await getUser(u.email))!, "hello", undefined, "noor", { lang: "en", deadline });
+    const pending = chat(await userOf(u), "hello", undefined, "noor", { lang: "en", deadline });
     await vi.waitFor(() => { if (!sdk.calls.length) throw new Error("not called yet"); }, { timeout: 5_000, interval: 5 });
     expect(sdk.ctor).toEqual([{ timeout: MODEL_BUDGET.CHAT_MS, maxRetries: 1 }]);
     // The stream ends CHAT_REPLY_MS before the deadline, leaving time to save the reply and answer.
@@ -190,7 +192,7 @@ describe("every charged model call ends by its caller's deadline, so the refund 
     await vi.advanceTimersByTimeAsync(60_000);
     const m = await pending;
     expect(m.content).toBe(OUT_OF_TIME_REPLY.en);
-    expect((await history(u.email)).at(-1)!.content).toBe(OUT_OF_TIME_REPLY.en);
+    expect((await history(sc(u))).at(-1)!.content).toBe(OUT_OF_TIME_REPLY.en);
   });
 
   it("a far deadline: every charged call's attempt is still capped by its own budget", async () => {
@@ -201,7 +203,7 @@ describe("every charged model call ends by its caller's deadline, so the refund 
     expect(review.opts!.timeout).toBeLessThanOrEqual(MODEL_BUDGET.REVIEW_MS);
     sdk.calls = [];
     const u = await newUser("mt-chat-far");
-    await chat((await getUser(u.email))!, "hello", undefined, "noor", { lang: "en", deadline: Date.now() + 285_000 });
+    await chat(await userOf(u), "hello", undefined, "noor", { lang: "en", deadline: Date.now() + 285_000 });
     expect(sdk.calls[0].opts!.timeout).toBe(MODEL_BUDGET.CHAT_MS);
     sdk.calls = [];
     const site = { url: "https://example.test", ok: true, platform: "unknown", title: "t", description: "d", links: [], text: "x" } as unknown as Parameters<typeof buildFromSite>[0];
@@ -222,7 +224,7 @@ describe("every charged model call ends by its caller's deadline, so the refund 
 
   it("chat(): no model turn starts with less than CHAT_TURN_MIN_MS left", async () => {
     const u = await newUser("mt-chat-late");
-    const m = await chat((await getUser(u.email))!, "hello", undefined, "noor", { lang: "ar", deadline: Date.now() + MODEL_BUDGET.CHAT_TURN_MIN_MS - 1_000 });
+    const m = await chat(await userOf(u), "hello", undefined, "noor", { lang: "ar", deadline: Date.now() + MODEL_BUDGET.CHAT_TURN_MIN_MS - 1_000 });
     expect(m.content).toBe(OUT_OF_TIME_REPLY.ar);
     expect(sdk.calls).toEqual([]);
   });

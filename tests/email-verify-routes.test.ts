@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser } from "@/lib/auth";
+import { acct, currentUser, getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hasPendingCode } from "@/lib/verify-email";
 
@@ -136,7 +136,7 @@ describe("email verify routes", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect((await currentUser())!.email).toBe(u.email);
-    expect((await getUser(u.email))!.emailVerifiedAt).toBeTruthy();
+    expect((await getUser(acct(u)))!.emailVerifiedAt).toBeTruthy();
     expect(await hasPendingCode(u.email)).toBe(false);
   });
 
@@ -171,7 +171,7 @@ describe("email verify routes", () => {
     const res = await checkCode(wrong);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ ok: false, error: "wrong_code", attemptsLeft: 4 });
-    expect((await getUser(u.email))!.emailVerifiedAt).toBeUndefined();
+    expect((await getUser(acct(u)))!.emailVerifiedAt).toBeUndefined();
   });
 
   it("malformed code does not use an attempt", async () => {
@@ -245,7 +245,7 @@ describe("email verify routes", () => {
     expect((await sendCode()).status).toBe(401);
     expect((await checkCode("123456")).status).toBe(401);
     expect(mails).toHaveLength(0);
-    expect((await getUser(owner.email))!.emailVerifiedAt).toBeUndefined();
+    expect((await getUser(acct(owner)))!.emailVerifiedAt).toBeUndefined();
   });
 
   it("signup sends the first code", async () => {
@@ -341,7 +341,7 @@ describe("email verify routes", () => {
     const body = await r.json();
     expect(body).toMatchObject({ ok: true, resendIn: 60 });
     expect((await checkCode(body.devCode)).status).toBe(200);
-    expect((await getUser(u.email))!.emailVerifiedAt).toBeTruthy();
+    expect((await getUser(acct(u)))!.emailVerifiedAt).toBeTruthy();
     expect(mails).toHaveLength(0);
   });
 

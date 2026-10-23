@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { jar, json, newUser, signIn } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { getTask, saveTask, type Task } from "@/lib/brand";
@@ -66,7 +67,7 @@ const post = (over: Partial<Task> = {}): Task => ({ id: `t${Math.random().toStri
 
 async function connectedUser(tag: string, conn = metaConn()) {
   const u = await newUser(tag);
-  await saveConnection(u.email, conn);
+  await saveConnection(acct(u), conn);
   await signIn(u.email);
   return u;
 }
@@ -81,13 +82,13 @@ describe("connecting Meta (rule 75)", () => {
   it("keeps a long-lived token and the Pages, prefers the Page with Instagram, and puts no token in the visible metadata", async () => {
     fakeGraph();
     const u = await newUser("metacb");
-    await saveState("s-meta", { email: u.email, provider: "meta", lang: "en", shop: "", verifier: "" });
+    await saveState("s-meta", { email: acct(u), provider: "meta", lang: "en", shop: "", verifier: "" });
     await signIn(u.email);
     jar().set(OAUTH_COOKIE, "s-meta");
     const res = await callback.GET(new Request("https://app.test/api/connect/meta/callback?state=s-meta&code=c"), ctx("meta"));
     expect(new URL(res.headers.get("location")!).searchParams.get("connected")).toBe("meta");
 
-    const c = (await getConnection(u.email, "meta"))!;
+    const c = (await getConnection(acct(u), "meta"))!;
     expect(c.data).toMatchObject({ access_token: "long-user", page_token: "page-tok-2" });
     expect(c.meta).toMatchObject({ pageId: "p2", igId: "ig2", account: "متجر الورد · @ward.sa" });
     expect(JSON.parse(c.meta!.pages)).toEqual([{ id: "p1", name: "Ward Riyadh", ig: "" }, { id: "p2", name: "متجر الورد", ig: "ward.sa" }]);
@@ -102,23 +103,23 @@ describe("connecting Meta (rule 75)", () => {
   it("refuses an account with no Page instead of saving a connection that cannot publish", async () => {
     fakeGraph({ pages: [] });
     const u = await newUser("metanone");
-    await saveState("s-meta0", { email: u.email, provider: "meta", lang: "en", shop: "", verifier: "" });
+    await saveState("s-meta0", { email: acct(u), provider: "meta", lang: "en", shop: "", verifier: "" });
     await signIn(u.email);
     jar().set(OAUTH_COOKIE, "s-meta0");
     const res = await callback.GET(new Request("https://app.test/api/connect/meta/callback?state=s-meta0&code=c"), ctx("meta"));
     expect(new URL(res.headers.get("location")!).searchParams.get("error")).toBe("meta_no_page");
-    expect(await getConnection(u.email, "meta")).toBeNull();
+    expect(await getConnection(acct(u), "meta")).toBeNull();
   });
 
   it("switches to another Page Meta returned, and refuses any other id", async () => {
     const u = await connectedUser("metasel");
     const bad = await connectRoute.POST(json("/api/connect/meta", "POST", { action: "select_page", pageId: "p-evil" }), ctx("meta"));
     expect(bad.status).toBe(400);
-    expect((await getConnection(u.email, "meta"))!.data.page_token).toBe("page-tok-2");
+    expect((await getConnection(acct(u), "meta"))!.data.page_token).toBe("page-tok-2");
 
     const ok = await connectRoute.POST(json("/api/connect/meta", "POST", { action: "select_page", pageId: "p1" }), ctx("meta"));
     expect((await ok.json()).account).toBe("Ward Riyadh");
-    const c = (await getConnection(u.email, "meta"))!;
+    const c = (await getConnection(acct(u), "meta"))!;
     expect(c.data.page_token).toBe("page-tok-1");
     expect(c.meta?.pageId).toBe("p1");
     expect(c.meta?.igId, "p1 has no Instagram account, so the old one must not linger").toBeUndefined();
@@ -156,7 +157,7 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
     fakeGraph();
     const u = await connectedUser("metaig");
     const t = post();
-    await saveTask(u.email, t, true);
+    await saveTask(acct(u), t, true);
     const res = await publish(t.id, "instagram");
     const j = await res.json();
     expect(j.ok).toBe(true);
@@ -167,14 +168,14 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
     expect(create.body.get("image_url")).toBe("https://v3.fal.media/files/abc.jpg");
     expect(create.body.get("caption")).toBe("عود ملكي\nجديد في المتجر");
     expect(calls.find((k) => k.url.endsWith("/ig2/media_publish"))!.body.get("creation_id")).toBe("container-1");
-    expect((await getTask(u.email, t.id))!.published?.[0]).toMatchObject({ provider: "instagram", status: "published" });
+    expect((await getTask(acct(u), t.id))!.published?.[0]).toMatchObject({ provider: "instagram", status: "published" });
   });
 
   it("refuses Instagram for a post without a generated image, before calling Meta", async () => {
     fakeGraph();
     const u = await connectedUser("metaig2");
     const t = post({ imageUrl: undefined, imageProvider: undefined });
-    await saveTask(u.email, t, true);
+    await saveTask(acct(u), t, true);
     const res = await publish(t.id, "instagram");
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("wrong_target");
@@ -185,12 +186,12 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
     fakeGraph();
     const u = await connectedUser("metafb");
     const text = post({ imageUrl: undefined, imageProvider: undefined });
-    await saveTask(u.email, text, true);
+    await saveTask(acct(u), text, true);
     expect((await (await publish(text.id, "facebook")).json()).result).toMatchObject({ url: "https://www.facebook.com/p2_111", status: "published" });
     expect(calls.find((k) => k.url.endsWith("/p2/feed"))!.body.get("message")).toBe("عود ملكي\nجديد في المتجر");
 
     const photo = post();
-    await saveTask(u.email, photo, true);
+    await saveTask(acct(u), photo, true);
     expect((await (await publish(photo.id, "facebook")).json()).result.url).toBe("https://www.facebook.com/p2_222");
     expect(calls.find((k) => k.url.endsWith("/p2/photos"))!.body.get("url")).toBe("https://v3.fal.media/files/abc.jpg");
   });
@@ -199,12 +200,12 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
     fakeGraph();
     const u = await connectedUser("metamedia");
     const kie = post({ imageUrl: BLOB_IMG, imageProvider: "kie", imageModel: "img-premium" });
-    await saveTask(u.email, kie, true);
+    await saveTask(acct(u), kie, true);
     expect((await (await publish(kie.id, "instagram")).json()).result).toMatchObject({ provider: "instagram", status: "published" });
     expect(calls.find((k) => k.url.endsWith("/ig2/media"))!.body.get("image_url")).toBe(BLOB_IMG);
 
     const hf = post({ imageUrl: BLOB_IMG, imageProvider: "higgsfield", imageModel: "img-design" });
-    await saveTask(u.email, hf, true);
+    await saveTask(acct(u), hf, true);
     expect((await (await publish(hf.id, "facebook")).json()).result.url).toBe("https://www.facebook.com/p2_222");
     expect(calls.find((k) => k.url.endsWith("/p2/photos"))!.body.get("url")).toBe(BLOB_IMG);
   });
@@ -214,24 +215,24 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
     const u = await connectedUser("metadisk");
     const plain = `https://thakeen.com/m/${"c3".repeat(16)}.jpg`;
     const t = post({ imageUrl: plain, imageProvider: "kie", imageModel: "img-premium" });
-    await saveTask(u.email, t, true);
+    await saveTask(acct(u), t, true);
     expect((await (await publish(t.id, "instagram")).json()).result).toMatchObject({ status: "published" });
     const sent = new URL(calls.find((k) => k.url.endsWith("/ig2/media"))!.body.get("image_url")!);
     expect(sent.origin + sent.pathname).toBe(plain);
     expect([...sent.searchParams.keys()].sort()).toEqual(["exp", "sig"]);
     const { shareValid } = await import("@/lib/media/share");
     expect(shareValid(`${"c3".repeat(16)}.jpg`, sent.searchParams.get("exp"), sent.searchParams.get("sig"))).toBe(true);
-    expect((await getTask(u.email, t.id))?.imageUrl).toBe(plain);
+    expect((await getTask(acct(u), t.id))?.imageUrl).toBe(plain);
   });
 
   it("posts a clip-only item to the Page as text, never with the clip or a placeholder", async () => {
     fakeGraph();
     const u = await connectedUser("metaclip");
     const clip = post({ channel: "facebook", imageUrl: undefined, imageProvider: undefined, videoUrl: BLOB_CLIP, videoProvider: "higgsfield", videoModel: "vid-motion" });
-    await saveTask(u.email, clip, true);
+    await saveTask(acct(u), clip, true);
     await publish(clip.id, "facebook");
     const placeholder = post({ channel: "facebook", imageUrl: "https://placehold.co/1.png", imageProvider: "placeholder" });
-    await saveTask(u.email, placeholder, true);
+    await saveTask(acct(u), placeholder, true);
     await publish(placeholder.id, "facebook");
     expect(calls.filter((k) => k.url.endsWith("/p2/feed"))).toHaveLength(2);
     expect(calls.some((k) => k.url.endsWith("/p2/photos"))).toBe(false);
@@ -241,8 +242,8 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
   it("checks for artwork again at the call that posts, not only in the route", async () => {
     fakeGraph();
     const u = await connectedUser("metaig3");
-    await expect(publishTask(u.email, post({ imageUrl: "https://placehold.co/1.png", imageProvider: "placeholder" }), "instagram")).rejects.toThrow("instagram_needs_image");
-    await expect(publishTask(u.email, post({ imageProvider: undefined }), "instagram")).rejects.toThrow("instagram_needs_image");
+    await expect(publishTask(acct(u), post({ imageUrl: "https://placehold.co/1.png", imageProvider: "placeholder" }), "instagram")).rejects.toThrow("instagram_needs_image");
+    await expect(publishTask(acct(u), post({ imageProvider: undefined }), "instagram")).rejects.toThrow("instagram_needs_image");
     expect(calls).toEqual([]);
   });
 
@@ -250,9 +251,9 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
     fakeGraph({ revoked: true });
     const u = await connectedUser("metarev");
     const t = post();
-    await saveTask(u.email, t, true);
+    await saveTask(acct(u), t, true);
     const res = await publish(t.id, "facebook");
     expect((await res.json()).error).toBe("reconnect_required");
-    expect((await getConnection(u.email, "meta"))?.needsReconnect).toBeTruthy();
+    expect((await getConnection(acct(u), "meta"))?.needsReconnect).toBeTruthy();
   });
 });

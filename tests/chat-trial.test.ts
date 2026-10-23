@@ -21,7 +21,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }));
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "on" as const }));
 
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { chat, history } from "@/lib/chat";
 import { createMcpToken } from "@/lib/mcp";
@@ -37,15 +37,15 @@ const past = () => new Date(Date.now() - 864e5).toISOString();
 async function expired(prefix: string): Promise<User> {
   const u = await newUser(prefix);
   await saveUser({ ...u, trialEnds: past() });
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
 async function paid(prefix: string): Promise<User> {
   const u = await newUser(prefix);
   await saveUser({ ...u, plan: "starter", credits: 300 });
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
-const askNoor = async (email: string) => {
-  const token = await createMcpToken(email);
+const askNoor = async (id: string) => {
+  const token = await createMcpToken(id);
   const res = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "ask_noor", arguments: { message: "مرحبا" } } }) }));
   return ((await res.json()) as { result: { isError?: boolean; content: { text: string }[] } }).result;
 };
@@ -72,21 +72,21 @@ describe("an ended trial gets no chat turn and no model call (rule 330)", () => 
     expect(en.message.content).toMatch(/^Your free trial has ended.*\]\(\/en\/app\/billing\)/);
     expect(sdk.made, "no model client was ever made").toBe(0);
     // Nothing was written: not the owner's message, not a reply, and no ceiling was used up.
-    expect(await history(u.email)).toEqual([]);
+    expect(await history(acct(u))).toEqual([]);
     expect(await db.get(`rate:chat:h:${u.email}`)).toBeNull();
-    expect(await db.get(chatTrialKey(u.email)), "no message of the trial's allowance was reserved").toBeNull();
+    expect(await db.get(chatTrialKey(acct(u))), "no message of the trial's allowance was reserved").toBeNull();
   });
 
   it("MCP ask_noor answers a tool error with an absolute link, before any model call", async () => {
     const u = await expired("ct-mcp");
-    const r = await askNoor(u.email);
+    const r = await askNoor(acct(u));
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain("https://thakeen.com/ar/app/billing");
     expect(sdk.made).toBe(0);
-    expect(await history(u.email)).toEqual([]);
+    expect(await history(acct(u))).toEqual([]);
     expect(await db.get(`rate:chat:h:${u.email}`), "no ceiling was used up").toBeNull();
     expect(await db.get(`rate:chat:d:${u.email}`)).toBeNull();
-    expect(await db.get(chatTrialKey(u.email))).toBeNull();
+    expect(await db.get(chatTrialKey(acct(u)))).toBeNull();
   });
 
   it("chat() itself refuses an ended trial, for any caller", async () => {
@@ -95,7 +95,7 @@ describe("an ended trial gets no chat turn and no model call (rule 330)", () => 
     expect(m.limit).toBe("trial");
     expect(m.content).toContain("/en/app/billing");
     expect(sdk.made).toBe(0);
-    expect(await history(u.email)).toEqual([]);
+    expect(await history(acct(u))).toEqual([]);
   });
 
   it("a live trial and a paid account still reach the model", async () => {
@@ -167,7 +167,7 @@ describe("chat ceilings are the account's own, by plan (rule 331)", () => {
     expect([body.error, body.retry]).toEqual(["slow_down", "day"]);
     expect(body.message.content).toContain(`(${CHAT_CAPS.trial.day})`);
     expect(sdk.made).toBe(0);
-    expect(await db.get(chatTrialKey(u.email)), "the trial's allowance is untouched").toBeNull();
+    expect(await db.get(chatTrialKey(acct(u))), "the trial's allowance is untouched").toBeNull();
 
     const p = await paid("ct-429-paid");
     await signIn(p.email);
@@ -183,15 +183,15 @@ describe("chat ceilings are the account's own, by plan (rule 331)", () => {
   it("MCP ask_noor uses the same buckets and says the account's own ceiling", async () => {
     const u = await newUser("ct-mcp-cap");
     await db.set(`rate:chat:h:${u.email}`, CHAT_CAPS.trial.hour, 3600);
-    const r = await askNoor(u.email);
+    const r = await askNoor(acct(u));
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain(`(${CHAT_CAPS.trial.hour})`);
     expect(sdk.made).toBe(0);
     const p = await paid("ct-mcp-paid");
     await db.set(`rate:chat:h:${p.email}`, CHAT_CAPS.paid.hour - 1, 3600);
-    expect((await askNoor(p.email)).isError, "below the ceiling").toBeFalsy();
+    expect((await askNoor(acct(p))).isError, "below the ceiling").toBeFalsy();
     expect(sdk.made).toBe(1);
-    const again = await askNoor(p.email);
+    const again = await askNoor(acct(p));
     expect(again.isError).toBe(true);
     expect(again.content[0].text).toContain(`(${CHAT_CAPS.paid.hour})`);
     expect(sdk.made).toBe(1);

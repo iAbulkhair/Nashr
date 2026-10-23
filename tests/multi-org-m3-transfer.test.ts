@@ -21,7 +21,6 @@ import { wsHandle } from "@/lib/ws-handle";
 import { codeAt } from "./helpers/staff";
 import { json, markVerified, newUser, signIn, signOut } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /** The mail the offer route sends, captured: the token rides only in the mailed link. */
 const mail = vi.hoisted(() => ({ on: true, ok: true, throws: false, sent: [] as { to: string; text: string; locale?: string }[] }));
@@ -56,7 +55,7 @@ vi.mock("@/lib/credits", async (orig) => {
 
 /**
  * Multi-workspace M3, ownership transfer (docs/specs/2026-10-18-multi-org.md section 11; rules 2128, 2139, 2750-2752),
- * with `MULTI_ORG` on for this file. The fixtures are `a_` accounts owned by `p_` persons and `p_` admins whatever
+ * with `MULTI_ORG` on (the release switch since M2 enable). The fixtures are `a_` accounts owned by `p_` persons and `p_` admins whatever
  * `TEST_PERSONS` says, because only that shape transfers (ruling 1); the legacy shape is pinned as refused.
  */
 

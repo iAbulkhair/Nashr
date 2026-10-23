@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, newMember, newUser, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
-import { createUser, currentUser, getUser, saveUser, type User } from "@/lib/auth";
+import { accountByLogin, acct, createUser, currentUser, getLogin, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveBrands } from "@/lib/brands";
 import { saveConnection } from "@/lib/connectors/store";
@@ -42,7 +42,7 @@ const download = async (): Promise<{ res: Response; body: AccountExport }> => {
 /** An owner with a brand, an added brand, tasks past the inbox's 200, a file, a conversation and a connection. */
 async function seededOwner(prefix: string, fx: Fixture = {}): Promise<User> {
   const u = await newUser(prefix, fx);
-  const e = u.email;
+  const e = acct(u);
   await saveBrands(e, [{ id: "default", name: "Main", createdAt: "2026-10-01T00:00:00.000Z", status: "active" }, { id: "b2", name: "Second", createdAt: "2026-10-02T00:00:00.000Z", status: "active" }]);
   await db.set(`brand:${e}`, { name: `brand-of-${prefix}`, website: "https://example.test" });
   await db.set(`brand:${e}#b2`, { name: `second-of-${prefix}` });
@@ -87,7 +87,7 @@ describe("rule 1321: only the signed-in account's data, whatever another account
     const text = JSON.stringify(body);
     expect(body.account.email).toBe(b.email);
     for (const s of ["brand-of-pxb", "second-of-pxb", "title-pxb-t0", "file-of-pxb", "hello-pxb", "@chan-pxb"]) expect(text, s).toContain(s);
-    for (const s of ["-pxa", a.email]) expect(text, s).not.toContain(s);
+    for (const s of ["-pxa", a.email, acct(a)]) expect(text, s).not.toContain(s);
     // The handler takes no request at all: there is nothing to read a scope, email or id from.
     expect(exportRoute.GET.length).toBe(0);
   });
@@ -106,11 +106,11 @@ describe("rule 1321: only the signed-in account's data, whatever another account
 describe("rule 1322: no password, token or secret leaves in the export", () => {
   it("no hash, no connection credential, no MCP token; credential-like meta keys dropped", async () => {
     const u = await seededOwner("pxsec");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     await signIn(u.email);
     const { body } = await download();
     const text = JSON.stringify(body);
-    const stored = (await getUser(u.email))!;
+    const stored = (await getUser(acct(u)))!;
     for (const s of [stored.passHash, SECRET_TOKEN, SECRET_KEY, token, '"enc"', "passHash", "sessionsAfter"]) expect(text, s).not.toContain(s);
     expect(body.brands[0].connections).toEqual([{ provider: "telegram", connectedAt: "2026-10-05T00:00:00.000Z", details: { account: "@chan-pxsec" } }]);
   });
@@ -178,7 +178,7 @@ describe("rules 1325-1326: the consent record at signup, and accounts that have 
     const before = Date.now();
     const res = await signupRoute.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N", lang: "en" }, { "x-forwarded-for": ip() }));
     expect(res.status).toBe(200);
-    const u = (await getUser(email))!;
+    const u = (await accountByLogin(email))!;
     expect(u.consent).toMatchObject({ terms: TERMS_VERSION, privacy: PRIVACY_VERSION, lang: "en", via: "signup_notice" });
     expect(new Date(u.consent!.at).getTime()).toBeGreaterThanOrEqual(before - 1000);
     expect(consentOf(u)).toMatchObject({ recorded: true, terms: TERMS_VERSION, privacy: PRIVACY_VERSION });
@@ -187,7 +187,7 @@ describe("rules 1325-1326: the consent record at signup, and accounts that have 
   it("the request cannot choose the versions or the time", async () => {
     const email = `px-signup-forge-${Date.now()}@test.example`;
     await signupRoute.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N", consent: { terms: "1999-01-01", privacy: "1999-01-01", at: "1999-01-01T00:00:00.000Z" }, termsVersion: "1999-01-01" }, { "x-forwarded-for": ip() }));
-    const u = (await getUser(email))!;
+    const u = (await accountByLogin(email))!;
     expect(u.consent?.terms).toBe(TERMS_VERSION);
     expect(JSON.stringify(u.consent)).not.toContain("1999");
   });
@@ -201,11 +201,11 @@ describe("rules 1325-1326: the consent record at signup, and accounts that have 
 
   it("an account written before the record existed reads as not recorded, and exports without a made-up date", async () => {
     const u = await createUser({ email: `px-old-${Date.now()}@test.example`, name: "Old", phone: "", password: "abc12345", lang: "ar" });
-    const stored = (await getUser(u.email))!;
+    const stored = (await getUser(acct(u)))!;
     delete stored.consent; // the old shape: no field at all
     stored.emailVerifiedAt = new Date().toISOString();
     await saveUser(stored);
-    const old = (await getUser(u.email))!;
+    const old = (await getUser(acct(u)))!;
     expect(old.consent).toBeUndefined();
     expect(consentOf(old)).toEqual({ recorded: false, note: expect.stringContaining("created before consent was recorded") });
     expect(consentOf({ consent: { terms: 1 } as never })).toMatchObject({ recorded: false });
@@ -217,10 +217,10 @@ describe("rules 1325-1326: the consent record at signup, and accounts that have 
 
   it("a record with the field keeps it through an unrelated save", async () => {
     const fresh = await newUser("px-keep");
-    const kept = (await getUser(fresh.email))!;
+    const kept = (await getUser(acct(fresh)))!;
     kept.name = "Renamed";
     await saveUser(kept);
-    expect((await getUser(fresh.email))!.consent).toEqual(fresh.consent);
+    expect((await getUser(acct(fresh)))!.consent).toEqual(fresh.consent);
   });
 });
 

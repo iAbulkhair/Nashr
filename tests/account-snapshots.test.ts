@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newUser } from "./helpers/session";
-import { getUser, saveUser } from "@/lib/auth";
+import { getUser, saveUser, acct } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
@@ -15,10 +15,10 @@ import { AD_PROVIDERS } from "@/lib/connectors/ads";
 describe("store and ad snapshots go with the account (rule 637)", () => {
   it("wipeAccount deletes storesales, storesyncfail, perfimport and every adsync key of every brand", async () => {
     const u = await newUser("snap-wipe");
-    await saveUser({ ...(await getUser(u.email))!, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "agency" });
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const scopes = [u.email, scopeFor(u.email, second.id)];
+    const scopes = [acct(u), scopeFor(acct(u), second.id)];
     const keys = scopes.flatMap((s) => [`storesales:${s}`, `storesyncfail:${s}`, `perfimport:${s}`, ...AD_PROVIDERS.map((p) => `adsync:${s}:${p}`)]);
     await Promise.all(
       scopes.flatMap((s) => [
@@ -33,7 +33,7 @@ describe("store and ad snapshots go with the account (rule 637)", () => {
     expect(await getSyncFailure(scopes[1])).not.toBeNull();
     expect(await getPerf(scopes[1])).not.toBeNull();
 
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
 
     expect(await Promise.all(keys.map((k) => db.get(k)))).toEqual(keys.map(() => null));
     for (const s of scopes) {
@@ -42,6 +42,6 @@ describe("store and ad snapshots go with the account (rule 637)", () => {
       expect(await getPerf(s)).toBeNull();
     }
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown> } }).__nashrMem;
-    expect([...mem.kv.keys()].filter((k) => /^(storesales|storesyncfail|perfimport|adsync):/.test(k) && k.includes(u.email))).toEqual([]);
+    expect([...mem.kv.keys()].filter((k) => /^(storesales|storesyncfail|perfimport|adsync):/.test(k) && k.includes(acct(u)))).toEqual([]);
   });
 });

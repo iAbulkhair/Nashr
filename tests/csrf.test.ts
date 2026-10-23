@@ -196,8 +196,9 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   const COOKIE_MODULES: Record<string, ReadonlySet<string>> = {
     // `adminEmails` reads ADMIN_EMAILS only (no cookie): the margin alert and the fair-use stop (rule 1729) tell the founders.
     // `readLoginIndex` (multi-workspace M1, read on 2026-10-19) reads `login:{email}` for the address it is handed:
-    // the MCP bearer refuses a token whose address signs in as a person who does not own the account.
-    "src/lib/auth.ts": new Set(["adminEmails", "claimLogin", "emailVerified", "getAccount", "getLogin", "getUser", "normalizeEmail", "normalizePhone", "readLoginIndex", "releaseLogin", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
+    // the MCP bearer refuses a token whose address signs in as a person who does not own the account. `accountByLogin`
+    // is `getLogin` and nothing else (rule 3816: the founder alerts find each founder through the login).
+    "src/lib/auth.ts": new Set(["accountByLogin", "adminEmails", "claimLogin", "emailVerified", "getAccount", "getLogin", "getUser", "normalizeEmail", "normalizePhone", "readLoginIndex", "releaseLogin", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
     "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "unusedOffer", "voidPaidTopup", "voidPayment"]),
     "src/lib/cookie-names.ts": new Set(["OAUTH_COOKIE", "PARTNER_COOKIE"]),
     // Multi-workspace M1: team.ts deletes the security pack of a person left with nothing, as wipeAccount does.

@@ -124,17 +124,17 @@ async function dailyFor(u: User): Promise<string> {
   // {awayCleaned}a{warned}w{deleted}d`: warned and deleted count the closed copies of recurring series moved to the
   // deletion window and deleted (rules 502-505). A failure is reported and never stops the rest of this workspace's day.
   try {
-    const sec = await secretaryDaily(u.scope ?? u.email);
+    const sec = await secretaryDaily(u.scope ?? acct(u));
     if (sec.purged || sec.closed || sec.awayCleaned || sec.warned || sec.deleted) out.push(`todo:${sec.purged}p${sec.closed}c${sec.awayCleaned}a${sec.warned}w${sec.deleted}d`);
   } catch (e) { out.push(`todo_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
-  const brand = await getBrand(u.scope ?? u.email);
+  const brand = await getBrand(u.scope ?? acct(u));
   // Signup nudge: registered but never built a brand (Enrich-style founder follow-up)
   if (!brand) {
     // Only when mail can reach the customer (MAIL_FROM set too), and marked as sent only once Resend accepted it
     // (src/lib/notify.ts `sendOnce`): a refused nudge is tried again on the next run instead of being recorded as done.
     if (Date.now() - new Date(u.createdAt).getTime() > 10 * 60e3 && mailReady()) {
       const ar = u.lang === "ar";
-      const link = `${appOrigin()}${appHrefFor(u, u.lang, "/start", brandOfScope(u.scope ?? u.email))}`;
+      const link = `${appOrigin()}${appHrefFor(u, u.lang, "/start", brandOfScope(u.scope ?? acct(u)))}`;
       const subject = ar ? "نور جاهزة — أعطيها رابط موقعك" : "Noor is ready — give her your website";
       const text = ar
         ? `أهلاً ${u.name}\n\nسجّلت في ذكين وما بدأت بعد. نور جاهزة: أعطيها رابط موقعك وتكتب ملف علامتك وخطتك أمامك، ثم اطلب منها أول دفعة منشورات.\n\n${link}`
@@ -153,16 +153,16 @@ async function dailyFor(u: User): Promise<string> {
   }
   // Yesterday's ad results into Noor's memory before the brief. A refused token or an empty account is reported in
   // the outcome and never stops the rest of this workspace's day.
-  try { const ads = await syncAdsIfDue(u.scope ?? u.email); if (ads) out.push(`ads:${ads}`); } catch (e) { out.push(`ads_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
+  try { const ads = await syncAdsIfDue(u.scope ?? acct(u)); if (ads) out.push(`ads:${ads}`); } catch (e) { out.push(`ads_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   // The site's GA4 and Search Console totals for Dana, read the same way (src/lib/site-stats.ts).
-  try { if (await syncSiteIfDue(u.scope ?? u.email)) out.push("site"); } catch (e) { out.push(`site_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
+  try { if (await syncSiteIfDue(u.scope ?? acct(u))) out.push("site"); } catch (e) { out.push(`site_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   const lc = await runLifecycle(u);
   if (lc.length) out.push(`lifecycle:${lc.length}`);
   const brief = await runDaily(u);
-  const fu = await followUps(u, u.scope ?? u.email);
+  const fu = await followUps(u, u.scope ?? acct(u));
   if (fu.length) out.push(`followups:${fu.length}`);
   // Noor's brief email: every day, only when something waits, or never (Settings, Notifications; the old field reads the same, rule 1147).
-  const [prefs, digest] = await Promise.all([readPrefs(u.scope ?? u.email, acct(u)), getDigest(acct(u))]);
+  const [prefs, digest] = await Promise.all([readPrefs(u.scope ?? acct(u), acct(u)), getDigest(acct(u))]);
   // With a digest on (rule 2356), the follow-ups reach the owner's email there, once, and not here as well.
   const mailed = digest === "off" ? fu : [];
   if (brief) {
@@ -170,20 +170,20 @@ async function dailyFor(u: User): Promise<string> {
     // "important": something waits for a decision, a follow-up fired, or a to-do is overdue or due today.
     const worth = emailAllowed(prefs, "brief", brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0);
     const extra = mailed.length ? `\n\n${notifEmailText(u, mailed)}` : "";
-    const app = `${appOrigin()}${appHrefFor(u, u.lang, "", brandOfScope(u.scope ?? u.email))}`;
+    const app = `${appOrigin()}${appHrefFor(u, u.lang, "", brandOfScope(u.scope ?? acct(u)))}`;
     const text = brief.text + extra + `\n\n${app}`;
     // The HTML part is the same text in the shared layout (rule 1961): the model's brief is untrusted, so `dailyBrief`
     // escapes every paragraph and links only the button.
     // Rule 3023: one claim per workspace and day before the send, so a run killed after it (a slow social read) and retried by the batch does not mail again.
-    if (worth && (await mailOncePerDay(u.scope ?? u.email, () => sendEmail({ to: u.email, subject: u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, text, template: "dailyBrief", context: { date: brief.date, body: text, href: app }, locale: u.lang })))) out.push("email");
+    if (worth && (await mailOncePerDay(u.scope ?? acct(u), () => sendEmail({ to: u.email, subject: u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, text, template: "dailyBrief", context: { date: brief.date, body: text, href: app }, locale: u.lang })))) out.push("email");
   } else if (mailed.length && prefs.brief !== "none") {
     const subject = u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team";
     const text = notifEmailText(u, fu);
-    if (await mailOncePerDay(u.scope ?? u.email, () => sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}${appHrefFor(u, u.lang, "", brandOfScope(u.scope ?? u.email))}` } }, locale: u.lang }))) out.push("email");
+    if (await mailOncePerDay(u.scope ?? acct(u), () => sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}${appHrefFor(u, u.lang, "", brandOfScope(u.scope ?? acct(u)))}` } }, locale: u.lang }))) out.push("email");
   }
   // Instagram and LinkedIn page results for Dana (src/lib/social-stats.ts), last: up to 30 post reads may be slow, and a
   // slow platform must never cost this workspace its brief or its email. Tomorrow's report reads what lands here.
-  try { if (await syncSocialIfDue(u.scope ?? u.email)) out.push("social"); } catch (e) { out.push(`social_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
+  try { if (await syncSocialIfDue(u.scope ?? acct(u))) out.push("social"); } catch (e) { out.push(`social_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   return out.join("+") || "nothing_due";
 }
 

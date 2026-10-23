@@ -8,9 +8,8 @@ import { wsHandle } from "@/lib/ws-handle";
 import { WS_HEADER, oldAppTarget } from "@/lib/ws-path";
 import { withWsHeader, wsHeaderFor } from "@/lib/brand-fetch";
 import { installBrandFetch } from "@/lib/brand-fetch";
-import { addShadowMembership, json, newUser, signIn, withHeaders } from "./helpers/session";
+import { addShadowMembership, json, newUser, signIn, useWorkspace, withHeaders } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * Multi-workspace M2, the shell's half of the workspace in the link (docs/specs/2026-10-18-multi-org.md section 7
@@ -111,6 +110,7 @@ describe("rule 2113: two tabs on two handles write into their own accounts", () 
   it("the same write without a handle is refused, nothing written", async () => {
     const u = await newUser("tabs0", { shadow: false });
     await signIn(u.email);
+    useWorkspace(null); // a client that names no workspace (the test client names the session's by default, rule 3811)
     const r = await convRoute.POST(json("/api/conversations", "POST", { title: "x" }));
     expect(r.status).toBe(409);
     expect(await listConversations(sc(u))).toEqual([]);

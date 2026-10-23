@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, markVerified, newUser, signIn, signOut } from "./helpers/session";
-import { createUser, type User } from "@/lib/auth";
+import { acct, createUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
 import { CHANGELOG, SEED_WISHES, SUGGESTION_MAX } from "@/lib/changelog";
@@ -50,8 +50,8 @@ describe("voting (rule 149)", () => {
     await signIn(a.email);
     expect(await (await castVote({ id, on: false })).json()).toMatchObject({ voted: false, votes: 1 });
     expect(await (await castVote({ id, on: false })).json()).toMatchObject({ voted: false, votes: 1 });
-    const seenByB = (await listWishes(b.email)).find((w) => w.id === id)!;
-    const seenByA = (await listWishes(a.email)).find((w) => w.id === id)!;
+    const seenByB = (await listWishes(acct(b))).find((w) => w.id === id)!;
+    const seenByA = (await listWishes(acct(a))).find((w) => w.id === id)!;
     expect([seenByB.voted, seenByA.voted, seenByA.votes]).toEqual([true, false, 1]);
   });
 
@@ -72,14 +72,14 @@ describe("voting (rule 149)", () => {
     await signIn(me.email);
     const id = SEED_WISHES[2].id;
     await castVote({ id, on: true, email: other.email, user: other.email, scope: other.email, voter: other.email });
-    expect(await db.smembers(WISH_KEYS.votes(id))).toEqual([me.email]);
-    expect(await db.smembers(WISH_KEYS.mine(other.email))).toEqual([]);
+    expect(await db.smembers(WISH_KEYS.votes(id))).toEqual([acct(me)]);
+    expect(await db.smembers(WISH_KEYS.mine(acct(other)))).toEqual([]);
     // And the other account's vote cannot be removed through the body either.
     await signIn(other.email);
     await castVote({ id: SEED_WISHES[3].id, on: true });
     await signIn(me.email);
     await castVote({ id: SEED_WISHES[3].id, on: false, email: other.email });
-    expect(await db.smembers(WISH_KEYS.votes(SEED_WISHES[3].id))).toEqual([other.email]);
+    expect(await db.smembers(WISH_KEYS.votes(SEED_WISHES[3].id))).toEqual([acct(other)]);
   });
 
   it("is rate limited per account", async () => {
@@ -117,7 +117,7 @@ describe("suggestions (rule 150)", () => {
     await signIn(u.email);
     const secret = `Private idea ${Date.now()}`;
     expect((await sendSuggestion({ text: secret })).status).toBe(200);
-    expect(JSON.stringify(await listWishes(u.email))).not.toContain(secret);
+    expect(JSON.stringify(await listWishes(acct(u)))).not.toContain(secret);
     expect(JSON.stringify(await listWishes(null))).not.toContain(secret);
     expect((await admin.GET(json("/api/admin/wishlist", "GET"))).status).toBe(401);
     // The public page reads items through listWishes and nothing else from the wishlist store.
@@ -208,7 +208,7 @@ describe("reads are batched (rule 152)", () => {
   it("every count comes from one pipelined call, whatever the number of items", async () => {
     const u = await newUser("reader");
     const spies = { scardMany: vi.spyOn(db, "scardMany"), smembers: vi.spyOn(db, "smembers"), hgetall: vi.spyOn(db, "hgetall"), get: vi.spyOn(db, "get") };
-    const list = await listWishes(u.email);
+    const list = await listWishes(acct(u));
     expect(list.length).toBeGreaterThanOrEqual(SEED_WISHES.length - 1);
     expect(spies.scardMany).toHaveBeenCalledTimes(1);
     expect(spies.scardMany.mock.calls[0][0]).toHaveLength(list.length);
@@ -226,10 +226,10 @@ describe("account deletion (rule 153)", () => {
     await castVote({ id, on: true });
     await sendSuggestion({ text: "an idea from a leaving account" });
     expect(await count(id)).toBe(before + 1);
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     expect(await count(id)).toBe(before);
     expect((await listSuggestions()).some((s) => s.email === u.email)).toBe(false);
-    expect(await db.smembers(WISH_KEYS.mine(u.email))).toEqual([]);
+    expect(await db.smembers(WISH_KEYS.mine(acct(u)))).toEqual([]);
   });
 });
 
