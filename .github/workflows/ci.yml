@@ -202,13 +202,26 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ steps.playwright.outputs.image }}-chromium-webkit
+      # Rule 3211: each install gets 6 minutes and three tries. It takes under a minute, but on PR #442 the Ubuntu
+      # mirror sent packages at about 60 KB/s and one try ran 24 minutes into the job's 40-minute cap. apt keeps what it
+      # already fetched, so a retry resumes; after three tries the step fails with a reason instead of being cancelled.
       - name: Install Playwright browsers
         if: steps.scope.outputs.e2e == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium webkit
+        run: |
+          for try in 1 2 3; do
+            timeout 6m npx playwright install --with-deps chromium webkit && exit 0
+            echo "::warning::Playwright install try $try failed or ran past 6 minutes"
+          done
+          exit 1
       # A cache hit has the browsers but not the runner's system packages, which live outside the cached directory.
       - name: Install Playwright system dependencies
         if: steps.scope.outputs.e2e == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium webkit
+        run: |
+          for try in 1 2 3; do
+            timeout 6m npx playwright install-deps chromium webkit && exit 0
+            echo "::warning::Playwright system dependencies try $try failed or ran past 6 minutes"
+          done
+          exit 1
       - name: End-to-end tests
         if: steps.scope.outputs.e2e == 'true'
         run: npx playwright test

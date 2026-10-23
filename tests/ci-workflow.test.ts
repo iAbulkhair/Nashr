@@ -115,10 +115,15 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
     expect(c).toMatch(/key: playwright-[^\n]*-\$\{\{ steps\.playwright\.outputs\.image \}\}-chromium-webkit$/m);
     const miss = step("Install Playwright browsers");
     expect(miss).toMatch(/if: steps\.scope\.outputs\.e2e == 'true' && steps\.playwright-cache\.outputs\.cache-hit != 'true'/);
-    expect(miss).toMatch(/run: npx playwright install --with-deps chromium webkit/);
+    expect(miss).toMatch(/timeout 6m npx playwright install --with-deps chromium webkit && exit 0/);
     const hit = step("Install Playwright system dependencies");
     expect(hit).toMatch(/if: steps\.scope\.outputs\.e2e == 'true' && steps\.playwright-cache\.outputs\.cache-hit == 'true'/);
-    expect(hit).toMatch(/run: npx playwright install-deps chromium webkit/);
+    expect(hit).toMatch(/timeout 6m npx playwright install-deps chromium webkit && exit 0/);
+    // Rule 3211: both installs get three tries of 6 minutes each, then fail, so a slow mirror never eats the job's cap.
+    for (const s of [miss, hit]) {
+      expect(s).toMatch(/run: \|\n\s+for try in 1 2 3; do\n/);
+      expect(s).toMatch(/echo "::warning::[^"]*try \$try failed or ran past 6 minutes"\n\s+done\n\s+exit 1/);
+    }
     // Every browser step comes before the suite that needs it.
     for (const s of ["Cache Playwright browsers", "Install Playwright browsers", "Install Playwright system dependencies"]) {
       expect(yml.indexOf(`- name: ${s}`), s).toBeLessThan(yml.indexOf("- name: End-to-end tests"));
