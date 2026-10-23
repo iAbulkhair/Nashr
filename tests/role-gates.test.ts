@@ -417,6 +417,8 @@ const READS: Record<string, Gate> = {
   "GET /api/oauth/resource": "public-read",
   "GET /llms.txt": "public-read", // site copy for language models, static at build time (rule 698)
   "GET /llms-full.txt": "public-read", // the help answers and blog posts as text, static at build time (rule 3143)
+  "GET /[lang]/blog/[slug]/md": "public-read", // a post as Markdown at /{lang}/blog/{slug}.md, static at build time, only the posts the page shows (rule 3316)
+  "GET /[lang]/help/[topic]/md": "public-read", // a help topic as Markdown at /{lang}/help/{topic}.md, static at build time (rule 3316)
   "GET /api/founding/seats": "public-read", // seats left only, closed while payment is off; rate limited per IP (rule 1711)
   "GET /api/ops/summary": "public-read", // the ops agent's counts (rules 2380-2382): OPS_AGENT_TOKEN bearer (sameSecret) after a per-IP allow(); no email, name or workspace
   "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down

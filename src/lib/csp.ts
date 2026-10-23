@@ -65,6 +65,7 @@ export function reportOnlyCsp(nonce: string, dev: boolean): string {
 
 /**
  * True for a path that renders a page and so gets the nonce policy. The API, the media files (`/m/`, which send their
- * own `sandbox` policy, rule 1756) and the short links (`/p/`, a redirect) keep the base policy.
+ * own `sandbox` policy, rule 1756), the short links (`/p/`, a redirect) and the Markdown copies of a post or a help topic
+ * (`/{lang}/blog/{slug}.md`, rule 3316: a text file, no scripts) keep the base policy.
  */
-export const pagePath = (pathname: string): boolean => !/^\/(?:api|m|p)(?:\/|$)/.test(pathname);
+export const pagePath = (pathname: string): boolean => !/^\/(?:api|m|p)(?:\/|$)/.test(pathname) && !/^\/(?:ar|en)\/(?:blog|help)\/[^/]+\.md$/.test(pathname);

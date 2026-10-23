@@ -69,6 +69,11 @@ const nextConfig: NextConfig = {
       { source: "/.well-known/oauth-authorization-server/:path*", destination: "/api/oauth/meta" },
       { source: "/.well-known/oauth-protected-resource", destination: "/api/oauth/resource" },
       { source: "/.well-known/oauth-protected-resource/:path*", destination: "/api/oauth/resource" },
+      // Rule 3316: the Markdown copy of a post or a help topic. A folder cannot be named `[slug].md`, so the public address is
+      // rewritten to the route handler in the page's own folder (`blog/[slug]/md`, `help/[topic]/md`). Only the two languages
+      // and a single segment before `.md`, so no other path is touched.
+      { source: "/:lang(ar|en)/blog/:slug.md", destination: "/:lang/blog/:slug/md" },
+      { source: "/:lang(ar|en)/help/:topic.md", destination: "/:lang/help/:topic/md" },
     ];
   },
 };
