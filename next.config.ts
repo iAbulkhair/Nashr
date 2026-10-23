@@ -1,6 +1,10 @@
 import { execSync } from "node:child_process";
 import type { NextConfig } from "next";
 import { BASE_CSP } from "./src/lib/csp";
+import { devImagePatterns } from "./src/lib/dev-images";
+
+// Placeholder picture hosts (placehold.co, picsum.photos) for local drafts only (rule 3344): none in a production build.
+const DEV_IMAGES = devImagePatterns(process.env.NODE_ENV);
 
 // The Content-Security-Policy is no longer here (rules 2320-2329): src/proxy.ts sends it, because a page's policy names
 // that request's nonce. Pages get the enforced nonce-based script policy and its report-only twin (src/lib/csp.ts);
@@ -46,6 +50,7 @@ const nextConfig: NextConfig = {
   // the account's process limit ("OS can't spawn worker thread: Resource temporarily unavailable") and aborted, so the
   // release never went live. Four is what a CI runner has anyway.
   experimental: { proxyClientMaxBodySize: 6 * 1024 * 1024, globalNotFound: true, cpus: 4 },
+  ...(DEV_IMAGES.length ? { images: { remotePatterns: DEV_IMAGES } } : {}),
   async headers() {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
