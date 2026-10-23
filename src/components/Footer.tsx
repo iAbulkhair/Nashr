@@ -8,11 +8,16 @@ import { NAV_WORDS } from "./Nav";
 import ThemeToggle from "./ui/ThemeToggle";
 import ScribbleStatic from "./ScribbleStatic";
 import Wordmark from "./Wordmark";
+import SiteAnalytics from "./analytics/SiteAnalytics";
+import ConsentLink from "./analytics/ConsentLink";
+import { analyticsConfig } from "@/lib/analytics";
 
 /** `lang` is optional so older pages that pass only `t` keep working; it is derived from the text direction. */
 export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
   const lang: Lang = given ?? (t.dir === "rtl" ? "ar" : "en");
   const s = SITE[lang], f = s.footer;
+  // The public site's analytics provider (rules 3330-3339), read on the server: null while none is switched on.
+  const analytics = analyticsConfig();
   const cols: { title: string; links: { href: string; label: string }[] }[] = [
     { title: f.agents, links: AGENTS.map((a) => ({ href: `/${lang}/agents/${a.id}`, label: `${a.name[lang]} · ${a.role[lang]}` })) },
     { title: f.industries, links: INDUSTRY_PAGES[lang].map((p) => ({ href: `/${lang}/for/${p.slug}`, label: p.name })) },
@@ -40,11 +45,15 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
           <p>{t.footer.rights}</p>
           {/* Rule 1215: the viewer's light, dark or device choice, on every public page, beside the language. */}
           <div className="flex flex-wrap items-center gap-3">
+            {/* Rule 3337: a way back to the analytics choice, only while a provider that asks for one is switched on. */}
+            {analytics?.consent && <ConsentLink lang={lang} />}
             <ThemeToggle lang={lang} size="sm" />
             <LangToggle lang={lang} />
           </div>
         </div>
       </div>
+      {/* The public site's analytics and its consent banner (rules 3330-3339): nothing at all while no provider is on. */}
+      {analytics && <SiteAnalytics cfg={analytics} lang={lang} />}
     </footer>
   );
 }

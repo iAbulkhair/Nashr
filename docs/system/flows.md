@@ -1787,3 +1787,15 @@ Rule file `docs/system/tests/2900-ai-usage-tracking.md`. Files: `src/lib/usage.t
 5. The owner (rule 2907). Settings → AI usage (`/{lang}/app/settings/usage`, owner and admins, `usage.view`) and `GET /api/usage?month=`: requests and share per person, brand, agent, model and day. No dollar figure: what a call costs Thakeen stays in the console; credits stay on the billing page.
 6. Release step: expand only. New hashes and one new sorted set, written alongside the old counters; old code never reads them, and nothing old changes shape. Rollback leaves them in place, to be removed with the account.
 
+
+## 108. Public site analytics and cookie consent (2026-10-23, branch `claude/sup-marketing-analytics`, rules 3330-3352)
+
+1. The switch (rules 3330, 3343). `analyticsConfig()` in `src/lib/analytics.ts` reads `ANALYTICS_PROVIDER` and the provider's public id (variables.md section 3a) on the server. Unset, unknown or malformed means none, and then nothing below happens.
+2. The page policy (rules 3340-3341). On a public marketing page (`marketingPath` in `src/proxy.ts`), the proxy passes the active provider's hosts to `pageCsp` and `reportOnlyCsp`. Script hosts go to `script-src` and event hosts to the report-only `connect-src`. The app, the console and the API get nothing extra.
+3. The footer (rules 3331, 3337). `src/components/Footer.tsx`, rendered only by marketing pages, mounts `SiteAnalytics` with the config. For Google, Mixpanel and PostHog it also shows a "Cookie settings" button.
+4. Consent (rules 3332, 3335-3339). For Google, Mixpanel and PostHog, the browser reads `thakeen_consent`. Unanswered shows the banner, with Accept and Reject of equal weight. The answer is written to the first-party cookie and nothing goes to the server. A no clears `thakeen_aid` and Google's cookies. No script loads and no request leaves until the cookie says yes.
+5. Page views (rules 3333-3334):
+   - Google loads `gtag.js` (signals off) and sends one `page_view` per path, with origin plus path.
+   - Mixpanel and PostHog run no script. The page posts one event to the provider's ingestion address, with a random anonymous id kept in `thakeen_aid`.
+   - Plausible and Umami load their script at once with no banner. Umami excludes the query and the fragment.
+6. Release step: none. Browser-only cookies, no stored shape, and every name unset keeps today's site.

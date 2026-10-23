@@ -26,6 +26,13 @@ export const LANG_COOKIE = "thakeen_lang";
 export const THEME_COOKIE = "thakeen_theme";
 export const PARTNER_COOKIE = "thakeen_partner";
 export const OAUTH_COOKIE = "thakeen_oauth";
+/**
+ * The visitor's answer on the public site's analytics banner, "yes" or "no" (rules 3335-3338, src/lib/cookie-consent.ts).
+ * Written by the browser only; the server never records it. New in this release, so it has no old name.
+ */
+export const CONSENT_COOKIE = "thakeen_consent";
+/** An anonymous random id for Mixpanel or PostHog page views, written only after "yes" and removed on "no" (rule 3334). */
+export const ANALYTICS_ID_COOKIE = "thakeen_aid";
 
 /** sessionStorage: the invite token from the link's fragment, so a language switch keeps it. */
 export const INVITE_TOKEN_KEY = "thakeen_invite_token";

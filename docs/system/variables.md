@@ -63,6 +63,21 @@ Every `process.env` reference in `src/`, `next.config.ts` and `scripts/` at HEAD
 | `MEDIA_MAX_FILE_BYTES` | The largest single file the store keeps (rule 1753) | `src/lib/media/config.ts` (`storeLimits`) | Default 100 MiB (104857600) | No |
 | `MEDIA_MODELS_ON` | The founder's allowlist of catalogue models owners may use besides `img-fast`, comma-separated ids (for example `img-balanced,img-lifestyle,vid-quick`); unknown ids are ignored | `src/lib/media/config.ts:22` (`modelsSwitchedOn`) | Only `img-fast` is offered, even with every key set. A model goes into the list only after its line in "Check media providers" is green. | No (model ids only; the console shows them) |
 
+## 3a. Public site analytics (2026-10-23, branch `claude/sup-marketing-analytics`, rules 3330-3343)
+
+One provider at a time, for page views on the public marketing pages only (the pages with the site footer; never `/app` or the founder console). All unset, the default, is "none": no banner, no script, no request, no change to the page policy. A provider whose id is missing or of the wrong shape is "none" too. Every value here is a public id that each visitor's page carries, never a secret, read on the server at request time (no `NEXT_PUBLIC_` name, so a change applies on the next start). Google, Mixpanel and PostHog wait for the visitor's yes on the consent banner; Plausible and Umami are cookieless and load with no banner. The page policy adds only the active provider's hosts.
+
+| Name | Enables | Read in | Without it | Secret |
+|---|---|---|---|---|
+| `ANALYTICS_PROVIDER` | Picks the provider: `google`, `mixpanel`, `posthog`, `plausible` or `umami` | `src/lib/analytics.ts` (`analyticsConfig`), read by `src/components/Footer.tsx` and `src/proxy.ts` | Analytics off: nothing loads, no banner | No |
+| `ANALYTICS_REGION` | `eu` sends Mixpanel and PostHog page views to their EU hosts | `src/lib/analytics.ts` | US hosts | No |
+| `GA_MEASUREMENT_ID` | Google Analytics 4 id (`G-…`), when the provider is `google` | `src/lib/analytics.ts` | Google off | No |
+| `MIXPANEL_PROJECT_TOKEN` | Mixpanel project token (32 hex characters), when the provider is `mixpanel` | `src/lib/analytics.ts` | Mixpanel off | No |
+| `POSTHOG_PROJECT_KEY` | PostHog project key (`phc_…`), when the provider is `posthog` | `src/lib/analytics.ts` | PostHog off | No |
+| `PLAUSIBLE_DOMAIN` | The site domain as registered in Plausible (for example the live host name), when the provider is `plausible` | `src/lib/analytics.ts` | Plausible off | No |
+| `UMAMI_WEBSITE_ID` | Umami website id (a UUID), when the provider is `umami` | `src/lib/analytics.ts` | Umami off | No |
+| `UMAMI_SCRIPT_HOST` | A self-hosted Umami's https origin (no path); the script is `{origin}/script.js` | `src/lib/analytics.ts` (`httpsOrigin`) | Umami Cloud (`https://cloud.umami.is`); a value that is not an https origin turns Umami off | No |
+
 ## 4. Billing links
 
 | Name | Enables | Read in | Without it | Secret |
@@ -191,6 +206,8 @@ Keep the pair once set: a new pair makes every device subscribed with the old pu
 
 - Mail, logs and tooling (2026-10-16, rules 1960-1979, branch only) added no variable. `.env.example` at the root lists every name in this file with an empty value (rule 1977; a test holds the two lists equal). Without `RESEND_API_KEY` off a production deploy, mail now goes to the console provider (`src/lib/mail-provider.ts`), which keeps the message in memory and logs only the recipient's domain and sizes; on a production deploy nothing is sent, as before. The logger drops debug lines when `isProductionDeploy()` says so and reads no variable itself.
 - Ops agent (2026-10-20, rules 2380-2390, branch only) added five names (section 5b), not yet in the totals above: `OPS_AGENT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` and `OPS_GITHUB_TOKEN` are secrets, `TELEGRAM_CHAT_ID` is not. All five fail closed when unset.
+
+- Public site analytics (2026-10-23, rules 3330-3343, branch only) added eight names (section 3a), not yet in the totals above, none of them a secret: `ANALYTICS_PROVIDER`, `ANALYTICS_REGION`, `GA_MEASUREMENT_ID`, `MIXPANEL_PROJECT_TOKEN`, `POSTHOG_PROJECT_KEY`, `PLAUSIBLE_DOMAIN`, `UMAMI_WEBSITE_ID`, `UMAMI_SCRIPT_HOST`. All fail closed when unset or malformed: no analytics at all.
 
 ## 7. Release script inputs (2026-10-08, rule 676)
 

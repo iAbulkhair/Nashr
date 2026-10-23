@@ -9,7 +9,8 @@ import { LANG_COOKIE, SESSION_COOKIE, readCookie } from "@/lib/cookie-names";
 import { MULTI_ORG } from "@/lib/multi-org";
 import { WS_HEADER, asHandle, splitWsPath, stripWs, workspaceMissing } from "@/lib/ws-path";
 import { REQUEST_ID_HEADER, requestId } from "@/lib/request-id";
-import { NONCE_HEADER, cspNonce, pageCsp, pagePath, reportOnlyCsp } from "@/lib/csp";
+import { NONCE_HEADER, cspNonce, pageCsp, pagePath, reportOnlyCsp, type CspExtra } from "@/lib/csp";
+import { analyticsConfig, analyticsCsp } from "@/lib/analytics";
 
 type Lang = "ar" | "en";
 
@@ -71,6 +72,12 @@ export const strayPath = (pathname: string): boolean =>
 /** The segment a stray path is served from: no folder under `[lang]` claims it, so `[lang]/[...rest]` answers 404. */
 export const STRAY_TARGET = "__missing";
 
+/**
+ * A public marketing page (rule 3341): a page path that is not the app (`/{lang}/app…`, the workspace links included) and
+ * not the founder console. Only these may carry the analytics provider's hosts in their policy.
+ */
+export const marketingPath = (pathname: string): boolean => pagePath(pathname) && !APP_PATH.test(pathname) && !CONSOLE_PATH.test(pathname);
+
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const staging = isStaging();
@@ -85,9 +92,12 @@ export function proxy(req: NextRequest) {
   // nonce sent by the browser is never kept: both headers are always overwritten here.
   const nonce = pagePath(pathname) ? cspNonce() : null;
   const dev = process.env.NODE_ENV === "development";
+  // The public site's analytics provider (rules 3340-3341): only its hosts, only on a public marketing page, never on the
+  // app or the console, and nothing at all while ANALYTICS_PROVIDER is unset or its id is missing.
+  const extra: CspExtra | undefined = nonce && marketingPath(pathname) ? analyticsCsp(analyticsConfig()) : undefined;
   if (nonce) {
     reqHeaders.set(NONCE_HEADER, nonce);
-    reqHeaders.set("content-security-policy", pageCsp(nonce, dev));
+    reqHeaders.set("content-security-policy", pageCsp(nonce, dev, extra));
   } else {
     reqHeaders.delete(NONCE_HEADER);
     reqHeaders.delete("content-security-policy");
@@ -203,8 +213,8 @@ export function proxy(req: NextRequest) {
 
   res.headers.set(REQUEST_ID_HEADER, rid);
   if (nonce) {
-    res.headers.set("Content-Security-Policy", pageCsp(nonce, dev));
-    res.headers.set("Content-Security-Policy-Report-Only", reportOnlyCsp(nonce, dev));
+    res.headers.set("Content-Security-Policy", pageCsp(nonce, dev, extra));
+    res.headers.set("Content-Security-Policy-Report-Only", reportOnlyCsp(nonce, dev, extra));
   }
 
   if (staging || CONSOLE_PATH.test(pathname)) res.headers.set("x-robots-tag", NOINDEX);

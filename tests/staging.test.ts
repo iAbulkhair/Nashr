@@ -93,7 +93,7 @@ describe("the staging lock (rules 674, 677)", () => {
     // A closed list: proxy -> {cookie-names, csrf, deploy-env, staging-access}; cookie-names -> nothing; csrf -> origin; staging-access -> {secret, deploy-env};
     // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
-      "src/proxy.ts": ["@/lib/brand-path", "@/lib/brand-guard", "@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/multi-org", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "@/lib/ws-path", "next/server"],
+      "src/proxy.ts": ["@/lib/analytics", "@/lib/brand-path", "@/lib/brand-guard", "@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/multi-org", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "@/lib/ws-path", "next/server"],
       // Multi-workspace M2: the switch and the link's handle (rule 2113). The handle's shape only; no store, no secret.
       "src/lib/multi-org.ts": ["crypto", "./account-id"],
       // The one link builder: the handle on top of the pure brand path helpers (a type import, erased at build).
@@ -119,6 +119,8 @@ describe("the staging lock (rules 674, 677)", () => {
       "src/lib/request-id.ts": [],
       // The Content-Security-Policy and its nonce (rule 2320): import-free.
       "src/lib/csp.ts": [],
+      // The public site's analytics switch (rule 3340): import-free, the active provider's hosts for the page policy.
+      "src/lib/analytics.ts": [],
     };
     for (const [f, ok] of Object.entries(allowed))
       expect(specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)), f).toEqual([]);

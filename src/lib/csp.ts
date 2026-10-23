@@ -32,14 +32,25 @@ export function cspNonce(): string {
   return btoa(s);
 }
 
+/**
+ * Hosts one page adds for the public site's active analytics provider (rules 3340-3341, src/lib/analytics.ts): its script
+ * host to script-src, its event host to the report-only connect-src. Empty, the default, leaves both policies exactly as
+ * before; the proxy passes it only on a public marketing page while a provider is switched on. Origins only: a value
+ * with a space or `;` would add a directive, so it is dropped here as well as refused where it is read.
+ */
+export type CspExtra = { script: readonly string[]; connect: readonly string[] };
+const NO_EXTRA: CspExtra = { script: [], connect: [] };
+const hosts = (list: readonly string[]): string =>
+  list.filter((h) => /^https:\/\/[A-Za-z0-9.*:-]+$/.test(h)).map((h) => ` ${h}`).join("");
+
 /** The script directive of both policies: the nonce, `'strict-dynamic'`, never `'unsafe-inline'`. */
-export function scriptSrc(nonce: string, dev: boolean): string {
-  return `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${TURNSTILE_ORIGIN}${dev ? " 'unsafe-eval'" : ""}`;
+export function scriptSrc(nonce: string, dev: boolean, extra: CspExtra = NO_EXTRA): string {
+  return `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${TURNSTILE_ORIGIN}${hosts(extra.script)}${dev ? " 'unsafe-eval'" : ""}`;
 }
 
 /** The enforced policy of a page: the nonce-based scripts plus the four directives of rule 428. */
-export function pageCsp(nonce: string, dev: boolean): string {
-  return [scriptSrc(nonce, dev), ...BASE].join("; ");
+export function pageCsp(nonce: string, dev: boolean, extra: CspExtra = NO_EXTRA): string {
+  return [scriptSrc(nonce, dev, extra), ...BASE].join("; ");
 }
 
 /**
@@ -47,15 +58,15 @@ export function pageCsp(nonce: string, dev: boolean): string {
  * 'self': Turnstile's frame and calls; inline styles (above); images and video from any https host, because rendered
  * replies and catalogue images name outside hosts and media plays from blob: and the storage host.
  */
-export function reportOnlyCsp(nonce: string, dev: boolean): string {
+export function reportOnlyCsp(nonce: string, dev: boolean, extra: CspExtra = NO_EXTRA): string {
   return [
     "default-src 'self'",
-    scriptSrc(nonce, dev),
+    scriptSrc(nonce, dev, extra),
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https:",
     "font-src 'self' data:",
-    `connect-src 'self' ${TURNSTILE_ORIGIN} https://*.public.blob.vercel-storage.com`,
+    `connect-src 'self' ${TURNSTILE_ORIGIN} https://*.public.blob.vercel-storage.com${hosts(extra.connect)}`,
     `frame-src ${TURNSTILE_ORIGIN}`,
     "worker-src 'self' blob:",
     "manifest-src 'self'",
