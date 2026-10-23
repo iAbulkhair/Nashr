@@ -10,6 +10,7 @@ import { workspaceCreateAllowed } from "./rate";
 import { joinInviteAsPerson, withLoginLock, type TeamFail, type TeamRole } from "./team";
 import { matchHandle, wsHandle } from "./ws-handle";
 import { asHandle } from "./ws-path";
+import { claimSlug, releaseSlug } from "./ws-slug";
 
 /**
  * A person's workspaces (multi-workspace M2, docs/specs/2026-10-18-multi-org.md sections 7 "Switching", 10 and 16;
@@ -22,7 +23,8 @@ export const OWNED_CAP = 3;
 /** A trial workspace's days, as at sign-up (`createUser`). */
 const TRIAL_DAYS = 3;
 
-export type WorkspaceRow = { handle: string; name: string; role: Role; current: boolean };
+/** `slug` (rule 3504): the readable slug, shown beside the name; absent for a workspace made before slugs. */
+export type WorkspaceRow = { handle: string; name: string; role: Role; current: boolean; slug?: string };
 
 /**
  * The person's workspaces for the switcher and `/{lang}/app/workspaces`: the held accounts (`heldAccounts`, which
@@ -34,7 +36,7 @@ export async function listWorkspaces(p: Person, current: AccountId | null): Prom
   return pmap(held, async ({ aid, role }) => {
     const [u, brand] = await Promise.all([getAccount(aid), getBrand(aid)]);
     const name = brand?.name?.trim() || u?.workspaceName?.trim() || u?.name || "";
-    return { handle: wsHandle(aid), name, role, current: aid === current };
+    return { handle: wsHandle(aid), name, role, current: aid === current, ...(u?.workspaceSlug ? { slug: u.workspaceSlug } : {}) };
   });
 }
 
@@ -76,7 +78,15 @@ export async function createWorkspace(p: Person, input: { name: string; lang: "a
         emailVerifiedAt: fresh.emailVerifiedAt,
         workspaceName: input.name.trim().slice(0, 80),
       };
-      await saveUser(u);
+      // Rule 3504: a readable slug from the name, claimed atomically (SET NX) for this new id; released if the save fails.
+      const slug = await claimSlug(u.workspaceName ?? "", aid);
+      if (slug) u.workspaceSlug = slug;
+      try {
+        await saveUser(u);
+      } catch (e) {
+        await releaseSlug(slug ?? undefined, aid).catch(() => {});
+        throw e;
+      }
       await Promise.all([
         db.sadd(personKey.orgs(fresh.pid), aid),
         db.set(personKey.lastOrg(fresh.pid), aid),

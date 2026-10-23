@@ -7,6 +7,8 @@ import { can } from "@/lib/roles";
 import { SETTINGS_COPY } from "@/lib/settings-nav";
 import PageHeader from "@/components/ui/PageHeader";
 import AccountSettings from "@/components/app/settings/AccountSettings";
+import AvatarUpload from "@/components/app/settings/AvatarUpload";
+import { getAvatar } from "@/lib/avatar";
 
 export const dynamic = "force-dynamic";
 export const generateMetadata = settingsScreenMeta("account");
@@ -24,9 +26,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const a = u.actor;
   const owner = can(u, "profile.account");
   const S = SETTINGS_COPY[lang].sections.account;
+  // Rule 3502: the acting person's picture. Only the person themself changes it: a founder impersonating or a token cannot.
+  const self = a && (a.kind === "owner" || a.kind === "member");
+  const avatar = a ? await getAvatar(a.pid) : null;
   return (
     <div className="grid gap-6">
       <PageHeader lang={lang} title={S.name} sub={S.sub} seed="settings-account" />
+      <AvatarUpload lang={lang} name={a?.name ?? u.name} email={a?.email ?? u.email} initial={avatar} canEdit={!!self} />
       <AccountSettings
         lang={lang}
         forbidden={appDict[lang].team.errors.forbidden}

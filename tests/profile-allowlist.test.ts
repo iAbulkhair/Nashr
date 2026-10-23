@@ -39,6 +39,8 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     ownerPid: "p_ownerpidaaaaaaaaaaaaaaaa",
     // The name given at create (multi-workspace M2): the switcher reads it, the profile does not send it.
     workspaceName: "WORKSPACE-NAME",
+    // The readable slug (rule 3504): shown by the workspace list, never a profile field.
+    workspaceSlug: "workspace-slug",
     // When the account last changed owner (M3 transfer, rule 2757): billing reads it, the profile does not send it.
     ownerSince: "2026-01-01T00:00:00.000Z",
     email: u.email,

@@ -21,8 +21,29 @@ export type StorageProbe = {
   freeBytes: number | null;
 };
 
+/**
+ * What the server asks a backend to sign (rule 3500): one object under a name the SERVER built (`newUploadName`, never a
+ * name, path or scope from the request), the only content types the browser may send, the largest body, and how long
+ * the grant lives. Provider-neutral on purpose: a bucket backend (Vercel Blob client tokens, S3 presigned PUT or POST)
+ * turns it into its own grant; the limits are parameters, so a later upload kind (a workspace logo) passes its own.
+ */
+export type SignedUploadSpec = { name: string; contentTypes: readonly string[]; maxBytes: number; expiresInS: number };
+
+/**
+ * A grant the browser uses to send the bytes straight to the backend: `method` to `url` with `headers`, or for a form
+ * POST (S3 POST policy) the `fields` first and the file last. `expiresAt` is ISO. Nothing in it is stored or logged.
+ */
+export type SignedUpload = { url: string; method: "PUT" | "POST"; headers: Record<string, string>; fields?: Record<string, string>; expiresAt: string };
+
 export interface StorageAdapter {
-  readonly name: "disk";
+  /** "disk" today; a bucket backend adds its own name (the S3 adapter of the follow-up branch). */
+  readonly name: string;
+  /**
+   * Optional (rule 3500): a backend the browser can upload to directly signs one upload here. A backend without it (the
+   * disk) is uploaded to through our own server route instead (`planUpload` in src/lib/upload.ts answers `server`).
+   * Throws when it cannot sign; the caller then falls back to the server upload.
+   */
+  signedUpload?(spec: SignedUploadSpec): Promise<SignedUpload>;
   /** The backend can keep files on this deployment. */
   configured(): boolean;
   /** Keep checked bytes under a new name. Never overwrites: a name that exists fails. Throws on any failure. */

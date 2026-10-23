@@ -232,6 +232,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/account/passkeys": g("member", "passkeys.manage"),
   "POST /api/account/email": g("member", "email.change"),
   "POST /api/account/google": g("member", "google.manage"),
+  // The acting person's own picture (rules 3501-3503): a session, then actingLogin (an impersonation and a token are 403).
+  "POST /api/account/avatar": "member",
+  "DELETE /api/account/avatar": "member",
+  "POST /api/account/avatar/upload": "member",
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "PUT /api/notifications/digest": g("owner", "profile.account"),
@@ -393,6 +397,8 @@ const READS: Record<string, Gate> = {
   "GET /api/instructions/refs": "member",
   "GET /api/instructions/history": "member",
   "GET /api/notifications": "member",
+  // A person's picture to any signed-in user, behind an HMAC signature and a per-IP limit; every refusal is one 404 (rule 3503).
+  "GET /api/avatar/[name]": "member",
   // The text a woken phone worker shows (rule 2567), read with the device's own session.
   "GET /api/push/latest": "member",
   "GET /api/onboard/plan": "member",

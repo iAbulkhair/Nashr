@@ -159,6 +159,10 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.emailRevert("h1"), "emailrevert:h1"],
     [globalKey.emailRevertIpBucket("1.2.3.4"), "emailrevert:ip:1.2.3.4"],
     [globalKey.passwordReset("h1"), "pwreset:h1"],
+    // Profile picture and workspace slug (rules 3501-3504): new families, no old template.
+    [globalKey.uploadTicket("p:p_x", "n1.jpg"), "upload:p:p_x:n1.jpg"],
+    [globalKey.wsSlug("rose-shop"), "wsslug:rose-shop"],
+    [globalKey.avatarGetBucket("1.2.3.4"), "avatarget:1.2.3.4"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));
