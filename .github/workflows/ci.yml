@@ -186,17 +186,22 @@ jobs:
         run: npx vitest run
       # Playwright's browsers, keyed on the installed Playwright version. A cache saved by a pull request serves only
       # that PR, so a PR's first end-to-end run downloads them (about 30 seconds) and its later runs restore them.
+      # The key also names the runner's OS release (rule 3210): WebKit is built per Ubuntu release, and one saved on
+      # ubuntu-24.04 does not start on ubuntu-26.04 (libicudata.so.74 missing), as PR #437 found while `ubuntu-latest`
+      # moved between them.
       - name: Playwright version
         id: playwright
         if: steps.scope.outputs.e2e == 'true'
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=$(. /etc/os-release && echo "$ID$VERSION_ID")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: playwright-cache
         if: steps.playwright.outputs.version != ''
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium-webkit
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ steps.playwright.outputs.image }}-chromium-webkit
       - name: Install Playwright browsers
         if: steps.scope.outputs.e2e == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium webkit

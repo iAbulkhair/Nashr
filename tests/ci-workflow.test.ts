@@ -110,6 +110,9 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
     const c = cacheStep("Cache Playwright browsers");
     expect(c).toMatch(/path: ~\/\.cache\/ms-playwright\n/);
     expect(c).toMatch(/key: playwright-\$\{\{ runner\.os \}\}-\$\{\{ steps\.playwright\.outputs\.version \}\}-/);
+    // Rule 3210: and by the OS release, so a WebKit built for one Ubuntu is never restored on another.
+    expect(step("Playwright version")).toMatch(/echo "image=\$\(\. \/etc\/os-release && echo "\$ID\$VERSION_ID"\)" >> "\$GITHUB_OUTPUT"/);
+    expect(c).toMatch(/key: playwright-[^\n]*-\$\{\{ steps\.playwright\.outputs\.image \}\}-chromium-webkit$/m);
     const miss = step("Install Playwright browsers");
     expect(miss).toMatch(/if: steps\.scope\.outputs\.e2e == 'true' && steps\.playwright-cache\.outputs\.cache-hit != 'true'/);
     expect(miss).toMatch(/run: npx playwright install --with-deps chromium webkit/);
