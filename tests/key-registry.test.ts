@@ -155,6 +155,9 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.passkeyIpBucket("1.2.3.4"), "pk:ip:1.2.3.4"],
     [globalKey.passkeyVerifyIpBucket("1.2.3.4"), "pkv:ip:1.2.3.4"],
     [globalKey.passkeyCredBucket("h1"), "pkv:cred:h1"],
+    [globalKey.staffBootPasskey("h1"), "staffbootpk:h1"],
+    [globalKey.staffInviteBucket("h1"), "staffinvite:h1"],
+    [globalKey.staffInviteIpBucket("1.2.3.4"), "staffinvite:ip:1.2.3.4"],
     // Account-id R2 (rule 2744): the revert link and its IP bucket are new families; the reset token keeps its old bytes.
     [globalKey.emailRevert("h1"), "emailrevert:h1"],
     [globalKey.emailRevertIpBucket("1.2.3.4"), "emailrevert:ip:1.2.3.4"],

@@ -6,7 +6,7 @@ import { westernDigits } from "@/lib/verify-client";
 import { clearStaffFailures, countStaffFailure, getStaff, openStaffSecret, staffEmail, staffLocked, staffPasswordMatches } from "@/lib/staff";
 import { resealStaffSecret, staffTotpOnce, staffTryAccepted, takeStaffTry } from "@/lib/staff-code";
 import { destroyStaffSession, openStaffPre } from "@/lib/staff-session";
-import { STAFF_LOGIN_PER_IP, STAFF_LOGIN_WINDOW, invalid, openAfterCode } from "@/lib/staff-signin";
+import { STAFF_LOGIN_PER_IP, STAFF_LOGIN_WINDOW, invalid, lockedInvalid, openAfterCode } from "@/lib/staff-signin";
 
 /**
  * Staff sign-in, step 1 of 2 (rules 1631, 1632, 1644, docs/system/flows.md section 71).
@@ -27,6 +27,10 @@ import { STAFF_LOGIN_PER_IP, STAFF_LOGIN_WINDOW, invalid, openAfterCode } from "
  * Any part wrong is the same 401, so a locked address still tells a guesser nothing about the password; the code's own
  * tries (5 per IP and per address per 15 minutes) apply. No email is ever sent from here (rule 1643).
  *
+ * The form shows the code field only when the answer carries `locked: true` (rule 3702): while the address is locked, or
+ * on the failure that locked it. Unknown addresses are counted and locked exactly like known ones, so the flag tells a
+ * guesser only that they failed ten times for that address, never whether it exists.
+ *
  * DELETE: sign out. Deletes the staff session record and both staff cookies.
  */
 export async function POST(req: Request) {
@@ -42,10 +46,13 @@ export async function POST(req: Request) {
   // A wrong password counts toward the lock; a right one for a record that cannot sign in (no authenticator) does not.
   const counts = !right || !staff || !!staff.disabled;
   const fail = async (): Promise<NextResponse> => {
-    if (email && counts && (await countStaffFailure(email)) && staff) {
+    const nowLocked = !!email && counts && (await countStaffFailure(email));
+    if (nowLocked && staff) {
       after(() => adminAudit({ actor: "system", section: "system", action: "staff.locked", target: email, what: "staff:locked (10 failed sign-ins in 15 minutes)" }));
     }
-    return invalid();
+    // Rule 3702: the same 401 `invalid`, plus `locked: true` once the address is locked, so the form shows the code field
+    // only then. Unknown addresses are counted and locked the same way, so the flag says nothing about which exist.
+    return locked || nowLocked ? lockedInvalid() : invalid();
   };
 
   if (locked) {
