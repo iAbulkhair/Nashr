@@ -144,11 +144,29 @@ As built in step (e):
 
 ## 9. Google through better-auth (rule 3425, not switched on)
 
-`socialProviders.google` is configured from the existing `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` with `disableImplicitSignUp: true` and account linking off, but only when the code constant `BA_GOOGLE` is true, and it is **false**: better-auth's callback is `/api/better-auth/callback/google`, a redirect URI the founder must add in the Google console first. Until then the legacy Google routes are the only Google sign-in, and they already end in the shared `createSession`.
+The plan was `socialProviders.google` from the existing `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` with `disableImplicitSignUp: true` and account linking off, behind the code constant `BA_GOOGLE`. better-auth's callback is `/api/better-auth/callback/google`, a redirect URI the founder must add in the Google console first, so `BA_GOOGLE` is **false**. Until then the legacy Google routes (`/api/auth/google/start`, `/api/auth/google/callback`) are the only Google sign-in, and they already end in the shared `createSession`, so a Google user's session is the same record under either engine.
+
+**As built in step (f).** `baOptions` has no `socialProviders` block at all, not even a disabled one: code that cannot run while the constant is false would be untested code in the sign-in path. The adapter's account read by provider and account id (the read better-auth's Google callback makes) answers nothing, and the callback, `/sign-in/social` and `/link-social` are outside the route's allow-list, so they answer 404 with the switch on or off. The two-way link test is one exported function, `twoWayGoogle`, used by the adapter and the script. Turning better-auth's Google on later is its own change, with the founder's console step first: register the redirect URI, add the provider block, add `/sign-in/social` and `/callback/google` to `BA_ROUTES`, and give the adapter the by-provider read through `google:{sub}`, with tests on both engines.
 
 ## 10. The script (rule 3426)
 
 `scripts/better-auth-check.ts`: walks `users:all` and the login indexes in batches (`pmap`), projects each login through the adapter's pure mapping functions and reports counts: logins with a password, with Google, with neither (no way in once the switch is on except a magic link), persons whose login index disagrees, sessions without `pid`. Dry run only: `--apply` is refused with "nothing to apply" because the adapter reads the stored records directly. It never prints an address, a hash or a token, only counts and record kinds.
+
+**As built in step (f).** Usage: `npx --no-install jiti scripts/better-auth-check.ts`, with the app's own `KV_REST_API_URL`/`KV_REST_API_TOKEN` set privately; `--apply` is refused before those variables or the store are read (exit 2).
+- **What it reads.** The sign-in addresses are each owner record's address and each roster person's address (`getPerson`), each once. Each address is read as the sign-in route reads it (`getLogin`), then:
+  - projected with the adapter's own `projectUser`, `projectAccounts` and `twoWayGoogle`;
+  - checked on the way back better-auth takes from a session's `userId` (`loginOfPerson(pid)`).
+
+  Five rounds in all, through `pmap` (50 at a time) and `mgetChunked`; no `await db.*` sits inside a loop.
+- **What it counts:**
+  - accounts, and missing records;
+  - addresses, logins, and addresses that sign in as nobody;
+  - password, two-way Google link, and neither;
+  - address mismatches (the projected address differs, so better-auth would not find the login by address) and person mismatches (the person does not lead back to the login, so its sessions would read as signed out);
+  - sessions named by each login's device index, by shape: live, before R1 with no person id (still resolves), founder impersonation (signed out to better-auth; `currentUser` keeps it), and expired.
+- **Exit codes:** 0 ready; 1 only on a mismatch; 2 could not run.
+- **Import chain.** The adapter's imports became relative (`../db`, `../auth`, and so on). jiti does not resolve the `@/` alias, and every `src/lib` module the other scripts reach already imports relatively; a test runs the script through jiti.
+- **Not run** against any store in this branch. The founder runs it before switching staging, and again before production.
 
 ## 11. Cutover and rollback
 

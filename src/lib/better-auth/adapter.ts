@@ -1,12 +1,12 @@
 import { createHash } from "crypto";
 import { createAdapterFactory } from "better-auth/adapters";
-import { db } from "@/lib/db";
-import { globalKey, storedPersonId, type PersonId } from "@/lib/keys";
-import { dropSession, getLogin, issueSession, normalizeEmail, sessionForEngine, sessionKey, sessionRecord, SESSION_TOKEN, SESSION_TTL, type Login } from "@/lib/auth";
-import { getPerson } from "@/lib/person";
-import { loginEmail } from "@/lib/login-finish";
-import { deviceId, forgetDevice } from "@/lib/devices";
-import { linkKey, subKey } from "@/lib/google-signin";
+import { db } from "../db";
+import { globalKey, storedPersonId, type PersonId } from "../keys";
+import { dropSession, getLogin, issueSession, normalizeEmail, sessionForEngine, sessionKey, sessionRecord, SESSION_TOKEN, SESSION_TTL, type Login } from "../auth";
+import { getPerson } from "../person";
+import { loginEmail } from "../login-finish";
+import { deviceId, forgetDevice } from "../devices";
+import { linkKey, subKey } from "../google-signin";
 import { takeApproval } from "./approvals";
 
 /**
@@ -100,6 +100,13 @@ export function projectAccounts(l: Login, googleSub: string | null): BaAccount[]
   return out;
 }
 
+/**
+ * The Google sub of a login when its link holds both ways (rule 3404): `googlesub:{login}` names `sub` and `google:{sub}`
+ * names the login back. The adapter and scripts/better-auth-check.ts both decide with this one rule.
+ */
+export const twoWayGoogle = (login: string, sub: unknown, back: unknown): string | null =>
+  typeof sub === "string" && sub !== "" && typeof back === "string" && normalizeEmail(back) === normalizeEmail(login) ? sub : null;
+
 export type BaSession = { id: string; token: string; userId: string; expiresAt: string; createdAt: string; updatedAt: string; ipAddress: string; userAgent: string };
 /**
  * A stored session as better-auth's session (rule 3406). Nothing better-auth-specific is stored: `id` is the device id
@@ -128,8 +135,7 @@ export async function loginOfPerson(raw: string): Promise<Login | null> {
 async function googleSubOf(login: string): Promise<string | null> {
   const sub = await db.get<string>(subKey(login));
   if (typeof sub !== "string" || !sub) return null;
-  const back = await db.get<string>(linkKey(sub));
-  return typeof back === "string" && normalizeEmail(back) === normalizeEmail(login) ? sub : null;
+  return twoWayGoogle(login, sub, await db.get<string>(linkKey(sub)));
 }
 
 async function findUser(where: Cond[]): Promise<BaUser | null> {
