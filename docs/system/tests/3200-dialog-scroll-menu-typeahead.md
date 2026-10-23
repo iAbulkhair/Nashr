@@ -1,0 +1,8 @@
+# Coverage: Dialog scroll lock and Menu typeahead (rules 3200-3201)
+
+Status on 2026-10-23 on branch `claude/dialog-scroll-lock-menu-typeahead`. A comparison of the hand-made `Dialog`, `Menu`, `Tabs` and `Switch` with Base UI found two gaps in ours: the page behind an open `Dialog` still scrolled, and an open `Menu` did not jump to a row when a letter was typed. The founder kept the hand-made components (option 1) and asked for both gaps to be closed. Rules 3202-3209 are reserved and unused.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 3200 | `Dialog` (and so `FormDialog` and `usePrompt`) sets `document.documentElement.style.overflow` to `hidden` in the effect that calls `showModal()`, and puts back the value it found when it unmounts, before focus returns to the opener, as `Sheet` already did (rule 1111). Release step: none: no stored shape changes | `tests/dialog-menu-3200.test.ts` (rule 3200: source pins on the lock, the restore and its place in the opening effect) | a browser test that scrolls the page under an open dialog |
+| 3201 | In an open `Menu`, a key that is one printable character and pressed without Ctrl, Cmd or Alt moves focus to the next row after the focused one whose text starts with it, wrapping (`menuMatch`); case and outer spaces do not count and an Arabic alef matches أ إ آ. Arrows, Home and End keep their meaning (rule 1112); Space and any key that matches no row do nothing. Release step: none: no stored shape changes | `tests/dialog-menu-3200.test.ts` (rule 3201: English and Arabic matches, wrap, repeat, non-character keys, the wiring with modifiers) | none |
