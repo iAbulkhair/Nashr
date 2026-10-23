@@ -1,0 +1,7 @@
+# Coverage: agent skills (rule 3150)
+
+Status on 2026-10-23 on branch `claude/sup-agent-skills`. Nineteen project skills live in `.claude/skills/<name>/SKILL.md`, modelled on the Supastarter agent skills: add-a-feature, add-a-public-page-or-guide, add-a-notification, add-a-payment-provider, add-a-model-or-media-provider, add-a-ui-component, change-sign-in, change-a-plan-or-price, add-or-edit-an-email, add-a-workspace-scoped-feature, add-an-api-route, add-arabic-and-english-copy, change-a-stored-shape, fix-a-red-ci-run, release-and-env-vars, local-setup, review-a-pr, write-a-browser-test and write-a-unit-test. They are instructions for agents, not product behaviour. Rules 3151-3169 are reserved and unused.
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 3150 | Every folder under `.claude/skills` holds a `SKILL.md` whose front matter is exactly a `name` equal to the folder and a one-line `description`; the set of folders is the nineteen above; a skill stays under 125 lines; every `src/`, `tests/`, `docs/`, `scripts/`, `e2e/` or `content/` path written in backticks exists in the repository (placeholders such as `<name>`, `NNNN` and globs are skipped); no skill carries a secret-looking value. A file that is gitignored or exists only on another branch is described in words, not as a backticked path. Release step: none: no stored shape changes | `tests/agent-skills.test.ts` (rule 3150: folder set, front matter, length, paths, secrets) | none |
