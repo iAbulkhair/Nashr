@@ -11,6 +11,7 @@ import LangToggle from "../LangToggle";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import Wordmark from "../Wordmark";
 import { Icon, type IconName } from "./Icons";
+import PersonAvatar from "./PersonAvatar";
 import { PARTNER_COPY } from "@/lib/partner-copy";
 import { adminHref } from "@/lib/admin-gate";
 import { settingsHref } from "@/lib/settings-nav";
@@ -40,7 +41,7 @@ const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id}
  * the props are used and nothing is fetched. On a phone the rail opens in a `Sheet` (focus kept inside, Escape and the
  * backdrop close it, focus goes back to the menu button); the account menu is a `Menu` with arrow keys.
  */
-export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; admin?: boolean; supportWa?: string }) {
+export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string; avatar?: string | null }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; admin?: boolean; supportWa?: string }) {
   const path = usePathname();
   const sp = useSearchParams();
   const r = useRouter();
@@ -188,6 +189,8 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
 
       {group(`${p}-brand`, X.brand, <>
         <li>{row(to("/files"), N.files, "folder")}</li>
+        {/* Rule 3507: the overview charts, beside the full reports. */}
+        <li>{row(to("/overview"), N.overview, "dashboard")}</li>
         <li>{row(to("/reports"), N.performance, "chart")}</li>
         <li>{row(to("/activity"), N.activity, "clock")}</li>
         <li>{row(to("/inspo"), N.contentInspo, "spark")}</li>
@@ -230,7 +233,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
         footer={<div className="grid gap-2 px-2"><ThemeToggle lang={lang} size="sm" className="justify-self-start" /><div className="flex items-center justify-between"><LangToggle lang={lang} size="sm" /><LogoutButton label={N.logout} lang={lang} /></div></div>}
         trigger={(props, isOpen) => (
           <button {...props} aria-label={`${X.account}: ${user.name || user.email}`} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm text-foreground hover:bg-background-muted/60">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-background-muted font-semibold" aria-hidden>{(user.name || user.email).charAt(0).toUpperCase()}</span>
+            <PersonAvatar src={user.avatar} name={user.name} email={user.email} size={32} />
             <span className="min-w-0 flex-1">
               <span className="flex min-w-0 items-center gap-1.5"><span className="clip" dir="auto">{user.name || user.email}</span><span className="shrink-0 rounded-full bg-background-muted px-1.5 text-xs text-foreground-muted">{t.team.roles[user.role]}</span></span>
               <span className="clip block text-xs text-foreground-muted" dir="ltr">{user.email}</span>

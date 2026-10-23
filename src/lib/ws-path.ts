@@ -96,6 +96,9 @@ export const WORKSPACE_FREE: readonly string[] = [
   "/api/account/sessions",
   "/api/account/email",
   "/api/account/google",
+  // The person's picture (rule 3502): the person's, never a workspace's.
+  "/api/account/avatar",
+  "/api/account/avatar/",
   "/api/admin/",
   "/api/oauth/",
   "/api/staging-access",

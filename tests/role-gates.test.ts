@@ -235,6 +235,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/account/passkeys": g("viewer", "passkeys.manage"),
   "POST /api/account/email": g("viewer", "email.change"),
   "POST /api/account/google": g("viewer", "google.manage"),
+  // The acting person's own picture (rules 3501-3503): a session, then actingLogin (an impersonation and a token are 403).
+  "POST /api/account/avatar": "member",
+  "DELETE /api/account/avatar": "member",
+  "POST /api/account/avatar/upload": "member",
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "PUT /api/notifications/digest": g("owner", "profile.account"),
@@ -397,6 +401,8 @@ const READS: Record<string, Gate> = {
   "GET /api/instructions/refs": "member",
   "GET /api/instructions/history": "member",
   "GET /api/notifications": "member",
+  // A person's picture to any signed-in user, behind an HMAC signature and a per-IP limit; every refusal is one 404 (rule 3503).
+  "GET /api/avatar/[name]": "member",
   // The text a woken phone worker shows (rule 2567), read with the device's own session.
   "GET /api/push/latest": "member",
   "GET /api/onboard/plan": "member",
@@ -578,8 +584,9 @@ describe("every API handler has a declared gate (fail closed)", () => {
     expect(hidden).toEqual([]);
   });
   it("rule 3752: a write that needs only the session is one a Viewer may make; every other names an action", () => {
-    // A Viewer's own browser push subscription, the bell's read marks and the product wishlist: nothing of the workspace.
-    const VIEWER_WRITES = new Set(["POST /api/push", "DELETE /api/push", "POST /api/push/seen", "POST /api/notifications", "POST /api/wishlist/suggest", "POST /api/wishlist/vote"]);
+    // A Viewer's own browser push subscription, the bell's read marks, the product wishlist and the person's own picture
+    // (rules 3501-3503, keyed by the acting person, never the workspace): nothing of the workspace.
+    const VIEWER_WRITES = new Set(["POST /api/push", "DELETE /api/push", "POST /api/push/seen", "POST /api/notifications", "POST /api/wishlist/suggest", "POST /api/wishlist/vote", "POST /api/account/avatar", "DELETE /api/account/avatar", "POST /api/account/avatar/upload"]);
     const bare = Object.entries(ROUTE_ROLES).filter(([, gate]) => gate === "member").map(([k]) => k);
     expect(bare.filter((k) => !VIEWER_WRITES.has(k))).toEqual([]);
   });

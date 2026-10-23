@@ -226,6 +226,16 @@ export const personKey = {
    * `at` when it was undone. A revert link of a move made between the two is dead. 30 days.
    */
   emailReverted: (p: PersonId) => `emailreverted:${p}`,
+  /** json `{ name, at }`: the person's profile picture in the media store (src/lib/avatar.ts, rule 3502); no TTL, deleted with the person. */
+  avatar: (p: PersonId) => `avatar:${p}`,
+  /** lock: one person's picture change (a leaf lock: nothing else is taken while it is held). */
+  avatarLock: (p: PersonId) => `lock:avatar:${p}`,
+  /** rate bucket (`allow` adds `rate:`): picture changes of one person, 20 an hour (POST /api/account/avatar, rule 3502). */
+  avatarSetBucket: (p: PersonId) => `avatarset:${p}`,
+  /** rate bucket: picture upload plans of one person, 30 an hour (POST /api/account/avatar/upload, rule 3501). */
+  avatarPlanBucket: (p: PersonId) => `avatarplan:${p}`,
+  /** The owner part of a person's upload ticket (`globalKey.uploadTicket`): built from the session's person only (rule 3501). */
+  uploadOwner: (p: PersonId) => `p:${p}`,
 } as const;
 
 export const accountKey = {
@@ -405,6 +415,20 @@ export const globalKey = {
   emailRevertIpBucket: (ip: string) => `emailrevert:ip:${ip}`,
   /** json `{ email, kind }`: a password reset link, under the SHA-256 hex of its token; 1 hour (POST /api/auth/forgot). */
   passwordReset: (tokenHash: string) => `pwreset:${tokenHash}`,
+  /**
+   * json `UploadTicket` (src/lib/upload.ts, rule 3501): one signed direct upload the server granted, 15 minutes. `owner`
+   * is built by the server from the session (`p:{pid}` for a person's picture), `name` is the 128-bit name the server
+   * generated; a completion only finds a ticket under the caller's own owner, as `/m/` finds `mfile:{scope}:{name}`.
+   */
+  uploadTicket: (owner: string, name: string) => `upload:${owner}:${name}`,
+  /**
+   * string `AccountId`: the readable slug `claimSlug` reserved for one workspace (src/lib/ws-slug.ts, rule 3504), taken
+   * with SET NX, no TTL, deleted with the account. The slug is made by the server from the workspace's name; a slug from
+   * a request is never looked up here.
+   */
+  wsSlug: (slug: string) => `wsslug:${slug}`,
+  /** rate bucket: profile pictures served to one client address, 1200 an hour (GET /api/avatar/{name}, rule 3503). */
+  avatarGetBucket: (ip: string) => `avatarget:${ip}`,
 } as const;
 
 /**

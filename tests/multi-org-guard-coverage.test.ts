@@ -39,6 +39,8 @@ const PERSON_LEVEL = new Set([
   "/api/account/sessions", // the person's devices
   "/api/account/email", // the person's sign-in address
   "/api/account/google", // the person's Google sign-in link
+  "/api/account/avatar", // the person's picture, one for every workspace (rule 3502)
+  "/api/account/avatar/upload", // plans that picture's upload (rule 3501)
   "/api/oauth/approve", // the consent form (a native post, rule 2305); the grant names the session's account
   "/api/team/accept", // currentPerson(): joins the invite's account (rule 2116)
   "/api/workspaces", // currentPerson(): list and create (rule 2123)

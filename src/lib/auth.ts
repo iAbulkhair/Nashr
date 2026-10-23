@@ -116,6 +116,11 @@ export type User = {
    */
   workspaceName?: string;
   /**
+   * The workspace's readable slug (rule 3504, `claimSlug` in src/lib/ws-slug.ts): unique through `wsslug:{slug}`, made at
+   * `createWorkspace`. Shown only; links keep the `w_` handle (rule 2114). Optional and new (expand): older code ignores it.
+   */
+  workspaceSlug?: string;
+  /**
    * When the account last changed owner (ISO, multi-workspace M3 ownership transfer, rule 2757). A saved card
    * whose checkout started before it belongs to the previous owner and is refused (`intentOutdatesOwner`, src/lib/billing-state).
    * Optional and new (expand): older builds ignore it, and an account that never changed hands has none.

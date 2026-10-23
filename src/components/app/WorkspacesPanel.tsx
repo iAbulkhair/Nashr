@@ -107,7 +107,10 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
             <li key={w.handle} className="flex min-h-[var(--hit-min)] items-center justify-between gap-3 rounded-lg border border-border p-3">
               <span className="min-w-0">
                 <span className="block truncate font-semibold text-foreground">{w.name}</span>
-                <span className="text-sm text-foreground-muted">{t.roles[w.role]}</span>
+                <span className="text-sm text-foreground-muted">
+                  {t.roles[w.role]}
+                  {w.slug ? <span dir="ltr" className="ms-2 font-mono text-xs">{w.slug}</span> : null}
+                </span>
               </span>
               {w.current ? (
                 <Badge tone="info">{t.current}</Badge>
