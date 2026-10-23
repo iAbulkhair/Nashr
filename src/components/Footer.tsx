@@ -5,12 +5,17 @@ import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { SITE } from "@/lib/site";
 import LangToggle from "./LangToggle";
 import { NAV_WORDS } from "./Nav";
+import NewsletterBox from "./NewsletterBox";
 import ThemeToggle from "./ui/ThemeToggle";
 import ScribbleStatic from "./ScribbleStatic";
 import Wordmark from "./Wordmark";
 
-/** `lang` is optional so older pages that pass only `t` keep working; it is derived from the text direction. */
-export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
+/**
+ * `lang` is optional so older pages that pass only `t` keep working; it is derived from the text direction.
+ * `newsletter` (default on) shows the newsletter sign-up box (rules 3600-3609); the blog turns it off because it carries the
+ * same box inside the page, so a reader never sees two.
+ */
+export default function Footer({ t, lang: given, newsletter = true }: { t: Dict; lang?: Lang; newsletter?: boolean }) {
   const lang: Lang = given ?? (t.dir === "rtl" ? "ar" : "en");
   const s = SITE[lang], f = s.footer;
   const cols: { title: string; links: { href: string; label: string }[] }[] = [
@@ -36,6 +41,7 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
             </nav>
           ))}
         </div>
+        {newsletter && <div className="mt-10 border-t border-border pt-6"><NewsletterBox lang={lang} source="footer" id="newsletter-footer" /></div>}
         <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-6 text-xs">
           <p>{t.footer.rights}</p>
           {/* Rule 1215: the viewer's light, dark or device choice, on every public page, beside the language. */}

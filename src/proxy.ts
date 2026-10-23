@@ -44,7 +44,7 @@ export function pickLang(req: Pick<NextRequest, "cookies" | "headers">): Lang {
  * the folders on disk.
  */
 export const PUBLIC_SEGMENTS = [
-  "affiliates", "agents", "ai-marketing-agent", "blog", "compare", "customers", "enterprise", "for", "help", "pricing",
+  "affiliates", "agents", "ai-marketing-agent", "blog", "compare", "customers", "enterprise", "for", "help", "newsletter", "pricing",
   "privacy", "resources", "terms", "tools", "updates",
 ] as const;
 const UNPREFIXED = new RegExp(`^/(?:${PUBLIC_SEGMENTS.join("|")})(?:/|$)`);

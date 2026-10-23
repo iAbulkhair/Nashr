@@ -101,6 +101,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/support": "public",
   "POST /api/affiliates": "public",
   "POST /api/waitlist": "public",
+  // The newsletter (rules 3600-3609): the sign-up and the two token clicks, each rate limited per IP.
+  "POST /api/newsletter": "public",
+  "POST /api/newsletter/confirm": "public",
+  "POST /api/newsletter/unsubscribe": "public",
   "POST /api/tools/[tool]": "public",
   "POST /api/oauth/register": "public",
   "POST /api/oauth/token": "public",
@@ -376,6 +380,7 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/people/[email]": "admin-console", // rule 2755: read-only people view (M3, MULTI_ORG), staffMay("workspace.view") after the console gate
   "GET /api/affiliates": "admin-console",
   "GET /api/waitlist": "admin-console",
+  "GET /api/admin/newsletter": "admin-console",
   "GET /api/support": "admin-console",
   "GET /api/integrations": "admin-console", // the founder gets the request log; anyone else the static catalogue
 

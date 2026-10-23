@@ -7,6 +7,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import Scribble from "@/components/Scribble";
 import ScribbleStatic from "@/components/ScribbleStatic";
+import NewsletterBox from "@/components/NewsletterBox";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
@@ -40,8 +41,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
             </li>
           ))}
         </ul>
+        <div className="mt-12"><NewsletterBox lang={lang} source="blog" id="newsletter-blog" /></div>
       </main>
-      <Footer t={t} />
+      <Footer t={t} newsletter={false} />
     </>
   );
 }

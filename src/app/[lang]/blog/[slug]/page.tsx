@@ -6,6 +6,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ScribbleStatic from "@/components/ScribbleStatic";
 import FinalCta from "@/components/FinalCta";
+import NewsletterBox from "@/components/NewsletterBox";
 import { pageMeta } from "@/lib/page-meta";
 import { articleJsonLd, ldJson } from "@/lib/home-ld";
 import { appOrigin } from "@/lib/origin";
@@ -37,10 +38,11 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
           <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><ScribbleStatic kind="underline" seed="post-h" rtl={lang === "ar"} />{p.title}</span></h1>
           <p className="mt-4 text-lg text-foreground-muted">{p.desc}</p>
           <article className="prose-nashr mt-10" dangerouslySetInnerHTML={{ __html: render(p.body) }} />
+          <div className="mt-12 border-t border-border pt-8"><NewsletterBox lang={lang} source="blog" id="newsletter-post" /></div>
         </div>
         <FinalCta t={t} lang={lang} />
       </main>
-      <Footer t={t} />
+      <Footer t={t} newsletter={false} />
     </>
   );
 }

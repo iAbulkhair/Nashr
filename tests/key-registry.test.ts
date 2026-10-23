@@ -159,6 +159,15 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.emailRevert("h1"), "emailrevert:h1"],
     [globalKey.emailRevertIpBucket("1.2.3.4"), "emailrevert:ip:1.2.3.4"],
     [globalKey.passwordReset("h1"), "pwreset:h1"],
+    // Newsletter (rules 3600-3609): new families, no old template. The three bucket names get a `rate:` prefix from `allow`.
+    [globalKey.newsletterSub("h1"), "newsletter:sub:h1"],
+    [globalKey.newsletterIndex(), "newsletter:index"],
+    [globalKey.newsletterConfirm("h1"), "newsletter:confirm:h1"],
+    [globalKey.newsletterUnsub("h1"), "newsletter:unsub:h1"],
+    [globalKey.newsletterLock("h1"), "newsletter:lock:h1"],
+    [globalKey.newsletterIpBucket("1.2.3.4"), "newsletter:ip:1.2.3.4"],
+    [globalKey.newsletterEmailBucket("h1"), "newsletter:em:h1"],
+    [globalKey.newsletterTokenBucket("1.2.3.4"), "newsletter:tok:1.2.3.4"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));

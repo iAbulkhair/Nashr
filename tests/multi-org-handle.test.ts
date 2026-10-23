@@ -121,7 +121,7 @@ describe("rule 2113: the pure guard", () => {
     for (const p of [
       "/api/auth/login", "/api/auth/signup", "/api/workspaces", "/api/workspaces/", "/api/workspaces/switch", "/api/auth/verify/send", "/api/secretary/booking/tok",
       "/api/team/accept", "/api/account/2fa", "/api/account/sessions", "/api/account/email", "/api/account/google",
-      "/api/admin/users/x", "/api/oauth/approve", "/api/staging-access", "/api/waitlist", "/api/affiliates",
+      "/api/admin/users/x", "/api/oauth/approve", "/api/staging-access", "/api/waitlist", "/api/newsletter", "/api/newsletter/confirm", "/api/affiliates",
       "/api/ops/telegram", "/api/mcp", "/api/cron/daily", "/api/media/hook/kie", "/api/billing/paymob/webhook",
     ]) {
       expect(workspaceFree(p)).toBe(true);

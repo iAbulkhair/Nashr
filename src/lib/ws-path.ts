@@ -100,6 +100,8 @@ export const WORKSPACE_FREE: readonly string[] = [
   "/api/oauth/",
   "/api/staging-access",
   "/api/waitlist",
+  "/api/newsletter",
+  "/api/newsletter/",
   "/api/affiliates",
   "/api/ops/",
   // src/lib/csrf.ts CROSS_SITE_EXEMPT

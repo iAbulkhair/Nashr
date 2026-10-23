@@ -403,6 +403,25 @@ export const globalKey = {
   emailRevertIpBucket: (ip: string) => `emailrevert:ip:${ip}`,
   /** json `{ email, kind }`: a password reset link, under the SHA-256 hex of its token; 1 hour (POST /api/auth/forgot). */
   passwordReset: (tokenHash: string) => `pwreset:${tokenHash}`,
+  /**
+   * json `NewsletterSub` (src/lib/newsletter.ts, rules 3600-3609): one newsletter subscriber, under the SHA-256 hex of the
+   * normalized address (`newsletterId`), never the address itself. No TTL: an unsubscribed record is the suppression list.
+   */
+  newsletterSub: (id: string) => `newsletter:sub:${id}`,
+  /** zset: every subscriber id, scored by the sign-up time in ms; the console list and the CSV read it. */
+  newsletterIndex: () => "newsletter:index",
+  /** json `{ id, t }`: a double opt-in confirm link, under the SHA-256 hex of its token, taken with `getdel`; 48 hours. */
+  newsletterConfirm: (tokenHash: string) => `newsletter:confirm:${tokenHash}`,
+  /** json `{ id, t }`: an unsubscribe link, under the SHA-256 hex of its token; reusable (idempotent); 400 days. */
+  newsletterUnsub: (tokenHash: string) => `newsletter:unsub:${tokenHash}`,
+  /** lock: one change to one subscriber record at a time (30 seconds). */
+  newsletterLock: (id: string) => `newsletter:lock:${id}`,
+  /** bucket name for `allow` (stored as `rate:newsletter:ip:{ip}`): sign-ups per IP, 10 per hour (rule 3603). */
+  newsletterIpBucket: (ip: string) => `newsletter:ip:${ip}`,
+  /** bucket name for `allow` (stored as `rate:newsletter:em:{id}`): sign-ups per address id, 3 per hour (rule 3603). */
+  newsletterEmailBucket: (id: string) => `newsletter:em:${id}`,
+  /** bucket name for `allow` (stored as `rate:newsletter:tok:{ip}`): confirm and unsubscribe posts per IP, 30 per 15 minutes (rule 3603). */
+  newsletterTokenBucket: (ip: string) => `newsletter:tok:${ip}`,
 } as const;
 
 /**
