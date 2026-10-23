@@ -187,6 +187,8 @@ export async function brandAddRefusal(email: string): Promise<"hour" | "day" | n
 }
 
 /** Workspaces one person may create per day (`wscreate`, multi-workspace M2, docs/specs/2026-10-18-multi-org.md section 10). */
+/** Workspace renames by the owner, per account and hour (PUT /api/account/workspace, rule 3117). */
+export const WORKSPACE_RENAMES_PER_HOUR = 10;
 export const WS_CREATES_PER_DAY = 3;
 /** True while the person may create another workspace today. `pid` is the session's person, never the request's. */
 export const workspaceCreateAllowed = (pid: string): Promise<boolean> => allow(`wscreate:${pid}`, WS_CREATES_PER_DAY, WINDOW.day);

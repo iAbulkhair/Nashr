@@ -145,6 +145,9 @@ export const TEAM_LOG_KINDS = [
   "ownership_offered",
   "ownership_transferred",
   "workspace_created",
+  // Rule 3121 (2026-10-23, expand): the invitee said no from the mailed link. A build before it fails the row on its kind
+  // and skips it (`readTeamLog`), so a rollback shows the log without these rows and nothing else changes.
+  "invite_declined",
 ] as const;
 
 /**
@@ -154,7 +157,11 @@ export const TEAM_LOG_KINDS = [
 export const TeamLogRow = z.looseObject({
   at: z.string().min(1),
   kind: z.enum(TEAM_LOG_KINDS),
-  actor: z.looseObject({ pid: z.string(), email: z.string() }),
+  /**
+   * The person who acted. `pid` is absent only on an `invite_declined` row (rule 3121): whoever holds the mailed link may
+   * decline, and an invitee with no login yet has no person id. Older builds required it; they skip such a row by its kind.
+   */
+  actor: z.looseObject({ pid: z.string().optional(), email: z.string() }),
   target: z.looseObject({ pid: z.string().optional(), email: z.string() }),
   /** The role the event gave or concerned (`TeamRole`). Tightened in multi-workspace M1 (2026-10-19): nothing read the log before it. */
   role: z.enum(["admin", "member"]).optional(),

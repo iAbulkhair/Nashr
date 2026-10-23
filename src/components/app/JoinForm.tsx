@@ -17,7 +17,7 @@ type Preview = { team: string; inviter: string; email: string; role: "admin" | "
  * address already signs in: log in, the token is kept for this tab), "joinAs" (signed in with the invited address: one
  * button, no password) and "otherEmail" (signed in with another address: log out first).
  */
-type Phase = "checking" | "signedIn" | "none" | "invalid" | "ready" | "signIn" | "joinAs" | "otherEmail";
+type Phase = "checking" | "signedIn" | "none" | "invalid" | "ready" | "signIn" | "joinAs" | "otherEmail" | "declined";
 
 /** Fill "{key}" slots with nodes, so names typed by other people render as text inside the sentence, never as markup. */
 function parts(s: string, v: Record<string, React.ReactNode>) {
@@ -30,6 +30,8 @@ function parts(s: string, v: Record<string, React.ReactNode>) {
  * A visitor who is already signed in is never joined into that session: they are asked to log out first. With
  * `MULTI_ORG` on the page passes `person` (the signed-in person, `currentPerson()`): a person whose verified address is
  * the invite's joins from their own session (`{token, join: true}`), never by address alone; the route re-checks it.
+ * Every phase that shows the invite also offers to decline it (rules 3119-3122): one confirm step, then POST
+ * /api/team/decline with the same token, the token forgotten in this tab and a calm confirmation ("declined").
  */
 export default function JoinForm({ t, lang, signedInAs, person = null }: { t: AppDict; lang: Lang; signedInAs: string | null; person?: { email: string; verified: boolean } | null }) {
   const J = t.join;
@@ -41,6 +43,7 @@ export default function JoinForm({ t, lang, signedInAs, person = null }: { t: Ap
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [asking, setAsking] = useState(false);
   const pwRef = useRef<HTMLInputElement>(null);
   const checks = passwordChecks(pw);
 
@@ -102,6 +105,43 @@ export default function JoinForm({ t, lang, signedInAs, person = null }: { t: Ap
     setBusy(false);
   }
 
+  /** Decline (rule 3119): the invite is found from the token alone on the server; the answer carries nothing about the account. */
+  async function decline() {
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/team/decline", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: token.current }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (res.ok && j.ok) {
+        forgetInviteToken();
+        setAsking(false);
+        setPhase("declined");
+        setBusy(false);
+        return;
+      }
+      const code = res.status === 429 ? "rate_limited" : (j.error ?? "failed");
+      if (code === "invalid") { forgetInviteToken(); setAsking(false); setPhase("invalid"); setErr(J.errors.invalid); }
+      else setErr(code === "rate_limited" || code === "busy" ? J.errors[code] : J.declineFailed);
+    } catch {
+      setErr(J.declineFailed);
+    }
+    setBusy(false);
+  }
+
+  /** The decline offer under an invite: a quiet link-style button, then one confirm step naming the workspace. */
+  const declineBlock = preview && (asking ? (
+    <div className="mt-4 rounded-lg border border-border p-3 text-sm" role="group" aria-labelledby="join-decline-ask">
+      <p id="join-decline-ask">{parts(J.declineAsk, { team: <b dir="auto">{preview.team}</b> })}</p>
+      {err && <p role="alert" className="mt-2 text-danger">{err}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={decline} disabled={busy} className="btn btn-secondary btn-sm">{busy ? J.declining : J.declineConfirm}</button>
+        <button type="button" onClick={() => { setAsking(false); setErr(""); }} disabled={busy} className="btn btn-ghost btn-sm">{J.declineBack}</button>
+      </div>
+    </div>
+  ) : (
+    <button type="button" onClick={() => { setAsking(true); setErr(""); }} disabled={busy} className="mt-4 text-sm text-foreground-muted underline">{J.decline}</button>
+  ));
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -158,7 +198,7 @@ export default function JoinForm({ t, lang, signedInAs, person = null }: { t: Ap
           )}
           {phase === "joinAs" && person && (person.verified ? (
             <>
-              {err && <p role="alert" className="mt-3 text-sm text-danger">{err}</p>}
+              {err && !asking && <p role="alert" className="mt-3 text-sm text-danger">{err}</p>}
               <button type="button" onClick={joinAsMe} disabled={busy} className="btn btn-primary btn-sm mt-4">{busy ? J.joining : parts(J.joinAs, { email: <span dir="ltr">{person.email}</span> })}</button>
             </>
           ) : (
@@ -170,6 +210,15 @@ export default function JoinForm({ t, lang, signedInAs, person = null }: { t: Ap
               <button type="button" onClick={logout} disabled={busy} className="btn btn-primary btn-sm mt-4">{J.logout}</button>
             </>
           )}
+          <div>{declineBlock}</div>
+        </div>
+      )}
+
+      {phase === "declined" && (
+        <div className="mt-6 card" role="status">
+          <p className="font-medium">{parts(J.declined, { team: <b dir="auto">{preview?.team ?? ""}</b> })}</p>
+          <p className="mt-1 text-sm text-foreground-muted">{J.declinedSub}</p>
+          <Link href={`/${lang}`} className="btn btn-secondary btn-sm mt-4">{J.home}</Link>
         </div>
       )}
 
@@ -196,11 +245,12 @@ export default function JoinForm({ t, lang, signedInAs, person = null }: { t: Ap
             <input name="name" required autoFocus autoComplete="name" maxLength={80} dir="auto" value={name} onChange={(e) => setName(e.target.value)} placeholder={J.name} aria-label={J.name} className="input" />
             <PasswordField lang={lang} ref={pwRef} name="password" required autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={J.password} aria-label={J.password} aria-describedby="join-rules" className="input" />
             <PasswordRules id="join-rules" rules={J.rules} checks={checks} lang={lang} />
-            {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+            {err && !asking && <p role="alert" className="text-sm text-danger">{err}</p>}
             <button disabled={busy} aria-disabled={!ok ? true : undefined} aria-describedby="join-rules" className="s-btn"><Scribble kind="pill" seed="joinform-b1" fill="ink" shadow ring />{busy ? J.joining : J.submit}</button>
           </form>
           <p className="mt-3 text-xs text-foreground-muted">{parts(J.note, { team: <span dir="auto">{preview.team}</span> })}</p>
           <p className="mt-2 text-xs text-foreground-muted">{J.legal1} <Link href={`/${lang}/terms`} className="underline">{J.terms}</Link> {J.and} <Link href={`/${lang}/privacy`} className="underline">{J.privacy}</Link>.</p>
+          {declineBlock}
         </>
       )}
     </div>

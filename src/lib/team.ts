@@ -21,6 +21,7 @@ import { mfaKeys } from "./mfa";
 import { movePasskeys, passkeyKeys } from "./passkeys";
 import { revokeAllDevices } from "./devices";
 import { addressBlocked } from "./email-hold";
+import { workspaceLabel } from "./workspace-name";
 
 /**
  * Teams (seats): memberships, invites and seat accounting (docs/superpowers/specs/2026-09-29-teams-design.md;
@@ -614,7 +615,8 @@ export async function peekInvite(token: string): Promise<{ team: string; inviter
   const [owner, inviter, brand] = await Promise.all([getAccount(aid), getMembership(aid, inviterPid(inv)), getBrand(aid)]);
   if (!owner || isSuspended(owner) || !inviteHolds(inv, owner, inviter)) return null;
   const [by, login] = await Promise.all([inviter ? getPerson(inviter.pid) : null, MULTI_ORG ? getLogin(inv.email) : null]);
-  return { team: brand?.name || owner.name, inviter: by?.name || owner.name, email: inv.email, role: inv.role, expiresAt: inv.expiresAt, ...(MULTI_ORG ? { signIn: !!login } : {}) };
+  // `team`: the workspace's name as everywhere else (`workspaceLabel`, rule 3116), so a renamed workspace invites by its new name.
+  return { team: workspaceLabel(owner, brand), inviter: by?.name || owner.name, email: inv.email, role: inv.role, expiresAt: inv.expiresAt, ...(MULTI_ORG ? { signIn: !!login } : {}) };
 }
 
 /**
@@ -734,6 +736,41 @@ export async function joinInviteAsPerson(token: string, person: Person): Promise
   return { ok: true, member: { name: done.name, email: done.email, role: done.role, memberOf: done.aid } };
 }
 
+/**
+ * Decline an invite (rules 3119-3122): the holder of the mailed link says no, signed in or not. The invite is found from
+ * the token only (its SHA-256, as accept does), never from an account, an owner, an address or an id in the request, and
+ * the token is checked for shape first. Under `inviteuse:{hash}` (so an accept and a decline of the same invite never
+ * both run) and then `lock:team:{aid}`, the invite is read again and must still be stored, unexpired, in its account's
+ * index and for an account that still exists; otherwise `invalid` and nothing changes. Then the record, the index entry
+ * and the invitee's inbox entry go (`dropInvites`: the link stops working at once and the seat it held is free) and the
+ * team log gets one `invite_declined` row naming the invited address only (no person id: the invitee may have no login).
+ * The answer carries the account and the address for the route to tell the owner; it never reaches the browser.
+ */
+export async function declineInvite(token: string): Promise<{ ok: true; declined: { aid: AccountId; email: string; role: TeamRole } } | TeamFail> {
+  if (typeof token !== "string" || !TOKEN_RE.test(token)) return fail("invalid");
+  const id = inviteId(token);
+  const first = await db.get<Invite>(inviteKey(id));
+  if (!first || expired(first)) return fail("invalid");
+  const use = globalKey.inviteUse(id);
+  if (!(await db.lock(use, 30))) return fail("invalid"); // being accepted or declined right now
+  try {
+    const aid = aidFrom(inviteAccount(first));
+    const done = await withTeamLock(aid, async () => {
+      const [live, indexed, owner] = await Promise.all([db.get<Invite>(inviteKey(id)), db.sismember(invitesKey(aid), id), getAccount(aid)]);
+      if (!live || expired(live) || inviteAccount(live) !== aid || !isTeamRole(live.role) || !indexed || !owner) return null;
+      const email = normalizeEmail(live.email);
+      await Promise.all([
+        dropInvites(aid, [{ id, email }]),
+        logTeam(aid, { kind: "invite_declined", actor: { email }, target: { email }, role: live.role, via: "web" }, { teamLocked: true }),
+      ]);
+      return { aid, email, role: live.role };
+    });
+    return done ? { ok: true, declined: done } : fail("invalid");
+  } finally {
+    await db.unlock(use);
+  }
+}
+
 /** One row of the invitations inbox: what the person may see of an invite to their own address, never its id or token. */
 export type WaitingInvite = { workspace: string; inviter: string; role: TeamRole; expiresAt: string };
 
@@ -760,7 +797,7 @@ export async function invitesWaiting(p: Person): Promise<WaitingInvite[]> {
     if (!owner || isSuspended(owner) || !indexed || !inviteHolds(inv, owner, inviter)) return null;
     const { getBrand } = await import("./brand");
     const [brand, by] = await Promise.all([getBrand(aid), inviter ? getPerson(inviter.pid) : null]);
-    const workspace = brand?.name?.trim() || owner.workspaceName?.trim() || owner.name;
+    const workspace = workspaceLabel(owner, brand);
     return { id, row: { workspace, inviter: by?.name || owner.name, role: inv.role, expiresAt: inv.expiresAt } };
   });
   const gone = ids.filter((_, i) => !rows[i]);

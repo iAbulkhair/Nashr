@@ -10,6 +10,7 @@ import { workspaceCreateAllowed } from "./rate";
 import { joinInviteAsPerson, withLoginLock, type TeamFail, type TeamRole } from "./team";
 import { matchHandle, wsHandle } from "./ws-handle";
 import { asHandle } from "./ws-path";
+import { workspaceLabel } from "./workspace-name";
 
 /**
  * A person's workspaces (multi-workspace M2, docs/specs/2026-10-18-multi-org.md sections 7 "Switching", 10 and 16;
@@ -27,14 +28,14 @@ export type WorkspaceRow = { handle: string; name: string; role: Role; current: 
 /**
  * The person's workspaces for the switcher and `/{lang}/app/workspaces`: the held accounts (`heldAccounts`, which
  * re-checks every one on the forward records), then ONE `pmap` round of each account and its default brand for the
- * name: the brand's name, else the name given at create, else the owner's name. `current` is the session's account.
+ * name (`workspaceLabel`, rule 3116): the name the owner gave it, else the brand's name, else the owner's name. `current`
+ * is the session's account.
  */
 export async function listWorkspaces(p: Person, current: AccountId | null): Promise<WorkspaceRow[]> {
   const held = await heldAccounts(p);
   return pmap(held, async ({ aid, role }) => {
     const [u, brand] = await Promise.all([getAccount(aid), getBrand(aid)]);
-    const name = brand?.name?.trim() || u?.workspaceName?.trim() || u?.name || "";
-    return { handle: wsHandle(aid), name, role, current: aid === current };
+    return { handle: wsHandle(aid), name: workspaceLabel(u, brand), role, current: aid === current };
   });
 }
 

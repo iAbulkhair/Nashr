@@ -22,6 +22,7 @@ import { useAppLink, useBrandId, useWorkspace, WORKSPACE_EVENTS } from "./Worksp
 import { sessionBrandHeaders } from "@/lib/brand-fetch";
 import { brandFromPath } from "@/lib/brand-path";
 import BrandSwitcher, { type SwitcherBrand } from "./BrandSwitcher";
+import { railCookie } from "@/lib/rail";
 
 /** An agent's avatar sits on the agent's own colour; Faris and Majed are dark fills, so their letter is paper. */
 const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id})` }, tone: id === "faris" || id === "majed" ? "text-inverse-foreground" : "text-accent-foreground" });
@@ -39,8 +40,15 @@ const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id}
  * WorkspaceContext the layout fills, not from three requests per navigation; outside it (a test rendering the rail alone)
  * the props are used and nothing is fetched. On a phone the rail opens in a `Sheet` (focus kept inside, Escape and the
  * backdrop close it, focus goes back to the menu button); the account menu is a `Menu` with arrow keys.
+ *
+ * The folding rail (rules 3123-3127): on a desktop the rail folds to icons only (w-16) and back with one button at its
+ * top, a real `<button>` with `aria-expanded` and a label that says what it does next. Folded, every row keeps its name as
+ * `aria-label` and `title` (the approvals count rides in the label), the bell stays, and the account menu opens from the
+ * avatar. The choice is a cookie on this browser (`railCookie`, src/lib/rail.ts) that the layout reads and passes as
+ * `collapsed`, so the first paint has the chosen width. The arrow is the directional `next` icon, mirrored in Arabic and
+ * turned to point at the rail's own edge while open. The phone header and its sheet never fold.
  */
-export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; admin?: boolean; supportWa?: string }) {
+export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa, collapsed = false }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; admin?: boolean; supportWa?: string; collapsed?: boolean }) {
   const path = usePathname();
   const sp = useSearchParams();
   const r = useRouter();
@@ -54,6 +62,13 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
   const N = t.nav;
   const X = t.ux.nav;
   const [open, setOpen] = useState(false);
+  const [folded, setFolded] = useState(collapsed);
+  /** Fold or unfold the desktop rail and remember it on this browser (rule 3124). */
+  const toggleFold = () => {
+    const next = !folded;
+    setFolded(next);
+    try { document.cookie = railCookie(next, window.location.protocol === "https:"); } catch { /* the rail still folds for this page */ }
+  };
   const [team, setTeam] = useState(false);
   const [q, setQ] = useState("");
   const credits = ws?.credits ?? user.credits;
@@ -107,6 +122,22 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
       {badge ? <span className="tnum rounded-full bg-inverse px-2 text-xs font-semibold text-inverse-foreground" dir="ltr">{badge}</span> : null}
     </Link>
   );
+  /** The fold button (rule 3125): says what it will do, points at the rail's edge while open and away from it while folded. */
+  const foldButton = (
+    <button type="button" onClick={toggleFold} aria-expanded={!folded} aria-controls="app-rail" aria-label={folded ? X.expand : X.collapse} title={folded ? X.expand : X.collapse} data-testid="rail-fold" className="icon-btn shrink-0 text-foreground-muted hover:text-foreground">
+      <Icon name="next" mirror className={`h-4 w-4 ${folded ? "" : "rotate-180"}`} />
+    </button>
+  );
+  /** A folded row (rule 3126): the icon alone, its name as `aria-label` and `title`; a count is in the label and drawn small. */
+  const iconRow = (href: string, label: string, icon: IconName, badge?: number) => {
+    const name = badge ? `${label} (${badge})` : label;
+    return (
+      <Link href={href} aria-label={name} title={name} aria-current={active(href) ? "page" : undefined} className={`relative grid h-10 w-10 place-items-center rounded-lg transition ${active(href) ? "bg-background-muted text-foreground" : "text-foreground-muted hover:bg-background-muted/60 hover:text-foreground"}`}>
+        <Icon name={icon} className="h-5 w-5" />
+        {badge ? <span aria-hidden className="tnum absolute -end-1 -top-1 min-w-4 rounded-full bg-inverse px-1 text-center text-xs font-semibold leading-4 text-inverse-foreground" dir="ltr">{badge}</span> : null}
+      </Link>
+    );
+  };
   /**
    * A named group of rows. The title is a label, not a heading: the rail sits before the screen's own h1 and h2s, so six
    * headings here (twelve with the phone sheet open) came first in a screen reader's heading list and on the same level
@@ -131,9 +162,12 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
       <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />
       {bell && <NotificationCenter t={t} lang={lang} align="start" />}
+      {/* Only the desktop rail folds (the phone sheet draws the top without the bell). */}
+      {bell && foldButton}
     </div>
     </>
   );
+
 
   const nav = (p: string) => (
     <nav aria-label={lang === "ar" ? "التنقل الرئيسي" : "Main navigation"} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
@@ -211,6 +245,37 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     </nav>
   );
 
+  /** The folded rail (rules 3125-3126): the fold button and the bell, then every destination row as an icon. */
+  const compact = (
+    <>
+      <div className="flex flex-col items-center gap-1 border-b-[1.5px] border-border-strong py-3">
+        {foldButton}
+        <NotificationCenter t={t} lang={lang} align="start" />
+      </div>
+      <nav aria-label={lang === "ar" ? "التنقل الرئيسي" : "Main navigation"} className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-3">
+        <ul className="grid gap-1">
+          <li>{iconRow(to("/chat"), N.main, "chat")}</li>
+          <li>{iconRow(base, N.approvals, "inbox", pending)}</li>
+          <li>{iconRow(to("/todo"), N.todo, "check")}</li>
+          <li>{iconRow(to("/calendar"), N.calendarCh, "calendar")}</li>
+        </ul>
+        <ul className="grid gap-1 border-t border-border pt-1">
+          <li>{iconRow(to("/conversations"), N.history, "search")}</li>
+          <li>{iconRow(to("/files"), N.files, "folder")}</li>
+          <li>{iconRow(to("/reports"), N.performance, "chart")}</li>
+          <li>{iconRow(to("/activity"), N.activity, "clock")}</li>
+          <li>{iconRow(to("/inspo"), N.contentInspo, "spark")}</li>
+          <li>{iconRow(to("/instructions"), N.instructions, "strategy")}</li>
+        </ul>
+        <ul className="grid gap-1 border-t border-border pt-1">
+          <li>{iconRow(settingsHref(to), N.settings, "settings")}</li>
+          {show.refer && <li>{iconRow(to("/refer"), N.refer, "gift")}</li>}
+          {show.partner && <li>{iconRow(to("/partner"), PARTNER_COPY[lang].nav, "growth")}</li>}
+          <li>{iconRow(`/${lang}/updates`, N.updates, "sapling")}</li>
+        </ul>
+      </nav>
+    </>
+  );
   // The account menu. Members moved to the rail's "Account and team" group (it was listed twice); the account pages
   // point into the settings area (rule 1141).
   const links = [
@@ -220,15 +285,20 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     ...(admin ? [[adminHref(lang, "overview"), N.adminPanel]] : []),
   ];
   // Rule 1204: the theme choice sits with the language in the account menu, one tap from every screen.
-  const account = (
-    <div className="border-t border-border p-4 pt-3">
+  const account = (iconOnly: boolean) => (
+    <div className={iconOnly ? "flex justify-center border-t border-border py-3" : "border-t border-border p-4 pt-3"}>
       <Menu
         label={X.account}
         placement="top"
-        className="w-full"
+        className={iconOnly ? "" : "w-full"}
         items={links.map(([h, l]) => ({ key: h, href: h, label: l, onSelect: () => setOpen(false) }))}
         footer={<div className="grid gap-2 px-2"><ThemeToggle lang={lang} size="sm" className="justify-self-start" /><div className="flex items-center justify-between"><LangToggle lang={lang} size="sm" /><LogoutButton label={N.logout} lang={lang} /></div></div>}
-        trigger={(props, isOpen) => (
+        trigger={(props, isOpen) => iconOnly ? (
+          // Folded: the avatar alone; the name, plan and balance are in its label and tooltip.
+          <button {...props} aria-label={`${X.account}: ${user.name || user.email}, ${planName}, ${credits} ${N.credits}`} title={`${user.name || user.email} · ${planName} · ${credits} ${N.credits}`} className="grid h-10 w-10 place-items-center rounded-lg hover:bg-background-muted/60">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-background-muted text-sm font-semibold text-foreground" aria-hidden>{(user.name || user.email).charAt(0).toUpperCase()}</span>
+          </button>
+        ) : (
           <button {...props} aria-label={`${X.account}: ${user.name || user.email}`} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm text-foreground hover:bg-background-muted/60">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-background-muted font-semibold" aria-hidden>{(user.name || user.email).charAt(0).toUpperCase()}</span>
             <span className="min-w-0 flex-1">
@@ -245,7 +315,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
 
   return (
     <>
-      <aside data-testid="app-sidebar" className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-e-[1.5px] border-border-strong bg-surface text-foreground lg:flex">{top(true)}{nav("rail")}{account}</aside>
+      <aside id="app-rail" data-testid="app-sidebar" data-folded={folded ? "true" : undefined} className={`sticky top-0 hidden h-dvh shrink-0 flex-col border-e-[1.5px] border-border-strong bg-surface text-foreground lg:flex ${folded ? "w-16" : "w-64"}`}>{folded ? <>{compact}{account(true)}</> : <>{top(true)}{nav("rail")}{account(false)}</>}</aside>
       <header className="sticky top-0 z-40 flex items-center justify-between gap-2 border-b-[1.5px] border-border-strong bg-surface px-4 py-2 text-foreground lg:hidden">
         <Link href={to("/chat")} className="font-display text-xl font-bold"><Wordmark lang={lang} name={t.appName} /></Link>
         <div className="flex items-center gap-1">
@@ -256,7 +326,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
       </header>
       {open && (
         <Sheet lang={lang} label={N.menu} onClose={() => setOpen(false)} className="lg:hidden">
-          <div className="flex min-h-full flex-col pt-10">{top(false)}{nav("sheet")}{account}</div>
+          <div className="flex min-h-full flex-col pt-10">{top(false)}{nav("sheet")}{account(false)}</div>
         </Sheet>
       )}
     </>
