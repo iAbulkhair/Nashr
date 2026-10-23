@@ -75,6 +75,8 @@ describe("rule 2071: `isSuspended` is the only reader of a stored `suspended`", 
     "suspended: u.suspended, billing: u.billing", // entitlements.ts copies the field into EntUser; inactiveOf reads it with isSuspended
     "suspended: w.suspended, archived: w.archived", // evals.ts: w.suspended is already isSuspended(owner)
     "suspended: after.suspended, suspendedUntil: after.until", // the admin route's answer, built from isSuspended
+    'case "suspended": return r.suspended;', // admin-workspaces-math.ts: WorkspaceRow.suspended, the boolean rowOf computed with isSuspended (rule 3721)
+    "const live = all.filter((r) => !r.suspended);", // admin-workspaces.ts: the same row boolean, for the tiles (rule 3720)
   ];
   it("no other `.suspended` read in src/lib or src/app outside suspension.ts; writes assign the whole field", () => {
     const bad: string[] = [];

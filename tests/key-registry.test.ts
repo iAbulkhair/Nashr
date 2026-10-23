@@ -130,6 +130,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.usersAll(), "users:all"],
     [globalKey.runReceipt("routine:a@b.example:dana_weekly_report:2026-10-18"), "runrec:routine:a@b.example:dana_weekly_report:2026-10-18"],
     [globalKey.cronReport("weekly"), "cronreport:weekly"],
+    [globalKey.workspaceAgg(), "admin:wsagg"],
     [globalKey.digests(), "notifydigests"],
     [globalKey.eventDay("2026-10-20", "signup"), "ev:2026-10-20:signup"],
     [globalKey.opsProposal("abc"), "ops:proposal:abc"],
