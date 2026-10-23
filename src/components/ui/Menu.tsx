@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { anchorClass, useOutsidePress } from "./anchored";
 
 /** One row of a menu: a link, or an action. */
 export type MenuItem = { key: string; label: React.ReactNode; href?: string; onSelect?: () => void; external?: boolean };
@@ -67,10 +68,10 @@ export default function Menu({ label, items, trigger, footer, placement = "botto
     if (!open) return;
     const n = items.length;
     rows.current[first.current === "last" ? n - 1 : 0]?.focus();
-    const outside = (e: PointerEvent) => { if (box.current && !box.current.contains(e.target as Node)) close(false); };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
-  }, [open, items.length, close]);
+  }, [open, items.length]);
+  // A press outside closes it without taking focus back; the panel sits with the shared anchoring (rule 3632).
+  const clickAway = useCallback(() => close(false), [close]);
+  useOutsidePress(open, box, clickAway);
 
   function onTriggerKey(e: React.KeyboardEvent<HTMLButtonElement>) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -104,7 +105,7 @@ export default function Menu({ label, items, trigger, footer, placement = "botto
         onKeyDown: onTriggerKey,
       }, open)}
       {open && (
-        <div className={`absolute z-50 min-w-56 rounded-xl border-[1.5px] border-border-strong bg-popover p-2 text-sm text-foreground ${placement === "top" ? "bottom-full mb-1" : "top-full mt-1"} ${align === "start" ? "start-0" : "end-0"}`}>
+        <div className={`absolute z-50 min-w-56 rounded-xl border-[1.5px] border-border-strong bg-popover p-2 text-sm text-foreground ${anchorClass(placement, align)}`}>
           <ul id={`${id}-menu`} role="menu" aria-label={label} onKeyDown={onMenuKey} className="grid gap-0.5">
             {items.map((it, i) => (
               <li key={it.key} role="none">

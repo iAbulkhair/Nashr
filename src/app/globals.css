@@ -305,6 +305,12 @@ body {
   html:not([data-motion="off"]) .plans-rise ul > li:nth-child(n + 5) { animation-delay: 280ms; }
 }
 
+/* The tooltip (rule 3634) fades in over 120ms, only where motion is allowed and the site's pause switch is not off. */
+@keyframes tip-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-motion="off"]) .tip { animation: tip-in 120ms var(--ease-out) both; }
+}
+
 :focus-visible { outline: var(--stroke-focus) solid var(--color-ring); outline-offset: 2px; }
 /* Lemon is the focus ring on ink (rule 1081): an ink ring on an ink surface is invisible. Comes after the global ring so
    it wins at equal specificity. */

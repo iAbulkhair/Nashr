@@ -1,12 +1,14 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import type { Notif } from "@/lib/notifications";
 import { Icon } from "./Icons";
 import { Time } from "@/components/ui/Time";
 import { Skeleton } from "@/components/ui/Skeleton";
+import Popover from "@/components/ui/Popover";
+import Tooltip from "@/components/ui/Tooltip";
 import { useAppLink, useWorkspace, useWsHandle, WORKSPACE_EVENTS } from "./WorkspaceContext";
 import { inWorkspace } from "@/lib/ws-path";
 
@@ -53,9 +55,6 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
   const [items, setItems] = useState<Notif[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [said, setSaid] = useState("");
-  const box = useRef<HTMLDivElement>(null);
-  const btn = useRef<HTMLButtonElement>(null);
-  const id = useId();
 
   async function load() {
     setFailed(false);
@@ -81,27 +80,30 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
     if (left !== null) ws?.setUnread(left);
   }
 
-  function toggle() {
+  function onOpenChange(next: boolean) {
     // The list is read when the panel opens (an event, not an effect), so opening costs one request and nothing else does.
-    if (!open) void load();
-    setOpen(!open);
+    if (next) void load();
+    setOpen(next);
   }
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: PointerEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
-  }, [open]);
 
   const name = unread > 0 ? `${U.title}, ${U.unreadN.replace("{n}", bellCount(unread))}` : U.title;
   return (
-    <div ref={box} className="relative" onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); btn.current?.focus(); } }}>
-      <button ref={btn} type="button" onClick={toggle} aria-expanded={open} aria-controls={open ? `${id}-panel` : undefined} aria-label={name} title={name} className="icon-btn relative text-foreground">
-        <Icon name="bell" className="h-5 w-5" />
-        {unread > 0 && <span aria-hidden className="tnum absolute -top-0.5 end-0 min-w-5 rounded-full bg-danger px-1 text-center text-xs font-semibold leading-5 text-inverse-foreground" dir="ltr">{bellCount(unread)}</span>}
-      </button>
-      {open && (
-        <section id={`${id}-panel`} aria-label={U.title} className={`absolute top-full z-50 mt-1 w-[min(22rem,calc(100vw-2rem))] rounded-xl border-[1.5px] border-border-strong bg-popover text-foreground ${align === "start" ? "start-0" : "end-0"}`}>
+    <Popover
+      label={U.title}
+      open={open}
+      onOpenChange={onOpenChange}
+      align={align}
+      panelClassName="w-[min(22rem,calc(100vw-2rem))]"
+      trigger={(p) => (
+        <Tooltip label={name}>
+          <button {...p} aria-label={name} className="icon-btn relative text-foreground">
+            <Icon name="bell" className="h-5 w-5" />
+            {unread > 0 && <span aria-hidden className="tnum absolute -top-0.5 end-0 min-w-5 rounded-full bg-danger px-1 text-center text-xs font-semibold leading-5 text-inverse-foreground" dir="ltr">{bellCount(unread)}</span>}
+          </button>
+        </Tooltip>
+      )}
+    >
+      <>
           <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
             <h2 className="text-sm font-semibold">{U.title}</h2>
             {unread > 0 && <button type="button" onClick={markAll} className="min-h-[var(--hit-min)] rounded-lg px-2 text-xs font-semibold text-foreground underline-offset-2 hover:underline pointer-fine:min-h-8">{U.markAll}</button>}
@@ -131,8 +133,7 @@ export default function NotificationCenter({ t, lang, align = "start", fallbackU
           <footer className="border-t border-border px-3 py-2 text-sm">
             <Link href={href("/notifications")} onClick={() => setOpen(false)} className="inline-flex min-h-[var(--hit-min)] items-center font-semibold text-foreground underline-offset-2 hover:underline pointer-fine:min-h-8">{U.seeAll}</Link>
           </footer>
-        </section>
-      )}
-    </div>
+      </>
+    </Popover>
   );
 }

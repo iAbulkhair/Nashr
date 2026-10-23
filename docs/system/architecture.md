@@ -383,6 +383,19 @@ Opportunistic sweep: the image, video and poll routes schedule `maybeSweep(media
 
 `npm run check` is `tsc --noEmit -p . && eslint && vitest run`. Type-aware lint made `eslint` slower (18.5 s to 28 s) and the ratchet test lints `src` once more inside the unit tests (about 20 s, in parallel with the other files). The lockfile rule in CLAUDE.md still applies when a dependency changes: npm 11.5 drops the optional `@rolldown/binding-*` entries when it regenerates the lock, so a change to a single root line was made by hand.
 
+### 2.9 UI primitives (2026-10-23, rules 3630-3639)
+
+The primitives in `src/components/ui/` are hand-made; the founder compared Base UI and kept them, so no UI library (Base UI, Radix, tailwind-merge) is a dependency. What they share lives in two files:
+
+| Piece | Where | What |
+|---|---|---|
+| `cn`, `mergeRefs`, `mergeTriggerProps` | `src/lib/ui-utils.ts` | `cn` joins class names and skips falsy ones; it does not resolve two classes that set the same property, so a primitive's own classes never set what its caller overrides. `mergeTriggerProps(own, injected)` lets one element carry two behaviours (a Popover's and a Tooltip's): handlers chained, refs merged, aria id lists joined |
+| Anchoring | `src/components/ui/anchored.ts` | `anchorClass` (logical `start-0`/`end-0` classes, so Arabic mirrors), `flipPlacement` and `placeFixed` (flip at the screen edge, `start` is the right edge when the page is right-to-left), `useFlip`, `useOutsidePress`, `useOpenState` (controlled or uncontrolled) |
+| `Menu`, `Popover`, `Tooltip` | `src/components/ui/` | A menu of commands (rule 1112); a floating panel for a form or an explanation (`role="dialog"`, non-modal, rule 3633); a hover and focus hint (`role="tooltip"`, rule 3634). Used by `NotificationCenter` (Popover plus Tooltip) and the icon-only `CopyButton` (Tooltip) |
+| shadcn CLI config | `components.json` (rule 3635) | Points `npx shadcn add` at `src/components/ui`, `cn` at `src/lib/ui-utils`, the Tailwind entry at `src/app/globals.css`, and sets `rtl: true` |
+
+A component pulled with the shadcn CLI is source in our tree, and `rtl: true` makes the CLI convert physical classes (`ml-`, `pr-`, `left-`, `text-left`) to logical ones (`ms-`, `pe-`, `start-`, `text-start`) as it adds them. Two things stay ours to check before it ships: the CLI's styles import their own primitive library (Radix or Base UI), which this project does not install, so the component is rewritten on the hand-made primitives or not used; and the lint rules 1095-1098 and 1200-1201 still apply (no physical sides, no raw palette colours, semantic roles only), so a pulled file is linted and its colours mapped to the Thakeen tokens (`bg-popover`, `text-foreground`, `border-border-strong`) before use.
+
 ## 3. Redis key namespace
 
 "scope" means `email` for the default brand or `email#brandId` for extra brands (`workspaceScope` in `src/lib/keys.ts`; `scopeFor` in `src/lib/brands.ts` is its plain-string form). "email" and "owner" mean the normalized account (owner) email; "login" means the address a person signs in with, an owner's or a member's (2026-09-29). No key has a TTL unless stated.

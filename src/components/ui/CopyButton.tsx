@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/app/Icons";
+import Tooltip from "./Tooltip";
 
 type Lang = "ar" | "en";
 const WORDS = {
@@ -30,12 +31,15 @@ export default function CopyButton({ text, lang, label, iconOnly = false, classN
   }
   const name = label ?? W.copy;
   const said = state === "copied" ? W.copied : state === "failed" ? W.failed : "";
+  const button = (
+    <button type="button" onClick={copy} aria-label={iconOnly ? name : undefined} className={iconOnly ? `icon-btn ${className}` : `btn btn-secondary btn-xs ${className}`}>
+      <Icon name={state === "copied" ? "check" : "copy"} className={iconOnly ? "h-4 w-4" : "h-3.5 w-3.5"} />
+      {!iconOnly && (said || name)}
+    </button>
+  );
   return (
     <>
-      <button type="button" onClick={copy} aria-label={iconOnly ? name : undefined} title={iconOnly ? name : undefined} className={iconOnly ? `icon-btn ${className}` : `btn btn-secondary btn-xs ${className}`}>
-        <Icon name={state === "copied" ? "check" : "copy"} className={iconOnly ? "h-4 w-4" : "h-3.5 w-3.5"} />
-        {!iconOnly && (said || name)}
-      </button>
+      {iconOnly ? <Tooltip label={name}>{button}</Tooltip> : button}
       <span role="status" className="sr-only">{said}</span>
     </>
   );

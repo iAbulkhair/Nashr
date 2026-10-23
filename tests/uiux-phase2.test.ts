@@ -227,9 +227,11 @@ describe("rule 1122: the bell names its count and loads its list only when opene
   });
   it("opening reads the list in the click handler, not in an effect; marking read is a button", () => {
     const src = read("src/components/app/NotificationCenter.tsx");
-    expect(src).toMatch(/function toggle\(\) \{[\s\S]*?if \(!open\) void load\(\);/);
+    // Since rule 3636 the bell is a Popover: it owns the trigger's aria-expanded and the click-away, Escape and focus return.
+    expect(src).toMatch(/function onOpenChange\(next: boolean\) \{[\s\S]*?if \(next\) void load\(\);/);
     expect(src).toContain("onClick={markAll}");
-    expect(src).toContain("aria-expanded={open}");
+    expect(src).toContain("onOpenChange={onOpenChange}");
+    expect(read("src/components/ui/Popover.tsx")).toContain('"aria-expanded": isOpen');
   });
 });
 
