@@ -11,6 +11,7 @@ import { Icon } from "./Icons";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
+import Progress from "@/components/ui/Progress";
 import { useAppLink } from "@/components/app/WorkspaceContext";
 
 type TeamRole = "admin" | "member";
@@ -76,7 +77,6 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
   const locked = busy !== "";
   const { used, limit } = view.seats;
   const full = used >= limit;
-  const pct = Math.min(100, Math.round((used / Math.max(1, limit)) * 100));
 
   const errorCode = (r: Result) => r.status === 429 ? "rate_limited" : typeof r.j.error === "string" ? r.j.error : "failed";
   const errorText = (r: Result) => {
@@ -192,9 +192,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
           <span className="flex items-center gap-2"><Icon name="users" className="h-4 w-4 text-foreground" />{T.seats}: <b className="tnum" dir="ltr">{used} / {limit}</b></span>
           {full && perms.inviteAdmin && <Link href={href("/settings/billing")} className="text-xs font-medium text-foreground underline">{T.plans}</Link>}
         </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-label={T.seats} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)}>
-          <div className={`h-full rounded-full ${full ? "bg-lemon" : "bg-foreground"}`} style={{ width: `${pct}%` }} />
-        </div>
+        <Progress className="mt-2" size="sm" trackClassName="bg-foreground/10" tone={full ? "warn" : "default"} value={used} max={limit} label={T.seats} valueText={`${used} / ${limit}`} />
         <p className="mt-2 text-xs text-foreground-muted">{T.seatsNote}</p>
       </div>
 

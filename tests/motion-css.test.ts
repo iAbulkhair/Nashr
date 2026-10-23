@@ -51,7 +51,9 @@ describe("motion stays calm (rule 511)", () => {
     expect(fill).toContain("scaleX(var(--p))");
     expect(fill).not.toMatch(/transition[^;]*width/);
     expect(css).toMatch(/\[dir="?rtl"?\]\s*\.journey-fill\s*\{[^}]*transform-origin:\s*right/);
-    for (const f of ["src/components/app/JourneyCard.tsx", "src/components/app/ChatPanel.tsx"]) {
+    // JourneyCard draws the bar through Progress (rule 3130), which owns the `--p` variable.
+    expect(read("src/components/app/JourneyCard.tsx")).toContain('variant="journey"');
+    for (const f of ["src/components/ui/Progress.tsx", "src/components/app/ChatPanel.tsx"]) {
       const src = read(f);
       expect(src, f).toContain('"--p"');
       expect(src, f).not.toMatch(/journey-fill"[^>]*width:/);

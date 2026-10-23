@@ -29,6 +29,7 @@ import Scribble from "@/components/Scribble";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
 import EmptyState from "@/components/ui/EmptyState";
+import { Sparkline } from "@/components/ui/Chart";
 import { emptyCopy, emptyHelp } from "@/lib/empty-copy";
 import { METRICS_KEY, readStored, writeStored } from "@/lib/cookie-names";
 import { useAppLink } from "@/components/app/WorkspaceContext";
@@ -161,6 +162,10 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
             <p className="text-xs text-foreground-muted">{value[key].label}</p>
             <p className="mt-1 font-display text-3xl font-bold text-foreground" dir="ltr">{value[key].value}</p>
             {value[key].sub && <p className="mt-0.5 text-xs text-foreground-muted" dir="auto">{value[key].sub}</p>}
+            {/* A daily series already loaded for the trends chart (k.daily): no new read. Only the three counts have one. */}
+            {(key === "created" || key === "approved" || key === "published") && k.daily.length > 1 && (
+              <Sparkline className="mt-2" dir={lang === "ar" ? "rtl" : "ltr"} values={k.daily.map((d) => d[key])} summary={`${value[key].label}: ${k.daily.map((d) => d[key]).join(lang === "ar" ? "، " : ", ")}`} />
+            )}
           </div>
         ))}
         <button onClick={() => setAdding(!adding)} className="grid min-h-24 place-items-center rounded-xl border-2 border-dashed border-border text-sm text-foreground-muted hover:border-border-strong hover:text-foreground"><span><span className="block text-2xl">+</span>{R.addMetric}</span></button>

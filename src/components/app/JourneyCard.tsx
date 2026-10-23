@@ -5,6 +5,7 @@ import { levelFor, type Journey, type LevelId, type MilestoneId } from "@/lib/jo
 import { Icon } from "./Icons";
 import { JOURNEY_KEY, readStored, writeStored } from "@/lib/cookie-names";
 import { useAppLink } from "@/components/app/WorkspaceContext";
+import Progress from "@/components/ui/Progress";
 
 const STR = {
   ar: {
@@ -77,7 +78,6 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
   const points = milestones.filter((m) => m.done).reduce((s, m) => s + m.points, 0);
   const { level, nextAt, nextLevel } = levelFor(doneCount);
   const next = milestones.find((m) => !m.done);
-  const pct = Math.round((doneCount / milestones.length) * 100);
 
   function celebrate(kind: "milestone" | "level", text: string) {
     setToast({ kind, text });
@@ -151,7 +151,7 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
       </header>
 
       <div className="px-4 pt-3">
-        <div className="journey-track" role="progressbar" aria-valuemin={0} aria-valuemax={milestones.length} aria-valuenow={doneCount}><div className="journey-fill" style={{ "--p": Math.max(4, pct) / 100 } as React.CSSProperties} /></div>
+        <Progress variant="journey" value={doneCount} max={milestones.length} minFill={4} label={S.title} valueText={`${doneCount} ${S.of} ${milestones.length}`} />
         <p className="mt-1.5 flex justify-between text-xs text-foreground-muted"><span className="tnum" dir="auto">{doneCount} {S.of} {milestones.length}</span>{nextAt && nextLevel && <span dir="auto">{S.toLevel(nextAt - doneCount)} · {S.levels[nextLevel]}</span>}</p>
       </div>
 

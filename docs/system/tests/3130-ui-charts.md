@@ -1,0 +1,15 @@
+# Coverage: Progress and in-house charts (rules 3130-3136)
+
+Status on 2026-10-23 on branch `claude/sup-ui-charts`. Idea taken from the Supastarter template (progress, chart, stat tile chart), built Thakeen's way: server-safe components in `src/components/ui`, pure maths in `src/lib/chart-math.ts`, tokens only, no chart library. Release step: none. No route, permission, environment variable or stored shape changes (expand/contract does not apply).
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 3130 | One `Progress` component (`src/components/ui/Progress.tsx`): `role="progressbar"` with min, max, now, a required name and optional `aria-valuetext`; the chat allowance card, the team seats bar and the journey card use it and look as before (journey keeps its own variant) | `tests/ui-charts-3130.test.ts` (rule 3130: markup, warn tone, journey variant, no inline `role="progressbar"` left in the three files) | a rendered RTL screenshot test once the repo has a browser harness |
+| 3131 | Chart maths are pure helpers in `src/lib/chart-math.ts` (`percent`, `clamp`, `scalePoints`, `linePath`, `areaPath`, `barRects`); `BarChart`, `LineChart` and `Sparkline` in `src/components/ui/Chart.tsx` only draw what they return | `tests/ui-charts-3130.test.ts` (rule 3131) | none |
+| 3132 | Time runs in the reading direction: with `dir="rtl"` the oldest point or bar is at the right edge and the newest at the left, heights unchanged; axis labels are HTML and follow `dir` | `tests/ui-charts-3130.test.ts` (rule 3132: `xAt`, `scalePoints`, `barRects`, rendered first bar) | none |
+| 3133 | A chart is not read from its drawing: the SVG is `aria-hidden`, the numbers are in a visually hidden table with caption and headers (bars, line) or a caller-worded `summary` (sparkline); colours are `--chart-*` tokens, no hex; an empty series draws nothing | `tests/ui-charts-3130.test.ts` (rule 3133) | none |
+| 3134 | Sparkline in the Reports stat tiles (Created, Approved, Published) from `k.daily`, the series the page already loads for the trends chart: no new Redis read. Fewer than two points draws nothing | `tests/ui-charts-3130.test.ts` (rule 3134: component and source scan) | none |
+| 3135 | No chart library and no new npm dependency; `Chart.tsx` imports only from `@/` | `tests/ui-charts-3130.test.ts` (rule 3135) | none |
+| 3136 | `Progress` never reports an impossible state: a value above the limit is shown full, a zero or missing limit is empty, a negative value is zero | `tests/ui-charts-3130.test.ts` (rule 3136) | none |
+
+Known and left: the admin console overview has no ready per-tile series (its tiles are totals; the only series is the events-per-day chart, which draws four lines), so no sparkline was added there. The existing trends chart in `ReportsPanel` and the admin `Events` chart still draw left to right in Arabic; moving them onto `LineChart` is a later step. `BarChart` and `LineChart` are built and tested but not yet used on a page. The console funnel keeps its CSS percentage bars.

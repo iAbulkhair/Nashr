@@ -6,6 +6,7 @@ import { runwayLine, type Runway } from "@/lib/usage-view";
 import { formatCount } from "@/lib/pricing";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Switch from "@/components/ui/Switch";
+import Progress from "@/components/ui/Progress";
 import { useToast } from "@/components/ui/Toast";
 
 /**
@@ -44,7 +45,6 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const trial = s.period === "trial";
-  const pct = Math.min(100, Math.round((s.used / Math.max(1, s.allowance)) * 100));
   const hold = formatCount(s.overflow.hold);
   const n = (v: number) => formatCount(v);
   const overflowOn = s.overflow.on && s.overflow.available;
@@ -94,9 +94,7 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
         <span>{trial ? (ar ? "المستخدم في التجربة" : "Used in your trial") : (ar ? "المستخدم هذا الشهر" : "Used this month")}</span>
         <span className="font-mono" dir="ltr" data-chat-used="">{n(s.used)} / {n(s.allowance)}</span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-background-muted" role="progressbar" aria-valuemin={0} aria-valuemax={s.allowance} aria-valuenow={s.used} aria-label={ar ? "رسائل الدردشة المستخدمة" : "Chat messages used"}>
-        <div className={`h-full ${s.left > 0 ? "bg-foreground" : "bg-lemon"}`} style={{ width: `${pct}%` }} />
-      </div>
+      <Progress className="mt-2" tone={s.left > 0 ? "default" : "warn"} value={s.used} max={s.allowance} label={ar ? "رسائل الدردشة المستخدمة" : "Chat messages used"} />
       <p className="mt-2 text-sm text-foreground-muted">{period}</p>
       {pace && <p className="mt-1 text-sm text-foreground-muted">{pace}</p>}
       {(s.overflow.used > 0 || s.overflow.credits > 0) && <p className="mt-1 text-sm text-foreground-muted" data-chat-overflow-used="">{ar ? `${n(s.overflow.used)} رسالة إضافية هذا الشهر على الكريدت، خُصم عليها ${n(s.overflow.credits)} كريدت.` : `${n(s.overflow.used)} more this month, continued on credits: ${n(s.overflow.credits)} ${s.overflow.credits === 1 ? "credit" : "credits"} billed.`}</p>}
