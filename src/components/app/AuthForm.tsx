@@ -22,6 +22,8 @@ import { buttonClass } from "@/components/ui/button-class";
 import Callout from "@/components/ui/Callout";
 import { Field, Input } from "@/components/ui/Field";
 import { appHref } from "@/lib/ws-path";
+import Tabs, { TabPanel } from "@/components/ui/Tabs";
+import { MagicRequest } from "./MagicLanding";
 
 // Every field has a visible label (rule 1090): a placeholder is an example and disappears as soon as someone types.
 
@@ -232,11 +234,27 @@ async function passkeyCeremony(autofill: boolean, signal?: AbortSignal, picked?:
   return { stage: "verify", p: await postJson("/api/auth/passkey/verify", { response }) };
 }
 
-export function LoginForm({ t, lang, google = false, passkeys = false }: { t: AppDict; lang: Lang; google?: boolean; passkeys?: boolean }) {
+/** The two ways in while AUTH_ENGINE=better-auth (rule 3417): the tab list's name and its two tabs. */
+const LOGIN_TABS = {
+  ar: { label: "طريقة الدخول", password: "كلمة المرور", link: "رابط بالبريد" },
+  en: { label: "How to sign in", password: "Password", link: "Email link" },
+} as const;
+type LoginTab = "password" | "link";
+
+/**
+ * The log-in form. `betterAuth` (AUTH_ENGINE=better-auth, rule 3417) adds the Password / Email link tabs and sends the
+ * password to better-auth's wrapper; off, the markup and the request are main's.
+ */
+export function LoginForm({ t, lang, google = false, passkeys: passkeysOn = false, betterAuth = false, turnstileKey = null }: { t: AppDict; lang: Lang; google?: boolean; passkeys?: boolean; betterAuth?: boolean; turnstileKey?: string | null }) {
   const r = useRouter();
   const sp = useSearchParams();
   const nextParam = sp.get("next") ?? "";
   const next = safeNext(nextParam);
+  // `?tab=link` (the magic page's "request a new link") opens the Email link tab; only while the switch is on.
+  const [tab, setTab] = useState<LoginTab>(() => (betterAuth && sp.get("tab") === "link" ? "link" : "password"));
+  // Passkeys live in the password tab: the address field that offers them is not drawn on the Email link tab, so the
+  // autofill waits (its effect's cleanup cancels it) until the password tab is back.
+  const passkeys = passkeysOn && tab === "password";
   const [err, setErr] = useState(() => googleMessage(sp.get("google"), lang));
   const [busy, setBusy] = useState(false);
   // Two-step sign-in (rule 1934): the password was right and the account wants a code; no session exists yet. A Google
@@ -263,7 +281,8 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
     setBusy(true);
     setErr("");
     try {
-      const p = await postJson("/api/auth/login", Object.fromEntries(new FormData(e.currentTarget)));
+      // The same two fields either way; the better-auth wrapper answers in this route's shape (rule 3412).
+      const p = await postJson(betterAuth ? "/api/better-auth/sign-in/email" : "/api/auth/login", Object.fromEntries(new FormData(e.currentTarget)));
       if (p.body.mfa === true) { setMfa(true); return; }
       // "Wrong email or password" only for a 401: a rate limit, a dropped connection and a server error each say so,
       // so a customer with the right password is not sent to a reset (rule 433).
@@ -377,19 +396,29 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
       </div>
     );
   }
+  const L = LOGIN_TABS[lang];
+  const passwordForm = (
+    <form onSubmit={onSubmit} className={betterAuth ? "grid gap-3" : google ? "mt-3 grid gap-3" : "mt-6 grid gap-3"}>
+      {/* `webauthn` lets the browser offer saved passkeys in the address field's suggestions (conditional UI). */}
+      <Field label={t.login.email}><Input name="email" required type="email" autoComplete={passkeys ? "username webauthn" : "username"} /></Field>
+      <Field label={t.login.password}><PasswordField lang={lang} name="password" required autoComplete="current-password" /></Field>
+      {err && <Callout tone="danger">{err}</Callout>}
+      <Button type="submit" variant="pill" seed="authform-b2" loading={busy}>{t.login.submit}</Button>
+      {showPasskeyButton(passkeys, supported) && <Button type="button" variant="secondary" block onClick={onPasskey}>{t.login.passkey}</Button>}
+      <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-foreground-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
+    </form>
+  );
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{t.login.title}</span></h1>
       {google && <div className="mt-6"><GoogleButton lang={lang} mode="login" next={next} /></div>}
-      <form onSubmit={onSubmit} className={google ? "mt-3 grid gap-3" : "mt-6 grid gap-3"}>
-        {/* `webauthn` lets the browser offer saved passkeys in the address field's suggestions (conditional UI). */}
-        <Field label={t.login.email}><Input name="email" required type="email" autoComplete={passkeys ? "username webauthn" : "username"} /></Field>
-        <Field label={t.login.password}><PasswordField lang={lang} name="password" required autoComplete="current-password" /></Field>
-        {err && <Callout tone="danger">{err}</Callout>}
-        <Button type="submit" variant="pill" seed="authform-b2" loading={busy}>{t.login.submit}</Button>
-        {showPasskeyButton(passkeys, supported) && <Button type="button" variant="secondary" block onClick={onPasskey}>{t.login.passkey}</Button>}
-        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-foreground-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
-      </form>
+      {betterAuth ? (
+        <div className={google ? "mt-3 grid gap-4" : "mt-6 grid gap-4"}>
+          <Tabs idBase="login" label={L.label} value={tab} onChange={(id) => { setTab(id); setErr(""); }} items={[{ id: "password", label: L.password }, { id: "link", label: L.link }]} className="justify-self-start" />
+          <TabPanel idBase="login" id="password" value={tab}>{passwordForm}</TabPanel>
+          <TabPanel idBase="login" id="link" value={tab}><MagicRequest lang={lang} turnstileKey={turnstileKey} /></TabPanel>
+        </div>
+      ) : passwordForm}
       <p className="mt-4 text-sm text-foreground-muted">
         {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-foreground underline">{t.login.signup}</Link>
       </p>

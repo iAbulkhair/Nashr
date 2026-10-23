@@ -163,6 +163,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.loginIpBucket("1.2.3.4"), "login:ip:1.2.3.4"],
     [globalKey.loginEmailBucket("a@b.c"), "login:em:a@b.c"],
     [globalKey.baReadIpBucket("1.2.3.4"), "ba:read:ip:1.2.3.4"],
+    [globalKey.magicIpBucket("1.2.3.4"), "magic:ip:1.2.3.4"],
+    [globalKey.magicEmailBucket("a@b.c"), "magic:em:a@b.c"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));

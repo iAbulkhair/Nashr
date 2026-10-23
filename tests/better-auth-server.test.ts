@@ -86,8 +86,8 @@ describe("rule 3400: with the switch off every better-auth path is 404, before t
 });
 
 describe("rule 3413: only the allow-list reaches better-auth", () => {
-  it("lists four routes, Google stays off and no social provider is configured", () => {
-    expect(Object.keys(BA_ROUTES).sort()).toEqual(["/get-session", "/list-accounts", "/sign-in/email", "/sign-out"]);
+  it("lists five routes (the magic link request since rule 3415), Google stays off and no social provider is configured", () => {
+    expect(Object.keys(BA_ROUTES).sort()).toEqual(["/get-session", "/list-accounts", "/sign-in/email", "/sign-in/magic-link", "/sign-out"]);
     expect(BA_GOOGLE).toBe(false);
     const o = baOptions(SECRET);
     expect("socialProviders" in o).toBe(false);

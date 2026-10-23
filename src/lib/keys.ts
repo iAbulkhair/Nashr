@@ -415,6 +415,10 @@ export const globalKey = {
   loginEmailBucket: (login: string) => `login:em:${login}`,
   /** bucket name for `allow` (stored as `rate:ba:read:ip:{ip}`): better-auth session, account and sign-out calls per IP, 300 per 5 min (rule 3414). */
   baReadIpBucket: (ip: string) => `ba:read:ip:${ip}`,
+  /** bucket name for `allow` (stored as `rate:magic:ip:{ip}`): sign-in link requests per IP, 8 per 15 min, before Turnstile (rule 3415). */
+  magicIpBucket: (ip: string) => `magic:ip:${ip}`,
+  /** bucket name for `allow` (stored as `rate:magic:em:{email}`): sign-in links per address, 3 per 15 min (rule 3415). */
+  magicEmailBucket: (email: string) => `magic:em:${email}`,
 } as const;
 
 /**

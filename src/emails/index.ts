@@ -1,4 +1,5 @@
 import { dailyBrief } from "./daily-brief";
+import { magicLink } from "./magic-link";
 import { notice } from "./notice";
 import { resetPassword } from "./reset-password";
 import { teamInvite } from "./team-invite";
@@ -12,7 +13,7 @@ import { verifyCode } from "./verify-code";
  * same rules (685-688): direction on every container, every value escaped, every link into the app. The founder console's
  * mail preview renders it too (./samples.ts, rule 1964).
  */
-export const EMAIL_TEMPLATES = { resetPassword, teamInvite, notice, verifyCode, dailyBrief } as const;
+export const EMAIL_TEMPLATES = { resetPassword, teamInvite, notice, verifyCode, dailyBrief, magicLink } as const;
 export type EmailTemplateId = keyof typeof EMAIL_TEMPLATES;
 /** What a template takes besides the language: the `context` of a typed `sendEmail`. */
 export type EmailContext<T extends EmailTemplateId> = Omit<Parameters<(typeof EMAIL_TEMPLATES)[T]>[0], "lang">;
@@ -23,6 +24,6 @@ export function renderEmail<T extends EmailTemplateId>(template: T, context: Ema
   return fn({ ...context, lang: locale });
 }
 
-export { dailyBrief, notice, resetPassword, teamInvite, verifyCode };
+export { dailyBrief, magicLink, notice, resetPassword, teamInvite, verifyCode };
 export { COPY } from "./copy";
 export { paragraphs } from "./html";

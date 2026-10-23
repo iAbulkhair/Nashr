@@ -22,6 +22,7 @@ export function emailSamples(lang: Lang): { [T in EmailTemplateId]: EmailContext
       body: ar ? "صباح الخير.\n\nمنشوران بانتظار موافقتك.\n\n• مثال على متابعة\n  نص المتابعة" : "Good morning.\n\nTwo posts wait for your approval.\n\n• A sample follow-up\n  Its text",
       href: `${o}${appHref(lang)}`,
     },
+    magicLink: { link: `${o}/${lang}/app/magic#t=${"c".repeat(32)}` },
   };
 }
 

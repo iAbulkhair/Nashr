@@ -5,6 +5,7 @@ import { baSecret } from "@/lib/auth-engine";
 import { appOrigin } from "@/lib/origin";
 import { redisAdapter } from "./adapter";
 import { sessionCreated, sessionGate } from "./gate";
+import { baMagicLink } from "./magic";
 
 /**
  * The one better-auth configuration (docs/superpowers/specs/2026-10-23-better-auth-orpc-migration.md, rules 3410-3414).
@@ -30,10 +31,7 @@ export const BA_GOOGLE = false;
 /** The longest password better-auth compares; longer bodies are refused before bcrypt runs. */
 export const BA_PASSWORD_MAX = 1024;
 
-/** Extra plugins (the magic link, step c) join through here so the options stay one object. */
-export type BaPlugins = NonNullable<BetterAuthOptions["plugins"]>;
-
-export function baOptions(secret: string, plugins: BaPlugins = []) {
+export function baOptions(secret: string) {
   const origin = appOrigin();
   return {
     appName: "Thakeen",
@@ -67,7 +65,8 @@ export function baOptions(secret: string, plugins: BaPlugins = []) {
     telemetry: { enabled: false },
     advanced: { cookiePrefix: BA_COOKIE_PREFIX, useSecureCookies: false },
     databaseHooks: { session: { create: { before: sessionGate, after: sessionCreated } } },
-    plugins,
+    // The magic link (rules 3415-3416, ./magic.ts). The only plugin: an upgrade's new endpoints stay unreachable (rule 3413).
+    plugins: [baMagicLink()],
   } satisfies BetterAuthOptions;
 }
 

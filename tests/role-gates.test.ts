@@ -78,6 +78,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // better-auth behind AUTH_ENGINE (rules 3400, 3413, 3414): 404 while off; on, an allow-list rate limited in the wrapper
   // (LIMITED_IN below) before better-auth reads anything.
   "POST /api/better-auth/[...all]": "public",
+  // The magic link's verify (rule 3416): 404 while AUTH_ENGINE is off; on, the log-in IP bucket before the token is read.
+  "POST /api/auth/magic": "public",
   // The second sign-in step (rule 1934): the challenge cookie names the login, rate limited with the login buckets.
   "POST /api/auth/login/mfa": "public",
   // Passkey sign-in (rules 2417, 2418): the sign-in nonce cookie carries the challenge; limited per IP and per credential.

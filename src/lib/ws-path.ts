@@ -64,6 +64,7 @@ export const PERSON_PAGES: readonly string[] = [
   "/signup",
   "/forgot",
   "/reset",
+  "/magic",
   "/verify",
   "/join",
   "/admin",

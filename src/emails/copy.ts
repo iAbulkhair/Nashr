@@ -28,6 +28,8 @@ export type EmailCopy = {
    * data. Rendered by `passkeyNotice` in src/app/api/account/passkeys/route.ts, which fills both slots with plain text.
    */
   passkey: { title: string; body: string; when: string; notYou: string; action: string };
+  /** The sign-in link email (./magic-link.ts, rule 3415). Same sentences as its plain-text part in src/lib/better-auth/magic.ts. */
+  magic: { title: string; greeting: string; intro: string; action: string; expiry: string; ignore: string; preheader: string };
 };
 
 export const COPY: Record<Lang, EmailCopy> = {
@@ -70,6 +72,15 @@ export const COPY: Record<Lang, EmailCopy> = {
       notYou: "إذا لم تضفه أنت فاحذفه من إعدادات الأمان، ثم اخرج من الأجهزة الأخرى.",
       action: "افتح إعدادات الأمان",
     },
+    magic: {
+      title: "رابط الدخول إلى ذكين",
+      greeting: "مرحباً،",
+      intro: "وصلنا طلب لتسجيل الدخول إلى حسابك في ذكين برابط بدل كلمة المرور.",
+      action: "ادخل إلى ذكين",
+      expiry: "الرابط صالح لمدة 15 دقيقة ولمرة واحدة.",
+      ignore: "إذا لم تطلب ذلك فتجاهل هذه الرسالة، ولن يتغير شيء.",
+      preheader: "رابط الدخول إلى ذكين صالح لمدة 15 دقيقة.",
+    },
   },
   en: {
     wordmark: "Thakeen",
@@ -109,6 +120,15 @@ export const COPY: Record<Lang, EmailCopy> = {
       when: "Added at: {time} (Riyadh time).",
       notYou: "If you did not add it, remove it in Security settings, then sign out your other devices.",
       action: "Open Security settings",
+    },
+    magic: {
+      title: "Your Thakeen sign-in link",
+      greeting: "Hello,",
+      intro: "We received a request to sign in to your Thakeen account with a link instead of the password.",
+      action: "Sign in to Thakeen",
+      expiry: "The link works once, for 15 minutes.",
+      ignore: "If you did not ask for this, ignore this email and nothing changes.",
+      preheader: "Your Thakeen sign-in link works for 15 minutes.",
     },
   },
 };

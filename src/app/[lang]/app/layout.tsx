@@ -26,13 +26,16 @@ import { topupsSold } from "@/lib/pricing";
 import { SKIP_TO_CONTENT } from "@/lib/screen-titles";
 import { ToastProvider } from "@/components/ui/Toast";
 import { acct } from "@/lib/account-id";
+import { baOn } from "@/lib/auth-engine";
 
 /**
  * Paths reachable without a session. `/join` accepts a team invite (the token is in the URL fragment). `/verify` is the
  * page an owner who has not proved the address lands on: `currentUser()` reads that owner as signed out (rule 751), so the
- * page reads the session itself (`currentUserUnverified`, rule 752).
+ * page reads the session itself (`currentUserUnverified`, rule 752). `/magic` opens a sign-in link (rule 3416), and is
+ * public only while AUTH_ENGINE is on: with it off the path behaves as on main (signed out, the log-in page).
  */
 const PUBLIC = ["/login", "/signup", "/forgot", "/reset", "/admin", "/join", "/verify"];
+const MAGIC = "/magic";
 
 export default async function AppLayout({ children, params }: { children: React.ReactNode; params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -40,7 +43,7 @@ export default async function AppLayout({ children, params }: { children: React.
   const t = appDict[lang];
   const h = await headers();
   const path = h.get("x-pathname") ?? "";
-  const isPublic = PUBLIC.some((p) => path.endsWith(p));
+  const isPublic = PUBLIC.some((p) => path.endsWith(p)) || (baOn() && path.endsWith(MAGIC));
   // Multi-workspace M2 (spec section 7): the page's workspace from its own link (the proxy sets the header from the
   // path); `currentUser()` answers 404 for a handle that is not one of the person's workspaces.
   const handle = MULTI_ORG ? asHandle(h.get(WS_HEADER)) : null;
