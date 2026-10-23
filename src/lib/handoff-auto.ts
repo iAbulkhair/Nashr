@@ -10,7 +10,7 @@
  * - the switch is on; the proposal is Majed's, from the app's chat, requested by the OWNER (never a member, support or
  *   a connected app); the owner has its card (the reply carrying it was saved, `shownAt`, and its conversation was not
  *   deleted, `liveConversations`); the item is still `proposed`; the proposal is at most 7 days old; the item's agent
- *   has an owner-set cap; the item's type keeps the 60% margin floor on the cold cache this cron usually finds
+ *   has an owner-set cap and its `produce` authority is on (neither off nor ask-first, rule 3014); the item's type keeps the 60% margin floor on the cold cache this cron usually finds
  *   (`autoUnderFloor`: every type today, rule 901); the whole proposal is within the ceiling (3 items,
  *   12 credits): `autoBlock`;
  * - Claude paused: "retry:paused" (nothing charged; the cron asks again). No key (development mock): "skip:mock";
@@ -34,7 +34,7 @@
 import { db } from "./db";
 import { liveConversations } from "./conversations";
 import type { User } from "./auth";
-import { getGov, hasHandoffCap, type Governance } from "./governance";
+import { getGov, hasHandoffCap } from "./governance";
 import { modelState } from "./model";
 import { pmap } from "./parallel";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
@@ -43,7 +43,7 @@ import { systemBy } from "./actor";
 import { notifyItem } from "./notifications";
 import { appDict } from "./app-i18n";
 import { autoHoldKey, holdBatch } from "./routines";
-import { HANDOFF_RUN_MIN_MS, autoBlock, autoTryKey, getHandoff, handoffFingerprint, isHandoffId, recentHandoffs, runItemLocked, withRunLock, type Handoff } from "./handoffs";
+import { HANDOFF_RUN_MIN_MS, autoBlock, autoTryKey, type AutoGov, getHandoff, handoffFingerprint, isHandoffId, recentHandoffs, runItemLocked, withRunLock, type Handoff } from "./handoffs";
 import { log } from "./log";
 import { acct } from "./account-id";
 
@@ -67,7 +67,7 @@ export type AutoQueued = { id: string; item: number; type: TaskType; agent: Agen
  * Every item of `scope` the auto-run may start now, oldest proposal first, under `gov`: the newest AUTO_HANDOFF_SCAN
  * proposals (two requests), and the conversations their cards sit in (one more, only for proposals that have one).
  */
-async function eligible(scope: string, gov: Pick<Governance, "majedAutoHandoff" | "agentCaps">, now: number): Promise<AutoQueued[]> {
+async function eligible(scope: string, gov: AutoGov, now: number): Promise<AutoQueued[]> {
   const hs = await recentHandoffs(scope, AUTO_HANDOFF_SCAN);
   const convs = hs.flatMap((h) => (h.conv ? [h.conv] : []));
   const live = await liveConversations(scope, convs);
@@ -100,7 +100,7 @@ export async function dueHandoffs(users: User[], now: number = Date.now()): Prom
  * one a day), so the owner can decline any of them there, including one whose card scrolled out of its thread. Empty
  * while the switch is off or no agent Majed hands work to has a cap.
  */
-export async function autoQueue(scope: string, gov: Pick<Governance, "majedAutoHandoff" | "agentCaps">, now: number = Date.now()): Promise<AutoQueued[]> {
+export async function autoQueue(scope: string, gov: AutoGov, now: number = Date.now()): Promise<AutoQueued[]> {
   if (gov.majedAutoHandoff !== true || !hasHandoffCap(gov)) return [];
   return eligible(scope, gov, now);
 }

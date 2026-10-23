@@ -10,7 +10,8 @@ import { brandOfScope } from "@/lib/account-id";
  * GET: one login's private calendar feed (Reem phase 3 B1), what a calendar app subscribes to. No session: the random
  * token in the path is the credential, a founder-approved narrow exception to "no secret in a URL" (spec section 6). One
  * trailing `.ics` is stripped. A value of the wrong shape is a 404 before any rate count or store read. Then, in order:
- * 120 an hour per client IP, the record (`resolveFeed`), 60 an hour per link, and the validity check (`feedHolds`: the
+ * the record (`resolveFeed`; a miss counts against the client IP, 120 an hour, and past that is a 429, rule 3021: a live
+ * link never uses the address bucket, calendar services share addresses), 60 an hour per link, and the validity check (`feedHolds`: the
  * login still active and the scope still one of its account's active brands; for a record made from multi-workspace M1,
  * the person, the account and the membership, rules 2119 and 2131). Items are read with the record's own scope
  * only, never a value from the request. Every failure is the same empty 404, so a probe learns nothing, except the two
@@ -27,9 +28,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
   const { token: raw } = await ctx.params;
   const token = typeof raw === "string" && raw.endsWith(".ics") ? raw.slice(0, -4) : raw;
   if (typeof token !== "string" || !FEED_TOKEN.test(token)) return notFound();
-  if (!(await allow(`feed:ip:${clientIp(req)}`, PER_IP_HOUR, 3600))) return tooMany();
   const found = await resolveFeed(token);
-  if (!found) return notFound();
+  if (!found) {
+    // Rule 3021: only a miss counts against the address. Calendar services fetch every subscriber's feed from a few
+    // shared addresses, so a live link never meets this bucket (the booking webhook counts the same way). Past the
+    // limit a miss is a 429; a live link from the same address still answers.
+    if (!(await allow(`feed:ip:${clientIp(req)}`, PER_IP_HOUR, 3600))) return tooMany();
+    return notFound();
+  }
   if (!(await allow(`feed:t:${found.hash}`, PER_LINK_HOUR, 3600))) return tooMany();
   const { rec } = found;
   if (!(await feedHolds(rec))) return notFound();

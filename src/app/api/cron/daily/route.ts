@@ -7,7 +7,8 @@ import { sameSecret } from "@/lib/rate";
 import { recordCronRun } from "@/lib/cron-heartbeat";
 import type { User } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
-import { mailReady, sendEmail, sendOnce } from "@/lib/notify";
+import { confirmedMarker, mailOncePerDay, mailReady, onceKey, sendEmail, sendOnce } from "@/lib/notify";
+import { db } from "@/lib/db";
 import { runLifecycle } from "@/lib/lifecycle";
 import { renewIfDue, saveSettledTopups } from "@/lib/credits";
 import { earlyOfferDue, grantEarlyOffer } from "@/lib/partners";
@@ -140,7 +141,10 @@ async function dailyFor(u: User): Promise<string> {
         : `Hi ${u.name}\n\nYou signed up for Thakeen but have not started. Noor is ready: give her your website and she writes your brand file and plan in front of you, then ask her for your first batch of posts.\n\n${link}`;
       // The HTML part (rule 1961): the same paragraphs in the shared layout, the bare link turned into the button. The
       // name is what the owner typed at signup, so `notice` escapes it as text.
-      const res = await sendOnce(u.email, "nudge1", subject, text, { template: "notice", locale: u.lang, context: { title: subject, paragraphs: paragraphs(text).filter((p) => p !== link), cta: { href: link } } });
+      // Rule 3022: the marker belongs to the account (`acct(u)`), the mail goes to the address. A nudge sent before this
+      // change was marked under the address: that confirmed marker counts as sent too (expand), so no account gets it twice.
+      const sentBefore = acct(u) !== u.email && confirmedMarker(await db.get(onceKey(u.email, "nudge1")));
+      const res = sentBefore ? "already" : await sendOnce(acct(u), "nudge1", subject, text, { template: "notice", locale: u.lang, context: { title: subject, paragraphs: paragraphs(text).filter((p) => p !== link), cta: { href: link } } }, u.email);
       if (res === "sent") out.push("nudge");
       // Not "nudge_…": the report counts every outcome that starts with "nudge" as a nudge sent.
       else if (res === "failed") out.push("mail_refused:nudge");
@@ -158,7 +162,7 @@ async function dailyFor(u: User): Promise<string> {
   const fu = await followUps(u, u.scope ?? u.email);
   if (fu.length) out.push(`followups:${fu.length}`);
   // Noor's brief email: every day, only when something waits, or never (Settings, Notifications; the old field reads the same, rule 1147).
-  const [prefs, digest] = await Promise.all([readPrefs(u.scope ?? u.email, u.email), getDigest(acct(u))]);
+  const [prefs, digest] = await Promise.all([readPrefs(u.scope ?? u.email, acct(u)), getDigest(acct(u))]);
   // With a digest on (rule 2356), the follow-ups reach the owner's email there, once, and not here as well.
   const mailed = digest === "off" ? fu : [];
   if (brief) {
@@ -170,11 +174,12 @@ async function dailyFor(u: User): Promise<string> {
     const text = brief.text + extra + `\n\n${app}`;
     // The HTML part is the same text in the shared layout (rule 1961): the model's brief is untrusted, so `dailyBrief`
     // escapes every paragraph and links only the button.
-    if (worth && (await sendEmail({ to: u.email, subject: u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, text, template: "dailyBrief", context: { date: brief.date, body: text, href: app }, locale: u.lang }))) out.push("email");
+    // Rule 3023: one claim per workspace and day before the send, so a run killed after it (a slow social read) and retried by the batch does not mail again.
+    if (worth && (await mailOncePerDay(u.scope ?? u.email, () => sendEmail({ to: u.email, subject: u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, text, template: "dailyBrief", context: { date: brief.date, body: text, href: app }, locale: u.lang })))) out.push("email");
   } else if (mailed.length && prefs.brief !== "none") {
     const subject = u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team";
     const text = notifEmailText(u, fu);
-    if (await sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}${appHrefFor(u, u.lang, "", brandOfScope(u.scope ?? u.email))}` } }, locale: u.lang })) out.push("email");
+    if (await mailOncePerDay(u.scope ?? u.email, () => sendEmail({ to: u.email, subject, text, template: "notice", context: { title: subject, paragraphs: paragraphs(text), cta: { href: `${appOrigin()}${appHrefFor(u, u.lang, "", brandOfScope(u.scope ?? u.email))}` } }, locale: u.lang }))) out.push("email");
   }
   // Instagram and LinkedIn page results for Dana (src/lib/social-stats.ts), last: up to 30 post reads may be slow, and a
   // slow platform must never cost this workspace its brief or its email. Tomorrow's report reads what lands here.

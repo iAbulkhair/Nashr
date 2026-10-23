@@ -64,6 +64,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.fileProposal(S, "ab12"), `fileprop:${S}:ab12`],
     [wsKey.fileProposalDone(S, "ab12"), `fileprop-done:${S}:ab12`],
     [wsKey.fileProposalClaim(S, "ab12"), `fileprop-claim:${S}:ab12`],
+    [wsKey.dailyMail(S, "2026-10-22"), `dailymail:${S}:2026-10-22`],
     [wsKey.fileProposals(S), `fileprops:${S}`],
     [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
     [wsKey.connectStartBucket(D), `connectstart:${E}`],
@@ -115,6 +116,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.passkeyProofBucket(E), `pkpw:${E}`],
     // Release M3: the wrong-password bucket `freshProof` shares with the two-step settings route (rule 1170).
     [accountKey.mfaPasswordBucket(E), `mfapw:${E}`],
+    [accountKey.passwordChangeBucket(E), `pwchange:${E}`],
+    [accountKey.accountDeleteBucket(E), `acctdelete:${E}`],
     // Agent status and phone notifications (rules 2560-2573): new families, no old template.
     [accountKey.tabSeen(E), `tabseen:${E}`],
     [accountKey.pushLast(E), `pushlast:${E}`],

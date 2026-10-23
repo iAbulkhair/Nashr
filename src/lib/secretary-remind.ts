@@ -120,8 +120,10 @@ async function deliver(ctx: AccountCtx, scope: string, zone: Zone, cur: SecItem)
   const ar = ctx.user.lang === "ar";
   // The HTML part says what the bell says, with a button to the list. The title holds the task's title, which the
   // owner or an agent wrote: `notice` escapes it as text (rule 686).
+  // To the owner's ADDRESS (the loaded account record), never `ctx.email`: that is the account id taken from the scope,
+  // an `a_` id or a moved owner's old address once ids are opaque (rule 3031).
   const sent = await sendEmail({
-    to: ctx.email,
+    to: ctx.user.email,
     subject: ar ? `تذكير من ريم: ${cur.title.slice(0, 80)}` : `Reminder from Reem: ${cur.title.slice(0, 80)}`,
     text: `${push.n.title}\n${push.n.body}\n\n${appOrigin()}${push.n.href}`,
     template: "notice",

@@ -237,8 +237,9 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
     ...[sub].filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(s)).map((s) => globalKey.googleAccount(s)),
     personKey.person(self), personKey.orgs(self), personKey.lastOrg(self), ...passkeys,
   ];
-  // A founding seat and a price-lock place (src/lib/founding.ts, rule 1712): the account's email leaves both counted sets.
-  await freePlaces(e);
+  // A founding seat and a price-lock place (src/lib/founding.ts, rule 1712): the account leaves both counted sets, under
+  // its id and, for a row written before rule 2982, its address.
+  await freePlaces({ id: e, email: login });
 
   const token = await db.get<string>(accountKey.mcpTokenOf(e));
   if (token) keys.push(globalKey.mcpToken(token));

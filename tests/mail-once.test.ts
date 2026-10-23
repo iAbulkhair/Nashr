@@ -120,7 +120,7 @@ describe("rule 351: lifecycle mail waits for a sender that can reach customers",
 describe("rule 352: the signup nudge uses the same claim-then-confirm guard", () => {
   it("the daily route does not burn the nudge marker before the send", async () => {
     const src = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/cron/daily/route.ts", "utf8"));
-    expect(src).toMatch(/sendOnce\(u\.email, "nudge1"/);
+    expect(src).toMatch(/sendOnce\(acct\(u\), "nudge1"/);
     expect(src, "the nudge is gated on mail that can reach customers, not on the key alone").toMatch(/mailReady\(\)\)/);
     const notify = await import("node:fs").then((fs) => fs.readFileSync("src/lib/notify.ts", "utf8"));
     expect(notify, "the old claim-before-send guard is gone").not.toMatch(/export async function once\(/);

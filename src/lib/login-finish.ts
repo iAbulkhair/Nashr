@@ -6,6 +6,7 @@ import { isPersonSuspended, isSuspended, suspensionEnd, suspensionExpired } from
 import { endExpiredSuspension } from "./suspension-server";
 import { acct } from "./account-id";
 import { MULTI_ORG } from "./multi-org";
+import { loginBornAt } from "./own-password";
 
 /**
  * What every sign-in path shares once the person has proved who they are (a password in POST /api/auth/login, a
@@ -14,11 +15,12 @@ import { MULTI_ORG } from "./multi-org";
  */
 
 /**
- * When the login record was created: the moment an older two-step enrolment stops counting (src/lib/mfa.ts). A legacy
- * owner's account or member record as before; a person known only through membership rows (multi-workspace M1): the
- * person's own `createdAt`.
+ * When the login was born: the moment an older two-step enrolment stops counting (src/lib/mfa.ts). The one rule the
+ * session's settings use too (`loginBornAt`, rule 2990): a legacy owner's account, a legacy member's record, else the
+ * person's own `createdAt`, never the account `getLogin` picked (a `p_` owner's second workspace is younger than the
+ * enrolment, and a password alone must not sign in through it).
  */
-export const bornAt = (l: Login): string | undefined => (l.kind === "owner" ? l.user.createdAt : l.member ? l.member.acceptedAt : l.person.createdAt);
+export const bornAt = (l: Login): string | undefined => loginBornAt(l.pid, l.person, l.kind === "owner" ? { owner: l.user } : { member: l.member });
 
 /** The account owning this login (the owner itself, or the member's owner). */
 export const accountOf = (l: Login) => (l.kind === "owner" ? l.user : l.owner);

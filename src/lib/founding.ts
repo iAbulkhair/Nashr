@@ -4,6 +4,7 @@ import { ksaDay } from "./partner-rules";
 import { PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, type SelfServePlan } from "./pricing";
 import { topupCredits } from "./topups";
 import type { User } from "./auth";
+import { acct } from "./account-id";
 
 /**
  * The founding offer and the price lock (rules 1700-1719, spec docs/specs/2026-10-13-founding-20-seats-price-lock.md,
@@ -36,7 +37,12 @@ export const SALE_START = "2026-11-01";
 /** PRD 11.3: the guarantee runs 7 days after the first payment's Riyadh day (that day plus 7, inclusive; unverified). */
 export const REFUND_WINDOW_DAYS = 7;
 
-/** Sorted sets: member = account email, score = claim time in ms. The counts are their sizes. */
+/**
+ * Sorted sets: member = the account id (`acct(u)`, rule 2982), score = claim time in ms. The counts are their sizes.
+ * Rows written before rule 2982 hold the account's address; while ids equal addresses (R1) the two are the same member.
+ * Freeing removes both (`freePlaces`), so a row of either shape leaves. Contract (a later release, once ids differ from
+ * addresses and no address member is left): free by id alone.
+ */
 export const SEATS_KEY = "founding:seats";
 export const LOCKS_KEY = "pricelock:accounts";
 
@@ -150,14 +156,14 @@ export async function claimOnPayment(u: User, p: { founding: boolean; plan: Self
   if (!saleStarted(p.day)) return { seat: null, lock: null };
   let seat: ClaimOutcome["seat"] = null;
   if (p.founding && !u.founding) {
-    const r = await db.zaddCapped(SEATS_KEY, now, u.email, FOUNDING_SEATS);
+    const r = await db.zaddCapped(SEATS_KEY, now, acct(u), FOUNDING_SEATS);
     seat = r === "full" ? "full" : "claimed";
     if (seat === "claimed") u.founding = { at: new Date(now).toISOString(), by: "paymob", paymentId: p.paymentId };
   }
   if (u.priceLock) return { seat, lock: null };
   const founding = liveSeat(u);
   // A founding seat always carries its lock; anyone else only while one of the first 100 places is free.
-  const r = await db.zaddCapped(LOCKS_KEY, now, u.email, founding ? Number.MAX_SAFE_INTEGER : PRICE_LOCK_ACCOUNTS);
+  const r = await db.zaddCapped(LOCKS_KEY, now, acct(u), founding ? Number.MAX_SAFE_INTEGER : PRICE_LOCK_ACCOUNTS);
   if (r === "full") return { seat, lock: null };
   u.priceLock = newLock({ plan: p.plan, from: p.day, founding, by: "paymob", paidHalalas: p.paidHalalas, paymentId: p.paymentId }, now);
   return { seat, lock: u.priceLock.months };
@@ -175,9 +181,20 @@ export function endOnRefund(u: User, by: string, now = Date.now()): boolean {
   return ended;
 }
 
-/** Free the account's seat and lock places (an ended seat or lock, a deleted account). Two commands, sent together. */
-export async function freePlaces(email: string, which: { seat?: boolean; lock?: boolean } = { seat: true, lock: true }): Promise<void> {
-  await Promise.all([which.seat ? db.zrem(SEATS_KEY, email) : null, which.lock ? db.zrem(LOCKS_KEY, email) : null]);
+/**
+ * The members an account's places may be stored under (rule 2982): its id and, for a row written before, its address.
+ * A plain string is one member as given (a caller that knows only one name).
+ */
+export const placeMembers = (a: string | Pick<User, "id" | "email">): string[] =>
+  typeof a === "string" ? [a] : [...new Set([acct(a), a.email].filter((m): m is string => typeof m === "string" && m.length > 0))];
+
+/**
+ * Free the account's seat and lock places (an ended seat or lock, a deleted account): every member `placeMembers` names,
+ * in each set asked for, all commands sent together.
+ */
+export async function freePlaces(account: string | Pick<User, "id" | "email">, which: { seat?: boolean; lock?: boolean } = { seat: true, lock: true }): Promise<void> {
+  const members = placeMembers(account);
+  await Promise.all(members.flatMap((m) => [...(which.seat ? [db.zrem(SEATS_KEY, m)] : []), ...(which.lock ? [db.zrem(LOCKS_KEY, m)] : [])]));
 }
 
 /** The public counter (GET /api/founding/seats): open only while the sale runs, payments are on and a seat is free. */
@@ -202,7 +219,7 @@ export async function applyGrant(u: User, action: GrantAction, input: { plan?: u
   const today = ksaDay(now);
   if (action === "grant_seat") {
     if (liveSeat(u)) return { ok: false, error: "has_seat" };
-    if ((await db.zaddCapped(SEATS_KEY, now, u.email, FOUNDING_SEATS)) === "full") return { ok: false, error: "seats_full" };
+    if ((await db.zaddCapped(SEATS_KEY, now, acct(u), FOUNDING_SEATS)) === "full") return { ok: false, error: "seats_full" };
     u.founding = { at, by };
     return { ok: true };
   }
@@ -221,7 +238,7 @@ export async function applyGrant(u: User, action: GrantAction, input: { plan?: u
   if (!isPlan(plan)) return { ok: false, error: "bad_plan" };
   const from = input.from === undefined || input.from === null || input.from === "" ? today : input.from;
   if (!isDay(from) || from > today || from < addDays(today, -400)) return { ok: false, error: "bad_from" };
-  await db.zaddCapped(LOCKS_KEY, now, u.email, Number.MAX_SAFE_INTEGER);
+  await db.zaddCapped(LOCKS_KEY, now, acct(u), Number.MAX_SAFE_INTEGER);
   u.priceLock = newLock({ plan, from, founding: liveSeat(u), by }, now);
   return { ok: true };
 }

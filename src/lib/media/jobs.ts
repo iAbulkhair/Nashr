@@ -35,6 +35,7 @@ import {
   type StartResult, type StatusResult, type SubmitResult, type SweepReport,
 } from "./types";
 import { log } from "../log";
+import type { MediaStamped } from "../task-version";
 import { appHrefIn } from "@/lib/ws-href";
 import { brandOfScope } from "@/lib/account-id";
 
@@ -428,6 +429,10 @@ function withResult(t: Task, j: MediaJob, url: string): Task | null {
   // New media on an approved item was never seen by whoever approved it: drop the human decision so chat's
   // `publish_item` (which needs `decidedAt`) refuses it until a person approves again (rule 576).
   if (t.status === "approved" && t.decidedAt && !t.published?.length) delete next.decidedAt;
+  // An item already published keeps its record above, so the time the media landed is kept too (rule 3012, expand): a
+  // publish from before it never counts as a person having seen this media (`personSawCurrent`, src/lib/task-version.ts).
+  // Wall-clock time, as `decidedAt` and `published[].at` are written by the routes.
+  (next as Task & MediaStamped).mediaAt = new Date().toISOString();
   if (j.kind === "image") return { ...next, imageUrl: url, imagePrompt: j.prompt, imageProvider: j.provider, imageModel: j.model as ImageModelId };
   return { ...next, videoUrl: url, videoPrompt: j.prompt, ...(j.provider !== "fal" ? { videoProvider: j.provider } : {}), videoModel: j.model as VideoModelId };
 }

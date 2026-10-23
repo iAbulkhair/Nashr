@@ -38,7 +38,8 @@ import { entitlements } from "./entitlements";
 import { MODEL_UNAVAILABLE_NOTE } from "./models/overrides";
 import { isRegulated } from "./regulated";
 import { fairUseText } from "./fair-use";
-import { itemHash, publishScopeCheck, readAgentScopeModes } from "./agent-scope";
+import { publishScopeCheck, readAgentScopeModes } from "./agent-scope";
+import { personSawCurrent, taskVersion, type MediaStamped } from "./task-version";
 import { CHAT_MAX_DURATION_S, CHAT_RENDER_MIN_MS, cleanName } from "./chat-reply";
 import { AWAY_CARDS_PER_REPLY, BRAND_CARDS_PER_REPLY, FILE_CARDS_PER_REPLY, INSTRUCTION_CARDS_PER_REPLY, REEM_ONLY_REFUSAL, TOOL_ACTION, type ToolCtx, batchRefused, capReached, roleGate, scopeOf, spendGate } from "./chat-gates";
 import { CHAT_IMAGE_CREDITS, EDITABLE_BRAND_FIELDS, type EditableBrandField, toolsFor } from "./chat-tools";
@@ -255,25 +256,29 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // Text from crawled sites, catalogs and files reaches this agent, so the model must never be the only approval.
       if (t.status !== "approved") return "Not published: this item is not approved yet. Tell the owner to approve it in the approvals inbox first, then ask again.";
       // Auto-approval is a setting, not a person: nobody has read an item it approved. Its publish is the owner's click
-      // (an owner who already published it from the inbox has reviewed it).
-      const reviewed = (x: Task) => !!x.decidedAt || !!x.published?.length;
-      if (!reviewed(t)) return "Not published: this item was approved automatically and nobody has reviewed it yet. Tell the owner to open it in the inbox and press Publish there.";
+      // (an owner who already published it from the inbox has reviewed it). Rule 3012: an image or clip that landed after
+      // that decision or publish was never seen, even on an item published before (`personSawCurrent`).
+      const reviewed = (x: Task) => personSawCurrent(x);
+      if (!reviewed(t)) return (t as Task & MediaStamped).mediaAt !== undefined && (t.decidedAt || t.published?.length)
+        ? "Not published: a new image or video arrived on this item after the owner last approved or published it, and nobody has seen it yet. Tell the owner to open it in the inbox and publish from there."
+        : "Not published: this item was approved automatically and nobody has reviewed it yet. Tell the owner to open it in the inbox and press Publish there.";
       // Approved before a banned word was added to the brand file, or edited since: the rule still holds it. At publish no
       // placeholder of any kind may go out.
       const brandNow = await getBrand(email);
       const held = gateTask(brandNow, t, { publish: true, provider });
       if (held.length) return `Not published. ${explain(held)} Tell the owner what to fix and where; do not work around the rule.`;
       // The agent-scope publish check (rule 1410), last before the send. An owner can edit an approved item and keep it
-      // approved, so the copy sent under the lock below must still have the text that was checked (`itemHash`), or nothing
-      // goes out. Enforce holds a refusal and an error.
-      const checkedHash = itemHash(t);
+      // approved, and a render can land meanwhile, so the copy sent under the lock below must still be the version that was
+      // checked: title, text and image (`taskVersion`, as the inbox's publish route, rule 3012), or nothing goes out.
+      // Enforce holds a refusal and an error.
+      const checkedVersion = taskVersion(t);
       const scopeHeld = await publishScopeCheck(user, t, "chat_publish", ctx.lang ?? (t.lang === "en" ? "en" : "ar"), ctx.modes ?? (await readAgentScopeModes()), deadline);
       if (scopeHeld.block) return `Not sent: ${scopeHeld.reply}`;
       // The same checks again on the copy that is sent, under the publish lock.
       const r = await publishOnce(email, t.id, provider, {
         check: (cur) => {
           if (cur.status !== "approved" || !reviewed(cur)) return { error: "not_approved" };
-          if (itemHash(cur) !== checkedHash) return { error: "changed" };
+          if (taskVersion(cur) !== checkedVersion) return { error: "changed" };
           const v = gateTask(brandNow, cur, { publish: true, provider });
           return v.length ? { error: "brand_violation", violations: v } : null;
         },

@@ -33,6 +33,13 @@ export const hasBuild = (dir = process.cwd()): boolean => existsSync(join(dir, "
 export const E2E_ADMIN_KEY = (process.env.E2E_ADMIN_KEY ??= randomBytes(24).toString("base64url"));
 
 /**
+ * Rule 3008: the encryption secret of the end-to-end server, made the same way (fresh per run, inherited by the workers,
+ * never written down). A production build refuses to fall back when `CONNECT_SECRET` is unset (`connectSecret`), so
+ * enrolling two-step sign-in, which seals the authenticator secret with it, answered 500 without one.
+ */
+export const E2E_CONNECT_SECRET = (process.env.E2E_CONNECT_SECRET ??= randomBytes(32).toString("base64url"));
+
+/**
  * Rule 2590: what the end-to-end server's memory store starts with (`E2E_SEED_KV`, read by `seedForE2e` in src/lib/db.ts),
  * for the two screens no request can stage: this month's Razan routine held for the seeded owner after a kill (rule 2479),
  * and a daily cron report beside its heartbeat (rules 2484-2485). Keys come from the app's own builders. The owner's account
