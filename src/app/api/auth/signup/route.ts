@@ -10,6 +10,7 @@ import { getMember, withLoginLock } from "@/lib/team";
 import { addressBlocked } from "@/lib/email-hold";
 import { acct } from "@/lib/account-id";
 import { isPersonLockTimeout } from "@/lib/person";
+import { passwordSignupAllowed } from "@/lib/signup-mode";
 
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
@@ -24,6 +25,10 @@ export async function POST(req: Request) {
   // script can neither create accounts nor learn which addresses exist without passing it. Rule 426.
   const refused = await captchaRefusal(req, b.turnstile);
   if (refused) return refused;
+  // Invite-only sign-up (src/lib/signup-mode.ts, rules 3521, 3524): with `SIGNUP_MODE=invite` a new login needs the invite
+  // link's token for this address. Checked after Turnstile and before the address is looked up, so the refusal is the
+  // same whether or not the address has a login, and the rate limit above already counted the attempt.
+  if (!(await passwordSignupAllowed(email, b.invite))) return NextResponse.json({ ok: false, error: "invite_only" }, { status: 403 });
   // Partner programme (src/lib/partners.ts, rule 392): a typed partner code must be a partner's, checked before anything
   // is created and after Turnstile, so a script cannot probe which codes exist without passing it; without a typed code,
   // the code in the 30-day link cookie, if it is still a partner's.

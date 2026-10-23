@@ -32,12 +32,14 @@ const GOOGLE = {
     google_failed: "ما قدرنا نكمل الدخول بـ Google. جرّب مرة ثانية.", google_cancelled: "ألغيت الدخول بـ Google.",
     google_no_account: "ما فيه حساب بهذا البريد. سجّل حساب جديد.", google_not_linked: "هذا البريد له حساب بكلمة مرور. ادخل بكلمة المرور، وبعدين اربط Google من إعدادات الأمان.",
     google_unverified_owner: "هذا البريد عليه حساب ما تأكد بريده. ادخل بكلمة المرور وأكّد البريد، أو استرد كلمة المرور.", google_taken: "حساب Google هذا مربوط بحساب ثاني.",
+    google_invite_only: "التسجيل الآن بدعوة فقط. إذا وصلتك دعوة افتح رابطها، أو سجّل في قائمة الانتظار.",
   },
   en: {
     login: "Sign in with Google", signup: "Sign up with Google", or: "or",
     google_failed: "We could not finish signing in with Google. Try again.", google_cancelled: "You cancelled signing in with Google.",
     google_no_account: "No account uses this email. Sign up instead.", google_not_linked: "This email has a password login. Sign in with the password, then link Google in Security settings.",
     google_unverified_owner: "This email has an account whose address is not confirmed yet. Sign in with the password and confirm it, or reset the password.", google_taken: "This Google account is linked to another login.",
+    google_invite_only: "Sign-up is by invitation only right now. Open your invite link if you have one, or join the waitlist.",
   },
 } as const;
 type GoogleCode = Exclude<keyof (typeof GOOGLE)["en"], "login" | "signup" | "or">;

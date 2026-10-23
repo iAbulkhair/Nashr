@@ -6,6 +6,7 @@ import { appOrigin } from "./origin";
 import { sameSecret } from "./rate";
 import { safeNext } from "./safe-next";
 import { withLoginLock } from "./team";
+import { googleSignupAllowed } from "./signup-mode";
 import { accountKey, globalKey } from "./keys";
 
 /**
@@ -168,7 +169,7 @@ async function writeLink(login: string, sub: string): Promise<void> {
 export type Resolution =
   | { kind: "login"; login: Login }
   | { kind: "created"; login: Login; email: string }
-  | { kind: "refused"; error: "google_no_account" | "google_not_linked" | "google_taken" | "google_unverified_owner" };
+  | { kind: "refused"; error: "google_no_account" | "google_not_linked" | "google_taken" | "google_unverified_owner" | "google_invite_only" };
 
 /**
  * Which login this Google account opens. A linked `sub` opens its login (even if the Google address has changed since).
@@ -198,6 +199,9 @@ export async function resolveGoogle(id: GoogleIdentity, mode: "login" | "signup"
     const [{ getMember }, { addressBlocked }] = await Promise.all([import("./team"), import("./email-hold")]);
     if (await getMember(id.email)) return { kind: "refused", error: "google_not_linked" };
     if (mode !== "signup") return { kind: "refused", error: "google_no_account" };
+    // Invite-only sign-up (src/lib/signup-mode.ts, rule 3522): with `SIGNUP_MODE=invite` a new login needs a standing
+    // invite to this Google-verified address. Only a new address reaches here: an existing person signed in above.
+    if (!(await googleSignupAllowed(id.email))) return { kind: "refused", error: "google_invite_only" };
     // Account-id R2 (rule 2743): an address another person moved away from in place is held (only a move in place writes a hold).
     if ((await addressBlocked(id.email)) === "held") return { kind: "refused", error: "google_taken" };
     // No password (multi-workspace M1, rule 2132): the person has no hash, so it signs in with Google, or sets a password

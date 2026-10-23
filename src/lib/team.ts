@@ -769,6 +769,44 @@ export async function invitesWaiting(p: Person): Promise<WaitingInvite[]> {
 }
 
 /**
+ * One invite record still stands for address `e` (invite-only sign-up, rule 3521): unexpired, a team role, for this
+ * address, still in its account's index (a cancelled or used one is gone), the account there and not suspended, and
+ * `inviteHolds`, the same checks `acceptInvite` makes. Read only, never consumes or drops anything.
+ */
+async function inviteStands(inv: Invite | null, id: string, e: string, now: number): Promise<boolean> {
+  if (!inv || expired(inv, now) || !isTeamRole(inv.role) || normalizeEmail(inv.email) !== e) return false;
+  const aid = aidFrom(inviteAccount(inv));
+  const [owner, inviter, indexed] = await Promise.all([getAccount(aid), getMembership(aid, inviterPid(inv)), db.sismember(invitesKey(aid), id)]);
+  return !!owner && !isSuspended(owner) && !!indexed && inviteHolds(inv, owner, inviter);
+}
+
+/**
+ * Invite-only sign-up, password route (rule 3521): the invite link's token names a standing invite to exactly this
+ * address. The token is the proof, as on the join page, so an unproved typed address never reads `invitesfor:{email}`
+ * (its contract is the verified address alone). False for anything malformed.
+ */
+export async function inviteTokenFor(token: unknown, email: string): Promise<boolean> {
+  if (typeof token !== "string" || !TOKEN_RE.test(token)) return false;
+  const e = normalizeEmail(email);
+  const id = inviteId(token);
+  return inviteStands(await db.get<Invite>(inviteKey(id)), id, e, Date.now());
+}
+
+/**
+ * Invite-only sign-up, Google route (rule 3522): some invite in the inbox of this VERIFIED address (Google proved it)
+ * still stands. The inbox `invitesfor:{email}` is written only while `MULTI_ORG` is on, so with the flag off this is
+ * always false and an invitee joins through the invite link (`acceptInvite`), which the switch never closes.
+ */
+export async function verifiedAddressInvited(email: string): Promise<boolean> {
+  const e = normalizeEmail(email);
+  const ids = (await db.smembers(accountKey.invitesFor(e))).filter((id) => TOKEN_RE.test(id));
+  if (!ids.length) return false;
+  const now = Date.now();
+  const stands = await pmap(ids, async (id) => inviteStands(await db.get<Invite>(inviteKey(id)), id, e, now));
+  return stands.some(Boolean);
+}
+
+/**
  * Undo an invite this request just created, under the team lock (POST /api/team/invite, when mail is configured and the
  * email could not be sent). No role check: it is the creating request's own rollback, never exposed to a caller's id.
  * The team log gets an "invite_cancelled" row (via "system", naming the inviter), so its "invited" row is not left open.
