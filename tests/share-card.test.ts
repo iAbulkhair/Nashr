@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { inflateSync } from "node:zlib";
 import { woff2ToSfnt } from "@/lib/woff2";
 import { shapeArabic } from "@/lib/arabic-shape";
 import { CARD_SIZE, DESCRIPTION_MAX, TITLE_MAX, cardAlt, clip, shareCard, titleSize } from "@/lib/share-card";
@@ -20,6 +21,36 @@ const SAMPLE = "كيف أربط حسابي على لينكدإن؟";
 const pngSize = (b: Uint8Array) => ({ width: new DataView(b.buffer, b.byteOffset).getUint32(16), height: new DataView(b.buffer, b.byteOffset).getUint32(20) });
 const isPng = (b: Uint8Array) => [0x89, 0x50, 0x4e, 0x47].every((v, i) => b[i] === v);
 const bytes = async (r: Response) => new Uint8Array(await r.arrayBuffer());
+
+/** The leftmost and rightmost column of dark (ink) pixels between two rows of an 8-bit RGB(A) PNG, as Satori writes it. */
+function inkColumns(png: Uint8Array, fromRow: number, toRow: number): { left: number; right: number } {
+  const view = new DataView(png.buffer, png.byteOffset);
+  const { width, height } = pngSize(png);
+  const channels = png[25] === 6 ? 4 : 3;
+  const idat: Uint8Array[] = [];
+  for (let at = 8; at < png.length; ) {
+    const len = view.getUint32(at), type = Buffer.from(png.subarray(at + 4, at + 8)).toString("latin1");
+    if (type === "IDAT") idat.push(png.subarray(at + 8, at + 8 + len));
+    at += 12 + len;
+  }
+  const raw = inflateSync(Buffer.concat(idat)), stride = width * channels, rows: Uint8Array[] = [];
+  for (let y = 0; y < height; y++) {
+    const f = raw[y * (stride + 1)], line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)), out = new Uint8Array(stride), up = rows[y - 1];
+    for (let x = 0; x < stride; x++) {
+      const a = x >= channels ? out[x - channels] : 0, b = up ? up[x] : 0, c = up && x >= channels ? up[x - channels] : 0;
+      const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      const pred = f === 1 ? a : f === 2 ? b : f === 3 ? (a + b) >> 1 : f === 4 ? (pa <= pb && pa <= pc ? a : pb <= pc ? b : c) : 0;
+      out[x] = (line[x] + pred) & 0xff;
+    }
+    rows.push(out);
+  }
+  let left = width, right = -1;
+  for (let y = fromRow; y < toRow; y++) for (let x = 0; x < width; x++) {
+    const i = x * channels;
+    if (rows[y][i] < 100 && rows[y][i + 1] < 100 && rows[y][i + 2] < 100) { left = Math.min(left, x); right = Math.max(right, x); }
+  }
+  return { left, right };
+}
 
 describe("rule 3141: the card maker reads the site's font in memory and shapes Arabic for it", () => {
   it("unwraps each WOFF2 weight into a TrueType/OpenType file Satori can read, leaving the file on disk as it was", () => {
@@ -57,6 +88,16 @@ describe("rule 3141: the card maker reads the site's font in memory and shapes A
     expect(marked).toBe("\uFE90\uFE91\u064E");
     expect([...marked].filter((c) => c === "َ")).toHaveLength(1);
   });
+
+  it("writes a run of plain letters backwards for the font engine to turn round once (العيادات, not العياتاد)", () => {
+    // The last three letters of العيادات stand alone and stay plain (the font has no isolated forms). The engine reverses
+    // a run of plain letters, so the run arrives in reading order: د ا ت, then the drawn-order forms, then the first alef.
+    expect(shapeArabic("العيادات")).toBe("داتﺎﻴﻌﻟا");
+    // No isolated presentation form: this font does not carry them.
+    expect(shapeArabic(SAMPLE)).not.toMatch(/[ﺀﺁﺃﺅﺇﺉﺍﺏﺓﺕﺙﺝﺡﺥﺩﺫﺭﺯﺱﺵﺹﺽﻁﻅﻉﻍﻑﻕﻙﻝﻡﻥﻩﻭﻯﻱ]/u);
+    // A question mark after a word stays outside it once the engine has turned the run round.
+    expect(shapeArabic("دار؟")).toBe("؟دار");
+  });
 });
 
 describe("rule 3141: one card maker draws the card from a title (and a description)", () => {
@@ -69,6 +110,16 @@ describe("rule 3141: one card maker draws the card from a title (and a descripti
       expect(pngSize(b)).toEqual({ width: 1200, height: 630 });
     }
     expect(CARD_SIZE).toEqual({ width: 1200, height: 630 });
+  });
+
+  it("sets a title that fits on one line against the reading side: the right margin in Arabic, the left in English", async () => {
+    // Between the header row and the bottom rule; the margin is 80 pixels on each side of the 1200-pixel card.
+    const ar = inkColumns(await bytes(shareCard({ lang: "ar", kind: "help", title: "الكريدت والخطط" })), 160, 540);
+    expect(ar.right).toBeGreaterThan(1100);
+    expect(ar.left).toBeGreaterThan(600);
+    const en = inkColumns(await bytes(shareCard({ lang: "en", kind: "help", title: "Credits and plans" })), 160, 540);
+    expect(en.left).toBeLessThan(100);
+    expect(en.right).toBeLessThan(800);
   });
 
   it("cuts a long title or description at a word, with an ellipsis, so the text always fits; a short one is untouched", () => {
