@@ -16,6 +16,8 @@ import HomeFaq from "@/components/home/HomeFaq";
 import Closing from "@/components/home/Closing";
 import { Seam } from "@/components/home/Decor";
 import Footer from "@/components/Footer";
+import Workspace from "@/components/home/Workspace";
+import { APP_SCREEN_SPOT } from "@/lib/home-app-screen";
 import styles from "@/components/home/home.module.css";
 
 /**
@@ -41,6 +43,8 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
       <main id="main" tabIndex={-1} className={styles.home}>
         <Cover lang={lang} t={t} />
         <SectionChips lang={lang} />
+        {/* The app-screen drawing and the team roles (rules 3348-3352): its spot is one constant in src/lib/home-app-screen.ts. */}
+        {APP_SCREEN_SPOT === "after-cover" && <Workspace lang={lang} />}
         <Seam kind="ink" />
         <Stories lang={lang} />
         <Seam kind="fly" pace={{ t: "11s", d: "-2s" }} />
@@ -49,6 +53,7 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
         <Day lang={lang} />
         <Seam kind="ink" />
         <Gallery lang={lang} />
+        {APP_SCREEN_SPOT === "after-gallery" && <Workspace lang={lang} />}
         <Seam kind="fly" pace={{ t: "12s", d: "-4s" }} />
         <Steps lang={lang} />
         <Seam kind="fly" pace={{ t: "13s", d: "-7s" }} />

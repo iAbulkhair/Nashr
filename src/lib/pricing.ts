@@ -272,6 +272,30 @@ export const formatCount = (n: number): string => {
   return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (frac ? `.${frac}` : "");
 };
 
+// ---- The charged currency, per language (rules 3346-3347) ----
+
+/**
+ * The one currency Thakeen charges. The language picks how a price is written, never the currency: an English page shows
+ * SAR too, and no page converts a price into another currency.
+ */
+export const CHARGED_CURRENCY = "SAR" as const;
+/** The currency's mark per language: "ر.س" after the figure on an Arabic page, "SAR" before it on an English one. */
+export const SAR_MARK: Readonly<Record<"ar" | "en", string>> = { ar: "ر.س", en: "SAR" };
+
+/**
+ * A price in riyals for a public page: "299 ر.س" / "SAR 299", "1,499.5 ر.س". Latin digits with a comma in both languages,
+ * as the site writes every figure (`formatCount`), so the server and every browser print the same text. "" for a value
+ * that is not a finite number, never "NaN ر.س".
+ */
+export const formatSar = (amount: number, lang: "ar" | "en"): string => {
+  if (!Number.isFinite(amount)) return "";
+  const n = formatCount(Math.round(amount * 100) / 100);
+  return lang === "ar" ? `${n} ${SAR_MARK.ar}` : `${SAR_MARK.en} ${n}`;
+};
+
+/** A self-serve plan's monthly list price from PLAN_PRICE_SAR, written for the language: "499 ر.س" / "SAR 499". */
+export const planPriceLabel = (plan: SelfServePlan, lang: "ar" | "en"): string => formatSar(PLAN_PRICE_SAR[plan], lang);
+
 // ---- The first-month discount (rules 393-395, src/lib/partners.ts) ----
 
 /**

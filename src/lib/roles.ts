@@ -194,6 +194,11 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
 ]);
 
 const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
+/**
+ * Does a role reach an action's minimum in MIN_ROLE? For display only (the public site's role previews, rule 3349): it
+ * knows nothing of actors, impersonation or the owner-only special cases, so a route always asks `can`.
+ */
+export const roleMeets = (role: Role, action: Action): boolean => RANK[role] >= RANK[MIN_ROLE[action]];
 const isAction = (a: unknown): a is Action => typeof a === "string" && Object.prototype.hasOwnProperty.call(MIN_ROLE, a);
 
 /** The acting person's role, or null when the request carries no actor. */
