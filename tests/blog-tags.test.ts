@@ -3,7 +3,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync, readdirSync } from "node:fs";
 import { postProblems, listPosts } from "@/lib/blog";
-import { allTags, blogHref, filterByTag, isActiveTag, MAX_TAGS, MAX_TAG_LENGTH, splitTags, tagFromParam, tagProblems } from "@/lib/blog-tags";
+import { allTags, blogHref, filterByTag, isActiveTag, MAX_TAGS, MAX_TAG_LENGTH, splitTags, tagFromParam, tagKey, tagProblems } from "@/lib/blog-tags";
 import { PostTags } from "@/components/PostTags";
 import BlogPage from "@/app/[lang]/blog/page";
 
@@ -91,6 +91,99 @@ describe("rule 3140: the filter, the tag list and the addresses", () => {
     expect(blogHref("ar", "واتساب")).toBe(`/ar/blog?tag=${encodeURIComponent("واتساب")}`);
     expect(isActiveTag("SEO", "seo")).toBe(true);
     expect(isActiveTag("seo", undefined)).toBe(false);
+  });
+});
+
+describe("rule 3140: edge cases of the tag helpers", () => {
+  it("splitTags collapses inner whitespace and line breaks, keeps a stray leading or trailing comma as an empty piece, and never drops an Arabic comma", () => {
+    expect(splitTags("  a   b ,\n c\t d ")).toEqual(["a b", "c d"]);
+    expect(splitTags(",a")).toEqual(["", "a"]);
+    expect(splitTags("a,")).toEqual(["a", ""]);
+    expect(splitTags("،")).toEqual(["", ""]);
+    expect(splitTags("تسويق،سناب, ads")).toEqual(["تسويق", "سناب", "ads"]);
+  });
+
+  it("tagKey ignores letter case, outer and inner spacing, and leaves Arabic letters alone", () => {
+    expect(tagKey("  Email   MARKETING ")).toBe("email marketing");
+    expect(tagKey("Email\tmarketing")).toBe(tagKey("email marketing"));
+    expect(tagKey("واتساب")).toBe("واتساب");
+    expect(tagKey("   ")).toBe("");
+  });
+
+  it("tagProblems accepts exactly MAX_TAGS tags of exactly MAX_TAG_LENGTH characters, and refuses one more of either", () => {
+    const five = Array.from({ length: MAX_TAGS }, (_, i) => "t".repeat(MAX_TAG_LENGTH - 1) + i);
+    expect(five.every((t) => t.length === MAX_TAG_LENGTH)).toBe(true);
+    expect(tagProblems("f", "tags_en", five)).toEqual([]);
+    expect(tagProblems("f", "tags_en", ["x".repeat(MAX_TAG_LENGTH)])).toEqual([]);
+    expect(tagProblems("f", "tags_en", [])).toEqual([]);
+  });
+
+  it("tagProblems names every problem at once, and treats tags that differ only in spacing as a repeat but empty pieces as empty, not as a repeat", () => {
+    const many = tagProblems("f", "tags_en", ["a", "A", "", "x".repeat(MAX_TAG_LENGTH + 1), "b", "c", "d"]);
+    expect(many).toHaveLength(4);
+    expect(many.join("|")).toMatch(/at most 5/);
+    expect(many.join("|")).toMatch(/empty tag/);
+    expect(many.join("|")).toMatch(/longer than 30/);
+    expect(many.join("|")).toMatch(/repeats a tag/);
+    expect(tagProblems("f", "tags_en", ["email  marketing", "Email marketing"]).join()).toMatch(/repeats a tag/);
+    const twoEmpty = tagProblems("f", "tags_en", ["", ""]);
+    expect(twoEmpty).toHaveLength(1);
+    expect(twoEmpty[0]).toMatch(/empty tag/);
+    expect(tagProblems("file.md", "tags_ar", ["", "b"])[0]).toMatch(/^file\.md: tags_ar /);
+  });
+
+  it("a front matter value that is only blanks counts as no tags, so it does not satisfy the other language's pair", () => {
+    expect(post("tags_ar:    \ntags_en:\n")).toEqual([]);
+    expect(post("tags_ar:\ntags_en: marketing\n")).toEqual(["a-post.md: tags_ar is missing (tags_en is given; tags come in both languages)"]);
+    expect(post("tags_ar: ،\ntags_en: a\n").join()).toMatch(/tags_ar has an empty tag/);
+  });
+
+  it("a post checks each language's tags on their own: six English tags and a repeated Arabic tag give two problems that name their field", () => {
+    const out = post("tags_ar: أ، أ\ntags_en: a, b, c, d, e, f\n");
+    expect(out).toHaveLength(2);
+    expect(out.some((p) => /tags_ar repeats a tag/.test(p))).toBe(true);
+    expect(out.some((p) => /tags_en has 6 tags, at most 5/.test(p))).toBe(true);
+  });
+
+  it("tagFromParam takes the first value only, even when it is blank, and trims it", () => {
+    expect(tagFromParam([])).toBeUndefined();
+    expect(tagFromParam(["", "b"])).toBeUndefined();
+    expect(tagFromParam(["  x  ", "y"])).toBe("x");
+    expect(tagFromParam("  two words ")).toBe("two words");
+    expect(tagFromParam("")).toBeUndefined();
+  });
+
+  it("filterByTag matches across spacing and case, handles Arabic tags, keeps the posts' order and returns a new array when filtering", () => {
+    const posts = [
+      { slug: "a", tags: ["Email  Marketing"] },
+      { slug: "b", tags: [] as string[] },
+      { slug: "c", tags: ["واتساب", "email marketing"] },
+    ];
+    const hit = filterByTag(posts, "  EMAIL marketing ");
+    expect(hit.map((p) => p.slug)).toEqual(["a", "c"]);
+    expect(hit).not.toBe(posts);
+    expect(filterByTag(posts, "واتساب").map((p) => p.slug)).toEqual(["c"]);
+    expect(filterByTag([], "x")).toEqual([]);
+    expect(filterByTag(posts, "")).toBe(posts);
+  });
+
+  it("allTags is empty when no post is tagged, keeps the first spelling, and sorts Arabic tags by the Arabic collation", () => {
+    expect(allTags([{ tags: [] }, { tags: [] }], "en")).toEqual([]);
+    expect(allTags([{ tags: ["SEO"] }, { tags: ["seo", "Ads"] }], "en")).toEqual(["Ads", "SEO"]);
+    expect(allTags([{ tags: ["ب", "أ"] }, { tags: ["ت", "ب"] }], "ar")).toEqual(["أ", "ب", "ت"]);
+  });
+
+  it("isActiveTag ignores case and spacing, and an empty or missing active tag matches nothing", () => {
+    expect(isActiveTag("Email Marketing", " email  marketing ")).toBe(true);
+    expect(isActiveTag("seo", "ads")).toBe(false);
+    expect(isActiveTag("seo", "")).toBe(false);
+  });
+
+  it("blogHref encodes characters that would end the query or the path, and an empty tag gives the whole index", () => {
+    expect(blogHref("en", "a#b?c/d")).toBe("/en/blog?tag=a%23b%3Fc%2Fd");
+    expect(blogHref("en", "")).toBe("/en/blog");
+    const href = blogHref("ar", "تسويق وإعلان");
+    expect(new URL(href, "https://x.test").searchParams.get("tag")).toBe("تسويق وإعلان");
   });
 });
 
