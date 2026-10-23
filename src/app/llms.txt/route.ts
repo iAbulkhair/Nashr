@@ -2,7 +2,7 @@ import { dict, LANGS, type Lang } from "@/lib/i18n";
 import { AGENTS } from "@/lib/agents";
 import { AGENT_PAGES, SITE } from "@/lib/site";
 import { TOOLS } from "@/lib/tools";
-import { HELP } from "@/lib/help";
+import { HELP, helpLangs } from "@/lib/help";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { COMPARE_PAGE } from "@/lib/pages-compare";
 import { listPosts } from "@/lib/blog";
@@ -72,7 +72,7 @@ function sections(lang: Lang): Section[] {
     },
     { title: s.resources.compare, links: [{ path: "/compare", name: COMPARE_PAGE[lang].title, note: COMPARE_PAGE[lang].desc }] },
     // The help topics' pages (rule 2144), under the resources card's own name for the help centre; each named by its title.
-    { title: s.resources.cards.find((c) => c.href === "/help")?.t ?? f.resources, links: HELP.map((h) => ({ path: `/help/${h.id}`, name: h.title[lang] })) },
+    { title: s.resources.cards.find((c) => c.href === "/help")?.t ?? f.resources, links: HELP.filter((h) => helpLangs(h).includes(lang)).map((h) => ({ path: `/help/${h.id}`, name: h.title[lang] })) },
     { title: t.nav.tools, links: TOOLS.map((x) => ({ path: `/tools/${x.slug}`, name: x.name[lang], note: x.desc[lang] })) },
     { title: t.nav.blog, links: listPosts(lang).map((p) => ({ path: `/blog/${p.slug}`, name: p.title, note: p.desc })) },
   ];

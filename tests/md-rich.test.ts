@@ -132,7 +132,7 @@ describe("rule 3311: fenced code in Markdown", () => {
     expect(deps.filter((d) => /mdx|content-collections|rehype|remark/i.test(d))).toEqual([]);
     expect(pkg.dependencies.shiki).toMatch(/^\d+\.\d+\.\d+$/);
     const page = readFileSync("src/app/[lang]/blog/[slug]/page.tsx", "utf8");
-    expect(page).toContain("renderPost(lang, p.body)");
+    expect(page).toContain("renderPost(sl, p.body)");
     expect(page).not.toMatch(/\brender\(/);
   });
 });

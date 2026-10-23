@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { helpHref, helpTopics } from "@/lib/help";
+import { helpHref, helpTopicsIn } from "@/lib/help";
 import type { Lang } from "@/lib/i18n";
 import Scribble from "@/components/Scribble";
 import ScribbleStatic from "@/components/ScribbleStatic";
@@ -8,7 +8,7 @@ import ScribbleStatic from "@/components/ScribbleStatic";
 /** `origin` is the canonical app origin (src/lib/origin.ts `appOrigin()`), read on the server: answers that name the MCP URL use it. */
 export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: Lang; wa: string | null; origin: string; inApp?: boolean }) {
   const ar = lang === "ar";
-  const HELP = helpTopics(origin);
+  const HELP = helpTopicsIn(origin, lang);
   const [q, setQ] = useState("");
   const [topic, setTopic] = useState("all");
   const [sent, setSent] = useState<"idle" | "busy" | "ok" | "err">("idle");

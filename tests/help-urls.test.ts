@@ -146,7 +146,7 @@ describe("rule 2145: FAQPage structured data is the page's own questions and ans
   });
 
   it("the page serialises it with ldJson, so no string can close the script element", () => {
-    expect(read(TOPIC_PAGE)).toContain("dangerouslySetInnerHTML={{ __html: ldJson(helpFaqJsonLd(lang, origin, t)) }}");
+    expect(read(TOPIC_PAGE)).toContain("dangerouslySetInnerHTML={{ __html: ldJson(helpFaqJsonLd(sl, origin, t)) }}");
     const first = helpTopics("https://x.example")[0];
     const t = { ...first, items: [{ ...first.items[0], a: { ar: "</script><script>alert(1)</script>", en: "</script>" } }] };
     const out = ldJson(helpFaqJsonLd("ar", "https://x.example", t));
@@ -219,12 +219,14 @@ describe("rule 2148: the two-step and devices answer is help-page only, so the c
 });
 
 describe("rule 2149: src/lib/help.ts stays client-safe", () => {
-  it("imports only the language type and the import-free pricing and task tables", () => {
+  it("imports only the language type and the import-free language-fallback, pricing and task tables", () => {
     const src = read("src/lib/help.ts");
     const sf = ts.createSourceFile("help.ts", src, ts.ScriptTarget.Latest);
     const from = sf.statements.filter(ts.isImportDeclaration).map((d) => (d.moduleSpecifier as ts.StringLiteral).text);
-    expect(from).toEqual(["./i18n", "./pricing", "./tasks"]);
+    expect(from).toEqual(["./i18n", "./lang-fallback", "./pricing", "./tasks"]);
     expect(src).toMatch(/^import type \{ Lang \} from "\.\/i18n";/);
     for (const f of ["src/lib/pricing.ts", "src/lib/tasks.ts"]) expect(read(f), f).not.toMatch(/^import /m);
+    // Rule 3313: the language-fallback table is pure too, with a type import only.
+    expect(read("src/lib/lang-fallback.ts").match(/^import .*$/gm)).toEqual(['import type { Lang } from "./i18n";']);
   });
 });

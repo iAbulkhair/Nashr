@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { isLang } from "@/lib/i18n";
-import { cardQuestions, helpTopic } from "@/lib/help";
+import { cardQuestions, helpTopic, serveTopic } from "@/lib/help";
 import { CARD_SIZE, cardAlt, shareCard } from "@/lib/share-card";
 
 /**
@@ -18,7 +18,9 @@ type Params = { params: Promise<{ lang: string; topic: string }> };
 export async function generateImageMetadata({ params }: Params) {
   const { lang, topic } = await params;
   const t = helpTopic(topic);
-  return [{ id: "card", size: CARD_SIZE, contentType: "image/png", alt: t && isLang(lang) ? cardAlt(lang, "help", t.title[lang]) : "" }];
+  // Rule 3313: a topic written in one language draws its card in that language, on the other language's address too.
+  const s = t && isLang(lang) ? serveTopic(t, lang) : null;
+  return [{ id: "card", size: CARD_SIZE, contentType: "image/png", alt: t && s ? cardAlt(s.lang, "help", t.title[s.lang]) : "" }];
 }
 
 export default async function Image({ params }: Params) {
@@ -26,5 +28,7 @@ export default async function Image({ params }: Params) {
   if (!isLang(lang)) notFound();
   const t = helpTopic(topic);
   if (!t) notFound();
-  return shareCard({ lang, kind: "help", title: t.title[lang], description: cardQuestions(lang, t) });
+  const s = serveTopic(t, lang);
+  if (!s) notFound();
+  return shareCard({ lang: s.lang, kind: "help", title: t.title[s.lang], description: cardQuestions(s.lang, t) });
 }

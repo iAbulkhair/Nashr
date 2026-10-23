@@ -32,9 +32,12 @@ export const SITE_DEFAULT: Record<Lang, { title: string; description: string }> 
  * `src/app/[lang]/opengraph-image.png` reaches every page. A page-level `openGraph` object would replace the layout's
  * whole, image included (Next merges metadata shallowly), so tests/share-meta.test.ts refuses one.
  */
-export function pageMeta(lang: Lang, path: string, m: { title: string; description?: string; bilingual?: boolean }): Metadata {
-  const alternates: NonNullable<Metadata["alternates"]> = { canonical: `/${lang}${path}` };
+export function pageMeta(lang: Lang, path: string, m: { title: string; description?: string; bilingual?: boolean; served?: Lang }): Metadata {
+  // Rule 3313: a page whose text exists only in `served` (not the URL's language) names that version as canonical and is no
+  // alternate of anything, so the text is filed once and the missing language's URL is not offered as a translation.
+  const fallback = m.served !== undefined && m.served !== lang;
+  const alternates: NonNullable<Metadata["alternates"]> = { canonical: `/${fallback ? m.served : lang}${path}` };
   // Without its own `languages`, a page would inherit the layout's hreflang, which points at the two home pages.
-  if (m.bilingual !== false) alternates.languages = { ar: `/ar${path}`, en: `/en${path}` };
+  if (m.bilingual !== false && !fallback) alternates.languages = { ar: `/ar${path}`, en: `/en${path}` };
   return { title: m.title, ...(m.description ? { description: m.description } : {}), alternates };
 }

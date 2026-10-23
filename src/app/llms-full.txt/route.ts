@@ -1,5 +1,5 @@
 import { dict, LANGS, type Lang } from "@/lib/i18n";
-import { helpTopics } from "@/lib/help";
+import { helpTopicsIn } from "@/lib/help";
 import { listPosts } from "@/lib/blog";
 import { SITE_DEFAULT } from "@/lib/page-meta";
 import { appOrigin } from "@/lib/origin";
@@ -26,7 +26,7 @@ const line = (s: string) => s.replace(/\s+/g, " ").trim();
 
 function section(lang: Lang, base: string): string[] {
   const out: string[] = [`# ${dict[lang].brand} (${lang})`, "", `> ${line(SITE_DEFAULT[lang].description)}`];
-  for (const t of helpTopics(base)) {
+  for (const t of helpTopicsIn(base, lang)) {
     out.push("", `## ${line(t.title[lang])}`, `<${base}/${lang}/help/${t.id}>`);
     for (const i of t.items) out.push("", `### ${line(i.q[lang])}`, "", i.a[lang].trim());
   }

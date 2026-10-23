@@ -1,4 +1,5 @@
 import type { Lang } from "./i18n";
+import { serve, type Served } from "./lang-fallback";
 import { CHAT_ALLOWANCE as M, ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS, PLAN_PRICE_SAR as P, chatOverflowHold, formatCount as fc } from "./pricing";
 import { TASK_COST as C, TASK_COUNT as N } from "./tasks";
 
@@ -22,10 +23,10 @@ const HOLD = chatOverflowHold();
  * never renamed or reused; tests/help-urls.test.ts pins every one, and a new answer adds its own.
  */
 export type HelpItem = { slug: HelpSlug; q: Record<Lang, string>; a: Record<Lang, string>; chat?: false };
-export type HelpTopic = { id: HelpTopicId; title: Record<Lang, string>; items: HelpItem[] };
+export type HelpTopic = { id: HelpTopicId; title: Record<Lang, string>; items: HelpItem[]; only?: Lang };
 
 /** The shape `HELP_DATA` is checked against, before its ids and slugs are narrowed to the literal types below. */
-type HelpTopicDef = { id: string; title: Readonly<Record<Lang, string>>; items: readonly { slug: string; q: Readonly<Record<Lang, string>>; a: Readonly<Record<Lang, string>>; chat?: false }[] };
+type HelpTopicDef = { id: string; only?: Lang; title: Readonly<Record<Lang, string>>; items: readonly { slug: string; q: Readonly<Record<Lang, string>>; a: Readonly<Record<Lang, string>>; chat?: false }[] };
 
 /** Every help topic's id: `/{lang}/help/{id}` is that topic's page (rule 2140). */
 export type HelpTopicId = (typeof HELP_DATA)[number]["id"];
@@ -73,6 +74,21 @@ export function describe(lang: Lang, t: HelpTopic): string {
 
 /** The same questions without the title in front, for the topic's share card (rule 3142), which draws the title on its own. */
 export const cardQuestions = (lang: Lang, t: HelpTopic): string => questionsLine(lang, t, 150);
+
+/**
+ * The languages a topic is written in (rule 3313): both, unless it says `only: "ar"` or `only: "en"`. A topic that is written
+ * in one language gives the other language's strings as empty text; it is listed and put in the sitemap in its own language
+ * only, and its page on the other language's address shows the existing version with a notice (`serveTopic`).
+ */
+export const helpLangs = (t: Pick<HelpTopic, "only">): Lang[] => (t.only ? [t.only] : ["ar", "en"]);
+
+/** `helpTopics(origin)` limited to the topics written in `lang`: what the index, the llms files and the topic chips list. */
+export function helpTopicsIn(origin: string, lang: Lang): HelpTopic[] {
+  return helpTopics(origin).filter((t) => helpLangs(t).includes(lang));
+}
+
+/** The language a topic page at `/{lang}/help/{id}` is shown in (rule 3313): `lang` when the topic exists in it, else the one it exists in. */
+export const serveTopic = (t: Pick<HelpTopic, "only">, lang: Lang): Served | null => serve(lang, helpLangs(t));
 
 /** The topic with this id, or undefined: the topic page's lookup of its URL segment. */
 export function helpTopic(id: string): HelpTopic | undefined {
@@ -150,6 +166,7 @@ const HELP_DATA = [
 /** The topics with their ids and slugs widened, for code that walks them all. */
 export const HELP: HelpTopic[] = (HELP_DATA as readonly HelpTopicDef[]).map((t) => ({
   id: t.id as HelpTopicId,
+  ...(t.only ? { only: t.only } : {}),
   title: { ...t.title },
   items: t.items.map((i) => ({ ...i, slug: i.slug as HelpSlug, q: { ...i.q }, a: { ...i.a } })),
 }));
