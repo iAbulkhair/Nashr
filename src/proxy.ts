@@ -49,13 +49,18 @@ export const PUBLIC_SEGMENTS = [
 ] as const;
 const UNPREFIXED = new RegExp(`^/(?:${PUBLIC_SEGMENTS.join("|")})(?:/|$)`);
 /** True for a public page's address written without its language. */
-export const unprefixedPublic = (pathname: string): boolean => UNPREFIXED.test(pathname);
+/**
+ * A cover image of a post is a file of the repository under `public/blog` (rule 3314), served at `/blog/{name}.{png,jpg,jpeg,webp,avif,gif}`.
+ * It is the one thing under a public page's segment that is not a page: it must not be sent to `/{lang}/blog/...`, where it would be a 404.
+ */
+const COVER_FILE = /^\/blog\/[^/]+\.(?:png|jpe?g|webp|avif|gif)$/i;
+export const unprefixedPublic = (pathname: string): boolean => UNPREFIXED.test(pathname) && !COVER_FILE.test(pathname);
 
 /**
  * The first path segments that live outside `src/app/[lang]`: the folders beside it (`api`, `m`, `p`, `oauth`, `fonts`)
- * and under `public` (`icons`). tests/global-nav.test.ts holds this list to the folders on disk.
+ * and under `public` (`blog` for post covers, `icons`). tests/global-nav.test.ts holds this list to the folders on disk.
  */
-export const ROOT_SEGMENTS = ["api", "fonts", "icons", "m", "oauth", "p"] as const;
+export const ROOT_SEGMENTS = ["api", "blog", "fonts", "icons", "m", "oauth", "p"] as const;
 const ROOT_ROUTE = new RegExp(`^/(?:ar|en|${ROOT_SEGMENTS.join("|")})(?:/|$)`);
 /**
  * True for an address outside the language tree that no route serves (rule 1891): `/xyz`, `/ar-sa/pricing`, `/admin`.

@@ -9,6 +9,8 @@ import ScribbleStatic from "@/components/ScribbleStatic";
 import FinalCta from "@/components/FinalCta";
 import { PostTags } from "@/components/PostTags";
 import LangFallbackNotice from "@/components/LangFallbackNotice";
+import PostCover from "@/components/PostCover";
+import { postCover } from "@/lib/blog-cover";
 import { textAttrs } from "@/lib/lang-fallback";
 import { pageMeta } from "@/lib/page-meta";
 import { articleJsonLd, ldJson } from "@/lib/home-ld";
@@ -51,6 +53,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
             <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><ScribbleStatic kind="underline" seed="post-h" rtl={sl === "ar"} />{p.title}</span></h1>
             <p className="mt-4 text-lg text-foreground-muted">{p.desc}</p>
             <PostTags lang={sl} tags={p.tags} label={sl === "ar" ? "وسوم المقال" : "Post tags"} />
+            <PostCover cover={postCover(sl, p.slug, p.cover)} />
             <article className="prose-nashr mt-10" dangerouslySetInnerHTML={{ __html: renderPost(sl, p.body) }} />
           </div>
         </div>

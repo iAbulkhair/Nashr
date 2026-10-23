@@ -55,7 +55,7 @@ export function homeJsonLd(lang: Lang, origin: string): Record<string, unknown>[
  * organisation as author and publisher, the same `@id` the homepage declares. No author person, rating or image is made
  * up: the posts are the company's, signed by nobody.
  */
-export function articleJsonLd(lang: Lang, origin: string, p: { slug: string; title: string; desc: string; date: string }): Record<string, unknown> {
+export function articleJsonLd(lang: Lang, origin: string, p: { slug: string; title: string; desc: string; date: string; cover?: { src: string } | null }): Record<string, unknown> {
   const t = dict[lang];
   const url = `${origin}/${lang}/blog/${p.slug}`;
   const org = { "@type": "Organization", "@id": `${origin}/#organization`, name: t.brand, url: origin, logo: { "@type": "ImageObject", url: `${origin}/icons/icon-512.png` } };
@@ -66,6 +66,8 @@ export function articleJsonLd(lang: Lang, origin: string, p: { slug: string; tit
     description: p.desc,
     datePublished: p.date,
     dateModified: p.date,
+    // Rule 3314: only a cover the post itself names; the generated share card is a link preview, not the post's picture.
+    ...(p.cover ? { image: `${origin}${p.cover.src}` } : {}),
     inLanguage: lang,
     url,
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
