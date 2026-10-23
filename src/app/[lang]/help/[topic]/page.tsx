@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { backArrow } from "@/lib/format";
-import { dict, isLang, LANGS, type Lang } from "@/lib/i18n";
-import { HELP, helpHref, helpTopic, helpTopics, type HelpTopic } from "@/lib/help";
+import { dict, isLang, LANGS } from "@/lib/i18n";
+import { describe, HELP, helpHref, helpTopic, helpTopics } from "@/lib/help";
 import { helpFaqJsonLd, ldJson } from "@/lib/home-ld";
 import { appOrigin } from "@/lib/origin";
 import { pageMeta } from "@/lib/page-meta";
@@ -15,16 +15,6 @@ import ScribbleStatic from "@/components/ScribbleStatic";
 /** One page per help topic (rule 2140), built at build time for both languages; any other id is the branded 404. */
 export function generateStaticParams() {
   return LANGS.flatMap((lang) => HELP.map((t) => ({ lang, topic: t.id })));
-}
-
-/** The topic's own questions, as many as fit a search snippet: the description says only what the page answers (rule 2143). */
-function describe(lang: Lang, t: HelpTopic): string {
-  let out = `${t.title[lang]}: ${t.items[0].q[lang]}`;
-  for (const i of t.items.slice(1)) {
-    if (out.length + i.q[lang].length + 3 > 160) break;
-    out += ` · ${i.q[lang]}`;
-  }
-  return out;
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string; topic: string }> }): Promise<Metadata> {

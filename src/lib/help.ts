@@ -53,6 +53,27 @@ export function helpHref<T extends HelpTopicId>(lang: Lang, topic: T, slug?: Hel
   return `/${lang}/help/${topic}${slug ? `#${slug}` : ""}`;
 }
 
+/** The topic's questions joined with " · ", as many as fit in `room` characters; the first is always kept. */
+function questionsLine(lang: Lang, t: HelpTopic, room: number): string {
+  let out = t.items[0].q[lang];
+  for (const i of t.items.slice(1)) {
+    if (out.length + i.q[lang].length + 3 > room) break;
+    out += ` \u00B7 ${i.q[lang]}`;
+  }
+  return out;
+}
+
+/**
+ * The topic's own questions, as many as fit a search snippet: the description says only what the page answers (rule 2143).
+ * The topic page's meta description reads this.
+ */
+export function describe(lang: Lang, t: HelpTopic): string {
+  return `${t.title[lang]}: ${questionsLine(lang, t, 160 - t.title[lang].length - 2)}`;
+}
+
+/** The same questions without the title in front, for the topic's share card (rule 3142), which draws the title on its own. */
+export const cardQuestions = (lang: Lang, t: HelpTopic): string => questionsLine(lang, t, 150);
+
 /** The topic with this id, or undefined: the topic page's lookup of its URL segment. */
 export function helpTopic(id: string): HelpTopic | undefined {
   return HELP.find((t) => t.id === id);
