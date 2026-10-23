@@ -59,8 +59,9 @@ export const cardAlt = (lang: Lang, kind: CardKind, title: string): string => `$
 export function shareCard({ lang, kind, title, description }: { lang: Lang; kind: CardKind; title: string; description?: string }): ImageResponse {
   const rtl = lang === "ar";
   const side = rtl ? "right" : "left";
-  // `textAlign` is ignored under `lineClamp` in Satori, so long text is cut by `clip` instead.
-  const text = { direction: rtl ? "rtl" : "ltr", textAlign: side, width: "100%" } as const;
+  // `textAlign` is ignored under `lineClamp` in Satori, so long text is cut by `clip` instead. It also leaves a right-to-left
+  // text that fits on one line at the left, so the box pushes its line to the reading side as well.
+  const text = { display: "flex", justifyContent: rtl ? "flex-end" : "flex-start", direction: rtl ? "rtl" : "ltr", textAlign: side, width: "100%" } as const;
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", background: lemon.$value, color: ink.$value, padding: "64px 80px", fontFamily: "Display" }}>

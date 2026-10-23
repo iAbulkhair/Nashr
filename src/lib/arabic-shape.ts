@@ -15,7 +15,8 @@
  * letters read as the same word.
  *
  * The forms are the Unicode ones (the compatibility decompositions of U+FE70-U+FEFC), listed here by position for the
- * 36 letters of U+0621-U+064A (without tatweel). A form the script does not have is "-"; an isolated letter is the letter.
+ * 36 letters of U+0621-U+064A (without tatweel). A form the script does not have is "-"; an isolated letter is the letter
+ * (this font has no isolated presentation forms, U+FE80-U+FEF1 fall back to another font).
  */
 const BASE = "\u0621\u0622\u0623\u0624\u0625\u0626\u0627\u0628\u0629\u062A\u062B\u062C\u062D\u062E\u062F\u0630\u0631\u0632\u0633\u0634\u0635\u0636\u0637\u0638\u0639\u063A\u0641\u0642\u0643\u0644\u0645\u0646\u0647\u0648\u0649\u064A";
 const FINAL = "-\uFE82\uFE84\uFE86\uFE88\uFE8A\uFE8E\uFE90\uFE94\uFE96\uFE9A\uFE9E\uFEA2\uFEA6\uFEAA\uFEAC\uFEAE\uFEB0\uFEB2\uFEB6\uFEBA\uFEBE\uFEC2\uFEC6\uFECA\uFECE\uFED2\uFED6\uFEDA\uFEDE\uFEE2\uFEE6\uFEEA\uFEEE\uFEF0\uFEF2";
@@ -74,5 +75,27 @@ function visualWords(chars: string[]): string {
     for (let k = j - 1; k >= i; k--) out.push(...clusters[k]);
     i = j;
   }
-  return out.join("");
+  return engineOrder(out).join("");
+}
+
+/** What the font engine inside Satori (opentype.js) counts as Arabic: its letters and the marks it keeps with them. */
+const isEngineArabic = (ch: string) => /[؀-ٟ٪-ےۖ-ۜ۟-۪ۤۧۨ-ۭۺ-ۿ]/.test(ch);
+
+/**
+ * The font engine joins and reverses every run of characters it counts as Arabic: the isolated letters left plain above
+ * (presentation forms are not Arabic to it), their marks, the Arabic comma and question mark. "العيادات" ends in three
+ * isolated letters, which it turned into "العياتاد" and joined, leaving a gap the width of the join. Each such run is
+ * written here in reverse, so the engine's reversal puts it back in drawn order; the letters of a run never join each
+ * other (each follows a letter that does not reach forward), so its joining changes nothing.
+ */
+function engineOrder(chars: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < chars.length; ) {
+    if (!isEngineArabic(chars[i])) { out.push(chars[i++]); continue; }
+    let j = i;
+    while (j < chars.length && isEngineArabic(chars[j])) j++;
+    for (let k = j - 1; k >= i; k--) out.push(chars[k]);
+    i = j;
+  }
+  return out;
 }
