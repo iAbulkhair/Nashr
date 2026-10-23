@@ -12,17 +12,22 @@ import type { WorkspaceView } from "@/lib/admin-workspace";
 import { agentById } from "@/lib/agents";
 import { STR, type Lang } from "./shared";
 import { USERS_COPY } from "./users-copy";
+import { useWorkspaceEdit } from "./WorkspaceEdit";
 
-type Load = { state: "loading" } | { state: "ready"; view: WorkspaceView } | { state: "failed"; error: "forbidden" | "not_found" | "failed" };
+/** The view plus `may`: whether this console role may change the workspace (rule 3558; the edit route checks again). */
+type Shown = WorkspaceView & { may?: boolean };
+type Load = { state: "loading" } | { state: "ready"; view: Shown } | { state: "failed"; error: "forbidden" | "not_found" | "failed" };
 
 const TH = "p-2 text-start font-medium";
 
 /**
  * The account sheet's Workspace tab (rules 2077-2083, docs/system/flows.md section 84): the owner, the plan with its
  * seat and brand limits, the members with their role and last sign-in, the pending invites and the brands, after
- * supastarter's admin organization page. Read only: nothing here changes anything. It loads when the tab opens (the
- * sheet renders a tab's panel only while it is chosen), so each open is one read and one audit row on the server.
- * Every value renders as text.
+ * supastarter's admin organization page. This file only reads: it loads when the tab opens (the sheet renders a tab's
+ * panel only while it is chosen), so each open is one read and one audit row on the server. Every value renders as text.
+ * A console owner (`may`) also gets the edit buttons of rules 3550-3569 (rename, invite, remove a member, cancel an
+ * invite); their requests live in WorkspaceEdit.tsx, and after each change the view is read again. The owner row has
+ * no button: the owner is never removed or demoted here.
  */
 export default function WorkspacePanel({ lang, email }: { lang: Lang; email: string }) {
   const UC = USERS_COPY[lang];
@@ -33,7 +38,7 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
     try {
       const r = await adminFetch(`/api/admin/users/${encodeURIComponent(email)}/workspace`, { cache: "no-store" });
       const j = (await r.json().catch(() => null)) as ({ ok?: boolean } & Partial<WorkspaceView>) | null;
-      if (r.ok && j?.ok && j.owner) return { state: "ready", view: j as WorkspaceView };
+      if (r.ok && j?.ok && j.owner) return { state: "ready", view: j as Shown };
       return { state: "failed", error: r.status === 403 ? "forbidden" : r.status === 404 ? "not_found" : "failed" };
     } catch {
       return { state: "failed", error: "failed" };
@@ -50,6 +55,10 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
     setLoad({ state: "loading" });
     setLoad(await readView());
   };
+  // After a change the view is read again in place (no skeleton), so the result line stays on screen.
+  const reread = () => void readView().then(setLoad);
+  const ownerEmail = load.state === "ready" ? load.view.owner.email : "";
+  const edit = useWorkspaceEdit({ lang, email, owner: ownerEmail, onDone: reread });
 
   if (load.state === "loading") return <PanelSkeleton label={W.loading} shape="cards" count={2} />;
   if (load.state === "failed") {
@@ -57,12 +66,25 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
     return <ErrorState title={W.failed} body={body} retryLabel={W.retry} onRetry={load.error === "failed" ? retry : undefined} />;
   }
 
-  const { owner, plan, members, invites, brands, openedFrom } = load.view;
+  const { owner, plan, members, invites, brands, openedFrom, workspaceName, may } = load.view;
+  const E = edit.C;
   const when = (v: string | null) => (v ? <Time value={v} lang={lang} style="datetime" /> : <span className="text-foreground-muted">{W.notRecorded}</span>);
   return (
     <div className="grid gap-4 text-sm" data-testid="workspace-panel">
-      <p className="text-xs text-foreground-muted">{W.readOnly}</p>
+      <p className="text-xs text-foreground-muted">{may ? E.editable : `${W.readOnly} ${E.ownerOnly}`}</p>
       {openedFrom && <p className="text-xs text-foreground-muted">{W.openedFrom} <bdi dir="ltr">{openedFrom}</bdi></p>}
+
+      <section aria-labelledby="ws-edit" className="grid gap-2 rounded-card border border-border p-3" data-testid="workspace-edit">
+        <h3 id="ws-edit" className="font-display font-bold text-foreground">{E.workspaceName}</h3>
+        <p dir="auto">{workspaceName ?? <span className="text-foreground-muted">{E.noName}</span>}</p>
+        {may && (
+          <div className="flex flex-wrap gap-2" role="group" aria-label={E.actions}>
+            <button type="button" className="btn btn-sm" disabled={edit.busy} onClick={() => void edit.rename(workspaceName)}>{E.rename}</button>
+            <button type="button" className="btn btn-sm btn-primary" disabled={edit.busy} onClick={() => void edit.invite()}>{E.invite}</button>
+          </div>
+        )}
+        {edit.status}
+      </section>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <section aria-labelledby="ws-owner" className="grid content-start gap-1 rounded-card border border-border p-3">
@@ -95,7 +117,7 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
           <div className="overflow-x-auto rounded-card border border-border">
             <table className="w-full text-xs">
               <thead className="bg-surface-muted text-foreground-muted">
-                <tr><th scope="col" className={TH}>{W.email}</th><th scope="col" className={TH}>{W.role}</th><th scope="col" className={TH}>{W.invitedBy}</th><th scope="col" className={TH}>{W.joined}</th><th scope="col" className={TH}>{W.lastSignIn}</th><th scope="col" className={TH}>{W.status}</th></tr>
+                <tr><th scope="col" className={TH}>{W.email}</th><th scope="col" className={TH}>{W.role}</th><th scope="col" className={TH}>{W.invitedBy}</th><th scope="col" className={TH}>{W.joined}</th><th scope="col" className={TH}>{W.lastSignIn}</th><th scope="col" className={TH}>{W.status}</th>{may && <th scope="col" className={TH}><span className="sr-only">{E.actions}</span></th>}</tr>
               </thead>
               <tbody>
                 {members.map((m) => (
@@ -106,6 +128,7 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
                     <td className="p-2"><Time value={m.acceptedAt} lang={lang} /></td>
                     <td className="p-2">{when(m.lastSignInAt)}</td>
                     <td className="p-2">{m.paused ? <Badge tone="warning">{W.paused}</Badge> : <Badge tone="success">{W.memberActive}</Badge>}</td>
+                    {may && <td className="p-2"><button type="button" className="btn btn-sm btn-danger" disabled={edit.busy} aria-label={`${E.remove} ${m.email}`} onClick={() => void edit.remove(m.email)}>{E.remove}</button></td>}
                   </tr>
                 ))}
               </tbody>
@@ -120,7 +143,7 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
           <div className="overflow-x-auto rounded-card border border-border">
             <table className="w-full text-xs">
               <thead className="bg-surface-muted text-foreground-muted">
-                <tr><th scope="col" className={TH}>{W.email}</th><th scope="col" className={TH}>{W.role}</th><th scope="col" className={TH}>{W.invitedBy}</th><th scope="col" className={TH}>{W.created}</th><th scope="col" className={TH}>{W.expires}</th></tr>
+                <tr><th scope="col" className={TH}>{W.email}</th><th scope="col" className={TH}>{W.role}</th><th scope="col" className={TH}>{W.invitedBy}</th><th scope="col" className={TH}>{W.created}</th><th scope="col" className={TH}>{W.expires}</th>{may && <th scope="col" className={TH}><span className="sr-only">{E.actions}</span></th>}</tr>
               </thead>
               <tbody>
                 {invites.map((v) => (
@@ -130,6 +153,7 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
                     <td className="p-2"><bdi dir="ltr">{v.invitedBy}</bdi></td>
                     <td className="p-2"><Time value={v.createdAt} lang={lang} /></td>
                     <td className="p-2"><Time value={v.expiresAt} lang={lang} /></td>
+                    {may && <td className="p-2"><button type="button" className="btn btn-sm" disabled={edit.busy} aria-label={`${E.cancel} ${v.email}`} onClick={() => void edit.cancel(v.email)}>{E.cancel}</button></td>}
                   </tr>
                 ))}
               </tbody>
@@ -158,6 +182,7 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
           </ul>
         )}
       </section>
+      {edit.dialog}
     </div>
   );
 }

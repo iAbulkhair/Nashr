@@ -230,6 +230,11 @@ export const STAFF_MAY = {
   "workspace.view": ["owner", "support"],
   /** Turn customer passkey sign-in and adding off or on (POST /api/admin/passkeys, rule 2426); stored passkeys are untouched. */
   "passkeys.switch": ["owner"],
+  /**
+   * Change one customer workspace on the customer's behalf (POST /api/admin/users/{email}/workspace/edit, rules 3550-3569):
+   * rename it, invite a member, remove a member, cancel a pending invite. Never the owner, never a role or the ownership.
+   */
+  "workspace.edit": ["owner"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type StaffAction = keyof typeof STAFF_MAY;

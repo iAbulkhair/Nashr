@@ -233,7 +233,7 @@ describe("rule 2078: the workspace permission fails closed", () => {
     expect(staffMay("owner", "workspace.view")).toBe(true);
     expect(staffMay("support", "workspace.view")).toBe(true);
     for (const r of [null, undefined, "", "ghost", "Owner", 1, {}]) expect(staffMay(r, "workspace.view"), String(r)).toBe(false);
-    expect(staffMay("owner", "workspace.edit" as keyof typeof STAFF_MAY)).toBe(false);
+    expect(staffMay("owner", "workspace.delete" as keyof typeof STAFF_MAY)).toBe(false);
     expect(staffMay("owner", "__proto__" as keyof typeof STAFF_MAY)).toBe(false);
   });
 });
@@ -332,8 +332,9 @@ describe("rules 2077, 2079-2082: the read-only workspace view", () => {
     expect(at("actorInfo(req)")).toBeLessThan(at('staffMay(consoleRole(req), "workspace.view")'));
     expect(at('staffMay(consoleRole(req), "workspace.view")')).toBeLessThan(at("await workspaceView(chosen)"));
     expect(at("await workspaceView(chosen)")).toBeLessThan(at("await adminAudit("));
-    expect(at("await adminAudit(")).toBeLessThan(at("NextResponse.json({ ok: true, ...view }"));
-    expect(route).not.toMatch(/export const (POST|PUT|PATCH|DELETE)/);
+    expect(at("await adminAudit(")).toBeLessThan(at("NextResponse.json({ ok: true, ...view, may: staffMay(consoleRole(req), \"workspace.edit\") }"));
+    // The view route stays read only; the console owner's edits have their own route (rules 3550-3569).
+    expect(route).not.toMatch(/export (const|async function) (POST|PUT|PATCH|DELETE)/);
     const lib = read("src/lib/admin-workspace.ts");
     expect(lib).not.toMatch(/\bdb\.|saveUser|saveMember|listInvites\(|withUserLock|srem|sadd/);
     expect(lib).toContain("peekInvites(key)");

@@ -145,6 +145,9 @@ export const TEAM_LOG_KINDS = [
   "ownership_offered",
   "ownership_transferred",
   "workspace_created",
+  // Expand (rule 3554, 2026-10-23): Thakeen support renamed the workspace from the console. Code from before this release
+  // skips a row it cannot parse (`readTeamLog`), so the new kind is safe to write while older code still runs.
+  "workspace_renamed",
 ] as const;
 
 /**

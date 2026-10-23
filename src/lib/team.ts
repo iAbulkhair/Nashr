@@ -536,8 +536,14 @@ async function dropInvites(owner: string, items: readonly (string | Pick<Pending
   );
 }
 
+/**
+ * Who carried a team change out, for its team log row: the customer's own team page ("web", the default) or Thakeen
+ * support from the founder console ("console", rules 3550-3569, src/lib/admin-workspace-edit.ts). The checks are the same.
+ */
+export type TeamVia = { via?: "web" | "console" };
+
 /** The acting person as a team log row names them (rule 2129): the person id and the address of the day. */
-const who = (a: Pick<Actor, "pid" | "email">) => ({ pid: a.pid as string, email: normalizeEmail(a.email) });
+const who =(a: Pick<Actor, "pid" | "email">) => ({ pid: a.pid as string, email: normalizeEmail(a.email) });
 
 /**
  * Invite `email` into `owner`'s account as `role`. The owner may invite either role; an admin only plain members; a
@@ -550,7 +556,7 @@ const who = (a: Pick<Actor, "pid" | "email">) => ({ pid: a.pid as string, email:
  * account (`aid`, beside `owner`) and the inviter's person id (`invitedByPid`, beside their address); the team log gets
  * an "invited" row.
  */
-export async function createInvite(owner: User, actor: Actor, email: string, role: string, lang: string): Promise<{ ok: true; token: string; id: string; invite: Invite } | TeamFail> {
+export async function createInvite(owner: User, actor: Actor, email: string, role: string, lang: string, opts: TeamVia = {}): Promise<{ ok: true; token: string; id: string; invite: Invite } | TeamFail> {
   if (!isTeamRole(role)) return fail("invalid_role");
   const e = normalizeEmail(typeof email === "string" ? email : "");
   if (!validEmail(e)) return fail("invalid_email");
@@ -594,7 +600,7 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
       // Its TTL is the newest invite's, so the set never outlives the invites in it. Only while `MULTI_ORG` is on, so
       // with the flag off the store is byte-for-byte M2's.
       MULTI_ORG ? db.sadd(accountKey.invitesFor(e), id).then(() => db.expire(accountKey.invitesFor(e), INVITE_TTL_SECONDS)) : null,
-      logTeam(aid, { kind: "invited", actor: who(actor), target: { email: e }, role, via: "web" }, { teamLocked: true }),
+      logTeam(aid, { kind: "invited", actor: who(actor), target: { email: e }, role, via: opts.via ?? "web" }, { teamLocked: true }),
     ]);
     return { ok: true as const, token, id, invite };
   });
@@ -785,7 +791,7 @@ export async function discardInvite(owner: string, id: string) {
 }
 
 /** Cancel a pending invite of this account. An admin may cancel only invites for role "member". One "invite_cancelled" row. */
-export async function cancelInvite(owner: User, actor: Actor, id: string): Promise<{ ok: true } | TeamFail> {
+export async function cancelInvite(owner: User, actor: Actor, id: string, opts: TeamVia = {}): Promise<{ ok: true } | TeamFail> {
   const acting = { ...owner, actor };
   if (!can(acting, "team.invite.cancel")) return fail("forbidden");
   if (typeof id !== "string" || !TOKEN_RE.test(id)) return fail("not_found");
@@ -801,7 +807,7 @@ export async function cancelInvite(owner: User, actor: Actor, id: string): Promi
     if (!cur || inviteAccount(cur) !== aid) return false;
     await Promise.all([
       dropInvites(aid, [{ id, email: cur.email }]),
-      logTeam(aid, { kind: "invite_cancelled", actor: who(actor), target: { email: cur.email }, role: cur.role, via: "web" }, { teamLocked: true }),
+      logTeam(aid, { kind: "invite_cancelled", actor: who(actor), target: { email: cur.email }, role: cur.role, via: opts.via ?? "web" }, { teamLocked: true }),
     ]);
     return true;
   });
@@ -893,7 +899,7 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
  * itself is no membership and cannot be removed. Checked again on the membership read under `lock:team:{aid}`; one
  * "removed" team log row.
  */
-export async function removeMember(owner: User, actor: Actor, email: string): Promise<{ ok: true } | TeamFail> {
+export async function removeMember(owner: User, actor: Actor, email: string, opts: TeamVia = {}): Promise<{ ok: true } | TeamFail> {
   const acting = { ...owner, actor };
   if (!can(acting, "team.remove.member")) return fail("forbidden");
   const aid = aidOf(owner);
@@ -906,7 +912,7 @@ export async function removeMember(owner: User, actor: Actor, email: string): Pr
     if (!cur.ms) return "not_found" as const;
     if (cur.ms.role === "admin" && !can(acting, "team.remove.admin")) return "forbidden" as const;
     await deleteMembership(aid, m.pid, { home: cur.home, teamLocked: true });
-    await logTeam(aid, { kind: "removed", actor: who(actor), target: { pid: m.pid, email: m.email }, role: cur.ms.role, via: "web" }, { teamLocked: true });
+    await logTeam(aid, { kind: "removed", actor: who(actor), target: { pid: m.pid, email: m.email }, role: cur.ms.role, via: opts.via ?? "web" }, { teamLocked: true });
     return "ok" as const;
   });
   return res === "ok" ? { ok: true } : fail(res);

@@ -47,6 +47,8 @@ export type WorkspaceView = {
   brands: WorkspaceBrand[];
   /** Set when staff opened the workspace from a member's address: that address. */
   openedFrom: string | null;
+  /** The name given at create or by a console rename (`User.workspaceName`, rule 3554); null when none was given. */
+  workspaceName: string | null;
 };
 
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
@@ -54,8 +56,10 @@ const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOStrin
 /**
  * The account a chosen address belongs to: the account it owns, else the account its login stands for (`login.acct`),
  * read back with `getAccount`; `openedFrom` names the member's address. An address that signs in nowhere opens nothing.
+ * The console's workspace edit (src/lib/admin-workspace-edit.ts, rule 3551) resolves its account here too, so a change
+ * lands on exactly the account the view showed.
  */
-async function accountForChosen(chosen: string): Promise<{ owner: User; openedFrom: string | null } | null> {
+export async function accountForChosen(chosen: string): Promise<{ owner: User; openedFrom: string | null } | null> {
   const email = normalizeEmail(chosen);
   if (!email) return null;
   const login = await getLogin(email);
@@ -99,5 +103,6 @@ export async function workspaceView(chosen: string): Promise<WorkspaceView | nul
       return mode === "on" ? [] : [{ agent, cap, mode }];
     })) })),
     openedFrom,
+    workspaceName: owner.workspaceName?.trim() || null,
   };
 }
