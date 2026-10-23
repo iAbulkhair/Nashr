@@ -284,7 +284,8 @@ export type User = {
  */
 export const sc = (u: User): Scope => storedScope(u.scope ?? acct(u));
 
-const SESSION_TTL = 60 * 60 * 24 * 30;
+/** A session's lifetime in seconds (30 days); exported for the better-auth adapter's projection (rule 3406). */
+export const SESSION_TTL = 60 * 60 * 24 * 30;
 // `thakeen_session`, read with the old `nashr_session` as a fallback during the rename (rule 1810, src/lib/cookie-names.ts).
 const COOKIE = SESSION_COOKIE;
 
@@ -564,7 +565,20 @@ export async function loopbackHttp(): Promise<boolean> {
  * with the console key also carries `kp` and `as` from `keyImpBinding` (rule 429).
  */
 export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string; ss?: string } = {}) {
-  const token = randomBytes(32).toString("hex");
+  await issueSession(randomBytes(32).toString("hex"), email, ttlSeconds, opts);
+}
+
+/** The shape of every token `createSession` mints and the better-auth session gate hands out: 64 hex characters. */
+export const SESSION_TOKEN: RegExp = RAW_TOKEN;
+
+/**
+ * `createSession` with the token chosen by the caller (rule 3407): the record, the cookie and the device entry, exactly as
+ * `createSession` writes them. Only `createSession` (a fresh random token) and the better-auth adapter's session `create`
+ * (the token the session gate generated and approved, src/lib/better-auth/gate.ts) call it, so a better-auth session is a
+ * legacy session in every byte: main reads it unchanged after a rollback. A token of any other shape is refused.
+ */
+export async function issueSession(token: string, email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string; ss?: string } = {}) {
+  if (!SESSION_TOKEN.test(token)) throw new Error("session_token_shape");
   const now = Date.now();
   // The person and the active account (rule 1984), from the login as it resolves now. No login: neither is written, and
   // the session resolves to nothing anyway.
@@ -662,6 +676,22 @@ export async function destroySession() {
     if (s && !s.imp) await forgetDevice(s.email, sessionKey(t)).catch(() => {});
   }));
   dropCookie(jar, COOKIE);
+}
+
+/**
+ * The session behind a better-auth session token (rules 3406, 3410): the stored record when it still resolves exactly as
+ * `currentUser` resolves it with no brand or workspace selector (the verification gate included, so an owner who has not
+ * proved the address reads as signed out, as for every caller but the verify page), with the person acting. Null for no
+ * record, an impersonation (the founder is not that person; server code keeps `currentUser` for it), or a session that
+ * resolves to nobody (revoked, suspended, moved). Only the better-auth adapter calls it (src/lib/better-auth/adapter.ts).
+ */
+export async function sessionForEngine(token: string): Promise<{ session: Session; pid: PersonId; email: string } | null> {
+  const s = sessionOf(await sessionRecord(token));
+  if (!s || s.imp) return null;
+  const u = await resolveSession(s);
+  const actor = u?.actor;
+  if (!u || !actor || (actor.kind !== "owner" && actor.kind !== "member")) return null;
+  return { session: s, pid: actor.pid, email: normalizeEmail(s.email) };
 }
 
 /** An owner is verified when the address was proved with an emailed code (`User.emailVerifiedAt`). */

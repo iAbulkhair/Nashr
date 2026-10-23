@@ -403,6 +403,12 @@ export const globalKey = {
   emailRevertIpBucket: (ip: string) => `emailrevert:ip:${ip}`,
   /** json `{ email, kind }`: a password reset link, under the SHA-256 hex of its token; 1 hour (POST /api/auth/forgot). */
   passwordReset: (tokenHash: string) => `pwreset:${tokenHash}`,
+  /**
+   * json: one better-auth verification row (a magic link), under the SHA-256 hex of its identifier (better-auth already
+   * hashes the token into the identifier); TTL = the row's `expiresAt`, taken with `getdel` (rules 3405, 3416). Written
+   * only while `AUTH_ENGINE=better-auth` (src/lib/better-auth/adapter.ts).
+   */
+  baVerify: (identifierHash: string) => `ba:verify:${identifierHash}`,
 } as const;
 
 /**
