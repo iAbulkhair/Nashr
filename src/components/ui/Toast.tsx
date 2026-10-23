@@ -85,7 +85,7 @@ function ToastView({ item, lang, onClose }: { item: ToastItem; lang: "ar" | "en"
       onMouseLeave={() => setHeld(false)}
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
-      className={`pointer-events-auto flex items-start gap-3 rounded-lg border-[1.5px] border-s-4 bg-popover px-4 py-3 text-sm text-foreground ${TONE_CLASS[item.tone]}`}
+      className={`pointer-events-auto flex items-start gap-3 rounded-lg border-[1.5px] border-s-4 bg-popover px-4 py-3 text-sm text-foreground animate-slide-in-end ${TONE_CLASS[item.tone]}`}
     >
       <p dir="auto" className="min-w-0 flex-1 leading-relaxed">{item.text}</p>
       <button type="button" onClick={() => onClose(item.id)} aria-label={CLOSE[lang]} className="-my-2 -me-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-foreground-muted hover:text-foreground">

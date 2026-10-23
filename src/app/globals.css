@@ -371,3 +371,56 @@ details > summary::-webkit-details-marker { display: none; }
   .journey-fill::after, .journey-next, .pop-in, .journey-toast { animation: none; }
   .confetti { display: none; }
 }
+
+/*
+ * Rule 3300-3309: the small motion set (fade, zoom, spin, slide, accordion). Own CSS, no package; the shapes follow the
+ * supastarter tailwind-animate set, rebuilt on this file's tokens (--ease-out, --duration-*).
+ *
+ * Direction is logical. `--motion-dir` is +1 in left-to-right and -1 in right-to-left, and a slide multiplies its
+ * distance by it, so "from start" comes from the right in Arabic and from the left in English; no rule here names a
+ * physical side. The vertical slides are the same in both directions.
+ *
+ * Accordion: the panel is a one-column grid and the keyframes move its row track from 0fr to 1fr, with the inner child
+ * `min-height: 0; overflow: hidden`. The row grows to the content's own height, so there is no JS measuring and no
+ * height variable to keep in step. It opens on load of a <details> too, because the panel mounts when it opens; a
+ * <details> cannot run the closing animation without script, so that part is for components that keep their own state.
+ *
+ * Reduced motion: every class below is listed in the override. Enter and exit animations become a plain fade (no
+ * movement, no scale), the accordion and the spinner stop. The spinner keeps no motion at all.
+ */
+:root { --motion-dir: 1; --motion-distance: 0.5rem; --motion-zoom-from: 0.95; }
+[dir="ltr"] { --motion-dir: 1; }
+[dir="rtl"] { --motion-dir: -1; }
+
+@keyframes motion-fade-in { from { opacity: 0; } }
+@keyframes motion-fade-out { to { opacity: 0; } }
+@keyframes motion-zoom-in { from { opacity: 0; transform: scale(var(--motion-zoom-from)); } }
+@keyframes motion-zoom-out { to { opacity: 0; transform: scale(var(--motion-zoom-from)); } }
+@keyframes motion-spin { to { transform: rotate(calc(360deg * var(--motion-dir))); } }
+@keyframes motion-slide-in-start { from { opacity: 0; transform: translateX(calc(var(--motion-dir) * var(--motion-distance) * -1)); } }
+@keyframes motion-slide-in-end { from { opacity: 0; transform: translateX(calc(var(--motion-dir) * var(--motion-distance))); } }
+@keyframes motion-slide-in-top { from { opacity: 0; transform: translateY(calc(var(--motion-distance) * -1)); } }
+@keyframes motion-slide-in-bottom { from { opacity: 0; transform: translateY(var(--motion-distance)); } }
+@keyframes motion-accordion-down { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
+@keyframes motion-accordion-up { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
+
+.animate-fade-in { animation: motion-fade-in var(--duration-normal) var(--ease-out) both; }
+.animate-fade-out { animation: motion-fade-out var(--duration-fast) var(--ease-out) both; }
+.animate-zoom-in { animation: motion-zoom-in var(--duration-normal) var(--ease-out) both; }
+.animate-zoom-out { animation: motion-zoom-out var(--duration-fast) var(--ease-out) both; }
+.animate-spin-slow { animation: motion-spin 1s linear infinite; }
+.animate-slide-in-start { animation: motion-slide-in-start var(--duration-normal) var(--ease-out) both; }
+.animate-slide-in-end { animation: motion-slide-in-end var(--duration-normal) var(--ease-out) both; }
+.animate-slide-in-top { animation: motion-slide-in-top var(--duration-normal) var(--ease-out) both; }
+.animate-slide-in-bottom { animation: motion-slide-in-bottom var(--duration-normal) var(--ease-out) both; }
+.accordion-panel { display: grid; grid-template-rows: 1fr; }
+.accordion-panel > * { min-height: 0; overflow: hidden; }
+.animate-accordion-down { animation: motion-accordion-down var(--duration-normal) var(--ease-out) both; }
+.animate-accordion-up { animation: motion-accordion-up var(--duration-normal) var(--ease-out) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-zoom-in, .animate-slide-in-start, .animate-slide-in-end, .animate-slide-in-top, .animate-slide-in-bottom { animation-name: motion-fade-in; }
+  .animate-zoom-out { animation-name: motion-fade-out; }
+  .animate-fade-in, .animate-fade-out { animation-duration: var(--duration-fast); }
+  .animate-spin-slow, .animate-accordion-down, .animate-accordion-up { animation: none; }
+}

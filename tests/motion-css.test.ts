@@ -67,3 +67,51 @@ describe("motion stays calm (rule 511)", () => {
     for (const sel of loops) expect(sel, sel).toMatch(/^html:not\(\[data-motion="off"\]\) \.home /);
   });
 });
+
+/**
+ * Rules 3300-3309. The small motion set: classes exist, directions are logical, reduced motion covers every class.
+ */
+describe("motion set (rules 3300-3309)", () => {
+  const css = read("src/app/globals.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  const start = css.indexOf(":root { --motion-dir");
+  const block = css.slice(start);
+  const classes = [
+    "animate-fade-in", "animate-fade-out", "animate-zoom-in", "animate-zoom-out", "animate-spin-slow",
+    "animate-slide-in-start", "animate-slide-in-end", "animate-slide-in-top", "animate-slide-in-bottom",
+    "animate-accordion-down", "animate-accordion-up",
+  ];
+
+  it("defines every class and a keyframe for each", () => {
+    expect(start).toBeGreaterThan(0);
+    for (const c of classes) expect(block, c).toMatch(new RegExp(`\\.${c}\\s*\\{[^}]*animation:\\s*motion-`));
+    for (const m of block.matchAll(/animation:\s*(motion-[a-z-]+)/g)) expect(block, m[1]).toContain(`@keyframes ${m[1]} `);
+    expect(block).toContain(".accordion-panel");
+  });
+
+  it("flips the slide direction by dir, never by a physical side", () => {
+    expect(block).toMatch(/\[dir="rtl"\]\s*\{\s*--motion-dir:\s*-1/);
+    expect(block).toMatch(/motion-slide-in-start[^}]*calc\(var\(--motion-dir\)/);
+    expect(block).not.toMatch(/\b(left|right)\b/i);
+    expect(block).not.toMatch(/translate(X)?\(\s*-?\d/);
+  });
+
+  it("reduced motion covers every class: a plain fade or nothing", () => {
+    const reduce = /@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*)\}\s*$/.exec(block)?.[1] ?? "";
+    expect(reduce).not.toBe("");
+    for (const c of classes) expect(reduce, c).toContain(`.${c}`);
+    expect(reduce).toMatch(/animation-name:\s*motion-fade-in/);
+    expect(reduce).toMatch(/\.animate-spin-slow[^{]*\{\s*animation:\s*none/);
+  });
+
+  it("uses the existing duration and easing tokens", () => {
+    expect(block).toContain("var(--duration-normal)");
+    expect(block).toContain("var(--ease-out)");
+    expect(block).not.toMatch(/cubic-bezier|\d+ms\b/);
+  });
+
+  it("is used by the FAQ (accordion), the toast (slide from end) and the menu (slide)", () => {
+    expect(read("src/components/Faq.tsx")).toContain("animate-accordion-down");
+    expect(read("src/components/ui/Toast.tsx")).toContain("animate-slide-in-end");
+    expect(read("src/components/ui/Menu.tsx")).toContain("animate-slide-in-top");
+  });
+});

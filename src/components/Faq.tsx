@@ -30,7 +30,11 @@ export function QaList({ items, className = "" }: { items: readonly { q: string;
               +
             </span>
           </summary>
-          <p className="mt-3 max-w-prose leading-relaxed text-foreground-muted">{f.a}</p>
+          <div className="accordion-panel animate-accordion-down">
+            <div>
+              <p className="mt-3 max-w-prose leading-relaxed text-foreground-muted">{f.a}</p>
+            </div>
+          </div>
         </details>
       ))}
     </div>

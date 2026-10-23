@@ -85,7 +85,7 @@ export default function Menu({ label, items, trigger, footer, placement = "botto
         onKeyDown: onTriggerKey,
       }, open)}
       {open && (
-        <div className={`absolute z-50 min-w-56 rounded-xl border-[1.5px] border-border-strong bg-popover p-2 text-sm text-foreground ${placement === "top" ? "bottom-full mb-1" : "top-full mt-1"} ${align === "start" ? "start-0" : "end-0"}`}>
+        <div className={`absolute z-50 min-w-56 rounded-xl border-[1.5px] border-border-strong bg-popover p-2 text-sm text-foreground ${placement === "top" ? "bottom-full mb-1 animate-slide-in-bottom" : "top-full mt-1 animate-slide-in-top"} ${align === "start" ? "start-0" : "end-0"}`}>
           <ul id={`${id}-menu`} role="menu" aria-label={label} onKeyDown={onMenuKey} className="grid gap-0.5">
             {items.map((it, i) => (
               <li key={it.key} role="none">
