@@ -11,6 +11,7 @@ import { PostTags } from "@/components/PostTags";
 import LangFallbackNotice from "@/components/LangFallbackNotice";
 import PostCover from "@/components/PostCover";
 import PostByline from "@/components/PostByline";
+import CopyMarkdownButton from "@/components/CopyMarkdownButton";
 import { postCover } from "@/lib/blog-cover";
 import { textAttrs } from "@/lib/lang-fallback";
 import { pageMeta } from "@/lib/page-meta";
@@ -55,6 +56,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
             <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><ScribbleStatic kind="underline" seed="post-h" rtl={sl === "ar"} />{p.title}</span></h1>
             <p className="mt-4 text-lg text-foreground-muted">{p.desc}</p>
             <PostTags lang={sl} tags={p.tags} label={sl === "ar" ? "وسوم المقال" : "Post tags"} />
+            {/* Rule 3317: the page's own Markdown copy (rule 3316), fetched when pressed. The button speaks the visitor's language. */}
+            <CopyMarkdownButton lang={lang} href={`/${lang}/blog/${slug}.md`} className="mt-5" />
             <PostCover cover={postCover(sl, p.slug, p.cover)} />
             <article className="prose-nashr mt-10" dangerouslySetInnerHTML={{ __html: renderPost(sl, p.body) }} />
           </div>

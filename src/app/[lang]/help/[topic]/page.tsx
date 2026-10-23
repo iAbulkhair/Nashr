@@ -5,6 +5,7 @@ import { backArrow } from "@/lib/format";
 import { dict, isLang, LANGS } from "@/lib/i18n";
 import { describe, HELP, helpHref, helpLangs, helpTopic, helpTopics, serveTopic } from "@/lib/help";
 import LangFallbackNotice from "@/components/LangFallbackNotice";
+import CopyMarkdownButton from "@/components/CopyMarkdownButton";
 import { textAttrs } from "@/lib/lang-fallback";
 import { helpFaqJsonLd, ldJson } from "@/lib/home-ld";
 import { appOrigin } from "@/lib/origin";
@@ -51,6 +52,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
         {served.fallback && <div className="mt-4"><LangFallbackNotice visitor={lang} served={sl} /></div>}
         <div {...text}>
         <h1 className="font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><ScribbleStatic kind="underline" seed={`help-topic-h-${t.id}`} rtl={sl === "ar"} />{t.title[sl]}</span></h1>
+        {/* Rule 3317: the topic's own Markdown copy (rule 3316), fetched when pressed. */}
+        <CopyMarkdownButton lang={lang} href={`/${lang}/help/${t.id}.md`} className="mt-4" />
         <div className="mt-8 divide-y divide-foreground/15 border-y-[1.5px] border-border-strong">
           {t.items.map((i) => (
             // The slug is the answer's permanent anchor (rule 2141): `/{lang}/help/{topic}#{slug}` lands on it.
