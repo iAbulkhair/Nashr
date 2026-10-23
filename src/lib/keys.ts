@@ -409,6 +409,12 @@ export const globalKey = {
    * only while `AUTH_ENGINE=better-auth` (src/lib/better-auth/adapter.ts).
    */
   baVerify: (identifierHash: string) => `ba:verify:${identifierHash}`,
+  /** bucket name for `allow` (stored as `rate:login:ip:{ip}`): password sign-ins per IP, 20 per 15 min; POST /api/auth/login, better-auth's sign-in and the magic link's verify share it (rule 3414). */
+  loginIpBucket: (ip: string) => `login:ip:${ip}`,
+  /** bucket name for `allow` (stored as `rate:login:em:{login}`): password sign-ins per address, 8 per 15 min; shared with POST /api/auth/login (rule 3414). */
+  loginEmailBucket: (login: string) => `login:em:${login}`,
+  /** bucket name for `allow` (stored as `rate:ba:read:ip:{ip}`): better-auth session, account and sign-out calls per IP, 300 per 5 min (rule 3414). */
+  baReadIpBucket: (ip: string) => `ba:read:ip:${ip}`,
 } as const;
 
 /**

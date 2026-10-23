@@ -75,6 +75,9 @@ const g = (role: Role, ...actions: Action[]): Gate => ({ role, actions });
 const ROUTE_ROLES: Record<string, Gate> = {
   // Public: nobody is signed in yet, or the caller only ends their own session.
   "POST /api/auth/login": "public",
+  // better-auth behind AUTH_ENGINE (rules 3400, 3413, 3414): 404 while off; on, an allow-list rate limited in the wrapper
+  // (LIMITED_IN below) before better-auth reads anything.
+  "POST /api/better-auth/[...all]": "public",
   // The second sign-in step (rule 1934): the challenge cookie names the login, rate limited with the login buckets.
   "POST /api/auth/login/mfa": "public",
   // Passkey sign-in (rules 2417, 2418): the sign-in nonce cookie carries the challenge; limited per IP and per credential.
@@ -327,6 +330,8 @@ const READS: Record<string, Gate> = {
   // The passkey list (rule 2412): refused while impersonating, so no founder reads a customer's passkeys.
   "GET /api/account/passkeys": g("member", "passkeys.manage"),
   "GET /api/auth/google/start": "public",
+  // better-auth's session and linked-methods reads (rules 3410, 3414): 404 while off, a per-IP limit in the wrapper.
+  "GET /api/better-auth/[...all]": "public",
   "GET /api/auth/google/callback": "public",
   "GET /api/account/email": g("member", "email.change"),
   "GET /api/account/google": g("member", "google.manage"),
@@ -433,6 +438,19 @@ const READS: Record<string, Gate> = {
  * Public writes without a rate limit of their own, each with the reason it is tolerated. The list may only shrink:
  * a new public route needs allow() from src/lib/rate.ts (CLAUDE.md).
  */
+/**
+ * Public handlers whose whole body is one call into a library wrapper that rate-limits before anything else: the
+ * handler must make that call and the named file must call allow(). better-auth's wrapper (rule 3414), whose buckets
+ * depend on the path and the body, so they cannot sit in the route file.
+ */
+const LIMITED_IN: Record<string, { file: string; call: string }> = {
+  "POST /api/better-auth/[...all]": { file: "src/lib/better-auth/handler.ts", call: "handleBetterAuth(" },
+  "GET /api/better-auth/[...all]": { file: "src/lib/better-auth/handler.ts", call: "handleBetterAuth(" },
+};
+const limitedIn = (h: { key: string; body: string }) => {
+  const l = LIMITED_IN[h.key];
+  return !!l && h.body.includes(l.call) && /\ballow\(/.test(readFileSync(l.file, "utf8"));
+};
 const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
   "POST /api/auth/logout": "ends only the caller's own session",
   "PUT /api/staging-access": "a bare 404 that reads and writes nothing",
@@ -525,7 +543,7 @@ function violations(h: Handler, gate: Gate): string[] {
   const out: string[] = [];
   const w = wrapped(h);
   if (gate === "public") {
-    if (!/\ballow\(/.test(h.body) && !w?.rate && !PUBLIC_WITHOUT_LIMIT[h.key]) out.push("public write without a rate limit (allow)");
+    if (!/\ballow\(/.test(h.body) && !w?.rate && !PUBLIC_WITHOUT_LIMIT[h.key] && !limitedIn(h)) out.push("public write without a rate limit (allow)");
     return out;
   }
   if (gate === "public-read") {

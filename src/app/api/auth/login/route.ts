@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLogin, normalizeEmail, verifyPassword } from "@/lib/auth";
 import { finishAnswer, finishLogin } from "@/lib/login-finish";
+import { globalKey } from "@/lib/keys";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 
 /**
@@ -22,8 +23,9 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
   const email = normalizeEmail(typeof b.email === "string" ? b.email : "");
   const password = typeof b.password === "string" ? b.password : "";
-  // Credential stuffing and password guessing: throttle per IP and per targeted login.
-  if (!(await allow(`login:ip:${clientIp(req)}`, 20, 900)) || !(await allow(`login:em:${email}`, 8, 900))) return retryLater({ ok: false, error: "slow_down" }, 900);
+  // Credential stuffing and password guessing: throttle per IP and per targeted login. The same buckets as better-auth's
+  // `sign-in/email` (rule 3414), so guesses through either engine count once.
+  if (!(await allow(globalKey.loginIpBucket(clientIp(req)), 20, 900)) || !(await allow(globalKey.loginEmailBucket(email), 8, 900))) return retryLater({ ok: false, error: "slow_down" }, 900);
   const login = email ? await getLogin(email) : null;
   if (!login || !(await verifyPassword(login.person, password))) return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
 

@@ -116,7 +116,7 @@ export function projectSession(token: string, at: number, pid: string, now = Dat
 // ---- reads ----
 
 /** The login of a person id this adapter projected itself (a session's `userId`): forward-checked through the login index. */
-async function loginOfPerson(raw: string): Promise<Login | null> {
+export async function loginOfPerson(raw: string): Promise<Login | null> {
   const pid: PersonId = storedPersonId(raw);
   const person = await getPerson(pid);
   if (!person) return null;
