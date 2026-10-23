@@ -127,7 +127,7 @@ describe("measured performance (rules 2098-2101)", () => {
     expect(script).toContain("polyfills-");
   });
 
-  it("2101: the public site ships no raster image tags; the two <img> in the signed-in app are for user media from outside hosts", () => {
+  it("2101: the public site ships no raster image tags; the two <img> in the signed-in app are for user media from outside hosts, and PostCover shows our own generated card or a repo file (rule 3314)", () => {
     const raw: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
@@ -137,6 +137,6 @@ describe("measured performance (rules 2098-2101)", () => {
       }
     };
     walk("src");
-    expect(raw.sort()).toEqual(["src/components/app/Inbox.tsx", "src/components/app/LibraryPanel.tsx"]);
+    expect(raw.sort()).toEqual(["src/components/PostCover.tsx", "src/components/app/Inbox.tsx", "src/components/app/LibraryPanel.tsx"]);
   });
 });

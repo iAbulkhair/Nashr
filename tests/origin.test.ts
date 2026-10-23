@@ -135,7 +135,7 @@ describe("rule 358: every link the app builds follows APP_ORIGIN", () => {
 
   it("the help centre shows the MCP URL the server passes in", () => {
     const comp = readFileSync("src/components/HelpCenter.tsx", "utf8");
-    expect(comp).toMatch(/helpTopics\(origin\)/);
+    expect(comp).toMatch(/loadHelpIndex\(origin, lang\)/);
     for (const p of ["src/app/[lang]/help/page.tsx", "src/app/[lang]/app/help/page.tsx"]) expect(readFileSync(p, "utf8")).toMatch(/origin=\{appOrigin\(\)\}/);
   });
 });

@@ -254,7 +254,7 @@ describe("rule 1978: a blog post carries an Article", () => {
     expect((ld.author as { "@id": string })["@id"]).toBe("https://thakeen.com/#organization");
     expect(JSON.stringify(ld)).not.toMatch(/aggregateRating|review|Person/);
     expect(ldJson({ headline: "</script><b>" })).not.toContain("</script>");
-    expect(src("src/app/[lang]/blog/[slug]/page.tsx")).toMatch(/ldJson\(articleJsonLd\(lang, appOrigin\(\), p\)\)/);
+    expect(src("src/app/[lang]/blog/[slug]/page.tsx")).toMatch(/ldJson\(articleJsonLd\(sl, appOrigin\(\), p\)\)/);
   });
 });
 
@@ -276,7 +276,7 @@ describe("rule 1979: bad blog front matter fails the build", () => {
   });
   it("every reader of the posts goes through the check", () => {
     const blog = src("src/lib/blog.ts");
-    expect(blog.match(/readAll\(\)/g)?.length).toBe(3);
+    expect(blog.match(/readAll\(\)/g)?.length).toBe(4);
     expect(blog).toMatch(/if \(problems\.length\) throw new Error/);
   });
 });
