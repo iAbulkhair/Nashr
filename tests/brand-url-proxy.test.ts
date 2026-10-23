@@ -238,6 +238,7 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
       "/api/partner": "the account's partner record",
       "/api/partner/code": "the account's partner code",
       "/api/push/seen": "the login's away mark (pushLogin), no brand data",
+      "/api/rpc/[[...rest]]": "oRPC behind AUTH_ENGINE: the login's devices and passkeys (actingLogin), no brand data (rule 3423)",
       "/api/referral/share": "the account's share credits (acct(u))",
       "/api/support": "a support ticket with the login's address, no brand data",
       "/api/team/invite": "the account's team",

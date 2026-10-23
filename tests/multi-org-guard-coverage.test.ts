@@ -39,6 +39,9 @@ const PERSON_LEVEL = new Set([
   "/api/account/sessions", // the person's devices
   "/api/account/email", // the person's sign-in address
   "/api/account/google", // the person's Google sign-in link
+  // oRPC behind AUTH_ENGINE: the person's devices and passkeys, no procedure keys a workspace (rule 3423). The optional
+  // catch-all `[[...rest]]` reads as `x]` through pathOf.
+  "/api/rpc/x]",
   "/api/oauth/approve", // the consent form (a native post, rule 2305); the grant names the session's account
   "/api/team/accept", // currentPerson(): joins the invite's account (rule 2116)
   "/api/workspaces", // currentPerson(): list and create (rule 2123)

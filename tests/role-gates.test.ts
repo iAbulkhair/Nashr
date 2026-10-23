@@ -78,6 +78,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // better-auth behind AUTH_ENGINE (rules 3400, 3413, 3414): 404 while off; on, an allow-list rate limited in the wrapper
   // (LIMITED_IN below) before better-auth reads anything.
   "POST /api/better-auth/[...all]": "public",
+  // oRPC (rules 3421-3423): 404 while AUTH_ENGINE is off; on, the session is read here and every procedure is protected.
+  // The per-procedure gates (sessions.revoke, passkeys.manage) are in src/lib/account-security.ts, pinned by
+  // tests/better-auth-rpc.test.ts against the REST routes' answers.
+  "POST /api/rpc/[[...rest]]": "member",
   // The magic link's verify (rule 3416): 404 while AUTH_ENGINE is off; on, the log-in IP bucket before the token is read.
   "POST /api/auth/magic": "public",
   // The second sign-in step (rule 1934): the challenge cookie names the login, rate limited with the login buckets.

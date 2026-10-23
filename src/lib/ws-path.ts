@@ -97,6 +97,10 @@ export const WORKSPACE_FREE: readonly string[] = [
   "/api/account/sessions",
   "/api/account/email",
   "/api/account/google",
+  // better-auth and oRPC behind AUTH_ENGINE (rules 3414, 3423): the person's own sign-in, devices and passkeys; neither
+  // keys a workspace (tests/better-auth-rpc.test.ts scans src/lib/rpc and src/lib/account-security.ts for `sc(`).
+  "/api/better-auth/",
+  "/api/rpc/",
   "/api/admin/",
   "/api/oauth/",
   "/api/staging-access",

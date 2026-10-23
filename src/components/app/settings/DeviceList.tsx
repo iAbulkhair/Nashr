@@ -34,14 +34,46 @@ type Device = { id: string; ua: string; ip: string; at: number; current: boolean
  * typed in that card's field (`password`, cleared through `onUsed` once sent). The server finds the id in the login's
  * own list; nothing here can name another login's session.
  */
-/** The acting login's devices, or null when they could not be read (an empty list is a real answer). */
-async function readDevices(): Promise<Device[] | null> {
+/**
+ * The acting login's devices, or null when they could not be read (an empty list is a real answer). `rpc` (AUTH_ENGINE
+ * on, rule 3424) reads through oRPC's `account.devices.list`, the same answer; the client is loaded only then, so with the
+ * switch off this card loads and calls exactly what it did before.
+ */
+async function readDevices(rpc: boolean): Promise<Device[] | null> {
+  if (rpc) {
+    try {
+      const { rpc: client } = await import("@/lib/rpc/client");
+      return await client.account.devices.list();
+    } catch {
+      return null;
+    }
+  }
   const res = await fetch("/api/account/sessions").catch(() => null);
   const j = ((await res?.json().catch(() => ({}))) ?? {}) as { ok?: boolean; devices?: Device[] };
   return j.ok && Array.isArray(j.devices) ? j.devices : null;
 }
 
-export default function DeviceList({ lang, password, onUsed, forbidden, refresh = 0 }: { lang: Lang; password: string; onUsed: () => void; forbidden: string; refresh?: number }) {
+/** End one device: DELETE /api/account/sessions, or oRPC's `account.devices.revoke` with `rpc`; the same status and code either way. */
+async function endDevice(rpc: boolean, id: string, password: string): Promise<{ ok: boolean; status: number; error?: string }> {
+  if (rpc) {
+    try {
+      const m = await import("@/lib/rpc/client");
+      try {
+        await m.rpc.account.devices.revoke({ id, password });
+        return { ok: true, status: 200 };
+      } catch (e) {
+        return { ok: false, ...m.rpcFailure(e) };
+      }
+    } catch {
+      return { ok: false, status: 0 };
+    }
+  }
+  const res = await fetch("/api/account/sessions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, password }) }).catch(() => null);
+  const j = ((await res?.json().catch(() => ({}))) ?? {}) as { ok?: boolean; error?: string };
+  return { ok: !!j.ok, status: res?.status ?? 0, error: j.error };
+}
+
+export default function DeviceList({ lang, password, onUsed, forbidden, refresh = 0, rpc = false }: { lang: Lang; password: string; onUsed: () => void; forbidden: string; refresh?: number; rpc?: boolean }) {
   const T = COPY[lang];
   const [list, setList] = useState<Device[] | null>(null);
   // The last read failed: the list says so instead of the empty state, which would claim there are no other devices.
@@ -51,20 +83,19 @@ export default function DeviceList({ lang, password, onUsed, forbidden, refresh 
   const toast = useToast();
 
   const show = (d: Device[] | null) => { setUnread(d === null); if (d) setList(d); };
-  const load = async () => show(await readDevices());
-  useEffect(() => { void readDevices().then(show); }, [refresh]);
+  const load = async () => show(await readDevices(rpc));
+  useEffect(() => { void readDevices(rpc).then(show); }, [refresh, rpc]);
 
   async function end(id: string) {
     if (!password || busy) return;
     setBusy(id); setErr("");
-    const res = await fetch("/api/account/sessions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, password }) }).catch(() => null);
-    const j = ((await res?.json().catch(() => ({}))) ?? {}) as { ok?: boolean; error?: string };
+    const r = await endDevice(rpc, id, password);
     setBusy(""); onUsed();
     // Rule 2001: the done line and a plain failure are toasts; permission, limit and wrong-password stay inline.
-    if (j.ok) toast.success(T.ended);
-    else if (res?.status === 403) setErr(forbidden);
-    else if (res?.status === 429) setErr(T.slow);
-    else if (j.error === "wrong_password") setErr(T.wrong);
+    if (r.ok) toast.success(T.ended);
+    else if (r.status === 403) setErr(forbidden);
+    else if (r.status === 429) setErr(T.slow);
+    else if (r.error === "wrong_password") setErr(T.wrong);
     else toast.danger(T.failed);
     await load();
   }

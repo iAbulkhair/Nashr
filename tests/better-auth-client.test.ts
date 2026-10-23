@@ -12,7 +12,7 @@ import {
 } from "@/lib/better-auth/hooks";
 import { QUERY_STALE_MS, createQueryClient } from "@/lib/rpc/query-client";
 import * as route from "@/app/api/better-auth/[...all]/route";
-import * as passkeys from "@/app/api/account/passkeys/route";
+import { rpcTestClient } from "./helpers/rpc";
 
 /**
  * The browser side of better-auth behind AUTH_ENGINE, step (d) (rules 3418-3420,
@@ -49,7 +49,6 @@ const inProcess: typeof fetch = async (input, init) => {
   headers.set("x-forwarded-for", freshIp());
   const req = new Request(url, { method, headers, ...(method === "GET" ? {} : { body: init?.body as BodyInit }) });
   if (url.pathname.startsWith("/api/better-auth/")) return method === "GET" ? route.GET(req) : route.POST(req);
-  if (url.pathname === "/api/account/passkeys" && method === "GET") return passkeys.GET();
   return new Response("{}", { status: 599 });
 };
 const client = (): AuthClient => makeAuthClient({ baseURL: "https://nashr.test", fetchImpl: inProcess });
@@ -211,17 +210,23 @@ describe("rule 3419: query hooks over the client, keys exported, legacy codes as
     await expect(createQueryClient().fetchQuery(userAccountsQueryOptions(client))).rejects.toMatchObject({ status: 401 });
   });
 
-  it("passkeys: the card's own list for the acting login, a 401 when signed out, with the switch off and on", async () => {
-    for (const engine of [false, true]) {
-      if (engine) on();
-      const u = await newUser("cl");
-      await signIn(u.email);
-      const list = await createQueryClient().fetchQuery(userPasskeysQueryOptions(inProcess));
-      expect(list).toMatchObject({ items: [], max: expect.any(Number), proof: "password" });
-      expect(typeof list.enabled).toBe("boolean");
-      signOut();
-      await expect(createQueryClient().fetchQuery(userPasskeysQueryOptions(inProcess))).rejects.toMatchObject({ status: 401 });
-    }
+  it("passkeys go through oRPC (rule 3424): off the legacy 404, on the card's own list, signed out a 401", async () => {
+    const u = await newUser("cl");
+    await signIn(u.email);
+    const viaRpc = rpcTestClient;
+    const off = createQueryClient().fetchQuery(userPasskeysQueryOptions(viaRpc));
+    await expect(off).rejects.toBeInstanceOf(AuthQueryError);
+    await expect(off).rejects.toMatchObject({ code: "not_found", status: 404 });
+
+    on();
+    const list = await createQueryClient().fetchQuery(userPasskeysQueryOptions(viaRpc));
+    expect(list).toEqual({ items: [], max: expect.any(Number), enabled: expect.any(Boolean), proof: "password" });
+    signOut();
+    await expect(createQueryClient().fetchQuery(userPasskeysQueryOptions(viaRpc))).rejects.toMatchObject({ code: "unauthorized", status: 401 });
+  });
+
+  it("the passkeys default builds nothing on the server: the call throws before any request", async () => {
+    await expect(createQueryClient().fetchQuery(userPasskeysQueryOptions())).rejects.toMatchObject({ code: "failed" });
   });
 
   it("authQueryError keeps a known code and status and calls anything else `failed`", () => {
@@ -258,5 +263,8 @@ describe("rule 3420: one query cache per mount, retries off, mounted only where 
   });
 });
 
-/** The screens that read through the query cache (rule 3424 adds the security screen). */
-const ALLOWED_USERS: string[] = [];
+/**
+ * The screens that use the hooks, the provider or the oRPC client: the security screen's device list (rule 3424), which
+ * loads the client only while AUTH_ENGINE is on. No page mounts the provider yet.
+ */
+const ALLOWED_USERS: string[] = ["src/components/app/settings/DeviceList.tsx"];

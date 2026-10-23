@@ -10,6 +10,7 @@ import HelpLink from "@/components/ui/HelpLink";
 import { helpHref } from "@/lib/help";
 import SecuritySettings from "@/components/app/settings/SecuritySettings";
 import { passkeysOn } from "@/lib/passkey-switch";
+import { baOn } from "@/lib/auth-engine";
 
 export const dynamic = "force-dynamic";
 export const generateMetadata = settingsScreenMeta("security");
@@ -17,7 +18,8 @@ export const generateMetadata = settingsScreenMeta("security");
 /**
  * Settings, Security (rules 1150, 1930, 1938, customer passkeys 2412 and 2426): `may` is `can()` on the server; PATCH
  * /api/account, /api/account/sessions, /api/account/2fa and /api/account/passkeys enforce it again. `enabled` is the
- * passkey off switch, read here so the card hides its add button (the routes refuse adding all the same).
+ * passkey off switch, read here so the card hides its add button (the routes refuse adding all the same). `rpc` is
+ * AUTH_ENGINE (rule 3424): on, the device list goes through oRPC at /api/rpc; off, the page is what it was.
  */
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -31,7 +33,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <div className="grid gap-6">
       <PageHeader lang={lang} title={S.name} sub={S.sub} seed="settings-security" actions={<HelpLink lang={lang} href={helpHref(lang, "privacy", "two-step-and-devices")} />} />
-      <SecuritySettings lang={lang} rules={t.join.rules} may={can(u, "password.change") && can(u, "sessions.revoke") && can(u, "mfa.manage") && can(u, "passkeys.manage")} owner={u.actor?.kind === "owner"} forbidden={t.team.errors.forbidden} passkeys={{ T: t.passkeys, enabled }} />
+      <SecuritySettings lang={lang} rules={t.join.rules} may={can(u, "password.change") && can(u, "sessions.revoke") && can(u, "mfa.manage") && can(u, "passkeys.manage")} owner={u.actor?.kind === "owner"} forbidden={t.team.errors.forbidden} passkeys={{ T: t.passkeys, enabled }} rpc={baOn()} />
     </div>
   );
 }

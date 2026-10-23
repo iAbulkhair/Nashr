@@ -1,5 +1,5 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import type { PasskeyItem } from "@/lib/passkeys";
+import { rpc, rpcFailure, type RpcClient } from "@/lib/rpc/client";
 import { authClient, type AuthClient } from "./client";
 
 /**
@@ -63,17 +63,23 @@ export function userAccountsQueryOptions(getClient: GetClient = authClient) {
   });
 }
 
-export type PasskeyList = { items: PasskeyItem[]; max: number; enabled: boolean; proof: "password" | "code" | "none" };
+export type { PasskeyList } from "@/lib/account-security";
 
-/** The acting login's passkeys, as GET /api/account/passkeys answers them (the card's own read, rule 2413). */
-export function userPasskeysQueryOptions(fetchImpl: typeof fetch = (input, init) => fetch(input, init)) {
+/**
+ * The acting login's passkeys through oRPC's `account.passkeys.list` (rule 3424): the answer of GET /api/account/passkeys
+ * without its `ok` (the card's own read, rule 2413). A refusal comes back as the legacy code (`forbidden`,
+ * `unauthorized`, and `not_found` while AUTH_ENGINE is off).
+ */
+export function userPasskeysQueryOptions(getClient: () => RpcClient = () => rpc) {
   return queryOptions({
     queryKey: userPasskeysQueryKey,
-    queryFn: async (): Promise<PasskeyList> => {
-      const res = await fetchImpl("/api/account/passkeys", { credentials: "same-origin", headers: { accept: "application/json" } });
-      const j = (await res.json().catch(() => null)) as (Partial<PasskeyList> & { ok?: boolean; error?: string }) | null;
-      if (!res.ok || !j?.ok || !Array.isArray(j.items)) throw authQueryError(j, res.status);
-      return { items: j.items, max: typeof j.max === "number" ? j.max : 10, enabled: !!j.enabled, proof: j.proof ?? "password" };
+    queryFn: async () => {
+      try {
+        return await getClient().account.passkeys.list();
+      } catch (e) {
+        const f = rpcFailure(e);
+        throw new AuthQueryError(f.error, f.status);
+      }
     },
     retry: false,
   });

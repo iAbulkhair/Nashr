@@ -40,8 +40,9 @@ const COPY = {
  * `TwoStepSettings`), passkeys (rules 2410-2416, 2426, 2429, `PasskeySettings`), and "sign out other devices" with the device list (rules 1938-1941, `DeviceList`, which uses the
  * same password field to sign one device out). Each is its own card; none keeps a typed password once it is sent.
  * `may`: from `can()` on the server (a founder viewing the account may do none of them).
+ * `rpc`: AUTH_ENGINE is on, so the device list reads and ends devices through oRPC (rule 3424); absent, the REST routes.
  */
-export default function SecuritySettings({ lang, rules, may, owner, forbidden, passkeys }: { lang: Lang; rules: readonly string[]; may: boolean; owner: boolean; forbidden: string; passkeys: { T: AppDict["passkeys"]; enabled: boolean } }) {
+export default function SecuritySettings({ lang, rules, may, owner, forbidden, passkeys, rpc = false }: { lang: Lang; rules: readonly string[]; may: boolean; owner: boolean; forbidden: string; passkeys: { T: AppDict["passkeys"]; enabled: boolean }; rpc?: boolean }) {
   const T = COPY[lang];
   const [cur, setCur] = useState("");
   const [pw, setPw] = useState("");
@@ -96,7 +97,7 @@ export default function SecuritySettings({ lang, rules, may, owner, forbidden, p
         <Field label={T.confirmPw} required className="sm:max-w-sm">
           <PasswordField lang={lang} name="password" autoComplete="current-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </Field>
-        <DeviceList lang={lang} password={confirm} onUsed={() => setConfirm("")} forbidden={forbidden} refresh={devicesRefresh} />
+        <DeviceList lang={lang} password={confirm} onUsed={() => setConfirm("")} forbidden={forbidden} refresh={devicesRefresh} rpc={rpc} />
       </SettingsCard>
     </div>
   );

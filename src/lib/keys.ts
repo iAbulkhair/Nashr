@@ -419,6 +419,12 @@ export const globalKey = {
   magicIpBucket: (ip: string) => `magic:ip:${ip}`,
   /** bucket name for `allow` (stored as `rate:magic:em:{email}`): sign-in links per address, 3 per 15 min (rule 3415). */
   magicEmailBucket: (email: string) => `magic:em:${email}`,
+  /**
+   * bucket name for `allow` (stored as `rate:signoutothers:{login}`): wrong passwords when ending devices, 10 per hour per
+   * acting login. The REST route /api/account/sessions writes the same string inline; oRPC's `account.devices.revoke`
+   * builds it here, so both paths share one counter (rule 3422).
+   */
+  signOutOthersBucket: (login: string) => `signoutothers:${login}`,
 } as const;
 
 /**
