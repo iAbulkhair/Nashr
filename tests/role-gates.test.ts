@@ -249,6 +249,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // An Editor (stored "member") and up, never a Viewer (rule 3752): agent runs, credit spend and workspace writes.
   "POST /api/chat": g("member", "chat"),
   "POST /api/chat/feedback": g("member", "feedback"),
+  "POST /api/chat/voice": g("member", "chat"),
   "POST /api/conversations": g("member", "conversations"),
   "PATCH /api/conversations": g("member", "conversations"),
   "DELETE /api/conversations": g("member", "conversations"),
@@ -447,7 +448,7 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/team/transfer", "POST /api/workspaces/transfer", "DELETE /api/workspaces/person", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/chat/voice", "POST /api/team/transfer", "POST /api/workspaces/transfer", "DELETE /api/workspaces/person", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
   // Agent instructions (rules 930-959).
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // Core-file rewrite cards (rule 2306).

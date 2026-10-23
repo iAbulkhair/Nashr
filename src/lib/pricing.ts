@@ -299,3 +299,26 @@ export const MEETING_TRANSCRIPT_COST = 1;
 export const MEETING_TEXT_MAX = 40_000;
 /** The longest typed notes, in characters. */
 export const MEETING_NOTES_MAX = 4_000;
+
+// ---- Voice notes in the chat composer (rules 3580-3599, docs/superpowers/specs/2026-10-23-voice-stt.md) ----
+
+/**
+ * Credits one started minute of a voice note costs (rule 3584): the speech-to-text provider's list price per minute at
+ * the margin floor, rounded up, `ceil(usdPerMinute / maxCostPerCreditUsd())`. ElevenLabs Scribe v2 lists $0.22 an hour
+ * ($0.00367 a minute) on 2026-10-23, and one credit may cost us at most ≈ $0.071, so 1. tests/voice-stt.test.ts fails the
+ * build when a provider's rate (`STT_USD_PER_MINUTE`, src/lib/voice/config.ts) ever needs more. A note is billed per started
+ * minute and never less than one (`voiceCredits`). The founder confirms this number before the switch goes on.
+ */
+export const VOICE_CREDITS_PER_MINUTE = 1;
+/** The longest voice note, in seconds (rule 3583). The composer stops recording here; the server refuses a longer note. */
+export const VOICE_MAX_SECONDS = 120;
+/**
+ * The largest voice note body, in bytes (rule 3583): two minutes of Opus at 128 kbit/s (Chrome's default, ≈ 1.9 MB) with
+ * room to spare. The composer records at 32 kbit/s (≈ 0.5 MB for two minutes). Far below the proxy's 6 MB (rule 774).
+ */
+export const VOICE_MAX_BYTES = 2_500_000;
+/** Credits a voice note of `seconds` costs: whole started minutes, at least 1 (a bad or missing length bills the longest note). */
+export function voiceCredits(seconds: number): number {
+  const s = Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, VOICE_MAX_SECONDS) : VOICE_MAX_SECONDS;
+  return Math.max(1, Math.ceil(s / 60)) * VOICE_CREDITS_PER_MINUTE;
+}

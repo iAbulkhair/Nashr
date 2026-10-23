@@ -125,6 +125,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.pushLast(E), `pushlast:${E}`],
     [accountKey.pushBucket(E), `push:${E}`],
     [accountKey.seenBucket(E), `tabbeat:${E}`],
+    [accountKey.voiceDayBucket(E), `voice:d:${E}`],
     // Account-id R2 (rule 2743): the 30-day hold on a moved-from address; new family, no old template.
     [accountKey.emailHold(E), `emailhold:${E}`],
   ];

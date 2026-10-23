@@ -22,6 +22,7 @@ const P: Record<string, React.ReactNode> = {
   stop: <><rect x="6.5" y="6.5" width="11" height="11" rx="2" /></>,
   retry: <><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4.5 4.5v3.5H8" /></>,
   send: <><path d="M4 12 20 4l-4 16-4-7-8-1Z" /></>,
+  mic: <><rect x="9" y="3.5" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5M9 20.5h6" /></>,
   copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></>,
   share: <><path d="M12 4v12M8 8l4-4 4 4" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
   thumbUp: <><path d="M7 11v9H4v-9h3Zm0 0 4-7.5c1.5 0 2.5 1 2.5 2.5V9h5a2 2 0 0 1 2 2.3l-1 6.5a2 2 0 0 1-2 1.7H7" /></>,

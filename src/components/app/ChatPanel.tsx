@@ -25,6 +25,7 @@ import Menu from "@/components/ui/Menu";
 import { useAppLink, announceCredits } from "./WorkspaceContext";
 import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
 import ChatBubble from "./ChatBubble";
+import VoiceButton from "./VoiceButton";
 import type { Journey } from "@/lib/journey";
 import JourneyCard from "./JourneyCard";
 import AgentAvatar from "@/components/app/AgentAvatar";
@@ -618,7 +619,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canInstructions = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "instructions.write")`: a plain member sees a proposed instruction but cannot decide it */ canInstructions?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canInstructions = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null, voice = false }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "instructions.write")`: a plain member sees a proposed instruction but cannot decide it */ canInstructions?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null; /** voice notes are on (`voiceEnabled()`, rule 3591): the composer shows the microphone */ voice?: boolean }) {
   const href = useAppLink(lang);
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
@@ -641,6 +642,11 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   const [goal, setGoal] = useState(starter ?? null);
   const [onboarded, setOnboarded] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  // Rule 3590: a voice note's text joins whatever is already typed and waits in the box; only the person's Send sends it.
+  const addSpoken = useCallback((spoken: string) => {
+    setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, "")} ${spoken}` : spoken));
+    requestAnimationFrame(() => input.current?.focus());
+  }, []);
   // Stop (rule 1126): the request's controller, and whether the person stopped waiting (then no recovery runs).
   const ctl = useRef<AbortController | null>(null);
   const stopped = useRef(false);
@@ -966,6 +972,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       <form onSubmit={(e) => { e.preventDefault(); void send(text); }} aria-busy={busy} className="sticky bottom-0 z-10 -mx-4 mt-3 bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:p-0">
         <div className="flex items-end gap-2">
           <textarea ref={input} rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (enterSends({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, coarse)) { e.preventDefault(); void send(text); } }} enterKeyHint={coarse ? "enter" : "send"} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} aria-describedby="chat-enter-hint" className="input min-h-[var(--hit-min)] resize-none overflow-y-auto rounded-2xl py-2.5 leading-normal" />
+          {voice && !onboardUrl && <VoiceButton lang={lang} agent={agent} disabled={busy} onText={addSpoken} onNotice={setNotice} />}
           {busy && !onboardUrl
             ? <button type="button" onClick={stop} className="btn btn-secondary btn-lg shrink-0" aria-label={t.ux.chat.stop}><Icon name="stop" className="h-4 w-4" /><span className="hidden sm:inline">{t.ux.chat.stop}</span></button>
             : <button type="submit" disabled={busy || !text.trim()} className="btn btn-accent btn-lg shrink-0" aria-label={t.chat.send}><Icon name="send" mirror className="h-4 w-4" /><span className="hidden sm:inline">{t.chat.send}</span></button>}

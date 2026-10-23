@@ -11,7 +11,8 @@ const SECURITY_HEADERS = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Frame-Options", value: "DENY" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  // Microphone for this origin only: the chat composer records voice notes (rule 3594). No frame or other origin gets it.
+  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
 ];
 const NO_PAGE_HEADERS = [{ key: "Content-Security-Policy", value: BASE_CSP }];
 

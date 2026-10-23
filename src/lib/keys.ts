@@ -328,6 +328,8 @@ export const accountKey = {
   pushBucket: (login: string) => `push:${login}`,
   /** bucket name for `allow` (stored as `rate:tabbeat:{login}`): the visible-tab heartbeat (rule 2564). */
   seenBucket: (login: string) => `tabbeat:${login}`,
+  /** bucket name for `allow` (stored as `rate:voice:d:{login}`): voice notes of one login, 120 a day (rule 3585). */
+  voiceDayBucket: (login: string) => `voice:d:${login}`,
   /**
    * json `EmailHold` (src/lib/email-hold.ts): an address a person moved away from in place, refused to anyone else while
    * that person exists; 30 days (account-id R2, D1, rule 2743). Read and written only while `OPAQUE_IDS` is on.

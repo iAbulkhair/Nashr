@@ -57,6 +57,8 @@ export const BRAND_API: readonly string[] = [
   // Work: chat, conversations, tasks, files, generation, publishing, performance, schedule.
   "/api/chat",
   "/api/chat/feedback",
+  // Voice notes charge against the open agent's monthly cap in this brand (rule 3587).
+  "/api/chat/voice",
   "/api/chat/spend/[id]",
   "/api/conversations",
   "/api/files",

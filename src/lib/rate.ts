@@ -333,3 +333,11 @@ export const INTEGRATION_REQUESTS_PER_HOUR = 30;
 export const OPS_CALLS_PER_IP_PER_MINUTE = 30;
 export const OPS_RELAY_PER_HOUR = 30;
 export const OPS_PROPOSALS_PER_DAY = 20;
+
+/**
+ * Voice notes from the chat composer (POST /api/chat/voice, rule 3585): per login, an hourly bucket taken by the route
+ * wrapper before the body is read, and a daily one taken after the note passed its checks and before any charge. Each
+ * note is a paid provider call: these bound a script, not a person (30 two-minute notes is an hour of talking).
+ */
+export const VOICE_NOTES_PER_HOUR = 30;
+export const VOICE_NOTES_PER_DAY = 120;
